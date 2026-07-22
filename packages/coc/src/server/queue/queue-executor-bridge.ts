@@ -1,5 +1,5 @@
-import type { ChatPayload, ChatMode } from '../tasks/task-types';
-import { isChatPayload, TaskDefs, getTaskDef, normalizeChatMode } from '../tasks/task-types';
+import type { ChatPayload, ChatMode, ChatProvider } from '../tasks/task-types';
+import { isChatPayload, TaskDefs, getTaskDef, normalizeChatMode, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
 import { applyFollowUpToTask } from '../shared/queue-utils';
 import { processToQueuedTask } from '../shared/process-history-mapper';
 import type { AIProcess, Attachment, ConversationTurn, ISDKService, ProcessStore, QueuedTask, QueueExecutor, StoredEffortTiersMap, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
@@ -146,6 +146,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private readonly onRalphSessionComplete?: (event: RalphSessionCompleteEvent) => void;
     private resolveDefaultProvider?: ResolveDefaultProviderForExecution;
     private getEffortTiersForProvider?: GetEffortTiersForProvider;
+    private readonly resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
     private dreamRunExecutor?: DreamRunExecutor;
 
     constructor(store: ProcessStore, options: CLITaskExecutorOptions = {}) {
@@ -157,6 +158,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         this.onRalphSessionComplete = options.onRalphSessionComplete;
         this.resolveDefaultProvider = options.resolveDefaultProvider;
         this.getEffortTiersForProvider = options.getEffortTiersForProvider;
+        this.resolveAiServiceForProvider = options.resolveAiServiceForProvider;
         this.dreamRunExecutor = options.dreamRunExecutor;
         this.titleGenerationService = new TitleGenerationService({
             store,
@@ -450,6 +452,26 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
 
     cancel(taskId: string): void { this.cancelledTasks.add(taskId); }
 
+    /**
+     * Resolve the ISDKService that owns a process's live session, routing by
+     * `metadata.provider` so cancel/steer reach the same service that ran the
+     * turn (codex/claude/opencode), not just the server default. Falls back to
+     * the default aiService when the provider is missing, the resolver is
+     * absent, or the resolver rejects the provider (e.g. disabled mid-turn) —
+     * a best-effort abort against the default beats doing nothing.
+     */
+    private getAiServiceForProcess(proc: AIProcess | null | undefined): ISDKService {
+        const provider = proc?.metadata?.provider;
+        if (provider && VALID_CHAT_PROVIDERS.has(provider as ChatProvider) && this.resolveAiServiceForProvider) {
+            try {
+                return this.resolveAiServiceForProvider(provider as ChatProvider);
+            } catch (err) {
+                getLogger().debug(LogCategory.AI, `[Bridge] Falling back to default aiService for provider '${provider}': ${err instanceof Error ? err.message : String(err)}`);
+            }
+        }
+        return this.aiService;
+    }
+
     async cancelProcess(processId: string): Promise<void> {
         const taskId = toTaskId(processId);
         // Route through QueueExecutor so both cancelledTasks sets are updated
@@ -462,7 +484,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         }
         try {
             const proc = await this.store.getProcess(processId);
-            if (proc?.sdkSessionId) { await this.aiService.softAbortSession(proc.sdkSessionId); }
+            if (proc?.sdkSessionId) { await this.getAiServiceForProcess(proc).softAbortSession(proc.sdkSessionId); }
         } catch (err) {
             getLogger().debug(LogCategory.AI, `[Bridge] Failed to abort SDK session for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
         }
@@ -476,7 +498,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             if (!proc?.sdkSessionId) return false;
             // SDK steering targets the already-running session; it cannot change
             // that live session's custom tool registry.
-            return await this.aiService.steerSession(proc.sdkSessionId, message);
+            return await this.getAiServiceForProcess(proc).steerSession(proc.sdkSessionId, message);
         } catch (err) {
             getLogger().debug(LogCategory.AI, `[Bridge] Failed to steer session for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
             return false;

@@ -2472,6 +2472,129 @@ describe('CLITaskExecutor', () => {
     // Process Tracking
     // ========================================================================
 
+    describe('provider-routed cancel and steer', () => {
+        function makeProviderServices() {
+            const defaultService = {
+                ...sdkMocks.service,
+                softAbortSession: vi.fn().mockResolvedValue(true),
+                steerSession: vi.fn().mockResolvedValue(true),
+            };
+            const codexService = {
+                ...sdkMocks.service,
+                softAbortSession: vi.fn().mockResolvedValue(true),
+                steerSession: vi.fn().mockResolvedValue(true),
+            };
+            const claudeService = {
+                ...sdkMocks.service,
+                softAbortSession: vi.fn().mockResolvedValue(true),
+                steerSession: vi.fn().mockResolvedValue(true),
+            };
+            const resolveAiServiceForProvider = vi.fn((provider: string) => {
+                if (provider === 'codex') return codexService;
+                if (provider === 'claude') return claudeService;
+                return defaultService;
+            });
+            return { defaultService, codexService, claudeService, resolveAiServiceForProvider };
+        }
+
+        function seedProcess(provider?: string) {
+            store.getProcess.mockResolvedValue({
+                id: 'queue_task-pr-1',
+                type: 'chat',
+                status: 'running',
+                sdkSessionId: 'sdk-session-pr',
+                startTime: new Date(),
+                promptPreview: 'test',
+                ...(provider ? { metadata: { provider } } : {}),
+            } as any);
+        }
+
+        it.each(['codex', 'claude'] as const)('cancelProcess aborts on the %s service when metadata.provider is set', async (provider) => {
+            const { defaultService, codexService, claudeService, resolveAiServiceForProvider } = makeProviderServices();
+            const executor = new CLITaskExecutor(store, {
+                aiService: defaultService as any,
+                resolveAiServiceForProvider: resolveAiServiceForProvider as any,
+            });
+            seedProcess(provider);
+
+            await executor.cancelProcess('queue_task-pr-1');
+
+            const expected = provider === 'codex' ? codexService : claudeService;
+            expect(expected.softAbortSession).toHaveBeenCalledWith('sdk-session-pr');
+            expect(defaultService.softAbortSession).not.toHaveBeenCalled();
+        });
+
+        it('cancelProcess falls back to the default service when metadata.provider is missing', async () => {
+            const { defaultService, resolveAiServiceForProvider } = makeProviderServices();
+            const executor = new CLITaskExecutor(store, {
+                aiService: defaultService as any,
+                resolveAiServiceForProvider: resolveAiServiceForProvider as any,
+            });
+            seedProcess();
+
+            await executor.cancelProcess('queue_task-pr-1');
+
+            expect(resolveAiServiceForProvider).not.toHaveBeenCalled();
+            expect(defaultService.softAbortSession).toHaveBeenCalledWith('sdk-session-pr');
+        });
+
+        it('cancelProcess falls back to the default service when no resolver is wired', async () => {
+            const { defaultService } = makeProviderServices();
+            const executor = new CLITaskExecutor(store, { aiService: defaultService as any });
+            seedProcess('codex');
+
+            await executor.cancelProcess('queue_task-pr-1');
+
+            expect(defaultService.softAbortSession).toHaveBeenCalledWith('sdk-session-pr');
+        });
+
+        it('cancelProcess falls back to the default service when the resolver throws (provider disabled)', async () => {
+            const { defaultService } = makeProviderServices();
+            const throwingResolver = vi.fn(() => { throw new Error('Codex provider is currently disabled'); });
+            const executor = new CLITaskExecutor(store, {
+                aiService: defaultService as any,
+                resolveAiServiceForProvider: throwingResolver as any,
+            });
+            seedProcess('codex');
+
+            await executor.cancelProcess('queue_task-pr-1');
+
+            expect(throwingResolver).toHaveBeenCalledWith('codex');
+            expect(defaultService.softAbortSession).toHaveBeenCalledWith('sdk-session-pr');
+        });
+
+        it.each(['codex', 'claude'] as const)('steerProcess steers on the %s service when metadata.provider is set', async (provider) => {
+            const { defaultService, codexService, claudeService, resolveAiServiceForProvider } = makeProviderServices();
+            const executor = new CLITaskExecutor(store, {
+                aiService: defaultService as any,
+                resolveAiServiceForProvider: resolveAiServiceForProvider as any,
+            });
+            seedProcess(provider);
+
+            const result = await executor.steerProcess('queue_task-pr-1', 'change course');
+
+            expect(result).toBe(true);
+            const expected = provider === 'codex' ? codexService : claudeService;
+            expect(expected.steerSession).toHaveBeenCalledWith('sdk-session-pr', 'change course');
+            expect(defaultService.steerSession).not.toHaveBeenCalled();
+        });
+
+        it('steerProcess falls back to the default service when metadata.provider is missing', async () => {
+            const { defaultService, resolveAiServiceForProvider } = makeProviderServices();
+            const executor = new CLITaskExecutor(store, {
+                aiService: defaultService as any,
+                resolveAiServiceForProvider: resolveAiServiceForProvider as any,
+            });
+            seedProcess();
+
+            const result = await executor.steerProcess('queue_task-pr-1', 'change course');
+
+            expect(result).toBe(true);
+            expect(resolveAiServiceForProvider).not.toHaveBeenCalled();
+            expect(defaultService.steerSession).toHaveBeenCalledWith('sdk-session-pr', 'change course');
+        });
+    });
+
     describe('process tracking', () => {
         it('should create process with correct metadata', async () => {
             const executor = new CLITaskExecutor(store);
