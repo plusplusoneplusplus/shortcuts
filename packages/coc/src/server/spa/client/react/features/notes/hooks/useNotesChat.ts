@@ -54,6 +54,52 @@ function scopeKey(workspaceId: string): string {
     return `coc-notes-chat-scope-${workspaceId}`;
 }
 
+// ── Composer draft-key helper (AC-05) ────────────────────────────────────────
+
+/**
+ * Normalize a note path into a stable draft-key segment.
+ *
+ * Only unambiguous equivalences are collapsed — separator style, redundant or
+ * trailing slashes, a single leading `./` or `/` — so two spellings of the SAME
+ * note share one draft. Case is preserved: two genuinely-distinct notes on a
+ * case-sensitive store must never collapse onto one draft.
+ */
+function normalizeNotePathForDraftKey(notePath: string | null): string {
+    if (!notePath) return '';
+    return notePath
+        .trim()
+        .replace(/\\/g, '/')      // Windows separators → POSIX
+        .replace(/\/{2,}/g, '/')  // collapse duplicate slashes
+        .replace(/^\.?\//, '')    // strip a single leading `./` or `/`
+        .replace(/\/+$/, '');     // strip trailing slashes
+}
+
+/**
+ * Build the composer draft key for a Notes chat, isolated by workspace and scope
+ * (AC-05). Draft identity never crosses workspaces, notes, or scopes:
+ *
+ * - `per-workspace` → one draft per workspace, independent of any selected note.
+ * - `per-note` → one draft per (workspace, normalized note path).
+ *
+ * Both segments are URI-encoded so no workspace ID or note path can inject the
+ * `:` delimiter and collide with another key — including the `per-workspace`
+ * marker — which keeps distinct (workspace, scope, note) tuples strictly apart.
+ * The returned string is passed straight to `InitialChatComposer`'s `draftKey`,
+ * reusing the existing text- and attachment-draft stores unchanged.
+ */
+export function notesChatDraftKey(
+    workspaceId: string,
+    scope: ChatScope,
+    notePath: string | null,
+): string {
+    const ws = encodeURIComponent(workspaceId);
+    if (scope === 'per-workspace') {
+        return `notes-chat:${ws}:ws`;
+    }
+    const note = encodeURIComponent(normalizeNotePathForDraftKey(notePath));
+    return `notes-chat:${ws}:note:${note}`;
+}
+
 function encodeMarkdownLinkPathSegment(value: string): string {
     return encodeURIComponent(value).replace(/[!'()*]/g, char =>
         `%${char.charCodeAt(0).toString(16).toUpperCase()}`

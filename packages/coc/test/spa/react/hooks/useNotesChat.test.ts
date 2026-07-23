@@ -12,8 +12,12 @@ import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import * as fs from 'fs';
 import * as path from 'path';
-import { formatNoteAttachmentLink, formatNoteAttachmentPrompt } from '../../../../src/server/spa/client/react/features/notes/hooks/useNotesChat';
-import { useNotesChat } from '../../../../src/server/spa/client/react/features/notes/hooks/useNotesChat';
+import {
+    formatNoteAttachmentLink,
+    formatNoteAttachmentPrompt,
+    notesChatDraftKey,
+    useNotesChat,
+} from '../../../../src/server/spa/client/react/features/notes/hooks/useNotesChat';
 
 const { cloneClient } = vi.hoisted(() => ({
     cloneClient: {
@@ -345,6 +349,66 @@ describe('useNotesChat', () => {
 
         it('returns the original prompt when no note is attached', () => {
             expect(formatNoteAttachmentPrompt('Summarize this', 'ws', null)).toBe('Summarize this');
+        });
+    });
+
+    describe('notesChatDraftKey — scope-isolated draft identity (AC-05)', () => {
+        it('gives each note its own draft in This note scope', () => {
+            const a = notesChatDraftKey('ws', 'per-note', 'Features/Memory.md');
+            const b = notesChatDraftKey('ws', 'per-note', 'Features/Plan.md');
+            expect(a).not.toBe(b);
+        });
+
+        it('uses one draft per workspace in Workspace scope, independent of the selected note', () => {
+            const withNote = notesChatDraftKey('ws', 'per-workspace', 'Features/Memory.md');
+            const withOther = notesChatDraftKey('ws', 'per-workspace', 'Features/Plan.md');
+            const withNone = notesChatDraftKey('ws', 'per-workspace', null);
+            expect(withNote).toBe(withOther);
+            expect(withNote).toBe(withNone);
+        });
+
+        it('never crosses scopes: This note and Workspace keys differ for the same workspace', () => {
+            const perNote = notesChatDraftKey('ws', 'per-note', 'Features/Memory.md');
+            const perWorkspace = notesChatDraftKey('ws', 'per-workspace', 'Features/Memory.md');
+            expect(perNote).not.toBe(perWorkspace);
+        });
+
+        it('never crosses workspaces for the same note or scope', () => {
+            expect(notesChatDraftKey('ws-a', 'per-note', 'Memory.md'))
+                .not.toBe(notesChatDraftKey('ws-b', 'per-note', 'Memory.md'));
+            expect(notesChatDraftKey('ws-a', 'per-workspace', null))
+                .not.toBe(notesChatDraftKey('ws-b', 'per-workspace', null));
+        });
+
+        it('collapses equivalent spellings of the same note onto one draft', () => {
+            const canonical = notesChatDraftKey('ws', 'per-note', 'Features/Memory.md');
+            expect(notesChatDraftKey('ws', 'per-note', './Features/Memory.md')).toBe(canonical);
+            expect(notesChatDraftKey('ws', 'per-note', '/Features/Memory.md')).toBe(canonical);
+            expect(notesChatDraftKey('ws', 'per-note', 'Features/Memory.md/')).toBe(canonical);
+            expect(notesChatDraftKey('ws', 'per-note', 'Features//Memory.md')).toBe(canonical);
+            expect(notesChatDraftKey('ws', 'per-note', 'Features\\Memory.md')).toBe(canonical);
+            expect(notesChatDraftKey('ws', 'per-note', '  Features/Memory.md  ')).toBe(canonical);
+        });
+
+        it('preserves case so two distinct notes never collapse onto one draft', () => {
+            expect(notesChatDraftKey('ws', 'per-note', 'Memory.md'))
+                .not.toBe(notesChatDraftKey('ws', 'per-note', 'memory.md'));
+        });
+
+        it('is delimiter-injection safe: a crafted note path cannot collide with the Workspace key or another note', () => {
+            // A note path that textually contains the ':ws' marker must not alias the workspace draft.
+            expect(notesChatDraftKey('ws', 'per-note', ':ws'))
+                .not.toBe(notesChatDraftKey('ws', 'per-workspace', null));
+            // A workspace id containing the delimiter must not let one note bleed into another key.
+            expect(notesChatDraftKey('a:note:x', 'per-note', 'y'))
+                .not.toBe(notesChatDraftKey('a', 'per-note', 'x:note:x:y'));
+        });
+
+        it('produces a stable key for the no-note edge in This note scope', () => {
+            expect(notesChatDraftKey('ws', 'per-note', null))
+                .toBe(notesChatDraftKey('ws', 'per-note', null));
+            expect(notesChatDraftKey('ws', 'per-note', null))
+                .not.toBe(notesChatDraftKey('ws', 'per-workspace', null));
         });
     });
 
