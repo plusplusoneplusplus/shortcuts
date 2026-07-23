@@ -1536,7 +1536,10 @@ Workspace while Git remains available inside `SplitWorkspacePanel`.
   outside-click dismiss); the peek is a transient layer that never rewrites the
   persisted collapsed flag. Mirrors the `SplitWorkspacePanel` whole-left-column
   collapse UX with a lighter local `useState` store (no Cmd/Ctrl+B, no cross-tree
-  sync — every consumer lives in the single `NotesView` subtree).
+  sync — every consumer lives in the single `NotesView` subtree). Both toggle
+  controls carry `aria-expanded` reflecting the sidebar state, and the peek slide
+  honours `prefers-reduced-motion` via `motion-reduce:transition-none` (the panel
+  still floats out, it just appears without the transition).
 - The `SplitWorkspacePanel` chat/git divider is an explicit horizontal
   `role="separator"` resize handle with an expanded hit target; it persists the
   chat pane height per workspace under

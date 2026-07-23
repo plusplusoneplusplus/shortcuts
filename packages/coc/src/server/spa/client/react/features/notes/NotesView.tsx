@@ -223,9 +223,11 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
     // Class applied to the keep-alive sidebar's own <aside> (ResponsiveSidebar
     // forwards `className`): hidden while collapsed-not-peeking, and an absolute
     // slide-in overlay while peeking. Undefined when expanded so it stays in flow.
+    // `motion-reduce:transition-none` drops the slide for users who prefer reduced
+    // motion — the panel still floats out, it just appears instantly.
     const sidebarPeekClassName = sidebarCollapsedDesktop
         ? sidebarPeeking
-            ? `absolute inset-y-0 left-0 z-30 shadow-xl transition-transform duration-200 ease-out ${peekVisible ? 'translate-x-0' : '-translate-x-full'}`
+            ? `absolute inset-y-0 left-0 z-30 shadow-xl transition-transform duration-200 ease-out motion-reduce:transition-none ${peekVisible ? 'translate-x-0' : '-translate-x-full'}`
             : 'hidden'
         : undefined;
 
@@ -551,6 +553,7 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
                         className="w-7 h-7 flex items-center justify-center rounded text-[#848484] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
                         onClick={toggleSidebarCollapsed}
                         aria-label="Expand notes sidebar"
+                        aria-expanded={!sidebarCollapsed}
                         title="Expand notes sidebar"
                         data-testid="notes-sidebar-expand"
                     >
@@ -630,6 +633,7 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
                         className="absolute top-1 -left-6 w-6 h-6 flex items-center justify-center rounded text-[#848484] bg-[#fafafa] dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c] opacity-0 group-hover:opacity-100 hover:text-[#333] dark:hover:text-[#ddd] transition-opacity z-10"
                         onClick={toggleSidebarCollapsed}
                         aria-label="Collapse notes sidebar"
+                        aria-expanded={!sidebarCollapsed}
                         title="Collapse notes sidebar"
                         data-testid="notes-sidebar-collapse"
                     >

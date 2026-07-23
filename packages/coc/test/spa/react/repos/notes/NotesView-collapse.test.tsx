@@ -239,4 +239,56 @@ describe('NotesView collapsed rail — hover-to-peek', () => {
             }
         }
     });
+
+    it('drops the peek slide transition under prefers-reduced-motion', async () => {
+        window.localStorage.setItem(notesSidebarCollapsedStorageKey('ws1'), '1');
+        render(<NotesView workspaceId="ws1" active />);
+        await waitFor(() => expect(readVar()).toBe('36px'));
+        const sidebar = screen.getByTestId('responsive-sidebar');
+
+        vi.useFakeTimers();
+        try {
+            act(() => { fireEvent.mouseEnter(screen.getByTestId('notes-sidebar-rail')); });
+            act(() => { vi.advanceTimersByTime(450); });
+            // The overlay carries the reduced-motion opt-out; the CSS media query
+            // handles suppression at runtime, so the class is always present while
+            // peeking (jsdom can't evaluate the media query itself).
+            expect(sidebar.className).toContain('motion-reduce:transition-none');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+});
+
+describe('NotesView collapse controls — aria-expanded state', () => {
+    it('expanded: the collapse chevron reports aria-expanded="true"', async () => {
+        render(<NotesView workspaceId="ws1" active />);
+        await waitFor(() => expect(readVar()).toBe('280px'));
+
+        expect(screen.getByTestId('notes-sidebar-collapse').getAttribute('aria-expanded')).toBe('true');
+    });
+
+    it('collapsed: the rail expand button reports aria-expanded="false"', async () => {
+        window.localStorage.setItem(notesSidebarCollapsedStorageKey('ws1'), '1');
+        render(<NotesView workspaceId="ws1" active />);
+        await waitFor(() => expect(readVar()).toBe('36px'));
+
+        expect(screen.getByTestId('notes-sidebar-expand').getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it('toggling collapse flips aria-expanded across the two controls', async () => {
+        render(<NotesView workspaceId="ws1" active />);
+        await waitFor(() => expect(readVar()).toBe('280px'));
+        // Expanded → chevron says expanded.
+        expect(screen.getByTestId('notes-sidebar-collapse').getAttribute('aria-expanded')).toBe('true');
+
+        fireEvent.click(screen.getByTestId('notes-sidebar-collapse'));
+        await waitFor(() => expect(readVar()).toBe('36px'));
+        // Collapsed → the rail's expand button says not-expanded.
+        expect(screen.getByTestId('notes-sidebar-expand').getAttribute('aria-expanded')).toBe('false');
+
+        fireEvent.click(screen.getByTestId('notes-sidebar-expand'));
+        await waitFor(() => expect(readVar()).toBe('280px'));
+        expect(screen.getByTestId('notes-sidebar-collapse').getAttribute('aria-expanded')).toBe('true');
+    });
 });
