@@ -10,6 +10,7 @@ import TurndownService from 'turndown';
 import { isEmbeddableMapUrl, isPdfUrl } from '@plusplusoneplusplus/forge/editor/rendering';
 import { mathNodeMarkedExtension } from './mathNodeMarked';
 import { wrapMathDelimiters, type MathDelimiter } from '../../../../shared/math/mathTokenizer';
+import { clampIndent, parseIndentAttr } from './extensions/indentShared';
 
 // ── marked configuration ────────────────────────────────────────────────────
 
@@ -214,22 +215,32 @@ turndown.addRule('highlight', {
     },
 });
 
-// Images with width: preserve as HTML <img> tag so dimensions round-trip
+// Images with a width or a nonzero indent: preserve as an HTML <img> tag so the
+// dimensions and/or the indent level round-trip (standard `![]()` syntax carries
+// neither). A plain, level-0, unsized image still serializes as `![alt](src)`.
 turndown.addRule('resizableImage', {
     filter(node) {
-        return node.nodeName === 'IMG' && node.hasAttribute('width');
+        return (
+            node.nodeName === 'IMG' &&
+            (node.hasAttribute('width') || parseIndentAttr(node as HTMLElement) > 0)
+        );
     },
     replacement(_content, node) {
         const el = node as HTMLElement;
         const src = el.getAttribute('src') ?? '';
         const alt = el.getAttribute('alt') ?? '';
         const width = el.getAttribute('width') ?? '';
+        const indent = parseIndentAttr(el);
         const altAttr = alt ? ` alt="${alt}"` : '';
-        return `<img src="${src}"${altAttr} width="${width}" />`;
+        const widthAttr = width ? ` width="${width}"` : '';
+        const indentAttr = indent > 0 ? ` data-indent="${indent}"` : '';
+        return `<img src="${src}"${altAttr}${widthAttr}${indentAttr} />`;
     },
 });
 
-// Google Maps embeds serialize back to ordinary markdown links.
+// Google Maps embeds serialize back to ordinary markdown links. A nonzero indent
+// has no link syntax, so an indented map is emitted as a raw HTML placeholder div
+// carrying `data-indent` that marked passes through and MapBlock re-parses.
 turndown.addRule('mapEmbed', {
     filter(node) {
         return (
@@ -243,13 +254,19 @@ turndown.addRule('mapEmbed', {
         const url = el.getAttribute('data-map-url') ?? '';
         if (!url) return '';
         const label = el.getAttribute('data-map-label')?.trim() || url;
+        const indent = parseIndentAttr(el);
+        if (indent > 0) {
+            return `\n\n<div class="md-map-embed" data-map-url="${escapeAttr(url)}" data-map-label="${escapeAttr(label)}" data-indent="${indent}"></div>\n\n`;
+        }
         return `[${escapeMarkdownLinkLabel(label)}](${url})`;
     },
 });
 
 // PDF embeds serialize back to markdown image syntax (`![label](url)`).
-// Empty placeholder divs are pre-converted to <img> by serializePdfEmbedPlaceholders
-// (turndown skips blank block nodes), so this rule only fires for non-empty divs.
+// Empty level-0 placeholder divs are pre-converted to <img> by
+// serializePdfEmbedPlaceholders (turndown skips blank block nodes); an indented
+// embed is instead kept as a non-blank div by that helper so this rule fires and
+// re-emits it as a raw HTML placeholder carrying `data-indent`.
 turndown.addRule('pdfEmbed', {
     filter(node) {
         return (
@@ -263,6 +280,10 @@ turndown.addRule('pdfEmbed', {
         const url = el.getAttribute('data-pdf-url') ?? '';
         if (!url) return '';
         const label = el.getAttribute('data-pdf-label')?.trim() || 'PDF';
+        const indent = parseIndentAttr(el);
+        if (indent > 0) {
+            return `\n\n<div class="md-pdf-embed" data-pdf-url="${escapeAttr(url)}" data-pdf-label="${escapeAttr(label)}" data-indent="${indent}"></div>\n\n`;
+        }
         return `![${escapeMarkdownLinkLabel(label)}](${url})`;
     },
 });
@@ -397,8 +418,16 @@ turndown.addRule('mermaidCode', {
         return code !== null;
     },
     replacement(_content, node) {
-        const code = (node as Element).querySelector('code.language-mermaid');
+        const el = node as HTMLElement;
+        const code = el.querySelector('code.language-mermaid');
         const text = code?.textContent ?? '';
+        const indent = parseIndentAttr(el);
+        if (indent > 0) {
+            // Indent has no fenced-code syntax, so emit a raw <pre> HTML block
+            // carrying `data-indent`; marked passes it through and MermaidBlock
+            // re-parses the `code.language-mermaid` and the indent level.
+            return `\n\n<pre data-indent="${indent}"><code class="language-mermaid">${escapeHtmlText(text)}</code></pre>\n\n`;
+        }
         return `\`\`\`mermaid\n${text}\n\`\`\``;
     },
 });
@@ -470,7 +499,15 @@ turndown.addRule('mathDisplay', {
     replacement(_content, node) {
         const el = node as HTMLElement;
         const tex = el.getAttribute('data-tex') ?? '';
-        return `\n\n${wrapMathDelimiters(mathDelimiterFromNode(el, 'double-dollar'), tex)}\n\n`;
+        const delim = mathDelimiterFromNode(el, 'double-dollar');
+        const indent = parseIndentAttr(el);
+        if (indent > 0) {
+            // Delimited `$$…$$` source has no indent metadata, so emit a raw HTML
+            // placeholder div carrying `data-indent` (plus the exact TeX/delimiter);
+            // marked passes it through and MathDisplay re-parses all three.
+            return `\n\n<div data-math="display" data-tex="${escapeAttr(tex)}" data-delim="${delim}" data-indent="${indent}">${escapeHtmlText(tex)}</div>\n\n`;
+        }
+        return `\n\n${wrapMathDelimiters(delim, tex)}\n\n`;
     },
 });
 
@@ -561,6 +598,13 @@ function serializeMapEmbedPlaceholders(html: string): string {
             const url = getHtmlAttr(attrs, 'data-map-url');
             if (!url) return '';
             const label = getHtmlAttr(attrs, 'data-map-label').trim() || url;
+            const indent = clampIndent(parseInt(getHtmlAttr(attrs, 'data-indent') || '0', 10) || 0);
+            if (indent > 0) {
+                // Keep the embed as a non-blank md-map-embed div (turndown drops
+                // blank block nodes) so the `mapEmbed` rule fires and preserves
+                // the indent as raw HTML rather than a plain link.
+                return `<div class="md-map-embed" data-map-url="${escapeAttr(url)}" data-map-label="${escapeAttr(label)}" data-indent="${indent}">${escapeHtmlText(label)}</div>`;
+            }
             return `<p><a href="${escapeAttr(url)}">${escapeHtmlText(label)}</a></p>`;
         },
     );
@@ -577,6 +621,14 @@ function serializePdfEmbedPlaceholders(html: string): string {
             const url = getHtmlAttr(attrs, 'data-pdf-url');
             if (!url) return '';
             const label = getHtmlAttr(attrs, 'data-pdf-label').trim() || 'PDF';
+            const indent = clampIndent(parseInt(getHtmlAttr(attrs, 'data-indent') || '0', 10) || 0);
+            if (indent > 0) {
+                // Keep the embed as a non-blank md-pdf-embed div (turndown drops
+                // blank block nodes) so the `pdfEmbed` rule fires and preserves the
+                // indent as raw HTML. Routing through <img>/`![]()` would lose both
+                // the indent AND the pdf type (a raw <img> reloads as an image).
+                return `<div class="md-pdf-embed" data-pdf-url="${escapeAttr(url)}" data-pdf-label="${escapeAttr(label)}" data-indent="${indent}">${escapeHtmlText(label)}</div>`;
+            }
             return `<img src="${escapeAttr(url)}" alt="${escapeAttr(label)}" />`;
         },
     );
@@ -788,6 +840,16 @@ export function rewriteImageSrcToRelative(markdown: string): string {
         /<img\s([^>]*?)src="\/api\/workspaces\/[^/]+\/notes\/local-image\?path=([^"]+)"([^>]*?)\/?\s*>/gi,
         (_match, before: string, encodedPath: string, after: string) => {
             return `<img ${before}src="${decodeURIComponent(encodedPath)}"${after} />`;
+        },
+    );
+
+    // Raw HTML PDF embed placeholders (indented pdfBlock) carrying an API image
+    // URL → relative `.attachments/` path, mirroring rewriteImageSrcToApi so the
+    // persisted Markdown never contains a workspace-specific API URL.
+    result = result.replace(
+        /data-pdf-url="\/api\/workspaces\/[^/]+\/notes\/image\?path=([^"]+)"/gi,
+        (_match, encodedPath: string) => {
+            return `data-pdf-url="${decodeURIComponent(encodedPath)}"`;
         },
     );
 

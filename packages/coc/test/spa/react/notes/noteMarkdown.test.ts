@@ -1023,4 +1023,248 @@ describe('noteMarkdown', () => {
             expect(result).toBe('![Doc](.attachments/sample.pdf)');
         });
     });
+
+    // ── Visual embed indentation persistence (AC-02) ────────────────────────
+    //
+    // A nonzero embed indent has no canonical Markdown syntax, so it is stored as
+    // raw HTML carrying `data-indent`; marked passes it through and the embed's
+    // own parseHTML re-reads it. Returning to level 0 drops `data-indent` and the
+    // serializer returns to the canonical form (unless another customization —
+    // e.g. an image width — already forces raw HTML). The editor-side HTML shapes
+    // below match each node's renderHTML output.
+    const MAP_EMBED_URL = 'https://www.google.com/maps/embed?pb=!1m18!1m12';
+
+    describe('embed indentation persistence — image', () => {
+        it('nonzero indent (no width) serializes to a raw <img> with data-indent', () => {
+            const md = htmlToMarkdown('<img src=".attachments/a.png" alt="pic" data-indent="2">');
+            expect(md).toContain('<img src=".attachments/a.png"');
+            expect(md).toContain('data-indent="2"');
+            // Not the canonical `![]()` form (which has no room for the indent)
+            expect(md).not.toContain('![');
+        });
+
+        it('reloads the raw <img> with data-indent preserved', () => {
+            const md = htmlToMarkdown('<img src=".attachments/a.png" alt="pic" data-indent="2">');
+            const reloaded = markdownToHtml(md);
+            expect(reloaded).toContain('src=".attachments/a.png"');
+            expect(reloaded).toContain('data-indent="2"');
+        });
+
+        it('level 0 returns to canonical markdown with no data-indent', () => {
+            const md = htmlToMarkdown('<img src=".attachments/a.png" alt="pic" data-indent="0">');
+            expect(md).toContain('![pic](.attachments/a.png)');
+            expect(md).not.toContain('data-indent');
+            expect(md).not.toContain('<img');
+        });
+
+        it('width and indent round-trip together', () => {
+            const html = '<img src=".attachments/a.png" alt="pic" width="300" data-indent="2">';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('width="300"');
+            expect(md).toContain('data-indent="2"');
+            const rt = htmlToMarkdown(markdownToHtml(md));
+            expect(rt).toContain('src=".attachments/a.png"');
+            expect(rt).toContain('width="300"');
+            expect(rt).toContain('data-indent="2"');
+        });
+
+        it('clamps an out-of-range data-indent down to MAX (8)', () => {
+            const md = htmlToMarkdown('<img src=".attachments/a.png" alt="pic" data-indent="99">');
+            expect(md).toContain('data-indent="8"');
+        });
+
+        it('treats a negative data-indent as level 0 (canonical markdown)', () => {
+            const md = htmlToMarkdown('<img src=".attachments/a.png" alt="pic" data-indent="-3">');
+            expect(md).toContain('![pic](.attachments/a.png)');
+            expect(md).not.toContain('data-indent');
+        });
+
+        it('attachment URL rewriting round-trips with data-indent present', () => {
+            // Save: the live editor carries the notes-image API URL; the raw <img>
+            // must be rewritten back to the relative `.attachments/` path.
+            const editorHtml =
+                '<img src="/api/workspaces/ws1/notes/image?path=.attachments%2Fa.png" alt="pic" width="300" data-indent="2">';
+            const saved = rewriteImageSrcToRelative(htmlToMarkdown(editorHtml));
+            expect(saved).toContain('src=".attachments/a.png"');
+            expect(saved).toContain('width="300"');
+            expect(saved).toContain('data-indent="2"');
+            expect(saved).not.toContain('/api/workspaces');
+            // Load: the relative path is rewritten back to an API URL, indent intact.
+            const loaded = rewriteImageSrcToApi(markdownToHtml(saved), 'ws1');
+            expect(loaded).toContain('src="/api/workspaces/ws1/notes/image?path=');
+            expect(loaded).toContain('data-indent="2"');
+        });
+
+        it('local-image URL rewriting round-trips with data-indent present', () => {
+            const markdownImg = '<img src="/home/u/chart.png" alt="c" width="200" data-indent="3" />';
+            // Load: absolute path → local-image API URL, indent intact.
+            const loaded = rewriteImageSrcToApi(markdownToHtml(markdownImg), 'ws1');
+            expect(loaded).toContain('local-image?path=');
+            expect(loaded).toContain('data-indent="3"');
+            // Save: local-image API URL → original absolute path, indent intact.
+            const saved = rewriteImageSrcToRelative(htmlToMarkdown(loaded));
+            expect(saved).toContain('src="/home/u/chart.png"');
+            expect(saved).toContain('data-indent="3"');
+        });
+    });
+
+    describe('embed indentation persistence — PDF', () => {
+        const indentedHtml =
+            '<div class="md-pdf-embed" data-pdf-url=".attachments/a.pdf" data-pdf-label="Doc" data-indent="2"></div>';
+
+        it('nonzero indent serializes to a raw md-pdf-embed div (not image syntax)', () => {
+            const md = htmlToMarkdown(indentedHtml);
+            expect(md).toContain('class="md-pdf-embed"');
+            expect(md).toContain('data-pdf-url=".attachments/a.pdf"');
+            expect(md).toContain('data-pdf-label="Doc"');
+            expect(md).toContain('data-indent="2"');
+            // Must NOT route through `![]()` — a raw <img>/pdf image reloads as an image.
+            expect(md).not.toContain('![');
+        });
+
+        it('reloads the raw div with url, label and indent preserved', () => {
+            const reloaded = markdownToHtml(htmlToMarkdown(indentedHtml));
+            expect(reloaded).toContain('class="md-pdf-embed"');
+            expect(reloaded).toContain('data-pdf-url=".attachments/a.pdf"');
+            expect(reloaded).toContain('data-pdf-label="Doc"');
+            expect(reloaded).toContain('data-indent="2"');
+        });
+
+        it('level 0 returns to canonical image syntax with no data-indent', () => {
+            const md = htmlToMarkdown(
+                '<div class="md-pdf-embed" data-pdf-url=".attachments/a.pdf" data-pdf-label="Doc" data-indent="0"></div>',
+            );
+            expect(md).toContain('![Doc](.attachments/a.pdf)');
+            expect(md).not.toContain('data-indent');
+            expect(md).not.toContain('md-pdf-embed');
+        });
+
+        it('attachment URL rewriting round-trips with data-indent present', () => {
+            const editorHtml =
+                '<div class="md-pdf-embed" data-pdf-url="/api/workspaces/ws1/notes/image?path=.attachments%2Fa.pdf" data-pdf-label="Doc" data-indent="2"></div>';
+            const saved = rewriteImageSrcToRelative(htmlToMarkdown(editorHtml));
+            expect(saved).toContain('data-pdf-url=".attachments/a.pdf"');
+            expect(saved).toContain('data-indent="2"');
+            expect(saved).not.toContain('/api/workspaces');
+            const loaded = rewriteImageSrcToApi(markdownToHtml(saved), 'ws1');
+            expect(loaded).toContain('data-pdf-url="/api/workspaces/ws1/notes/image?path=');
+            expect(loaded).toContain('data-indent="2"');
+        });
+    });
+
+    describe('embed indentation persistence — map', () => {
+        const indentedHtml =
+            `<div class="md-map-embed" data-map-url="${MAP_EMBED_URL}" data-map-label="Map" data-indent="2"></div>`;
+
+        it('nonzero indent serializes to a raw md-map-embed div (not a link)', () => {
+            const md = htmlToMarkdown(indentedHtml);
+            expect(md).toContain('class="md-map-embed"');
+            expect(md).toContain(`data-map-url="${MAP_EMBED_URL}"`);
+            expect(md).toContain('data-map-label="Map"');
+            expect(md).toContain('data-indent="2"');
+            expect(md).not.toMatch(/^\[Map\]\(/m);
+        });
+
+        it('reloads the raw div with url, label and indent preserved', () => {
+            const reloaded = markdownToHtml(htmlToMarkdown(indentedHtml));
+            expect(reloaded).toContain('class="md-map-embed"');
+            expect(reloaded).toContain(`data-map-url="${MAP_EMBED_URL}"`);
+            expect(reloaded).toContain('data-indent="2"');
+        });
+
+        it('level 0 returns to a plain markdown link with no data-indent', () => {
+            const md = htmlToMarkdown(
+                `<div class="md-map-embed" data-map-url="${MAP_EMBED_URL}" data-map-label="Map" data-indent="0"></div>`,
+            );
+            expect(md).toBe(`[Map](${MAP_EMBED_URL})\n`);
+            expect(md).not.toContain('data-indent');
+        });
+    });
+
+    describe('embed indentation persistence — mermaid', () => {
+        const indentedHtml =
+            '<pre data-indent="2"><code class="language-mermaid">graph TD\nA --&gt; B</code></pre>';
+
+        it('nonzero indent serializes to a raw <pre> block (not a fenced code block)', () => {
+            const md = htmlToMarkdown(indentedHtml);
+            expect(md).toContain('data-indent="2"');
+            expect(md).toContain('class="language-mermaid"');
+            expect(md).toContain('graph TD');
+            expect(md).not.toContain('```mermaid');
+        });
+
+        it('reloads the raw <pre> with code and indent preserved', () => {
+            const reloaded = markdownToHtml(htmlToMarkdown(indentedHtml));
+            expect(reloaded).toContain('data-indent="2"');
+            expect(reloaded).toContain('language-mermaid');
+            expect(reloaded).toContain('graph TD');
+            expect(reloaded).toContain('A --&gt; B');
+        });
+
+        it('level 0 returns to a fenced mermaid block with no data-indent', () => {
+            const md = htmlToMarkdown(
+                '<pre><code class="language-mermaid">graph TD\nA --&gt; B</code></pre>',
+            );
+            expect(norm(md)).toContain('```mermaid');
+            expect(md).not.toContain('data-indent');
+        });
+    });
+
+    describe('embed indentation persistence — display math', () => {
+        const indentedHtml =
+            '<div data-math="display" data-tex="x^2" data-delim="double-dollar" data-indent="2">x^2</div>';
+
+        it('nonzero indent serializes to a raw math div (not delimited `$$`)', () => {
+            const md = htmlToMarkdown(indentedHtml);
+            expect(md).toContain('data-math="display"');
+            expect(md).toContain('data-tex="x^2"');
+            expect(md).toContain('data-delim="double-dollar"');
+            expect(md).toContain('data-indent="2"');
+            expect(md).not.toContain('$$');
+        });
+
+        it('reloads the raw math div with tex, delimiter and indent preserved', () => {
+            const reloaded = markdownToHtml(htmlToMarkdown(indentedHtml));
+            expect(reloaded).toContain('data-math="display"');
+            expect(reloaded).toContain('data-tex="x^2"');
+            expect(reloaded).toContain('data-delim="double-dollar"');
+            expect(reloaded).toContain('data-indent="2"');
+        });
+
+        it('level 0 returns to delimited `$$…$$` with no data-indent', () => {
+            const md = htmlToMarkdown(
+                '<div data-math="display" data-tex="x^2" data-delim="double-dollar">x^2</div>',
+            );
+            expect(md).toContain('$$x^2$$');
+            expect(md).not.toContain('data-indent');
+        });
+    });
+
+    describe('embed indentation persistence — stability (source mode)', () => {
+        // Source mode shows the persisted markdown verbatim; re-saving an
+        // unchanged indented embed must be idempotent (no metadata drift).
+        it.each([
+            ['image', '<img src=".attachments/a.png" alt="pic" width="300" data-indent="2">'],
+            [
+                'pdf',
+                '<div class="md-pdf-embed" data-pdf-url=".attachments/a.pdf" data-pdf-label="Doc" data-indent="2"></div>',
+            ],
+            [
+                'map',
+                `<div class="md-map-embed" data-map-url="${MAP_EMBED_URL}" data-map-label="Map" data-indent="2"></div>`,
+            ],
+            [
+                'mermaid',
+                '<pre data-indent="2"><code class="language-mermaid">graph TD\nA --&gt; B</code></pre>',
+            ],
+            [
+                'math',
+                '<div data-math="display" data-tex="x^2" data-delim="double-dollar" data-indent="2">x^2</div>',
+            ],
+        ])('is idempotent across a second save for %s', (_name, editorHtml) => {
+            const md1 = htmlToMarkdown(editorHtml);
+            const md2 = htmlToMarkdown(markdownToHtml(md1));
+            expect(md2).toBe(md1);
+        });
+    });
 });
