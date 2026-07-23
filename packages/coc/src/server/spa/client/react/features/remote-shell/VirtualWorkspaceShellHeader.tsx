@@ -27,6 +27,8 @@ export interface VirtualWorkspaceShellHeaderProps {
     config: VirtualWorkspaceHeaderConfig;
     repos: RepoData[];
     onSelectRepo: (id: string) => void;
+    /** Suppress the identity chip when the ScopeSlideSwitcher owns identity. */
+    hideIdentity?: boolean;
 }
 
 function Chevron() {
@@ -37,7 +39,7 @@ function Chevron() {
     );
 }
 
-export function VirtualWorkspaceShellHeader({ config, repos, onSelectRepo }: VirtualWorkspaceShellHeaderProps) {
+export function VirtualWorkspaceShellHeader({ config, repos, onSelectRepo, hideIdentity }: VirtualWorkspaceShellHeaderProps) {
     const { visibleTabs, activeTab, switchTab, statusMsg, isActionRunning, runAction } = useVirtualWorkspaceHeader(config);
     const prefix = config.testIdPrefix;
 
@@ -99,7 +101,10 @@ export function VirtualWorkspaceShellHeader({ config, repos, onSelectRepo }: Vir
             data-testid="virtual-workspace-shell-header"
             data-workspace={config.workspaceId}
         >
-            {/* Identity chip — repo picker trigger. */}
+            {/* Identity chip — repo picker trigger. Suppressed when the
+                ScopeSlideSwitcher owns scope identity. */}
+            {!hideIdentity && (
+            <>
             <div className="relative flex-shrink-0" ref={rootRef}>
                 <button
                     ref={triggerRef}
@@ -149,6 +154,8 @@ export function VirtualWorkspaceShellHeader({ config, repos, onSelectRepo }: Vir
             </div>
 
             <span className="w-px h-[18px] bg-[#d8dee4] dark:bg-[#3c3c3c] flex-shrink-0" aria-hidden />
+            </>
+            )}
 
             <div className="flex items-center gap-0.5 flex-1 min-w-0 overflow-x-auto">
                 {visibleTabs.map(t => {

@@ -70,7 +70,16 @@ image actions carry the active root identity. Notes Chat and AI page creation
 remain managed-root-only and render disabled with an explanation in every
 non-default collection.
 
-Notes Chat renders exactly one compact 48px header (`NotesChatHeader.tsx`, next to `NoteChatPanel.tsx`) across the Lens, pinned side-panel, and embedded (mobile / Lens-disabled) presentations and across both the empty and active-conversation states — there is no density setting or alternate full header. The header shows a Notes Chat identity mark, a muted context label (current note title in per-note scope, workspace display name via `resolveWorkspaceName` in per-workspace scope, truncated with the full value on hover), the `NotesChatScopeToggle` segmented control (This note / Workspace; defaults to `per-note` / "This note" when no persisted scope exists, via `useNotesChat`'s `defaultScope`), and a window-action group whose contents depend on `NoteChatPanel`'s `presentation` prop (`'lens' | 'side-panel' | 'embedded'`, computed in `NotesView` from `useReviewChatPresentation()`'s state): minimize + pin in `'lens'`, unpin in `'side-panel'`, neither in `'embedded'`; close is always present. "New chat" (resets the active scope's chat, keeping it recoverable in history) lives in the header's `ChatHeaderOverflowMenu` instead of a dedicated button, and only renders when a chat exists. When the active chat is bound to a note (per-note scope), a compact 📎 path-reference button (`data-testid="notes-chat-path-ref"`) appears in the right control cluster just before the overflow menu; its tooltip/`aria-label` reveal the full note path that was prepended to the first message. If the selected note diverges from the chat-bound note, the 📎 tints amber (`data-switched="true"`) and its tooltip switches to an "Attached to <note> — Start New Chat to switch." warning. The former note-context banner (`NoteContextBanner.tsx`) is now a slim amber one-line warning strip that renders **only** in that switched case (keyed off the same `isSwitched` value, computed once in `NoteChatPanel` and shared with the header); in the common non-switched case it renders nothing, so Notes Chat stays a true single header row. To avoid duplicated chrome, `ReviewChatPlacementFrame` accepts an opt-in `hideHeader` prop (Notes passes it; commits/PRs/Work Items omit it and keep the shared generic Lens/side-panel header unchanged) and `ChatDetail` accepts an opt-in `hideHeader` prop (Notes passes it to suppress the nested `ChatHeader`; other `ChatDetail` consumers are unaffected). The ask/autopilot mode toggle (`NoteModeToggle`) is intentionally kept out of the header and renders inline with the empty-state composer next to the input, matching where `ChatDetail`'s own `compactModeSelector` places it once a chat is active.
+Links in the rich note editor display their destination URL and the
+platform-specific modifier-click instruction in a native hover hint. The hint
+is applied only to the live anchor DOM so it does not become part of the saved
+Markdown.
+
+Notes Chat renders one compact 48px header (`NotesChatHeader.tsx`, next to `NoteChatPanel.tsx`) across Lens, pinned side-panel, and embedded (mobile or Lens-disabled) presentations and in both empty and active-conversation states. The header shows a Notes Chat identity mark, a muted context label (current note title in per-note scope or workspace display name from `resolveWorkspaceName` in per-workspace scope, truncated with the full value on hover), the `NotesChatScopeToggle` segmented control (This note / Workspace; defaults to `per-note` / "This note" when no persisted scope exists through `useNotesChat`'s `defaultScope`), and presentation-specific window actions: minimize + pin in `'lens'`, unpin in `'side-panel'`, neither in `'embedded'`, and close in every presentation. "New chat" resets the active scope while leaving the old process recoverable in history; it lives in `ChatHeaderOverflowMenu` and renders only when a chat exists. When the active chat is bound to a note, a compact 📎 path-reference button (`data-testid="notes-chat-path-ref"`) appears before the overflow menu, with the full prepended note path in its tooltip and `aria-label`. If the selected note diverges from the chat-bound note, the button tints amber (`data-switched="true"`) and the tooltip reads "Attached to <note> — Start New Chat to switch." `NoteContextBanner.tsx` uses that same `isSwitched` value, computed once in `NoteChatPanel`, to render a slim amber one-line warning only in the divergent case; it renders nothing in the common matching case.
+
+The displayed note reference is paired with the active chat task in `useNotesChat`. `createChat` seeds the pair from the returned task ID while the process is still queued, and `ChatDetail` reports every accepted `processDetails` snapshot from its existing clone-routed load and refresh paths through `onProcessLoaded`. `useNotesChat` reads the persisted `metadata.queueTaskId`, `metadata.notePath`, and `metadata.noteTitle` from that snapshot and ignores any task ID that is no longer active. Context from another task therefore renders as `null` during note or scope changes instead of producing another chat's attachment label or warning, including when an older load finishes late. Note context is not read from or written to a workspace-wide localStorage value, and resolving it adds no process request beyond the normal `ChatDetail` flow.
+
+`ReviewChatPlacementFrame` accepts an opt-in `hideHeader` prop; Notes passes it while commits, PRs, and Work Items keep the shared generic Lens/side-panel header. `ChatDetail` also accepts an opt-in `hideHeader` prop, which Notes uses to suppress the nested `ChatHeader` without affecting other consumers. The ask/autopilot `NoteModeToggle` stays out of the header and renders beside the empty-state composer input, matching the placement of `ChatDetail`'s `compactModeSelector` once a chat is active.
 
 Chat-list hierarchy grouping is consolidated behind a shared engine:
 `features/chat/task-group-grouping.ts` owns the generic matching/aggregation
@@ -395,7 +404,17 @@ an older revision routes the stored snapshot through the same `KustoView` in a
 and never persisted) so historical rows render via `InteractiveTable` — kusto
 canvases never feed their serialized row JSON to the markdown pipeline
 (`chatMarkdownToHtml`), avoiding a costly parse of up to `MAX_KUSTO_ROWS` (10,000)
-rows on each revision switch. The SPA client no-emit gate
+rows on each revision switch. When a conversation holds several inline Kusto
+embeds, `KustoEmbedGroupProvider` (`shared/KustoEmbedGroup.tsx`, wrapping the turn
+list in `ConversationArea`) keeps only the last embed in document order expanded
+and collapses the rest to a clickable header (title + row-count summary); each
+embed registers its wrapper element and the group picks the last via
+`compareDocumentPosition`. A reader's manual toggle overrides the default, and an
+embed rendered outside any provider stays expanded. To keep the embed compact,
+the expanded header exposes a slot (`canvas-embed-kusto-connection-slot`) and
+`KustoView` — given `connectionInHeader` + `connectionSlot` — `createPortal`s its
+cluster/database editors into it instead of the body labeled row (the editors
+stay owned by `KustoView`; only their mount point moves). The SPA client no-emit gate
 (`npx tsc -p tsconfig.client.json --noEmit`) is intentionally scoped to this
 Canvas/Kusto surface and its imported helpers.
 
@@ -489,7 +508,7 @@ present.
 | `useApi` | HTTP client wrapper |
 | `useWebSocket` | WebSocket connection management |
 | `useMarkdownPreview` | Shared markdown rendering pipeline |
-| `useMarkdownDocumentSession` | Shared markdown document loading, dirty state, save/flush, refresh, conflict, beforeunload, and keyboard-save kernel used by Notes and MarkdownReviewEditor through injected I/O adapters. Pure conversion helpers live in `shared/markdown-document/markdownRichConversion` (`markdownToRichEditorHtml`, `richEditorHtmlToMarkdown`, `buildImageMarkdown`, `insertTextAtSelection`) composing front matter split/compose, markdown⇄HTML, and image/PDF URL rewriting (`rewriteHtmlImageSrc` rewrites both `<img src>` and `data-pdf-url` `.attachments/…` paths to the notes image API) so NoteEditor's load/switch-to-rich/conflict-load-disk/notes-changed-reload paths share one code path. `.pdf` image-embed markdown (`![label](x.pdf)`) round-trips through the `pdfBlock` Tiptap node (`react/features/notes/editor/extensions/pdfBlock.tsx`) rendering an inline `<iframe>`; the toolbar's Insert PDF button uploads via the notes image endpoint |
+| `useMarkdownDocumentSession` | Shared markdown document loading, dirty state, save/flush, refresh, conflict, beforeunload, and keyboard-save kernel used by Notes and MarkdownReviewEditor through injected I/O adapters. Pure conversion helpers live in `shared/markdown-document/markdownRichConversion` (`markdownToRichEditorHtml`, `richEditorHtmlToMarkdown`, `buildImageMarkdown`, `insertTextAtSelection`) composing front matter split/compose, markdown⇄HTML, and image/PDF URL rewriting (`rewriteHtmlImageSrc` rewrites both `<img src>` and `data-pdf-url` `.attachments/…` paths to the notes image API) so NoteEditor's load/switch-to-rich/conflict-load-disk/notes-changed-reload paths share one code path. `.pdf` image-embed markdown (`![label](x.pdf)`) round-trips through the `pdfBlock` Tiptap node (`react/features/notes/editor/extensions/pdfBlock.tsx`). Its `pdfBlockUrl` policy renders only exact same-origin Notes `image`/`local-image` PDF routes in an unsandboxed browser-native iframe, keeps other HTTP(S) PDFs link-only, and exposes no active URL for unsafe values. The toolbar's Insert PDF button uploads via the notes image endpoint. |
 | `useDiffComments` | Inline diff comment state |
 | `useUnseenChat` | Read/unread tracking |
 
@@ -1246,6 +1265,25 @@ Enabled by default; desktop-only; takes effect on reload.
   navigation is always visible. `RemoteShellHeader` (repos tab + real clone
   selected) and `VirtualWorkspaceShellHeader` (repos tab + virtual workspace)
   replace the strip; everywhere else the strip renders.
+- **Scope slide switcher (`ScopeSlideSwitcher`)** — gated by the experimental
+  `features.scopeSwitcher` admin flag (runtime flag `scopeSwitcherEnabled`,
+  `isScopeSwitcherEnabled()` in `utils/config.ts`, live hook
+  `useScopeSwitcherEnabled`; default **off**; remote-first desktop shell only).
+  When on, `TopBar` replaces the standalone 💼 My Work / 🏠 My Life toggles and
+  the identity chips inside both header variants with one sliding segmented
+  control: `[💼 My Work] [🏠 My Life] [● workspace ⧉N ▾]`
+  (`data-testid="scope-switcher"`, segments `scope-segment` with
+  `data-scope="work|life|workspace"`, animated thumb measured via refs +
+  `ResizeObserver`). The workspace segment embeds `WorkspaceIdentityChip` —
+  the identity pill (status dot, provider badge, remote name, `⧉N` clone badge,
+  chevron → `RepoPickerPopover` + add/clone dialogs) extracted from
+  `RemoteScopeCluster`, which now renders that chip itself unless its
+  `hideIdentity` prop is set (`RemoteShellHeader` and
+  `VirtualWorkspaceShellHeader` forward `hideIdentity` so identity renders
+  exactly once). Virtual-scope navigation (`goToMyWork` / `goToMyLife`,
+  saved-note-path restore) lives in the shared `hooks/useScopeNavigation.ts`,
+  used by both the switcher and the legacy toggles. Pinned off in
+  `E2E_SERVER_CONFIG_YAML`.
 - **Shared shell behavior** comes from `shellModel.ts` and `repoGrouping.ts`.
   Aggregated remote checkouts fold into the matching local origin's tab (by
   normalized git URL); a remote-only repo gets its own group. Group clones are

@@ -7,6 +7,7 @@ import { useMessageNavigation } from './hooks/useMessageNavigation';
 import { useConversationSearchHighlight } from './hooks/useConversationSearchHighlight';
 import { PendingTaskInfoPanel } from '../../queue/PendingTaskInfoPanel';
 import { cn } from '../../ui/cn';
+import { KustoEmbedGroupProvider } from '../../shared/KustoEmbedGroup';
 import { QueuedFollowUps } from './QueuedBubble';
 import { BackgroundTasksIndicator } from './BackgroundTasksIndicator';
 import { AskUserInline } from './AskUserInline';
@@ -290,6 +291,7 @@ export function ConversationArea({
                         <div className="text-[#848484] text-sm">No conversation data available.</div>
                     )
                 ) : (
+                    <KustoEmbedGroupProvider>
                     <div className="space-y-3" ref={turnsContainerRef}>
                         {/* Pinned messages section */}
                         {onPinTurn && (() => {
@@ -512,6 +514,7 @@ export function ConversationArea({
                             </div>
                         )}
                     </div>
+                    </KustoEmbedGroupProvider>
                 )}
                 {postConversationContent}
             </div>

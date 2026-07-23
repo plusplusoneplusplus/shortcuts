@@ -10,7 +10,11 @@
 import { EventEmitter } from 'events';
 import type { ChildProcess } from 'child_process';
 import { describe, it, expect } from 'vitest';
-import { shutdownServer, shouldOpenExternally } from '../src/lifecycle';
+import {
+    shutdownServer,
+    shouldOpenExternally,
+    shouldSurfaceLoadFailure,
+} from '../src/lifecycle';
 import type { ServerHandle } from '../src/server-controller';
 
 /** Minimal stand-in for the forked child: records sends/kills, emits `exit`. */
@@ -182,5 +186,23 @@ describe('shouldOpenExternally — external-link routing', () => {
 
     it('normalizes an app origin given as a full URL with a path', () => {
         expect(shouldOpenExternally('http://127.0.0.1:51234/x', 'http://127.0.0.1:51234/index.html')).toBe(false);
+    });
+});
+
+describe('shouldSurfaceLoadFailure — fatal-load policy', () => {
+    it('ignores the PDF child-frame blocked-by-client regression', () => {
+        expect(shouldSurfaceLoadFailure(-20, false)).toBe(false);
+    });
+
+    it('ignores other child-frame load failures', () => {
+        expect(shouldSurfaceLoadFailure(-105, false)).toBe(false);
+    });
+
+    it('ignores an aborted main-frame navigation', () => {
+        expect(shouldSurfaceLoadFailure(-3, true)).toBe(false);
+    });
+
+    it('surfaces a genuine main-frame load failure', () => {
+        expect(shouldSurfaceLoadFailure(-105, true)).toBe(true);
     });
 });

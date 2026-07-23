@@ -27,6 +27,7 @@ import type {
     GitHubWorkItemIssueTransport,
     AvailableGitHubWorkItemSyncRepo,
 } from '../../../src/server/work-items/work-item-sync-github-provider';
+import { safeRm } from '../../helpers/safe-rm';
 
 const REPO_ID = 'tool-links-repo';
 const OWNER = 'plusplusoneplusplus';
@@ -200,7 +201,10 @@ afterEach(async () => {
         await new Promise<void>(resolve => server!.close(() => resolve()));
         server = undefined;
     }
-    await fs.rm(tmpDir, { recursive: true, force: true });
+    // Retry-with-backoff cleanup: the store writes work-item JSON under
+    // repos/<id>/work-items concurrently, so a plain recursive rm can race and
+    // throw ENOTEMPTY on macOS. safeRm retries and degrades to a warning.
+    await safeRm(tmpDir);
 });
 
 describe('create_update_work_item hierarchy links — create mode', () => {

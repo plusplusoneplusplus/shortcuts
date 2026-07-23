@@ -40,6 +40,12 @@ describe('E2E server boot config', () => {
             expect(runtime.remoteShellEnabled).toBe(false);
             expect(runtime.splitWorkspacePanelEnabled).toBe(false);
 
+            // The scope slide switcher replaces the My Work / My Life toggles and
+            // the workspace identity chip in the remote-first header. Default-off
+            // today, but pinned so a future graduation can't reshape the header
+            // the specs target.
+            expect(runtime.scopeSwitcherEnabled).toBe(false);
+
             // The review chat lens reroutes unpinned commit/PR chat away from the
             // inline commit-chat-panel that commit-chat-binding.spec.ts asserts,
             // so it stays off at boot (commit-chat-lens.spec.ts re-enables it live).

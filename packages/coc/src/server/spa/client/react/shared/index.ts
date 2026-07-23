@@ -13,6 +13,8 @@ export { ExcalidrawPreview } from './ExcalidrawPreview';
 export type { ExcalidrawPreviewProps } from './ExcalidrawPreview';
 export { CanvasEmbed } from './CanvasEmbed';
 export type { CanvasEmbedProps } from './CanvasEmbed';
+export { KustoEmbedGroupProvider, useKustoEmbedGroup } from './KustoEmbedGroup';
+export type { KustoEmbedGroupValue } from './KustoEmbedGroup';
 export { extractTablesFromHtml, MIN_ROWS, MIN_COLS } from './extractTablesFromHtml';
 export type { ExtractedTable, ExtractedTableData, ColumnAlignment } from './extractTablesFromHtml';
 export { mountHtmlEmbeds } from './htmlEmbedMount';

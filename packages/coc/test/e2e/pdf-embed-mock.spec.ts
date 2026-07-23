@@ -26,6 +26,9 @@ import {
 
 const WS_ID = 'ws-pdf-embed-mock';
 
+// Native PDF navigation requires full Chromium rather than the headless shell.
+test.use({ channel: 'chromium' });
+
 /** A tiny valid PDF payload used for the upload path. */
 const TINY_PDF = Buffer.from(
     '%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n',
@@ -64,6 +67,37 @@ function trackPageErrors(page: import('@playwright/test').Page): Error[] {
     return errors;
 }
 
+function isSeededPdfUrl(rawUrl: string): boolean {
+    try {
+        const parsed = new URL(rawUrl);
+        return parsed.pathname === `/api/workspaces/${encodeURIComponent(WS_ID)}/notes/image`
+            && parsed.searchParams.get('path') === '.attachments/sample.pdf';
+    } catch {
+        return false;
+    }
+}
+
+function trackSeededPdfNavigation(page: import('@playwright/test').Page): {
+    committedFrameUrls: string[];
+    failedRequestUrls: string[];
+} {
+    const committedFrameUrls: string[] = [];
+    const failedRequestUrls: string[] = [];
+
+    page.on('framenavigated', (frame) => {
+        if (frame !== page.mainFrame() && isSeededPdfUrl(frame.url())) {
+            committedFrameUrls.push(frame.url());
+        }
+    });
+    page.on('requestfailed', (request) => {
+        if (isSeededPdfUrl(request.url())) {
+            failedRequestUrls.push(request.url());
+        }
+    });
+
+    return { committedFrameUrls, failedRequestUrls };
+}
+
 async function openFirstPage(page: import('@playwright/test').Page): Promise<void> {
     await page.locator('[data-testid="notes-tree-item-Journal"]').click();
     const pageRow = page.locator('[data-testid="notes-tree-item-getting-started.md"]');
@@ -88,6 +122,7 @@ test.describe('Notes page — inline PDF embed', () => {
 
             const errors = trackPageErrors(page);
             await openNotesPage(page, serverUrl, WS_ID);
+            const pdfNavigation = trackSeededPdfNavigation(page);
             await openFirstPage(page);
 
             // The PdfBlock node view renders in the editor.
@@ -113,6 +148,15 @@ test.describe('Notes page — inline PDF embed', () => {
                     { timeout: 10_000 },
                 )
                 .toBe(true);
+
+            // The child frame must commit the PDF URL, not merely request it.
+            await expect
+                .poll(() => pdfNavigation.committedFrameUrls.length, { timeout: 10_000 })
+                .toBeGreaterThan(0);
+            expect(pdfNavigation.failedRequestUrls).toEqual([]);
+            expect(
+                page.frames().some((frame) => frame.url().startsWith('chrome-error://chromewebdata/')),
+            ).toBe(false);
 
             // No uncaught page errors — the embed renders as a handled state.
             expect(errors).toHaveLength(0);

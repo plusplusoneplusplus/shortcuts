@@ -74,7 +74,11 @@ vi.mock(
     () => ({ CommentExtension: { configure: () => ({}) } }),
 );
 
-import { getLinkOpenTitle, RichEditorCore } from '../../../../src/server/spa/client/react/features/notes/editor/RichEditorCore';
+import {
+    getLinkHoverTitle,
+    getLinkOpenTitle,
+    RichEditorCore,
+} from '../../../../src/server/spa/client/react/features/notes/editor/RichEditorCore';
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 
@@ -171,15 +175,14 @@ describe('RichEditorCore', () => {
         expect(typeof capturedEditorProps.handleClick).toBe('function');
     });
 
-    it('configures note links with a platform-aware modifier-click tooltip', () => {
+    it('configures note links to open securely without persisting a static tooltip', () => {
         render(<RichEditorCore />);
 
         expect(capturedLinkConfig).toBeDefined();
         expect(capturedLinkConfig.openOnClick).toBe(false);
-        expect(capturedLinkConfig.HTMLAttributes).toMatchObject({
+        expect(capturedLinkConfig.HTMLAttributes).toEqual({
             rel: 'noopener noreferrer',
             target: '_blank',
-            title: getLinkOpenTitle(),
         });
     });
 
@@ -206,6 +209,13 @@ describe('RichEditorCore', () => {
     it('uses the Control key in link tooltips on non-macOS platforms', () => {
         expect(getLinkOpenTitle('Win32')).toBe('Ctrl+Click to open link');
         expect(getLinkOpenTitle('Linux x86_64')).toBe('Ctrl+Click to open link');
+    });
+
+    it('shows the destination URL and platform-aware open instruction in link hover titles', () => {
+        expect(getLinkHoverTitle('https://example.com/paper', 'MacIntel'))
+            .toBe('https://example.com/paper\n⌘+Click to open link');
+        expect(getLinkHoverTitle('https://example.com/paper', 'Win32'))
+            .toBe('https://example.com/paper\nCtrl+Click to open link');
     });
 
     it('handleClick opens link when Ctrl is held', () => {
@@ -262,6 +272,7 @@ describe('RichEditorCore', () => {
         expect(typeof capturedEditorProps.handleDOMEvents.keydown).toBe('function');
         expect(typeof capturedEditorProps.handleDOMEvents.keyup).toBe('function');
         expect(typeof capturedEditorProps.handleDOMEvents.blur).toBe('function');
+        expect(typeof capturedEditorProps.handleDOMEvents.mouseover).toBe('function');
     });
 
     it('keydown adds ctrl-held class when Control key is pressed', () => {
@@ -291,6 +302,29 @@ describe('RichEditorCore', () => {
 
         capturedEditorProps.handleDOMEvents.blur(mockView);
         expect(mockDom.classList.contains('ctrl-held')).toBe(false);
+    });
+
+    it('adds the destination URL hint when hovering over a link or its child', () => {
+        render(<RichEditorCore />);
+        const anchor = document.createElement('a');
+        anchor.setAttribute('href', 'https://example.com/paper');
+        const child = document.createElement('span');
+        anchor.appendChild(child);
+
+        const result = capturedEditorProps.handleDOMEvents.mouseover({}, { target: child });
+
+        expect(result).toBe(false);
+        expect(anchor.title).toBe(getLinkHoverTitle('https://example.com/paper'));
+    });
+
+    it('does not add a hover hint to non-link content', () => {
+        render(<RichEditorCore />);
+        const paragraph = document.createElement('p');
+
+        const result = capturedEditorProps.handleDOMEvents.mouseover({}, { target: paragraph });
+
+        expect(result).toBe(false);
+        expect(paragraph.hasAttribute('title')).toBe(false);
     });
 
     // ── File-drop seam (handleDrop / dragover) ──────────────────────────

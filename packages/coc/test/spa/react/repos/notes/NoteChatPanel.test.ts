@@ -43,8 +43,8 @@ describe('NoteChatPanel', () => {
             expect(source).toContain('defaultScope,');
         });
 
-        it('destructures taskId, chatNoteContext, createChat, resetChat, scope, setScope', () => {
-            expect(source).toContain('{ taskId, chatNoteContext, createChat, resetChat, scope, setScope }');
+        it('destructures taskId, task-bound context sync, chat actions, and scope state', () => {
+            expect(source).toContain('{ taskId, chatNoteContext, syncChatNoteContext, createChat, resetChat, scope, setScope }');
         });
 
         it('does not use loading or error states', () => {
@@ -155,6 +155,10 @@ describe('NoteChatPanel', () => {
 
         it('passes disableScratchpad to ChatDetail', () => {
             expect(source).toContain('disableScratchpad');
+        });
+
+        it('receives the loaded process metadata through ChatDetail without a duplicate fetch', () => {
+            expect(source).toContain('onProcessLoaded={syncChatNoteContext}');
         });
     });
 

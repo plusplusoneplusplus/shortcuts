@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type {
     Canvas,
     KustoCellValue,
@@ -38,6 +39,14 @@ export interface KustoViewProps {
      * of the markdown pipeline, and the historical snapshot is never mutated.
      */
     readOnly?: boolean;
+    /**
+     * Embed compaction: render the cluster/database editors into `connectionSlot`
+     * (a node in the host's header) instead of the body, reclaiming the vertical
+     * space the labeled connection row would otherwise take. The editors stay
+     * owned by this component; only their mount point moves.
+     */
+    connectionInHeader?: boolean;
+    connectionSlot?: HTMLElement | null;
 }
 
 /** Tolerant client-side parse of the Kusto JSON stored in canvas content. */
@@ -82,6 +91,11 @@ const INPUT_CLASS =
     'w-full text-[11px] px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#474749] '
     + 'bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]';
 
+// Fixed-width variant for the header slot (no full-width; sits inline in the bar).
+const SLOT_INPUT_CLASS =
+    'text-[11px] px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#474749] '
+    + 'bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]';
+
 function formatTimestamp(iso: string): string {
     try {
         return new Date(iso).toLocaleTimeString();
@@ -110,7 +124,7 @@ export function buildKustoAskAiMessage(query: string, instruction: string, canva
     ].join('\n\n');
 }
 
-export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false, readOnly = false }: KustoViewProps) {
+export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false, readOnly = false, connectionInHeader = false, connectionSlot = null }: KustoViewProps) {
     const client = useCocClient(workspaceId);
     const parsed = useMemo(() => parseKustoContent(canvas.content), [canvas.content]);
 
@@ -248,36 +262,76 @@ export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false,
     const status = running ? 'loading' : (lastRun?.status ?? 'idle');
     const rowCount = lastRun?.rowCount ?? rows.length;
 
+    // Body connection editors (labeled two-column block) for the full/standalone view.
+    const inlineConnectionEditors = (
+        <div className="flex gap-2">
+            <label className="flex-1 min-w-0">
+                <span className="block text-[9px] uppercase text-[#848484] mb-0.5">Cluster URL</span>
+                <input
+                    type="text"
+                    className={INPUT_CLASS}
+                    value={clusterUrl}
+                    onChange={e => setClusterUrl(e.target.value)}
+                    placeholder="https://help.kusto.windows.net"
+                    readOnly={readOnly}
+                    data-testid="kusto-cluster"
+                />
+            </label>
+            <label className="flex-1 min-w-0">
+                <span className="block text-[9px] uppercase text-[#848484] mb-0.5">Database</span>
+                <input
+                    type="text"
+                    className={INPUT_CLASS}
+                    value={database}
+                    onChange={e => setDatabase(e.target.value)}
+                    placeholder="Samples"
+                    readOnly={readOnly}
+                    data-testid="kusto-database"
+                />
+            </label>
+        </div>
+    );
+
+    // Connection editors mounted into the host header slot. They stretch to fill
+    // the row (cluster wider than database) with a leading label so each field is
+    // legible without relying on a placeholder that vanishes once filled.
+    const headerConnectionEditors = (
+        <div className="flex flex-1 items-center gap-2 min-w-0" data-testid="kusto-connection-header">
+            <div className="flex flex-[3] items-center gap-1.5 min-w-0">
+                <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-[#848484]">Cluster</span>
+                <input
+                    type="text"
+                    className={`${SLOT_INPUT_CLASS} flex-1 min-w-0 font-mono`}
+                    value={clusterUrl}
+                    onChange={e => setClusterUrl(e.target.value)}
+                    placeholder="https://help.kusto.windows.net"
+                    title="Cluster URL"
+                    readOnly={readOnly}
+                    data-testid="kusto-cluster"
+                />
+            </div>
+            <div className="flex flex-[2] items-center gap-1.5 min-w-0">
+                <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-[#848484]">DB</span>
+                <input
+                    type="text"
+                    className={`${SLOT_INPUT_CLASS} flex-1 min-w-0`}
+                    value={database}
+                    onChange={e => setDatabase(e.target.value)}
+                    placeholder="database"
+                    title="Database"
+                    readOnly={readOnly}
+                    data-testid="kusto-database"
+                />
+            </div>
+        </div>
+    );
+
     return (
         <div className="flex flex-col h-full min-h-0 text-[#1e1e1e] dark:text-[#cccccc]" data-testid="kusto-view">
             {/* Query + connection editors */}
+            {connectionInHeader && connectionSlot && createPortal(headerConnectionEditors, connectionSlot)}
             <div className={`shrink-0 flex flex-col gap-2 p-3 border-b border-[#e0e0e0] dark:border-[#474749] ${compact ? 'gap-1.5 p-2' : ''}`}>
-                <div className="flex gap-2">
-                    <label className="flex-1 min-w-0">
-                        <span className="block text-[9px] uppercase text-[#848484] mb-0.5">Cluster URL</span>
-                        <input
-                            type="text"
-                            className={INPUT_CLASS}
-                            value={clusterUrl}
-                            onChange={e => setClusterUrl(e.target.value)}
-                            placeholder="https://help.kusto.windows.net"
-                            readOnly={readOnly}
-                            data-testid="kusto-cluster"
-                        />
-                    </label>
-                    <label className="flex-1 min-w-0">
-                        <span className="block text-[9px] uppercase text-[#848484] mb-0.5">Database</span>
-                        <input
-                            type="text"
-                            className={INPUT_CLASS}
-                            value={database}
-                            onChange={e => setDatabase(e.target.value)}
-                            placeholder="Samples"
-                            readOnly={readOnly}
-                            data-testid="kusto-database"
-                        />
-                    </label>
-                </div>
+                {!connectionInHeader && inlineConnectionEditors}
                 <label className="block">
                     <span className="block text-[9px] uppercase text-[#848484] mb-0.5">KQL query</span>
                     <textarea

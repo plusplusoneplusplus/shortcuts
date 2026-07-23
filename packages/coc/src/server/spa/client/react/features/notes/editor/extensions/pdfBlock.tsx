@@ -1,11 +1,13 @@
 import { Node } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
+import { classifyPdfBlockUrl } from './pdfBlockUrl';
 
 function PdfBlockView({ node }: NodeViewProps) {
     const url = String(node.attrs.url || '');
     const label = String(node.attrs.label || 'PDF');
-    const hasUrl = url.length > 0;
+    const classification = classifyPdfBlockUrl(url, window.location.origin);
+    const href = classification.kind === 'invalid' ? undefined : classification.href;
 
     return (
         <NodeViewWrapper
@@ -15,34 +17,43 @@ function PdfBlockView({ node }: NodeViewProps) {
         >
             <div className="md-pdf-embed-shell" contentEditable={false}>
                 <div className="md-pdf-embed-toolbar">
-                    <span className="md-pdf-embed-title" title={url}>{label}</span>
+                    <span className="md-pdf-embed-title" title={href}>{label}</span>
                     <span className="md-pdf-embed-actions">
                         <button
                             type="button"
-                            onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
-                            disabled={!hasUrl}
+                            onClick={() => {
+                                if (href) {
+                                    window.open(href, '_blank', 'noopener,noreferrer');
+                                }
+                            }}
+                            disabled={!href}
                         >
                             Open in new tab
                         </button>
                     </span>
                 </div>
-                {hasUrl ? (
+                {classification.kind === 'inline' ? (
                     <div className="md-pdf-embed-frame-wrap pdf-node-view-frame-wrap">
                         <iframe
                             className="md-pdf-embed-frame"
                             data-testid="pdf-node-view-frame"
-                            src={url}
+                            src={classification.href}
                             title={label}
-                            sandbox="allow-same-origin allow-scripts"
                             loading="lazy"
                         />
                         <div className="pdf-node-view-fallback">
                             If the PDF does not display,{' '}
-                            <a href={url} target="_blank" rel="noopener noreferrer">open it in a new tab</a>.
+                            <a href={classification.href} target="_blank" rel="noopener noreferrer">open it in a new tab</a>.
                         </div>
                     </div>
+                ) : classification.kind === 'link' ? (
+                    <div className="pdf-node-view-link-only">
+                        <a href={classification.href} target="_blank" rel="noopener noreferrer">
+                            Open this PDF in a new tab
+                        </a>
+                    </div>
                 ) : (
-                    <div className="pdf-node-view-error">Missing PDF attachment</div>
+                    <div className="pdf-node-view-error">Missing or unsafe PDF attachment</div>
                 )}
             </div>
         </NodeViewWrapper>

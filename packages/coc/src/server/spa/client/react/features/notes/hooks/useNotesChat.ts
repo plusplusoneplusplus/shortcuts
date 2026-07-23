@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import type { AIProcess } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
 import type { AttachmentPayload } from '../../../types/attachments';
 import { isCommitChatLensEnabled } from '../../../utils/config';
@@ -29,8 +30,10 @@ export interface ChatNoteContext {
 export interface UseNotesChatReturn {
     /** The resolved chat task ID for the current scope/note, or null */
     taskId: string | null;
-    /** Metadata about the note attached to the current chat (from process metadata). */
+    /** Metadata about the note attached to the active chat. */
     chatNoteContext: ChatNoteContext | null;
+    /** Accept note metadata from a process load when it still belongs to the active task. */
+    syncChatNoteContext: (process: AIProcess) => void;
     /** Create a new chat. The currently-selected note is injected as context. */
     createChat: (prompt: string, model?: string | null, mode?: 'ask' | 'autopilot', skills?: string[], attachments?: AttachmentPayload[]) => Promise<string | null>;
     /** Discard the current scope's chat and start fresh. Old chat stays in history. */
@@ -49,28 +52,6 @@ function storageKey(workspaceId: string): string {
 
 function scopeKey(workspaceId: string): string {
     return `coc-notes-chat-scope-${workspaceId}`;
-}
-
-function contextStorageKey(workspaceId: string): string {
-    return `coc-notes-chat-ctx-${workspaceId}`;
-}
-
-function loadContext(workspaceId: string): ChatNoteContext | null {
-    try {
-        const raw = localStorage.getItem(contextStorageKey(workspaceId));
-        if (!raw) return null;
-        return JSON.parse(raw) as ChatNoteContext;
-    } catch {
-        return null;
-    }
-}
-
-function saveContext(workspaceId: string, ctx: ChatNoteContext | null): void {
-    try {
-        const key = contextStorageKey(workspaceId);
-        if (ctx) localStorage.setItem(key, JSON.stringify(ctx));
-        else localStorage.removeItem(key);
-    } catch { /* ignore */ }
 }
 
 function encodeMarkdownLinkPathSegment(value: string): string {
@@ -155,9 +136,41 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
 
     // ── Chat note context ────────────────────────────────────────────────────
 
-    const [chatNoteContext, setChatNoteContext] = useState<ChatNoteContext | null>(
-        () => loadContext(workspaceId),
-    );
+    const [noteContextsByTaskId, setNoteContextsByTaskId] = useState<Record<string, ChatNoteContext | null>>({});
+    const activeTaskIdRef = useRef(taskId);
+    activeTaskIdRef.current = taskId;
+
+    const chatNoteContext = taskId ? noteContextsByTaskId[taskId] ?? null : null;
+
+    const syncChatNoteContext = useCallback((process: AIProcess) => {
+        const metadata = process.metadata;
+        const loadedTaskId = typeof metadata?.queueTaskId === 'string'
+            ? metadata.queueTaskId
+            : null;
+        // ChatDetail can finish an older request after the selected note changes.
+        // Never let that response replace the active task's attachment label.
+        if (!loadedTaskId || loadedTaskId !== activeTaskIdRef.current) {
+            return;
+        }
+
+        const loadedNotePath = typeof metadata?.notePath === 'string'
+            ? metadata.notePath
+            : null;
+        const loadedNoteTitle = typeof metadata?.noteTitle === 'string'
+            ? metadata.noteTitle
+            : loadedNotePath;
+        const nextContext = loadedNotePath
+            ? { notePath: loadedNotePath, noteTitle: loadedNoteTitle ?? loadedNotePath }
+            : null;
+        setNoteContextsByTaskId(prev => {
+            const current = prev[loadedTaskId] ?? null;
+            if (current?.notePath === nextContext?.notePath
+                && current?.noteTitle === nextContext?.noteTitle) {
+                return prev;
+            }
+            return { ...prev, [loadedTaskId]: nextContext };
+        });
+    }, []);
 
     // ── Persist scope ────────────────────────────────────────────────────────
 
@@ -174,12 +187,6 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
             else localStorage.removeItem(key);
         } catch { /* ignore */ }
     }, [perWorkspaceTaskId, key]);
-
-    // ── Persist context to localStorage ─────────────────────────────────────
-
-    useEffect(() => {
-        saveContext(workspaceId, chatNoteContext);
-    }, [workspaceId, chatNoteContext]);
 
     // ── createChat ───────────────────────────────────────────────────────────
 
@@ -204,12 +211,13 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
                 setPerNoteMap(prev => ({ ...prev, [notePath]: newTaskId }));
             }
 
-            // Store the note context at creation time
-            if (notePath) {
-                setChatNoteContext({ notePath, noteTitle: noteTitle ?? notePath });
-            } else {
-                setChatNoteContext(null);
-            }
+            // Seed the returned task's context while its process is still queued.
+            setNoteContextsByTaskId(prev => ({
+                ...prev,
+                [newTaskId]: notePath
+                    ? { notePath, noteTitle: noteTitle ?? notePath }
+                    : null,
+            }));
             return newTaskId;
         } catch {
             return null;
@@ -230,8 +238,14 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
             // Best-effort server cleanup; failures are tolerated.
             void cloneClient.notes.deleteChatBindingByPath(workspaceId, notePath).catch(() => undefined);
         }
-        setChatNoteContext(null);
-    }, [scope, notePath, workspaceId, cloneClient]);
+        if (taskId) {
+            setNoteContextsByTaskId(prev => {
+                const next = { ...prev };
+                delete next[taskId];
+                return next;
+            });
+        }
+    }, [scope, notePath, taskId, workspaceId, cloneClient]);
 
-    return { taskId, chatNoteContext, createChat, resetChat, scope, setScope };
+    return { taskId, chatNoteContext, syncChatNoteContext, createChat, resetChat, scope, setScope };
 }

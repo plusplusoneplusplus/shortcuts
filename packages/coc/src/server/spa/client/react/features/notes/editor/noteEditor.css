@@ -860,6 +860,22 @@
     height: auto;
 }
 
+.pdf-node-view-link-only {
+    min-height: 96px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    text-align: center;
+    color: #616161;
+    font-size: 12px;
+    background: #ffffff;
+}
+
+.pdf-node-view-link-only a {
+    color: #0078d4;
+}
+
 .pdf-node-view-error {
     min-height: 160px;
     display: flex;
@@ -873,6 +889,11 @@
 
 .dark .pdf-node-view.ProseMirror-selectednode {
     outline-color: #4fc3f7;
+}
+
+.dark .pdf-node-view-link-only {
+    color: #cccccc;
+    background: #1e1e1e;
 }
 
 .dark .pdf-node-view-error {
