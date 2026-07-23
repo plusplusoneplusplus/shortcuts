@@ -753,6 +753,7 @@ export function InitialChatComposer({
             && !modelCommand.modelMenuVisible,
         workspaceId,
         surface: 'queue',
+        baseUrl: cloneBaseUrl,
     });
 
     // Bash-style up/down history navigation through past initial prompts.
@@ -761,6 +762,7 @@ export function InitialChatComposer({
         value: input,
         cursorPos,
         enabled: !sending,
+        baseUrl: cloneBaseUrl,
         setValue: (next) => {
             setInput(next);
             setCursorPos(next.length);

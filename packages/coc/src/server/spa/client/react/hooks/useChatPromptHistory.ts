@@ -19,8 +19,9 @@
  *     this hook is invoked at lower priority
  */
 
+import type { CocClient } from '@plusplusoneplusplus/coc-client';
 import { useCallback, useRef } from 'react';
-import { getSpaCocClient } from '../api/cocClient';
+import { getCocClientFor, getSpaCocClient } from '../api/cocClient';
 
 export interface UseChatPromptHistoryOptions {
     /** Workspace whose prompt history is browsed. Empty/undefined disables the hook. */
@@ -33,6 +34,15 @@ export interface UseChatPromptHistoryOptions {
     cursorPos: number;
     /** Master enable. Pass false when the input is disabled. */
     enabled: boolean;
+    /**
+     * The owning clone's remote `baseUrl` (AC-07). When set, prompt history is
+     * read from that remote server via `getCocClientFor(baseUrl)` and cached
+     * under a server-scoped key so two server identities sharing a workspace id
+     * never share cached history. Omit (or pass `undefined`) for the local
+     * origin — the legacy `getSpaCocClient()` client and bare workspace cache
+     * key are used, so existing local callers are unchanged.
+     */
+    baseUrl?: string;
 }
 
 export interface ChatPromptHistoryHandle {
@@ -54,10 +64,24 @@ interface CacheEntry {
 const CACHE_TTL_MS = 60_000;
 const FETCH_LIMIT = 50;
 
-// Module-level cache keyed by workspaceId. Lives across all input instances
-// so navigating between repos / sub-tabs doesn't refetch.
+// Module-level cache keyed by SERVER-SCOPED workspace key (see `historyCacheKey`).
+// Lives across all input instances so navigating between repos / sub-tabs
+// doesn't refetch.
 const cache = new Map<string, CacheEntry>();
 const inflight = new Map<string, Promise<string[]>>();
+
+/**
+ * Server-aware cache key (AC-07 DoD #4). A remote clone and the local origin —
+ * or two distinct remote clones — can use the same workspace id; their prompt
+ * histories must NOT be read from one server and served to the other. The server
+ * id (a clone `baseUrl`) is URI-encoded so it can never forge the `|` delimiter
+ * or the workspace-id portion. When no server id is given (local origin) the key
+ * is the legacy bare workspace id — byte-for-byte identical, so existing local
+ * cache entries and behaviour are unchanged. Mirrors `staticConfigCache.serverScope`.
+ */
+function historyCacheKey(workspaceId: string, serverId?: string): string {
+    return serverId ? `srv:${encodeURIComponent(serverId)}|${workspaceId}` : workspaceId;
+}
 
 /** Reset the module cache. Test-only. */
 export function __resetPromptHistoryCacheForTesting(): void {
@@ -65,29 +89,29 @@ export function __resetPromptHistoryCacheForTesting(): void {
     inflight.clear();
 }
 
-async function fetchItems(workspaceId: string): Promise<string[]> {
-    const cached = cache.get(workspaceId);
+async function fetchItems(client: CocClient, workspaceId: string, cacheKey: string): Promise<string[]> {
+    const cached = cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return cached.items;
 
-    const existing = inflight.get(workspaceId);
+    const existing = inflight.get(cacheKey);
     if (existing) return existing;
 
     const promise = (async () => {
         try {
-            const res = await getSpaCocClient().promptHistory.list({
+            const res = await client.promptHistory.list({
                 workspaceId,
                 limit: FETCH_LIMIT,
             });
             const items = Array.isArray(res?.items) ? res.items : [];
-            cache.set(workspaceId, { items, expiresAt: Date.now() + CACHE_TTL_MS });
+            cache.set(cacheKey, { items, expiresAt: Date.now() + CACHE_TTL_MS });
             return items;
         } catch {
             return [];
         } finally {
-            inflight.delete(workspaceId);
+            inflight.delete(cacheKey);
         }
     })();
-    inflight.set(workspaceId, promise);
+    inflight.set(cacheKey, promise);
     return promise;
 }
 
@@ -102,6 +126,8 @@ export function useChatPromptHistory(opts: UseChatPromptHistoryOptions): ChatPro
     setValueRef.current = opts.setValue;
     const workspaceIdRef = useRef(opts.workspaceId);
     workspaceIdRef.current = opts.workspaceId;
+    const baseUrlRef = useRef(opts.baseUrl);
+    baseUrlRef.current = opts.baseUrl;
     const enabledRef = useRef(opts.enabled);
     enabledRef.current = opts.enabled;
 
@@ -134,6 +160,13 @@ export function useChatPromptHistory(opts: UseChatPromptHistoryOptions): ChatPro
         const workspaceId = workspaceIdRef.current;
         if (!workspaceId) return false;
 
+        // Resolve the owning clone's client + server-scoped cache key (AC-07).
+        // Local origin (no baseUrl) keeps the default singleton client and the
+        // legacy bare workspace key, so existing callers are unchanged.
+        const serverId = baseUrlRef.current;
+        const cacheKey = historyCacheKey(workspaceId, serverId);
+        const client = serverId ? getCocClientFor(serverId) : getSpaCocClient();
+
         const value = valueRef.current;
         const cursorPos = cursorPosRef.current;
 
@@ -162,7 +195,7 @@ export function useChatPromptHistory(opts: UseChatPromptHistoryOptions): ChatPro
 
         // Lazy fetch on first interaction. We use a cached snapshot if present
         // so the first Up press feels instant on subsequent navigations.
-        const cached = cache.get(workspaceId);
+        const cached = cache.get(cacheKey);
         if (cached && cached.expiresAt > Date.now()) {
             itemsRef.current = itemsRef.current ?? cached.items;
         } else {
@@ -172,7 +205,7 @@ export function useChatPromptHistory(opts: UseChatPromptHistoryOptions): ChatPro
             if (!itemsRef.current) {
                 draftRef.current = value;
                 e.preventDefault();
-                void fetchItems(workspaceId).then((items) => {
+                void fetchItems(client, workspaceId, cacheKey).then((items) => {
                     if (itemsRef.current === null) {
                         // Don't mutate state behind the user's back if they
                         // already typed something or the component re-rendered;

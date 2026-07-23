@@ -18,7 +18,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getSpaCocClient } from '../api/cocClient';
+import { getCocClientFor, getSpaCocClient } from '../api/cocClient';
 
 export interface UsePromptAutocompleteOptions {
     text: string;
@@ -28,6 +28,15 @@ export interface UsePromptAutocompleteOptions {
     processId?: string;
     surface?: 'queue' | 'follow-up';
     mode?: 'hybrid' | 'ai' | 'history';
+    /**
+     * The owning clone's remote `baseUrl` (AC-07). When set, completions are
+     * fetched from that remote server via `getCocClientFor(baseUrl)`; the
+     * routed request never falls through to the local origin. Omit for the
+     * local origin — the legacy `getSpaCocClient()` client is used, so existing
+     * callers are unchanged. This hook keeps no module cache, so no
+     * server-scoped cache key is needed.
+     */
+    baseUrl?: string;
     /** Minimum non-whitespace prefix length before fetching. Default: 3. */
     minPrefixLen?: number;
     /** Debounce delay in ms. Default: 150 for hybrid/AI, 120 for history. */
@@ -55,6 +64,7 @@ export function usePromptAutocomplete(
         surface,
         mode = 'hybrid',
         minPrefixLen = 3,
+        baseUrl,
     } = opts;
     const debounceMs = opts.debounceMs ?? (mode === 'history' ? 120 : 150);
     const [completion, setCompletion] = useState('');
@@ -99,7 +109,11 @@ export function usePromptAutocomplete(
             timerRef.current = null;
             (async () => {
                 try {
-                    const result = await getSpaCocClient().suggestions.promptCompletion({
+                    // Route to the owning clone (AC-07): a remote clone reads
+                    // from its own server and never falls back to the local
+                    // origin. Local origin (no baseUrl) uses the default client.
+                    const client = baseUrl ? getCocClientFor(baseUrl) : getSpaCocClient();
+                    const result = await client.suggestions.promptCompletion({
                         prefix: text,
                         workspaceId,
                         processId,
@@ -121,7 +135,7 @@ export function usePromptAutocomplete(
                 timerRef.current = null;
             }
         };
-    }, [text, cursorPos, enabled, workspaceId, processId, surface, mode, minPrefixLen, debounceMs]);
+    }, [text, cursorPos, enabled, workspaceId, processId, surface, mode, minPrefixLen, debounceMs, baseUrl]);
 
     // Any text change clears the dismissed flag so suggestions can resume.
     useEffect(() => {
