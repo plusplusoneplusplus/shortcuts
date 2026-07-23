@@ -3,7 +3,7 @@
  * Copilot is always available; optional providers depend on admin config + SDK availability.
  */
 import { useState, useEffect, useCallback } from 'react';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import { getCocClientFor, getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import type { AgentProviderStatus } from '@plusplusoneplusplus/coc-client';
 
 export type { AgentProviderStatus };
@@ -27,7 +27,13 @@ const COPILOT_FALLBACK: AgentProviderStatus = {
     locked: true,
 };
 
-export function useAgentProviders(): UseAgentProvidersResult {
+/**
+ * @param baseUrl Optional owning-clone remote baseUrl. When present, provider
+ *   status is read from that clone's server via {@link getCocClientFor}; when
+ *   omitted (local clone) the default origin client is used, byte-for-byte
+ *   unchanged. AC-07: remote clones never fall through to the local client.
+ */
+export function useAgentProviders(baseUrl?: string): UseAgentProvidersResult {
     const [providers, setProviders] = useState<AgentProviderStatus[]>([COPILOT_FALLBACK]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -35,7 +41,7 @@ export function useAgentProviders(): UseAgentProvidersResult {
     const load = useCallback(() => {
         setLoading(true);
         setError(null);
-        getSpaCocClient().agentProviders.list()
+        (baseUrl ? getCocClientFor(baseUrl) : getSpaCocClient()).agentProviders.list()
             .then((data) => {
                 if (data?.providers && data.providers.length > 0) {
                     setProviders(data.providers);
@@ -46,7 +52,7 @@ export function useAgentProviders(): UseAgentProvidersResult {
                 setError(getSpaCocClientErrorMessage(e, 'Failed to load agent providers'));
             })
             .finally(() => setLoading(false));
-    }, []);
+    }, [baseUrl]);
 
     useEffect(() => { load(); }, [load]);
 

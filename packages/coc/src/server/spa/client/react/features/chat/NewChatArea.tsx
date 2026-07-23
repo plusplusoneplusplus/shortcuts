@@ -17,7 +17,7 @@ import type { ChatMode } from '../../repos/modeConfig';
 import { useQueue } from '../../contexts/QueueContext';
 import { useApp } from '../../contexts/AppContext';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
-import { useCocClient } from '../../repos/cloneRouting';
+import { useCocClient, useResolveCloneBaseUrl } from '../../repos/cloneRouting';
 import { useFileAttachments } from './hooks/useFileAttachments';
 import { isQueueProcessId, toQueueProcessId } from '../../utils/queue-process-id';
 import { useModels } from '../../hooks/useModels';
@@ -306,6 +306,10 @@ export function InitialChatComposer({
 
     // AC-07: skills + per-repo chat preferences load from the selected clone's server.
     const cloneClient = useCocClient(workspaceId);
+    // AC-07: the owning clone's remote baseUrl (undefined for a local clone) —
+    // threaded into the provider/model/effort hooks so their reads AND their
+    // server-scoped config-cache entries route to the clone, never the local origin.
+    const cloneBaseUrl = useResolveCloneBaseUrl()(workspaceId);
 
     const { attachments, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, restoreAttachments, error: attachmentError, toPayload } = useFileAttachments();
     const attachedContext = useAttachedContext();
@@ -326,29 +330,29 @@ export function InitialChatComposer({
             : 'popover';
 
     // Agent providers for the agent selector chip
-    const { providers: rawAgentProviders, loading: providersLoading } = useAgentProviders();
+    const { providers: rawAgentProviders, loading: providersLoading } = useAgentProviders(cloneBaseUrl);
     const agentProviders = useMemo(() => getAgentSelectorProviders(rawAgentProviders), [rawAgentProviders]);
     const selectedProviderForClientHooks = getConcreteProviderForClientHooks(selectedProvider);
     const autoProviderSelected = selectedProvider === 'auto';
 
     // Per-provider, per-model reasoning-effort preferences (from Admin → AI Provider → Models).
     // Used to auto-fill the effort picker when the user changes provider or model.
-    const reasoningEfforts = useProviderReasoningEfforts(selectedProviderForClientHooks);
+    const reasoningEfforts = useProviderReasoningEfforts(selectedProviderForClientHooks, cloneBaseUrl);
 
     // Per-provider effort tier map (from Admin → AI Provider → Effort Tiers).
     // Used when effortLevels.enabled is true to supply model + reasoning effort from a single tier pick.
-    const { tiers: providerEffortTierMap, loading: effortTiersLoading } = useProviderEffortTiers(selectedProviderForClientHooks);
+    const { tiers: providerEffortTierMap, loading: effortTiersLoading } = useProviderEffortTiers(selectedProviderForClientHooks, cloneBaseUrl);
     const hasTiers = !effortTiersLoading && (['low', 'medium', 'high'] as EffortTierKey[]).some(k => !!providerEffortTierMap[k]?.model);
     const useEffortTierMode = autoProviderSelected || (isEffortLevelsEnabled() && hasTiers);
     const effortTierMap = autoProviderSelected ? AUTO_EFFORT_TIER_MAP : providerEffortTierMap;
 
     // Model command support
-    const { models: availableModels, loading: modelsLoading } = useModels(selectedProviderForClientHooks);
+    const { models: availableModels, loading: modelsLoading } = useModels(selectedProviderForClientHooks, cloneBaseUrl);
     const pickableModels = selectPickableModels(availableModels);
     const augmentedSkills = useMemo(() => mergeSkillsWithMeta(skills, getMetaSkillItems(isLoopsEnabled())), [skills]);
     const slashCommands = useSlashCommands(augmentedSkills);
     const modelCommand = useModelCommand(pickableModels);
-    const { effectiveModel: defaultModelId, effectiveModelName: defaultModelLabel } = useDefaultModelForMode(workspaceId, selectedMode, availableModels, selectedProviderForClientHooks);
+    const { effectiveModel: defaultModelId, effectiveModelName: defaultModelLabel } = useDefaultModelForMode(workspaceId, selectedMode, availableModels, selectedProviderForClientHooks, cloneBaseUrl);
     const validModelOverride = useMemo(() => {
         const override = modelCommand.modelOverride;
         if (!override) return null;

@@ -17,7 +17,7 @@
  * always exist for known providers).
  */
 import { useState, useEffect, useCallback } from 'react';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import { getCocClientFor, getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import { getOrFetchConfig, peekConfig, invalidateConfig, configCacheKey } from '../api/staticConfigCache';
 import type { AgentProvider } from './useProviderModels';
 
@@ -87,7 +87,13 @@ function configEntriesEqual(a: LocalEffortTiersMap, b: LocalEffortTiersMap): boo
     return true;
 }
 
-export function useProviderEffortTiers(provider: AgentProvider): UseProviderEffortTiersResult {
+/**
+ * @param baseUrl Optional owning-clone remote baseUrl. When present, tiers are
+ *   read (and saved) through that clone's server and cached under a server-scoped
+ *   key so two servers sharing a provider id never share entries (AC-07 DoD #4);
+ *   when omitted (local clone) the default origin client + legacy bare key are used.
+ */
+export function useProviderEffortTiers(provider: AgentProvider, baseUrl?: string): UseProviderEffortTiersResult {
     /** Latest server snapshot (merged defaults + config). Baseline for dirty/cancel. */
     const [remote, setRemote] = useState<LocalEffortTiersMap>({});
     const [local, setLocal] = useState<LocalEffortTiersMap>({});
@@ -98,7 +104,7 @@ export function useProviderEffortTiers(provider: AgentProvider): UseProviderEffo
     const [saving, setSaving] = useState(false);
 
     const load = useCallback(() => {
-        const key = configCacheKey.effortTiers(provider);
+        const key = configCacheKey.effortTiers(provider, baseUrl);
         // Warm cache hit — apply synchronously without a loading flash.
         const cached = peekConfig<{ effortTiers?: ServerTierMap; defaults?: DefaultsMap }>(key);
         if (cached !== undefined) {
@@ -114,7 +120,7 @@ export function useProviderEffortTiers(provider: AgentProvider): UseProviderEffo
         setLoading(true);
         setError(null);
         setSaveError(null);
-        getOrFetchConfig(key, () => getSpaCocClient().agentProviders.getEffortTiers(provider))
+        getOrFetchConfig(key, () => (baseUrl ? getCocClientFor(baseUrl) : getSpaCocClient()).agentProviders.getEffortTiers(provider))
             .then((data) => {
                 const normalized = normalizeFromServer(data.effortTiers as ServerTierMap);
                 setRemote(normalized);
@@ -125,15 +131,15 @@ export function useProviderEffortTiers(provider: AgentProvider): UseProviderEffo
                 setError(getSpaCocClientErrorMessage(e, 'Failed to load effort tiers'));
             })
             .finally(() => setLoading(false));
-    }, [provider]);
+    }, [provider, baseUrl]);
 
     useEffect(() => { load(); }, [load]);
 
     /** Explicit reload: drop the cached tiers first so the fetch is fresh. */
     const reload = useCallback(() => {
-        invalidateConfig(configCacheKey.effortTiers(provider));
+        invalidateConfig(configCacheKey.effortTiers(provider, baseUrl));
         load();
-    }, [provider, load]);
+    }, [provider, baseUrl, load]);
 
     const setTier = useCallback((tier: EffortTierKey, model: string, reasoningEffort: string) => {
         setLocal(prev => ({ ...prev, [tier]: { model, reasoningEffort, source: 'config' } }));
@@ -169,9 +175,9 @@ export function useProviderEffortTiers(provider: AgentProvider): UseProviderEffo
                     map[tier] = { model: entry.model, reasoningEffort: entry.reasoningEffort || null };
                 }
             }
-            const response = await getSpaCocClient().agentProviders.replaceEffortTiers(provider, map);
+            const response = await (baseUrl ? getCocClientFor(baseUrl) : getSpaCocClient()).agentProviders.replaceEffortTiers(provider, map);
             // Settings mutation — drop the cached tiers so other mounts refetch (AC-05).
-            invalidateConfig(configCacheKey.effortTiers(provider));
+            invalidateConfig(configCacheKey.effortTiers(provider, baseUrl));
             const normalized = normalizeFromServer(response.effortTiers as ServerTierMap);
             setRemote(normalized);
             setLocal(normalized);
@@ -181,7 +187,7 @@ export function useProviderEffortTiers(provider: AgentProvider): UseProviderEffo
         } finally {
             setSaving(false);
         }
-    }, [provider, local]);
+    }, [provider, baseUrl, local]);
 
     const cancel = useCallback(() => {
         setLocal(remote);
