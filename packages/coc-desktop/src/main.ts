@@ -26,7 +26,7 @@ import {
 import { splashDataUrl } from './splash';
 import { detectAgentClis, missingAgentClis, runFirstRunPreflight } from './agent-preflight';
 import { augmentPathWithBundledAgents } from './agent-bin-path';
-import { shutdownServer, shouldOpenExternally } from './lifecycle';
+import { shutdownServer, shouldOpenExternally, shouldSurfaceLoadFailure } from './lifecycle';
 import { resolveIconPath } from './app-icon';
 import { APP_NAME, buildAboutPanelOptions, readDesktopVersion } from './app-identity';
 import {
@@ -225,13 +225,15 @@ async function showServedSpa(url: string): Promise<void> {
         closeSplash();
     });
 
-    mainWindow.webContents.on('did-fail-load', (_e, errorCode, errorDescription) => {
-        // Ignore aborted sub-resource loads; only surface a hard navigation failure.
-        if (errorCode === -3) {
-            return;
-        }
-        showSplashError(`Could not load the CoC UI (${errorDescription}).`);
-    });
+    mainWindow.webContents.on(
+        'did-fail-load',
+        (_event, errorCode, errorDescription, _validatedURL, isMainFrame) => {
+            if (!shouldSurfaceLoadFailure(errorCode, isMainFrame)) {
+                return;
+            }
+            showSplashError(`Could not load the CoC UI (${errorDescription}).`);
+        },
+    );
 
     await mainWindow.loadURL(url);
 }

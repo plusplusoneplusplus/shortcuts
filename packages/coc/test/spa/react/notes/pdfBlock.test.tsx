@@ -17,6 +17,7 @@ vi.mock('@tiptap/react', () => ({
 import { PdfBlock } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/pdfBlock';
 
 const pdfUrl = '/api/workspaces/ws1/notes/image?path=.attachments%2Fsample.pdf';
+const externalPdfUrl = 'https://files.example/sample.pdf';
 
 type ExtensionConfig = {
     parseHTML(): Array<{ tag: string; getAttrs: (el: HTMLElement) => false | { url: string; label: string } }>;
@@ -80,6 +81,8 @@ describe('PdfBlock renderHTML', () => {
 });
 
 describe('PdfBlockView', () => {
+    const normalizedPdfUrl = new URL(pdfUrl, window.location.origin).href;
+
     beforeEach(() => {
         vi.stubGlobal('open', vi.fn());
     });
@@ -94,9 +97,9 @@ describe('PdfBlockView', () => {
 
         const iframe = screen.getByTestId('pdf-node-view-frame') as HTMLIFrameElement;
         expect(iframe).toBeTruthy();
-        expect(iframe.getAttribute('src')).toBe(pdfUrl);
+        expect(iframe.getAttribute('src')).toBe(normalizedPdfUrl);
         expect(iframe.getAttribute('title')).toBe('sample.pdf');
-        expect(iframe.getAttribute('sandbox')).toBe('allow-same-origin allow-scripts');
+        expect(iframe.hasAttribute('sandbox')).toBe(false);
         expect(iframe.getAttribute('loading')).toBe('lazy');
     });
 
@@ -109,19 +112,47 @@ describe('PdfBlockView', () => {
     it('renders a visible fallback link to open the PDF in a new tab', () => {
         render(<PdfBlockView {...makeProps()} />);
         const link = screen.getByRole('link', { name: /open it in a new tab/i }) as HTMLAnchorElement;
-        expect(link.getAttribute('href')).toBe(pdfUrl);
+        expect(link.getAttribute('href')).toBe(normalizedPdfUrl);
         expect(link.getAttribute('target')).toBe('_blank');
+        expect(link.getAttribute('rel')).toBe('noopener noreferrer');
     });
 
-    it('opens the PDF from the toolbar button', () => {
+    it('opens only the normalized PDF URL from the toolbar button', () => {
         render(<PdfBlockView {...makeProps()} />);
         screen.getByRole('button', { name: 'Open in new tab' }).click();
-        expect(window.open).toHaveBeenCalledWith(pdfUrl, '_blank', 'noopener,noreferrer');
+        expect(window.open).toHaveBeenCalledWith(normalizedPdfUrl, '_blank', 'noopener,noreferrer');
     });
 
-    it('shows an error and no iframe when the url is empty', () => {
+    it('renders an external PDF as a link without an iframe', () => {
+        render(<PdfBlockView {...makeProps(externalPdfUrl, 'External PDF')} />);
+
+        expect(screen.queryByTestId('pdf-node-view-frame')).toBeNull();
+        const link = screen.getByRole('link', { name: 'Open this PDF in a new tab' }) as HTMLAnchorElement;
+        expect(link.getAttribute('href')).toBe(externalPdfUrl);
+        expect(link.getAttribute('target')).toBe('_blank');
+        expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+
+        screen.getByRole('button', { name: 'Open in new tab' }).click();
+        expect(window.open).toHaveBeenCalledWith(externalPdfUrl, '_blank', 'noopener,noreferrer');
+    });
+
+    it('shows a non-interactive error for an unsafe URL', () => {
+        render(<PdfBlockView {...makeProps('javascript:alert(1)', 'Unsafe PDF')} />);
+
+        expect(screen.queryByTestId('pdf-node-view-frame')).toBeNull();
+        expect(screen.queryByRole('link')).toBeNull();
+        expect(screen.getByText('Missing or unsafe PDF attachment')).toBeTruthy();
+
+        const button = screen.getByRole('button', { name: 'Open in new tab' }) as HTMLButtonElement;
+        expect(button.disabled).toBe(true);
+        button.click();
+        expect(window.open).not.toHaveBeenCalled();
+    });
+
+    it('shows an error and no active URL when the url is empty', () => {
         render(<PdfBlockView {...makeProps('', 'PDF')} />);
         expect(screen.queryByTestId('pdf-node-view-frame')).toBeNull();
-        expect(screen.getByText('Missing PDF attachment')).toBeTruthy();
+        expect(screen.queryByRole('link')).toBeNull();
+        expect(screen.getByText('Missing or unsafe PDF attachment')).toBeTruthy();
     });
 });

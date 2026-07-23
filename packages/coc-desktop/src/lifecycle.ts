@@ -11,6 +11,8 @@
  *   - {@link shouldOpenExternally}: external-link routing — decide whether a
  *     navigation target should open in the system browser instead of the app
  *     window (any http(s) URL whose origin differs from the served SPA).
+ *   - {@link shouldSurfaceLoadFailure}: fatal-load policy — surface only
+ *     non-aborted failures from the main app frame.
  *
  * As with splash.ts / server-controller.ts / agent-preflight.ts, this module
  * imports NOTHING from electron, so it stays runnable under plain node/vitest.
@@ -137,4 +139,17 @@ export function shouldOpenExternally(targetUrl: string, appOrigin: string): bool
         return false; // only http(s) links route to the system browser
     }
     return target.origin !== normalizeOrigin(appOrigin);
+}
+
+/**
+ * Decide whether an Electron `did-fail-load` event is fatal to the app UI.
+ *
+ * Child-frame failures are isolated to their embedded content. Main-frame
+ * failures remain fatal except for Electron's aborted-navigation code.
+ */
+export function shouldSurfaceLoadFailure(
+    errorCode: number,
+    isMainFrame: boolean,
+): boolean {
+    return isMainFrame && errorCode !== -3;
 }

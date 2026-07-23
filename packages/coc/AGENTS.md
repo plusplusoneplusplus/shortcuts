@@ -70,10 +70,12 @@ all have their own `references/*.md`.
   `notes/notes-image-handler.ts` (`POST`/`GET /api/workspaces/:id/notes/image`).
   It accepts images plus `application/pdf` (images capped at 10 MB, PDFs at
   50 MB) and stores files under `.attachments/` (default root) or `.images/`
-  (repo-folder roots). PDFs render inline in the Tiptap editor via the
-  `pdfBlock` node (`react/features/notes/editor/extensions/pdfBlock.tsx`), which
-  round-trips as `![label](.attachments/x.pdf)` markdown; `router.ts` maps
-  `.pdf` to `application/pdf` so the browser renders it inline in an `<iframe>`.
+  (repo-folder roots). PDFs round-trip as
+  `![label](.attachments/x.pdf)` markdown through the Tiptap `pdfBlock` node.
+  `pdfBlockUrl.ts` permits an unsandboxed inline iframe only for same-origin,
+  exact Notes `image`/`local-image` routes whose decoded `path` is a PDF;
+  other HTTP(S) PDF URLs are link-only and unsafe values expose no active URL.
+  `router.ts` maps `.pdf` to `application/pdf` for the browser-native viewer.
 - **Notes links** show the destination URL plus the platform-specific
   modifier-click instruction in the native hover hint. The hint is attached to
   the live editor DOM and must not be serialized into note Markdown.
