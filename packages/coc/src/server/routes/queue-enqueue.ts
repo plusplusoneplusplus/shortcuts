@@ -61,20 +61,15 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
      * binding so the Notes view can resolve the chat by path on reload.
      */
     const maybeBindNoteChat = (input: { type: string; payload: unknown }, taskId: string): void => {
-        if (input.type !== 'chat') return;
-        const payload = input.payload as { workspaceId?: unknown; context?: { noteChat?: { notePath?: unknown } } } | undefined;
-        const workspaceId = typeof payload?.workspaceId === 'string' ? payload.workspaceId : undefined;
-        const rawNotePath = payload?.context?.noteChat?.notePath;
-        if (!workspaceId) return;
-        const notePath = normalizeRelativeNotePath(rawNotePath);
-        if (!notePath) return;
+        const binding = resolveNoteChatBinding(input);
+        if (!binding) return;
         const bs = getBindingStore();
         if (!bs) return;
         try {
-            bs.bind(workspaceId, notePath, taskId);
+            bs.bind(binding.workspaceId, binding.notePath, taskId);
         } catch (err) {
             process.stderr.write(
-                `[Queue] note-chat bind failed taskId=${taskId} notePath=${notePath}: ${(err as Error).message}\n`,
+                `[Queue] note-chat bind failed taskId=${taskId} notePath=${binding.notePath}: ${(err as Error).message}\n`,
             );
         }
     };
@@ -678,6 +673,38 @@ export function resolveEffortTierConfig(input: CreateTaskInput, ctx: Pick<QueueR
 
 function isChatProvider(value: unknown): value is ChatProvider {
     return value === 'copilot' || value === 'codex' || value === 'claude' || value === 'opencode';
+}
+
+/**
+ * Decide whether a just-enqueued task should create a per-note chat binding, and
+ * with what (workspaceId + normalized notePath). Returns null when no per-note
+ * binding should be created.
+ *
+ * A per-note binding is created only for a `type:'chat'` task whose
+ * `context.noteChat` carries a note path AND is not declared Workspace scope.
+ * A `per-workspace` submission may include the currently-selected note path
+ * purely as first-message context; it must NOT create or replace that note's
+ * per-note binding (AC-04). An omitted scope keeps the legacy per-note default
+ * so existing callers are unaffected.
+ *
+ * @internal exported for tests
+ */
+export function resolveNoteChatBinding(
+    input: { type: string; payload: unknown },
+): { workspaceId: string; notePath: string } | null {
+    if (input.type !== 'chat') return null;
+    const payload = input.payload as {
+        workspaceId?: unknown;
+        context?: { noteChat?: { notePath?: unknown; scope?: unknown } };
+    } | undefined;
+    const noteChat = payload?.context?.noteChat;
+    // Workspace-scope chats reference the note path only for context — never bind.
+    if (noteChat?.scope === 'per-workspace') return null;
+    const workspaceId = typeof payload?.workspaceId === 'string' ? payload.workspaceId : undefined;
+    if (!workspaceId) return null;
+    const notePath = normalizeRelativeNotePath(noteChat?.notePath);
+    if (!notePath) return null;
+    return { workspaceId, notePath };
 }
 
 /**

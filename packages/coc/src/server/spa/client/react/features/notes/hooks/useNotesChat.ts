@@ -264,6 +264,10 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
                 prompt: formatNoteAttachmentPrompt(prompt, workspaceId, notePath),
                 notePath,
                 noteTitle,
+                // Declare the scope explicitly (AC-04): under Workspace scope the
+                // selected note path is prompt context only, so the server must not
+                // create/replace that note's per-note binding.
+                scope,
                 mode,
                 model,
                 skills,

@@ -331,6 +331,13 @@ describe('useNotesChat', () => {
             expect(source).toContain('aiSelection?.context ? { context: aiSelection.context } : {}');
         });
 
+        it('declares the active scope on the chat-create request so Workspace scope never binds per-note (AC-04)', () => {
+            // The hook forwards its own scope state; the server drops the per-note
+            // binding when scope is per-workspace even though the note path is present.
+            expect(source).toContain('Declare the scope explicitly (AC-04)');
+            expect(source).toContain('scope,');
+        });
+
         it('includes skills in context when provided', () => {
             expect(source).toContain('skills,');
         });

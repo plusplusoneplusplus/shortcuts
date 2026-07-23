@@ -228,6 +228,14 @@ export interface InheritedLensChatMode {
 
 export type NoteChatMode = 'ask' | 'autopilot';
 
+/**
+ * Declared Notes chat scope. Carried on `context.noteChat.scope` so the server's
+ * enqueue-time note-binding step is explicit: `per-workspace` submissions may
+ * attach the selected note path as first-message context without creating a
+ * per-note binding, while `per-note` binds the chat to that note.
+ */
+export type NoteChatScope = 'per-note' | 'per-workspace';
+
 export interface NoteChatAttachmentPayload {
   name: string;
   mimeType: string;
@@ -244,6 +252,14 @@ export interface CreateNoteChatRequest {
   skills?: string[];
   attachments?: NoteChatAttachmentPayload[];
   lensChat?: InheritedLensChatMode;
+  /**
+   * Declared Notes chat scope, forwarded to `context.noteChat.scope`. When
+   * `per-workspace`, the server must not create a per-note binding even though a
+   * {@link notePath} is present for prompt context. Omitted → legacy per-note
+   * binding. Only travels with the note context, so it is a no-op without
+   * {@link notePath}.
+   */
+  scope?: NoteChatScope;
   /**
    * Concrete AI provider override for the chat task. Mutually exclusive with
    * {@link autoProviderRouting}; omit both to use the server default provider.

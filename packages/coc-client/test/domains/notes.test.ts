@@ -293,6 +293,57 @@ describe('NotesClient', () => {
     expect(body.payload.context.noteChat).toEqual({ notePath: 'Notebook/Page.md', noteTitle: 'Page' });
   });
 
+  it('carries a per-workspace scope alongside the note path so the server never binds per-note (AC-04)', async () => {
+    const adapter = createMockAdapter({ task: { id: 'task-13' } });
+    const client = new NotesClient(adapter);
+
+    // Workspace scope with a note selected: the path rides as prompt context, but
+    // scope=per-workspace tells the server not to create/replace a per-note binding.
+    await client.createChat('repo/a', {
+      prompt: 'Ask about my notes',
+      notePath: 'Notebook/Page.md',
+      noteTitle: 'Page',
+      scope: 'per-workspace',
+    });
+
+    const context = (adapter.calls[0].options?.body as Record<string, any>).payload.context;
+    expect(context.noteChat).toEqual({
+      notePath: 'Notebook/Page.md',
+      noteTitle: 'Page',
+      scope: 'per-workspace',
+    });
+  });
+
+  it('carries a per-note scope on the note context for This-note submissions', async () => {
+    const adapter = createMockAdapter({ task: { id: 'task-14' } });
+    const client = new NotesClient(adapter);
+
+    await client.createChat('repo/a', {
+      prompt: 'Explain this note',
+      notePath: 'Notebook/Page.md',
+      noteTitle: 'Page',
+      scope: 'per-note',
+    });
+
+    const context = (adapter.calls[0].options?.body as Record<string, any>).payload.context;
+    expect(context.noteChat).toEqual({
+      notePath: 'Notebook/Page.md',
+      noteTitle: 'Page',
+      scope: 'per-note',
+    });
+  });
+
+  it('does not attach a scope key when the request omits scope (backward compatible)', async () => {
+    const adapter = createMockAdapter({ task: { id: 'task-15' } });
+    const client = new NotesClient(adapter);
+
+    await client.createChat('repo/a', { prompt: 'Plain', notePath: 'Notebook/Page.md', noteTitle: 'Page' });
+
+    const context = (adapter.calls[0].options?.body as Record<string, any>).payload.context;
+    expect(context.noteChat).toEqual({ notePath: 'Notebook/Page.md', noteTitle: 'Page' });
+    expect('scope' in context.noteChat).toBe(false);
+  });
+
   it('encodes file paths through the HTTP transport query string', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ content: '# Note', path: 'A B/Page #1.md', mtime: 1 }), {
       headers: { 'content-type': 'application/json' },
