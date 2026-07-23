@@ -58,6 +58,10 @@ export function getLinkOpenTitle(platform = globalThis.navigator?.platform ?? ''
         : 'Ctrl+Click to open link';
 }
 
+export function getLinkHoverTitle(href: string, platform = globalThis.navigator?.platform ?? '') {
+    return `${href}\n${getLinkOpenTitle(platform)}`;
+}
+
 // ── Component ───────────────────────────────────────────────────────────────
 
 export function RichEditorCore({
@@ -112,7 +116,6 @@ export function RichEditorCore({
                 HTMLAttributes: {
                     rel: 'noopener noreferrer',
                     target: '_blank',
-                    title: getLinkOpenTitle(),
                 },
             }),
             Placeholder.configure({ placeholder }),
@@ -170,6 +173,17 @@ export function RichEditorCore({
                 },
                 blur: (view) => {
                     view.dom.classList.remove('ctrl-held');
+                    return false;
+                },
+                mouseover: (_view, event) => {
+                    const target = event.target;
+                    if (!(target instanceof Element)) return false;
+
+                    const anchor = target.closest('a[href]');
+                    const href = anchor?.getAttribute('href');
+                    if (anchor && href) {
+                        anchor.setAttribute('title', getLinkHoverTitle(href));
+                    }
                     return false;
                 },
                 // Mark the editor as a valid drop target for external file drags

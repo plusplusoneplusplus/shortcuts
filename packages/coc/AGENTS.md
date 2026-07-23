@@ -74,6 +74,9 @@ all have their own `references/*.md`.
   `pdfBlock` node (`react/features/notes/editor/extensions/pdfBlock.tsx`), which
   round-trips as `![label](.attachments/x.pdf)` markdown; `router.ts` maps
   `.pdf` to `application/pdf` so the browser renders it inline in an `<iframe>`.
+- **Notes links** show the destination URL plus the platform-specific
+  modifier-click instruction in the native hover hint. The hint is attached to
+  the live editor DOM and must not be serialized into note Markdown.
 - **In-memory caching** uses the one shared primitive at
   `src/server/cache/` (`createCache<T>({ namespace, ttlMs?, maxSize=500,
   immutable? })` → a handle with `get`/`set`/`getOrCompute`/`delete`/
