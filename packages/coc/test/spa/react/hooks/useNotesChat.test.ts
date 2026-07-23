@@ -308,8 +308,27 @@ describe('useNotesChat', () => {
             expect(source).toContain('return null');
         });
 
-        it('accepts optional model, skills, and attachments parameters in createChat signature', () => {
-            expect(source).toContain('createChat: (prompt: string, model?: string | null, mode?: \'ask\' | \'autopilot\', skills?: string[], attachments?: AttachmentPayload[])');
+        it('accepts optional model, skills, attachments, and aiSelection parameters in createChat signature', () => {
+            expect(source).toContain('createChat: (prompt: string, model?: string | null, mode?: \'ask\' | \'autopilot\', skills?: string[], attachments?: AttachmentPayload[], aiSelection?: NotesChatAiSelection)');
+        });
+
+        it('exposes a NotesChatAiSelection type carrying provider, effort, auto-routing, working dir, and context', () => {
+            expect(source).toContain('export interface NotesChatAiSelection');
+            expect(source).toContain('provider?: ChatProvider');
+            expect(source).toContain('reasoningEffort?: ReasoningEffort');
+            expect(source).toContain('effortTier?: EffortTierKey');
+            expect(source).toContain('autoProviderRouting?: boolean');
+            expect(source).toContain('workingDirectory?: string');
+            expect(source).toContain('context?: Record<string, unknown>');
+        });
+
+        it('forwards the full AI selection to the chat-create request', () => {
+            expect(source).toContain('aiSelection?.provider ? { provider: aiSelection.provider } : {}');
+            expect(source).toContain('aiSelection?.reasoningEffort ? { reasoningEffort: aiSelection.reasoningEffort } : {}');
+            expect(source).toContain('aiSelection?.effortTier ? { effortTier: aiSelection.effortTier } : {}');
+            expect(source).toContain('aiSelection?.autoProviderRouting ? { autoProviderRouting: true } : {}');
+            expect(source).toContain('aiSelection?.workingDirectory ? { workingDirectory: aiSelection.workingDirectory } : {}');
+            expect(source).toContain('aiSelection?.context ? { context: aiSelection.context } : {}');
         });
 
         it('includes skills in context when provided', () => {

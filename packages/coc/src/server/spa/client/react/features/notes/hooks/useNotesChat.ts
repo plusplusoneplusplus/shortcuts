@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { AIProcess } from '@plusplusoneplusplus/coc-client';
+import type { AIProcess, ChatProvider, EffortTierKey, ReasoningEffort } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
 import type { AttachmentPayload } from '../../../types/attachments';
 import { isCommitChatLensEnabled } from '../../../utils/config';
@@ -27,6 +27,28 @@ export interface ChatNoteContext {
     noteTitle: string;
 }
 
+/**
+ * Full AI selection captured from the shared initial composer, carried verbatim
+ * to the Notes chat-create request so the resolved provider/model/effort reach the
+ * queue payload without being dropped (AC-03/AC-07). Concrete provider and Auto
+ * routing are mutually exclusive: pass a concrete `provider` OR
+ * `autoProviderRouting: true`, never both.
+ */
+export interface NotesChatAiSelection {
+    /** Concrete provider override; omit when Auto routing is requested. */
+    provider?: ChatProvider;
+    /** Per-turn reasoning-effort override. */
+    reasoningEffort?: ReasoningEffort;
+    /** Effort-tier key; carried on the top-level task config, like the composer. */
+    effortTier?: EffortTierKey;
+    /** Auto-provider routing intent (mutually exclusive with `provider`). */
+    autoProviderRouting?: boolean;
+    /** Workspace root / working directory when available. */
+    workingDirectory?: string;
+    /** Safe generic composer context; Notes-owned keys win reserved collisions. */
+    context?: Record<string, unknown>;
+}
+
 export interface UseNotesChatReturn {
     /** The resolved chat task ID for the current scope/note, or null */
     taskId: string | null;
@@ -35,7 +57,7 @@ export interface UseNotesChatReturn {
     /** Accept note metadata from a process load when it still belongs to the active task. */
     syncChatNoteContext: (process: AIProcess) => void;
     /** Create a new chat. The currently-selected note is injected as context. */
-    createChat: (prompt: string, model?: string | null, mode?: 'ask' | 'autopilot', skills?: string[], attachments?: AttachmentPayload[]) => Promise<string | null>;
+    createChat: (prompt: string, model?: string | null, mode?: 'ask' | 'autopilot', skills?: string[], attachments?: AttachmentPayload[], aiSelection?: NotesChatAiSelection) => Promise<string | null>;
     /** Discard the current scope's chat and start fresh. Old chat stays in history. */
     resetChat: () => void;
     /** Current active scope. */
@@ -236,7 +258,7 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
 
     // ── createChat ───────────────────────────────────────────────────────────
 
-    const createChat = useCallback(async (prompt: string, model?: string | null, mode: 'ask' | 'autopilot' = 'ask', skills?: string[], attachments?: AttachmentPayload[]): Promise<string | null> => {
+    const createChat = useCallback(async (prompt: string, model?: string | null, mode: 'ask' | 'autopilot' = 'ask', skills?: string[], attachments?: AttachmentPayload[], aiSelection?: NotesChatAiSelection): Promise<string | null> => {
         try {
             const res = await cloneClient.notes.createChat(workspaceId, {
                 prompt: formatNoteAttachmentPrompt(prompt, workspaceId, notePath),
@@ -246,6 +268,16 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
                 model,
                 skills,
                 attachments,
+                // Full AI selection from the shared composer (AC-03/AC-07): concrete
+                // provider / reasoning-effort / effort-tier / working directory, the
+                // Auto-routing intent, and safe generic composer context. Notes-owned
+                // note binding and Lens metadata are re-applied on top server-side.
+                ...(aiSelection?.provider ? { provider: aiSelection.provider } : {}),
+                ...(aiSelection?.reasoningEffort ? { reasoningEffort: aiSelection.reasoningEffort } : {}),
+                ...(aiSelection?.effortTier ? { effortTier: aiSelection.effortTier } : {}),
+                ...(aiSelection?.autoProviderRouting ? { autoProviderRouting: true } : {}),
+                ...(aiSelection?.workingDirectory ? { workingDirectory: aiSelection.workingDirectory } : {}),
+                ...(aiSelection?.context ? { context: aiSelection.context } : {}),
                 ...(isCommitChatLensEnabled() ? { lensChat: INHERITED_LENS_CHAT_MODE } : {}),
             });
             const newTaskId = res.task.id;

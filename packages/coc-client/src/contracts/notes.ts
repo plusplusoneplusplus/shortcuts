@@ -1,4 +1,5 @@
-import type { EnqueueTaskResponse } from './queue';
+import type { EffortTierKey, EnqueueTaskResponse } from './queue';
+import type { ChatProvider, ReasoningEffort } from './common';
 
 export type NoteNodeType = 'notebook' | 'section' | 'page';
 
@@ -243,6 +244,32 @@ export interface CreateNoteChatRequest {
   skills?: string[];
   attachments?: NoteChatAttachmentPayload[];
   lensChat?: InheritedLensChatMode;
+  /**
+   * Concrete AI provider override for the chat task. Mutually exclusive with
+   * {@link autoProviderRouting}; omit both to use the server default provider.
+   */
+  provider?: ChatProvider;
+  /** Per-turn reasoning-effort override, matching the shared initial composer. */
+  reasoningEffort?: ReasoningEffort;
+  /**
+   * Effort-tier key. Carried on the top-level task `config` (not the payload),
+   * exactly like the shared composer, so enqueue seeds the tier model + effort.
+   */
+  effortTier?: EffortTierKey;
+  /** Workspace root used as the task working directory, when available. */
+  workingDirectory?: string;
+  /**
+   * Auto-provider routing intent. When true, the request emits
+   * `context.autoProviderRouting = { requested: true }` so the server resolves the
+   * provider at enqueue time. Mutually exclusive with a concrete {@link provider}.
+   */
+  autoProviderRouting?: boolean;
+  /**
+   * Safe, generic composer context merged into the chat payload context. Notes-owned
+   * reserved keys (`noteChat`, `lensChat`, `skills`) always win reserved-key
+   * collisions, so a caller cannot override or drop the note binding or Lens metadata.
+   */
+  context?: Record<string, unknown>;
 }
 
 export type CreateNoteChatResponse = EnqueueTaskResponse;
