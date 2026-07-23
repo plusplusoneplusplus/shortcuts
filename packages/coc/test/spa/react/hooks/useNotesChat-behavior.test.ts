@@ -214,13 +214,20 @@ describe('useNotesChat — real-hook behavior', () => {
             await act(async () => { state.gate!.resolve(); await createPromise; });
 
             // The result stayed with its originating context, not the current one:
-            // B is unbound, and the recorded note context is A.
+            // B remains unbound and shows NO note context. A deferred A response must
+            // never replace the newly selected note's active view — the exact guard
+            // in "bind Notes Chat context to active task" and the AC-06 edge case
+            // "Late completion after navigation ... without changing the newly
+            // selected context". chatNoteContext is derived from the active task, so
+            // while B (unbound) is selected it is null even though task-A recorded A.
             expect(result.current.taskId).toBeNull();
-            expect(result.current.chatNoteContext?.notePath).toBe('A.md');
+            expect(result.current.chatNoteContext).toBeNull();
 
-            // Switching back to A surfaces the binding the deferred response created.
+            // Switching back to A surfaces both the binding AND the note context the
+            // deferred response recorded for its originating task.
             rerender({ workspaceId: WS, notePath: 'A.md', noteTitle: 'A' });
             expect(result.current.taskId).toBe('task-A');
+            expect(result.current.chatNoteContext?.notePath).toBe('A.md');
 
             // The request the server received carried A's path, not B's.
             expect(state.createdRequests).toHaveLength(1);
