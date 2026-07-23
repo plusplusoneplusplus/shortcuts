@@ -121,6 +121,16 @@ export interface InitialChatComposerProps {
     sourceLabel?: string;
     enableRalphDirectGoal?: boolean;
     settingsLayout?: InitialChatComposerSettingsLayout;
+    /**
+     * Restricts the selectable chat modes. When provided, only these modes are
+     * offered in the mode pills and the compact settings editor, and a restored
+     * draft whose mode is not in this set falls back to Ask. This is the generic
+     * extension point adapters (e.g. Notes) use to pin the composer to Ask +
+     * Autopilot without the shared component branching on any feature.
+     * Pass a stable (module-level) reference. Omit to show every
+     * surface-visible, feature-enabled mode.
+     */
+    allowedModes?: readonly ChatMode[];
 }
 
 const PROVIDER_LABELS: Record<ChatProvider, string> = {
@@ -220,6 +230,7 @@ export function InitialChatComposer({
     sourceLabel = 'New Chat composer',
     enableRalphDirectGoal = true,
     settingsLayout = 'full',
+    allowedModes,
 }: InitialChatComposerProps) {
     const [input, setInput] = useState('');
     const [cursorPos, setCursorPos] = useState(0);
@@ -310,21 +321,29 @@ export function InitialChatComposer({
         }),
         [],
     );
+    // Stable content key so an inline `allowedModes` array from a caller does
+    // not churn the mode-option memos on every render — and, through
+    // `visibleModes`, spuriously re-fire the draft-restore effect below.
+    const allowedModesKey = allowedModes ? allowedModes.join(',') : undefined;
     const modePillOptions = useMemo(
         () => getVisibleModePillOptions({
             surface: 'new-chat',
             category: 'primary',
             featureFlags: modeFeatureFlags,
+            allowedModes,
         }),
-        [modeFeatureFlags],
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [modeFeatureFlags, allowedModesKey],
     );
     const workflowModeOptions = useMemo(
         () => getVisibleModePillOptions({
             surface: 'new-chat',
             category: 'workflow',
             featureFlags: modeFeatureFlags,
+            allowedModes,
         }),
-        [modeFeatureFlags],
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [modeFeatureFlags, allowedModesKey],
     );
     const visibleModes = useMemo(
         () => [...modePillOptions, ...workflowModeOptions].map(opt => opt.value),

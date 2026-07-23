@@ -8,7 +8,7 @@ import React from 'react';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled, mockForEachEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig, mockAgentProvidersResponse, mockEffortLevelsEnabled, mockEffortTiers } = vi.hoisted(() => ({
+const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled, mockForEachEnabled, mockMapReduceEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig, mockAgentProvidersResponse, mockEffortLevelsEnabled, mockEffortTiers } = vi.hoisted(() => ({
     mockQueueDispatch: vi.fn(),
     mockAppState: {
         workspaces: [{ id: 'ws-1', rootPath: '/home/user/repo' }],
@@ -53,6 +53,7 @@ const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCo
     },
     mockRalphEnabled: { value: false },
     mockForEachEnabled: { value: false },
+    mockMapReduceEnabled: { value: false },
     mockSessionContextAttachmentsEnabled: { value: false },
     mockEffortLevelsEnabled: { value: false },
     mockEffortTiers: { value: {} as Record<string, { model: string; reasoningEffort?: string | null }> },
@@ -113,7 +114,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isRalphEnabled: () => mockRalphEnabled.value,
     isRalphMultiAgentGrillEnabled: () => false,
     isForEachEnabled: () => mockForEachEnabled.value,
-    isMapReduceEnabled: () => false,
+    isMapReduceEnabled: () => mockMapReduceEnabled.value,
     isLoopsEnabled: () => false,
     getDefaultProvider: () => 'copilot' as const,
     getConfiguredDefaultProvider: () => 'copilot' as const,
@@ -333,6 +334,7 @@ beforeEach(() => {
     mockDraftStore.getDraft.mockReturnValue(null);
     mockRalphEnabled.value = false;
     mockForEachEnabled.value = false;
+    mockMapReduceEnabled.value = false;
     mockSessionContextAttachmentsEnabled.value = false;
     mockEffortLevelsEnabled.value = false;
     mockEffortTiers.value = {};
@@ -1839,6 +1841,99 @@ describe('NewChatArea', () => {
 
             // Dropping a commit must not switch the mode based on the item kind.
             expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
+        });
+    });
+
+    // AC-03: the shared composer offers a generic `allowedModes` filter so a
+    // consumer (e.g. the Notes adapter) can pin it to Ask + Autopilot without
+    // the component knowing anything about Notes. Every workflow flag is on in
+    // these tests, proving the restriction wins over the flags.
+    describe('allowedModes restriction', () => {
+        // Stable module-scoped reference (mirrors NOTE_CHAT_ALLOWED_MODES).
+        const ASK_AUTOPILOT = ['ask', 'autopilot'] as const;
+
+        function enableAllWorkflowFlags() {
+            mockRalphEnabled.value = true;
+            mockForEachEnabled.value = true;
+            mockMapReduceEnabled.value = true;
+        }
+
+        it('offers only the allowed modes in the full layout despite every workflow flag being enabled', () => {
+            enableAllWorkflowFlags();
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={vi.fn().mockResolvedValue(null)}
+                    settingsLayout="full"
+                    enableRalphDirectGoal={false}
+                    allowedModes={ASK_AUTOPILOT}
+                />,
+            );
+
+            expect(screen.getByTestId('mode-pill-ask')).toBeTruthy();
+            expect(screen.getByTestId('mode-pill-autopilot')).toBeTruthy();
+            // No workflow mode is reachable: the trigger and its selector are gone.
+            expect(screen.queryByTestId('workflow-mode-trigger')).toBeNull();
+            expect(screen.queryByTestId('workflow-mode-selector')).toBeNull();
+            expect(screen.queryByTestId('mode-pill-ralph')).toBeNull();
+            expect(screen.queryByTestId('mode-pill-for-each')).toBeNull();
+            expect(screen.queryByTestId('mode-pill-map-reduce')).toBeNull();
+        });
+
+        it('offers only the allowed modes in the compact settings editor despite every workflow flag being enabled', () => {
+            enableAllWorkflowFlags();
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={vi.fn().mockResolvedValue(null)}
+                    testIdPrefix="lens-chat"
+                    settingsLayout="compact"
+                    enableRalphDirectGoal={false}
+                    allowedModes={ASK_AUTOPILOT}
+                />,
+            );
+
+            fireEvent.click(screen.getByTestId('compact-ai-settings-chip'));
+
+            expect(screen.getByTestId('mode-pill-ask')).toBeTruthy();
+            expect(screen.getByTestId('mode-pill-autopilot')).toBeTruthy();
+            expect(screen.queryByTestId('workflow-mode-trigger')).toBeNull();
+            expect(screen.queryByTestId('mode-pill-ralph')).toBeNull();
+        });
+
+        it('falls back to Ask when a restored draft names a mode outside the allowed set', () => {
+            enableAllWorkflowFlags();
+            mockDraftStore.getDraft.mockReturnValue({ text: 'hi', mode: 'ralph', modelOverride: null });
+
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={vi.fn().mockResolvedValue(null)}
+                    settingsLayout="full"
+                    enableRalphDirectGoal={false}
+                    allowedModes={ASK_AUTOPILOT}
+                />,
+            );
+
+            // The unsupported 'ralph' draft mode normalizes to Ask rather than
+            // surfacing a mode the composer cannot offer.
+            expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
+            expect(screen.getByTestId('mode-pill-autopilot').getAttribute('aria-checked')).toBe('false');
+            expect(screen.queryByTestId('mode-pill-ralph')).toBeNull();
+        });
+
+        it('leaves workflow modes available when allowedModes is omitted (default path unchanged)', () => {
+            mockRalphEnabled.value = true;
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={vi.fn().mockResolvedValue(null)}
+                    settingsLayout="full"
+                />,
+            );
+
+            // Without allowedModes the workflow trigger still appears for enabled flags.
+            expect(screen.getByTestId('workflow-mode-trigger')).toBeTruthy();
         });
     });
 });
