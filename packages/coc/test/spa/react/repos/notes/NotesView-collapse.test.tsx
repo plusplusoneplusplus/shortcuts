@@ -12,7 +12,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import type { NoteTreeNode, NotesRootEntry } from '../../../../../src/server/spa/client/react/features/notes/notesApi';
 import { NotesView } from '../../../../../src/server/spa/client/react/features/notes/NotesView';
 import { notesSidebarCollapsedStorageKey } from '../../../../../src/server/spa/client/react/features/notes/editor/NotesSidebarCollapse';
@@ -146,5 +146,97 @@ describe('NotesView — collapse/expand the tree sidebar', () => {
         render(<NotesView workspaceId="ws2" active />);
         await waitFor(() => expect(readVar()).toBe('280px'));
         expect(screen.queryByTestId('notes-sidebar-rail')).toBeNull();
+    });
+});
+
+describe('NotesView collapsed rail — hover-to-peek', () => {
+    it('hovering the rail floats the sidebar back as an overlay; leaving re-hides it; persisted state untouched', async () => {
+        // Start collapsed from persisted state (fine-pointer: jsdom has no
+        // matchMedia so hasFinePointerDevice() defaults to true → peek enabled).
+        window.localStorage.setItem(notesSidebarCollapsedStorageKey('ws1'), '1');
+        render(<NotesView workspaceId="ws1" active />);
+        await waitFor(() => expect(readVar()).toBe('36px'));
+
+        const sidebar = screen.getByTestId('responsive-sidebar');
+        // Hidden while collapsed and not peeking.
+        expect(sidebar.classList.contains('hidden')).toBe(true);
+
+        vi.useFakeTimers();
+        try {
+            // Hover the rail → after the open delay the sidebar floats out as an overlay.
+            act(() => { fireEvent.mouseEnter(screen.getByTestId('notes-sidebar-rail')); });
+            act(() => { vi.advanceTimersByTime(450); });
+            expect(sidebar.classList.contains('hidden')).toBe(false);
+            expect(sidebar.className).toContain('absolute');
+            expect(sidebar.className).toContain('z-30');
+            // The transient peek never rewrites the persisted collapsed flag.
+            expect(window.localStorage.getItem(notesSidebarCollapsedStorageKey('ws1'))).toBe('1');
+
+            // Leaving the floated panel re-hides it after the grace delay.
+            act(() => { fireEvent.mouseLeave(screen.getByTestId('notes-sidebar-peek-panel')); });
+            act(() => { vi.advanceTimersByTime(300); });
+            expect(sidebar.classList.contains('hidden')).toBe(true);
+            // Still collapsed — the rail is present, not the expanded sidebar.
+            expect(screen.getByTestId('notes-sidebar-rail')).toBeTruthy();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('Escape collapses an open peek back to the rail', async () => {
+        window.localStorage.setItem(notesSidebarCollapsedStorageKey('ws1'), '1');
+        render(<NotesView workspaceId="ws1" active />);
+        await waitFor(() => expect(readVar()).toBe('36px'));
+        const sidebar = screen.getByTestId('responsive-sidebar');
+
+        vi.useFakeTimers();
+        try {
+            act(() => { fireEvent.mouseEnter(screen.getByTestId('notes-sidebar-rail')); });
+            act(() => { vi.advanceTimersByTime(450); });
+            expect(sidebar.classList.contains('hidden')).toBe(false);
+
+            act(() => { fireEvent.keyDown(document, { key: 'Escape' }); });
+            expect(sidebar.classList.contains('hidden')).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('does not peek on a coarse-pointer device (touch)', async () => {
+        const originalMatchMedia = window.matchMedia;
+        // matchMedia present but not a fine pointer → peek disabled at mount.
+        window.matchMedia = ((query: string) => ({
+            matches: false,
+            media: query,
+            onchange: null,
+            addEventListener: () => {},
+            removeEventListener: () => {},
+            addListener: () => {},
+            removeListener: () => {},
+            dispatchEvent: () => false,
+        })) as unknown as typeof window.matchMedia;
+        try {
+            window.localStorage.setItem(notesSidebarCollapsedStorageKey('ws1'), '1');
+            render(<NotesView workspaceId="ws1" active />);
+            await waitFor(() => expect(readVar()).toBe('36px'));
+            const sidebar = screen.getByTestId('responsive-sidebar');
+
+            vi.useFakeTimers();
+            try {
+                act(() => { fireEvent.mouseEnter(screen.getByTestId('notes-sidebar-rail')); });
+                act(() => { vi.advanceTimersByTime(450); });
+                // No float-out: the sidebar stays hidden behind the rail.
+                expect(sidebar.classList.contains('hidden')).toBe(true);
+            } finally {
+                vi.useRealTimers();
+            }
+        } finally {
+            if (originalMatchMedia === undefined) {
+                // jsdom default: property was absent — remove it again.
+                delete (window as unknown as { matchMedia?: unknown }).matchMedia;
+            } else {
+                window.matchMedia = originalMatchMedia;
+            }
+        }
     });
 });
