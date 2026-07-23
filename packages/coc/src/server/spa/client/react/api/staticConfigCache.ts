@@ -50,16 +50,38 @@ export interface ConfigCacheEntry<T = unknown> {
 export const DEFAULT_CONFIG_TTL_MS = 60 * 60 * 1000;
 
 /**
+ * Prefix a cache key with an injection-safe server-identity segment so two
+ * server identities never share a cache entry (AC-07 DoD #4). A remote clone
+ * and the local origin — or two distinct remote clones — can use the same
+ * provider or workspace id; their static config, reasoning efforts and effort
+ * tiers must NOT be read from one server and served to the other.
+ *
+ * The server id (a clone `baseUrl`) is URI-encoded, so it can never forge the
+ * `|` delimiter or the type/provider portion that follows it. When no server id
+ * is given (or it is empty), the caller is the local origin and the key is the
+ * legacy bare key — byte-for-byte identical, so existing local reads keep their
+ * cache entries and behaviour is unchanged.
+ */
+function serverScope(serverId?: string): string {
+    return serverId ? `srv:${encodeURIComponent(serverId)}|` : '';
+}
+
+/**
  * Builders for the cache keys so every call site keys consistently. Static
  * config is per-provider (`models`/`reasoning-efforts`/`effort-tiers`) and
  * per-workspace (`llm-tools-config`); keying MUST follow that so a conversation
  * using a different provider/workspace still sees the correct config.
+ *
+ * Every builder accepts an optional trailing `serverId` (the owning clone's
+ * remote `baseUrl`). Omit it for the local origin — the resulting key is the
+ * legacy bare key. Pass a remote clone's baseUrl so the same provider/workspace
+ * on a different server resolves to a distinct entry (AC-07 DoD #4).
  */
 export const configCacheKey = {
-    models: (provider: string): string => `models:${provider}`,
-    reasoningEfforts: (provider: string): string => `reasoning-efforts:${provider}`,
-    effortTiers: (provider: string): string => `effort-tiers:${provider}`,
-    llmToolsConfig: (workspaceId: string): string => `llm-tools-config:${workspaceId}`,
+    models: (provider: string, serverId?: string): string => `${serverScope(serverId)}models:${provider}`,
+    reasoningEfforts: (provider: string, serverId?: string): string => `${serverScope(serverId)}reasoning-efforts:${provider}`,
+    effortTiers: (provider: string, serverId?: string): string => `${serverScope(serverId)}effort-tiers:${provider}`,
+    llmToolsConfig: (workspaceId: string, serverId?: string): string => `${serverScope(serverId)}llm-tools-config:${workspaceId}`,
 } as const;
 
 const cache = new Map<string, ConfigCacheEntry>();

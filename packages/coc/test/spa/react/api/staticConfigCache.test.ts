@@ -38,6 +38,110 @@ describe('configCacheKey', () => {
     it('produces distinct keys per provider so different providers never collide', () => {
         expect(configCacheKey.models('copilot')).not.toBe(configCacheKey.models('codex'));
     });
+
+    // ── AC-07 DoD #4: server-aware keys so two server identities with the same
+    // provider/workspace never share a static-config, reasoning-effort or
+    // effort-tier cache entry. ────────────────────────────────────────────────
+    describe('server-aware keys (AC-07 DoD #4)', () => {
+        it('omitting the serverId (local origin) returns the legacy bare key, byte-for-byte', () => {
+            // Backward compatibility: existing local call sites pass no serverId and
+            // must keep their exact current cache keys.
+            expect(configCacheKey.models('copilot', undefined)).toBe('models:copilot');
+            expect(configCacheKey.models('copilot')).toBe('models:copilot');
+            expect(configCacheKey.reasoningEfforts('codex')).toBe('reasoning-efforts:codex');
+            expect(configCacheKey.effortTiers('claude')).toBe('effort-tiers:claude');
+            expect(configCacheKey.llmToolsConfig('ws-1')).toBe('llm-tools-config:ws-1');
+        });
+
+        it('treats an empty-string serverId as the local origin (no prefix)', () => {
+            // The clone baseUrl resolver returns undefined for local clones; a stray
+            // empty string must resolve to the same local key, not a distinct one.
+            expect(configCacheKey.models('copilot', '')).toBe('models:copilot');
+            expect(configCacheKey.llmToolsConfig('ws-1', '')).toBe('llm-tools-config:ws-1');
+        });
+
+        it('returns the same key for the same (provider, serverId) so one server shares its cache', () => {
+            const a = configCacheKey.models('copilot', 'https://remote.example:8080');
+            const b = configCacheKey.models('copilot', 'https://remote.example:8080');
+            expect(a).toBe(b);
+        });
+
+        it('returns distinct keys for two server identities using the same provider', () => {
+            const serverA = configCacheKey.models('copilot', 'https://a.example');
+            const serverB = configCacheKey.models('copilot', 'https://b.example');
+            expect(serverA).not.toBe(serverB);
+        });
+
+        it('returns a distinct key for a remote clone vs the local origin (same provider)', () => {
+            const local = configCacheKey.models('copilot');
+            const remote = configCacheKey.models('copilot', 'https://remote.example');
+            expect(remote).not.toBe(local);
+        });
+
+        it('scopes reasoning-efforts, effort-tiers, and llm-tools-config by server identity too', () => {
+            expect(configCacheKey.reasoningEfforts('copilot', 'https://a.example'))
+                .not.toBe(configCacheKey.reasoningEfforts('copilot', 'https://b.example'));
+            expect(configCacheKey.effortTiers('copilot', 'https://a.example'))
+                .not.toBe(configCacheKey.effortTiers('copilot', 'https://b.example'));
+            expect(configCacheKey.llmToolsConfig('ws-1', 'https://a.example'))
+                .not.toBe(configCacheKey.llmToolsConfig('ws-1', 'https://b.example'));
+        });
+
+        it('URI-encodes the server id so a crafted baseUrl cannot forge another tuple key', () => {
+            // A serverId shaped like the internal delimiter + a different type/provider
+            // must not collide with a genuinely different (provider, serverId) tuple.
+            const crafted = configCacheKey.models('x', 'a|models:y');
+            const genuine = configCacheKey.models('y', 'a');
+            expect(crafted).not.toBe(genuine);
+            // The delimiter and type portion of the crafted server id are encoded away.
+            expect(crafted).not.toContain('a|models:y');
+        });
+    });
+});
+
+describe('getOrFetchConfig — server-scoped cache isolation (AC-07 DoD #4)', () => {
+    it('two servers with the same provider each fetch once and never share the cached value', async () => {
+        const localFetch = vi.fn().mockResolvedValue('local-models');
+        const remoteFetch = vi.fn().mockResolvedValue('remote-models');
+        const localKey = configCacheKey.models('copilot'); // local origin
+        const remoteKey = configCacheKey.models('copilot', 'https://remote.example');
+
+        const local = await getOrFetchConfig(localKey, localFetch);
+        const remote = await getOrFetchConfig(remoteKey, remoteFetch);
+
+        // Each server hit its own fetcher exactly once — no cross-server read.
+        expect(local).toBe('local-models');
+        expect(remote).toBe('remote-models');
+        expect(localFetch).toHaveBeenCalledTimes(1);
+        expect(remoteFetch).toHaveBeenCalledTimes(1);
+        expect(_getConfigCacheSize()).toBe(2);
+
+        // Re-reading each key stays a hit against its OWN cached value.
+        expect(await getOrFetchConfig(localKey, localFetch)).toBe('local-models');
+        expect(await getOrFetchConfig(remoteKey, remoteFetch)).toBe('remote-models');
+        expect(localFetch).toHaveBeenCalledTimes(1);
+        expect(remoteFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('invalidating one server\'s key leaves the other server\'s entry cached', async () => {
+        const serverA = configCacheKey.models('copilot', 'https://a.example');
+        const serverB = configCacheKey.models('copilot', 'https://b.example');
+        const fetchA = vi.fn().mockResolvedValue('A');
+        const fetchB = vi.fn().mockResolvedValue('B');
+
+        await getOrFetchConfig(serverA, fetchA);
+        await getOrFetchConfig(serverB, fetchB);
+
+        invalidateConfig(serverA);
+
+        // Server B is untouched — still a cache hit.
+        await getOrFetchConfig(serverB, fetchB);
+        expect(fetchB).toHaveBeenCalledTimes(1);
+
+        // Server A refetches.
+        await getOrFetchConfig(serverA, fetchA);
+        expect(fetchA).toHaveBeenCalledTimes(2);
+    });
 });
 
 describe('getOrFetchConfig — AC-01 cache reads', () => {
