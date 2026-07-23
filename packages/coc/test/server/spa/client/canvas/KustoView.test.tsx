@@ -168,6 +168,69 @@ describe('KustoView read-only (historical revision)', () => {
     });
 });
 
+describe('KustoView header connection slot (embed compaction)', () => {
+    it('portals the cluster/database editors into the slot and omits the inline block', () => {
+        const slot = document.createElement('div');
+        document.body.appendChild(slot);
+        render(
+            <KustoView
+                workspaceId="ws-1"
+                canvas={makeCanvas(SUCCESS_STATE)}
+                compact
+                connectionInHeader
+                connectionSlot={slot}
+            />,
+        );
+
+        // Editors are mounted inside the header slot node...
+        expect(slot.querySelector('[data-testid="kusto-cluster"]')).toBeTruthy();
+        expect(slot.querySelector('[data-testid="kusto-database"]')).toBeTruthy();
+        // ...exactly once (the inline labeled block is not also rendered).
+        expect(screen.getAllByTestId('kusto-cluster')).toHaveLength(1);
+        // The query editor and Run stay in the component body.
+        expect(screen.getByTestId('kusto-query')).toBeInTheDocument();
+        expect(screen.getByTestId('kusto-run')).toBeInTheDocument();
+
+        slot.remove();
+    });
+
+    it('keeps the editors editable and feeds them into Run when slotted', async () => {
+        const slot = document.createElement('div');
+        document.body.appendChild(slot);
+        const saved = makeCanvas(SUCCESS_STATE, { revision: 2 });
+        mocks.run.mockResolvedValue(saved);
+
+        render(
+            <KustoView
+                workspaceId="ws-1"
+                canvas={makeCanvas({})}
+                compact
+                connectionInHeader
+                connectionSlot={slot}
+            />,
+        );
+
+        fireEvent.change(screen.getByTestId('kusto-database'), { target: { value: 'Other' } });
+        fireEvent.click(screen.getByTestId('kusto-run'));
+
+        await waitFor(() => expect(mocks.run).toHaveBeenCalledWith('ws-1', 'expl-abc123', {
+            query: 'StormEvents | take 10',
+            clusterUrl: 'https://help.kusto.windows.net',
+            database: 'Other',
+        }));
+
+        slot.remove();
+    });
+
+    it('renders the inline labeled block when no header slot is used', () => {
+        render(<KustoView workspaceId="ws-1" canvas={makeCanvas(SUCCESS_STATE)} />);
+        // Default (standalone) layout keeps the labeled connection row in the body.
+        expect(screen.getByText('Cluster URL')).toBeInTheDocument();
+        expect(screen.getByText('Database')).toBeInTheDocument();
+        expect(screen.getByTestId('kusto-cluster')).toBeInTheDocument();
+    });
+});
+
 describe('KustoView charts (AC-05)', () => {
     it('defaults to the table view and toggles to the chart view', () => {
         render(<KustoView workspaceId="ws-1" canvas={makeCanvas(SUCCESS_STATE)} />);

@@ -1,4 +1,6 @@
 /**
+ * @vitest-environment jsdom
+ *
  * Regression coverage for inline canvas:// references. The persisted canvas
  * descriptor is the source of truth: its type decides which viewer mounts.
  */
@@ -253,6 +255,22 @@ describe('inline canvas:// embed', () => {
 
         const embed = await screen.findByTestId('canvas-embed-kusto');
         expect(embed.getAttribute('data-expanded')).toBe('true');
+        expect(embed.querySelector('[data-testid="kusto-query"]')).toBeTruthy();
+    });
+
+    it('hoists the cluster/database editors into the embed header to save space', async () => {
+        mocks.get.mockResolvedValue(kustoCanvas('solo'));
+        const html = chatMarkdownToHtml('canvas://solo', 'ws-1', { canvasEmbedEnabled: true });
+        render(<MarkdownView html={html} />);
+
+        // The editors mount into the header slot (portaled by KustoView)...
+        await waitFor(() => {
+            const slot = screen.getByTestId('canvas-embed-kusto-connection-slot');
+            expect(slot.querySelector('[data-testid="kusto-cluster"]')).toBeTruthy();
+            expect(slot.querySelector('[data-testid="kusto-database"]')).toBeTruthy();
+        });
+        // ...while the query editor remains in the body.
+        const embed = screen.getByTestId('canvas-embed-kusto');
         expect(embed.querySelector('[data-testid="kusto-query"]')).toBeTruthy();
     });
 });

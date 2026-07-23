@@ -38,6 +38,9 @@ function KustoCanvasEmbed({
 }) {
     const group = useKustoEmbedGroup();
     const [wrapperEl, setWrapperEl] = useState<HTMLDivElement | null>(null);
+    // Header slot that hosts the cluster/database editors, keeping them out of
+    // the body so the embed stays compact.
+    const [connectionSlotEl, setConnectionSlotEl] = useState<HTMLDivElement | null>(null);
     // `null` means "follow the group default"; a boolean is an explicit choice.
     const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
 
@@ -62,24 +65,36 @@ function KustoCanvasEmbed({
             data-testid="canvas-embed-kusto"
             data-expanded={expanded ? 'true' : 'false'}
         >
-            <button
-                type="button"
-                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[#172033] hover:bg-[#f7f9fc] dark:text-[#cccccc] dark:hover:bg-[#252526] ${expanded ? 'border-b border-[#dce3ee] dark:border-[#3c3c3c]' : ''}`}
-                onClick={() => setUserExpanded(!expanded)}
-                aria-expanded={expanded}
-                data-testid="canvas-embed-kusto-toggle"
-            >
-                <span className="text-[10px] text-[#848484]" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
-                <span className="min-w-0 flex-1 truncate font-semibold">{canvas.title || 'Kusto query'}</span>
-                <span className="shrink-0 text-[10px] text-[#657188] dark:text-[#a0a0a0]" data-testid="canvas-embed-kusto-summary">{summary}</span>
-            </button>
+            <div className={`flex w-full items-center gap-2 px-3 py-1.5 text-xs text-[#172033] dark:text-[#cccccc] ${expanded ? 'border-b border-[#dce3ee] dark:border-[#3c3c3c]' : ''}`}>
+                <button
+                    type="button"
+                    className="flex min-w-0 items-center gap-2 text-left hover:opacity-80"
+                    onClick={() => setUserExpanded(!expanded)}
+                    aria-expanded={expanded}
+                    data-testid="canvas-embed-kusto-toggle"
+                >
+                    <span className="text-[10px] text-[#848484]" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+                    <span className="min-w-0 truncate font-semibold">{canvas.title || 'Kusto query'}</span>
+                </button>
+                {/* When expanded, KustoView portals its cluster/database editors here. */}
+                {expanded && (
+                    <div
+                        ref={setConnectionSlotEl}
+                        className="flex min-w-0 items-center gap-1.5"
+                        data-testid="canvas-embed-kusto-connection-slot"
+                    />
+                )}
+                <span className="ml-auto shrink-0 text-[10px] text-[#657188] dark:text-[#a0a0a0]" data-testid="canvas-embed-kusto-summary">{summary}</span>
+            </div>
             {expanded && (
-                <div className="h-[460px] overflow-hidden">
+                <div className="h-[420px] overflow-hidden">
                     <KustoView
                         workspaceId={workspaceId}
                         canvas={canvas}
                         onCanvasSaved={onCanvasSaved}
                         compact
+                        connectionInHeader
+                        connectionSlot={connectionSlotEl}
                     />
                 </div>
             )}

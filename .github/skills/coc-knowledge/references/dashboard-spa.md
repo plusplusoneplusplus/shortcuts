@@ -410,7 +410,11 @@ list in `ConversationArea`) keeps only the last embed in document order expanded
 and collapses the rest to a clickable header (title + row-count summary); each
 embed registers its wrapper element and the group picks the last via
 `compareDocumentPosition`. A reader's manual toggle overrides the default, and an
-embed rendered outside any provider stays expanded. The SPA client no-emit gate
+embed rendered outside any provider stays expanded. To keep the embed compact,
+the expanded header exposes a slot (`canvas-embed-kusto-connection-slot`) and
+`KustoView` — given `connectionInHeader` + `connectionSlot` — `createPortal`s its
+cluster/database editors into it instead of the body labeled row (the editors
+stay owned by `KustoView`; only their mount point moves). The SPA client no-emit gate
 (`npx tsc -p tsconfig.client.json --noEmit`) is intentionally scoped to this
 Canvas/Kusto surface and its imported helpers.
 
