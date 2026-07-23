@@ -1,17 +1,43 @@
 /**
- * IndentExtension — adds indent/outdent commands for paragraph and heading nodes.
+ * IndentExtension — adds indent/outdent commands for the indentable block nodes.
  *
  * Stores the indentation level as a `data-indent` attribute on the node.
  * Visual padding is applied via CSS in noteEditor.css.
+ *
+ * Two families of nodes share the SAME indentation contract:
+ *   - Text blocks (`paragraph`, `heading`) carry `indent` as a Tiptap *global*
+ *     attribute added here.
+ *   - Block-level visual embeds (`image`, `pdfBlock`, `mapBlock`,
+ *     `mermaidBlock`, `mathDisplay`) declare their own `indent` attribute via
+ *     the shared `createIndentAttribute()` helper so parsing, clamping, and
+ *     rendering can never drift from the text blocks.
+ *
+ * The commands operate on every name in `INDENT_TYPES`.
  *
  * Tab / Shift-Tab trigger increase/decrease indent only when the cursor is
  * not inside a list item (where Tiptap's default Tab behaviour applies).
  */
 
 import { Extension } from '@tiptap/core';
+import {
+    INDENT_TYPES,
+    MAX_INDENT,
+    TEXT_INDENT_TYPES,
+    createIndentAttribute,
+} from './indentShared';
 
-export const MAX_INDENT = 8;
-export const INDENT_TYPES = ['paragraph', 'heading'];
+// Re-export the shared primitives so existing importers of this module keep
+// working. The framework-free definitions live in `indentShared.ts`.
+export {
+    MAX_INDENT,
+    INDENT_TYPES,
+    TEXT_INDENT_TYPES,
+    EMBED_INDENT_TYPES,
+    clampIndent,
+    parseIndentAttr,
+    renderIndentAttr,
+    createIndentAttribute,
+} from './indentShared';
 
 declare module '@tiptap/core' {
     interface Commands<ReturnType> {
@@ -28,22 +54,9 @@ export const IndentExtension = Extension.create({
     addGlobalAttributes() {
         return [
             {
-                types: INDENT_TYPES,
+                types: TEXT_INDENT_TYPES,
                 attributes: {
-                    indent: {
-                        default: 0,
-                        parseHTML: (el) => {
-                            const raw = el.getAttribute('data-indent');
-                            if (!raw) return 0;
-                            const n = parseInt(raw, 10);
-                            return Number.isFinite(n) ? Math.max(0, Math.min(n, MAX_INDENT)) : 0;
-                        },
-                        renderHTML: (attrs) => {
-                            const n = attrs.indent;
-                            if (!n || n <= 0) return {};
-                            return { 'data-indent': String(n) };
-                        },
-                    },
+                    indent: createIndentAttribute(),
                 },
             },
         ];

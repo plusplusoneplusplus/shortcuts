@@ -23,6 +23,7 @@ import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
 import { renderMath, getMathError } from '../../../../../shared/math/renderMath';
 import type { MathDelimiter } from '../../../../../shared/math/mathTokenizer';
+import { createIndentAttribute } from './indentShared';
 
 const DELIMITERS: MathDelimiter[] = ['dollar', 'double-dollar', 'paren', 'bracket'];
 
@@ -38,6 +39,7 @@ function coerceDelimiter(value: unknown, display: boolean): MathDelimiter {
 function MathNodeView({ node, updateAttributes, selected }: NodeViewProps) {
     const display = node.type.name === 'mathDisplay';
     const tex: string = node.attrs.tex ?? '';
+    const indent = display ? Number(node.attrs.indent || 0) : 0;
 
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState(tex);
@@ -110,6 +112,7 @@ function MathNodeView({ node, updateAttributes, selected }: NodeViewProps) {
             as={display ? 'div' : 'span'}
             className={wrapperClass}
             data-math={display ? 'display' : 'inline'}
+            data-indent={indent > 0 ? indent : undefined}
         >
             <span
                 className="math-node-render"
@@ -224,7 +227,9 @@ export const MathDisplay = Node.create({
     draggable: true,
 
     addAttributes() {
-        return buildAttributes();
+        // Block display math opts into the shared embed indentation contract;
+        // inline math is not a block and stays without an indent attribute.
+        return { ...buildAttributes(), indent: createIndentAttribute() };
     },
 
     parseHTML() {

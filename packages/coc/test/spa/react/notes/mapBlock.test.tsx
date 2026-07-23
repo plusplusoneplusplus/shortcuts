@@ -20,7 +20,7 @@ const mapUrl = 'https://www.google.com/maps/embed?pb=!1m18!1m12';
 
 type ExtensionConfig = {
     parseHTML(): Array<{ tag: string; getAttrs: (el: HTMLElement) => false | { url: string; label: string } }>;
-    renderHTML(args: { node: { attrs: { url: string; label: string } } }): unknown[];
+    renderHTML(args: { node: { attrs: { url: string; label: string; indent?: number } } }): unknown[];
 };
 
 type NodeViewConfig = ExtensionConfig & {
@@ -58,7 +58,7 @@ describe('MapBlock parseHTML', () => {
 });
 
 describe('MapBlock renderHTML', () => {
-    it('round-trips to the markdown renderer placeholder structure', () => {
+    it('round-trips to the markdown renderer placeholder structure (no data-indent at level 0)', () => {
         const result = config.renderHTML({ node: { attrs: { url: mapUrl, label: 'Lake Chelan' } } });
         expect(result).toEqual([
             'div',
@@ -66,6 +66,19 @@ describe('MapBlock renderHTML', () => {
                 class: 'md-map-embed',
                 'data-map-url': mapUrl,
                 'data-map-label': 'Lake Chelan',
+            },
+        ]);
+    });
+
+    it('adds data-indent to the placeholder for an indented map', () => {
+        const result = config.renderHTML({ node: { attrs: { url: mapUrl, label: 'Lake Chelan', indent: 4 } } });
+        expect(result).toEqual([
+            'div',
+            {
+                class: 'md-map-embed',
+                'data-map-url': mapUrl,
+                'data-map-label': 'Lake Chelan',
+                'data-indent': '4',
             },
         ]);
     });

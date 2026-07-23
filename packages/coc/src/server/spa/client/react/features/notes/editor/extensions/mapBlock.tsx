@@ -3,11 +3,13 @@ import { Node } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
 import { isEmbeddableMapUrl } from '@plusplusoneplusplus/forge/editor/rendering';
+import { createIndentAttribute, renderIndentAttr } from './indentShared';
 
 function MapBlockView({ node, updateAttributes }: NodeViewProps) {
     const [mode, setMode] = useState<'preview' | 'source'>('preview');
     const [draftUrl, setDraftUrl] = useState(String(node.attrs.url || ''));
     const label = String(node.attrs.label || 'Google Maps');
+    const indent = Number(node.attrs.indent || 0);
     const canPreview = isEmbeddableMapUrl(draftUrl);
 
     const updateUrl = (url: string) => {
@@ -19,6 +21,7 @@ function MapBlockView({ node, updateAttributes }: NodeViewProps) {
         <NodeViewWrapper
             className="map-node-view"
             data-drag-handle=""
+            data-indent={indent > 0 ? indent : undefined}
         >
             <div className="md-map-embed-shell" contentEditable={false}>
                 <div className="md-map-embed-toolbar">
@@ -74,6 +77,7 @@ export const MapBlock = Node.create({
         return {
             url: { default: '' },
             label: { default: 'Google Maps' },
+            indent: createIndentAttribute(),
         };
     },
 
@@ -100,6 +104,7 @@ export const MapBlock = Node.create({
                 class: 'md-map-embed',
                 'data-map-url': node.attrs.url,
                 'data-map-label': node.attrs.label,
+                ...renderIndentAttr(node.attrs.indent),
             },
         ];
     },
