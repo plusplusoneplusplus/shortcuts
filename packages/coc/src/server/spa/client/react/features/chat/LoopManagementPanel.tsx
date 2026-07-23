@@ -33,6 +33,21 @@ function formatRelativeTime(isoDate: string | null): string {
     return `${Math.round(diff / 86_400_000)}d ago`;
 }
 
+function formatFutureTime(isoDate: string | null): string {
+    if (!isoDate) return '—';
+    const diff = new Date(isoDate).getTime() - Date.now();
+    if (diff <= 0) return 'due now';
+    if (diff < 60_000) return `in ${Math.round(diff / 1000)}s`;
+    if (diff < 3_600_000) return `in ${Math.round(diff / 60_000)}m`;
+    if (diff < 86_400_000) return `in ${Math.round(diff / 3_600_000)}h`;
+    return `in ${Math.round(diff / 86_400_000)}d`;
+}
+
+function formatAbsoluteTime(isoDate: string | null): string | undefined {
+    if (!isoDate) return undefined;
+    return new Date(isoDate).toLocaleString();
+}
+
 const STATUS_STYLES: Record<string, string> = {
     active: 'text-[#15703a] dark:text-[#4ade80] bg-[#e6f4ea] dark:bg-[#1a3a2a]',
     paused: 'text-[#b08800] dark:text-[#fbbf24] bg-[#fff8e1] dark:bg-[#3a2f1a]',
@@ -96,6 +111,18 @@ export function LoopManagementPanel({ loops, isOpen, onClose, onPause, onResume,
                         <span>Ticks: {loop.tickCount}</span>
                         <span>·</span>
                         <span>Last: {formatRelativeTime(loop.lastTickAt)}</span>
+                        {loop.status === 'active' && loop.nextTickAt && (
+                            <>
+                                <span>·</span>
+                                <span
+                                    className="text-[#15703a] dark:text-[#4ade80]"
+                                    title={formatAbsoluteTime(loop.nextTickAt)}
+                                    data-testid={`loop-next-${loop.id}`}
+                                >
+                                    Next: {formatFutureTime(loop.nextTickAt)}
+                                </span>
+                            </>
+                        )}
                         {loop.pausedReason && (
                             <>
                                 <span>·</span>

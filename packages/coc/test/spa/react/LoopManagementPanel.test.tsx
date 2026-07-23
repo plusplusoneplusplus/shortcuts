@@ -1,5 +1,7 @@
 /**
  * Tests for LoopManagementPanel — rendering loop list, actions, empty state.
+ *
+ * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -158,6 +160,55 @@ describe('LoopManagementPanel', () => {
             />,
         );
         expect(screen.getByText('every 5m')).toBeTruthy();
+    });
+
+    it('shows next scheduled time for active loops with nextTickAt', () => {
+        const nextTickAt = new Date(Date.now() + 2 * 3_600_000 + 30_000).toISOString();
+        render(
+            <LoopManagementPanel
+                loops={[makeLoop({ id: 'l1', status: 'active', nextTickAt })]}
+                isOpen={true}
+                {...defaultHandlers}
+            />,
+        );
+        const el = screen.getByTestId('loop-next-l1');
+        expect(el.textContent).toBe('Next: in 2h');
+        expect(el.getAttribute('title')).toBe(new Date(nextTickAt).toLocaleString());
+    });
+
+    it('does not show next scheduled time when nextTickAt is null', () => {
+        render(
+            <LoopManagementPanel
+                loops={[makeLoop({ id: 'l1', status: 'active', nextTickAt: null })]}
+                isOpen={true}
+                {...defaultHandlers}
+            />,
+        );
+        expect(screen.queryByTestId('loop-next-l1')).toBeNull();
+    });
+
+    it('does not show next scheduled time for paused loops', () => {
+        const nextTickAt = new Date(Date.now() + 3_600_000).toISOString();
+        render(
+            <LoopManagementPanel
+                loops={[makeLoop({ id: 'l1', status: 'paused', nextTickAt })]}
+                isOpen={true}
+                {...defaultHandlers}
+            />,
+        );
+        expect(screen.queryByTestId('loop-next-l1')).toBeNull();
+    });
+
+    it('shows "due now" when nextTickAt is in the past', () => {
+        const nextTickAt = new Date(Date.now() - 5_000).toISOString();
+        render(
+            <LoopManagementPanel
+                loops={[makeLoop({ id: 'l1', status: 'active', nextTickAt })]}
+                isOpen={true}
+                {...defaultHandlers}
+            />,
+        );
+        expect(screen.getByTestId('loop-next-l1').textContent).toBe('Next: due now');
     });
 
     it('separates active and inactive loops', () => {
