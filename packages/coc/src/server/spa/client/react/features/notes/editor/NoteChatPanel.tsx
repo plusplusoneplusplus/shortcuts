@@ -56,7 +56,7 @@ export interface NoteChatPanelProps {
 }
 
 export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBeforeSend, defaultScope, references, onRemoveReference, onClearReferences, onHasChatChange, presentation = 'embedded', onMinimize, onPin, onUnpin }: NoteChatPanelProps) {
-    const { taskId, chatNoteContext, createChat, resetChat, scope, setScope } = useNotesChat({
+    const { taskId, chatNoteContext, syncChatNoteContext, createChat, resetChat, scope, setScope } = useNotesChat({
         workspaceId,
         notePath,
         noteTitle,
@@ -332,6 +332,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                         onBack={onClose}
                         pendingPrefix={references && references.length > 0 ? formatNoteReferences(references) : undefined}
                         onClearPendingPrefix={onClearReferences}
+                        onProcessLoaded={syncChatNoteContext}
                     />
                 </ChatPreferencesProvider>
             )}

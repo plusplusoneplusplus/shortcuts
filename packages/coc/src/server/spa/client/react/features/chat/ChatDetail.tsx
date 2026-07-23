@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
-import type { CanvasSummary } from '@plusplusoneplusplus/coc-client';
+import type { AIProcess, CanvasSummary } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
 import { getCocClientForWorkspace, lookupCloneBaseUrl } from '../../repos/cloneRegistry';
 import { isRemoteWorkspace } from '../../repos/remoteWorkspaceAggregation';
@@ -141,6 +141,8 @@ export interface ChatDetailProps {
     pendingPrefix?: string;
     /** Called after pendingPrefix has been consumed (prepended and sent). */
     onClearPendingPrefix?: () => void;
+    /** Reports each accepted process snapshot without issuing another request. */
+    onProcessLoaded?: (process: AIProcess) => void;
     /** Opens the reviewed For Each parent-run pane after approval. */
     onOpenForEachRun?: (runId: string) => void;
     /** Opens the reviewed Map Reduce parent-run pane after approval. */
@@ -163,7 +165,7 @@ export interface ChatDetailProps {
     hideHeader?: boolean;
 }
 
-export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, compactModeSelector = false, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onOpenForEachRun, onOpenMapReduceRun, onStartFreshSameContext, startingFreshSameContext = false, searchHighlightQuery, hideHeader = false }: ChatDetailProps) {
+export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, compactModeSelector = false, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onProcessLoaded, onOpenForEachRun, onOpenMapReduceRun, onStartFreshSameContext, startingFreshSameContext = false, searchHighlightQuery, hideHeader = false }: ChatDetailProps) {
     // Per-clone REST client (AC-07): a remote clone's chat reads/writes go to its
     // own server; a local clone keeps the default origin client. All process/
     // queue/notes/canvas/skill calls below are scoped to this chat's workspace.
@@ -278,6 +280,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     }, []);
 
     const loadCounterRef = useRef(0);
+    const onProcessLoadedRef = useRef(onProcessLoaded);
+    onProcessLoadedRef.current = onProcessLoaded;
+    useEffect(() => {
+        if (processDetails) {
+            onProcessLoadedRef.current?.(processDetails as AIProcess);
+        }
+    }, [processDetails]);
     const conversationContainerRef = useRef<HTMLDivElement>(null);
     const turnsContainerRef = useRef<HTMLDivElement>(null);
     const scratchpadContainerRef = useRef<HTMLDivElement>(null);
@@ -1793,8 +1802,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     // Background-refresh metadata
                     client.processes.get(pid)
                         .then((data: any) => {
-                            setProcessDetails(data?.process || null);
-                            seedSessionTokensFromProcess(data?.process);
+                            if (loadCounterRef.current !== loadId) {
+                                return;
+                            }
+                            const loadedProcess = data?.process ?? null;
+                            setProcessDetails(loadedProcess);
+                            seedSessionTokensFromProcess(loadedProcess);
                             // Merge customTitle/title/lastMessagePreview into task so
                             // the chat header reflects the persisted custom name even
                             // on cached loads where loadedTask lacked these fields.

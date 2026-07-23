@@ -360,6 +360,16 @@ function SeededChatDetail({ task, ...rest }: { task: any } & Partial<React.Compo
     return <ChatDetail taskId={task.id} {...rest} />;
 }
 
+function ProcessStateChatDetail({ processes, ...rest }: {
+    processes: any[];
+} & React.ComponentProps<typeof ChatDetail>) {
+    const { dispatch: appDispatch } = useApp();
+    useEffect(() => {
+        appDispatch({ type: 'SET_PROCESSES', processes });
+    }, [appDispatch, processes]);
+    return <ChatDetail {...rest} />;
+}
+
 // ── Factories ──────────────────────────────────────────────────────────────
 
 function makeTask(overrides?: Partial<any>): any {
@@ -683,6 +693,74 @@ describe('ChatDetail', () => {
                     ([url]: [string]) => typeof url === 'string' && url.includes('/processes/proc-1'),
                 );
                 expect(processCalls.length).toBeGreaterThanOrEqual(1);
+            });
+        });
+
+        it('reports accepted process metadata from the existing detail load', async () => {
+            const onProcessLoaded = vi.fn();
+            const process = makeProcess({
+                metadata: {
+                    mode: 'autopilot',
+                    queueTaskId: 'task-1',
+                    notePath: 'Travel/Baja.md',
+                    noteTitle: 'Baja',
+                },
+            });
+            setupStandardFetch(makeTask(), process);
+
+            render(
+                <Wrap>
+                    <ChatDetail taskId="task-1" onProcessLoaded={onProcessLoaded} />
+                </Wrap>,
+            );
+
+            await waitFor(() => {
+                expect(onProcessLoaded).toHaveBeenCalledWith(process);
+            });
+        });
+
+        it('reports note metadata when a restored queued chat later gains a process', async () => {
+            const onProcessLoaded = vi.fn();
+            const queuedTask = makePendingTask({
+                id: 'task-1',
+                type: 'chat',
+                payload: { kind: 'chat', mode: 'ask', prompt: 'Queued note chat' },
+            });
+            const process = makeProcess({
+                id: 'queue_task-1',
+                metadata: {
+                    mode: 'ask',
+                    queueTaskId: 'task-1',
+                    notePath: 'Travel/Baja.md',
+                    noteTitle: 'Baja',
+                },
+            });
+            setupStandardFetch(queuedTask, process);
+
+            const view = render(
+                <Wrap>
+                    <ProcessStateChatDetail
+                        taskId="task-1"
+                        processes={[]}
+                        onProcessLoaded={onProcessLoaded}
+                    />
+                </Wrap>,
+            );
+            await waitFor(() => expect(screen.getByText('Queued note chat')).toBeTruthy());
+            expect(onProcessLoaded).not.toHaveBeenCalled();
+
+            view.rerender(
+                <Wrap>
+                    <ProcessStateChatDetail
+                        taskId="task-1"
+                        processes={[{ id: 'queue_task-1', status: 'completed' }]}
+                        onProcessLoaded={onProcessLoaded}
+                    />
+                </Wrap>,
+            );
+
+            await waitFor(() => {
+                expect(onProcessLoaded).toHaveBeenCalledWith(process);
             });
         });
 
