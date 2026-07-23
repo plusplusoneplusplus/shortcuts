@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -29,6 +29,7 @@ vi.mock('@excalidraw/excalidraw', () => ({
 }));
 
 import { MarkdownView } from '../../../src/server/spa/client/react/shared/MarkdownView';
+import { KustoEmbedGroupProvider } from '../../../src/server/spa/client/react/shared/KustoEmbedGroup';
 import { chatMarkdownToHtml } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
 
 mocks.client = {
@@ -175,5 +176,83 @@ describe('inline canvas:// embed', () => {
         expect(preview.textContent).toContain(content);
         expect(preview.textContent).toContain(label);
         expect(screen.queryByTestId('mock-excalidraw')).toBeNull();
+    });
+
+    function kustoCanvas(id: string) {
+        return {
+            id,
+            workspaceId: 'ws-1',
+            title: `Query ${id}`,
+            type: 'kusto',
+            content: JSON.stringify({
+                query: 'StormEvents | take 5',
+                clusterUrl: 'https://help.kusto.windows.net',
+                database: 'Samples',
+                columns: [{ name: 'State', type: 'string' }],
+                rows: [['Texas']],
+                truncated: false,
+                lastRun: { timestamp: '2026-07-18T01:00:00.000Z', status: 'success', rowCount: 1 },
+            }),
+            revision: 3,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+            lastEditor: 'ai',
+        };
+    }
+
+    function renderGroupedKustoEmbeds() {
+        mocks.get.mockImplementation((_ws: string, id: string) => Promise.resolve(kustoCanvas(id)));
+        const html = chatMarkdownToHtml('canvas://k1\n\ncanvas://k2', 'ws-1', { canvasEmbedEnabled: true });
+        return render(
+            <KustoEmbedGroupProvider>
+                <MarkdownView html={html} />
+            </KustoEmbedGroupProvider>,
+        );
+    }
+
+    it('keeps only the most recent Kusto embed expanded when several are grouped', async () => {
+        renderGroupedKustoEmbeds();
+
+        // The last embed in document order stays open; earlier ones collapse.
+        await waitFor(() => {
+            const embeds = screen.getAllByTestId('canvas-embed-kusto');
+            expect(embeds).toHaveLength(2);
+            expect(embeds[0].getAttribute('data-expanded')).toBe('false');
+            expect(embeds[1].getAttribute('data-expanded')).toBe('true');
+        });
+
+        // Only the expanded (last) embed mounts the interactive query editor.
+        expect(screen.getAllByTestId('kusto-query')).toHaveLength(1);
+        const embeds = screen.getAllByTestId('canvas-embed-kusto');
+        expect(embeds[1].querySelector('[data-testid="kusto-query"]')).toBeTruthy();
+        expect(embeds[0].querySelector('[data-testid="kusto-query"]')).toBeNull();
+        // The collapsed embed still shows its header + summary so it can be reopened.
+        expect(embeds[0].querySelector('[data-testid="canvas-embed-kusto-summary"]')?.textContent).toBe('1 row');
+    });
+
+    it('expands a collapsed Kusto embed when the reader clicks its header', async () => {
+        renderGroupedKustoEmbeds();
+
+        await waitFor(() => {
+            expect(screen.getAllByTestId('canvas-embed-kusto')[0].getAttribute('data-expanded')).toBe('false');
+        });
+
+        fireEvent.click(screen.getAllByTestId('canvas-embed-kusto-toggle')[0]);
+
+        await waitFor(() => {
+            expect(screen.getAllByTestId('canvas-embed-kusto')[0].getAttribute('data-expanded')).toBe('true');
+        });
+        // Both are now open — the last by default, the first by the reader's click.
+        expect(screen.getAllByTestId('kusto-query')).toHaveLength(2);
+    });
+
+    it('stays expanded for a lone Kusto embed with no surrounding group', async () => {
+        mocks.get.mockResolvedValue(kustoCanvas('solo'));
+        const html = chatMarkdownToHtml('canvas://solo', 'ws-1', { canvasEmbedEnabled: true });
+        render(<MarkdownView html={html} />);
+
+        const embed = await screen.findByTestId('canvas-embed-kusto');
+        expect(embed.getAttribute('data-expanded')).toBe('true');
+        expect(embed.querySelector('[data-testid="kusto-query"]')).toBeTruthy();
     });
 });

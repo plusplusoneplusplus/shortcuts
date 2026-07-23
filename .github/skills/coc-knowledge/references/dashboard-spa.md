@@ -399,7 +399,13 @@ an older revision routes the stored snapshot through the same `KustoView` in a
 and never persisted) so historical rows render via `InteractiveTable` — kusto
 canvases never feed their serialized row JSON to the markdown pipeline
 (`chatMarkdownToHtml`), avoiding a costly parse of up to `MAX_KUSTO_ROWS` (10,000)
-rows on each revision switch. The SPA client no-emit gate
+rows on each revision switch. When a conversation holds several inline Kusto
+embeds, `KustoEmbedGroupProvider` (`shared/KustoEmbedGroup.tsx`, wrapping the turn
+list in `ConversationArea`) keeps only the last embed in document order expanded
+and collapses the rest to a clickable header (title + row-count summary); each
+embed registers its wrapper element and the group picks the last via
+`compareDocumentPosition`. A reader's manual toggle overrides the default, and an
+embed rendered outside any provider stays expanded. The SPA client no-emit gate
 (`npx tsc -p tsconfig.client.json --noEmit`) is intentionally scoped to this
 Canvas/Kusto surface and its imported helpers.
 
