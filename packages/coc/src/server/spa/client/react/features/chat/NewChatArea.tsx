@@ -131,6 +131,26 @@ export interface InitialChatComposerProps {
      * surface-visible, feature-enabled mode.
      */
     allowedModes?: readonly ChatMode[];
+    /**
+     * Text automatically prepended to the submitted prompt, ahead of any
+     * attached-context blocks and the typed input. When non-empty it counts as
+     * sendable content, so Send stays enabled with an empty text box and no
+     * attachments. It is consumed once and cleared via {@link onClearPendingPrefix}
+     * only after a successful submission — a flush or create failure leaves it and
+     * the typed input intact. Modeled on the active-chat (ChatDetail) pending-prefix
+     * behavior; the Notes adapter uses it to carry selected-text references without
+     * the shared composer branching on any feature. Omit for the default behavior.
+     */
+    pendingPrefix?: string;
+    /** Called after a successful submission has consumed {@link pendingPrefix}. */
+    onClearPendingPrefix?: () => void;
+    /**
+     * Generic node rendered in the input area directly above the composer input
+     * card (e.g. removable reference chips). The shared composer only provides the
+     * slot and its placement; the adapter owns the content and its interactions.
+     * Omit to render nothing there.
+     */
+    accessoryAboveInput?: React.ReactNode;
 }
 
 const PROVIDER_LABELS: Record<ChatProvider, string> = {
@@ -231,6 +251,9 @@ export function InitialChatComposer({
     enableRalphDirectGoal = true,
     settingsLayout = 'full',
     allowedModes,
+    pendingPrefix,
+    onClearPendingPrefix,
+    accessoryAboveInput,
 }: InitialChatComposerProps) {
     const [input, setInput] = useState('');
     const [cursorPos, setCursorPos] = useState(0);
@@ -725,7 +748,7 @@ export function InitialChatComposer({
     async function handleSend() {
         const trimmed = input.trim();
         const contextItems = attachedContext.getItems();
-        if ((!trimmed && attachments.length === 0 && contextItems.length === 0) || sending) return;
+        if ((!trimmed && attachments.length === 0 && contextItems.length === 0 && !hasPendingPrefixContent) || sending) return;
         if (selectedMode === 'for-each' || selectedMode === 'map-reduce') {
             if (!workspaceId) {
                 setError(selectedMode === 'for-each'
@@ -811,7 +834,10 @@ export function InitialChatComposer({
             if (selectedMode === 'ralph') {
                 basePrompt += '\n\nWhen you\'ve finished grilling me and have a clear understanding of the goal, write the final goal specification to a `.goal.md` file (e.g. `feature-name.goal.md`).';
             }
-            const effectivePrompt = formatAttachedContext(contextItems) + basePrompt;
+            // Pending prefix (e.g. Notes selected-text references) leads the
+            // request body, ahead of any attached-context blocks and the typed
+            // input, so its removable chips map to a deterministic prompt order.
+            const effectivePrompt = (pendingPrefix ?? '') + formatAttachedContext(contextItems) + basePrompt;
 
             const resolvedAi = resolveComposerAiSelection();
             const context = mergeAutoProviderRoutingContext(resolvedAi, contextOverride);
@@ -838,6 +864,9 @@ export function InitialChatComposer({
             attachedContext.clear();
             promptHistory.reset();
             clearDraft(draftStorageKey);
+            // Consume the pending prefix only after a successful create — a
+            // rejected onSubmit skips this so the references stay intact for retry.
+            onClearPendingPrefix?.();
         } catch (err: any) {
             if (err?.name !== 'AbortError') {
                 setError(getSpaCocClientErrorMessage(err, 'Failed to create task'));
@@ -1275,6 +1304,17 @@ export function InitialChatComposer({
         );
     }
 
+    // A non-empty pending prefix (e.g. Notes selected-text references) counts as
+    // sendable content: Send stays enabled and the prefix becomes the request body
+    // even with an empty text box and no attachments (AC-04). Whitespace-only
+    // prefixes do not count.
+    const hasPendingPrefixContent = (pendingPrefix ?? '').trim().length > 0;
+    const composerInputEmpty =
+        !input.trim()
+        && attachments.length === 0
+        && attachedContext.items.length === 0
+        && !hasPendingPrefixContent;
+
     return (
         <div
             ref={composerRootRef}
@@ -1370,6 +1410,7 @@ export function InitialChatComposer({
                         e.target.value = '';
                     }}
                 />
+                {accessoryAboveInput}
                 <div
                     data-testid="chat-input-stack"
                     className="space-y-1"
@@ -1567,7 +1608,7 @@ export function InitialChatComposer({
                                 >
                                     <button
                                         type="button"
-                                        disabled={!input.trim() && attachments.length === 0 && attachedContext.items.length === 0}
+                                        disabled={composerInputEmpty}
                                         className="inline-flex items-center gap-1 h-[24px] pl-2 pr-2 rounded-l-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                         onClick={() => { void handleSend(); }}
                                         data-testid={`${testIdPrefix}-send-btn`}
@@ -1596,7 +1637,7 @@ export function InitialChatComposer({
                             ) : (
                                 <button
                                     type="button"
-                                    disabled={!input.trim() && attachments.length === 0 && attachedContext.items.length === 0}
+                                    disabled={composerInputEmpty}
                                     className="shrink-0 inline-flex items-center gap-1 h-[24px] pl-2 pr-1.5 rounded-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                     onClick={() => { void handleSend(); }}
                                     data-testid={`${testIdPrefix}-send-btn`}
@@ -1616,7 +1657,7 @@ export function InitialChatComposer({
                         ) : selectedMode === 'for-each' && isForEachEnabled() ? (
                             <button
                                 type="button"
-                                disabled={!input.trim() && attachments.length === 0 && attachedContext.items.length === 0}
+                                disabled={composerInputEmpty}
                                 className="shrink-0 inline-flex items-center gap-1 h-[24px] pl-2 pr-1.5 rounded-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                 onClick={() => { void handleSend(); }}
                                 data-testid={`${testIdPrefix}-send-btn`}
@@ -1641,7 +1682,7 @@ export function InitialChatComposer({
                         ) : (
                             <button
                                 type="button"
-                                disabled={!input.trim() && attachments.length === 0 && attachedContext.items.length === 0}
+                                disabled={composerInputEmpty}
                                 className="shrink-0 inline-flex items-center gap-1 h-[24px] pl-2 pr-1.5 rounded-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                 onClick={() => { void handleSend(); }}
                                 data-testid={`${testIdPrefix}-send-btn`}

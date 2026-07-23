@@ -1936,4 +1936,147 @@ describe('NewChatArea', () => {
             expect(screen.getByTestId('workflow-mode-trigger')).toBeTruthy();
         });
     });
+
+    // AC-04: the shared composer offers a generic pending-prefix + accessory slot
+    // (modeled on the active-chat ChatDetail pending-prefix) so an adapter (e.g.
+    // Notes) can carry selected-text references without the component branching on
+    // any feature. The prefix leads the request body, counts as sendable content,
+    // and is cleared only after a successful submission.
+    describe('pending prefix and accessory slot', () => {
+        const NOTE_PREFIX = '<note_reference path="a.md">selected text</note_reference>\n\n';
+
+        it('renders the accessory node above the input card', () => {
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={vi.fn().mockResolvedValue(null)}
+                    accessoryAboveInput={<div data-testid="note-refs">chips</div>}
+                />,
+            );
+
+            const accessory = screen.getByTestId('note-refs');
+            const inputBar = screen.getByTestId('chat-input-bar');
+            expect(accessory).toBeTruthy();
+            // The accessory precedes the input card in DOM order.
+            expect(accessory.compareDocumentPosition(inputBar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        });
+
+        it('renders nothing extra when the accessory slot is omitted', () => {
+            render(
+                <InitialChatComposer workspaceId="ws-1" onSubmit={vi.fn().mockResolvedValue(null)} />,
+            );
+
+            expect(screen.queryByTestId('note-refs')).toBeNull();
+            expect(screen.getByTestId('chat-input-bar')).toBeTruthy();
+        });
+
+        it('treats a non-empty pending prefix as sendable content with an empty text box', () => {
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={vi.fn().mockResolvedValue(null)}
+                    pendingPrefix={NOTE_PREFIX}
+                />,
+            );
+
+            // No typed text and no attachments — the prefix alone keeps Send enabled.
+            expect((screen.getByTestId('new-chat-send-btn') as HTMLButtonElement).disabled).toBe(false);
+        });
+
+        it('keeps Send disabled when the prefix is whitespace-only and the box is empty', () => {
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={vi.fn().mockResolvedValue(null)}
+                    pendingPrefix={'   \n\n'}
+                />,
+            );
+
+            expect((screen.getByTestId('new-chat-send-btn') as HTMLButtonElement).disabled).toBe(true);
+        });
+
+        it('prepends the pending prefix ahead of the typed input and clears it on success', async () => {
+            const onSubmit = vi.fn().mockResolvedValue('task-1');
+            const onClearPendingPrefix = vi.fn();
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={onSubmit}
+                    pendingPrefix={NOTE_PREFIX}
+                    onClearPendingPrefix={onClearPendingPrefix}
+                />,
+            );
+
+            fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'What does this do?' } });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+            });
+
+            expect(onSubmit).toHaveBeenCalledTimes(1);
+            // Prefix leads, typed input follows, each appearing once.
+            expect(onSubmit.mock.calls[0][0].prompt).toBe(`${NOTE_PREFIX}What does this do?`);
+            expect(onClearPendingPrefix).toHaveBeenCalledTimes(1);
+        });
+
+        it('sends the prefix as the request body when the text box is empty', async () => {
+            const onSubmit = vi.fn().mockResolvedValue('task-1');
+            const onClearPendingPrefix = vi.fn();
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={onSubmit}
+                    pendingPrefix={NOTE_PREFIX}
+                    onClearPendingPrefix={onClearPendingPrefix}
+                />,
+            );
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+            });
+
+            expect(onSubmit).toHaveBeenCalledTimes(1);
+            expect(onSubmit.mock.calls[0][0].prompt).toBe(NOTE_PREFIX);
+            expect(onClearPendingPrefix).toHaveBeenCalledTimes(1);
+        });
+
+        it('leaves the pending prefix and typed input intact when submission fails', async () => {
+            const onSubmit = vi.fn().mockRejectedValue(new Error('create failed'));
+            const onClearPendingPrefix = vi.fn();
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={onSubmit}
+                    pendingPrefix={NOTE_PREFIX}
+                    onClearPendingPrefix={onClearPendingPrefix}
+                />,
+            );
+
+            fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'Retry me' } });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+            });
+
+            expect(onSubmit).toHaveBeenCalledTimes(1);
+            // Failure path: prefix is not consumed and the typed text is preserved.
+            expect(onClearPendingPrefix).not.toHaveBeenCalled();
+            expect((screen.getByTestId('new-chat-input') as HTMLInputElement).value).toBe('Retry me');
+        });
+
+        it('leaves Send disabled and prompt composition unchanged when the prefix props are omitted', async () => {
+            const onSubmit = vi.fn().mockResolvedValue('task-1');
+            render(
+                <InitialChatComposer workspaceId="ws-1" onSubmit={onSubmit} />,
+            );
+
+            // Default path unchanged: no prefix, empty box → disabled.
+            expect((screen.getByTestId('new-chat-send-btn') as HTMLButtonElement).disabled).toBe(true);
+
+            fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'Plain prompt' } });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+            });
+
+            expect(onSubmit.mock.calls[0][0].prompt).toBe('Plain prompt');
+        });
+    });
 });
