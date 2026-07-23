@@ -292,29 +292,37 @@ export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false,
         </div>
     );
 
-    // Compact, unlabeled connection editors mounted into the host header slot.
+    // Connection editors mounted into the host header slot. They stretch to fill
+    // the row (cluster wider than database) with a leading label so each field is
+    // legible without relying on a placeholder that vanishes once filled.
     const headerConnectionEditors = (
-        <div className="flex items-center gap-1.5" data-testid="kusto-connection-header">
-            <input
-                type="text"
-                className={`${SLOT_INPUT_CLASS} w-40 min-w-0`}
-                value={clusterUrl}
-                onChange={e => setClusterUrl(e.target.value)}
-                placeholder="Cluster URL"
-                title="Cluster URL"
-                readOnly={readOnly}
-                data-testid="kusto-cluster"
-            />
-            <input
-                type="text"
-                className={`${SLOT_INPUT_CLASS} w-28 min-w-0`}
-                value={database}
-                onChange={e => setDatabase(e.target.value)}
-                placeholder="Database"
-                title="Database"
-                readOnly={readOnly}
-                data-testid="kusto-database"
-            />
+        <div className="flex flex-1 items-center gap-2 min-w-0" data-testid="kusto-connection-header">
+            <div className="flex flex-[3] items-center gap-1.5 min-w-0">
+                <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-[#848484]">Cluster</span>
+                <input
+                    type="text"
+                    className={`${SLOT_INPUT_CLASS} flex-1 min-w-0 font-mono`}
+                    value={clusterUrl}
+                    onChange={e => setClusterUrl(e.target.value)}
+                    placeholder="https://help.kusto.windows.net"
+                    title="Cluster URL"
+                    readOnly={readOnly}
+                    data-testid="kusto-cluster"
+                />
+            </div>
+            <div className="flex flex-[2] items-center gap-1.5 min-w-0">
+                <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-[#848484]">DB</span>
+                <input
+                    type="text"
+                    className={`${SLOT_INPUT_CLASS} flex-1 min-w-0`}
+                    value={database}
+                    onChange={e => setDatabase(e.target.value)}
+                    placeholder="database"
+                    title="Database"
+                    readOnly={readOnly}
+                    data-testid="kusto-database"
+                />
+            </div>
         </div>
     );
 

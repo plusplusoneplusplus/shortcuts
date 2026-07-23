@@ -68,7 +68,7 @@ function KustoCanvasEmbed({
             <div className={`flex w-full items-center gap-2 px-3 py-1.5 text-xs text-[#172033] dark:text-[#cccccc] ${expanded ? 'border-b border-[#dce3ee] dark:border-[#3c3c3c]' : ''}`}>
                 <button
                     type="button"
-                    className="flex min-w-0 items-center gap-2 text-left hover:opacity-80"
+                    className="flex min-w-0 max-w-[45%] shrink-0 items-center gap-2 text-left hover:opacity-80"
                     onClick={() => setUserExpanded(!expanded)}
                     aria-expanded={expanded}
                     data-testid="canvas-embed-kusto-toggle"
@@ -80,11 +80,11 @@ function KustoCanvasEmbed({
                 {expanded && (
                     <div
                         ref={setConnectionSlotEl}
-                        className="flex min-w-0 items-center gap-1.5"
+                        className="flex flex-1 min-w-0 items-center gap-2"
                         data-testid="canvas-embed-kusto-connection-slot"
                     />
                 )}
-                <span className="ml-auto shrink-0 text-[10px] text-[#657188] dark:text-[#a0a0a0]" data-testid="canvas-embed-kusto-summary">{summary}</span>
+                <span className="ml-auto shrink-0 pl-1 text-[10px] text-[#657188] dark:text-[#a0a0a0]" data-testid="canvas-embed-kusto-summary">{summary}</span>
             </div>
             {expanded && (
                 <div className="h-[420px] overflow-hidden">
