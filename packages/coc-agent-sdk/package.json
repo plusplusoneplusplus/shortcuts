@@ -27,10 +27,10 @@
     "test:run": "vitest run"
   },
   "peerDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.218",
     "@github/copilot-sdk": "^1.0.6",
-    "@openai/codex-sdk": ">=0.1.0",
-    "@anthropic-ai/claude-agent-sdk": ">=0.3.0",
-    "@opencode-ai/sdk": ">=0.1.0"
+    "@openai/codex-sdk": "^0.145.0",
+    "@opencode-ai/sdk": "^1.18.4"
   },
   "peerDependenciesMeta": {
     "@openai/codex-sdk": {
