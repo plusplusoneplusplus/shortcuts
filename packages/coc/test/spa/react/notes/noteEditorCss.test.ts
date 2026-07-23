@@ -170,3 +170,54 @@ describe('noteEditor.css theme consistency', () => {
         expect(darkBtn![0]).toContain('background: #2d2d2d');
     });
 });
+
+describe('noteEditor.css indentation scale (data-indent)', () => {
+    // The Notes indentation feature reuses ONE CSS scale for paragraphs,
+    // headings, AND block-level visual embeds (image, pdfBlock, mapBlock,
+    // mermaidBlock, mathDisplay): a `[data-indent="N"]` descendant of the editor
+    // gets N × 2rem of left padding. The rule targets ANY descendant carrying the
+    // attribute, so the same scale shifts an embed's NodeView wrapper without an
+    // embed-specific system. Because the padding sits on an auto-width block, the
+    // content box shrinks with the indent instead of overflowing the pane — the
+    // responsiveness contract behind AC-03. These assertions lock the scale so
+    // commands, parsing, and styling cannot drift.
+
+    it('defines a 2rem-per-level left-padding step for every level 1 through 8', () => {
+        for (let level = 1; level <= 8; level++) {
+            const rule = css.match(
+                new RegExp(
+                    `\\.note-editor\\s+\\.ProseMirror\\s+\\[data-indent="${level}"\\]\\s*\\{[^}]+\\}`,
+                ),
+            );
+            expect(rule, `missing rule for data-indent="${level}"`).not.toBeNull();
+            expect(rule![0]).toContain(`padding-left: ${level * 2}rem`);
+        }
+    });
+
+    it('scopes the indent rule as a descendant of the editor content area', () => {
+        // A descendant combinator under `.ProseMirror` (not e.g. `p[data-indent]`)
+        // is what lets an embed NodeView wrapper carrying the attribute be shifted
+        // by the same rule as a paragraph or heading.
+        expect(css).toMatch(/\.note-editor\s+\.ProseMirror\s+\[data-indent="1"\]/);
+    });
+
+    it('stops the scale at the shared MAX_INDENT of 8 (no level-9 rule)', () => {
+        // The increase/decrease commands clamp at 8, so there must be a level-8
+        // rule and no level-9 rule to keep in sync.
+        expect(css).toMatch(/\[data-indent="8"\]/);
+        expect(css).not.toMatch(/\[data-indent="9"\]/);
+    });
+
+    it('caps the resizable-image container at the available width so an indented image cannot overflow', () => {
+        // A custom-width image is the one fixed-pixel embed. Its container and
+        // <img> both carry `max-width: 100%`, so when a deep indent shrinks the
+        // content box the image scales down to fit rather than pushing the pane
+        // into horizontal overflow.
+        const container = css.match(/\.image-resize-container\s*\{[^}]+\}/);
+        expect(container).not.toBeNull();
+        expect(container![0]).toContain('max-width: 100%');
+        const containerImg = css.match(/\.image-resize-container\s+img\s*\{[^}]+\}/);
+        expect(containerImg).not.toBeNull();
+        expect(containerImg![0]).toContain('max-width: 100%');
+    });
+});
