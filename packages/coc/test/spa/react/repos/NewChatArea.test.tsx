@@ -2079,4 +2079,103 @@ describe('NewChatArea', () => {
             expect(onSubmit.mock.calls[0][0].prompt).toBe('Plain prompt');
         });
     });
+
+    // AC-02: the shared composer accepts a generic hero icon so an adapter (e.g.
+    // Notes) keeps its own empty-state identity — its robot — without the
+    // component knowing anything about the feature.
+    describe('heroIcon', () => {
+        it('renders the default 💬 icon when heroIcon is omitted', () => {
+            render(<InitialChatComposer workspaceId="ws-1" onSubmit={vi.fn().mockResolvedValue(null)} />);
+            expect(screen.getByText('💬')).toBeTruthy();
+        });
+
+        it('renders a custom hero icon and drops the default', () => {
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={vi.fn().mockResolvedValue(null)}
+                    heroIcon="🤖"
+                    heroTitle="Notes Chat"
+                />,
+            );
+
+            expect(screen.getByText('🤖')).toBeTruthy();
+            expect(screen.queryByText('💬')).toBeNull();
+            expect(screen.getByText('Notes Chat')).toBeTruthy();
+        });
+    });
+
+    // AC-04: the shared composer offers a generic pre-submit interceptor so an
+    // adapter can handle local commands (the Notes /new and /clear resets)
+    // without the component branching on any feature. A consumed command clears
+    // only the typed text and skips submission — attachments and the pending
+    // prefix (references) are preserved.
+    describe('interceptSubmit', () => {
+        it('consumes a matching command: skips onSubmit, clears the typed input, preserves the pending prefix', async () => {
+            const onSubmit = vi.fn().mockResolvedValue('task-1');
+            const onClearPendingPrefix = vi.fn();
+            const interceptSubmit = vi.fn((raw: string) => raw === '/clear');
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={onSubmit}
+                    interceptSubmit={interceptSubmit}
+                    pendingPrefix={'<note_reference path="a.md">x</note_reference>\n\n'}
+                    onClearPendingPrefix={onClearPendingPrefix}
+                />,
+            );
+
+            fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: '/clear' } });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+            });
+
+            expect(interceptSubmit).toHaveBeenCalledWith('/clear');
+            expect(onSubmit).not.toHaveBeenCalled();
+            // Only the typed command is cleared; the pending prefix is not consumed.
+            expect((screen.getByTestId('new-chat-input') as HTMLInputElement).value).toBe('');
+            expect(onClearPendingPrefix).not.toHaveBeenCalled();
+        });
+
+        it('receives the trimmed input and falls through to normal submission when it returns false', async () => {
+            const onSubmit = vi.fn().mockResolvedValue('task-1');
+            const interceptSubmit = vi.fn(() => false);
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={onSubmit}
+                    interceptSubmit={interceptSubmit}
+                />,
+            );
+
+            fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: '  hello  ' } });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+            });
+
+            // Called with the trimmed text, then normal submission proceeds.
+            expect(interceptSubmit).toHaveBeenCalledWith('hello');
+            expect(onSubmit).toHaveBeenCalledTimes(1);
+            expect(onSubmit.mock.calls[0][0].prompt).toBe('hello');
+        });
+
+        it('is never reached when there is nothing to submit (guard runs first)', async () => {
+            const interceptSubmit = vi.fn(() => true);
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={vi.fn().mockResolvedValue(null)}
+                    interceptSubmit={interceptSubmit}
+                />,
+            );
+
+            // Empty box, no prefix, no attachments → Send is disabled and the
+            // interceptor is never consulted.
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+            });
+
+            expect(interceptSubmit).not.toHaveBeenCalled();
+        });
+    });
 });

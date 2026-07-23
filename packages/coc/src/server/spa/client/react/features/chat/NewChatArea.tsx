@@ -115,6 +115,12 @@ export interface InitialChatComposerProps {
     onSubmitted?: (taskId: string | null, workspaceId?: string) => Promise<void> | void;
     heroTitle?: string;
     heroDescription?: string;
+    /**
+     * Icon shown in the empty-state hero, above the title and description. Lets an
+     * adapter keep its own empty-state identity (e.g. the Notes robot) while still
+     * using the shared composer. Omit for the default 💬.
+     */
+    heroIcon?: React.ReactNode;
     placeholder?: string;
     testIdPrefix?: string;
     draftKey?: string;
@@ -151,6 +157,17 @@ export interface InitialChatComposerProps {
      * Omit to render nothing there.
      */
     accessoryAboveInput?: React.ReactNode;
+    /**
+     * Optional pre-submit interceptor for the raw typed input. Called with the
+     * trimmed text before any flush or submission; return true to signal the input
+     * was consumed as a local command (e.g. the Notes /new and /clear reset
+     * commands). When it returns true the composer clears only the typed text and
+     * its draft and skips submission — pending attachments, attached context, and
+     * the pending prefix are intentionally preserved. Return false (or omit) to
+     * submit normally. This is the generic submission-adaptation extension point;
+     * the shared component never branches on any feature.
+     */
+    interceptSubmit?: (rawInput: string) => boolean;
 }
 
 const PROVIDER_LABELS: Record<ChatProvider, string> = {
@@ -244,6 +261,7 @@ export function InitialChatComposer({
     onSubmitted,
     heroTitle = 'Start a new conversation',
     heroDescription = 'Type a message below to begin',
+    heroIcon = '💬',
     placeholder = 'Reply to CoC, or type / for commands...',
     testIdPrefix = 'new-chat',
     draftKey,
@@ -254,6 +272,7 @@ export function InitialChatComposer({
     pendingPrefix,
     onClearPendingPrefix,
     accessoryAboveInput,
+    interceptSubmit,
 }: InitialChatComposerProps) {
     const [input, setInput] = useState('');
     const [cursorPos, setCursorPos] = useState(0);
@@ -749,6 +768,18 @@ export function InitialChatComposer({
         const trimmed = input.trim();
         const contextItems = attachedContext.getItems();
         if ((!trimmed && attachments.length === 0 && contextItems.length === 0 && !hasPendingPrefixContent) || sending) return;
+        // Generic pre-submit command interception (e.g. the Notes /new and /clear
+        // reset commands). When the adapter consumes the raw input as a local
+        // command, clear only the typed text and its draft and skip submission —
+        // pending attachments, attached context, and the pending prefix are
+        // intentionally preserved so the command never consumes them.
+        if (interceptSubmit?.(trimmed)) {
+            setInput('');
+            setCursorPos(0);
+            richTextRef.current?.setValue('');
+            clearDraft(draftStorageKey);
+            return;
+        }
         if (selectedMode === 'for-each' || selectedMode === 'map-reduce') {
             if (!workspaceId) {
                 setError(selectedMode === 'for-each'
@@ -1359,7 +1390,7 @@ export function InitialChatComposer({
             {/* Hero area */}
             <div className="flex-1 flex items-center justify-center">
                 <div className="text-center text-[#848484]">
-                    <div className="text-3xl mb-2">💬</div>
+                    <div className="text-3xl mb-2">{heroIcon}</div>
                     <div className="text-sm font-medium mb-1">{heroTitle}</div>
                     <div className="text-xs">{heroDescription}</div>
                 </div>
