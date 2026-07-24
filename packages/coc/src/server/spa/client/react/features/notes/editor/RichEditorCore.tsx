@@ -28,6 +28,7 @@ import { MapBlock } from './extensions/mapBlock';
 import { PdfBlock } from './extensions/pdfBlock';
 import { CommentExtension } from './extensions/commentExtension';
 import { AiEditDecorationExtension } from './extensions/AiEditDecorationExtension';
+import { YouTubeEmbedDecorationExtension } from './extensions/YouTubeEmbedDecorationExtension';
 import { NoteLinkExtension } from './noteLinkExtension';
 import { FilePathNodeExtension } from './filePathNodeExtension';
 import { useLinkHandlers } from '../../../hooks/useLinkHandlers';
@@ -130,6 +131,7 @@ export function RichEditorCore({
             NoteLinkExtension,
             FilePathNodeExtension,
             AiEditDecorationExtension,
+            YouTubeEmbedDecorationExtension,
             ...(commentsEnabled
                 ? [
                     CommentExtension.configure({
