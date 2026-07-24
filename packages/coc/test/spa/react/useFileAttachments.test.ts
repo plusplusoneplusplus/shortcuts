@@ -71,6 +71,48 @@ describe('useFileAttachments', () => {
         expect(result.current.error).toBeNull();
     });
 
+    it('addScreenshotDataUrl adds a desktop screenshot as an image attachment', () => {
+        const { result } = renderHook(() => useFileAttachments());
+
+        act(() => { result.current.addScreenshotDataUrl('data:image/png;base64,AAAA'); });
+
+        expect(result.current.attachments).toHaveLength(1);
+        expect(result.current.attachments[0].category).toBe('image');
+        expect(result.current.attachments[0].mimeType).toBe('image/png');
+        expect(result.current.attachments[0].name).toMatch(/^screenshot-\d+\.png$/);
+        expect(result.current.attachments[0].dataUrl).toBe('data:image/png;base64,AAAA');
+        expect(result.current.images).toEqual(['data:image/png;base64,AAAA']);
+        expect(result.current.error).toBeNull();
+    });
+
+    it('addScreenshotDataUrl enforces MAX_ATTACHMENTS', () => {
+        // Advance the clock per add so the timestamped screenshot names stay
+        // distinct (real pushes are seconds apart); separate act() calls flush
+        // the count between adds.
+        let now = 1_700_000_000_000;
+        const dateNow = vi.spyOn(Date, 'now').mockImplementation(() => now++);
+        const { result } = renderHook(() => useFileAttachments(2));
+
+        act(() => { result.current.addScreenshotDataUrl('data:image/png;base64,AAAA'); });
+        act(() => { result.current.addScreenshotDataUrl('data:image/png;base64,BBBB'); });
+        expect(result.current.attachments).toHaveLength(2);
+
+        act(() => { result.current.addScreenshotDataUrl('data:image/png;base64,CCCC'); });
+        // Third push is rejected: count stays capped and an error is surfaced.
+        expect(result.current.attachments).toHaveLength(2);
+        expect(result.current.error).toMatch(/Maximum 2/i);
+        dateNow.mockRestore();
+    });
+
+    it('addScreenshotDataUrl rejects a non-image data URL without adding', () => {
+        const { result } = renderHook(() => useFileAttachments());
+
+        act(() => { result.current.addScreenshotDataUrl('data:text/plain;base64,AAAA'); });
+
+        expect(result.current.attachments).toHaveLength(0);
+        expect(result.current.error).toMatch(/not a valid image/i);
+    });
+
     it('addFromPaste handles image files from clipboard', () => {
         const { result } = renderHook(() => useFileAttachments());
         const file = createImageFile();

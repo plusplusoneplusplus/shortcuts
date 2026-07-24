@@ -14,7 +14,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { app, BrowserWindow, Menu, Notification, Tray, dialog, nativeImage, shell, clipboard, ipcMain } from 'electron';
+import { app, BrowserWindow, Menu, Notification, Tray, dialog, nativeImage, shell, clipboard, ipcMain, globalShortcut } from 'electron';
 import { attachOrStart, defaultDataDir, ServerHandle } from './server-controller';
 import {
     createRotatingFileLogger,
@@ -40,6 +40,8 @@ import {
 } from './update-check';
 import { buildAppMenuTemplate, buildTrayMenuTemplate, DevTunnelMenuInput, DebugMenuHandlers } from './app-menu';
 import { attachFindBar, registerFindBarIpc } from './find-bar-host';
+import { registerScreenshotShortcut, unregisterScreenshotShortcut } from './screenshot-capture';
+import { startScreenshotCapture, setScreenshotMainWindowProvider } from './screenshot-capture-host';
 import { buildWindowOptions, buildMacInsetCss } from './window-config';
 import {
     DevTunnelConfig,
@@ -92,6 +94,8 @@ let devTunnelManager: DevTunnelHostManager | null = null;
 let devTunnelModalWindow: BrowserWindow | null = null;
 /** Guard so the Dev Tunnel modal IPC handlers are registered only once. */
 let devTunnelModalIpcRegistered = false;
+/** AC-01: guard so the global capture accelerator is registered only once. */
+let screenshotShortcutRegistered = false;
 
 /** Fallback tray glyph used when the real icon file cannot be found. */
 const TRAY_ICON_FALLBACK_DATA_URL =
@@ -803,6 +807,26 @@ function installDesktopFileLogging(): void {
     }
 }
 
+/**
+ * AC-01: register the system-wide screenshot-capture accelerator exactly once,
+ * on app ready. Pressing it (even when CoC is unfocused/backgrounded) runs
+ * {@link startScreenshotCapture}. Registration is best-effort — if the combo is
+ * already taken the helper logs a warning and we carry on, never crashing. The
+ * accelerator is released on `will-quit` (see below).
+ */
+function setupScreenshotShortcut(): void {
+    if (screenshotShortcutRegistered) {
+        return;
+    }
+    screenshotShortcutRegistered = true;
+    registerScreenshotShortcut(globalShortcut, {
+        // The capture flow is async (permission check → capture → overlay); it
+        // swallows its own errors, so fire-and-forget can never reject here.
+        onTrigger: () => void startScreenshotCapture(),
+        onWarn: (message) => process.stderr.write(`${message}\n`),
+    });
+}
+
 async function bootstrap(): Promise<void> {
     // Fix 2: capture main-process + forked-server output to disk before anything
     // else runs, so a terminal-less packaged launch is still diagnosable.
@@ -825,6 +849,15 @@ async function bootstrap(): Promise<void> {
     // Register the find-in-page IPC handlers before any window loads, so the
     // injected find bar can talk to the main process as soon as it appears.
     registerFindBarIpc();
+
+    // AC-01: bind the global screenshot-capture accelerator on app ready, so the
+    // hotkey works even before/without the main window being focused.
+    setupScreenshotShortcut();
+
+    // AC-04: let the screenshot host reach the main SPA window (a module-level
+    // `let`, read lazily) so a finished screenshot can be pushed onto the active
+    // chat draft — the chat-attach sink of the three-sink finish.
+    setScreenshotMainWindowProvider(() => mainWindow);
 
     // macOS: set the dock icon early (BrowserWindow `icon` is ignored by macOS).
     // Only override when the real icon file resolves — otherwise leave the dock
@@ -931,6 +964,13 @@ app.on('before-quit', (event) => {
             serverHandle = null;
             app.quit();
         });
+});
+
+// AC-01: release the global capture accelerator as the app tears down. Electron
+// recommends unregistering global shortcuts on `will-quit`; since the capture
+// hotkey is our only one, `unregisterAll` is safe and cannot affect anything else.
+app.on('will-quit', () => {
+    unregisterScreenshotShortcut(globalShortcut);
 });
 
 app.on('window-all-closed', () => {

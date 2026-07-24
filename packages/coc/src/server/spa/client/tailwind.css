@@ -428,6 +428,29 @@
     text-decoration: underline;
 }
 
+/* Collapse/expand chevron: a neutral, non-underlined glyph button distinct from
+   the text-link "Open in new tab" action. */
+.md-pdf-embed-actions button.md-pdf-embed-toggle {
+    color: #616161;
+    font-size: 12px;
+    line-height: 1;
+}
+
+.dark .md-pdf-embed-actions button.md-pdf-embed-toggle {
+    color: #cccccc;
+}
+
+.md-pdf-embed-actions button.md-pdf-embed-toggle:not(:disabled):hover {
+    text-decoration: none;
+    color: #0078d4;
+}
+
+/* When collapsed the iframe is unmounted, so the toolbar becomes the whole
+   block — round its bottom corners to match the shell. */
+.pdf-node-view[data-collapsed] .md-pdf-embed-toolbar {
+    border-bottom: none;
+}
+
 .md-pdf-embed-frame-wrap {
     position: relative;
     min-height: 160px;

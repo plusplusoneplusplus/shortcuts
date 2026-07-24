@@ -25,6 +25,14 @@ import { useShellNavigation } from './useShellNavigation';
 export interface WorkspaceIdentityChipProps {
     repo?: RepoData;
     repos: RepoData[];
+    /**
+     * When set, the chip is showing an *inactive* workspace (a virtual scope like
+     * My Work / My Life is the active scope). Clicking the identity body then
+     * switches back to this workspace instead of opening the picker; the chevron
+     * keeps opening the remote-group picker. When unset (workspace is the active
+     * scope), the whole chip toggles the picker as before. (AC-02)
+     */
+    onSwitchBack?: () => void;
 }
 
 function Chevron() {
@@ -67,7 +75,7 @@ function groupMatchesSearch(group: RepoGroup, query: string): boolean {
         || group.repos.some(repo => String(repo.workspace.name ?? '').toLowerCase().includes(q));
 }
 
-export function WorkspaceIdentityChip({ repo, repos }: WorkspaceIdentityChipProps) {
+export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceIdentityChipProps) {
     const cloneId = repo ? getRepoSelectionId(repo) : '';
     const { state: queueState } = useQueue();
     const { fetchRepos, unseenCounts } = useRepos();
@@ -162,33 +170,72 @@ export function WorkspaceIdentityChip({ repo, repos }: WorkspaceIdentityChipProp
         );
     };
 
+    const displayName = activeSummary?.name ?? (repo?.workspace.name ?? 'Select repository');
+    const chipTitle = activeGroup?.label ?? (repo?.workspace.name ?? 'Select repository');
+    // The dot + provider badge + name + `⧉N` cluster, shared by the single-button
+    // (workspace active) and split (virtual scope active) layouts.
+    const identityInner = (
+        <>
+            <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ background: activeSummary?.color ?? '#848484' }} aria-hidden />
+            <RemoteProviderBadge
+                normalizedUrl={activeGroup?.normalizedUrl}
+                testId="remote-provider-badge"
+                className="hidden xl:inline-flex items-center text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#848484] dark:text-[#777]"
+            />
+            <span className="truncate">{displayName}</span>
+            {activeSummary && activeSummary.cloneCount > 1 && (
+                <span className="hidden lg:inline-flex items-center gap-0.5 h-[16px] px-1.5 rounded-full text-[10px] font-semibold leading-none bg-black/[0.06] dark:bg-white/[0.10] text-[#555] dark:text-[#bbb]">
+                    <CloneGlyph />
+                    {activeSummary.cloneCount}
+                </span>
+            )}
+        </>
+    );
+
     return (
         <div className="relative flex items-center min-w-0 flex-shrink-0" ref={rootRef}>
-            <button
-                ref={triggerRef}
-                data-testid="remote-chip"
-                data-remote-key={activeGroupKey ?? ''}
-                aria-haspopup="menu"
-                aria-expanded={open}
-                title={activeGroup?.label ?? (repo?.workspace.name ?? 'Select repository')}
-                onClick={toggle}
-                className="relative inline-flex items-center gap-1.5 h-[26px] px-2 rounded-md text-[12.5px] font-semibold text-[#1f2328] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] max-w-[190px]"
-            >
-                <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ background: activeSummary?.color ?? '#848484' }} aria-hidden />
-                <RemoteProviderBadge
-                    normalizedUrl={activeGroup?.normalizedUrl}
-                    testId="remote-provider-badge"
-                    className="hidden xl:inline-flex items-center text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#848484] dark:text-[#777]"
-                />
-                <span className="truncate">{activeSummary?.name ?? (repo?.workspace.name ?? 'Select repository')}</span>
-                {activeSummary && activeSummary.cloneCount > 1 && (
-                    <span className="hidden lg:inline-flex items-center gap-0.5 h-[16px] px-1.5 rounded-full text-[10px] font-semibold leading-none bg-black/[0.06] dark:bg-white/[0.10] text-[#555] dark:text-[#bbb]">
-                        <CloneGlyph />
-                        {activeSummary.cloneCount}
-                    </span>
-                )}
-                <Chevron />
-            </button>
+            {onSwitchBack ? (
+                // Inactive workspace under a virtual scope: identity body switches
+                // back to this workspace, chevron opens the picker. (AC-02)
+                <div className="relative inline-flex items-center rounded-md text-[12.5px] font-semibold text-[#1f2328] dark:text-[#cccccc] max-w-[190px]">
+                    <button
+                        data-testid="remote-chip"
+                        data-remote-key={activeGroupKey ?? ''}
+                        title={`Switch to ${chipTitle}`}
+                        aria-label={`Switch to ${displayName}`}
+                        onClick={onSwitchBack}
+                        className="relative inline-flex items-center gap-1.5 h-[26px] pl-2 pr-1 rounded-l-md min-w-0 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                    >
+                        {identityInner}
+                    </button>
+                    <button
+                        ref={triggerRef}
+                        data-testid="remote-chip-chevron"
+                        aria-haspopup="menu"
+                        aria-expanded={open}
+                        aria-label="Open remote picker"
+                        title="Switch remote"
+                        onClick={toggle}
+                        className="relative inline-flex items-center h-[26px] pl-1 pr-2 rounded-r-md hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                    >
+                        <Chevron />
+                    </button>
+                </div>
+            ) : (
+                <button
+                    ref={triggerRef}
+                    data-testid="remote-chip"
+                    data-remote-key={activeGroupKey ?? ''}
+                    aria-haspopup="menu"
+                    aria-expanded={open}
+                    title={chipTitle}
+                    onClick={toggle}
+                    className="relative inline-flex items-center gap-1.5 h-[26px] px-2 rounded-md text-[12.5px] font-semibold text-[#1f2328] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] max-w-[190px]"
+                >
+                    {identityInner}
+                    <Chevron />
+                </button>
+            )}
 
             <RepoPickerPopover
                 open={open}

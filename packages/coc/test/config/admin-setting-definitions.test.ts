@@ -418,4 +418,16 @@ describe('Features card UI metadata', () => {
         expect((buildRuntimeFeatures(DEFAULT_CONFIG) as Record<string, unknown>)[flag]).toBe(true);
         expect(buildRuntimeFeatureFlags({})[flag]).toBe(false);
     });
+
+    it('exposes triggers as a default-on, restart-required feature', () => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'triggers.enabled');
+        expect(def, 'triggers.enabled must be an admin setting').toBeDefined();
+        expect(def!.value).toEqual({ kind: 'boolean' });
+        expect(def!.default).toBe(true);
+        expect(def!.runtime).toBe('restartRequired');
+        expect(def!.runtimeFlag).toBe('triggersEnabled');
+        expect(def!.ui?.label).toBe('Triggers (CI auto-fix)');
+        expect(def!.ui?.hint).toMatch(/enabled by default/i);
+        expect(buildRuntimeFeatureFlags({}).triggersEnabled).toBe(true);
+    });
 });

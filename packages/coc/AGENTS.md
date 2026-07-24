@@ -71,7 +71,11 @@ all have their own `references/*.md`.
   It accepts images plus `application/pdf` (images capped at 10 MB, PDFs at
   50 MB) and stores files under `.attachments/` (default root) or `.images/`
   (repo-folder roots). PDFs round-trip as
-  `![label](.attachments/x.pdf)` markdown through the Tiptap `pdfBlock` node.
+  `![label](.attachments/x.pdf)` markdown through the Tiptap `pdfBlock` node;
+  a presentation attribute (`data-indent`, `data-pdf-height`, or
+  `data-pdf-collapsed`) forces the raw `<div class="md-pdf-embed" …>` form so
+  the flag survives the save. A collapsed embed unmounts its iframe and shows
+  only the toolbar.
   `pdfBlockUrl.ts` permits an unsandboxed inline iframe only for same-origin,
   exact Notes `image`/`local-image` routes whose decoded `path` is a PDF;
   other HTTP(S) PDF URLs are link-only and unsafe values expose no active URL.

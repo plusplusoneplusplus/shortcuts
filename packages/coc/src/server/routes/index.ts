@@ -654,7 +654,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             store: opts.triggerStore,
             manager: opts.triggerManager,
             emit: opts.triggerEmit,
-            enabled: opts.resolvedConfig?.triggers?.enabled ?? false,
+            enabled: opts.resolvedConfig?.triggers?.enabled ?? true,
             resolveWorkspaceId: resolveProcessWorkspaceId,
         });
     }

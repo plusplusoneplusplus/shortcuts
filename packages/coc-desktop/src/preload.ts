@@ -24,11 +24,40 @@ const OPEN_FIND_BAR_CHANNEL = 'coc-desktop:open-find-bar';
 const CLOSE_FIND_BAR_CHANNEL = 'coc-desktop:close-find-bar';
 const DEVTUNNEL_MODAL_SUBMIT_CHANNEL = 'coc-desktop:devtunnel-modal-submit';
 const DEVTUNNEL_MODAL_CANCEL_CHANNEL = 'coc-desktop:devtunnel-modal-cancel';
+const SCREENSHOT_OVERLAY_INIT_CHANNEL = 'coc-desktop:screenshot-overlay-init';
+const SCREENSHOT_CROP_CHANNEL = 'coc-desktop:screenshot-crop';
+const SCREENSHOT_CANCEL_CHANNEL = 'coc-desktop:screenshot-cancel';
+const SCREENSHOT_ANNOTATE_INIT_CHANNEL = 'coc-desktop:screenshot-annotate-init';
+const SCREENSHOT_ANNOTATE_DONE_CHANNEL = 'coc-desktop:screenshot-annotate-done';
+const SCREENSHOT_ANNOTATE_CANCEL_CHANNEL = 'coc-desktop:screenshot-annotate-cancel';
+const SCREENSHOT_ATTACH_CHANNEL = 'coc-desktop:screenshot-attach';
 
 /** Shape of an Electron `found-in-page` result, as relayed to the renderer. */
 interface FindResult {
     activeMatchOrdinal: number;
     matches: number;
+}
+
+/** Payload the main process pushes to the capture overlay (see screenshot-capture.ts). */
+interface OverlayInitPayload {
+    imageDataUrl: string;
+    width: number;
+    height: number;
+}
+
+/** A crop rectangle sent from the overlay to the main process. */
+interface CropRect {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+/** Payload the main process pushes to the annotation editor (see screenshot-capture.ts). */
+interface AnnotateInitPayload {
+    imageDataUrl: string;
+    width: number;
+    height: number;
 }
 
 const api = {
@@ -69,6 +98,38 @@ const api = {
     devtunnelModal: {
         submit: (tunnelId: string) => ipcRenderer.send(DEVTUNNEL_MODAL_SUBMIT_CHANNEL, tunnelId),
         cancel: () => ipcRenderer.send(DEVTUNNEL_MODAL_CANCEL_CHANNEL),
+    },
+    /**
+     * Screenshot capture + annotate bridge (see screenshot-capture.ts), used from
+     * two renderers. The fullscreen capture overlay uses `onOverlayInit` to receive
+     * the frozen shot, then `crop`/`cancel` to report the selected region or dismiss
+     * the flow. The annotation editor window (AC-03) uses `onAnnotateInit` to receive
+     * the cropped image, then `done` (flattened PNG data URL) / `cancelAnnotate`.
+     * The SPA (main CoC window) uses `onScreenshotAttach` to receive a finished
+     * screenshot pushed from the main process (AC-04 chat-attach sink) and add it
+     * to the active chat draft. The main process routes each request by sender
+     * (see screenshot-capture-host.ts).
+     */
+    screenshot: {
+        onOverlayInit: (callback: (payload: OverlayInitPayload) => void) => {
+            const listener = (_event: unknown, payload: OverlayInitPayload) => callback(payload);
+            ipcRenderer.on(SCREENSHOT_OVERLAY_INIT_CHANNEL, listener);
+            return () => ipcRenderer.removeListener(SCREENSHOT_OVERLAY_INIT_CHANNEL, listener);
+        },
+        crop: (rect: CropRect) => ipcRenderer.send(SCREENSHOT_CROP_CHANNEL, rect),
+        cancel: () => ipcRenderer.send(SCREENSHOT_CANCEL_CHANNEL),
+        onAnnotateInit: (callback: (payload: AnnotateInitPayload) => void) => {
+            const listener = (_event: unknown, payload: AnnotateInitPayload) => callback(payload);
+            ipcRenderer.on(SCREENSHOT_ANNOTATE_INIT_CHANNEL, listener);
+            return () => ipcRenderer.removeListener(SCREENSHOT_ANNOTATE_INIT_CHANNEL, listener);
+        },
+        done: (pngDataUrl: string) => ipcRenderer.send(SCREENSHOT_ANNOTATE_DONE_CHANNEL, pngDataUrl),
+        cancelAnnotate: () => ipcRenderer.send(SCREENSHOT_ANNOTATE_CANCEL_CHANNEL),
+        onScreenshotAttach: (callback: (pngDataUrl: string) => void) => {
+            const listener = (_event: unknown, pngDataUrl: string) => callback(pngDataUrl);
+            ipcRenderer.on(SCREENSHOT_ATTACH_CHANNEL, listener);
+            return () => ipcRenderer.removeListener(SCREENSHOT_ATTACH_CHANNEL, listener);
+        },
     },
 } as const;
 

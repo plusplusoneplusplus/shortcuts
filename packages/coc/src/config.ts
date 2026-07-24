@@ -187,7 +187,7 @@ export interface CLIConfig {
     loops?: {
         enabled?: boolean;
     };
-    /** Triggers (event → action) subsystem configuration. Disabled by default. */
+    /** Triggers (event → action) subsystem configuration. Enabled by default. */
     triggers?: {
         enabled?: boolean;
     };
@@ -793,7 +793,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: true,
     },
     triggers: {
-        enabled: false,
+        enabled: true,
     },
     dreams: {
         enabled: false,

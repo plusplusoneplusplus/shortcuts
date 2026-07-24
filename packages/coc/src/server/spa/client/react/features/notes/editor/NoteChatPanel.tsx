@@ -248,6 +248,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                         allowedModes={NOTE_CHAT_ALLOWED_MODES}
                         compactModeSelector
                         disableScratchpad
+                        hidePlanBanners
                         onBack={onClose}
                         pendingPrefix={references && references.length > 0 ? formatNoteReferences(references) : undefined}
                         onClearPendingPrefix={onClearReferences}

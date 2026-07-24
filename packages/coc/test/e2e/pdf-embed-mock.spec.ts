@@ -165,6 +165,79 @@ test.describe('Notes page — inline PDF embed', () => {
         }
     });
 
+    test('collapses and expands a PDF embed, persisting the flag through autosave', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-pdf-embed-'));
+        try {
+            const repoDir = createRepoFixture(tmpDir);
+            await seedWorkspace(serverUrl, WS_ID, `${WS_ID}-repo`, repoDir);
+
+            const store = createNotesStore({
+                tree: seedTree(),
+                content: {
+                    'Journal/getting-started.md': '# Doc\n\n![Sample PDF](.attachments/sample.pdf)\n',
+                },
+            });
+            await mockNotesApi(page, store);
+
+            const errors = trackPageErrors(page);
+            await openNotesPage(page, serverUrl, WS_ID);
+            await openFirstPage(page);
+
+            const pdfNode = page.locator('[data-testid="pdf-node-view"]');
+            await expect(pdfNode).toBeVisible({ timeout: 10_000 });
+
+            // The iframe is present while expanded.
+            const iframe = page.locator('[data-testid="pdf-node-view-frame"]');
+            await expect(iframe).toBeVisible({ timeout: 10_000 });
+
+            // Register the collapse autosave wait BEFORE toggling so the debounced
+            // PUT that carries the flag is not missed.
+            // The raw postData is JSON, so the embedded quotes are escaped
+            // (`data-pdf-collapsed=\"true\"`); match the quote-free substring.
+            const collapsePut = page.waitForRequest(
+                (req) =>
+                    req.method() === 'PUT' &&
+                    /\/notes\/content(\?|$)/.test(req.url()) &&
+                    (req.postData() ?? '').includes('data-pdf-collapsed'),
+                { timeout: 20_000 },
+            );
+
+            await page.locator('[data-testid="pdf-node-view-toggle"]').click();
+
+            // The iframe unmounts; the toolbar/title stay so the block can re-expand.
+            await expect(iframe).toHaveCount(0, { timeout: 10_000 });
+            await expect(pdfNode).toBeVisible();
+            await expect(page.locator('[data-testid="pdf-node-view-toggle"]')).toBeVisible();
+
+            // The collapsed state autosaves as the raw div carrying the flag.
+            const collapsed = await collapsePut;
+            expect(collapsed.postDataJSON().content).toContain('data-pdf-collapsed="true"');
+
+            // Register the expand autosave wait BEFORE toggling back.
+            const expandPut = page.waitForRequest(
+                (req) =>
+                    req.method() === 'PUT' &&
+                    /\/notes\/content(\?|$)/.test(req.url()) &&
+                    (req.postData() ?? '').includes('![Sample PDF](.attachments/sample.pdf)'),
+                { timeout: 20_000 },
+            );
+
+            await page.locator('[data-testid="pdf-node-view-toggle"]').click();
+
+            // Expanding re-mounts the iframe.
+            await expect(iframe).toBeVisible({ timeout: 10_000 });
+
+            // The expanded state autosaves back to the canonical `![]()` form with
+            // no collapse flag.
+            const expanded = await expandPut;
+            expect(expanded.postDataJSON().content).not.toContain('data-pdf-collapsed');
+
+            expect(errors).toHaveLength(0);
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
     test('inserts a PDF via the toolbar and autosaves the markdown embed', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-pdf-embed-'));
         try {

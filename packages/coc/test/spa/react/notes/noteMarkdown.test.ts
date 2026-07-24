@@ -1152,6 +1152,106 @@ describe('noteMarkdown', () => {
         });
     });
 
+    describe('embed height persistence — PDF', () => {
+        const heightHtml =
+            '<div class="md-pdf-embed" data-pdf-url=".attachments/a.pdf" data-pdf-label="Doc" data-pdf-height="720"></div>';
+
+        it('a height-only embed serializes to a raw md-pdf-embed div (not image syntax)', () => {
+            const md = htmlToMarkdown(heightHtml);
+            expect(md).toContain('class="md-pdf-embed"');
+            expect(md).toContain('data-pdf-url=".attachments/a.pdf"');
+            expect(md).toContain('data-pdf-label="Doc"');
+            expect(md).toContain('data-pdf-height="720"');
+            expect(md).not.toContain('data-indent');
+            // Must NOT route through `![]()` — the height would be lost.
+            expect(md).not.toContain('![');
+        });
+
+        it('reloads the raw div with url, label and height preserved', () => {
+            const reloaded = markdownToHtml(htmlToMarkdown(heightHtml));
+            expect(reloaded).toContain('class="md-pdf-embed"');
+            expect(reloaded).toContain('data-pdf-url=".attachments/a.pdf"');
+            expect(reloaded).toContain('data-pdf-height="720"');
+        });
+
+        it('clamps an out-of-range height on serialization', () => {
+            const md = htmlToMarkdown(
+                '<div class="md-pdf-embed" data-pdf-url=".attachments/a.pdf" data-pdf-label="Doc" data-pdf-height="9999"></div>',
+            );
+            expect(md).toContain('data-pdf-height="1200"');
+        });
+
+        it('height + indent together both survive the round-trip', () => {
+            const both =
+                '<div class="md-pdf-embed" data-pdf-url=".attachments/a.pdf" data-pdf-label="Doc" data-indent="2" data-pdf-height="640"></div>';
+            const md = htmlToMarkdown(both);
+            expect(md).toContain('data-indent="2"');
+            expect(md).toContain('data-pdf-height="640"');
+            expect(md).not.toContain('![');
+
+            const reloaded = markdownToHtml(md);
+            expect(reloaded).toContain('data-indent="2"');
+            expect(reloaded).toContain('data-pdf-height="640"');
+        });
+
+        it('no height and no indent still serializes to canonical image syntax', () => {
+            const md = htmlToMarkdown(
+                '<div class="md-pdf-embed" data-pdf-url=".attachments/a.pdf" data-pdf-label="Doc"></div>',
+            );
+            expect(md).toContain('![Doc](.attachments/a.pdf)');
+            expect(md).not.toContain('data-pdf-height');
+            expect(md).not.toContain('md-pdf-embed');
+        });
+    });
+
+    describe('embed collapse persistence — PDF', () => {
+        const collapsedHtml =
+            '<div class="md-pdf-embed" data-pdf-url=".attachments/a.pdf" data-pdf-label="Doc" data-pdf-collapsed="true"></div>';
+
+        it('a collapsed-only embed serializes to a raw md-pdf-embed div (not image syntax)', () => {
+            const md = htmlToMarkdown(collapsedHtml);
+            expect(md).toContain('class="md-pdf-embed"');
+            expect(md).toContain('data-pdf-url=".attachments/a.pdf"');
+            expect(md).toContain('data-pdf-label="Doc"');
+            expect(md).toContain('data-pdf-collapsed="true"');
+            expect(md).not.toContain('data-indent');
+            expect(md).not.toContain('data-pdf-height');
+            // Must NOT route through `![]()` — the collapse flag would be lost.
+            expect(md).not.toContain('![');
+        });
+
+        it('reloads the raw div still collapsed', () => {
+            const reloaded = markdownToHtml(htmlToMarkdown(collapsedHtml));
+            expect(reloaded).toContain('class="md-pdf-embed"');
+            expect(reloaded).toContain('data-pdf-url=".attachments/a.pdf"');
+            expect(reloaded).toContain('data-pdf-collapsed="true"');
+        });
+
+        it('collapsed + indent + height all survive together', () => {
+            const all =
+                '<div class="md-pdf-embed" data-pdf-url=".attachments/a.pdf" data-pdf-label="Doc" data-indent="2" data-pdf-height="640" data-pdf-collapsed="true"></div>';
+            const md = htmlToMarkdown(all);
+            expect(md).toContain('data-indent="2"');
+            expect(md).toContain('data-pdf-height="640"');
+            expect(md).toContain('data-pdf-collapsed="true"');
+            expect(md).not.toContain('![');
+
+            const reloaded = markdownToHtml(md);
+            expect(reloaded).toContain('data-indent="2"');
+            expect(reloaded).toContain('data-pdf-height="640"');
+            expect(reloaded).toContain('data-pdf-collapsed="true"');
+        });
+
+        it('not collapsed and not indented still serializes to canonical image syntax', () => {
+            const md = htmlToMarkdown(
+                '<div class="md-pdf-embed" data-pdf-url=".attachments/a.pdf" data-pdf-label="Doc"></div>',
+            );
+            expect(md).toContain('![Doc](.attachments/a.pdf)');
+            expect(md).not.toContain('data-pdf-collapsed');
+            expect(md).not.toContain('md-pdf-embed');
+        });
+    });
+
     describe('embed indentation persistence — map', () => {
         const indentedHtml =
             `<div class="md-map-embed" data-map-url="${MAP_EMBED_URL}" data-map-label="Map" data-indent="2"></div>`;

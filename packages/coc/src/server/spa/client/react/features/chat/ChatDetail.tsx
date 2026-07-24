@@ -19,6 +19,7 @@ import { useQueue } from '../../contexts/QueueContext';
 import { useApp } from '../../contexts/AppContext';
 import { useReposOptional } from '../../contexts/ReposContext';
 import { useFileAttachments } from './hooks/useFileAttachments';
+import { useDesktopScreenshotAttach } from './hooks/useDesktopScreenshotAttach';
 import { useTextPaste } from './hooks/useTextPaste';
 import { useAttachedContext } from './hooks/useAttachedContext';
 import { useSlashCommands } from './hooks/useSlashCommands';
@@ -163,9 +164,17 @@ export interface ChatDetailProps {
      * existing consumers are unchanged.
      */
     hideHeader?: boolean;
+    /**
+     * When true, suppresses the plan/Ralph launch banners in the conversation —
+     * both RalphStartPanel launch paths (grilling→start and goal.md direct) and
+     * the ImplementPlanCard "Implement this plan" handoff. Use in embedded chat
+     * surfaces (e.g. NoteChatPanel) where those launchers are out of place.
+     * Defaults to false so standalone/queue consumers keep both banners.
+     */
+    hidePlanBanners?: boolean;
 }
 
-export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, compactModeSelector = false, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onProcessLoaded, onOpenForEachRun, onOpenMapReduceRun, onStartFreshSameContext, startingFreshSameContext = false, searchHighlightQuery, hideHeader = false }: ChatDetailProps) {
+export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, compactModeSelector = false, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onProcessLoaded, onOpenForEachRun, onOpenMapReduceRun, onStartFreshSameContext, startingFreshSameContext = false, searchHighlightQuery, hideHeader = false, hidePlanBanners = false }: ChatDetailProps) {
     // Per-clone REST client (AC-07): a remote clone's chat reads/writes go to its
     // own server; a local clone keeps the default origin client. All process/
     // queue/notes/canvas/skill calls below are scoped to this chat's workspace.
@@ -304,7 +313,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const modelOverrideMountedRef = useRef(false);
     const previousSessionProviderRef = useRef<string | null>(null);
 
-    const { attachments, images, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, restoreAttachments, error: attachmentError, toPayload } = useFileAttachments();
+    const { attachments, images, addFromPaste, addFromFileInput, addScreenshotDataUrl, removeAttachment, clearAttachments, restoreAttachments, error: attachmentError, toPayload } = useFileAttachments();
+    // AC-04: receive desktop-shell screenshot pushes into this conversation's draft.
+    useDesktopScreenshotAttach(addScreenshotDataUrl);
     const { toasts, addToast, removeToast } = useToast();
     const textPaste = useTextPaste();
     const attachedContext = useAttachedContext();
@@ -2520,8 +2531,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     </>
                     )}
                     </div>
-                    {/* Ralph grilling complete — show Start Ralph panel (thread view only) */}
-                    {effectiveNav.kind === 'thread' && (() => {
+                    {/* Ralph grilling complete — show Start Ralph panel (thread view only).
+                        hidePlanBanners suppresses both launch paths together in embedded
+                        surfaces (e.g. NoteChatPanel) alongside the ImplementPlanCard below. */}
+                    {effectiveNav.kind === 'thread' && !hidePlanBanners && (() => {
                         const ralphCtx = getRalphContext(task);
                         const goalPath = detectedGoalFile || (task?.metadata?.goalFilePath as string | undefined) || '';
                         // Path 1: traditional grilling-phase → start
@@ -2565,7 +2578,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         return null;
                     })()}
                     {/* Plan file complete — offer one-click handoff to autopilot (thread view only) */}
-                    {effectiveNav.kind === 'thread' && isTerminal && !planChatBusy && resolveLoadedTaskMode(task) === 'ask' && effectivePlanPath && (
+                    {effectiveNav.kind === 'thread' && !hidePlanBanners && isTerminal && !planChatBusy && resolveLoadedTaskMode(task) === 'ask' && effectivePlanPath && (
                         <ImplementPlanCard
                             planFilePath={effectivePlanPath}
                             planFiles={switchablePlanFiles}
