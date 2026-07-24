@@ -24,11 +24,29 @@ const OPEN_FIND_BAR_CHANNEL = 'coc-desktop:open-find-bar';
 const CLOSE_FIND_BAR_CHANNEL = 'coc-desktop:close-find-bar';
 const DEVTUNNEL_MODAL_SUBMIT_CHANNEL = 'coc-desktop:devtunnel-modal-submit';
 const DEVTUNNEL_MODAL_CANCEL_CHANNEL = 'coc-desktop:devtunnel-modal-cancel';
+const SCREENSHOT_OVERLAY_INIT_CHANNEL = 'coc-desktop:screenshot-overlay-init';
+const SCREENSHOT_CROP_CHANNEL = 'coc-desktop:screenshot-crop';
+const SCREENSHOT_CANCEL_CHANNEL = 'coc-desktop:screenshot-cancel';
 
 /** Shape of an Electron `found-in-page` result, as relayed to the renderer. */
 interface FindResult {
     activeMatchOrdinal: number;
     matches: number;
+}
+
+/** Payload the main process pushes to the capture overlay (see screenshot-capture.ts). */
+interface OverlayInitPayload {
+    imageDataUrl: string;
+    width: number;
+    height: number;
+}
+
+/** A crop rectangle sent from the overlay to the main process. */
+interface CropRect {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
 }
 
 const api = {
@@ -69,6 +87,21 @@ const api = {
     devtunnelModal: {
         submit: (tunnelId: string) => ipcRenderer.send(DEVTUNNEL_MODAL_SUBMIT_CHANNEL, tunnelId),
         cancel: () => ipcRenderer.send(DEVTUNNEL_MODAL_CANCEL_CHANNEL),
+    },
+    /**
+     * Screenshot capture + annotate bridge (see screenshot-capture.ts). The
+     * fullscreen capture overlay uses `onOverlayInit` to receive the frozen shot,
+     * then `crop`/`cancel` to report the selected region or dismiss the flow. The
+     * annotation window (AC-03/04) will extend this same namespace.
+     */
+    screenshot: {
+        onOverlayInit: (callback: (payload: OverlayInitPayload) => void) => {
+            const listener = (_event: unknown, payload: OverlayInitPayload) => callback(payload);
+            ipcRenderer.on(SCREENSHOT_OVERLAY_INIT_CHANNEL, listener);
+            return () => ipcRenderer.removeListener(SCREENSHOT_OVERLAY_INIT_CHANNEL, listener);
+        },
+        crop: (rect: CropRect) => ipcRenderer.send(SCREENSHOT_CROP_CHANNEL, rect),
+        cancel: () => ipcRenderer.send(SCREENSHOT_CANCEL_CHANNEL),
     },
 } as const;
 

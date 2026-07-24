@@ -820,7 +820,9 @@ function setupScreenshotShortcut(): void {
     }
     screenshotShortcutRegistered = true;
     registerScreenshotShortcut(globalShortcut, {
-        onTrigger: () => startScreenshotCapture(),
+        // The capture flow is async (permission check → capture → overlay); it
+        // swallows its own errors, so fire-and-forget can never reject here.
+        onTrigger: () => void startScreenshotCapture(),
         onWarn: (message) => process.stderr.write(`${message}\n`),
     });
 }

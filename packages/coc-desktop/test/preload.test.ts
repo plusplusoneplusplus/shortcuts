@@ -27,6 +27,11 @@ import {
     DEVTUNNEL_MODAL_SUBMIT_CHANNEL,
     DEVTUNNEL_MODAL_CANCEL_CHANNEL,
 } from '../src/devtunnel-modal';
+import {
+    SCREENSHOT_OVERLAY_INIT_CHANNEL,
+    SCREENSHOT_CROP_CHANNEL,
+    SCREENSHOT_CANCEL_CHANNEL,
+} from '../src/screenshot-capture';
 
 const exposeInMainWorld = vi.fn();
 const send = vi.fn();
@@ -100,5 +105,25 @@ describe('preload bridge', () => {
         expect(send).toHaveBeenCalledWith(DEVTUNNEL_MODAL_SUBMIT_CHANNEL, 'tunnel-1');
         api.devtunnelModal.cancel();
         expect(send).toHaveBeenCalledWith(DEVTUNNEL_MODAL_CANCEL_CHANNEL);
+    });
+
+    it('screenshot.crop / cancel send on the real screenshot channels', () => {
+        const api = exposedApi();
+        const rect = { x: 1, y: 2, width: 3, height: 4 };
+        api.screenshot.crop(rect);
+        expect(send).toHaveBeenCalledWith(SCREENSHOT_CROP_CHANNEL, rect);
+        api.screenshot.cancel();
+        expect(send).toHaveBeenCalledWith(SCREENSHOT_CANCEL_CHANNEL);
+    });
+
+    it('screenshot.onOverlayInit subscribes on the real overlay channel and unsubscribes', () => {
+        const cb = vi.fn();
+        const unsubscribe = exposedApi().screenshot.onOverlayInit(cb);
+        expect(on).toHaveBeenCalledWith(SCREENSHOT_OVERLAY_INIT_CHANNEL, expect.any(Function));
+        unsubscribe();
+        expect(removeListener).toHaveBeenCalledWith(
+            SCREENSHOT_OVERLAY_INIT_CHANNEL,
+            expect.any(Function),
+        );
     });
 });
