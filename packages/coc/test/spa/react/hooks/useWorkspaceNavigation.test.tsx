@@ -19,10 +19,19 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
     useQueue: () => ({ state: { selectedTaskIdByRepo: {} } }),
 }));
 vi.mock('../../../../src/server/spa/client/react/layout/Router', () => ({
-    buildRepoSubTabSuffix: (tab: string) => '/' + tab,
+    // Reflect the inputs faithfully enough to prove target-scoped note/task data
+    // is threaded through when a fallback suffix must be rebuilt.
+    buildRepoSubTabSuffix: (tab: string, state: any, selectedTaskId?: string | null) => {
+        if (tab === 'notes' && state?.selectedNotePath) return '/notes/' + state.selectedNotePath;
+        if ((tab === 'chats' || tab === 'activity' || tab === 'tasks') && selectedTaskId) return '/' + tab + '/' + selectedTaskId;
+        return '/' + tab;
+    },
 }));
 
-import { useWorkspaceNavigation } from '../../../../src/server/spa/client/react/hooks/useWorkspaceNavigation';
+import {
+    resolveWorkspaceRouteSuffix,
+    useWorkspaceNavigation,
+} from '../../../../src/server/spa/client/react/hooks/useWorkspaceNavigation';
 import {
     setExplorerInstanceDirty,
     clearExplorerDirty,
@@ -34,6 +43,43 @@ beforeEach(() => {
     mockState = { selectedRepoId: 'a', activeTab: 'repos', repoTabState: {}, repoRouteState: {}, notePathState: {} };
     clearExplorerDirty();
     vi.restoreAllMocks();
+});
+
+describe('resolveWorkspaceRouteSuffix — target-aware precedence', () => {
+    const base: any = { repoRouteState: {}, repoTabState: {}, notePathState: {} };
+
+    it('1. an explicit override wins over the remembered route and tab', () => {
+        const state = { ...base, repoRouteState: { b: '/git/abc' }, repoTabState: { b: 'notes' } };
+        expect(resolveWorkspaceRouteSuffix(state, {}, 'b', { subTabOverride: 'settings' })).toBe('/settings');
+    });
+
+    it('2. a remembered full route wins over the remembered tab and first-visit tab', () => {
+        const state = { ...base, repoRouteState: { b: '/git/abc/file.ts' }, repoTabState: { b: 'notes' } };
+        expect(resolveWorkspaceRouteSuffix(state, {}, 'b', { firstVisitTab: 'today' })).toBe('/git/abc/file.ts');
+    });
+
+    it('3. a remembered top-level tab wins over the first-visit tab', () => {
+        const state = { ...base, repoTabState: { b: 'activity' } };
+        expect(resolveWorkspaceRouteSuffix(state, {}, 'b', { firstVisitTab: 'notes' })).toBe('/activity');
+    });
+
+    it('4. the first-visit tab is used only when the target has no memory', () => {
+        expect(resolveWorkspaceRouteSuffix(base, {}, 'b', { firstVisitTab: 'today' })).toBe('/today');
+    });
+
+    it('defaults to chats when neither memory nor a first-visit tab is supplied', () => {
+        expect(resolveWorkspaceRouteSuffix(base, {}, 'b')).toBe('/chats');
+    });
+
+    it('rebuilds a fallback suffix from the TARGET id\'s note path, not the departing scope\'s', () => {
+        const state = { ...base, repoTabState: { b: 'notes' }, notePathState: { a: 'departing.md', b: 'Plans/target.md' } };
+        expect(resolveWorkspaceRouteSuffix(state, {}, 'b')).toBe('/notes/Plans/target.md');
+    });
+
+    it('rebuilds a fallback suffix from the TARGET id\'s selected task', () => {
+        const state = { ...base, repoTabState: { b: 'chats' } };
+        expect(resolveWorkspaceRouteSuffix(state, { a: 'other', b: 'task-9' }, 'b')).toBe('/chats/task-9');
+    });
 });
 
 describe('useWorkspaceNavigation.navigateToWorkspace', () => {
