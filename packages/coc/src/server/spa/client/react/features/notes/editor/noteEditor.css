@@ -860,6 +860,67 @@
     height: auto;
 }
 
+/* Inner wrapper anchors the resize handle to the iframe's bottom edge (the
+   fallback link sits below it, in normal flow). */
+.pdf-node-view-frame-inner {
+    position: relative;
+}
+
+/* Bottom-edge drag handle: faint by default, highlighted on hover/select/drag. */
+.pdf-node-view-resize-handle {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 8px;
+    cursor: ns-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(to bottom, transparent, rgba(0, 120, 212, 0.18));
+    opacity: 0.6;
+    transition: opacity 0.12s ease, background 0.12s ease;
+}
+
+.pdf-node-view-frame-inner:hover .pdf-node-view-resize-handle,
+.pdf-node-view.pdf-selected .pdf-node-view-resize-handle,
+.pdf-node-view.ProseMirror-selectednode .pdf-node-view-resize-handle,
+.pdf-node-view.pdf-resizing .pdf-node-view-resize-handle {
+    opacity: 1;
+    background: linear-gradient(to bottom, transparent, rgba(0, 120, 212, 0.35));
+}
+
+.pdf-node-view-resize-tooltip {
+    position: absolute;
+    bottom: 10px;
+    right: 4px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.75);
+    color: #ffffff;
+    font-size: 11px;
+    line-height: 1.4;
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+/* The iframe swallows document-level mousemove during a drag; disabling its
+   pointer events for the drag duration keeps the handle's listeners firing. */
+.pdf-node-view.pdf-resizing .md-pdf-embed-frame {
+    pointer-events: none;
+}
+
+.dark .pdf-node-view-resize-handle {
+    background: linear-gradient(to bottom, transparent, rgba(79, 195, 247, 0.22));
+}
+
+.dark .pdf-node-view-frame-inner:hover .pdf-node-view-resize-handle,
+.dark .pdf-node-view.pdf-selected .pdf-node-view-resize-handle,
+.dark .pdf-node-view.ProseMirror-selectednode .pdf-node-view-resize-handle,
+.dark .pdf-node-view.pdf-resizing .pdf-node-view-resize-handle {
+    background: linear-gradient(to bottom, transparent, rgba(79, 195, 247, 0.4));
+}
+
 .pdf-node-view-link-only {
     min-height: 96px;
     display: flex;

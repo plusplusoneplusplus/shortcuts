@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 
 vi.mock('@tiptap/core', () => ({
@@ -21,7 +21,9 @@ const externalPdfUrl = 'https://files.example/sample.pdf';
 
 type ExtensionConfig = {
     parseHTML(): Array<{ tag: string; getAttrs: (el: HTMLElement) => false | { url: string; label: string } }>;
-    renderHTML(args: { node: { attrs: { url: string; label: string; indent?: number } } }): unknown[];
+    renderHTML(args: {
+        node: { attrs: { url: string; label: string; indent?: number; height?: number | null } };
+    }): unknown[];
 };
 
 type NodeViewConfig = ExtensionConfig & {
@@ -34,6 +36,17 @@ const PdfBlockView = nodeViewConfig.addNodeView() as React.FC<any>;
 
 function makeProps(url = pdfUrl, label = 'sample.pdf', updateAttributes = vi.fn()) {
     return { node: { attrs: { url, label } }, updateAttributes } as any;
+}
+
+function makeResizeProps(
+    overrides: { height?: number | null; selected?: boolean; updateAttributes?: ReturnType<typeof vi.fn> } = {},
+) {
+    const updateAttributes = overrides.updateAttributes ?? vi.fn();
+    return {
+        node: { attrs: { url: pdfUrl, label: 'sample.pdf', height: overrides.height ?? null } },
+        updateAttributes,
+        selected: overrides.selected ?? false,
+    } as any;
 }
 
 describe('PdfBlock parseHTML', () => {
@@ -92,6 +105,28 @@ describe('PdfBlock renderHTML', () => {
                 'data-indent': '2',
             },
         ]);
+    });
+
+    it('adds data-pdf-height to the placeholder for a resized PDF (clamped)', () => {
+        const result = config.renderHTML({
+            node: { attrs: { url: '.attachments/sample.pdf', label: 'Sample PDF', height: 5000 } },
+        });
+        expect(result).toEqual([
+            'div',
+            {
+                class: 'md-pdf-embed',
+                'data-pdf-url': '.attachments/sample.pdf',
+                'data-pdf-label': 'Sample PDF',
+                'data-pdf-height': '1200',
+            },
+        ]);
+    });
+
+    it('omits data-pdf-height when the height is unset', () => {
+        const result = config.renderHTML({
+            node: { attrs: { url: '.attachments/sample.pdf', label: 'Sample PDF', height: null } },
+        }) as [string, Record<string, unknown>];
+        expect(result[1]).not.toHaveProperty('data-pdf-height');
     });
 });
 
@@ -169,5 +204,69 @@ describe('PdfBlockView', () => {
         expect(screen.queryByTestId('pdf-node-view-frame')).toBeNull();
         expect(screen.queryByRole('link')).toBeNull();
         expect(screen.getByText('Missing or unsafe PDF attachment')).toBeTruthy();
+    });
+});
+
+describe('PdfBlockView resize', () => {
+    afterEach(() => cleanup());
+
+    it('applies the persisted height as an inline iframe style', () => {
+        render(<PdfBlockView {...makeResizeProps({ height: 300 })} />);
+        const iframe = screen.getByTestId('pdf-node-view-frame') as HTMLIFrameElement;
+        expect(iframe.style.height).toBe('300px');
+    });
+
+    it('leaves the iframe height to CSS when no height is set', () => {
+        render(<PdfBlockView {...makeResizeProps({ height: null })} />);
+        const iframe = screen.getByTestId('pdf-node-view-frame') as HTMLIFrameElement;
+        expect(iframe.style.height).toBe('');
+    });
+
+    it('always renders the resize handle for an inline PDF (CSS controls emphasis)', () => {
+        render(<PdfBlockView {...makeResizeProps({ selected: false })} />);
+        expect(screen.getByTestId('pdf-node-view-resize-handle')).toBeTruthy();
+    });
+
+    it('marks the node view as selected so the handle is emphasized', () => {
+        const { container } = render(<PdfBlockView {...makeResizeProps({ selected: true })} />);
+        expect(container.querySelector('.pdf-node-view.pdf-selected')).toBeTruthy();
+    });
+
+    it('does not render a resize handle for an external (link-only) PDF', () => {
+        render(<PdfBlockView {...makeProps(externalPdfUrl, 'External PDF')} />);
+        expect(screen.queryByTestId('pdf-node-view-resize-handle')).toBeNull();
+    });
+
+    it('commits the clamped dragged height on mouseup', () => {
+        const updateAttributes = vi.fn();
+        render(<PdfBlockView {...makeResizeProps({ height: 300, selected: true, updateAttributes })} />);
+
+        const handle = screen.getByTestId('pdf-node-view-resize-handle');
+        fireEvent.mouseDown(handle, { clientY: 100 });
+        fireEvent.mouseMove(document, { clientY: 250 });
+        fireEvent.mouseUp(document, { clientY: 250 });
+
+        // startHeight 300 + dy 150 = 450 (within [160, 1200]).
+        expect(updateAttributes).toHaveBeenCalledWith({ height: 450 });
+    });
+
+    it('clamps a drag that overshoots the maximum', () => {
+        const updateAttributes = vi.fn();
+        render(<PdfBlockView {...makeResizeProps({ height: 1000, selected: true, updateAttributes })} />);
+
+        const handle = screen.getByTestId('pdf-node-view-resize-handle');
+        fireEvent.mouseDown(handle, { clientY: 0 });
+        fireEvent.mouseMove(document, { clientY: 5000 });
+        fireEvent.mouseUp(document, { clientY: 5000 });
+
+        expect(updateAttributes).toHaveBeenCalledWith({ height: 1200 });
+    });
+
+    it('resets the height to null on double-click of the handle', () => {
+        const updateAttributes = vi.fn();
+        render(<PdfBlockView {...makeResizeProps({ height: 600, selected: true, updateAttributes })} />);
+
+        fireEvent.doubleClick(screen.getByTestId('pdf-node-view-resize-handle'));
+        expect(updateAttributes).toHaveBeenCalledWith({ height: null });
     });
 });

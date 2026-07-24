@@ -11,6 +11,7 @@ import { isEmbeddableMapUrl, isPdfUrl } from '@plusplusoneplusplus/forge/editor/
 import { mathNodeMarkedExtension } from './mathNodeMarked';
 import { wrapMathDelimiters, type MathDelimiter } from '../../../../shared/math/mathTokenizer';
 import { clampIndent, parseIndentAttr } from './extensions/indentShared';
+import { clampPdfHeight, parsePdfHeightAttr } from './extensions/pdfHeightShared';
 
 // ── marked configuration ────────────────────────────────────────────────────
 
@@ -281,8 +282,13 @@ turndown.addRule('pdfEmbed', {
         if (!url) return '';
         const label = el.getAttribute('data-pdf-label')?.trim() || 'PDF';
         const indent = parseIndentAttr(el);
-        if (indent > 0) {
-            return `\n\n<div class="md-pdf-embed" data-pdf-url="${escapeAttr(url)}" data-pdf-label="${escapeAttr(label)}" data-indent="${indent}"></div>\n\n`;
+        const height = parsePdfHeightAttr(el);
+        // `![]()` cannot carry an indent or a height — either forces the raw
+        // `<div>` form so the attribute survives the next save.
+        if (indent > 0 || height != null) {
+            const indentAttr = indent > 0 ? ` data-indent="${indent}"` : '';
+            const heightAttr = height != null ? ` data-pdf-height="${height}"` : '';
+            return `\n\n<div class="md-pdf-embed" data-pdf-url="${escapeAttr(url)}" data-pdf-label="${escapeAttr(label)}"${indentAttr}${heightAttr}></div>\n\n`;
         }
         return `![${escapeMarkdownLinkLabel(label)}](${url})`;
     },
@@ -622,12 +628,17 @@ function serializePdfEmbedPlaceholders(html: string): string {
             if (!url) return '';
             const label = getHtmlAttr(attrs, 'data-pdf-label').trim() || 'PDF';
             const indent = clampIndent(parseInt(getHtmlAttr(attrs, 'data-indent') || '0', 10) || 0);
-            if (indent > 0) {
+            const rawHeight = getHtmlAttr(attrs, 'data-pdf-height');
+            const height = rawHeight ? clampPdfHeight(parseInt(rawHeight, 10) || 0) : null;
+            if (indent > 0 || height != null) {
                 // Keep the embed as a non-blank md-pdf-embed div (turndown drops
                 // blank block nodes) so the `pdfEmbed` rule fires and preserves the
-                // indent as raw HTML. Routing through <img>/`![]()` would lose both
-                // the indent AND the pdf type (a raw <img> reloads as an image).
-                return `<div class="md-pdf-embed" data-pdf-url="${escapeAttr(url)}" data-pdf-label="${escapeAttr(label)}" data-indent="${indent}">${escapeHtmlText(label)}</div>`;
+                // indent and/or height as raw HTML. Routing through <img>/`![]()`
+                // would lose both the attributes AND the pdf type (a raw <img>
+                // reloads as an image).
+                const indentAttr = indent > 0 ? ` data-indent="${indent}"` : '';
+                const heightAttr = height != null ? ` data-pdf-height="${height}"` : '';
+                return `<div class="md-pdf-embed" data-pdf-url="${escapeAttr(url)}" data-pdf-label="${escapeAttr(label)}"${indentAttr}${heightAttr}>${escapeHtmlText(label)}</div>`;
             }
             return `<img src="${escapeAttr(url)}" alt="${escapeAttr(label)}" />`;
         },

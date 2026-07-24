@@ -1,19 +1,69 @@
+import { useCallback, useRef, useState } from 'react';
 import { Node } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
 import { createIndentAttribute, renderIndentAttr } from './indentShared';
+import {
+    clampPdfHeight,
+    createPdfHeightAttribute,
+    renderPdfHeightAttr,
+    DEFAULT_PDF_HEIGHT,
+} from './pdfHeightShared';
 import { classifyPdfBlockUrl } from './pdfBlockUrl';
 
-function PdfBlockView({ node }: NodeViewProps) {
+function PdfBlockView({ node, updateAttributes, selected }: NodeViewProps) {
     const url = String(node.attrs.url || '');
     const label = String(node.attrs.label || 'PDF');
     const classification = classifyPdfBlockUrl(url, window.location.origin);
     const href = classification.kind === 'invalid' ? undefined : classification.href;
     const indent = Number(node.attrs.indent || 0);
 
+    const attrHeight = node.attrs.height == null ? null : Number(node.attrs.height);
+    const frameRef = useRef<HTMLIFrameElement>(null);
+    const [dragging, setDragging] = useState(false);
+    const [dragHeight, setDragHeight] = useState<number | null>(null);
+
+    const displayHeight = dragging ? dragHeight : attrHeight;
+
+    const handleDoubleClick = useCallback(() => {
+        updateAttributes({ height: null });
+    }, [updateAttributes]);
+
+    const handleDragStart = useCallback(
+        (e: React.MouseEvent) => {
+            // Must not start a node drag (the wrapper carries data-drag-handle).
+            e.preventDefault();
+            e.stopPropagation();
+
+            const startY = e.clientY;
+            const startHeight =
+                attrHeight ??
+                frameRef.current?.getBoundingClientRect().height ??
+                DEFAULT_PDF_HEIGHT;
+
+            setDragging(true);
+            setDragHeight(clampPdfHeight(startHeight));
+
+            const onMouseMove = (ev: MouseEvent) => {
+                setDragHeight(clampPdfHeight(startHeight + (ev.clientY - startY)));
+            };
+            const onMouseUp = (ev: MouseEvent) => {
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+                setDragging(false);
+                setDragHeight(null);
+                updateAttributes({ height: clampPdfHeight(startHeight + (ev.clientY - startY)) });
+            };
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        },
+        [attrHeight, updateAttributes],
+    );
+
     return (
         <NodeViewWrapper
-            className="pdf-node-view"
+            className={`pdf-node-view${selected ? ' pdf-selected' : ''}${dragging ? ' pdf-resizing' : ''}`}
             data-drag-handle=""
             data-testid="pdf-node-view"
             data-indent={indent > 0 ? indent : undefined}
@@ -37,13 +87,28 @@ function PdfBlockView({ node }: NodeViewProps) {
                 </div>
                 {classification.kind === 'inline' ? (
                     <div className="md-pdf-embed-frame-wrap pdf-node-view-frame-wrap">
-                        <iframe
-                            className="md-pdf-embed-frame"
-                            data-testid="pdf-node-view-frame"
-                            src={classification.href}
-                            title={label}
-                            loading="lazy"
-                        />
+                        <div className="pdf-node-view-frame-inner">
+                            <iframe
+                                ref={frameRef}
+                                className="md-pdf-embed-frame"
+                                data-testid="pdf-node-view-frame"
+                                src={classification.href}
+                                title={label}
+                                loading="lazy"
+                                style={displayHeight ? { height: `${displayHeight}px` } : undefined}
+                            />
+                            <div
+                                className="pdf-node-view-resize-handle"
+                                data-testid="pdf-node-view-resize-handle"
+                                onMouseDown={handleDragStart}
+                                onDoubleClick={handleDoubleClick}
+                                title="Drag to resize · double-click to reset"
+                            >
+                                {dragging && displayHeight ? (
+                                    <span className="pdf-node-view-resize-tooltip">{displayHeight}px</span>
+                                ) : null}
+                            </div>
+                        </div>
                         <div className="pdf-node-view-fallback">
                             If the PDF does not display,{' '}
                             <a href={classification.href} target="_blank" rel="noopener noreferrer">open it in a new tab</a>.
@@ -74,6 +139,7 @@ export const PdfBlock = Node.create({
             url: { default: '' },
             label: { default: 'PDF' },
             indent: createIndentAttribute(),
+            height: createPdfHeightAttribute(),
         };
     },
 
@@ -101,6 +167,7 @@ export const PdfBlock = Node.create({
                 'data-pdf-url': node.attrs.url,
                 'data-pdf-label': node.attrs.label,
                 ...renderIndentAttr(node.attrs.indent),
+                ...renderPdfHeightAttr(node.attrs.height),
             },
         ];
     },
