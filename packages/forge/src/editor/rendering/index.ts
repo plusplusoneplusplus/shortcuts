@@ -69,6 +69,12 @@ export {
     isPdfUrl,
 } from './pdf-embed';
 
+export {
+    isYouTubeUrl,
+    parseYouTubeVideoId,
+    youTubeEmbedUrl,
+} from './youtube-embed';
+
 // Cursor management
 export {
     CursorPosition,

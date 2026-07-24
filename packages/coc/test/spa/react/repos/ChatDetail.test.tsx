@@ -71,6 +71,8 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getWarmClientTtlMs: () => 300000,
     isCanvasEnabled: () => false,
     isRemoteShellEnabled: () => false,
+    isQuickAskSidenotesEnabled: () => false,
+    DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
 }));
 
 // Display settings

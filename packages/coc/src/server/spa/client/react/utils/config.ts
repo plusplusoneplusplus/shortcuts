@@ -82,6 +82,8 @@ interface DashboardConfig {
     showPlanDepTab?: boolean;
     /** Whether the remote-first dashboard shell is enabled (feature flag). */
     remoteShellEnabled?: boolean;
+    /** Whether Quick Ask side-notes on assistant chat turns are enabled (admin: Quick Ask side-notes). */
+    quickAskSidenotesEnabled?: boolean;
     /** Whether the sliding scope switcher (My Work · My Life · active workspace) is enabled (feature flag). */
     scopeSwitcherEnabled?: boolean;
     /** Whether the split "Workspace" left panel (chat top / git bottom + shared detail pane) is enabled. */
@@ -406,6 +408,11 @@ export function isShowPlanDepTab(): boolean {
 /** Returns true when the remote-first dashboard shell is enabled. */
 export function isRemoteShellEnabled(): boolean {
     return getConfig().remoteShellEnabled === true;
+}
+
+/** Live `features.quickAskSidenotes` flag (admin: Quick Ask side-notes). */
+export function isQuickAskSidenotesEnabled(): boolean {
+    return getConfig().quickAskSidenotesEnabled === true;
 }
 
 /** Returns true when the sliding scope switcher (My Work · My Life · active workspace) is enabled. */

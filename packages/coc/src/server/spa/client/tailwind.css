@@ -363,6 +363,73 @@
     background: #ffffff;
 }
 
+/* ── YouTube link play buttons + inline player (view-only decorations) ─────── */
+
+.yt-embed-buttons {
+    display: inline-flex;
+    gap: 0.4rem;
+    margin-left: 0.35rem;
+    vertical-align: baseline;
+    user-select: none;
+}
+
+.yt-embed-btn {
+    color: #0078d4;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1.4;
+    padding: 0 0.25rem;
+    white-space: nowrap;
+}
+
+.yt-embed-btn:hover {
+    text-decoration: underline;
+}
+
+.dark .yt-embed-btn {
+    color: #3794ff;
+}
+
+/* Inline 16:9 responsive player, rendered below the link's paragraph. */
+.yt-embed-inline {
+    margin: 0.5rem 0;
+}
+
+.yt-embed-inline-frame-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 640px; /* keeps a wide column's player reasonable; 16:9 scales down */
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border-radius: 6px;
+    background: #000000;
+}
+
+.yt-embed-inline-frame {
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
+
+/* Popup player (rendered inside the shared Dialog). */
+.yt-embed-popup-frame-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border-radius: 6px;
+    background: #000000;
+}
+
+.yt-embed-popup-frame {
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
+
 /* ── Inline PDF embed shell (shared with PdfBlock node view) ──────────────── */
 
 .md-pdf-embed-shell {

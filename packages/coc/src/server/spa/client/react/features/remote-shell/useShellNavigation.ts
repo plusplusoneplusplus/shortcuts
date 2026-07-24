@@ -9,11 +9,17 @@ import { useCallback } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
 import { buildRepoSubTabSuffix } from '../../layout/Router';
-import { confirmDiscardExplorerEditsOnSwitch } from '../repo-detail/explorer/explorerDirtyStore';
+import { useWorkspaceNavigation } from '../../hooks/useWorkspaceNavigation';
 import type { RepoSubTab } from '../../types/dashboard';
 
 export interface ShellNavigation {
-    /** Select a clone (workspace). Preserves the active sub-tab unless overridden. */
+    /**
+     * Select a clone (workspace). Restores the *target* scope's own remembered
+     * full route (else its remembered top-level tab, else its first-visit
+     * default) — the departing scope's active sub-tab is never carried across.
+     * Pass `subTabOverride` only for an explicit "open this workspace on this
+     * tab" action.
+     */
     selectClone: (id: string, subTabOverride?: RepoSubTab) => void;
     /** Switch the active sub-tab for the currently selected clone. */
     switchSubTab: (tab: RepoSubTab) => void;
@@ -22,6 +28,7 @@ export interface ShellNavigation {
 export function useShellNavigation(): ShellNavigation {
     const { state, dispatch } = useApp();
     const { state: queueState } = useQueue();
+    const { navigateToWorkspace } = useWorkspaceNavigation();
 
     const navigate = useCallback((id: string, subTab: RepoSubTab) => {
         const selectedTaskId = queueState.selectedTaskIdByRepo?.[id] ?? null;
@@ -34,11 +41,11 @@ export function useShellNavigation(): ShellNavigation {
     }, [queueState.selectedTaskIdByRepo, state]);
 
     const selectClone = useCallback((id: string, subTabOverride?: RepoSubTab) => {
-        // Prompt before leaving a workspace whose explorer has unsaved edits (AC-03).
-        if (!confirmDiscardExplorerEditsOnSwitch(state.selectedRepoId, id)) return;
-        dispatch({ type: 'SET_SELECTED_REPO', id });
-        navigate(id, subTabOverride ?? state.activeRepoSubTab ?? 'chats');
-    }, [dispatch, navigate, state.activeRepoSubTab, state.selectedRepoId]);
+        // Delegate to the shared, target-aware navigation: it restores the target
+        // scope's remembered route/tab, activates the repos tab, runs the unsaved-
+        // Explorer guard, and dispatches the selection — all exactly once.
+        navigateToWorkspace(id, subTabOverride ? { subTabOverride } : undefined);
+    }, [navigateToWorkspace]);
 
     const switchSubTab = useCallback((tab: RepoSubTab) => {
         // Switching a workspace sub-tab always means "show that workspace", so

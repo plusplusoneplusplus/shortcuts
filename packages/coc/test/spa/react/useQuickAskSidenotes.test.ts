@@ -3,8 +3,8 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 
 const { fetchApiMock } = vi.hoisted(() => ({ fetchApiMock: vi.fn() }));
 
-vi.mock('../../../src/server/spa/client/react/featureFlags', () => ({
-    QUICK_ASK_SIDENOTES: true,
+vi.mock('../../../src/server/spa/client/react/hooks/feature-flags/useQuickAskSidenotesEnabled', () => ({
+    useQuickAskSidenotesEnabled: () => true,
 }));
 vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: fetchApiMock,

@@ -16,7 +16,8 @@ import { LoopIcon } from '../icons/LoopIcon';
 import { useDisplaySettings } from '../../../hooks/preferences/useDisplaySettings';
 import { useHtmlEmbedPreference } from '../../../hooks/preferences/useHtmlEmbedPreference';
 import { isExcalidrawEnabled, isCanvasEnabled } from '../../../utils/config';
-import { SHOW_EXCALIDRAW_DIAGRAMS, QUICK_ASK_SIDENOTES } from '../../../featureFlags';
+import { SHOW_EXCALIDRAW_DIAGRAMS } from '../../../featureFlags';
+import { useQuickAskSidenotesEnabled } from '../../../hooks/feature-flags/useQuickAskSidenotesEnabled';
 import { QuickAskTurnLayer } from '../quick-ask/QuickAskTurnLayer';
 import type { ClientSideNote, QuickAskSelection } from '../quick-ask/types';
 import { getSpaCocClient } from '../../../api/cocClient';
@@ -117,7 +118,7 @@ interface ConversationTurnBubbleProps {
     /**
      * Quick Ask side-notes for this process (persisted + optimistic), filtered
      * per turn inside the bubble. Only used on assistant turns when the
-     * `QUICK_ASK_SIDENOTES` flag is on.
+     * admin `features.quickAskSidenotes` flag is on.
      */
     sidenotes?: ClientSideNote[];
     /** Run a Quick Ask lookup for a captured selection in this turn. */
@@ -1087,6 +1088,7 @@ function InterruptedTurnBanner({ reason, onContinue }: { reason?: string; onCont
 export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onDeleteTurn, onPinTurn, onArchiveTurn, onRewindTurn, noteEdits, processId, provider, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const sidenoteContentRef = useRef<HTMLDivElement>(null);
+    const quickAskSidenotesEnabled = useQuickAskSidenotesEnabled();
     const isScript = !isUser && processType === TaskDefs.runScript.kind;
     const { showReportIntent, toolCompactness, groupSingleLineMessages } = useDisplaySettings();
     const htmlEmbedEnabled = useHtmlEmbedPreference(wsId) && !turn.streaming;
@@ -1805,7 +1807,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                             />
                         ));
                     })()}
-                    {QUICK_ASK_SIDENOTES && !isUser && turnIndex != null && (
+                    {quickAskSidenotesEnabled && !isUser && turnIndex != null && (
                         <QuickAskTurnLayer
                             containerRef={sidenoteContentRef}
                             turnIndex={turnIndex}

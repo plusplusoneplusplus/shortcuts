@@ -242,9 +242,10 @@ all have their own `references/*.md`.
   (`node:vm`, no require/process, 1s timeout, 1 MB cap) — never execute
   extension scripts outside that runner. Do not write canvas files directly
   from other features.
-- **Quick Ask side-notes** (opt-in; server flag `features.quickAskSidenotes`
-  default off, plus the compile-time SPA flag `QUICK_ASK_SIDENOTES` that strips
-  the UI from the bundle when off) let a user select text in an assistant chat
+- **Quick Ask side-notes** (opt-in; live admin flag `features.quickAskSidenotes`
+  default off, gating both the server endpoints and the SPA UI via
+  `isQuickAskSidenotesEnabled()` / `useQuickAskSidenotesEnabled`) let a user
+  select text in an assistant chat
   turn to run a cheap one-shot AI lookup, attached as a clickable 💡 bubble that
   never enters the conversation thread. Backend lives in
   `src/server/processes/chat-sidenotes/` (manager + prompt + one-shot invoker +

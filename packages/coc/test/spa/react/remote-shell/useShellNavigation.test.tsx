@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 
 const mockDispatch = vi.fn();
-let mockState: any = { selectedRepoId: 'a', activeTab: 'repos', activeRepoSubTab: 'chats', notePathState: {} };
+let mockState: any = { selectedRepoId: 'a', activeTab: 'repos', activeRepoSubTab: 'chats', notePathState: {}, repoRouteState: {}, repoTabState: {} };
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: mockState, dispatch: mockDispatch }),
@@ -33,7 +33,7 @@ import {
 beforeEach(() => {
     mockDispatch.mockReset();
     location.hash = '';
-    mockState = { selectedRepoId: 'a', activeTab: 'repos', activeRepoSubTab: 'chats', notePathState: {} };
+    mockState = { selectedRepoId: 'a', activeTab: 'repos', activeRepoSubTab: 'chats', notePathState: {}, repoRouteState: {}, repoTabState: {} };
     clearExplorerDirty();
     vi.restoreAllMocks();
 });
@@ -66,15 +66,72 @@ describe('useShellNavigation.switchSubTab', () => {
     });
 });
 
-describe('useShellNavigation.selectClone', () => {
-    it('selects the clone and routes to it, preserving the active sub-tab', () => {
+describe('useShellNavigation.selectClone — target-scope restoration', () => {
+    it('reproduces the reported bug: from my_life/Notes, returning to a workspace restores ITS remembered route (not Notes)', () => {
+        // Source scope `my_life` is on Notes; the target `shortcuts` was last on
+        // Activity. Returning must not carry the departing scope's Notes tab.
+        mockState = {
+            ...mockState,
+            selectedRepoId: 'my_life',
+            activeRepoSubTab: 'notes',
+            repoRouteState: { shortcuts: '/activity' },
+        };
+        const { result } = renderHook(() => useShellNavigation());
+
+        act(() => result.current.selectClone('shortcuts'));
+
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_REPO', id: 'shortcuts' });
+        expect(location.hash).toBe('#repos/shortcuts/activity');
+    });
+
+    it('restores a remembered deep route verbatim, taking precedence over a remembered tab', () => {
+        mockState = {
+            ...mockState,
+            repoRouteState: { b: '/git/abc123/src%2Ffile.ts' },
+            repoTabState: { b: 'chats' },
+        };
+        const { result } = renderHook(() => useShellNavigation());
+
+        act(() => result.current.selectClone('b'));
+
+        expect(location.hash).toBe('#repos/b/git/abc123/src%2Ffile.ts');
+    });
+
+    it('falls back to the target\'s remembered top-level tab when no full route exists', () => {
+        mockState = { ...mockState, activeRepoSubTab: 'notes', repoTabState: { b: 'settings' } };
+        const { result } = renderHook(() => useShellNavigation());
+
+        act(() => result.current.selectClone('b'));
+
+        expect(location.hash).toBe('#repos/b/settings');
+    });
+
+    it('uses the ordinary-workspace first-visit default (chats) when the target has no memory', () => {
         mockState = { ...mockState, activeRepoSubTab: 'notes' };
         const { result } = renderHook(() => useShellNavigation());
 
         act(() => result.current.selectClone('b'));
 
         expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_REPO', id: 'b' });
-        expect(location.hash).toBe('#repos/b/notes');
+        expect(location.hash).toBe('#repos/b/chats');
+    });
+
+    it('honors an explicit sub-tab override over the target\'s remembered route/tab', () => {
+        mockState = { ...mockState, repoRouteState: { b: '/activity' }, repoTabState: { b: 'activity' } };
+        const { result } = renderHook(() => useShellNavigation());
+
+        act(() => result.current.selectClone('b', 'git'));
+
+        expect(location.hash).toBe('#repos/b/git');
+    });
+
+    it('activates the repos tab through the shared navigation path (from Admin)', () => {
+        mockState = { ...mockState, activeTab: 'admin' };
+        const { result } = renderHook(() => useShellNavigation());
+
+        act(() => result.current.selectClone('b'));
+
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_ACTIVE_TAB', tab: 'repos' });
     });
 });
 
