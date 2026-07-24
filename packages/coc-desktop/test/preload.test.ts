@@ -31,6 +31,9 @@ import {
     SCREENSHOT_OVERLAY_INIT_CHANNEL,
     SCREENSHOT_CROP_CHANNEL,
     SCREENSHOT_CANCEL_CHANNEL,
+    SCREENSHOT_ANNOTATE_INIT_CHANNEL,
+    SCREENSHOT_ANNOTATE_DONE_CHANNEL,
+    SCREENSHOT_ANNOTATE_CANCEL_CHANNEL,
 } from '../src/screenshot-capture';
 
 const exposeInMainWorld = vi.fn();
@@ -123,6 +126,25 @@ describe('preload bridge', () => {
         unsubscribe();
         expect(removeListener).toHaveBeenCalledWith(
             SCREENSHOT_OVERLAY_INIT_CHANNEL,
+            expect.any(Function),
+        );
+    });
+
+    it('screenshot.done / cancelAnnotate send on the real annotate channels', () => {
+        const api = exposedApi();
+        api.screenshot.done('data:image/png;base64,ABC');
+        expect(send).toHaveBeenCalledWith(SCREENSHOT_ANNOTATE_DONE_CHANNEL, 'data:image/png;base64,ABC');
+        api.screenshot.cancelAnnotate();
+        expect(send).toHaveBeenCalledWith(SCREENSHOT_ANNOTATE_CANCEL_CHANNEL);
+    });
+
+    it('screenshot.onAnnotateInit subscribes on the real annotate channel and unsubscribes', () => {
+        const cb = vi.fn();
+        const unsubscribe = exposedApi().screenshot.onAnnotateInit(cb);
+        expect(on).toHaveBeenCalledWith(SCREENSHOT_ANNOTATE_INIT_CHANNEL, expect.any(Function));
+        unsubscribe();
+        expect(removeListener).toHaveBeenCalledWith(
+            SCREENSHOT_ANNOTATE_INIT_CHANNEL,
             expect.any(Function),
         );
     });

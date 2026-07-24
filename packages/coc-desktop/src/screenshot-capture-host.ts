@@ -25,7 +25,13 @@ import {
     SCREENSHOT_OVERLAY_INIT_CHANNEL,
     SCREENSHOT_CROP_CHANNEL,
     SCREENSHOT_CANCEL_CHANNEL,
+    SCREENSHOT_ANNOTATE_INIT_CHANNEL,
+    SCREENSHOT_ANNOTATE_DONE_CHANNEL,
+    SCREENSHOT_ANNOTATE_CANCEL_CHANNEL,
+    ANNOTATION_TOOLBAR_HEIGHT,
     buildOverlayHtml,
+    buildAnnotationHtml,
+    fitAnnotationWindowSize,
     resolveScreenCaptureAccess,
     scaleCropRect,
     CropRect,
@@ -47,6 +53,8 @@ interface PendingCapture {
 
 /** Keyed by the overlay window's webContents id, so IPC routes by sender. */
 const pendingByOverlayId = new Map<number, PendingCapture>();
+/** Open annotation editor windows, keyed by their webContents id (routes done/cancel). */
+const editorByWebContentsId = new Map<number, BrowserWindow>();
 let ipcRegistered = false;
 /** True while a capture (permission check → overlay) is in progress — the global
  *  accelerator is best-effort single-shot; a second press mid-capture is ignored. */
@@ -157,7 +165,7 @@ function registerScreenshotIpc(): void {
         try {
             // The CSS-space rect is scaled to device pixels to crop the full-res image.
             const cropped = pending.image.crop(scaleCropRect(rect, pending.scaleFactor));
-            openAnnotationEditor(cropped);
+            openAnnotationEditor(cropped, pending.scaleFactor);
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             process.stderr.write(`[coc-desktop] screenshot crop failed: ${message}\n`);
@@ -167,6 +175,21 @@ function registerScreenshotIpc(): void {
         const pending = pendingByOverlayId.get(event.sender.id);
         if (pending) {
             closeOverlay(pending);
+        }
+    });
+    // AC-03/AC-04: the annotation editor reports its result. "Done" carries the
+    // flattened PNG data URL (handed to the three sinks); "Cancel" just discards.
+    ipcMain.on(SCREENSHOT_ANNOTATE_DONE_CHANNEL, (event, pngDataUrl: string) => {
+        const editor = editorByWebContentsId.get(event.sender.id);
+        if (editor && !editor.isDestroyed()) {
+            editor.close();
+        }
+        dispatchAnnotationResult(pngDataUrl);
+    });
+    ipcMain.on(SCREENSHOT_ANNOTATE_CANCEL_CHANNEL, (event) => {
+        const editor = editorByWebContentsId.get(event.sender.id);
+        if (editor && !editor.isDestroyed()) {
+            editor.close();
         }
     });
 }
@@ -244,14 +267,72 @@ function closeOverlay(pending: PendingCapture): void {
 }
 
 /**
- * AC-03 stub: open the custom annotation window on the cropped image. Replaced
- * when AC-03 lands; for now it records that the crop reached the next stage so
- * the AC-02 flow is observable end-to-end (the manual DoD's "annotation window
- * opens showing the cropped pixels" is completed by AC-03).
+ * AC-03: open the custom annotation editor on the cropped image. A dedicated,
+ * resizable `BrowserWindow` loads the self-contained editor page (a custom HTML5
+ * `<canvas>` — NOT Excalidraw) and, once loaded, receives the cropped image via
+ * {@link SCREENSHOT_ANNOTATE_INIT_CHANNEL}. The canvas resolution equals the
+ * crop's device pixels; the window is sized to fit the work area. Draw/undo/Done/
+ * Cancel are handled in the page; "Done"/"Cancel" route back through the IPC
+ * registered in {@link registerScreenshotIpc}.
  */
-function openAnnotationEditor(image: Electron.NativeImage): void {
+function openAnnotationEditor(image: Electron.NativeImage, scaleFactor: number): void {
     const size = image.getSize();
+    const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    const windowSize = fitAnnotationWindowSize(
+        size,
+        scaleFactor,
+        display.workAreaSize,
+        ANNOTATION_TOOLBAR_HEIGHT,
+    );
+
+    const editor = new BrowserWindow({
+        width: windowSize.width,
+        height: windowSize.height,
+        minWidth: 320,
+        minHeight: 240,
+        resizable: true,
+        title: 'Annotate Screenshot',
+        backgroundColor: '#0d1117',
+        show: false,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+        },
+    });
+
+    const editorId = editor.webContents.id;
+    editorByWebContentsId.set(editorId, editor);
+
+    editor.webContents.once('did-finish-load', () => {
+        if (editor.isDestroyed()) {
+            return;
+        }
+        editor.webContents.send(SCREENSHOT_ANNOTATE_INIT_CHANNEL, {
+            imageDataUrl: image.toDataURL(),
+            width: size.width,
+            height: size.height,
+        });
+        editor.show();
+        editor.focus();
+    });
+    editor.on('closed', () => {
+        editorByWebContentsId.delete(editorId);
+    });
+
+    void editor.loadURL(
+        'data:text/html;charset=utf-8,' + encodeURIComponent(buildAnnotationHtml()),
+    );
+}
+
+/**
+ * AC-04 stub: fan the finished annotation PNG out to the three sinks — OS
+ * clipboard, the active chat draft, and a Save-As file. Replaced when AC-04
+ * lands; for now it records that the flattened PNG reached the finish stage so
+ * the AC-03 flow is observable end-to-end.
+ */
+function dispatchAnnotationResult(pngDataUrl: string): void {
     process.stdout.write(
-        `[coc-desktop] screenshot cropped to ${size.width}x${size.height}\n`,
+        `[coc-desktop] annotation finished (${pngDataUrl.length} bytes of PNG data URL)\n`,
     );
 }

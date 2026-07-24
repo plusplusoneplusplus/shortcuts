@@ -29,6 +29,17 @@ import {
     resolveScreenCaptureAccess,
     buildOverlayPageScript,
     buildOverlayHtml,
+    SCREENSHOT_ANNOTATE_INIT_CHANNEL,
+    SCREENSHOT_ANNOTATE_DONE_CHANNEL,
+    SCREENSHOT_ANNOTATE_CANCEL_CHANNEL,
+    ANNOTATION_TOOLBAR_HEIGHT,
+    AnnotationStroke,
+    drawAnnotationStroke,
+    renderAnnotationScene,
+    exportAnnotatedPng,
+    fitAnnotationWindowSize,
+    buildAnnotationPageScript,
+    buildAnnotationHtml,
 } from '../src/screenshot-capture';
 
 const srcDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '../src');
@@ -435,5 +446,563 @@ describe('buildOverlayHtml', () => {
         }
         expect(html).toContain('<script>');
         expect(html).toContain('normalizeCropRect');
+    });
+});
+
+// ─── AC-03: custom `<canvas>` annotation window ─────────────────────────────
+
+describe('AC-03 IPC channel names', () => {
+    it('are distinct and namespaced', () => {
+        const channels = [
+            SCREENSHOT_ANNOTATE_INIT_CHANNEL,
+            SCREENSHOT_ANNOTATE_DONE_CHANNEL,
+            SCREENSHOT_ANNOTATE_CANCEL_CHANNEL,
+        ];
+        expect(new Set(channels).size).toBe(channels.length);
+        for (const c of channels) {
+            expect(c.startsWith('coc-desktop:')).toBe(true);
+        }
+    });
+
+    it('do not collide with the AC-02 capture channels', () => {
+        const all = [
+            SCREENSHOT_OVERLAY_INIT_CHANNEL,
+            SCREENSHOT_CROP_CHANNEL,
+            SCREENSHOT_CANCEL_CHANNEL,
+            SCREENSHOT_ANNOTATE_INIT_CHANNEL,
+            SCREENSHOT_ANNOTATE_DONE_CHANNEL,
+            SCREENSHOT_ANNOTATE_CANCEL_CHANNEL,
+        ];
+        expect(new Set(all).size).toBe(all.length);
+    });
+});
+
+/** A recording 2D-context stub: captures every op + the settable draw state. */
+interface CtxCall {
+    op: string;
+    args: unknown[];
+}
+function makeRecordingCtx() {
+    const calls: CtxCall[] = [];
+    const rec =
+        (op: string) =>
+        (...args: unknown[]) => {
+            calls.push({ op, args });
+        };
+    return {
+        calls,
+        lineWidth: 0,
+        strokeStyle: '',
+        lineCap: '',
+        lineJoin: '',
+        save: rec('save'),
+        restore: rec('restore'),
+        beginPath: rec('beginPath'),
+        moveTo: rec('moveTo'),
+        lineTo: rec('lineTo'),
+        stroke: rec('stroke'),
+        clearRect: rec('clearRect'),
+        drawImage: rec('drawImage'),
+    };
+}
+function countOp(ctx: ReturnType<typeof makeRecordingCtx>, op: string): number {
+    return ctx.calls.filter((c) => c.op === op).length;
+}
+
+describe('drawAnnotationStroke (AC-03 drawing model)', () => {
+    it('draws freehand as a connected polyline of all points', () => {
+        const ctx = makeRecordingCtx();
+        const stroke: AnnotationStroke = {
+            tool: 'pen',
+            color: '#ff0000',
+            width: 5,
+            points: [
+                { x: 0, y: 0 },
+                { x: 10, y: 10 },
+                { x: 20, y: 5 },
+            ],
+        };
+        drawAnnotationStroke(ctx, stroke);
+        expect(ctx.strokeStyle).toBe('#ff0000');
+        expect(ctx.lineWidth).toBe(5);
+        expect(ctx.calls[0].op).toBe('save');
+        expect(ctx.calls[ctx.calls.length - 1].op).toBe('restore');
+        expect(countOp(ctx, 'moveTo')).toBe(1);
+        expect(countOp(ctx, 'lineTo')).toBe(2);
+        expect(countOp(ctx, 'stroke')).toBe(1);
+    });
+
+    it('renders a single-point freehand as a dot (moveTo + lineTo to itself)', () => {
+        const ctx = makeRecordingCtx();
+        drawAnnotationStroke(ctx, { tool: 'pen', color: '#000', width: 3, points: [{ x: 7, y: 8 }] });
+        expect(countOp(ctx, 'moveTo')).toBe(1);
+        expect(countOp(ctx, 'lineTo')).toBe(1);
+        expect(ctx.calls.find((c) => c.op === 'lineTo')?.args).toEqual([7, 8]);
+    });
+
+    it('draws a straight line between first and last point only', () => {
+        const ctx = makeRecordingCtx();
+        drawAnnotationStroke(ctx, {
+            tool: 'line',
+            color: '#00f',
+            width: 2,
+            points: [
+                { x: 5, y: 5 },
+                { x: 40, y: 60 },
+            ],
+        });
+        expect(ctx.calls.filter((c) => c.op === 'moveTo').map((c) => c.args)).toEqual([[5, 5]]);
+        expect(ctx.calls.filter((c) => c.op === 'lineTo').map((c) => c.args)).toEqual([[40, 60]]);
+    });
+
+    it('draws a rectangle as a closed 4-segment path (no strokeRect needed)', () => {
+        const ctx = makeRecordingCtx();
+        drawAnnotationStroke(ctx, {
+            tool: 'rect',
+            color: '#0f0',
+            width: 2,
+            points: [
+                { x: 10, y: 20 },
+                { x: 60, y: 50 },
+            ],
+        });
+        // top-left corner, 4 edges back to start.
+        expect(ctx.calls.find((c) => c.op === 'moveTo')?.args).toEqual([10, 20]);
+        expect(countOp(ctx, 'lineTo')).toBe(4);
+        expect(countOp(ctx, 'stroke')).toBe(1);
+    });
+
+    it('normalizes a reversed rectangle drag to the same top-left origin', () => {
+        const ctx = makeRecordingCtx();
+        drawAnnotationStroke(ctx, {
+            tool: 'rect',
+            color: '#0f0',
+            width: 2,
+            points: [
+                { x: 60, y: 50 },
+                { x: 10, y: 20 },
+            ],
+        });
+        expect(ctx.calls.find((c) => c.op === 'moveTo')?.args).toEqual([10, 20]);
+    });
+
+    it('draws an arrow as a line plus a two-segment arrowhead', () => {
+        const ctx = makeRecordingCtx();
+        drawAnnotationStroke(ctx, {
+            tool: 'arrow',
+            color: '#fff',
+            width: 3,
+            points: [
+                { x: 0, y: 0 },
+                { x: 100, y: 0 },
+            ],
+        });
+        // shaft stroke + arrowhead stroke.
+        expect(countOp(ctx, 'stroke')).toBe(2);
+        // arrowhead: two lines drawn back from the tip (100,0).
+        const heads = ctx.calls.filter((c) => c.op === 'lineTo');
+        expect(heads.length).toBeGreaterThanOrEqual(3);
+    });
+
+    it('is a no-op for an empty point list', () => {
+        const ctx = makeRecordingCtx();
+        drawAnnotationStroke(ctx, { tool: 'pen', color: '#000', width: 1, points: [] });
+        expect(ctx.calls).toHaveLength(0);
+    });
+});
+
+describe('renderAnnotationScene (AC-03 compositing)', () => {
+    const size = { width: 200, height: 150 };
+
+    it('clears, then draws the base image at full crop size, then each stroke', () => {
+        const ctx = makeRecordingCtx();
+        const base = { tag: 'base-image' };
+        const strokes: AnnotationStroke[] = [
+            { tool: 'pen', color: '#f00', width: 2, points: [{ x: 1, y: 1 }, { x: 2, y: 2 }] },
+            { tool: 'rect', color: '#0f0', width: 2, points: [{ x: 5, y: 5 }, { x: 9, y: 9 }] },
+        ];
+        renderAnnotationScene(ctx, base, strokes, size);
+        expect(ctx.calls[0].op).toBe('clearRect');
+        expect(ctx.calls[0].args).toEqual([0, 0, 200, 150]);
+        const draw = ctx.calls.find((c) => c.op === 'drawImage');
+        expect(draw?.args).toEqual([base, 0, 0, 200, 150]);
+        // one stroke() per annotation.
+        expect(countOp(ctx, 'stroke')).toBe(2);
+    });
+
+    it('skips the base image draw when none is loaded yet', () => {
+        const ctx = makeRecordingCtx();
+        renderAnnotationScene(ctx, null, [], size);
+        expect(countOp(ctx, 'clearRect')).toBe(1);
+        expect(countOp(ctx, 'drawImage')).toBe(0);
+    });
+});
+
+describe('exportAnnotatedPng (AC-03 DoD #2 — flattened PNG export)', () => {
+    it('composites base + strokes onto a crop-sized canvas and returns a PNG data URL', () => {
+        const exportCtx = makeRecordingCtx();
+        let created: { width: number; height: number } | null = null;
+        const doc = {
+            createElement: (_tag: '2d' | 'canvas') => {
+                const canvas = {
+                    width: 0,
+                    height: 0,
+                    getContext: () => exportCtx,
+                    toDataURL: (_type?: string) => 'data:image/png;base64,FLATTENED',
+                };
+                created = canvas;
+                return canvas;
+            },
+        };
+        const base = { tag: 'base' };
+        const strokes: AnnotationStroke[] = [
+            { tool: 'line', color: '#000', width: 2, points: [{ x: 0, y: 0 }, { x: 5, y: 5 }] },
+        ];
+        const url = exportAnnotatedPng(doc as never, base, strokes, { width: 320, height: 240 });
+        expect(url).toBe('data:image/png;base64,FLATTENED');
+        // canvas sized to the crop's device dimensions.
+        expect(created!.width).toBe(320);
+        expect(created!.height).toBe(240);
+        // base image plus the stroke were painted.
+        expect(exportCtx.calls.find((c) => c.op === 'drawImage')?.args).toEqual([base, 0, 0, 320, 240]);
+        expect(countOp(exportCtx, 'stroke')).toBe(1);
+    });
+});
+
+describe('fitAnnotationWindowSize (AC-03 window sizing)', () => {
+    it('leaves a small crop unscaled and adds the toolbar height', () => {
+        expect(
+            fitAnnotationWindowSize({ width: 400, height: 300 }, 1, { width: 1920, height: 1080 }, 48),
+        ).toEqual({ width: 400, height: 348 });
+    });
+
+    it('converts device pixels to CSS px via the scale factor', () => {
+        // 800x600 device @2x → 400x300 CSS, fits comfortably.
+        expect(
+            fitAnnotationWindowSize({ width: 800, height: 600 }, 2, { width: 1920, height: 1080 }, 48),
+        ).toEqual({ width: 400, height: 348 });
+    });
+
+    it('shrinks a crop larger than the work area, preserving aspect ratio', () => {
+        const size = fitAnnotationWindowSize(
+            { width: 4000, height: 2000 },
+            1,
+            { width: 1000, height: 900 },
+            48,
+        );
+        // width-bound: fit = 1000/4000 = 0.25 → 1000 x 500, + toolbar.
+        expect(size.width).toBe(1000);
+        expect(size.height).toBe(500 + 48);
+    });
+
+    it('falls back to scale 1 for a non-positive scale factor', () => {
+        expect(
+            fitAnnotationWindowSize({ width: 200, height: 100 }, 0, { width: 1920, height: 1080 }, 48),
+        ).toEqual({ width: 200, height: 148 });
+    });
+});
+
+// --- Annotation editor page-script harness --------------------------------------
+
+function makeEditorEl(id: string, extra: Record<string, unknown> = {}) {
+    const listeners: Record<string, Array<(e: unknown) => void>> = {};
+    const el: Record<string, unknown> = {
+        id,
+        className: '',
+        value: '',
+        style: {} as Record<string, string>,
+        addEventListener(type: string, cb: (e: unknown) => void) {
+            (listeners[type] ||= []).push(cb);
+        },
+        fire(type: string, e: unknown) {
+            (listeners[type] || []).forEach((f) => f(e));
+        },
+        ...extra,
+    };
+    return el;
+}
+
+interface EditorHarness {
+    els: Record<string, ReturnType<typeof makeEditorEl>>;
+    liveCtx: ReturnType<typeof makeRecordingCtx>;
+    exportCtx: ReturnType<typeof makeRecordingCtx>;
+    done: ReturnType<typeof vi.fn>;
+    cancelAnnotate: ReturnType<typeof vi.fn>;
+    createdImgs: Array<{ onload: (() => void) | null; src: string }>;
+    exportCanvas: () => { width: number; height: number } | null;
+    init: (payload: unknown) => void;
+    fireWin: (type: string, e: unknown) => void;
+    fireCanvas: (type: string, e: unknown) => void;
+    click: (id: string) => void;
+    input: (id: string, value: string) => void;
+}
+
+function runEditor(withApi = true): EditorHarness {
+    const els: Record<string, ReturnType<typeof makeEditorEl>> = {};
+    const register = (id: string, extra: Record<string, unknown> = {}) => {
+        els[id] = makeEditorEl(id, extra);
+    };
+
+    const liveCtx = makeRecordingCtx();
+    register('annotate-canvas', {
+        width: 1,
+        height: 1,
+        getContext: () => liveCtx,
+        getBoundingClientRect: () => ({
+            left: 0,
+            top: 0,
+            width: els['annotate-canvas'].width as number,
+            height: els['annotate-canvas'].height as number,
+        }),
+    });
+    register('annotate-toolbar', { offsetHeight: ANNOTATION_TOOLBAR_HEIGHT });
+    for (const t of ['pen', 'line', 'rect', 'arrow']) {
+        register('annotate-tool-' + t);
+    }
+    register('annotate-color');
+    register('annotate-width');
+    register('annotate-undo');
+    register('annotate-done');
+    register('annotate-cancel');
+
+    const createdImgs: Array<{ onload: (() => void) | null; src: string }> = [];
+    const exportCtx = makeRecordingCtx();
+    let exportCanvas: { width: number; height: number } | null = null;
+    const doc = {
+        getElementById: (id: string) => els[id],
+        createElement: (tag: string) => {
+            if (tag === 'img') {
+                const img = { onload: null as (() => void) | null, src: '' };
+                createdImgs.push(img);
+                return img;
+            }
+            exportCanvas = {
+                width: 0,
+                height: 0,
+                getContext: () => exportCtx,
+                toDataURL: (_type?: string) => 'data:image/png;base64,EDITED',
+            };
+            return exportCanvas;
+        },
+    };
+
+    const winListeners: Record<string, Array<(e: unknown) => void>> = {};
+    const done = vi.fn();
+    const cancelAnnotate = vi.fn();
+    let initCb: ((payload: unknown) => void) | null = null;
+    const win: Record<string, unknown> = {
+        innerWidth: 1000,
+        innerHeight: 800,
+        addEventListener(type: string, cb: (e: unknown) => void) {
+            (winListeners[type] ||= []).push(cb);
+        },
+    };
+    if (withApi) {
+        win.cocDesktop = {
+            screenshot: {
+                onAnnotateInit: (cb: (payload: unknown) => void) => {
+                    initCb = cb;
+                    return () => {};
+                },
+                done,
+                cancelAnnotate,
+            },
+        };
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
+    new Function('window', 'document', buildAnnotationPageScript())(win, doc);
+
+    return {
+        els,
+        liveCtx,
+        exportCtx,
+        done,
+        cancelAnnotate,
+        createdImgs,
+        exportCanvas: () => exportCanvas,
+        init: (payload) => initCb && initCb(payload),
+        fireWin: (type, e) => (winListeners[type] || []).forEach((f) => f(e)),
+        fireCanvas: (type, e) => els['annotate-canvas'].fire(type, e),
+        click: (id) => els[id].fire('click', {}),
+        input: (id, value) => els[id].fire('input', { target: { value } }),
+    };
+}
+
+/** Initialize the editor with a crop and simulate the base image finishing load. */
+function initLoaded(h: EditorHarness, width = 200, height = 150): void {
+    h.init({ imageDataUrl: 'data:image/png;base64,BASE', width, height });
+    h.createdImgs[0].onload?.();
+}
+
+describe('buildAnnotationPageScript (annotation editor page)', () => {
+    it('sizes the canvas to the crop and paints the base image once loaded', () => {
+        const h = runEditor();
+        initLoaded(h, 320, 240);
+        expect(h.els['annotate-canvas'].width).toBe(320);
+        expect(h.els['annotate-canvas'].height).toBe(240);
+        // the loaded base image is drawn to the live canvas.
+        const draw = h.liveCtx.calls.find((c) => c.op === 'drawImage');
+        expect(draw?.args?.[0]).toBe(h.createdImgs[0]);
+    });
+
+    it('marks the pen tool active by default and switches on toolbar clicks', () => {
+        const h = runEditor();
+        expect(h.els['annotate-tool-pen'].className).toBe('tool active');
+        h.click('annotate-tool-rect');
+        expect(h.els['annotate-tool-rect'].className).toBe('tool active');
+        expect(h.els['annotate-tool-pen'].className).toBe('tool');
+    });
+
+    it('commits a freehand stroke on drag, exported on Done', () => {
+        const h = runEditor();
+        initLoaded(h);
+        h.fireCanvas('mousedown', { button: 0, clientX: 10, clientY: 10 });
+        h.fireCanvas('mousemove', { button: 0, clientX: 40, clientY: 30 });
+        h.fireWin('mouseup', { button: 0, clientX: 50, clientY: 35 });
+        h.click('annotate-done');
+        expect(h.done).toHaveBeenCalledTimes(1);
+        expect(h.done.mock.calls[0][0]).toBe('data:image/png;base64,EDITED');
+        // the export canvas is the crop's device dimensions.
+        expect(h.exportCanvas()!.width).toBe(200);
+        expect(h.exportCanvas()!.height).toBe(150);
+        // base image + one committed stroke flattened.
+        expect(h.exportCtx.calls.find((c) => c.op === 'drawImage')?.args?.[0]).toBe(h.createdImgs[0]);
+        expect(countOp(h.exportCtx, 'stroke')).toBe(1);
+    });
+
+    it('records line/rect strokes with the selected tool', () => {
+        const h = runEditor();
+        initLoaded(h);
+        h.click('annotate-tool-line');
+        h.fireCanvas('mousedown', { button: 0, clientX: 0, clientY: 0 });
+        h.fireWin('mouseup', { button: 0, clientX: 20, clientY: 20 });
+        h.click('annotate-tool-rect');
+        h.fireCanvas('mousedown', { button: 0, clientX: 5, clientY: 5 });
+        h.fireWin('mouseup', { button: 0, clientX: 40, clientY: 30 });
+        h.click('annotate-done');
+        // line = 1 stroke, rect = 1 stroke → 2 total over the base.
+        expect(countOp(h.exportCtx, 'stroke')).toBe(2);
+    });
+
+    it('undo removes the most recent stroke', () => {
+        const h = runEditor();
+        initLoaded(h);
+        for (const y of [10, 20]) {
+            h.fireCanvas('mousedown', { button: 0, clientX: 0, clientY: y });
+            h.fireWin('mouseup', { button: 0, clientX: 30, clientY: y });
+        }
+        h.click('annotate-undo');
+        h.click('annotate-done');
+        // two pen strokes drawn, one undone → one remains.
+        expect(countOp(h.exportCtx, 'stroke')).toBe(1);
+    });
+
+    it('Ctrl/Cmd+Z also undoes the last stroke', () => {
+        const h = runEditor();
+        initLoaded(h);
+        h.fireCanvas('mousedown', { button: 0, clientX: 0, clientY: 0 });
+        h.fireWin('mouseup', { button: 0, clientX: 30, clientY: 30 });
+        h.fireWin('keydown', { ctrlKey: true, key: 'z', preventDefault: vi.fn() });
+        h.click('annotate-done');
+        expect(countOp(h.exportCtx, 'stroke')).toBe(0);
+    });
+
+    it('applies the chosen colour and stroke width to new strokes', () => {
+        const h = runEditor();
+        initLoaded(h);
+        h.input('annotate-color', '#123456');
+        h.input('annotate-width', '12');
+        h.fireCanvas('mousedown', { button: 0, clientX: 0, clientY: 0 });
+        h.fireWin('mouseup', { button: 0, clientX: 30, clientY: 30 });
+        h.click('annotate-done');
+        // the flattened export drew the stroke with the picked style.
+        expect(h.exportCtx.strokeStyle).toBe('#123456');
+        expect(h.exportCtx.lineWidth).toBe(12);
+    });
+
+    it('Cancel discards without exporting', () => {
+        const h = runEditor();
+        initLoaded(h);
+        h.click('annotate-cancel');
+        expect(h.cancelAnnotate).toHaveBeenCalledTimes(1);
+        expect(h.done).not.toHaveBeenCalled();
+    });
+
+    it('ESC cancels the editor', () => {
+        const h = runEditor();
+        initLoaded(h);
+        h.fireWin('keydown', { key: 'Escape', preventDefault: vi.fn() });
+        expect(h.cancelAnnotate).toHaveBeenCalledTimes(1);
+        expect(h.done).not.toHaveBeenCalled();
+    });
+
+    it('finishes exactly once — ESC after Done is a no-op', () => {
+        const h = runEditor();
+        initLoaded(h);
+        h.click('annotate-done');
+        h.fireWin('keydown', { key: 'Escape', preventDefault: vi.fn() });
+        expect(h.done).toHaveBeenCalledTimes(1);
+        expect(h.cancelAnnotate).not.toHaveBeenCalled();
+    });
+
+    it('ignores non-left mouse buttons for starting a stroke', () => {
+        const h = runEditor();
+        initLoaded(h);
+        h.fireCanvas('mousedown', { button: 2, clientX: 0, clientY: 0 });
+        h.fireWin('mouseup', { button: 2, clientX: 30, clientY: 30 });
+        h.click('annotate-done');
+        expect(countOp(h.exportCtx, 'stroke')).toBe(0);
+    });
+
+    it('bails out cleanly when the preload screenshot bridge is absent', () => {
+        expect(() => runEditor(false)).not.toThrow();
+    });
+});
+
+describe('buildAnnotationHtml (AC-03 DoD #3 — custom canvas, no Excalidraw)', () => {
+    const html = buildAnnotationHtml();
+
+    it('contains the toolbar controls and a custom <canvas> surface', () => {
+        for (const id of [
+            'annotate-toolbar',
+            'annotate-canvas',
+            'annotate-tool-pen',
+            'annotate-tool-line',
+            'annotate-tool-rect',
+            'annotate-tool-arrow',
+            'annotate-color',
+            'annotate-width',
+            'annotate-undo',
+            'annotate-done',
+            'annotate-cancel',
+        ]) {
+            expect(html).toContain(`id="${id}"`);
+        }
+        expect(html).toContain('<canvas');
+        expect(html).toContain('<script>');
+    });
+
+    it('does NOT use Excalidraw — the surface is a custom canvas', () => {
+        expect(html).not.toMatch(/excalidraw/i);
+    });
+});
+
+describe('AC-03 code-search (DoD #3 — no Excalidraw import)', () => {
+    // The word "Excalidraw" appears in the source only inside comments that
+    // DOCUMENT the decision not to use it; what the DoD forbids is a real import
+    // pulling the library in. Assert no import/require statement references it.
+    it('the capture module and host import Excalidraw nowhere', () => {
+        const importRe = /(?:import[^;\n]*from\s*['"][^'"]*excalidraw|require\(\s*['"][^'"]*excalidraw)/i;
+        for (const file of ['screenshot-capture.ts', 'screenshot-capture-host.ts']) {
+            expect(readSrc(file)).not.toMatch(importRe);
+        }
+    });
+
+    it('the host opens a dedicated annotation BrowserWindow that loads the custom editor', () => {
+        const host = readSrc('screenshot-capture-host.ts');
+        expect(host).toContain('function openAnnotationEditor(');
+        expect(host).toContain('buildAnnotationHtml()');
+        expect(host).toContain('new BrowserWindow(');
     });
 });
