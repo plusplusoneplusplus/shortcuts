@@ -26,6 +26,10 @@ import {
 
 const WS_ID = 'ws-pdf-embed-mock';
 
+// An underscore-heavy filename whose Markdown serialization escapes each `_` as
+// `\_`; the visible title must stay literal through insert, autosave, and reload.
+const PDF_FILENAME = 'OSDI_2026_Paper_Survey.pdf';
+
 // Native PDF navigation requires full Chromium rather than the headless shell.
 test.use({ channel: 'chromium' });
 
@@ -171,10 +175,12 @@ test.describe('Notes page — inline PDF embed', () => {
             const repoDir = createRepoFixture(tmpDir);
             await seedWorkspace(serverUrl, WS_ID, `${WS_ID}-repo`, repoDir);
 
+            // Seed escaped canonical Markdown — the label must render literal.
             const store = createNotesStore({
                 tree: seedTree(),
                 content: {
-                    'Journal/getting-started.md': '# Doc\n\n![Sample PDF](.attachments/sample.pdf)\n',
+                    'Journal/getting-started.md':
+                        '# Doc\n\n![OSDI\\_2026\\_Paper\\_Survey.pdf](.attachments/sample.pdf)\n',
                 },
             });
             await mockNotesApi(page, store);
@@ -185,6 +191,8 @@ test.describe('Notes page — inline PDF embed', () => {
 
             const pdfNode = page.locator('[data-testid="pdf-node-view"]');
             await expect(pdfNode).toBeVisible({ timeout: 10_000 });
+            // The escaped seed renders with the literal filename.
+            await expect(page.locator('.md-pdf-embed-title')).toHaveText(PDF_FILENAME);
 
             // The iframe is present while expanded.
             const iframe = page.locator('[data-testid="pdf-node-view-frame"]');
@@ -209,16 +217,36 @@ test.describe('Notes page — inline PDF embed', () => {
             await expect(pdfNode).toBeVisible();
             await expect(page.locator('[data-testid="pdf-node-view-toggle"]')).toBeVisible();
 
-            // The collapsed state autosaves as the raw div carrying the flag.
+            // The collapsed state autosaves as the raw div carrying the flag AND a
+            // literal (unescaped) data-pdf-label — the raw placeholder must not
+            // reintroduce the `\_` escapes.
             const collapsed = await collapsePut;
-            expect(collapsed.postDataJSON().content).toContain('data-pdf-collapsed="true"');
+            const collapsedContent = collapsed.postDataJSON().content as string;
+            expect(collapsedContent).toContain('data-pdf-collapsed="true"');
+            expect(collapsedContent).toContain(`data-pdf-label="${PDF_FILENAME}"`);
+            expect(collapsedContent).not.toContain('\\_');
 
-            // Register the expand autosave wait BEFORE toggling back.
+            // Reload from the mock store: the collapsed state and the clean title
+            // both persist.
+            await openNotesPage(page, serverUrl, WS_ID);
+            await openFirstPage(page);
+            await expect(pdfNode).toBeVisible({ timeout: 10_000 });
+            await expect(page.locator('.md-pdf-embed-title')).toHaveText(PDF_FILENAME);
+            await expect(iframe).toHaveCount(0);
+            await expect(page.locator('[data-testid="pdf-node-view-toggle"]')).toHaveAttribute(
+                'aria-expanded',
+                'false',
+            );
+
+            // Register the expand autosave wait BEFORE toggling back. The raw
+            // postData is JSON, so any `\_` in the label is escaped to `\\_`; match
+            // the backslash-free tail of the canonical image syntax, which only
+            // appears in the expanded `![…](…)` form (not the collapsed raw div).
             const expandPut = page.waitForRequest(
                 (req) =>
                     req.method() === 'PUT' &&
                     /\/notes\/content(\?|$)/.test(req.url()) &&
-                    (req.postData() ?? '').includes('![Sample PDF](.attachments/sample.pdf)'),
+                    (req.postData() ?? '').includes('Survey.pdf](.attachments/sample.pdf)'),
                 { timeout: 20_000 },
             );
 
@@ -227,8 +255,8 @@ test.describe('Notes page — inline PDF embed', () => {
             // Expanding re-mounts the iframe.
             await expect(iframe).toBeVisible({ timeout: 10_000 });
 
-            // The expanded state autosaves back to the canonical `![]()` form with
-            // no collapse flag.
+            // The expanded state autosaves back to the canonical `![]()` form (with
+            // the single required escape layer) and no collapse flag.
             const expanded = await expandPut;
             expect(expanded.postDataJSON().content).not.toContain('data-pdf-collapsed');
 
@@ -271,9 +299,11 @@ test.describe('Notes page — inline PDF embed', () => {
 
             // Drive the hidden file input directly (Playwright sets files on hidden
             // inputs and fires `change`, running the same upload+insert flow the
-            // toolbar button triggers).
+            // toolbar button triggers). The underscore-heavy filename exercises the
+            // Markdown-escape round-trip: on save it serializes with `\_`, and on
+            // reload it must render the literal name again.
             await page.locator('[data-testid="insert-pdf-input"]').setInputFiles({
-                name: 'my-doc.pdf',
+                name: PDF_FILENAME,
                 mimeType: 'application/pdf',
                 buffer: TINY_PDF,
             });
@@ -285,19 +315,37 @@ test.describe('Notes page — inline PDF embed', () => {
             const post = store.lastRequest('image-post');
             expect((post?.body as { data?: string })?.data ?? '').toMatch(/^data:application\/pdf;base64,/);
 
-            // The inline PDF node appears in the editor.
+            // The inline PDF node appears in the editor with the literal filename as
+            // its title — no `\_` escape characters immediately after insertion.
             await expect(page.locator('[data-testid="pdf-node-view"]')).toBeVisible({ timeout: 10_000 });
+            await expect(page.locator('.md-pdf-embed-title')).toHaveText(PDF_FILENAME);
+            await expect(page.locator('[data-testid="pdf-node-view-frame"]')).toHaveAttribute(
+                'title',
+                PDF_FILENAME,
+            );
 
-            // The autosave PUT carries the markdown embed for the uploaded PDF.
+            // The autosave PUT carries the markdown embed for the uploaded PDF. The
+            // on-disk label may carry the required single `\_` escape layer.
             const put = await putRequest;
             const body = put.postDataJSON() as { path?: string; content?: string };
             expect(body.path).toBe('Journal/getting-started.md');
-            expect(body.content).toContain(`![my-doc.pdf](${MOCK_UPLOADED_PDF_PATH})`);
+            expect(body.content).toContain(`![OSDI\\_2026\\_Paper\\_Survey.pdf](${MOCK_UPLOADED_PDF_PATH})`);
 
             // The save-indicator reaches its saved state.
             await expect(page.locator('[data-testid="save-indicator"]')).toContainText('Saved', {
                 timeout: 10_000,
             });
+
+            // Reload the note from the mock store: the escaped Markdown must render
+            // the literal filename again in both the title and the iframe title.
+            await openNotesPage(page, serverUrl, WS_ID);
+            await openFirstPage(page);
+            await expect(page.locator('[data-testid="pdf-node-view"]')).toBeVisible({ timeout: 10_000 });
+            await expect(page.locator('.md-pdf-embed-title')).toHaveText(PDF_FILENAME);
+            await expect(page.locator('[data-testid="pdf-node-view-frame"]')).toHaveAttribute(
+                'title',
+                PDF_FILENAME,
+            );
 
             expect(errors).toHaveLength(0);
         } finally {

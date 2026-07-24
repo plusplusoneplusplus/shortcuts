@@ -84,6 +84,33 @@ describe('PdfBlock parseHTML', () => {
         const [rule] = config.parseHTML();
         expect(rule.getAttrs(div)).toBe(false);
     });
+
+    it('normalizes a pre-fix raw placeholder whose label leaked Markdown escapes', () => {
+        // A legacy raw div written before the fix carries `\_` in data-pdf-label.
+        const div = document.createElement('div');
+        div.className = 'md-pdf-embed';
+        div.setAttribute('data-pdf-url', '.attachments/a.pdf');
+        div.setAttribute('data-pdf-label', 'OSDI\\_2026\\_Paper\\_Survey.pdf');
+
+        const [rule] = config.parseHTML();
+        expect(rule.getAttrs(div)).toEqual({
+            url: '.attachments/a.pdf',
+            label: 'OSDI_2026_Paper_Survey.pdf',
+        });
+    });
+
+    it('leaves an already-literal label untouched (new insertions are not double-decoded)', () => {
+        const div = document.createElement('div');
+        div.className = 'md-pdf-embed';
+        div.setAttribute('data-pdf-url', '.attachments/a.pdf');
+        div.setAttribute('data-pdf-label', 'OSDI_2026_Paper_Survey.pdf');
+
+        const [rule] = config.parseHTML();
+        expect(rule.getAttrs(div)).toEqual({
+            url: '.attachments/a.pdf',
+            label: 'OSDI_2026_Paper_Survey.pdf',
+        });
+    });
 });
 
 describe('PdfBlock renderHTML', () => {
@@ -97,6 +124,13 @@ describe('PdfBlock renderHTML', () => {
                 'data-pdf-label': 'Sample PDF',
             },
         ]);
+    });
+
+    it('writes the (already-cleaned) literal label verbatim — no re-escaping on render', () => {
+        const result = config.renderHTML({
+            node: { attrs: { url: '.attachments/a.pdf', label: 'OSDI_2026_Paper_Survey.pdf' } },
+        }) as [string, Record<string, unknown>];
+        expect(result[1]).toHaveProperty('data-pdf-label', 'OSDI_2026_Paper_Survey.pdf');
     });
 
     it('adds data-indent to the placeholder for an indented PDF', () => {

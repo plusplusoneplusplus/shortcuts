@@ -10,6 +10,7 @@ import {
     DEFAULT_PDF_HEIGHT,
 } from './pdfHeightShared';
 import { classifyPdfBlockUrl } from './pdfBlockUrl';
+import { normalizeStoredPdfLabel } from '../pdfLabel';
 
 function PdfBlockView({ node, updateAttributes, selected }: NodeViewProps) {
     const url = String(node.attrs.url || '');
@@ -170,7 +171,11 @@ export const PdfBlock = Node.create({
                     if (!url) return false;
                     return {
                         url,
-                        label: node.getAttribute('data-pdf-label') || 'PDF',
+                        // A pre-fix raw placeholder may have leaked Markdown
+                        // escapes into its label (`OSDI\_2026...`). Normalize one
+                        // layer so the block shows the literal filename; new
+                        // File.name-derived labels are already literal (no-op).
+                        label: normalizeStoredPdfLabel(node.getAttribute('data-pdf-label') || 'PDF'),
                     };
                 },
             },

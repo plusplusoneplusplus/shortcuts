@@ -12,6 +12,7 @@ import { mathNodeMarkedExtension } from './mathNodeMarked';
 import { wrapMathDelimiters, type MathDelimiter } from '../../../../shared/math/mathTokenizer';
 import { clampIndent, parseIndentAttr } from './extensions/indentShared';
 import { clampPdfHeight, parsePdfHeightAttr } from './extensions/pdfHeightShared';
+import { pdfLabelFromMarkdown } from './pdfLabel';
 
 // ── marked configuration ────────────────────────────────────────────────────
 
@@ -76,7 +77,11 @@ const pdfImageRenderer: marked.MarkedExtension = {
     renderer: {
         image(href: string, _title: string | null | undefined, text: string): string | false {
             if (isPdfUrl(href)) {
-                const label = plainLinkLabel(text, 'PDF');
+                // The Markdown source may escape punctuation in the label
+                // (Turndown writes `_` as `\_`). Decode those escapes so the
+                // stored `data-pdf-label` — and therefore the visible title — is
+                // the literal filename, never `OSDI\_2026...`.
+                const label = pdfLabelFromMarkdown(plainLinkLabel(text, 'PDF'));
                 return `<div class="md-pdf-embed" data-pdf-url="${escapeAttr(href)}" data-pdf-label="${escapeAttr(label)}"></div>`;
             }
             return false;
