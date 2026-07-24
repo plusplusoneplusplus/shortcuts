@@ -21,7 +21,7 @@ const externalPdfUrl = 'https://files.example/sample.pdf';
 
 type ExtensionConfig = {
     parseHTML(): Array<{ tag: string; getAttrs: (el: HTMLElement) => false | { url: string; label: string } }>;
-    renderHTML(args: { node: { attrs: { url: string; label: string } } }): unknown[];
+    renderHTML(args: { node: { attrs: { url: string; label: string; indent?: number } } }): unknown[];
 };
 
 type NodeViewConfig = ExtensionConfig & {
@@ -67,7 +67,7 @@ describe('PdfBlock parseHTML', () => {
 });
 
 describe('PdfBlock renderHTML', () => {
-    it('round-trips to the markdown placeholder structure', () => {
+    it('round-trips to the markdown placeholder structure (no data-indent at level 0)', () => {
         const result = config.renderHTML({ node: { attrs: { url: '.attachments/sample.pdf', label: 'Sample PDF' } } });
         expect(result).toEqual([
             'div',
@@ -75,6 +75,21 @@ describe('PdfBlock renderHTML', () => {
                 class: 'md-pdf-embed',
                 'data-pdf-url': '.attachments/sample.pdf',
                 'data-pdf-label': 'Sample PDF',
+            },
+        ]);
+    });
+
+    it('adds data-indent to the placeholder for an indented PDF', () => {
+        const result = config.renderHTML({
+            node: { attrs: { url: '.attachments/sample.pdf', label: 'Sample PDF', indent: 2 } },
+        });
+        expect(result).toEqual([
+            'div',
+            {
+                class: 'md-pdf-embed',
+                'data-pdf-url': '.attachments/sample.pdf',
+                'data-pdf-label': 'Sample PDF',
+                'data-indent': '2',
             },
         ]);
     });

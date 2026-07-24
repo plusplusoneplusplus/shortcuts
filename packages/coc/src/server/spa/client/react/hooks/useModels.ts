@@ -8,7 +8,7 @@
  * Returns ModelInfo[] for interface compatibility with consumers.
  */
 import { useState, useEffect, useCallback } from 'react';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import { getCocClientFor, getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import { getActiveProvider } from '../utils/config';
 import { getOrFetchConfig, peekConfig, invalidateConfig, configCacheKey } from '../api/staticConfigCache';
 
@@ -127,9 +127,9 @@ function mapModelsResponse(data: unknown): ModelInfo[] {
  * All model consumers (chat picker, queue dialogs, etc.) use this hook
  * so they automatically reflect the active provider's model list.
  */
-export function useModels(providerOverride?: string): { models: ModelInfo[]; loading: boolean; error: string | null; reload: () => void } {
+export function useModels(providerOverride?: string, baseUrl?: string): { models: ModelInfo[]; loading: boolean; error: string | null; reload: () => void } {
     const provider = providerOverride ?? getActiveProvider();
-    const modelsKey = configCacheKey.models(provider);
+    const modelsKey = configCacheKey.models(provider, baseUrl);
     // Seed from the session cache so a warm reopen (provider already seen this
     // session) paints the catalog immediately with no loading flash.
     const [models, setModels] = useState<ModelInfo[]>(() => {
@@ -142,12 +142,12 @@ export function useModels(providerOverride?: string): { models: ModelInfo[]; loa
 
     const load = useCallback(() => {
         // Force a fresh fetch: drop the cached response so the effect refetches.
-        invalidateConfig(configCacheKey.models(provider));
+        invalidateConfig(configCacheKey.models(provider, baseUrl));
         setReloadToken(token => token + 1);
-    }, [provider]);
+    }, [provider, baseUrl]);
 
     useEffect(() => {
-        const key = configCacheKey.models(provider);
+        const key = configCacheKey.models(provider, baseUrl);
         // Warm cache hit — serve synchronously without clearing models or
         // flipping to a loading state, so a conversation switch does not flash.
         const cached = peekConfig(key);
@@ -161,7 +161,7 @@ export function useModels(providerOverride?: string): { models: ModelInfo[]; loa
         setError(null);
         setModels([]);
         let cancelled = false;
-        getOrFetchConfig(key, () => getSpaCocClient().agentProviders.listModels(provider))
+        getOrFetchConfig(key, () => (baseUrl ? getCocClientFor(baseUrl) : getSpaCocClient()).agentProviders.listModels(provider))
             .then((data: unknown) => {
                 if (cancelled) return;
                 setModels(mapModelsResponse(data));
@@ -173,7 +173,7 @@ export function useModels(providerOverride?: string): { models: ModelInfo[]; loa
                 if (!cancelled) setLoading(false);
             });
         return () => { cancelled = true; };
-    }, [provider, reloadToken]);
+    }, [provider, baseUrl, reloadToken]);
 
     return { models, loading, error, reload: load };
 }

@@ -11,6 +11,7 @@ import { Node } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
 import { ensureMermaid } from '../../../../hooks/ui/useMermaid';
+import { createIndentAttribute, renderIndentAttr } from './indentShared';
 
 declare const mermaid: {
     run(opts: { nodes: NodeListOf<Element> | Element[] }): Promise<void>;
@@ -142,11 +143,13 @@ export function MermaidBlockView({ node }: NodeViewProps) {
     }, []);
 
     const zoomLabel = formatZoomLabel(zoom);
+    const indent = Number(node.attrs.indent || 0);
 
     return (
         <NodeViewWrapper
             className="mermaid-node-view"
             data-drag-handle=""
+            data-indent={indent > 0 ? indent : undefined}
         >
             <div className="mermaid-node-view-toolbar">
                 <button
@@ -228,6 +231,7 @@ export const MermaidBlock = Node.create({
     addAttributes() {
         return {
             code: { default: '' },
+            indent: createIndentAttribute(),
         };
     },
 
@@ -245,7 +249,7 @@ export const MermaidBlock = Node.create({
     },
 
     renderHTML({ node }) {
-        return ['pre', ['code', { class: 'language-mermaid' }, node.attrs.code]];
+        return ['pre', renderIndentAttr(node.attrs.indent), ['code', { class: 'language-mermaid' }, node.attrs.code]];
     },
 
     addNodeView() {

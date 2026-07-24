@@ -3,6 +3,7 @@ import type { Editor } from '@tiptap/core';
 import { ResponsiveSidebar } from '../../ui/ResponsiveSidebar';
 import { DockedStatusFooter } from '../../layout/DockedStatusFooter';
 import { NotesSidebar } from './editor/NotesSidebar';
+import { NOTES_SIDEBAR_RAIL_WIDTH, useNotesSidebarCollapsed } from './editor/NotesSidebarCollapse';
 import { NoteEditor } from './editor/NoteEditor';
 import type { NoteViewMode } from './editor/NoteEditor';
 import { CommentsSidebar } from './editor/CommentsSidebar';
@@ -16,6 +17,7 @@ import type { TextAnchor } from './editor/textAnchor';
 import { AddCommentDialog } from './editor/NotesDialogs';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
+import { useHoverPeek } from '../chat/hooks/useHoverPeek';
 import { usePublishWorkspaceLeftColWidth } from '../../hooks/ui/useWorkspaceLeftColWidth';
 import { useApp } from '../../contexts/AppContext';
 import { buildNoteHash } from '../../layout/Router';
@@ -49,6 +51,22 @@ const MAX_NAV_HISTORY = 50;
 
 function getNotesChatLegacyOpenStorageKey(workspaceId: string): string {
     return `coc-notes-chat-panel-open-${workspaceId}`;
+}
+
+/**
+ * True on pointer/desktop devices (mouse/trackpad with hover). Gates the
+ * hover-to-float peek of the collapsed notes rail so touch devices don't float
+ * the sidebar out on an accidental tap. Defaults to true when matchMedia is
+ * unavailable (SSR / jsdom). Mirrors the same helper in `SplitWorkspacePanel` /
+ * `RepoChatTab`.
+ */
+function hasFinePointerDevice(): boolean {
+    try {
+        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true;
+        return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+    } catch {
+        return true;
+    }
 }
 
 export function NotesView({ workspaceId, initialNotePath, defaultScope, active = true, dockStatusFooter = false }: NotesViewProps) {
@@ -170,11 +188,58 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
         direction: 'left',
     });
 
+    // Whole-left-column collapse for the notes tree sidebar, persisted per
+    // workspace so repo / My Life / My Work each remember their own state.
+    // Collapse only applies to the desktop/tablet in-flow sidebar — on mobile the
+    // sidebar is a portal drawer with its own open/close affordance.
+    const [sidebarCollapsed, toggleSidebarCollapsed] = useNotesSidebarCollapsed(workspaceId);
+    const sidebarCollapsedDesktop = !isMobile && sidebarCollapsed;
+
+    // Hover-to-float peek: while the sidebar is collapsed, hovering the thin rail
+    // floats the full tree sidebar back as a temporary overlay, and leaving it
+    // collapses back. This never touches the persisted collapsed state — it is a
+    // transient layer on top of the `»` / `«` toggle, gated to pointer/desktop
+    // devices so a touch tap never floats it out. The overlay reuses the same
+    // keep-alive `ResponsiveSidebar` (single mount), so tree scroll/selection
+    // survive a peek. Mirrors the split-workspace collapsed-rail peek.
+    const [hasFinePointer] = useState(hasFinePointerDevice);
+    const peekPanelRef = useRef<HTMLDivElement | null>(null);
+    const hoverPeek = useHoverPeek({
+        enabled: sidebarCollapsedDesktop && hasFinePointer,
+        panelRef: peekPanelRef,
+    });
+    // Drive a one-shot slide-in once the peek opens (matches the split panel's
+    // ~200ms rail-peek timing).
+    const [peekVisible, setPeekVisible] = useState(false);
+    useEffect(() => {
+        if (!hoverPeek.isOpen) {
+            setPeekVisible(false);
+            return;
+        }
+        const raf = requestAnimationFrame(() => setPeekVisible(true));
+        return () => cancelAnimationFrame(raf);
+    }, [hoverPeek.isOpen]);
+    const sidebarPeeking = sidebarCollapsedDesktop && hoverPeek.isOpen;
+    // Class applied to the keep-alive sidebar's own <aside> (ResponsiveSidebar
+    // forwards `className`): hidden while collapsed-not-peeking, and an absolute
+    // slide-in overlay while peeking. Undefined when expanded so it stays in flow.
+    // `motion-reduce:transition-none` drops the slide for users who prefer reduced
+    // motion — the panel still floats out, it just appears instantly.
+    const sidebarPeekClassName = sidebarCollapsedDesktop
+        ? sidebarPeeking
+            ? `absolute inset-y-0 left-0 z-30 shadow-xl transition-transform duration-200 ease-out motion-reduce:transition-none ${peekVisible ? 'translate-x-0' : '-translate-x-full'}`
+            : 'hidden'
+        : undefined;
+
     // Keep the app-shell status dock flush under the notes tree sidebar (not the
     // wider workspace default) by publishing this sidebar's live width — but only
     // while this Notes tab is the active one, since the view stays mounted-hidden
-    // on other tabs. On mobile the sidebar is a drawer, so clear it.
-    usePublishWorkspaceLeftColWidth(sidebarResize.width, isMobile || !active);
+    // on other tabs. While collapsed the column is only the thin rail, so publish
+    // the rail width. On mobile the sidebar is a drawer, so clear it.
+    usePublishWorkspaceLeftColWidth(
+        sidebarCollapsedDesktop ? NOTES_SIDEBAR_RAIL_WIDTH : sidebarResize.width,
+        isMobile || !active,
+    );
 
     const commentsPanelResize = useResizablePanel({
         initialWidth: 288,
@@ -473,48 +538,108 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
             data-testid="notes-view"
             onPointerDown={handlePointerDown}
         >
-            {/* Left: notes tree sidebar */}
-            <ResponsiveSidebar
-                width={sidebarResize.width}
-                tabletWidth={sidebarResize.width}
-                isOpen={sidebarOpen}
-                onClose={() => setSidebarOpen(false)}
-                noBorderRight={!isMobile}
-            >
-                <NotesSidebar
-                    workspaceId={workspaceId}
-                    selectedPath={selectedPath}
-                    onSelectPage={handleSelectPage}
-                    onNoteRenamed={handleNoteRenamed}
-                    onNoteCreated={handleNoteCreated}
-                    onNoteDeleted={handleNoteDeleted}
-                    canGoBack={canGoBack}
-                    onGoBack={handleGoBack}
-                    onNotesRootReady={setNotesRoot}
-                    onRestoreEditorFocus={handleRestoreEditorFocus}
-                    markSeenRef={markSeenRef}
-                    isDefaultRoot={isDefaultRoot}
-                    selectedRootId={selectedRootId}
-                    selectedRootLabel={selectedRootLabel}
-                    roots={roots}
-                    onSelectRoot={selectRoot}
-                    onRootsChanged={refreshRoots}
-                    footer={dockStatusFooter ? <DockedStatusFooter /> : undefined}
-                />
-            </ResponsiveSidebar>
-
-            {/* Sidebar resize handle (desktop/tablet only) */}
-            {!isMobile && (
+            {/* Collapsed rail — a thin strip that replaces the tree sidebar when
+                collapsed (desktop/tablet only). Mirrors the split-workspace rail:
+                a `»` expand button plus a vertical "Notes" label. */}
+            {sidebarCollapsedDesktop && (
                 <div
-                    className={`w-1 self-stretch flex-shrink-0 cursor-col-resize bg-[#e0e0e0] dark:bg-[#3c3c3c] hover:bg-[#007acc]/40 active:bg-[#007acc]/60 transition-colors${sidebarResize.isDragging ? ' bg-[#007acc]/60' : ''}`}
-                    onMouseDown={sidebarResize.handleMouseDown}
-                    onTouchStart={sidebarResize.handleTouchStart}
-                    data-testid="notes-sidebar-resize-handle"
-                    role="separator"
-                    aria-orientation="vertical"
-                    aria-label="Resize notes sidebar"
-                    tabIndex={0}
-                />
+                    className="w-9 flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] flex flex-col items-center pt-2 gap-1"
+                    data-testid="notes-sidebar-rail"
+                    onMouseEnter={hoverPeek.onRailPointerEnter}
+                    onMouseLeave={hoverPeek.onRailPointerLeave}
+                >
+                    <button
+                        type="button"
+                        className="w-7 h-7 flex items-center justify-center rounded text-[#848484] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
+                        onClick={toggleSidebarCollapsed}
+                        aria-label="Expand notes sidebar"
+                        aria-expanded={!sidebarCollapsed}
+                        title="Expand notes sidebar"
+                        data-testid="notes-sidebar-expand"
+                    >
+                        »
+                    </button>
+                    <span
+                        className="mt-1 text-[10px] tracking-wide text-[#848484] select-none"
+                        style={{ writingMode: 'vertical-rl' }}
+                    >
+                        Notes
+                    </span>
+                </div>
+            )}
+
+            {/* Left: notes tree sidebar. Kept mounted-but-hidden while collapsed
+                (keep-alive) so tree scroll/selection survive a collapse round-trip.
+                The stable wrapper carries the ref + pointer handlers the peek needs
+                (ResponsiveSidebar forwards only `className`); it uses `display:flex`
+                with no width, so it tracks the aside when expanded and shrinks to
+                nothing while the aside floats out as an absolute overlay. */}
+            <div
+                ref={peekPanelRef}
+                className="flex min-h-0 flex-shrink-0"
+                data-testid="notes-sidebar-peek-panel"
+                onMouseEnter={sidebarCollapsedDesktop ? hoverPeek.onPanelPointerEnter : undefined}
+                onMouseLeave={sidebarCollapsedDesktop ? hoverPeek.onPanelPointerLeave : undefined}
+            >
+                <ResponsiveSidebar
+                    width={sidebarResize.width}
+                    tabletWidth={sidebarResize.width}
+                    isOpen={sidebarOpen}
+                    onClose={() => setSidebarOpen(false)}
+                    noBorderRight={!isMobile}
+                    className={sidebarPeekClassName}
+                >
+                    <NotesSidebar
+                        workspaceId={workspaceId}
+                        selectedPath={selectedPath}
+                        onSelectPage={handleSelectPage}
+                        onNoteRenamed={handleNoteRenamed}
+                        onNoteCreated={handleNoteCreated}
+                        onNoteDeleted={handleNoteDeleted}
+                        canGoBack={canGoBack}
+                        onGoBack={handleGoBack}
+                        onNotesRootReady={setNotesRoot}
+                        onRestoreEditorFocus={handleRestoreEditorFocus}
+                        markSeenRef={markSeenRef}
+                        isDefaultRoot={isDefaultRoot}
+                        selectedRootId={selectedRootId}
+                        selectedRootLabel={selectedRootLabel}
+                        roots={roots}
+                        onSelectRoot={selectRoot}
+                        onRootsChanged={refreshRoots}
+                        footer={dockStatusFooter ? <DockedStatusFooter /> : undefined}
+                    />
+                </ResponsiveSidebar>
+            </div>
+
+            {/* Sidebar resize handle + collapse chevron (desktop/tablet only).
+                Dropped while collapsed — the rail owns the expand affordance then. */}
+            {!isMobile && !sidebarCollapsed && (
+                <div className="relative flex items-stretch flex-shrink-0 group">
+                    <div
+                        className={`w-1 self-stretch flex-shrink-0 cursor-col-resize bg-[#e0e0e0] dark:bg-[#3c3c3c] hover:bg-[#007acc]/40 active:bg-[#007acc]/60 transition-colors${sidebarResize.isDragging ? ' bg-[#007acc]/60' : ''}`}
+                        onMouseDown={sidebarResize.handleMouseDown}
+                        onTouchStart={sidebarResize.handleTouchStart}
+                        data-testid="notes-sidebar-resize-handle"
+                        role="separator"
+                        aria-orientation="vertical"
+                        aria-label="Resize notes sidebar"
+                        tabIndex={0}
+                    />
+                    {/* `«` collapse chevron — hover-revealed on the inner edge,
+                        mirroring the split-workspace collapse affordance. */}
+                    <button
+                        type="button"
+                        className="absolute top-1 -left-6 w-6 h-6 flex items-center justify-center rounded text-[#848484] bg-[#fafafa] dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#3c3c3c] opacity-0 group-hover:opacity-100 hover:text-[#333] dark:hover:text-[#ddd] transition-opacity z-10"
+                        onClick={toggleSidebarCollapsed}
+                        aria-label="Collapse notes sidebar"
+                        aria-expanded={!sidebarCollapsed}
+                        title="Collapse notes sidebar"
+                        data-testid="notes-sidebar-collapse"
+                    >
+                        «
+                    </button>
+                </div>
             )}
 
             {/* Center: editor */}

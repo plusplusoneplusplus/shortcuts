@@ -185,6 +185,165 @@ describe('NotesClient', () => {
     ]);
   });
 
+  it('carries a concrete provider, model, reasoning effort, effort-tier config, and working directory in the chat payload', async () => {
+    const adapter = createMockAdapter({ task: { id: 'task-9' } });
+    const client = new NotesClient(adapter);
+
+    await client.createChat('repo/a', {
+      prompt: 'Explain this note',
+      notePath: 'Notebook/Page.md',
+      noteTitle: 'Page',
+      mode: 'ask',
+      model: 'gpt-5',
+      provider: 'codex',
+      reasoningEffort: 'high',
+      effortTier: 'medium',
+      workingDirectory: '/home/user/repo',
+    });
+
+    expect(adapter.calls).toMatchObject([
+      {
+        path: '/queue',
+        options: {
+          method: 'POST',
+          body: {
+            type: 'chat',
+            priority: 'normal',
+            config: { effortTier: 'medium' },
+            payload: {
+              kind: 'chat',
+              mode: 'ask',
+              prompt: 'Explain this note',
+              workspaceId: 'repo/a',
+              workingDirectory: '/home/user/repo',
+              model: 'gpt-5',
+              provider: 'codex',
+              reasoningEffort: 'high',
+              context: {
+                noteChat: { notePath: 'Notebook/Page.md', noteTitle: 'Page' },
+              },
+            },
+          },
+        },
+      },
+    ]);
+    // A concrete-provider submission never signals auto routing.
+    const body = adapter.calls[0].options?.body as Record<string, any>;
+    expect(body.payload.context.autoProviderRouting).toBeUndefined();
+  });
+
+  it('emits auto-provider routing intent and omits a concrete provider for Auto submissions', async () => {
+    const adapter = createMockAdapter({ task: { id: 'task-10' } });
+    const client = new NotesClient(adapter);
+
+    await client.createChat('repo/a', {
+      prompt: 'Ask about this note',
+      notePath: 'Notebook/Page.md',
+      noteTitle: 'Page',
+      autoProviderRouting: true,
+      effortTier: 'high',
+    });
+
+    const body = adapter.calls[0].options?.body as Record<string, any>;
+    expect(body.payload.context.autoProviderRouting).toEqual({ requested: true });
+    expect(body.payload.provider).toBeUndefined();
+    expect(body.config).toEqual({ effortTier: 'high' });
+    expect(body.payload.context.noteChat).toEqual({ notePath: 'Notebook/Page.md', noteTitle: 'Page' });
+  });
+
+  it('keeps Notes-owned context winning when generic composer context has overlapping reserved keys', async () => {
+    const adapter = createMockAdapter({ task: { id: 'task-11' } });
+    const client = new NotesClient(adapter);
+
+    await client.createChat('repo/a', {
+      prompt: 'Merge test',
+      notePath: 'Real/Note.md',
+      noteTitle: 'Real',
+      skills: ['impl'],
+      lensChat: { inherited: true, source: 'features.commitChatLens' },
+      context: {
+        // Hostile / overlapping generic context — must not override Notes-owned keys.
+        noteChat: { notePath: 'Attacker/Other.md', noteTitle: 'Other' },
+        lensChat: { inherited: false, source: 'attacker' },
+        skills: ['evil'],
+        // A non-reserved generic key is preserved as-is.
+        sessionContext: [{ processId: 'p1' }],
+      },
+    });
+
+    const context = (adapter.calls[0].options?.body as Record<string, any>).payload.context;
+    expect(context.noteChat).toEqual({ notePath: 'Real/Note.md', noteTitle: 'Real' });
+    expect(context.lensChat).toEqual({ inherited: true, source: 'features.commitChatLens' });
+    expect(context.skills).toEqual(['impl']);
+    expect(context.sessionContext).toEqual([{ processId: 'p1' }]);
+  });
+
+  it('omits AI-selection keys entirely when the request carries none (backward compatible)', async () => {
+    const adapter = createMockAdapter({ task: { id: 'task-12' } });
+    const client = new NotesClient(adapter);
+
+    await client.createChat('repo/a', { prompt: 'Plain', notePath: 'Notebook/Page.md', noteTitle: 'Page' });
+
+    const body = adapter.calls[0].options?.body as Record<string, any>;
+    expect(body.payload.provider).toBeUndefined();
+    expect(body.payload.reasoningEffort).toBeUndefined();
+    expect(body.payload.workingDirectory).toBeUndefined();
+    expect(body.config).toBeUndefined();
+    expect(body.payload.context.autoProviderRouting).toBeUndefined();
+    expect(body.payload.context.noteChat).toEqual({ notePath: 'Notebook/Page.md', noteTitle: 'Page' });
+  });
+
+  it('carries a per-workspace scope alongside the note path so the server never binds per-note (AC-04)', async () => {
+    const adapter = createMockAdapter({ task: { id: 'task-13' } });
+    const client = new NotesClient(adapter);
+
+    // Workspace scope with a note selected: the path rides as prompt context, but
+    // scope=per-workspace tells the server not to create/replace a per-note binding.
+    await client.createChat('repo/a', {
+      prompt: 'Ask about my notes',
+      notePath: 'Notebook/Page.md',
+      noteTitle: 'Page',
+      scope: 'per-workspace',
+    });
+
+    const context = (adapter.calls[0].options?.body as Record<string, any>).payload.context;
+    expect(context.noteChat).toEqual({
+      notePath: 'Notebook/Page.md',
+      noteTitle: 'Page',
+      scope: 'per-workspace',
+    });
+  });
+
+  it('carries a per-note scope on the note context for This-note submissions', async () => {
+    const adapter = createMockAdapter({ task: { id: 'task-14' } });
+    const client = new NotesClient(adapter);
+
+    await client.createChat('repo/a', {
+      prompt: 'Explain this note',
+      notePath: 'Notebook/Page.md',
+      noteTitle: 'Page',
+      scope: 'per-note',
+    });
+
+    const context = (adapter.calls[0].options?.body as Record<string, any>).payload.context;
+    expect(context.noteChat).toEqual({
+      notePath: 'Notebook/Page.md',
+      noteTitle: 'Page',
+      scope: 'per-note',
+    });
+  });
+
+  it('does not attach a scope key when the request omits scope (backward compatible)', async () => {
+    const adapter = createMockAdapter({ task: { id: 'task-15' } });
+    const client = new NotesClient(adapter);
+
+    await client.createChat('repo/a', { prompt: 'Plain', notePath: 'Notebook/Page.md', noteTitle: 'Page' });
+
+    const context = (adapter.calls[0].options?.body as Record<string, any>).payload.context;
+    expect(context.noteChat).toEqual({ notePath: 'Notebook/Page.md', noteTitle: 'Page' });
+    expect('scope' in context.noteChat).toBe(false);
+  });
+
   it('encodes file paths through the HTTP transport query string', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ content: '# Note', path: 'A B/Page #1.md', mtime: 1 }), {
       headers: { 'content-type': 'application/json' },

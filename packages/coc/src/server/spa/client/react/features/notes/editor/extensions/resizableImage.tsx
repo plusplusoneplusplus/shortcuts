@@ -13,6 +13,7 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import { Node, mergeAttributes } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
+import { createIndentAttribute } from './indentShared';
 
 const MIN_WIDTH = 50;
 
@@ -24,7 +25,7 @@ function ResizableImageView({ node, updateAttributes, selected }: NodeViewProps)
     const [dragWidth, setDragWidth] = useState<number | null>(null);
     const [hovered, setHovered] = useState(false);
 
-    const { src, alt, title, width } = node.attrs;
+    const { src, alt, title, width, indent } = node.attrs;
 
     const currentWidth = dragging ? dragWidth : width ? Number(width) : null;
 
@@ -97,6 +98,7 @@ function ResizableImageView({ node, updateAttributes, selected }: NodeViewProps)
         <NodeViewWrapper
             className={`image-resize-wrapper${dragging ? ' image-resizing' : ''}`}
             data-drag-handle=""
+            data-indent={indent && indent > 0 ? indent : undefined}
         >
             <div
                 className="image-resize-container"
@@ -199,6 +201,7 @@ export const ResizableImage = Node.create({
                     return { width: attributes.width };
                 },
             },
+            indent: createIndentAttribute(),
         };
     },
 

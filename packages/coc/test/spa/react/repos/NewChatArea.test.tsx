@@ -8,7 +8,7 @@ import React from 'react';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled, mockForEachEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig, mockAgentProvidersResponse, mockEffortLevelsEnabled, mockEffortTiers } = vi.hoisted(() => ({
+const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled, mockForEachEnabled, mockMapReduceEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig, mockAgentProvidersResponse, mockEffortLevelsEnabled, mockEffortTiers } = vi.hoisted(() => ({
     mockQueueDispatch: vi.fn(),
     mockAppState: {
         workspaces: [{ id: 'ws-1', rootPath: '/home/user/repo' }],
@@ -53,6 +53,7 @@ const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCo
     },
     mockRalphEnabled: { value: false },
     mockForEachEnabled: { value: false },
+    mockMapReduceEnabled: { value: false },
     mockSessionContextAttachmentsEnabled: { value: false },
     mockEffortLevelsEnabled: { value: false },
     mockEffortTiers: { value: {} as Record<string, { model: string; reasoningEffort?: string | null }> },
@@ -113,7 +114,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isRalphEnabled: () => mockRalphEnabled.value,
     isRalphMultiAgentGrillEnabled: () => false,
     isForEachEnabled: () => mockForEachEnabled.value,
-    isMapReduceEnabled: () => false,
+    isMapReduceEnabled: () => mockMapReduceEnabled.value,
     isLoopsEnabled: () => false,
     getDefaultProvider: () => 'copilot' as const,
     getConfiguredDefaultProvider: () => 'copilot' as const,
@@ -249,6 +250,7 @@ import {
     pushNewChatSeedContext,
     resetNewChatSeedContext,
 } from '../../../../src/server/spa/client/react/features/chat/newChatSeedContext';
+import { notesChatDraftKey } from '../../../../src/server/spa/client/react/features/notes/hooks/useNotesChat';
 
 function makeCommitPayload(overrides: Partial<GitCommitContextDragPayload> = {}): GitCommitContextDragPayload {
     return {
@@ -311,6 +313,12 @@ function makeUnsupportedDataTransfer() {
     };
 }
 
+const ATTACHMENT_DRAFT_PREFIX = 'coc.attachmentDraft.';
+
+function attachmentDraftStorageKey(draftKey: string): string {
+    return `${ATTACHMENT_DRAFT_PREFIX}${draftKey}`;
+}
+
 function selectRalphMode() {
     fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
     fireEvent.click(screen.getByTestId('workflow-mode-option-ralph'));
@@ -333,6 +341,7 @@ beforeEach(() => {
     mockDraftStore.getDraft.mockReturnValue(null);
     mockRalphEnabled.value = false;
     mockForEachEnabled.value = false;
+    mockMapReduceEnabled.value = false;
     mockSessionContextAttachmentsEnabled.value = false;
     mockEffortLevelsEnabled.value = false;
     mockEffortTiers.value = {};
@@ -1839,6 +1848,631 @@ describe('NewChatArea', () => {
 
             // Dropping a commit must not switch the mode based on the item kind.
             expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
+        });
+    });
+
+    // AC-03: the shared composer offers a generic `allowedModes` filter so a
+    // consumer (e.g. the Notes adapter) can pin it to Ask + Autopilot without
+    // the component knowing anything about Notes. Every workflow flag is on in
+    // these tests, proving the restriction wins over the flags.
+    describe('allowedModes restriction', () => {
+        // Stable module-scoped reference (mirrors NOTE_CHAT_ALLOWED_MODES).
+        const ASK_AUTOPILOT = ['ask', 'autopilot'] as const;
+
+        function enableAllWorkflowFlags() {
+            mockRalphEnabled.value = true;
+            mockForEachEnabled.value = true;
+            mockMapReduceEnabled.value = true;
+        }
+
+        it('offers only the allowed modes in the full layout despite every workflow flag being enabled', () => {
+            enableAllWorkflowFlags();
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={vi.fn().mockResolvedValue(null)}
+                    settingsLayout="full"
+                    enableRalphDirectGoal={false}
+                    allowedModes={ASK_AUTOPILOT}
+                />,
+            );
+
+            expect(screen.getByTestId('mode-pill-ask')).toBeTruthy();
+            expect(screen.getByTestId('mode-pill-autopilot')).toBeTruthy();
+            // No workflow mode is reachable: the trigger and its selector are gone.
+            expect(screen.queryByTestId('workflow-mode-trigger')).toBeNull();
+            expect(screen.queryByTestId('workflow-mode-selector')).toBeNull();
+            expect(screen.queryByTestId('mode-pill-ralph')).toBeNull();
+            expect(screen.queryByTestId('mode-pill-for-each')).toBeNull();
+            expect(screen.queryByTestId('mode-pill-map-reduce')).toBeNull();
+        });
+
+        it('offers only the allowed modes in the compact settings editor despite every workflow flag being enabled', () => {
+            enableAllWorkflowFlags();
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={vi.fn().mockResolvedValue(null)}
+                    testIdPrefix="lens-chat"
+                    settingsLayout="compact"
+                    enableRalphDirectGoal={false}
+                    allowedModes={ASK_AUTOPILOT}
+                />,
+            );
+
+            fireEvent.click(screen.getByTestId('compact-ai-settings-chip'));
+
+            expect(screen.getByTestId('mode-pill-ask')).toBeTruthy();
+            expect(screen.getByTestId('mode-pill-autopilot')).toBeTruthy();
+            expect(screen.queryByTestId('workflow-mode-trigger')).toBeNull();
+            expect(screen.queryByTestId('mode-pill-ralph')).toBeNull();
+        });
+
+        it('falls back to Ask when a restored draft names a mode outside the allowed set', () => {
+            enableAllWorkflowFlags();
+            mockDraftStore.getDraft.mockReturnValue({ text: 'hi', mode: 'ralph', modelOverride: null });
+
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={vi.fn().mockResolvedValue(null)}
+                    settingsLayout="full"
+                    enableRalphDirectGoal={false}
+                    allowedModes={ASK_AUTOPILOT}
+                />,
+            );
+
+            // The unsupported 'ralph' draft mode normalizes to Ask rather than
+            // surfacing a mode the composer cannot offer.
+            expect(screen.getByTestId('mode-pill-ask').getAttribute('aria-checked')).toBe('true');
+            expect(screen.getByTestId('mode-pill-autopilot').getAttribute('aria-checked')).toBe('false');
+            expect(screen.queryByTestId('mode-pill-ralph')).toBeNull();
+        });
+
+        it('leaves workflow modes available when allowedModes is omitted (default path unchanged)', () => {
+            mockRalphEnabled.value = true;
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={vi.fn().mockResolvedValue(null)}
+                    settingsLayout="full"
+                />,
+            );
+
+            // Without allowedModes the workflow trigger still appears for enabled flags.
+            expect(screen.getByTestId('workflow-mode-trigger')).toBeTruthy();
+        });
+    });
+
+    // AC-04: the shared composer offers a generic pending-prefix + accessory slot
+    // (modeled on the active-chat ChatDetail pending-prefix) so an adapter (e.g.
+    // Notes) can carry selected-text references without the component branching on
+    // any feature. The prefix leads the request body, counts as sendable content,
+    // and is cleared only after a successful submission.
+    describe('pending prefix and accessory slot', () => {
+        const NOTE_PREFIX = '<note_reference path="a.md">selected text</note_reference>\n\n';
+
+        it('renders the accessory node above the input card', () => {
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={vi.fn().mockResolvedValue(null)}
+                    accessoryAboveInput={<div data-testid="note-refs">chips</div>}
+                />,
+            );
+
+            const accessory = screen.getByTestId('note-refs');
+            const inputBar = screen.getByTestId('chat-input-bar');
+            expect(accessory).toBeTruthy();
+            // The accessory precedes the input card in DOM order.
+            expect(accessory.compareDocumentPosition(inputBar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        });
+
+        it('renders nothing extra when the accessory slot is omitted', () => {
+            render(
+                <InitialChatComposer workspaceId="ws-1" onSubmit={vi.fn().mockResolvedValue(null)} />,
+            );
+
+            expect(screen.queryByTestId('note-refs')).toBeNull();
+            expect(screen.getByTestId('chat-input-bar')).toBeTruthy();
+        });
+
+        it('treats a non-empty pending prefix as sendable content with an empty text box', () => {
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={vi.fn().mockResolvedValue(null)}
+                    pendingPrefix={NOTE_PREFIX}
+                />,
+            );
+
+            // No typed text and no attachments — the prefix alone keeps Send enabled.
+            expect((screen.getByTestId('new-chat-send-btn') as HTMLButtonElement).disabled).toBe(false);
+        });
+
+        it('keeps Send disabled when the prefix is whitespace-only and the box is empty', () => {
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={vi.fn().mockResolvedValue(null)}
+                    pendingPrefix={'   \n\n'}
+                />,
+            );
+
+            expect((screen.getByTestId('new-chat-send-btn') as HTMLButtonElement).disabled).toBe(true);
+        });
+
+        it('prepends the pending prefix ahead of the typed input and clears it on success', async () => {
+            const onSubmit = vi.fn().mockResolvedValue('task-1');
+            const onClearPendingPrefix = vi.fn();
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={onSubmit}
+                    pendingPrefix={NOTE_PREFIX}
+                    onClearPendingPrefix={onClearPendingPrefix}
+                />,
+            );
+
+            fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'What does this do?' } });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+            });
+
+            expect(onSubmit).toHaveBeenCalledTimes(1);
+            // Prefix leads, typed input follows, each appearing once.
+            expect(onSubmit.mock.calls[0][0].prompt).toBe(`${NOTE_PREFIX}What does this do?`);
+            expect(onClearPendingPrefix).toHaveBeenCalledTimes(1);
+        });
+
+        it('sends the prefix as the request body when the text box is empty', async () => {
+            const onSubmit = vi.fn().mockResolvedValue('task-1');
+            const onClearPendingPrefix = vi.fn();
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={onSubmit}
+                    pendingPrefix={NOTE_PREFIX}
+                    onClearPendingPrefix={onClearPendingPrefix}
+                />,
+            );
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+            });
+
+            expect(onSubmit).toHaveBeenCalledTimes(1);
+            expect(onSubmit.mock.calls[0][0].prompt).toBe(NOTE_PREFIX);
+            expect(onClearPendingPrefix).toHaveBeenCalledTimes(1);
+        });
+
+        it('leaves the pending prefix and typed input intact when submission fails', async () => {
+            const onSubmit = vi.fn().mockRejectedValue(new Error('create failed'));
+            const onClearPendingPrefix = vi.fn();
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={onSubmit}
+                    pendingPrefix={NOTE_PREFIX}
+                    onClearPendingPrefix={onClearPendingPrefix}
+                />,
+            );
+
+            fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'Retry me' } });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+            });
+
+            expect(onSubmit).toHaveBeenCalledTimes(1);
+            // Failure path: prefix is not consumed and the typed text is preserved.
+            expect(onClearPendingPrefix).not.toHaveBeenCalled();
+            expect((screen.getByTestId('new-chat-input') as HTMLInputElement).value).toBe('Retry me');
+        });
+
+        it('leaves Send disabled and prompt composition unchanged when the prefix props are omitted', async () => {
+            const onSubmit = vi.fn().mockResolvedValue('task-1');
+            render(
+                <InitialChatComposer workspaceId="ws-1" onSubmit={onSubmit} />,
+            );
+
+            // Default path unchanged: no prefix, empty box → disabled.
+            expect((screen.getByTestId('new-chat-send-btn') as HTMLButtonElement).disabled).toBe(true);
+
+            fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'Plain prompt' } });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+            });
+
+            expect(onSubmit.mock.calls[0][0].prompt).toBe('Plain prompt');
+        });
+    });
+
+    // AC-04: Notes uses the shared initial composer, so the composer itself must
+    // prove the empty-text send matrix: files-only, attached-context-only, and
+    // local /new·/clear commands that preserve pending references plus sidecars.
+    describe('Notes shared-composer submission matrix', () => {
+        const NOTE_PREFIX = '<note_reference path="a.md">selected text</note_reference>\n\n';
+
+        it('submits a file-only Notes composer message with an empty prompt and attachment payload', async () => {
+            mockFileReader();
+            const onSubmit = vi.fn().mockResolvedValue('task-file-only');
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={onSubmit}
+                    testIdPrefix="note-chat"
+                    settingsLayout="compact"
+                    allowedModes={['ask', 'autopilot']}
+                    enableRalphDirectGoal={false}
+                />,
+            );
+
+            await act(async () => {});
+            await act(async () => {
+                fireEvent.change(screen.getByTestId('note-chat-file-input-hidden'), {
+                    target: {
+                        files: [new File(['file-only body'], 'file-only.md', { type: 'text/markdown' })],
+                    },
+                });
+            });
+
+            expect(screen.getByText('file-only.md')).toBeTruthy();
+            expect((screen.getByTestId('note-chat-send-btn') as HTMLButtonElement).disabled).toBe(false);
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('note-chat-send-btn'));
+            });
+
+            expect(onSubmit).toHaveBeenCalledTimes(1);
+            const submission = onSubmit.mock.calls[0][0];
+            expect(submission.prompt).toBe('');
+            expect(submission.attachments).toEqual([
+                {
+                    name: 'file-only.md',
+                    mimeType: 'text/markdown',
+                    size: 14,
+                    dataUrl: 'data:text/markdown;base64,test',
+                },
+            ]);
+            expect(screen.queryByText('file-only.md')).toBeNull();
+        });
+
+        it('submits a shared-context-only Notes composer message with no typed text', async () => {
+            mockSessionContextAttachmentsEnabled.value = true;
+            const onSubmit = vi.fn().mockResolvedValue('task-context-only');
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={onSubmit}
+                    testIdPrefix="note-chat"
+                    settingsLayout="compact"
+                    allowedModes={['ask', 'autopilot']}
+                    enableRalphDirectGoal={false}
+                />,
+            );
+            await waitFor(() => expect(mockGetLlmToolsConfig).toHaveBeenCalledWith('ws-1'));
+            await act(async () => {});
+
+            fireEvent.drop(screen.getByTestId('chat-input-stack'), {
+                dataTransfer: makeSessionDataTransfer(makeSessionPayload({ title: 'Context only source' })),
+            });
+
+            expect(await screen.findByTestId('attached-session-context-chip')).toBeTruthy();
+            expect((screen.getByTestId('note-chat-send-btn') as HTMLButtonElement).disabled).toBe(false);
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('note-chat-send-btn'));
+            });
+
+            expect(onSubmit).toHaveBeenCalledTimes(1);
+            const prompt = onSubmit.mock.calls[0][0].prompt;
+            expect(prompt).toContain('<attached_session_context version="1">');
+            expect(prompt).toContain('<title>Context only source</title>');
+            expect(prompt).toContain('<instruction>Before answering, retrieve and read this source conversation by process ID');
+            expect(prompt.endsWith('\n\n')).toBe(true);
+            expect(prompt).not.toContain('undefined');
+            expect(screen.queryByTestId('attached-session-context-chip')).toBeNull();
+        });
+
+        it('preserves file attachments, shared context, and pending prefix when /new and /clear are intercepted', async () => {
+            mockFileReader();
+            mockSessionContextAttachmentsEnabled.value = true;
+            const onSubmit = vi.fn().mockResolvedValue('task-should-not-send');
+            const onClearPendingPrefix = vi.fn();
+            const interceptSubmit = vi.fn((raw: string) => /^\/(new|clear)$/i.test(raw));
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={onSubmit}
+                    interceptSubmit={interceptSubmit}
+                    pendingPrefix={NOTE_PREFIX}
+                    onClearPendingPrefix={onClearPendingPrefix}
+                    testIdPrefix="note-chat"
+                    settingsLayout="compact"
+                    allowedModes={['ask', 'autopilot']}
+                    enableRalphDirectGoal={false}
+                />,
+            );
+            await waitFor(() => expect(mockGetLlmToolsConfig).toHaveBeenCalledWith('ws-1'));
+            await act(async () => {});
+
+            await act(async () => {
+                fireEvent.change(screen.getByTestId('note-chat-file-input-hidden'), {
+                    target: {
+                        files: [new File(['reset command context'], 'reset-context.md', { type: 'text/markdown' })],
+                    },
+                });
+            });
+            fireEvent.drop(screen.getByTestId('chat-input-stack'), {
+                dataTransfer: makeSessionDataTransfer(makeSessionPayload({ title: 'Reset context source' })),
+            });
+            expect(screen.getByText('reset-context.md')).toBeTruthy();
+            expect(await screen.findByTestId('attached-session-context-chip')).toBeTruthy();
+
+            for (const command of ['/new', '/clear']) {
+                fireEvent.change(screen.getByTestId('note-chat-input'), { target: { value: command } });
+                await act(async () => {
+                    fireEvent.click(screen.getByTestId('note-chat-send-btn'));
+                });
+
+                expect((screen.getByTestId('note-chat-input') as HTMLInputElement).value).toBe('');
+                expect(screen.getByText('reset-context.md')).toBeTruthy();
+                expect(screen.getByTestId('attached-session-context-chip')).toBeTruthy();
+            }
+
+            expect(interceptSubmit).toHaveBeenCalledWith('/new');
+            expect(interceptSubmit).toHaveBeenCalledWith('/clear');
+            expect(onSubmit).not.toHaveBeenCalled();
+            expect(onClearPendingPrefix).not.toHaveBeenCalled();
+        });
+    });
+
+    // AC-05: Notes draft keys must isolate both the localStorage text draft and
+    // the sessionStorage attachment sidecar across note A, note B, and Workspace
+    // scope. This mounts the real shared composer with Notes draft keys rather
+    // than testing the key helper or sidecar store in isolation.
+    describe('Notes draft keys and attachment sidecars', () => {
+        it('restores text and attachments independently for note A, note B, and Workspace scope, then clears only the active draft on success', async () => {
+            vi.useFakeTimers();
+            mockFileReader();
+            sessionStorage.clear();
+            const textDrafts = new Map<string, any>();
+            mockDraftStore.getDraft.mockImplementation((key: string) => textDrafts.get(key) ?? null);
+            mockDraftStore.setDraft.mockImplementation((
+                key: string,
+                text: string,
+                mode: string,
+                modelOverride?: string | null,
+                effortOverride?: string | null,
+            ) => {
+                if (!text) {
+                    textDrafts.delete(key);
+                    return;
+                }
+                textDrafts.set(key, {
+                    text,
+                    mode,
+                    updatedAt: Date.now(),
+                    ...(modelOverride ? { modelOverride } : {}),
+                    ...(effortOverride ? { effortOverride } : {}),
+                });
+            });
+            mockDraftStore.clearDraft.mockImplementation((key: string) => {
+                textDrafts.delete(key);
+            });
+
+            const noteAKey = notesChatDraftKey('ws-1', 'per-note', 'notes/A.md');
+            const noteBKey = notesChatDraftKey('ws-1', 'per-note', 'notes/B.md');
+            const workspaceKey = notesChatDraftKey('ws-1', 'per-workspace', 'notes/A.md');
+            const onSubmit = vi.fn().mockResolvedValue('task-draft-send');
+
+            const renderNoteComposer = (draftKey: string) => render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={onSubmit}
+                    testIdPrefix="note-chat"
+                    draftKey={draftKey}
+                    settingsLayout="compact"
+                    allowedModes={['ask', 'autopilot']}
+                    enableRalphDirectGoal={false}
+                />,
+            );
+            const addAttachment = async (name: string, content: string) => {
+                await act(async () => {
+                    fireEvent.change(screen.getByTestId('note-chat-file-input-hidden'), {
+                        target: {
+                            files: [new File([content], name, { type: 'text/plain' })],
+                        },
+                    });
+                });
+                expect(screen.getByText(name)).toBeTruthy();
+            };
+            const saveTextDraft = async () => {
+                await act(async () => {
+                    vi.advanceTimersByTime(350);
+                });
+            };
+
+            let view = renderNoteComposer(noteAKey);
+            await act(async () => {});
+            fireEvent.change(screen.getByTestId('note-chat-input'), { target: { value: 'Draft for note A' } });
+            await addAttachment('note-a.txt', 'A sidecar');
+            await saveTextDraft();
+            expect(textDrafts.get(noteAKey)?.text).toBe('Draft for note A');
+            expect(sessionStorage.getItem(attachmentDraftStorageKey(noteAKey))).toContain('note-a.txt');
+            view.unmount();
+
+            view = renderNoteComposer(noteBKey);
+            await act(async () => {});
+            fireEvent.change(screen.getByTestId('note-chat-input'), { target: { value: 'Draft for note B' } });
+            await addAttachment('note-b.txt', 'B sidecar');
+            await saveTextDraft();
+            expect(textDrafts.get(noteBKey)?.text).toBe('Draft for note B');
+            expect(sessionStorage.getItem(attachmentDraftStorageKey(noteBKey))).toContain('note-b.txt');
+            view.unmount();
+
+            view = renderNoteComposer(workspaceKey);
+            await act(async () => {});
+            fireEvent.change(screen.getByTestId('note-chat-input'), { target: { value: 'Workspace draft' } });
+            await addAttachment('workspace.txt', 'Workspace sidecar');
+            await saveTextDraft();
+            expect(textDrafts.get(workspaceKey)?.text).toBe('Workspace draft');
+            expect(sessionStorage.getItem(attachmentDraftStorageKey(workspaceKey))).toContain('workspace.txt');
+            view.unmount();
+
+            view = renderNoteComposer(noteAKey);
+            await act(async () => {});
+            expect((screen.getByTestId('note-chat-input') as HTMLInputElement).value).toBe('Draft for note A');
+            expect(screen.getByText('note-a.txt')).toBeTruthy();
+            expect(screen.queryByText('note-b.txt')).toBeNull();
+            expect(screen.queryByText('workspace.txt')).toBeNull();
+            view.unmount();
+
+            view = renderNoteComposer(noteBKey);
+            await act(async () => {});
+            expect((screen.getByTestId('note-chat-input') as HTMLInputElement).value).toBe('Draft for note B');
+            expect(screen.getByText('note-b.txt')).toBeTruthy();
+            expect(screen.queryByText('note-a.txt')).toBeNull();
+            expect(screen.queryByText('workspace.txt')).toBeNull();
+            view.unmount();
+
+            view = renderNoteComposer(workspaceKey);
+            await act(async () => {});
+            expect((screen.getByTestId('note-chat-input') as HTMLInputElement).value).toBe('Workspace draft');
+            expect(screen.getByText('workspace.txt')).toBeTruthy();
+            expect(screen.queryByText('note-a.txt')).toBeNull();
+            expect(screen.queryByText('note-b.txt')).toBeNull();
+            view.unmount();
+
+            view = renderNoteComposer(noteAKey);
+            await act(async () => {});
+            expect((screen.getByTestId('note-chat-input') as HTMLInputElement).value).toBe('Draft for note A');
+            expect(screen.getByText('note-a.txt')).toBeTruthy();
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('note-chat-send-btn'));
+            });
+
+            expect(onSubmit).toHaveBeenCalledTimes(1);
+            expect(onSubmit.mock.calls[0][0].prompt).toBe('Draft for note A');
+            expect(mockDraftStore.clearDraft).toHaveBeenCalledWith(noteAKey);
+            expect(textDrafts.has(noteAKey)).toBe(false);
+            expect(sessionStorage.getItem(attachmentDraftStorageKey(noteAKey))).toBeNull();
+            expect(textDrafts.get(noteBKey)?.text).toBe('Draft for note B');
+            expect(textDrafts.get(workspaceKey)?.text).toBe('Workspace draft');
+            expect(sessionStorage.getItem(attachmentDraftStorageKey(noteBKey))).toContain('note-b.txt');
+            expect(sessionStorage.getItem(attachmentDraftStorageKey(workspaceKey))).toContain('workspace.txt');
+            view.unmount();
+
+            view = renderNoteComposer(noteBKey);
+            await act(async () => {});
+            expect((screen.getByTestId('note-chat-input') as HTMLInputElement).value).toBe('Draft for note B');
+            expect(screen.getByText('note-b.txt')).toBeTruthy();
+            view.unmount();
+
+            view = renderNoteComposer(workspaceKey);
+            await act(async () => {});
+            expect((screen.getByTestId('note-chat-input') as HTMLInputElement).value).toBe('Workspace draft');
+            expect(screen.getByText('workspace.txt')).toBeTruthy();
+            view.unmount();
+        });
+    });
+
+    // AC-02: the shared composer accepts a generic hero icon so an adapter (e.g.
+    // Notes) keeps its own empty-state identity — its robot — without the
+    // component knowing anything about the feature.
+    describe('heroIcon', () => {
+        it('renders the default 💬 icon when heroIcon is omitted', () => {
+            render(<InitialChatComposer workspaceId="ws-1" onSubmit={vi.fn().mockResolvedValue(null)} />);
+            expect(screen.getByText('💬')).toBeTruthy();
+        });
+
+        it('renders a custom hero icon and drops the default', () => {
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={vi.fn().mockResolvedValue(null)}
+                    heroIcon="🤖"
+                    heroTitle="Notes Chat"
+                />,
+            );
+
+            expect(screen.getByText('🤖')).toBeTruthy();
+            expect(screen.queryByText('💬')).toBeNull();
+            expect(screen.getByText('Notes Chat')).toBeTruthy();
+        });
+    });
+
+    // AC-04: the shared composer offers a generic pre-submit interceptor so an
+    // adapter can handle local commands (the Notes /new and /clear resets)
+    // without the component branching on any feature. A consumed command clears
+    // only the typed text and skips submission — attachments and the pending
+    // prefix (references) are preserved.
+    describe('interceptSubmit', () => {
+        it('consumes a matching command: skips onSubmit, clears the typed input, preserves the pending prefix', async () => {
+            const onSubmit = vi.fn().mockResolvedValue('task-1');
+            const onClearPendingPrefix = vi.fn();
+            const interceptSubmit = vi.fn((raw: string) => raw === '/clear');
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={onSubmit}
+                    interceptSubmit={interceptSubmit}
+                    pendingPrefix={'<note_reference path="a.md">x</note_reference>\n\n'}
+                    onClearPendingPrefix={onClearPendingPrefix}
+                />,
+            );
+
+            fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: '/clear' } });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+            });
+
+            expect(interceptSubmit).toHaveBeenCalledWith('/clear');
+            expect(onSubmit).not.toHaveBeenCalled();
+            // Only the typed command is cleared; the pending prefix is not consumed.
+            expect((screen.getByTestId('new-chat-input') as HTMLInputElement).value).toBe('');
+            expect(onClearPendingPrefix).not.toHaveBeenCalled();
+        });
+
+        it('receives the trimmed input and falls through to normal submission when it returns false', async () => {
+            const onSubmit = vi.fn().mockResolvedValue('task-1');
+            const interceptSubmit = vi.fn(() => false);
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={onSubmit}
+                    interceptSubmit={interceptSubmit}
+                />,
+            );
+
+            fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: '  hello  ' } });
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+            });
+
+            // Called with the trimmed text, then normal submission proceeds.
+            expect(interceptSubmit).toHaveBeenCalledWith('hello');
+            expect(onSubmit).toHaveBeenCalledTimes(1);
+            expect(onSubmit.mock.calls[0][0].prompt).toBe('hello');
+        });
+
+        it('is never reached when there is nothing to submit (guard runs first)', async () => {
+            const interceptSubmit = vi.fn(() => true);
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={vi.fn().mockResolvedValue(null)}
+                    interceptSubmit={interceptSubmit}
+                />,
+            );
+
+            // Empty box, no prefix, no attachments → Send is disabled and the
+            // interceptor is never consulted.
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+            });
+
+            expect(interceptSubmit).not.toHaveBeenCalled();
         });
     });
 });

@@ -343,7 +343,7 @@ function AllFilesBody({
                             data-path={section.file.path}
                         >
                             <div
-                                className="sticky-0 px-3 py-1.5 text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] bg-[#f3f3f3] dark:bg-[#2a2a2b] border-b border-[#e0e0e0] dark:border-[#3c3c3c] truncate"
+                                className="sticky top-0 z-10 px-3 py-1.5 text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc] bg-[#f3f3f3] dark:bg-[#2a2a2b] border-b border-[#e0e0e0] dark:border-[#3c3c3c] truncate"
                                 title={section.file.path}
                                 data-testid="whisper-diff-file-divider"
                             >

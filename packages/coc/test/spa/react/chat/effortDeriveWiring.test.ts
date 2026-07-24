@@ -31,8 +31,10 @@ describe('NewChatArea effort-derive wiring', () => {
         expect(src).toContain("import { useProviderReasoningEfforts }");
     });
 
-    it('calls useProviderReasoningEfforts with the concrete provider used by provider-scoped hooks', () => {
-        expect(src).toContain('useProviderReasoningEfforts(selectedProviderForClientHooks)');
+    it('calls useProviderReasoningEfforts with the concrete provider used by provider-scoped hooks, routed to the owning clone', () => {
+        // AC-07: the reasoning-effort read is routed to the selected workspace's
+        // clone via the resolved cloneBaseUrl (see providerHooks-clone-routing.test.ts).
+        expect(src).toContain('useProviderReasoningEfforts(selectedProviderForClientHooks, cloneBaseUrl)');
     });
 
     it('declares userPickedForModelRef', () => {

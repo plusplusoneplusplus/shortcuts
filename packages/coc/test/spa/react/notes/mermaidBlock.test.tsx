@@ -34,7 +34,7 @@ import { MermaidBlock } from '../../../../src/server/spa/client/react/features/n
 
 type ExtensionConfig = {
     parseHTML(): Array<{ tag: string; getAttrs: (el: HTMLElement) => false | { code: string } }>;
-    renderHTML(args: { node: { attrs: { code: string } } }): unknown[];
+    renderHTML(args: { node: { attrs: { code: string; indent?: number } } }): unknown[];
 };
 
 const config = MermaidBlock as unknown as ExtensionConfig;
@@ -82,13 +82,25 @@ describe('MermaidBlock parseHTML', () => {
 // ── renderHTML ───────────────────────────────────────────────────────────────
 
 describe('MermaidBlock renderHTML', () => {
-    it('round-trips to the marked output structure', () => {
+    it('round-trips to the marked output structure (no indent → empty pre attrs)', () => {
         const result = config.renderHTML({
             node: { attrs: { code: 'flowchart LR\n  X-->Y' } },
         });
         expect(result).toEqual([
             'pre',
+            {},
             ['code', { class: 'language-mermaid' }, 'flowchart LR\n  X-->Y'],
+        ]);
+    });
+
+    it('adds data-indent to the <pre> for an indented diagram', () => {
+        const result = config.renderHTML({
+            node: { attrs: { code: 'graph TD\nA-->B', indent: 3 } },
+        });
+        expect(result).toEqual([
+            'pre',
+            { 'data-indent': '3' },
+            ['code', { class: 'language-mermaid' }, 'graph TD\nA-->B'],
         ]);
     });
 });

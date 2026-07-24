@@ -17,7 +17,7 @@ import type { ChatMode } from '../../repos/modeConfig';
 import { useQueue } from '../../contexts/QueueContext';
 import { useApp } from '../../contexts/AppContext';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
-import { useCocClient } from '../../repos/cloneRouting';
+import { useCocClient, useResolveCloneBaseUrl } from '../../repos/cloneRouting';
 import { useFileAttachments } from './hooks/useFileAttachments';
 import { isQueueProcessId, toQueueProcessId } from '../../utils/queue-process-id';
 import { useModels } from '../../hooks/useModels';
@@ -115,12 +115,59 @@ export interface InitialChatComposerProps {
     onSubmitted?: (taskId: string | null, workspaceId?: string) => Promise<void> | void;
     heroTitle?: string;
     heroDescription?: string;
+    /**
+     * Icon shown in the empty-state hero, above the title and description. Lets an
+     * adapter keep its own empty-state identity (e.g. the Notes robot) while still
+     * using the shared composer. Omit for the default 💬.
+     */
+    heroIcon?: React.ReactNode;
     placeholder?: string;
     testIdPrefix?: string;
     draftKey?: string;
     sourceLabel?: string;
     enableRalphDirectGoal?: boolean;
     settingsLayout?: InitialChatComposerSettingsLayout;
+    /**
+     * Restricts the selectable chat modes. When provided, only these modes are
+     * offered in the mode pills and the compact settings editor, and a restored
+     * draft whose mode is not in this set falls back to Ask. This is the generic
+     * extension point adapters (e.g. Notes) use to pin the composer to Ask +
+     * Autopilot without the shared component branching on any feature.
+     * Pass a stable (module-level) reference. Omit to show every
+     * surface-visible, feature-enabled mode.
+     */
+    allowedModes?: readonly ChatMode[];
+    /**
+     * Text automatically prepended to the submitted prompt, ahead of any
+     * attached-context blocks and the typed input. When non-empty it counts as
+     * sendable content, so Send stays enabled with an empty text box and no
+     * attachments. It is consumed once and cleared via {@link onClearPendingPrefix}
+     * only after a successful submission — a flush or create failure leaves it and
+     * the typed input intact. Modeled on the active-chat (ChatDetail) pending-prefix
+     * behavior; the Notes adapter uses it to carry selected-text references without
+     * the shared composer branching on any feature. Omit for the default behavior.
+     */
+    pendingPrefix?: string;
+    /** Called after a successful submission has consumed {@link pendingPrefix}. */
+    onClearPendingPrefix?: () => void;
+    /**
+     * Generic node rendered in the input area directly above the composer input
+     * card (e.g. removable reference chips). The shared composer only provides the
+     * slot and its placement; the adapter owns the content and its interactions.
+     * Omit to render nothing there.
+     */
+    accessoryAboveInput?: React.ReactNode;
+    /**
+     * Optional pre-submit interceptor for the raw typed input. Called with the
+     * trimmed text before any flush or submission; return true to signal the input
+     * was consumed as a local command (e.g. the Notes /new and /clear reset
+     * commands). When it returns true the composer clears only the typed text and
+     * its draft and skips submission — pending attachments, attached context, and
+     * the pending prefix are intentionally preserved. Return false (or omit) to
+     * submit normally. This is the generic submission-adaptation extension point;
+     * the shared component never branches on any feature.
+     */
+    interceptSubmit?: (rawInput: string) => boolean;
 }
 
 const PROVIDER_LABELS: Record<ChatProvider, string> = {
@@ -214,12 +261,18 @@ export function InitialChatComposer({
     onSubmitted,
     heroTitle = 'Start a new conversation',
     heroDescription = 'Type a message below to begin',
+    heroIcon = '💬',
     placeholder = 'Reply to CoC, or type / for commands...',
     testIdPrefix = 'new-chat',
     draftKey,
     sourceLabel = 'New Chat composer',
     enableRalphDirectGoal = true,
     settingsLayout = 'full',
+    allowedModes,
+    pendingPrefix,
+    onClearPendingPrefix,
+    accessoryAboveInput,
+    interceptSubmit,
 }: InitialChatComposerProps) {
     const [input, setInput] = useState('');
     const [cursorPos, setCursorPos] = useState(0);
@@ -253,6 +306,10 @@ export function InitialChatComposer({
 
     // AC-07: skills + per-repo chat preferences load from the selected clone's server.
     const cloneClient = useCocClient(workspaceId);
+    // AC-07: the owning clone's remote baseUrl (undefined for a local clone) —
+    // threaded into the provider/model/effort hooks so their reads AND their
+    // server-scoped config-cache entries route to the clone, never the local origin.
+    const cloneBaseUrl = useResolveCloneBaseUrl()(workspaceId);
 
     const { attachments, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, restoreAttachments, error: attachmentError, toPayload } = useFileAttachments();
     const attachedContext = useAttachedContext();
@@ -273,29 +330,29 @@ export function InitialChatComposer({
             : 'popover';
 
     // Agent providers for the agent selector chip
-    const { providers: rawAgentProviders, loading: providersLoading } = useAgentProviders();
+    const { providers: rawAgentProviders, loading: providersLoading } = useAgentProviders(cloneBaseUrl);
     const agentProviders = useMemo(() => getAgentSelectorProviders(rawAgentProviders), [rawAgentProviders]);
     const selectedProviderForClientHooks = getConcreteProviderForClientHooks(selectedProvider);
     const autoProviderSelected = selectedProvider === 'auto';
 
     // Per-provider, per-model reasoning-effort preferences (from Admin → AI Provider → Models).
     // Used to auto-fill the effort picker when the user changes provider or model.
-    const reasoningEfforts = useProviderReasoningEfforts(selectedProviderForClientHooks);
+    const reasoningEfforts = useProviderReasoningEfforts(selectedProviderForClientHooks, cloneBaseUrl);
 
     // Per-provider effort tier map (from Admin → AI Provider → Effort Tiers).
     // Used when effortLevels.enabled is true to supply model + reasoning effort from a single tier pick.
-    const { tiers: providerEffortTierMap, loading: effortTiersLoading } = useProviderEffortTiers(selectedProviderForClientHooks);
+    const { tiers: providerEffortTierMap, loading: effortTiersLoading } = useProviderEffortTiers(selectedProviderForClientHooks, cloneBaseUrl);
     const hasTiers = !effortTiersLoading && (['low', 'medium', 'high'] as EffortTierKey[]).some(k => !!providerEffortTierMap[k]?.model);
     const useEffortTierMode = autoProviderSelected || (isEffortLevelsEnabled() && hasTiers);
     const effortTierMap = autoProviderSelected ? AUTO_EFFORT_TIER_MAP : providerEffortTierMap;
 
     // Model command support
-    const { models: availableModels, loading: modelsLoading } = useModels(selectedProviderForClientHooks);
+    const { models: availableModels, loading: modelsLoading } = useModels(selectedProviderForClientHooks, cloneBaseUrl);
     const pickableModels = selectPickableModels(availableModels);
     const augmentedSkills = useMemo(() => mergeSkillsWithMeta(skills, getMetaSkillItems(isLoopsEnabled())), [skills]);
     const slashCommands = useSlashCommands(augmentedSkills);
     const modelCommand = useModelCommand(pickableModels);
-    const { effectiveModel: defaultModelId, effectiveModelName: defaultModelLabel } = useDefaultModelForMode(workspaceId, selectedMode, availableModels, selectedProviderForClientHooks);
+    const { effectiveModel: defaultModelId, effectiveModelName: defaultModelLabel } = useDefaultModelForMode(workspaceId, selectedMode, availableModels, selectedProviderForClientHooks, cloneBaseUrl);
     const validModelOverride = useMemo(() => {
         const override = modelCommand.modelOverride;
         if (!override) return null;
@@ -310,21 +367,29 @@ export function InitialChatComposer({
         }),
         [],
     );
+    // Stable content key so an inline `allowedModes` array from a caller does
+    // not churn the mode-option memos on every render — and, through
+    // `visibleModes`, spuriously re-fire the draft-restore effect below.
+    const allowedModesKey = allowedModes ? allowedModes.join(',') : undefined;
     const modePillOptions = useMemo(
         () => getVisibleModePillOptions({
             surface: 'new-chat',
             category: 'primary',
             featureFlags: modeFeatureFlags,
+            allowedModes,
         }),
-        [modeFeatureFlags],
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [modeFeatureFlags, allowedModesKey],
     );
     const workflowModeOptions = useMemo(
         () => getVisibleModePillOptions({
             surface: 'new-chat',
             category: 'workflow',
             featureFlags: modeFeatureFlags,
+            allowedModes,
         }),
-        [modeFeatureFlags],
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [modeFeatureFlags, allowedModesKey],
     );
     const visibleModes = useMemo(
         () => [...modePillOptions, ...workflowModeOptions].map(opt => opt.value),
@@ -688,6 +753,7 @@ export function InitialChatComposer({
             && !modelCommand.modelMenuVisible,
         workspaceId,
         surface: 'queue',
+        baseUrl: cloneBaseUrl,
     });
 
     // Bash-style up/down history navigation through past initial prompts.
@@ -696,6 +762,7 @@ export function InitialChatComposer({
         value: input,
         cursorPos,
         enabled: !sending,
+        baseUrl: cloneBaseUrl,
         setValue: (next) => {
             setInput(next);
             setCursorPos(next.length);
@@ -706,7 +773,19 @@ export function InitialChatComposer({
     async function handleSend() {
         const trimmed = input.trim();
         const contextItems = attachedContext.getItems();
-        if ((!trimmed && attachments.length === 0 && contextItems.length === 0) || sending) return;
+        if ((!trimmed && attachments.length === 0 && contextItems.length === 0 && !hasPendingPrefixContent) || sending) return;
+        // Generic pre-submit command interception (e.g. the Notes /new and /clear
+        // reset commands). When the adapter consumes the raw input as a local
+        // command, clear only the typed text and its draft and skip submission —
+        // pending attachments, attached context, and the pending prefix are
+        // intentionally preserved so the command never consumes them.
+        if (interceptSubmit?.(trimmed)) {
+            setInput('');
+            setCursorPos(0);
+            richTextRef.current?.setValue('');
+            clearDraft(draftStorageKey);
+            return;
+        }
         if (selectedMode === 'for-each' || selectedMode === 'map-reduce') {
             if (!workspaceId) {
                 setError(selectedMode === 'for-each'
@@ -792,7 +871,10 @@ export function InitialChatComposer({
             if (selectedMode === 'ralph') {
                 basePrompt += '\n\nWhen you\'ve finished grilling me and have a clear understanding of the goal, write the final goal specification to a `.goal.md` file (e.g. `feature-name.goal.md`).';
             }
-            const effectivePrompt = formatAttachedContext(contextItems) + basePrompt;
+            // Pending prefix (e.g. Notes selected-text references) leads the
+            // request body, ahead of any attached-context blocks and the typed
+            // input, so its removable chips map to a deterministic prompt order.
+            const effectivePrompt = (pendingPrefix ?? '') + formatAttachedContext(contextItems) + basePrompt;
 
             const resolvedAi = resolveComposerAiSelection();
             const context = mergeAutoProviderRoutingContext(resolvedAi, contextOverride);
@@ -819,6 +901,9 @@ export function InitialChatComposer({
             attachedContext.clear();
             promptHistory.reset();
             clearDraft(draftStorageKey);
+            // Consume the pending prefix only after a successful create — a
+            // rejected onSubmit skips this so the references stay intact for retry.
+            onClearPendingPrefix?.();
         } catch (err: any) {
             if (err?.name !== 'AbortError') {
                 setError(getSpaCocClientErrorMessage(err, 'Failed to create task'));
@@ -1256,6 +1341,17 @@ export function InitialChatComposer({
         );
     }
 
+    // A non-empty pending prefix (e.g. Notes selected-text references) counts as
+    // sendable content: Send stays enabled and the prefix becomes the request body
+    // even with an empty text box and no attachments (AC-04). Whitespace-only
+    // prefixes do not count.
+    const hasPendingPrefixContent = (pendingPrefix ?? '').trim().length > 0;
+    const composerInputEmpty =
+        !input.trim()
+        && attachments.length === 0
+        && attachedContext.items.length === 0
+        && !hasPendingPrefixContent;
+
     return (
         <div
             ref={composerRootRef}
@@ -1300,7 +1396,7 @@ export function InitialChatComposer({
             {/* Hero area */}
             <div className="flex-1 flex items-center justify-center">
                 <div className="text-center text-[#848484]">
-                    <div className="text-3xl mb-2">💬</div>
+                    <div className="text-3xl mb-2">{heroIcon}</div>
                     <div className="text-sm font-medium mb-1">{heroTitle}</div>
                     <div className="text-xs">{heroDescription}</div>
                 </div>
@@ -1351,6 +1447,7 @@ export function InitialChatComposer({
                         e.target.value = '';
                     }}
                 />
+                {accessoryAboveInput}
                 <div
                     data-testid="chat-input-stack"
                     className="space-y-1"
@@ -1548,7 +1645,7 @@ export function InitialChatComposer({
                                 >
                                     <button
                                         type="button"
-                                        disabled={!input.trim() && attachments.length === 0 && attachedContext.items.length === 0}
+                                        disabled={composerInputEmpty}
                                         className="inline-flex items-center gap-1 h-[24px] pl-2 pr-2 rounded-l-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                         onClick={() => { void handleSend(); }}
                                         data-testid={`${testIdPrefix}-send-btn`}
@@ -1577,7 +1674,7 @@ export function InitialChatComposer({
                             ) : (
                                 <button
                                     type="button"
-                                    disabled={!input.trim() && attachments.length === 0 && attachedContext.items.length === 0}
+                                    disabled={composerInputEmpty}
                                     className="shrink-0 inline-flex items-center gap-1 h-[24px] pl-2 pr-1.5 rounded-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                     onClick={() => { void handleSend(); }}
                                     data-testid={`${testIdPrefix}-send-btn`}
@@ -1597,7 +1694,7 @@ export function InitialChatComposer({
                         ) : selectedMode === 'for-each' && isForEachEnabled() ? (
                             <button
                                 type="button"
-                                disabled={!input.trim() && attachments.length === 0 && attachedContext.items.length === 0}
+                                disabled={composerInputEmpty}
                                 className="shrink-0 inline-flex items-center gap-1 h-[24px] pl-2 pr-1.5 rounded-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                 onClick={() => { void handleSend(); }}
                                 data-testid={`${testIdPrefix}-send-btn`}
@@ -1622,7 +1719,7 @@ export function InitialChatComposer({
                         ) : (
                             <button
                                 type="button"
-                                disabled={!input.trim() && attachments.length === 0 && attachedContext.items.length === 0}
+                                disabled={composerInputEmpty}
                                 className="shrink-0 inline-flex items-center gap-1 h-[24px] pl-2 pr-1.5 rounded-md bg-white dark:bg-[#1f1f1f] border border-[#d0d0d0] dark:border-[#3c3c3c] text-[11px] font-medium -tracking-[0.005em] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                 onClick={() => { void handleSend(); }}
                                 data-testid={`${testIdPrefix}-send-btn`}

@@ -230,6 +230,27 @@ export class NotesClient {
   }
 
   createChat(workspaceId: string, request: CreateNoteChatRequest): Promise<CreateNoteChatResponse> {
+    // The declared scope rides inside `noteChat` alongside the path so the
+    // server's enqueue binding step can honor it (a `per-workspace` submission
+    // never binds the referenced note per-note). Scope only matters when a note
+    // path is present, so it is omitted with the whole `noteChat` object otherwise.
+    const noteChat = request.notePath
+      ? {
+          notePath: request.notePath,
+          noteTitle: request.noteTitle,
+          ...(request.scope ? { scope: request.scope } : {}),
+        }
+      : undefined;
+    // Lay the generic composer context down first, then overlay the Notes-owned
+    // reserved keys so an overlapping caller context can never override or drop the
+    // note binding, Lens metadata, or extracted skills (AC-07 reserved-key merge).
+    const context: Record<string, unknown> = {
+      ...(request.context ?? {}),
+      ...(request.autoProviderRouting ? { autoProviderRouting: { requested: true } } : {}),
+      ...(noteChat ? { noteChat } : {}),
+      ...(request.lensChat ? { lensChat: request.lensChat } : {}),
+      ...(request.skills && request.skills.length > 0 ? { skills: [...request.skills] } : {}),
+    };
     return this.transport.request<CreateNoteChatResponse>('/queue', {
       method: 'POST',
       body: {
@@ -240,14 +261,16 @@ export class NotesClient {
           mode: request.mode ?? 'ask',
           prompt: request.prompt,
           workspaceId,
+          ...(request.workingDirectory ? { workingDirectory: request.workingDirectory } : {}),
           ...(request.model ? { model: request.model } : {}),
+          ...(request.reasoningEffort ? { reasoningEffort: request.reasoningEffort } : {}),
+          ...(request.provider ? { provider: request.provider } : {}),
           ...(request.attachments && request.attachments.length > 0 ? { attachments: [...request.attachments] } : {}),
-          context: {
-            noteChat: request.notePath ? { notePath: request.notePath, noteTitle: request.noteTitle } : undefined,
-            ...(request.lensChat ? { lensChat: request.lensChat } : {}),
-            ...(request.skills && request.skills.length > 0 ? { skills: [...request.skills] } : {}),
-          },
+          context,
         },
+        // Effort tier rides the top-level task config (like the shared composer),
+        // so enqueue resolves it into the seeded model + reasoning effort.
+        ...(request.effortTier ? { config: { effortTier: request.effortTier } } : {}),
       },
     });
   }

@@ -1520,6 +1520,26 @@ Workspace while Git remains available inside `SplitWorkspacePanel`.
   `localStorage['activity-list-collapsed-{workspaceId}']`, the left-panel width
   persists in `localStorage['activity-left-panel-width-{workspaceId}']`, and the
   collapse affordance sits on the list/detail resize handle.
+- The Notes tree sidebar (`NotesView` → `NotesSidebar`, shared by repo notes,
+  My Life, and My Work) collapses the whole left column to a 36px rail on
+  desktop/tablet only (mobile keeps its `ResponsiveSidebar` drawer). A `«`
+  chevron hover-revealed on the sidebar resize handle collapses it; the rail's
+  `»` button expands it. Collapsed state persists per workspace under
+  `localStorage['coc-notes-sidebar-collapsed-{workspaceId}']` (`'1'`/`'0'`,
+  written only on an explicit toggle) via `useNotesSidebarCollapsed`, so repo /
+  My Life / My Work each remember their own state. The tree stays mounted-hidden
+  (keep-alive) inside the `ResponsiveSidebar`, and while collapsed the view
+  publishes the rail width (`NOTES_SIDEBAR_RAIL_WIDTH`) to
+  `--workspace-left-col-width` so the docked status bar stays flush. Hovering the
+  rail on a fine-pointer device floats the sidebar back as an absolute `z-30`
+  slide-in overlay (`useHoverPeek`, 400ms open / 250ms close grace, Escape +
+  outside-click dismiss); the peek is a transient layer that never rewrites the
+  persisted collapsed flag. Mirrors the `SplitWorkspacePanel` whole-left-column
+  collapse UX with a lighter local `useState` store (no Cmd/Ctrl+B, no cross-tree
+  sync — every consumer lives in the single `NotesView` subtree). Both toggle
+  controls carry `aria-expanded` reflecting the sidebar state, and the peek slide
+  honours `prefers-reduced-motion` via `motion-reduce:transition-none` (the panel
+  still floats out, it just appears without the transition).
 - The `SplitWorkspacePanel` chat/git divider is an explicit horizontal
   `role="separator"` resize handle with an expanded hit target; it persists the
   chat pane height per workspace under

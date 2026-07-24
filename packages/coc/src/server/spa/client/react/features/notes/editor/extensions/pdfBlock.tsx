@@ -1,6 +1,7 @@
 import { Node } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
+import { createIndentAttribute, renderIndentAttr } from './indentShared';
 import { classifyPdfBlockUrl } from './pdfBlockUrl';
 
 function PdfBlockView({ node }: NodeViewProps) {
@@ -8,12 +9,14 @@ function PdfBlockView({ node }: NodeViewProps) {
     const label = String(node.attrs.label || 'PDF');
     const classification = classifyPdfBlockUrl(url, window.location.origin);
     const href = classification.kind === 'invalid' ? undefined : classification.href;
+    const indent = Number(node.attrs.indent || 0);
 
     return (
         <NodeViewWrapper
             className="pdf-node-view"
             data-drag-handle=""
             data-testid="pdf-node-view"
+            data-indent={indent > 0 ? indent : undefined}
         >
             <div className="md-pdf-embed-shell" contentEditable={false}>
                 <div className="md-pdf-embed-toolbar">
@@ -70,6 +73,7 @@ export const PdfBlock = Node.create({
         return {
             url: { default: '' },
             label: { default: 'PDF' },
+            indent: createIndentAttribute(),
         };
     },
 
@@ -96,6 +100,7 @@ export const PdfBlock = Node.create({
                 class: 'md-pdf-embed',
                 'data-pdf-url': node.attrs.url,
                 'data-pdf-label': node.attrs.label,
+                ...renderIndentAttr(node.attrs.indent),
             },
         ];
     },

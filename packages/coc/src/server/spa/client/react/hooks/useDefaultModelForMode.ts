@@ -14,7 +14,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { getSpaCocClient } from '../api/cocClient';
+import { getCocClientFor, getSpaCocClient } from '../api/cocClient';
 import { getActiveProvider } from '../utils/config';
 
 export type ChatModeForModel = 'ask' | 'autopilot' | 'ralph' | 'for-each';
@@ -38,6 +38,12 @@ export function useDefaultModelForMode(
     availableModels: { id: string; name?: string }[],
     /** Provider whose defaults should be resolved. Defaults to active dashboard provider. */
     providerOverride?: string,
+    /**
+     * Optional owning-clone remote baseUrl. When present, the per-repo default
+     * model preference is read from that clone's server (AC-07: remote model
+     * resolution never falls through to the local client); omitted = local origin.
+     */
+    baseUrl?: string,
 ): UseDefaultModelForModeResult {
     const [defaultModel, setDefaultModel] = useState<string | undefined>();
     const [defaultModels, setDefaultModels] = useState<Record<string, string | undefined>>({});
@@ -50,7 +56,7 @@ export function useDefaultModelForMode(
         setProviderModels({});
         if (!workspaceId) return;
         let cancelled = false;
-        getSpaCocClient().preferences.getRepo(workspaceId)
+        (baseUrl ? getCocClientFor(baseUrl) : getSpaCocClient()).preferences.getRepo(workspaceId)
             .then((prefs: any) => {
                 if (cancelled) return;
 
@@ -83,7 +89,7 @@ export function useDefaultModelForMode(
             })
             .catch(() => { /* preferences are optional */ });
         return () => { cancelled = true; };
-    }, [workspaceId, provider]);
+    }, [workspaceId, provider, baseUrl]);
 
     const prefKey = toPreferenceMode(chatMode);
     const isCopilot = provider === 'copilot';

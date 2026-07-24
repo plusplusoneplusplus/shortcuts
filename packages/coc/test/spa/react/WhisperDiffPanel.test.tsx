@@ -185,6 +185,21 @@ describe('WhisperDiffPanel — All files body (AC-02)', () => {
         expect(viewers[0]).toHaveAttribute('data-hide-file-headers', 'true');
     });
 
+    it('pins each file-name divider to the top of the scroll body while scrolling', () => {
+        render(<WhisperDiffPanel state={multiFileState()} workspaceRootPath="/home/u/proj" onClose={() => {}} />);
+        // The body is the single scroll container; the dividers scroll within it.
+        expect(screen.getByTestId('whisper-diff-body')).toHaveClass('overflow-auto');
+        for (const divider of screen.getAllByTestId('whisper-diff-file-divider')) {
+            // Sticky so the current file's name stays pinned as its diff scrolls;
+            // z-10 keeps it above the diff lines, and the opaque background keeps
+            // it readable while pinned. A stray non-Tailwind class (e.g. `sticky-0`)
+            // is a no-op and would let the name scroll away with the content.
+            expect(divider).toHaveClass('sticky', 'top-0', 'z-10');
+            expect(divider).not.toHaveClass('sticky-0');
+            expect(divider.className).toMatch(/bg-\[#f3f3f3\]/);
+        }
+    });
+
     it('lists deleted and non-reconstructable files under "Not shown"', () => {
         render(<WhisperDiffPanel state={multiFileState()} workspaceRootPath="/home/u/proj" onClose={() => {}} />);
         const notShown = screen.getByTestId('whisper-diff-not-shown');

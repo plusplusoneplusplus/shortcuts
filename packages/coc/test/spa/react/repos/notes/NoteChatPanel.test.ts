@@ -1,8 +1,12 @@
 /**
- * Tests for NoteChatPanel — single-chat-per-workspace UI.
+ * Tests for NoteChatPanel — the thin Notes adapter around the shared composer.
  *
- * Validates panel structure, useNotesChat integration, /new and /clear
- * reset commands, empty state, and active chat rendering.
+ * After the shared-composer swap (AC-01), the empty state is rendered by the
+ * shared InitialChatComposer and NoteChatPanel owns only a submission adapter,
+ * scope/header wiring, and the active-chat handoff to ChatDetail. These remain
+ * source-string assertions; the full rendered-behavior conversion
+ * (Verification #2) is a follow-up. They lock in the thin-adapter contract
+ * (AC-01 Definition of Done #2) and the preserved Notes shell.
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -35,7 +39,6 @@ describe('NoteChatPanel', () => {
         });
 
         it('calls useNotesChat with workspace, note, and scope options', () => {
-            // Call is now multiline and includes defaultScope
             expect(source).toContain('useNotesChat({');
             expect(source).toContain('workspaceId,');
             expect(source).toContain('notePath,');
@@ -46,11 +49,6 @@ describe('NoteChatPanel', () => {
         it('destructures taskId, task-bound context sync, chat actions, and scope state', () => {
             expect(source).toContain('{ taskId, chatNoteContext, syncChatNoteContext, createChat, resetChat, scope, setScope }');
         });
-
-        it('does not use loading or error states', () => {
-            expect(source).not.toContain('loading');
-            expect(source).not.toContain('{error');
-        });
     });
 
     describe('notePath is nullable', () => {
@@ -59,35 +57,103 @@ describe('NoteChatPanel', () => {
         });
     });
 
-    describe('/new and /clear reset commands', () => {
-        it('intercepts /new command', () => {
-            expect(source).toContain('/new');
+    // AC-01 Definition of Done #2: NoteChatPanel no longer imports or directly
+    // coordinates the low-level input, model/slash menu, skill loading, or
+    // file-attachment primitives. Those now live entirely in the shared composer.
+    describe('thin adapter — no bespoke composer primitives (AC-01)', () => {
+        it('renders the shared InitialChatComposer for the empty state', () => {
+            expect(source).toContain('<InitialChatComposer');
+            expect(source).toContain("import { InitialChatComposer } from '../../chat/NewChatArea'");
         });
 
-        it('intercepts /clear command', () => {
-            expect(source).toContain('/clear');
+        it('retains the stable note-chat test-id prefix', () => {
+            expect(source).toContain('testIdPrefix="note-chat"');
         });
 
-        it('calls resetChat on /new or /clear', () => {
-            expect(source).toContain('resetChat()');
+        it('does not import the low-level rich-text input', () => {
+            expect(source).not.toContain('RichTextInput');
+        });
+
+        it('does not coordinate the slash/model command menus or hooks', () => {
+            expect(source).not.toContain('useSlashCommands');
+            expect(source).not.toContain('useModelCommand');
+            expect(source).not.toContain('SlashCommandMenu');
+            expect(source).not.toContain('ModelCommandMenu');
+        });
+
+        it('does not own model or skill loading', () => {
+            expect(source).not.toContain('useModels');
+            expect(source).not.toContain('getSpaCocClient');
+            expect(source).not.toContain('listAllWorkspace');
+        });
+
+        it('does not own file-attachment primitives', () => {
+            expect(source).not.toContain('useFileAttachments');
+            expect(source).not.toContain('AttachmentPreviews');
         });
     });
 
-    describe('empty state', () => {
-        it('shows when no taskId', () => {
-            expect(source).toContain('{!taskId && (');
+    // AC-03/05: the panel pins the composer to Ask + Autopilot, the compact
+    // settings chip, no workflow launch, and a scope-isolated draft key.
+    describe('shared-composer configuration', () => {
+        it('pins allowedModes to NOTE_CHAT_ALLOWED_MODES with a compact settings layout', () => {
+            expect(source).toContain('allowedModes={NOTE_CHAT_ALLOWED_MODES}');
+            expect(source).toContain('settingsLayout="compact"');
         });
 
-        it('shows Notes Chat label (not per-note title)', () => {
-            expect(source).toContain('Notes Chat');
+        it('disables the Ralph direct-goal launch so no workflow starts from Notes', () => {
+            expect(source).toContain('enableRalphDirectGoal={false}');
         });
 
-        it('has input field', () => {
-            expect(source).toContain('note-chat-input');
+        it('feeds the scope-isolated draft key so drafts never cross notes or scopes', () => {
+            expect(source).toContain('notesChatDraftKey');
+            expect(source).toContain('draftKey={notesChatDraftKey(workspaceId, scope, notePath)}');
         });
 
-        it('has send button', () => {
-            expect(source).toContain('note-chat-send-btn');
+        it('keeps the Notes robot identity and scope-specific copy in the hero', () => {
+            expect(source).toContain('heroIcon="🤖"');
+            expect(source).toContain('heroTitle="Notes Chat"');
+            expect(source).toContain('heroDescription={emptyStateText}');
+        });
+    });
+
+    // AC-04: selected-text references ride as a pending prefix (removable chips
+    // above the input); they are cleared only after a successful submission.
+    describe('selected-text references', () => {
+        it('passes references as the composer pending prefix', () => {
+            expect(source).toContain('pendingPrefix={references && references.length > 0 ? formatNoteReferences(references) : undefined}');
+        });
+
+        it('renders the removable reference chips in the accessory slot above the input', () => {
+            expect(source).toContain('accessoryAboveInput={');
+            expect(source).toContain('<NoteReferenceChips');
+        });
+
+        it('clears references only via the composer success callback', () => {
+            expect(source).toContain('onClearPendingPrefix={onClearReferences}');
+        });
+    });
+
+    // AC-04: exact trimmed /new and /clear reset the binding without flushing,
+    // creating a task, or consuming references — routed through the generic
+    // interceptSubmit extension point on the shared composer.
+    describe('/new and /clear reset commands', () => {
+        it('wires a submission interceptor into the shared composer', () => {
+            expect(source).toContain('interceptSubmit={handleInterceptSubmit}');
+        });
+
+        it('matches exact trimmed /new and /clear and resets the binding', () => {
+            expect(source).toContain('/^\\/(new|clear)$/i');
+            expect(source).toContain('resetChat()');
+        });
+
+        it('the interceptor does not flush the note or create a chat', () => {
+            const start = source.indexOf('const handleInterceptSubmit');
+            expect(start).toBeGreaterThan(-1);
+            const block = source.slice(start, source.indexOf('}, [resetChat]', start));
+            expect(block).toContain('resetChat()');
+            expect(block).not.toContain('onBeforeSend');
+            expect(block).not.toContain('createChat');
         });
     });
 
@@ -192,181 +258,28 @@ describe('NoteChatPanel', () => {
         });
     });
 
-    describe('no per-note binding references', () => {
-        it('does not reference binding store', () => {
-            expect(source).not.toContain('binding');
-            expect(source).not.toContain('Binding');
-        });
-
-        it('uses typed client for skill fetching', () => {
-            expect(source).toContain('getSpaCocClient');
-        });
-    });
-
-    describe('save-before-send', () => {
+    describe('save-before-send flush ordering (AC-06)', () => {
         it('accepts onBeforeSend prop', () => {
             expect(source).toContain('onBeforeSend');
         });
 
-        it('calls onBeforeSend before createChat in handleSend', () => {
-            // Verify the call order: onBeforeSend appears before createChat in handleSend
+        it('flushes onBeforeSend before createChat inside the submit adapter', () => {
             const sendIdx = source.indexOf('await onBeforeSend?.()');
-            const createIdx = source.indexOf('await createChat(prompt,');
+            const createIdx = source.indexOf('await createChat(');
             expect(sendIdx).toBeGreaterThan(-1);
             expect(createIdx).toBeGreaterThan(-1);
             expect(sendIdx).toBeLessThan(createIdx);
         });
 
-        it('does not call onBeforeSend for /new or /clear commands', () => {
-            // The /new and /clear branch returns early before onBeforeSend
-            const newClearIdx = source.indexOf('resetChat()');
-            const beforeSendIdx = source.indexOf('await onBeforeSend?.()');
-            // resetChat return happens before the onBeforeSend call
-            expect(newClearIdx).toBeLessThan(beforeSendIdx);
+        it('surfaces a create failure as a rejection so the composer preserves state', () => {
+            expect(source).toContain('if (!newTaskId) {');
+            expect(source).toContain('throw new Error');
         });
     });
 
     describe('onNoteFileEdit prop removed', () => {
         it('does not declare onNoteFileEdit in NoteChatPanelProps', () => {
             expect(source).not.toContain('onNoteFileEdit');
-        });
-    });
-
-    describe('/model command support', () => {
-        it('imports useModels', () => {
-            expect(source).toContain("from '../../../hooks/useModels'");
-        });
-
-        it('imports useSlashCommands', () => {
-            expect(source).toContain("from '../../chat/hooks/useSlashCommands'");
-        });
-
-        it('imports useModelCommand', () => {
-            expect(source).toContain("from '../../chat/hooks/useModelCommand'");
-        });
-
-        it('imports SlashCommandMenu', () => {
-            expect(source).toContain("from '../../chat/SlashCommandMenu'");
-        });
-
-        it('imports ModelCommandMenu', () => {
-            expect(source).toContain("from '../../chat/ModelCommandMenu'");
-        });
-
-        it('wires model command hooks', () => {
-            expect(source).toContain('useModels()');
-            expect(source).toContain('useSlashCommands(augmentedSkills)');
-            // NoteChatPanel routes the picker through selectPickableModels so
-            // it falls back to availableModels when nothing is enabled (the
-            // same pattern used by NewChatArea / ChatDetail). The hook call
-            // therefore receives `pickableModels`, not `enabledModels`.
-            expect(source).toContain('useModelCommand(pickableModels)');
-            expect(source).toContain('selectPickableModels');
-        });
-
-        it('renders SlashCommandMenu in empty state input', () => {
-            expect(source).toContain('<SlashCommandMenu');
-        });
-
-        it('renders ModelCommandMenu in empty state input', () => {
-            expect(source).toContain('<ModelCommandMenu');
-        });
-
-        it('renders model badge with testid', () => {
-            expect(source).toContain('note-chat-model-badge');
-        });
-
-        it('passes modelOverride, selectedMode, and extracted skills to createChat', () => {
-            expect(source).toContain('createChat(prompt, modelCommand.modelOverride, selectedMode,');
-        });
-
-        it('wraps RichTextInput in relative container for menu positioning', () => {
-            // Menus are children of the relative container
-            const relIdx = source.indexOf('min-w-0 relative');
-            expect(relIdx).toBeGreaterThan(-1);
-            const slashMenuIdx = source.indexOf('<SlashCommandMenu', relIdx);
-            expect(slashMenuIdx).toBeGreaterThan(relIdx);
-        });
-    });
-
-    describe('skill slash-command support', () => {
-        it('imports SkillItem type from SlashCommandMenu', () => {
-            expect(source).toContain("SkillItem");
-            expect(source).toContain("from '../../chat/SlashCommandMenu'");
-        });
-
-        it('imports typed SPA client for skill fetching', () => {
-            expect(source).toContain("import { getSpaCocClient }");
-            expect(source).toContain("from '../../../api/cocClient'");
-        });
-
-        it('declares skills state with SkillItem array type', () => {
-            expect(source).toContain('useState<SkillItem[]>([])');
-        });
-
-        it('fetches skills from the typed skills client on workspaceId change', () => {
-            expect(source).toContain('skills.listAllWorkspace(workspaceId)');
-            expect(source).toContain('setSkills(data.merged)');
-        });
-
-        it('merges fetched skills with META_SKILL_ITEMS', () => {
-            expect(source).toContain('mergeSkillsWithMeta(skills, getMetaSkillItems(isLoopsEnabled()))');
-        });
-
-        it('augmentedSkills depends on skills', () => {
-            expect(source).toContain('[skills]');
-        });
-
-        it('onSelect calls selectSkill for non-model skills', () => {
-            expect(source).toContain('slashCommands.selectSkill(name, input, setInput, richTextRef)');
-        });
-
-        it('keyboard handler calls selectSkill for non-model skills on Enter/Tab', () => {
-            expect(source).toContain('slashCommands.selectSkill(skill.name, input, setInput, richTextRef)');
-        });
-
-        it('handleSend extracts skills via parseAndExtract', () => {
-            expect(source).toContain('slashCommands.parseAndExtract(text)');
-        });
-
-        it('passes extracted skills to createChat when present', () => {
-            expect(source).toContain('extractedSkills.length > 0 ? extractedSkills : undefined');
-        });
-    });
-
-    describe('image paste support', () => {
-        it('imports useFileAttachments hook', () => {
-            expect(source).toContain("useFileAttachments");
-        });
-
-        it('imports AttachmentPreviews component', () => {
-            expect(source).toContain("AttachmentPreviews");
-        });
-
-        it('wires onPaste to addFromPaste', () => {
-            expect(source).toContain('onPaste={addFromPaste}');
-        });
-
-        it('renders AttachmentPreviews with attachments and onRemove', () => {
-            expect(source).toContain('<AttachmentPreviews');
-            expect(source).toContain('attachments={attachments}');
-            expect(source).toContain('onRemove={removeAttachment}');
-        });
-
-        it('clears attachments after send', () => {
-            expect(source).toContain('clearAttachments()');
-        });
-
-        it('enables send button when attachments are present', () => {
-            expect(source).toContain('attachments.length === 0');
-        });
-
-        it('passes attachments to createChat when present', () => {
-            expect(source).toContain('attachmentPayload.length > 0 ? attachmentPayload : undefined');
-        });
-
-        it('shows attachment error when present', () => {
-            expect(source).toContain('note-chat-attachment-error');
         });
     });
 });
