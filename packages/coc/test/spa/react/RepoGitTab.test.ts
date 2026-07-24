@@ -206,6 +206,11 @@ describe('RepoGitTab', () => {
             expect(source).toContain('data-testid="git-refresh-error"');
         });
 
+        it('refresh error banner has a dismiss button that clears the error', () => {
+            expect(source).toContain('data-testid="git-refresh-error-dismiss"');
+            expect(source).toContain('onClick={() => setRefreshError(null)}');
+        });
+
         it('supports R keyboard shortcut for refresh', () => {
             expect(source).toContain("e.key === 'r' || e.key === 'R'");
         });
@@ -407,6 +412,11 @@ describe('RepoGitTab', () => {
 
         it('shows action error toast', () => {
             expect(source).toContain('data-testid="git-action-error"');
+        });
+
+        it('action error banner has a dismiss button that clears the error', () => {
+            expect(source).toContain('data-testid="git-action-error-dismiss"');
+            expect(source).toContain('onClick={() => setActionError(null)}');
         });
 
         it('handleDropCommit polls async jobs via the shared poller before refreshing', () => {
