@@ -17,6 +17,7 @@ function PdfBlockView({ node, updateAttributes, selected }: NodeViewProps) {
     const classification = classifyPdfBlockUrl(url, window.location.origin);
     const href = classification.kind === 'invalid' ? undefined : classification.href;
     const indent = Number(node.attrs.indent || 0);
+    const collapsed = Boolean(node.attrs.collapsed);
 
     const attrHeight = node.attrs.height == null ? null : Number(node.attrs.height);
     const frameRef = useRef<HTMLIFrameElement>(null);
@@ -67,11 +68,22 @@ function PdfBlockView({ node, updateAttributes, selected }: NodeViewProps) {
             data-drag-handle=""
             data-testid="pdf-node-view"
             data-indent={indent > 0 ? indent : undefined}
+            data-collapsed={collapsed ? '' : undefined}
         >
             <div className="md-pdf-embed-shell" contentEditable={false}>
                 <div className="md-pdf-embed-toolbar">
                     <span className="md-pdf-embed-title" title={href}>{label}</span>
                     <span className="md-pdf-embed-actions">
+                        <button
+                            type="button"
+                            className="md-pdf-embed-toggle"
+                            data-testid="pdf-node-view-toggle"
+                            aria-expanded={!collapsed}
+                            title={collapsed ? 'Expand' : 'Collapse'}
+                            onClick={() => updateAttributes({ collapsed: !collapsed })}
+                        >
+                            {collapsed ? '▸' : '▾'}
+                        </button>
                         <button
                             type="button"
                             onClick={() => {
@@ -85,7 +97,7 @@ function PdfBlockView({ node, updateAttributes, selected }: NodeViewProps) {
                         </button>
                     </span>
                 </div>
-                {classification.kind === 'inline' ? (
+                {!collapsed && (classification.kind === 'inline' ? (
                     <div className="md-pdf-embed-frame-wrap pdf-node-view-frame-wrap">
                         <div className="pdf-node-view-frame-inner">
                             <iframe
@@ -122,7 +134,7 @@ function PdfBlockView({ node, updateAttributes, selected }: NodeViewProps) {
                     </div>
                 ) : (
                     <div className="pdf-node-view-error">Missing or unsafe PDF attachment</div>
-                )}
+                ))}
             </div>
         </NodeViewWrapper>
     );
@@ -140,6 +152,12 @@ export const PdfBlock = Node.create({
             label: { default: 'PDF' },
             indent: createIndentAttribute(),
             height: createPdfHeightAttribute(),
+            collapsed: {
+                default: false,
+                parseHTML: (el: HTMLElement) => el.getAttribute('data-pdf-collapsed') === 'true',
+                renderHTML: (attrs: { collapsed?: boolean }) =>
+                    attrs.collapsed ? { 'data-pdf-collapsed': 'true' } : {},
+            },
         };
     },
 
@@ -168,6 +186,7 @@ export const PdfBlock = Node.create({
                 'data-pdf-label': node.attrs.label,
                 ...renderIndentAttr(node.attrs.indent),
                 ...renderPdfHeightAttr(node.attrs.height),
+                ...(node.attrs.collapsed ? { 'data-pdf-collapsed': 'true' } : {}),
             },
         ];
     },

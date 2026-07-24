@@ -20,9 +20,16 @@ const pdfUrl = '/api/workspaces/ws1/notes/image?path=.attachments%2Fsample.pdf';
 const externalPdfUrl = 'https://files.example/sample.pdf';
 
 type ExtensionConfig = {
+    addAttributes(): {
+        collapsed: {
+            default: boolean;
+            parseHTML: (el: HTMLElement) => boolean;
+            renderHTML: (attrs: { collapsed?: boolean }) => Record<string, string>;
+        };
+    };
     parseHTML(): Array<{ tag: string; getAttrs: (el: HTMLElement) => false | { url: string; label: string } }>;
     renderHTML(args: {
-        node: { attrs: { url: string; label: string; indent?: number; height?: number | null } };
+        node: { attrs: { url: string; label: string; indent?: number; height?: number | null; collapsed?: boolean } };
     }): unknown[];
 };
 
@@ -127,6 +134,44 @@ describe('PdfBlock renderHTML', () => {
             node: { attrs: { url: '.attachments/sample.pdf', label: 'Sample PDF', height: null } },
         }) as [string, Record<string, unknown>];
         expect(result[1]).not.toHaveProperty('data-pdf-height');
+    });
+
+    it('adds data-pdf-collapsed to the placeholder for a collapsed PDF', () => {
+        const result = config.renderHTML({
+            node: { attrs: { url: '.attachments/sample.pdf', label: 'Sample PDF', collapsed: true } },
+        }) as [string, Record<string, unknown>];
+        expect(result[1]).toHaveProperty('data-pdf-collapsed', 'true');
+    });
+
+    it('omits data-pdf-collapsed when the PDF is expanded', () => {
+        const result = config.renderHTML({
+            node: { attrs: { url: '.attachments/sample.pdf', label: 'Sample PDF', collapsed: false } },
+        }) as [string, Record<string, unknown>];
+        expect(result[1]).not.toHaveProperty('data-pdf-collapsed');
+    });
+});
+
+describe('PdfBlock collapsed attribute', () => {
+    const { collapsed } = config.addAttributes();
+
+    it('defaults to false', () => {
+        expect(collapsed.default).toBe(false);
+    });
+
+    it('parses data-pdf-collapsed="true" to true', () => {
+        const div = document.createElement('div');
+        div.setAttribute('data-pdf-collapsed', 'true');
+        expect(collapsed.parseHTML(div)).toBe(true);
+    });
+
+    it('parses an absent data-pdf-collapsed to false', () => {
+        const div = document.createElement('div');
+        expect(collapsed.parseHTML(div)).toBe(false);
+    });
+
+    it('renders data-pdf-collapsed only when collapsed', () => {
+        expect(collapsed.renderHTML({ collapsed: true })).toEqual({ 'data-pdf-collapsed': 'true' });
+        expect(collapsed.renderHTML({ collapsed: false })).toEqual({});
     });
 });
 
@@ -268,5 +313,63 @@ describe('PdfBlockView resize', () => {
 
         fireEvent.doubleClick(screen.getByTestId('pdf-node-view-resize-handle'));
         expect(updateAttributes).toHaveBeenCalledWith({ height: null });
+    });
+});
+
+describe('PdfBlockView collapse', () => {
+    afterEach(() => cleanup());
+
+    function makeCollapseProps(
+        overrides: { collapsed?: boolean; updateAttributes?: ReturnType<typeof vi.fn> } = {},
+    ) {
+        const updateAttributes = overrides.updateAttributes ?? vi.fn();
+        return {
+            node: { attrs: { url: pdfUrl, label: 'sample.pdf', collapsed: overrides.collapsed ?? false } },
+            updateAttributes,
+            selected: false,
+        } as any;
+    }
+
+    it('renders the iframe and an expanded toggle when not collapsed', () => {
+        render(<PdfBlockView {...makeCollapseProps({ collapsed: false })} />);
+        expect(screen.getByTestId('pdf-node-view-frame')).toBeTruthy();
+        const toggle = screen.getByTestId('pdf-node-view-toggle');
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        expect(toggle.getAttribute('title')).toBe('Collapse');
+    });
+
+    it('unmounts the iframe but keeps the toolbar when collapsed', () => {
+        render(<PdfBlockView {...makeCollapseProps({ collapsed: true })} />);
+        expect(screen.queryByTestId('pdf-node-view-frame')).toBeNull();
+        // Toolbar (title + actions) stays so the block can be re-expanded.
+        expect(screen.getByText('sample.pdf')).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Open in new tab' })).toBeTruthy();
+        const toggle = screen.getByTestId('pdf-node-view-toggle');
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(toggle.getAttribute('title')).toBe('Expand');
+    });
+
+    it('marks the wrapper with data-collapsed when collapsed', () => {
+        const { container } = render(<PdfBlockView {...makeCollapseProps({ collapsed: true })} />);
+        expect(container.querySelector('.pdf-node-view[data-collapsed]')).toBeTruthy();
+    });
+
+    it('does not set data-collapsed when expanded', () => {
+        const { container } = render(<PdfBlockView {...makeCollapseProps({ collapsed: false })} />);
+        expect(container.querySelector('.pdf-node-view[data-collapsed]')).toBeNull();
+    });
+
+    it('toggles collapsed on from an expanded block', () => {
+        const updateAttributes = vi.fn();
+        render(<PdfBlockView {...makeCollapseProps({ collapsed: false, updateAttributes })} />);
+        screen.getByTestId('pdf-node-view-toggle').click();
+        expect(updateAttributes).toHaveBeenCalledWith({ collapsed: true });
+    });
+
+    it('toggles collapsed off from a collapsed block', () => {
+        const updateAttributes = vi.fn();
+        render(<PdfBlockView {...makeCollapseProps({ collapsed: true, updateAttributes })} />);
+        screen.getByTestId('pdf-node-view-toggle').click();
+        expect(updateAttributes).toHaveBeenCalledWith({ collapsed: false });
     });
 });

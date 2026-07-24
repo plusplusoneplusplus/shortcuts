@@ -283,12 +283,14 @@ turndown.addRule('pdfEmbed', {
         const label = el.getAttribute('data-pdf-label')?.trim() || 'PDF';
         const indent = parseIndentAttr(el);
         const height = parsePdfHeightAttr(el);
-        // `![]()` cannot carry an indent or a height — either forces the raw
-        // `<div>` form so the attribute survives the next save.
-        if (indent > 0 || height != null) {
+        const collapsed = el.getAttribute('data-pdf-collapsed') === 'true';
+        // `![]()` cannot carry an indent, a height or a collapsed flag — any of
+        // them forces the raw `<div>` form so the attribute survives the next save.
+        if (indent > 0 || height != null || collapsed) {
             const indentAttr = indent > 0 ? ` data-indent="${indent}"` : '';
             const heightAttr = height != null ? ` data-pdf-height="${height}"` : '';
-            return `\n\n<div class="md-pdf-embed" data-pdf-url="${escapeAttr(url)}" data-pdf-label="${escapeAttr(label)}"${indentAttr}${heightAttr}></div>\n\n`;
+            const collapsedAttr = collapsed ? ' data-pdf-collapsed="true"' : '';
+            return `\n\n<div class="md-pdf-embed" data-pdf-url="${escapeAttr(url)}" data-pdf-label="${escapeAttr(label)}"${indentAttr}${heightAttr}${collapsedAttr}></div>\n\n`;
         }
         return `![${escapeMarkdownLinkLabel(label)}](${url})`;
     },
@@ -630,15 +632,17 @@ function serializePdfEmbedPlaceholders(html: string): string {
             const indent = clampIndent(parseInt(getHtmlAttr(attrs, 'data-indent') || '0', 10) || 0);
             const rawHeight = getHtmlAttr(attrs, 'data-pdf-height');
             const height = rawHeight ? clampPdfHeight(parseInt(rawHeight, 10) || 0) : null;
-            if (indent > 0 || height != null) {
+            const collapsed = getHtmlAttr(attrs, 'data-pdf-collapsed') === 'true';
+            if (indent > 0 || height != null || collapsed) {
                 // Keep the embed as a non-blank md-pdf-embed div (turndown drops
                 // blank block nodes) so the `pdfEmbed` rule fires and preserves the
-                // indent and/or height as raw HTML. Routing through <img>/`![]()`
-                // would lose both the attributes AND the pdf type (a raw <img>
-                // reloads as an image).
+                // indent, height and/or collapsed flag as raw HTML. Routing through
+                // <img>/`![]()` would lose both the attributes AND the pdf type (a
+                // raw <img> reloads as an image).
                 const indentAttr = indent > 0 ? ` data-indent="${indent}"` : '';
                 const heightAttr = height != null ? ` data-pdf-height="${height}"` : '';
-                return `<div class="md-pdf-embed" data-pdf-url="${escapeAttr(url)}" data-pdf-label="${escapeAttr(label)}"${indentAttr}${heightAttr}>${escapeHtmlText(label)}</div>`;
+                const collapsedAttr = collapsed ? ' data-pdf-collapsed="true"' : '';
+                return `<div class="md-pdf-embed" data-pdf-url="${escapeAttr(url)}" data-pdf-label="${escapeAttr(label)}"${indentAttr}${heightAttr}${collapsedAttr}>${escapeHtmlText(label)}</div>`;
             }
             return `<img src="${escapeAttr(url)}" alt="${escapeAttr(label)}" />`;
         },
