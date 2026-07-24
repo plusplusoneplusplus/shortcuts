@@ -284,6 +284,7 @@ export type AppAction =
     | { type: 'SET_SEARCH_LOADING'; loading: boolean }
     | { type: 'SET_ACTIVE_TAB'; tab: DashboardTab }
     | { type: 'SET_SELECTED_REPO'; id: string | null }
+    | { type: 'SEED_LAST_WORKSPACE_REPO'; id: string }
     | { type: 'SET_CURRENT_AGENT'; agentId: string | null }
     | { type: 'SET_REPO_SUB_TAB'; tab: RepoSubTab }
     | { type: 'RECORD_REPO_ROUTE_SUFFIX'; repoId: string; suffix: string }
@@ -440,6 +441,14 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
                 ? action.id
                 : state.lastWorkspaceRepoId;
             return { ...state, selectedRepoId: action.id, lastWorkspaceRepoId, repoTabState: savedTabState, activeRepoSubTab: restoredTab, notePathState: savedNoteState, selectedNotePath: restoredNotePath, selectedWorkflowName: null, selectedWorkflowProcessId: null };
+        }
+        case 'SEED_LAST_WORKSPACE_REPO': {
+            // Cold-load restore (AC-03): seed the remembered workspace from
+            // persistence so the scope switcher keeps showing (and can switch back
+            // to) it after a reload that lands on a virtual scope. Only fills an
+            // EMPTY slot — never clobbers an id set by a real in-session selection.
+            if (state.lastWorkspaceRepoId || !action.id) return state;
+            return { ...state, lastWorkspaceRepoId: action.id };
         }
         case 'SET_CURRENT_AGENT': {
             setCurrentAgentId(action.agentId);

@@ -37,6 +37,12 @@ import {
     resolvePersistedRemoteSelection,
 } from '../repos/remoteSelectionPersistence';
 import {
+    clearPersistedLocalWorkspaceSelection,
+    loadPersistedLocalWorkspaceSelection,
+    persistLocalWorkspaceSelection,
+    resolvePersistedLocalWorkspace,
+} from '../repos/lastLocalWorkspacePersistence';
+import {
     findRepoBySelectionId,
     getRepoSelectionId,
     getWorkspaceSelectionId,
@@ -258,6 +264,21 @@ export function ReposProvider({ children }: { children: ReactNode }) {
                 }
             }
 
+            // Seed the remembered workspace for display + switch-back (AC-03).
+            // When a reload lands on a virtual scope (My Work / My Life) the active
+            // selection is virtual, so `lastWorkspaceRepoId` would be empty and the
+            // scope switcher would fall back to "Select repository". Resolve whichever
+            // last-active workspace was persisted — the remote pair (already resolved
+            // above) or the local id — against the freshly-aggregated repos and seed
+            // it. The reducer only fills an empty slot, so a concrete active selection
+            // (or an in-session pick) is never overridden. No composite ids: the local
+            // key is a plain workspace id, the remote pair is the stable module pair.
+            const rememberedWorkspaceId = resolvedRemoteId
+                ?? resolvePersistedLocalWorkspace(loadPersistedLocalWorkspaceSelection(), combined);
+            if (rememberedWorkspaceId) {
+                dispatch({ type: 'SEED_LAST_WORKSPACE_REPO', id: rememberedWorkspaceId });
+            }
+
             // Phase 2: Fetch git-info for all workspaces in a single batch request
             gitInfoAbortRef.current?.abort();
             const abortController = new AbortController();
@@ -407,9 +428,15 @@ export function ReposProvider({ children }: { children: ReactNode }) {
                 serverId: selected.workspace.remote.serverId,
                 workspaceId: selected.workspace.id,
             });
+            // Last-active workspace is now this remote → drop any stale local key so
+            // the two persisted "last workspace" hints stay mutually exclusive.
+            clearPersistedLocalWorkspaceSelection();
         } else {
             setActiveCloneForRouting(null);
             clearPersistedRemoteSelection();
+            // Remember this local workspace as the last-active one so it survives a
+            // reload onto a virtual scope (AC-03). Plain workspace id, not composite.
+            persistLocalWorkspaceSelection(selected.workspace.id);
         }
     }, [appState.selectedRepoId, repos]);
 

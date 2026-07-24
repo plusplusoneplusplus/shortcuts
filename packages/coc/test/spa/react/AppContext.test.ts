@@ -360,6 +360,35 @@ describe('AppContext reducer', () => {
             expect(result.lastWorkspaceRepoId).toBe('repo-b');
         });
 
+        // SEED_LAST_WORKSPACE_REPO: cold-load restore (AC-03) — fills lastWorkspaceRepoId
+        // from persistence when empty (reload landed on a virtual scope), but never
+        // clobbers an id already set by a real in-session selection.
+        it('SEED_LAST_WORKSPACE_REPO fills an empty lastWorkspaceRepoId', () => {
+            const result = appReducer(makeState({ lastWorkspaceRepoId: null }), { type: 'SEED_LAST_WORKSPACE_REPO', id: 'repo-restored' });
+            expect(result.lastWorkspaceRepoId).toBe('repo-restored');
+        });
+
+        it('SEED_LAST_WORKSPACE_REPO leaves the active selection untouched (display only)', () => {
+            const state = makeState({ selectedRepoId: 'my_work', lastWorkspaceRepoId: null });
+            const result = appReducer(state, { type: 'SEED_LAST_WORKSPACE_REPO', id: 'repo-restored' });
+            expect(result.selectedRepoId).toBe('my_work');
+            expect(result.lastWorkspaceRepoId).toBe('repo-restored');
+        });
+
+        it('SEED_LAST_WORKSPACE_REPO never clobbers an already-remembered workspace', () => {
+            const state = makeState({ lastWorkspaceRepoId: 'repo-current' });
+            const result = appReducer(state, { type: 'SEED_LAST_WORKSPACE_REPO', id: 'repo-stale' });
+            expect(result).toBe(state);
+            expect(result.lastWorkspaceRepoId).toBe('repo-current');
+        });
+
+        it('SEED_LAST_WORKSPACE_REPO ignores an empty id', () => {
+            const state = makeState({ lastWorkspaceRepoId: null });
+            const result = appReducer(state, { type: 'SEED_LAST_WORKSPACE_REPO', id: '' });
+            expect(result).toBe(state);
+            expect(result.lastWorkspaceRepoId).toBeNull();
+        });
+
         it('SET_REPO_SUB_TAB switches to activity', () => {
             const result = appReducer(makeState(), { type: 'SET_REPO_SUB_TAB', tab: 'activity' });
             expect(result.activeRepoSubTab).toBe('activity');

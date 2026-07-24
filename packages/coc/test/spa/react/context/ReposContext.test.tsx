@@ -56,6 +56,11 @@ import {
     persistRemoteSelection,
 } from '../../../../src/server/spa/client/react/repos/remoteSelectionPersistence';
 import {
+    _resetLocalWorkspaceForTests,
+    loadPersistedLocalWorkspaceSelection,
+    persistLocalWorkspaceSelection,
+} from '../../../../src/server/spa/client/react/repos/lastLocalWorkspacePersistence';
+import {
     buildRemoteCloneKey,
     legacyPathOnlyWorkspaceIdForRootPath,
 } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
@@ -164,6 +169,7 @@ function SelectedRepoConsumer() {
     return (
         <div>
             <div data-testid="selected-repo">{state.selectedRepoId ?? 'none'}</div>
+            <div data-testid="last-workspace">{state.lastWorkspaceRepoId ?? 'none'}</div>
             <div data-testid="repo-loading">{String(loading)}</div>
             {repos.map(r => (
                 <div key={r.workspace.id} data-testid={`repo-${r.workspace.id}`}>{r.workspace.name}</div>
@@ -183,11 +189,13 @@ describe('ReposContext', () => {
         // Default: no remote workspaces (classic flow). Overridden per AC-08 test.
         aggregateRemoteWorkspacesMock.mockResolvedValue(emptyAggregate());
         _resetRemoteSelectionForTests();
+        _resetLocalWorkspaceForTests();
         window.history.replaceState(null, '', '/');
     });
 
     afterEach(() => {
         _resetRemoteSelectionForTests();
+        _resetLocalWorkspaceForTests();
         window.history.replaceState(null, '', '/');
     });
 
@@ -421,6 +429,101 @@ describe('ReposContext', () => {
             await waitFor(() => {
                 expect(loadPersistedRemoteSelection()).toEqual({ serverId: 'srv-1', workspaceId: 'remote-ws' });
             });
+        });
+    });
+
+    // ── AC-03: last-active workspace persistence + cold-load seeding ─────────
+    // The scope switcher must keep showing (and switch back to) the last-active
+    // workspace after a reload that lands on a virtual scope — for LOCAL folders
+    // (new here) as well as remote clones (already covered by AC-08 above).
+    describe('last-active workspace persistence (AC-03)', () => {
+        it('persists a LOCAL workspace id when it is selected', async () => {
+            repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([makeWorkspace('local-1')]).workspaces);
+
+            render(<ProviderWithPreselectedRepo repoId="local-1" />);
+
+            await waitFor(() => {
+                expect(screen.getByTestId('selected-repo').textContent).toBe('local-1');
+            });
+            await waitFor(() => {
+                expect(loadPersistedLocalWorkspaceSelection()).toBe('local-1');
+            });
+        });
+
+        it('selecting a remote clone clears the stale LOCAL last-active key (mutual exclusivity)', async () => {
+            const remoteSelectionId = buildRemoteCloneKey('srv-1', 'remote-ws');
+            // A local folder was the last-active workspace before this session.
+            persistLocalWorkspaceSelection('local-old');
+            repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([makeWorkspace('local-1')]).workspaces);
+            aggregateRemoteWorkspacesMock.mockResolvedValueOnce(remoteAggregate('srv-1', 'http://127.0.0.1:4000', 'remote-ws'));
+
+            render(<ProviderWithPreselectedRepo repoId={remoteSelectionId} />);
+
+            await waitFor(() => {
+                expect(screen.getByTestId('selected-repo').textContent).toBe(remoteSelectionId);
+            });
+            // The remote pair is now the last-active hint; the local key is dropped.
+            await waitFor(() => {
+                expect(loadPersistedLocalWorkspaceSelection()).toBeNull();
+            });
+        });
+
+        it('seeds lastWorkspaceRepoId from a persisted LOCAL id when reload lands on a virtual scope', async () => {
+            // Prior session ended on local-1; reload lands on My Work (virtual).
+            persistLocalWorkspaceSelection('local-1');
+            repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([
+                makeWorkspace('local-1'),
+                { ...makeWorkspace('my_work', 'My Work'), virtual: true },
+            ]).workspaces);
+
+            render(<ProviderWithPreselectedRepo repoId="my_work" />);
+
+            await waitFor(() => {
+                expect(screen.getByTestId('repo-loading').textContent).toBe('false');
+            });
+            // Active scope stays virtual (display-only restore) …
+            expect(screen.getByTestId('selected-repo').textContent).toBe('my_work');
+            // … while the remembered workspace is seeded for the switcher.
+            await waitFor(() => {
+                expect(screen.getByTestId('last-workspace').textContent).toBe('local-1');
+            });
+        });
+
+        it('seeds lastWorkspaceRepoId from a persisted REMOTE pair when reload lands on a virtual scope', async () => {
+            const remoteSelectionId = buildRemoteCloneKey('srv-1', 'remote-ws');
+            persistRemoteSelection({ serverId: 'srv-1', workspaceId: 'remote-ws' });
+            repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([
+                makeWorkspace('local-1'),
+                { ...makeWorkspace('my_work', 'My Work'), virtual: true },
+            ]).workspaces);
+            aggregateRemoteWorkspacesMock.mockResolvedValueOnce(remoteAggregate('srv-1', 'http://127.0.0.1:4000', 'remote-ws'));
+
+            render(<ProviderWithPreselectedRepo repoId="my_work" />);
+
+            await waitFor(() => {
+                expect(screen.getByTestId('repo-loading').textContent).toBe('false');
+            });
+            expect(screen.getByTestId('selected-repo').textContent).toBe('my_work');
+            await waitFor(() => {
+                expect(screen.getByTestId('last-workspace').textContent).toBe(remoteSelectionId);
+            });
+        });
+
+        it('does not seed a stale workspace over an active concrete selection', async () => {
+            // local-old was persisted, but this load is actively on local-1 → the
+            // active selection wins and remains the remembered workspace.
+            persistLocalWorkspaceSelection('local-old');
+            repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([
+                makeWorkspace('local-1'),
+                makeWorkspace('local-old'),
+            ]).workspaces);
+
+            render(<ProviderWithPreselectedRepo repoId="local-1" />);
+
+            await waitFor(() => {
+                expect(screen.getByTestId('selected-repo').textContent).toBe('local-1');
+            });
+            expect(screen.getByTestId('last-workspace').textContent).toBe('local-1');
         });
     });
 
