@@ -650,6 +650,16 @@ timeout: 300
             expect(result.loops.enabled).toBe(true);
         });
 
+        it('should default triggers.enabled to true', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, {});
+            expect(result.triggers.enabled).toBe(true);
+        });
+
+        it('should allow triggers.enabled=false as an explicit opt-out', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { triggers: { enabled: false } });
+            expect(result.triggers.enabled).toBe(false);
+        });
+
         it('should default effortLevels.enabled to true', () => {
             const result = mergeConfig(DEFAULT_CONFIG, {});
             expect(result.effortLevels.enabled).toBe(true);
@@ -1427,7 +1437,7 @@ timeout: 300
                   "timeout": 450,
                   "toolCompactness": 2,
                   "triggers": {
-                    "enabled": false,
+                    "enabled": true,
                   },
                   "vimNavigation": {
                     "enabled": true,

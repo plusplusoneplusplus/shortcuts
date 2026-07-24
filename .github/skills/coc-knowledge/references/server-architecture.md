@@ -174,6 +174,9 @@ terminal:
 workflows:
   enabled: true
 
+triggers:
+  enabled: true
+
 pullRequests:
   enabled: true
   suggestions: false

@@ -469,11 +469,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         });
     }
 
-    const triggersEnabled = resolvedConfig.triggers?.enabled ?? false;
+    const triggersEnabled = resolvedConfig.triggers?.enabled ?? true;
 
     // Trigger infrastructure — generic event → action framework (CI auto-fix
     // monitor this iteration). Gated by triggers.enabled feature flag (default
-    // false). Mirrors the loop infra wiring; re-arms active triggers on startup.
+    // true). Mirrors the loop infra wiring; re-arms active triggers on startup.
     if (triggersEnabled) {
         triggerInfra = await createTriggerInfrastructure({
             dataDir,

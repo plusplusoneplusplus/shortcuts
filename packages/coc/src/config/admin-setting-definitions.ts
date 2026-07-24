@@ -612,10 +612,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'triggers.enabled', default: false, runtime: 'restartRequired', runtimeFlag: 'triggersEnabled',
+        key: 'triggers.enabled', default: true, runtime: 'restartRequired', runtimeFlag: 'triggersEnabled',
         ui: {
             group: 'infrastructure', order: 11, label: 'Triggers (CI auto-fix)', badge: 'restart',
-            hint: 'Event → action triggers, including the PR-banner CI auto-fix monitor. Disabled by default — toggling requires a server restart to (de)wire infrastructure.',
+            hint: 'Event → action triggers, including the PR-banner CI auto-fix monitor. Enabled by default — toggling requires a server restart to (de)wire infrastructure.',
             testId: 'toggle-triggers-enabled',
         },
     }),
