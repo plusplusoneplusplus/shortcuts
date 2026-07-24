@@ -250,6 +250,7 @@ import {
     pushNewChatSeedContext,
     resetNewChatSeedContext,
 } from '../../../../src/server/spa/client/react/features/chat/newChatSeedContext';
+import { notesChatDraftKey } from '../../../../src/server/spa/client/react/features/notes/hooks/useNotesChat';
 
 function makeCommitPayload(overrides: Partial<GitCommitContextDragPayload> = {}): GitCommitContextDragPayload {
     return {
@@ -310,6 +311,12 @@ function makeUnsupportedDataTransfer() {
         dropEffect: 'none',
         getData: vi.fn(() => 'not coc context'),
     };
+}
+
+const ATTACHMENT_DRAFT_PREFIX = 'coc.attachmentDraft.';
+
+function attachmentDraftStorageKey(draftKey: string): string {
+    return `${ATTACHMENT_DRAFT_PREFIX}${draftKey}`;
 }
 
 function selectRalphMode() {
@@ -2077,6 +2084,296 @@ describe('NewChatArea', () => {
             });
 
             expect(onSubmit.mock.calls[0][0].prompt).toBe('Plain prompt');
+        });
+    });
+
+    // AC-04: Notes uses the shared initial composer, so the composer itself must
+    // prove the empty-text send matrix: files-only, attached-context-only, and
+    // local /new·/clear commands that preserve pending references plus sidecars.
+    describe('Notes shared-composer submission matrix', () => {
+        const NOTE_PREFIX = '<note_reference path="a.md">selected text</note_reference>\n\n';
+
+        it('submits a file-only Notes composer message with an empty prompt and attachment payload', async () => {
+            mockFileReader();
+            const onSubmit = vi.fn().mockResolvedValue('task-file-only');
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={onSubmit}
+                    testIdPrefix="note-chat"
+                    settingsLayout="compact"
+                    allowedModes={['ask', 'autopilot']}
+                    enableRalphDirectGoal={false}
+                />,
+            );
+
+            await act(async () => {});
+            await act(async () => {
+                fireEvent.change(screen.getByTestId('note-chat-file-input-hidden'), {
+                    target: {
+                        files: [new File(['file-only body'], 'file-only.md', { type: 'text/markdown' })],
+                    },
+                });
+            });
+
+            expect(screen.getByText('file-only.md')).toBeTruthy();
+            expect((screen.getByTestId('note-chat-send-btn') as HTMLButtonElement).disabled).toBe(false);
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('note-chat-send-btn'));
+            });
+
+            expect(onSubmit).toHaveBeenCalledTimes(1);
+            const submission = onSubmit.mock.calls[0][0];
+            expect(submission.prompt).toBe('');
+            expect(submission.attachments).toEqual([
+                {
+                    name: 'file-only.md',
+                    mimeType: 'text/markdown',
+                    size: 14,
+                    dataUrl: 'data:text/markdown;base64,test',
+                },
+            ]);
+            expect(screen.queryByText('file-only.md')).toBeNull();
+        });
+
+        it('submits a shared-context-only Notes composer message with no typed text', async () => {
+            mockSessionContextAttachmentsEnabled.value = true;
+            const onSubmit = vi.fn().mockResolvedValue('task-context-only');
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={onSubmit}
+                    testIdPrefix="note-chat"
+                    settingsLayout="compact"
+                    allowedModes={['ask', 'autopilot']}
+                    enableRalphDirectGoal={false}
+                />,
+            );
+            await waitFor(() => expect(mockGetLlmToolsConfig).toHaveBeenCalledWith('ws-1'));
+            await act(async () => {});
+
+            fireEvent.drop(screen.getByTestId('chat-input-stack'), {
+                dataTransfer: makeSessionDataTransfer(makeSessionPayload({ title: 'Context only source' })),
+            });
+
+            expect(await screen.findByTestId('attached-session-context-chip')).toBeTruthy();
+            expect((screen.getByTestId('note-chat-send-btn') as HTMLButtonElement).disabled).toBe(false);
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('note-chat-send-btn'));
+            });
+
+            expect(onSubmit).toHaveBeenCalledTimes(1);
+            const prompt = onSubmit.mock.calls[0][0].prompt;
+            expect(prompt).toContain('<attached_session_context version="1">');
+            expect(prompt).toContain('<title>Context only source</title>');
+            expect(prompt).toContain('<instruction>Before answering, retrieve and read this source conversation by process ID');
+            expect(prompt.endsWith('\n\n')).toBe(true);
+            expect(prompt).not.toContain('undefined');
+            expect(screen.queryByTestId('attached-session-context-chip')).toBeNull();
+        });
+
+        it('preserves file attachments, shared context, and pending prefix when /new and /clear are intercepted', async () => {
+            mockFileReader();
+            mockSessionContextAttachmentsEnabled.value = true;
+            const onSubmit = vi.fn().mockResolvedValue('task-should-not-send');
+            const onClearPendingPrefix = vi.fn();
+            const interceptSubmit = vi.fn((raw: string) => /^\/(new|clear)$/i.test(raw));
+            render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={onSubmit}
+                    interceptSubmit={interceptSubmit}
+                    pendingPrefix={NOTE_PREFIX}
+                    onClearPendingPrefix={onClearPendingPrefix}
+                    testIdPrefix="note-chat"
+                    settingsLayout="compact"
+                    allowedModes={['ask', 'autopilot']}
+                    enableRalphDirectGoal={false}
+                />,
+            );
+            await waitFor(() => expect(mockGetLlmToolsConfig).toHaveBeenCalledWith('ws-1'));
+            await act(async () => {});
+
+            await act(async () => {
+                fireEvent.change(screen.getByTestId('note-chat-file-input-hidden'), {
+                    target: {
+                        files: [new File(['reset command context'], 'reset-context.md', { type: 'text/markdown' })],
+                    },
+                });
+            });
+            fireEvent.drop(screen.getByTestId('chat-input-stack'), {
+                dataTransfer: makeSessionDataTransfer(makeSessionPayload({ title: 'Reset context source' })),
+            });
+            expect(screen.getByText('reset-context.md')).toBeTruthy();
+            expect(await screen.findByTestId('attached-session-context-chip')).toBeTruthy();
+
+            for (const command of ['/new', '/clear']) {
+                fireEvent.change(screen.getByTestId('note-chat-input'), { target: { value: command } });
+                await act(async () => {
+                    fireEvent.click(screen.getByTestId('note-chat-send-btn'));
+                });
+
+                expect((screen.getByTestId('note-chat-input') as HTMLInputElement).value).toBe('');
+                expect(screen.getByText('reset-context.md')).toBeTruthy();
+                expect(screen.getByTestId('attached-session-context-chip')).toBeTruthy();
+            }
+
+            expect(interceptSubmit).toHaveBeenCalledWith('/new');
+            expect(interceptSubmit).toHaveBeenCalledWith('/clear');
+            expect(onSubmit).not.toHaveBeenCalled();
+            expect(onClearPendingPrefix).not.toHaveBeenCalled();
+        });
+    });
+
+    // AC-05: Notes draft keys must isolate both the localStorage text draft and
+    // the sessionStorage attachment sidecar across note A, note B, and Workspace
+    // scope. This mounts the real shared composer with Notes draft keys rather
+    // than testing the key helper or sidecar store in isolation.
+    describe('Notes draft keys and attachment sidecars', () => {
+        it('restores text and attachments independently for note A, note B, and Workspace scope, then clears only the active draft on success', async () => {
+            vi.useFakeTimers();
+            mockFileReader();
+            sessionStorage.clear();
+            const textDrafts = new Map<string, any>();
+            mockDraftStore.getDraft.mockImplementation((key: string) => textDrafts.get(key) ?? null);
+            mockDraftStore.setDraft.mockImplementation((
+                key: string,
+                text: string,
+                mode: string,
+                modelOverride?: string | null,
+                effortOverride?: string | null,
+            ) => {
+                if (!text) {
+                    textDrafts.delete(key);
+                    return;
+                }
+                textDrafts.set(key, {
+                    text,
+                    mode,
+                    updatedAt: Date.now(),
+                    ...(modelOverride ? { modelOverride } : {}),
+                    ...(effortOverride ? { effortOverride } : {}),
+                });
+            });
+            mockDraftStore.clearDraft.mockImplementation((key: string) => {
+                textDrafts.delete(key);
+            });
+
+            const noteAKey = notesChatDraftKey('ws-1', 'per-note', 'notes/A.md');
+            const noteBKey = notesChatDraftKey('ws-1', 'per-note', 'notes/B.md');
+            const workspaceKey = notesChatDraftKey('ws-1', 'per-workspace', 'notes/A.md');
+            const onSubmit = vi.fn().mockResolvedValue('task-draft-send');
+
+            const renderNoteComposer = (draftKey: string) => render(
+                <InitialChatComposer
+                    workspaceId="ws-1"
+                    onSubmit={onSubmit}
+                    testIdPrefix="note-chat"
+                    draftKey={draftKey}
+                    settingsLayout="compact"
+                    allowedModes={['ask', 'autopilot']}
+                    enableRalphDirectGoal={false}
+                />,
+            );
+            const addAttachment = async (name: string, content: string) => {
+                await act(async () => {
+                    fireEvent.change(screen.getByTestId('note-chat-file-input-hidden'), {
+                        target: {
+                            files: [new File([content], name, { type: 'text/plain' })],
+                        },
+                    });
+                });
+                expect(screen.getByText(name)).toBeTruthy();
+            };
+            const saveTextDraft = async () => {
+                await act(async () => {
+                    vi.advanceTimersByTime(350);
+                });
+            };
+
+            let view = renderNoteComposer(noteAKey);
+            await act(async () => {});
+            fireEvent.change(screen.getByTestId('note-chat-input'), { target: { value: 'Draft for note A' } });
+            await addAttachment('note-a.txt', 'A sidecar');
+            await saveTextDraft();
+            expect(textDrafts.get(noteAKey)?.text).toBe('Draft for note A');
+            expect(sessionStorage.getItem(attachmentDraftStorageKey(noteAKey))).toContain('note-a.txt');
+            view.unmount();
+
+            view = renderNoteComposer(noteBKey);
+            await act(async () => {});
+            fireEvent.change(screen.getByTestId('note-chat-input'), { target: { value: 'Draft for note B' } });
+            await addAttachment('note-b.txt', 'B sidecar');
+            await saveTextDraft();
+            expect(textDrafts.get(noteBKey)?.text).toBe('Draft for note B');
+            expect(sessionStorage.getItem(attachmentDraftStorageKey(noteBKey))).toContain('note-b.txt');
+            view.unmount();
+
+            view = renderNoteComposer(workspaceKey);
+            await act(async () => {});
+            fireEvent.change(screen.getByTestId('note-chat-input'), { target: { value: 'Workspace draft' } });
+            await addAttachment('workspace.txt', 'Workspace sidecar');
+            await saveTextDraft();
+            expect(textDrafts.get(workspaceKey)?.text).toBe('Workspace draft');
+            expect(sessionStorage.getItem(attachmentDraftStorageKey(workspaceKey))).toContain('workspace.txt');
+            view.unmount();
+
+            view = renderNoteComposer(noteAKey);
+            await act(async () => {});
+            expect((screen.getByTestId('note-chat-input') as HTMLInputElement).value).toBe('Draft for note A');
+            expect(screen.getByText('note-a.txt')).toBeTruthy();
+            expect(screen.queryByText('note-b.txt')).toBeNull();
+            expect(screen.queryByText('workspace.txt')).toBeNull();
+            view.unmount();
+
+            view = renderNoteComposer(noteBKey);
+            await act(async () => {});
+            expect((screen.getByTestId('note-chat-input') as HTMLInputElement).value).toBe('Draft for note B');
+            expect(screen.getByText('note-b.txt')).toBeTruthy();
+            expect(screen.queryByText('note-a.txt')).toBeNull();
+            expect(screen.queryByText('workspace.txt')).toBeNull();
+            view.unmount();
+
+            view = renderNoteComposer(workspaceKey);
+            await act(async () => {});
+            expect((screen.getByTestId('note-chat-input') as HTMLInputElement).value).toBe('Workspace draft');
+            expect(screen.getByText('workspace.txt')).toBeTruthy();
+            expect(screen.queryByText('note-a.txt')).toBeNull();
+            expect(screen.queryByText('note-b.txt')).toBeNull();
+            view.unmount();
+
+            view = renderNoteComposer(noteAKey);
+            await act(async () => {});
+            expect((screen.getByTestId('note-chat-input') as HTMLInputElement).value).toBe('Draft for note A');
+            expect(screen.getByText('note-a.txt')).toBeTruthy();
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('note-chat-send-btn'));
+            });
+
+            expect(onSubmit).toHaveBeenCalledTimes(1);
+            expect(onSubmit.mock.calls[0][0].prompt).toBe('Draft for note A');
+            expect(mockDraftStore.clearDraft).toHaveBeenCalledWith(noteAKey);
+            expect(textDrafts.has(noteAKey)).toBe(false);
+            expect(sessionStorage.getItem(attachmentDraftStorageKey(noteAKey))).toBeNull();
+            expect(textDrafts.get(noteBKey)?.text).toBe('Draft for note B');
+            expect(textDrafts.get(workspaceKey)?.text).toBe('Workspace draft');
+            expect(sessionStorage.getItem(attachmentDraftStorageKey(noteBKey))).toContain('note-b.txt');
+            expect(sessionStorage.getItem(attachmentDraftStorageKey(workspaceKey))).toContain('workspace.txt');
+            view.unmount();
+
+            view = renderNoteComposer(noteBKey);
+            await act(async () => {});
+            expect((screen.getByTestId('note-chat-input') as HTMLInputElement).value).toBe('Draft for note B');
+            expect(screen.getByText('note-b.txt')).toBeTruthy();
+            view.unmount();
+
+            view = renderNoteComposer(workspaceKey);
+            await act(async () => {});
+            expect((screen.getByTestId('note-chat-input') as HTMLInputElement).value).toBe('Workspace draft');
+            expect(screen.getByText('workspace.txt')).toBeTruthy();
+            view.unmount();
         });
     });
 
