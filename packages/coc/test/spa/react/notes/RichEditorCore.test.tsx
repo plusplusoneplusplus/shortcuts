@@ -201,6 +201,39 @@ describe('RichEditorCore', () => {
         expect(capturedExtensions[0]).toBe(mockMapBlock);
     });
 
+    // ── AC-03: ⛶ Popup wiring (extension → React Dialog) ────────────────
+
+    it('opens the popup player Dialog when the YouTube extension requests a popup', () => {
+        render(<RichEditorCore />);
+
+        // The YouTube decoration extension is configured with an onRequestPopup
+        // bridge that lifts the video id into RichEditorCore state.
+        const ytExt = capturedExtensions.find(
+            (e: any) => e?.name === 'youTubeEmbedDecoration',
+        ) as any;
+        expect(ytExt).toBeDefined();
+        expect(typeof ytExt.options.onRequestPopup).toBe('function');
+
+        // No popup before the request.
+        expect(document.querySelector('iframe')).toBeNull();
+
+        act(() => {
+            ytExt.options.onRequestPopup('dQw4w9WgXcQ');
+        });
+
+        const iframe = document.querySelector('iframe') as HTMLIFrameElement;
+        expect(iframe).toBeTruthy();
+        expect(iframe.getAttribute('src')).toBe(
+            'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?autoplay=1',
+        );
+
+        // Closing the dialog unmounts the iframe (stops playback).
+        act(() => {
+            screen.getByTestId('dialog-close-btn').click();
+        });
+        expect(document.querySelector('iframe')).toBeNull();
+    });
+
     it('uses the Command key in link tooltips on macOS platforms', () => {
         expect(getLinkOpenTitle('MacIntel')).toBe('⌘+Click to open link');
         expect(getLinkOpenTitle('iPhone')).toBe('⌘+Click to open link');

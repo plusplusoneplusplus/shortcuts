@@ -6,7 +6,7 @@
  * The parent component (e.g. NoteEditor) orchestrates load/save/mode switching.
  */
 
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import type { Editor, EditorEvents } from '@tiptap/core';
 import { StarterKit } from '@tiptap/starter-kit';
@@ -29,6 +29,7 @@ import { PdfBlock } from './extensions/pdfBlock';
 import { CommentExtension } from './extensions/commentExtension';
 import { AiEditDecorationExtension } from './extensions/AiEditDecorationExtension';
 import { YouTubeEmbedDecorationExtension } from './extensions/YouTubeEmbedDecorationExtension';
+import { YouTubePopupDialog } from './extensions/YouTubePopupDialog';
 import { NoteLinkExtension } from './noteLinkExtension';
 import { FilePathNodeExtension } from './filePathNodeExtension';
 import { useLinkHandlers } from '../../../hooks/useLinkHandlers';
@@ -94,6 +95,11 @@ export function RichEditorCore({
     const linkHandlerConfigRef = useRef(linkHandlerConfig);
     linkHandlerConfigRef.current = linkHandlerConfig;
 
+    // AC-03: the ⛶ Popup button on a decorated YouTube link asks us to open the
+    // video in a Dialog. A `useState` setter is referentially stable, so wiring
+    // it straight into the extension config (captured once by `useEditor`) is safe.
+    const [popupVideoId, setPopupVideoId] = useState<string | null>(null);
+
     const onUpdate = useCallback(({ editor: ed }: EditorEvents['update']) => {
         onChangeRef.current?.(ed as Editor);
     }, []);
@@ -131,7 +137,9 @@ export function RichEditorCore({
             NoteLinkExtension,
             FilePathNodeExtension,
             AiEditDecorationExtension,
-            YouTubeEmbedDecorationExtension,
+            YouTubeEmbedDecorationExtension.configure({
+                onRequestPopup: (videoId: string) => setPopupVideoId(videoId),
+            }),
             ...(commentsEnabled
                 ? [
                     CommentExtension.configure({
@@ -218,5 +226,10 @@ export function RichEditorCore({
         if (editor) onEditorReadyRef.current?.(editor);
     }, [editor]);
 
-    return <EditorContent editor={editor} />;
+    return (
+        <>
+            <EditorContent editor={editor} />
+            <YouTubePopupDialog videoId={popupVideoId} onClose={() => setPopupVideoId(null)} />
+        </>
+    );
 }
