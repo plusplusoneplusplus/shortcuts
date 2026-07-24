@@ -1211,6 +1211,36 @@ describe('NewChatArea', () => {
             expect(editor.className).not.toContain('fixed');
         });
 
+        it('keeps every effort tier visible when its menu extends above the anchored editor', async () => {
+            vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(420);
+            mockEffortLevelsEnabled.value = true;
+            mockEffortTiers.value = {
+                'very-low': { model: 'gpt-5.4-mini', reasoningEffort: 'low' },
+                low: { model: 'gpt-5-mini', reasoningEffort: 'low' },
+                medium: { model: 'gpt-5.4', reasoningEffort: 'medium' },
+                high: { model: 'gpt-5.4', reasoningEffort: 'high' },
+            };
+
+            renderCompactComposer();
+            fireEvent.click(screen.getByTestId('compact-ai-settings-chip'));
+
+            await waitFor(() => {
+                expect(screen.getByTestId('effort-tier-selector')).toBeTruthy();
+            });
+            fireEvent.click(screen.getByTestId('effort-tier-trigger-btn'));
+
+            const editor = screen.getByTestId('compact-ai-settings-editor');
+            expect(editor.getAttribute('data-placement')).toBe('popover');
+            expect(editor.className).toContain('overflow-visible');
+            expect(editor.className).not.toContain('overflow-y-auto');
+            expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual([
+                'Very Low',
+                'Low',
+                'Medium',
+                'High',
+            ]);
+        });
+
         it('uses a bottom-sheet compact settings editor when the composer is too narrow for the popover', async () => {
             vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(340);
 
@@ -1222,6 +1252,8 @@ describe('NewChatArea', () => {
                 expect(editor.getAttribute('data-placement')).toBe('sheet');
                 expect(editor.className).toContain('fixed');
                 expect(editor.className).not.toContain('absolute');
+                expect(editor.className).toContain('overflow-y-auto');
+                expect(editor.className).not.toContain('overflow-visible');
             });
         });
 
