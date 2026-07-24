@@ -27,10 +27,10 @@ describe('NotesChatHeader', () => {
     }
 
     describe('header composition', () => {
-        it('renders exactly one header row with identity, label, and context', () => {
+        it('renders exactly one header row with context label and scope control', () => {
             renderHeader({ contextLabel: 'roadmap' });
             expect(screen.getAllByTestId('notes-chat-header')).toHaveLength(1);
-            expect(screen.getByText('Notes Chat')).toBeTruthy();
+            expect(screen.queryByText('Notes Chat')).toBeNull();
             expect(screen.getByTestId('notes-chat-header-context')).toHaveTextContent('roadmap');
         });
 
@@ -187,6 +187,13 @@ describe('NotesChatHeader', () => {
             expect(screen.getByTestId('notes-chat-minimize-btn')).toBeTruthy();
             expect(screen.getByTestId('notes-chat-pin-btn')).toBeTruthy();
             expect(screen.queryByTestId('notes-chat-unpin-btn')).toBeNull();
+        });
+
+        it('lens mode renders pin before minimize (pin → minimize order)', () => {
+            renderHeader({ windowMode: 'lens', onMinimize: vi.fn(), onPin: vi.fn() });
+            const pin = screen.getByTestId('notes-chat-pin-btn');
+            const min = screen.getByTestId('notes-chat-minimize-btn');
+            expect(pin.compareDocumentPosition(min) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         });
 
         it('lens mode calls onMinimize and onPin on click', () => {

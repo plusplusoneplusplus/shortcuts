@@ -3,7 +3,7 @@
  *
  * Replaces the previously duplicated headers (ReviewChatPlacementFrame's
  * generic title row, NoteChatPanel's own per-state header rows, and
- * ChatDetail's nested floating-chat header) with one 48px header shown in
+ * ChatDetail's nested floating-chat header) with one 32px header shown in
  * both the empty and active conversation states. See
  * notes/Plans/note-canvas/notes-chat-compact-header.plan.md.
  */
@@ -121,21 +121,15 @@ export function NotesChatHeader({
 
     return (
         <div
-            className="flex h-12 flex-shrink-0 items-center justify-between gap-2 border-b border-[#e0e0e0] px-3 dark:border-[#3c3c3c]"
+            className="flex h-8 flex-shrink-0 items-center justify-between gap-2 border-b border-[#e0e0e0] px-3 dark:border-[#3c3c3c]"
             data-testid="notes-chat-header"
         >
             <div className="flex min-w-0 items-center gap-2">
-                <span
-                    aria-hidden="true"
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#1e1e1e] text-[11px] dark:bg-[#cccccc]"
-                >
+                <span aria-hidden="true" className="shrink-0 text-[13px] leading-none">
                     🤖
                 </span>
-                <span className="shrink-0 text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]">
-                    Notes Chat
-                </span>
                 <span
-                    className="min-w-0 truncate text-xs text-[#848484]"
+                    className="min-w-0 truncate text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc]"
                     title={contextLabel}
                     data-testid="notes-chat-header-context"
                 >
@@ -145,28 +139,28 @@ export function NotesChatHeader({
             <div className="flex shrink-0 items-center gap-2">
                 <NotesChatScopeToggle scope={scope} onScopeChange={onScopeChange} />
                 <div className="flex shrink-0 items-center gap-0.5">
-                    {windowMode === 'lens' && onMinimize && (
-                        <button
-                            type="button"
-                            onClick={onMinimize}
-                            aria-label="Minimize chat lens"
-                            className="inline-flex h-7 w-7 items-center justify-center rounded text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]"
-                            data-testid="notes-chat-minimize-btn"
-                            title="Minimize chat lens"
-                        >
-                            <MinimizeIcon />
-                        </button>
-                    )}
                     {windowMode === 'lens' && onPin && (
                         <button
                             type="button"
                             onClick={onPin}
                             aria-label="Pin to side panel"
-                            className="inline-flex h-7 w-7 items-center justify-center rounded text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]"
+                            className="inline-flex h-6 w-6 items-center justify-center rounded text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]"
                             data-testid="notes-chat-pin-btn"
                             title="Pin to side panel"
                         >
                             <PinIcon />
+                        </button>
+                    )}
+                    {windowMode === 'lens' && onMinimize && (
+                        <button
+                            type="button"
+                            onClick={onMinimize}
+                            aria-label="Minimize chat lens"
+                            className="inline-flex h-6 w-6 items-center justify-center rounded text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]"
+                            data-testid="notes-chat-minimize-btn"
+                            title="Minimize chat lens"
+                        >
+                            <MinimizeIcon />
                         </button>
                     )}
                     {windowMode === 'side-panel' && onUnpin && (
@@ -186,7 +180,7 @@ export function NotesChatHeader({
                             aria-label={pathRefTooltip}
                             title={pathRefTooltip}
                             className={
-                                'inline-flex h-7 w-7 items-center justify-center rounded ' +
+                                'inline-flex h-6 w-6 items-center justify-center rounded ' +
                                 (isSwitched
                                     ? 'text-[#9a6700] hover:bg-black/[0.06] dark:text-[#d29922] dark:hover:bg-white/[0.08]'
                                     : 'text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]')
@@ -225,14 +219,14 @@ export interface NotesChatScopeToggleProps {
 
 export function NotesChatScopeToggle({ scope, onScopeChange }: NotesChatScopeToggleProps) {
     return (
-        <div className="flex items-center gap-0.5" data-testid="chat-scope-toggle">
+        <div className="inline-flex items-center gap-0.5 rounded-md bg-[#f0f0f0] p-0.5 dark:bg-[#2a2a2a]" data-testid="chat-scope-toggle">
             <button
                 type="button"
                 className={
                     'text-[10px] px-2 py-0.5 rounded transition-colors ' +
                     (scope === 'per-note'
                         ? 'bg-[#0078d4] text-white font-medium'
-                        : 'text-[#848484] hover:text-[#333] dark:hover:text-white hover:bg-[#e8e8e8] dark:hover:bg-[#333]')
+                        : 'text-[#848484] hover:text-[#333] dark:hover:text-white hover:bg-white/70 dark:hover:bg-[#333]')
                 }
                 onClick={() => onScopeChange('per-note')}
                 aria-pressed={scope === 'per-note'}
@@ -247,7 +241,7 @@ export function NotesChatScopeToggle({ scope, onScopeChange }: NotesChatScopeTog
                     'text-[10px] px-2 py-0.5 rounded transition-colors ' +
                     (scope === 'per-workspace'
                         ? 'bg-[#0078d4] text-white font-medium'
-                        : 'text-[#848484] hover:text-[#333] dark:hover:text-white hover:bg-[#e8e8e8] dark:hover:bg-[#333]')
+                        : 'text-[#848484] hover:text-[#333] dark:hover:text-white hover:bg-white/70 dark:hover:bg-[#333]')
                 }
                 onClick={() => onScopeChange('per-workspace')}
                 aria-pressed={scope === 'per-workspace'}
