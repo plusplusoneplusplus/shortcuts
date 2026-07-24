@@ -168,6 +168,8 @@ export interface NotesSidebarProps {
     onNoteDeleted?: (path: string) => void;
     canGoBack?: boolean;
     onGoBack?: () => void;
+    canGoForward?: boolean;
+    onGoForward?: () => void;
     /** Called once the notes root path is resolved from the server. */
     onNotesRootReady?: (notesRoot: string) => void;
     /** Restores the active note editor after focus-preserving copy actions. */
@@ -195,7 +197,7 @@ export interface NotesSidebarProps {
     footer?: ReactNode;
 }
 
-export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, canGoBack, onGoBack, onNotesRootReady, onRestoreEditorFocus, markSeenRef, isDefaultRoot = true, selectedRootId, selectedRootLabel, roots, onSelectRoot, onRootsChanged, footer }: NotesSidebarProps) {
+export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, canGoBack, onGoBack, canGoForward, onGoForward, onNotesRootReady, onRestoreEditorFocus, markSeenRef, isDefaultRoot = true, selectedRootId, selectedRootLabel, roots, onSelectRoot, onRootsChanged, footer }: NotesSidebarProps) {
     const { addToast } = useGlobalToast();
     const rootParam = selectedRootId && selectedRootId !== 'default' ? selectedRootId : undefined;
     const { tree, notesRoot, systemFolders, loading, error, refresh, createNode, renameNode, deleteNode, reorderNodes } = useNotesTree(workspaceId, rootParam);
@@ -1019,6 +1021,19 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                 >
                     <svg className="w-4 h-4" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M10 12L6 8l4-4" />
+                    </svg>
+                </button>
+                <button
+                    type="button"
+                    className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-transparent text-[#1f2328] dark:text-[#cccccc] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2d2e] disabled:opacity-40 disabled:cursor-not-allowed"
+                    onClick={onGoForward}
+                    disabled={!canGoForward}
+                    aria-label="Next note"
+                    title="Next note"
+                    data-testid="notes-next-btn"
+                >
+                    <svg className="w-4 h-4" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M6 4l4 4-4 4" />
                     </svg>
                 </button>
                 {/* Root selector — dropdown when multiple roots, static label when single */}
