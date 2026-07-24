@@ -3,13 +3,13 @@
  *
  * Holds the merged list of persisted (`ready`) side-notes plus transient
  * optimistic items (`asking`/`error`), and exposes create/retry/delete. The
- * hook is a no-op (stable empty state, no network) when the compile-time
- * `QUICK_ASK_SIDENOTES` flag is off or when process/workspace are unknown, so
- * it is always safe to call unconditionally.
+ * hook is a no-op (stable empty state, no network) when the admin
+ * `features.quickAskSidenotes` flag is off or when process/workspace are
+ * unknown, so it is always safe to call unconditionally.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { QUICK_ASK_SIDENOTES } from '../../../featureFlags';
+import { useQuickAskSidenotesEnabled } from '../../../hooks/feature-flags/useQuickAskSidenotesEnabled';
 import { fetchApi } from '../../../hooks/useApi';
 import { deriveContext } from './quick-ask-selection';
 import type { ChatSideNote, ClientSideNote, QuickAskSelection } from './types';
@@ -47,7 +47,7 @@ export function useQuickAskSidenotes(
     processId?: string,
     workspaceId?: string,
 ): UseQuickAskSidenotesResult {
-    const enabled = QUICK_ASK_SIDENOTES && !!processId && !!workspaceId;
+    const enabled = useQuickAskSidenotesEnabled() && !!processId && !!workspaceId;
     const [items, setItems] = useState<ClientSideNote[]>([]);
     const hydratedFor = useRef<string | null>(null);
     // Always-current snapshot so callbacks can read the latest items without

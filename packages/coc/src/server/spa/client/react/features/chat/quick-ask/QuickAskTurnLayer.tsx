@@ -5,8 +5,8 @@
  * the ✨ Ask AI pill; renders the collected "💡 Side notes" chip row at the
  * bottom of the message; and opens the answer popover on chip click.
  *
- * All rendering is gated by `QUICK_ASK_SIDENOTES` at the call site, so this
- * component is only mounted when the feature is enabled.
+ * All rendering is gated by the admin `features.quickAskSidenotes` flag at the
+ * call site, so this component is only mounted when the feature is enabled.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';

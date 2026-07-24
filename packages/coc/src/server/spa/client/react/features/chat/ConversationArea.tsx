@@ -132,7 +132,7 @@ export interface ConversationAreaProps {
     /**
      * Quick Ask side-notes for this process (persisted + optimistic). Forwarded
      * to {@link ConversationTurnBubble}; only rendered on assistant turns when
-     * the `QUICK_ASK_SIDENOTES` flag is on.
+     * the admin `features.quickAskSidenotes` flag is on.
      */
     sidenotes?: ClientSideNote[];
     /** Run a Quick Ask lookup for a captured selection. */
