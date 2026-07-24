@@ -41,7 +41,7 @@ import {
 import { buildAppMenuTemplate, buildTrayMenuTemplate, DevTunnelMenuInput, DebugMenuHandlers } from './app-menu';
 import { attachFindBar, registerFindBarIpc } from './find-bar-host';
 import { registerScreenshotShortcut, unregisterScreenshotShortcut } from './screenshot-capture';
-import { startScreenshotCapture } from './screenshot-capture-host';
+import { startScreenshotCapture, setScreenshotMainWindowProvider } from './screenshot-capture-host';
 import { buildWindowOptions, buildMacInsetCss } from './window-config';
 import {
     DevTunnelConfig,
@@ -853,6 +853,11 @@ async function bootstrap(): Promise<void> {
     // AC-01: bind the global screenshot-capture accelerator on app ready, so the
     // hotkey works even before/without the main window being focused.
     setupScreenshotShortcut();
+
+    // AC-04: let the screenshot host reach the main SPA window (a module-level
+    // `let`, read lazily) so a finished screenshot can be pushed onto the active
+    // chat draft — the chat-attach sink of the three-sink finish.
+    setScreenshotMainWindowProvider(() => mainWindow);
 
     // macOS: set the dock icon early (BrowserWindow `icon` is ignored by macOS).
     // Only override when the real icon file resolves — otherwise leave the dock

@@ -19,6 +19,7 @@ import { useApp } from '../../contexts/AppContext';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useCocClient, useResolveCloneBaseUrl } from '../../repos/cloneRouting';
 import { useFileAttachments } from './hooks/useFileAttachments';
+import { useDesktopScreenshotAttach } from './hooks/useDesktopScreenshotAttach';
 import { isQueueProcessId, toQueueProcessId } from '../../utils/queue-process-id';
 import { useModels } from '../../hooks/useModels';
 import { useDefaultModelForMode } from '../../hooks/useDefaultModelForMode';
@@ -311,7 +312,9 @@ export function InitialChatComposer({
     // server-scoped config-cache entries route to the clone, never the local origin.
     const cloneBaseUrl = useResolveCloneBaseUrl()(workspaceId);
 
-    const { attachments, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, restoreAttachments, error: attachmentError, toPayload } = useFileAttachments();
+    const { attachments, addFromPaste, addFromFileInput, addScreenshotDataUrl, removeAttachment, clearAttachments, restoreAttachments, error: attachmentError, toPayload } = useFileAttachments();
+    // AC-04: receive desktop-shell screenshot pushes into this composer's draft.
+    useDesktopScreenshotAttach(addScreenshotDataUrl);
     const attachedContext = useAttachedContext();
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
     const canRetrieveConversations = useConversationRetrievalCapability(workspaceId, sessionContextAttachmentsEnabled);

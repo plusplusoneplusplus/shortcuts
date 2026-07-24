@@ -40,6 +40,10 @@ import {
     fitAnnotationWindowSize,
     buildAnnotationPageScript,
     buildAnnotationHtml,
+    SCREENSHOT_ATTACH_CHANNEL,
+    AnnotationSinks,
+    dispatchAnnotationSinks,
+    buildScreenshotFileName,
 } from '../src/screenshot-capture';
 
 const srcDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '../src');
@@ -1004,5 +1008,105 @@ describe('AC-03 code-search (DoD #3 — no Excalidraw import)', () => {
         expect(host).toContain('function openAnnotationEditor(');
         expect(host).toContain('buildAnnotationHtml()');
         expect(host).toContain('new BrowserWindow(');
+    });
+});
+
+// ─── AC-04: finish → three sinks (clipboard + chat-attach + save-file) ───────
+
+describe('SCREENSHOT_ATTACH_CHANNEL', () => {
+    it('is the coc-desktop namespaced push channel', () => {
+        expect(SCREENSHOT_ATTACH_CHANNEL).toBe('coc-desktop:screenshot-attach');
+    });
+});
+
+describe('dispatchAnnotationSinks (AC-04 DoD #2 — the three-sink dispatcher)', () => {
+    const PNG = 'data:image/png;base64,AAAA';
+
+    function recordingSinks(overrides: Partial<AnnotationSinks> = {}): {
+        sinks: AnnotationSinks;
+        order: string[];
+    } {
+        const order: string[] = [];
+        const sinks: AnnotationSinks = {
+            writeClipboard: vi.fn(() => { order.push('clipboard'); }),
+            attachToChat: vi.fn(() => { order.push('attach'); }),
+            saveFile: vi.fn(() => { order.push('save'); }),
+            ...overrides,
+        };
+        return { sinks, order };
+    }
+
+    it('calls clipboard, chat-attach, then save — in that order — with the PNG', async () => {
+        const { sinks, order } = recordingSinks();
+        const result = await dispatchAnnotationSinks(PNG, sinks);
+        expect(order).toEqual(['clipboard', 'attach', 'save']);
+        expect(sinks.writeClipboard).toHaveBeenCalledWith(PNG);
+        expect(sinks.attachToChat).toHaveBeenCalledWith(PNG);
+        expect(sinks.saveFile).toHaveBeenCalledWith(PNG);
+        expect(result).toEqual({ clipboard: true, attached: true, saved: true });
+    });
+
+    it('a Save-As cancel/throw does not throw and does not undo clipboard/attach', async () => {
+        const onError = vi.fn();
+        const { sinks, order } = recordingSinks({
+            // Model a Save-As cancel that surfaces as a rejected promise.
+            saveFile: vi.fn(async () => {
+                order.push('save');
+                throw new Error('user cancelled the save dialog');
+            }),
+        });
+        const result = await dispatchAnnotationSinks(PNG, sinks, onError);
+        // clipboard + attach still ran (and in order before the failing save).
+        expect(order).toEqual(['clipboard', 'attach', 'save']);
+        expect(sinks.writeClipboard).toHaveBeenCalledWith(PNG);
+        expect(sinks.attachToChat).toHaveBeenCalledWith(PNG);
+        // The dispatcher resolved (did not reject) and kept a+b marked done.
+        expect(result).toEqual({ clipboard: true, attached: true, saved: false });
+        expect(onError).toHaveBeenCalledWith('save', expect.any(Error));
+    });
+
+    it('isolates each sink — a clipboard failure still lets attach + save run', async () => {
+        const onError = vi.fn();
+        const { sinks, order } = recordingSinks({
+            writeClipboard: vi.fn(() => { order.push('clipboard'); throw new Error('no clipboard'); }),
+        });
+        const result = await dispatchAnnotationSinks(PNG, sinks, onError);
+        expect(order).toEqual(['clipboard', 'attach', 'save']);
+        expect(result).toEqual({ clipboard: false, attached: true, saved: true });
+        expect(onError).toHaveBeenCalledWith('clipboard', expect.any(Error));
+    });
+});
+
+describe('buildScreenshotFileName (AC-04 — timestamped default Save-As name)', () => {
+    it('formats a timestamped .png from the local date components', () => {
+        // 2026-07-24 09:05:03 local time.
+        const name = buildScreenshotFileName(new Date(2026, 6, 24, 9, 5, 3));
+        expect(name).toBe('screenshot-2026-07-24-09-05-03.png');
+    });
+
+    it('zero-pads every component', () => {
+        const name = buildScreenshotFileName(new Date(2026, 0, 1, 0, 0, 0));
+        expect(name).toBe('screenshot-2026-01-01-00-00-00.png');
+    });
+});
+
+describe('AC-04 host wiring (code-search)', () => {
+    it('the host fans a finished PNG out to the three sinks via the pure dispatcher', () => {
+        const host = readSrc('screenshot-capture-host.ts');
+        // Clipboard sink.
+        expect(host).toContain('clipboard.writeImage(nativeImage.createFromDataURL');
+        // Chat-attach sink pushes to the MAIN window (not the editor).
+        expect(host).toContain('mainWindowProvider()');
+        expect(host).toContain('webContents.send(SCREENSHOT_ATTACH_CHANNEL');
+        // Save sink opens a Save-As dialog with a timestamped default name.
+        expect(host).toContain('dialog.showSaveDialog(');
+        expect(host).toContain('buildScreenshotFileName(');
+        // Ordering delegated to the pure, tested dispatcher.
+        expect(host).toContain('dispatchAnnotationSinks(');
+    });
+
+    it('main.ts installs the main-window provider so the attach sink has a target', () => {
+        const mainSrc = readSrc('main.ts');
+        expect(mainSrc).toContain('setScreenshotMainWindowProvider(() => mainWindow)');
     });
 });

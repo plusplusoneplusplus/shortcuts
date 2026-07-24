@@ -838,3 +838,98 @@ export function buildAnnotationHtml(): string {
 </body>
 </html>`;
 }
+
+// ─── AC-04: finish → three sinks (clipboard + chat-attach + save-file) ───────
+//
+// "Done" flattens the annotation to a PNG data URL (see `exportAnnotatedPng`),
+// then fans it out to three required sinks IN ORDER: (a) the OS clipboard,
+// (b) the active chat draft in the main CoC window, (c) a Save-As file. The
+// Electron wiring (`clipboard.writeImage`, `webContents.send`,
+// `dialog.showSaveDialog` + `fs`) lives in `screenshot-capture-host.ts`;
+// everything testable is here: the push-channel constant, the ordered dispatcher
+// (with injected sinks), and the default save filename.
+
+/**
+ * IPC channel: main → the main SPA window, pushing a finished screenshot PNG data
+ * URL to attach to the active chat draft (AC-04 sink b). One-way push, mirroring
+ * the `find-result` relay: the SPA subscribes via the preload bridge and adds a
+ * `ChatAttachment` to its composer draft (respecting the attachment limits).
+ */
+export const SCREENSHOT_ATTACH_CHANNEL = 'coc-desktop:screenshot-attach';
+
+/**
+ * The three sinks a finished annotation fans out to, injected so the ordered
+ * dispatch is unit-testable without `electron`.
+ */
+export interface AnnotationSinks {
+    /** (a) Copy the flattened PNG to the OS clipboard. */
+    writeClipboard: (pngDataUrl: string) => void;
+    /** (b) Push the PNG to the active chat draft in the main window. */
+    attachToChat: (pngDataUrl: string) => void;
+    /** (c) Offer a Save-As dialog and write the file. May be async; a user cancel
+     *  resolves normally (does NOT reject). */
+    saveFile: (pngDataUrl: string) => void | Promise<void>;
+}
+
+/** Which sinks succeeded — a failed/cancelled sink is recorded, never thrown. */
+export interface AnnotationDispatchResult {
+    clipboard: boolean;
+    attached: boolean;
+    saved: boolean;
+}
+
+/** The three-sink labels, in dispatch order (for the {@link dispatchAnnotationSinks} error hook). */
+export type AnnotationSinkName = 'clipboard' | 'attach' | 'save';
+
+/**
+ * AC-04 (DoD #2): fan a finished annotation PNG out to the three sinks IN ORDER —
+ * clipboard, then chat-attach, then save-file.
+ *
+ * Each sink is isolated: a failure (or a Save-As cancel that throws) is caught
+ * and reported through `onError`, NEVER rethrown and never undoing an earlier
+ * sink. So the clipboard + chat-attach results always stand even when the user
+ * cancels (or the save otherwise fails). Returns which sinks succeeded.
+ */
+export async function dispatchAnnotationSinks(
+    pngDataUrl: string,
+    sinks: AnnotationSinks,
+    onError?: (sink: AnnotationSinkName, err: unknown) => void,
+): Promise<AnnotationDispatchResult> {
+    const result: AnnotationDispatchResult = { clipboard: false, attached: false, saved: false };
+    try {
+        sinks.writeClipboard(pngDataUrl);
+        result.clipboard = true;
+    } catch (err) {
+        onError?.('clipboard', err);
+    }
+    try {
+        sinks.attachToChat(pngDataUrl);
+        result.attached = true;
+    } catch (err) {
+        onError?.('attach', err);
+    }
+    try {
+        await sinks.saveFile(pngDataUrl);
+        result.saved = true;
+    } catch (err) {
+        onError?.('save', err);
+    }
+    return result;
+}
+
+/**
+ * AC-04: build the default Save-As filename for a screenshot — a timestamped
+ * `screenshot-YYYY-MM-DD-HH-MM-SS.png` from the given moment's LOCAL components.
+ * Pure (takes the `Date` in) so it is deterministic under test.
+ */
+export function buildScreenshotFileName(date: Date): string {
+    const pad = (n: number): string => String(n).padStart(2, '0');
+    const stamp =
+        date.getFullYear() +
+        '-' + pad(date.getMonth() + 1) +
+        '-' + pad(date.getDate()) +
+        '-' + pad(date.getHours()) +
+        '-' + pad(date.getMinutes()) +
+        '-' + pad(date.getSeconds());
+    return `screenshot-${stamp}.png`;
+}

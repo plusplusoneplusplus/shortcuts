@@ -12,11 +12,14 @@
  */
 
 import * as path from 'path';
+import * as fs from 'fs';
 import {
     BrowserWindow,
+    clipboard,
     desktopCapturer,
     dialog,
     ipcMain,
+    nativeImage,
     screen,
     shell,
     systemPreferences,
@@ -28,9 +31,12 @@ import {
     SCREENSHOT_ANNOTATE_INIT_CHANNEL,
     SCREENSHOT_ANNOTATE_DONE_CHANNEL,
     SCREENSHOT_ANNOTATE_CANCEL_CHANNEL,
+    SCREENSHOT_ATTACH_CHANNEL,
     ANNOTATION_TOOLBAR_HEIGHT,
     buildOverlayHtml,
     buildAnnotationHtml,
+    buildScreenshotFileName,
+    dispatchAnnotationSinks,
     fitAnnotationWindowSize,
     resolveScreenCaptureAccess,
     scaleCropRect,
@@ -56,6 +62,26 @@ const pendingByOverlayId = new Map<number, PendingCapture>();
 /** Open annotation editor windows, keyed by their webContents id (routes done/cancel). */
 const editorByWebContentsId = new Map<number, BrowserWindow>();
 let ipcRegistered = false;
+
+/**
+ * AC-04: resolver for the main SPA window — the chat-attach sink's target.
+ * `main.ts` owns the window (a module-level `let`), so it installs a provider
+ * that reads the current handle lazily; the host never imports `main.ts`.
+ * Defaults to "no window" so a dispatch before install simply skips the attach.
+ */
+let mainWindowProvider: () => BrowserWindow | null = () => null;
+
+/**
+ * AC-04: let `main.ts` hand the host a live reference to the main SPA window so a
+ * finished screenshot can be pushed onto the active chat draft. Kept as an
+ * injected provider (not an import) so this host module never reaches back into
+ * `main.ts`.
+ */
+export function setScreenshotMainWindowProvider(
+    provider: () => BrowserWindow | null,
+): void {
+    mainWindowProvider = provider;
+}
 /** True while a capture (permission check → overlay) is in progress — the global
  *  accelerator is best-effort single-shot; a second press mid-capture is ignored. */
 let capturing = false;
@@ -326,13 +352,55 @@ function openAnnotationEditor(image: Electron.NativeImage, scaleFactor: number):
 }
 
 /**
- * AC-04 stub: fan the finished annotation PNG out to the three sinks — OS
- * clipboard, the active chat draft, and a Save-As file. Replaced when AC-04
- * lands; for now it records that the flattened PNG reached the finish stage so
- * the AC-03 flow is observable end-to-end.
+ * AC-04: fan the finished annotation PNG out to the three required sinks, IN
+ * order — the OS clipboard, the active chat draft in the main window, and a
+ * Save-As file. The ordering + per-sink isolation live in the pure
+ * {@link dispatchAnnotationSinks}: a Save-As cancel (or any sink failure) is
+ * caught and logged, never rethrown and never undoing an earlier sink, so the
+ * clipboard + chat-attach always stand. The editor window has already closed by
+ * the time this runs.
  */
 function dispatchAnnotationResult(pngDataUrl: string): void {
-    process.stdout.write(
-        `[coc-desktop] annotation finished (${pngDataUrl.length} bytes of PNG data URL)\n`,
+    void dispatchAnnotationSinks(
+        pngDataUrl,
+        {
+            // (a) OS clipboard.
+            writeClipboard: (url) => {
+                clipboard.writeImage(nativeImage.createFromDataURL(url));
+            },
+            // (b) Active chat draft in the main SPA window (never the editor). A
+            //     missing/destroyed window simply skips — clipboard + save stay.
+            attachToChat: (url) => {
+                const win = mainWindowProvider();
+                if (win && !win.isDestroyed()) {
+                    win.webContents.send(SCREENSHOT_ATTACH_CHANNEL, url);
+                }
+            },
+            // (c) Save-As file (timestamped PNG). A cancel resolves without writing.
+            saveFile: (url) => saveAnnotatedPng(url),
+        },
+        (sink, err) => {
+            const message = err instanceof Error ? err.message : String(err);
+            process.stderr.write(`[coc-desktop] screenshot ${sink} sink failed: ${message}\n`);
+        },
     );
+}
+
+/**
+ * AC-04 (sink c): open a Save-As dialog defaulting to a timestamped PNG name and,
+ * if the user confirms, decode the PNG data URL and write the bytes. A cancel
+ * resolves without writing (and, per {@link dispatchAnnotationSinks}, without
+ * disturbing the clipboard/attach sinks).
+ */
+async function saveAnnotatedPng(pngDataUrl: string): Promise<void> {
+    const result = await dialog.showSaveDialog({
+        title: 'Save Screenshot',
+        defaultPath: buildScreenshotFileName(new Date()),
+        filters: [{ name: 'PNG Image', extensions: ['png'] }],
+    });
+    if (result.canceled || !result.filePath) {
+        return;
+    }
+    const base64 = pngDataUrl.replace(/^data:image\/png;base64,/, '');
+    await fs.promises.writeFile(result.filePath, Buffer.from(base64, 'base64'));
 }

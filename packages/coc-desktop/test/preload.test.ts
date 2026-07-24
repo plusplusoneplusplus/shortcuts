@@ -34,6 +34,7 @@ import {
     SCREENSHOT_ANNOTATE_INIT_CHANNEL,
     SCREENSHOT_ANNOTATE_DONE_CHANNEL,
     SCREENSHOT_ANNOTATE_CANCEL_CHANNEL,
+    SCREENSHOT_ATTACH_CHANNEL,
 } from '../src/screenshot-capture';
 
 const exposeInMainWorld = vi.fn();
@@ -145,6 +146,21 @@ describe('preload bridge', () => {
         unsubscribe();
         expect(removeListener).toHaveBeenCalledWith(
             SCREENSHOT_ANNOTATE_INIT_CHANNEL,
+            expect.any(Function),
+        );
+    });
+
+    it('screenshot.onScreenshotAttach subscribes on the real attach channel, relays the payload, and unsubscribes', () => {
+        const cb = vi.fn();
+        const unsubscribe = exposedApi().screenshot.onScreenshotAttach(cb);
+        expect(on).toHaveBeenCalledWith(SCREENSHOT_ATTACH_CHANNEL, expect.any(Function));
+        // The registered listener should hand the SPA just the PNG data URL (drop the event arg).
+        const listener = on.mock.calls.find((c) => c[0] === SCREENSHOT_ATTACH_CHANNEL)![1];
+        listener({ sender: 'ignored' }, 'data:image/png;base64,ABC');
+        expect(cb).toHaveBeenCalledWith('data:image/png;base64,ABC');
+        unsubscribe();
+        expect(removeListener).toHaveBeenCalledWith(
+            SCREENSHOT_ATTACH_CHANNEL,
             expect.any(Function),
         );
     });

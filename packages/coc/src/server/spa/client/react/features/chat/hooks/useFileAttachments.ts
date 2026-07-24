@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import type { ChatAttachment, AttachmentPayload } from '../../../types/attachments';
 import { MAX_FILE_SIZE, MAX_ATTACHMENTS, MAX_FILE_SIZE_LABEL, getAttachmentCategory } from '../../../types/attachments';
 import { canCompressChatImageForLlm, compressChatImageForLlm } from '../utils/chatImageCompression';
+import { buildScreenshotAttachment } from '../utils/screenshotAttachment';
 
 export interface UseFileAttachmentsResult {
     /** Current list of attachments */
@@ -12,6 +13,12 @@ export interface UseFileAttachmentsResult {
     addFromPaste: (e: React.ClipboardEvent) => void;
     /** Add files from a file input element */
     addFromFileInput: (files: FileList | File[]) => void;
+    /**
+     * Add a screenshot pushed from the desktop shell (AC-04 chat-attach sink).
+     * The PNG data URL becomes an `image` ChatAttachment, enforcing the same
+     * MAX_ATTACHMENTS / MAX_FILE_SIZE limits as paste/file input.
+     */
+    addScreenshotDataUrl: (dataUrl: string) => void;
     /** Remove an attachment by id */
     removeAttachment: (id: string) => void;
     /** Clear all attachments */
@@ -134,6 +141,27 @@ export function useFileAttachments(maxAttachments: number = MAX_ATTACHMENTS): Us
         addFiles(Array.from(files));
     }, [addFiles]);
 
+    // Desktop screenshot sink: the flattened PNG is already a data URL, so it
+    // skips the FileReader path and goes straight through the shared limit gate.
+    // `countRef` (not a functional updater) supplies the live count without
+    // making this callback depend on `attachments`, keeping it stable so the
+    // desktop subscription never re-binds.
+    const addScreenshotDataUrl = useCallback((dataUrl: string) => {
+        const { attachment, error: buildError } = buildScreenshotAttachment(
+            dataUrl,
+            countRef.current,
+            maxAttachments,
+        );
+        if (buildError) {
+            setError(buildError);
+            return;
+        }
+        if (attachment) {
+            // `addAttachment` re-checks the cap + dedupe inside its own updater.
+            addAttachment(attachment);
+        }
+    }, [addAttachment, maxAttachments]);
+
     const removeAttachment = useCallback((id: string) => {
         setAttachments(prev => {
             const next = prev.filter(a => a.id !== id);
@@ -175,6 +203,7 @@ export function useFileAttachments(maxAttachments: number = MAX_ATTACHMENTS): Us
         images,
         addFromPaste,
         addFromFileInput,
+        addScreenshotDataUrl,
         removeAttachment,
         clearAttachments,
         restoreAttachments,

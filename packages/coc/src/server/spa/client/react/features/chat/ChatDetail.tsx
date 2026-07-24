@@ -19,6 +19,7 @@ import { useQueue } from '../../contexts/QueueContext';
 import { useApp } from '../../contexts/AppContext';
 import { useReposOptional } from '../../contexts/ReposContext';
 import { useFileAttachments } from './hooks/useFileAttachments';
+import { useDesktopScreenshotAttach } from './hooks/useDesktopScreenshotAttach';
 import { useTextPaste } from './hooks/useTextPaste';
 import { useAttachedContext } from './hooks/useAttachedContext';
 import { useSlashCommands } from './hooks/useSlashCommands';
@@ -312,7 +313,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
     const modelOverrideMountedRef = useRef(false);
     const previousSessionProviderRef = useRef<string | null>(null);
 
-    const { attachments, images, addFromPaste, addFromFileInput, removeAttachment, clearAttachments, restoreAttachments, error: attachmentError, toPayload } = useFileAttachments();
+    const { attachments, images, addFromPaste, addFromFileInput, addScreenshotDataUrl, removeAttachment, clearAttachments, restoreAttachments, error: attachmentError, toPayload } = useFileAttachments();
+    // AC-04: receive desktop-shell screenshot pushes into this conversation's draft.
+    useDesktopScreenshotAttach(addScreenshotDataUrl);
     const { toasts, addToast, removeToast } = useToast();
     const textPaste = useTextPaste();
     const attachedContext = useAttachedContext();
