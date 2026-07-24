@@ -15,7 +15,9 @@ import { useMyLifeEnabled } from '../../hooks/feature-flags/useMyLifeEnabled';
 import { useScopeNavigation } from '../../hooks/useScopeNavigation';
 import { MY_WORK_WORKSPACE_ID } from '../../repos/MyWorkView';
 import { MY_LIFE_WORKSPACE_ID } from '../../repos/MyLifeView';
+import { getRepoSelectionId } from '../../repos/cloneIdentity';
 import type { RepoData } from '../../repos/repoGrouping';
+import { useShellNavigation } from './useShellNavigation';
 import { WorkspaceIdentityChip } from './WorkspaceIdentityChip';
 
 export interface ScopeSlideSwitcherProps {
@@ -36,6 +38,7 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
     const myWorkEnabled = useMyWorkEnabled();
     const myLifeEnabled = useMyLifeEnabled();
     const { goToMyWork, goToMyLife } = useScopeNavigation();
+    const { selectClone } = useShellNavigation();
 
     const isOnReposTab = state.activeTab === 'repos';
     const activeScope: ScopeKey =
@@ -44,6 +47,16 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
             : myLifeEnabled && isOnReposTab && state.selectedRepoId === MY_LIFE_WORKSPACE_ID
                 ? 'life'
                 : 'workspace';
+
+    // When a virtual scope (My Work / My Life) is active, the workspace segment
+    // shows the remembered workspace but is *inactive*. Clicking its body switches
+    // back to that workspace, re-selecting it as the active scope (restoring the
+    // last-viewed note path exactly like selecting a workspace normally does via
+    // `selectClone`). The chevron keeps opening the picker. (AC-02)
+    const switchBackToWorkspace = useCallback(() => {
+        if (repo) selectClone(getRepoSelectionId(repo));
+    }, [repo, selectClone]);
+    const onSwitchBack = activeScope !== 'workspace' && repo ? switchBackToWorkspace : undefined;
 
     const containerRef = useRef<HTMLDivElement>(null);
     const segmentRefs = useRef<Partial<Record<ScopeKey, HTMLElement | null>>>({});
@@ -134,7 +147,7 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
                 data-scope="workspace"
                 className="relative z-[1] flex items-center min-w-0"
             >
-                <WorkspaceIdentityChip repo={repo} repos={repos} />
+                <WorkspaceIdentityChip repo={repo} repos={repos} onSwitchBack={onSwitchBack} />
             </div>
         </div>
     );

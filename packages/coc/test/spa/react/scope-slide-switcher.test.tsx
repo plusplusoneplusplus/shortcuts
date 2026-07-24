@@ -218,3 +218,77 @@ describe('ScopeSlideSwitcher — remembered workspace on virtual scope', () => {
         expect(segment('work')!.getAttribute('aria-selected')).toBe('true');
     });
 });
+
+// AC-02: clicking the workspace segment body while a virtual scope is active
+// switches back to the remembered workspace (selectClone); the chevron keeps
+// opening the picker; on the active workspace scope the whole chip opens the
+// picker as before.
+describe('ScopeSlideSwitcher — switch-back on click (AC-02)', () => {
+    it('switches back to the remembered workspace when the chip body is clicked on My Work', () => {
+        mockAppState = { ...mockAppState, selectedRepoId: MY_WORK_WORKSPACE_ID };
+        render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
+
+        fireEvent.click(screen.getByTestId('remote-chip'));
+
+        // Reuses selectClone; mockRepos[0] has no remote clone key so its
+        // selection id is the workspace id 'a'.
+        expect(mockSelectClone).toHaveBeenCalledWith('a');
+        // Body click does NOT open the picker.
+        expect(screen.queryByTestId('remote-dropdown')).toBeNull();
+    });
+
+    it('switches back when the chip body is clicked on My Life', () => {
+        mockAppState = { ...mockAppState, selectedRepoId: MY_LIFE_WORKSPACE_ID };
+        render(<ScopeSlideSwitcher repo={mockRepos[2]} repos={mockRepos} />);
+
+        fireEvent.click(screen.getByTestId('remote-chip'));
+
+        expect(mockSelectClone).toHaveBeenCalledWith('c');
+    });
+
+    it('opens the picker (not switch-back) when the chevron is clicked on a virtual scope', () => {
+        mockAppState = { ...mockAppState, selectedRepoId: MY_WORK_WORKSPACE_ID };
+        render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
+
+        fireEvent.click(screen.getByTestId('remote-chip-chevron'));
+
+        expect(screen.getByTestId('remote-dropdown')).toBeTruthy();
+        expect(mockSelectClone).not.toHaveBeenCalled();
+    });
+
+    it('keeps today\'s behavior (opens the picker, no switch-back) when the workspace scope is active', () => {
+        // Real repo selected → workspace scope active → single chip toggles picker.
+        render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
+
+        expect(screen.queryByTestId('remote-chip-chevron')).toBeNull();
+        fireEvent.click(screen.getByTestId('remote-chip'));
+
+        expect(screen.getByTestId('remote-dropdown')).toBeTruthy();
+        expect(mockSelectClone).not.toHaveBeenCalled();
+    });
+
+    it('targets a local remembered workspace by its workspace id', () => {
+        mockAppState = { ...mockAppState, selectedRepoId: MY_LIFE_WORKSPACE_ID };
+        const local = {
+            workspace: { id: 'local-1', name: 'my-notes', color: '#0078d4', rootPath: '/r/local-1' },
+            gitInfo: { isGitRepo: false, branch: 'main', dirty: false },
+        };
+        render(<ScopeSlideSwitcher repo={local as any} repos={[local as any, ...mockRepos]} />);
+
+        fireEvent.click(screen.getByTestId('remote-chip'));
+
+        expect(mockSelectClone).toHaveBeenCalledWith('local-1');
+    });
+
+    it('does not switch back on cold start (no remembered workspace) — opens the picker instead', () => {
+        mockAppState = { ...mockAppState, selectedRepoId: MY_WORK_WORKSPACE_ID };
+        render(<ScopeSlideSwitcher repos={mockRepos} />);
+
+        // No repo prop → single chip showing "Select repository".
+        expect(screen.queryByTestId('remote-chip-chevron')).toBeNull();
+        fireEvent.click(screen.getByTestId('remote-chip'));
+
+        expect(mockSelectClone).not.toHaveBeenCalled();
+        expect(screen.getByTestId('remote-dropdown')).toBeTruthy();
+    });
+});
