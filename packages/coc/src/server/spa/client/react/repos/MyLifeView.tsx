@@ -21,8 +21,9 @@ import type { RepoData } from './repoGrouping';
 import { generateMyLifeSummary, syncMyLife } from './repositoryService';
 import { VirtualWorkspaceInlineHeader } from '../features/remote-shell/VirtualWorkspaceInlineHeader';
 import type { VirtualWorkspaceHeaderConfig } from '../features/remote-shell/virtualWorkspaceHeader';
+import { MY_LIFE_WORKSPACE_ID } from './virtualWorkspaceIds';
 
-export const MY_LIFE_WORKSPACE_ID = 'my_life';
+export { MY_LIFE_WORKSPACE_ID };
 
 const MY_LIFE_TABS: VirtualWorkspaceHeaderConfig['tabs'] = [
     { key: 'notes', label: 'Notes', shortcut: 'Alt+N' },

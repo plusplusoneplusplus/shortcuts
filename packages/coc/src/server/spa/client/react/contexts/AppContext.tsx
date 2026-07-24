@@ -10,6 +10,7 @@ import type { WsStatus } from '../hooks/useWebSocket';
 import { getSpaCocClient } from '../api/cocClient';
 import { isContainerMode, setCurrentAgentId } from '../utils/config';
 import { isQueueProcessId, toTaskId } from '../utils/queue-process-id';
+import { isVirtualWorkspaceId } from '../repos/virtualWorkspaceIds';
 
 // ── Sidebar persistence ────────────────────────────────────────────────
 
@@ -126,6 +127,13 @@ export interface AppContextState {
     activeTab: DashboardTab;
     workspaces: any[];
     selectedRepoId: string | null;
+    /**
+     * Last-active NON-virtual workspace selection id, so the scope switcher can
+     * keep showing (and switch back to) that workspace while a virtual scope
+     * (My Work / My Life) is active. Updated whenever a concrete repo is selected;
+     * preserved across virtual selections and deselection.
+     */
+    lastWorkspaceRepoId: string | null;
     currentAgentId: string | null;
     activeRepoSubTab: RepoSubTab;
     reposSidebarCollapsed: boolean;
@@ -200,6 +208,7 @@ const initialState: AppContextState = {
     activeTab: 'repos',
     workspaces: [],
     selectedRepoId: null,
+    lastWorkspaceRepoId: null,
     currentAgentId: null,
     activeRepoSubTab: 'chats',
     reposSidebarCollapsed: getInitialSidebarCollapsed(),
@@ -423,7 +432,14 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
                 : state.notePathState;
             const restoredNotePath = action.id ? (savedNoteState[action.id] ?? null) : null;
             if (savedTabState !== state.repoTabState) persistRepoTabState(savedTabState);
-            return { ...state, selectedRepoId: action.id, repoTabState: savedTabState, activeRepoSubTab: restoredTab, notePathState: savedNoteState, selectedNotePath: restoredNotePath, selectedWorkflowName: null, selectedWorkflowProcessId: null };
+            // Remember the last concrete (non-virtual) workspace so the scope
+            // switcher can keep showing / switch back to it while a virtual scope
+            // (My Work / My Life) is active. Virtual and null selections preserve
+            // the previous remembered id.
+            const lastWorkspaceRepoId = action.id && !isVirtualWorkspaceId(action.id)
+                ? action.id
+                : state.lastWorkspaceRepoId;
+            return { ...state, selectedRepoId: action.id, lastWorkspaceRepoId, repoTabState: savedTabState, activeRepoSubTab: restoredTab, notePathState: savedNoteState, selectedNotePath: restoredNotePath, selectedWorkflowName: null, selectedWorkflowProcessId: null };
         }
         case 'SET_CURRENT_AGENT': {
             setCurrentAgentId(action.agentId);

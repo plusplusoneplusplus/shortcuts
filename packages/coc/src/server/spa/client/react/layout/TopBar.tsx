@@ -115,6 +115,18 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
         const scopedRepos = repos.filter(r => !state.currentAgentId || !r.workspace.agentId || r.workspace.agentId === state.currentAgentId);
         return findRepoBySelectionId(scopedRepos, state.selectedRepoId) || findRepoBySelectionId(repos, state.selectedRepoId);
     }, [repos, state.currentAgentId, state.selectedRepoId]);
+    // Repo whose identity the scope switcher's workspace segment shows. When a
+    // virtual scope (My Work / My Life) is active, `selectedRepo` is undefined
+    // (the id is virtual), so fall back to the last-active workspace so the
+    // segment keeps its identity + switch-back target. Display-only — this does
+    // NOT change routing or the active scope, and only feeds the switcher.
+    const displayRepo = useMemo(() => {
+        if (selectedRepo) return selectedRepo;
+        const rememberedId = state.lastWorkspaceRepoId;
+        if (!rememberedId) return undefined;
+        const scopedRepos = repos.filter(r => !state.currentAgentId || !r.workspace.agentId || r.workspace.agentId === state.currentAgentId);
+        return findRepoBySelectionId(scopedRepos, rememberedId) || findRepoBySelectionId(repos, rememberedId) || undefined;
+    }, [selectedRepo, state.lastWorkspaceRepoId, state.currentAgentId, repos]);
     // Remote-shell visual gate: enabled on any desktop page when the remote-first
     // shell is on, regardless of whether a concrete repository is selected. The
     // header design stays stable across cold loads and the Admin page; repository
@@ -215,7 +227,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                     </button>
                 )}
                 {showScopeSwitcher && (
-                    <ScopeSlideSwitcher repo={selectedRepo} repos={repos} />
+                    <ScopeSlideSwitcher repo={displayRepo} repos={repos} />
                 )}
                 {!isMobile && (showVirtualHeader && virtualHeaderConfig ? (
                     <VirtualWorkspaceShellHeader config={virtualHeaderConfig} repos={repos} onSelectRepo={navigateToWorkspace} hideIdentity={showScopeSwitcher} />

@@ -31,6 +31,7 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
         activeTab: 'repos',
         workspaces: [],
         selectedRepoId: null,
+        lastWorkspaceRepoId: null,
         activeRepoSubTab: 'chats',
         reposSidebarCollapsed: false,
         selectedWikiId: null,
@@ -325,6 +326,38 @@ describe('AppContext reducer', () => {
             const result = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-b' });
             expect(result.selectedWorkflowName).toBeNull();
             expect(result.selectedWorkflowProcessId).toBeNull();
+        });
+
+        // lastWorkspaceRepoId: powers the scope switcher's "keep showing the last
+        // workspace while a virtual scope is active" behavior.
+        it('SET_SELECTED_REPO remembers a concrete workspace as lastWorkspaceRepoId', () => {
+            const result = appReducer(makeState(), { type: 'SET_SELECTED_REPO', id: 'repo-123' });
+            expect(result.lastWorkspaceRepoId).toBe('repo-123');
+        });
+
+        it('SET_SELECTED_REPO preserves lastWorkspaceRepoId when switching to My Work', () => {
+            const state = makeState({ selectedRepoId: 'repo-123', lastWorkspaceRepoId: 'repo-123' });
+            const result = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'my_work' });
+            expect(result.selectedRepoId).toBe('my_work');
+            expect(result.lastWorkspaceRepoId).toBe('repo-123');
+        });
+
+        it('SET_SELECTED_REPO preserves lastWorkspaceRepoId when switching to My Life', () => {
+            const state = makeState({ selectedRepoId: 'repo-123', lastWorkspaceRepoId: 'repo-123' });
+            const result = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'my_life' });
+            expect(result.lastWorkspaceRepoId).toBe('repo-123');
+        });
+
+        it('SET_SELECTED_REPO preserves lastWorkspaceRepoId when deselecting (null)', () => {
+            const state = makeState({ selectedRepoId: 'repo-123', lastWorkspaceRepoId: 'repo-123' });
+            const result = appReducer(state, { type: 'SET_SELECTED_REPO', id: null });
+            expect(result.lastWorkspaceRepoId).toBe('repo-123');
+        });
+
+        it('SET_SELECTED_REPO updates lastWorkspaceRepoId when moving between two concrete workspaces', () => {
+            const state = makeState({ selectedRepoId: 'repo-a', lastWorkspaceRepoId: 'repo-a' });
+            const result = appReducer(state, { type: 'SET_SELECTED_REPO', id: 'repo-b' });
+            expect(result.lastWorkspaceRepoId).toBe('repo-b');
         });
 
         it('SET_REPO_SUB_TAB switches to activity', () => {

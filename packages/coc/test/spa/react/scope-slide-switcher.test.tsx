@@ -187,3 +187,34 @@ describe('ScopeSlideSwitcher — interactions', () => {
         expect(screen.getByTestId('remote-chip').textContent).toContain('Select repository');
     });
 });
+
+// AC-01: while a virtual scope is active, the workspace segment keeps rendering
+// the remembered workspace (passed by TopBar as `displayRepo`) instead of
+// falling back to "Select repository".
+describe('ScopeSlideSwitcher — remembered workspace on virtual scope', () => {
+    it('keeps the remembered workspace identity in the chip when My Work is active', () => {
+        mockAppState = { ...mockAppState, selectedRepoId: MY_WORK_WORKSPACE_ID };
+        render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
+
+        expect(screen.getByTestId('scope-switcher').getAttribute('data-active-scope')).toBe('work');
+        const chip = screen.getByTestId('remote-chip');
+        expect(chip.textContent).toContain('shortcuts');
+        expect(chip.textContent).not.toContain('Select repository');
+    });
+
+    it('keeps the remembered workspace identity in the chip when My Life is active', () => {
+        mockAppState = { ...mockAppState, selectedRepoId: MY_LIFE_WORKSPACE_ID };
+        render(<ScopeSlideSwitcher repo={mockRepos[2]} repos={mockRepos} />);
+
+        expect(screen.getByTestId('scope-switcher').getAttribute('data-active-scope')).toBe('life');
+        expect(screen.getByTestId('remote-chip').textContent).toContain('forge');
+    });
+
+    it('renders the workspace segment in the inactive (non-selected) style on a virtual scope', () => {
+        mockAppState = { ...mockAppState, selectedRepoId: MY_WORK_WORKSPACE_ID };
+        render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
+
+        expect(segment('workspace')!.getAttribute('aria-selected')).toBe('false');
+        expect(segment('work')!.getAttribute('aria-selected')).toBe('true');
+    });
+});
