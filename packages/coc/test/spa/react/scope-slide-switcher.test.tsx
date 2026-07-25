@@ -301,3 +301,58 @@ describe('ScopeSlideSwitcher — switch-back on click (AC-02)', () => {
         expect(screen.getByTestId('remote-dropdown')).toBeTruthy();
     });
 });
+
+describe('ScopeSlideSwitcher — pop-out trigger (AC-01/04)', () => {
+    let openSpy: ReturnType<typeof vi.fn>;
+    beforeEach(() => {
+        openSpy = vi.fn().mockReturnValue({ focus: vi.fn() });
+        vi.stubGlobal('open', openSpy);
+    });
+
+    it('renders a pop-out icon on every segment (work, life, workspace)', () => {
+        render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
+        const ids = screen.getAllByTestId('scope-segment-popout').map(el => el.getAttribute('data-workspace-id'));
+        expect(ids).toContain(MY_WORK_WORKSPACE_ID);
+        expect(ids).toContain(MY_LIFE_WORKSPACE_ID);
+        expect(ids).toContain('a');
+    });
+
+    it('clicking the workspace pop-out icon opens a locked window for the repo id and does not switch scope', () => {
+        render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
+        const icon = screen.getAllByTestId('scope-segment-popout').find(el => el.getAttribute('data-workspace-id') === 'a')!;
+        fireEvent.click(icon);
+        expect(openSpy).toHaveBeenCalledTimes(1);
+        const [url, target] = openSpy.mock.calls[0];
+        expect(String(url)).toContain('window=a');
+        expect(target).toBe('coc-window-a');
+        expect(mockSelectClone).not.toHaveBeenCalled();
+    });
+
+    it('right-click on a segment opens a menu whose "Open in new window" pops out that scope', () => {
+        render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
+        fireEvent.contextMenu(segment('workspace')!);
+        const item = screen.getByTestId('scope-switcher-context-open-window');
+        expect(item.textContent).toContain('Open in new window');
+        fireEvent.click(item);
+        expect(openSpy).toHaveBeenCalledTimes(1);
+        const [url, target] = openSpy.mock.calls[0];
+        expect(String(url)).toContain('window=a');
+        expect(target).toBe('coc-window-a');
+        expect(screen.queryByTestId('scope-switcher-context-menu')).toBeNull();
+    });
+
+    it('pops out a virtual scope (My Work) with the same locked URL/target as a repo (AC-04)', () => {
+        render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
+        const icon = screen.getAllByTestId('scope-segment-popout').find(el => el.getAttribute('data-workspace-id') === MY_WORK_WORKSPACE_ID)!;
+        fireEvent.click(icon);
+        const [url, target] = openSpy.mock.calls[0];
+        expect(String(url)).toContain(`window=${MY_WORK_WORKSPACE_ID}`);
+        expect(target).toBe(`coc-window-${MY_WORK_WORKSPACE_ID}`);
+        expect(goToMyWorkNotCalled(mockDispatch)).toBe(true);
+    });
+});
+
+function goToMyWorkNotCalled(dispatch: ReturnType<typeof vi.fn>): boolean {
+    // The icon stops propagation, so the segment's onClick (scope navigation) must not fire.
+    return !dispatch.mock.calls.some(c => c[0]?.type === 'SET_SELECTED_REPO');
+}

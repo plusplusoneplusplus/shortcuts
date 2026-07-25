@@ -933,6 +933,87 @@ describe('RepoTabStrip', () => {
             expect(screen.getByTestId('repo-tab-context-remove')).toBeDefined();
         });
     });
+
+    describe('pop-out trigger (AC-01)', () => {
+        let openSpy: ReturnType<typeof vi.fn>;
+        beforeEach(() => {
+            openSpy = vi.fn().mockReturnValue({ focus: vi.fn() });
+            vi.stubGlobal('open', openSpy);
+        });
+
+        it('renders a pop-out icon button on each tab', () => {
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha'), makeRepo('r2', 'Beta')]}
+                    selectedRepoId="r1"
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+            const buttons = screen.getAllByTestId('repo-tab-popout');
+            expect(buttons).toHaveLength(2);
+            expect(buttons[0].getAttribute('data-repo-id')).toBe('r1');
+        });
+
+        it('clicking the pop-out icon opens a window for that repo id and does not select it', () => {
+            const onSelect = vi.fn();
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha'), makeRepo('r2', 'Beta')]}
+                    selectedRepoId="r1"
+                    onSelect={onSelect}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+            const button = screen.getAllByTestId('repo-tab-popout').find(el => el.getAttribute('data-repo-id') === 'r2')!;
+            fireEvent.click(button);
+            expect(openSpy).toHaveBeenCalledTimes(1);
+            const [url, target] = openSpy.mock.calls[0];
+            expect(String(url)).toContain('window=r2');
+            expect(target).toBe('coc-window-r2');
+            expect(onSelect).not.toHaveBeenCalled();
+        });
+
+        it('context menu has an "Open in new window" item that pops out the right repo id', () => {
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha')]}
+                    selectedRepoId={null}
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+            fireEvent.contextMenu(screen.getByTestId('repo-tab'));
+            const item = screen.getByTestId('repo-tab-context-open-window');
+            expect(item.textContent).toContain('Open in new window');
+            fireEvent.click(item);
+            expect(openSpy).toHaveBeenCalledTimes(1);
+            const [url, target] = openSpy.mock.calls[0];
+            expect(String(url)).toContain('window=r1');
+            expect(target).toBe('coc-window-r1');
+            expect(screen.queryByTestId('repo-tab-context-menu')).toBeNull();
+        });
+
+        it('pops out a virtual scope (my_work) with the same locked URL/target (AC-04)', () => {
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('my_work', 'My Work')]}
+                    selectedRepoId={null}
+                    onSelect={vi.fn()}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+            fireEvent.contextMenu(screen.getByTestId('repo-tab'));
+            fireEvent.click(screen.getByTestId('repo-tab-context-open-window'));
+            const [url, target] = openSpy.mock.calls[0];
+            expect(String(url)).toContain('window=my_work');
+            expect(target).toBe('coc-window-my_work');
+        });
+    });
 });
 
 describe('getRepoDisplayName', () => {

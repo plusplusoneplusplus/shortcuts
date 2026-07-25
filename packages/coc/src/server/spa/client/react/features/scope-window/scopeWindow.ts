@@ -54,8 +54,8 @@ export function readLockedWorkspaceId(search?: string): string | null {
 
 export interface OpenScopePopOutOptions {
     workspaceId: string;
-    /** Optional toast surface for the blocked-popup case. */
-    addToast?: (message: string, type?: 'error' | 'success' | 'info' | 'warning') => void;
+    /** Optional toast surface for the blocked-popup case. Matches ToastContext's `addToast`. */
+    addToast?: (message: string, type?: 'error' | 'success' | 'info') => void;
     /** Overridable for tests; defaults to `window.open`. */
     open?: typeof window.open;
 }

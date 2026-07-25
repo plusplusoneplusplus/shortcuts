@@ -8,8 +8,10 @@
  * `features.scopeSwitcher`; the scope-bound content clusters (WI/PR tabs, clone
  * tabs, virtual sub-tabs + actions) stay in their headers, to the right.
  */
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
+import { ToastContext } from '../../contexts/ToastContext';
+import { openScopePopOut } from '../scope-window/scopeWindow';
 import { useMyWorkEnabled } from '../../hooks/feature-flags/useMyWorkEnabled';
 import { useMyLifeEnabled } from '../../hooks/feature-flags/useMyLifeEnabled';
 import { useScopeNavigation } from '../../hooks/useScopeNavigation';
@@ -39,6 +41,60 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
     const myLifeEnabled = useMyLifeEnabled();
     const { goToMyWork, goToMyLife } = useScopeNavigation();
     const { selectClone } = useShellNavigation();
+    const toast = useContext(ToastContext);
+
+    // Pop-out a scope into its own locked full-app window (AC-01). Repos and the
+    // virtual scopes route through the identical path — no special-casing (AC-04).
+    const popOut = useCallback((workspaceId: string) => {
+        openScopePopOut({ workspaceId, addToast: toast?.addToast });
+    }, [toast]);
+
+    // Lightweight right-click menu (this switcher has none of its own yet).
+    const [menu, setMenu] = useState<{ workspaceId: string; label: string; x: number; y: number } | null>(null);
+    const menuRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (!menu) return;
+        const onDown = (e: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenu(null);
+        };
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenu(null); };
+        document.addEventListener('mousedown', onDown);
+        document.addEventListener('keydown', onKey);
+        return () => {
+            document.removeEventListener('mousedown', onDown);
+            document.removeEventListener('keydown', onKey);
+        };
+    }, [menu]);
+
+    const openScopeMenu = useCallback((e: { preventDefault: () => void; clientX: number; clientY: number }, workspaceId: string, label: string) => {
+        e.preventDefault();
+        setMenu({ workspaceId, label, x: e.clientX, y: e.clientY });
+    }, []);
+
+    const renderPopOutIcon = (workspaceId: string, label: string) => (
+        <span
+            role="button"
+            tabIndex={0}
+            data-testid="scope-segment-popout"
+            data-workspace-id={workspaceId}
+            aria-label={`Open ${label} in new window`}
+            title="Open in new window"
+            className="inline-flex items-center justify-center w-4 h-4 rounded text-current opacity-0 group-hover:opacity-70 group-focus-within:opacity-70 hover:!opacity-100 hover:bg-black/[0.08] dark:hover:bg-white/[0.12] transition-opacity"
+            onClick={e => { e.stopPropagation(); e.preventDefault(); popOut(workspaceId); }}
+            onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    popOut(workspaceId);
+                }
+            }}
+        >
+            <svg viewBox="0 0 12 12" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
+                <path d="M5 2H2.5v7.5H10V7" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M7 2h3v3M10 2 6 6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+        </span>
+    );
 
     const isOnReposTab = state.activeTab === 'repos';
     const activeScope: ScopeKey =
@@ -98,6 +154,7 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
         icon: string,
         label: string,
         onClick: () => void,
+        workspaceId: string,
     ) => {
         const active = activeScope === key;
         return (
@@ -111,11 +168,13 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
                 aria-label={label}
                 title={label}
                 onClick={onClick}
-                className={segmentClass(active)}
+                onContextMenu={e => openScopeMenu(e, workspaceId, label)}
+                className={segmentClass(active) + ' group'}
                 style={active ? { color: SCOPE_ACCENTS[key] } : undefined}
             >
                 <span aria-hidden>{icon}</span>
                 <span className="hidden lg:inline">{label}</span>
+                {renderPopOutIcon(workspaceId, label)}
             </button>
         );
     };
@@ -137,8 +196,8 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
                     style={{ left: thumb.left, width: thumb.width, background: `${SCOPE_ACCENTS[activeScope]}26` }}
                 />
             )}
-            {myWorkEnabled && renderVirtualSegment('work', 'my-work-toggle', '💼', 'My Work', goToMyWork)}
-            {myLifeEnabled && renderVirtualSegment('life', 'my-life-toggle', '🏠', 'My Life', goToMyLife)}
+            {myWorkEnabled && renderVirtualSegment('work', 'my-work-toggle', '💼', 'My Work', goToMyWork, MY_WORK_WORKSPACE_ID)}
+            {myLifeEnabled && renderVirtualSegment('life', 'my-life-toggle', '🏠', 'My Life', goToMyLife, MY_LIFE_WORKSPACE_ID)}
             {/* Keep this positioned without a z-index so the nested picker can
                 escape the segment and layer above page-level sticky headers. */}
             <div
@@ -147,10 +206,40 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
                 aria-selected={activeScope === 'workspace'}
                 data-testid="scope-segment"
                 data-scope="workspace"
-                className="relative flex items-center min-w-0"
+                className="group relative flex items-center min-w-0"
+                onContextMenu={repo ? e => openScopeMenu(e, getRepoSelectionId(repo), getRepoDisplayLabel(repo)) : undefined}
             >
                 <WorkspaceIdentityChip repo={repo} repos={repos} onSwitchBack={onSwitchBack} />
+                {repo && renderPopOutIcon(getRepoSelectionId(repo), getRepoDisplayLabel(repo))}
             </div>
+            {menu && (
+                <div
+                    ref={menuRef}
+                    data-testid="scope-switcher-context-menu"
+                    role="menu"
+                    className="fixed z-[10001] min-w-[160px] bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded shadow-lg py-1"
+                    style={{ left: menu.x, top: menu.y }}
+                >
+                    <button
+                        data-testid="scope-switcher-context-open-window"
+                        className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
+                        role="menuitem"
+                        onClick={() => {
+                            const id = menu.workspaceId;
+                            setMenu(null);
+                            popOut(id);
+                        }}
+                    >
+                        🪟 Open in new window
+                    </button>
+                </div>
+            )}
         </div>
     );
+}
+
+/** Human-readable scope label for the pop-out affordances / OS window title. */
+function getRepoDisplayLabel(repo: RepoData): string {
+    const ws = repo.workspace as { name?: string; id?: string };
+    return ws.name || ws.id || 'workspace';
 }

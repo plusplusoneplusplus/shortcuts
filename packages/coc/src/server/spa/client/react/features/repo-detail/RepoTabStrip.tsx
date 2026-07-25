@@ -19,6 +19,7 @@ import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClien
 import { isContainerMode, getHostname } from '../../utils/config';
 import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { GenerateTaskDialog } from '../../tasks/GenerateTaskDialog';
+import { openScopePopOut } from '../scope-window/scopeWindow';
 
 export type RepoQueueStatus = 'idle' | 'running' | 'queued' | 'paused';
 
@@ -719,6 +720,37 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                         testId="repo-tab-dot"
                     />
                     <span className="max-w-[140px] truncate">{getRepoDisplayName(ws)}</span>
+                    <span
+                        role="button"
+                        tabIndex={0}
+                        data-testid="repo-tab-popout"
+                        data-repo-id={ws.id}
+                        aria-label={`Open ${getRepoDisplayName(ws)} in new window`}
+                        title="Open in new window"
+                        className={
+                            'inline-flex items-center justify-center w-4 h-4 rounded transition-colors ' +
+                            (isSelected
+                                ? 'text-white/80 hover:text-white hover:bg-white/20 inline'
+                                : 'text-[#616161] dark:text-[#999] hover:bg-black/[0.08] dark:hover:bg-white/[0.12] hidden group-hover:inline-flex group-focus-within:inline-flex')
+                        }
+                        onClick={event => {
+                            event.stopPropagation();
+                            event.preventDefault();
+                            openScopePopOut({ workspaceId: ws.id, addToast: toast?.addToast });
+                        }}
+                        onKeyDown={event => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                                event.stopPropagation();
+                                event.preventDefault();
+                                openScopePopOut({ workspaceId: ws.id, addToast: toast?.addToast });
+                            }
+                        }}
+                    >
+                        <svg viewBox="0 0 12 12" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
+                            <path d="M5 2H2.5v7.5H10V7" strokeLinecap="round" strokeLinejoin="round" />
+                            <path d="M7 2h3v3M10 2 6 6" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                    </span>
                     {unseenCount > 0 && (
                         <span
                             className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-[3px] rounded-full bg-[#d16969] text-white text-[8px] font-semibold flex items-center justify-center leading-none"
@@ -1326,6 +1358,17 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                             }}
                         >
                             🛠️ Prompt & Script
+                        </button>
+                        <button
+                            data-testid="repo-tab-context-open-window"
+                            className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
+                            role="menuitem"
+                            onClick={() => {
+                                setContextMenu(null);
+                                openScopePopOut({ workspaceId: ws.id, addToast: toast?.addToast });
+                            }}
+                        >
+                            🪟 Open in new window
                         </button>
                         {uiLayoutMode === 'classic' && (
                             <button
