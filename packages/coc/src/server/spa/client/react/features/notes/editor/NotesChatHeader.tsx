@@ -217,11 +217,11 @@ export interface NotesChatScopeToggleProps {
 
 export function NotesChatScopeToggle({ scope, onScopeChange }: NotesChatScopeToggleProps) {
     return (
-        <div className="inline-flex items-center gap-0.5 rounded-md bg-[#f0f0f0] p-0.5 dark:bg-[#2a2a2a]" data-testid="chat-scope-toggle">
+        <div className="inline-flex items-center gap-px rounded-full bg-[#f0f0f0] p-px dark:bg-[#2a2a2a]" data-testid="chat-scope-toggle">
             <button
                 type="button"
                 className={
-                    'text-[10px] px-2 py-0.5 rounded transition-colors ' +
+                    'rounded-full px-1.5 py-px text-[10px] transition-colors ' +
                     (scope === 'per-note'
                         ? 'bg-[#0078d4] text-white font-medium'
                         : 'text-[#848484] hover:text-[#333] dark:hover:text-white hover:bg-white/70 dark:hover:bg-[#333]')
@@ -236,7 +236,7 @@ export function NotesChatScopeToggle({ scope, onScopeChange }: NotesChatScopeTog
             <button
                 type="button"
                 className={
-                    'text-[10px] px-2 py-0.5 rounded transition-colors ' +
+                    'rounded-full px-1.5 py-px text-[10px] transition-colors ' +
                     (scope === 'per-workspace'
                         ? 'bg-[#0078d4] text-white font-medium'
                         : 'text-[#848484] hover:text-[#333] dark:hover:text-white hover:bg-white/70 dark:hover:bg-[#333]')

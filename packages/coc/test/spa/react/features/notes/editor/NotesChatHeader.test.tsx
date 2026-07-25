@@ -252,4 +252,22 @@ describe('NotesChatScopeToggle', () => {
         expect(screen.getByTestId('chat-scope-per-note')).toHaveTextContent('This note');
         expect(screen.getByTestId('chat-scope-per-workspace')).toHaveTextContent('Workspace');
     });
+
+    it('renders a compact pill with pill-shaped segments', () => {
+        render(<NotesChatScopeToggle scope="per-note" onScopeChange={vi.fn()} />);
+
+        const toggle = screen.getByTestId('chat-scope-toggle');
+        expect(toggle.className).toContain('rounded-full');
+        expect(toggle.className).toContain('gap-px');
+        expect(toggle.className).toContain('p-px');
+
+        for (const segment of [
+            screen.getByTestId('chat-scope-per-note'),
+            screen.getByTestId('chat-scope-per-workspace'),
+        ]) {
+            expect(segment.className).toContain('rounded-full');
+            expect(segment.className).toContain('px-1.5');
+            expect(segment.className).toContain('py-px');
+        }
+    });
 });
