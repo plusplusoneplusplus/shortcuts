@@ -7,12 +7,28 @@ import { createRouter } from '../../src/server/shared/router';
 import type { Route } from '../../src/server/types';
 import { registerQuickAskAnswerRoutes } from '../../src/server/processes/chat-sidenotes/quick-ask-answer-handler';
 import type { SideNoteAIInvoke } from '../../src/server/processes/chat-sidenotes/chat-sidenotes-handler';
+import { PAPERS_DIR } from '../../src/server/notes/paper-ingest-handler';
+
+const WS_ID = 'ws-1';
+
+function fakeStore(rootPath: string): any {
+    return { getWorkspaces: async () => [{ id: WS_ID, name: 'Test', rootPath }] };
+}
 
 async function startServer(opts: {
     enabled?: boolean;
     invokeAI?: SideNoteAIInvoke;
+    withStore?: boolean;
+    /** Seed a default-root paper text sidecar `.papers/<id>.txt`. */
+    paperText?: string;
+    paperId?: string;
 }): Promise<{ baseUrl: string; dataDir: string; lastPrompt: () => string | undefined; close: () => Promise<void> }> {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-quick-ask-answer-'));
+    if (opts.paperText !== undefined) {
+        const papersDir = path.join(dataDir, 'repos', WS_ID, 'notes', PAPERS_DIR);
+        fs.mkdirSync(papersDir, { recursive: true });
+        fs.writeFileSync(path.join(papersDir, `${opts.paperId ?? '1802.05799'}.txt`), opts.paperText, 'utf-8');
+    }
     const routes: Route[] = [];
     let lastPrompt: string | undefined;
     const invokeAI: SideNoteAIInvoke = opts.invokeAI ?? (async (prompt: string) => {
@@ -22,6 +38,7 @@ async function startServer(opts: {
     registerQuickAskAnswerRoutes({
         routes,
         dataDir,
+        store: opts.withStore ?? true ? fakeStore('/tmp/ws') : undefined,
         getEnabled: () => opts.enabled ?? true,
         invokeAI,
     });
@@ -111,5 +128,46 @@ describe('quick-ask answer route', () => {
         });
         servers.push(failed);
         expect((await req(failed.baseUrl, 'POST', answerPath, validBody)).status).toBe(502);
+    });
+
+    it('grounds on the full paper when useFullPaper is set and the sidecar is readable', async () => {
+        const s = await startServer({ paperText: 'The full paper explains ring-allreduce in detail.' });
+        servers.push(s);
+        const r = await req(s.baseUrl, 'POST', answerPath, {
+            ...validBody,
+            useFullPaper: true,
+            paperPath: `${PAPERS_DIR}/1802.05799.pdf`,
+        });
+        expect(r.status).toBe(200);
+        expect(r.body.usedFullPaper).toBe(true);
+        // The whole-paper text is injected into the grounding prompt.
+        expect(s.lastPrompt()).toContain('Full paper text:');
+        expect(s.lastPrompt()).toContain('The full paper explains ring-allreduce in detail.');
+    });
+
+    it('falls back to selection-only when the paper sidecar is missing', async () => {
+        // No paperText seeded → readPaperText returns null → cheap path.
+        const s = await startServer({});
+        servers.push(s);
+        const r = await req(s.baseUrl, 'POST', answerPath, {
+            ...validBody,
+            useFullPaper: true,
+            paperPath: `${PAPERS_DIR}/1802.05799.pdf`,
+        });
+        expect(r.status).toBe(200);
+        expect(r.body.usedFullPaper).toBe(false);
+        expect(s.lastPrompt()).not.toContain('Full paper text:');
+    });
+
+    it('ignores the paper text when useFullPaper is not set (default cheap path)', async () => {
+        const s = await startServer({ paperText: 'irrelevant full paper text' });
+        servers.push(s);
+        const r = await req(s.baseUrl, 'POST', answerPath, {
+            ...validBody,
+            paperPath: `${PAPERS_DIR}/1802.05799.pdf`,
+        });
+        expect(r.status).toBe(200);
+        expect(r.body.usedFullPaper).toBe(false);
+        expect(s.lastPrompt()).not.toContain('Full paper text:');
     });
 });

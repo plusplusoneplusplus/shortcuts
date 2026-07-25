@@ -943,6 +943,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerQuickAskAnswerRoutes({
         routes,
         dataDir,
+        store,
         getEnabled: getQuickAskSidenotesEnabled,
     });
     // Persistent dual-anchor paper annotations sidecar (Goal 2): every Quick Ask

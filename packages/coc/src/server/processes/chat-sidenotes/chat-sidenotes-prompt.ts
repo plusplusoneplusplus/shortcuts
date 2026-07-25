@@ -20,6 +20,12 @@ export interface SideNotePromptInput {
     contextAfter?: string;
     /** Optional custom question; defaults to a brief explanation. */
     question?: string;
+    /**
+     * Full extracted paper text for whole-paper grounding (Goal 3, AC-04).
+     * When present, the answer is grounded on the entire paper rather than just
+     * the ±context window. Assumed pre-budgeted by the caller.
+     */
+    paperText?: string;
 }
 
 function truncate(text: string, max: number): string {
@@ -39,6 +45,26 @@ export function buildSideNotePrompt(input: SideNotePromptInput): string {
     const ask = input.question?.trim()
         ? input.question.trim()
         : `Briefly explain "${selection}" in 1-3 sentences.`;
+
+    // Whole-paper grounding path (Goal 3, AC-04): the model reads the full paper
+    // text, not just the ±context window, so it can answer questions the local
+    // snippet alone can't ground.
+    const paperText = (input.paperText ?? '').trim();
+    if (paperText) {
+        return [
+            'You are answering a question about a highlighted passage in a research paper.',
+            'Ground your answer in the full paper text below — not only the immediately surrounding lines.',
+            'Answer concisely in Markdown. Do not restate the question. No preamble.',
+            '',
+            'Highlighted passage (wrapped in ⟦ ⟧ within its surrounding lines):',
+            snippet,
+            '',
+            'Full paper text:',
+            paperText,
+            '',
+            `Question: ${ask}`,
+        ].join('\n');
+    }
 
     return [
         'You are answering a quick side-question about a phrase highlighted inside a chat message.',

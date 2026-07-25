@@ -17,6 +17,7 @@
  * Cross-platform; pure Node.js.
  */
 
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { Route } from '../../shared/router';
 import { sendJSON, sendError, parseQueryParams } from '../../core/api-handler';
 import { parseBodyOrReject } from '../../shared/handler-utils';
@@ -25,6 +26,7 @@ import { resolveDefaultModel } from '../../preferences/repository';
 import { buildSideNotePrompt } from './chat-sidenotes-prompt';
 import { invokeSideNoteAI } from './chat-sidenotes-ai';
 import type { SideNoteAIInvoke } from './chat-sidenotes-handler';
+import { readPaperText } from '../../notes/paper-text-read';
 
 /** Minimum selectable length that produces an answer (parity with the persisted route). */
 const MIN_SELECTION_CHARS = 2;
@@ -40,13 +42,19 @@ export interface QuickAskAnswerRouteOptions {
     getEnabled: () => boolean;
     /** AI invoker override (defaults to the one-shot CLI invoker). */
     invokeAI?: SideNoteAIInvoke;
+    /**
+     * Process store, used only to resolve the notes root for the optional
+     * whole-paper grounding path (Goal 3, AC-04). When absent, `useFullPaper`
+     * requests silently degrade to the cheap selection-only grounding.
+     */
+    store?: ProcessStore;
 }
 
 /**
  * Register the stateless Quick Ask answer route on the shared route table.
  */
 export function registerQuickAskAnswerRoutes(opts: QuickAskAnswerRouteOptions): void {
-    const { routes, dataDir, getEnabled } = opts;
+    const { routes, dataDir, getEnabled, store } = opts;
     const invokeAI: SideNoteAIInvoke = opts.invokeAI ?? invokeSideNoteAI;
 
     // POST /api/quick-ask/answer
@@ -75,12 +83,29 @@ export function registerQuickAskAnswerRoutes(opts: QuickAskAnswerRouteOptions): 
             const question = typeof body.question === 'string' && body.question.trim()
                 ? body.question.trim() : undefined;
 
+            // Optional whole-paper grounding (Goal 3, AC-04). Default stays the
+            // cheap selection-only path; only when the client opts in AND the
+            // cached text sidecar is readable do we ground on the full paper.
+            let paperText: string | undefined;
+            if (body.useFullPaper === true && typeof body.paperPath === 'string' && store) {
+                const root = typeof body.root === 'string' ? body.root : undefined;
+                const text = await readPaperText({
+                    dataDir,
+                    store,
+                    workspaceId,
+                    root,
+                    paperPath: body.paperPath,
+                });
+                paperText = text ?? undefined;
+            }
+
             const model = resolveDefaultModel(dataDir, workspaceId, 'quickAsk');
             const prompt = buildSideNotePrompt({
                 selectedText: trimmedSelection,
                 contextBefore,
                 contextAfter,
                 question,
+                paperText,
             });
 
             const aiResult = await invokeAI(prompt, model);
@@ -88,7 +113,11 @@ export function registerQuickAskAnswerRoutes(opts: QuickAskAnswerRouteOptions): 
                 return sendError(res, aiResult.unavailable ? 503 : 502, aiResult.error);
             }
 
-            sendJSON(res, 200, { answer: aiResult.response, model });
+            sendJSON(res, 200, {
+                answer: aiResult.response,
+                model,
+                usedFullPaper: paperText !== undefined,
+            });
         },
     });
 }
