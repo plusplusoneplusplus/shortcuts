@@ -69,6 +69,46 @@ describe('NoteEditorIO', () => {
             const url = defaultNoteEditorIO.imageApiUrl('ws/special', '.attachments/img.png');
             expect(url).toBe('/api/workspaces/ws%2Fspecial/notes/image?path=.attachments%2Fimg.png');
         });
+
+        it('ingestPaper POSTs to the paper-ingest endpoint and returns the result', async () => {
+            const fetchMock = vi.fn().mockResolvedValue({
+                ok: true,
+                json: async () => ({
+                    arxivId: '1802.05799',
+                    pdfPath: '.papers/1802.05799.pdf',
+                    textPath: '.papers/1802.05799.txt',
+                    cached: false,
+                }),
+            });
+            vi.stubGlobal('fetch', fetchMock);
+            try {
+                const result = await defaultNoteEditorIO.ingestPaper!('ws1', 'https://arxiv.org/pdf/1802.05799', 'r1');
+                expect(fetchMock).toHaveBeenCalledWith(
+                    '/api/workspaces/ws1/notes/paper-ingest',
+                    expect.objectContaining({ method: 'POST' }),
+                );
+                const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+                expect(body).toEqual({ url: 'https://arxiv.org/pdf/1802.05799', root: 'r1' });
+                expect(result.pdfPath).toBe('.papers/1802.05799.pdf');
+                expect(result.arxivId).toBe('1802.05799');
+            } finally {
+                vi.unstubAllGlobals();
+            }
+        });
+
+        it('ingestPaper omits root when not provided and throws on a non-ok response', async () => {
+            const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 400 });
+            vi.stubGlobal('fetch', fetchMock);
+            try {
+                await expect(
+                    defaultNoteEditorIO.ingestPaper!('ws1', 'not-arxiv'),
+                ).rejects.toThrow(/HTTP 400/);
+                const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+                expect(body).toEqual({ url: 'not-arxiv' });
+            } finally {
+                vi.unstubAllGlobals();
+            }
+        });
     });
 
     // ── rewriteHtmlImageSrc ─────────────────────────────────────────────
@@ -127,6 +167,12 @@ describe('NoteEditorIO', () => {
 
             const alreadyApi = '<div class="md-pdf-embed" data-pdf-url="/api/workspaces/ws1/notes/image?path=.attachments%2Fdoc.pdf"></div>';
             expect(rewriteHtmlImageSrc(alreadyApi, notesIo, 'ws1')).toBe(alreadyApi);
+        });
+
+        it('rewrites data-pdf-url .papers/ (cached arXiv PDF) paths to API URLs', () => {
+            const html = '<div class="md-pdf-embed" data-pdf-url=".papers/1802.05799.pdf" data-pdf-label="1802.05799"></div>';
+            const result = rewriteHtmlImageSrc(html, notesIo, 'ws1');
+            expect(result).toContain('data-pdf-url="/api/workspaces/ws1/notes/image?path=.papers%2F1802.05799.pdf"');
         });
     });
 });

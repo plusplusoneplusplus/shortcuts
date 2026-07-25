@@ -810,7 +810,7 @@ export function rewriteImageSrcToApi(html: string, workspaceId: string): string 
     // 4) Rewrite .attachments/ (and .images/) relative paths inside PDF embed
     //    placeholders so the inline <iframe> resolves through the notes image API.
     result = result.replace(
-        /data-pdf-url="((?:\.attachments|\.images)\/[^"]+)"/gi,
+        /data-pdf-url="((?:\.attachments|\.images|\.papers)\/[^"]+)"/gi,
         (_match, relPath: string) => {
             return `data-pdf-url="${apiPrefix}${encodeURIComponent(relPath)}"`;
         },
