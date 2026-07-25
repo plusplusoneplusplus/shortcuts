@@ -83,7 +83,9 @@ Markdown.
 The shared Markdown math tokenizer accepts digit-led inline formulas such as
 `$2MNK$` when their next unescaped dollar is a valid closer. If that next dollar
 is not a valid closer, the digit-led opener stays literal so currency before a
-later formula does not merge with it.
+later formula does not merge with it. Inline dollar matches also stop at a
+Markdown backtick so prose currency cannot close on a dollar inside an inline
+code span.
 
 Notes Chat renders one compact 32px header (`NotesChatHeader.tsx`, next to `NoteChatPanel.tsx`) across Lens, pinned side-panel, and embedded (mobile or Lens-disabled) presentations and in both empty and active-conversation states. The header shows a Notes Chat identity mark, a muted context label (current note title in per-note scope or workspace display name from `resolveWorkspaceName` in per-workspace scope, truncated with the full value on hover), the independently centered compact pill `NotesChatScopeToggle` segmented control (This note / Workspace; defaults to `per-note` / "This note" when no persisted scope exists through `useNotesChat`'s `defaultScope`), and presentation-specific window actions: minimize + pin in `'lens'`, unpin in `'side-panel'`, neither in `'embedded'`, and close in every presentation. "New chat" resets the active scope while leaving the old process recoverable in history; it lives in `ChatHeaderOverflowMenu` and renders only when a chat exists. When the active chat is bound to a note, a compact 📎 path-reference button (`data-testid="notes-chat-path-ref"`) appears before the overflow menu, with the full prepended note path in its tooltip and `aria-label`. If the selected note diverges from the chat-bound note, the button tints amber (`data-switched="true"`) and the tooltip reads "Attached to <note> — Start New Chat to switch." `NoteContextBanner.tsx` uses that same `isSwitched` value, computed once in `NoteChatPanel`, to render a slim amber one-line warning only in the divergent case; it renders nothing in the common matching case.
 

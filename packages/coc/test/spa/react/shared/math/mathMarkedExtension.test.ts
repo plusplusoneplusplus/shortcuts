@@ -68,6 +68,13 @@ describe('mathMarkedExtension — literal / false-positive guards', () => {
         expect(html).toContain('<code>$x$</code>');
     });
 
+    it('does not let prose currency close inside inline code', () => {
+        const html = render('it costs $5 and `$x` stays literal');
+        expect(html).not.toContain('class="katex"');
+        expect(html).toContain('$5');
+        expect(html).toContain('<code>$x</code>');
+    });
+
     it('does not parse math inside a fenced code block', () => {
         const html = render('```\n$a+b$\n```');
         expect(html).not.toContain('class="katex"');

@@ -94,6 +94,13 @@ describe('tokenizeMath — false positives stay literal', () => {
         expect(text(segs)).toBe('It costs $5 to run $x$ iterations');
     });
 
+    it('does not close prose currency on a dollar inside inline code', () => {
+        const src = 'it costs $5 and `$x` stays literal';
+        const segs = tokenizeMath(src);
+        expect(mathOnly(segs)).toHaveLength(0);
+        expect(text(segs)).toBe(src);
+    });
+
     it('does not match $ followed by whitespace', () => {
         expect(mathOnly(tokenizeMath('a $ b $ c'))).toHaveLength(0);
     });

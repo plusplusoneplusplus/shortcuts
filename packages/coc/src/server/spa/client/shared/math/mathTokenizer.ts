@@ -24,6 +24,7 @@
  *     otherwise the opener stays literal so mixed currency and math do not merge.
  *   - A closing `$` must not be immediately preceded by whitespace, and must not
  *     be immediately followed by a digit (guards `$5 and $6`).
+ *   - Inline dollar math may not cross a Markdown backtick boundary.
  *   - Inline `$...$` and `\(...\)` may not span a blank line / paragraph break.
  *   - `\$` is an escaped literal dollar and never opens or closes math.
  *   - An unclosed opener stays literal text, so streaming content remains
@@ -120,6 +121,9 @@ function matchDollar(text: string, i: number): Match | null {
     let j = i + 1;
     while (j < text.length) {
         const ch = text[j];
+        // Marked's start hook sees raw inline source before code spans are
+        // tokenized. Do not let an opener in prose close on a `$` inside code.
+        if (ch === '`') return null;
         if (ch === '\n') {
             // Allow a single newline inside inline math but not a paragraph break.
             if (hasParagraphBreak(text, i, j + 1)) return null;
