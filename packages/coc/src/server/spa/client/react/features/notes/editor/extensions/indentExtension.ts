@@ -24,6 +24,7 @@ import {
     MAX_INDENT,
     TEXT_INDENT_TYPES,
     createIndentAttribute,
+    isListOwned,
 } from './indentShared';
 
 // Re-export the shared primitives so existing importers of this module keep
@@ -33,10 +34,12 @@ export {
     INDENT_TYPES,
     TEXT_INDENT_TYPES,
     EMBED_INDENT_TYPES,
+    LIST_ITEM_TYPES,
     clampIndent,
     parseIndentAttr,
     renderIndentAttr,
     createIndentAttribute,
+    isListOwned,
 } from './indentShared';
 
 declare module '@tiptap/core' {
@@ -69,8 +72,9 @@ export const IndentExtension = Extension.create({
                 ({ tr, state, dispatch }) => {
                     const { from, to } = state.selection;
                     let changed = false;
-                    state.doc.nodesBetween(from, to, (node, pos) => {
+                    state.doc.nodesBetween(from, to, (node, pos, parent) => {
                         if (!INDENT_TYPES.includes(node.type.name)) return;
+                        if (isListOwned(parent)) return; // list/task item owns its child's indentation
                         const current = (node.attrs.indent as number) ?? 0;
                         if (current >= MAX_INDENT) return;
                         tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: current + 1 });
@@ -85,8 +89,9 @@ export const IndentExtension = Extension.create({
                 ({ tr, state, dispatch }) => {
                     const { from, to } = state.selection;
                     let changed = false;
-                    state.doc.nodesBetween(from, to, (node, pos) => {
+                    state.doc.nodesBetween(from, to, (node, pos, parent) => {
                         if (!INDENT_TYPES.includes(node.type.name)) return;
+                        if (isListOwned(parent)) return; // list/task item owns its child's indentation
                         const current = (node.attrs.indent as number) ?? 0;
                         if (current <= 0) return;
                         tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: current - 1 });
