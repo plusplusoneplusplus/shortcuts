@@ -11,6 +11,7 @@ import {
 } from './pdfHeightShared';
 import { classifyPdfBlockUrl } from './pdfBlockUrl';
 import { normalizeStoredPdfLabel } from '../pdfLabel';
+import { PdfJsRenderer } from './PdfJsRenderer';
 
 /** Payload handed to {@link PdfBlockOptions.onRequestFullWindow} (AC-05). */
 export interface PdfFullWindowRequest {
@@ -37,8 +38,13 @@ function PdfBlockView({ node, updateAttributes, selected, extension }: NodeViewP
 
     const attrHeight = node.attrs.height == null ? null : Number(node.attrs.height);
     const frameRef = useRef<HTMLIFrameElement>(null);
+    const frameInnerRef = useRef<HTMLDivElement>(null);
     const [dragging, setDragging] = useState(false);
     const [dragHeight, setDragHeight] = useState<number | null>(null);
+    // Inline PDFs render via pdf.js (host-selectable text layer) by default;
+    // fall back to the native iframe only if pdf.js fails to load the document.
+    const [pdfJsFailed, setPdfJsFailed] = useState(false);
+    const handlePdfJsError = useCallback(() => setPdfJsFailed(true), []);
 
     const displayHeight = dragging ? dragHeight : attrHeight;
 
@@ -56,6 +62,7 @@ function PdfBlockView({ node, updateAttributes, selected, extension }: NodeViewP
             const startHeight =
                 attrHeight ??
                 frameRef.current?.getBoundingClientRect().height ??
+                frameInnerRef.current?.getBoundingClientRect().height ??
                 DEFAULT_PDF_HEIGHT;
 
             setDragging(true);
@@ -130,16 +137,25 @@ function PdfBlockView({ node, updateAttributes, selected, extension }: NodeViewP
                 </div>
                 {!collapsed && (classification.kind === 'inline' ? (
                     <div className="md-pdf-embed-frame-wrap pdf-node-view-frame-wrap">
-                        <div className="pdf-node-view-frame-inner">
-                            <iframe
-                                ref={frameRef}
-                                className="md-pdf-embed-frame"
-                                data-testid="pdf-node-view-frame"
-                                src={classification.href}
-                                title={label}
-                                loading="lazy"
-                                style={displayHeight ? { height: `${displayHeight}px` } : undefined}
-                            />
+                        <div className="pdf-node-view-frame-inner" ref={frameInnerRef}>
+                            {pdfJsFailed ? (
+                                <iframe
+                                    ref={frameRef}
+                                    className="md-pdf-embed-frame"
+                                    data-testid="pdf-node-view-frame"
+                                    src={classification.href}
+                                    title={label}
+                                    loading="lazy"
+                                    style={displayHeight ? { height: `${displayHeight}px` } : undefined}
+                                />
+                            ) : (
+                                <PdfJsRenderer
+                                    url={classification.href}
+                                    label={label}
+                                    height={displayHeight}
+                                    onError={handlePdfJsError}
+                                />
+                            )}
                             <div
                                 className="pdf-node-view-resize-handle"
                                 data-testid="pdf-node-view-resize-handle"
