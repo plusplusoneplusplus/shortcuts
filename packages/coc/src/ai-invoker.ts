@@ -21,6 +21,7 @@ import type {
     AIInvokerResult,
 } from '@plusplusoneplusplus/coc-workflow';
 import type {
+    Attachment,
     MCPServerConfig,
     SendMessageOptions,
 } from '@plusplusoneplusplus/forge';
@@ -50,6 +51,12 @@ export interface CLIAIInvokerOptions {
     onChunk?: (chunk: string) => void;
     /** Custom tools to expose to the AI session */
     tools?: Tool<any>[];
+    /**
+     * File/image attachments to include with the message (maps to
+     * {@link SendMessageOptions.attachments}). Used by the vision side-note path
+     * to attach a cropped region image to a one-shot lookup.
+     */
+    attachments?: Attachment[];
     /** Optional AI service override; if omitted, resolves via sdkServiceRegistry */
     aiService?: import('@plusplusoneplusplus/forge').ISDKService;
 }
@@ -117,6 +124,7 @@ export function createCLIAIInvoker(options: CLIAIInvokerOptions = {}): AIInvoker
                 mcpServers: options.mcpServers,
                 onStreamingChunk: options.onChunk,
                 tools: options.tools,
+                attachments: options.attachments,
                 onToolEvent: invokerOptions?.onToolEvent,
                 systemMessage: invokerOptions?.systemMessage,
                 signal: invokerOptions?.signal,

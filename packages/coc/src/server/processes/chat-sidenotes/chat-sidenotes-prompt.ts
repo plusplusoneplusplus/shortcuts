@@ -76,3 +76,40 @@ export function buildSideNotePrompt(input: SideNotePromptInput): string {
         `Question: ${ask}`,
     ].join('\n');
 }
+
+/** Grounding input for a figure/equation region-crop ask (Goal 4 AC-01). */
+export interface RegionAskPromptInput {
+    /** Optional custom question; defaults to a brief explanation of the region. */
+    question?: string;
+    /** Page text immediately before the region (grounding only). */
+    contextBefore?: string;
+    /** Page text immediately after the region (grounding only). */
+    contextAfter?: string;
+}
+
+/**
+ * Build the prompt for a figure/equation region-crop lookup.
+ *
+ * The cropped region is delivered as an image attachment, not text, so the
+ * prompt tells the model to read the attached image and (optionally) grounds it
+ * on any page text captured around the box.
+ */
+export function buildRegionAskPrompt(input: RegionAskPromptInput): string {
+    const before = truncate(input.contextBefore ?? '', MAX_CONTEXT_CHARS);
+    const after = truncate(input.contextAfter ?? '', MAX_CONTEXT_CHARS);
+    const context = [before, after].filter(Boolean).join(' … ');
+
+    const ask = input.question?.trim()
+        ? input.question.trim()
+        : 'Explain this figure or equation from the paper in 1-3 sentences.';
+
+    const lines = [
+        'You are answering a question about a figure or equation region cropped from a research paper.',
+        'The cropped region is attached as an image. Read it and answer concisely in Markdown. Do not restate the question. No preamble.',
+    ];
+    if (context) {
+        lines.push('', 'Nearby page text (for context):', context);
+    }
+    lines.push('', `Question: ${ask}`);
+    return lines.join('\n');
+}

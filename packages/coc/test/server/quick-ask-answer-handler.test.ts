@@ -7,9 +7,15 @@ import { createRouter } from '../../src/server/shared/router';
 import type { Route } from '../../src/server/types';
 import { registerQuickAskAnswerRoutes } from '../../src/server/processes/chat-sidenotes/quick-ask-answer-handler';
 import type { SideNoteAIInvoke } from '../../src/server/processes/chat-sidenotes/chat-sidenotes-handler';
+import type { SideNoteVisionInvoke } from '../../src/server/processes/chat-sidenotes/chat-sidenotes-ai';
 import { PAPERS_DIR } from '../../src/server/notes/paper-ingest-handler';
 
 const WS_ID = 'ws-1';
+
+// Minimal valid 1x1 PNG (base64) — decodes to a real buffer so the vision path
+// writes a temp `.png` and passes it to the (injected) vision invoker.
+const TINY_PNG_DATA_URL =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
 function fakeStore(rootPath: string): any {
     return { getWorkspaces: async () => [{ id: WS_ID, name: 'Test', rootPath }] };
@@ -18,11 +24,18 @@ function fakeStore(rootPath: string): any {
 async function startServer(opts: {
     enabled?: boolean;
     invokeAI?: SideNoteAIInvoke;
+    invokeVision?: SideNoteVisionInvoke;
     withStore?: boolean;
     /** Seed a default-root paper text sidecar `.papers/<id>.txt`. */
     paperText?: string;
     paperId?: string;
-}): Promise<{ baseUrl: string; dataDir: string; lastPrompt: () => string | undefined; close: () => Promise<void> }> {
+}): Promise<{
+    baseUrl: string;
+    dataDir: string;
+    lastPrompt: () => string | undefined;
+    lastVision: () => { prompt: string; imagePaths: string[] } | undefined;
+    close: () => Promise<void>;
+}> {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-quick-ask-answer-'));
     if (opts.paperText !== undefined) {
         const papersDir = path.join(dataDir, 'repos', WS_ID, 'notes', PAPERS_DIR);
@@ -31,9 +44,14 @@ async function startServer(opts: {
     }
     const routes: Route[] = [];
     let lastPrompt: string | undefined;
+    let lastVision: { prompt: string; imagePaths: string[] } | undefined;
     const invokeAI: SideNoteAIInvoke = opts.invokeAI ?? (async (prompt: string) => {
         lastPrompt = prompt;
         return { success: true, response: 'answer text' };
+    });
+    const invokeVision: SideNoteVisionInvoke = opts.invokeVision ?? (async (prompt, imagePaths) => {
+        lastVision = { prompt, imagePaths };
+        return { success: true, response: 'vision answer' };
     });
     registerQuickAskAnswerRoutes({
         routes,
@@ -41,6 +59,7 @@ async function startServer(opts: {
         store: opts.withStore ?? true ? fakeStore('/tmp/ws') : undefined,
         getEnabled: () => opts.enabled ?? true,
         invokeAI,
+        invokeVision,
     });
     const server = http.createServer(createRouter({ routes, spaHtml: '' }));
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -50,6 +69,7 @@ async function startServer(opts: {
         baseUrl: `http://127.0.0.1:${address.port}`,
         dataDir,
         lastPrompt: () => lastPrompt,
+        lastVision: () => lastVision,
         close: () => new Promise<void>((resolve, reject) => server.close(err => {
             fs.rmSync(dataDir, { recursive: true, force: true });
             err ? reject(err) : resolve();
@@ -169,5 +189,91 @@ describe('quick-ask answer route', () => {
         expect(r.status).toBe(200);
         expect(r.body.usedFullPaper).toBe(false);
         expect(s.lastPrompt()).not.toContain('Full paper text:');
+    });
+
+    describe('region/figure vision path (Goal 4 AC-01)', () => {
+        it('answers a region crop via the vision invoker with the image attached', async () => {
+            const s = await startServer({});
+            servers.push(s);
+            const r = await req(s.baseUrl, 'POST', answerPath, {
+                image: TINY_PNG_DATA_URL,
+                question: 'What does this figure show?',
+            });
+            expect(r.status).toBe(200);
+            expect(r.body.answer).toBe('vision answer');
+            expect(r.body.usedVision).toBe(true);
+            // No text selection was required; the vision invoker got a real temp .png.
+            const vision = s.lastVision();
+            expect(vision).toBeTruthy();
+            expect(vision?.imagePaths).toHaveLength(1);
+            expect(vision?.imagePaths[0]).toMatch(/\.png$/);
+            expect(vision?.prompt).toContain('What does this figure show?');
+            expect(vision?.prompt).toContain('attached as an image');
+        });
+
+        it('does not require a text selection for the vision path', async () => {
+            // No selectedText at all — a figure region has none.
+            const s = await startServer({});
+            servers.push(s);
+            const r = await req(s.baseUrl, 'POST', answerPath, { image: TINY_PNG_DATA_URL });
+            expect(r.status).toBe(200);
+            expect(r.body.usedVision).toBe(true);
+        });
+
+        it('grounds the vision prompt on nearby page text when provided', async () => {
+            const s = await startServer({});
+            servers.push(s);
+            await req(s.baseUrl, 'POST', answerPath, {
+                image: TINY_PNG_DATA_URL,
+                contextBefore: 'Figure 3 illustrates',
+                contextAfter: 'the convergence rate.',
+            });
+            const prompt = s.lastVision()?.prompt ?? '';
+            expect(prompt).toContain('Nearby page text');
+            expect(prompt).toContain('Figure 3 illustrates');
+            expect(prompt).toContain('the convergence rate.');
+        });
+
+        it('cleans up the temp image directory after answering', async () => {
+            let capturedPath: string | undefined;
+            const s = await startServer({
+                invokeVision: async (_prompt, imagePaths) => {
+                    capturedPath = imagePaths[0];
+                    return { success: true, response: 'ok' };
+                },
+            });
+            servers.push(s);
+            await req(s.baseUrl, 'POST', answerPath, { image: TINY_PNG_DATA_URL });
+            expect(capturedPath).toBeTruthy();
+            // The temp file (and its dir) are removed once the response is sent.
+            expect(fs.existsSync(capturedPath!)).toBe(false);
+        });
+
+        it('returns 400 for a non-image string in the image field', async () => {
+            const s = await startServer({});
+            servers.push(s);
+            const r = await req(s.baseUrl, 'POST', answerPath, { image: 'not-a-data-url' });
+            expect(r.status).toBe(400);
+        });
+
+        it('maps vision unavailability to 503 and failure to 502', async () => {
+            const unavailable = await startServer({
+                invokeVision: async () => ({ success: false, error: 'AI service unavailable', unavailable: true }),
+            });
+            servers.push(unavailable);
+            expect((await req(unavailable.baseUrl, 'POST', answerPath, { image: TINY_PNG_DATA_URL })).status).toBe(503);
+
+            const failed = await startServer({
+                invokeVision: async () => ({ success: false, error: 'AI request failed', unavailable: false }),
+            });
+            servers.push(failed);
+            expect((await req(failed.baseUrl, 'POST', answerPath, { image: TINY_PNG_DATA_URL })).status).toBe(502);
+        });
+
+        it('is gated by the feature flag', async () => {
+            const s = await startServer({ enabled: false });
+            servers.push(s);
+            expect((await req(s.baseUrl, 'POST', answerPath, { image: TINY_PNG_DATA_URL })).status).toBe(404);
+        });
     });
 });

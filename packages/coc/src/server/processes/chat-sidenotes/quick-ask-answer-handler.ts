@@ -14,6 +14,11 @@
  *     body: { selectedText, contextBefore?, contextAfter?, question? }
  *     → 200 { answer, model }
  *
+ * A `{ image }` base64 data URL in the body switches to the figure/equation
+ * region vision path (Goal 4, AC-01): the crop is written to a temp `.png`,
+ * attached to a one-shot lookup, and read by a vision-capable model. No text
+ * selection is required for that path.
+ *
  * Cross-platform; pure Node.js.
  */
 
@@ -23,10 +28,12 @@ import { sendJSON, sendError, parseQueryParams } from '../../core/api-handler';
 import { parseBodyOrReject } from '../../shared/handler-utils';
 import { isValidWorkspaceId } from '../../tasks/comments/base-comments-manager';
 import { resolveDefaultModel } from '../../preferences/repository';
-import { buildSideNotePrompt } from './chat-sidenotes-prompt';
-import { invokeSideNoteAI } from './chat-sidenotes-ai';
+import { buildSideNotePrompt, buildRegionAskPrompt } from './chat-sidenotes-prompt';
+import { invokeSideNoteAI, invokeSideNoteVisionAI } from './chat-sidenotes-ai';
+import type { SideNoteVisionInvoke } from './chat-sidenotes-ai';
 import type { SideNoteAIInvoke } from './chat-sidenotes-handler';
 import { readPaperText } from '../../notes/paper-text-read';
+import { isImageDataUrl, saveImagesToTempFiles, cleanupTempDir } from '../../core/image-utils';
 
 /** Minimum selectable length that produces an answer (parity with the persisted route). */
 const MIN_SELECTION_CHARS = 2;
@@ -42,6 +49,8 @@ export interface QuickAskAnswerRouteOptions {
     getEnabled: () => boolean;
     /** AI invoker override (defaults to the one-shot CLI invoker). */
     invokeAI?: SideNoteAIInvoke;
+    /** Vision invoker override for region-crop asks (defaults to the CLI vision invoker). */
+    invokeVision?: SideNoteVisionInvoke;
     /**
      * Process store, used only to resolve the notes root for the optional
      * whole-paper grounding path (Goal 3, AC-04). When absent, `useFullPaper`
@@ -56,6 +65,7 @@ export interface QuickAskAnswerRouteOptions {
 export function registerQuickAskAnswerRoutes(opts: QuickAskAnswerRouteOptions): void {
     const { routes, dataDir, getEnabled, store } = opts;
     const invokeAI: SideNoteAIInvoke = opts.invokeAI ?? invokeSideNoteAI;
+    const invokeVision: SideNoteVisionInvoke = opts.invokeVision ?? invokeSideNoteVisionAI;
 
     // POST /api/quick-ask/answer
     routes.push({
@@ -69,6 +79,48 @@ export function registerQuickAskAnswerRoutes(opts: QuickAskAnswerRouteOptions): 
             }
             const body = await parseBodyOrReject(req, res);
             if (body === null) {return;}
+
+            // Region/figure vision path (Goal 4, AC-01): the client sends a base64
+            // image crop of a drag-a-box region (which has no selectable text). We
+            // decode it to a temp `.png`, attach it, and let a vision-capable model
+            // read it. This branch runs before the text-selection guard because a
+            // region carries no `selectedText`.
+            if (typeof body.image === 'string' && body.image.length > 0) {
+                if (!isImageDataUrl(body.image)) {
+                    return sendError(res, 400, 'Invalid image');
+                }
+                const { tempDir, attachments } = saveImagesToTempFiles([body.image]);
+                try {
+                    if (attachments.length === 0) {
+                        return sendError(res, 400, 'Invalid or oversized image');
+                    }
+                    const regionQuestion = typeof body.question === 'string' && body.question.trim()
+                        ? body.question.trim() : undefined;
+                    const regionModel = resolveDefaultModel(dataDir, workspaceId, 'quickAsk');
+                    const regionPrompt = buildRegionAskPrompt({
+                        question: regionQuestion,
+                        contextBefore: typeof body.contextBefore === 'string'
+                            ? body.contextBefore.slice(-MAX_CONTEXT_CHARS) : '',
+                        contextAfter: typeof body.contextAfter === 'string'
+                            ? body.contextAfter.slice(0, MAX_CONTEXT_CHARS) : '',
+                    });
+                    const visionResult = await invokeVision(
+                        regionPrompt,
+                        attachments.map(a => a.path),
+                        regionModel,
+                    );
+                    if (!visionResult.success) {
+                        return sendError(res, visionResult.unavailable ? 503 : 502, visionResult.error);
+                    }
+                    return sendJSON(res, 200, {
+                        answer: visionResult.response,
+                        model: regionModel,
+                        usedVision: true,
+                    });
+                } finally {
+                    cleanupTempDir(tempDir);
+                }
+            }
 
             const selectedText: string = typeof body.selectedText === 'string' ? body.selectedText : '';
             const trimmedSelection = selectedText.trim();
