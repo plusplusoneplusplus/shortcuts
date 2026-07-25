@@ -463,6 +463,31 @@ describe('RepoGitTab', () => {
         it('passes lastRefreshedAt to GitPanelHeader', () => {
             expect(source).toContain('lastRefreshedAt={lastRefreshedAt}');
         });
+
+        it('passes autoPull + onAutoPullChange to GitPanelHeader', () => {
+            expect(source).toContain('autoPull={autoPull}');
+            expect(source).toContain('onAutoPullChange={handleAutoPullChange}');
+        });
+    });
+
+    describe('auto-pull preference (AC-2)', () => {
+        it('declares autoPull state typed as AutoPullSetting | undefined', () => {
+            expect(source).toContain('const [autoPull, setAutoPull] = useState<AutoPullSetting | undefined>(undefined)');
+        });
+
+        it('reads the persisted autoPull setting from repo preferences', () => {
+            expect(source).toContain('if (prefs?.autoPull)');
+            expect(source).toContain('setAutoPull(prefs.autoPull)');
+        });
+
+        it('resets autoPull on workspace change before re-reading prefs', () => {
+            expect(source).toContain('setAutoPull(undefined)');
+        });
+
+        it('persists interval changes via patchRepo with the full autoPull object', () => {
+            expect(source).toContain('const handleAutoPullChange = useCallback((next: AutoPullSetting)');
+            expect(source).toContain('cloneClient.preferences.patchRepo(workspaceId, { autoPull: next })');
+        });
     });
 
     describe('lastRefreshedAt state', () => {

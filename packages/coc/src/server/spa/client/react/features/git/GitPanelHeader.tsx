@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { formatRelativeTime } from '../../utils/format';
+import { GitAutoPullControl, type AutoPullSetting } from './GitAutoPullControl';
 
 interface GitPanelHeaderProps {
     branch: string;
@@ -23,6 +24,13 @@ interface GitPanelHeaderProps {
     pulling?: boolean;
     pushing?: boolean;
     rebasing?: boolean;
+    /**
+     * Current per-repo auto-pull setting. When `onAutoPullChange` is also
+     * provided, an interval selector (Off / presets / custom) renders next to
+     * the Pull split-button. Omit the handler to hide the control entirely.
+     */
+    autoPull?: AutoPullSetting;
+    onAutoPullChange?: (next: AutoPullSetting) => void;
     lastRefreshedAt?: number | null;
     /**
      * Slim single-row variant for when the toolbar is hoisted into the
@@ -35,7 +43,7 @@ interface GitPanelHeaderProps {
 
 const spinKeyframes = `@keyframes gitRefreshSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .git-refresh-spin { animation: gitRefreshSpin 1s linear infinite; }`;
 
-export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, onBranchClick, onFetch, onPull, onPush, onRebaseAutosquash, fetching, pulling, pushing, rebasing, lastRefreshedAt, compact }: GitPanelHeaderProps) {
+export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, onBranchClick, onFetch, onPull, onPush, onRebaseAutosquash, fetching, pulling, pushing, rebasing, autoPull, onAutoPullChange, lastRefreshedAt, compact }: GitPanelHeaderProps) {
     const hasAheadBehind = ahead > 0 || behind > 0;
     const hasAnyAction = onFetch || onPull || onPush || onRebaseAutosquash;
     const isActioning = fetching || pulling || pushing || rebasing;
@@ -221,6 +229,15 @@ export function GitPanelHeader({ branch, ahead, behind, refreshing, onRefresh, o
                         </div>
                     )}
                 </div>
+            )}
+
+            {/* Auto-pull interval selector (per-repo). Hidden unless a change handler is wired. */}
+            {onAutoPullChange && (
+                <GitAutoPullControl
+                    value={autoPull}
+                    onChange={onAutoPullChange}
+                    compact={compact}
+                />
             )}
 
             {/* Last refreshed timestamp */}

@@ -29,6 +29,7 @@ import { BranchChanges } from './branches/BranchChanges';
 import { FileDiffPanel } from './diff/FileDiffPanel';
 import { createCommitDiffSource, createBranchRangeDiffSource } from './diff/diffSource';
 import { GitPanelHeader } from './GitPanelHeader';
+import type { AutoPullSetting } from './GitAutoPullControl';
 import { WorkingTree } from './working-tree/WorkingTree';
 import { WorktreeList } from './working-tree/WorktreeList';
 import { WorkingTreeFileDiff } from './working-tree/WorkingTreeFileDiff';
@@ -253,6 +254,10 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
 
     // Last-refreshed timestamp (epoch ms) — updated after any successful git data fetch
     const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(null);
+
+    // Per-repo auto-pull setting (opt-in; off by default). Read from prefs on
+    // mount / workspace change and patched back when the user picks an interval.
+    const [autoPull, setAutoPull] = useState<AutoPullSetting | undefined>(undefined);
 
     // Reorder state: pendingReorder holds the new commit order before user confirms
     const [pendingReorder, setPendingReorder] = useState<GitCommitItem[] | null>(null);
@@ -491,16 +496,27 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
             .catch(() => {});
     }, [workspaceId]);
 
-    // Fetch commit-scoped skill usage map per workspace
+    // Fetch commit-scoped skill usage map + auto-pull setting per workspace
     useEffect(() => {
         setCommitSkillUsageMap({});
+        setAutoPull(undefined);
         cloneClient.preferences.getRepo(workspaceId)
             .then(prefs => {
                 if (prefs?.commitSkillUsageMap) {
                     setCommitSkillUsageMap(prefs.commitSkillUsageMap);
                 }
+                if (prefs?.autoPull) {
+                    setAutoPull(prefs.autoPull);
+                }
             })
             .catch(() => {});
+    }, [workspaceId]);
+
+    // Persist an auto-pull interval change per repo, then reflect it locally so
+    // the control (and, later, the timer) pick up the new value immediately.
+    const handleAutoPullChange = useCallback((next: AutoPullSetting) => {
+        setAutoPull(next);
+        cloneClient.preferences.patchRepo(workspaceId, { autoPull: next }).catch(() => {});
     }, [workspaceId]);
     useEffect(() => {
         if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
@@ -1838,6 +1854,8 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
             pulling={pulling}
             pushing={pushing}
             rebasing={rebasing}
+            autoPull={autoPull}
+            onAutoPullChange={handleAutoPullChange}
             lastRefreshedAt={lastRefreshedAt}
             compact={headerHoisted}
         />
