@@ -14,7 +14,15 @@ import { cn } from '../../../ui';
 import { getQuickAskSelection } from './quick-ask-selection';
 import { QuickAskPill } from './QuickAskPill';
 import { QuickAskSidenotePopover } from './QuickAskSidenotePopover';
+import { resolveSidenoteAnchor } from './sidenoteAnchoring';
+import {
+    clearSidenoteHighlights,
+    flashTurn,
+    highlightSidenoteRange,
+    scrollElementIntoView,
+} from './sidenoteHighlight';
 import type { ClientSideNote, QuickAskSelection } from './types';
+import './sidenoteHighlight.css';
 
 export interface QuickAskTurnLayerProps {
     /** The assistant turn's rendered-content container. */
@@ -50,6 +58,12 @@ export function QuickAskTurnLayer({
     const [open, setOpen] = useState<OpenPopover | null>(null);
     const selectionRef = useRef<QuickAskSelection | null>(null);
     selectionRef.current = selection;
+    const openRef = useRef<OpenPopover | null>(open);
+    openRef.current = open;
+    // Id of the side-note whose source phrase currently carries the persistent
+    // highlight (null when nothing is highlighted). Drives the outside-click
+    // clearing below.
+    const [highlightId, setHighlightId] = useState<string | null>(null);
 
     const clearSelection = useCallback(() => setSelection(null), []);
 
@@ -111,10 +125,63 @@ export function QuickAskTurnLayer({
         setSelection(null);
     }, [onAsk]);
 
+    // Clicking a chip: (AC-01) locate + scroll-to + persistently highlight the
+    // source phrase — or, when it can't be located, scroll the turn into view
+    // and flash it once; and (AC-02) toggle the answer popover on the same click.
     const handleChipClick = useCallback((e: React.MouseEvent, id: string) => {
-        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-        setOpen(prev => (prev?.id === id ? null : { id, position: { top: rect.bottom + 6, left: rect.left } }));
-    }, []);
+        const chip = e.currentTarget as HTMLElement;
+        const rect = chip.getBoundingClientRect();
+        const container = containerRef.current;
+
+        // Any click clears the previous highlight first (covers both re-clicking
+        // the same chip and switching to a different chip).
+        clearSidenoteHighlights(container);
+
+        // Same chip re-clicked → close popover and clear highlight (toggle off).
+        if (openRef.current?.id === id) {
+            setOpen(null);
+            setHighlightId(null);
+            return;
+        }
+
+        const note = notes.find(n => n.id === id);
+        const resolution = container && note ? resolveSidenoteAnchor(container, note.anchor) : { located: false as const };
+        if (resolution.located) {
+            const spans = highlightSidenoteRange(container!, resolution.from, resolution.to);
+            scrollElementIntoView(spans[0] ?? container, { block: 'center', behavior: 'smooth' });
+            setHighlightId(id);
+        } else {
+            // Not located: fall back to scrolling the top of the turn into view
+            // and flashing the whole turn once (no silent no-op).
+            scrollElementIntoView(container, { block: 'start', behavior: 'smooth' });
+            flashTurn(container);
+            setHighlightId(null);
+        }
+
+        setOpen({ id, position: { top: rect.bottom + 6, left: rect.left } });
+    }, [containerRef, notes]);
+
+    // AC-01: a persistent highlight clears when the user clicks anywhere that is
+    // not a side-note chip (chips manage their own highlight) and not inside the
+    // open answer popover (so reading the answer doesn't dismiss the highlight).
+    useEffect(() => {
+        if (!highlightId) {return;}
+        const onDown = (ev: MouseEvent) => {
+            const target = ev.target as HTMLElement | null;
+            if (target?.closest('[data-testid^="quick-ask-chip"]')) {return;}
+            if (target?.closest('[data-testid="quick-ask-popover"]')) {return;}
+            clearSidenoteHighlights(containerRef.current);
+            setHighlightId(null);
+        };
+        document.addEventListener('mousedown', onDown);
+        return () => document.removeEventListener('mousedown', onDown);
+    }, [highlightId, containerRef]);
+
+    // Drop the highlight if this turn unmounts or its notes change out from under
+    // it (e.g. a re-render moves/removes the highlighted source).
+    useEffect(() => {
+        return () => clearSidenoteHighlights(containerRef.current);
+    }, [containerRef]);
 
     const openNote = open ? notes.find(n => n.id === open.id) ?? null : null;
 
@@ -173,7 +240,11 @@ export function QuickAskTurnLayer({
                 <QuickAskSidenotePopover
                     note={openNote}
                     position={open.position}
-                    onClose={() => setOpen(null)}
+                    onClose={() => {
+                        setOpen(null);
+                        clearSidenoteHighlights(containerRef.current);
+                        setHighlightId(null);
+                    }}
                     onCopy={onCopy}
                     onRetry={onRetry}
                     onDelete={onDelete}
