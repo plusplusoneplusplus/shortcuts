@@ -85,6 +85,9 @@ interface OpenAnnotation {
     position: { top: number; left: number };
 }
 
+/** Which annotations the reader shows. Resolved are hidden by default (AC-02). */
+type AnnotationFilter = 'open' | 'resolved' | 'all';
+
 export function PdfAnnotationsLayer({
     containerRef,
     workspaceId,
@@ -93,7 +96,7 @@ export function PdfAnnotationsLayer({
     getNoteRoot,
 }: PdfAnnotationsLayerProps) {
     const enabled = useQuickAskSidenotesEnabled() && !!workspaceId;
-    const { annotations, removeLocal } = usePaperAnnotations(
+    const { annotations, removeLocal, setResolved } = usePaperAnnotations(
         workspaceId,
         getNotePath,
         getNoteRoot,
@@ -103,10 +106,28 @@ export function PdfAnnotationsLayer({
     const [orphans, setOrphans] = useState<PaperAnnotation[]>([]);
     const [open, setOpen] = useState<OpenAnnotation | null>(null);
     const [exporting, setExporting] = useState(false);
+    const [filter, setFilter] = useState<AnnotationFilter>('open');
 
     const forThisPdf = useMemo(
         () => annotationsForPdf(annotations, pdfUrl),
         [annotations, pdfUrl],
+    );
+    const openCount = useMemo(() => forThisPdf.filter(a => !a.resolved).length, [forThisPdf]);
+    const resolvedCount = forThisPdf.length - openCount;
+
+    // Annotations actually painted for the current filter. Resolved ones are
+    // hidden under the default 'open' filter (AC-02).
+    const visible = useMemo(
+        () => forThisPdf.filter(a =>
+            filter === 'all' ? true : filter === 'resolved' ? !!a.resolved : !a.resolved),
+        [forThisPdf, filter],
+    );
+
+    // Resolved state of the annotation whose answer is currently open, so the
+    // popover can offer Resolve vs Reopen.
+    const openResolved = useMemo(
+        () => (open ? !!annotations.find(a => a.id === open.note.id)?.resolved : false),
+        [open, annotations],
     );
 
     const openFromElement = useCallback((ann: PaperAnnotation, el: HTMLElement) => {
@@ -126,7 +147,7 @@ export function PdfAnnotationsLayer({
             return;
         }
         const nextOrphans: PaperAnnotation[] = [];
-        for (const ann of forThisPdf) {
+        for (const ann of visible) {
             let anchored = false;
             const label = labelFor(ann.quote.selectedText);
             if (ann.position) {
@@ -137,7 +158,13 @@ export function PdfAnnotationsLayer({
                     label,
                     el => openFromElement(ann, el),
                 );
-                if (boxes.length) {anchored = true;}
+                if (boxes.length) {
+                    // Resolved highlights are shown greyed-out (AC-02).
+                    if (ann.resolved) {
+                        boxes.forEach(b => b.classList.add('paper-annotation-overlay-resolved'));
+                    }
+                    anchored = true;
+                }
             }
             const res = resolveSidenoteAnchor(container, {
                 selectedText: ann.quote.selectedText,
@@ -146,17 +173,20 @@ export function PdfAnnotationsLayer({
                 fingerprint: '',
             });
             if (res.located) {
-                injectInlineChip(container, res.range, {
+                const chip = injectInlineChip(container, res.range, {
                     id: ann.id,
                     label,
                     onActivate: chip => openFromElement(ann, chip),
                 });
+                if (chip && ann.resolved) {
+                    chip.classList.add('paper-annotation-chip-resolved');
+                }
                 anchored = true;
             }
             if (!anchored) {nextOrphans.push(ann);}
         }
         setOrphans(nextOrphans);
-    }, [containerRef, enabled, forThisPdf, openFromElement]);
+    }, [containerRef, enabled, visible, openFromElement]);
 
     // Run resolution now and whenever the pdf.js render mutates (pages arrive
     // asynchronously). The observer is disconnected while we inject our own
@@ -219,6 +249,12 @@ export function PdfAnnotationsLayer({
         setOpen(null);
     }, [workspaceId, getNotePath, getNoteRoot, removeLocal]);
 
+    // Resolve / reopen the annotation (Goal 4 AC-02). The hook updates local
+    // state optimistically and PATCHes the sidecar; the popover closes itself.
+    const handleToggleResolved = useCallback((id: string, resolved: boolean) => {
+        setResolved(id, resolved);
+    }, [setResolved]);
+
     // Export this note's paper annotations (all papers) as a downloaded `.md`.
     // The server route renders the full sidecar; offered once per paper that has
     // annotations. Best-effort — a failed fetch just leaves nothing downloaded.
@@ -241,6 +277,40 @@ export function PdfAnnotationsLayer({
         <>
             {forThisPdf.length > 0 && (
                 <div className="paper-annotation-actions" data-testid="paper-annotation-actions">
+                    <div
+                        className="paper-annotation-filter"
+                        data-testid="paper-annotation-filter"
+                        role="group"
+                        aria-label="Filter paper annotations"
+                    >
+                        <button
+                            type="button"
+                            className={`paper-annotation-filter-btn${filter === 'open' ? ' is-active' : ''}`}
+                            data-testid="paper-annotation-filter-open"
+                            aria-pressed={filter === 'open'}
+                            onClick={() => setFilter('open')}
+                        >
+                            Open ({openCount})
+                        </button>
+                        <button
+                            type="button"
+                            className={`paper-annotation-filter-btn${filter === 'resolved' ? ' is-active' : ''}`}
+                            data-testid="paper-annotation-filter-resolved"
+                            aria-pressed={filter === 'resolved'}
+                            onClick={() => setFilter('resolved')}
+                        >
+                            Resolved ({resolvedCount})
+                        </button>
+                        <button
+                            type="button"
+                            className={`paper-annotation-filter-btn${filter === 'all' ? ' is-active' : ''}`}
+                            data-testid="paper-annotation-filter-all"
+                            aria-pressed={filter === 'all'}
+                            onClick={() => setFilter('all')}
+                        >
+                            All ({forThisPdf.length})
+                        </button>
+                    </div>
                     <button
                         type="button"
                         className="paper-annotation-export"
@@ -282,6 +352,7 @@ export function PdfAnnotationsLayer({
                     onCopy={handleCopy}
                     onRetry={handleRetry}
                     onDelete={handleDelete}
+                    resolve={{ resolved: openResolved, onToggle: handleToggleResolved }}
                 />
             )}
         </>

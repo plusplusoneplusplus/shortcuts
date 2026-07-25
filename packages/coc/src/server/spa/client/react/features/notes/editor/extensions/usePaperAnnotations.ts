@@ -29,6 +29,12 @@ export interface UsePaperAnnotationsResult {
     reload: () => void;
     /** Drop one annotation from local state after a successful delete. */
     removeLocal: (id: string) => void;
+    /**
+     * Optimistically mark an annotation resolved / reopened (Goal 4 AC-02) and
+     * PATCH the sidecar. Best-effort — a failed request re-loads from the server
+     * so local state can never drift from the persisted file.
+     */
+    setResolved: (id: string, resolved: boolean) => void;
 }
 
 export function usePaperAnnotations(
@@ -87,5 +93,32 @@ export function usePaperAnnotations(
         setAnnotations(prev => prev.filter(a => a.id !== id));
     }, []);
 
-    return { annotations, reload, removeLocal };
+    const setResolved = useCallback((id: string, resolved: boolean) => {
+        const now = new Date().toISOString();
+        // Optimistic local update so the filter + chip react immediately. On
+        // reopen we clear both fields to mirror the server (delete resolved*).
+        setAnnotations(prev => prev.map(a => a.id !== id
+            ? a
+            : resolved
+                ? { ...a, resolved: true, resolvedAt: now, updatedAt: now }
+                : { ...a, resolved: undefined, resolvedAt: undefined, updatedAt: now }));
+
+        if (!enabled || !workspaceId) {return;}
+        const notePath = getNotePath?.();
+        if (!notePath) {return;}
+        const body: { path: string; resolved: boolean; root?: string } = { path: notePath, resolved };
+        const root = getNoteRoot?.();
+        if (root) {body.root = root;}
+        const apiPath = `/api/workspaces/${encodeURIComponent(workspaceId)}/notes/paper-annotations/annotation/${encodeURIComponent(id)}`;
+        void fetchApi(apiPath, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        }).catch(() => {
+            // Roll the optimistic change back to whatever the server actually has.
+            load();
+        });
+    }, [enabled, workspaceId, getNotePath, getNoteRoot, load]);
+
+    return { annotations, reload, removeLocal, setResolved };
 }

@@ -1094,14 +1094,65 @@
     background: #1e1e1e;
 }
 
-/* Goal 4 AC-03: export this note's paper annotations to a Markdown file. Shown
-   below the reader whenever the paper has at least one annotation. */
+/* Goal 4 AC-02/AC-03: annotation toolbar — open/resolved/all filter on the left,
+   export button on the right. Shown whenever the paper has ≥1 annotation. */
 .paper-annotation-actions {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
     padding: 6px 8px;
     border-top: 1px solid #e0e0e0;
     background: #fafafa;
+}
+
+/* Goal 4 AC-02: filter open / resolved / all. Resolved annotations are hidden
+   under the default 'open' filter and dimmed when shown. */
+.paper-annotation-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.paper-annotation-filter-btn {
+    padding: 2px 8px;
+    font-size: 11px;
+    border: 1px solid #e0e0e0;
+    border-radius: 9px;
+    background: transparent;
+    color: #616161;
+    cursor: pointer;
+}
+
+.paper-annotation-filter-btn:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.paper-annotation-filter-btn.is-active {
+    border-color: rgba(55, 148, 255, 0.5);
+    background: rgba(55, 148, 255, 0.12);
+    color: #3794ff;
+}
+
+.dark .paper-annotation-filter-btn {
+    border-color: #3c3c3c;
+    color: #cccccc;
+}
+
+.dark .paper-annotation-filter-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+/* A resolved annotation's chip / overlay, shown greyed-out under the resolved
+   or all filter. */
+.paper-annotation-chip-resolved {
+    opacity: 0.45;
+}
+
+.paper-annotation-overlay-resolved {
+    background: rgba(150, 150, 150, 0.22);
+    box-shadow: inset 0 -2px 0 rgba(150, 150, 150, 0.5);
 }
 
 .paper-annotation-export {

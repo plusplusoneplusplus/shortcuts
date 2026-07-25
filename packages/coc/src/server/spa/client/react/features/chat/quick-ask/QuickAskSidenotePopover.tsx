@@ -23,6 +23,14 @@ export interface QuickAskSidenotePopoverProps {
     onCopy: (note: ClientSideNote) => void;
     onRetry: (id: string) => void;
     onDelete: (id: string) => void;
+    /**
+     * Optional resolve/reopen control (paper annotations only, Goal 4 AC-02).
+     * Chat side-notes omit it → no button is rendered.
+     */
+    resolve?: {
+        resolved: boolean;
+        onToggle: (id: string, resolved: boolean) => void;
+    };
 }
 
 export function QuickAskSidenotePopover({
@@ -32,6 +40,7 @@ export function QuickAskSidenotePopover({
     onCopy,
     onRetry,
     onDelete,
+    resolve,
 }: QuickAskSidenotePopoverProps) {
     const ref = useRef<HTMLDivElement>(null);
     const [clampedPos, setClampedPos] = useState(position);
@@ -143,6 +152,16 @@ export function QuickAskSidenotePopover({
                 {note.status === 'ready' && (
                     <button className={ACTION_BTN} onClick={handleCopy} title="Copy answer" data-testid="quick-ask-popover-copy">
                         {copied ? '✓ Copied' : '⧉ Copy'}
+                    </button>
+                )}
+                {resolve && note.status === 'ready' && (
+                    <button
+                        className={ACTION_BTN}
+                        onClick={() => { resolve.onToggle(note.id, !resolve.resolved); onClose(); }}
+                        title={resolve.resolved ? 'Reopen this annotation' : 'Mark this annotation resolved'}
+                        data-testid="quick-ask-popover-resolve"
+                    >
+                        {resolve.resolved ? '↺ Reopen' : '✓ Resolve'}
                     </button>
                 )}
                 <button

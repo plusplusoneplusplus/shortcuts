@@ -114,3 +114,75 @@ describe('QuickAskSidenotePopover - AC-03 question rendering', () => {
         expect(screen.getByTestId('quick-ask-popover-answer')).toBeInTheDocument();
     });
 });
+
+describe('QuickAskSidenotePopover - resolve/reopen control (Goal 4 AC-02)', () => {
+    it('has no resolve button by default (chat side-notes)', () => {
+        render(
+            <QuickAskSidenotePopover
+                note={note()}
+                position={{ top: 100, left: 100 }}
+                onClose={noop}
+                onCopy={noop}
+                onRetry={noop}
+                onDelete={noop}
+            />,
+        );
+        expect(screen.queryByTestId('quick-ask-popover-resolve')).toBeNull();
+    });
+
+    it('shows "Resolve" for an open annotation and toggles it resolved on click', () => {
+        const onToggle = vi.fn();
+        const onClose = vi.fn();
+        render(
+            <QuickAskSidenotePopover
+                note={note()}
+                position={{ top: 100, left: 100 }}
+                onClose={onClose}
+                onCopy={noop}
+                onRetry={noop}
+                onDelete={noop}
+                resolve={{ resolved: false, onToggle }}
+            />,
+        );
+        const btn = screen.getByTestId('quick-ask-popover-resolve');
+        expect(btn).toHaveTextContent('Resolve');
+        fireEvent.click(btn);
+        expect(onToggle).toHaveBeenCalledWith('n1', true);
+        expect(onClose).toHaveBeenCalled();
+    });
+
+    it('shows "Reopen" for a resolved annotation and reopens it on click', () => {
+        const onToggle = vi.fn();
+        render(
+            <QuickAskSidenotePopover
+                note={note()}
+                position={{ top: 100, left: 100 }}
+                onClose={noop}
+                onCopy={noop}
+                onRetry={noop}
+                onDelete={noop}
+                resolve={{ resolved: true, onToggle }}
+            />,
+        );
+        const btn = screen.getByTestId('quick-ask-popover-resolve');
+        expect(btn).toHaveTextContent('Reopen');
+        fireEvent.click(btn);
+        expect(onToggle).toHaveBeenCalledWith('n1', false);
+    });
+
+    it('hides the resolve button while the answer is still loading', () => {
+        const onToggle = vi.fn();
+        render(
+            <QuickAskSidenotePopover
+                note={note({ status: 'asking' })}
+                position={{ top: 100, left: 100 }}
+                onClose={noop}
+                onCopy={noop}
+                onRetry={noop}
+                onDelete={noop}
+                resolve={{ resolved: false, onToggle }}
+            />,
+        );
+        expect(screen.queryByTestId('quick-ask-popover-resolve')).toBeNull();
+    });
+});

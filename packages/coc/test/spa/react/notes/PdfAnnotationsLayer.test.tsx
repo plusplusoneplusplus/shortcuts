@@ -224,6 +224,76 @@ describe('PdfAnnotationsLayer — export annotations (Goal 4 AC-03)', () => {
     });
 });
 
+describe('PdfAnnotationsLayer — resolve + filter (Goal 4 AC-02)', () => {
+    it('hides a resolved annotation under the default (open) filter', async () => {
+        fetchApiMock.mockResolvedValue(sidecar(annotation({ id: 'a1', resolved: true })));
+        render(<Harness />);
+        // Filter toolbar appears once the sidecar has loaded.
+        await screen.findByTestId('paper-annotation-filter');
+        expect(screen.getByTestId('paper-annotation-filter-open')).toHaveTextContent('Open (0)');
+        expect(screen.getByTestId('paper-annotation-filter-resolved')).toHaveTextContent('Resolved (1)');
+        // Its chip is not painted under the default view.
+        await act(async () => { await new Promise(r => setTimeout(r, 60)); });
+        expect(screen.queryByTestId('quick-ask-chip-inline')).toBeNull();
+    });
+
+    it('shows the resolved annotation, dimmed, when the Resolved filter is chosen', async () => {
+        fetchApiMock.mockResolvedValue(sidecar(annotation({ id: 'a1', resolved: true })));
+        render(<Harness />);
+        fireEvent.click(await screen.findByTestId('paper-annotation-filter-resolved'));
+        const chip = await screen.findByTestId('quick-ask-chip-inline');
+        expect(chip).toHaveClass('paper-annotation-chip-resolved');
+    });
+
+    it('resolving an open annotation PATCHes the sidecar and hides its chip', async () => {
+        fetchApiMock.mockResolvedValue(sidecar(annotation({ id: 'a1' })));
+        render(<Harness />);
+        const chip = await screen.findByTestId('quick-ask-chip-inline');
+        fireEvent.click(chip);
+
+        const resolveBtn = await screen.findByTestId('quick-ask-popover-resolve');
+        expect(resolveBtn).toHaveTextContent('Resolve');
+
+        fetchApiMock.mockResolvedValue({ annotation: annotation({ id: 'a1', resolved: true }) });
+        fireEvent.click(resolveBtn);
+
+        await waitFor(() => {
+            const patch = fetchApiMock.mock.calls.find(
+                ([, o]) => (o as RequestInit | undefined)?.method === 'PATCH');
+            expect(patch).toBeTruthy();
+            expect(String(patch![0])).toContain('/paper-annotations/annotation/a1');
+            expect(JSON.parse(String((patch![1] as RequestInit).body))).toMatchObject({
+                path: 'papers/deep.md',
+                resolved: true,
+            });
+        });
+        // Optimistic update drops it out of the default (open) view.
+        await waitFor(() => expect(screen.queryByTestId('quick-ask-chip-inline')).toBeNull());
+    });
+
+    it('reopening a resolved annotation PATCHes resolved:false', async () => {
+        fetchApiMock.mockResolvedValue(sidecar(annotation({ id: 'a1', resolved: true })));
+        render(<Harness />);
+        fireEvent.click(await screen.findByTestId('paper-annotation-filter-resolved'));
+        const chip = await screen.findByTestId('quick-ask-chip-inline');
+        fireEvent.click(chip);
+
+        const reopenBtn = await screen.findByTestId('quick-ask-popover-resolve');
+        expect(reopenBtn).toHaveTextContent('Reopen');
+
+        fireEvent.click(reopenBtn);
+        await waitFor(() => {
+            const patch = fetchApiMock.mock.calls.find(
+                ([, o]) => (o as RequestInit | undefined)?.method === 'PATCH');
+            expect(patch).toBeTruthy();
+            expect(JSON.parse(String((patch![1] as RequestInit).body))).toMatchObject({
+                path: 'papers/deep.md',
+                resolved: false,
+            });
+        });
+    });
+});
+
 describe('PdfAnnotationsLayer — reload + gating', () => {
     it('reloads the sidecar when a new annotation is persisted', async () => {
         render(<Harness />);
