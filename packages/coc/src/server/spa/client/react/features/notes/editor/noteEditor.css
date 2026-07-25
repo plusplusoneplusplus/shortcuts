@@ -1094,6 +1094,43 @@
     background: #1e1e1e;
 }
 
+/* Goal 4 AC-03: export this note's paper annotations to a Markdown file. Shown
+   below the reader whenever the paper has at least one annotation. */
+.paper-annotation-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 6px 8px;
+    border-top: 1px solid #e0e0e0;
+    background: #fafafa;
+}
+
+.paper-annotation-export {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px;
+    font-size: 11px;
+    border: 1px solid rgba(55, 148, 255, 0.35);
+    border-radius: 9px;
+    background: rgba(55, 148, 255, 0.1);
+    color: #3794ff;
+    cursor: pointer;
+}
+
+.paper-annotation-export:hover {
+    background: rgba(55, 148, 255, 0.18);
+}
+
+.paper-annotation-export:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.dark .paper-annotation-actions {
+    border-top-color: #3c3c3c;
+    background: #1e1e1e;
+}
+
 .dark .pdfjs-render-viewport {
     background: #1a1a1a;
 }

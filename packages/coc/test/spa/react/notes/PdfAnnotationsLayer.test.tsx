@@ -175,6 +175,55 @@ describe('PdfAnnotationsLayer — reopen + dismiss', () => {
     });
 });
 
+describe('PdfAnnotationsLayer — export annotations (Goal 4 AC-03)', () => {
+    it('shows the export button once the paper has an annotation', async () => {
+        fetchApiMock.mockResolvedValue(sidecar(annotation({ id: 'a1' })));
+        render(<Harness />);
+        expect(await screen.findByTestId('paper-annotations-export')).toBeInTheDocument();
+    });
+
+    it('hides the export button when the paper has no annotations', async () => {
+        fetchApiMock.mockResolvedValue(sidecar()); // empty
+        render(<Harness />);
+        await waitFor(() => expect(fetchApiMock).toHaveBeenCalled());
+        await act(async () => { await new Promise(r => setTimeout(r, 40)); });
+        expect(screen.queryByTestId('paper-annotations-export')).toBeNull();
+    });
+
+    it('GETs the export route and downloads the returned markdown on click', async () => {
+        fetchApiMock.mockResolvedValue(sidecar(annotation({ id: 'a1' })));
+
+        // jsdom does not implement the blob-URL primitives; stub them so the
+        // transient <a download> click path runs without throwing.
+        const createObjectURL = vi.fn(() => 'blob:paper');
+        const revokeObjectURL = vi.fn();
+        (URL as unknown as { createObjectURL: unknown }).createObjectURL = createObjectURL;
+        (URL as unknown as { revokeObjectURL: unknown }).revokeObjectURL = revokeObjectURL;
+        const clickSpy = vi
+            .spyOn(HTMLAnchorElement.prototype, 'click')
+            .mockImplementation(() => {});
+
+        render(<Harness />);
+        const exportBtn = await screen.findByTestId('paper-annotations-export');
+
+        fetchApiMock.mockResolvedValue({ markdown: '# Paper annotations\n', count: 1 });
+        fireEvent.click(exportBtn);
+
+        await waitFor(() => {
+            const call = fetchApiMock.mock.calls.find(([p]) =>
+                String(p).includes('/paper-annotations/export'));
+            expect(call).toBeTruthy();
+            expect(String(call![0])).toContain('path=papers%2Fdeep.md');
+        });
+        await waitFor(() => expect(clickSpy).toHaveBeenCalled());
+        expect(createObjectURL).toHaveBeenCalled();
+        expect(revokeObjectURL).toHaveBeenCalled();
+
+        delete (URL as unknown as { createObjectURL?: unknown }).createObjectURL;
+        delete (URL as unknown as { revokeObjectURL?: unknown }).revokeObjectURL;
+    });
+});
+
 describe('PdfAnnotationsLayer — reload + gating', () => {
     it('reloads the sidecar when a new annotation is persisted', async () => {
         render(<Harness />);

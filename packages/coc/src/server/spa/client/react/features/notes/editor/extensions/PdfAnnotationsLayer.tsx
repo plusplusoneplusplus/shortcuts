@@ -35,6 +35,12 @@ import {
     clearAnnotationOverlays,
     paintAnnotationOverlay,
 } from './paperAnnotationRender';
+import {
+    downloadMarkdown,
+    exportAnnotationsFilename,
+    paperAnnotationsExportUrl,
+    type PaperAnnotationsExportResponse,
+} from './paperAnnotationsExport';
 
 export interface PdfAnnotationsLayerProps {
     /** The pdf.js text-layer container the annotations were captured against. */
@@ -96,6 +102,7 @@ export function PdfAnnotationsLayer({
 
     const [orphans, setOrphans] = useState<PaperAnnotation[]>([]);
     const [open, setOpen] = useState<OpenAnnotation | null>(null);
+    const [exporting, setExporting] = useState(false);
 
     const forThisPdf = useMemo(
         () => annotationsForPdf(annotations, pdfUrl),
@@ -212,10 +219,41 @@ export function PdfAnnotationsLayer({
         setOpen(null);
     }, [workspaceId, getNotePath, getNoteRoot, removeLocal]);
 
+    // Export this note's paper annotations (all papers) as a downloaded `.md`.
+    // The server route renders the full sidecar; offered once per paper that has
+    // annotations. Best-effort — a failed fetch just leaves nothing downloaded.
+    const handleExport = useCallback(() => {
+        const notePath = getNotePath?.();
+        if (!workspaceId || !notePath) {return;}
+        setExporting(true);
+        const url = paperAnnotationsExportUrl(workspaceId, notePath, getNoteRoot?.());
+        fetchApi(url)
+            .then((data: PaperAnnotationsExportResponse) => {
+                downloadMarkdown(exportAnnotationsFilename(notePath), data?.markdown ?? '');
+            })
+            .catch(() => { /* best-effort */ })
+            .finally(() => setExporting(false));
+    }, [workspaceId, getNotePath, getNoteRoot]);
+
     if (!enabled) {return null;}
 
     return (
         <>
+            {forThisPdf.length > 0 && (
+                <div className="paper-annotation-actions" data-testid="paper-annotation-actions">
+                    <button
+                        type="button"
+                        className="paper-annotation-export"
+                        data-testid="paper-annotations-export"
+                        title="Export all paper annotations for this note to Markdown"
+                        onClick={handleExport}
+                        disabled={exporting}
+                    >
+                        ⬇ {exporting ? 'Exporting…' : 'Export annotations'}
+                    </button>
+                </div>
+            )}
+
             {orphans.length > 0 && (
                 <div className="paper-annotation-orphans" data-testid="paper-annotation-orphans">
                     <div className="paper-annotation-orphans-title">
