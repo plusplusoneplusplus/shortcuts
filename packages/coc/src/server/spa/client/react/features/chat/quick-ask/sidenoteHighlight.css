@@ -1,0 +1,68 @@
+/* Quick Ask side-note source highlight + fallback flash (AC-01).
+   The rendered assistant turn is plain markdown DOM, so the highlight is a
+   wrapper <span> injected around the matched text (see sidenoteHighlight.ts).
+   Styling echoes the Notes comment highlight for a consistent feel. */
+
+.quick-ask-sidenote-highlight {
+    background-color: rgba(255, 212, 0, 0.28);
+    border-bottom: 2px solid rgba(255, 212, 0, 0.65);
+    border-radius: 1px;
+    padding: 0.05rem 0;
+}
+
+/* Whole-turn flash used when a side-note's source can't be located (AC-04
+   fallback): a brief pulse so the click is never a silent no-op. */
+@keyframes quick-ask-sidenote-flash {
+    0%   { background-color: rgba(55, 148, 255, 0); }
+    25%  { background-color: rgba(55, 148, 255, 0.18); }
+    100% { background-color: rgba(55, 148, 255, 0); }
+}
+
+.quick-ask-sidenote-flash {
+    animation: quick-ask-sidenote-flash 1s ease-out;
+    border-radius: 4px;
+}
+
+/* Inline side-note chip (AC-03): a small clickable marker injected right after
+   the anchored source phrase inside the rendered turn (see sidenoteInlineChips.ts).
+   The 💡 glyph is a ::after pseudo-element so the chip contributes NO text node —
+   container.textContent stays clean for anchor resolution + selection capture. */
+.quick-ask-sidenote-inline-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: baseline;
+    box-sizing: border-box;
+    margin: 0 2px;
+    padding: 0 3px;
+    height: 15px;
+    min-width: 15px;
+    line-height: 1;
+    border-radius: 7px;
+    border: 1px solid rgba(55, 148, 255, 0.35);
+    background: rgba(55, 148, 255, 0.12);
+    color: #3794ff;
+    font-size: 9px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: transform 0.1s ease-out;
+}
+
+.quick-ask-sidenote-inline-chip::after {
+    content: '💡';
+}
+
+.quick-ask-sidenote-inline-chip:hover {
+    transform: translateY(-1px);
+}
+
+.quick-ask-sidenote-inline-chip-error {
+    border-color: rgba(239, 68, 68, 0.4);
+    background: rgba(239, 68, 68, 0.1);
+    color: #dc2626;
+}
+
+.quick-ask-sidenote-inline-chip-error::after {
+    content: '⚠';
+}

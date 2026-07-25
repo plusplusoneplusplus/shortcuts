@@ -29,6 +29,7 @@ import { BranchChanges } from './branches/BranchChanges';
 import { FileDiffPanel } from './diff/FileDiffPanel';
 import { createCommitDiffSource, createBranchRangeDiffSource } from './diff/diffSource';
 import { GitPanelHeader } from './GitPanelHeader';
+import type { AutoPullSetting } from './GitAutoPullControl';
 import { WorkingTree } from './working-tree/WorkingTree';
 import { WorktreeList } from './working-tree/WorktreeList';
 import { WorkingTreeFileDiff } from './working-tree/WorkingTreeFileDiff';
@@ -54,6 +55,8 @@ import type { ResolvedModalJobAiSelection } from '../../shared/ModalJobAiControl
 import { mergeAutoProviderRoutingContext } from '../../utils/providerSelection';
 import { useCommitClassificationStatus } from './hooks/useCommitClassificationStatus';
 import { useGitOperationPoller } from './hooks/useGitOperationPoller';
+import { useAutoPullTimer } from './hooks/useAutoPullTimer';
+import { runAutoPullTick, buildAutoPullPollerCallbacks } from './autoPullTick';
 import { useScopedFindShortcut } from '../../hooks/useScopedFindShortcut';
 
 /**
@@ -253,6 +256,13 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
 
     // Last-refreshed timestamp (epoch ms) — updated after any successful git data fetch
     const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(null);
+
+    // Per-repo auto-pull setting (opt-in; off by default). Read from prefs on
+    // mount / workspace change and patched back when the user picks an interval.
+    const [autoPull, setAutoPull] = useState<AutoPullSetting | undefined>(undefined);
+    // Bumped to restart the auto-pull countdown (manual pull / successful auto-pull),
+    // so the next tick is a full interval later rather than an immediate double-pull.
+    const [autoPullResetSignal, setAutoPullResetSignal] = useState(0);
 
     // Reorder state: pendingReorder holds the new commit order before user confirms
     const [pendingReorder, setPendingReorder] = useState<GitCommitItem[] | null>(null);
@@ -491,16 +501,27 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
             .catch(() => {});
     }, [workspaceId]);
 
-    // Fetch commit-scoped skill usage map per workspace
+    // Fetch commit-scoped skill usage map + auto-pull setting per workspace
     useEffect(() => {
         setCommitSkillUsageMap({});
+        setAutoPull(undefined);
         cloneClient.preferences.getRepo(workspaceId)
             .then(prefs => {
                 if (prefs?.commitSkillUsageMap) {
                     setCommitSkillUsageMap(prefs.commitSkillUsageMap);
                 }
+                if (prefs?.autoPull) {
+                    setAutoPull(prefs.autoPull);
+                }
             })
             .catch(() => {});
+    }, [workspaceId]);
+
+    // Persist an auto-pull interval change per repo, then reflect it locally so
+    // the control (and, later, the timer) pick up the new value immediately.
+    const handleAutoPullChange = useCallback((next: AutoPullSetting) => {
+        setAutoPull(next);
+        cloneClient.preferences.patchRepo(workspaceId, { autoPull: next }).catch(() => {});
     }, [workspaceId]);
     useEffect(() => {
         if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
@@ -670,6 +691,51 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [workspaceId]);
 
+    // ── Auto-pull (per-repo timer) ────────────────────────────────────────────
+    // Non-blocking bottom-right toast for auto-pull skips/failures. Reuses the
+    // shared enqueueToast surface; auto-dismisses so it never requires attention.
+    const showAutoPullToast = useCallback((message: string) => {
+        setEnqueueToast(message);
+        setTimeout(() => setEnqueueToast(null), 5000);
+    }, []);
+    // Restart the auto-pull countdown after a manual or successful pull.
+    const bumpAutoPullReset = useCallback(() => setAutoPullResetSignal(n => n + 1), []);
+
+    // Poll an auto-pull job: success refreshes + resets the countdown; a failed
+    // job (non-fast-forward / conflict) shows a toast instead of the action banner.
+    const startAutoPullPolling = useCallback((jobId: string) => {
+        setPulling(true);
+        pullPoller.start(jobId, buildAutoPullPollerCallbacks({
+            setInFlight: setPulling,
+            onSuccess: () => { bumpAutoPullReset(); refreshAll(); },
+            onFailure: (message) => { showAutoPullToast(message); refreshAll(); },
+        }));
+    }, [pullPoller, refreshAll, bumpAutoPullReset, showAutoPullToast]);
+
+    // One timer tick: single-flight guard + dirty pre-check + the shared pull path.
+    const handleAutoPull = useCallback(() => {
+        void runAutoPullTick({
+            isPullInFlight: () => pulling || pullPoller.isPolling(),
+            getWorkingTreeChanges: () => cloneClient.git.getWorkingTreeChanges(workspaceId),
+            pull: () => cloneClient.git.pull(workspaceId, { rebase: true, currentBranchOnly: true }),
+            onJobStarted: startAutoPullPolling,
+            onSyncSuccess: () => { bumpAutoPullReset(); refreshAll(); },
+            onSkip: showAutoPullToast,
+            setInFlight: setPulling,
+        });
+    }, [pulling, pullPoller, cloneClient, workspaceId, startAutoPullPolling, bumpAutoPullReset, refreshAll, showAutoPullToast]);
+
+    // Arm the recurring timer from the persisted per-repo setting. The hook owns
+    // interval lifecycle (re-arm on interval/workspace/reset change, cleanup on
+    // unmount); handleAutoPull decides what each tick does.
+    useAutoPullTimer({
+        workspaceId,
+        enabled: !!autoPull?.enabled,
+        intervalMinutes: autoPull?.intervalMinutes,
+        onTick: handleAutoPull,
+        resetSignal: autoPullResetSignal,
+    });
+
     // Git action handlers
     const handleFetch = useCallback(async () => {
         if (fetching) return;
@@ -688,6 +754,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
 
     const handlePull = useCallback(async () => {
         if (pulling) return;
+        bumpAutoPullReset(); // a manual pull restarts the auto-pull countdown
         setPulling(true);
         setActionError(null);
         try {
@@ -705,7 +772,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
             setActionError(err.message || 'Pull failed');
             setPulling(false);
         }
-    }, [pulling, workspaceId, refreshAll, startPullPolling]);
+    }, [pulling, workspaceId, refreshAll, startPullPolling, bumpAutoPullReset]);
 
     const handlePush = useCallback(async () => {
         if (pushing) return;
@@ -1838,6 +1905,8 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
             pulling={pulling}
             pushing={pushing}
             rebasing={rebasing}
+            autoPull={autoPull}
+            onAutoPullChange={handleAutoPullChange}
             lastRefreshedAt={lastRefreshedAt}
             compact={headerHoisted}
         />

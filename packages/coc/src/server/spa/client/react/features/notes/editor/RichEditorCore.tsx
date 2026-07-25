@@ -26,6 +26,8 @@ import { MermaidBlock } from './extensions/mermaidBlock';
 import { MathInline, MathDisplay } from './extensions/mathNode';
 import { MapBlock } from './extensions/mapBlock';
 import { PdfBlock } from './extensions/pdfBlock';
+import type { PdfFullWindowRequest } from './extensions/pdfBlock';
+import { PdfPopupDialog } from './extensions/PdfPopupDialog';
 import { CommentExtension } from './extensions/commentExtension';
 import { AiEditDecorationExtension } from './extensions/AiEditDecorationExtension';
 import { YouTubeEmbedDecorationExtension } from './extensions/YouTubeEmbedDecorationExtension';
@@ -100,6 +102,12 @@ export function RichEditorCore({
     // it straight into the extension config (captured once by `useEditor`) is safe.
     const [popupVideoId, setPopupVideoId] = useState<string | null>(null);
 
+    // AC-05: the ⛶ full-window button on a PDF embed asks us to open the PDF in
+    // an in-app overlay. Mirrors the `popupVideoId` pattern — a stable setter is
+    // safe to wire straight into the extension config captured once by `useEditor`.
+    // Only one PDF overlay is open at a time; a new request replaces the prior one.
+    const [popupPdf, setPopupPdf] = useState<PdfFullWindowRequest | null>(null);
+
     const onUpdate = useCallback(({ editor: ed }: EditorEvents['update']) => {
         onChangeRef.current?.(ed as Editor);
     }, []);
@@ -108,7 +116,9 @@ export function RichEditorCore({
         shouldRerenderOnTransaction: true,
         extensions: [
             MapBlock,
-            PdfBlock,               // must precede StarterKit so its parseHTML rule wins
+            PdfBlock.configure({
+                onRequestFullWindow: (request: PdfFullWindowRequest) => setPopupPdf(request),
+            }),                     // must precede StarterKit so its parseHTML rule wins
             MermaidBlock,           // must precede StarterKit so its parseHTML rule wins
             MathInline,
             MathDisplay,
@@ -230,6 +240,7 @@ export function RichEditorCore({
         <>
             <EditorContent editor={editor} />
             <YouTubePopupDialog videoId={popupVideoId} onClose={() => setPopupVideoId(null)} />
+            <PdfPopupDialog pdf={popupPdf} onClose={() => setPopupPdf(null)} />
         </>
     );
 }

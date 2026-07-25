@@ -55,6 +55,14 @@ export interface PerRepoPreferences {
     gitRemote?: string;
     intervalMinutes?: number;
   };
+  /**
+   * Opt-in per-repo auto-pull: while enabled, the GIT panel runs `git pull` on the
+   * current branch every `intervalMinutes`. Off by default; only runs when enabled.
+   */
+  autoPull?: {
+    enabled: boolean;
+    intervalMinutes: number;
+  };
   /** Work-item feature preferences scoped to this workspace. Never stores credentials. */
   workItems?: {
     sync?: {

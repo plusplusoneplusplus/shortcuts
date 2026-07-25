@@ -207,6 +207,20 @@ const SyncSchema = z.object({
     intervalMinutes: z.number().int().min(1).optional().catch(undefined),
 }).strip();
 
+/** Inclusive upper bound (minutes) for the per-repo `autoPull.intervalMinutes` setting. */
+export const AUTO_PULL_MAX_INTERVAL_MINUTES = 1440;
+
+/**
+ * Opt-in per-repo auto-pull settings. Both fields are required so the whole
+ * object is dropped (via `.catch(undefined)` on the field) when either is
+ * invalid — non-boolean `enabled`, or non-integer / non-positive / above-max
+ * `intervalMinutes`.
+ */
+const AutoPullSchema = z.object({
+    enabled: z.boolean(),
+    intervalMinutes: z.number().int().min(1).max(AUTO_PULL_MAX_INTERVAL_MINUTES),
+}).strip();
+
 const ScriptTemplateSchema = z.object({
     id: z.string().min(1),
     name: z.string(),
@@ -289,6 +303,7 @@ export const PerRepoPreferencesSchema = z.object({
         })
         .optional(),
     sync: SyncSchema.optional(),
+    autoPull: AutoPullSchema.optional().catch(undefined),
     workItems: WorkItemsPreferencesSchema.optional(),
     dreams: DreamsPreferencesSchema.optional().catch(undefined),
     enabledMcpTools: EnabledMcpToolsSchema.optional(),

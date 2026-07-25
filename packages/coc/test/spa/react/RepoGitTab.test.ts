@@ -463,6 +463,77 @@ describe('RepoGitTab', () => {
         it('passes lastRefreshedAt to GitPanelHeader', () => {
             expect(source).toContain('lastRefreshedAt={lastRefreshedAt}');
         });
+
+        it('passes autoPull + onAutoPullChange to GitPanelHeader', () => {
+            expect(source).toContain('autoPull={autoPull}');
+            expect(source).toContain('onAutoPullChange={handleAutoPullChange}');
+        });
+    });
+
+    describe('auto-pull preference (AC-2)', () => {
+        it('declares autoPull state typed as AutoPullSetting | undefined', () => {
+            expect(source).toContain('const [autoPull, setAutoPull] = useState<AutoPullSetting | undefined>(undefined)');
+        });
+
+        it('reads the persisted autoPull setting from repo preferences', () => {
+            expect(source).toContain('if (prefs?.autoPull)');
+            expect(source).toContain('setAutoPull(prefs.autoPull)');
+        });
+
+        it('resets autoPull on workspace change before re-reading prefs', () => {
+            expect(source).toContain('setAutoPull(undefined)');
+        });
+
+        it('persists interval changes via patchRepo with the full autoPull object', () => {
+            expect(source).toContain('const handleAutoPullChange = useCallback((next: AutoPullSetting)');
+            expect(source).toContain('cloneClient.preferences.patchRepo(workspaceId, { autoPull: next })');
+        });
+    });
+
+    describe('auto-pull timer (AC-3 / AC-4)', () => {
+        it('imports the timer hook and the pure tick logic', () => {
+            expect(source).toContain("import { useAutoPullTimer } from './hooks/useAutoPullTimer'");
+            expect(source).toContain("import { runAutoPullTick, buildAutoPullPollerCallbacks } from './autoPullTick'");
+        });
+
+        it('tracks a reset signal to restart the countdown', () => {
+            expect(source).toContain('const [autoPullResetSignal, setAutoPullResetSignal] = useState(0)');
+            expect(source).toContain('const bumpAutoPullReset = useCallback(() => setAutoPullResetSignal(n => n + 1)');
+        });
+
+        it('defines a non-blocking auto-pull toast helper', () => {
+            expect(source).toContain('const showAutoPullToast = useCallback');
+        });
+
+        it('polls auto-pull jobs via buildAutoPullPollerCallbacks (toast on failure, not the action banner)', () => {
+            expect(source).toContain('const startAutoPullPolling = useCallback');
+            expect(source).toContain('pullPoller.start(jobId, buildAutoPullPollerCallbacks({');
+            expect(source).toContain('onFailure: (message) => { showAutoPullToast(message); refreshAll(); }');
+        });
+
+        it('runs each tick through runAutoPullTick with a single-flight guard and dirty pre-check', () => {
+            const block = source.match(/const handleAutoPull = useCallback[\s\S]*?\}, \[[^\]]*\]\)/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('void runAutoPullTick({');
+            expect(block![0]).toContain('isPullInFlight: () => pulling || pullPoller.isPolling()');
+            expect(block![0]).toContain('getWorkingTreeChanges: () => cloneClient.git.getWorkingTreeChanges(workspaceId)');
+            expect(block![0]).toContain('pull: () => cloneClient.git.pull(workspaceId, { rebase: true, currentBranchOnly: true })');
+            expect(block![0]).toContain('onJobStarted: startAutoPullPolling');
+        });
+
+        it('arms the timer from the persisted per-repo setting', () => {
+            expect(source).toContain('useAutoPullTimer({');
+            expect(source).toContain('enabled: !!autoPull?.enabled');
+            expect(source).toContain('intervalMinutes: autoPull?.intervalMinutes');
+            expect(source).toContain('onTick: handleAutoPull');
+            expect(source).toContain('resetSignal: autoPullResetSignal');
+        });
+
+        it('resets the countdown on a manual pull', () => {
+            const pullBlock = source.match(/handlePull[\s\S]*?(?=const handlePush)/);
+            expect(pullBlock).toBeTruthy();
+            expect(pullBlock![0]).toContain('bumpAutoPullReset()');
+        });
     });
 
     describe('lastRefreshedAt state', () => {

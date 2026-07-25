@@ -315,6 +315,38 @@ describe('last refreshed timestamp', () => {
     });
 });
 
+// ── Auto-pull control integration ─────────────────────────────────────────────
+
+describe('auto-pull control', () => {
+    it('does NOT render the control when onAutoPullChange is omitted', () => {
+        renderHeader({ onPull: vi.fn() });
+        expect(screen.queryByTestId('git-autopull-control')).toBeNull();
+    });
+
+    it('renders the control when onAutoPullChange is provided', () => {
+        renderHeader({ onPull: vi.fn(), onAutoPullChange: vi.fn() });
+        expect(screen.getByTestId('git-autopull-control')).toBeTruthy();
+    });
+
+    it('shows "Off" when no autoPull value is supplied', () => {
+        renderHeader({ onAutoPullChange: vi.fn() });
+        expect(screen.getByTestId('git-autopull-current').textContent).toBe('Off');
+    });
+
+    it('reflects the persisted autoPull value on the toggle', () => {
+        renderHeader({ onAutoPullChange: vi.fn(), autoPull: { enabled: true, intervalMinutes: 15 } });
+        expect(screen.getByTestId('git-autopull-current').textContent).toBe('15m');
+    });
+
+    it('forwards a preset selection to onAutoPullChange', () => {
+        const onAutoPullChange = vi.fn();
+        renderHeader({ onAutoPullChange });
+        fireEvent.click(screen.getByTestId('git-autopull-toggle'));
+        fireEvent.click(screen.getByTestId('git-autopull-option-5'));
+        expect(onAutoPullChange).toHaveBeenCalledWith({ enabled: true, intervalMinutes: 5 });
+    });
+});
+
 // ── Compact variant (toolbar hoisted into the split-workspace header) ─────────
 
 describe('compact variant', () => {
