@@ -342,8 +342,8 @@ describe('auto-pull control', () => {
         const onAutoPullChange = vi.fn();
         renderHeader({ onAutoPullChange });
         fireEvent.click(screen.getByTestId('git-autopull-toggle'));
-        fireEvent.click(screen.getByTestId('git-autopull-option-5'));
-        expect(onAutoPullChange).toHaveBeenCalledWith({ enabled: true, intervalMinutes: 5 });
+        fireEvent.click(screen.getByTestId('git-autopull-option-60'));
+        expect(onAutoPullChange).toHaveBeenCalledWith({ enabled: true, intervalMinutes: 60 });
     });
 });
 
