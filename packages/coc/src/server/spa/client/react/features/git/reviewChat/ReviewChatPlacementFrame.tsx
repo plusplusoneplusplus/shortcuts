@@ -219,6 +219,7 @@ export function ReviewChatPlacementFrame({
             maxWidth: 'calc(100vw - 2rem)',
             maxHeight: 'calc(100vh - 2rem)',
             transformOrigin: 'bottom right',
+            pointerEvents: isDormantPill ? 'none' : 'auto',
             ...(lensSize
                 ? {
                     width: `${lensSize.width}px`,

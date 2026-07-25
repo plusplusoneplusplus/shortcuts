@@ -240,11 +240,13 @@ describe('CommitChatPlacementFrame', () => {
         const card = screen.getByTestId('commit-chat-lens-card');
         const mountedPanel = screen.getByTestId('commit-chat-panel');
         expect(lens.getAttribute('data-dormant-mode')).toBe('pill');
+        expect(lens.style.pointerEvents).toBe('auto');
 
         act(() => { simulateMouseFarAway(card); });
         act(() => { vi.advanceTimersByTime(700); });
 
         const pill = screen.getByTestId('commit-chat-lens-dormant-pill');
+        expect(lens.style.pointerEvents).toBe('none');
         expect(pill.style.opacity).toBe('1');
         expect(pill.style.pointerEvents).toBe('auto');
         expect(pill.getAttribute('inert')).toBeNull();
@@ -292,6 +294,7 @@ describe('CommitChatPlacementFrame', () => {
         });
 
         expect(lens.getAttribute('data-focused')).toBe('true');
+        expect(lens.style.pointerEvents).toBe('auto');
         expect(card.style.opacity).toBe('1');
         expect(card.getAttribute('inert')).toBeNull();
         expect(card.getAttribute('aria-hidden')).toBeNull();
@@ -331,6 +334,7 @@ describe('CommitChatPlacementFrame', () => {
         );
 
         expect(screen.queryByTestId('commit-chat-lens-dormant-pill')).toBeNull();
+        expect(screen.getByTestId('commit-chat-lens').style.pointerEvents).toBe('auto');
     });
 
     it('uses default size when localStorage is empty', () => {
