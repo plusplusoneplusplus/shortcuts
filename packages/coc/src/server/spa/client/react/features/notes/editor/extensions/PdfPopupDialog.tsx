@@ -4,21 +4,27 @@
  * Bridges the PdfBlock node view to the React world, mirroring
  * {@link YouTubePopupDialog}: RichEditorCore holds a `popupPdf` state, the
  * embed's ⛶ button (via the PdfBlock `onRequestFullWindow` option) sets it, and
- * this component renders the shared {@link Dialog} with the PDF `<iframe>`
- * filling the app window's width and height.
+ * this component renders the shared {@link Dialog} with the PDF filling the app
+ * window's width and height.
  *
  * Rendering is fully gated on `pdf`: when it is `null` the component returns
- * `null`, so closing the dialog unmounts the iframe.
+ * `null`, so closing the dialog unmounts the reader.
  *
- * AC-03: link-only (cross-origin) PDFs still attempt to render in the iframe; a
- * persistent "Open in a new tab" fallback link is shown for the case the
- * browser blocks embedding.
+ * Goal 0 AC-03: the full-window view renders through {@link PdfJsRenderer}
+ * (pdf.js canvas + transparent text layer) exactly like the inline embed, so the
+ * text layer stays host-selectable at full size — dragging across a passage
+ * still yields a real `window.getSelection()` Range for Quick Ask. The native
+ * `<iframe>` is kept only as a fallback for PDFs pdf.js cannot render (also the
+ * cross-origin / blocked-embedding case), alongside a persistent
+ * "Open in a new tab" link.
  */
 
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Dialog } from '../../../../ui/Dialog';
+import { PdfJsRenderer } from './PdfJsRenderer';
 
 export interface PdfPopupTarget {
-    /** The (already-classified, safe) PDF URL to render in the iframe. */
+    /** The (already-classified, safe) PDF URL to render. */
     url: string;
     /** The filename/label shown in the overlay header. */
     label: string;
@@ -32,7 +38,26 @@ export interface PdfPopupDialogProps {
 }
 
 export function PdfPopupDialog({ pdf, onClose }: PdfPopupDialogProps) {
-    // Gate on the target so a close (pdf → null) unmounts the iframe.
+    // Inline PDFs render via pdf.js (host-selectable text layer) by default;
+    // fall back to the native iframe only if pdf.js fails to load the document.
+    const [pdfJsFailed, setPdfJsFailed] = useState(false);
+    const handlePdfJsError = useCallback(() => setPdfJsFailed(true), []);
+
+    // Reset the fallback state when the target PDF *changes*, so a failure on one
+    // paper does not force the iframe when a different paper is later opened. We
+    // guard on a prev-url ref rather than resetting in the effect body directly:
+    // child effects (PdfJsRenderer's onError) run before this parent effect, so
+    // an unconditional reset on mount would clobber a same-render failure.
+    const url = pdf?.url;
+    const prevUrlRef = useRef(url);
+    useEffect(() => {
+        if (prevUrlRef.current !== url) {
+            prevUrlRef.current = url;
+            setPdfJsFailed(false);
+        }
+    }, [url]);
+
+    // Gate on the target so a close (pdf → null) unmounts the reader.
     if (!pdf) return null;
 
     return (
@@ -46,12 +71,16 @@ export function PdfPopupDialog({ pdf, onClose }: PdfPopupDialogProps) {
             className="max-w-[96vw] h-[90vh]"
         >
             <div className="md-pdf-popup-frame-wrap" data-testid="pdf-popup-frame-wrap">
-                <iframe
-                    className="md-pdf-popup-frame"
-                    data-testid="pdf-popup-frame"
-                    src={pdf.url}
-                    title={pdf.label}
-                />
+                {pdfJsFailed ? (
+                    <iframe
+                        className="md-pdf-popup-frame"
+                        data-testid="pdf-popup-frame"
+                        src={pdf.url}
+                        title={pdf.label}
+                    />
+                ) : (
+                    <PdfJsRenderer url={pdf.url} label={pdf.label} onError={handlePdfJsError} />
+                )}
                 <div className="pdf-node-view-fallback">
                     If the PDF does not display,{' '}
                     <a href={pdf.url} target="_blank" rel="noopener noreferrer">open it in a new tab</a>.

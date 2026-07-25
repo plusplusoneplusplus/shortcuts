@@ -79,6 +79,17 @@ vi.mock(
     '../../../../src/server/spa/client/react/features/notes/editor/extensions/pdfBlock',
     () => ({ PdfBlock: mockPdfBlock }),
 );
+// The full-window PdfPopupDialog now renders through PdfJsRenderer (pdf.js
+// text layer, AC-03). Stub it so this test never loads the real browser-only
+// pdf.js library; the popup-wiring test asserts the viewport it renders.
+vi.mock(
+    '../../../../src/server/spa/client/react/features/notes/editor/extensions/PdfJsRenderer',
+    () => ({
+        PdfJsRenderer: (props: any) => (
+            <div data-testid="pdfjs-render-viewport" data-url={props.url} aria-label={props.label} />
+        ),
+    }),
+);
 vi.mock(
     '../../../../src/server/spa/client/react/features/notes/editor/extensions/commentExtension',
     () => ({ CommentExtension: { configure: () => ({}) } }),
@@ -254,21 +265,22 @@ describe('RichEditorCore', () => {
         expect(typeof mockPdfBlock.options.onRequestFullWindow).toBe('function');
 
         // No overlay before the request.
-        expect(document.querySelector('iframe')).toBeNull();
+        expect(screen.queryByTestId('pdfjs-render-viewport')).toBeNull();
 
         act(() => {
             mockPdfBlock.options.onRequestFullWindow({ url: 'https://app/x.pdf', label: 'x.pdf' });
         });
 
-        const iframe = document.querySelector('iframe') as HTMLIFrameElement;
-        expect(iframe).toBeTruthy();
-        expect(iframe.getAttribute('src')).toBe('https://app/x.pdf');
+        // AC-03: full-window view renders the selectable pdf.js text layer.
+        const viewport = screen.getByTestId('pdfjs-render-viewport');
+        expect(viewport).toBeTruthy();
+        expect(viewport.getAttribute('data-url')).toBe('https://app/x.pdf');
 
-        // Closing the dialog unmounts the iframe.
+        // Closing the dialog unmounts the reader.
         act(() => {
             screen.getByTestId('dialog-close-btn').click();
         });
-        expect(document.querySelector('iframe')).toBeNull();
+        expect(screen.queryByTestId('pdfjs-render-viewport')).toBeNull();
     });
 
     it('uses the Command key in link tooltips on macOS platforms', () => {

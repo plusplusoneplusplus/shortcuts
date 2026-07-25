@@ -553,6 +553,16 @@
     background: #1e1e1e;
 }
 
+/* AC-03: full-window view renders the same pdf.js text layer as the inline
+   embed. No fixed height is passed, so make the viewport fill the dialog body
+   and scroll internally (mirrors .md-pdf-popup-frame's flex sizing). */
+.md-pdf-popup-frame-wrap .pdfjs-render-viewport {
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 0;
+    border-radius: 6px;
+}
+
 /* When collapsed the iframe is unmounted, so the toolbar becomes the whole
    block — round its bottom corners to match the shell. */
 .pdf-node-view[data-collapsed] .md-pdf-embed-toolbar {
