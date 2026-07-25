@@ -175,6 +175,82 @@ describe('paper-annotations handler', () => {
         expect(Object.keys(get.body.annotations)).toEqual(['a1']);
     });
 
+    it('PATCH marks an annotation resolved, then reopens it', async () => {
+        const s = await startServer();
+        servers.push(s);
+        const created = await req(s.baseUrl, 'POST', createPath, { path: 'paper.md', annotation: validAnnotation });
+        const id = created.body.annotation.id;
+
+        // Resolve it.
+        const resolved = await req(s.baseUrl, 'PATCH', `${listPath}/annotation/${id}`, { path: 'paper.md', resolved: true });
+        expect(resolved.status).toBe(200);
+        expect(resolved.body.annotation.resolved).toBe(true);
+        expect(resolved.body.annotation.resolvedAt).toBeDefined();
+        expect(resolved.body.annotation.updatedAt).toBeDefined();
+
+        // Persisted resolved state is visible via GET.
+        let get = await req(s.baseUrl, 'GET', `${listPath}?path=paper.md`);
+        expect(get.body.annotations[id].resolved).toBe(true);
+        expect(get.body.annotations[id].resolvedAt).toBeDefined();
+
+        // Reopen it — resolved/resolvedAt are cleared.
+        const reopened = await req(s.baseUrl, 'PATCH', `${listPath}/annotation/${id}`, { path: 'paper.md', resolved: false });
+        expect(reopened.status).toBe(200);
+        expect(reopened.body.annotation.resolved).toBeUndefined();
+        expect(reopened.body.annotation.resolvedAt).toBeUndefined();
+
+        get = await req(s.baseUrl, 'GET', `${listPath}?path=paper.md`);
+        expect(get.body.annotations[id].resolved).toBeUndefined();
+        expect(get.body.annotations[id].resolvedAt).toBeUndefined();
+    });
+
+    it('PATCH requires a boolean resolved field, an existing annotation, and the flag', async () => {
+        const s = await startServer();
+        servers.push(s);
+        const created = await req(s.baseUrl, 'POST', createPath, { path: 'paper.md', annotation: validAnnotation });
+        const id = created.body.annotation.id;
+
+        // Non-boolean / missing resolved → 400.
+        expect((await req(s.baseUrl, 'PATCH', `${listPath}/annotation/${id}`, { path: 'paper.md' })).status).toBe(400);
+        expect((await req(s.baseUrl, 'PATCH', `${listPath}/annotation/${id}`, { path: 'paper.md', resolved: 'yes' })).status).toBe(400);
+        // Missing note path → 400.
+        expect((await req(s.baseUrl, 'PATCH', `${listPath}/annotation/${id}`, { resolved: true })).status).toBe(400);
+        // Unknown annotation id → 404.
+        expect((await req(s.baseUrl, 'PATCH', `${listPath}/annotation/nope`, { path: 'paper.md', resolved: true })).status).toBe(404);
+    });
+
+    it('PATCH returns 404 when the feature is disabled', async () => {
+        const s = await startServer({ enabled: false });
+        servers.push(s);
+        expect((await req(s.baseUrl, 'PATCH', `${listPath}/annotation/x`, { path: 'paper.md', resolved: true })).status).toBe(404);
+    });
+
+    it('a resolved annotation survives a restart over the same dataDir (AC-02/AC-05)', async () => {
+        const s = await startServer();
+        servers.push(s);
+        const created = await req(s.baseUrl, 'POST', createPath, { path: 'paper.md', annotation: validAnnotation });
+        const id = created.body.annotation.id;
+        await req(s.baseUrl, 'PATCH', `${listPath}/annotation/${id}`, { path: 'paper.md', resolved: true });
+
+        const routes: Route[] = [];
+        registerPaperAnnotationsRoutes({
+            routes,
+            store: fakeStore(path.join(s.dataDir, '..', 'unused')),
+            dataDir: s.dataDir,
+            getEnabled: () => true,
+        });
+        const server2 = http.createServer(createRouter({ routes, spaHtml: '' }));
+        await new Promise<void>(resolve => server2.listen(0, '127.0.0.1', resolve));
+        const addr = server2.address() as any;
+        const base2 = `http://127.0.0.1:${addr.port}`;
+        try {
+            const get = await req(base2, 'GET', `${listPath}?path=paper.md`);
+            expect(get.body.annotations[id].resolved).toBe(true);
+        } finally {
+            await new Promise<void>(r => server2.close(() => r()));
+        }
+    });
+
     it('DELETE removes an annotation; unknown id is 404', async () => {
         const s = await startServer();
         servers.push(s);

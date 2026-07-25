@@ -66,6 +66,14 @@ export interface PaperAnnotation {
     answer: string;
     /** The model that produced the answer, if known. */
     model?: string;
+    /**
+     * Whether the user has marked this annotation resolved (Goal 4 AC-02).
+     * Mirrors the notes-comments thread `status: 'resolved'` — resolved
+     * annotations are filtered out of the default view but never deleted.
+     */
+    resolved?: boolean;
+    /** ISO 8601 timestamp when resolved, if resolved. */
+    resolvedAt?: string;
 }
 
 /** Sidecar file format — persisted as `<note-path>.paper-annotations.json`. */

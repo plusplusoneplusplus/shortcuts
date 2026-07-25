@@ -13,6 +13,7 @@
  *   GET    /api/workspaces/:id/notes/paper-annotations?path=&root=            → sidecar
  *   PUT    /api/workspaces/:id/notes/paper-annotations                        → replace all
  *   POST   /api/workspaces/:id/notes/paper-annotations/annotation            → create one
+ *   PATCH  /api/workspaces/:id/notes/paper-annotations/annotation/:id        → resolve/reopen
  *   DELETE /api/workspaces/:id/notes/paper-annotations/annotation/:id?path=  → remove one
  *
  * Pure Node.js; cross-platform (Linux/Mac/Windows).
@@ -271,6 +272,48 @@ export function registerPaperAnnotationsRoutes(opts: PaperAnnotationsRouteOption
             sidecar.annotations[built.id] = built;
             await saveSidecar(resolved, sidecar);
             sendJSON(res, 201, { annotation: built });
+        },
+    });
+
+    // PATCH /api/workspaces/:id/notes/paper-annotations/annotation/:id  (resolve/reopen)
+    // (Goal 4 AC-02) Mark an annotation resolved or reopen it, mirroring the
+    // notes-comments thread status toggle. Resolved annotations are kept in the
+    // sidecar (never deleted) so a client can filter them in/out of the view.
+    routes.push({
+        method: 'PATCH',
+        pattern: /^\/api\/workspaces\/([^/]+)\/notes\/paper-annotations\/annotation\/([^/]+)$/,
+        handler: async (req, res, match) => {
+            if (!getEnabled()) return sendError(res, 404, 'Quick Ask is disabled');
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+
+            const annotationId = decodeURIComponent(match![2]);
+            const { path: notePath, resolved, root: rootParam } = body || {};
+            if (typeof resolved !== 'boolean') {
+                return sendError(res, 400, 'Missing or invalid field: resolved (must be boolean)');
+            }
+
+            const resolvedPath = await resolveSidecarOrFail(req, res, match!, notePath, rootParam);
+            if (!resolvedPath) return;
+
+            const sidecar = await loadSidecar(resolvedPath);
+            const annotation = sidecar.annotations[annotationId];
+            if (!annotation) {
+                return sendError(res, 404, 'Annotation not found');
+            }
+
+            const now = new Date().toISOString();
+            if (resolved) {
+                annotation.resolved = true;
+                annotation.resolvedAt = now;
+            } else {
+                delete annotation.resolved;
+                delete annotation.resolvedAt;
+            }
+            annotation.updatedAt = now;
+
+            await saveSidecar(resolvedPath, sidecar);
+            sendJSON(res, 200, { annotation });
         },
     });
 
