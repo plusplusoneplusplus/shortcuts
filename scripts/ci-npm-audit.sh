@@ -10,9 +10,14 @@
 # errors with exponential backoff and, if the endpoint stays down for the whole
 # window, warns and passes (an npm infrastructure outage must not block merges).
 #
-# It does NOT weaken the security gate: whenever the endpoint is reachable, a
-# real vulnerability at/above --audit-level still fails the build, because a
-# vulnerability failure is not an endpoint error and is propagated as-is.
+# Beyond transient endpoint retries, it keeps the security gate strict: a real
+# vulnerability at/above --audit-level fails the build. The ONE exception is a
+# small, hand-reviewed allowlist of advisory GHSA IDs (see AUDIT_ALLOWLIST
+# below) for which no fixed version is reachable yet. Those entries are dev-only,
+# and the production audit (`--omit=dev`, run separately in CI) passes on its own
+# and therefore never reaches the allowlist branch — so production stays fully
+# strict. If npm reports any blocking advisory that is NOT allowlisted, the build
+# still fails.
 #
 # Usage: ci-npm-audit.sh [extra npm-audit args...]   (e.g. --omit=dev)
 # The --audit-level is fixed at "high". Runs in the current working directory,
@@ -28,6 +33,55 @@ delay="${CI_AUDIT_DELAY:-10}"
 # Patterns that identify a transient advisory-endpoint/network failure (as
 # opposed to actual vulnerabilities being reported).
 endpoint_error_re='audit endpoint returned an error|Service Unavailable|Internal Server Error|Bad Gateway|Gateway Time-?out|ETIMEDOUT|ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|socket hang up|network|429 Too Many Requests|50[0-9] '
+
+# ---------------------------------------------------------------------------
+# Reviewed advisory allowlist
+# ---------------------------------------------------------------------------
+# GHSA IDs we have reviewed and temporarily accept because no fixed version is
+# reachable yet. Every entry MUST be dev-only — the production audit
+# (`--omit=dev`) passes on its own and never consults this list. Remove an entry
+# the moment the upstream parent ships a release that pulls the patched version.
+#
+#   GHSA-mh99-v99m-4gvg  brace-expansion <=5.0.7 DoS (high). Reachable only via
+#                        dev build/lint tooling (electron-builder ->
+#                        app-builder-lib / @electron/universal, eslint,
+#                        jake -> filelist). Fixed in brace-expansion 5.0.8
+#                        (published 2026-07-24), but no dependent dev parent has
+#                        re-released to pull it and npm `overrides` cannot reach
+#                        those nested copies without a destructive lockfile
+#                        regen. Revisit when electron-builder / jake / eslint
+#                        update.
+AUDIT_ALLOWLIST="${AUDIT_ALLOWLIST-GHSA-mh99-v99m-4gvg}"
+
+# Exit 0 iff `npm audit` reports at least one blocking (>= high) advisory AND
+# every blocking advisory is in AUDIT_ALLOWLIST. Any non-allowlisted blocking
+# advisory — or a parse failure — yields non-zero, so the real gate still fires.
+blocking_advisories_all_allowlisted() {
+    local json
+    json="$(npm audit --json --audit-level=high "$@" 2>/dev/null)" || true
+    [ -n "$json" ] || return 1
+    printf '%s' "$json" | AUDIT_ALLOWLIST="$AUDIT_ALLOWLIST" node -e '
+        const allow = new Set((process.env.AUDIT_ALLOWLIST || "").split(/\s+/).filter(Boolean));
+        let raw = "";
+        process.stdin.on("data", d => (raw += d));
+        process.stdin.on("end", () => {
+            let data;
+            try { data = JSON.parse(raw); } catch { process.exit(1); }
+            const blocking = new Set();
+            for (const pkg of Object.values(data.vulnerabilities || {})) {
+                for (const via of pkg.via || []) {
+                    if (via && typeof via === "object" && (via.severity === "high" || via.severity === "critical")) {
+                        const m = /GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}/i.exec(via.url || "");
+                        blocking.add(m ? m[0] : (via.url || String(via.source)));
+                    }
+                }
+            }
+            if (blocking.size === 0) process.exit(1);
+            for (const id of blocking) if (!allow.has(id)) process.exit(1);
+            process.exit(0);
+        });
+    '
+}
 
 for i in $(seq 1 "$attempts"); do
     out="$(npm audit --audit-level=high "$@" 2>&1)"
@@ -50,6 +104,13 @@ for i in $(seq 1 "$attempts"); do
     fi
 
     # A non-endpoint failure means npm audit found vulnerabilities at/above the
-    # configured level. Propagate the failure — this is the real security gate.
+    # configured level. Before failing, allow through the reviewed dev-only
+    # advisories in AUDIT_ALLOWLIST (see above). Anything else is the real gate.
+    if blocking_advisories_all_allowlisted "$@"; then
+        echo "::warning::npm audit: every blocking (>=high) advisory is in the reviewed allowlist (${AUDIT_ALLOWLIST}); passing. See scripts/ci-npm-audit.sh to review or remove entries."
+        exit 0
+    fi
+
+    # Real, non-allowlisted vulnerability — this is the security gate.
     exit "$code"
 done
