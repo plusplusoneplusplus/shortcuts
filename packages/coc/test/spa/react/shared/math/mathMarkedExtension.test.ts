@@ -22,6 +22,12 @@ describe('mathMarkedExtension — delimiter coverage', () => {
         expect(html).toContain('today');
     });
 
+    it('renders digit-led inline math', () => {
+        const html = render('compute $2MNK$ FLOPs');
+        expect(html).toContain('class="katex"');
+        expect(html).toContain('<annotation encoding="application/x-tex">2MNK</annotation>');
+    });
+
     it('renders inline \\(...\\) math', () => {
         const html = render('area \\(\\pi r^2\\) here');
         expect(html).toContain('class="katex"');
@@ -60,6 +66,13 @@ describe('mathMarkedExtension — literal / false-positive guards', () => {
         const html = render('use `$x$` literally');
         expect(html).not.toContain('class="katex"');
         expect(html).toContain('<code>$x$</code>');
+    });
+
+    it('does not let prose currency close inside inline code', () => {
+        const html = render('it costs $5 and `$x` stays literal');
+        expect(html).not.toContain('class="katex"');
+        expect(html).toContain('$5');
+        expect(html).toContain('<code>$x</code>');
     });
 
     it('does not parse math inside a fenced code block', () => {

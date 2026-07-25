@@ -65,6 +65,19 @@ describe('tokenizeMath — delimiter forms', () => {
         expect(m).toHaveLength(1);
         expect(m[0].tex).toBe('a_*b*_c');
     });
+
+    describe('digit-led inline math', () => {
+        it.each([
+            ['$2MNK$', '2MNK'],
+            ['$312/2.0 \\approx 156$.', '312/2.0 \\approx 156'],
+            ['$3.14$', '3.14'],
+            ['$5x$', '5x'],
+        ])('parses %s', (src, tex) => {
+            const m = mathOnly(tokenizeMath(src));
+            expect(m).toHaveLength(1);
+            expect(m[0]).toMatchObject({ tex, delimiter: 'dollar', display: false });
+        });
+    });
 });
 
 describe('tokenizeMath — false positives stay literal', () => {
@@ -72,6 +85,20 @@ describe('tokenizeMath — false positives stay literal', () => {
         const segs = tokenizeMath('It costs $5 and $10 total.');
         expect(mathOnly(segs)).toHaveLength(0);
         expect(text(segs)).toBe('It costs $5 and $10 total.');
+        expect(mathOnly(tokenizeMath('$50-$100'))).toHaveLength(0);
+    });
+
+    it('keeps currency literal before later inline math', () => {
+        const segs = tokenizeMath('It costs $5 to run $x$ iterations');
+        expect(mathOnly(segs).map(segment => segment.tex)).toEqual(['x']);
+        expect(text(segs)).toBe('It costs $5 to run $x$ iterations');
+    });
+
+    it('does not close prose currency on a dollar inside inline code', () => {
+        const src = 'it costs $5 and `$x` stays literal';
+        const segs = tokenizeMath(src);
+        expect(mathOnly(segs)).toHaveLength(0);
+        expect(text(segs)).toBe(src);
     });
 
     it('does not match $ followed by whitespace', () => {

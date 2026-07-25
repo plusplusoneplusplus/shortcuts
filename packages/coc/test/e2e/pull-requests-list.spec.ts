@@ -510,10 +510,14 @@ test.describe('Pull Requests tab — list', () => {
 
     test('Team coworker picker shows minimum-length and no-results states', async ({ page, serverUrl }) => {
         const { id: repoId, cleanup } = await seedPrWorkspace(serverUrl, 'ws-team-no-results', 'My Repo');
+        let releaseCandidateSearch!: () => void;
+        const candidateSearchResponseGate = new Promise<void>(resolve => {
+            releaseCandidateSearch = resolve;
+        });
         const routeCleanup = await setupPrRoutes(page, serverUrl, repoId, {
             pullRequests: MOCK_PR_LIST,
             coworkerCandidates: [],
-            coworkerCandidateDelayMs: 300,
+            coworkerCandidateResponseGate: candidateSearchResponseGate,
         });
         try {
             await openPrTab(page, serverUrl, repoId);
@@ -526,9 +530,11 @@ test.describe('Pull Requests tab — list', () => {
 
             await picker.fill('zz');
             await expect(page.locator('[data-testid="team-coworker-search-status"]')).toContainText('Searching repo PR authors', { timeout: 10000 });
+            releaseCandidateSearch();
             await expect(page.locator('[data-testid="team-coworker-search-status"]')).toContainText('No matching repo PR authors found', { timeout: 10000 });
             await expect(page.locator('[data-testid="team-coworker-option"]')).toHaveCount(0);
         } finally {
+            releaseCandidateSearch();
             await routeCleanup();
             cleanup();
         }

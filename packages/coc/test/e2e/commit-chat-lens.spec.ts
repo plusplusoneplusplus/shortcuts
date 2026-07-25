@@ -61,10 +61,13 @@ async function seedWorkItemCommit(serverUrl: string, repoDir: string, commit: { 
     expect(patchRes.status).toBe(200);
 }
 
-async function enableCommitChatLensFeature(serverUrl: string): Promise<void> {
+async function enableCommitChatLensFeature(serverUrl: string, dormantMode?: 'ghost' | 'pill'): Promise<void> {
     const res = await request(`${serverUrl}/api/admin/config`, {
         method: 'PUT',
-        body: JSON.stringify({ 'features.commitChatLens': true }),
+        body: JSON.stringify({
+            'features.commitChatLens': true,
+            ...(dormantMode ? { 'features.commitChatLensDormantMode': dormantMode } : {}),
+        }),
     });
     if (res.status !== 200) {
         throw new Error(`Failed to enable commit chat lens feature: ${res.status} ${res.body}`);
@@ -163,6 +166,66 @@ async function gotoFresh(page: import('@playwright/test').Page, url: string): Pr
 }
 
 test.describe('feature-flagged commit chat lens', () => {
+    test('dormant pill passes hit testing and text selection through the old lens rectangle', async ({ page, serverUrl, dataDir }) => {
+        const repoDir = createMultiCommitRepo(dataDir);
+        const commit = latestCommit(repoDir);
+
+        await seedWorkspace(serverUrl, WORKSPACE_ID, 'Commit Chat Lens', repoDir);
+        await enableCommitChatLensFeature(serverUrl, 'pill');
+
+        await page.goto(`${serverUrl}/?workspace=${encodeURIComponent(WORKSPACE_ID)}#repos/${encodeURIComponent(WORKSPACE_ID)}/git/${encodeURIComponent(commit.hash)}`);
+        await expect(page.getByTestId('diff-section')).toBeVisible();
+        await page.getByTestId('toggle-chat-btn').click();
+
+        const lens = page.getByTestId('commit-chat-lens');
+        await expect(lens).toBeVisible();
+        const lensBox = await lens.boundingBox();
+        expect(lensBox).toBeTruthy();
+
+        const textBox = await page.evaluate(({ x, y }) => {
+            const target = document.createElement('span');
+            target.id = 'lens-click-through-target';
+            target.textContent = 'Selectable text beneath the dormant lens';
+            Object.assign(target.style, {
+                position: 'fixed',
+                left: `${x + 24}px`,
+                top: `${y + 96}px`,
+                zIndex: '1',
+                whiteSpace: 'nowrap',
+                font: '16px monospace',
+                color: 'black',
+                background: 'white',
+                userSelect: 'text',
+            });
+            document.body.appendChild(target);
+            const rect = target.getBoundingClientRect();
+            return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        }, lensBox!);
+
+        await page.mouse.move(8, 8);
+        await expect(lens).toHaveAttribute('data-focused', 'false');
+        await expect(lens).toHaveCSS('pointer-events', 'none');
+
+        const hitTargetId = await page.evaluate(({ x, y, width, height }) => {
+            return document.elementFromPoint(x + width / 2, y + height / 2)?.id;
+        }, textBox);
+        expect(hitTargetId).toBe('lens-click-through-target');
+
+        await page.mouse.move(textBox.x + 2, textBox.y + textBox.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(textBox.x + textBox.width - 2, textBox.y + textBox.height / 2, { steps: 12 });
+        await page.mouse.up();
+        await expect.poll(() => page.evaluate(() => window.getSelection()?.toString() ?? ''))
+            .toContain('Selectable text beneath the dormant lens');
+
+        const pill = page.getByTestId('commit-chat-lens-dormant-pill');
+        await expect(pill).toHaveCSS('pointer-events', 'auto');
+        await pill.hover();
+        await expect(lens).toHaveAttribute('data-focused', 'true');
+        await expect(lens).toHaveCSS('pointer-events', 'auto');
+        await expect(page.getByTestId('commit-chat-lens-card')).toHaveCSS('pointer-events', 'auto');
+    });
+
     test('opens as a bottom-right lens across commit review surfaces and persists pinning by workspace and commit', async ({ page, serverUrl, dataDir }) => {
         const runtimeErrors: string[] = [];
         page.on('console', message => {

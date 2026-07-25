@@ -121,7 +121,7 @@ export function NotesChatHeader({
 
     return (
         <div
-            className="flex h-8 flex-shrink-0 items-center justify-between gap-2 border-b border-[#e0e0e0] px-3 dark:border-[#3c3c3c]"
+            className="grid h-8 flex-shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-b border-[#e0e0e0] px-3 dark:border-[#3c3c3c]"
             data-testid="notes-chat-header"
         >
             <div className="flex min-w-0 items-center gap-2">
@@ -136,75 +136,73 @@ export function NotesChatHeader({
                     {contextLabel}
                 </span>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-                <NotesChatScopeToggle scope={scope} onScopeChange={onScopeChange} />
-                <div className="flex shrink-0 items-center gap-0.5">
-                    {windowMode === 'lens' && onPin && (
-                        <button
-                            type="button"
-                            onClick={onPin}
-                            aria-label="Pin to side panel"
-                            className="inline-flex h-6 w-6 items-center justify-center rounded text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]"
-                            data-testid="notes-chat-pin-btn"
-                            title="Pin to side panel"
-                        >
-                            <PinIcon />
-                        </button>
-                    )}
-                    {windowMode === 'lens' && onMinimize && (
-                        <button
-                            type="button"
-                            onClick={onMinimize}
-                            aria-label="Minimize chat lens"
-                            className="inline-flex h-6 w-6 items-center justify-center rounded text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]"
-                            data-testid="notes-chat-minimize-btn"
-                            title="Minimize chat lens"
-                        >
-                            <MinimizeIcon />
-                        </button>
-                    )}
-                    {windowMode === 'side-panel' && onUnpin && (
-                        <button
-                            type="button"
-                            onClick={onUnpin}
-                            className="rounded px-1.5 py-0.5 text-[11px] font-medium text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]"
-                            data-testid="notes-chat-unpin-btn"
-                            title="Unpin from side panel"
-                        >
-                            Unpin
-                        </button>
-                    )}
-                    {chatNotePath && (
-                        <button
-                            type="button"
-                            aria-label={pathRefTooltip}
-                            title={pathRefTooltip}
-                            className={
-                                'inline-flex h-6 w-6 items-center justify-center rounded ' +
-                                (isSwitched
-                                    ? 'text-[#9a6700] hover:bg-black/[0.06] dark:text-[#d29922] dark:hover:bg-white/[0.08]'
-                                    : 'text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]')
-                            }
-                            data-testid="notes-chat-path-ref"
-                            data-switched={isSwitched ? 'true' : 'false'}
-                        >
-                            <PaperclipIcon />
-                        </button>
-                    )}
-                    {overflowItems.length > 0 && (
-                        <ChatHeaderOverflowMenu items={overflowItems} />
-                    )}
+            <NotesChatScopeToggle scope={scope} onScopeChange={onScopeChange} />
+            <div className="flex shrink-0 justify-self-end items-center gap-0.5">
+                {windowMode === 'lens' && onPin && (
                     <button
                         type="button"
-                        onClick={onClose}
-                        aria-label="Close Notes Chat"
-                        className="rounded px-1 py-0.5 text-xs text-[#848484] hover:bg-black/[0.06] hover:text-[#1e1e1e] dark:hover:bg-white/[0.08] dark:hover:text-white"
-                        data-testid="note-chat-close-btn"
-                        title="Close"
+                        onClick={onPin}
+                        aria-label="Pin to side panel"
+                        className="inline-flex h-6 w-6 items-center justify-center rounded text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]"
+                        data-testid="notes-chat-pin-btn"
+                        title="Pin to side panel"
                     >
-                        ✕
+                        <PinIcon />
                     </button>
-                </div>
+                )}
+                {windowMode === 'lens' && onMinimize && (
+                    <button
+                        type="button"
+                        onClick={onMinimize}
+                        aria-label="Minimize chat lens"
+                        className="inline-flex h-6 w-6 items-center justify-center rounded text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]"
+                        data-testid="notes-chat-minimize-btn"
+                        title="Minimize chat lens"
+                    >
+                        <MinimizeIcon />
+                    </button>
+                )}
+                {windowMode === 'side-panel' && onUnpin && (
+                    <button
+                        type="button"
+                        onClick={onUnpin}
+                        className="rounded px-1.5 py-0.5 text-[11px] font-medium text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]"
+                        data-testid="notes-chat-unpin-btn"
+                        title="Unpin from side panel"
+                    >
+                        Unpin
+                    </button>
+                )}
+                {chatNotePath && (
+                    <button
+                        type="button"
+                        aria-label={pathRefTooltip}
+                        title={pathRefTooltip}
+                        className={
+                            'inline-flex h-6 w-6 items-center justify-center rounded ' +
+                            (isSwitched
+                                ? 'text-[#9a6700] hover:bg-black/[0.06] dark:text-[#d29922] dark:hover:bg-white/[0.08]'
+                                : 'text-[#0078d4] hover:bg-black/[0.06] dark:text-[#3794ff] dark:hover:bg-white/[0.08]')
+                        }
+                        data-testid="notes-chat-path-ref"
+                        data-switched={isSwitched ? 'true' : 'false'}
+                    >
+                        <PaperclipIcon />
+                    </button>
+                )}
+                {overflowItems.length > 0 && (
+                    <ChatHeaderOverflowMenu items={overflowItems} />
+                )}
+                <button
+                    type="button"
+                    onClick={onClose}
+                    aria-label="Close Notes Chat"
+                    className="rounded px-1 py-0.5 text-xs text-[#848484] hover:bg-black/[0.06] hover:text-[#1e1e1e] dark:hover:bg-white/[0.08] dark:hover:text-white"
+                    data-testid="note-chat-close-btn"
+                    title="Close"
+                >
+                    ✕
+                </button>
             </div>
         </div>
     );
@@ -219,11 +217,11 @@ export interface NotesChatScopeToggleProps {
 
 export function NotesChatScopeToggle({ scope, onScopeChange }: NotesChatScopeToggleProps) {
     return (
-        <div className="inline-flex items-center gap-0.5 rounded-md bg-[#f0f0f0] p-0.5 dark:bg-[#2a2a2a]" data-testid="chat-scope-toggle">
+        <div className="inline-flex items-center gap-px rounded-full bg-[#f0f0f0] p-px dark:bg-[#2a2a2a]" data-testid="chat-scope-toggle">
             <button
                 type="button"
                 className={
-                    'text-[10px] px-2 py-0.5 rounded transition-colors ' +
+                    'rounded-full px-1.5 py-px text-[10px] transition-colors ' +
                     (scope === 'per-note'
                         ? 'bg-[#0078d4] text-white font-medium'
                         : 'text-[#848484] hover:text-[#333] dark:hover:text-white hover:bg-white/70 dark:hover:bg-[#333]')
@@ -238,7 +236,7 @@ export function NotesChatScopeToggle({ scope, onScopeChange }: NotesChatScopeTog
             <button
                 type="button"
                 className={
-                    'text-[10px] px-2 py-0.5 rounded transition-colors ' +
+                    'rounded-full px-1.5 py-px text-[10px] transition-colors ' +
                     (scope === 'per-workspace'
                         ? 'bg-[#0078d4] text-white font-medium'
                         : 'text-[#848484] hover:text-[#333] dark:hover:text-white hover:bg-white/70 dark:hover:bg-[#333]')

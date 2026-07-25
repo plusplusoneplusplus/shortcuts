@@ -19,9 +19,12 @@
  * The `$...$` inline form applies conservative guards so ordinary currency,
  * shell variables, and template placeholders never become false-positive math:
  *
- *   - An opening `$` must not be immediately followed by whitespace or a digit.
+ *   - An opening `$` must not be immediately followed by whitespace.
+ *   - For a digit-led opener, the next unescaped `$` must be a valid closer;
+ *     otherwise the opener stays literal so mixed currency and math do not merge.
  *   - A closing `$` must not be immediately preceded by whitespace, and must not
  *     be immediately followed by a digit (guards `$5 and $6`).
+ *   - Inline dollar math may not cross a Markdown backtick boundary.
  *   - Inline `$...$` and `\(...\)` may not span a blank line / paragraph break.
  *   - `\$` is an escaped literal dollar and never opens or closes math.
  *   - An unclosed opener stays literal text, so streaming content remains
@@ -111,12 +114,16 @@ function matchDoubleDollar(text: string, i: number): Match | null {
 /** Try to match a `$...$` inline region starting at `i` (text[i]==='$'). */
 function matchDollar(text: string, i: number): Match | null {
     const after = text[i + 1];
-    // Opening guard: not followed by whitespace or a digit, and something follows.
-    if (after === undefined || isWhitespace(after) || isDigit(after)) return null;
+    // Opening guard: not followed by whitespace, and something follows.
+    if (after === undefined || isWhitespace(after)) return null;
+    const digitLed = isDigit(after);
 
     let j = i + 1;
     while (j < text.length) {
         const ch = text[j];
+        // Marked's start hook sees raw inline source before code spans are
+        // tokenized. Do not let an opener in prose close on a `$` inside code.
+        if (ch === '`') return null;
         if (ch === '\n') {
             // Allow a single newline inside inline math but not a paragraph break.
             if (hasParagraphBreak(text, i, j + 1)) return null;
@@ -126,7 +133,10 @@ function matchDollar(text: string, i: number): Match | null {
             const next = text[j + 1];
             // Closing guard: no whitespace immediately before, no digit immediately after.
             if (isWhitespace(prev) || isDigit(next)) {
-                // Not a valid close here; keep scanning for a later `$`.
+                // For a digit-led opener, an intervening invalid `$` makes the
+                // span currency-suspect. Stay literal so later math can open.
+                if (digitLed) return null;
+                // Letter-led openers keep scanning for a later valid `$`.
                 j++;
                 continue;
             }

@@ -131,6 +131,9 @@ all have their own `references/*.md`.
   or `namespace-registry.ts` for admin settings. Reserve `admin-handler.ts`
   changes for cross-field validation shared with config-file loading (see
   [admin-config.md](../../.github/skills/coc-knowledge/references/admin-config.md)).
+- **Admin Features save shortcut** is scoped to Admin -> Configure -> Features.
+  Ctrl+S and Command+S prevent the browser save action there, submit only dirty
+  feature values, and stay inactive in other admin sections.
 - **Non-admin namespaced config fields** (queue, models, logging, monitoring,
   skills, memoryPromotion, …) keep hand-written descriptors in
   `src/config/namespace-registry.ts`; do not expand branch lists in `config.ts`.

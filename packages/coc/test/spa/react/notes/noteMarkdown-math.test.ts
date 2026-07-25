@@ -35,6 +35,13 @@ describe('noteMarkdown — math formula nodes (AC-02)', () => {
             expect(html).not.toContain('class="katex"');
         });
 
+        it('digit-led inline $...$', () => {
+            const html = markdownToHtml('compute $2MNK$ FLOPs');
+            expect(html).toContain('data-math="inline"');
+            expect(html).toContain('data-tex="2MNK"');
+            expect(html).toContain('data-delim="dollar"');
+        });
+
         it('inline \\(...\\)', () => {
             const html = markdownToHtml('area \\(\\pi r^2\\) end');
             expect(html).toContain('data-math="inline"');
@@ -81,6 +88,10 @@ describe('noteMarkdown — math formula nodes (AC-02)', () => {
     describe('lossless round trip (markdown → html → markdown)', () => {
         it('inline $...$', () => {
             expect(norm(roundTrip('$E=mc^2$'))).toBe('$E=mc^2$');
+        });
+
+        it('digit-led inline $...$', () => {
+            expect(norm(roundTrip('$2MNK$'))).toBe('$2MNK$');
         });
 
         it('inline \\(...\\)', () => {

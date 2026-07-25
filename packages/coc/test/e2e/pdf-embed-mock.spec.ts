@@ -103,8 +103,15 @@ function trackSeededPdfNavigation(page: import('@playwright/test').Page): {
 }
 
 async function openFirstPage(page: import('@playwright/test').Page): Promise<void> {
-    await page.locator('[data-testid="notes-tree-item-Journal"]').click();
+    const journalRow = page.locator('[data-testid="notes-tree-item-Journal"]');
     const pageRow = page.locator('[data-testid="notes-tree-item-getting-started.md"]');
+    await expect(journalRow).toBeVisible({ timeout: 5_000 });
+    // The tree's expansion state persists across a reload. Read the notebook's
+    // rendered state after navigation settles so an unconditional click cannot
+    // collapse an already-expanded notebook and hide the page.
+    if (await journalRow.getAttribute('aria-expanded') !== 'true') {
+        await journalRow.click();
+    }
     await expect(pageRow).toBeVisible({ timeout: 5_000 });
     await pageRow.click();
 }

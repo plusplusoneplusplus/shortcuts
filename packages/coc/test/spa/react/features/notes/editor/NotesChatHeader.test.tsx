@@ -48,6 +48,16 @@ describe('NotesChatHeader', () => {
             expect(screen.getByTestId('chat-scope-per-workspace')).toBeTruthy();
         });
 
+        it('centers the scope control independently of the title and window actions', () => {
+            renderHeader({ windowMode: 'lens', onMinimize: vi.fn(), onPin: vi.fn() });
+            expect(screen.getByTestId('notes-chat-header').className)
+                .toContain('grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]');
+            expect(screen.getByTestId('chat-scope-toggle').parentElement)
+                .toBe(screen.getByTestId('notes-chat-header'));
+            expect(screen.getByTestId('note-chat-close-btn').parentElement?.className)
+                .toContain('justify-self-end');
+        });
+
         it('always renders a close button', () => {
             renderHeader();
             expect(screen.getByTestId('note-chat-close-btn')).toBeTruthy();
@@ -241,5 +251,23 @@ describe('NotesChatScopeToggle', () => {
         render(<NotesChatScopeToggle scope="per-note" onScopeChange={vi.fn()} />);
         expect(screen.getByTestId('chat-scope-per-note')).toHaveTextContent('This note');
         expect(screen.getByTestId('chat-scope-per-workspace')).toHaveTextContent('Workspace');
+    });
+
+    it('renders a compact pill with pill-shaped segments', () => {
+        render(<NotesChatScopeToggle scope="per-note" onScopeChange={vi.fn()} />);
+
+        const toggle = screen.getByTestId('chat-scope-toggle');
+        expect(toggle.className).toContain('rounded-full');
+        expect(toggle.className).toContain('gap-px');
+        expect(toggle.className).toContain('p-px');
+
+        for (const segment of [
+            screen.getByTestId('chat-scope-per-note'),
+            screen.getByTestId('chat-scope-per-workspace'),
+        ]) {
+            expect(segment.className).toContain('rounded-full');
+            expect(segment.className).toContain('px-1.5');
+            expect(segment.className).toContain('py-px');
+        }
     });
 });

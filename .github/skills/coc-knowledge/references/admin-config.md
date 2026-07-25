@@ -73,6 +73,8 @@ The admin page is structured as a two-column shell that fills the available vert
 
 Settings (the `settings` admin section) is split into one `SettingsCard` per promoted sidebar entry — `ai`, `chat`, `appearance`, `features`, `integrations`, `providers`, `advanced` — defined in `SETTINGS_SUBTABS` near the top of `AdminPanel.tsx`. The `providers` subtab renders `ProviderTokensSection` (credential management for GitHub, Azure DevOps, etc.) that was previously a standalone admin tab. These entries render in the main sidebar with data-testids `settings-subtab-{ai|chat|appearance|features|integrations|providers|advanced}` instead of an in-page sub-tab row. Selection is kept in local `settingsSubTab` state, defaults to `ai`, and is synced both directions with `#admin/settings/<sub>` (default `ai` collapses to `#admin/settings`). Tests that interact with controls outside of the default `ai` card must first navigate via the `gotoSettingsSubTab(...)` helper.
 
+While Admin -> Configure -> Features is active, Ctrl+S and Command+S prevent the browser save action and submit the card when its feature values are dirty. The shortcut does not submit from other admin sections or while a feature save is already in progress.
+
 ### Primitives for New Admin UI
 
 When adding UI to the admin page, prefer the existing primitives:
