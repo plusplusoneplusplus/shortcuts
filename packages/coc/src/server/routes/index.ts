@@ -31,6 +31,7 @@ import { registerAdminRoutes } from '../admin/admin-handler';
 import { registerTaskCommentsRoutes } from '../tasks/comments/task-comments-handler';
 import { registerDiffCommentsRoutes } from '../tasks/comments/diff-comments-handler';
 import { registerChatSidenotesRoutes } from '../processes/chat-sidenotes/chat-sidenotes-handler';
+import { registerQuickAskAnswerRoutes } from '../processes/chat-sidenotes/quick-ask-answer-handler';
 import { registerCanvasRoutes } from '../canvas/canvas-routes';
 import { registerWikiRoutes } from '../wiki';
 import { registerMemoryRoutes } from '../memory/memory-routes';
@@ -934,6 +935,13 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerChatSidenotesRoutes({
         routes,
         store,
+        dataDir,
+        getEnabled: getQuickAskSidenotesEnabled,
+    });
+    // Stateless ask→answer half of the Quick Ask loop for note/paper selections
+    // (Goal 1): same one-shot grounded lookup, no persistence, no process/turn.
+    registerQuickAskAnswerRoutes({
+        routes,
         dataDir,
         getEnabled: getQuickAskSidenotesEnabled,
     });
