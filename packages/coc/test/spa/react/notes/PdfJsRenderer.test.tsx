@@ -18,6 +18,8 @@ vi.mock(
     '../../../../src/server/spa/client/react/features/notes/editor/extensions/pdfJsLoader',
     () => ({
         renderPdfDocument: (opts: any) => loader.render(opts),
+        isLikelyImageOnly: (s: any) => s.pagesRendered > 0 && s.totalTextLength < 1,
+        MIN_SELECTABLE_TEXT_CHARS: 1,
         PDF_WORKER_URL: '/pdf.worker.js',
         DEFAULT_PDF_SCALE: 1.5,
     }),
@@ -28,9 +30,11 @@ import { PdfJsRenderer } from '../../../../src/server/spa/client/react/features/
 beforeEach(() => {
     loader.render.mockReset();
     loader.destroy.mockReset();
-    // Default: resolves with a handle and reports one page rendered.
+    // Default: resolves with a handle, reports one page rendered, and reports
+    // a text-bearing document (so the image-only notice stays hidden).
     loader.render.mockImplementation(async (opts: any) => {
         opts.onPageRendered?.(1, 1);
+        opts.onTextStats?.({ totalTextLength: 500, totalPages: 1, pagesRendered: 1 });
         return { destroy: loader.destroy };
     });
 });
@@ -106,5 +110,40 @@ describe('PdfJsRenderer', () => {
         rerender(<PdfJsRenderer url="/b.pdf" label="p" />);
         await waitFor(() => expect(loader.render).toHaveBeenCalledTimes(2));
         expect(loader.render.mock.calls[1][0].url).toBe('/b.pdf');
+    });
+
+    it('does not show the image-only notice for a document with selectable text', async () => {
+        render(<PdfJsRenderer url="/x.pdf" label="p" />);
+        await waitFor(() =>
+            expect(screen.getByTestId('pdfjs-render-viewport').getAttribute('data-status')).toBe('ready'),
+        );
+        expect(screen.queryByTestId('pdfjs-image-only-notice')).toBeNull();
+        expect(screen.getByTestId('pdfjs-render-viewport').getAttribute('data-text-layer')).toBeNull();
+    });
+
+    it('flags a scanned / image-only document with a notice and data attribute', async () => {
+        loader.render.mockImplementation(async (opts: any) => {
+            opts.onPageRendered?.(1, 1);
+            opts.onTextStats?.({ totalTextLength: 0, totalPages: 2, pagesRendered: 2 });
+            return { destroy: loader.destroy };
+        });
+        render(<PdfJsRenderer url="/scan.pdf" label="p" />);
+        await waitFor(() =>
+            expect(screen.getByTestId('pdfjs-image-only-notice')).toBeTruthy(),
+        );
+        expect(screen.getByTestId('pdfjs-render-viewport').getAttribute('data-text-layer')).toBe('empty');
+    });
+
+    it('clears the image-only notice when the url changes to a text PDF', async () => {
+        loader.render.mockImplementationOnce(async (opts: any) => {
+            opts.onPageRendered?.(1, 1);
+            opts.onTextStats?.({ totalTextLength: 0, totalPages: 1, pagesRendered: 1 });
+            return { destroy: loader.destroy };
+        });
+        const { rerender } = render(<PdfJsRenderer url="/scan.pdf" label="p" />);
+        await waitFor(() => expect(screen.getByTestId('pdfjs-image-only-notice')).toBeTruthy());
+        // Second render (default mock) reports real text → notice must clear.
+        rerender(<PdfJsRenderer url="/text.pdf" label="p" />);
+        await waitFor(() => expect(screen.queryByTestId('pdfjs-image-only-notice')).toBeNull());
     });
 });

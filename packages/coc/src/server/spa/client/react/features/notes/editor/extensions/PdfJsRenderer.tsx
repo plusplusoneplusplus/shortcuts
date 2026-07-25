@@ -10,7 +10,7 @@
  * an opaque iframe.
  */
 import { useEffect, useRef, useState } from 'react';
-import { renderPdfDocument, type PdfRenderHandle } from './pdfJsLoader';
+import { renderPdfDocument, isLikelyImageOnly, type PdfRenderHandle } from './pdfJsLoader';
 
 export interface PdfJsRendererProps {
     /** Same-origin, inline-classified PDF URL. */
@@ -30,6 +30,9 @@ export interface PdfJsRendererProps {
 export function PdfJsRenderer({ url, label, height, onError }: PdfJsRendererProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+    // True once a rendered document is found to have no selectable text
+    // (scanned / image-only). Drives the "no selectable text" notice (AC-04).
+    const [imageOnly, setImageOnly] = useState(false);
 
     useEffect(() => {
         const container = containerRef.current;
@@ -42,6 +45,7 @@ export function PdfJsRenderer({ url, label, height, onError }: PdfJsRendererProp
         // Clear any pages from a prior url before re-rendering.
         container.replaceChildren();
         setStatus('loading');
+        setImageOnly(false);
 
         renderPdfDocument({
             url,
@@ -49,6 +53,9 @@ export function PdfJsRenderer({ url, label, height, onError }: PdfJsRendererProp
             signal: controller.signal,
             onPageRendered: () => {
                 if (!cancelled) setStatus('ready');
+            },
+            onTextStats: (stats) => {
+                if (!cancelled) setImageOnly(isLikelyImageOnly(stats));
             },
         })
             .then((h) => {
@@ -74,8 +81,19 @@ export function PdfJsRenderer({ url, label, height, onError }: PdfJsRendererProp
             className="pdfjs-render-viewport"
             data-testid="pdfjs-render-viewport"
             data-status={status}
+            data-text-layer={imageOnly ? 'empty' : undefined}
             style={height ? { height: `${height}px` } : undefined}
         >
+            {imageOnly && status === 'ready' && (
+                <div
+                    className="pdfjs-render-notice"
+                    data-testid="pdfjs-image-only-notice"
+                    role="status"
+                >
+                    No selectable text — this looks like a scanned or image-only PDF,
+                    so highlighting and Ask AI aren’t available here.
+                </div>
+            )}
             <div
                 ref={containerRef}
                 className="pdfjs-render-pages"

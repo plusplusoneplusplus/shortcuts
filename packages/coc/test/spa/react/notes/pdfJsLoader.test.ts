@@ -21,6 +21,9 @@ const state = vi.hoisted(() => ({
     numPages: 2,
     getPageImpl: null as null | ((n: number) => Promise<FakePage>),
     getDocumentReject: false,
+    // Text the mock TextLayer writes into each page's container on render, so
+    // the loader's text-length accumulation (image-only detection) is exercised.
+    textLayerText: '',
     textLayerCtor: vi.fn(),
     textLayerRender: vi.fn().mockResolvedValue(undefined),
     docDestroy: vi.fn().mockResolvedValue(undefined),
@@ -28,10 +31,15 @@ const state = vi.hoisted(() => ({
 
 vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => {
     class TextLayer {
-        constructor(opts: unknown) {
+        container: HTMLElement;
+        constructor(opts: { container: HTMLElement }) {
             state.textLayerCtor(opts);
+            this.container = opts.container;
         }
         render() {
+            // Real pdf.js appends transparent glyph spans; for detection we only
+            // care about the resulting textContent, so set it directly.
+            if (state.textLayerText) this.container.textContent = state.textLayerText;
             return state.textLayerRender();
         }
     }
@@ -59,6 +67,8 @@ vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => {
 
 import {
     renderPdfDocument,
+    isLikelyImageOnly,
+    MIN_SELECTABLE_TEXT_CHARS,
     PDF_WORKER_URL,
     DEFAULT_PDF_SCALE,
 } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/pdfJsLoader';
@@ -79,6 +89,7 @@ beforeEach(() => {
     state.workerSrc = '';
     state.numPages = 2;
     state.getDocumentReject = false;
+    state.textLayerText = '';
     state.getPageImpl = () => Promise.resolve(makePage());
     state.textLayerCtor.mockClear();
     state.textLayerRender.mockClear().mockResolvedValue(undefined);
@@ -188,5 +199,75 @@ describe('renderPdfDocument', () => {
         // Page 1 rendered, then abort halted the loop before page 3.
         expect(container.querySelectorAll('.pdfjs-page').length).toBeLessThan(3);
         expect(state.docDestroy).toHaveBeenCalled();
+    });
+
+    it('reports the summed text length across pages once rendering completes', async () => {
+        state.numPages = 2;
+        state.textLayerText = 'Hello world'; // 11 chars per page
+        const onTextStats = vi.fn();
+        const container = document.createElement('div');
+        await renderPdfDocument({ url: '/x.pdf', container, onTextStats });
+        expect(onTextStats).toHaveBeenCalledTimes(1);
+        expect(onTextStats).toHaveBeenCalledWith({
+            totalTextLength: 22,
+            totalPages: 2,
+            pagesRendered: 2,
+        });
+        // A document with real text is not image-only.
+        expect(isLikelyImageOnly(onTextStats.mock.calls[0][0])).toBe(false);
+    });
+
+    it('reports zero text for a scanned / image-only document (empty text layers)', async () => {
+        state.numPages = 3;
+        state.textLayerText = ''; // pages draw but produce no selectable text
+        const onTextStats = vi.fn();
+        const container = document.createElement('div');
+        await renderPdfDocument({ url: '/x.pdf', container, onTextStats });
+        const stats = onTextStats.mock.calls[0][0];
+        expect(stats).toEqual({ totalTextLength: 0, totalPages: 3, pagesRendered: 3 });
+        expect(isLikelyImageOnly(stats)).toBe(true);
+    });
+
+    it('ignores whitespace-only text layers when measuring selectable text', async () => {
+        state.numPages = 1;
+        state.textLayerText = '   \n\t  ';
+        const onTextStats = vi.fn();
+        const container = document.createElement('div');
+        await renderPdfDocument({ url: '/x.pdf', container, onTextStats });
+        expect(onTextStats.mock.calls[0][0].totalTextLength).toBe(0);
+    });
+
+    it('does not report text stats when the render is aborted', async () => {
+        const controller = new AbortController();
+        let firstPage = true;
+        state.numPages = 3;
+        state.getPageImpl = () => {
+            if (!firstPage) controller.abort();
+            firstPage = false;
+            return Promise.resolve(makePage());
+        };
+        const onTextStats = vi.fn();
+        const container = document.createElement('div');
+        await renderPdfDocument({ url: '/x.pdf', container, signal: controller.signal, onTextStats });
+        expect(onTextStats).not.toHaveBeenCalled();
+    });
+});
+
+describe('isLikelyImageOnly', () => {
+    it('flags a rendered document with no selectable text', () => {
+        expect(isLikelyImageOnly({ totalTextLength: 0, totalPages: 4, pagesRendered: 4 })).toBe(true);
+    });
+
+    it('does not flag a document that has selectable text', () => {
+        expect(isLikelyImageOnly({ totalTextLength: 500, totalPages: 4, pagesRendered: 4 })).toBe(false);
+    });
+
+    it('does not flag when nothing rendered (avoids a false positive on abort / empty)', () => {
+        expect(isLikelyImageOnly({ totalTextLength: 0, totalPages: 0, pagesRendered: 0 })).toBe(false);
+    });
+
+    it('treats a single stray character as selectable (threshold is one char)', () => {
+        expect(MIN_SELECTABLE_TEXT_CHARS).toBe(1);
+        expect(isLikelyImageOnly({ totalTextLength: 1, totalPages: 2, pagesRendered: 2 })).toBe(false);
     });
 });

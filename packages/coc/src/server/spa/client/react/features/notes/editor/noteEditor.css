@@ -1027,6 +1027,21 @@
     font-size: 12px;
 }
 
+/* Goal 4 AC-04: a scanned / image-only PDF renders as page images with no
+   selectable text. Pin a notice to the top of the scroll viewport so the reader
+   understands why highlighting / Ask AI don't work, instead of failing silently. */
+.pdfjs-render-notice {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    padding: 8px 12px;
+    text-align: center;
+    font-size: 12px;
+    background: #fff4ce;
+    border-bottom: 1px solid #f2d98c;
+    color: #6b5900;
+}
+
 /* Goal 2: persisted paper-annotation highlight overlay. Absolutely positioned
    inside a .pdfjs-page (position: relative) using percentage geometry from the
    normalized dual-anchor rects, so it lands on the same pixels at any scale.
@@ -1188,4 +1203,10 @@
 
 .dark .pdfjs-render-status {
     color: #cccccc;
+}
+
+.dark .pdfjs-render-notice {
+    background: #3a3320;
+    border-bottom-color: #5c5228;
+    color: #e6d18a;
 }
