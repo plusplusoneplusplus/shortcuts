@@ -125,15 +125,19 @@ describe('ChatDetail', () => {
         it('renders mode selector using the segmented ModePillSelector by default', () => {
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('data-testid="mode-selector"');
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('<ModePillSelector');
-            // Legacy compact-only controls are still present for the
-            // compactModeSelector branch used by narrow side panels.
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('data-testid="mode-cycle-btn"');
+            // Legacy single-row layout removed: the icon-only mode-cycle
+            // button no longer exists. The stacked layout is the only path.
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).not.toContain('data-testid="mode-cycle-btn"');
+            // The stacked layout still collapses to a tap-to-cycle button on
+            // narrow containers, under a distinct testid.
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('data-testid="mode-cycle-btn-compact"');
         });
 
         it('imports ModePillSelector and exposes pill options for the new layout', () => {
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('ModePillSelector');
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('getVisibleModePillOptions');
-            // The compact branch still references MODE_ICONS for its cycle button.
+            // The stacked layout's responsive collapse still references
+            // MODE_ICONS for its tap-to-cycle button.
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('MODE_ICONS');
         });
 
@@ -154,24 +158,21 @@ describe('ChatDetail', () => {
             expect(source).toContain("hideModeSelector = false");
         });
 
-        it('compactModeSelector defaults to false', () => {
-            expect(source).toContain("compactModeSelector = false");
-        });
-
-        it('declares compactModeSelector in ChatDetailProps', () => {
+        it('no longer declares compactModeSelector in ChatDetailProps (legacy layout removed)', () => {
             const propsBlock = source.substring(
                 source.indexOf('export interface ChatDetailProps'),
                 source.indexOf('export function ChatDetail'),
             );
-            expect(propsBlock).toContain('compactModeSelector?:');
+            expect(propsBlock).not.toContain('compactModeSelector');
+            expect(source).not.toContain('compactModeSelector');
         });
 
-        it('forwards compactModeSelector to every FollowUpInputArea instance', () => {
+        it('does not forward compactModeSelector to any FollowUpInputArea instance', () => {
             const followUpUsages = source.split('<FollowUpInputArea').slice(1);
             expect(followUpUsages.length).toBeGreaterThanOrEqual(2);
             for (const usage of followUpUsages) {
                 const block = usage.substring(0, usage.indexOf('/>'));
-                expect(block).toContain('compactModeSelector={compactModeSelector}');
+                expect(block).not.toContain('compactModeSelector');
             }
         });
 
@@ -1347,11 +1348,14 @@ describe('ChatDetail', () => {
             expect(CONVERSATION_AREA_SOURCE).toContain('w-11 h-11 sm:w-8 sm:h-8');
         });
 
-        it('FollowUpInputArea provides both the stacked and compact horizontal layouts', () => {
-            // Default stacked layout
+        it('FollowUpInputArea provides a single stacked layout that collapses responsively', () => {
+            // The stacked layout is the only follow-up-composer path now.
             expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('chat-input-stack');
-            // Compact (legacy) layout for narrow side panels
-            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('flex flex-row items-center');
+            // The removed legacy single-row layout used a flex-row input bar;
+            // it must be gone. Narrow panels rely on the stacked layout's own
+            // responsive collapse (mode-cycle-btn-compact / overflow menu).
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).not.toContain('flex flex-row items-center');
+            expect(FOLLOW_UP_INPUT_AREA_SOURCE).toContain('mode-cycle-btn-compact');
         });
 
         it('send button is always inline with shrink-0', () => {

@@ -121,12 +121,6 @@ export interface ChatDetailProps {
     hideModeSelector?: boolean;
     /** When set, restricts mode selector to only these modes */
     allowedModes?: ChatMode[];
-    /**
-     * When true, the mode selector renders as the icon-only cycling button at
-     * all viewport sizes. Use in narrow side-by-side contexts (e.g.
-     * NoteChatPanel) to avoid the wide `<select>` dropdown.
-     */
-    compactModeSelector?: boolean;
     /** When true, hides the follow-up input area (read-only view). */
     readOnly?: boolean;
     /**
@@ -174,7 +168,7 @@ export interface ChatDetailProps {
     hidePlanBanners?: boolean;
 }
 
-export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, compactModeSelector = false, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onProcessLoaded, onOpenForEachRun, onOpenMapReduceRun, onStartFreshSameContext, startingFreshSameContext = false, searchHighlightQuery, hideHeader = false, hidePlanBanners = false }: ChatDetailProps) {
+export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onProcessLoaded, onOpenForEachRun, onOpenMapReduceRun, onStartFreshSameContext, startingFreshSameContext = false, searchHighlightQuery, hideHeader = false, hidePlanBanners = false }: ChatDetailProps) {
     // Per-clone REST client (AC-07): a remote clone's chat reads/writes go to its
     // own server; a local clone keeps the default origin client. All process/
     // queue/notes/canvas/skill calls below are scoped to this chat's workspace.
@@ -2658,7 +2652,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                             attachedContext={attachedContext.items}
                             onRemoveAttachedContext={attachedContext.remove}
                             onAttachSessionContext={attachedContext.addSessionContext}
-                            compactModeSelector={compactModeSelector}
                             prComposerChips={
                                 <ChatComposerPrChips
                                     turns={turns}
@@ -2801,7 +2794,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                     attachedContext={attachedContext.items}
                     onRemoveAttachedContext={attachedContext.remove}
                     onAttachSessionContext={attachedContext.addSessionContext}
-                    compactModeSelector={compactModeSelector}
                     prComposerChips={
                         <ChatComposerPrChips
                             turns={turns}

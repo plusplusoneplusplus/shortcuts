@@ -371,18 +371,6 @@ describe('FollowUpInputArea — composer metadata strip', () => {
         render(<FollowUpInputArea {...makeProps()} />);
         expect(screen.queryByTestId('composer-meta-strip')).toBeNull();
     });
-
-    it('does not render the strip in the compact (single-row) layout', () => {
-        render(<FollowUpInputArea {...makeProps({
-            compactModeSelector: true,
-            workingDirectory: '/Users/yh/proj',
-            sessionTokenLimit: 200_000,
-            sessionCurrentTokens: 100_000,
-        })} />);
-        // Compact layout (legacy) is single-row; the relocated metadata strip is intentionally
-        // omitted because there is no second-row toolbar to host it.
-        expect(screen.queryByTestId('composer-meta-strip')).toBeNull();
-    });
 });
 
 describe('FollowUpInputArea — dismiss suggestions', () => {

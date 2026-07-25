@@ -348,7 +348,10 @@ describe('NoteChatPanel — rendered behavior', () => {
             // The single Notes header remains the only header after the transition.
             expect(screen.getAllByTestId('notes-chat-header')).toHaveLength(1);
             expect(hoisted.chatDetailProps.hideHeader).toBe(true);
-            expect(hoisted.chatDetailProps.compactModeSelector).toBe(true);
+            // Legacy compact single-row layout removed: Notes no longer opts
+            // into it — the active-chat follow-up now uses the same stacked
+            // composer (with responsive collapse) as every other embedded chat.
+            expect(hoisted.chatDetailProps.compactModeSelector).toBeUndefined();
             expect(hoisted.chatDetailProps.disableScratchpad).toBe(true);
             expect(hoisted.chatDetailProps.allowedModes).toEqual(['ask', 'autopilot']);
         });

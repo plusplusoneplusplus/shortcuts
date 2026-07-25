@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { Button, SuggestionChips, SendButton, QueueFollowUpButton } from '../../ui';
+import { Button, SuggestionChips, QueueFollowUpButton } from '../../ui';
 import { AttachmentPreviews } from '../../ui/AttachmentPreviews';
 import { PastePreview } from '../../ui/PastePreview';
 import { AttachedContextPreviews } from '../../ui/AttachedContextPreviews';
@@ -142,13 +142,6 @@ export interface FollowUpInputAreaProps {
     hideModeSelector?: boolean;
     /** When set, restricts mode selector to only these modes */
     allowedModes?: ChatMode[];
-    /**
-     * When true, the mode selector renders as a single icon-only cycling
-     * button laid out alongside the input on one row (legacy compact layout).
-     * Use in narrow side-by-side contexts (e.g. NoteChatPanel) where the new
-     * stacked layout would not fit.
-     */
-    compactModeSelector?: boolean;
     /** Working directory the chat operates in. Drives the cwd chip in the toolbar's meta strip. */
     workingDirectory?: string;
     /** Total context window size in tokens. Drives the ctx fuel gauge. */
@@ -254,7 +247,6 @@ export function FollowUpInputArea({
     sessionModel,
     hideModeSelector = false,
     allowedModes,
-    compactModeSelector = false,
     workingDirectory,
     sessionTokenLimit,
     sessionCurrentTokens,
@@ -642,9 +634,7 @@ export function FollowUpInputArea({
             type="button"
             className={cn(
                 'shrink-0 rounded bg-[#f14c4c] text-white font-medium hover:bg-[#d93636] disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-[#f14c4c]',
-                compactModeSelector
-                    ? 'h-[34px] px-2 sm:px-3 text-sm'
-                    : 'h-8 px-2 lg:h-[24px] lg:px-1.5 text-[11px]',
+                'h-8 px-2 lg:h-[24px] lg:px-1.5 text-[11px]',
             )}
             onClick={() => {
                 if (!isCancelling) onStop?.();
@@ -657,9 +647,6 @@ export function FollowUpInputArea({
         </button>
     );
 
-    const compactPlaceholder = inputDisabled && !isActiveGeneration
-        ? (disabledPlaceholder ?? 'Session expired.')
-        : 'Send a message... (type / for commands)';
     const stackedPlaceholder = inputDisabled && !isActiveGeneration
         ? (disabledPlaceholder ?? 'Session expired.')
         : 'Reply to CoC, or type / for commands...';
@@ -684,7 +671,7 @@ export function FollowUpInputArea({
         <div
             className={cn(
                 'border-t border-[#e0e0e0] dark:border-[#3c3c3c]',
-                compactModeSelector ? 'p-3 space-y-2' : 'px-3 py-2 space-y-1.5',
+                'px-3 py-2 space-y-1.5',
             )}
         >
             {resumeFeedback && (
@@ -785,133 +772,17 @@ export function FollowUpInputArea({
                     onDismiss={pastePreview.clearPaste}
                 />
             )}
-            {compactModeSelector ? (
-                /* ── Legacy compact single-row layout for narrow side panels ── */
-                <div
-                    className={cn(
-                        'relative flex flex-row items-center gap-2',
-                        sessionContextDragActive && 'border-[#0078d4] ring-2 ring-[#0078d4]/60 shadow-sm',
-                    )}
-                    data-testid="chat-input-bar"
-                    onDragEnter={handleSessionContextDragEnter}
-                    onDragOver={handleSessionContextDragOver}
-                    onDragLeave={handleSessionContextDragLeave}
-                    onDragEnd={resetSessionContextDragState}
-                    onDrop={handleSessionContextDrop}
-                >
-                    {sessionContextDragActive && (
-                        <div
-                            className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded border-2 border-dashed border-[#0078d4]/70 bg-[#eaf4ff]/80 text-xs font-medium text-[#005a9e] dark:bg-[#06314f]/80 dark:text-[#9cdcfe]"
-                            data-testid="session-context-drop-hint"
-                        >
-                            Drop to copy context
-                        </div>
-                    )}
-                    {hiddenFileInput}
-                    <button
-                        type="button"
-                        disabled={inputDisabled}
-                        onClick={() => fileInputRef.current?.click()}
-                        className="shrink-0 h-[34px] w-[34px] flex items-center justify-center rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50 disabled:opacity-50 disabled:cursor-not-allowed"
-                        data-testid="follow-up-attach-btn"
-                        aria-label="Attach file"
-                        title="Attach files"
-                    >
-                        +
-                    </button>
-                    {!hideModeSelector && (
-                        <div className="shrink-0" data-testid="mode-selector">
-                            <button
-                                type="button"
-                                onClick={() => setSelectedMode(cycleMode(selectedMode, allowedModes))}
-                                className="h-[34px] px-2 flex items-center gap-0.5 rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#1f1f1f] text-base cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0078d4]/50"
-                                data-testid="mode-cycle-btn"
-                                aria-label={`Mode: ${selectedMode}. Tap to switch.`}
-                                title={MODE_TOOLTIPS[selectedMode] + ' (Shift+Tab to cycle)'}
-                            >
-                                <span>{MODE_ICONS[selectedMode]}</span>
-                                <span className="text-[10px] text-[#848484] leading-none" aria-hidden="true">▾</span>
-                            </button>
-                        </div>
-                    )}
-                    <div ref={inputWrapperRef} className="relative flex-1 min-w-0">
-                        <RichTextInput
-                            ref={richTextRef}
-                            disabled={inputDisabled}
-                            value={followUpInput}
-                            ghostText={slashCommands.activeCommandHint ?? autocomplete.completion}
-                            placeholder={compactPlaceholder}
-                            className={cn(
-                                'w-full min-h-[34px] max-h-28 overflow-y-auto rounded border bg-white dark:bg-[#1f1f1f] px-2 py-1.5 text-sm text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 disabled:opacity-60',
-                                MODE_BORDER_COLORS[selectedMode].border,
-                                MODE_BORDER_COLORS[selectedMode].ring,
-                            )}
-                            onChange={handleEditorChange}
-                            onKeyDown={handleEditorKeyDown}
-                            onPaste={(e: React.ClipboardEvent) => {
-                                onAttachmentPaste(e);
-                                pastePreview?.onTextPaste(e);
-                            }}
-                            data-testid="activity-chat-input"
-                        />
-                        <SlashCommandMenu
-                            skills={skills}
-                            filter={slashCommands.menuFilter}
-                            onSelect={handleSlashSelect}
-                            onDismiss={slashCommands.dismissMenu}
-                            visible={slashCommands.menuVisible}
-                            highlightIndex={slashCommands.highlightIndex}
-                        />
-                        {modelCommand && (
-                            <ModelCommandMenu
-                                models={modelCommand.filteredModels}
-                                filter={modelCommand.modelFilter}
-                                onSelect={(modelId) => {
-                                    modelCommand.handleModelSelect(modelId);
-                                    richTextRef.current?.focus();
-                                }}
-                                onDismiss={modelCommand.dismissModelMenu}
-                                visible={modelCommand.modelMenuVisible}
-                                highlightIndex={modelCommand.modelHighlightIndex}
-                                currentModelId={modelCommand.modelOverride || sessionModel}
-                                onClearOverride={modelCommand.modelOverride
-                                    ? () => modelCommand.setModelOverride(null)
-                                    : undefined}
-                            />
-                        )}
-                    </div>
-                    {modelCommand?.modelOverride && (
-                        <div
-                            className="shrink-0 flex items-center gap-1 px-2 py-1 rounded border border-[#d0d0d0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] text-xs text-[#1e1e1e] dark:text-[#cccccc]"
-                            data-testid="model-override-badge"
-                        >
-                            <span className="truncate max-w-[120px]">{modelCommand.modelOverride}</span>
-                            <button
-                                type="button"
-                                className="text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] cursor-pointer"
-                                onClick={() => modelCommand.setModelOverride(null)}
-                                aria-label="Clear model override"
-                                title="Clear model override"
-                            >✕</button>
-                        </div>
-                    )}
-                    <WarmIndicatorDot status={warmStatus} className="mx-1" />
-                    {isActiveGeneration ? stopButton : (
-                        <SendButton
-                            disabled={inputDisabled || sending}
-                            ctrlHeld={modHeld}
-                            onSend={(dm) => { void onSend(undefined, dm); }}
-                        />
-                    )}
-                </div>
-            ) : (
-                /* ── Stacked layout: input card whose bottom toolbar holds the
-                     mode pill selector (first), model picker, slash/attach
-                     buttons, and the QueueFollowUpButton. The toolbar
-                     wraps vertically on narrow screens (mobile-responsive).
-                     Visual style mirrors the OpenDesign chats.html reference:
-                     uniform h-[26px] ctool buttons with rounded-sm corners,
-                     subtle hover, and a darker focus-within ring. ── */
+            {/* ── Stacked layout (the single follow-up-composer path shared by
+                 every embedded chat, incl. the narrow Notes side panel): an
+                 input card whose bottom toolbar holds the mode pill selector
+                 (first), model picker, slash/attach buttons, and the
+                 QueueFollowUpButton. On a narrow container it collapses
+                 responsively — mode pills → tap-to-cycle button, slash/attach
+                 → "⋯" overflow menu, meta strip hidden — via the container
+                 queries below, so no caller-specific layout is needed.
+                 Visual style mirrors the OpenDesign chats.html reference:
+                 uniform h-[26px] ctool buttons with rounded-sm corners,
+                 subtle hover, and a darker focus-within ring. ── */}
                 <div className="space-y-1" data-testid="chat-input-stack">
                     {hiddenFileInput}
                     {selectedMode === 'ralph' && (
@@ -1303,7 +1174,6 @@ export function FollowUpInputArea({
                         />
                     </div>
                 </div>
-            )}
         </div>
     );
 }

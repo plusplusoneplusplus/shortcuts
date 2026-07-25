@@ -265,7 +265,6 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                         title="Notes Chat"
                         hideHeader
                         allowedModes={NOTE_CHAT_ALLOWED_MODES}
-                        compactModeSelector
                         disableScratchpad
                         hidePlanBanners
                         onBack={onClose}
