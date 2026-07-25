@@ -13,7 +13,11 @@
  * primitives are unit-testable with jsdom.
  */
 
-import type { PaperAnnotation, PaperRectAnchor } from '../../../../../../../notes/paper-annotations-types';
+import type {
+    PaperAnnotation,
+    PaperRectAnchor,
+    PaperRegionAnchor,
+} from '../../../../../../../notes/paper-annotations-types';
 
 /** Attribute stamped on every overlay box (used to find + clear them). */
 export const PAPER_OVERLAY_ATTR = 'data-paper-annotation-overlay';
@@ -73,6 +77,16 @@ export function annotationsForPdf(
     return annotations
         .filter(a => pdfUrlsMatch(a.pdfUrl, pdfUrl))
         .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+}
+
+/**
+ * Adapt a single-box region anchor (Goal 4 AC-01 — a figure/equation drag-a-box)
+ * to the multi-rect {@link PaperRectAnchor} shape {@link paintAnnotationOverlay}
+ * consumes, so a region highlight reuses the exact same percentage-geometry paint
+ * path as a text-selection highlight.
+ */
+export function regionToRectAnchor(region: PaperRegionAnchor): PaperRectAnchor {
+    return { page: region.page, rects: [region.rect] };
 }
 
 /** Find the rendered page wrapper for a 1-based page number under `container`. */

@@ -175,6 +175,52 @@ describe('PdfAnnotationsLayer — reopen + dismiss', () => {
     });
 });
 
+describe('PdfAnnotationsLayer — region annotations (Goal 4 AC-01)', () => {
+    it('paints a region-anchor box for a figure annotation with no text quote', async () => {
+        fetchApiMock.mockResolvedValue(sidecar(annotation({
+            id: 'r1',
+            quote: undefined,
+            region: { page: 2, rect: { x: 0.1, y: 0.1, width: 0.4, height: 0.3 } },
+            question: 'What does this figure show?',
+        })));
+        render(<Harness />);
+        const box = await screen.findByTestId('paper-annotation-overlay');
+        expect(box).toHaveClass('paper-annotation-overlay-region');
+        // No text quote → no margin chip, and it resolves so it is not an orphan.
+        expect(screen.queryByTestId('quick-ask-chip-inline')).toBeNull();
+        expect(screen.queryByTestId('paper-annotation-orphans')).toBeNull();
+    });
+
+    it('clicking a region box reopens the stored answer', async () => {
+        fetchApiMock.mockResolvedValue(sidecar(annotation({
+            id: 'r1',
+            quote: undefined,
+            region: { page: 2, rect: { x: 0.1, y: 0.1, width: 0.4, height: 0.3 } },
+            question: 'What does this figure show?',
+        })));
+        render(<Harness />);
+        const box = await screen.findByTestId('paper-annotation-overlay');
+        fireEvent.click(box);
+        expect(await screen.findByTestId('quick-ask-popover')).toBeInTheDocument();
+        expect(screen.getByTestId('quick-ask-popover-answer')).toHaveTextContent('bandwidth-optimal');
+        expect(screen.getByTestId('quick-ask-popover-question'))
+            .toHaveTextContent('What does this figure show?');
+    });
+
+    it('falls back to a "Figure region" orphan when the page is not rendered', async () => {
+        fetchApiMock.mockResolvedValue(sidecar(annotation({
+            id: 'r1',
+            quote: undefined,
+            region: { page: 9, rect: { x: 0.1, y: 0.1, width: 0.4, height: 0.3 } },
+        })));
+        render(<Harness />);
+        await waitFor(() =>
+            expect(screen.getByTestId('paper-annotation-orphans')).toBeInTheDocument());
+        expect(screen.getByTestId('paper-annotation-orphan-item')).toHaveTextContent('Figure region');
+        expect(screen.queryByTestId('paper-annotation-overlay')).toBeNull();
+    });
+});
+
 describe('PdfAnnotationsLayer — export annotations (Goal 4 AC-03)', () => {
     it('shows the export button once the paper has an annotation', async () => {
         fetchApiMock.mockResolvedValue(sidecar(annotation({ id: 'a1' })));

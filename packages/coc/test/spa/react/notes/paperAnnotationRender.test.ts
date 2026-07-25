@@ -14,6 +14,7 @@ import {
     normalizePdfUrl,
     paintAnnotationOverlay,
     pdfUrlsMatch,
+    regionToRectAnchor,
     PAPER_OVERLAY_ATTR,
     PAPER_OVERLAY_ID_ATTR,
 } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/paperAnnotationRender';
@@ -139,6 +140,31 @@ describe('paintAnnotationOverlay', () => {
             vi.fn(),
         );
         expect(boxes).toEqual([]);
+    });
+});
+
+describe('regionToRectAnchor', () => {
+    it('wraps a single region box into a one-rect page anchor', () => {
+        const anchor = regionToRectAnchor({
+            page: 3,
+            rect: { x: 0.2, y: 0.3, width: 0.4, height: 0.1 },
+        });
+        expect(anchor.page).toBe(3);
+        expect(anchor.rects).toEqual([{ x: 0.2, y: 0.3, width: 0.4, height: 0.1 }]);
+    });
+
+    it('produces an anchor the overlay painter accepts', () => {
+        const container = document.createElement('div');
+        makePage(container, 1);
+        const boxes = paintAnnotationOverlay(
+            container,
+            'r1',
+            regionToRectAnchor({ page: 1, rect: { x: 0.1, y: 0.1, width: 0.5, height: 0.2 } }),
+            'Figure region',
+            vi.fn(),
+        );
+        expect(boxes).toHaveLength(1);
+        expect(boxes[0].style.width).toBe('50%');
     });
 });
 

@@ -1064,6 +1064,20 @@
     background: rgba(255, 212, 0, 0.45);
 }
 
+/* Goal 4 AC-01: a figure/equation region box (drag-a-box → vision crop). Drawn
+   as a dashed blue outline so it reads as a region marker rather than the yellow
+   text-highlight tint. Defined after the base overlay so its box styling wins. */
+.paper-annotation-overlay-region {
+    background: rgba(55, 148, 255, 0.14);
+    box-shadow: none;
+    border: 1px dashed rgba(55, 148, 255, 0.75);
+    border-radius: 3px;
+}
+
+.paper-annotation-overlay-region:hover {
+    background: rgba(55, 148, 255, 0.26);
+}
+
 /* AC-04: annotations that resolve to neither a quote nor a live page fall back
    to a visible list below the reader instead of being silently dropped. */
 .paper-annotation-orphans {

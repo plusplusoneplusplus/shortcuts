@@ -34,6 +34,7 @@ import {
     annotationsForPdf,
     clearAnnotationOverlays,
     paintAnnotationOverlay,
+    regionToRectAnchor,
 } from './paperAnnotationRender';
 import {
     downloadMarkdown,
@@ -60,20 +61,31 @@ function labelFor(selectedText: string): string {
     return collapsed.length <= 22 ? collapsed : collapsed.slice(0, 22).trimEnd() + '…';
 }
 
+/**
+ * A short display label for an annotation's chip / overlay / orphan entry. A
+ * region annotation (Goal 4 AC-01) has no text quote, so fall back to its
+ * question, then a generic "Figure region" marker.
+ */
+function annotationLabel(ann: PaperAnnotation): string {
+    if (ann.quote?.selectedText) {return labelFor(ann.quote.selectedText);}
+    if (ann.question) {return labelFor(ann.question);}
+    return 'Figure region';
+}
+
 function toClientNote(ann: PaperAnnotation): ClientSideNote {
     return {
         id: ann.id,
         processId: '',
         turnIndex: 0,
         anchor: {
-            selectedText: ann.quote.selectedText,
-            contextBefore: ann.quote.contextBefore,
-            contextAfter: ann.quote.contextAfter,
+            selectedText: ann.quote?.selectedText ?? '',
+            contextBefore: ann.quote?.contextBefore ?? '',
+            contextAfter: ann.quote?.contextAfter ?? '',
             fingerprint: '',
         },
         question: ann.question,
         answer: ann.answer,
-        label: labelFor(ann.quote.selectedText),
+        label: annotationLabel(ann),
         model: ann.model,
         createdAt: ann.createdAt,
         status: 'ready',
@@ -149,7 +161,7 @@ export function PdfAnnotationsLayer({
         const nextOrphans: PaperAnnotation[] = [];
         for (const ann of visible) {
             let anchored = false;
-            const label = labelFor(ann.quote.selectedText);
+            const label = annotationLabel(ann);
             if (ann.position) {
                 const boxes = paintAnnotationOverlay(
                     container,
@@ -166,22 +178,45 @@ export function PdfAnnotationsLayer({
                     anchored = true;
                 }
             }
-            const res = resolveSidenoteAnchor(container, {
-                selectedText: ann.quote.selectedText,
-                contextBefore: ann.quote.contextBefore,
-                contextAfter: ann.quote.contextAfter,
-                fingerprint: '',
-            });
-            if (res.located) {
-                const chip = injectInlineChip(container, res.range, {
-                    id: ann.id,
+            // Region anchor (figure/equation drag-a-box, Goal 4 AC-01) → a single
+            // overlay box reusing the same percentage-geometry paint path, tagged
+            // with a region class so it reads as a box rather than a text tint.
+            if (ann.region) {
+                const boxes = paintAnnotationOverlay(
+                    container,
+                    ann.id,
+                    regionToRectAnchor(ann.region),
                     label,
-                    onActivate: chip => openFromElement(ann, chip),
-                });
-                if (chip && ann.resolved) {
-                    chip.classList.add('paper-annotation-chip-resolved');
+                    el => openFromElement(ann, el),
+                );
+                if (boxes.length) {
+                    boxes.forEach(b => b.classList.add('paper-annotation-overlay-region'));
+                    if (ann.resolved) {
+                        boxes.forEach(b => b.classList.add('paper-annotation-overlay-resolved'));
+                    }
+                    anchored = true;
                 }
-                anchored = true;
+            }
+            // Text-quote anchor — a region-only annotation has none, so skip the
+            // (textContent-based) resolver when there is no quote to locate.
+            if (ann.quote?.selectedText) {
+                const res = resolveSidenoteAnchor(container, {
+                    selectedText: ann.quote.selectedText,
+                    contextBefore: ann.quote.contextBefore,
+                    contextAfter: ann.quote.contextAfter,
+                    fingerprint: '',
+                });
+                if (res.located) {
+                    const chip = injectInlineChip(container, res.range, {
+                        id: ann.id,
+                        label,
+                        onActivate: chip => openFromElement(ann, chip),
+                    });
+                    if (chip && ann.resolved) {
+                        chip.classList.add('paper-annotation-chip-resolved');
+                    }
+                    anchored = true;
+                }
             }
             if (!anchored) {nextOrphans.push(ann);}
         }
@@ -335,10 +370,10 @@ export function PdfAnnotationsLayer({
                             type="button"
                             className="paper-annotation-orphan-item"
                             data-testid="paper-annotation-orphan-item"
-                            title={ann.quote.selectedText}
+                            title={ann.quote?.selectedText ?? annotationLabel(ann)}
                             onClick={e => openFromElement(ann, e.currentTarget)}
                         >
-                            💡 {labelFor(ann.quote.selectedText)}
+                            💡 {annotationLabel(ann)}
                         </button>
                     ))}
                 </div>
