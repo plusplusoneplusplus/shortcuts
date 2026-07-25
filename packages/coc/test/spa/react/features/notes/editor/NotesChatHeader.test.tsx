@@ -48,6 +48,16 @@ describe('NotesChatHeader', () => {
             expect(screen.getByTestId('chat-scope-per-workspace')).toBeTruthy();
         });
 
+        it('centers the scope control independently of the title and window actions', () => {
+            renderHeader({ windowMode: 'lens', onMinimize: vi.fn(), onPin: vi.fn() });
+            expect(screen.getByTestId('notes-chat-header').className)
+                .toContain('grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]');
+            expect(screen.getByTestId('chat-scope-toggle').parentElement)
+                .toBe(screen.getByTestId('notes-chat-header'));
+            expect(screen.getByTestId('note-chat-close-btn').parentElement?.className)
+                .toContain('justify-self-end');
+        });
+
         it('always renders a close button', () => {
             renderHeader();
             expect(screen.getByTestId('note-chat-close-btn')).toBeTruthy();
