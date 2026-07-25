@@ -24,3 +24,5 @@ export type {
     UseGitOperationPollerOptions,
     UseGitOperationPollerReturn,
 } from './useGitOperationPoller';
+export { useAutoPullTimer, MINUTE_MS } from './useAutoPullTimer';
+export type { UseAutoPullTimerOptions } from './useAutoPullTimer';
