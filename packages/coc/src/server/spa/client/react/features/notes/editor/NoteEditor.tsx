@@ -91,6 +91,9 @@ export interface NoteEditorProps {
     /** Called when the user selects "Add to chat as reference" from the context menu.
      *  Only provided when the chat panel is open and below the reference cap. */
     onAddNoteReference?: (text: string, notePath: string, noteTitle: string) => void;
+    /** Goal 3 (AC-03): open the Notes chat grounded on an embedded paper's full
+     *  extracted text. Wired to a PDF embed's "💬 Chat about this paper" button. */
+    onChatAboutPaper?: (paperTextRelPath: string) => void;
     /** Whether the current root is the default managed root. Defaults to true.
      *  When false, version history and git features are hidden. */
     isDefaultRoot?: boolean;
@@ -200,6 +203,7 @@ export function NoteEditor({
     hasExistingChat,
     onNavigateToNote,
     onAddNoteReference,
+    onChatAboutPaper,
     isDefaultRoot = true,
     root,
     scrollToLine,
@@ -1381,6 +1385,7 @@ export function NoteEditor({
                                 workspaceId={workspaceId}
                                 notePath={notePath}
                                 noteRoot={root}
+                                onChatAboutPaper={onChatAboutPaper}
                             />
                             <input
                                 ref={pdfInputRef}

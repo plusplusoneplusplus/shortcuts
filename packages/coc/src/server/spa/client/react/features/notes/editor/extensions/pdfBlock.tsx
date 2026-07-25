@@ -14,6 +14,7 @@ import { normalizeStoredPdfLabel } from '../pdfLabel';
 import { PdfJsRenderer } from './PdfJsRenderer';
 import { PdfQuickAskLayer } from './PdfQuickAskLayer';
 import { PdfAnnotationsLayer } from './PdfAnnotationsLayer';
+import { paperTextPathFromPdfUrl } from './paperChatGrounding';
 
 /** Payload handed to {@link PdfBlockOptions.onRequestFullWindow} (AC-05). */
 export interface PdfFullWindowRequest {
@@ -41,6 +42,13 @@ export interface PdfBlockOptions {
     getNotePath?: () => string | null | undefined;
     /** Goal 2: live getter for the current notes root id, if any. */
     getNoteRoot?: () => string | undefined;
+    /**
+     * Goal 3 (AC-03): the "💬 Chat about this paper" button asks the host to open
+     * the Notes chat grounded on the paper's full extracted text. Receives the
+     * `.papers/<id>.txt` sidecar relpath. Undefined (or a non-cached-paper embed)
+     * hides the button.
+     */
+    onChatAboutPaper?: (paperTextRelPath: string) => void;
 }
 
 function PdfBlockView({ node, updateAttributes, selected, extension }: NodeViewProps) {
@@ -52,6 +60,10 @@ function PdfBlockView({ node, updateAttributes, selected, extension }: NodeViewP
     const quickAskWorkspaceId = (extension.options as PdfBlockOptions).workspaceId;
     const getNotePath = (extension.options as PdfBlockOptions).getNotePath;
     const getNoteRoot = (extension.options as PdfBlockOptions).getNoteRoot;
+    const onChatAboutPaper = (extension.options as PdfBlockOptions).onChatAboutPaper;
+    // Goal 3 (AC-03): only cached, ingested arXiv papers have an extracted `.txt`
+    // sidecar to ground on, so the chat action is offered only for those embeds.
+    const paperTextPath = paperTextPathFromPdfUrl(url);
     const indent = Number(node.attrs.indent || 0);
     const collapsed = Boolean(node.attrs.collapsed);
 
@@ -126,6 +138,18 @@ function PdfBlockView({ node, updateAttributes, selected, extension }: NodeViewP
                         >
                             {collapsed ? '▸' : '▾'}
                         </button>
+                        {paperTextPath && onChatAboutPaper && (
+                            <button
+                                type="button"
+                                className="md-pdf-embed-chat"
+                                data-testid="pdf-node-view-chat-about-paper"
+                                title="Chat about this paper"
+                                aria-label="Chat about this paper"
+                                onClick={() => onChatAboutPaper(paperTextPath)}
+                            >
+                                💬
+                            </button>
+                        )}
                         <button
                             type="button"
                             className="md-pdf-embed-fullwindow"

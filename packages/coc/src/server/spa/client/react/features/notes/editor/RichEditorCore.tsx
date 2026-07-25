@@ -67,6 +67,12 @@ export interface RichEditorCoreProps {
     notePath?: string | null;
     /** Goal 2: current notes root id, if any. */
     noteRoot?: string;
+    /**
+     * Goal 3 (AC-03): open the Notes chat grounded on an embedded paper's full
+     * extracted text. Invoked from a PDF embed's "💬 Chat about this paper" button
+     * with the `.papers/<id>.txt` sidecar relpath. Undefined hides the button.
+     */
+    onChatAboutPaper?: (paperTextRelPath: string) => void;
 }
 
 export function getLinkOpenTitle(platform = globalThis.navigator?.platform ?? '') {
@@ -92,6 +98,7 @@ export function RichEditorCore({
     workspaceId,
     notePath,
     noteRoot,
+    onChatAboutPaper,
 }: RichEditorCoreProps) {
     // Live persistence context for the PdfBlock's Quick Ask layer. The editor is
     // captured once by `useEditor`, but the note path/root change on navigation —
@@ -100,6 +107,11 @@ export function RichEditorCore({
     notePathRef.current = notePath;
     const noteRootRef = useRef(noteRoot);
     noteRootRef.current = noteRoot;
+    // Goal 3 (AC-03): the "chat about this paper" handler is read through a ref so
+    // the extension config (captured once by `useEditor`) always calls the latest
+    // callback even as the parent re-renders / the note changes.
+    const onChatAboutPaperRef = useRef(onChatAboutPaper);
+    onChatAboutPaperRef.current = onChatAboutPaper;
     // Stable callback refs — avoids editor recreation when parent re-renders
     const onCommentActivatedRef = useRef(onCommentActivated);
     onCommentActivatedRef.current = onCommentActivated;
@@ -144,6 +156,8 @@ export function RichEditorCore({
                 workspaceId,
                 getNotePath: () => notePathRef.current,
                 getNoteRoot: () => noteRootRef.current,
+                onChatAboutPaper: (paperTextRelPath: string) =>
+                    onChatAboutPaperRef.current?.(paperTextRelPath),
             }),                     // must precede StarterKit so its parseHTML rule wins
             MermaidBlock,           // must precede StarterKit so its parseHTML rule wins
             MathInline,

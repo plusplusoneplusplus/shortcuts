@@ -71,9 +71,15 @@ const config = PdfBlock as unknown as ExtensionConfig;
 const nodeViewConfig = PdfBlock as unknown as NodeViewConfig;
 const PdfBlockView = nodeViewConfig.addNodeView() as React.FC<any>;
 
-function makeExtension(onRequestFullWindow: ((req: { url: string; label: string }) => void) | undefined = vi.fn()) {
-    return { options: { onRequestFullWindow } };
+function makeExtension(
+    onRequestFullWindow: ((req: { url: string; label: string }) => void) | undefined = vi.fn(),
+    onChatAboutPaper?: (paperTextRelPath: string) => void,
+) {
+    return { options: { onRequestFullWindow, onChatAboutPaper } };
 }
+
+/** A cached, ingested arXiv paper embed (has a `.txt` sidecar to ground on). */
+const cachedPaperUrl = '/api/workspaces/ws1/notes/image?path=.papers%2F1802.05799.pdf';
 
 function makeProps(
     url = pdfUrl,
@@ -514,5 +520,42 @@ describe('PdfBlockView collapse', () => {
         render(<PdfBlockView {...makeCollapseProps({ collapsed: true, updateAttributes })} />);
         screen.getByTestId('pdf-node-view-toggle').click();
         expect(updateAttributes).toHaveBeenCalledWith({ collapsed: false });
+    });
+});
+
+describe('PdfBlockView chat-about-paper button (Goal 3, AC-03)', () => {
+    afterEach(cleanup);
+
+    function makeChatProps(
+        url: string,
+        onChatAboutPaper: ((p: string) => void) | undefined,
+    ) {
+        return {
+            node: { attrs: { url, label: 'paper.pdf' } },
+            updateAttributes: vi.fn(),
+            extension: makeExtension(vi.fn(), onChatAboutPaper),
+        } as any;
+    }
+
+    it('shows the 💬 button for a cached-paper embed when a handler is provided', () => {
+        render(<PdfBlockView {...makeChatProps(cachedPaperUrl, vi.fn())} />);
+        expect(screen.getByTestId('pdf-node-view-chat-about-paper')).toBeTruthy();
+    });
+
+    it('fires onChatAboutPaper with the .txt sidecar relpath on click', () => {
+        const onChatAboutPaper = vi.fn();
+        render(<PdfBlockView {...makeChatProps(cachedPaperUrl, onChatAboutPaper)} />);
+        fireEvent.click(screen.getByTestId('pdf-node-view-chat-about-paper'));
+        expect(onChatAboutPaper).toHaveBeenCalledWith('.papers/1802.05799.txt');
+    });
+
+    it('hides the button for a non-cached PDF (uploaded attachment)', () => {
+        render(<PdfBlockView {...makeChatProps(pdfUrl, vi.fn())} />);
+        expect(screen.queryByTestId('pdf-node-view-chat-about-paper')).toBeNull();
+    });
+
+    it('hides the button when no handler is wired even for a cached paper', () => {
+        render(<PdfBlockView {...makeChatProps(cachedPaperUrl, undefined)} />);
+        expect(screen.queryByTestId('pdf-node-view-chat-about-paper')).toBeNull();
     });
 });

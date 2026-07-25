@@ -38,6 +38,14 @@ export interface NoteChatPanelProps {
     onRemoveReference?: (id: string) => void;
     /** Called to clear all reference chips after send. */
     onClearReferences?: () => void;
+    /**
+     * Goal 3 (AC-03): whole-paper grounding directive prepended to the next
+     * message so the NoteChatExecutor reads an embedded paper's full extracted
+     * text. Set by the "💬 Chat about this paper" action; cleared after send.
+     */
+    paperGrounding?: string | null;
+    /** Called to clear the paper grounding prefix after send. */
+    onClearPaperGrounding?: () => void;
     /** Called whenever the chat existence state changes (taskId goes from null→set or set→null). */
     onHasChatChange?: (hasChat: boolean) => void;
     /**
@@ -54,7 +62,7 @@ export interface NoteChatPanelProps {
     onUnpin?: () => void;
 }
 
-export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBeforeSend, defaultScope, references, onRemoveReference, onClearReferences, onHasChatChange, presentation = 'embedded', onMinimize, onPin, onUnpin }: NoteChatPanelProps) {
+export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBeforeSend, defaultScope, references, onRemoveReference, onClearReferences, paperGrounding, onClearPaperGrounding, onHasChatChange, presentation = 'embedded', onMinimize, onPin, onUnpin }: NoteChatPanelProps) {
     const { taskId, chatNoteContext, syncChatNoteContext, createChat, resetChat, scope, setScope } = useNotesChat({
         workspaceId,
         notePath,
@@ -149,6 +157,17 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
 
     const noNoteSelected = scope === 'per-note' && !notePath;
 
+    // Fold the paper grounding directive (Goal 3, AC-03) and note references into
+    // one pending prefix. The paper directive leads so the model reads the full
+    // paper before the quoted note excerpts. Undefined when neither is present.
+    const referencePrefix = references && references.length > 0 ? formatNoteReferences(references) : '';
+    const combinedPrefix = `${paperGrounding ?? ''}${referencePrefix}`;
+    const pendingPrefix = combinedPrefix.length > 0 ? combinedPrefix : undefined;
+    const clearPendingPrefix = useCallback(() => {
+        onClearReferences?.();
+        onClearPaperGrounding?.();
+    }, [onClearReferences, onClearPaperGrounding]);
+
     const emptyStateText = scope === 'per-note'
         ? 'Ask about this note…'
         : 'Ask about your notes — one chat per workspace';
@@ -206,8 +225,8 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                             heroDescription={emptyStateText}
                             placeholder="Ask about your notes..."
                             draftKey={notesChatDraftKey(workspaceId, scope, notePath)}
-                            pendingPrefix={references && references.length > 0 ? formatNoteReferences(references) : undefined}
-                            onClearPendingPrefix={onClearReferences}
+                            pendingPrefix={pendingPrefix}
+                            onClearPendingPrefix={clearPendingPrefix}
                             accessoryAboveInput={
                                 <NoteReferenceChips
                                     references={references ?? []}
@@ -250,8 +269,8 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                         disableScratchpad
                         hidePlanBanners
                         onBack={onClose}
-                        pendingPrefix={references && references.length > 0 ? formatNoteReferences(references) : undefined}
-                        onClearPendingPrefix={onClearReferences}
+                        pendingPrefix={pendingPrefix}
+                        onClearPendingPrefix={clearPendingPrefix}
                         onProcessLoaded={syncChatNoteContext}
                     />
                 </ChatPreferencesProvider>

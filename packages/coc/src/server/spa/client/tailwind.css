@@ -529,6 +529,23 @@
     color: #0078d4;
 }
 
+/* Chat-about-paper 💬 button: only shown for cached, ingested arXiv papers that
+   have an extracted `.txt` sidecar to ground on (Goal 3, AC-03). */
+.md-pdf-embed-actions button.md-pdf-embed-chat {
+    color: #616161;
+    font-size: 12px;
+    line-height: 1;
+}
+
+.dark .md-pdf-embed-actions button.md-pdf-embed-chat {
+    color: #cccccc;
+}
+
+.md-pdf-embed-actions button.md-pdf-embed-chat:not(:disabled):hover {
+    text-decoration: none;
+    color: #0078d4;
+}
+
 /* Full-window PDF overlay (rendered inside the shared Dialog). The wrap fills the
    dialog body so the iframe uses the app window's width and height (AC-02). */
 .md-pdf-popup-frame-wrap {
