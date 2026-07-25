@@ -12,11 +12,26 @@ import {
 import { classifyPdfBlockUrl } from './pdfBlockUrl';
 import { normalizeStoredPdfLabel } from '../pdfLabel';
 
-function PdfBlockView({ node, updateAttributes, selected }: NodeViewProps) {
+/** Payload handed to {@link PdfBlockOptions.onRequestFullWindow} (AC-05). */
+export interface PdfFullWindowRequest {
+    url: string;
+    label: string;
+}
+
+export interface PdfBlockOptions {
+    /**
+     * AC-01/AC-05: the ⛶ full-window button asks the host (RichEditorCore) to
+     * open the PDF in an in-app overlay. Undefined hides the button.
+     */
+    onRequestFullWindow?: (request: PdfFullWindowRequest) => void;
+}
+
+function PdfBlockView({ node, updateAttributes, selected, extension }: NodeViewProps) {
     const url = String(node.attrs.url || '');
     const label = String(node.attrs.label || 'PDF');
     const classification = classifyPdfBlockUrl(url, window.location.origin);
     const href = classification.kind === 'invalid' ? undefined : classification.href;
+    const onRequestFullWindow = (extension.options as PdfBlockOptions).onRequestFullWindow;
     const indent = Number(node.attrs.indent || 0);
     const collapsed = Boolean(node.attrs.collapsed);
 
@@ -87,6 +102,21 @@ function PdfBlockView({ node, updateAttributes, selected }: NodeViewProps) {
                         </button>
                         <button
                             type="button"
+                            className="md-pdf-embed-fullwindow"
+                            data-testid="pdf-node-view-fullwindow"
+                            title="Open full window"
+                            aria-label="Open full window"
+                            onClick={() => {
+                                if (href && onRequestFullWindow) {
+                                    onRequestFullWindow({ url: href, label });
+                                }
+                            }}
+                            disabled={!href || !onRequestFullWindow}
+                        >
+                            ⛶
+                        </button>
+                        <button
+                            type="button"
                             onClick={() => {
                                 if (href) {
                                     window.open(href, '_blank', 'noopener,noreferrer');
@@ -141,11 +171,17 @@ function PdfBlockView({ node, updateAttributes, selected }: NodeViewProps) {
     );
 }
 
-export const PdfBlock = Node.create({
+export const PdfBlock = Node.create<PdfBlockOptions>({
     name: 'pdfBlock',
     group: 'block',
     atom: true,
     draggable: true,
+
+    addOptions() {
+        return {
+            onRequestFullWindow: undefined,
+        };
+    },
 
     addAttributes() {
         return {

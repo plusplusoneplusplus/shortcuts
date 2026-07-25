@@ -512,6 +512,47 @@
     color: #0078d4;
 }
 
+/* Full-window ⛶ button: a neutral glyph button matching the collapse chevron,
+   distinct from the text-link "Open in new tab" action (AC-01). */
+.md-pdf-embed-actions button.md-pdf-embed-fullwindow {
+    color: #616161;
+    font-size: 12px;
+    line-height: 1;
+}
+
+.dark .md-pdf-embed-actions button.md-pdf-embed-fullwindow {
+    color: #cccccc;
+}
+
+.md-pdf-embed-actions button.md-pdf-embed-fullwindow:not(:disabled):hover {
+    text-decoration: none;
+    color: #0078d4;
+}
+
+/* Full-window PDF overlay (rendered inside the shared Dialog). The wrap fills the
+   dialog body so the iframe uses the app window's width and height (AC-02). */
+.md-pdf-popup-frame-wrap {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    gap: 0.5rem;
+}
+
+.md-pdf-popup-frame {
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 0;
+    border: 0;
+    border-radius: 6px;
+    background: #ffffff;
+}
+
+.dark .md-pdf-popup-frame {
+    background: #1e1e1e;
+}
+
 /* When collapsed the iframe is unmounted, so the toolbar becomes the whole
    block — round its bottom corners to match the shell. */
 .pdf-node-view[data-collapsed] .md-pdf-embed-toolbar {

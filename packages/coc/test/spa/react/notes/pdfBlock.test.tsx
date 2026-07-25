@@ -41,8 +41,17 @@ const config = PdfBlock as unknown as ExtensionConfig;
 const nodeViewConfig = PdfBlock as unknown as NodeViewConfig;
 const PdfBlockView = nodeViewConfig.addNodeView() as React.FC<any>;
 
-function makeProps(url = pdfUrl, label = 'sample.pdf', updateAttributes = vi.fn()) {
-    return { node: { attrs: { url, label } }, updateAttributes } as any;
+function makeExtension(onRequestFullWindow: ((req: { url: string; label: string }) => void) | undefined = vi.fn()) {
+    return { options: { onRequestFullWindow } };
+}
+
+function makeProps(
+    url = pdfUrl,
+    label = 'sample.pdf',
+    updateAttributes = vi.fn(),
+    onRequestFullWindow: ((req: { url: string; label: string }) => void) | undefined = vi.fn(),
+) {
+    return { node: { attrs: { url, label } }, updateAttributes, extension: makeExtension(onRequestFullWindow) } as any;
 }
 
 function makeResizeProps(
@@ -53,6 +62,7 @@ function makeResizeProps(
         node: { attrs: { url: pdfUrl, label: 'sample.pdf', height: overrides.height ?? null } },
         updateAttributes,
         selected: overrides.selected ?? false,
+        extension: makeExtension(),
     } as any;
 }
 
@@ -286,6 +296,57 @@ describe('PdfBlockView', () => {
     });
 });
 
+describe('PdfBlockView full-window button', () => {
+    afterEach(() => cleanup());
+
+    const normalizedPdfUrl = new URL(pdfUrl, window.location.origin).href;
+
+    it('renders the ⛶ button next to "Open in new tab" for an inline PDF (AC-01)', () => {
+        render(<PdfBlockView {...makeProps()} />);
+        const btn = screen.getByTestId('pdf-node-view-fullwindow');
+        expect(btn.textContent).toBe('⛶');
+        expect(screen.getByRole('button', { name: 'Open in new tab' })).toBeTruthy();
+    });
+
+    it('renders the ⛶ button for a link-only (cross-origin) PDF (AC-01)', () => {
+        render(<PdfBlockView {...makeProps(externalPdfUrl, 'External PDF')} />);
+        expect(screen.getByTestId('pdf-node-view-fullwindow')).toBeTruthy();
+    });
+
+    it('requests full window with the normalized inline url and label on click (AC-05)', () => {
+        const onRequestFullWindow = vi.fn();
+        render(<PdfBlockView {...makeProps(pdfUrl, 'sample.pdf', vi.fn(), onRequestFullWindow)} />);
+        screen.getByTestId('pdf-node-view-fullwindow').click();
+        expect(onRequestFullWindow).toHaveBeenCalledWith({ url: normalizedPdfUrl, label: 'sample.pdf' });
+    });
+
+    it('requests full window with the cross-origin url for a link-only PDF (AC-03)', () => {
+        const onRequestFullWindow = vi.fn();
+        render(<PdfBlockView {...makeProps(externalPdfUrl, 'External PDF', vi.fn(), onRequestFullWindow)} />);
+        screen.getByTestId('pdf-node-view-fullwindow').click();
+        expect(onRequestFullWindow).toHaveBeenCalledWith({ url: externalPdfUrl, label: 'External PDF' });
+    });
+
+    it('disables the ⛶ button and never requests for an unsafe/invalid URL', () => {
+        const onRequestFullWindow = vi.fn();
+        render(<PdfBlockView {...makeProps('javascript:alert(1)', 'Unsafe PDF', vi.fn(), onRequestFullWindow)} />);
+        const btn = screen.getByTestId('pdf-node-view-fullwindow') as HTMLButtonElement;
+        expect(btn.disabled).toBe(true);
+        btn.click();
+        expect(onRequestFullWindow).not.toHaveBeenCalled();
+    });
+
+    it('disables the ⛶ button when no host handler is wired', () => {
+        const props = {
+            node: { attrs: { url: pdfUrl, label: 'sample.pdf' } },
+            updateAttributes: vi.fn(),
+            extension: { options: { onRequestFullWindow: undefined } },
+        } as any;
+        render(<PdfBlockView {...props} />);
+        expect((screen.getByTestId('pdf-node-view-fullwindow') as HTMLButtonElement).disabled).toBe(true);
+    });
+});
+
 describe('PdfBlockView resize', () => {
     afterEach(() => cleanup());
 
@@ -361,6 +422,7 @@ describe('PdfBlockView collapse', () => {
             node: { attrs: { url: pdfUrl, label: 'sample.pdf', collapsed: overrides.collapsed ?? false } },
             updateAttributes,
             selected: false,
+            extension: makeExtension(),
         } as any;
     }
 

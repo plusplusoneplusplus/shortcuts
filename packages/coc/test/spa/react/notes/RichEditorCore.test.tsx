@@ -64,7 +64,17 @@ vi.mock(
     '../../../../src/server/spa/client/react/features/notes/editor/extensions/mapBlock',
     () => ({ MapBlock: mockMapBlock }),
 );
-const mockPdfBlock = vi.hoisted(() => ({}));
+// PdfBlock is configured with an onRequestFullWindow bridge; `configure` returns
+// the same object so the ordering assertions (indexOf) still resolve it, and the
+// captured options let the popup-wiring test invoke the bridge.
+const mockPdfBlock = vi.hoisted(() => {
+    const block: any = { name: 'pdfBlock', options: {} as any };
+    block.configure = (opts: any) => {
+        block.options = opts;
+        return block;
+    };
+    return block;
+});
 vi.mock(
     '../../../../src/server/spa/client/react/features/notes/editor/extensions/pdfBlock',
     () => ({ PdfBlock: mockPdfBlock }),
@@ -228,6 +238,33 @@ describe('RichEditorCore', () => {
         );
 
         // Closing the dialog unmounts the iframe (stops playback).
+        act(() => {
+            screen.getByTestId('dialog-close-btn').click();
+        });
+        expect(document.querySelector('iframe')).toBeNull();
+    });
+
+    // ── AC-05: ⛶ full-window PDF wiring (node option → React Dialog) ────────
+
+    it('opens the full-window PDF Dialog when the PDF block requests it', () => {
+        render(<RichEditorCore />);
+
+        // PdfBlock is configured with an onRequestFullWindow bridge lifting the
+        // PDF url/label into RichEditorCore state.
+        expect(typeof mockPdfBlock.options.onRequestFullWindow).toBe('function');
+
+        // No overlay before the request.
+        expect(document.querySelector('iframe')).toBeNull();
+
+        act(() => {
+            mockPdfBlock.options.onRequestFullWindow({ url: 'https://app/x.pdf', label: 'x.pdf' });
+        });
+
+        const iframe = document.querySelector('iframe') as HTMLIFrameElement;
+        expect(iframe).toBeTruthy();
+        expect(iframe.getAttribute('src')).toBe('https://app/x.pdf');
+
+        // Closing the dialog unmounts the iframe.
         act(() => {
             screen.getByTestId('dialog-close-btn').click();
         });
