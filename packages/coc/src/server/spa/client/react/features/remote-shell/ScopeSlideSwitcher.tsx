@@ -139,13 +139,15 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
             )}
             {myWorkEnabled && renderVirtualSegment('work', 'my-work-toggle', '💼', 'My Work', goToMyWork)}
             {myLifeEnabled && renderVirtualSegment('life', 'my-life-toggle', '🏠', 'My Life', goToMyLife)}
+            {/* Keep this positioned without a z-index so the nested picker can
+                escape the segment and layer above page-level sticky headers. */}
             <div
                 ref={el => { segmentRefs.current.workspace = el; }}
                 role="tab"
                 aria-selected={activeScope === 'workspace'}
                 data-testid="scope-segment"
                 data-scope="workspace"
-                className="relative z-[1] flex items-center min-w-0"
+                className="relative flex items-center min-w-0"
             >
                 <WorkspaceIdentityChip repo={repo} repos={repos} onSwitchBack={onSwitchBack} />
             </div>
