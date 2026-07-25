@@ -35,6 +35,7 @@ import {
     validateAnnotationDraft,
     normalizeAnnotationDraft,
 } from './paper-annotations-types';
+import { formatPaperAnnotationsMarkdown } from './paper-annotations-export';
 import {
     encodeRootPath,
     resolveNotesRoot,
@@ -192,6 +193,30 @@ export function registerPaperAnnotationsRoutes(opts: PaperAnnotationsRouteOption
 
             const sidecar = await loadSidecar(resolved);
             sendJSON(res, 200, sidecar);
+        },
+    });
+
+    // GET /api/workspaces/:id/notes/paper-annotations/export?path=...&root=...&title=...
+    // (Goal 4 AC-03) Render every annotation of a note — anchored quote + Q&A —
+    // as a single portable Markdown document. Returns { markdown, count }.
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/notes\/paper-annotations\/export$/,
+        handler: async (req, res, match) => {
+            if (!getEnabled()) return sendError(res, 404, 'Quick Ask is disabled');
+            const parsed = url.parse(req.url!, true);
+            const rootParam = typeof parsed.query.root === 'string' ? parsed.query.root : undefined;
+            const resolved = await resolveSidecarOrFail(req, res, match!, parsed.query.path, rootParam);
+            if (!resolved) return;
+
+            const sidecar = await loadSidecar(resolved);
+            const title = typeof parsed.query.title === 'string' ? parsed.query.title : undefined;
+            const subtitle = typeof parsed.query.path === 'string' ? parsed.query.path : undefined;
+            const markdown = formatPaperAnnotationsMarkdown(sidecar, { title, subtitle });
+            sendJSON(res, 200, {
+                markdown,
+                count: Object.keys(sidecar.annotations).length,
+            });
         },
     });
 
