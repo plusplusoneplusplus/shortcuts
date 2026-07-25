@@ -2,14 +2,20 @@
  * QuickAskTurnLayer — per-assistant-turn glue for Quick Ask side-notes.
  *
  * Watches for text selections inside the turn's content container and raises
- * the ✨ Ask AI pill; renders the collected "💡 Side notes" chip row at the
- * bottom of the message; and opens the answer popover on chip click.
+ * the ✨ Ask AI pill; renders the collected "💡 Side notes" chips; and opens the
+ * answer popover on chip click.
+ *
+ * Chips whose source phrase resolves inside the rendered turn are injected
+ * **inline** at that phrase (AC-03); chips whose source can't be located fall
+ * back to the detached "💡 Side notes (N)" footer row. Both kinds of chip run
+ * the same click behavior: scroll-to + persistently highlight the source (or,
+ * when unresolved, flash the whole turn) and open the answer popover.
  *
  * All rendering is gated by the admin `features.quickAskSidenotes` flag at the
  * call site, so this component is only mounted when the feature is enabled.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { cn } from '../../../ui';
 import { getQuickAskSelection } from './quick-ask-selection';
 import { QuickAskPill } from './QuickAskPill';
@@ -21,6 +27,7 @@ import {
     highlightSidenoteRange,
     scrollElementIntoView,
 } from './sidenoteHighlight';
+import { clearInlineChips, injectInlineChip } from './sidenoteInlineChips';
 import type { ClientSideNote, QuickAskSelection } from './types';
 import './sidenoteHighlight.css';
 
@@ -44,6 +51,19 @@ interface OpenPopover {
     position: { top: number; left: number };
 }
 
+/** Stable empty set so an "all inline / none located" state keeps referential identity. */
+const EMPTY_IDS: ReadonlySet<string> = new Set();
+
+/** Shallow set equality by membership (both are id sets). */
+function sameIdSet(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+    if (a === b) {return true;}
+    if (a.size !== b.size) {return false;}
+    for (const id of a) {
+        if (!b.has(id)) {return false;}
+    }
+    return true;
+}
+
 export function QuickAskTurnLayer({
     containerRef,
     turnIndex,
@@ -64,6 +84,9 @@ export function QuickAskTurnLayer({
     // highlight (null when nothing is highlighted). Drives the outside-click
     // clearing below.
     const [highlightId, setHighlightId] = useState<string | null>(null);
+    // Ids of notes whose anchor resolved inline this render (AC-03). These render
+    // as injected inline markers and are omitted from the footer fallback row.
+    const [locatedIds, setLocatedIds] = useState<ReadonlySet<string>>(EMPTY_IDS);
 
     const clearSelection = useCallback(() => setSelection(null), []);
 
@@ -125,19 +148,19 @@ export function QuickAskTurnLayer({
         setSelection(null);
     }, [onAsk]);
 
-    // Clicking a chip: (AC-01) locate + scroll-to + persistently highlight the
-    // source phrase — or, when it can't be located, scroll the turn into view
-    // and flash it once; and (AC-02) toggle the answer popover on the same click.
-    const handleChipClick = useCallback((e: React.MouseEvent, id: string) => {
-        const chip = e.currentTarget as HTMLElement;
-        const rect = chip.getBoundingClientRect();
+    // Activate a chip (footer button OR injected inline marker): (AC-01) locate +
+    // scroll-to + persistently highlight the source phrase — or, when it can't be
+    // located, scroll the turn into view and flash it once — and (AC-02) toggle
+    // the answer popover on the same click.
+    const activateChip = useCallback((chipEl: HTMLElement, id: string) => {
+        const rect = chipEl.getBoundingClientRect();
         const container = containerRef.current;
 
-        // Any click clears the previous highlight first (covers both re-clicking
-        // the same chip and switching to a different chip).
+        // Any activation clears the previous highlight first (covers both
+        // re-activating the same chip and switching to a different chip).
         clearSidenoteHighlights(container);
 
-        // Same chip re-clicked → close popover and clear highlight (toggle off).
+        // Same chip re-activated → close popover and clear highlight (toggle off).
         if (openRef.current?.id === id) {
             setOpen(null);
             setHighlightId(null);
@@ -160,6 +183,53 @@ export function QuickAskTurnLayer({
 
         setOpen({ id, position: { top: rect.bottom + 6, left: rect.left } });
     }, [containerRef, notes]);
+
+    // Injected inline markers are plain DOM (not React), so their click listener
+    // calls through this ref to always reach the latest `activateChip` closure.
+    const activateRef = useRef(activateChip);
+    activateRef.current = activateChip;
+
+    // AC-03: place a clickable inline chip at each side-note's resolved source
+    // phrase inside the rendered turn. Recomputed every render from the anchors
+    // (never persisted), so it degrades gracefully when the turn re-renders or the
+    // source text moves — unresolved notes simply fall back to the footer row.
+    //
+    // Runs as a layout effect so the DOM markers + `locatedIds` are applied before
+    // paint (no footer→inline flash). Markers are cleared first every pass, and
+    // are injected highest-offset-first so an earlier insertion never invalidates
+    // a not-yet-injected range.
+    useLayoutEffect(() => {
+        const container = containerRef.current;
+        clearInlineChips(container);
+        if (!container || streaming) {
+            setLocatedIds(prev => (prev.size ? EMPTY_IDS : prev));
+            return;
+        }
+
+        const located: Array<{ note: ClientSideNote; from: number; to: number; range: Range }> = [];
+        for (const note of notes) {
+            if (note.status !== 'ready') {continue;}
+            const res = resolveSidenoteAnchor(container, note.anchor);
+            if (res.located) {located.push({ note, from: res.from, to: res.to, range: res.range });}
+        }
+        // Inject after the resolved end, highest offset first, so the text-node
+        // split from one insertion never shifts an earlier (lower-offset) range.
+        located.sort((a, b) => b.to - a.to || b.from - a.from);
+
+        for (const { note, range } of located) {
+            injectInlineChip(container, range, {
+                id: note.id,
+                label: note.label,
+                isError: note.status === 'error',
+                onActivate: chip => activateRef.current(chip, note.id),
+            });
+        }
+
+        const nextIds = new Set(located.map(l => l.note.id));
+        setLocatedIds(prev => (sameIdSet(prev, nextIds) ? prev : nextIds));
+
+        return () => clearInlineChips(container);
+    }, [notes, containerRef, streaming]);
 
     // AC-01: a persistent highlight clears when the user clicks anywhere that is
     // not a side-note chip (chips manage their own highlight) and not inside the
@@ -184,6 +254,9 @@ export function QuickAskTurnLayer({
     }, [containerRef]);
 
     const openNote = open ? notes.find(n => n.id === open.id) ?? null : null;
+    // Footer is the fallback home: notes that didn't resolve inline (plus the
+    // transient asking/error states, which are never placed inline).
+    const footerNotes = notes.filter(n => !locatedIds.has(n.id));
 
     return (
         <>
@@ -191,15 +264,15 @@ export function QuickAskTurnLayer({
                 <QuickAskPill rect={selection.rect} onAsk={handleAsk} onDismiss={clearSelection} />
             )}
 
-            {notes.length > 0 && (
+            {footerNotes.length > 0 && (
                 <div
                     className="mt-1.5 flex flex-wrap items-center gap-1.5"
                     data-testid="quick-ask-sidenote-row"
                 >
                     <span className="text-[11px] text-[#848484] select-none" aria-hidden="true">
-                        💡 Side notes ({notes.length})
+                        💡 Side notes ({footerNotes.length})
                     </span>
-                    {notes.map(note => {
+                    {footerNotes.map(note => {
                         const isOpen = open?.id === note.id;
                         if (note.status === 'asking') {
                             return (
@@ -217,7 +290,7 @@ export function QuickAskTurnLayer({
                             <button
                                 key={note.id}
                                 type="button"
-                                onClick={e => handleChipClick(e, note.id)}
+                                onClick={e => activateChip(e.currentTarget as HTMLElement, note.id)}
                                 data-testid={note.status === 'error' ? 'quick-ask-chip-error' : 'quick-ask-chip'}
                                 className={cn(
                                     'inline-flex items-center gap-1 h-[22px] px-2 rounded-full border text-[11px] transition-transform hover:-translate-y-px',
