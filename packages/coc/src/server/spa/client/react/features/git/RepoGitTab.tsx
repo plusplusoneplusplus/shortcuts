@@ -1945,13 +1945,31 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
                 )}
                 {scenarioBanner}
                 {refreshError && (
-                    <div className="px-4 py-1.5 text-xs text-[#d32f2f] dark:text-[#f48771] bg-[#fdecea] dark:bg-[#3c2020] border-b border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="git-refresh-error">
-                        {refreshError}
+                    <div className="px-4 py-1.5 text-xs text-[#d32f2f] dark:text-[#f48771] bg-[#fdecea] dark:bg-[#3c2020] border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex items-start justify-between gap-2" data-testid="git-refresh-error">
+                        <span>{refreshError}</span>
+                        <button
+                            onClick={() => setRefreshError(null)}
+                            className="text-[#d32f2f] dark:text-[#f48771] hover:opacity-70 leading-none shrink-0"
+                            aria-label="Dismiss error"
+                            data-testid="git-refresh-error-dismiss"
+                            type="button"
+                        >
+                            ×
+                        </button>
                     </div>
                 )}
                 {actionError && (
-                    <div className="px-4 py-1.5 text-xs text-[#d32f2f] dark:text-[#f48771] bg-[#fdecea] dark:bg-[#3c2020] border-b border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="git-action-error">
-                        {actionError}
+                    <div className="px-4 py-1.5 text-xs text-[#d32f2f] dark:text-[#f48771] bg-[#fdecea] dark:bg-[#3c2020] border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex items-start justify-between gap-2" data-testid="git-action-error">
+                        <span>{actionError}</span>
+                        <button
+                            onClick={() => setActionError(null)}
+                            className="text-[#d32f2f] dark:text-[#f48771] hover:opacity-70 leading-none shrink-0"
+                            aria-label="Dismiss error"
+                            data-testid="git-action-error-dismiss"
+                            type="button"
+                        >
+                            ×
+                        </button>
                     </div>
                 )}
                 <div

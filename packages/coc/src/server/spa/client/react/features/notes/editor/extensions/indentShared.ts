@@ -28,6 +28,20 @@ export const EMBED_INDENT_TYPES = ['image', 'pdfBlock', 'mapBlock', 'mermaidBloc
 /** Every node type the indent commands operate on. */
 export const INDENT_TYPES = [...TEXT_INDENT_TYPES, ...EMBED_INDENT_TYPES];
 
+/**
+ * List/task item nodes that own the horizontal position of their child block.
+ * A `paragraph` / `heading` inside one of these must never receive `data-indent`:
+ * its indentation is owned by the list nesting (Tab → sinkListItem), not by the
+ * indent attribute. Stamping `data-indent` there produces a broken half-state
+ * where the text shifts but the bullet marker does not.
+ */
+export const LIST_ITEM_TYPES = ['listItem', 'taskItem'];
+
+/** True when a node's parent owns its indentation (a list/task item). */
+export function isListOwned(parent: { type: { name: string } } | null | undefined): boolean {
+    return !!parent && LIST_ITEM_TYPES.includes(parent.type.name);
+}
+
 /** Clamp any indent value into the supported [0, MAX_INDENT] range. */
 export function clampIndent(n: number): number {
     return Math.max(0, Math.min(n, MAX_INDENT));

@@ -25,14 +25,18 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/editor/NoteEdito
     ),
 }));
 
-// Mock NotesSidebar — capture canGoBack / onGoBack props and expose a back button
+// Mock NotesSidebar — capture back/forward props and expose back + next buttons
 let capturedCanGoBack: boolean | undefined;
 let capturedOnGoBack: (() => void) | undefined;
+let capturedCanGoForward: boolean | undefined;
+let capturedOnGoForward: (() => void) | undefined;
 let capturedOnSelectPage: ((path: string) => void) | undefined;
 vi.mock('../../../../src/server/spa/client/react/features/notes/editor/NotesSidebar', () => ({
     NotesSidebar: (props: any) => {
         capturedCanGoBack = props.canGoBack;
         capturedOnGoBack = props.onGoBack;
+        capturedCanGoForward = props.canGoForward;
+        capturedOnGoForward = props.onGoForward;
         capturedOnSelectPage = props.onSelectPage;
         return (
             <div data-testid="notes-sidebar">
@@ -42,6 +46,13 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/editor/NotesSide
                     onClick={props.onGoBack}
                 >
                     ←
+                </button>
+                <button
+                    data-testid="notes-next-btn"
+                    disabled={!props.canGoForward}
+                    onClick={props.onGoForward}
+                >
+                    →
                 </button>
             </div>
         );
@@ -118,6 +129,8 @@ describe('NotesView — navigation history', () => {
         mockCommentsReturn = makeMockComments();
         capturedCanGoBack = undefined;
         capturedOnGoBack = undefined;
+        capturedCanGoForward = undefined;
+        capturedOnGoForward = undefined;
         capturedOnSelectPage = undefined;
         mockDispatch.mockClear();
         localStorage.clear();
@@ -249,5 +262,129 @@ describe('NotesView — navigation history', () => {
 
         act(() => { capturedOnGoBack?.(); });
         expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_NOTE_PATH', notePath: 'Page1' });
+    });
+
+    // ── Forward ("Next") navigation ─────────────────────────────────────────
+
+    it('canGoForward is false initially', () => {
+        render(<NotesView workspaceId="ws1" initialNotePath="Page1" />);
+        expect(capturedCanGoForward).toBe(false);
+    });
+
+    it('canGoForward stays false while only navigating forward through new notes', () => {
+        render(<NotesView workspaceId="ws1" initialNotePath="Page1" />);
+        act(() => { capturedOnSelectPage?.('Page2'); });
+        act(() => { capturedOnSelectPage?.('Page3'); });
+        expect(capturedCanGoForward).toBe(false);
+    });
+
+    it('canGoForward becomes true after going back', () => {
+        render(<NotesView workspaceId="ws1" initialNotePath="Page1" />);
+        act(() => { capturedOnSelectPage?.('Page2'); });
+        expect(capturedCanGoForward).toBe(false);
+
+        act(() => { capturedOnGoBack?.(); });
+        expect(capturedCanGoForward).toBe(true);
+    });
+
+    it('handleGoForward re-visits the note navigated away from', () => {
+        render(<NotesView workspaceId="ws1" initialNotePath="Page1" />);
+        act(() => { capturedOnSelectPage?.('Page2'); });
+        act(() => { capturedOnGoBack?.(); });
+        expect(screen.getByTestId('note-editor').getAttribute('data-note-path')).toBe('Page1');
+
+        act(() => { capturedOnGoForward?.(); });
+        expect(screen.getByTestId('note-editor').getAttribute('data-note-path')).toBe('Page2');
+    });
+
+    it('canGoForward is false again after going forward to the newest entry', () => {
+        render(<NotesView workspaceId="ws1" initialNotePath="Page1" />);
+        act(() => { capturedOnSelectPage?.('Page2'); });
+        act(() => { capturedOnGoBack?.(); });
+        act(() => { capturedOnGoForward?.(); });
+        expect(capturedCanGoForward).toBe(false);
+        expect(capturedCanGoBack).toBe(true);
+    });
+
+    it('multi-step back then forward traverses the single linear history', () => {
+        render(<NotesView workspaceId="ws1" initialNotePath="A" />);
+        act(() => { capturedOnSelectPage?.('B'); });
+        act(() => { capturedOnSelectPage?.('C'); });
+
+        // Back to B, then A
+        act(() => { capturedOnGoBack?.(); });
+        act(() => { capturedOnGoBack?.(); });
+        expect(screen.getByTestId('note-editor').getAttribute('data-note-path')).toBe('A');
+        expect(capturedCanGoBack).toBe(false);
+        expect(capturedCanGoForward).toBe(true);
+
+        // Forward to B, then C
+        act(() => { capturedOnGoForward?.(); });
+        expect(screen.getByTestId('note-editor').getAttribute('data-note-path')).toBe('B');
+        act(() => { capturedOnGoForward?.(); });
+        expect(screen.getByTestId('note-editor').getAttribute('data-note-path')).toBe('C');
+        expect(capturedCanGoForward).toBe(false);
+    });
+
+    it('opening a brand-new note mid-history clears the forward stack', () => {
+        render(<NotesView workspaceId="ws1" initialNotePath="A" />);
+        act(() => { capturedOnSelectPage?.('B'); });
+        act(() => { capturedOnSelectPage?.('C'); });
+
+        // Back to A → forward stack has B, C
+        act(() => { capturedOnGoBack?.(); });
+        act(() => { capturedOnGoBack?.(); });
+        expect(capturedCanGoForward).toBe(true);
+
+        // Open a brand-new note D → forward stack cleared
+        act(() => { capturedOnSelectPage?.('D'); });
+        expect(capturedCanGoForward).toBe(false);
+        expect(capturedCanGoBack).toBe(true);
+
+        // Going back now returns to A (the note D branched from), not B
+        act(() => { capturedOnGoBack?.(); });
+        expect(screen.getByTestId('note-editor').getAttribute('data-note-path')).toBe('A');
+    });
+
+    it('next button in sidebar is disabled when canGoForward is false', () => {
+        render(<NotesView workspaceId="ws1" initialNotePath="Page1" />);
+        expect(screen.getByTestId('notes-next-btn')).toBeDisabled();
+    });
+
+    it('next button in sidebar is enabled after going back', () => {
+        render(<NotesView workspaceId="ws1" initialNotePath="Page1" />);
+        act(() => { capturedOnSelectPage?.('Page2'); });
+        act(() => { capturedOnGoBack?.(); });
+        expect(screen.getByTestId('notes-next-btn')).not.toBeDisabled();
+    });
+
+    it('clicking next button navigates forward to the next note', () => {
+        render(<NotesView workspaceId="ws1" initialNotePath="Page1" />);
+        act(() => { capturedOnSelectPage?.('Page2'); });
+        act(() => { capturedOnGoBack?.(); });
+        fireEvent.click(screen.getByTestId('notes-next-btn'));
+        expect(screen.getByTestId('note-editor').getAttribute('data-note-path')).toBe('Page2');
+    });
+
+    it('dispatch is called with the restored path on go forward', () => {
+        render(<NotesView workspaceId="ws1" initialNotePath="Page1" />);
+        act(() => { capturedOnSelectPage?.('Page2'); });
+        act(() => { capturedOnGoBack?.(); });
+        mockDispatch.mockClear();
+
+        act(() => { capturedOnGoForward?.(); });
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_NOTE_PATH', notePath: 'Page2' });
+    });
+
+    it('forward stack is cleared when workspaceId changes', async () => {
+        const { rerender } = render(<NotesView workspaceId="ws1" initialNotePath="Page1" />);
+        act(() => { capturedOnSelectPage?.('Page2'); });
+        act(() => { capturedOnGoBack?.(); });
+        expect(capturedCanGoForward).toBe(true);
+
+        await act(async () => {
+            rerender(<NotesView workspaceId="ws2" initialNotePath="Page1" />);
+        });
+        expect(capturedCanGoForward).toBe(false);
     });
 });

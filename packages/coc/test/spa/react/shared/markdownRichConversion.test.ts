@@ -92,6 +92,39 @@ describe('richEditorHtmlToMarkdown', () => {
     });
 });
 
+// Protects the real NoteEditor load/save composition (not just the lower-level
+// converters): a persisted PDF filename with escapable punctuation must reach the
+// rich editor as a literal `data-pdf-label`, while the saved Markdown keeps only
+// the single required escape layer.
+describe('PDF label escaping through the rich-editor pipeline', () => {
+    // richEditorHtmlToMarkdown rewrites API image URLs back to relative paths using
+    // the production `/api/workspaces/<ws>/notes/image?path=` shape, so this io must
+    // mint that shape for the save→load round-trip's PDF URL to survive.
+    const pdfIo: MarkdownDocumentIO = {
+        ...io,
+        imageApiUrl: (wsId, relPath) =>
+            `/api/workspaces/${wsId}/notes/image?path=${encodeURIComponent(relPath)}`,
+    };
+    const onDisk = '![OSDI\\_2026\\_Paper\\_Survey.pdf](.attachments/a.pdf)\n';
+
+    it('loads escaped PDF Markdown with a literal label and re-saves one escape layer', () => {
+        // Load 1: the rich-editor HTML carries the literal filename.
+        const load1 = markdownToRichEditorHtml({ markdown: onDisk, io: pdfIo, workspaceId: 'ws1', root: 'notes' });
+        expect(load1.html).toContain('data-pdf-label="OSDI_2026_Paper_Survey.pdf"');
+        expect(load1.html).not.toContain('\\_');
+
+        // Save: back to canonical Markdown with exactly one escape layer.
+        const saved = richEditorHtmlToMarkdown({ html: load1.html, frontMatter: load1.frontMatter });
+        expect(saved).toContain('![OSDI\\_2026\\_Paper\\_Survey.pdf](.attachments/a.pdf)');
+        expect(saved).not.toContain('\\\\_'); // no accumulated double escaping
+
+        // Load 2: identical literal label — the round-trip is stable.
+        const load2 = markdownToRichEditorHtml({ markdown: saved, io: pdfIo, workspaceId: 'ws1', root: 'notes' });
+        expect(load2.html).toContain('data-pdf-label="OSDI_2026_Paper_Survey.pdf"');
+        expect(load2.html).not.toContain('\\_');
+    });
+});
+
 describe('buildImageMarkdown', () => {
     it('builds a markdown image tag from a filename and path', () => {
         expect(buildImageMarkdown('pic.png', '.attachments/x.png')).toBe('![pic.png](.attachments/x.png)');

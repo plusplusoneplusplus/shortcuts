@@ -1022,6 +1022,48 @@ describe('noteMarkdown', () => {
             const result = rewriteImageSrcToRelative(md);
             expect(result).toBe('![Doc](.attachments/sample.pdf)');
         });
+
+        // The canonical `![label](x.pdf)` form may carry Markdown escapes in the
+        // label (Turndown emits `_` as `\_`). The custom renderer must decode one
+        // layer so `data-pdf-label` — and the visible title — is the literal
+        // filename, never `OSDI\_2026...`.
+        describe('escaped labels decode to a literal data-pdf-label', () => {
+            const escaped: Array<[string, string]> = [
+                ['![OSDI\\_2026\\_Paper\\_Survey.pdf](.attachments/a.pdf)', 'OSDI_2026_Paper_Survey.pdf'],
+                ['![my\\_doc.pdf](.attachments/a.pdf)', 'my_doc.pdf'],
+                ['![a\\*b\\[c\\]d.pdf](.attachments/a.pdf)', 'a*b[c]d.pdf'],
+                // Already-literal labels stay literal (no over-decoding).
+                ['![plain.pdf](.attachments/a.pdf)', 'plain.pdf'],
+            ];
+
+            it.each(escaped)('%s → data-pdf-label="%s"', (markdown, literal) => {
+                const html = markdownToHtml(markdown);
+                expect(html).toContain(`data-pdf-label="${literal}"`);
+                expect(html).not.toContain('\\_');
+                expect(html).not.toContain('\\*');
+            });
+        });
+
+        it('two-cycle round-trip keeps the HTML label literal while Markdown keeps one escape layer', () => {
+            // Persisted, escaped canonical Markdown (as Turndown would have written it).
+            const onDisk = '![OSDI\\_2026\\_Paper\\_Survey.pdf](.attachments/a.pdf)\n';
+
+            // Load 1: the placeholder div carries the literal label.
+            const html1 = markdownToHtml(onDisk);
+            expect(html1).toContain('data-pdf-label="OSDI_2026_Paper_Survey.pdf"');
+
+            // Save: the label re-escapes to exactly one layer in the Markdown.
+            const md1 = htmlToMarkdown(html1);
+            expect(md1).toContain('![OSDI\\_2026\\_Paper\\_Survey.pdf](.attachments/a.pdf)');
+            expect(md1).not.toContain('\\\\_'); // no accumulated double escaping
+
+            // Load 2: still literal, and identical to load 1.
+            const html2 = markdownToHtml(md1);
+            expect(html2).toContain('data-pdf-label="OSDI_2026_Paper_Survey.pdf"');
+
+            // Save again is stable — no extra escapes accumulate.
+            expect(htmlToMarkdown(html2)).toBe(md1);
+        });
     });
 
     // ── Visual embed indentation persistence (AC-02) ────────────────────────
@@ -1202,6 +1244,18 @@ describe('noteMarkdown', () => {
             expect(md).not.toContain('data-pdf-height');
             expect(md).not.toContain('md-pdf-embed');
         });
+
+        it('an underscore-heavy label stays literal in the raw height div (no escapes added)', () => {
+            const html =
+                '<div class="md-pdf-embed" data-pdf-url=".attachments/a.pdf" data-pdf-label="OSDI_2026_Paper_Survey.pdf" data-pdf-height="720"></div>';
+            const md = htmlToMarkdown(html);
+            // The raw-div path uses attribute escaping, not Turndown, so no `\_` leaks in.
+            expect(md).toContain('data-pdf-label="OSDI_2026_Paper_Survey.pdf"');
+            expect(md).not.toContain('\\_');
+            const reloaded = markdownToHtml(md);
+            expect(reloaded).toContain('data-pdf-label="OSDI_2026_Paper_Survey.pdf"');
+            expect(reloaded).toContain('data-pdf-height="720"');
+        });
     });
 
     describe('embed collapse persistence — PDF', () => {
@@ -1249,6 +1303,18 @@ describe('noteMarkdown', () => {
             expect(md).toContain('![Doc](.attachments/a.pdf)');
             expect(md).not.toContain('data-pdf-collapsed');
             expect(md).not.toContain('md-pdf-embed');
+        });
+
+        it('an underscore-heavy label stays literal in the raw collapsed div (no escapes added)', () => {
+            const html =
+                '<div class="md-pdf-embed" data-pdf-url=".attachments/a.pdf" data-pdf-label="OSDI_2026_Paper_Survey.pdf" data-pdf-collapsed="true"></div>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('data-pdf-label="OSDI_2026_Paper_Survey.pdf"');
+            expect(md).toContain('data-pdf-collapsed="true"');
+            expect(md).not.toContain('\\_');
+            const reloaded = markdownToHtml(md);
+            expect(reloaded).toContain('data-pdf-label="OSDI_2026_Paper_Survey.pdf"');
+            expect(reloaded).toContain('data-pdf-collapsed="true"');
         });
     });
 

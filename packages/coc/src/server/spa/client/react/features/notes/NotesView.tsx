@@ -49,6 +49,17 @@ export interface NotesViewProps {
 
 const MAX_NAV_HISTORY = 50;
 
+/**
+ * Pointer-based navigation history for Notes back/forward. `entries` is the
+ * single linear list of visited notes; `pointer` is the index of the currently
+ * shown note (-1 when empty). `canGoBack` ⇔ `pointer > 0`, `canGoForward` ⇔
+ * `pointer < entries.length - 1`.
+ */
+interface NavHistory {
+    entries: string[];
+    pointer: number;
+}
+
 function getNotesChatLegacyOpenStorageKey(workspaceId: string): string {
     return `coc-notes-chat-panel-open-${workspaceId}`;
 }
@@ -85,10 +96,20 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
         }
     }, [workspaceId]);
 
-    // ── Navigation history ──────────────────────────────────────────────────
-
-    const [navHistory, setNavHistory] = useState<string[]>([]);
-    const [historyIndex, setHistoryIndex] = useState<number>(-1);
+    // ── Navigation history (pointer-based back/forward) ─────────────────────
+    // A single linear history: `entries` holds every visited note in order and
+    // `pointer` indexes the currently-shown note within it. Back moves the
+    // pointer left, Forward moves it right, and opening a brand-new note (not via
+    // Back/Forward) truncates everything after the pointer (clears the forward
+    // stack) before appending — the standard browser back/forward model.
+    const [nav, setNav] = useState<NavHistory>({ entries: [], pointer: -1 });
+    const navRef = useRef(nav);
+    // Keep the ref synchronously in sync so the navigation handlers can read the
+    // latest history without waiting for the next render/effect flush.
+    const setNavState = useCallback((next: NavHistory) => {
+        navRef.current = next;
+        setNav(next);
+    }, []);
 
     const notesChatTarget = useMemo<ReviewChatTarget>(() => ({
         type: 'notes',
@@ -396,11 +417,10 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
 
     // ── Navigation ──────────────────────────────────────────────────────────
 
-    // Reset history when workspace changes
+    // Reset history (both back and forward) when workspace changes
     useEffect(() => {
-        setNavHistory([]);
-        setHistoryIndex(-1);
-    }, [workspaceId]);
+        setNavState({ entries: [], pointer: -1 });
+    }, [workspaceId, setNavState]);
 
     // Sync from external deep-link changes (e.g. back/forward navigation)
     useEffect(() => {
@@ -412,36 +432,61 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
     const selectedPathRef = useRef<string | null>(selectedPath);
     useEffect(() => { selectedPathRef.current = selectedPath; }, [selectedPath]);
 
-    const pushHistory = useCallback((newPath: string) => {
-        const prev = selectedPathRef.current;
-        if (!prev || prev === newPath) return;
-        setNavHistory(h => {
-            // Discard any forward stack, push the previous path
-            const base = h.slice(0, historyIndex + 1);
-            const next = [...base, prev];
-            return next.length > MAX_NAV_HISTORY ? next.slice(next.length - MAX_NAV_HISTORY) : next;
-        });
-        setHistoryIndex(i => Math.min(i + 1, MAX_NAV_HISTORY - 1));
-    }, [historyIndex]);
+    // Open a brand-new note (from the tree, a link, etc.): truncate the forward
+    // stack, then append. `selectedPathRef.current` is the authoritative current
+    // note — it may differ from `entries[pointer]` after an out-of-band change
+    // (rename/create/delete), so reconcile it into the base before appending.
+    const pushEntry = useCallback((path: string) => {
+        const current = selectedPathRef.current;
+        if (current === path) return;
+        const { entries, pointer } = navRef.current;
+        let base = pointer >= 0 ? entries.slice(0, pointer + 1) : [];
+        if (current && base[base.length - 1] !== current) {
+            base = [...base, current];
+        }
+        let next = [...base, path];
+        let nextPointer = next.length - 1;
+        // Cap the history, dropping the oldest entries and shifting the pointer.
+        if (next.length > MAX_NAV_HISTORY) {
+            const overflow = next.length - MAX_NAV_HISTORY;
+            next = next.slice(overflow);
+            nextPointer -= overflow;
+        }
+        setNavState({ entries: next, pointer: nextPointer });
+    }, [setNavState]);
 
     const handleGoBack = useCallback(() => {
-        if (historyIndex < 0) return;
-        const prev = navHistory[historyIndex];
-        setHistoryIndex(i => i - 1);
-        setSelectedPath(prev);
-        dispatch({ type: 'SET_SELECTED_NOTE_PATH', notePath: prev });
-        updateHash(prev);
-    }, [navHistory, historyIndex, dispatch, updateHash]);
+        const { entries, pointer } = navRef.current;
+        if (pointer <= 0) return;
+        const nextPointer = pointer - 1;
+        const target = entries[nextPointer];
+        setNavState({ entries, pointer: nextPointer });
+        setSelectedPath(target);
+        dispatch({ type: 'SET_SELECTED_NOTE_PATH', notePath: target });
+        updateHash(target);
+    }, [dispatch, updateHash, setNavState, setSelectedPath]);
 
-    const canGoBack = historyIndex >= 0;
+    const handleGoForward = useCallback(() => {
+        const { entries, pointer } = navRef.current;
+        if (pointer >= entries.length - 1) return;
+        const nextPointer = pointer + 1;
+        const target = entries[nextPointer];
+        setNavState({ entries, pointer: nextPointer });
+        setSelectedPath(target);
+        dispatch({ type: 'SET_SELECTED_NOTE_PATH', notePath: target });
+        updateHash(target);
+    }, [dispatch, updateHash, setNavState, setSelectedPath]);
+
+    const canGoBack = nav.pointer > 0;
+    const canGoForward = nav.pointer >= 0 && nav.pointer < nav.entries.length - 1;
 
     const handleSelectPage = useCallback((path: string) => {
-        pushHistory(path);
+        pushEntry(path);
         setSelectedPath(path);
         dispatch({ type: 'SET_SELECTED_NOTE_PATH', notePath: path });
         updateHash(path);
         if (isMobile) setSidebarOpen(false);
-    }, [isMobile, dispatch, updateHash, pushHistory]);
+    }, [isMobile, dispatch, updateHash, pushEntry, setSelectedPath]);
 
     const handleNavigateToNote = useCallback((path: string, heading?: string) => {
         handleSelectPage(path);
@@ -598,6 +643,8 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
                         onNoteDeleted={handleNoteDeleted}
                         canGoBack={canGoBack}
                         onGoBack={handleGoBack}
+                        canGoForward={canGoForward}
+                        onGoForward={handleGoForward}
                         onNotesRootReady={setNotesRoot}
                         onRestoreEditorFocus={handleRestoreEditorFocus}
                         markSeenRef={markSeenRef}

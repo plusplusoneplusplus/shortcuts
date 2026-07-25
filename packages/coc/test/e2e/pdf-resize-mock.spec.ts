@@ -19,6 +19,10 @@ import { createNotesStore, mockNotesApi, type NoteTreeNode } from './fixtures/no
 
 const WS_ID = 'ws-pdf-resize-mock';
 
+// Underscore-heavy filename: Markdown escapes each `_` as `\_`, but the visible
+// title and the raw resized div's data-pdf-label must stay literal.
+const PDF_FILENAME = 'OSDI_2026_Paper_Survey.pdf';
+
 // Native PDF navigation requires full Chromium rather than the headless shell.
 test.use({ channel: 'chromium' });
 
@@ -65,10 +69,13 @@ test.describe('Notes page — inline PDF embed resize', () => {
             const repoDir = createRepoFixture(tmpDir);
             await seedWorkspace(serverUrl, WS_ID, `${WS_ID}-repo`, repoDir);
 
+            // Seed escaped canonical Markdown — the label must render literal and
+            // stay literal in the raw div written on resize.
             const store = createNotesStore({
                 tree: seedTree(),
                 content: {
-                    'Journal/getting-started.md': '# Doc\n\n![Sample PDF](.attachments/sample.pdf)\n',
+                    'Journal/getting-started.md':
+                        '# Doc\n\n![OSDI\\_2026\\_Paper\\_Survey.pdf](.attachments/sample.pdf)\n',
                 },
             });
             await mockNotesApi(page, store);
@@ -78,6 +85,7 @@ test.describe('Notes page — inline PDF embed resize', () => {
 
             const pdfNode = page.locator('[data-testid="pdf-node-view"]');
             await expect(pdfNode).toBeVisible({ timeout: 10_000 });
+            await expect(page.locator('.md-pdf-embed-title')).toHaveText(PDF_FILENAME);
 
             const iframe = page.locator('[data-testid="pdf-node-view-frame"]');
             await iframe.scrollIntoViewIfNeeded();
@@ -122,6 +130,9 @@ test.describe('Notes page — inline PDF embed resize', () => {
             expect(body.content).toContain('data-pdf-height="');
             expect(body.content).toContain('class="md-pdf-embed"');
             expect(body.content).toContain('data-pdf-url=".attachments/sample.pdf"');
+            // The raw resized div carries the literal label, not the `\_` escapes.
+            expect(body.content).toContain(`data-pdf-label="${PDF_FILENAME}"`);
+            expect(body.content).not.toContain('\\_');
         } finally {
             safeRmSync(tmpDir);
         }
