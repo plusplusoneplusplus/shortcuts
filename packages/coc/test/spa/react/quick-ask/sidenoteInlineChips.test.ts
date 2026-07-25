@@ -54,7 +54,7 @@ describe('injectInlineChip', () => {
         const before = el.textContent;
         const range = rangeOf(el, 'GroupedGEMM');
 
-        const chip = injectInlineChip(el, range, { id: 'a', label: 'grouped', onActivate: () => {} });
+        const chip = injectInlineChip(el, range, { id: 'a', label: 'grouped', fullText: 'GroupedGEMM', onActivate: () => {} });
 
         expect(chip).not.toBeNull();
         expect(chips(el)).toHaveLength(1);
@@ -75,7 +75,7 @@ describe('injectInlineChip', () => {
     it('applies the error variant class + testid prefix so the outside-click guard treats it as a chip', () => {
         const el = makeContainer('<p>alpha beta gamma</p>');
         const chip = injectInlineChip(el, rangeOf(el, 'beta'), {
-            id: 'e', label: 'oops', isError: true, onActivate: () => {},
+            id: 'e', label: 'oops', fullText: 'beta', isError: true, onActivate: () => {},
         });
         expect(chip!.className).toContain(SIDENOTE_INLINE_ERROR_CLASS);
         // Shared prefix with footer chips (data-testid^="quick-ask-chip").
@@ -87,7 +87,7 @@ describe('injectInlineChip', () => {
         const onActivate = vi.fn();
         const parentClick = vi.fn();
         el.addEventListener('click', parentClick);
-        const chip = injectInlineChip(el, rangeOf(el, 'beta'), { id: 'x', label: 'b', onActivate });
+        const chip = injectInlineChip(el, rangeOf(el, 'beta'), { id: 'x', label: 'b', fullText: 'beta', onActivate });
 
         chip!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 
@@ -100,16 +100,39 @@ describe('injectInlineChip', () => {
     it('leaves the caller-supplied range intact (a collapsed clone is used)', () => {
         const el = makeContainer('<p>alpha beta gamma</p>');
         const range = rangeOf(el, 'beta');
-        injectInlineChip(el, range, { id: 'x', label: 'b', onActivate: () => {} });
+        injectInlineChip(el, range, { id: 'x', label: 'b', fullText: 'beta', onActivate: () => {} });
         // The original range still selects the source phrase.
         expect(range.toString()).toBe('beta');
+    });
+
+    it('sets data-tip to the full selected text, independent of the (possibly truncated) label', () => {
+        const el = makeContainer('<p>alpha beta gamma</p>');
+        const chip = injectInlineChip(el, rangeOf(el, 'beta'), {
+            id: 'x', label: 'b…', fullText: 'beta gamma delta epsilon', onActivate: () => {},
+        });
+        expect(chip!.getAttribute('data-tip')).toBe('beta gamma delta epsilon');
+        // Native title/aria-label fallback is untouched by the new attribute.
+        expect(chip!.getAttribute('title')).toBe('b…');
+    });
+
+    it('collapses whitespace and caps data-tip to 140 chars for a very long selection', () => {
+        const el = makeContainer('<p>alpha beta gamma</p>');
+        const long = 'word '.repeat(60).trim(); // 60 * 5 - 1 = 299 chars, collapses to itself
+        const chip = injectInlineChip(el, rangeOf(el, 'beta'), {
+            id: 'x', label: 'b', fullText: `line one\n\n  line   two  ${long}`, onActivate: () => {},
+        });
+        const tip = chip!.getAttribute('data-tip')!;
+        expect(tip.length).toBeLessThanOrEqual(141); // 140 chars + trailing ellipsis
+        expect(tip.endsWith('…')).toBe(true);
+        expect(tip).not.toContain('\n');
+        expect(tip).not.toContain('  ');
     });
 });
 
 describe('clearInlineChips', () => {
     it('removes every marker and normalizes the split text nodes back together', () => {
         const el = makeContainer('<p>one two three</p>');
-        injectInlineChip(el, rangeOf(el, 'two'), { id: 'a', label: 't', onActivate: () => {} });
+        injectInlineChip(el, rangeOf(el, 'two'), { id: 'a', label: 't', fullText: 'two', onActivate: () => {} });
         expect(chips(el)).toHaveLength(1);
 
         clearInlineChips(el);
@@ -129,8 +152,8 @@ describe('clearInlineChips', () => {
 
     it('removes multiple markers injected at different phrases', () => {
         const el = makeContainer('<p>alpha beta gamma delta</p>');
-        injectInlineChip(el, rangeOf(el, 'beta'), { id: 'a', label: 'b', onActivate: () => {} });
-        injectInlineChip(el, rangeOf(el, 'delta'), { id: 'b', label: 'd', onActivate: () => {} });
+        injectInlineChip(el, rangeOf(el, 'beta'), { id: 'a', label: 'b', fullText: 'beta', onActivate: () => {} });
+        injectInlineChip(el, rangeOf(el, 'delta'), { id: 'b', label: 'd', fullText: 'delta', onActivate: () => {} });
         expect(chips(el)).toHaveLength(2);
         clearInlineChips(el);
         expect(chips(el)).toHaveLength(0);

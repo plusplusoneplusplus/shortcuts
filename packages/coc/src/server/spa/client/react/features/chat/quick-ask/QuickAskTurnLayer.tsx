@@ -22,9 +22,11 @@ import { QuickAskPill } from './QuickAskPill';
 import { QuickAskSidenotePopover } from './QuickAskSidenotePopover';
 import { resolveSidenoteAnchor } from './sidenoteAnchoring';
 import {
+    clearSidenoteAnchorIndicators,
     clearSidenoteHighlights,
     flashTurn,
     highlightSidenoteRange,
+    indicateSidenoteAnchor,
     scrollElementIntoView,
 } from './sidenoteHighlight';
 import { clearInlineChips, injectInlineChip } from './sidenoteInlineChips';
@@ -201,6 +203,7 @@ export function QuickAskTurnLayer({
     useLayoutEffect(() => {
         const container = containerRef.current;
         clearInlineChips(container);
+        clearSidenoteAnchorIndicators(container);
         if (!container || streaming) {
             setLocatedIds(prev => (prev.size ? EMPTY_IDS : prev));
             return;
@@ -216,10 +219,15 @@ export function QuickAskTurnLayer({
         // split from one insertion never shifts an earlier (lower-offset) range.
         located.sort((a, b) => b.to - a.to || b.from - a.from);
 
-        for (const { note, range } of located) {
+        for (const { note, from, to, range } of located) {
+            // Persistent indicator first: it only wraps text nodes (adds no
+            // characters), so the chip's range — resolved from the same
+            // container.textContent offsets — remains valid for insertion.
+            indicateSidenoteAnchor(container, from, to);
             injectInlineChip(container, range, {
                 id: note.id,
                 label: note.label,
+                fullText: note.anchor.selectedText,
                 isError: note.status === 'error',
                 onActivate: chip => activateRef.current(chip, note.id),
             });
@@ -228,7 +236,10 @@ export function QuickAskTurnLayer({
         const nextIds = new Set(located.map(l => l.note.id));
         setLocatedIds(prev => (sameIdSet(prev, nextIds) ? prev : nextIds));
 
-        return () => clearInlineChips(container);
+        return () => {
+            clearInlineChips(container);
+            clearSidenoteAnchorIndicators(container);
+        };
     }, [notes, containerRef, streaming]);
 
     // AC-01: a persistent highlight clears when the user clicks anywhere that is

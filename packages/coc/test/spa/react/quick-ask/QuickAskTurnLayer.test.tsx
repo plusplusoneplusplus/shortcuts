@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { useRef } from 'react';
 import { QuickAskTurnLayer } from '../../../../src/server/spa/client/react/features/chat/quick-ask/QuickAskTurnLayer';
-import { SIDENOTE_FLASH_CLASS, SIDENOTE_HIGHLIGHT_ATTR }
+import { SIDENOTE_ANCHOR_INDICATOR_ATTR, SIDENOTE_FLASH_CLASS, SIDENOTE_HIGHLIGHT_ATTR }
     from '../../../../src/server/spa/client/react/features/chat/quick-ask/sidenoteHighlight';
 import { SIDENOTE_INLINE_ATTR }
     from '../../../../src/server/spa/client/react/features/chat/quick-ask/sidenoteInlineChips';
@@ -55,6 +55,10 @@ function highlightSpans(): HTMLElement[] {
 
 function inlineChips(): HTMLElement[] {
     return Array.from(document.querySelectorAll<HTMLElement>(`[${SIDENOTE_INLINE_ATTR}]`));
+}
+
+function anchorIndicators(): HTMLElement[] {
+    return Array.from(document.querySelectorAll<HTMLElement>(`[${SIDENOTE_ANCHOR_INDICATOR_ATTR}]`));
 }
 
 /** The inline chip injected for a given side-note id. */
@@ -197,5 +201,38 @@ describe('QuickAskTurnLayer — AC-03 inline chip placement', () => {
         render(<Harness notes={[]} />);
         expect(inlineChips()).toHaveLength(0);
         expect(screen.queryByTestId('quick-ask-sidenote-row')).toBeNull();
+    });
+
+    it('renders both the inline chip and the persistent anchor indicator for a located note', () => {
+        render(<Harness notes={[groupedGemm]} />);
+
+        const chip = inlineChipFor('a');
+        expect(screen.getByTestId('turn-content').contains(chip)).toBe(true);
+        const indicators = anchorIndicators();
+        expect(indicators).toHaveLength(1);
+        expect(indicators[0].textContent).toBe('GroupedGEMM');
+        expect(screen.getByTestId('turn-content').contains(indicators[0])).toBe(true);
+    });
+
+    it('does not add an indicator or chip for an un-located note', () => {
+        render(<Harness notes={[missing]} />);
+        expect(anchorIndicators()).toHaveLength(0);
+        expect(inlineChips()).toHaveLength(0);
+    });
+
+    it('clears both the chip and the indicator on re-render when the note is removed', () => {
+        const { rerender } = render(<Harness notes={[groupedGemm]} />);
+        expect(inlineChips()).toHaveLength(1);
+        expect(anchorIndicators()).toHaveLength(1);
+
+        rerender(<Harness notes={[]} />);
+        expect(inlineChips()).toHaveLength(0);
+        expect(anchorIndicators()).toHaveLength(0);
+        expect(screen.getByTestId('turn-content').textContent).toBe(TURN_TEXT);
+    });
+
+    it('sets data-tip on the inline chip to the full selected text', () => {
+        render(<Harness notes={[groupedGemm]} />);
+        expect(inlineChipFor('a').getAttribute('data-tip')).toBe('GroupedGEMM');
     });
 });

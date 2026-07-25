@@ -23,11 +23,24 @@
     border-radius: 4px;
 }
 
+/* Persistent anchor indicator: every located side-note's source phrase gets
+   this always-on, subtle dotted underline (see sidenoteHighlight.ts:
+   indicateSidenoteAnchor / wrapRange) so multiple notes in one reply are
+   scannable at a glance — no hover or click required. Deliberately a
+   different visual channel (border-bottom only, no background) from the
+   click-activated yellow highlight above, so the two can coexist on the same
+   phrase without competing. */
+.quick-ask-sidenote-anchor-indicator {
+    border-bottom: 2px dotted rgba(55, 148, 255, 0.55);
+    padding-bottom: 0.05rem;
+}
+
 /* Inline side-note chip (AC-03): a small clickable marker injected right after
    the anchored source phrase inside the rendered turn (see sidenoteInlineChips.ts).
    The 💡 glyph is a ::after pseudo-element so the chip contributes NO text node —
    container.textContent stays clean for anchor resolution + selection capture. */
 .quick-ask-sidenote-inline-chip {
+    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -55,6 +68,32 @@
 
 .quick-ask-sidenote-inline-chip:hover {
     transform: translateY(-1px);
+}
+
+/* Custom hover tooltip (replaces reliance on the native `title` attribute):
+   shows the full, untruncated selected phrase via `content: attr(data-tip)`,
+   a pure-CSS pseudo-element so no real text node is added to the chip's
+   subtree. Styled like the app's existing dark tooltips (e.g. CommitTooltip). */
+.quick-ask-sidenote-inline-chip[data-tip]:hover::before,
+.quick-ask-sidenote-inline-chip[data-tip]:focus-visible::before {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: 260px;
+    padding: 4px 8px;
+    background: #252526;
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    color: #cccccc;
+    font-size: 11px;
+    line-height: 1.4;
+    white-space: normal;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    pointer-events: none;
+    z-index: 20;
 }
 
 .quick-ask-sidenote-inline-chip-error {

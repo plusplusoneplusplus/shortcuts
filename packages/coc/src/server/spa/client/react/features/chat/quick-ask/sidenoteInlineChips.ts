@@ -28,6 +28,14 @@ export const SIDENOTE_INLINE_ERROR_CLASS = 'quick-ask-sidenote-inline-chip-error
  * treats an inline chip click the same as a footer chip click.
  */
 export const SIDENOTE_INLINE_TESTID = 'quick-ask-chip-inline';
+/** Cap on the `data-tip` hover-tooltip text (the popover already shows the complete text). */
+const TIP_MAX_LENGTH = 140;
+
+/** Collapse whitespace and cap `text` to `TIP_MAX_LENGTH` for the hover tooltip. */
+function tipTextFor(text: string): string {
+    const collapsed = text.replace(/\s+/g, ' ').trim();
+    return collapsed.length <= TIP_MAX_LENGTH ? collapsed : collapsed.slice(0, TIP_MAX_LENGTH).trimEnd() + '…';
+}
 
 /**
  * Remove every injected inline chip marker inside `container`, then `normalize()`
@@ -46,8 +54,10 @@ export function clearInlineChips(container: HTMLElement | null): void {
 export interface InlineChipOptions {
     /** Side-note id (stamped on the marker; passed back to `onActivate`). */
     id: string;
-    /** Human label used for the tooltip / accessible name. */
+    /** Human label used for the native title / accessible name (truncated). */
     label: string;
+    /** Full selected phrase shown by the CSS hover tooltip (see `data-tip`), capped to `TIP_MAX_LENGTH`. */
+    fullText: string;
     /** Render the error variant when the note is in the error state. */
     isError?: boolean;
     /** Invoked (with the chip element) on click — mirrors a footer chip click. */
@@ -75,6 +85,7 @@ export function injectInlineChip(
     chip.setAttribute('data-sidenote-id', opts.id);
     chip.setAttribute('aria-label', `Side note: ${opts.label}`);
     chip.setAttribute('title', opts.label);
+    chip.setAttribute('data-tip', tipTextFor(opts.fullText));
     chip.className = opts.isError
         ? `${SIDENOTE_INLINE_CLASS} ${SIDENOTE_INLINE_ERROR_CLASS}`
         : SIDENOTE_INLINE_CLASS;
