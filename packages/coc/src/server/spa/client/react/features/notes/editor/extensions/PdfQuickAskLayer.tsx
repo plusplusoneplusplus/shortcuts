@@ -32,6 +32,7 @@ import { QuickAskInput } from '../../../chat/quick-ask/QuickAskInput';
 import { QuickAskSidenotePopover } from '../../../chat/quick-ask/QuickAskSidenotePopover';
 import type { ClientSideNote, QuickAskSelection } from '../../../chat/quick-ask/types';
 import { extractPaperRectAnchor, type PaperRectAnchor } from './paperAnchorGeometry';
+import { PAPER_ANNOTATION_PERSISTED_EVENT } from './usePaperAnnotations';
 
 export interface PdfQuickAskLayerProps {
     /** The container whose text layer selections should raise the Ask pill. */
@@ -144,9 +145,19 @@ export function PdfQuickAskLayer({
                     model,
                 },
             }),
-        }).catch(() => {
-            /* persistence is best-effort; the answer already shows */
-        });
+        })
+            .then(() => {
+                // Let any mounted read/render layer for this note pick up the new
+                // annotation without prop coupling (it reloads the sidecar).
+                try {
+                    window.dispatchEvent(new Event(PAPER_ANNOTATION_PERSISTED_EVENT));
+                } catch {
+                    /* environments without Event ctor: reload happens on next note open */
+                }
+            })
+            .catch(() => {
+                /* persistence is best-effort; the answer already shows */
+            });
     }, [workspaceId]);
 
     // Run the stateless one-shot lookup, updating the note in place by id.

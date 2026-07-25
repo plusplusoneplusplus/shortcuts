@@ -1027,6 +1027,73 @@
     font-size: 12px;
 }
 
+/* Goal 2: persisted paper-annotation highlight overlay. Absolutely positioned
+   inside a .pdfjs-page (position: relative) using percentage geometry from the
+   normalized dual-anchor rects, so it lands on the same pixels at any scale.
+   Sits above the text layer (z-index 1) but stays click-through-ish via a soft
+   tint; the box itself is the click target that reopens the answer popover. */
+.paper-annotation-overlay {
+    position: absolute;
+    z-index: 2;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 2px;
+    background: rgba(255, 212, 0, 0.28);
+    box-shadow: inset 0 -2px 0 rgba(255, 212, 0, 0.65);
+    cursor: pointer;
+    transition: background 0.1s ease-out;
+}
+
+.paper-annotation-overlay:hover {
+    background: rgba(255, 212, 0, 0.45);
+}
+
+/* AC-04: annotations that resolve to neither a quote nor a live page fall back
+   to a visible list below the reader instead of being silently dropped. */
+.paper-annotation-orphans {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    font-size: 11px;
+    color: #616161;
+    border-top: 1px solid #e0e0e0;
+    background: #fafafa;
+}
+
+.paper-annotation-orphans-title {
+    font-weight: 600;
+    color: #848484;
+}
+
+.paper-annotation-orphan-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    max-width: 220px;
+    padding: 1px 6px;
+    border: 1px solid rgba(55, 148, 255, 0.35);
+    border-radius: 9px;
+    background: rgba(55, 148, 255, 0.1);
+    color: #3794ff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+
+.paper-annotation-orphan-item:hover {
+    background: rgba(55, 148, 255, 0.18);
+}
+
+.dark .paper-annotation-orphans {
+    color: #cccccc;
+    border-top-color: #3c3c3c;
+    background: #1e1e1e;
+}
+
 .dark .pdfjs-render-viewport {
     background: #1a1a1a;
 }

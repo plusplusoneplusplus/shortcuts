@@ -23,6 +23,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Dialog } from '../../../../ui/Dialog';
 import { PdfJsRenderer } from './PdfJsRenderer';
 import { PdfQuickAskLayer } from './PdfQuickAskLayer';
+import { PdfAnnotationsLayer } from './PdfAnnotationsLayer';
 
 export interface PdfPopupTarget {
     /** The (already-classified, safe) PDF URL to render. */
@@ -96,6 +97,14 @@ export function PdfPopupDialog({ pdf, onClose, workspaceId, notePath, noteRoot }
                         {/* Goal 1: Quick Ask over the full-window pdf.js text layer.
                             Goal 2: persist answered annotations to the note sidecar. */}
                         <PdfQuickAskLayer
+                            containerRef={frameWrapRef}
+                            workspaceId={workspaceId}
+                            pdfUrl={pdf.url}
+                            getNotePath={() => notePath}
+                            getNoteRoot={() => noteRoot}
+                        />
+                        {/* Goal 2: re-render persisted annotations full-window. */}
+                        <PdfAnnotationsLayer
                             containerRef={frameWrapRef}
                             workspaceId={workspaceId}
                             pdfUrl={pdf.url}

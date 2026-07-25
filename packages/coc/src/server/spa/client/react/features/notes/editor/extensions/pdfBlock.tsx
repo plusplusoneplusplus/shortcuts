@@ -13,6 +13,7 @@ import { classifyPdfBlockUrl } from './pdfBlockUrl';
 import { normalizeStoredPdfLabel } from '../pdfLabel';
 import { PdfJsRenderer } from './PdfJsRenderer';
 import { PdfQuickAskLayer } from './PdfQuickAskLayer';
+import { PdfAnnotationsLayer } from './PdfAnnotationsLayer';
 
 /** Payload handed to {@link PdfBlockOptions.onRequestFullWindow} (AC-05). */
 export interface PdfFullWindowRequest {
@@ -188,13 +189,23 @@ function PdfBlockView({ node, updateAttributes, selected, extension }: NodeViewP
                             {/* Goal 1: Quick Ask over the pdf.js text layer. No-op
                                 on the iframe fallback (no host-selectable text). */}
                             {!pdfJsFailed && (
-                                <PdfQuickAskLayer
-                                    containerRef={frameInnerRef}
-                                    workspaceId={quickAskWorkspaceId}
-                                    pdfUrl={url}
-                                    getNotePath={getNotePath}
-                                    getNoteRoot={getNoteRoot}
-                                />
+                                <>
+                                    <PdfQuickAskLayer
+                                        containerRef={frameInnerRef}
+                                        workspaceId={quickAskWorkspaceId}
+                                        pdfUrl={url}
+                                        getNotePath={getNotePath}
+                                        getNoteRoot={getNoteRoot}
+                                    />
+                                    {/* Goal 2: re-render persisted annotations for this PDF. */}
+                                    <PdfAnnotationsLayer
+                                        containerRef={frameInnerRef}
+                                        workspaceId={quickAskWorkspaceId}
+                                        pdfUrl={url}
+                                        getNotePath={getNotePath}
+                                        getNoteRoot={getNoteRoot}
+                                    />
+                                </>
                             )}
                         </div>
                         <div className="pdf-node-view-fallback">
