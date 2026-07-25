@@ -406,6 +406,19 @@ describe('readPreferences / writePreferences', () => {
         expect(loaded.dreams).toEqual({ enabled: true });
     });
 
+    it('round-trips autoPull enabled/interval through write and read', () => {
+        writeRepoPreferences(tmpDir, 'r', { autoPull: { enabled: true, intervalMinutes: 15 } });
+        const loaded = readRepoPreferences(tmpDir, 'r');
+        expect(loaded.autoPull).toEqual({ enabled: true, intervalMinutes: 15 });
+    });
+
+    it('scopes autoPull per workspace id', () => {
+        writeRepoPreferences(tmpDir, 'repo-a', { autoPull: { enabled: true, intervalMinutes: 5 } });
+        writeRepoPreferences(tmpDir, 'repo-b', { autoPull: { enabled: false, intervalMinutes: 60 } });
+        expect(readRepoPreferences(tmpDir, 'repo-a').autoPull).toEqual({ enabled: true, intervalMinutes: 5 });
+        expect(readRepoPreferences(tmpDir, 'repo-b').autoPull).toEqual({ enabled: false, intervalMinutes: 60 });
+    });
+
     it('strips invalid workspace dreams preference shapes', () => {
         const repoPrefsPath = path.join(tmpDir, 'repos', 'r', 'preferences.json');
         fs.mkdirSync(path.dirname(repoPrefsPath), { recursive: true });
@@ -1049,6 +1062,62 @@ describe('validatePreferences', () => {
         expect(result.lastDepth).toBe('deep');
         expect(result.sync).toEqual({ gitRemote: 'https://x.git' });
     });
+
+    // -- autoPull field --
+
+    it('accepts valid autoPull with enabled and intervalMinutes', () => {
+        const result = validatePerRepoPreferences({ autoPull: { enabled: true, intervalMinutes: 15 } });
+        expect(result.autoPull).toEqual({ enabled: true, intervalMinutes: 15 });
+    });
+
+    it('accepts disabled autoPull while retaining the interval', () => {
+        const result = validatePerRepoPreferences({ autoPull: { enabled: false, intervalMinutes: 5 } });
+        expect(result.autoPull).toEqual({ enabled: false, intervalMinutes: 5 });
+    });
+
+    it('honors the 1-minute floor for autoPull intervalMinutes', () => {
+        const result = validatePerRepoPreferences({ autoPull: { enabled: true, intervalMinutes: 1 } });
+        expect(result.autoPull).toEqual({ enabled: true, intervalMinutes: 1 });
+    });
+
+    it('drops autoPull with non-positive intervalMinutes', () => {
+        expect(validatePerRepoPreferences({ autoPull: { enabled: true, intervalMinutes: 0 } }).autoPull).toBeUndefined();
+        expect(validatePerRepoPreferences({ autoPull: { enabled: true, intervalMinutes: -5 } }).autoPull).toBeUndefined();
+    });
+
+    it('drops autoPull with non-integer intervalMinutes', () => {
+        expect(validatePerRepoPreferences({ autoPull: { enabled: true, intervalMinutes: 5.5 } }).autoPull).toBeUndefined();
+    });
+
+    it('drops autoPull with above-max intervalMinutes', () => {
+        expect(validatePerRepoPreferences({ autoPull: { enabled: true, intervalMinutes: 1441 } }).autoPull).toBeUndefined();
+    });
+
+    it('drops autoPull with non-boolean enabled', () => {
+        expect(validatePerRepoPreferences({ autoPull: { enabled: 'yes', intervalMinutes: 5 } }).autoPull).toBeUndefined();
+    });
+
+    it('drops autoPull missing a required field', () => {
+        expect(validatePerRepoPreferences({ autoPull: { enabled: true } }).autoPull).toBeUndefined();
+        expect(validatePerRepoPreferences({ autoPull: { intervalMinutes: 5 } }).autoPull).toBeUndefined();
+    });
+
+    it('rejects non-object autoPull', () => {
+        expect(validatePerRepoPreferences({ autoPull: 'bad' }).autoPull).toBeUndefined();
+        expect(validatePerRepoPreferences({ autoPull: 42 }).autoPull).toBeUndefined();
+        expect(validatePerRepoPreferences({ autoPull: null }).autoPull).toBeUndefined();
+    });
+
+    it('strips unknown keys inside autoPull', () => {
+        const result = validatePerRepoPreferences({ autoPull: { enabled: true, intervalMinutes: 10, extra: 'x' } });
+        expect(result.autoPull).toEqual({ enabled: true, intervalMinutes: 10 });
+    });
+
+    it('an invalid autoPull does not clobber other valid per-repo fields', () => {
+        const result = validatePerRepoPreferences({ lastDepth: 'deep', autoPull: { enabled: true, intervalMinutes: 0 } });
+        expect(result.lastDepth).toBe('deep');
+        expect(result.autoPull).toBeUndefined();
+    });
 });
 
 describe('preferences merge policy', () => {
@@ -1145,6 +1214,32 @@ describe('preferences merge policy', () => {
             },
             disabledLlmTools: ['ask_user'],
         });
+    });
+
+    it('replaces autoPull wholesale on patch', () => {
+        const { preferences, patch } = applyRepoPreferencesPatch(
+            { autoPull: { enabled: true, intervalMinutes: 5 } },
+            { autoPull: { enabled: false, intervalMinutes: 30 } },
+        );
+        expect(patch.autoPull).toEqual({ enabled: false, intervalMinutes: 30 });
+        expect(preferences.autoPull).toEqual({ enabled: false, intervalMinutes: 30 });
+    });
+
+    it('preserves existing autoPull when a patch omits it', () => {
+        const { preferences } = applyRepoPreferencesPatch(
+            { autoPull: { enabled: true, intervalMinutes: 15 } },
+            { lastDepth: 'deep' },
+        );
+        expect(preferences.autoPull).toEqual({ enabled: true, intervalMinutes: 15 });
+        expect(preferences.lastDepth).toBe('deep');
+    });
+
+    it('drops an invalid autoPull patch and keeps the prior value', () => {
+        const { preferences } = applyRepoPreferencesPatch(
+            { autoPull: { enabled: true, intervalMinutes: 15 } },
+            { autoPull: { enabled: true, intervalMinutes: 0 } },
+        );
+        expect(preferences.autoPull).toEqual({ enabled: true, intervalMinutes: 15 });
     });
 });
 
@@ -2048,6 +2143,29 @@ describe('Per-Repo Preferences REST API', () => {
         const res = await patchJSON(repoUrl(repoId), {});
         expect(res.status).toBe(200);
         expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-4' });
+    });
+
+    // -- autoPull --
+
+    it('PATCH autoPull round-trips through GET', async () => {
+        const patch = await patchJSON(repoUrl(repoId), { autoPull: { enabled: true, intervalMinutes: 15 } });
+        expect(patch.status).toBe(200);
+        expect(JSON.parse(patch.body).autoPull).toEqual({ enabled: true, intervalMinutes: 15 });
+
+        const get = await getJSON(repoUrl(repoId));
+        expect(JSON.parse(get.body).autoPull).toEqual({ enabled: true, intervalMinutes: 15 });
+    });
+
+    it('PATCH autoPull is scoped per workspace id', async () => {
+        await patchJSON(repoUrl(repoId), { autoPull: { enabled: true, intervalMinutes: 5 } });
+        const other = await getJSON(repoUrl(repoId2));
+        expect(JSON.parse(other.body).autoPull).toBeUndefined();
+    });
+
+    it('PATCH rejects an invalid autoPull interval', async () => {
+        const res = await patchJSON(repoUrl(repoId), { autoPull: { enabled: true, intervalMinutes: 0 } });
+        expect(res.status).toBe(200);
+        expect(JSON.parse(res.body).autoPull).toBeUndefined();
     });
 
     // -- skill usage --
