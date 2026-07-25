@@ -32,6 +32,8 @@ export interface PrMockOptions {
         status: number;
         body?: unknown;
     };
+    /** Holds the candidate response until a test explicitly releases it. */
+    coworkerCandidateResponseGate?: Promise<void>;
     coworkerCandidateDelayMs?: number;
     prDetail?: PullRequest;
     threads?: CommentThread[];
@@ -93,6 +95,7 @@ export async function setupPrRoutes(
         pullRequests = MOCK_PR_LIST,
         coworkerCandidates,
         coworkerCandidateError,
+        coworkerCandidateResponseGate,
         coworkerCandidateDelayMs = 0,
         prDetail = MOCK_PR_OPEN,
         threads = MOCK_PR_THREADS,
@@ -197,6 +200,9 @@ export async function setupPrRoutes(
                 status: coworkerCandidateError.status,
                 json: coworkerCandidateError.body ?? { error: 'candidate search failed' },
             });
+        }
+        if (coworkerCandidateResponseGate) {
+            await coworkerCandidateResponseGate;
         }
         if (coworkerCandidateDelayMs > 0) {
             await new Promise(resolve => setTimeout(resolve, coworkerCandidateDelayMs));
