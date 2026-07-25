@@ -23,6 +23,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Dialog } from '../../../../ui/Dialog';
 import { PdfJsRenderer } from './PdfJsRenderer';
 import { PdfQuickAskLayer } from './PdfQuickAskLayer';
+import { PdfRegionAskLayer } from './PdfRegionAskLayer';
 import { PdfAnnotationsLayer } from './PdfAnnotationsLayer';
 
 export interface PdfPopupTarget {
@@ -97,6 +98,14 @@ export function PdfPopupDialog({ pdf, onClose, workspaceId, notePath, noteRoot }
                         {/* Goal 1: Quick Ask over the full-window pdf.js text layer.
                             Goal 2: persist answered annotations to the note sidecar. */}
                         <PdfQuickAskLayer
+                            containerRef={frameWrapRef}
+                            workspaceId={workspaceId}
+                            pdfUrl={pdf.url}
+                            getNotePath={() => notePath}
+                            getNoteRoot={() => noteRoot}
+                        />
+                        {/* Goal 4 AC-01: drag-a-box vision ask over a figure. */}
+                        <PdfRegionAskLayer
                             containerRef={frameWrapRef}
                             workspaceId={workspaceId}
                             pdfUrl={pdf.url}

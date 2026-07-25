@@ -13,6 +13,7 @@ import { classifyPdfBlockUrl } from './pdfBlockUrl';
 import { normalizeStoredPdfLabel } from '../pdfLabel';
 import { PdfJsRenderer } from './PdfJsRenderer';
 import { PdfQuickAskLayer } from './PdfQuickAskLayer';
+import { PdfRegionAskLayer } from './PdfRegionAskLayer';
 import { PdfAnnotationsLayer } from './PdfAnnotationsLayer';
 import { paperTextPathFromPdfUrl } from './paperChatGrounding';
 
@@ -215,6 +216,14 @@ function PdfBlockView({ node, updateAttributes, selected, extension }: NodeViewP
                             {!pdfJsFailed && (
                                 <>
                                     <PdfQuickAskLayer
+                                        containerRef={frameInnerRef}
+                                        workspaceId={quickAskWorkspaceId}
+                                        pdfUrl={url}
+                                        getNotePath={getNotePath}
+                                        getNoteRoot={getNoteRoot}
+                                    />
+                                    {/* Goal 4 AC-01: drag-a-box vision ask over a figure. */}
+                                    <PdfRegionAskLayer
                                         containerRef={frameInnerRef}
                                         workspaceId={quickAskWorkspaceId}
                                         pdfUrl={url}

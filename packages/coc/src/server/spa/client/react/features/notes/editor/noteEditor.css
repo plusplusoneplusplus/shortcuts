@@ -1078,6 +1078,61 @@
     background: rgba(55, 148, 255, 0.26);
 }
 
+/* Goal 4 AC-01 (capture half): the ▢ toggle arms a drag-a-box region-select
+   mode over the pdf.js pages. The toggle pins to the reader's top-right; while
+   armed a transparent surface catches the drag (crosshair) and a fixed marquee
+   traces the box. Positioned within the relatively-positioned frame wrappers. */
+.pdf-region-ask-toggle {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 5;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 9px;
+    font-size: 11px;
+    border: 1px solid rgba(55, 148, 255, 0.4);
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.92);
+    color: #3794ff;
+    cursor: pointer;
+}
+
+.pdf-region-ask-toggle:hover {
+    background: rgba(55, 148, 255, 0.14);
+}
+
+.pdf-region-ask-toggle.is-armed {
+    background: rgba(55, 148, 255, 0.2);
+    border-color: rgba(55, 148, 255, 0.75);
+}
+
+.pdf-region-ask-surface {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    cursor: crosshair;
+    background: rgba(55, 148, 255, 0.04);
+}
+
+.pdf-region-ask-marquee {
+    border: 1.5px dashed rgba(55, 148, 255, 0.9);
+    background: rgba(55, 148, 255, 0.12);
+    border-radius: 3px;
+}
+
+.dark .pdf-region-ask-toggle {
+    background: rgba(37, 37, 38, 0.92);
+    border-color: rgba(79, 195, 247, 0.4);
+    color: #4fc3f7;
+}
+
+.dark .pdf-region-ask-toggle.is-armed {
+    background: rgba(79, 195, 247, 0.22);
+    border-color: rgba(79, 195, 247, 0.7);
+}
+
 /* AC-04: annotations that resolve to neither a quote nor a live page fall back
    to a visible list below the reader instead of being silently dropped. */
 .paper-annotation-orphans {
