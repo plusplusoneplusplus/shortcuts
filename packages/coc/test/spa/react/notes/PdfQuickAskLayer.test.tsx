@@ -11,10 +11,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useRef } from 'react';
 
-const { getSelectionMock, fetchApiMock, enabledMock } = vi.hoisted(() => ({
+const { getSelectionMock, fetchApiMock, enabledMock, geomMock } = vi.hoisted(() => ({
     getSelectionMock: vi.fn(),
     fetchApiMock: vi.fn(),
     enabledMock: vi.fn(() => true),
+    geomMock: vi.fn(() => null as unknown),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/quick-ask/quick-ask-selection', () => ({
@@ -29,6 +30,9 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useQuickAskSidenotesEnabled', () => ({
     useQuickAskSidenotesEnabled: () => enabledMock(),
+}));
+vi.mock('../../../../src/server/spa/client/react/features/notes/editor/extensions/paperAnchorGeometry', () => ({
+    extractPaperRectAnchor: (...args: unknown[]) => geomMock(...(args as [])),
 }));
 
 import { PdfQuickAskLayer }
@@ -46,7 +50,19 @@ const SELECTION: QuickAskSelection = {
 
 /** `omitWorkspace` renders the layer with no workspaceId at all (default-param
  *  fallback would otherwise turn an explicit `undefined` back into 'ws-1'). */
-function Harness({ workspaceId = 'ws-1', omitWorkspace = false }: { workspaceId?: string; omitWorkspace?: boolean }) {
+function Harness({
+    workspaceId = 'ws-1',
+    omitWorkspace = false,
+    pdfUrl,
+    notePath,
+    noteRoot,
+}: {
+    workspaceId?: string;
+    omitWorkspace?: boolean;
+    pdfUrl?: string;
+    notePath?: string | null;
+    noteRoot?: string;
+}) {
     const ref = useRef<HTMLDivElement>(null);
     return (
         <div>
@@ -54,6 +70,9 @@ function Harness({ workspaceId = 'ws-1', omitWorkspace = false }: { workspaceId?
             <PdfQuickAskLayer
                 containerRef={ref as unknown as React.RefObject<HTMLElement | null>}
                 workspaceId={omitWorkspace ? undefined : workspaceId}
+                pdfUrl={pdfUrl}
+                getNotePath={() => notePath}
+                getNoteRoot={() => noteRoot}
             />
         </div>
     );
@@ -67,6 +86,8 @@ beforeEach(() => {
     fetchApiMock.mockReset();
     enabledMock.mockReset();
     enabledMock.mockReturnValue(true);
+    geomMock.mockReset();
+    geomMock.mockReturnValue(null);
 });
 
 afterEach(() => {
@@ -185,6 +206,92 @@ describe('PdfQuickAskLayer — AC-02/AC-03/AC-04 ask → answer', () => {
         fireEvent.click(screen.getByTestId('quick-ask-pill'));
         fireEvent.keyDown(field(), { key: 'Enter' });
         await waitFor(() => expect(screen.getByTestId('quick-ask-popover-error')).toBeInTheDocument());
+    });
+});
+
+describe('PdfQuickAskLayer — Goal 2 persistence (write path)', () => {
+    const RECT_ANCHOR = { page: 3, rects: [{ x: 0.1, y: 0.2, width: 0.3, height: 0.02 }] };
+
+    /** Drive pill → input → submit and wait for the answer to render. */
+    async function askAndAnswer(props: Parameters<typeof Harness>[0]) {
+        render(<Harness {...props} />);
+        await raisePill();
+        fireEvent.click(screen.getByTestId('quick-ask-pill'));
+        fireEvent.keyDown(field(), { key: 'Enter' });
+        await waitFor(() => expect(screen.getByTestId('quick-ask-popover-answer')).toBeInTheDocument());
+    }
+
+    it('persists a dual-anchor annotation to the sidecar after the answer resolves', async () => {
+        geomMock.mockReturnValue(RECT_ANCHOR);
+        fetchApiMock.mockResolvedValueOnce({ answer: 'A bandwidth-optimal collective.', model: 'm1' });
+        fetchApiMock.mockResolvedValueOnce({ annotation: { id: 'a1' } });
+
+        await askAndAnswer({ pdfUrl: 'paper.pdf', notePath: 'notes/paper.md', noteRoot: 'r1' });
+
+        // Two calls: the stateless answer, then the sidecar persist.
+        await waitFor(() => expect(fetchApiMock).toHaveBeenCalledTimes(2));
+        const [path, opts] = fetchApiMock.mock.calls[1];
+        expect(path).toBe('/api/workspaces/ws-1/notes/paper-annotations/annotation');
+        expect(opts.method).toBe('POST');
+        const body = JSON.parse(opts.body);
+        expect(body.path).toBe('notes/paper.md');
+        expect(body.root).toBe('r1');
+        expect(body.annotation).toEqual({
+            pdfUrl: 'paper.pdf',
+            quote: {
+                selectedText: 'ring all-reduce',
+                contextBefore: 'the paper describes a ',
+                contextAfter: ' communication pattern',
+            },
+            position: RECT_ANCHOR,
+            question: undefined,
+            answer: 'A bandwidth-optimal collective.',
+            model: 'm1',
+        });
+    });
+
+    it('omits position when no geometric anchor could be captured', async () => {
+        geomMock.mockReturnValue(null);
+        fetchApiMock.mockResolvedValueOnce({ answer: 'A.', model: 'm1' });
+        fetchApiMock.mockResolvedValueOnce({ annotation: { id: 'a2' } });
+
+        await askAndAnswer({ pdfUrl: 'paper.pdf', notePath: 'notes/paper.md' });
+
+        await waitFor(() => expect(fetchApiMock).toHaveBeenCalledTimes(2));
+        const body = JSON.parse(fetchApiMock.mock.calls[1][1].body);
+        expect(body.annotation.position).toBeUndefined();
+    });
+
+    it('does NOT persist when the note path is absent (no persistence context)', async () => {
+        geomMock.mockReturnValue(RECT_ANCHOR);
+        fetchApiMock.mockResolvedValueOnce({ answer: 'A.', model: 'm1' });
+
+        await askAndAnswer({ pdfUrl: 'paper.pdf', notePath: null });
+
+        // Only the answer call fires; no sidecar write without a note path.
+        await new Promise(r => setTimeout(r, 0));
+        expect(fetchApiMock).toHaveBeenCalledTimes(1);
+        expect(fetchApiMock.mock.calls[0][0]).toBe('/api/quick-ask/answer?workspace=ws-1');
+    });
+
+    it('does NOT persist when pdfUrl is absent', async () => {
+        geomMock.mockReturnValue(RECT_ANCHOR);
+        fetchApiMock.mockResolvedValueOnce({ answer: 'A.', model: 'm1' });
+
+        await askAndAnswer({ notePath: 'notes/paper.md' });
+
+        await new Promise(r => setTimeout(r, 0));
+        expect(fetchApiMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps showing the answer even if the sidecar write fails', async () => {
+        geomMock.mockReturnValue(RECT_ANCHOR);
+        fetchApiMock.mockResolvedValueOnce({ answer: 'still here', model: 'm1' });
+        fetchApiMock.mockRejectedValueOnce(new Error('disk full'));
+
+        await askAndAnswer({ pdfUrl: 'paper.pdf', notePath: 'notes/paper.md' });
+
+        expect(screen.getByTestId('quick-ask-popover-answer').textContent).toContain('still here');
     });
 });
 

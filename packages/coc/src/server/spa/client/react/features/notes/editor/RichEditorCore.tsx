@@ -60,6 +60,13 @@ export interface RichEditorCoreProps {
      * be asked→answered. Undefined disables the Quick Ask layer.
      */
     workspaceId?: string;
+    /**
+     * Goal 2: current note path — persistence target for answered paper
+     * annotations. Passed live (this editor instance survives note switches).
+     */
+    notePath?: string | null;
+    /** Goal 2: current notes root id, if any. */
+    noteRoot?: string;
 }
 
 export function getLinkOpenTitle(platform = globalThis.navigator?.platform ?? '') {
@@ -83,7 +90,16 @@ export function RichEditorCore({
     handlePaste,
     handleDrop,
     workspaceId,
+    notePath,
+    noteRoot,
 }: RichEditorCoreProps) {
+    // Live persistence context for the PdfBlock's Quick Ask layer. The editor is
+    // captured once by `useEditor`, but the note path/root change on navigation —
+    // so read them through refs at write time, not at editor-creation time.
+    const notePathRef = useRef(notePath);
+    notePathRef.current = notePath;
+    const noteRootRef = useRef(noteRoot);
+    noteRootRef.current = noteRoot;
     // Stable callback refs — avoids editor recreation when parent re-renders
     const onCommentActivatedRef = useRef(onCommentActivated);
     onCommentActivatedRef.current = onCommentActivated;
@@ -126,6 +142,8 @@ export function RichEditorCore({
             PdfBlock.configure({
                 onRequestFullWindow: (request: PdfFullWindowRequest) => setPopupPdf(request),
                 workspaceId,
+                getNotePath: () => notePathRef.current,
+                getNoteRoot: () => noteRootRef.current,
             }),                     // must precede StarterKit so its parseHTML rule wins
             MermaidBlock,           // must precede StarterKit so its parseHTML rule wins
             MathInline,
@@ -248,7 +266,13 @@ export function RichEditorCore({
         <>
             <EditorContent editor={editor} />
             <YouTubePopupDialog videoId={popupVideoId} onClose={() => setPopupVideoId(null)} />
-            <PdfPopupDialog pdf={popupPdf} onClose={() => setPopupPdf(null)} workspaceId={workspaceId} />
+            <PdfPopupDialog
+                pdf={popupPdf}
+                onClose={() => setPopupPdf(null)}
+                workspaceId={workspaceId}
+                notePath={notePath}
+                noteRoot={noteRoot}
+            />
         </>
     );
 }

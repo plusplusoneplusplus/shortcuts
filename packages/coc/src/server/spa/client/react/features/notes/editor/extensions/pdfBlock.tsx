@@ -32,6 +32,14 @@ export interface PdfBlockOptions {
      * disables the Quick Ask layer (e.g. non-note reuse of RichEditorCore).
      */
     workspaceId?: string;
+    /**
+     * Goal 2: live getter for the current note path (persistence target for
+     * answered paper annotations). A getter, not a value, because the editor
+     * instance survives note switches — the path must be read at write time.
+     */
+    getNotePath?: () => string | null | undefined;
+    /** Goal 2: live getter for the current notes root id, if any. */
+    getNoteRoot?: () => string | undefined;
 }
 
 function PdfBlockView({ node, updateAttributes, selected, extension }: NodeViewProps) {
@@ -41,6 +49,8 @@ function PdfBlockView({ node, updateAttributes, selected, extension }: NodeViewP
     const href = classification.kind === 'invalid' ? undefined : classification.href;
     const onRequestFullWindow = (extension.options as PdfBlockOptions).onRequestFullWindow;
     const quickAskWorkspaceId = (extension.options as PdfBlockOptions).workspaceId;
+    const getNotePath = (extension.options as PdfBlockOptions).getNotePath;
+    const getNoteRoot = (extension.options as PdfBlockOptions).getNoteRoot;
     const indent = Number(node.attrs.indent || 0);
     const collapsed = Boolean(node.attrs.collapsed);
 
@@ -181,6 +191,9 @@ function PdfBlockView({ node, updateAttributes, selected, extension }: NodeViewP
                                 <PdfQuickAskLayer
                                     containerRef={frameInnerRef}
                                     workspaceId={quickAskWorkspaceId}
+                                    pdfUrl={url}
+                                    getNotePath={getNotePath}
+                                    getNoteRoot={getNoteRoot}
                                 />
                             )}
                         </div>

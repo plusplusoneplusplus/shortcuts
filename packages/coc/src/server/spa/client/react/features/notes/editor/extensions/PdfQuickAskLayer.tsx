@@ -11,9 +11,12 @@
  * stateless `POST /api/quick-ask/answer` endpoint and shows the answer in the
  * shared {@link QuickAskSidenotePopover}.
  *
- * Deliberately NO persistence and NO chat thread involvement (AC-04): the answer
- * is a one-shot side-note that lives only in this component's state. Persisting
- * anchored annotations to a per-note sidecar is Goal 2.
+ * The answer itself never enters a chat thread (AC-04): it is a one-shot
+ * side-note that lives in this component's state. Separately, when the host
+ * supplies the persistence anchors (`pdfUrl` + a live note path), a successful
+ * answer is written to the per-note paper-annotations sidecar as a W3C dual
+ * anchor (`{quote-selector, page, rects}`) — Goal 2's write path. Persistence is
+ * best-effort: the answer still shows even if the sidecar write fails.
  *
  * The whole layer is gated behind the same admin `features.quickAskSidenotes`
  * flag as chat side-notes and is a no-op without a `workspaceId`, so it is always
@@ -28,12 +31,27 @@ import { QuickAskPill } from '../../../chat/quick-ask/QuickAskPill';
 import { QuickAskInput } from '../../../chat/quick-ask/QuickAskInput';
 import { QuickAskSidenotePopover } from '../../../chat/quick-ask/QuickAskSidenotePopover';
 import type { ClientSideNote, QuickAskSelection } from '../../../chat/quick-ask/types';
+import { extractPaperRectAnchor, type PaperRectAnchor } from './paperAnchorGeometry';
 
 export interface PdfQuickAskLayerProps {
     /** The container whose text layer selections should raise the Ask pill. */
     containerRef: React.RefObject<HTMLElement | null>;
     /** Workspace the answer endpoint runs against. Layer is a no-op when absent. */
     workspaceId?: string;
+    /**
+     * Goal 2: the PDF this layer annotates. Together with a note path it enables
+     * persisting each answered Q&A to the paper-annotations sidecar. Absent →
+     * Quick Ask still works, just without persistence.
+     */
+    pdfUrl?: string;
+    /**
+     * Goal 2: live getter for the current note path (persistence target). A
+     * getter, not a value, because one editor instance survives note switches —
+     * the path must be read at write time, not captured at mount.
+     */
+    getNotePath?: () => string | null | undefined;
+    /** Goal 2: live getter for the current notes root id, if any. */
+    getNoteRoot?: () => string | undefined;
 }
 
 /** Synthetic turn index — notes/papers are not chat turns, but the shared
@@ -61,9 +79,17 @@ interface OpenNote {
     position: { top: number; left: number };
     /** Selection that produced this note, kept for retry. */
     selection: QuickAskSelection;
+    /** Geometric anchor captured at ask time, for the persisted highlight. */
+    rectAnchor: PaperRectAnchor | null;
 }
 
-export function PdfQuickAskLayer({ containerRef, workspaceId }: PdfQuickAskLayerProps) {
+export function PdfQuickAskLayer({
+    containerRef,
+    workspaceId,
+    pdfUrl,
+    getNotePath,
+    getNoteRoot,
+}: PdfQuickAskLayerProps) {
     const enabled = useQuickAskSidenotesEnabled() && !!workspaceId;
 
     const [selection, setSelection] = useState<QuickAskSelection | null>(null);
@@ -74,11 +100,62 @@ export function PdfQuickAskLayer({ containerRef, workspaceId }: PdfQuickAskLayer
     selectionRef.current = selection;
     const inputRef = useRef<QuickAskSelection | null>(null);
     inputRef.current = input;
+    // Geometric anchor of the passage the pill/input is currently over. Captured
+    // while the DOM selection is still live (ask time), because the selection is
+    // cleared before the question is submitted.
+    const pendingGeomRef = useRef<PaperRectAnchor | null>(null);
+
+    // Live persistence context — read at write time, never captured at mount.
+    const persistRef = useRef({ pdfUrl, getNotePath, getNoteRoot });
+    persistRef.current = { pdfUrl, getNotePath, getNoteRoot };
 
     const clearSelection = useCallback(() => setSelection(null), []);
 
+    // Best-effort: persist an answered Q&A as a dual-anchor paper annotation.
+    // No-op unless the host supplied a pdfUrl and a resolvable note path.
+    const persistAnnotation = useCallback((
+        sel: QuickAskSelection,
+        question: string | undefined,
+        answer: string,
+        model: string | undefined,
+        rectAnchor: PaperRectAnchor | null,
+    ) => {
+        if (!workspaceId) {return;}
+        const { pdfUrl: url, getNotePath: notePathGetter, getNoteRoot: rootGetter } = persistRef.current;
+        const notePath = notePathGetter?.();
+        if (!url || !notePath) {return;}
+        const path = `/api/workspaces/${encodeURIComponent(workspaceId)}/notes/paper-annotations/annotation`;
+        void fetchApi(path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                path: notePath,
+                root: rootGetter?.(),
+                annotation: {
+                    pdfUrl: url,
+                    quote: {
+                        selectedText: sel.selectedText,
+                        contextBefore: sel.contextBefore,
+                        contextAfter: sel.contextAfter,
+                    },
+                    position: rectAnchor ?? undefined,
+                    question,
+                    answer,
+                    model,
+                },
+            }),
+        }).catch(() => {
+            /* persistence is best-effort; the answer already shows */
+        });
+    }, [workspaceId]);
+
     // Run the stateless one-shot lookup, updating the note in place by id.
-    const runLookup = useCallback((sel: QuickAskSelection, question: string | undefined, noteId: string) => {
+    const runLookup = useCallback((
+        sel: QuickAskSelection,
+        question: string | undefined,
+        noteId: string,
+        rectAnchor: PaperRectAnchor | null,
+    ) => {
         if (!workspaceId) {return;}
         const path = `/api/quick-ask/answer?workspace=${encodeURIComponent(workspaceId)}`;
         fetchApi(path, {
@@ -97,13 +174,14 @@ export function PdfQuickAskLayer({ containerRef, workspaceId }: PdfQuickAskLayer
                 setOpen(prev => (prev && prev.note.id === noteId
                     ? { ...prev, note: { ...prev.note, status: 'ready', answer, model: data.model } }
                     : prev));
+                persistAnnotation(sel, question, answer, data.model, rectAnchor);
             })
             .catch(() => {
                 setOpen(prev => (prev && prev.note.id === noteId
                     ? { ...prev, note: { ...prev.note, status: 'error', error: 'Lookup failed' } }
                     : prev));
             });
-    }, [workspaceId]);
+    }, [workspaceId, persistAnnotation]);
 
     // Capture the current text-layer selection (if any) into the pill state.
     const captureSelection = useCallback(() => {
@@ -145,6 +223,8 @@ export function PdfQuickAskLayer({ containerRef, workspaceId }: PdfQuickAskLayer
                 const next = getQuickAskSelection(container, PDF_TURN_INDEX);
                 if (next) {
                     e.preventDefault();
+                    // Capture geometry before the DOM selection is cleared.
+                    pendingGeomRef.current = extractPaperRectAnchor(container);
                     setInput(next);
                     window.getSelection()?.removeAllRanges();
                     setSelection(null);
@@ -171,10 +251,12 @@ export function PdfQuickAskLayer({ containerRef, workspaceId }: PdfQuickAskLayer
     const handleAsk = useCallback(() => {
         const sel = selectionRef.current;
         if (!sel) {return;}
+        // Capture geometry before the DOM selection is cleared.
+        pendingGeomRef.current = extractPaperRectAnchor(containerRef.current);
         setInput(sel);
         window.getSelection()?.removeAllRanges();
         setSelection(null);
-    }, []);
+    }, [containerRef]);
 
     // Submit the input: fire the lookup and open the popover with an optimistic
     // "asking" note anchored just below the selection.
@@ -182,6 +264,8 @@ export function PdfQuickAskLayer({ containerRef, workspaceId }: PdfQuickAskLayer
         const sel = inputRef.current;
         setInput(null);
         if (!sel) {return;}
+        const rectAnchor = pendingGeomRef.current;
+        pendingGeomRef.current = null;
         const trimmed = question.trim() || undefined;
         const id = newId();
         const note: ClientSideNote = {
@@ -204,8 +288,9 @@ export function PdfQuickAskLayer({ containerRef, workspaceId }: PdfQuickAskLayer
             note,
             position: { top: sel.rect.bottom + 6, left: sel.rect.left },
             selection: sel,
+            rectAnchor,
         });
-        runLookup(sel, trimmed, id);
+        runLookup(sel, trimmed, id, rectAnchor);
     }, [runLookup]);
 
     const cancelInput = useCallback(() => setInput(null), []);
@@ -223,7 +308,7 @@ export function PdfQuickAskLayer({ containerRef, workspaceId }: PdfQuickAskLayer
     const handleRetry = useCallback((id: string) => {
         setOpen(prev => {
             if (!prev || prev.note.id !== id) {return prev;}
-            runLookup(prev.selection, prev.note.question, id);
+            runLookup(prev.selection, prev.note.question, id, prev.rectAnchor);
             return { ...prev, note: { ...prev.note, status: 'asking', error: undefined } };
         });
     }, [runLookup]);

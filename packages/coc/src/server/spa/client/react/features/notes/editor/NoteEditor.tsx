@@ -1333,6 +1333,8 @@ export function NoteEditor({
                                 handlePaste={handlePaste}
                                 handleDrop={handleDrop}
                                 workspaceId={workspaceId}
+                                notePath={notePath}
+                                noteRoot={root}
                             />
                             <input
                                 ref={pdfInputRef}

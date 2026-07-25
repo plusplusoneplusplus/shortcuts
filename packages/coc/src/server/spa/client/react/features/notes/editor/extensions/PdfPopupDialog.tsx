@@ -41,9 +41,13 @@ export interface PdfPopupDialogProps {
      * select→ask→answer over the full-window text layer; undefined disables it.
      */
     workspaceId?: string;
+    /** Goal 2: current note path — persistence target for answered annotations. */
+    notePath?: string | null;
+    /** Goal 2: current notes root id, if any. */
+    noteRoot?: string;
 }
 
-export function PdfPopupDialog({ pdf, onClose, workspaceId }: PdfPopupDialogProps) {
+export function PdfPopupDialog({ pdf, onClose, workspaceId, notePath, noteRoot }: PdfPopupDialogProps) {
     // Container whose (pdf.js) text-layer selections raise the Quick Ask pill.
     const frameWrapRef = useRef<HTMLDivElement>(null);
     // Inline PDFs render via pdf.js (host-selectable text layer) by default;
@@ -89,8 +93,15 @@ export function PdfPopupDialog({ pdf, onClose, workspaceId }: PdfPopupDialogProp
                 ) : (
                     <>
                         <PdfJsRenderer url={pdf.url} label={pdf.label} onError={handlePdfJsError} />
-                        {/* Goal 1: Quick Ask over the full-window pdf.js text layer. */}
-                        <PdfQuickAskLayer containerRef={frameWrapRef} workspaceId={workspaceId} />
+                        {/* Goal 1: Quick Ask over the full-window pdf.js text layer.
+                            Goal 2: persist answered annotations to the note sidecar. */}
+                        <PdfQuickAskLayer
+                            containerRef={frameWrapRef}
+                            workspaceId={workspaceId}
+                            pdfUrl={pdf.url}
+                            getNotePath={() => notePath}
+                            getNoteRoot={() => noteRoot}
+                        />
                     </>
                 )}
                 <div className="pdf-node-view-fallback">
