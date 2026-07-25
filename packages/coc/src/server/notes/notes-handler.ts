@@ -12,3 +12,4 @@ export { registerNotesFilePreviewRoutes } from './notes-file-preview-handler';
 export { registerNotesAICreateRoutes } from './notes-ai-handler';
 export { registerNotesRootsRoutes } from './notes-roots-handler';
 export { registerPaperAnnotationsRoutes } from './paper-annotations-handler';
+export { registerPaperIngestRoutes } from './paper-ingest-handler';

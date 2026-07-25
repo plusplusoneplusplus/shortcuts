@@ -47,7 +47,7 @@ import { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from '..
 import { registerWorkflowRoutes, registerWorkflowWriteRoutes } from '../workflows/workflows-handler';
 import { registerWorkspaceSummaryRoutes } from '../workspaces/workspace-summary-handler';
 import { registerTemplateRoutes, registerTemplateWriteRoutes } from '../templates/templates-handler';
-import { registerNotesRoutes, registerNotesWriteRoutes, registerNotesCommentsRoutes, registerNotesImageRoutes, registerNotesGitRoutes, registerNotesGitAutoCommitRoutes, registerNotesFilePreviewRoutes, registerNotesAICreateRoutes, registerNotesRootsRoutes, registerPaperAnnotationsRoutes } from '../notes/notes-handler';
+import { registerNotesRoutes, registerNotesWriteRoutes, registerNotesCommentsRoutes, registerNotesImageRoutes, registerNotesGitRoutes, registerNotesGitAutoCommitRoutes, registerNotesFilePreviewRoutes, registerNotesAICreateRoutes, registerNotesRootsRoutes, registerPaperAnnotationsRoutes, registerPaperIngestRoutes } from '../notes/notes-handler';
 import { registerNotesEditsRoutes } from '../notes/notes-edits-handler';
 import { registerReplicateApplyRoutes } from '../templates/replicate-apply-handler';
 import { registerScheduleRoutes } from '../schedule/schedule-handler';
@@ -949,6 +949,15 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // Q&A over a paper can be pinned to its passage and survives note reload /
     // app restart. Same flag gate as the rest of the Quick Ask loop.
     registerPaperAnnotationsRoutes({
+        routes,
+        store,
+        dataDir,
+        getEnabled: getQuickAskSidenotesEnabled,
+    });
+    // arXiv URL ingest (Goal 3): recognize a pasted arXiv URL, fetch + cache the
+    // PDF locally (link-rot proof / offline) and extract its text once as a
+    // sidecar for whole-paper grounding. Same flag gate as the rest of Quick Ask.
+    registerPaperIngestRoutes({
         routes,
         store,
         dataDir,
