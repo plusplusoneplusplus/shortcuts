@@ -350,6 +350,25 @@ describe('ScopeSlideSwitcher — pop-out trigger (AC-01/04)', () => {
         expect(target).toBe(`coc-window-${MY_WORK_WORKSPACE_ID}`);
         expect(goToMyWorkNotCalled(mockDispatch)).toBe(true);
     });
+
+    it('leaves every scope segment present and selectable in the main window after a pop-out (AC-05)', () => {
+        render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
+
+        // Pop out the My Work scope.
+        const icon = screen.getAllByTestId('scope-segment-popout').find(el => el.getAttribute('data-workspace-id') === MY_WORK_WORKSPACE_ID)!;
+        fireEvent.click(icon);
+        expect(openSpy).toHaveBeenCalledTimes(1);
+
+        // All three segments remain — the popped-out scope is neither removed nor greyed out.
+        const ids = screen.getAllByTestId('scope-segment-popout').map(el => el.getAttribute('data-workspace-id'));
+        expect(ids).toContain(MY_WORK_WORKSPACE_ID);
+        expect(ids).toContain(MY_LIFE_WORKSPACE_ID);
+        expect(ids).toContain('a');
+
+        // The My Work segment still switches scope in the main window.
+        fireEvent.click(segment('work')!);
+        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_REPO', id: MY_WORK_WORKSPACE_ID });
+    });
 });
 
 function goToMyWorkNotCalled(dispatch: ReturnType<typeof vi.fn>): boolean {

@@ -1013,6 +1013,32 @@ describe('RepoTabStrip', () => {
             expect(String(url)).toContain('window=my_work');
             expect(target).toBe('coc-window-my_work');
         });
+
+        it('leaves the popped-out scope listed and still selectable in the main window (AC-05)', () => {
+            const onSelect = vi.fn();
+            render(
+                <RepoTabStrip
+                    repos={[makeRepo('r1', 'Alpha'), makeRepo('r2', 'Beta')]}
+                    selectedRepoId="r1"
+                    onSelect={onSelect}
+                    unseenCounts={{}}
+                    onRefresh={vi.fn()}
+                />
+            );
+            // Pop out r2.
+            const popout = screen.getAllByTestId('repo-tab-popout').find(el => el.getAttribute('data-repo-id') === 'r2')!;
+            fireEvent.click(popout);
+            expect(openSpy).toHaveBeenCalledTimes(1);
+
+            // r2 is NOT removed or greyed out — both tabs remain in the main window...
+            expect(screen.getAllByTestId('repo-tab')).toHaveLength(2);
+            const r2Tab = screen.getAllByTestId('repo-tab').find(el => el.getAttribute('data-repo-id') === 'r2')!;
+            expect(r2Tab).toBeTruthy();
+
+            // ...and left-click still selects it (the scope is fully usable from the main window).
+            fireEvent.click(r2Tab);
+            expect(onSelect).toHaveBeenCalledWith('r2');
+        });
     });
 });
 
