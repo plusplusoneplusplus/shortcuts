@@ -122,7 +122,7 @@ interface ConversationTurnBubbleProps {
      */
     sidenotes?: ClientSideNote[];
     /** Run a Quick Ask lookup for a captured selection in this turn. */
-    onCreateSidenote?: (selection: QuickAskSelection) => void;
+    onCreateSidenote?: (selection: QuickAskSelection, question?: string) => void;
     /** Retry a failed Quick Ask lookup. */
     onRetrySidenote?: (id: string) => void;
     /** Delete a Quick Ask side-note. */
@@ -1813,7 +1813,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                             turnIndex={turnIndex}
                             streaming={turn.streaming}
                             notes={(sidenotes ?? []).filter(n => n.turnIndex === turnIndex)}
-                            onAsk={sel => onCreateSidenote?.(sel)}
+                            onAsk={(sel, question) => onCreateSidenote?.(sel, question)}
                             onRetry={id => onRetrySidenote?.(id)}
                             onDelete={id => onDeleteSidenote?.(id)}
                             onCopy={note => onCopySidenote?.(note)}

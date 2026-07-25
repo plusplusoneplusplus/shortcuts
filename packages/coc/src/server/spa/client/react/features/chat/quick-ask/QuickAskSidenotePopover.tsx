@@ -104,6 +104,17 @@ export function QuickAskSidenotePopover({
                     : note.anchor.selectedText}
             </blockquote>
 
+            {/* Custom question (AC-03) — omitted entirely for the default-explain case. */}
+            {note.question && (
+                <div
+                    className="text-[11px] text-[#1e1e1e] dark:text-[#cccccc]"
+                    data-testid="quick-ask-popover-question"
+                >
+                    <span className="font-medium text-[#3794ff]">Q:</span>{' '}
+                    {note.question}
+                </div>
+            )}
+
             {/* Body */}
             {note.status === 'asking' && (
                 <div className="flex items-center gap-2 text-[11px] text-[#848484]" data-testid="quick-ask-popover-loading">
