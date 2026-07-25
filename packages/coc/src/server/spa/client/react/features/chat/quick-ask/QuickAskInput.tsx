@@ -20,6 +20,18 @@ export interface QuickAskInputProps {
     onSubmit: (question: string) => void;
     /** Cancel / dismiss without asking. */
     onCancel: () => void;
+    /**
+     * Optional "use full paper" toggle (Goal 3, AC-04). When supplied (PDF paper
+     * selections), a 📄 button lets the user ground the answer in the whole
+     * cached paper instead of just the ± selection context. Omitted for chat
+     * selections, which have no backing paper.
+     */
+    fullPaper?: {
+        /** Whether whole-paper grounding is currently on. */
+        enabled: boolean;
+        /** Flip the toggle. */
+        onToggle: () => void;
+    };
 }
 
 const INPUT_WIDTH = 280;
@@ -28,7 +40,7 @@ const GAP = 8;
 /** Max chars a custom question may be (single line). */
 export const QUICK_ASK_MAX_LEN = 200;
 
-export function QuickAskInput({ rect, onSubmit, onCancel }: QuickAskInputProps) {
+export function QuickAskInput({ rect, onSubmit, onCancel, fullPaper }: QuickAskInputProps) {
     const inputRef = useRef<HTMLInputElement>(null);
     const [mounted, setMounted] = useState(false);
     const [value, setValue] = useState('');
@@ -87,6 +99,27 @@ export function QuickAskInput({ rect, onSubmit, onCancel }: QuickAskInputProps) 
                 data-testid="quick-ask-input-field"
                 className="flex-1 min-w-0 bg-transparent outline-none text-[12px] text-[#cccccc] placeholder:text-[#6b6b6b]"
             />
+            {fullPaper && (
+                <button
+                    type="button"
+                    data-testid="quick-ask-full-paper-toggle"
+                    aria-pressed={fullPaper.enabled}
+                    // Keep focus in the field; don't collapse before submit.
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={fullPaper.onToggle}
+                    className={`shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-full text-[12px] transition-colors ${
+                        fullPaper.enabled
+                            ? 'bg-[#0e639c] text-white'
+                            : 'text-[#8a8a8a] hover:bg-[#2d2d2e]'
+                    }`}
+                    title={fullPaper.enabled
+                        ? 'Grounding on the full paper (click for selection only)'
+                        : 'Ground the answer in the full paper (slower)'}
+                    aria-label="Use full paper"
+                >
+                    📄
+                </button>
+            )}
             <button
                 type="button"
                 data-testid="quick-ask-input-submit"

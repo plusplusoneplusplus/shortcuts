@@ -295,6 +295,82 @@ describe('PdfQuickAskLayer — Goal 2 persistence (write path)', () => {
     });
 });
 
+describe('PdfQuickAskLayer — Goal 3 AC-04 "use full paper" toggle', () => {
+    /** A rendered cached-paper embed URL (ingested arXiv paper). */
+    const PAPER_URL = '/api/workspaces/ws-1/notes/image?path=' + encodeURIComponent('.papers/1802.05799.pdf');
+
+    async function openInput(props: Parameters<typeof Harness>[0]) {
+        render(<Harness {...props} />);
+        await raisePill();
+        fireEvent.click(screen.getByTestId('quick-ask-pill'));
+    }
+
+    it('offers the toggle only for a cached arXiv paper embed', async () => {
+        await openInput({ pdfUrl: PAPER_URL, notePath: 'notes/paper.md' });
+        expect(screen.getByTestId('quick-ask-full-paper-toggle')).toBeInTheDocument();
+    });
+
+    it('hides the toggle for a non-cached PDF (uploaded / hotlinked)', async () => {
+        await openInput({ pdfUrl: 'https://arxiv.org/pdf/1802.05799', notePath: 'notes/paper.md' });
+        expect(screen.queryByTestId('quick-ask-full-paper-toggle')).toBeNull();
+    });
+
+    it('defaults OFF — a plain submit stays the cheap selection-only path', async () => {
+        fetchApiMock.mockResolvedValueOnce({ answer: 'A.', model: 'm1', usedFullPaper: false });
+        await openInput({ pdfUrl: PAPER_URL, notePath: 'notes/paper.md', noteRoot: 'r1' });
+
+        fireEvent.keyDown(field(), { key: 'Enter' });
+
+        const body = JSON.parse(fetchApiMock.mock.calls[0][1].body);
+        expect(body.useFullPaper).toBeUndefined();
+        expect(body.paperPath).toBeUndefined();
+        expect(body.root).toBeUndefined();
+    });
+
+    it('when toggled ON, POSTs useFullPaper + the cache relpath + root', async () => {
+        fetchApiMock.mockResolvedValueOnce({ answer: 'Grounded.', model: 'm1', usedFullPaper: true });
+        await openInput({ pdfUrl: PAPER_URL, notePath: 'notes/paper.md', noteRoot: 'r1' });
+
+        fireEvent.click(screen.getByTestId('quick-ask-full-paper-toggle'));
+        expect(screen.getByTestId('quick-ask-full-paper-toggle').getAttribute('aria-pressed')).toBe('true');
+        fireEvent.keyDown(field(), { key: 'Enter' });
+
+        const body = JSON.parse(fetchApiMock.mock.calls[0][1].body);
+        expect(body.useFullPaper).toBe(true);
+        expect(body.paperPath).toBe('.papers/1802.05799.pdf');
+        expect(body.root).toBe('r1');
+        // selection context still forwarded alongside.
+        expect(body.selectedText).toBe('ring all-reduce');
+    });
+
+    it('retry re-posts with the same full-paper grounding choice', async () => {
+        fetchApiMock.mockRejectedValueOnce(new Error('boom'));
+        await openInput({ pdfUrl: PAPER_URL, notePath: 'notes/paper.md', noteRoot: 'r1' });
+        fireEvent.click(screen.getByTestId('quick-ask-full-paper-toggle'));
+        fireEvent.keyDown(field(), { key: 'Enter' });
+        await waitFor(() => expect(screen.getByTestId('quick-ask-popover-error')).toBeInTheDocument());
+
+        fetchApiMock.mockResolvedValueOnce({ answer: 'recovered', model: 'm1', usedFullPaper: true });
+        fireEvent.click(screen.getByTestId('quick-ask-popover-retry'));
+        await waitFor(() => expect(screen.getByTestId('quick-ask-popover-answer')).toBeInTheDocument());
+
+        expect(JSON.parse(fetchApiMock.mock.calls[1][1].body).useFullPaper).toBe(true);
+    });
+
+    it('resets to OFF for the next question after one is asked', async () => {
+        fetchApiMock.mockResolvedValueOnce({ answer: 'A.', model: 'm1' });
+        await openInput({ pdfUrl: PAPER_URL, notePath: 'notes/paper.md' });
+        fireEvent.click(screen.getByTestId('quick-ask-full-paper-toggle'));
+        fireEvent.keyDown(field(), { key: 'Enter' });
+        await waitFor(() => expect(screen.getByTestId('quick-ask-popover-answer')).toBeInTheDocument());
+
+        // Open a fresh input: toggle should be back to off.
+        fireEvent.keyDown(document, { key: 'j', ctrlKey: true });
+        await waitFor(() => expect(screen.getByTestId('quick-ask-full-paper-toggle')).toBeInTheDocument());
+        expect(screen.getByTestId('quick-ask-full-paper-toggle').getAttribute('aria-pressed')).toBe('false');
+    });
+});
+
 describe('PdfQuickAskLayer — disabled paths', () => {
     it('is a no-op with no workspaceId (no pill, no listeners)', async () => {
         render(<Harness omitWorkspace />);

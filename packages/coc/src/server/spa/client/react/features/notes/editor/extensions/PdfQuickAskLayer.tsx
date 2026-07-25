@@ -23,7 +23,7 @@
  * safe to mount.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchApi } from '../../../../hooks/useApi';
 import { useQuickAskSidenotesEnabled } from '../../../../hooks/feature-flags/useQuickAskSidenotesEnabled';
 import { getQuickAskSelection } from '../../../chat/quick-ask/quick-ask-selection';
@@ -33,6 +33,7 @@ import { QuickAskSidenotePopover } from '../../../chat/quick-ask/QuickAskSidenot
 import type { ClientSideNote, QuickAskSelection } from '../../../chat/quick-ask/types';
 import { extractPaperRectAnchor, type PaperRectAnchor } from './paperAnchorGeometry';
 import { PAPER_ANNOTATION_PERSISTED_EVENT } from './usePaperAnnotations';
+import { paperPathFromPdfUrl } from './paperPathFromUrl';
 
 export interface PdfQuickAskLayerProps {
     /** The container whose text layer selections should raise the Ask pill. */
@@ -82,6 +83,8 @@ interface OpenNote {
     selection: QuickAskSelection;
     /** Geometric anchor captured at ask time, for the persisted highlight. */
     rectAnchor: PaperRectAnchor | null;
+    /** Whether this Q&A was grounded on the whole paper (kept for retry). */
+    useFullPaper: boolean;
 }
 
 export function PdfQuickAskLayer({
@@ -93,9 +96,17 @@ export function PdfQuickAskLayer({
 }: PdfQuickAskLayerProps) {
     const enabled = useQuickAskSidenotesEnabled() && !!workspaceId;
 
+    // Cache relpath (`.papers/<id>.pdf`) of an ingested arXiv paper, if this
+    // embed is one — only then can we offer whole-paper grounding (AC-04). An
+    // arbitrary uploaded/hotlinked PDF has no extracted-text sidecar → undefined.
+    const paperPath = useMemo(() => paperPathFromPdfUrl(pdfUrl), [pdfUrl]);
+
     const [selection, setSelection] = useState<QuickAskSelection | null>(null);
     const [input, setInput] = useState<QuickAskSelection | null>(null);
     const [open, setOpen] = useState<OpenNote | null>(null);
+    // "Use full paper" toggle state for the current input. Default OFF — the
+    // cheap selection-only path stays the default (AC-04).
+    const [fullPaper, setFullPaper] = useState(false);
 
     const selectionRef = useRef<QuickAskSelection | null>(null);
     selectionRef.current = selection;
@@ -166,9 +177,14 @@ export function PdfQuickAskLayer({
         question: string | undefined,
         noteId: string,
         rectAnchor: PaperRectAnchor | null,
+        wantFullPaper: boolean,
     ) => {
         if (!workspaceId) {return;}
         const path = `/api/quick-ask/answer?workspace=${encodeURIComponent(workspaceId)}`;
+        // Whole-paper grounding only when the user opted in AND this embed is a
+        // cached arXiv paper with a text sidecar the server can read (AC-04);
+        // otherwise the request is byte-for-byte the cheap selection-only path.
+        const useFull = wantFullPaper && !!paperPath;
         fetchApi(path, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -177,6 +193,13 @@ export function PdfQuickAskLayer({
                 contextBefore: sel.contextBefore,
                 contextAfter: sel.contextAfter,
                 question,
+                ...(useFull
+                    ? {
+                        useFullPaper: true,
+                        paperPath,
+                        root: persistRef.current.getNoteRoot?.(),
+                    }
+                    : {}),
             }),
         })
             .then((data: { answer?: string; model?: string }) => {
@@ -192,7 +215,7 @@ export function PdfQuickAskLayer({
                     ? { ...prev, note: { ...prev.note, status: 'error', error: 'Lookup failed' } }
                     : prev));
             });
-    }, [workspaceId, persistAnnotation]);
+    }, [workspaceId, persistAnnotation, paperPath]);
 
     // Capture the current text-layer selection (if any) into the pill state.
     const captureSelection = useCallback(() => {
@@ -236,6 +259,7 @@ export function PdfQuickAskLayer({
                     e.preventDefault();
                     // Capture geometry before the DOM selection is cleared.
                     pendingGeomRef.current = extractPaperRectAnchor(container);
+                    setFullPaper(false); // each new question defaults to selection-only
                     setInput(next);
                     window.getSelection()?.removeAllRanges();
                     setSelection(null);
@@ -264,6 +288,7 @@ export function PdfQuickAskLayer({
         if (!sel) {return;}
         // Capture geometry before the DOM selection is cleared.
         pendingGeomRef.current = extractPaperRectAnchor(containerRef.current);
+        setFullPaper(false); // each new question defaults to selection-only
         setInput(sel);
         window.getSelection()?.removeAllRanges();
         setSelection(null);
@@ -277,6 +302,7 @@ export function PdfQuickAskLayer({
         if (!sel) {return;}
         const rectAnchor = pendingGeomRef.current;
         pendingGeomRef.current = null;
+        const wantFullPaper = fullPaper && !!paperPath;
         const trimmed = question.trim() || undefined;
         const id = newId();
         const note: ClientSideNote = {
@@ -300,9 +326,10 @@ export function PdfQuickAskLayer({
             position: { top: sel.rect.bottom + 6, left: sel.rect.left },
             selection: sel,
             rectAnchor,
+            useFullPaper: wantFullPaper,
         });
-        runLookup(sel, trimmed, id, rectAnchor);
-    }, [runLookup]);
+        runLookup(sel, trimmed, id, rectAnchor, wantFullPaper);
+    }, [runLookup, fullPaper, paperPath]);
 
     const cancelInput = useCallback(() => setInput(null), []);
 
@@ -319,7 +346,7 @@ export function PdfQuickAskLayer({
     const handleRetry = useCallback((id: string) => {
         setOpen(prev => {
             if (!prev || prev.note.id !== id) {return prev;}
-            runLookup(prev.selection, prev.note.question, id, prev.rectAnchor);
+            runLookup(prev.selection, prev.note.question, id, prev.rectAnchor, prev.useFullPaper);
             return { ...prev, note: { ...prev.note, status: 'asking', error: undefined } };
         });
     }, [runLookup]);
@@ -335,7 +362,14 @@ export function PdfQuickAskLayer({
             )}
 
             {input && (
-                <QuickAskInput rect={input.rect} onSubmit={submitInput} onCancel={cancelInput} />
+                <QuickAskInput
+                    rect={input.rect}
+                    onSubmit={submitInput}
+                    onCancel={cancelInput}
+                    fullPaper={paperPath
+                        ? { enabled: fullPaper, onToggle: () => setFullPaper(v => !v) }
+                        : undefined}
+                />
             )}
 
             {open && (
