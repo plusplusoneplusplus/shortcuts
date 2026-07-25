@@ -68,7 +68,12 @@ to the current workspace and root so late responses from a prior workspace
 cannot replace the active selector or tree. File, folder, search, comment, and
 image actions carry the active root identity. Notes Chat and AI page creation
 remain managed-root-only and render disabled with an explanation in every
-non-default collection.
+non-default collection. `NotesSidebar` persists expanded folder paths and the
+tree scroll position in `localStorage`, scoped by both workspace and root under
+`coc-notes-expanded-<workspaceId>-<rootId>` and
+`coc-notes-scroll-<workspaceId>-<rootId>`. Scope changes hydrate their own tree
+state without writing the read value, and the scroll position restores only
+after the scoped tree is ready.
 
 Links in the rich note editor display their destination URL and the
 platform-specific modifier-click instruction in a native hover hint. The hint

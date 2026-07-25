@@ -14,6 +14,7 @@ import { useNotesClipboard, planClipboardPaste } from '../hooks/useNotesClipboar
 import { getSpaCocClient } from '../../../api/cocClient';
 import { notesApi } from '../notesApi';
 import { useGlobalToast } from '../../../contexts/ToastContext';
+import { useNotesTreeExpansion, useNotesTreeScroll } from './NotesTreeExpansion';
 
 /** Synthetic root node used when right-clicking empty space in the sidebar. */
 const ROOT_NODE: NoteTreeNode = { name: '', path: '', type: 'notebook' };
@@ -205,7 +206,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     const { ctxMenu, dialog, openContextMenu, closeContextMenu, openDialog, closeDialog, setSubmitting } = useNotesContextMenu();
     const { selectedPaths: multiSelectedPaths, anchorPath, handleSelect: handleMultiSelect, clearSelection } = useNotesSelection();
     const { clipboard, cutPaths, setCut, setCopy, clearClipboard } = useNotesClipboard();
-    const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+    const [expandedPaths, setExpandedPaths] = useNotesTreeExpansion(workspaceId, selectedRootId);
     const [renamingPath, setRenamingPath] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [gitInitialized, setGitInitialized] = useState(false);
@@ -214,6 +215,12 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     const [addDropdownOpen, setAddDropdownOpen] = useState(false);
     const addDropdownRef = useRef<HTMLDivElement>(null);
     const treeAreaRef = useRef<HTMLDivElement>(null);
+    const handleTreeScroll = useNotesTreeScroll(
+        workspaceId,
+        selectedRootId,
+        treeAreaRef,
+        !loading && !!tree && tree.length > 0,
+    );
     const [rootDropdownOpen, setRootDropdownOpen] = useState(false);
     const rootDropdownRef = useRef<HTMLDivElement>(null);
     const hasMultipleRoots = roots && roots.length > 1;
@@ -1262,6 +1269,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                 className="flex-1 overflow-y-auto py-1 outline-none"
                 data-testid="notes-tree-area"
                 tabIndex={-1}
+                onScroll={handleTreeScroll}
                 onKeyDown={handleTreeKeyDown}
                 onContextMenu={handleBackgroundContextMenu}
             >

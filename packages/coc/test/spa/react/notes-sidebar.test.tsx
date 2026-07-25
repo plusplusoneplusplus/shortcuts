@@ -1443,6 +1443,35 @@ describe('NotesSidebar', () => {
         expect(badge!.textContent).toBe('2');
     });
 
+    it('restores expanded folders after unmounting and remounting the same scope', async () => {
+        const firstMount = renderSidebar();
+        fireEvent.click(await firstMount.findByTestId('notes-tree-item-Notebook1'));
+        expect(firstMount.queryByTestId('notes-tree-item-Section1')).toBeTruthy();
+        expect(JSON.parse(localStorage.getItem('coc-notes-expanded-ws1-default')!)).toEqual(['Notebook1']);
+
+        firstMount.unmount();
+        const secondMount = renderSidebar();
+        expect(await secondMount.findByTestId('notes-tree-item-Section1')).toBeTruthy();
+    });
+
+    it('keeps expanded folders isolated between Notes roots', async () => {
+        localStorage.setItem('coc-notes-expanded-ws1-docs', JSON.stringify(['Notebook1']));
+        const { findByTestId, queryByTestId, rerender } = renderSidebar();
+        await findByTestId('notes-tree-item-Notebook1');
+        expect(queryByTestId('notes-tree-item-Section1')).toBeNull();
+
+        rerender(
+            <NotesSidebar
+                workspaceId="ws1"
+                selectedPath={null}
+                selectedRootId="docs"
+                onSelectPage={vi.fn()}
+            />,
+        );
+        expect(await findByTestId('notes-tree-item-Section1')).toBeTruthy();
+        expect(localStorage.getItem('coc-notes-expanded-ws1-default')).toBeNull();
+    });
+
     it('does not render a page-count badge on empty folders', async () => {
         const { findByTestId } = renderSidebar();
         const nb2 = await findByTestId('notes-tree-item-Notebook2');
