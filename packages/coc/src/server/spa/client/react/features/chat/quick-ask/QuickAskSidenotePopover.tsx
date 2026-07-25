@@ -53,6 +53,21 @@ export function QuickAskSidenotePopover({
         return () => document.removeEventListener('keydown', handler);
     }, [onClose]);
 
+    // Dismiss when the user clicks outside the popover. Clicks on a side-note
+    // chip are ignored so the chip's own activation logic can toggle/switch the
+    // open note instead of this closing it out from under that click.
+    useEffect(() => {
+        if (isMobile) {return;}
+        const onDown = (e: MouseEvent) => {
+            const target = e.target as HTMLElement | null;
+            if (ref.current?.contains(target)) {return;}
+            if (target?.closest('[data-testid^="quick-ask-chip"]')) {return;}
+            onClose();
+        };
+        document.addEventListener('mousedown', onDown);
+        return () => document.removeEventListener('mousedown', onDown);
+    }, [isMobile, onClose]);
+
     const handleCopy = () => {
         onCopy(note);
         setCopied(true);

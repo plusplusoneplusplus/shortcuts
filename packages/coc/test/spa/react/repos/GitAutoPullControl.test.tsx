@@ -43,38 +43,46 @@ describe('default Off', () => {
         open();
         expect(screen.getByTestId('git-autopull-option-off').textContent).toContain('✓');
     });
+
+    it('keeps the 30-minute default interval when Off is selected without a prior value', () => {
+        const { onChange } = renderControl();
+        open();
+        fireEvent.click(screen.getByTestId('git-autopull-option-off'));
+        expect(onChange).toHaveBeenCalledWith({ enabled: false, intervalMinutes: 30 });
+    });
 });
 
 // ── Selecting a preset ──────────────────────────────────────────────────────
 
 describe('selecting a preset', () => {
-    it('renders all five preset options', () => {
+    it('renders all five preset options with their intended labels', () => {
         renderControl();
         open();
-        for (const min of [1, 5, 15, 30, 60]) {
+        for (const [min, label] of [[30, '30m'], [60, '1h'], [240, '4h'], [480, '8h'], [1440, '1d']] as const) {
             expect(screen.getByTestId(`git-autopull-option-${min}`)).toBeTruthy();
+            expect(screen.getByTestId(`git-autopull-option-${min}`).textContent).toContain(label);
         }
     });
 
     it('enables auto-pull with the chosen preset interval', () => {
         const { onChange } = renderControl();
         open();
-        fireEvent.click(screen.getByTestId('git-autopull-option-5'));
-        expect(onChange).toHaveBeenCalledWith({ enabled: true, intervalMinutes: 5 });
+        fireEvent.click(screen.getByTestId('git-autopull-option-60'));
+        expect(onChange).toHaveBeenCalledWith({ enabled: true, intervalMinutes: 60 });
     });
 
     it('closes the dropdown after selecting a preset', () => {
         renderControl();
         open();
-        fireEvent.click(screen.getByTestId('git-autopull-option-15'));
+        fireEvent.click(screen.getByTestId('git-autopull-option-240'));
         expect(screen.queryByTestId('git-autopull-dropdown')).toBeNull();
     });
 
     it('reflects an enabled preset value on the toggle and marks it selected', () => {
-        renderControl({ value: { enabled: true, intervalMinutes: 30 } });
-        expect(screen.getByTestId('git-autopull-current').textContent).toBe('30m');
+        renderControl({ value: { enabled: true, intervalMinutes: 60 } });
+        expect(screen.getByTestId('git-autopull-current').textContent).toBe('1h');
         open();
-        expect(screen.getByTestId('git-autopull-option-30').textContent).toContain('✓');
+        expect(screen.getByTestId('git-autopull-option-60').textContent).toContain('✓');
         expect(screen.getByTestId('git-autopull-option-off').textContent).not.toContain('✓');
     });
 });
@@ -83,41 +91,41 @@ describe('selecting a preset', () => {
 
 describe('turning off', () => {
     it('disables while preserving the last interval so re-enabling restores it', () => {
-        const { onChange } = renderControl({ value: { enabled: true, intervalMinutes: 15 } });
+        const { onChange } = renderControl({ value: { enabled: true, intervalMinutes: 120 } });
         open();
         fireEvent.click(screen.getByTestId('git-autopull-option-off'));
-        expect(onChange).toHaveBeenCalledWith({ enabled: false, intervalMinutes: 15 });
+        expect(onChange).toHaveBeenCalledWith({ enabled: false, intervalMinutes: 120 });
     });
 });
 
 // ── Custom value ────────────────────────────────────────────────────────────
 
-describe('custom value', () => {
-    it('enables auto-pull with a valid custom interval on Set', () => {
+describe('custom hours', () => {
+    it('enables auto-pull with a valid custom hour value on Set', () => {
         const { onChange } = renderControl();
         open();
         fireEvent.change(screen.getByTestId('git-autopull-custom-input'), { target: { value: '12' } });
         fireEvent.click(screen.getByTestId('git-autopull-custom-apply'));
-        expect(onChange).toHaveBeenCalledWith({ enabled: true, intervalMinutes: 12 });
+        expect(onChange).toHaveBeenCalledWith({ enabled: true, intervalMinutes: 720 });
         expect(screen.queryByTestId('git-autopull-dropdown')).toBeNull();
     });
 
-    it('applies a valid custom interval on Enter', () => {
+    it('applies a valid custom hour value on Enter', () => {
         const { onChange } = renderControl();
         open();
         const input = screen.getByTestId('git-autopull-custom-input');
         fireEvent.change(input, { target: { value: '7' } });
         fireEvent.keyDown(input, { key: 'Enter' });
-        expect(onChange).toHaveBeenCalledWith({ enabled: true, intervalMinutes: 7 });
+        expect(onChange).toHaveBeenCalledWith({ enabled: true, intervalMinutes: 420 });
     });
 
-    it('seeds the custom field with the active custom value when opened', () => {
-        renderControl({ value: { enabled: true, intervalMinutes: 12 } });
-        expect(screen.getByTestId('git-autopull-current').textContent).toBe('12m');
+    it('seeds the custom field with the active custom hour value when opened', () => {
+        renderControl({ value: { enabled: true, intervalMinutes: 120 } });
+        expect(screen.getByTestId('git-autopull-current').textContent).toBe('2h');
         open();
-        expect((screen.getByTestId('git-autopull-custom-input') as HTMLInputElement).value).toBe('12');
+        expect((screen.getByTestId('git-autopull-custom-input') as HTMLInputElement).value).toBe('2');
         // A non-preset custom value must not mark any preset as selected.
-        expect(screen.getByTestId('git-autopull-option-5').textContent).not.toContain('✓');
+        expect(screen.getByTestId('git-autopull-option-60').textContent).not.toContain('✓');
     });
 
     it('rejects a below-range value with an affordance and does not persist', () => {
@@ -134,7 +142,7 @@ describe('custom value', () => {
     it('rejects an above-max value and does not persist', () => {
         const { onChange } = renderControl();
         open();
-        fireEvent.change(screen.getByTestId('git-autopull-custom-input'), { target: { value: '9999' } });
+        fireEvent.change(screen.getByTestId('git-autopull-custom-input'), { target: { value: '25' } });
         fireEvent.click(screen.getByTestId('git-autopull-custom-apply'));
         expect(onChange).not.toHaveBeenCalled();
         expect(screen.getByTestId('git-autopull-custom-error')).toBeTruthy();
@@ -197,7 +205,7 @@ describe('dropdown lifecycle', () => {
 
 describe('compact variant', () => {
     it('renders the toggle in compact mode', () => {
-        const value: AutoPullSetting = { enabled: true, intervalMinutes: 5 };
+        const value: AutoPullSetting = { enabled: true, intervalMinutes: 60 };
         renderControl({ value, compact: true });
         const toggle = screen.getByTestId('git-autopull-toggle');
         expect(toggle.className).toContain('h-[18px]');

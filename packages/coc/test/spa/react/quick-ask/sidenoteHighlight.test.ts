@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+    SIDENOTE_ANCHOR_INDICATOR_ATTR,
+    SIDENOTE_ANCHOR_INDICATOR_CLASS,
     SIDENOTE_FLASH_CLASS,
     SIDENOTE_HIGHLIGHT_ATTR,
     SIDENOTE_HIGHLIGHT_CLASS,
+    clearSidenoteAnchorIndicators,
     clearSidenoteHighlights,
     flashTurn,
     highlightSidenoteRange,
+    indicateSidenoteAnchor,
     scrollElementIntoView,
 } from '../../../../src/server/spa/client/react/features/chat/quick-ask/sidenoteHighlight';
 
@@ -18,6 +22,10 @@ function makeContainer(html: string): HTMLElement {
 
 function spans(container: HTMLElement): HTMLElement[] {
     return Array.from(container.querySelectorAll<HTMLElement>(`[${SIDENOTE_HIGHLIGHT_ATTR}]`));
+}
+
+function indicatorSpans(container: HTMLElement): HTMLElement[] {
+    return Array.from(container.querySelectorAll<HTMLElement>(`[${SIDENOTE_ANCHOR_INDICATOR_ATTR}]`));
 }
 
 afterEach(() => {
@@ -87,6 +95,84 @@ describe('clearSidenoteHighlights', () => {
         const created = highlightSidenoteRange(el, second, second + 'attention'.length);
         expect(created).toHaveLength(1);
         expect(created[0].textContent).toBe('attention');
+    });
+});
+
+describe('indicateSidenoteAnchor', () => {
+    it('wraps a single-node phrase in one indicator span with the source text', () => {
+        const el = makeContainer('<p>The Megatron GroupedGEMM kernel is fast.</p>');
+        const text = el.textContent!;
+        const from = text.indexOf('GroupedGEMM');
+        const created = indicateSidenoteAnchor(el, from, from + 'GroupedGEMM'.length);
+        expect(created).toHaveLength(1);
+        expect(created[0].getAttribute(SIDENOTE_ANCHOR_INDICATOR_ATTR)).toBe('');
+        expect(created[0].className).toBe(SIDENOTE_ANCHOR_INDICATOR_CLASS);
+        expect(created[0].textContent).toBe('GroupedGEMM');
+        // Wrapping is text-neutral: textContent is unchanged.
+        expect(el.textContent).toBe(text);
+    });
+
+    it('wraps a phrase spanning inline markup in multiple spans covering the text', () => {
+        const el = makeContainer('<p>The quick <strong>brown</strong> fox jumps.</p>');
+        const text = el.textContent!;
+        const from = text.indexOf('brown fox');
+        const created = indicateSidenoteAnchor(el, from, from + 'brown fox'.length);
+        expect(created.length).toBeGreaterThan(1);
+        expect(created.map(s => s.textContent).join('')).toBe('brown fox');
+        expect(el.textContent).toBe(text);
+    });
+
+    it('returns no spans for an empty or inverted interval', () => {
+        const el = makeContainer('<p>hello world</p>');
+        expect(indicateSidenoteAnchor(el, 3, 3)).toEqual([]);
+        expect(indicateSidenoteAnchor(el, 5, 2)).toEqual([]);
+    });
+
+    it('coexists with the click-activated highlight on the same phrase (independent spans)', () => {
+        const el = makeContainer('<p>The Megatron GroupedGEMM kernel is fast.</p>');
+        const text = el.textContent!;
+        const from = text.indexOf('GroupedGEMM');
+        const to = from + 'GroupedGEMM'.length;
+        indicateSidenoteAnchor(el, from, to);
+        highlightSidenoteRange(el, from, to);
+        expect(indicatorSpans(el).length).toBeGreaterThan(0);
+        expect(spans(el).length).toBeGreaterThan(0);
+        expect(el.textContent).toBe(text);
+    });
+});
+
+describe('clearSidenoteAnchorIndicators', () => {
+    it('unwraps every indicator span and restores clean text nodes', () => {
+        const el = makeContainer('<p>The quick <strong>brown</strong> fox jumps.</p>');
+        const text = el.textContent!;
+        const from = text.indexOf('brown fox');
+        indicateSidenoteAnchor(el, from, from + 'brown fox'.length);
+        expect(indicatorSpans(el).length).toBeGreaterThan(0);
+
+        clearSidenoteAnchorIndicators(el);
+        expect(indicatorSpans(el)).toHaveLength(0);
+        expect(el.textContent).toBe(text);
+        expect(el.querySelector('strong')!.childNodes).toHaveLength(1);
+    });
+
+    it('is a no-op when there is nothing to clear', () => {
+        const el = makeContainer('<p>nothing indicated</p>');
+        expect(() => clearSidenoteAnchorIndicators(el)).not.toThrow();
+        expect(() => clearSidenoteAnchorIndicators(null)).not.toThrow();
+    });
+
+    it('does not clear the click-activated highlight (independent lifecycles)', () => {
+        const el = makeContainer('<p>The Megatron GroupedGEMM kernel is fast.</p>');
+        const text = el.textContent!;
+        const from = text.indexOf('GroupedGEMM');
+        const to = from + 'GroupedGEMM'.length;
+        indicateSidenoteAnchor(el, from, to);
+        highlightSidenoteRange(el, from, to);
+
+        clearSidenoteAnchorIndicators(el);
+        expect(indicatorSpans(el)).toHaveLength(0);
+        expect(spans(el).length).toBeGreaterThan(0);
+        expect(el.textContent).toBe(text);
     });
 });
 

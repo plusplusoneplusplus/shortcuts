@@ -168,6 +168,15 @@ describe('ScopeSlideSwitcher — interactions', () => {
         expect(mockSelectClone).not.toHaveBeenCalled();
     });
 
+    it('keeps the remote picker above page-level sticky headers', () => {
+        render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
+
+        fireEvent.click(screen.getByTestId('remote-chip'));
+
+        expect([...segment('workspace')!.classList].some(className => className.startsWith('z-'))).toBe(false);
+        expect(screen.getByTestId('remote-dropdown').className).toContain('z-50');
+    });
+
     it('selecting a different remote from the picker keeps segment 3 as the active workspace', () => {
         render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
 
