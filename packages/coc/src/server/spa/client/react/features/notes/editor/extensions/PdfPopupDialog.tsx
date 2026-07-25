@@ -22,6 +22,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Dialog } from '../../../../ui/Dialog';
 import { PdfJsRenderer } from './PdfJsRenderer';
+import { PdfQuickAskLayer } from './PdfQuickAskLayer';
 
 export interface PdfPopupTarget {
     /** The (already-classified, safe) PDF URL to render. */
@@ -35,9 +36,16 @@ export interface PdfPopupDialogProps {
     pdf: PdfPopupTarget | null;
     /** Called when the reader dismisses the dialog (backdrop / ✕ / Esc). */
     onClose: () => void;
+    /**
+     * Goal 1: workspace the Quick Ask answer endpoint runs against. Enables
+     * select→ask→answer over the full-window text layer; undefined disables it.
+     */
+    workspaceId?: string;
 }
 
-export function PdfPopupDialog({ pdf, onClose }: PdfPopupDialogProps) {
+export function PdfPopupDialog({ pdf, onClose, workspaceId }: PdfPopupDialogProps) {
+    // Container whose (pdf.js) text-layer selections raise the Quick Ask pill.
+    const frameWrapRef = useRef<HTMLDivElement>(null);
     // Inline PDFs render via pdf.js (host-selectable text layer) by default;
     // fall back to the native iframe only if pdf.js fails to load the document.
     const [pdfJsFailed, setPdfJsFailed] = useState(false);
@@ -70,7 +78,7 @@ export function PdfPopupDialog({ pdf, onClose }: PdfPopupDialogProps) {
             // its width-override branch.
             className="max-w-[96vw] h-[90vh]"
         >
-            <div className="md-pdf-popup-frame-wrap" data-testid="pdf-popup-frame-wrap">
+            <div className="md-pdf-popup-frame-wrap" data-testid="pdf-popup-frame-wrap" ref={frameWrapRef}>
                 {pdfJsFailed ? (
                     <iframe
                         className="md-pdf-popup-frame"
@@ -79,7 +87,11 @@ export function PdfPopupDialog({ pdf, onClose }: PdfPopupDialogProps) {
                         title={pdf.label}
                     />
                 ) : (
-                    <PdfJsRenderer url={pdf.url} label={pdf.label} onError={handlePdfJsError} />
+                    <>
+                        <PdfJsRenderer url={pdf.url} label={pdf.label} onError={handlePdfJsError} />
+                        {/* Goal 1: Quick Ask over the full-window pdf.js text layer. */}
+                        <PdfQuickAskLayer containerRef={frameWrapRef} workspaceId={workspaceId} />
+                    </>
                 )}
                 <div className="pdf-node-view-fallback">
                     If the PDF does not display,{' '}

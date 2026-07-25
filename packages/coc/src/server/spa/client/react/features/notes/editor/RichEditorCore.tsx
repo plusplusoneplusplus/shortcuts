@@ -54,6 +54,12 @@ export interface RichEditorCoreProps {
     handlePaste?: (view: any, event: ClipboardEvent) => boolean;
     /** ProseMirror `handleDrop` override — lets the parent intercept file drops. */
     handleDrop?: (view: any, event: DragEvent) => boolean;
+    /**
+     * Goal 1: workspace the PDF Quick Ask answer endpoint runs against. Threaded
+     * into the PdfBlock + full-window overlay so a paper text-layer selection can
+     * be asked→answered. Undefined disables the Quick Ask layer.
+     */
+    workspaceId?: string;
 }
 
 export function getLinkOpenTitle(platform = globalThis.navigator?.platform ?? '') {
@@ -76,6 +82,7 @@ export function RichEditorCore({
     onEditorReady,
     handlePaste,
     handleDrop,
+    workspaceId,
 }: RichEditorCoreProps) {
     // Stable callback refs — avoids editor recreation when parent re-renders
     const onCommentActivatedRef = useRef(onCommentActivated);
@@ -118,6 +125,7 @@ export function RichEditorCore({
             MapBlock,
             PdfBlock.configure({
                 onRequestFullWindow: (request: PdfFullWindowRequest) => setPopupPdf(request),
+                workspaceId,
             }),                     // must precede StarterKit so its parseHTML rule wins
             MermaidBlock,           // must precede StarterKit so its parseHTML rule wins
             MathInline,
@@ -240,7 +248,7 @@ export function RichEditorCore({
         <>
             <EditorContent editor={editor} />
             <YouTubePopupDialog videoId={popupVideoId} onClose={() => setPopupVideoId(null)} />
-            <PdfPopupDialog pdf={popupPdf} onClose={() => setPopupPdf(null)} />
+            <PdfPopupDialog pdf={popupPdf} onClose={() => setPopupPdf(null)} workspaceId={workspaceId} />
         </>
     );
 }

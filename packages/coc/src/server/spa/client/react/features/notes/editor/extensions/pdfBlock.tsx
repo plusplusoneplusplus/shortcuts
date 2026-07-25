@@ -12,6 +12,7 @@ import {
 import { classifyPdfBlockUrl } from './pdfBlockUrl';
 import { normalizeStoredPdfLabel } from '../pdfLabel';
 import { PdfJsRenderer } from './PdfJsRenderer';
+import { PdfQuickAskLayer } from './PdfQuickAskLayer';
 
 /** Payload handed to {@link PdfBlockOptions.onRequestFullWindow} (AC-05). */
 export interface PdfFullWindowRequest {
@@ -25,6 +26,12 @@ export interface PdfBlockOptions {
      * open the PDF in an in-app overlay. Undefined hides the button.
      */
     onRequestFullWindow?: (request: PdfFullWindowRequest) => void;
+    /**
+     * Goal 1: workspace the Quick Ask answer endpoint runs against. Threaded from
+     * NoteEditor so a text-layer selection can be asked→answered. Undefined
+     * disables the Quick Ask layer (e.g. non-note reuse of RichEditorCore).
+     */
+    workspaceId?: string;
 }
 
 function PdfBlockView({ node, updateAttributes, selected, extension }: NodeViewProps) {
@@ -33,6 +40,7 @@ function PdfBlockView({ node, updateAttributes, selected, extension }: NodeViewP
     const classification = classifyPdfBlockUrl(url, window.location.origin);
     const href = classification.kind === 'invalid' ? undefined : classification.href;
     const onRequestFullWindow = (extension.options as PdfBlockOptions).onRequestFullWindow;
+    const quickAskWorkspaceId = (extension.options as PdfBlockOptions).workspaceId;
     const indent = Number(node.attrs.indent || 0);
     const collapsed = Boolean(node.attrs.collapsed);
 
@@ -167,6 +175,14 @@ function PdfBlockView({ node, updateAttributes, selected, extension }: NodeViewP
                                     <span className="pdf-node-view-resize-tooltip">{displayHeight}px</span>
                                 ) : null}
                             </div>
+                            {/* Goal 1: Quick Ask over the pdf.js text layer. No-op
+                                on the iframe fallback (no host-selectable text). */}
+                            {!pdfJsFailed && (
+                                <PdfQuickAskLayer
+                                    containerRef={frameInnerRef}
+                                    workspaceId={quickAskWorkspaceId}
+                                />
+                            )}
                         </div>
                         <div className="pdf-node-view-fallback">
                             If the PDF does not display,{' '}
