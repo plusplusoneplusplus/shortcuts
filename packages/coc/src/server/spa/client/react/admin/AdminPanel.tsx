@@ -935,6 +935,35 @@ export function AdminPanel() {
         setFeatureValues({ ...featuresSnapshot });
     }, [featuresSnapshot]);
 
+    useEffect(() => {
+        if (activeTab !== 'settings' || settingsSubTab !== 'features' || isToolEmbedded) return;
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (
+                !(event.ctrlKey || event.metaKey)
+                || event.altKey
+                || event.shiftKey
+                || event.key.toLowerCase() !== 's'
+            ) {
+                return;
+            }
+
+            event.preventDefault();
+            if (!featuresDirty || featuresSaving) return;
+            void handleSaveFeatures();
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [
+        activeTab,
+        settingsSubTab,
+        isToolEmbedded,
+        featuresDirty,
+        featuresSaving,
+        handleSaveFeatures,
+    ]);
+
     // ── Dreams tab config card ──
     const handleSaveDreams = useCallback(async () => {
         const intervalMinutes = Number(dreamsForm.intervalMinutes);

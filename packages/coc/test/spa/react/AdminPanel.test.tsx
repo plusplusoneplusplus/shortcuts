@@ -1028,6 +1028,92 @@ describe('AdminPanel', () => {
             expect((screen.getByTestId('settings-features-save') as HTMLButtonElement).disabled).toBe(false);
         });
 
+        it.each([
+            ['Ctrl+S', { ctrlKey: true }],
+            ['Command+S', { metaKey: true }],
+        ])('%s saves dirty Workspace Features', async (_label, modifier) => {
+            const capturedBodies: any[] = [];
+            mockFetch.mockImplementation((url: string, options?: any) => {
+                if (url.includes('/admin/config') && options?.method === 'PUT') {
+                    capturedBodies.push(JSON.parse(options.body));
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+                }
+                if (url.includes('/admin/config')) {
+                    return Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({
+                            resolved: {
+                                terminal: { enabled: false },
+                                notes: { enabled: false },
+                                myWork: { enabled: false },
+                                myLife: { enabled: false },
+                            },
+                            sources: {},
+                        }),
+                    });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            });
+
+            await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('features');
+            await waitFor(() => expect(screen.getByTestId('toggle-terminal-enabled')).toBeDefined());
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('toggle-terminal-enabled'));
+            });
+
+            const event = new KeyboardEvent('keydown', {
+                key: 's',
+                ...modifier,
+                bubbles: true,
+                cancelable: true,
+            });
+            await act(async () => {
+                window.dispatchEvent(event);
+            });
+
+            expect(event.defaultPrevented).toBe(true);
+            await waitFor(() => expect(capturedBodies).toHaveLength(1));
+            expect(capturedBodies[0]['terminal.enabled']).toBe(true);
+        });
+
+        it('Ctrl+S on clean Workspace Features prevents browser save without writing config', async () => {
+            mockFullConfig();
+            await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('features');
+            await waitFor(() => expect(screen.getByTestId('toggle-terminal-enabled')).toBeDefined());
+            mockFetch.mockClear();
+
+            const event = new KeyboardEvent('keydown', {
+                key: 's',
+                ctrlKey: true,
+                bubbles: true,
+                cancelable: true,
+            });
+            window.dispatchEvent(event);
+
+            expect(event.defaultPrevented).toBe(true);
+            expect(mockFetch).not.toHaveBeenCalled();
+        });
+
+        it('Ctrl+S outside Workspace Features is left to the active page', async () => {
+            mockFullConfig();
+            await act(async () => { renderWithProviders(); });
+            await waitFor(() => expect(screen.getByTestId('settings-ai-execution-save')).toBeDefined());
+            mockFetch.mockClear();
+
+            const event = new KeyboardEvent('keydown', {
+                key: 's',
+                ctrlKey: true,
+                bubbles: true,
+                cancelable: true,
+            });
+            window.dispatchEvent(event);
+
+            expect(event.defaultPrevented).toBe(false);
+            expect(mockFetch).not.toHaveBeenCalled();
+        });
+
         it('Features card Save sends PUT with all feature flags', async () => {
             let capturedBody: any = null;
             mockFetch.mockImplementation((url: string, options?: any) => {
