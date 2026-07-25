@@ -42,6 +42,7 @@ import { WelcomeTour } from './welcome/WelcomeTour';
 import { SHOW_WELCOME_TUTORIAL } from './featureFlags';
 import { ErrorBoundary } from './ui/ErrorBoundary';
 import { resolveWorkItemOriginId } from './features/work-items/workItemOriginScope';
+import { useEnforceWindowLock } from './features/scope-window/useWindowLock';
 
 import { ContainerAgentProvider } from './contexts/ContainerAgentContext';
 
@@ -98,6 +99,9 @@ function AppInner() {
     const { toasts, addToast, removeToast } = useToast();
     const prevWsStatusRef = useRef(appState.wsStatus);
     const hasConnectedRef = useRef(false);
+    // Pop-out lock: if this window carries `?window=<id>`, pin it to that scope
+    // (force hash + set the OS window title). No-op in the main (unlocked) window.
+    useEnforceWindowLock();
     const seenProcessIdsRef = useRef(new Set<string>());
     const [reviewDialog, setReviewDialog] = useState<MarkdownReviewDialogState>({
         open: false,
