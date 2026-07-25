@@ -82,6 +82,21 @@ describe('formatPaperAnnotationsMarkdown', () => {
         expect(md).toContain('### Highlight 2');
     });
 
+    it('renders a region-only annotation (no quote) with a "Figure region" heading and its page', () => {
+        const region: PaperAnnotation = {
+            id: 'r1',
+            createdAt: '2026-07-25T10:00:00.000Z',
+            pdfUrl: 'https://arxiv.org/pdf/1802.05799.pdf',
+            region: { page: 7, rect: { x: 0.1, y: 0.2, width: 0.4, height: 0.3 } },
+            answer: 'It shows the ring-allreduce communication pattern.',
+        };
+        const md = formatPaperAnnotationsMarkdown([region]);
+        expect(md).toContain('### Figure region 1');
+        expect(md).not.toContain('>'); // no blockquote — there is no text quote
+        expect(md).toContain('It shows the ring-allreduce communication pattern.');
+        expect(md).toContain('Page 7'); // page pulled from region, not position
+    });
+
     it('groups annotations by paper and orders each group by page then time', () => {
         const md = formatPaperAnnotationsMarkdown([
             annotation({ id: 'b', pdfUrl: 'https://arxiv.org/pdf/2000.11111.pdf', quote: { selectedText: 'beta', contextBefore: '', contextAfter: '' } }),

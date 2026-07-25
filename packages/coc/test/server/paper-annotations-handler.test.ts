@@ -155,6 +155,43 @@ describe('paper-annotations handler', () => {
         }
     });
 
+    it('POST creates a region-only annotation (figure/equation, no text quote) and GET returns it', async () => {
+        const s = await startServer();
+        servers.push(s);
+        const regionAnnotation = {
+            pdfUrl: 'https://arxiv.org/pdf/1802.05799',
+            region: { page: 4, rect: { x: 0.1, y: 0.2, width: 0.5, height: 0.3 } },
+            question: 'What does this figure show?',
+            answer: 'It shows the ring-allreduce communication pattern.',
+            model: 'claude-opus-4-8',
+        };
+        const created = await req(s.baseUrl, 'POST', createPath, { path: 'paper.md', annotation: regionAnnotation });
+        expect(created.status).toBe(201);
+        const a = created.body.annotation;
+        expect(a.id).toBeDefined();
+        expect(a.quote).toBeUndefined();
+        expect(a.region).toEqual({ page: 4, rect: { x: 0.1, y: 0.2, width: 0.5, height: 0.3 } });
+        expect(a.question).toBe('What does this figure show?');
+        expect(a.answer).toContain('ring-allreduce');
+
+        const get = await req(s.baseUrl, 'GET', `${listPath}?path=paper.md`);
+        expect(get.status).toBe(200);
+        expect(get.body.annotations[a.id].region.page).toBe(4);
+        expect(get.body.annotations[a.id].quote).toBeUndefined();
+    });
+
+    it('POST rejects a region with a zero-size or off-page box (400)', async () => {
+        const s = await startServer();
+        servers.push(s);
+        const base = { pdfUrl: 'u', answer: 'a' };
+        // Zero-size box.
+        expect((await req(s.baseUrl, 'POST', createPath, { path: 'p.md', annotation: { ...base, region: { page: 1, rect: { x: 0.1, y: 0.1, width: 0, height: 0.2 } } } })).status).toBe(400);
+        // Page < 1.
+        expect((await req(s.baseUrl, 'POST', createPath, { path: 'p.md', annotation: { ...base, region: { page: 0, rect: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 } } } })).status).toBe(400);
+        // Non-numeric rect field.
+        expect((await req(s.baseUrl, 'POST', createPath, { path: 'p.md', annotation: { ...base, region: { page: 1, rect: { x: 'nope', y: 0.1, width: 0.2, height: 0.2 } } } })).status).toBe(400);
+    });
+
     it('POST without a valid quote/answer/pdfUrl is 400', async () => {
         const s = await startServer();
         servers.push(s);
@@ -278,6 +315,42 @@ describe('paper-annotations helpers', () => {
         expect(validateAnnotationDraft({ pdfUrl: 'u', answer: 'a', quote: {} })).toContain('selectedText');
         expect(validateAnnotationDraft({ pdfUrl: 'u', answer: 'a', quote: { selectedText: 's' }, position: { page: 0, rects: [] } })).toContain('page');
         expect(validateAnnotationDraft({ pdfUrl: 'u', answer: 'a', quote: { selectedText: 's' }, position: { page: 1, rects: 'x' } })).toContain('rects');
+    });
+
+    it('validateAnnotationDraft accepts a region-only draft (no text quote)', () => {
+        expect(validateAnnotationDraft({
+            pdfUrl: 'u', answer: 'a',
+            region: { page: 2, rect: { x: 0.1, y: 0.1, width: 0.4, height: 0.3 } },
+        })).toBeUndefined();
+    });
+
+    it('validateAnnotationDraft rejects malformed region anchors', () => {
+        const base = { pdfUrl: 'u', answer: 'a' };
+        expect(validateAnnotationDraft({ ...base, region: {} })).toContain('region.page');
+        expect(validateAnnotationDraft({ ...base, region: { page: 0, rect: { x: 0, y: 0, width: 0.2, height: 0.2 } } })).toContain('region.page');
+        expect(validateAnnotationDraft({ ...base, region: { page: 1 } })).toContain('region.rect');
+        expect(validateAnnotationDraft({ ...base, region: { page: 1, rect: { x: 0, y: 0, width: 'x', height: 0.2 } } })).toContain('region.rect.width');
+        expect(validateAnnotationDraft({ ...base, region: { page: 1, rect: { x: 0, y: 0, width: 0, height: 0.2 } } })).toContain('zero-size');
+    });
+
+    it('normalizeAnnotationDraft coerces a region-only draft and omits the quote', () => {
+        const a = normalizeAnnotationDraft(
+            {
+                pdfUrl: 'u', answer: 'a', question: ' see fig ',
+                region: { page: '3', rect: { x: '0.1', y: 0.2, width: 0.4, height: 0.3, junk: 9 } },
+            } as any,
+            'id-2',
+            'created-2',
+        );
+        expect(a).toEqual({
+            id: 'id-2',
+            createdAt: 'created-2',
+            pdfUrl: 'u',
+            answer: 'a',
+            question: 'see fig',
+            region: { page: 3, rect: { x: 0.1, y: 0.2, width: 0.4, height: 0.3 } },
+        });
+        expect(a.quote).toBeUndefined();
     });
 
     it('normalizeAnnotationDraft keeps only known fields and coerces rects', () => {

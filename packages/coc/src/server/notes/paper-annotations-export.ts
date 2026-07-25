@@ -114,7 +114,8 @@ export function formatPaperAnnotationsMarkdown(
         lines.push(`## ${paperDisplayLabel(pdfUrl)}`, '');
         const ordered = [...group].sort(compareForReading);
         ordered.forEach((a, index) => {
-            const heading = a.question?.trim() || `Highlight ${index + 1}`;
+            const heading = a.question?.trim()
+                || (a.region && !a.quote ? `Figure region ${index + 1}` : `Highlight ${index + 1}`);
             lines.push(`### ${heading}`, '');
 
             if (a.quote?.selectedText?.trim()) {
@@ -126,7 +127,8 @@ export function formatPaperAnnotationsMarkdown(
             }
 
             const meta: string[] = [];
-            if (a.position?.page) meta.push(`Page ${a.position.page}`);
+            const page = a.position?.page ?? a.region?.page;
+            if (page) meta.push(`Page ${page}`);
             if (a.model?.trim()) meta.push(a.model.trim());
             const date = shortDate(a.createdAt);
             if (date) meta.push(date);
