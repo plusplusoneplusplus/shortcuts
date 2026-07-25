@@ -255,14 +255,26 @@ describe('pino-setup', () => {
             ai.info({ category: 'test' }, 'ai pretty message');
             coc.info({ category: 'test' }, 'coc pretty message');
 
-            await new Promise<void>((resolve) => { ai.flush(() => setTimeout(resolve, 300)); });
+            await new Promise<void>((resolve) => { ai.flush(() => resolve()); });
 
             // The worker booted: it routed records to the file targets that ride
-            // on the same multi-target transport as pino-pretty.
+            // on the same multi-target transport as pino-pretty. pino-pretty runs
+            // in a worker thread whose file writes land asynchronously, so poll for
+            // the record to appear instead of waiting a fixed delay — the write can
+            // lag well past a few hundred ms on a loaded CI runner (the old 300ms
+            // sleep flaked on macOS).
             const aiFile = path.join(logDir, 'ai-service.ndjson');
+            const deadline = Date.now() + 10000;
+            while (Date.now() < deadline) {
+                if (fs.existsSync(aiFile) && fs.readFileSync(aiFile, 'utf8').includes('ai pretty message')) {
+                    break;
+                }
+                await new Promise<void>((resolve) => { setTimeout(resolve, 50); });
+            }
+
             expect(fs.existsSync(aiFile)).toBe(true);
             expect(fs.readFileSync(aiFile, 'utf8')).toContain('ai pretty message');
-        });
+        }, 15000);
 
         it('pretty-only mode (no log dir) builds a logger that logs without throwing', () => {
             const { root, ai } = createCLIPinoLogger(makeResolved({ pretty: true, level: 'info' }));
