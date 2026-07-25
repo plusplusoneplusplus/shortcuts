@@ -77,6 +77,27 @@ describe('MathInline / MathDisplay parseHTML', () => {
         expect(rule.getAttrs(el)).toEqual({ tex: 'E=mc^2', delimiter: 'dollar' });
     });
 
+    it('digit-led inline node preserves tex through parse and render', () => {
+        const el = document.createElement('span');
+        el.setAttribute('data-math', 'inline');
+        el.setAttribute('data-tex', '2MNK');
+        el.setAttribute('data-delim', 'dollar');
+        const [rule] = inlineConfig.parseHTML();
+        const attrs = rule.getAttrs(el);
+
+        expect(attrs).toEqual({ tex: '2MNK', delimiter: 'dollar' });
+        const result = inlineConfig.renderHTML({
+            node: { attrs },
+            HTMLAttributes: { 'data-tex': attrs.tex },
+        });
+        expect(result[1]).toMatchObject({
+            'data-math': 'inline',
+            'data-tex': '2MNK',
+            'data-delim': 'dollar',
+        });
+        expect(result[2]).toBe('2MNK');
+    });
+
     it('display node parses tex + delimiter from a data-math div', () => {
         const el = document.createElement('div');
         el.setAttribute('data-math', 'display');

@@ -22,6 +22,12 @@ describe('mathMarkedExtension — delimiter coverage', () => {
         expect(html).toContain('today');
     });
 
+    it('renders digit-led inline math', () => {
+        const html = render('compute $2MNK$ FLOPs');
+        expect(html).toContain('class="katex"');
+        expect(html).toContain('<annotation encoding="application/x-tex">2MNK</annotation>');
+    });
+
     it('renders inline \\(...\\) math', () => {
         const html = render('area \\(\\pi r^2\\) here');
         expect(html).toContain('class="katex"');
