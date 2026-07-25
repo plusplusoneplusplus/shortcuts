@@ -88,6 +88,13 @@ export interface NotesStoreSeed {
     searchResults?: NoteSearchResult[];
     /** Base mtime for content responses; increments on each save. */
     mtime?: number;
+    /**
+     * Bytes served by the mocked image GET route for any attachment path.
+     * Defaults to a tiny (invalid) placeholder PDF that forces the pdf.js
+     * renderer to fall back to the native iframe. Pass a real PDF buffer (see
+     * fixtures/pdf-fixtures.ts) to exercise the pdf.js text-layer path instead.
+     */
+    pdfBytes?: Buffer;
 }
 
 const DEFAULT_MTIME = 1_700_000_000_000;
@@ -156,6 +163,7 @@ export class NotesStore {
     systemFolders: string[];
     searchResults: NoteSearchResult[];
     mtime: number;
+    pdfBytes: Buffer;
 
     /** Every intercepted documented request, in arrival order. */
     readonly requests: RecordedNotesRequest[] = [];
@@ -170,6 +178,7 @@ export class NotesStore {
         this.systemFolders = seed.systemFolders ?? [];
         this.searchResults = seed.searchResults ?? [];
         this.mtime = seed.mtime ?? DEFAULT_MTIME;
+        this.pdfBytes = seed.pdfBytes ?? MOCK_PDF_BYTES;
     }
 
     // ── Fault / delay injection (for error and loading-state coverage) ───────
@@ -387,12 +396,13 @@ export async function mockNotesApi(page: Page, store: NotesStore): Promise<void>
                 return respondJson(201, { path: MOCK_UPLOADED_PDF_PATH, rootId: 'default' });
 
             case 'image-get':
-                // Serve a tiny valid PDF for any requested attachment path so the
-                // inline <iframe> resolves without a real file on disk.
+                // Serve the store's PDF bytes for any requested attachment path so
+                // the embed resolves without a real file on disk. Defaults to a
+                // tiny placeholder (iframe fallback); a real PDF drives pdf.js.
                 return route.fulfill({
                     status: 200,
                     contentType: 'application/pdf',
-                    body: MOCK_PDF_BYTES,
+                    body: store.pdfBytes,
                 });
         }
     });

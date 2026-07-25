@@ -24,11 +24,14 @@
 
 /**
  * URL the bundled pdf.js worker is served from. The client build
- * (`scripts/build-client.mjs`) emits `dist/pdf.worker.js`, and `dist/*` is
- * served under `/static/*` (see `src/server/index.ts` staticDir), mirroring how
- * the Monaco workers are wired.
+ * (`scripts/build-client.mjs`) emits `pdf.worker.js` into the client `dist/`,
+ * and the dashboard router serves that directory at the site root — so the file
+ * resolves at `/pdf.worker.js` (a request for `/static/pdf.worker.js` falls
+ * through to the SPA HTML fallback, breaking both the real Worker and pdf.js's
+ * fake-worker import). Keep this path root-relative so it matches the router's
+ * static resolver (`staticDir` + pathname; see `src/server/router.ts`).
  */
-export const PDF_WORKER_URL = '/static/pdf.worker.js';
+export const PDF_WORKER_URL = '/pdf.worker.js';
 
 /** Rendering scale. 1.5 keeps text crisp on HiDPI without huge canvases. */
 export const DEFAULT_PDF_SCALE = 1.5;

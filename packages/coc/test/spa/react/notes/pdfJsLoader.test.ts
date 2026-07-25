@@ -95,11 +95,16 @@ afterEach(() => {
 });
 
 describe('renderPdfDocument', () => {
-    it('configures the worker src to the served /static path', async () => {
+    it('configures the worker src to the served root path', async () => {
         const container = document.createElement('div');
         await renderPdfDocument({ url: '/x.pdf', container });
         expect(state.workerSrc).toBe(PDF_WORKER_URL);
-        expect(PDF_WORKER_URL).toBe('/static/pdf.worker.js');
+        // The client build emits `pdf.worker.js` into `dist/`, which the router
+        // serves at the site root (`path.join(staticDir, pathname)`). A
+        // `/static/…` URL would map to `dist/static/pdf.worker.js` (absent) and
+        // fall through to the SPA HTML, so the worker load would silently fail
+        // and pdf.js would drop back to the native iframe.
+        expect(PDF_WORKER_URL).toBe('/pdf.worker.js');
     });
 
     it('renders one canvas + text layer per page with the scale-factor variable', async () => {

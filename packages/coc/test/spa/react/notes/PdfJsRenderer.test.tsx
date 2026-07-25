@@ -18,7 +18,7 @@ vi.mock(
     '../../../../src/server/spa/client/react/features/notes/editor/extensions/pdfJsLoader',
     () => ({
         renderPdfDocument: (opts: any) => loader.render(opts),
-        PDF_WORKER_URL: '/static/pdf.worker.js',
+        PDF_WORKER_URL: '/pdf.worker.js',
         DEFAULT_PDF_SCALE: 1.5,
     }),
 );
