@@ -246,6 +246,7 @@ export function ReviewChatPlacementFrame({
                 opacity: 0,
                 transform: 'scale(0.5) translateY(20px)',
                 pointerEvents: 'none',
+                userSelect: 'none',
                 transition: cardTransition,
             }
             : {
@@ -398,7 +399,9 @@ export function ReviewChatPlacementFrame({
                     ? 'flex h-full w-full flex-col overflow-hidden rounded-lg border border-[#d0d7de] bg-[#f8f8f8] shadow-2xl dark:border-[#3c3c3c] dark:bg-[#1e1e1e]'
                     : 'flex h-full w-full flex-col overflow-hidden'}
                 style={isLens ? cardStyle : undefined}
+                aria-hidden={isDormantPill || undefined}
                 data-testid={isLens ? `${testIdPrefix}-lens-card` : undefined}
+                {...(isDormantPill ? { inert: '' } : {})}
             >
                 {isLens && (
                     <button

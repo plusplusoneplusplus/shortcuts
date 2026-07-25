@@ -109,7 +109,10 @@ describe('CommitChatPlacementFrame', () => {
 
         expect(screen.getByTestId('commit-chat-lens-minimized')).toHaveTextContent('Commit Chat');
         expect(screen.getByTestId('commit-chat-lens-minimized')).toHaveTextContent('abc123d');
-        expect(screen.getByTestId('commit-chat-lens-hidden-body')).toHaveClass('hidden');
+        const hiddenBody = screen.getByTestId('commit-chat-lens-hidden-body');
+        expect(hiddenBody).toHaveClass('hidden');
+        expect(hiddenBody.getAttribute('inert')).toBeNull();
+        expect(hiddenBody.style.userSelect).toBe('');
         expect(screen.getByTestId('commit-chat-panel')).toBeTruthy();
 
         fireEvent.click(screen.getByTestId('commit-chat-restore-btn'));
@@ -168,6 +171,8 @@ describe('CommitChatPlacementFrame', () => {
         const panel = screen.getByTestId('commit-chat-side-panel');
         expect(panel.getAttribute('data-dormant-mode')).toBeNull();
         expect(panel.getAttribute('data-focused')).toBeNull();
+        expect(panel.getAttribute('inert')).toBeNull();
+        expect(screen.getByTestId('commit-chat-panel').parentElement?.parentElement?.getAttribute('inert')).toBeNull();
     });
 
     it('transitions to ghost dormant state after mouse moves away and delay elapses', () => {
@@ -192,6 +197,9 @@ describe('CommitChatPlacementFrame', () => {
         expect(lens.getAttribute('data-focused')).toBe('false');
         expect(card.style.opacity).toBe('0.18');
         expect(card.style.pointerEvents).toBe('none');
+        expect(card.getAttribute('inert')).toBeNull();
+        expect(card.getAttribute('aria-hidden')).toBeNull();
+        expect(card.style.userSelect).toBe('');
     });
 
     it('cancels dormant transition when mouse moves back before delay', () => {
@@ -230,6 +238,7 @@ describe('CommitChatPlacementFrame', () => {
 
         const lens = screen.getByTestId('commit-chat-lens');
         const card = screen.getByTestId('commit-chat-lens-card');
+        const mountedPanel = screen.getByTestId('commit-chat-panel');
         expect(lens.getAttribute('data-dormant-mode')).toBe('pill');
 
         act(() => { simulateMouseFarAway(card); });
@@ -238,9 +247,15 @@ describe('CommitChatPlacementFrame', () => {
         const pill = screen.getByTestId('commit-chat-lens-dormant-pill');
         expect(pill.style.opacity).toBe('1');
         expect(pill.style.pointerEvents).toBe('auto');
+        expect(pill.getAttribute('inert')).toBeNull();
+        expect(pill.getAttribute('aria-hidden')).toBeNull();
 
         expect(card.style.opacity).toBe('0');
         expect(card.style.pointerEvents).toBe('none');
+        expect(card.getAttribute('inert')).toBe('');
+        expect(card.getAttribute('aria-hidden')).toBe('true');
+        expect(card.style.userSelect).toBe('none');
+        expect(screen.getByTestId('commit-chat-panel')).toBe(mountedPanel);
     });
 
     it('restores from pill dormant when mouse moves over pill', () => {
@@ -257,6 +272,7 @@ describe('CommitChatPlacementFrame', () => {
 
         const lens = screen.getByTestId('commit-chat-lens');
         const card = screen.getByTestId('commit-chat-lens-card');
+        const mountedPanel = screen.getByTestId('commit-chat-panel');
         act(() => { simulateMouseFarAway(card); });
         act(() => { vi.advanceTimersByTime(700); });
 
@@ -277,6 +293,10 @@ describe('CommitChatPlacementFrame', () => {
 
         expect(lens.getAttribute('data-focused')).toBe('true');
         expect(card.style.opacity).toBe('1');
+        expect(card.getAttribute('inert')).toBeNull();
+        expect(card.getAttribute('aria-hidden')).toBeNull();
+        expect(card.style.userSelect).toBe('');
+        expect(screen.getByTestId('commit-chat-panel')).toBe(mountedPanel);
     });
 
     it('stays focused when no mousemove event has been fired', () => {
