@@ -1,8 +1,8 @@
 /**
  * GitAutoPullControl — per-repo auto-pull interval selector for the git panel.
  *
- * Presents preset intervals (Off / 1m / 5m / 15m / 30m / 60m) plus a custom
- * minutes input, and reports the chosen `{ enabled, intervalMinutes }` back
+ * Presents preset intervals (Off / 30m / 1h / 4h / 8h / 1d) plus a custom
+ * hours input, and reports the chosen `{ enabled, intervalMinutes }` back
  * through `onChange`. Purely presentational: the parent (RepoGitTab) owns the
  * persisted `autoPull` preference and wires `onChange` to `patchRepo`.
  *
@@ -31,12 +31,19 @@ interface GitAutoPullControlProps {
 /** Minutes cap mirrors the server AutoPullSchema (AUTO_PULL_MAX_INTERVAL_MINUTES). */
 export const AUTO_PULL_MAX_INTERVAL_MINUTES = 1440;
 /** Interval kept when auto-pull is turned off without a prior value, so re-enabling has a sane default. */
-const DEFAULT_INTERVAL_MINUTES = 5;
+const DEFAULT_INTERVAL_MINUTES = 30;
 /** Preset intervals (minutes) offered besides Off + custom. */
-export const AUTO_PULL_PRESETS = [1, 5, 15, 30, 60] as const;
+export const AUTO_PULL_PRESETS = [30, 60, 240, 480, 1440] as const;
+const AUTO_PULL_MAX_CUSTOM_HOURS = AUTO_PULL_MAX_INTERVAL_MINUTES / 60;
 
 function isValidMinutes(n: number): boolean {
     return Number.isInteger(n) && n >= 1 && n <= AUTO_PULL_MAX_INTERVAL_MINUTES;
+}
+
+function formatInterval(intervalMinutes: number): string {
+    if (intervalMinutes % 1440 === 0) return `${intervalMinutes / 1440}d`;
+    if (intervalMinutes % 60 === 0) return `${intervalMinutes / 60}h`;
+    return `${intervalMinutes}m`;
 }
 
 export function GitAutoPullControl({ value, onChange, compact }: GitAutoPullControlProps) {
@@ -54,9 +61,11 @@ export function GitAutoPullControl({ value, onChange, compact }: GitAutoPullCont
         setOpen(prev => {
             const next = !prev;
             if (next) {
-                // Seed the custom field with the active custom value (blank for presets/off).
+                // Seed the custom field only when the active custom value is an exact hour.
                 setCustomError(false);
-                setCustomText(isCustom && intervalMinutes != null ? String(intervalMinutes) : '');
+                setCustomText(isCustom && intervalMinutes != null && intervalMinutes % 60 === 0
+                    ? String(intervalMinutes / 60)
+                    : '');
             }
             return next;
         });
@@ -74,9 +83,9 @@ export function GitAutoPullControl({ value, onChange, compact }: GitAutoPullCont
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [open]);
 
-    const label = enabled && intervalMinutes != null ? `${intervalMinutes}m` : 'Off';
+    const label = enabled && intervalMinutes != null ? formatInterval(intervalMinutes) : 'Off';
     const title = enabled && intervalMinutes != null
-        ? `Auto-pull every ${intervalMinutes} min`
+        ? `Auto-pull every ${formatInterval(intervalMinutes)}`
         : 'Auto-pull off';
 
     function selectOff() {
@@ -94,13 +103,14 @@ export function GitAutoPullControl({ value, onChange, compact }: GitAutoPullCont
     }
 
     function applyCustom() {
-        const n = Number(customText.trim());
-        if (customText.trim() === '' || !isValidMinutes(n)) {
+        const hours = Number(customText.trim());
+        const intervalMinutes = hours * 60;
+        if (customText.trim() === '' || !Number.isInteger(hours) || !isValidMinutes(intervalMinutes)) {
             // Reject invalid input with a visible affordance; do not persist.
             setCustomError(true);
             return;
         }
-        onChange({ enabled: true, intervalMinutes: n });
+        onChange({ enabled: true, intervalMinutes });
         setCustomError(false);
         setOpen(false);
     }
@@ -141,38 +151,38 @@ export function GitAutoPullControl({ value, onChange, compact }: GitAutoPullCont
                         <span>Off</span>
                         {!enabled && <span aria-hidden="true">✓</span>}
                     </button>
-                    {AUTO_PULL_PRESETS.map(min => {
-                        const selected = isPreset && intervalMinutes === min;
+                    {AUTO_PULL_PRESETS.map(presetMinutes => {
+                        const selected = isPreset && intervalMinutes === presetMinutes;
                         return (
                             <button
-                                key={min}
+                                key={presetMinutes}
                                 type="button"
                                 className={`flex w-full items-center justify-between gap-2 px-3 py-1 text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors ${selected ? 'font-semibold text-[#16825d]' : 'text-[#1e1e1e] dark:text-[#ccc]'}`}
-                                onClick={() => selectPreset(min)}
-                                data-testid={`git-autopull-option-${min}`}
+                                onClick={() => selectPreset(presetMinutes)}
+                                data-testid={`git-autopull-option-${presetMinutes}`}
                             >
-                                <span>{min}m</span>
+                                <span>{formatInterval(presetMinutes)}</span>
                                 {selected && <span aria-hidden="true">✓</span>}
                             </button>
                         );
                     })}
                     <div className="mt-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-3 pb-1 pt-1">
                         <label className="mb-1 block text-[10px] text-[#999] dark:text-[#777]" htmlFor="git-autopull-custom-input">
-                            Custom (min)
+                            Custom (hours)
                         </label>
                         <div className="flex items-center gap-1">
                             <input
                                 id="git-autopull-custom-input"
                                 type="number"
                                 min={1}
-                                max={AUTO_PULL_MAX_INTERVAL_MINUTES}
+                                max={AUTO_PULL_MAX_CUSTOM_HOURS}
                                 step={1}
                                 value={customText}
                                 onChange={e => { setCustomText(e.target.value); if (customError) setCustomError(false); }}
                                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); applyCustom(); } }}
                                 className={`w-16 rounded border bg-white px-1 py-0.5 text-xs text-[#1e1e1e] dark:bg-[#1e1e1e] dark:text-[#ccc] ${customError ? 'border-[#d32f2f]' : 'border-[#d0d0d0] dark:border-[#3c3c3c]'}`}
                                 data-testid="git-autopull-custom-input"
-                                aria-label="Custom auto-pull minutes"
+                                aria-label="Custom auto-pull hours"
                                 aria-invalid={customError}
                             />
                             <button
@@ -186,7 +196,7 @@ export function GitAutoPullControl({ value, onChange, compact }: GitAutoPullCont
                         </div>
                         {customError && (
                             <div className="mt-1 text-[10px] text-[#d32f2f]" data-testid="git-autopull-custom-error">
-                                Enter a whole number 1–{AUTO_PULL_MAX_INTERVAL_MINUTES}.
+                                Enter a whole number 1–{AUTO_PULL_MAX_CUSTOM_HOURS}.
                             </div>
                         )}
                     </div>
