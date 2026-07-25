@@ -47,7 +47,7 @@ import { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from '..
 import { registerWorkflowRoutes, registerWorkflowWriteRoutes } from '../workflows/workflows-handler';
 import { registerWorkspaceSummaryRoutes } from '../workspaces/workspace-summary-handler';
 import { registerTemplateRoutes, registerTemplateWriteRoutes } from '../templates/templates-handler';
-import { registerNotesRoutes, registerNotesWriteRoutes, registerNotesCommentsRoutes, registerNotesImageRoutes, registerNotesGitRoutes, registerNotesGitAutoCommitRoutes, registerNotesFilePreviewRoutes, registerNotesAICreateRoutes, registerNotesRootsRoutes } from '../notes/notes-handler';
+import { registerNotesRoutes, registerNotesWriteRoutes, registerNotesCommentsRoutes, registerNotesImageRoutes, registerNotesGitRoutes, registerNotesGitAutoCommitRoutes, registerNotesFilePreviewRoutes, registerNotesAICreateRoutes, registerNotesRootsRoutes, registerPaperAnnotationsRoutes } from '../notes/notes-handler';
 import { registerNotesEditsRoutes } from '../notes/notes-edits-handler';
 import { registerReplicateApplyRoutes } from '../templates/replicate-apply-handler';
 import { registerScheduleRoutes } from '../schedule/schedule-handler';
@@ -942,6 +942,15 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // (Goal 1): same one-shot grounded lookup, no persistence, no process/turn.
     registerQuickAskAnswerRoutes({
         routes,
+        dataDir,
+        getEnabled: getQuickAskSidenotesEnabled,
+    });
+    // Persistent dual-anchor paper annotations sidecar (Goal 2): every Quick Ask
+    // Q&A over a paper can be pinned to its passage and survives note reload /
+    // app restart. Same flag gate as the rest of the Quick Ask loop.
+    registerPaperAnnotationsRoutes({
+        routes,
+        store,
         dataDir,
         getEnabled: getQuickAskSidenotesEnabled,
     });
