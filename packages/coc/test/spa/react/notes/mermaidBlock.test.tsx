@@ -28,7 +28,10 @@ vi.stubGlobal('mermaid', {
     run: mockMermaidRun,
 });
 
-import { MermaidBlock } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/mermaidBlock';
+import {
+    MermaidBlock,
+    computeAutoFitWidth,
+} from '../../../../src/server/spa/client/react/features/notes/editor/extensions/mermaidBlock';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -102,6 +105,42 @@ describe('MermaidBlock renderHTML', () => {
             { 'data-indent': '3' },
             ['code', { class: 'language-mermaid' }, 'graph TD\nA-->B'],
         ]);
+    });
+});
+
+// ── computeAutoFitWidth ──────────────────────────────────────────────────────
+
+describe('computeAutoFitWidth', () => {
+    it('enlarges a small diagram to fill the available width', () => {
+        // 620px diagram in 1600px editor → capped at 3x (1860 > 1600) → fills width
+        expect(computeAutoFitWidth(1600, 620)).toBe(1600);
+    });
+
+    it('scales up proportionally when below the cap', () => {
+        // 400px diagram in 800px editor → 2x → 800
+        expect(computeAutoFitWidth(800, 400)).toBe(800);
+    });
+
+    it('caps the upscale so a trivial diagram does not balloon', () => {
+        // 150px diagram in 1600px editor → would be ~10.6x, capped to 3x → 450
+        expect(computeAutoFitWidth(1600, 150)).toBe(450);
+    });
+
+    it('returns null when the diagram already fills the width', () => {
+        expect(computeAutoFitWidth(800, 800)).toBeNull();
+    });
+
+    it('returns null when the diagram is wider than available (CSS shrinks it)', () => {
+        expect(computeAutoFitWidth(800, 1200)).toBeNull();
+    });
+
+    it('returns null for unmeasurable (zero) dimensions', () => {
+        expect(computeAutoFitWidth(0, 400)).toBeNull();
+        expect(computeAutoFitWidth(800, 0)).toBeNull();
+    });
+
+    it('honours a custom max scale', () => {
+        expect(computeAutoFitWidth(1600, 400, 2)).toBe(800);
     });
 });
 
@@ -221,6 +260,36 @@ describe('MermaidBlockView', () => {
         // (we check that the attribute was absent when run was invoked)
         expect(preEl).not.toBeNull();
         expect((preEl as HTMLPreElement | null)?.hasAttribute('data-processed')).toBe(false);
+    });
+
+    it('enlarges a small rendered SVG to fill the preview width', async () => {
+        // Simulate mermaid rendering a small (400px) SVG into the pre element.
+        mockMermaidRun.mockImplementation(({ nodes }: { nodes: Element[] }) => {
+            const pre = nodes[0] as HTMLElement;
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.getBoundingClientRect = () => ({ width: 400, height: 200 }) as DOMRect;
+            pre.innerHTML = '';
+            pre.appendChild(svg);
+            return Promise.resolve();
+        });
+
+        // Give the preview container a definite width (jsdom reports 0 otherwise).
+        const proto = Object.getPrototypeOf(document.createElement('div'));
+        const clientWidthSpy = vi
+            .spyOn(proto, 'clientWidth', 'get')
+            .mockReturnValue(1000);
+
+        await act(async () => {
+            render(<MermaidBlockView {...makeProps('graph TD\n  A-->B')} />);
+        });
+
+        const svg = document.querySelector('pre.mermaid svg') as SVGElement;
+        expect(svg).not.toBeNull();
+        // 1000px available (padding is 0 in jsdom) / 400px intrinsic = 2.5x → 1000px
+        expect(svg.style.width).toBe('1000px');
+        expect(svg.style.height).toBe('auto');
+
+        clientWidthSpy.mockRestore();
     });
 
     it('source view shows the raw diagram code', async () => {
