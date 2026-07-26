@@ -18,13 +18,11 @@ import { parseGitHubWorkItemIssue } from './work-item-sync-github-issue';
 import type { WorkItem, WorkItemIndexEntry, WorkItemStore } from './types';
 import { WORK_ITEM_SYNC_MAX_ITEMS } from './work-item-sync-provider';
 import { clearWorkItemResponseCacheForResolvedWorkspace } from './work-item-response-cache';
+import { WorkspacePullPollScheduler, type WorkspacePullPollTimerApi } from './workspace-pull-poll-scheduler';
 
 export const DEFAULT_WORK_ITEM_GITHUB_PULL_INTERVAL_MINUTES = 5;
 
-export interface WorkItemGitHubPullPollerTimerApi {
-    setInterval(handler: () => void | Promise<void>, ms: number): unknown;
-    clearInterval(timer: unknown): void;
-}
+export type WorkItemGitHubPullPollerTimerApi = WorkspacePullPollTimerApi;
 
 export interface WorkItemGitHubPullPollerOptions {
     dataDir: string;
@@ -68,16 +66,6 @@ export interface WorkItemGitHubPullWorkspaceResult {
     truncated: boolean;
 }
 
-interface WorkspaceTimer {
-    timer: unknown;
-    intervalMs: number;
-}
-
-const defaultTimerApi: WorkItemGitHubPullPollerTimerApi = {
-    setInterval: (handler, ms) => setInterval(() => { void handler(); }, ms),
-    clearInterval: timer => clearInterval(timer as ReturnType<typeof setInterval>),
-};
-
 function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
@@ -90,19 +78,6 @@ function unavailableRepoMessage(repo: Exclude<GitHubWorkItemSyncRepo, AvailableG
         'non-github-origin': 'GitHub sync requires a GitHub origin remote or workspace owner/repo override.',
     };
     return reasonMessages[repo.reason];
-}
-
-function intervalMsFromMinutes(value: number | undefined): number {
-    const minutes = Number.isFinite(value) && value! >= 1
-        ? value!
-        : DEFAULT_WORK_ITEM_GITHUB_PULL_INTERVAL_MINUTES;
-    return minutes * 60 * 1000;
-}
-
-function maybeUnref(timer: unknown): void {
-    if (timer && typeof timer === 'object' && 'unref' in timer && typeof timer.unref === 'function') {
-        timer.unref();
-    }
 }
 
 function isGitHubBackedEpicRoot(entry: WorkItemIndexEntry): boolean {
@@ -131,71 +106,53 @@ function blankResult(workspaceId: string): WorkItemGitHubPullWorkspaceResult {
 export class WorkItemGitHubPullPoller {
     private readonly transport: GitHubWorkItemIssueTransport;
     private readonly now?: () => string;
-    private readonly timerApi: WorkItemGitHubPullPollerTimerApi;
     private readonly logError: (message: string) => void;
-    private readonly timers = new Map<string, WorkspaceTimer>();
-    private started = false;
+    private readonly scheduler: WorkspacePullPollScheduler<WorkItemGitHubPullWorkspaceResult>;
 
     constructor(private readonly options: WorkItemGitHubPullPollerOptions) {
         this.transport = options.transport ?? new GhCliGitHubWorkItemIssueTransport();
         this.now = options.now;
-        this.timerApi = options.timerApi ?? defaultTimerApi;
         this.logError = options.logError ?? (message => process.stderr.write(`${message}\n`));
+        this.scheduler = new WorkspacePullPollScheduler<WorkItemGitHubPullWorkspaceResult>(
+            {
+                logPrefix: 'work-items/github-poll',
+                defaultIntervalMinutes: DEFAULT_WORK_ITEM_GITHUB_PULL_INTERVAL_MINUTES,
+                listWorkspaceIds: async () =>
+                    (await options.processStore.getWorkspaces()).map(workspace => workspace.id),
+                isSyncEnabled: () => options.getSyncEnabled?.() !== false,
+                getWorkspaceConfig: (workspaceId) => {
+                    const githubPrefs = readRepoPreferences(options.dataDir, workspaceId).workItems?.sync?.github;
+                    return {
+                        pollingEnabled: githubPrefs?.pollingEnabled !== false,
+                        pollIntervalMinutes: githubPrefs?.pollIntervalMinutes,
+                    };
+                },
+                hasEligibleWork: async (workspaceId) =>
+                    (await this.listGitHubBackedEpicRoots(workspaceId)).length > 0,
+                poll: (workspaceId) => this.pollWorkspace(workspaceId),
+                resultLogMessages: (result) => [
+                    ...result.warnings.map(warning => warning.message),
+                    ...result.errors.map(error => error.message),
+                ],
+            },
+            { timerApi: options.timerApi, logError: this.logError },
+        );
     }
 
-    async start(): Promise<void> {
-        if (this.started) return;
-        this.started = true;
-        await this.refreshWorkspaceTimers();
+    start(): Promise<void> {
+        return this.scheduler.start();
     }
 
     dispose(): void {
-        for (const workspaceId of this.timers.keys()) {
-            this.clearWorkspaceTimer(workspaceId);
-        }
-        this.started = false;
+        this.scheduler.dispose();
     }
 
-    async refreshWorkspaceTimers(): Promise<void> {
-        const workspaces = await this.options.processStore.getWorkspaces();
-        const activeWorkspaceIds = new Set<string>();
-        for (const workspace of workspaces) {
-            activeWorkspaceIds.add(workspace.id);
-            await this.configureWorkspace(workspace.id);
-        }
-        for (const workspaceId of [...this.timers.keys()]) {
-            if (!activeWorkspaceIds.has(workspaceId)) {
-                this.clearWorkspaceTimer(workspaceId);
-            }
-        }
+    refreshWorkspaceTimers(): Promise<void> {
+        return this.scheduler.refreshWorkspaceTimers();
     }
 
-    async configureWorkspace(workspaceId: string): Promise<void> {
-        if (this.options.getSyncEnabled?.() === false) {
-            this.clearWorkspaceTimer(workspaceId);
-            return;
-        }
-        const prefs = readRepoPreferences(this.options.dataDir, workspaceId);
-        const githubPrefs = prefs.workItems?.sync?.github;
-        if (githubPrefs?.pollingEnabled === false) {
-            this.clearWorkspaceTimer(workspaceId);
-            return;
-        }
-
-        const roots = await this.listGitHubBackedEpicRoots(workspaceId);
-        if (roots.length === 0) {
-            this.clearWorkspaceTimer(workspaceId);
-            return;
-        }
-
-        const intervalMs = intervalMsFromMinutes(githubPrefs?.pollIntervalMinutes);
-        const existing = this.timers.get(workspaceId);
-        if (existing?.intervalMs === intervalMs) return;
-
-        this.clearWorkspaceTimer(workspaceId);
-        const timer = this.timerApi.setInterval(() => this.pollWorkspaceSafely(workspaceId), intervalMs);
-        maybeUnref(timer);
-        this.timers.set(workspaceId, { timer, intervalMs });
+    configureWorkspace(workspaceId: string): Promise<void> {
+        return this.scheduler.configureWorkspace(workspaceId);
     }
 
     async pollWorkspace(workspaceId: string): Promise<WorkItemGitHubPullWorkspaceResult> {
@@ -248,20 +205,6 @@ export class WorkItemGitHubPullPoller {
             await clearWorkItemResponseCacheForResolvedWorkspace(this.options.workItemStore, workspaceId);
         }
         return result;
-    }
-
-    private async pollWorkspaceSafely(workspaceId: string): Promise<void> {
-        try {
-            const result = await this.pollWorkspace(workspaceId);
-            for (const warning of result.warnings) {
-                this.logError(`[work-items/github-poll] ${workspaceId}: ${warning.message}`);
-            }
-            for (const error of result.errors) {
-                this.logError(`[work-items/github-poll] ${workspaceId}: ${error.message}`);
-            }
-        } catch (error) {
-            this.logError(`[work-items/github-poll] ${workspaceId}: ${errorMessage(error)}`);
-        }
     }
 
     private async listGitHubBackedEpicRoots(workspaceId: string): Promise<WorkItemIndexEntry[]> {
@@ -336,12 +279,5 @@ export class WorkItemGitHubPullPoller {
             this.now,
             { pruneMissing: true, skipClosedWithoutLocal: true },
         );
-    }
-
-    private clearWorkspaceTimer(workspaceId: string): void {
-        const existing = this.timers.get(workspaceId);
-        if (!existing) return;
-        this.timerApi.clearInterval(existing.timer);
-        this.timers.delete(workspaceId);
     }
 }

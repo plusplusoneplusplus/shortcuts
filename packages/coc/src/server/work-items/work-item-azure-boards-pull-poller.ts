@@ -19,13 +19,11 @@ import {
     WORK_ITEM_SYNC_MAX_ITEMS,
 } from './work-item-sync-provider';
 import { clearWorkItemResponseCacheForResolvedWorkspace } from './work-item-response-cache';
+import { WorkspacePullPollScheduler, type WorkspacePullPollTimerApi } from './workspace-pull-poll-scheduler';
 
 export const DEFAULT_WORK_ITEM_AZURE_BOARDS_PULL_INTERVAL_MINUTES = 5;
 
-export interface WorkItemAzureBoardsPullPollerTimerApi {
-    setInterval(handler: () => void | Promise<void>, ms: number): unknown;
-    clearInterval(timer: unknown): void;
-}
+export type WorkItemAzureBoardsPullPollerTimerApi = WorkspacePullPollTimerApi;
 
 export interface WorkItemAzureBoardsPullPollerOptions {
     dataDir: string;
@@ -57,31 +55,8 @@ export interface WorkItemAzureBoardsPullWorkspaceResult {
     errors: WorkItemAzureBoardsPullPollError[];
 }
 
-interface WorkspaceTimer {
-    timer: unknown;
-    intervalMs: number;
-}
-
-const defaultTimerApi: WorkItemAzureBoardsPullPollerTimerApi = {
-    setInterval: (handler, ms) => setInterval(() => { void handler(); }, ms),
-    clearInterval: timer => clearInterval(timer as ReturnType<typeof setInterval>),
-};
-
 function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
-}
-
-function intervalMsFromMinutes(value: number | undefined): number {
-    const minutes = Number.isFinite(value) && value! >= 1
-        ? value!
-        : DEFAULT_WORK_ITEM_AZURE_BOARDS_PULL_INTERVAL_MINUTES;
-    return minutes * 60 * 1000;
-}
-
-function maybeUnref(timer: unknown): void {
-    if (timer && typeof timer === 'object' && 'unref' in timer && typeof timer.unref === 'function') {
-        timer.unref();
-    }
 }
 
 function isAzureBoardsBackedEpicRoot(entry: WorkItemIndexEntry): boolean {
@@ -109,72 +84,55 @@ export class WorkItemAzureBoardsPullPoller {
     private readonly provider: WorkItemSyncProviderAdapter;
     private readonly transport: AzureBoardsWorkItemTransport;
     private readonly now?: () => string;
-    private readonly timerApi: WorkItemAzureBoardsPullPollerTimerApi;
     private readonly logError: (message: string) => void;
-    private readonly timers = new Map<string, WorkspaceTimer>();
-    private started = false;
+    private readonly scheduler: WorkspacePullPollScheduler<WorkItemAzureBoardsPullWorkspaceResult>;
 
     constructor(private readonly options: WorkItemAzureBoardsPullPollerOptions) {
         this.provider = options.provider ?? createAzureBoardsWorkItemSyncProviderAdapter({ dataDir: options.dataDir });
         this.transport = options.transport ?? new AzureBoardsRestWorkItemTransport();
         this.now = options.now;
-        this.timerApi = options.timerApi ?? defaultTimerApi;
         this.logError = options.logError ?? (message => process.stderr.write(`${message}\n`));
+        this.scheduler = new WorkspacePullPollScheduler<WorkItemAzureBoardsPullWorkspaceResult>(
+            {
+                logPrefix: 'work-items/azure-boards-poll',
+                defaultIntervalMinutes: DEFAULT_WORK_ITEM_AZURE_BOARDS_PULL_INTERVAL_MINUTES,
+                listWorkspaceIds: async () =>
+                    (await options.processStore.getWorkspaces()).map(workspace => workspace.id),
+                isSyncEnabled: () => options.getSyncEnabled?.() !== false,
+                getWorkspaceConfig: (workspaceId) => {
+                    const azureBoardsPrefs = readRepoPreferences(options.dataDir, workspaceId)
+                        .workItems?.sync?.azureBoards;
+                    return {
+                        pollingEnabled: azureBoardsPrefs?.pollingEnabled !== false,
+                        pollIntervalMinutes: azureBoardsPrefs?.pollIntervalMinutes,
+                    };
+                },
+                hasEligibleWork: async (workspaceId) =>
+                    (await this.listAzureBoardsBackedEpicRoots(workspaceId)).length > 0,
+                poll: (workspaceId) => this.pollWorkspace(workspaceId),
+                resultLogMessages: (result) => [
+                    ...result.warnings.map(warning => warning.message),
+                    ...result.errors.map(error => error.message),
+                ],
+            },
+            { timerApi: options.timerApi, logError: this.logError },
+        );
     }
 
-    async start(): Promise<void> {
-        if (this.started) return;
-        this.started = true;
-        await this.refreshWorkspaceTimers();
+    start(): Promise<void> {
+        return this.scheduler.start();
     }
 
     dispose(): void {
-        for (const workspaceId of this.timers.keys()) {
-            this.clearWorkspaceTimer(workspaceId);
-        }
-        this.started = false;
+        this.scheduler.dispose();
     }
 
-    async refreshWorkspaceTimers(): Promise<void> {
-        const workspaces = await this.options.processStore.getWorkspaces();
-        const activeWorkspaceIds = new Set<string>();
-        for (const workspace of workspaces) {
-            activeWorkspaceIds.add(workspace.id);
-            await this.configureWorkspace(workspace.id);
-        }
-        for (const workspaceId of [...this.timers.keys()]) {
-            if (!activeWorkspaceIds.has(workspaceId)) {
-                this.clearWorkspaceTimer(workspaceId);
-            }
-        }
+    refreshWorkspaceTimers(): Promise<void> {
+        return this.scheduler.refreshWorkspaceTimers();
     }
 
-    async configureWorkspace(workspaceId: string): Promise<void> {
-        if (this.options.getSyncEnabled?.() === false) {
-            this.clearWorkspaceTimer(workspaceId);
-            return;
-        }
-        const prefs = readRepoPreferences(this.options.dataDir, workspaceId);
-        const azureBoardsPrefs = prefs.workItems?.sync?.azureBoards;
-        if (azureBoardsPrefs?.pollingEnabled === false) {
-            this.clearWorkspaceTimer(workspaceId);
-            return;
-        }
-
-        const roots = await this.listAzureBoardsBackedEpicRoots(workspaceId);
-        if (roots.length === 0) {
-            this.clearWorkspaceTimer(workspaceId);
-            return;
-        }
-
-        const intervalMs = intervalMsFromMinutes(azureBoardsPrefs?.pollIntervalMinutes);
-        const existing = this.timers.get(workspaceId);
-        if (existing?.intervalMs === intervalMs) return;
-
-        this.clearWorkspaceTimer(workspaceId);
-        const timer = this.timerApi.setInterval(() => this.pollWorkspaceSafely(workspaceId), intervalMs);
-        maybeUnref(timer);
-        this.timers.set(workspaceId, { timer, intervalMs });
+    configureWorkspace(workspaceId: string): Promise<void> {
+        return this.scheduler.configureWorkspace(workspaceId);
     }
 
     async pollWorkspace(workspaceId: string): Promise<WorkItemAzureBoardsPullWorkspaceResult> {
@@ -212,20 +170,6 @@ export class WorkItemAzureBoardsPullPoller {
             await clearWorkItemResponseCacheForResolvedWorkspace(this.options.workItemStore, workspaceId);
         }
         return result;
-    }
-
-    private async pollWorkspaceSafely(workspaceId: string): Promise<void> {
-        try {
-            const result = await this.pollWorkspace(workspaceId);
-            for (const warning of result.warnings) {
-                this.logError(`[work-items/azure-boards-poll] ${workspaceId}: ${warning.message}`);
-            }
-            for (const error of result.errors) {
-                this.logError(`[work-items/azure-boards-poll] ${workspaceId}: ${error.message}`);
-            }
-        } catch (error) {
-            this.logError(`[work-items/azure-boards-poll] ${workspaceId}: ${errorMessage(error)}`);
-        }
     }
 
     private async listAzureBoardsBackedEpicRoots(workspaceId: string): Promise<WorkItemIndexEntry[]> {
@@ -300,12 +244,5 @@ export class WorkItemAzureBoardsPullPoller {
             this.now,
             { pruneMissing: true },
         );
-    }
-
-    private clearWorkspaceTimer(workspaceId: string): void {
-        const existing = this.timers.get(workspaceId);
-        if (!existing) return;
-        this.timerApi.clearInterval(existing.timer);
-        this.timers.delete(workspaceId);
     }
 }
