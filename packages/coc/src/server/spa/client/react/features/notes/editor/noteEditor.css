@@ -1299,10 +1299,9 @@
 
 /* Quick Ask side-note reference marker (notes-quick-ask AC-04).
    The persisted `[^qa-<id>]` footnote renders in the WYSIWYG editor as an
-   always-visible ✨ chip sitting at the end of its anchored phrase — the
-   persistent anchor indicator (visible whether or not the answer popover is
-   open). Clicking it reopens the answer popover (see NoteQuickAskLayer). Styling
-   mirrors the chat inline side-note chip for a consistent feel. */
+   always-visible ✨ action chip at the end of its anchored phrase. Clicking it
+   reopens the answer popover (see NoteQuickAskLayer). Styling mirrors the chat
+   inline side-note chip for a consistent feel. */
 .qa-sidenote-ref {
     display: inline-flex;
     align-items: center;
@@ -1322,6 +1321,13 @@
     user-select: none;
     -webkit-user-select: none;
     transition: transform 0.1s ease-out;
+}
+
+/* Persistent source indicator for an answered Notes Quick Ask. This is a
+   ProseMirror decoration only: it never enters the editable document or saved
+   Markdown. Keep it aligned with chat's Quick Ask anchor treatment. */
+.note-quick-ask-anchor {
+    border-bottom: 2px dotted rgba(55, 148, 255, 0.55);
 }
 
 .qa-sidenote-ref:hover {

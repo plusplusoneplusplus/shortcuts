@@ -294,6 +294,9 @@ function ChipHarness({ enabled = true }: { enabled?: boolean }) {
                         data-qa-id="abc123"
                         data-qa-question="what is this?"
                         data-qa-answer="Iterative first-order optimization."
+                        data-qa-selected-text="gradient descent"
+                        data-qa-context-before="we optimize the loss with "
+                        data-qa-context-after=" over many epochs"
                         data-testid="qa-chip"
                     >
                         ✨
@@ -319,7 +322,7 @@ describe('NoteQuickAskLayer — AC-04 chip, popover, delete', () => {
         expect(screen.getByTestId('quick-ask-popover-answer').textContent)
             .toContain('first-order optimization');
         expect(screen.getByTestId('quick-ask-popover-question').textContent).toContain('what is this?');
-        // The quoted term is recovered from the phrase preceding the chip.
+        // The quoted term comes from the exact persisted selection.
         expect(screen.getByTestId('quick-ask-popover').textContent).toContain('gradient descent');
     });
 
@@ -362,6 +365,41 @@ describe('NoteQuickAskLayer — AC-04 chip, popover, delete', () => {
         expect(screen.queryByTestId('quick-ask-popover')).toBeNull();
         // The persisted chip itself still renders (unconditional node registration).
         expect(screen.getByTestId('qa-chip')).toBeInTheDocument();
+    });
+
+    it('falls back to preceding text for a legacy chip without anchor data', async () => {
+        function LegacyHarness() {
+            const ref = useRef<HTMLDivElement>(null);
+            return (
+                <div>
+                    <div ref={ref}>
+                        <p>
+                            {'legacy phrase'}
+                            <span
+                                className="qa-sidenote-ref"
+                                data-qa-id="legacy"
+                                data-qa-answer="Legacy answer"
+                                data-testid="legacy-chip"
+                            >
+                                ✨
+                            </span>
+                        </p>
+                    </div>
+                    <NoteQuickAskLayer
+                        containerRef={ref as React.RefObject<HTMLElement | null>}
+                        workspaceId="ws-1"
+                        editor={EDITOR_SENTINEL}
+                    />
+                </div>
+            );
+        }
+
+        render(<LegacyHarness />);
+        fireEvent.click(screen.getByTestId('legacy-chip'));
+        await waitFor(() =>
+            expect(screen.getByTestId('quick-ask-popover').textContent)
+                .toContain('legacy phrase'),
+        );
     });
 });
 

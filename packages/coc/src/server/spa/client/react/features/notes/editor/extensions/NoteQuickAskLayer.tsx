@@ -16,26 +16,19 @@
  * {@link getQuickAskSelection} (`CONTEXT_CHARS` each side), NOT the whole note.
  * The model is resolved server-side from the per-repo `quickAsk` preference.
  *
- * Scope note: this layer covers AC-01 (pill/input) and AC-02 (grounded one-shot
- * answer). It does NOT yet embed the answer into the note `.md` as a footnote
- * (AC-03) nor render a persistent inline chip/anchor (AC-04) — the answer lives
- * in this component's transient state for now.
- *
  * On a successful answer the note is embedded into the note `.md` as a footnote
- * (AC-03): {@link insertSidenoteRef} drops a `qaSidenoteRef` marker at the anchor
- * phrase in the live TipTap document, and the save pipeline then serializes the
- * `[^qa-<id>]` marker + a bottom definition block automatically. If the phrase
- * was deleted while the answer was in flight the marker is not inserted (AC-05
- * pending drop).
+ * with its selection anchor: {@link insertSidenoteRef} drops a
+ * `qaSidenoteRef` marker after the anchor phrase, and the save pipeline
+ * serializes the `[^qa-<id>]` marker plus bottom definition block. The marker's
+ * persisted selection data drives a non-serialized dotted underline. If the
+ * phrase was deleted while the answer was in flight, nothing is inserted.
  *
- * The persisted `.qa-sidenote-ref` marker renders as an always-visible ✨ chip
- * (the persistent anchor indicator; styling in `noteEditor.css`). Clicking a chip
- * reopens the shared {@link QuickAskSidenotePopover} with the frozen
- * question/answer read straight off the marker's `data-qa-*` attributes; the
- * popover dismisses on an outside click (mirroring the input's dismiss idiom) and
- * its delete control removes the marker node via {@link deleteSidenoteRef}, so
- * both the inline marker and its bottom definition disappear on the next save
- * (AC-04).
+ * The persisted `.qa-sidenote-ref` marker renders as an always-visible ✨ action
+ * chip. Clicking it reopens the shared {@link QuickAskSidenotePopover} with the
+ * frozen question, answer, and exact selected text read from its `data-qa-*`
+ * attributes. Legacy markers fall back to preceding text. The delete control
+ * removes the marker node via {@link deleteSidenoteRef}, which also removes the
+ * derived underline and bottom definition on save.
  *
  * Gated behind the same admin `features.quickAskSidenotes` flag as chat
  * side-notes and a no-op without a `workspaceId`, so it is always safe to mount.
@@ -87,10 +80,8 @@ function labelFor(selectedText: string): string {
 }
 
 /**
- * Display-only quoted term for a chip that is being re-opened: the marker atom
- * stores only the answer/question, not the phrase, so recover a short trailing
- * slice of the text immediately preceding the chip (its anchor phrase) for the
- * popover blockquote. Bounded to `max` chars; empty when nothing precedes it.
+ * Legacy display-only quoted term for a chip without persisted anchor data.
+ * Recover a short trailing slice of text immediately preceding the chip.
  */
 function phraseBeforeChip(chip: Element, max = 200): string {
     let acc = '';
@@ -255,7 +246,14 @@ export function NoteQuickAskLayer({ containerRef, workspaceId, editor }: NoteQui
             }
             const answer = chip.getAttribute('data-qa-answer') ?? '';
             const question = chip.getAttribute('data-qa-question') || undefined;
-            const phrase = phraseBeforeChip(chip);
+            const persistedPhrase = chip.getAttribute('data-qa-selected-text');
+            const phrase = persistedPhrase || phraseBeforeChip(chip);
+            const contextBefore = persistedPhrase
+                ? chip.getAttribute('data-qa-context-before') ?? ''
+                : '';
+            const contextAfter = persistedPhrase
+                ? chip.getAttribute('data-qa-context-after') ?? ''
+                : '';
             const rect = chip.getBoundingClientRect();
             const note: ClientSideNote = {
                 id: refId,
@@ -263,8 +261,8 @@ export function NoteQuickAskLayer({ containerRef, workspaceId, editor }: NoteQui
                 turnIndex: NOTE_TURN_INDEX,
                 anchor: {
                     selectedText: phrase,
-                    contextBefore: '',
-                    contextAfter: '',
+                    contextBefore,
+                    contextAfter,
                     fingerprint: '',
                 },
                 question,
@@ -279,8 +277,8 @@ export function NoteQuickAskLayer({ containerRef, workspaceId, editor }: NoteQui
                 selection: {
                     turnIndex: NOTE_TURN_INDEX,
                     selectedText: phrase,
-                    contextBefore: '',
-                    contextAfter: '',
+                    contextBefore,
+                    contextAfter,
                     rect,
                 },
             });

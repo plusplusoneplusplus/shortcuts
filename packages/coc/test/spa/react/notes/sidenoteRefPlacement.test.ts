@@ -11,7 +11,11 @@
 import { describe, it, expect } from 'vitest';
 import { Editor } from '@tiptap/core';
 import { StarterKit } from '@tiptap/starter-kit';
-import { SidenoteRefExtension }
+import {
+    QA_SIDENOTE_ANCHOR_CLASS,
+    SidenoteRefExtension,
+    sidenoteAnchorPluginKey,
+}
     from '../../../../src/server/spa/client/react/features/notes/editor/extensions/sidenoteRefExtension';
 import {
     deleteSidenoteRef,
@@ -86,12 +90,16 @@ describe('insertSidenoteRef', () => {
             expect(html).toContain('class="qa-sidenote-ref"');
             expect(html).toContain('data-qa-id="note1"');
             expect(html).toContain('data-qa-answer="Iterative first-order optimization."');
+            expect(html).toContain('data-qa-selected-text="gradient descent"');
+            expect(html).toContain('data-qa-context-before="we optimize the loss with "');
+            expect(html).toContain('data-qa-context-after=" over many epochs"');
 
             // The persisted markdown carries the trailing marker at the phrase and
             // the answer in a definition block at the file bottom.
             expect(htmlToMarkdown(html)).toBe(
                 'we optimize the loss with gradient descent[^qa-note1] over many epochs\n\n'
-                + '[^qa-note1]: {"q":"what is this?","a":"Iterative first-order optimization."}\n',
+                + '[^qa-note1]: {"q":"what is this?","a":"Iterative first-order optimization.",'
+                + '"s":"gradient descent","p":"we optimize the loss with ","x":" over many epochs"}\n',
             );
         } finally {
             editor.destroy();
@@ -104,7 +112,8 @@ describe('insertSidenoteRef', () => {
             insertSidenoteRef(editor, ANCHOR, { refId: 'd1', answer: 'A.' });
             expect(htmlToMarkdown(editor.getHTML())).toBe(
                 'we optimize the loss with gradient descent[^qa-d1] over many epochs\n\n'
-                + '[^qa-d1]: {"a":"A."}\n',
+                + '[^qa-d1]: {"a":"A.","s":"gradient descent",'
+                + '"p":"we optimize the loss with ","x":" over many epochs"}\n',
             );
         } finally {
             editor.destroy();
@@ -136,7 +145,8 @@ describe('insertSidenoteRef', () => {
             expect(insertSidenoteRef(editor, ANCHOR, { refId: 'g1', answer: 'grounded' })).toBe(true);
             expect(htmlToMarkdown(editor.getHTML())).toBe(
                 'A brand new opening sentence. we optimize the loss with gradient descent[^qa-g1] over many epochs\n\n'
-                + '[^qa-g1]: {"a":"grounded"}\n',
+                + '[^qa-g1]: {"a":"grounded","s":"gradient descent",'
+                + '"p":"we optimize the loss with ","x":" over many epochs"}\n',
             );
         } finally {
             editor.destroy();
@@ -153,7 +163,8 @@ describe('insertSidenoteRef', () => {
             );
             // Marker lands after the SECOND "token" (the gamma…delta context), not the first.
             expect(htmlToMarkdown(editor.getHTML())).toBe(
-                'alpha token beta and gamma token[^qa-t2] delta\n\n[^qa-t2]: {"a":"second one"}\n',
+                'alpha token beta and gamma token[^qa-t2] delta\n\n'
+                + '[^qa-t2]: {"a":"second one","s":"token","p":"gamma ","x":" delta"}\n',
             );
         } finally {
             editor.destroy();
@@ -165,6 +176,116 @@ describe('insertSidenoteRef', () => {
         const editor = makeEditor(SENTENCE);
         editor.destroy();
         expect(insertSidenoteRef(editor, ANCHOR, { refId: 'n', answer: 'x' })).toBe(false);
+    });
+});
+
+describe('SidenoteRefExtension anchor decorations', () => {
+    function decorations(editor: Editor) {
+        return sidenoteAnchorPluginKey.getState(editor.state)?.find() ?? [];
+    }
+
+    it('underlines the exact selected range without changing editor text', () => {
+        const editor = makeEditor(SENTENCE);
+        try {
+            insertSidenoteRef(editor, ANCHOR, { refId: 'anchor1', answer: 'A' });
+            const found = decorations(editor);
+            expect(found).toHaveLength(1);
+            expect(found[0].type.attrs.class).toBe(QA_SIDENOTE_ANCHOR_CLASS);
+            expect(editor.state.doc.textBetween(found[0].from, found[0].to, ''))
+                .toBe('gradient descent');
+            expect(
+                editor.view.dom.querySelector(`.${QA_SIDENOTE_ANCHOR_CLASS}`)?.textContent,
+            ).toBe('gradient descent');
+            expect(editor.state.doc.textContent).toBe(
+                'we optimize the loss with gradient descent over many epochs',
+            );
+        } finally {
+            editor.destroy();
+        }
+    });
+
+    it('keeps one range across inline formatting boundaries', () => {
+        const editor = makeEditor(
+            '<p>we optimize with <em>gradient</em> <strong>descent</strong> today</p>',
+        );
+        try {
+            insertSidenoteRef(
+                editor,
+                {
+                    selectedText: 'gradient descent',
+                    contextBefore: 'we optimize with ',
+                    contextAfter: ' today',
+                },
+                { refId: 'formatted', answer: 'A' },
+            );
+            const found = decorations(editor);
+            expect(found).toHaveLength(1);
+            expect(editor.state.doc.textBetween(found[0].from, found[0].to, ''))
+                .toBe('gradient descent');
+            expect(htmlToMarkdown(editor.getHTML())).toContain('_gradient_ **descent**');
+            expect(htmlToMarkdown(editor.getHTML())).not.toContain(QA_SIDENOTE_ANCHOR_CLASS);
+        } finally {
+            editor.destroy();
+        }
+    });
+
+    it('uses context and chip placement for the intended repeated phrase', () => {
+        const editor = makeEditor('<p>alpha target one; beta target two</p>');
+        try {
+            insertSidenoteRef(
+                editor,
+                { selectedText: 'target', contextBefore: 'one; beta ', contextAfter: ' two' },
+                { refId: 'repeat', answer: 'A' },
+            );
+            const found = decorations(editor);
+            expect(found).toHaveLength(1);
+            expect(editor.state.doc.textBetween(found[0].to, found[0].to + 4, '')).toBe(' tw');
+        } finally {
+            editor.destroy();
+        }
+    });
+
+    it('deduplicates identical ranges but preserves overlapping ranges', () => {
+        const editor = makeEditor('<p>alpha beta gamma</p>');
+        try {
+            const betaAnchor = {
+                selectedText: 'beta',
+                contextBefore: 'alpha ',
+                contextAfter: ' gamma',
+            };
+            insertSidenoteRef(editor, betaAnchor, { refId: 'same1', answer: 'A' });
+            insertSidenoteRef(editor, betaAnchor, { refId: 'same2', answer: 'B' });
+            expect(decorations(editor)).toHaveLength(1);
+
+            insertSidenoteRef(
+                editor,
+                { selectedText: 'beta gamma', contextBefore: 'alpha ', contextAfter: '' },
+                { refId: 'overlap', answer: 'C' },
+            );
+            expect(decorations(editor)).toHaveLength(2);
+        } finally {
+            editor.destroy();
+        }
+    });
+
+    it('drops an unresolved underline while keeping the chip and answer', () => {
+        const editor = makeEditor(SENTENCE);
+        try {
+            insertSidenoteRef(editor, ANCHOR, { refId: 'edited', answer: 'still here' });
+            expect(decorations(editor)).toHaveLength(1);
+            editor.commands.setContent(
+                '<p>a different method' +
+                '<span class="qa-sidenote-ref" data-qa-id="edited" data-qa-answer="still here" ' +
+                'data-qa-selected-text="gradient descent" ' +
+                'data-qa-context-before="we optimize the loss with " ' +
+                'data-qa-context-after=" over many epochs">✨</span></p>',
+            );
+            expect(decorations(editor)).toHaveLength(0);
+            expect(editor.getHTML()).toContain('data-qa-id="edited"');
+            expect(editor.getHTML()).toContain('data-qa-answer="still here"');
+        } finally {
+            editor.destroy();
+        }
     });
 });
 

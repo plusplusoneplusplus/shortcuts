@@ -38,6 +38,27 @@ describe('sidenoteFootnote', () => {
             expect(encodeQaPayload({ question: '', answer: 'x' })).toBe('{"a":"x"}');
         });
 
+        it('round-trips the optional selection anchor after q/a', () => {
+            const def: QaFootnoteDef = {
+                question: 'why?',
+                answer: 'because',
+                selectedText: 'the phrase',
+                contextBefore: 'before ',
+                contextAfter: ' after',
+            };
+            expect(encodeQaPayload(def)).toBe(
+                '{"q":"why?","a":"because","s":"the phrase","p":"before ","x":" after"}',
+            );
+            expect(decodeQaPayload(encodeQaPayload(def))).toEqual(def);
+        });
+
+        it('ignores incomplete anchor fields without losing q/a', () => {
+            expect(decodeQaPayload('{"a":"answer","s":"phrase","p":"before"}')).toEqual({
+                answer: 'answer',
+                question: undefined,
+            });
+        });
+
         it('keeps a multi-line answer on a single line', () => {
             const encoded = encodeQaPayload({ answer: 'line1\nline2' });
             expect(encoded).toBe('{"a":"line1\\nline2"}');
@@ -118,6 +139,20 @@ describe('sidenoteFootnote', () => {
             expect(out).toContain('data-qa-answer="The answer"');
         });
 
+        it('folds persisted anchor fields into marker attributes', () => {
+            const html = '<span class="qa-sidenote-ref" data-qa-id="abc">✨</span>';
+            const defs = new Map([['abc', {
+                answer: 'The answer',
+                selectedText: 'the phrase',
+                contextBefore: 'before ',
+                contextAfter: ' after',
+            }]]);
+            const out = injectQaAnswers(html, defs);
+            expect(out).toContain('data-qa-selected-text="the phrase"');
+            expect(out).toContain('data-qa-context-before="before "');
+            expect(out).toContain('data-qa-context-after=" after"');
+        });
+
         it('leaves an anchorless marker bare (no matching definition)', () => {
             const html = '<span class="qa-sidenote-ref" data-qa-id="ghost"></span>';
             const out = injectQaAnswers(html, new Map());
@@ -140,6 +175,17 @@ describe('sidenoteFootnote', () => {
             const html = '<p>Hi <span class="qa-sidenote-ref" data-qa-id="abc" data-qa-answer="The answer"></span></p>';
             expect(appendQaFootnoteDefs(md, html)).toBe(
                 'Hi [^qa-abc]\n\n[^qa-abc]: {"a":"The answer"}\n',
+            );
+        });
+
+        it('appends optional anchor data from the marker span', () => {
+            const html =
+                '<span class="qa-sidenote-ref" data-qa-id="abc" data-qa-answer="A" ' +
+                'data-qa-selected-text="phrase" data-qa-context-before="before " ' +
+                'data-qa-context-after=" after">✨</span>';
+            expect(appendQaFootnoteDefs('phrase [^qa-abc]\n', html)).toBe(
+                'phrase [^qa-abc]\n\n' +
+                '[^qa-abc]: {"a":"A","s":"phrase","p":"before ","x":" after"}\n',
             );
         });
 
@@ -238,6 +284,13 @@ describe('sidenoteFootnote', () => {
             expect(roundTrip(md)).toBe(md);
         });
 
+        it('question, answer, and selection anchor', () => {
+            const md =
+                'The fox[^qa-fox] jumps.\n\n' +
+                '[^qa-fox]: {"q":"explain","a":"A fox.","s":"fox","p":"The ","x":" jumps."}\n';
+            expect(roundTrip(md)).toBe(md);
+        });
+
         it('answer with quotes, ampersands and angle brackets', () => {
             const md =
                 'Edge [^qa-e].\n\n[^qa-e]: {"a":"a \\"b\\" & <c> > d"}\n';
@@ -288,6 +341,13 @@ describe('sidenoteFootnote', () => {
         it('preserves multiple side-notes through the editor', () => {
             const md =
                 'First [^qa-a1] then second [^qa-b2].\n\n[^qa-a1]: {"a":"one"}\n[^qa-b2]: {"a":"two"}\n';
+            expect(editorRoundTrip(md)).toBe(md);
+        });
+
+        it('preserves optional anchor fields through the editor', () => {
+            const md =
+                'The fox[^qa-fox] jumps.\n\n' +
+                '[^qa-fox]: {"a":"A fox.","s":"fox","p":"The ","x":" jumps."}\n';
             expect(editorRoundTrip(md)).toBe(md);
         });
     });
