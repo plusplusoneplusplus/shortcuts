@@ -38,6 +38,7 @@ import { cocToolBridgeServer } from './llm-tools/bridge-server';
 import { buildCocLlmToolsMcpConfig, COC_LLM_TOOLS_MCP_SERVER_NAME } from './llm-tools/mcp-config';
 import { isSupportedCodexImagePath } from './image-converter';
 import { getModelContextWindow } from './model-registry';
+import { readCodexRolloutContextUsage } from './codex-rollout-usage';
 import { resolveCodexExecutablePath } from './codex-exec-path';
 import { spawn } from 'child_process';
 import { createRequire } from 'module';
@@ -621,6 +622,28 @@ export class CodexSDKService implements ISDKService {
 
     /** sessionId → active session metadata */
     private readonly sessions = new Map<string, ActiveCodexSession>();
+
+    /**
+     * Reader for a thread's rollout `token_count` context usage. Held as a field
+     * so tests can inject a stub (e.g. to force a read failure or count walks).
+     */
+    private readRolloutContextUsage = readCodexRolloutContextUsage;
+
+    /**
+     * threadId → resolved rollout file path, cached across turns so follow-up
+     * turns on the same thread skip the directory walk. Outlives the per-turn
+     * {@link sessions} entry (which is deleted when each turn ends).
+     */
+    private readonly rolloutPathByThread = new Map<string, string>();
+
+    /**
+     * `~/.codex/sessions` root the rollout reader searches. Resolved per-read
+     * (not cached) so `COC_CODEX_SESSIONS_DIR` can be set from tests; mirrors the
+     * `COC_CLAUDE_CONTEXT_USAGE_TIMEOUT_MS` test-seam precedent.
+     */
+    private get codexSessionsRoot(): string {
+        return process.env.COC_CODEX_SESSIONS_DIR || path.join(os.homedir(), '.codex', 'sessions');
+    }
 
     /**
      * Warm-client keep-alive for chat turns (AC-02). Codex routes warm-eligible
@@ -1259,6 +1282,14 @@ export class CodexSDKService implements ISDKService {
 
             if (!sessionCreatedNotified && thread.id) notifySessionCreated(thread.id);
 
+            // Overwrite the registry-derived context meter with the provider's
+            // real numbers from the thread's rollout `token_count`. Done once,
+            // after the loop settles, so multi-turn streams do a single read and
+            // the read never delays streaming. Skipped for aborted turns.
+            if (tokenUsage && threadId && !abortController.signal.aborted) {
+                tokenUsage = await this.enrichCodexContextUsage(tokenUsage, threadId);
+            }
+
             // Empty chunk signals end-of-stream to the executor's streaming consumer.
             options.onStreamingChunk?.('');
 
@@ -1277,6 +1308,53 @@ export class CodexSDKService implements ISDKService {
             signalCleanup?.();
             mcpCleanup();
             if (threadId) this.sessions.delete(threadId);
+        }
+    }
+
+    /**
+     * Replace the registry-derived context-meter fields on `tokenUsage` with the
+     * provider's real numbers from the thread's rollout `token_count` event.
+     *
+     * Two-source model: the rollout is the source of truth for occupancy and the
+     * context window; the registry-derived values that {@link addCodexUsage} set
+     * are the fallback and are kept when the rollout read yields nothing (never
+     * regresses below today's behavior). When the rollout reports occupancy but a
+     * null window, the registry `tokenLimit` (if any) is preserved; when neither
+     * source has a limit, `currentTokens` is cleared too — the meter's invariant
+     * that `currentTokens`/`tokenLimit` only surface together.
+     *
+     * Display metadata only: any failure warn-logs (sanitized) and returns the
+     * unchanged `tokenUsage` so the turn still succeeds with the fallback.
+     */
+    private async enrichCodexContextUsage(tokenUsage: TokenUsage, threadId: string): Promise<TokenUsage> {
+        try {
+            const ctx = await this.readRolloutContextUsage(threadId, {
+                sessionsRoot: this.codexSessionsRoot,
+                cachedPath: this.rolloutPathByThread.get(threadId),
+            });
+            if (!ctx) return tokenUsage;
+
+            this.rolloutPathByThread.set(threadId, ctx.rolloutPath);
+
+            const next: TokenUsage = { ...tokenUsage, currentTokens: ctx.currentTokens };
+            if (ctx.tokenLimit != null) {
+                next.tokenLimit = ctx.tokenLimit;
+            } else if (next.tokenLimit == null) {
+                // Occupancy but no limit from either source — drop occupancy so
+                // the two fields keep surfacing together.
+                delete next.currentTokens;
+            }
+            return next;
+        } catch (err) {
+            getSDKLogger().warn(
+                {
+                    provider: CODEX_PROVIDER,
+                    threadId,
+                    error: err instanceof Error ? { name: err.name, message: err.message } : String(err),
+                },
+                'Codex rollout context-usage read failed; keeping registry-derived meter',
+            );
+            return tokenUsage;
         }
     }
 
@@ -1908,6 +1986,7 @@ export class CodexSDKService implements ISDKService {
             session.abortController.abort();
         }
         this.sessions.clear();
+        this.rolloutPathByThread.clear();
         // Stop every warm client so no provider client outlives the service.
         await this.warmRegistry.evictAll();
         // Drop warm-status subscribers so no bridge holds a stale service reference.
@@ -1946,7 +2025,10 @@ function codexUsageNumber(value: number | undefined): number {
  * Accumulate a Codex per-turn `Usage` into the shared `TokenUsage` envelope.
  *
  * The per-turn totals (input/output/cache/total) accumulate across turns. The
- * context meter is derived instead of accumulated:
+ * context meter is the **fallback** source only: after the stream settles,
+ * {@link CodexSDKService.enrichCodexContextUsage} overwrites these fields with
+ * the provider's real numbers from the thread's rollout `token_count` event.
+ * The values set here survive only when that rollout read yields nothing.
  *   - `tokenLimit` = the model's static `contextWindow` from `MODEL_REGISTRY`
  *     (via `getModelContextWindow`). Left unset for models the registry does not
  *     know, so the indicator stays hidden rather than guessing a default.
@@ -1959,9 +2041,10 @@ function codexUsageNumber(value: number | undefined): number {
  *     smaller context).
  *
  * `currentTokens`/`tokenLimit` are only set together, and only when the model is
- * known — an unknown model leaves the whole context meter unset. The breakdown
- * fields (`systemTokens`, `toolDefinitionsTokens`, `conversationTokens`) are
- * never populated: Codex provides no breakdown and none is fabricated.
+ * known — an unknown model leaves the whole context meter unset (until the
+ * rollout read supplies the provider's real window). The breakdown fields
+ * (`systemTokens`, `toolDefinitionsTokens`, `conversationTokens`) are never
+ * populated: Codex provides no breakdown and none is fabricated.
  */
 function addCodexUsage(
     current: TokenUsage | undefined,

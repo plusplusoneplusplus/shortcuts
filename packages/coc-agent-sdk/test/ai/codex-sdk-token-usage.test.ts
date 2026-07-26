@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as fs from 'fs/promises';
+import * as os from 'os';
+import * as path from 'path';
 import { CodexSDKService } from '../../src/codex-sdk-service';
 
 function makeCodexMock(events: Array<Record<string, unknown>>) {
@@ -30,6 +33,36 @@ async function sendWithEvents(events: Array<Record<string, unknown>>, model?: st
     } finally {
         svc.dispose();
     }
+}
+
+// ── Rollout-enrichment fixtures ──────────────────────────────────────────────
+
+function rolloutTokenCountLine(totalTokens: number | null, contextWindow: number | null): string {
+    return JSON.stringify({
+        type: 'event_msg',
+        payload: {
+            type: 'token_count',
+            info: {
+                total_token_usage: { total_tokens: (totalTokens ?? 0) + 100 },
+                last_token_usage: totalTokens === null ? null : { total_tokens: totalTokens },
+                model_context_window: contextWindow,
+            },
+        },
+    });
+}
+
+async function writeThreadRollout(
+    root: string,
+    threadId: string,
+    lines: string[],
+): Promise<void> {
+    const dir = path.join(root, '2026', '07', '25');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+        path.join(dir, `rollout-2026-07-25T00-00-00-${threadId}.jsonl`),
+        lines.join('\n') + '\n',
+        'utf8',
+    );
 }
 
 describe('CodexSDKService token usage', () => {
@@ -226,3 +259,135 @@ describe('CodexSDKService token usage', () => {
         expect(result.tokenUsage?.currentTokens).toBeUndefined();
     });
 });
+
+describe('CodexSDKService rollout context enrichment', () => {
+    let root: string;
+
+    beforeEach(async () => {
+        root = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-svc-rollout-'));
+        process.env.COC_CODEX_SESSIONS_DIR = root;
+    });
+
+    afterEach(async () => {
+        delete process.env.COC_CODEX_SESSIONS_DIR;
+        await fs.rm(root, { recursive: true, force: true });
+    });
+
+    const turnEvents = (usage: Record<string, number>) => [
+        { type: 'thread.started', thread_id: 'thread-1' },
+        { type: 'turn.completed', usage },
+        { type: 'item.completed', item: { id: 'item-1', type: 'agent_message', text: 'ok' } },
+    ];
+
+    it('enrichment wins: rollout occupancy/limit override the registry values', async () => {
+        await writeThreadRollout(root, 'thread-1', [rolloutTokenCountLine(76_223, 258_400)]);
+
+        const result = await sendWithEvents(turnEvents({ input_tokens: 1000, output_tokens: 250 }), 'gpt-5.4');
+
+        expect(result.success).toBe(true);
+        // Context meter comes from the rollout, not the registry (272_000 / 1250).
+        expect(result.tokenUsage?.tokenLimit).toBe(258_400);
+        expect(result.tokenUsage?.currentTokens).toBe(76_223);
+        // Per-turn totals are untouched.
+        expect(result.tokenUsage?.inputTokens).toBe(1000);
+        expect(result.tokenUsage?.outputTokens).toBe(250);
+        expect(result.tokenUsage?.totalTokens).toBe(1250);
+    });
+
+    it('null window in rollout keeps the registry-derived tokenLimit', async () => {
+        await writeThreadRollout(root, 'thread-1', [rolloutTokenCountLine(50_000, null)]);
+
+        const result = await sendWithEvents(turnEvents({ input_tokens: 1000, output_tokens: 250 }), 'gpt-5.4');
+
+        expect(result.success).toBe(true);
+        // Occupancy from rollout, limit preserved from the registry.
+        expect(result.tokenUsage?.currentTokens).toBe(50_000);
+        expect(result.tokenUsage?.tokenLimit).toBe(272_000);
+    });
+
+    it('fallback preserved: no rollout file → registry-derived values exactly as before', async () => {
+        const result = await sendWithEvents(turnEvents({ input_tokens: 1000, output_tokens: 250 }), 'gpt-5.4');
+
+        expect(result.success).toBe(true);
+        expect(result.tokenUsage?.tokenLimit).toBe(272_000);
+        expect(result.tokenUsage?.currentTokens).toBe(1250);
+    });
+
+    it('neither source: unknown model + no rollout → meter fields absent', async () => {
+        const result = await sendWithEvents(turnEvents({ input_tokens: 500, output_tokens: 120 }), 'gpt-nonexistent-9.9');
+
+        expect(result.success).toBe(true);
+        expect(result.tokenUsage?.tokenLimit).toBeUndefined();
+        expect(result.tokenUsage?.currentTokens).toBeUndefined();
+    });
+
+    it('rollout occupancy with a null window and unknown model clears currentTokens (invariant)', async () => {
+        await writeThreadRollout(root, 'thread-1', [rolloutTokenCountLine(50_000, null)]);
+
+        const result = await sendWithEvents(turnEvents({ input_tokens: 500, output_tokens: 120 }), 'gpt-nonexistent-9.9');
+
+        expect(result.success).toBe(true);
+        // No limit from either source → the two fields stay hidden together.
+        expect(result.tokenUsage?.tokenLimit).toBeUndefined();
+        expect(result.tokenUsage?.currentTokens).toBeUndefined();
+    });
+
+    it('read failure is non-fatal: turn still succeeds with the registry fallback', async () => {
+        const svc = new CodexSDKService();
+        const { client } = makeCodexMock(turnEvents({ input_tokens: 1000, output_tokens: 250 }));
+        (svc as unknown as { sdk: unknown }).sdk = client;
+        (svc as unknown as { availabilityCache: unknown }).availabilityCache = { available: true };
+        const readSpy = vi.fn(async () => {
+            throw new Error('boom');
+        });
+        (svc as unknown as { readRolloutContextUsage: unknown }).readRolloutContextUsage = readSpy;
+
+        try {
+            const result = await svc.sendMessage({ prompt: 'test', model: 'gpt-5.4' });
+            expect(result.success).toBe(true);
+            expect(readSpy).toHaveBeenCalledTimes(1);
+            // Registry fallback survives the read failure.
+            expect(result.tokenUsage?.tokenLimit).toBe(272_000);
+            expect(result.tokenUsage?.currentTokens).toBe(1250);
+        } finally {
+            svc.dispose();
+        }
+    });
+
+    it('path cache: the second turn on a session passes the cached rollout path', async () => {
+        await writeThreadRollout(root, 'thread-1', [rolloutTokenCountLine(70_000, 258_400)]);
+        const rolloutPath = path.join(root, '2026', '07', '25', 'rollout-2026-07-25T00-00-00-thread-1.jsonl');
+
+        const svc = new CodexSDKService();
+        (svc as unknown as { availabilityCache: unknown }).availabilityCache = { available: true };
+        const readSpy = vi.fn(readCodexRolloutContextUsageSpyImpl(rolloutPath));
+        (svc as unknown as { readRolloutContextUsage: unknown }).readRolloutContextUsage = readSpy;
+
+        try {
+            (svc as unknown as { sdk: unknown }).sdk =
+                makeCodexMock(turnEvents({ input_tokens: 1000, output_tokens: 250 })).client;
+            await svc.sendMessage({ prompt: 'turn 1', model: 'gpt-5.4' });
+
+            (svc as unknown as { sdk: unknown }).sdk =
+                makeCodexMock(turnEvents({ input_tokens: 1000, output_tokens: 250 })).client;
+            await svc.sendMessage({ prompt: 'turn 2', sessionId: 'thread-1', model: 'gpt-5.4' });
+
+            expect(readSpy).toHaveBeenCalledTimes(2);
+            // First turn: no cached path yet.
+            expect(readSpy.mock.calls[0][1].cachedPath).toBeUndefined();
+            // Second turn: the resolved path is threaded back in.
+            expect(readSpy.mock.calls[1][1].cachedPath).toBe(rolloutPath);
+        } finally {
+            svc.dispose();
+        }
+    });
+});
+
+// Returns a stub matching the readCodexRolloutContextUsage signature that always
+// resolves to a fixed usage carrying `rolloutPath`, so the service caches it.
+function readCodexRolloutContextUsageSpyImpl(rolloutPath: string) {
+    return async (
+        _threadId: string,
+        _opts: { sessionsRoot: string; cachedPath?: string },
+    ) => ({ currentTokens: 70_000, tokenLimit: 258_400, rolloutPath });
+}
