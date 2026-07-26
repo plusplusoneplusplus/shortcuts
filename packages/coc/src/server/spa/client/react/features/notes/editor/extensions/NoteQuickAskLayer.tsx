@@ -28,6 +28,15 @@
  * was deleted while the answer was in flight the marker is not inserted (AC-05
  * pending drop).
  *
+ * The persisted `.qa-sidenote-ref` marker renders as an always-visible ✨ chip
+ * (the persistent anchor indicator; styling in `noteEditor.css`). Clicking a chip
+ * reopens the shared {@link QuickAskSidenotePopover} with the frozen
+ * question/answer read straight off the marker's `data-qa-*` attributes; the
+ * popover dismisses on an outside click (mirroring the input's dismiss idiom) and
+ * its delete control removes the marker node via {@link deleteSidenoteRef}, so
+ * both the inline marker and its bottom definition disappear on the next save
+ * (AC-04).
+ *
  * Gated behind the same admin `features.quickAskSidenotes` flag as chat
  * side-notes and a no-op without a `workspaceId`, so it is always safe to mount.
  * The host mounts it only in WYSIWYG (rich) mode — never over the raw-markdown
@@ -43,7 +52,8 @@ import { QuickAskPill } from '../../../chat/quick-ask/QuickAskPill';
 import { QuickAskInput } from '../../../chat/quick-ask/QuickAskInput';
 import { QuickAskSidenotePopover } from '../../../chat/quick-ask/QuickAskSidenotePopover';
 import type { ClientSideNote, QuickAskSelection } from '../../../chat/quick-ask/types';
-import { insertSidenoteRef } from './sidenoteRefPlacement';
+import { QA_SIDENOTE_REF_CLASS } from './sidenoteFootnote';
+import { deleteSidenoteRef, insertSidenoteRef } from './sidenoteRefPlacement';
 
 export interface NoteQuickAskLayerProps {
     /** The WYSIWYG editor container whose selections should raise the Ask pill. */
@@ -76,6 +86,23 @@ function labelFor(selectedText: string): string {
     return collapsed.length <= 22 ? collapsed : collapsed.slice(0, 22).trimEnd() + '…';
 }
 
+/**
+ * Display-only quoted term for a chip that is being re-opened: the marker atom
+ * stores only the answer/question, not the phrase, so recover a short trailing
+ * slice of the text immediately preceding the chip (its anchor phrase) for the
+ * popover blockquote. Bounded to `max` chars; empty when nothing precedes it.
+ */
+function phraseBeforeChip(chip: Element, max = 200): string {
+    let acc = '';
+    let node: Node | null = chip.previousSibling;
+    while (node && acc.length < max) {
+        acc = (node.textContent ?? '') + acc;
+        node = node.previousSibling;
+    }
+    acc = acc.replace(/\s+/g, ' ').trim();
+    return acc.length > max ? '…' + acc.slice(-max) : acc;
+}
+
 interface OpenNote {
     note: ClientSideNote;
     position: { top: number; left: number };
@@ -94,6 +121,9 @@ export function NoteQuickAskLayer({ containerRef, workspaceId, editor }: NoteQui
     selectionRef.current = selection;
     const inputRef = useRef<QuickAskSelection | null>(null);
     inputRef.current = input;
+    // Latest open popover, read by the chip-click listener to toggle it closed.
+    const openRef = useRef<OpenNote | null>(null);
+    openRef.current = open;
     // The editor is read at write time (answer landing), never captured in a
     // callback closure — one instance survives note switches / re-renders.
     const editorRef = useRef<Editor | null | undefined>(editor);
@@ -207,6 +237,73 @@ export function NoteQuickAskLayer({ containerRef, workspaceId, editor }: NoteQui
         return () => document.removeEventListener('mousedown', onDown);
     }, [input]);
 
+    // AC-04: clicking a persisted `.qa-sidenote-ref` chip reopens the popover with
+    // the frozen question/answer read straight off the marker's data-attrs.
+    // Re-clicking the same chip toggles the popover closed (mirrors chat).
+    useEffect(() => {
+        if (!enabled) {return;}
+        const onClick = (e: MouseEvent) => {
+            const target = e.target as HTMLElement | null;
+            const chip = target?.closest(`.${QA_SIDENOTE_REF_CLASS}`) as HTMLElement | null;
+            const container = containerRef.current;
+            if (!chip || !container || !container.contains(chip)) {return;}
+            const refId = chip.getAttribute('data-qa-id');
+            if (!refId) {return;}
+            if (openRef.current?.note.id === refId) {
+                setOpen(null);
+                return;
+            }
+            const answer = chip.getAttribute('data-qa-answer') ?? '';
+            const question = chip.getAttribute('data-qa-question') || undefined;
+            const phrase = phraseBeforeChip(chip);
+            const rect = chip.getBoundingClientRect();
+            const note: ClientSideNote = {
+                id: refId,
+                processId: '',
+                turnIndex: NOTE_TURN_INDEX,
+                anchor: {
+                    selectedText: phrase,
+                    contextBefore: '',
+                    contextAfter: '',
+                    fingerprint: '',
+                },
+                question,
+                answer,
+                label: labelFor(phrase || answer),
+                createdAt: '',
+                status: 'ready',
+            };
+            setOpen({
+                note,
+                position: { top: rect.bottom + 6, left: rect.left },
+                selection: {
+                    turnIndex: NOTE_TURN_INDEX,
+                    selectedText: phrase,
+                    contextBefore: '',
+                    contextAfter: '',
+                    rect,
+                },
+            });
+        };
+        document.addEventListener('click', onClick);
+        return () => document.removeEventListener('click', onClick);
+    }, [enabled, containerRef]);
+
+    // AC-04: dismiss the open answer popover on an outside pointer-down (mirrors
+    // the input's dismiss idiom). A chip click is spared so it can toggle itself,
+    // and clicks inside the popover are spared so reading/acting doesn't close it.
+    useEffect(() => {
+        if (!open) {return;}
+        const onDown = (e: MouseEvent) => {
+            const target = e.target as HTMLElement | null;
+            if (target?.closest('[data-testid="quick-ask-popover"]')) {return;}
+            if (target?.closest(`.${QA_SIDENOTE_REF_CLASS}`)) {return;}
+            setOpen(null);
+        };
+        document.addEventListener('mousedown', onDown);
+        return () => document.removeEventListener('mousedown', onDown);
+    }, [open]);
+
     // Pill click → expand into the inline question input at the same anchor.
     const handleAsk = useCallback(() => {
         const sel = selectionRef.current;
@@ -268,7 +365,14 @@ export function NoteQuickAskLayer({ containerRef, workspaceId, editor }: NoteQui
         });
     }, [runLookup]);
 
-    const handleDelete = useCallback(() => setOpen(null), []);
+    // AC-04 delete control: remove the marker node from the live document so the
+    // inline `[^qa-<id>]` marker and its bottom definition both vanish on save,
+    // then close the popover. A no-op when the note was never embedded (still
+    // asking/error) — nothing to remove.
+    const handleDelete = useCallback((id: string) => {
+        deleteSidenoteRef(editorRef.current, id);
+        setOpen(null);
+    }, []);
 
     if (!enabled) {return null;}
 

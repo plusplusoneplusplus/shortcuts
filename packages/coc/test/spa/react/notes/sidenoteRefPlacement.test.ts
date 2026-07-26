@@ -14,6 +14,7 @@ import { StarterKit } from '@tiptap/starter-kit';
 import { SidenoteRefExtension }
     from '../../../../src/server/spa/client/react/features/notes/editor/extensions/sidenoteRefExtension';
 import {
+    deleteSidenoteRef,
     insertSidenoteRef,
     resolveSidenoteInsertPos,
 } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/sidenoteRefPlacement';
@@ -164,5 +165,63 @@ describe('insertSidenoteRef', () => {
         const editor = makeEditor(SENTENCE);
         editor.destroy();
         expect(insertSidenoteRef(editor, ANCHOR, { refId: 'n', answer: 'x' })).toBe(false);
+    });
+});
+
+describe('deleteSidenoteRef (AC-04 chip delete)', () => {
+    it('removes the marker so both the marker and its bottom definition vanish on save', () => {
+        const editor = makeEditor(SENTENCE);
+        try {
+            insertSidenoteRef(editor, ANCHOR, { refId: 'del1', answer: 'to be deleted' });
+            // Sanity: the marker + definition are present before deletion.
+            expect(htmlToMarkdown(editor.getHTML())).toContain('[^qa-del1]');
+
+            const removed = deleteSidenoteRef(editor, 'del1');
+            expect(removed).toBe(true);
+
+            // Marker gone from the doc, and since the definition block is rebuilt
+            // from markers on save, the definition is gone too — back to plain md.
+            expect(editor.getHTML()).not.toContain('qa-sidenote-ref');
+            const md = htmlToMarkdown(editor.getHTML());
+            expect(md).toContain('we optimize the loss with gradient descent over many epochs');
+            expect(md).not.toContain('[^qa-');
+            expect(md).not.toContain('to be deleted');
+        } finally {
+            editor.destroy();
+        }
+    });
+
+    it('deletes only the marker with the matching id, leaving siblings intact', () => {
+        const editor = makeEditor(SENTENCE);
+        try {
+            insertSidenoteRef(editor, ANCHOR, { refId: 'keep', answer: 'first' });
+            insertSidenoteRef(
+                editor,
+                { selectedText: 'loss', contextBefore: 'the ', contextAfter: ' with' },
+                { refId: 'drop', answer: 'second' },
+            );
+
+            expect(deleteSidenoteRef(editor, 'drop')).toBe(true);
+
+            const md = htmlToMarkdown(editor.getHTML());
+            expect(md).toContain('[^qa-keep]');
+            expect(md).not.toContain('[^qa-drop]');
+        } finally {
+            editor.destroy();
+        }
+    });
+
+    it('returns false when no marker with that id exists, and for a null/destroyed editor', () => {
+        const editor = makeEditor(SENTENCE);
+        try {
+            expect(deleteSidenoteRef(editor, 'missing')).toBe(false);
+            expect(deleteSidenoteRef(editor, '')).toBe(false);
+        } finally {
+            editor.destroy();
+        }
+        expect(deleteSidenoteRef(null, 'x')).toBe(false);
+        const destroyed = makeEditor(SENTENCE);
+        destroyed.destroy();
+        expect(deleteSidenoteRef(destroyed, 'x')).toBe(false);
     });
 });

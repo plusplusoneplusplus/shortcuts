@@ -1279,3 +1279,40 @@
     border-bottom-color: #5c5228;
     color: #e6d18a;
 }
+
+/* Quick Ask side-note reference marker (notes-quick-ask AC-04).
+   The persisted `[^qa-<id>]` footnote renders in the WYSIWYG editor as an
+   always-visible ✨ chip sitting at the end of its anchored phrase — the
+   persistent anchor indicator (visible whether or not the answer popover is
+   open). Clicking it reopens the answer popover (see NoteQuickAskLayer). Styling
+   mirrors the chat inline side-note chip for a consistent feel. */
+.qa-sidenote-ref {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: baseline;
+    box-sizing: border-box;
+    margin: 0 2px;
+    padding: 0 3px;
+    min-width: 15px;
+    height: 15px;
+    line-height: 1;
+    border-radius: 7px;
+    border: 1px solid rgba(55, 148, 255, 0.35);
+    background: rgba(55, 148, 255, 0.12);
+    font-size: 9px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: transform 0.1s ease-out;
+}
+
+.qa-sidenote-ref:hover {
+    transform: translateY(-1px);
+    background: rgba(55, 148, 255, 0.2);
+}
+
+.dark .qa-sidenote-ref {
+    border-color: rgba(55, 148, 255, 0.45);
+    background: rgba(55, 148, 255, 0.18);
+}

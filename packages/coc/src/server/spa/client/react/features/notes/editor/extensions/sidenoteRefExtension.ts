@@ -20,8 +20,12 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import { QA_MARKER_GLYPH, QA_SIDENOTE_REF_CLASS } from './sidenoteFootnote';
 
+/** ProseMirror node name for the Quick Ask reference marker atom. Shared so
+ * placement/deletion helpers locate the node without a magic string. */
+export const QA_SIDENOTE_NODE_NAME = 'qaSidenoteRef';
+
 export const SidenoteRefExtension = Node.create({
-    name: 'qaSidenoteRef',
+    name: QA_SIDENOTE_NODE_NAME,
     inline: true,
     group: 'inline',
     atom: true,

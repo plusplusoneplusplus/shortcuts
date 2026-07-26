@@ -22,6 +22,7 @@ import type { Editor } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { findAnchorInDoc } from '../commentAnchoring';
 import type { TextAnchor } from '../textAnchor';
+import { QA_SIDENOTE_NODE_NAME } from './sidenoteRefExtension';
 
 /** The payload persisted into the `qaSidenoteRef` node (and thence the `.md`). */
 export interface SidenoteRefPayload {
@@ -84,7 +85,7 @@ export function insertSidenoteRef(
         .insertContentAt(
             pos,
             {
-                type: 'qaSidenoteRef',
+                type: QA_SIDENOTE_NODE_NAME,
                 attrs: {
                     refId: payload.refId,
                     question: payload.question ?? null,
@@ -94,5 +95,40 @@ export function insertSidenoteRef(
             { updateSelection: false },
         )
         .run();
+    return true;
+}
+
+/**
+ * Delete the `qaSidenoteRef` marker with `refId` from the live TipTap document
+ * (AC-04 chip delete control). Removing the node removes both the inline
+ * `[^qa-<id>]` marker and — since the definition block is rebuilt from markers
+ * on save — its bottom definition, so both vanish from the `.md` on the next
+ * save (AC-04 DoD#3).
+ *
+ * Returns `true` when a matching marker was found and deleted, `false` when the
+ * editor is unavailable or no marker with that id exists (e.g. the note was
+ * still `asking`/`error` and never embedded, or a manual edit already removed
+ * it — a harmless no-op).
+ */
+export function deleteSidenoteRef(
+    editor: Editor | null | undefined,
+    refId: string,
+): boolean {
+    if (!editor || editor.isDestroyed || !refId) return false;
+    const { state, view } = editor;
+    // Collect matches rather than assigning to a closed-over local (which
+    // TypeScript's flow analysis can't narrow through the closure). The marker is
+    // an atom, so there is at most one node per id; take the first.
+    const targets: Array<{ from: number; to: number }> = [];
+    state.doc.descendants((node, pos) => {
+        if (node.type.name === QA_SIDENOTE_NODE_NAME && node.attrs.refId === refId) {
+            targets.push({ from: pos, to: pos + node.nodeSize });
+            return false;
+        }
+        return true;
+    });
+    if (targets.length === 0) return false;
+    const { from, to } = targets[0];
+    view.dispatch(state.tr.delete(from, to));
     return true;
 }

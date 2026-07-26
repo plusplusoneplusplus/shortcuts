@@ -12,11 +12,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useRef } from 'react';
 
-const { getSelectionMock, fetchApiMock, enabledMock, insertSidenoteRefMock } = vi.hoisted(() => ({
+const { getSelectionMock, fetchApiMock, enabledMock, insertSidenoteRefMock, deleteSidenoteRefMock } = vi.hoisted(() => ({
     getSelectionMock: vi.fn(),
     fetchApiMock: vi.fn(),
     enabledMock: vi.fn(() => true),
     insertSidenoteRefMock: vi.fn(() => true),
+    deleteSidenoteRefMock: vi.fn(() => true),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/quick-ask/quick-ask-selection', () => ({
@@ -37,6 +38,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useQuickAsk
 // on success with the anchor+payload, and never on error).
 vi.mock('../../../../src/server/spa/client/react/features/notes/editor/extensions/sidenoteRefPlacement', () => ({
     insertSidenoteRef: insertSidenoteRefMock,
+    deleteSidenoteRef: deleteSidenoteRefMock,
 }));
 
 import { NoteQuickAskLayer }
@@ -94,6 +96,8 @@ beforeEach(() => {
     enabledMock.mockReturnValue(true);
     insertSidenoteRefMock.mockReset();
     insertSidenoteRefMock.mockReturnValue(true);
+    deleteSidenoteRefMock.mockReset();
+    deleteSidenoteRefMock.mockReturnValue(true);
 });
 
 afterEach(() => {
@@ -272,6 +276,92 @@ describe('NoteQuickAskLayer — AC-03 footnote persistence wiring', () => {
 
         await waitFor(() => expect(insertSidenoteRefMock).toHaveBeenCalledTimes(1));
         expect(insertSidenoteRefMock.mock.calls[0][2].question).toBeUndefined();
+    });
+});
+
+/** A container holding a persisted `.qa-sidenote-ref` chip (as the loaded editor
+ *  would render it) so AC-04 chip-click / popover / delete can be driven. */
+function ChipHarness({ enabled = true }: { enabled?: boolean }) {
+    enabledMock.mockReturnValue(enabled);
+    const ref = useRef<HTMLDivElement>(null);
+    return (
+        <div>
+            <div ref={ref} data-testid="note-container">
+                <p>
+                    {'we optimize the loss with gradient descent'}
+                    <span
+                        className="qa-sidenote-ref"
+                        data-qa-id="abc123"
+                        data-qa-question="what is this?"
+                        data-qa-answer="Iterative first-order optimization."
+                        data-testid="qa-chip"
+                    >
+                        ✨
+                    </span>
+                    {' over many epochs'}
+                </p>
+            </div>
+            <NoteQuickAskLayer
+                containerRef={ref as unknown as React.RefObject<HTMLElement | null>}
+                workspaceId="ws-1"
+                editor={EDITOR_SENTINEL}
+            />
+        </div>
+    );
+}
+
+describe('NoteQuickAskLayer — AC-04 chip, popover, delete', () => {
+    it('clicking a persisted chip opens the popover with the frozen question + answer', async () => {
+        render(<ChipHarness />);
+        fireEvent.click(screen.getByTestId('qa-chip'));
+
+        await waitFor(() => expect(screen.getByTestId('quick-ask-popover')).toBeInTheDocument());
+        expect(screen.getByTestId('quick-ask-popover-answer').textContent)
+            .toContain('first-order optimization');
+        expect(screen.getByTestId('quick-ask-popover-question').textContent).toContain('what is this?');
+        // The quoted term is recovered from the phrase preceding the chip.
+        expect(screen.getByTestId('quick-ask-popover').textContent).toContain('gradient descent');
+    });
+
+    it('dismisses the popover on an outside pointer-down (mirrors chat)', async () => {
+        render(<ChipHarness />);
+        fireEvent.click(screen.getByTestId('qa-chip'));
+        await waitFor(() => expect(screen.getByTestId('quick-ask-popover')).toBeInTheDocument());
+
+        fireEvent.mouseDown(document.body);
+        await waitFor(() => expect(screen.queryByTestId('quick-ask-popover')).toBeNull());
+    });
+
+    it('re-clicking the same chip toggles the popover closed', async () => {
+        render(<ChipHarness />);
+        fireEvent.click(screen.getByTestId('qa-chip'));
+        await waitFor(() => expect(screen.getByTestId('quick-ask-popover')).toBeInTheDocument());
+
+        fireEvent.click(screen.getByTestId('qa-chip'));
+        await waitFor(() => expect(screen.queryByTestId('quick-ask-popover')).toBeNull());
+    });
+
+    it('the delete control removes the marker node and closes the popover', async () => {
+        render(<ChipHarness />);
+        fireEvent.click(screen.getByTestId('qa-chip'));
+        await waitFor(() => expect(screen.getByTestId('quick-ask-popover')).toBeInTheDocument());
+
+        fireEvent.click(screen.getByTestId('quick-ask-popover-dismiss'));
+
+        // Delete removes the persisted marker → marker + bottom definition both
+        // vanish on the next save (AC-04 DoD#3).
+        expect(deleteSidenoteRefMock).toHaveBeenCalledTimes(1);
+        expect(deleteSidenoteRefMock).toHaveBeenCalledWith(EDITOR_SENTINEL, 'abc123');
+        await waitFor(() => expect(screen.queryByTestId('quick-ask-popover')).toBeNull());
+    });
+
+    it('no popover opens on chip click when the flag is off (existing content untouched)', async () => {
+        render(<ChipHarness enabled={false} />);
+        fireEvent.click(screen.getByTestId('qa-chip'));
+        await new Promise(r => setTimeout(r, 0));
+        expect(screen.queryByTestId('quick-ask-popover')).toBeNull();
+        // The persisted chip itself still renders (unconditional node registration).
+        expect(screen.getByTestId('qa-chip')).toBeInTheDocument();
     });
 });
 
