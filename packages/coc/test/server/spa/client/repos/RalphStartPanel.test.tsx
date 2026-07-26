@@ -729,6 +729,79 @@ describe('RalphStartPanel', () => {
         expect(body.workspaceId).toBe('remote-ws');
     });
 
+    it('persists ralphLaunchedSession when a grilling launch targets a different remote repo', async () => {
+        // Regression: a grilling-phase launch (useLaunchEndpoint unset) into a
+        // DIFFERENT remote target hits the remote /ralph-launch and mints a
+        // session. The pointer must still be persisted onto the SOURCE chat so
+        // the banner can track the executing/complete status — otherwise it
+        // stays stuck on the plain "Ralph ready" banner.
+        mockUseRepos.mockReturnValue({
+            repos: [
+                { workspace: { id: 'ws-1', name: 'Source Repo', rootPath: '/repos/source' } },
+                {
+                    workspace: {
+                        id: 'remote-ws',
+                        name: 'Remote Repo',
+                        rootPath: '/remote/repo',
+                        baseUrl: 'http://127.0.0.1:7777',
+                        remote: {
+                            serverId: 'srv-remote',
+                            serverLabel: 'Remote CoC',
+                            baseUrl: 'http://127.0.0.1:7777',
+                            offline: false,
+                        },
+                    },
+                },
+            ],
+            loading: false,
+        });
+        const mockFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ processId: 'queue_remote_started', sessionId: 'ralph-remote-xyz' }),
+        });
+        vi.stubGlobal('fetch', mockFetch);
+
+        render(
+            <RalphStartPanel
+                processId="queue_grill-remote"
+                workspaceId="ws-1"
+                turns={GRILLING_TURNS}
+                onStarted={mockOnStarted}
+            />,
+        );
+
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+        await waitFor(() => expect(screen.getByTestId('ralph-start-execution-repo-select')).toBeTruthy());
+        fireEvent.change(screen.getByTestId('ralph-start-execution-repo-select'), { target: { value: 'srv-remote:remote-ws' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('ralph-confirm-start-btn'));
+        });
+
+        await waitFor(() => {
+            expect(mockOnStarted).toHaveBeenCalledWith('queue_remote_started', 'remote-ws');
+        });
+
+        // Endpoint is the remote /ralph-launch (not the local ralph-start).
+        const startCall = mockFetch.mock.calls[0];
+        expect(startCall[0]).toBe('http://127.0.0.1:7777/api/ralph-launch');
+
+        // The pointer is persisted onto the SOURCE chat, targeting the remote ws.
+        await waitFor(() => expect(mockPatchMetadata).toHaveBeenCalled());
+        const [patchedProcessId, patchBody] = mockPatchMetadata.mock.calls[0];
+        expect(patchedProcessId).toBe('queue_grill-remote');
+        expect(patchBody).toEqual({
+            set: {
+                ralphLaunchedSession: {
+                    sessionId: 'ralph-remote-xyz',
+                    workspaceId: 'remote-ws',
+                    executionProcessId: 'queue_remote_started',
+                    launchedAt: expect.any(String),
+                },
+            },
+        });
+    });
+
     // -----------------------------------------------------------------------
     // Fix 1: same-origin default
     // -----------------------------------------------------------------------
