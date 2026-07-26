@@ -61,6 +61,18 @@ export interface PaperRegionAnchor {
     rect: PaperRect;
 }
 
+/**
+ * One turn of a Quick Ask follow-up thread (AC-03). The first turn mirrors the
+ * annotation's top-level `question`/`answer`; later turns are follow-ups grounded
+ * on the original selection plus the accumulated prior turns.
+ */
+export interface PaperAnnotationTurn {
+    /** The user's question for this turn, if they typed one (turn 0 may omit it). */
+    question?: string;
+    /** The AI answer (Markdown) for this turn. */
+    answer: string;
+}
+
 /** A persisted Q&A anchored to a passage in a paper. */
 export interface PaperAnnotation {
     /** UUID v4 identifier. */
@@ -87,8 +99,16 @@ export interface PaperAnnotation {
     region?: PaperRegionAnchor;
     /** The user's question, if they typed a custom one. */
     question?: string;
-    /** The AI answer (Markdown). */
+    /** The AI answer (Markdown). Turn 0 of {@link turns} when a thread exists. */
     answer: string;
+    /**
+     * The full multi-turn Quick Ask thread (AC-03). Absent for a legacy
+     * single-answer annotation; when present, turn 0 mirrors the top-level
+     * `question`/`answer` and later entries are persisted follow-ups. A reader
+     * reconstructs the whole thread from here, falling back to the single
+     * `question`/`answer` pair when this is absent.
+     */
+    turns?: PaperAnnotationTurn[];
     /** The model that produced the answer, if known. */
     model?: string;
     /**
@@ -201,6 +221,26 @@ export function validateAnnotationDraft(draft: unknown): string | undefined {
 }
 
 /**
+ * Clean a client-supplied `turns` array (AC-03): drop entries that are not a
+ * usable `{answer}` object, coerce the answer to a string, and keep a trimmed
+ * question only when non-empty. Defensive — never throws on garbage input.
+ */
+function normalizeAnnotationTurns(turns: unknown[]): PaperAnnotationTurn[] {
+    const out: PaperAnnotationTurn[] = [];
+    for (const raw of turns) {
+        if (!raw || typeof raw !== 'object') {continue;}
+        const t = raw as Record<string, unknown>;
+        if (typeof t.answer !== 'string' || t.answer.trim().length === 0) {continue;}
+        const turn: PaperAnnotationTurn = { answer: String(t.answer) };
+        if (typeof t.question === 'string' && t.question.trim()) {
+            turn.question = t.question.trim();
+        }
+        out.push(turn);
+    }
+    return out;
+}
+
+/**
  * Coerce a validated draft into a stored {@link PaperAnnotation}, keeping only
  * the known fields (drops anything extra a client sent).
  */
@@ -230,6 +270,16 @@ export function normalizeAnnotationDraft(
     }
     if (typeof draft.model === 'string' && draft.model.trim()) {
         annotation.model = draft.model.trim();
+    }
+    // Multi-turn thread (AC-03). Keep only well-formed turns (non-empty string
+    // answer); an optional trimmed question is preserved per turn. A malformed or
+    // empty `turns` (or one that reduces to nothing) is dropped so the annotation
+    // stays a legacy single-answer record.
+    if (Array.isArray(draft.turns)) {
+        const turns = normalizeAnnotationTurns(draft.turns);
+        if (turns.length > 0) {
+            annotation.turns = turns;
+        }
     }
     if (draft.position && typeof draft.position === 'object') {
         const pos = draft.position as Record<string, unknown>;
