@@ -296,7 +296,7 @@ export const PerRepoPreferencesSchema = z.object({
         .optional(),
     filesViewMode: z.enum(['flat', 'tree']).optional(),
     memoryV2: MemoryV2Schema.optional(),
-    notesGit: NotesGitSchema.optional(),
+    notesGit: NotesGitSchema.optional().catch(undefined),
     activityFilters: ActivityFiltersSchema.optional(),
     disabledLlmTools: z.array(z.unknown())
         .transform(arr => filterRemovedLlmToolNames(

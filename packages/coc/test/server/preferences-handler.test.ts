@@ -2445,6 +2445,28 @@ describe('Per-Repo Preferences REST API', () => {
         expect(body.notesGit).toEqual({ enabled: true });
     });
 
+    it('PATCH notesGit deep-merges: setting origin preserves autoCommit', async () => {
+        await putJSON(repoUrl(repoId), {
+            notesGit: { enabled: true, autoCommit: { enabled: true, intervalMs: 300_000 } },
+        });
+        await patchJSON(repoUrl(repoId), {
+            notesGit: {
+                enabled: true,
+                autoCommit: { enabled: true, intervalMs: 300_000 },
+                remoteUrl: 'https://github.com/acme/notes.git',
+                branch: 'main',
+            },
+        });
+        const res = await getJSON(repoUrl(repoId));
+        const body = JSON.parse(res.body);
+        expect(body.notesGit).toEqual({
+            enabled: true,
+            autoCommit: { enabled: true, intervalMs: 300_000 },
+            remoteUrl: 'https://github.com/acme/notes.git',
+            branch: 'main',
+        });
+    });
+
     // -- Isolation --
 
     it('two repos have independent preferences', async () => {
