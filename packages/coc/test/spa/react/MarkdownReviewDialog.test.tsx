@@ -80,6 +80,9 @@ vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '',
     isRalphEnabled: () => false,
+    // NoteEditor mounts PdfAnnotationsLayer, whose feature-flag hook reads these.
+    isQuickAskSidenotesEnabled: () => false,
+    DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
 }));
 
 vi.mock('../../../src/server/spa/client/react/contexts/AppContext', () => ({
