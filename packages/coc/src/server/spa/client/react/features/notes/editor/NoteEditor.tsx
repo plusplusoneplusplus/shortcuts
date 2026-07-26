@@ -15,6 +15,7 @@ import { defaultCommentBackend } from './NoteEditorCommentBackend';
 import { NoteEditorToolbar } from './NoteEditorToolbar';
 import { NoteZoomControl } from './NoteZoomControl';
 import { useNoteZoom } from './useNoteZoom';
+import { handleNoteZoomKey } from './noteZoomKeyboard';
 import { RichEditorCore } from './RichEditorCore';
 import { NoteQuickAskLayer } from './extensions/NoteQuickAskLayer';
 import { SourceEditor } from '../../../shared/SourceEditor';
@@ -225,6 +226,17 @@ export function NoteEditor({
     // applied via CSS `zoom` on the note content body (not the toolbar/chrome).
     const noteZoom = useNoteZoom(workspaceId, normalizedNotePath);
     const noteZoomCss = `${noteZoom.zoom}%`;
+    // AC-04 — Cmd/Ctrl `=`/`-`/`0` zoom shortcuts. Attached to the note-editor
+    // container (below) so they only fire while focus is within this note; that
+    // focus scoping is what keeps them from hijacking the browser page-zoom
+    // elsewhere. Depends only on the stable zoom action callbacks.
+    const { zoomIn: noteZoomIn, zoomOut: noteZoomOut, reset: noteZoomReset } = noteZoom;
+    const handleZoomKeyDown = useCallback(
+        (e: React.KeyboardEvent<HTMLDivElement>) => {
+            handleNoteZoomKey(e, { zoomIn: noteZoomIn, zoomOut: noteZoomOut, reset: noteZoomReset });
+        },
+        [noteZoomIn, noteZoomOut, noteZoomReset],
+    );
     const isGoal = useMemo(() => isGoalFile(normalizedNotePath), [normalizedNotePath]);
     const ralphEnabled = isRalphEnabled();
     const [ralphDialogOpen, setRalphDialogOpen] = useState(false);
@@ -1208,7 +1220,7 @@ export function NoteEditor({
     const editorHidden = isEmpty || loading || loadError;
 
     return (
-        <div className="note-editor flex-1 flex flex-col min-h-0 relative" data-testid={isEmpty ? 'note-editor-empty' : 'note-editor'}>
+        <div className="note-editor flex-1 flex flex-col min-h-0 relative" data-testid={isEmpty ? 'note-editor-empty' : 'note-editor'} onKeyDown={handleZoomKeyDown}>
             {!editorHidden && (
                 <NoteEditorToolbar
                     editor={editor}
