@@ -210,6 +210,11 @@ export function injectQaAnswers(html: string, defs: Map<string, QaFootnoteDef>):
  * the definitions can never drift from their markers. When no markers remain the
  * body is returned unchanged.
  *
+ * A marker with an empty/absent answer (a definition the user hand-deleted from
+ * the source, leaving the inline marker behind) emits no definition line, so the
+ * body stays byte-stable instead of resurrecting an empty `{"a":""}` definition
+ * (AC-05 manual-md tolerance).
+ *
  * The spans are read through the DOM (via `getAttribute`) rather than by regex:
  * ProseMirror's serializer leaves `<`/`>` unescaped inside attribute values, so
  * a string scan would mis-bound the tag on an answer containing an angle
@@ -229,8 +234,16 @@ export function appendQaFootnoteDefs(md: string, html: string): string {
     spans.forEach((span) => {
         const id = span.getAttribute('data-qa-id');
         if (!id || seen.has(id)) return;
-        seen.add(id);
         const answer = span.getAttribute('data-qa-answer') ?? '';
+        // An answerless marker is a degraded, manually-edited state: the user
+        // hand-deleted the definition line in source view, leaving `[^qa-<id>]`
+        // with nothing to fold back in. Emit no definition rather than
+        // resurrecting a meaningless `{"a":""}` line — the marker stays byte-stable
+        // and still renders as a bare chip (AC-05 manual-md tolerance). A real
+        // answered note is never empty (the layer rejects an empty answer before
+        // inserting the marker).
+        if (answer === '') return;
+        seen.add(id);
         const question = span.getAttribute('data-qa-question') ?? undefined;
         defLines.push(`[^${QA_LABEL_PREFIX}${id}]: ${encodeQaPayload({ question, answer })}`);
     });

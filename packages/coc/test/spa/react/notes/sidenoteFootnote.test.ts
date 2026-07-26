@@ -163,6 +163,22 @@ describe('sidenoteFootnote', () => {
             const out = appendQaFootnoteDefs('t\n', html);
             expect(out).toBe('t\n\n[^qa-x]: {"a":"a \\"b\\" & <c>"}\n');
         });
+
+        it('skips an answerless marker instead of resurrecting an empty definition (AC-05)', () => {
+            // A marker span whose data-qa-answer was hand-deleted (empty) or is
+            // absent must NOT re-emit a `{"a":""}` definition on save.
+            const empty = '<span class="qa-sidenote-ref" data-qa-id="gone" data-qa-answer=""></span>';
+            expect(appendQaFootnoteDefs('body [^qa-gone]\n', empty)).toBe('body [^qa-gone]\n');
+            const absent = '<span class="qa-sidenote-ref" data-qa-id="gone"></span>';
+            expect(appendQaFootnoteDefs('body [^qa-gone]\n', absent)).toBe('body [^qa-gone]\n');
+        });
+
+        it('still emits definitions for answered markers alongside answerless ones (AC-05)', () => {
+            const html =
+                '<span class="qa-sidenote-ref" data-qa-id="live" data-qa-answer="real"></span>' +
+                '<span class="qa-sidenote-ref" data-qa-id="dead" data-qa-answer=""></span>';
+            expect(appendQaFootnoteDefs('t\n', html)).toBe('t\n\n[^qa-live]: {"a":"real"}\n');
+        });
     });
 
     // ── marked tokenizer (via markdownToHtml) ────────────────────────────
@@ -276,9 +292,9 @@ describe('sidenoteFootnote', () => {
         });
     });
 
-    // ── orphaned definition tolerance (AC-05 seed) ───────────────────────
+    // ── orphaned construct tolerance (AC-05) ─────────────────────────────
 
-    describe('orphaned constructs do not corrupt rendering', () => {
+    describe('orphaned constructs do not corrupt rendering (AC-05 manual-md tolerance)', () => {
         it('a definition with no marker is dropped, not crashed', () => {
             const md = 'Plain text with no marker.\n\n[^qa-orphan]: {"a":"stranded"}\n';
             // Renders fine (definition simply stripped).
@@ -287,6 +303,38 @@ describe('sidenoteFootnote', () => {
             expect(html).not.toContain('qa-sidenote-ref');
             // On save the orphaned definition is gone (no marker to re-derive it).
             expect(htmlToMarkdown(html)).toBe('Plain text with no marker.\n');
+        });
+
+        it('a marker whose definition was hand-deleted renders as a bare chip', () => {
+            // Source-view edit: the user removed the `[^qa-ghost]: …` line but left
+            // the inline `[^qa-ghost]` marker. It must still render (no crash) and
+            // carry no answer.
+            const html = markdownToHtml('Look [^qa-ghost] here.\n');
+            expect(html).toContain('data-qa-id="ghost"');
+            expect(html).not.toContain('data-qa-answer');
+        });
+
+        it('does not resurrect a definition for a marker whose def was hand-deleted (byte-stable)', () => {
+            // The now-anchorless marker must survive a save/reload without the
+            // editor inventing an empty `{"a":""}` definition for it.
+            const md = 'Look [^qa-ghost] here.\n';
+            expect(htmlToMarkdown(markdownToHtml(md))).toBe(md);
+        });
+
+        it('does not resurrect a definition through a real Tiptap editor', () => {
+            const md = 'Look [^qa-ghost] here.\n';
+            const editor = new Editor({
+                extensions: [
+                    StarterKit.configure({ heading: { levels: [1, 2, 3] }, link: false }),
+                    SidenoteRefExtension,
+                ],
+                content: markdownToHtml(md),
+            });
+            try {
+                expect(htmlToMarkdown(editor.getHTML())).toBe(md);
+            } finally {
+                editor.destroy();
+            }
         });
     });
 });
