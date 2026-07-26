@@ -21,6 +21,13 @@
  * (AC-03) nor render a persistent inline chip/anchor (AC-04) — the answer lives
  * in this component's transient state for now.
  *
+ * On a successful answer the note is embedded into the note `.md` as a footnote
+ * (AC-03): {@link insertSidenoteRef} drops a `qaSidenoteRef` marker at the anchor
+ * phrase in the live TipTap document, and the save pipeline then serializes the
+ * `[^qa-<id>]` marker + a bottom definition block automatically. If the phrase
+ * was deleted while the answer was in flight the marker is not inserted (AC-05
+ * pending drop).
+ *
  * Gated behind the same admin `features.quickAskSidenotes` flag as chat
  * side-notes and a no-op without a `workspaceId`, so it is always safe to mount.
  * The host mounts it only in WYSIWYG (rich) mode — never over the raw-markdown
@@ -28,6 +35,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { Editor } from '@tiptap/core';
 import { fetchApi } from '../../../../hooks/useApi';
 import { useQuickAskSidenotesEnabled } from '../../../../hooks/feature-flags/useQuickAskSidenotesEnabled';
 import { getQuickAskSelection } from '../../../chat/quick-ask/quick-ask-selection';
@@ -35,27 +43,32 @@ import { QuickAskPill } from '../../../chat/quick-ask/QuickAskPill';
 import { QuickAskInput } from '../../../chat/quick-ask/QuickAskInput';
 import { QuickAskSidenotePopover } from '../../../chat/quick-ask/QuickAskSidenotePopover';
 import type { ClientSideNote, QuickAskSelection } from '../../../chat/quick-ask/types';
+import { insertSidenoteRef } from './sidenoteRefPlacement';
 
 export interface NoteQuickAskLayerProps {
     /** The WYSIWYG editor container whose selections should raise the Ask pill. */
     containerRef: React.RefObject<HTMLElement | null>;
     /** Workspace the answer endpoint runs against. Layer is a no-op when absent. */
     workspaceId?: string;
+    /**
+     * The live TipTap editor instance. On a successful answer the note is
+     * embedded here as a `qaSidenoteRef` marker (AC-03). Absent → the answer
+     * still shows in the popover but is not persisted.
+     */
+    editor?: Editor | null;
 }
 
 /** Synthetic turn index — notes are not chat turns, but the shared selection
  * shape carries one. */
 const NOTE_TURN_INDEX = 0;
 
-function newId(): string {
-    try {
-        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-            return crypto.randomUUID();
-        }
-    } catch {
-        /* ignore */
-    }
-    return 'tmp-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+/** Short, markdown-safe id used both as the popover identity and the
+ * `[^qa-<id>]` footnote label. Kept compact so the persisted `.md` stays
+ * hand-readable. */
+function newRefId(): string {
+    const rnd = Math.random().toString(36).slice(2, 10);
+    const t = Date.now().toString(36).slice(-4);
+    return `${rnd}${t}`;
 }
 
 function labelFor(selectedText: string): string {
@@ -70,7 +83,7 @@ interface OpenNote {
     selection: QuickAskSelection;
 }
 
-export function NoteQuickAskLayer({ containerRef, workspaceId }: NoteQuickAskLayerProps) {
+export function NoteQuickAskLayer({ containerRef, workspaceId, editor }: NoteQuickAskLayerProps) {
     const enabled = useQuickAskSidenotesEnabled() && !!workspaceId;
 
     const [selection, setSelection] = useState<QuickAskSelection | null>(null);
@@ -81,10 +94,17 @@ export function NoteQuickAskLayer({ containerRef, workspaceId }: NoteQuickAskLay
     selectionRef.current = selection;
     const inputRef = useRef<QuickAskSelection | null>(null);
     inputRef.current = input;
+    // The editor is read at write time (answer landing), never captured in a
+    // callback closure — one instance survives note switches / re-renders.
+    const editorRef = useRef<Editor | null | undefined>(editor);
+    editorRef.current = editor;
 
     const clearSelection = useCallback(() => setSelection(null), []);
 
-    // Run the stateless one-shot grounded lookup, updating the note by id.
+    // Run the stateless one-shot grounded lookup, updating the note by id. On
+    // success the answer is embedded into the note `.md` as a footnote marker at
+    // the anchor phrase (AC-03); if the phrase was deleted while the answer was in
+    // flight the marker is dropped rather than orphaned (AC-05).
     const runLookup = useCallback((
         sel: QuickAskSelection,
         question: string | undefined,
@@ -105,6 +125,15 @@ export function NoteQuickAskLayer({ containerRef, workspaceId }: NoteQuickAskLay
             .then((data: { answer?: string; model?: string }) => {
                 const answer = typeof data?.answer === 'string' ? data.answer : '';
                 if (!answer) {throw new Error('Malformed response');}
+                insertSidenoteRef(
+                    editorRef.current,
+                    {
+                        selectedText: sel.selectedText,
+                        contextBefore: sel.contextBefore,
+                        contextAfter: sel.contextAfter,
+                    },
+                    { refId: noteId, question, answer },
+                );
                 setOpen(prev => (prev && prev.note.id === noteId
                     ? { ...prev, note: { ...prev.note, status: 'ready', answer, model: data.model } }
                     : prev));
@@ -194,7 +223,7 @@ export function NoteQuickAskLayer({ containerRef, workspaceId }: NoteQuickAskLay
         setInput(null);
         if (!sel) {return;}
         const trimmed = question.trim() || undefined;
-        const id = newId();
+        const id = newRefId();
         const note: ClientSideNote = {
             id,
             processId: '',

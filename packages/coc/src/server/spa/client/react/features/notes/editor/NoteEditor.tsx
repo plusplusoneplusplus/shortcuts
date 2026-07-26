@@ -1405,6 +1405,7 @@ export function NoteEditor({
                             <NoteQuickAskLayer
                                 containerRef={editorScrollContainerRef}
                                 workspaceId={workspaceId}
+                                editor={editor}
                             />
                         )}
 

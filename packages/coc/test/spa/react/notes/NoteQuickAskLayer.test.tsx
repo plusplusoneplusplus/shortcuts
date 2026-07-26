@@ -12,10 +12,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useRef } from 'react';
 
-const { getSelectionMock, fetchApiMock, enabledMock } = vi.hoisted(() => ({
+const { getSelectionMock, fetchApiMock, enabledMock, insertSidenoteRefMock } = vi.hoisted(() => ({
     getSelectionMock: vi.fn(),
     fetchApiMock: vi.fn(),
     enabledMock: vi.fn(() => true),
+    insertSidenoteRefMock: vi.fn(() => true),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/quick-ask/quick-ask-selection', () => ({
@@ -30,6 +31,12 @@ vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useQuickAskSidenotesEnabled', () => ({
     useQuickAskSidenotesEnabled: () => enabledMock(),
+}));
+// AC-03 persistence is exercised end-to-end against a real editor in
+// sidenoteRefPlacement.test.ts; here we only assert the layer WIRES it (calls it
+// on success with the anchor+payload, and never on error).
+vi.mock('../../../../src/server/spa/client/react/features/notes/editor/extensions/sidenoteRefPlacement', () => ({
+    insertSidenoteRef: insertSidenoteRefMock,
 }));
 
 import { NoteQuickAskLayer }
@@ -49,12 +56,18 @@ const SELECTION: QuickAskSelection = {
 
 /** `omitWorkspace` renders the layer with no workspaceId at all (default-param
  *  fallback would otherwise turn an explicit `undefined` back into 'ws-1'). */
+/** A stand-in editor; the placement module is mocked, so the layer only needs to
+ *  forward this reference — it is never actually driven here. */
+const EDITOR_SENTINEL = { isDestroyed: false } as unknown as import('@tiptap/core').Editor;
+
 function Harness({
     workspaceId = 'ws-1',
     omitWorkspace = false,
+    editor = EDITOR_SENTINEL,
 }: {
     workspaceId?: string;
     omitWorkspace?: boolean;
+    editor?: import('@tiptap/core').Editor | null;
 }) {
     const ref = useRef<HTMLDivElement>(null);
     return (
@@ -65,6 +78,7 @@ function Harness({
             <NoteQuickAskLayer
                 containerRef={ref as unknown as React.RefObject<HTMLElement | null>}
                 workspaceId={omitWorkspace ? undefined : workspaceId}
+                editor={editor}
             />
         </div>
     );
@@ -78,6 +92,8 @@ beforeEach(() => {
     fetchApiMock.mockReset();
     enabledMock.mockReset();
     enabledMock.mockReturnValue(true);
+    insertSidenoteRefMock.mockReset();
+    insertSidenoteRefMock.mockReturnValue(true);
 });
 
 afterEach(() => {
@@ -208,6 +224,54 @@ describe('NoteQuickAskLayer — AC-02 loading / error / success', () => {
         fireEvent.click(screen.getByTestId('quick-ask-pill'));
         fireEvent.keyDown(field(), { key: 'Enter' });
         await waitFor(() => expect(screen.getByTestId('quick-ask-popover-error')).toBeInTheDocument());
+    });
+});
+
+describe('NoteQuickAskLayer — AC-03 footnote persistence wiring', () => {
+    it('embeds the answered note into the editor on success (anchor + payload)', async () => {
+        fetchApiMock.mockResolvedValueOnce({ answer: 'Iterative first-order optimization.', model: 'm1' });
+        render(<Harness />);
+        await raisePill();
+        fireEvent.click(screen.getByTestId('quick-ask-pill'));
+        fireEvent.change(field(), { target: { value: 'what is this?' } });
+        fireEvent.keyDown(field(), { key: 'Enter' });
+
+        await waitFor(() => expect(insertSidenoteRefMock).toHaveBeenCalledTimes(1));
+        const [editorArg, anchorArg, payloadArg] = insertSidenoteRefMock.mock.calls[0];
+        expect(editorArg).toBe(EDITOR_SENTINEL);
+        // Anchor is the bounded selection window, mirroring what was sent to the AI.
+        expect(anchorArg).toEqual({
+            selectedText: 'gradient descent',
+            contextBefore: 'we optimize the loss with ',
+            contextAfter: ' over many epochs',
+        });
+        // Payload carries a stable md-safe refId, the question, and the frozen answer.
+        expect(payloadArg.answer).toBe('Iterative first-order optimization.');
+        expect(payloadArg.question).toBe('what is this?');
+        expect(payloadArg.refId).toEqual(expect.any(String));
+        expect(payloadArg.refId).toMatch(/^[A-Za-z0-9_-]+$/);
+    });
+
+    it('does not embed anything when the lookup fails (nothing to persist)', async () => {
+        fetchApiMock.mockRejectedValueOnce(new Error('boom'));
+        render(<Harness />);
+        await raisePill();
+        fireEvent.click(screen.getByTestId('quick-ask-pill'));
+        fireEvent.keyDown(field(), { key: 'Enter' });
+
+        await waitFor(() => expect(screen.getByTestId('quick-ask-popover-error')).toBeInTheDocument());
+        expect(insertSidenoteRefMock).not.toHaveBeenCalled();
+    });
+
+    it('forwards an undefined question for a default (empty) ask', async () => {
+        fetchApiMock.mockResolvedValueOnce({ answer: 'A.', model: 'm1' });
+        render(<Harness />);
+        await raisePill();
+        fireEvent.click(screen.getByTestId('quick-ask-pill'));
+        fireEvent.keyDown(field(), { key: 'Enter' });
+
+        await waitFor(() => expect(insertSidenoteRefMock).toHaveBeenCalledTimes(1));
+        expect(insertSidenoteRefMock.mock.calls[0][2].question).toBeUndefined();
     });
 });
 
