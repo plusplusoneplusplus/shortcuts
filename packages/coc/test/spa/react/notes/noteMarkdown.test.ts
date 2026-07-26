@@ -80,6 +80,27 @@ describe('noteMarkdown', () => {
             expect(html).toContain('const x = 1;');
         });
 
+        it('strips the trailing newline marked appends inside a code block', () => {
+            // marked emits `<pre><code>…\n</code></pre>`; Tiptap's preserveWhitespace
+            // renders that trailing newline as a phantom empty last line. It must be gone.
+            const html = markdownToHtml('```\nconst x = 1;\n```');
+            expect(html).toContain('const x = 1;</code></pre>');
+            expect(html).not.toMatch(/\n<\/code><\/pre>/);
+        });
+
+        it('preserves interior line breaks when stripping the code-block newline', () => {
+            // Only the single trailing artifact newline is removed; line breaks between
+            // code lines are left intact.
+            const html = markdownToHtml('```\nfoo\nbar\n```');
+            expect(html).toContain('foo\nbar</code></pre>');
+        });
+
+        it('strips the trailing newline on a mermaid code block too', () => {
+            const html = markdownToHtml('```mermaid\ngraph TD\nA --> B\n```');
+            expect(html).toContain('A --&gt; B</code></pre>');
+            expect(html).not.toMatch(/\n<\/code><\/pre>/);
+        });
+
         it('converts mermaid fenced block to language-mermaid code element', () => {
             const html = markdownToHtml('```mermaid\ngraph TD\nA --> B\n```');
             expect(html).toContain('<code class="language-mermaid">');

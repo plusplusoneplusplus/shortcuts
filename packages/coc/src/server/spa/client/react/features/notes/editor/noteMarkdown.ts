@@ -717,6 +717,19 @@ function stripNbspParagraphPlaceholders(html: string): string {
     return html.replace(/<p>(?:&nbsp;| )\s*<\/p>/gi, '<p></p>');
 }
 
+// marked always appends a single `\n` to fenced-code content (`<pre><code>x\n</code></pre>`).
+// Tiptap's CodeBlock parses `<pre>` with `preserveWhitespace: 'full'`, so that trailing
+// newline renders as a phantom empty last line inside every code block. Strip exactly one
+// trailing newline before the closing tags; interior line breaks are left untouched.
+// Round-trips cleanly — turndown re-fences without the newline and marked re-adds (then
+// this re-strips) the single artifact one, so re-saves stay idempotent.
+function stripCodeBlockTrailingNewline(html: string): string {
+    return html.replace(
+        /(<pre(?:\s[^>]*)?><code(?:\s[^>]*)?>[\s\S]*?)\n(<\/code><\/pre>)/g,
+        '$1$2',
+    );
+}
+
 // ── Public API ──────────────────────────────────────────────────────────────
 
 /**
@@ -732,7 +745,7 @@ export function markdownToHtml(md: string): string {
     // tokenizer, a singleton, cannot see per-call definitions).
     const { body, defs } = extractQaFootnoteDefs(md);
     const html = injectQaAnswers(marked.parse(body) as string, defs);
-    return stripNbspParagraphPlaceholders(postProcessTaskLists(html));
+    return stripCodeBlockTrailingNewline(stripNbspParagraphPlaceholders(postProcessTaskLists(html)));
 }
 
 /**
