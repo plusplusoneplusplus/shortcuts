@@ -430,6 +430,41 @@
     border: 0;
 }
 
+/* ── Paper/PDF link affordances (view-only decorations) ───────────────────── */
+
+.paper-embed-buttons {
+    display: inline-flex;
+    gap: 0.4rem;
+    margin-left: 0.35rem;
+    vertical-align: baseline;
+    user-select: none;
+}
+
+.paper-embed-btn {
+    color: #0078d4;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1.4;
+    padding: 0 0.25rem;
+    white-space: nowrap;
+}
+
+.paper-embed-btn:hover {
+    text-decoration: underline;
+}
+
+.dark .paper-embed-btn {
+    color: #3794ff;
+}
+
+/* Ephemeral inline paper viewer, rendered below the link's paragraph (AC-03). */
+.paper-embed-inline {
+    margin: 0.5rem 0;
+}
+
 /* ── Inline PDF embed shell (shared with PdfBlock node view) ──────────────── */
 
 .md-pdf-embed-shell {

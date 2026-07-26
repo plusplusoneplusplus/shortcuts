@@ -32,6 +32,7 @@ import { CommentExtension } from './extensions/commentExtension';
 import { AiEditDecorationExtension } from './extensions/AiEditDecorationExtension';
 import { YouTubeEmbedDecorationExtension } from './extensions/YouTubeEmbedDecorationExtension';
 import { YouTubePopupDialog } from './extensions/YouTubePopupDialog';
+import { PaperLinkEmbedDecorationExtension } from './extensions/PaperLinkEmbedDecorationExtension';
 import { NoteLinkExtension } from './noteLinkExtension';
 import { SidenoteRefExtension } from './extensions/sidenoteRefExtension';
 import { FilePathNodeExtension } from './filePathNodeExtension';
@@ -192,6 +193,10 @@ export function RichEditorCore({
             YouTubeEmbedDecorationExtension.configure({
                 onRequestPopup: (videoId: string) => setPopupVideoId(videoId),
             }),
+            // AC-02: paper/PDF links get view-only Open inline / Popout / New tab
+            // affordances (New tab wired here; Popout + inline render seams are
+            // filled by AC-04 / AC-03).
+            PaperLinkEmbedDecorationExtension,
             ...(commentsEnabled
                 ? [
                     CommentExtension.configure({
