@@ -40,7 +40,7 @@ export function deriveDefaultCloneDirectoryName(gitUrl: string): string {
     return lastPart.endsWith('.git') ? lastPart.slice(0, -4) : lastPart;
 }
 
-function cloneRepository(gitArgs: string[], parentDir: string): Promise<void> {
+export function cloneRepository(gitArgs: string[], parentDir: string): Promise<void> {
     return new Promise((resolve, reject) => {
         execFile(
             'git',

@@ -158,6 +158,81 @@ describe('NotesGitService', { timeout: 60_000 }, () => {
     });
 
     // ========================================================================
+    // resetFromOrigin
+    // ========================================================================
+    describe('resetFromOrigin', () => {
+        let originDir: string;
+
+        beforeEach(async () => {
+            const { execGitAsync } = await import('@plusplusoneplusplus/forge/git');
+            originDir = fs.mkdtempSync(path.join(os.tmpdir(), 'notes-git-origin-'));
+            await execGitAsync(['init', '-b', 'main'], originDir);
+            await execGitAsync(['config', 'user.email', 'origin@test.local'], originDir);
+            await execGitAsync(['config', 'user.name', 'Origin Test'], originDir);
+            fs.writeFileSync(path.join(originDir, 'from-origin.md'), '# From origin', 'utf-8');
+            fs.mkdirSync(path.join(originDir, 'sub'), { recursive: true });
+            fs.writeFileSync(path.join(originDir, 'sub', 'nested.md'), 'nested', 'utf-8');
+            await execGitAsync(['add', '-A'], originDir);
+            await execGitAsync(['commit', '-m', 'origin state'], originDir);
+        });
+
+        afterEach(() => {
+            safeRmSync(originDir);
+        });
+
+        it('wipes local notes and re-clones the origin state', async () => {
+            // Local notes start with unrelated content and no origin.
+            await service.init();
+            writeFile('local-only.md', 'this will be wiped');
+
+            await service.resetFromOrigin(originDir, 'main');
+
+            // Origin files are present; local-only file is gone.
+            expect(fs.existsSync(path.join(tmpDir, 'from-origin.md'))).toBe(true);
+            expect(fs.readFileSync(path.join(tmpDir, 'from-origin.md'), 'utf-8')).toBe('# From origin');
+            expect(fs.existsSync(path.join(tmpDir, 'sub', 'nested.md'))).toBe(true);
+            expect(fs.existsSync(path.join(tmpDir, 'local-only.md'))).toBe(false);
+        });
+
+        it('leaves the notes dir a real clone with an origin remote', async () => {
+            await service.resetFromOrigin(originDir, 'main');
+
+            expect(await service.isInitialized()).toBe(true);
+            const { execGitAsync } = await import('@plusplusoneplusplus/forge/git');
+            const remote = await execGitAsync(['remote', 'get-url', 'origin'], tmpDir);
+            expect(remote.trim()).toBe(originDir);
+        });
+
+        it('works when the notes dir does not exist yet', async () => {
+            const fresh = new NotesGitService(path.join(tmpDir, 'brand-new'));
+            await fresh.resetFromOrigin(originDir, 'main');
+            expect(fs.existsSync(path.join(tmpDir, 'brand-new', 'from-origin.md'))).toBe(true);
+        });
+
+        it('defaults to branch "main" when branch is blank', async () => {
+            await service.resetFromOrigin(originDir, '   ');
+            const { execGitAsync } = await import('@plusplusoneplusplus/forge/git');
+            const branch = await execGitAsync(['rev-parse', '--abbrev-ref', 'HEAD'], tmpDir);
+            expect(branch.trim()).toBe('main');
+        });
+
+        it('disables inherited git hooks after the re-clone', async () => {
+            await service.resetFromOrigin(originDir, 'main');
+            const { execGitAsync } = await import('@plusplusoneplusplus/forge/git');
+            const hooksPath = await execGitAsync(['config', '--get', 'core.hooksPath'], tmpDir);
+            expect(hooksPath.trim()).toBe('.git/hooks-disabled');
+        });
+
+        it('throws when the remote URL is blank', async () => {
+            await expect(service.resetFromOrigin('   ')).rejects.toThrow(/no remote URL/i);
+        });
+
+        it('throws when the branch does not exist on origin', async () => {
+            await expect(service.resetFromOrigin(originDir, 'nonexistent-branch')).rejects.toThrow();
+        });
+    });
+
+    // ========================================================================
     // getStatus
     // ========================================================================
     describe('getStatus', () => {

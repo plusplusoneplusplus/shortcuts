@@ -20,6 +20,7 @@ import type { Route } from '../../types';
 import { getRepoDataPath } from '../../paths';
 import { NotesGitService } from './notes-git-service';
 import { readRepoPreferences, writeRepoPreferences } from '../../preferences-handler';
+import { DEFAULT_AUTOCOMMIT_INTERVAL_MS } from './notes-git-timer-manager';
 import type { NotesGitTimerManager } from './notes-git-timer-manager';
 
 function getNotesRoot(dataDir: string, workspaceId: string): string {
@@ -98,6 +99,64 @@ export function registerNotesGitRoutes(
                 sendJSON(res, 200, { deinitialized: true });
             } catch (err: any) {
                 sendError(res, 500, 'Failed to disable notes git: ' + err.message);
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // POST /api/workspaces/:id/notes/git/reset-from-origin
+    // Destructive: wipes the notes directory and re-clones from the
+    // configured `notesGit.remoteUrl` at `notesGit.branch` (default `main`).
+    // The local notes become byte-for-byte the origin's state (no backup).
+    // After success, notes-git tracking stays enabled. Returns 400 when no
+    // remote URL is configured.
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/notes\/git\/reset-from-origin$/,
+        handler: async (_req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const wsId = ws.id;
+
+            const prefs = readRepoPreferences(dataDir, wsId);
+            const remoteUrl = prefs.notesGit?.remoteUrl?.trim();
+            if (!remoteUrl) {
+                return sendError(res, 400, 'No notes origin remote URL is configured');
+            }
+            const branch = prefs.notesGit?.branch?.trim() || 'main';
+
+            const notesRoot = getNotesRoot(dataDir, wsId);
+
+            try {
+                // Stop any auto-commit timer so it cannot race the wipe/re-clone.
+                if (timerManager) {
+                    timerManager.stopForWorkspace(wsId);
+                }
+
+                const service = new NotesGitService(notesRoot);
+                const result = await service.resetFromOrigin(remoteUrl, branch);
+
+                // The notes dir is now a real clone with an `origin` remote —
+                // keep tracking enabled (preserve autoCommit/remoteUrl/branch).
+                writeRepoPreferences(dataDir, wsId, {
+                    ...prefs,
+                    notesGit: {
+                        ...prefs.notesGit,
+                        enabled: true,
+                    },
+                });
+
+                // The re-clone replaced the .git dir out from under the stopped
+                // timer; restart it so auto-commit keeps running if it was on.
+                if (timerManager && prefs.notesGit?.autoCommit?.enabled) {
+                    const intervalMs = prefs.notesGit.autoCommit.intervalMs ?? DEFAULT_AUTOCOMMIT_INTERVAL_MS;
+                    timerManager.startForWorkspace(wsId, notesRoot, intervalMs);
+                }
+
+                sendJSON(res, 200, { reset: true, branch: result.branch });
+            } catch (err: any) {
+                sendError(res, 500, 'Failed to reset notes from origin: ' + err.message);
             }
         },
     });
