@@ -8,10 +8,6 @@ import {
     ConcurrencyLimiter as MRLimiter,
     CancellationError as MRCancellationError,
 } from '../../src/map-reduce';
-import {
-    ConcurrencyLimiter as WFLimiter,
-    CancellationError as WFCancellationError,
-} from '../../src/workflow/concurrency-limiter';
 
 describe('runtime/concurrency-limiter', () => {
     describe('canonical ConcurrencyLimiter', () => {
@@ -38,16 +34,8 @@ describe('runtime/concurrency-limiter', () => {
             expect(MRLimiter).toBe(ConcurrencyLimiter);
         });
 
-        it('workflow re-exports the same ConcurrencyLimiter class', () => {
-            expect(WFLimiter).toBe(ConcurrencyLimiter);
-        });
-
         it('map-reduce re-exports the same CancellationError class', () => {
             expect(MRCancellationError).toBe(CancellationError);
-        });
-
-        it('workflow re-exports the same CancellationError class', () => {
-            expect(WFCancellationError).toBe(CancellationError);
         });
     });
 
@@ -64,11 +52,6 @@ describe('runtime/concurrency-limiter', () => {
 
         it('isCancellationError() recognizes CancellationError from map-reduce re-export', () => {
             const err = new MRCancellationError();
-            expect(isCancellationError(err)).toBe(true);
-        });
-
-        it('isCancellationError() recognizes CancellationError from workflow re-export', () => {
-            const err = new WFCancellationError();
             expect(isCancellationError(err)).toBe(true);
         });
     });

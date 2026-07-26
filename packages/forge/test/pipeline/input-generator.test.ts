@@ -16,7 +16,7 @@ import {
     validateGenerateConfig,
     InputGenerationError
 } from '../../src/utils/input-generator';
-import type { GenerateInputConfig } from '../../src/workflow/pipeline-compat';
+import type { GenerateInputConfig } from '../../src/workflow';
 
 describe('Input Generator', () => {
     describe('buildGeneratePrompt', () => {
