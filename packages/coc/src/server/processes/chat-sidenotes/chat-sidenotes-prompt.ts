@@ -10,6 +10,16 @@
 const MAX_SELECTION_CHARS = 400;
 /** Max chars of surrounding context forwarded on each side. */
 const MAX_CONTEXT_CHARS = 400;
+/** Max chars of any single prior-turn question/answer forwarded to the model. */
+const MAX_HISTORY_TURN_CHARS = 2000;
+
+/** A single prior question/answer turn in a Quick Ask follow-up thread. */
+export interface SideNoteHistoryTurn {
+    /** The question asked on that turn (absent/empty for a default first-ask). */
+    question?: string;
+    /** The answer the model returned on that turn. */
+    answer: string;
+}
 
 export interface SideNotePromptInput {
     /** The selected phrase/term to explain. */
@@ -26,11 +36,35 @@ export interface SideNotePromptInput {
      * the ±context window. Assumed pre-budgeted by the caller.
      */
     paperText?: string;
+    /**
+     * Ordered prior turns of a Quick Ask follow-up thread (Goal "quick-ask
+     * follow-up", AC-01). When present, the grounding (selection/context/paper)
+     * comes first, then these prior Q/A turns, then the new `question`. Absent or
+     * empty → byte-for-byte the original one-shot prompt (no regression). Assumed
+     * already bounded by the caller (soft turn cap).
+     */
+    history?: SideNoteHistoryTurn[];
 }
 
 function truncate(text: string, max: number): string {
     const t = (text ?? '').trim();
     return t.length > max ? t.slice(0, max) + '…' : t;
+}
+
+/**
+ * Render prior follow-up turns as a compact transcript block, or `undefined`
+ * when there are none (so callers can preserve the exact one-shot prompt).
+ */
+function renderHistory(history?: SideNoteHistoryTurn[]): string | undefined {
+    if (!Array.isArray(history) || history.length === 0) {return undefined;}
+    const lines: string[] = ['Conversation so far:'];
+    for (const turn of history) {
+        const q = truncate(turn?.question ?? '', MAX_HISTORY_TURN_CHARS);
+        const a = truncate(turn?.answer ?? '', MAX_HISTORY_TURN_CHARS);
+        lines.push(`Q: ${q || '(explain the highlighted passage)'}`);
+        lines.push(`A: ${a}`);
+    }
+    return lines.join('\n');
 }
 
 /**
@@ -45,6 +79,8 @@ export function buildSideNotePrompt(input: SideNotePromptInput): string {
     const ask = input.question?.trim()
         ? input.question.trim()
         : `Briefly explain "${selection}" in 1-3 sentences.`;
+
+    const historyBlock = renderHistory(input.history);
 
     // Whole-paper grounding path (Goal 3, AC-04): the model reads the full paper
     // text, not just the ±context window, so it can answer questions the local
@@ -61,6 +97,7 @@ export function buildSideNotePrompt(input: SideNotePromptInput): string {
             '',
             'Full paper text:',
             paperText,
+            ...(historyBlock ? ['', historyBlock] : []),
             '',
             `Question: ${ask}`,
         ].join('\n');
@@ -72,6 +109,7 @@ export function buildSideNotePrompt(input: SideNotePromptInput): string {
         '',
         'Surrounding passage (the highlighted phrase is wrapped in ⟦ ⟧):',
         snippet,
+        ...(historyBlock ? ['', historyBlock] : []),
         '',
         `Question: ${ask}`,
     ].join('\n');

@@ -136,6 +136,88 @@ describe('quick-ask answer route', () => {
         expect(s.lastPrompt()).toContain('Why is this bandwidth-optimal?');
     });
 
+    describe('follow-up conversation history (AC-01)', () => {
+        it('threads prior turns into the prompt', async () => {
+            const s = await startServer({});
+            servers.push(s);
+            const r = await req(s.baseUrl, 'POST', answerPath, {
+                ...validBody,
+                question: 'Give a concrete example.',
+                history: [
+                    { question: 'What is it?', answer: 'A collective reduction algorithm.' },
+                    { question: 'Why bandwidth-optimal?', answer: 'Each node sends 2(N-1)/N of the data.' },
+                ],
+            });
+            expect(r.status).toBe(200);
+            const prompt = s.lastPrompt() ?? '';
+            expect(prompt).toContain('Conversation so far:');
+            expect(prompt).toContain('Q: What is it?');
+            expect(prompt).toContain('A: A collective reduction algorithm.');
+            expect(prompt).toContain('Q: Why bandwidth-optimal?');
+            expect(prompt).toContain('A: Each node sends 2(N-1)/N of the data.');
+            // The new question is still the trailing ask.
+            expect(prompt).toContain('Give a concrete example.');
+            // Original grounding is preserved.
+            expect(prompt).toContain('⟦ring-allreduce⟧');
+        });
+
+        it('is byte-for-byte the one-shot prompt when history is absent or empty', async () => {
+            const noHistory = await startServer({});
+            servers.push(noHistory);
+            await req(noHistory.baseUrl, 'POST', answerPath, { ...validBody, question: 'Explain.' });
+            const baseline = noHistory.lastPrompt();
+
+            const emptyHistory = await startServer({});
+            servers.push(emptyHistory);
+            await req(emptyHistory.baseUrl, 'POST', answerPath, { ...validBody, question: 'Explain.', history: [] });
+            expect(emptyHistory.lastPrompt()).toBe(baseline);
+            expect(baseline).not.toContain('Conversation so far:');
+        });
+
+        it('ignores malformed history (not an array, or answerless entries)', async () => {
+            const notArray = await startServer({});
+            servers.push(notArray);
+            const baselineServer = await startServer({});
+            servers.push(baselineServer);
+            await req(baselineServer.baseUrl, 'POST', answerPath, { ...validBody, question: 'Explain.' });
+            const baseline = baselineServer.lastPrompt();
+
+            const r = await req(notArray.baseUrl, 'POST', answerPath, {
+                ...validBody,
+                question: 'Explain.',
+                history: 'not-an-array',
+            });
+            expect(r.status).toBe(200);
+            expect(notArray.lastPrompt()).toBe(baseline);
+
+            // An array of answerless/garbage entries is dropped entirely.
+            const garbage = await startServer({});
+            servers.push(garbage);
+            await req(garbage.baseUrl, 'POST', answerPath, {
+                ...validBody,
+                question: 'Explain.',
+                history: [{ question: 'q only' }, null, 42, { answer: '   ' }],
+            });
+            expect(garbage.lastPrompt()).toBe(baseline);
+        });
+
+        it('bounds an oversized history to the most recent turns', async () => {
+            const s = await startServer({});
+            servers.push(s);
+            const history = Array.from({ length: 15 }, (_, i) => ({
+                question: `q${i}`,
+                answer: `a${i}`,
+            }));
+            await req(s.baseUrl, 'POST', answerPath, { ...validBody, question: 'next', history });
+            const prompt = s.lastPrompt() ?? '';
+            // Oldest turns dropped (only the last 10 kept), newest retained.
+            expect(prompt).not.toContain('Q: q0');
+            expect(prompt).not.toContain('Q: q4');
+            expect(prompt).toContain('Q: q5');
+            expect(prompt).toContain('Q: q14');
+        });
+    });
+
     it('maps AI unavailability to 503 and failure to 502', async () => {
         const unavailable = await startServer({
             invokeAI: async () => ({ success: false, error: 'AI service unavailable', unavailable: true }),
