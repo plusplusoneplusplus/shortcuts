@@ -414,7 +414,9 @@ export interface ISDKService {
      * Copilot resumes the session and calls
      * `rpc.history.compact({ customInstructions })`, mapping the outcome to
      * {@link CompactResult}. `customInstructions` (when non-empty) focuses the
-     * summary. Providers that cannot compact history (Claude, Codex) throw
+     * summary; Codex compacts over its app-server (`thread/compact/start`) but
+     * ignores `customInstructions`, since the protocol carries only a thread id.
+     * Providers that cannot compact history (OpenCode) throw
      * {@link CompactUnsupportedError}; the backend maps that to a user-facing
      * "compaction unsupported" error. A missing/unresumable session surfaces as a
      * thrown error — the implementation never silently creates a new empty

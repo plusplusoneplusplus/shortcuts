@@ -85,6 +85,22 @@ const runtimeRequire = createRequire(__filename);
 const CODEX_LLM_TOOLS_TIMEOUT_SEC = 31_536_000;
 const CODEX_DIFF_TIMEOUT_MS = 5000;
 
+/**
+ * Compaction runs a real model summarization turn on the app-server, so it needs
+ * a far longer budget than the 10s quota RPC. Override with a positive numeric
+ * `COC_CODEX_COMPACT_TIMEOUT_MS` (used by tests to exercise the timeout path
+ * deterministically); mirrors the `COC_CLAUDE_CONTEXT_USAGE_TIMEOUT_MS` seam.
+ */
+const CODEX_COMPACT_TIMEOUT_MS = 120_000;
+function resolveCodexCompactTimeoutMs(): number {
+    const raw = process.env.COC_CODEX_COMPACT_TIMEOUT_MS;
+    if (raw !== undefined && raw.trim() !== '') {
+        const parsed = Number(raw);
+        if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
+    return CODEX_COMPACT_TIMEOUT_MS;
+}
+
 // ============================================================================
 // Auth checker injection (AC-08)
 // ============================================================================
@@ -586,6 +602,35 @@ interface CodexRateLimitsResult {
     rateLimitsByLimitId?: Record<string, CodexRateLimitEntry>;
 }
 
+/** A single JSON-RPC frame received from `codex app-server` over stdio. */
+interface CodexAppServerRpcMessage {
+    id?: number;
+    method?: string;
+    params?: unknown;
+    result?: unknown;
+    error?: { code?: number; message?: string };
+}
+
+/**
+ * `thread/tokenUsage/updated` notification params. The app-server emits this
+ * during a turn (including the compaction turn); `tokenUsage.total` is the
+ * post-turn total we diff against the pre-compaction baseline.
+ */
+interface CodexTokenUsageUpdatedParams {
+    threadId?: string;
+    turnId?: string;
+    tokenUsage?: { last?: number; total?: number; modelContextWindow?: number };
+}
+
+/**
+ * `thread/compacted` notification params (deprecated upstream in favor of a
+ * `context_compaction` `item/completed`, but still emitted by 0.144.4).
+ */
+interface CodexThreadCompactedParams {
+    threadId?: string;
+    turnId?: string;
+}
+
 // ============================================================================
 // Internal active-session record
 // ============================================================================
@@ -928,9 +973,29 @@ export class CodexSDKService implements ISDKService {
         return this.readRateLimitsViaStdioAppServer();
     }
 
-    /** Spawn `codex app-server --listen stdio://`, send RPC messages, and return rate limits. */
-    private readRateLimitsViaStdioAppServer(): Promise<CodexRateLimitsResult> {
-        return new Promise<CodexRateLimitsResult>((resolve, reject) => {
+    /**
+     * Spawn `codex app-server --listen stdio://`, run a JSON-RPC exchange over
+     * its stdio, and settle with the caller's result. Shared by the quota and
+     * compaction paths: it owns spawn (via {@link resolveCodexSpawn}), stderr
+     * capture, readline framing, the JSON-RPC 2.0 envelope, timeout, and
+     * cleanup, while `run` drives the provider-specific message flow.
+     *
+     * `resolve`/`reject` handed to `run` clear the timer and tear down the child
+     * before settling, so a single call site settles the promise exactly once.
+     */
+    private runAppServerRpc<T>(opts: {
+        timeoutMessage: string;
+        timeoutMs: number;
+        /** Build the "exited before finishing" error from the exit code + captured stderr. */
+        buildExitError: (code: number | null, stderr: string) => Error;
+        run: (ctx: {
+            send: (msg: Record<string, unknown>) => void;
+            onLine: (handler: (msg: CodexAppServerRpcMessage) => void) => void;
+            resolve: (value: T) => void;
+            reject: (error: Error) => void;
+        }) => void;
+    }): Promise<T> {
+        return new Promise<T>((resolve, reject) => {
             const { command, prefixArgs } = this.resolveCodexSpawn();
             const child = spawn(command, [...prefixArgs, 'app-server', '--listen', 'stdio://'], {
                 stdio: ['pipe', 'pipe', 'pipe'],
@@ -939,7 +1004,7 @@ export class CodexSDKService implements ISDKService {
 
             // Capture stderr so a packaged-desktop launch failure (wrong runtime,
             // an `app.asar` path, missing auth) surfaces its real reason instead
-            // of a bare "exited before returning rate limits".
+            // of a bare "exited before finishing" message.
             let stderr = '';
             child.stderr?.on('data', (chunk: Buffer | string) => {
                 if (stderr.length < 8192) stderr += chunk.toString();
@@ -957,8 +1022,19 @@ export class CodexSDKService implements ISDKService {
 
             const timer = setTimeout(() => {
                 cleanup();
-                reject(new Error('Codex app-server stdio RPC timed out'));
-            }, 10_000);
+                reject(new Error(opts.timeoutMessage));
+            }, opts.timeoutMs);
+
+            const settleResolve = (value: T) => {
+                clearTimeout(timer);
+                cleanup();
+                resolve(value);
+            };
+            const settleReject = (error: Error) => {
+                clearTimeout(timer);
+                cleanup();
+                reject(error);
+            };
 
             child.on('error', (err) => {
                 clearTimeout(timer);
@@ -970,32 +1046,19 @@ export class CodexSDKService implements ISDKService {
                 clearTimeout(timer);
                 if (!settled) {
                     settled = true;
-                    const detail = stderr.trim();
-                    reject(new Error(
-                        'Codex app-server stdio exited before returning rate limits'
-                        + (code != null ? ` (exit code ${code})` : '')
-                        + (detail ? `: ${detail.slice(0, 500)}` : ''),
-                    ));
+                    reject(opts.buildExitError(code ?? null, stderr.trim()));
                 }
             });
 
+            const lineHandlers: Array<(msg: CodexAppServerRpcMessage) => void> = [];
             rl.on('line', (line) => {
+                let msg: CodexAppServerRpcMessage;
                 try {
-                    const msg = JSON.parse(line) as { id?: number; result?: unknown; error?: { message?: string } };
-                    // Wait for the rateLimits response (id: 2)
-                    if (msg.id === 2) {
-                        clearTimeout(timer);
-                        if (msg.error) {
-                            cleanup();
-                            reject(new Error(msg.error.message ?? 'Codex RPC error'));
-                        } else {
-                            cleanup();
-                            resolve(msg.result as CodexRateLimitsResult);
-                        }
-                    }
+                    msg = JSON.parse(line) as CodexAppServerRpcMessage;
                 } catch {
-                    // Ignore non-JSON lines
+                    return; // Ignore non-JSON lines
                 }
+                for (const handler of lineHandlers) handler(msg);
             });
 
             // Every message carries the JSON-RPC 2.0 envelope so the daemon
@@ -1003,16 +1066,46 @@ export class CodexSDKService implements ISDKService {
             const send = (msg: Record<string, unknown>) => {
                 child.stdin!.write(JSON.stringify({ jsonrpc: '2.0', ...msg }) + '\n');
             };
+            const onLine = (handler: (msg: CodexAppServerRpcMessage) => void) => {
+                lineHandlers.push(handler);
+            };
 
-            send({
-                method: 'initialize',
-                id: 0,
-                params: {
-                    clientInfo: { name: 'coc', title: 'Copilot of Copilot', version: '0.1.0' },
-                },
-            });
-            send({ method: 'initialized', params: {} });
-            send({ method: 'account/rateLimits/read', id: 2, params: {} });
+            opts.run({ send, onLine, resolve: settleResolve, reject: settleReject });
+        });
+    }
+
+    /** Spawn `codex app-server --listen stdio://`, send RPC messages, and return rate limits. */
+    private readRateLimitsViaStdioAppServer(): Promise<CodexRateLimitsResult> {
+        return this.runAppServerRpc<CodexRateLimitsResult>({
+            timeoutMessage: 'Codex app-server stdio RPC timed out',
+            timeoutMs: 10_000,
+            buildExitError: (code, stderr) => new Error(
+                'Codex app-server stdio exited before returning rate limits'
+                + (code != null ? ` (exit code ${code})` : '')
+                + (stderr ? `: ${stderr.slice(0, 500)}` : ''),
+            ),
+            run: ({ send, onLine, resolve, reject }) => {
+                onLine((msg) => {
+                    // Wait for the rateLimits response (id: 2)
+                    if (msg.id === 2) {
+                        if (msg.error) {
+                            reject(new Error(msg.error.message ?? 'Codex RPC error'));
+                        } else {
+                            resolve(msg.result as CodexRateLimitsResult);
+                        }
+                    }
+                });
+
+                send({
+                    method: 'initialize',
+                    id: 0,
+                    params: {
+                        clientInfo: { name: 'coc', title: 'Copilot of Copilot', version: '0.1.0' },
+                    },
+                });
+                send({ method: 'initialized', params: {} });
+                send({ method: 'account/rateLimits/read', id: 2, params: {} });
+            },
         });
     }
 
@@ -1944,13 +2037,131 @@ export class CodexSDKService implements ISDKService {
     }
 
     /**
-     * History compaction is not supported by the Codex SDK (AC-03). Throws the
-     * typed {@link CompactUnsupportedError} so the backend can surface a
-     * "compaction unsupported" rejection to the user, mirroring
-     * {@link rewindSession}.
+     * Compact (summarize) a Codex thread's history in place.
+     *
+     * The high-level `@openai/codex-sdk` has no compact API, so this drives the
+     * `codex app-server` JSON-RPC protocol (the same stdio channel the quota path
+     * uses): `thread/read` to baseline token usage, then `thread/compact/start`,
+     * which rewrites the rollout under the same thread id and runs a model
+     * summarization turn asynchronously. Completion arrives as a
+     * `thread/compacted` notification (or a forward-compatible
+     * `context_compaction` `item/completed`); `thread/tokenUsage/updated` frames
+     * give the post-compaction total we diff for `tokensRemoved`.
+     *
+     * Because the rewrite keeps the thread id, CoC's `resumeThread(sessionId)`
+     * follow-ups automatically carry the compacted history — no session remap.
+     *
+     * `customInstructions` is **ignored** for Codex: the protocol's
+     * `ThreadCompactStartParams` carries only `threadId`, with no field to focus
+     * the summary. A supplied instruction is logged as a warning rather than
+     * failing the whole compaction, since a plain compact is still valuable.
+     *
+     * Throws {@link CompactUnsupportedError} when the bundled CLI predates the
+     * `thread/compact/start` method (JSON-RPC `-32601`), matching the capability
+     * gate the backend already understands.
      */
-    public async compactSession(_sessionId: string, _customInstructions?: string): Promise<CompactResult> {
-        throw new CompactUnsupportedError(CODEX_PROVIDER);
+    public async compactSession(sessionId: string, customInstructions?: string): Promise<CompactResult> {
+        if (this.disposed) throw new Error('CodexSDKService has been disposed');
+
+        const avail = await this.isAvailable();
+        if (!avail.available) throw new Error(avail.error ?? 'Codex SDK is not available');
+
+        if (customInstructions && customInstructions.trim() !== '') {
+            getSDKLogger().warn(
+                { provider: CODEX_PROVIDER, sessionId },
+                'Codex compaction ignores customInstructions (thread/compact/start accepts threadId only)',
+            );
+        }
+
+        const timeoutMs = resolveCodexCompactTimeoutMs();
+
+        return this.runAppServerRpc<CompactResult>({
+            timeoutMessage: `Codex app-server stdio compaction timed out after ${timeoutMs}ms`,
+            timeoutMs,
+            buildExitError: (code, stderr) => new Error(
+                'Codex app-server stdio exited before completing compaction'
+                + (code != null ? ` (exit code ${code})` : '')
+                + (stderr ? `: ${stderr.slice(0, 500)}` : ''),
+            ),
+            run: ({ send, onLine, resolve, reject }) => {
+                let preTotal: number | undefined;
+                let latestTotal: number | undefined;
+
+                const settleSuccess = () => {
+                    const tokensRemoved = preTotal != null && latestTotal != null
+                        ? Math.max(0, preTotal - latestTotal)
+                        : 0;
+                    // messagesRemoved is not derivable from the app-server frames
+                    // (same convention as Claude, which also reports 0); the
+                    // summary text lives in the rewritten rollout and the display
+                    // turn only consumes the two counters, so omit summaryContent.
+                    resolve({ success: true, tokensRemoved, messagesRemoved: 0 });
+                };
+
+                onLine((msg) => {
+                    // thread/read response (id 1): baseline usage, then compact.
+                    if (msg.id === 1) {
+                        if (msg.error) {
+                            reject(new Error(
+                                `Codex thread/read failed for thread ${sessionId}: `
+                                + (msg.error.message ?? 'unknown error'),
+                            ));
+                            return;
+                        }
+                        preTotal = readCodexUsageTotal(msg.result);
+                        send({ method: 'thread/compact/start', id: 2, params: { threadId: sessionId } });
+                        return;
+                    }
+
+                    // thread/compact/start ack (id 2): only errors matter — the
+                    // ack itself is an empty object; completion is a notification.
+                    if (msg.id === 2 && msg.error) {
+                        if (msg.error.code === -32601) {
+                            reject(new CompactUnsupportedError(CODEX_PROVIDER));
+                        } else {
+                            reject(new Error(msg.error.message ?? 'Codex compaction RPC error'));
+                        }
+                        return;
+                    }
+
+                    // Track the newest token total for this thread as the turn runs.
+                    if (msg.method === 'thread/tokenUsage/updated') {
+                        const params = msg.params as CodexTokenUsageUpdatedParams | undefined;
+                        if (params?.threadId === sessionId && typeof params.tokenUsage?.total === 'number') {
+                            latestTotal = params.tokenUsage.total;
+                        }
+                        return;
+                    }
+
+                    // Completion — primary (deprecated) notification.
+                    if (msg.method === 'thread/compacted') {
+                        const params = msg.params as CodexThreadCompactedParams | undefined;
+                        if (params?.threadId === sessionId) settleSuccess();
+                        return;
+                    }
+
+                    // Completion — forward-compatible `context_compaction` item, so
+                    // a future codex bump that drops thread/compacted still settles.
+                    if (msg.method === 'item/completed') {
+                        const params = msg.params as { threadId?: string; item?: { type?: string; item_type?: string } } | undefined;
+                        const itemType = params?.item?.type ?? params?.item?.item_type;
+                        if (itemType === 'context_compaction' && (params?.threadId ?? sessionId) === sessionId) {
+                            settleSuccess();
+                        }
+                    }
+                });
+
+                send({
+                    method: 'initialize',
+                    id: 0,
+                    params: {
+                        clientInfo: { name: 'coc', title: 'Copilot of Copilot', version: '0.1.0' },
+                    },
+                });
+                send({ method: 'initialized', params: {} });
+                send({ method: 'thread/read', id: 1, params: { threadId: sessionId } });
+            },
+        });
     }
 
     public async abortSession(sessionId: string): Promise<boolean> {
@@ -2005,6 +2216,27 @@ export class CodexSDKService implements ISDKService {
 // ============================================================================
 // Mapping helpers (testable without spawning a process)
 // ============================================================================
+
+/**
+ * Extract a total-token count from an app-server `thread/read` result (or any
+ * frame carrying a `tokenUsage`/`usage` object). Returns `undefined` when no
+ * usable number is present, so the compaction baseline falls back to 0 rather
+ * than a fabricated figure. Accepts either a numeric `total` (the
+ * `thread/tokenUsage/updated` shape) or an object exposing `total_tokens`.
+ */
+function readCodexUsageTotal(result: unknown): number | undefined {
+    if (!result || typeof result !== 'object') return undefined;
+    const usage = (result as { tokenUsage?: unknown; usage?: unknown }).tokenUsage
+        ?? (result as { tokenUsage?: unknown; usage?: unknown }).usage
+        ?? result;
+    if (!usage || typeof usage !== 'object') return undefined;
+    const total = (usage as { total?: unknown }).total;
+    if (typeof total === 'number') return total;
+    if (total && typeof total === 'object' && typeof (total as { total_tokens?: unknown }).total_tokens === 'number') {
+        return (total as { total_tokens: number }).total_tokens;
+    }
+    return undefined;
+}
 
 function emptyCodexTokenUsage(): TokenUsage {
     return {
