@@ -20,6 +20,14 @@ export interface NotesGitConfig {
     enabled: boolean;
     /** Auto-commit scheduling settings. */
     autoCommit?: NotesGitAutoCommitConfig;
+    /**
+     * GitHub remote URL used by the destructive "Reset from origin" action.
+     * When set, the notes dir can be wiped and re-cloned from this origin.
+     * Empty/unset disables the reset action.
+     */
+    remoteUrl?: string;
+    /** Branch to reset from; defaults to `main` at reset time when unset/blank. */
+    branch?: string;
 }
 
 // ── API response types ──────────────────────────────────────────────

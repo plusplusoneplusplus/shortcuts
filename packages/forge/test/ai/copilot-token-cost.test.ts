@@ -11,6 +11,30 @@ describe('Copilot token cost pricing', () => {
         expect(getCopilotModelPricing('GPT-5.5')?.modelId).toBe('gpt-5.5');
         expect(getCopilotModelPricing('Claude Sonnet 4.6')?.modelId).toBe('claude-sonnet-4.6');
         expect(getCopilotModelPricing('CLAUDE-OPUS-4.8')?.modelId).toBe('claude-opus-4.8');
+        expect(getCopilotModelPricing('Claude Opus 5')?.modelId).toBe('claude-opus-5');
+    });
+
+    it('prices Claude Opus 5 and its reasoning-suffixed IDs', () => {
+        expect(getCopilotModelPricing('claude-opus-5-xhigh')?.modelId).toBe('claude-opus-5');
+        expect(getCopilotModelPricing('claude-opus-5')).toMatchObject({
+            modelId: 'claude-opus-5',
+            displayName: 'Claude Opus 5',
+            provider: 'anthropic',
+            category: 'Powerful',
+            usdPerMillionInputTokens: 5,
+            usdPerMillionCachedInputTokens: 0.5,
+            usdPerMillionCacheWriteTokens: 6.25,
+            usdPerMillionOutputTokens: 25,
+        });
+
+        const cost = estimateCopilotTokenCost('claude-opus-5', {
+            inputTokens: 1_000_000,
+            outputTokens: 1_000_000,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+        });
+        expect(cost).toBeDefined();
+        expect(cost!.totalUsd).toBeCloseTo(30);
     });
 
     it('maps dated and suffixed Codex IDs onto existing pricing entries', () => {

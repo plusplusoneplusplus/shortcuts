@@ -48,6 +48,9 @@ async function renderSection(opts: {
     initializeGit?: ReturnType<typeof vi.fn>;
     deinitGit?: ReturnType<typeof vi.fn>;
     notesRoot?: string | null;
+    notesGit?: Record<string, unknown> | null;
+    getWorkspacePreferences?: ReturnType<typeof vi.fn>;
+    patchWorkspacePreferences?: ReturnType<typeof vi.fn>;
 }) {
     const {
         gitInitialized = true,
@@ -55,6 +58,9 @@ async function renderSection(opts: {
         initializeGit = vi.fn().mockResolvedValue({ initialized: true }),
         deinitGit = vi.fn().mockResolvedValue({ deinitialized: true }),
         notesRoot = '/home/user/notes',
+        notesGit = null,
+        getWorkspacePreferences = vi.fn().mockResolvedValue(notesGit ? { notesGit } : {}),
+        patchWorkspacePreferences = vi.fn().mockResolvedValue(undefined),
     } = opts;
 
     const mockHook = mockAutoCommitHook(autoCommit);
@@ -72,6 +78,11 @@ async function renderSection(opts: {
         },
     }));
 
+    vi.doMock('../../../../src/server/spa/client/react/hooks/preferences/preferencesApi', () => ({
+        getWorkspacePreferences,
+        patchWorkspacePreferences,
+    }));
+
     const { NotesSettingsSection } = await import(
         '../../../../src/server/spa/client/react/features/repo-settings/NotesSettingsSection'
     );
@@ -83,7 +94,7 @@ async function renderSection(opts: {
         expect(screen.queryByTestId('notes-settings-loading')).toBeNull();
     });
 
-    return { result, mockHook, initializeGit, deinitGit };
+    return { result, mockHook, initializeGit, deinitGit, getWorkspacePreferences, patchWorkspacePreferences };
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -113,6 +124,10 @@ describe('NotesSettingsSection', () => {
                 getGitStatus: vi.fn().mockResolvedValue({ initialized: true }),
                 getTree: vi.fn().mockResolvedValue({ tree: [], notesRoot: '/home/user/notes' }),
             },
+        }));
+        vi.doMock('../../../../src/server/spa/client/react/hooks/preferences/preferencesApi', () => ({
+            getWorkspacePreferences: vi.fn().mockResolvedValue({}),
+            patchWorkspacePreferences: vi.fn().mockResolvedValue(undefined),
         }));
         const { NotesSettingsSection } = await import(
             '../../../../src/server/spa/client/react/features/repo-settings/NotesSettingsSection'
@@ -387,6 +402,10 @@ describe('NotesSettingsSection', () => {
                 deinitGit: vi.fn(),
             },
         }));
+        vi.doMock('../../../../src/server/spa/client/react/hooks/preferences/preferencesApi', () => ({
+            getWorkspacePreferences: vi.fn().mockResolvedValue({}),
+            patchWorkspacePreferences: vi.fn().mockResolvedValue(undefined),
+        }));
         const { NotesSettingsSection } = await import(
             '../../../../src/server/spa/client/react/features/repo-settings/NotesSettingsSection'
         );
@@ -395,6 +414,104 @@ describe('NotesSettingsSection', () => {
             expect(screen.queryByTestId('notes-settings-loading')).toBeNull();
         });
         expect(screen.queryByTestId('notes-absolute-path')).toBeNull();
+    });
+
+    it('renders origin remote-url and branch inputs', async () => {
+        await renderSection({ gitInitialized: true });
+        expect(screen.getByTestId('section-notes-origin')).toBeTruthy();
+        expect(screen.getByTestId('notes-origin-remote-url')).toBeTruthy();
+        expect(screen.getByTestId('notes-origin-branch')).toBeTruthy();
+    });
+
+    it('loads persisted remoteUrl and branch into the inputs', async () => {
+        await renderSection({
+            gitInitialized: true,
+            notesGit: { enabled: true, remoteUrl: 'https://github.com/o/r.git', branch: 'dev' },
+        });
+        const url = screen.getByTestId('notes-origin-remote-url') as HTMLInputElement;
+        const branch = screen.getByTestId('notes-origin-branch') as HTMLInputElement;
+        await waitFor(() => expect(url.value).toBe('https://github.com/o/r.git'));
+        expect(branch.value).toBe('dev');
+    });
+
+    it('saves origin as a full notesGit block preserving enabled + autoCommit on blur', async () => {
+        const patchWorkspacePreferences = vi.fn().mockResolvedValue(undefined);
+        await renderSection({
+            gitInitialized: true,
+            notesGit: { enabled: true, autoCommit: { enabled: true, intervalMs: 300_000 } },
+            patchWorkspacePreferences,
+        });
+
+        const url = screen.getByTestId('notes-origin-remote-url') as HTMLInputElement;
+        await act(async () => {
+            fireEvent.change(url, { target: { value: 'https://github.com/o/r.git' } });
+            fireEvent.blur(url);
+        });
+
+        await waitFor(() => {
+            expect(patchWorkspacePreferences).toHaveBeenCalledWith('ws-1', {
+                notesGit: {
+                    enabled: true,
+                    autoCommit: { enabled: true, intervalMs: 300_000 },
+                    remoteUrl: 'https://github.com/o/r.git',
+                    branch: undefined,
+                },
+            });
+        });
+    });
+
+    it('does not patch when the origin value is unchanged on blur', async () => {
+        const patchWorkspacePreferences = vi.fn().mockResolvedValue(undefined);
+        await renderSection({
+            gitInitialized: true,
+            notesGit: { enabled: true, remoteUrl: 'https://github.com/o/r.git' },
+            patchWorkspacePreferences,
+        });
+
+        const url = screen.getByTestId('notes-origin-remote-url') as HTMLInputElement;
+        await waitFor(() => expect(url.value).toBe('https://github.com/o/r.git'));
+        await act(async () => {
+            fireEvent.blur(url);
+        });
+
+        expect(patchWorkspacePreferences).not.toHaveBeenCalled();
+    });
+
+    it('clears remoteUrl to undefined when blanked', async () => {
+        const patchWorkspacePreferences = vi.fn().mockResolvedValue(undefined);
+        await renderSection({
+            gitInitialized: true,
+            notesGit: { enabled: false, remoteUrl: 'https://github.com/o/r.git', branch: 'main' },
+            patchWorkspacePreferences,
+        });
+
+        const url = screen.getByTestId('notes-origin-remote-url') as HTMLInputElement;
+        await waitFor(() => expect(url.value).toBe('https://github.com/o/r.git'));
+        await act(async () => {
+            fireEvent.change(url, { target: { value: '' } });
+            fireEvent.blur(url);
+        });
+
+        await waitFor(() => {
+            expect(patchWorkspacePreferences).toHaveBeenCalledWith('ws-1', {
+                notesGit: { enabled: false, remoteUrl: undefined, branch: 'main' },
+            });
+        });
+    });
+
+    it('shows error toast when saving origin fails', async () => {
+        const patchWorkspacePreferences = vi.fn().mockRejectedValue(new Error('boom-origin'));
+        await renderSection({ gitInitialized: true, patchWorkspacePreferences });
+
+        const url = screen.getByTestId('notes-origin-remote-url') as HTMLInputElement;
+        await act(async () => {
+            fireEvent.change(url, { target: { value: 'https://github.com/o/r.git' } });
+            fireEvent.blur(url);
+        });
+
+        await waitFor(() => {
+            expect(mockAddToast).toHaveBeenCalledWith('boom-origin', 'error');
+        });
     });
 
     it('shows error toast when deinit fails', async () => {

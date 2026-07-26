@@ -23,6 +23,8 @@ import { wordDiff } from './noteEditDiff';
 import type { DiffChunk } from './noteEditDiff';
 import type { AiEditRegion } from './extensions/AiEditDecorationExtension';
 import { isLikelyArxivUrl } from './extensions/arxivPaste';
+import type { PaperLinkInfo } from './extensions/paperLink';
+import type { PdfPopupTarget } from './extensions/PdfPopupDialog';
 import { AIEditNavigator } from './AIEditNavigator';
 import type { TocEntry } from './noteTocUtils';
 import { extractHeadings } from './noteTocUtils';
@@ -437,6 +439,36 @@ export function NoteEditor({
         setTocEntries(extractHeadings(ed));
         scheduleSave(ed);
     }, []);
+
+    // paper-link-embed (AC-03/AC-04): resolve a decorated paper link to a
+    // pdf.js-loadable target. arXiv links are ingested + cached server-side
+    // (`.papers/<id>.pdf`, served same-origin so pdf.js can load them and the
+    // text layer stays selectable); a direct `.pdf` URL is rendered as-is (pdf.js
+    // falls back to an iframe when it cannot load a cross-origin document). Reads
+    // workspace/note context through refs so the latest note is always the ingest
+    // target. Stable (`[]` deps) so the viewers' resolve effects do not refire.
+    const resolvePaperSource = useCallback(
+        async (info: PaperLinkInfo): Promise<PdfPopupTarget> => {
+            if (info.kind === 'arxiv' && ioRef.current.ingestPaper && notePathRef.current) {
+                const result = await ioRef.current.ingestPaper(
+                    workspaceIdRef.current,
+                    info.href,
+                    rootRef.current,
+                );
+                const url = ioRef.current.imageApiUrl(
+                    workspaceIdRef.current,
+                    result.pdfPath,
+                    rootRef.current,
+                );
+                return { url, label: result.arxivId || info.arxiv?.arxivId || 'Paper' };
+            }
+            // Direct `.pdf` (or arXiv without an ingest-capable host): render the
+            // source URL directly — pdf.js loads same-origin PDFs and falls back to
+            // an iframe otherwise.
+            return { url: info.href, label: info.arxiv?.arxivId || info.href };
+        },
+        [],
+    );
 
     const handlePaste = useCallback((view: any, event: ClipboardEvent) => {
         // Paste of a lone arXiv URL → fetch + cache the PDF locally and embed the
@@ -1387,6 +1419,7 @@ export function NoteEditor({
                                 notePath={notePath}
                                 noteRoot={root}
                                 onChatAboutPaper={onChatAboutPaper}
+                                resolvePaperSource={resolvePaperSource}
                             />
                             <input
                                 ref={pdfInputRef}

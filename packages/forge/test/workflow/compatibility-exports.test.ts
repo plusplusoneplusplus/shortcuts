@@ -10,6 +10,12 @@ import type {
     WorkflowResult,
 } from '../../src';
 
+// Forge no longer hosts a workflow implementation; `@plusplusoneplusplus/forge/workflow`
+// is a compatibility barrel that re-exports `@plusplusoneplusplus/coc-workflow/workflow`.
+// These tests characterise Forge's PUBLIC surface: every export Forge advertises must be
+// reference-identical to the canonical implementation, so coc-workflow's own suites
+// transitively characterise what Forge ships.
+
 describe('Forge workflow compatibility exports', () => {
     it('delegates root workflow functions to coc-workflow', () => {
         expect(forgeRoot.compileToWorkflow).toBe(workflowPackage.compileToWorkflow);
@@ -28,6 +34,46 @@ describe('Forge workflow compatibility exports', () => {
         expect(forgeWorkflow.executeMap).toBe(workflowPackage.executeMap);
         expect(forgeWorkflow.ConcurrencyLimiter).toBe(workflowPackage.ConcurrencyLimiter);
     });
+
+    // Every named export the @forge/workflow barrel advertises must be the SAME binding as
+    // the canonical package. If a re-export ever drops or shadows one, one of these fails.
+    const SHARED_EXPORTS = [
+        // Type guards
+        'isLoadNode', 'isScriptNode', 'isFilterNode', 'isMapNode', 'isReduceNode',
+        'isMergeNode', 'isTransformNode', 'isAINode', 'isNodeConfig',
+        // Legacy pipeline guards
+        'isCSVSource', 'isGenerateConfig',
+        // Graph
+        'buildGraph', 'detectCycle',
+        // Validator
+        'validate', 'WorkflowValidationError',
+        // Scheduler
+        'schedule', 'getExecutionOrder', 'getTierIndex',
+        // Executor
+        'executeWorkflow',
+        // Node executors
+        'executeLoad', 'executeScript', 'executeFilter', 'evaluateRule', 'evaluateFieldRule',
+        'executeMap', 'executeReduce', 'executeAI', 'executeMerge', 'executeTransform',
+        // Concurrency limiter
+        'ConcurrencyLimiter', 'CancellationError', 'DEFAULT_MAX_CONCURRENCY',
+        // Cancellation
+        'WorkflowCancellationError', 'isWorkflowCancelled', 'throwIfWorkflowCancelled',
+        'isWorkflowCancellationError',
+        // Compiler
+        'compileToWorkflow', 'compileToWorkflowFromObject', 'detectFormat', 'CompilerError',
+        // Result adapter
+        'flattenWorkflowResult',
+    ] as const;
+
+    it.each(SHARED_EXPORTS)(
+        '@forge/workflow re-exports %s reference-identical to coc-workflow',
+        (name) => {
+            const forgeExport = (forgeWorkflow as Record<string, unknown>)[name];
+            const canonicalExport = (workflowPackage as Record<string, unknown>)[name];
+            expect(canonicalExport).toBeDefined();
+            expect(forgeExport).toBe(canonicalExport);
+        },
+    );
 
     it('keeps workflow and legacy pipeline compatibility types available from Forge', () => {
         const pipeline: PipelineConfig = {

@@ -33,6 +33,12 @@ describe('prebuild script', () => {
                 cwd: '/repo/root',
                 shell: undefined,
             },
+            {
+                command: 'npm-test',
+                args: ['run', 'build', '-w', '@plusplusoneplusplus/coc-memory'],
+                cwd: '/repo/root',
+                shell: undefined,
+            },
         ]);
     });
 
@@ -57,6 +63,12 @@ describe('prebuild script', () => {
             {
                 command: 'npm.cmd',
                 args: ['run', 'build', '-w', '@plusplusoneplusplus/coc-workflow'],
+                cwd: '/repo/root',
+                shell: true,
+            },
+            {
+                command: 'npm.cmd',
+                args: ['run', 'build', '-w', '@plusplusoneplusplus/coc-memory'],
                 cwd: '/repo/root',
                 shell: true,
             },

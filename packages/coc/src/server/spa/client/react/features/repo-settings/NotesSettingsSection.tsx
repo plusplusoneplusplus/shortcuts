@@ -14,6 +14,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNotesAutoCommit } from '../notes/hooks/useNotesAutoCommit';
 import { notesApi, type NotesRootEntry } from '../notes/notesApi';
+import { getWorkspacePreferences, patchWorkspacePreferences } from '../../hooks/preferences/preferencesApi';
+import type { NotesGitConfig } from '../../../../../notes/git/notes-git-types';
 import { useGlobalToast } from '../../contexts/ToastContext';
 import { formatRelativeTime } from '../../utils/format';
 
@@ -68,6 +70,13 @@ export function NotesSettingsSection({ workspaceId }: NotesSettingsSectionProps)
     const [addingRoot, setAddingRoot] = useState(false);
     const [removingRoot, setRemovingRoot] = useState<string | null>(null);
 
+    // ── Origin (Reset from origin) state ─────────────────────────────────────
+    // Full persisted notesGit config, so saving remoteUrl/branch preserves siblings.
+    const [notesGitConfig, setNotesGitConfig] = useState<NotesGitConfig | null>(null);
+    const [remoteUrl, setRemoteUrl] = useState('');
+    const [branch, setBranch] = useState('');
+    const [savingOrigin, setSavingOrigin] = useState(false);
+
     const additionalRoots = roots.filter(r => !r.isDefault);
 
     const fetchRoots = useCallback(async () => {
@@ -82,6 +91,48 @@ export function NotesSettingsSection({ workspaceId }: NotesSettingsSectionProps)
             setRootsLoading(false);
         }
     }, [workspaceId]);
+
+    // Load the persisted notesGit origin config (best-effort).
+    useEffect(() => {
+        let cancelled = false;
+        getWorkspacePreferences(workspaceId)
+            .then(prefs => {
+                if (cancelled) return;
+                const cfg = prefs?.notesGit ?? null;
+                setNotesGitConfig(cfg);
+                setRemoteUrl(cfg?.remoteUrl ?? '');
+                setBranch(cfg?.branch ?? '');
+            })
+            .catch(() => { /* leave origin fields empty on failure */ });
+        return () => { cancelled = true; };
+    }, [workspaceId]);
+
+    // Persist remoteUrl + branch as a full notesGit block so autoCommit/enabled survive.
+    const saveOrigin = useCallback(async (nextUrl: string, nextBranch: string) => {
+        const trimmedUrl = nextUrl.trim();
+        const trimmedBranch = nextBranch.trim();
+        // No-op if unchanged from persisted config.
+        if (trimmedUrl === (notesGitConfig?.remoteUrl ?? '') &&
+            trimmedBranch === (notesGitConfig?.branch ?? '')) {
+            return;
+        }
+        const config: NotesGitConfig = {
+            enabled: notesGitConfig?.enabled ?? false,
+            ...(notesGitConfig?.autoCommit ? { autoCommit: notesGitConfig.autoCommit } : {}),
+            remoteUrl: trimmedUrl || undefined,
+            branch: trimmedBranch || undefined,
+        };
+        setSavingOrigin(true);
+        try {
+            await patchWorkspacePreferences(workspaceId, { notesGit: config });
+            setNotesGitConfig(config);
+            addToast('Origin settings saved', 'success');
+        } catch (e: any) {
+            addToast(e?.message ?? 'Failed to save origin settings', 'error');
+        } finally {
+            setSavingOrigin(false);
+        }
+    }, [workspaceId, notesGitConfig, addToast]);
 
     const handleAddRoot = async () => {
         const trimmed = newRootPath.trim();
@@ -271,6 +322,57 @@ export function NotesSettingsSection({ workspaceId }: NotesSettingsSectionProps)
                         Maximum of {maxAdditionalRoots} additional roots reached.
                     </div>
                 )}
+            </div>
+
+            {/* Origin (Reset from origin) */}
+            <div className={sectionHeadClass} data-testid="section-notes-origin">
+                Origin
+            </div>
+            <div className="flex flex-col gap-2 mb-4" data-testid="notes-origin-section">
+                <div className="text-xs text-[#616161] dark:text-[#cccccc] mb-1">
+                    Configure a GitHub remote to enable the destructive “Reset from origin” action
+                    in the Git tab. Reset wipes local notes and re-clones from this repo.
+                </div>
+                <div className="flex flex-col md:flex-row items-start md:items-center gap-1 md:gap-2">
+                    <label className={labelClass} htmlFor="notes-origin-remote-url">Remote URL</label>
+                    <input
+                        id="notes-origin-remote-url"
+                        type="text"
+                        value={remoteUrl}
+                        onChange={e => setRemoteUrl(e.target.value)}
+                        onBlur={e => saveOrigin(e.target.value, branch)}
+                        onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                saveOrigin((e.target as HTMLInputElement).value, branch);
+                            }
+                        }}
+                        placeholder="https://github.com/owner/repo.git"
+                        disabled={savingOrigin}
+                        className={selectClass}
+                        data-testid="notes-origin-remote-url"
+                    />
+                </div>
+                <div className="flex flex-col md:flex-row items-start md:items-center gap-1 md:gap-2">
+                    <label className={labelClass} htmlFor="notes-origin-branch">Branch</label>
+                    <input
+                        id="notes-origin-branch"
+                        type="text"
+                        value={branch}
+                        onChange={e => setBranch(e.target.value)}
+                        onBlur={e => saveOrigin(remoteUrl, e.target.value)}
+                        onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                saveOrigin(remoteUrl, (e.target as HTMLInputElement).value);
+                            }
+                        }}
+                        placeholder="main"
+                        disabled={savingOrigin}
+                        className={selectClass}
+                        data-testid="notes-origin-branch"
+                    />
+                </div>
             </div>
 
             {/* Git Version Tracking */}
