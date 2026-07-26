@@ -367,17 +367,21 @@ export function SplitWorkspacePanel({
                 temporary peek (AC-02 / AC-03). */}
             {leftCollapsed && (
                 <div
-                    className="w-9 flex-shrink-0 border-r border-[#e5e5e5] dark:border-[#333] flex flex-col items-center pt-2 gap-1"
+                    // `relative z-40` keeps the rail painted ABOVE the peek overlay
+                    // (`z-30`): while hovering floats the column out, the `»` pin
+                    // button stays uncovered and clickable at a fixed spot instead
+                    // of being hidden behind the auto-expanded panel.
+                    className="relative z-40 w-9 flex-shrink-0 border-r border-[#e5e5e5] dark:border-[#333] flex flex-col items-center pt-2 gap-1"
                     data-testid="split-workspace-left-rail"
                     onMouseEnter={hoverPeek.onRailPointerEnter}
                     onMouseLeave={hoverPeek.onRailPointerLeave}
                 >
                     <button
                         type="button"
-                        className="w-7 h-7 flex items-center justify-center rounded text-[#848484] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
+                        className={`w-7 h-7 flex items-center justify-center rounded text-[#848484] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]${peeking ? ' bg-[#e8e8e8] text-[#333] ring-1 ring-[#007acc]/40 dark:bg-[#2d2d2d] dark:text-[#ddd]' : ''}`}
                         onClick={toggleLeftCollapsed}
-                        aria-label="Expand sidebar"
-                        title="Expand sidebar"
+                        aria-label={peeking ? 'Keep sidebar open' : 'Expand sidebar'}
+                        title={peeking ? 'Keep sidebar open' : 'Expand sidebar'}
                         data-testid="split-workspace-left-expand"
                     >
                         »

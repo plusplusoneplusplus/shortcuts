@@ -183,6 +183,41 @@ describe('NotesView collapsed rail — hover-to-peek', () => {
         }
     });
 
+    it('keeps the rail above the peek overlay so the pin button stays clickable', async () => {
+        // Regression: the floated peek overlay (`z-30`) used to paint on top of
+        // the collapsed rail, covering the `»` pin button and making it very hard
+        // to hit. The rail carries `relative z-40` so it stays above the overlay.
+        window.localStorage.setItem(notesSidebarCollapsedStorageKey('ws1'), '1');
+        render(<NotesView workspaceId="ws1" active />);
+        await waitFor(() => expect(readVar()).toBe('36px'));
+
+        const rail = screen.getByTestId('notes-sidebar-rail');
+        const expandBtn = screen.getByTestId('notes-sidebar-expand');
+        // The rail sits above the `z-30` overlay at all times.
+        expect(rail.className).toContain('relative');
+        expect(rail.className).toContain('z-40');
+
+        vi.useFakeTimers();
+        try {
+            act(() => { fireEvent.mouseEnter(rail); });
+            act(() => { vi.advanceTimersByTime(450); });
+            // Peek is open (overlay floated out)…
+            expect(screen.getByTestId('responsive-sidebar').classList.contains('hidden')).toBe(false);
+            // …yet the pin button is still mounted and re-labelled for pinning.
+            expect(expandBtn).toBeTruthy();
+            expect(expandBtn.getAttribute('aria-label')).toBe('Keep notes sidebar open');
+            expect(expandBtn.getAttribute('title')).toBe('Keep notes sidebar open');
+
+            // Clicking it while peeking pins the sidebar open (persists expanded).
+            act(() => { fireEvent.click(expandBtn); });
+        } finally {
+            vi.useRealTimers();
+        }
+        await waitFor(() => expect(readVar()).toBe('280px'));
+        expect(screen.queryByTestId('notes-sidebar-rail')).toBeNull();
+        expect(window.localStorage.getItem(notesSidebarCollapsedStorageKey('ws1'))).toBe('0');
+    });
+
     it('Escape collapses an open peek back to the rail', async () => {
         window.localStorage.setItem(notesSidebarCollapsedStorageKey('ws1'), '1');
         render(<NotesView workspaceId="ws1" active />);
