@@ -87,4 +87,21 @@ describe('useToast', () => {
 
         expect(result.current.toasts).toHaveLength(3);
     });
+
+    it('cancels pending auto-dismiss timers on unmount (no setState after teardown)', () => {
+        const { result, unmount } = renderHook(() => useToast());
+
+        act(() => {
+            result.current.addToast('One');
+            result.current.addToast('Two');
+        });
+
+        // Two auto-dismiss timers are pending.
+        expect(vi.getTimerCount()).toBe(2);
+
+        // Unmounting must clear them, so no timer fires setState after the
+        // component (and, in CI, the jsdom environment) is gone.
+        unmount();
+        expect(vi.getTimerCount()).toBe(0);
+    });
 });
