@@ -706,7 +706,9 @@ describe('RepoTabStrip overflow', () => {
             const repos = Array.from({ length: 6 }, (_, i) => makeRepo(`r${i}`, `Repo-${i}`));
             renderWithOverflow(repos, { containerWidth: 200, tabWidth: 80, selectedRepoId: 'r5' });
             const visibleContainer = screen.getByTestId('repo-tab-visible-container');
-            const visibleTabs = visibleContainer.querySelectorAll('[data-repo-id="r5"]');
+            // Scope to the tab button — the pop-out affordance in each tab also
+            // carries data-repo-id, so an unscoped selector counts both.
+            const visibleTabs = visibleContainer.querySelectorAll('[data-testid="repo-tab"][data-repo-id="r5"]');
             expect(visibleTabs.length).toBe(1);
         });
     });
