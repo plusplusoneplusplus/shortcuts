@@ -145,6 +145,14 @@ export function PdfQuickAskLayer({
     selectionRef.current = selection;
     const inputRef = useRef<QuickAskSelection | null>(null);
     inputRef.current = input;
+    // Latest open thread, read at answer-landing time to fold in the freshly
+    // answered turn when persisting a follow-up (state updates lag one render).
+    const openRef = useRef<OpenNote | null>(null);
+    openRef.current = open;
+    // The server-generated id of the annotation persisted for the current thread,
+    // as a promise so a follow-up that resolves before the create POST completes
+    // still chains its `turns` PATCH onto the real id (AC-03).
+    const persistedRef = useRef<{ noteId: string; idPromise: Promise<string | null> } | null>(null);
     // Geometric anchor of the passage the pill/input is currently over. Captured
     // while the DOM selection is still live (ask time), because the selection is
     // cleared before the question is submitted.
@@ -164,13 +172,13 @@ export function PdfQuickAskLayer({
         answer: string,
         model: string | undefined,
         rectAnchor: PaperRectAnchor | null,
-    ) => {
-        if (!workspaceId) {return;}
+    ): Promise<string | null> => {
+        if (!workspaceId) {return Promise.resolve(null);}
         const { pdfUrl: url, getNotePath: notePathGetter, getNoteRoot: rootGetter } = persistRef.current;
         const notePath = notePathGetter?.();
-        if (!url || !notePath) {return;}
+        if (!url || !notePath) {return Promise.resolve(null);}
         const path = `/api/workspaces/${encodeURIComponent(workspaceId)}/notes/paper-annotations/annotation`;
-        void fetchApi(path, {
+        return fetchApi(path, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -190,7 +198,7 @@ export function PdfQuickAskLayer({
                 },
             }),
         })
-            .then(() => {
+            .then((data: { annotation?: { id?: string } }) => {
                 // Let any mounted read/render layer for this note pick up the new
                 // annotation without prop coupling (it reloads the sidecar).
                 try {
@@ -198,9 +206,42 @@ export function PdfQuickAskLayer({
                 } catch {
                     /* environments without Event ctor: reload happens on next note open */
                 }
+                // The server-assigned id — the anchor a follow-up PATCHes `turns` to.
+                return typeof data?.annotation?.id === 'string' ? data.annotation.id : null;
             })
             .catch(() => {
                 /* persistence is best-effort; the answer already shows */
+                return null;
+            });
+    }, [workspaceId]);
+
+    // Persist a follow-up turn (AC-03): PATCH the accumulated ready turns onto the
+    // annotation created for turn 0. Best-effort; the answer already shows even if
+    // the sidecar write fails. Dispatches the persisted event so a mounted reopen
+    // host reloads the thread.
+    const patchAnnotationTurns = useCallback((annotationId: string, turns: HistoryTurn[]) => {
+        if (!workspaceId || !turns.length) {return;}
+        const { getNotePath: notePathGetter, getNoteRoot: rootGetter } = persistRef.current;
+        const notePath = notePathGetter?.();
+        if (!notePath) {return;}
+        const path = `/api/workspaces/${encodeURIComponent(workspaceId)}/notes/paper-annotations/annotation/${encodeURIComponent(annotationId)}`;
+        const body: { path: string; turns: HistoryTurn[]; root?: string } = { path: notePath, turns };
+        const root = rootGetter?.();
+        if (root) {body.root = root;}
+        void fetchApi(path, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        })
+            .then(() => {
+                try {
+                    window.dispatchEvent(new Event(PAPER_ANNOTATION_PERSISTED_EVENT));
+                } catch {
+                    /* ignore */
+                }
+            })
+            .catch(() => {
+                /* best-effort */
             });
     }, [workspaceId]);
 
@@ -250,13 +291,37 @@ export function PdfQuickAskLayer({
                     return next ? { ...next, note: { ...next.note, model: data.model } } : next;
                 });
                 if (turnIndex === 0) {
-                    persistAnnotation(sel, question, answer, data.model, rectAnchor);
+                    // Turn 0 creates the sidecar annotation; remember its id (as a
+                    // promise) so a follow-up can PATCH its accumulated turns onto it.
+                    persistedRef.current = {
+                        noteId,
+                        idPromise: persistAnnotation(sel, question, answer, data.model, rectAnchor),
+                    };
+                } else {
+                    // Follow-up: re-persist the whole thread so the reopened paper
+                    // annotation survives reload as a multi-turn thread (AC-03).
+                    // Fold this just-answered turn into the accumulated ready turns
+                    // (state updates lag one render, so read openRef and patch it).
+                    const current = openRef.current;
+                    const persisted = persistedRef.current;
+                    if (current && current.note.id === noteId && persisted && persisted.noteId === noteId) {
+                        const persistTurns: HistoryTurn[] = current.turns
+                            .map((t, i) =>
+                                (i === turnIndex
+                                    ? { question: t.question, answer, status: 'ready' as const }
+                                    : t))
+                            .filter(t => t.status === 'ready')
+                            .map(t => ({ question: t.question, answer: t.answer }));
+                        void persisted.idPromise.then(annId => {
+                            if (annId) {patchAnnotationTurns(annId, persistTurns);}
+                        });
+                    }
                 }
             })
             .catch(() => {
                 setOpen(prev => patchTurn(prev, noteId, turnIndex, { status: 'error', error: 'Lookup failed' }));
             });
-    }, [workspaceId, persistAnnotation, paperPath]);
+    }, [workspaceId, persistAnnotation, patchAnnotationTurns, paperPath]);
 
     // Capture the current text-layer selection (if any) into the pill state.
     const captureSelection = useCallback(() => {

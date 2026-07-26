@@ -27,8 +27,8 @@ import { useQuickAskSidenotesEnabled } from '../../../../hooks/feature-flags/use
 import { QuickAskSidenotePopover } from '../../../chat/quick-ask/QuickAskSidenotePopover';
 import { resolveSidenoteAnchor } from '../../../chat/quick-ask/sidenoteAnchoring';
 import { clearInlineChips, injectInlineChip } from '../../../chat/quick-ask/sidenoteInlineChips';
-import type { ClientSideNote } from '../../../chat/quick-ask/types';
-import type { PaperAnnotation } from '../../../../../../../notes/paper-annotations-types';
+import type { ClientSideNote, QuickAskTurn } from '../../../chat/quick-ask/types';
+import type { PaperAnnotation, PaperAnnotationTurn } from '../../../../../../../notes/paper-annotations-types';
 import { usePaperAnnotations } from './usePaperAnnotations';
 import {
     annotationsForPdf,
@@ -56,9 +56,28 @@ export interface PdfAnnotationsLayerProps {
     getNoteRoot?: () => string | undefined;
 }
 
+/** Soft cap on follow-up turns per thread (AC-02), mirroring the ask layers. */
+const MAX_TURNS = 10;
+
+/** One ordered prior Q/A turn sent as grounding history on a follow-up (AC-01). */
+type HistoryTurn = { question?: string; answer: string };
+
 function labelFor(selectedText: string): string {
     const collapsed = selectedText.replace(/\s+/g, ' ').trim();
     return collapsed.length <= 22 ? collapsed : collapsed.slice(0, 22).trimEnd() + '…';
+}
+
+/**
+ * Reconstruct the full multi-turn thread from a persisted annotation (AC-03).
+ * Prefers the stored `turns` array; falls back to the single top-level
+ * `question`/`answer` pair so a legacy single-answer annotation still opens as a
+ * one-turn thread.
+ */
+function annotationTurns(ann: PaperAnnotation): QuickAskTurn[] {
+    if (ann.turns && ann.turns.length) {
+        return ann.turns.map(t => ({ question: t.question, answer: t.answer, status: 'ready' as const }));
+    }
+    return [{ question: ann.question, answer: ann.answer, status: 'ready' as const }];
 }
 
 /**
@@ -95,6 +114,45 @@ function toClientNote(ann: PaperAnnotation): ClientSideNote {
 interface OpenAnnotation {
     note: ClientSideNote;
     position: { top: number; left: number };
+    /** The full multi-turn thread reconstructed from the annotation (AC-03). */
+    turns: QuickAskTurn[];
+    /**
+     * Grounding for follow-ups: the original selection ± surrounding context.
+     * Absent for a region-only annotation, which stays one-shot (no reply row).
+     */
+    grounding: { selectedText: string; contextBefore: string; contextAfter: string } | null;
+}
+
+/** Immutably patch turn `turnIndex` of the open thread and sync note-level
+ * status/answer to the latest turn. No-op when the open id doesn't match. */
+function patchTurn(
+    prev: OpenAnnotation | null,
+    id: string,
+    turnIndex: number,
+    patch: Partial<QuickAskTurn>,
+): OpenAnnotation | null {
+    if (!prev || prev.note.id !== id || !prev.turns[turnIndex]) {return prev;}
+    const turns = prev.turns.map((t, i) => (i === turnIndex ? { ...t, ...patch } : t));
+    const latest = turns[turns.length - 1];
+    return {
+        ...prev,
+        turns,
+        note: { ...prev.note, status: latest.status, answer: latest.answer, error: latest.error },
+    };
+}
+
+/** Prior ready turns, in order, as follow-up grounding history. */
+function historyBefore(turns: QuickAskTurn[], upto: number): HistoryTurn[] {
+    return turns.slice(0, upto)
+        .filter(t => t.status === 'ready')
+        .map(t => ({ question: t.question, answer: t.answer }));
+}
+
+/** Accumulated ready turns as the `turns` array persisted to the sidecar. */
+function readyTurns(turns: QuickAskTurn[]): PaperAnnotationTurn[] {
+    return turns
+        .filter(t => t.status === 'ready')
+        .map(t => ({ question: t.question, answer: t.answer }));
 }
 
 /** Which annotations the reader shows. Resolved are hidden by default (AC-02). */
@@ -108,7 +166,7 @@ export function PdfAnnotationsLayer({
     getNoteRoot,
 }: PdfAnnotationsLayerProps) {
     const enabled = useQuickAskSidenotesEnabled() && !!workspaceId;
-    const { annotations, removeLocal, setResolved } = usePaperAnnotations(
+    const { annotations, removeLocal, setResolved, setTurns } = usePaperAnnotations(
         workspaceId,
         getNotePath,
         getNoteRoot,
@@ -119,6 +177,11 @@ export function PdfAnnotationsLayer({
     const [open, setOpen] = useState<OpenAnnotation | null>(null);
     const [exporting, setExporting] = useState(false);
     const [filter, setFilter] = useState<AnnotationFilter>('open');
+
+    // Latest open thread, read at answer-landing time to fold in the freshly
+    // answered turn when persisting (state updates lag one render).
+    const openRef = useRef<OpenAnnotation | null>(null);
+    openRef.current = open;
 
     const forThisPdf = useMemo(
         () => annotationsForPdf(annotations, pdfUrl),
@@ -144,8 +207,91 @@ export function PdfAnnotationsLayer({
 
     const openFromElement = useCallback((ann: PaperAnnotation, el: HTMLElement) => {
         const rect = el.getBoundingClientRect();
-        setOpen({ note: toClientNote(ann), position: { top: rect.bottom + 6, left: rect.left } });
+        // Follow-ups need a text selection to re-ground each turn; a region-only
+        // annotation (vision ask) has none, so it stays a one-shot read.
+        const grounding = ann.quote?.selectedText
+            ? {
+                selectedText: ann.quote.selectedText,
+                contextBefore: ann.quote.contextBefore,
+                contextAfter: ann.quote.contextAfter,
+            }
+            : null;
+        setOpen({
+            note: toClientNote(ann),
+            position: { top: rect.bottom + 6, left: rect.left },
+            turns: annotationTurns(ann),
+            grounding,
+        });
     }, []);
+
+    // Run one stateless grounded follow-up turn on a reopened annotation (AC-03),
+    // updating that turn in place and re-persisting the accumulated thread to the
+    // sidecar via `setTurns`. Grounding = the original selection ± context plus the
+    // prior ready turns as history. Reopened threads have no persisted full-paper
+    // flag, so follow-ups fall back to selection-only grounding.
+    const postTurn = useCallback((
+        id: string,
+        question: string,
+        history: HistoryTurn[],
+        turnIndex: number,
+        grounding: { selectedText: string; contextBefore: string; contextAfter: string },
+    ) => {
+        if (!workspaceId) {return;}
+        const path = `/api/quick-ask/answer?workspace=${encodeURIComponent(workspaceId)}`;
+        fetchApi(path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                selectedText: grounding.selectedText,
+                contextBefore: grounding.contextBefore,
+                contextAfter: grounding.contextAfter,
+                question,
+                ...(history.length ? { history } : {}),
+            }),
+        })
+            .then((data: { answer?: string; model?: string }) => {
+                const answer = typeof data?.answer === 'string' ? data.answer : '';
+                if (!answer) {throw new Error('Malformed response');}
+                // Persist the whole thread (fold this just-answered turn in — the
+                // setOpen below hasn't landed yet, so read openRef and patch it).
+                const current = openRef.current;
+                if (current && current.note.id === id) {
+                    const persistTurns = readyTurns(current.turns.map((t, i) =>
+                        (i === turnIndex ? { ...t, answer, status: 'ready' as const } : t)));
+                    setTurns(id, persistTurns);
+                }
+                setOpen(prev => patchTurn(prev, id, turnIndex, { status: 'ready', answer, error: undefined }));
+            })
+            .catch(() => {
+                setOpen(prev => patchTurn(prev, id, turnIndex, { status: 'error', error: 'Lookup failed' }));
+            });
+    }, [workspaceId, setTurns]);
+
+    // Send a follow-up (AC-02): append an asking turn and post it with the
+    // accumulated ready turns as grounding history. Blocked at the soft cap.
+    const handleSend = useCallback((question: string) => {
+        setOpen(prev => {
+            if (!prev || !prev.grounding || prev.turns.length >= MAX_TURNS) {return prev;}
+            const turnIndex = prev.turns.length;
+            postTurn(prev.note.id, question, historyBefore(prev.turns, turnIndex), turnIndex, prev.grounding);
+            const turns: QuickAskTurn[] = [...prev.turns, { question, answer: '', status: 'asking' }];
+            return { ...prev, turns, note: { ...prev.note, status: 'asking' } };
+        });
+    }, [postTurn]);
+
+    // Per-turn retry (AC-02): re-run turn `turnIndex` with its question and the
+    // prior ready turns as history, preserving the rest of the thread.
+    const handleReplyRetry = useCallback((turnIndex: number) => {
+        setOpen(prev => {
+            if (!prev || !prev.grounding) {return prev;}
+            const turn = prev.turns[turnIndex];
+            if (!turn || turnIndex === 0) {return prev;} // turn 0 is a persisted answer, never retried
+            postTurn(prev.note.id, turn.question ?? '', historyBefore(prev.turns, turnIndex), turnIndex, prev.grounding);
+            const turns = prev.turns.map((t, i) =>
+                (i === turnIndex ? { ...t, status: 'asking' as const, error: undefined } : t));
+            return { ...prev, turns, note: { ...prev.note, status: 'asking', error: undefined } };
+        });
+    }, [postTurn]);
 
     // Re-resolve every annotation against the current DOM: overlay boxes for the
     // geometric anchor, a margin chip for a quote match, else an orphan.
@@ -389,6 +535,14 @@ export function PdfAnnotationsLayer({
                     onRetry={handleRetry}
                     onDelete={handleDelete}
                     resolve={{ resolved: openResolved, onToggle: handleToggleResolved }}
+                    reply={open.grounding ? {
+                        turns: open.turns,
+                        onSend: handleSend,
+                        onRetry: handleReplyRetry,
+                        disabled: open.turns.some(t => t.status === 'asking'),
+                        atCap: open.turns.length >= MAX_TURNS,
+                        maxTurns: MAX_TURNS,
+                    } : undefined}
                 />
             )}
         </>
