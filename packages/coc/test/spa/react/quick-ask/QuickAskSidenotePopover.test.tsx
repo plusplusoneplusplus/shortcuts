@@ -321,4 +321,55 @@ describe('QuickAskSidenotePopover - AC-02 reply row', () => {
         fireEvent.click(screen.getByTestId('quick-ask-popover-dismiss'));
         expect(onDelete).toHaveBeenCalledWith('n1');
     });
+
+    it('Copy on a multi-turn thread passes the full Q/A transcript (AC-03)', () => {
+        const onCopy = vi.fn();
+        const full: QuickAskReply = {
+            turns: [
+                turn({ question: undefined, answer: 'first answer' }),
+                turn({ question: 'give an example', answer: 'second answer' }),
+            ],
+            onSend: vi.fn(),
+            onRetry: vi.fn(),
+        };
+        render(
+            <QuickAskSidenotePopover
+                note={note()}
+                position={{ top: 100, left: 100 }}
+                onClose={noop}
+                onCopy={onCopy}
+                onRetry={noop}
+                onDelete={noop}
+                reply={full}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('quick-ask-popover-copy'));
+        expect(onCopy).toHaveBeenCalledTimes(1);
+        const text = onCopy.mock.calls[0][1] as string;
+        expect(text).toContain('first answer');
+        expect(text).toContain('Q: give an example');
+        expect(text).toContain('A: second answer');
+    });
+
+    it('Copy on a single-turn thread passes just the answer (parity with one-shot)', () => {
+        const onCopy = vi.fn();
+        const full: QuickAskReply = {
+            turns: [turn({ question: 'q', answer: 'only answer' })],
+            onSend: vi.fn(),
+            onRetry: vi.fn(),
+        };
+        render(
+            <QuickAskSidenotePopover
+                note={note()}
+                position={{ top: 100, left: 100 }}
+                onClose={noop}
+                onCopy={onCopy}
+                onRetry={noop}
+                onDelete={noop}
+                reply={full}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('quick-ask-popover-copy'));
+        expect(onCopy.mock.calls[0][1]).toBe('only answer');
+    });
 });

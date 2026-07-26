@@ -225,7 +225,7 @@ export function validateAnnotationDraft(draft: unknown): string | undefined {
  * usable `{answer}` object, coerce the answer to a string, and keep a trimmed
  * question only when non-empty. Defensive — never throws on garbage input.
  */
-function normalizeAnnotationTurns(turns: unknown[]): PaperAnnotationTurn[] {
+export function normalizeAnnotationTurns(turns: unknown[]): PaperAnnotationTurn[] {
     const out: PaperAnnotationTurn[] = [];
     for (const raw of turns) {
         if (!raw || typeof raw !== 'object') {continue;}

@@ -377,9 +377,11 @@ export function PdfQuickAskLayer({
 
     const closePopover = useCallback(() => setOpen(null), []);
 
-    const handleCopy = useCallback((note: ClientSideNote) => {
+    // Copy the whole thread transcript (AC-03) — the popover builds it from the
+    // live turns; fall back to the single answer for a one-shot note.
+    const handleCopy = useCallback((note: ClientSideNote, text?: string) => {
         try {
-            void navigator.clipboard?.writeText(note.answer);
+            void navigator.clipboard?.writeText(text ?? note.answer);
         } catch {
             /* best-effort */
         }

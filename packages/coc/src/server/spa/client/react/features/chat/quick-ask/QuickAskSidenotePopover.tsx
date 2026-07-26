@@ -12,7 +12,7 @@ import { MarkdownView } from '../../../shared/MarkdownView';
 import { renderMarkdownToHtml } from '../../../../diff/markdown-renderer';
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { BottomSheet } from '../../../ui/BottomSheet';
-import type { ClientSideNote, QuickAskTurn } from './types';
+import { buildQuickAskTranscript, type ClientSideNote, type QuickAskTurn } from './types';
 
 const ACTION_BTN = 'inline-flex items-center justify-center h-6 px-1.5 gap-1 rounded transition-colors text-[11px] text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]';
 const ICON_BTN = 'inline-flex items-center justify-center h-6 w-6 shrink-0 rounded transition-colors text-[12px] text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]';
@@ -43,7 +43,11 @@ export interface QuickAskSidenotePopoverProps {
     note: ClientSideNote;
     position: { top: number; left: number };
     onClose: () => void;
-    onCopy: (note: ClientSideNote) => void;
+    /**
+     * Copy the side-note. In reply mode `text` carries the whole thread
+     * transcript (AC-03); one-shot callers ignore it and copy `note.answer`.
+     */
+    onCopy: (note: ClientSideNote, text?: string) => void;
     onRetry: (id: string) => void;
     onDelete: (id: string) => void;
     /**
@@ -151,7 +155,9 @@ export function QuickAskSidenotePopover({
     }, [isMobile, onClose]);
 
     const handleCopy = () => {
-        onCopy(note);
+        // In reply mode copy the whole transcript (all ready turns); the one-shot
+        // path copies just the single answer (handled by the driver from `note`).
+        onCopy(note, reply ? buildQuickAskTranscript(reply.turns) : undefined);
         setCopied(true);
         setTimeout(() => setCopied(false), 1200);
     };

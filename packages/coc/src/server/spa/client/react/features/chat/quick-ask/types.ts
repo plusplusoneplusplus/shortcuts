@@ -50,6 +50,20 @@ export interface QuickAskTurn {
 }
 
 /**
+ * Build the clipboard text for a Quick Ask thread (AC-03). Only ready turns are
+ * included. A single-turn thread copies just the answer — byte-for-byte the old
+ * one-shot Copy — while a multi-turn thread copies the whole `Q:`/`A:` transcript
+ * so a follow-up conversation can be pasted verbatim.
+ */
+export function buildQuickAskTranscript(turns: QuickAskTurn[]): string {
+    const ready = turns.filter(t => t.status === 'ready');
+    if (ready.length <= 1) {return ready[0]?.answer ?? '';}
+    return ready
+        .map(t => (t.question ? `Q: ${t.question}\n\nA: ${t.answer}` : t.answer))
+        .join('\n\n');
+}
+
+/**
  * A captured text selection inside an assistant turn, ready to become a
  * side-note lookup.
  */

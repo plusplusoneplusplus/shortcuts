@@ -259,9 +259,9 @@ export function PdfAnnotationsLayer({
 
     const closePopover = useCallback(() => setOpen(null), []);
 
-    const handleCopy = useCallback((note: ClientSideNote) => {
+    const handleCopy = useCallback((note: ClientSideNote, text?: string) => {
         try {
-            void navigator.clipboard?.writeText(note.answer);
+            void navigator.clipboard?.writeText(text ?? note.answer);
         } catch {
             /* best-effort */
         }
