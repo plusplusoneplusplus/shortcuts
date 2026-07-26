@@ -1,10 +1,10 @@
 /**
- * Compaction primitives (AC-01) and provider stubs (AC-03).
+ * Compaction primitives (AC-01).
  *
  * Covers the provider-agnostic `CompactUnsupportedError` class + its
- * cross-bundle-safe `isCompactUnsupportedError` guard, and asserts the Codex
- * stub rejects with the typed error (mirroring its `rewindSession` precedent).
- * Copilot's real implementation and the Claude stub are tested in their own
+ * cross-bundle-safe `isCompactUnsupportedError` guard. Codex now supports
+ * compaction over its app-server, so its real implementation is exercised in
+ * `codex-compact-session.test.ts`; Copilot's and Claude's live in their own
  * service test files.
  */
 
@@ -14,8 +14,6 @@ import {
     isCompactUnsupportedError,
     RewindUnsupportedError,
 } from '../../src/sdk-service-interface';
-import { CodexSDKService } from '../../src/codex-sdk-service';
-import { CODEX_PROVIDER } from '../../src/sdk-service-registry';
 
 describe('CompactUnsupportedError (AC-01)', () => {
     it('carries the stable code, provider, name, and a default message', () => {
@@ -46,22 +44,5 @@ describe('CompactUnsupportedError (AC-01)', () => {
         expect(isCompactUnsupportedError(null)).toBe(false);
         expect(isCompactUnsupportedError(undefined)).toBe(false);
         expect(isCompactUnsupportedError({ code: 'SOMETHING_ELSE' })).toBe(false);
-    });
-});
-
-describe('CodexSDKService.compactSession (AC-03)', () => {
-    it('throws the typed CompactUnsupportedError', async () => {
-        const svc = new CodexSDKService();
-        try {
-            await expect(svc.compactSession('any-id')).rejects.toBeInstanceOf(CompactUnsupportedError);
-            await expect(svc.compactSession('any-id', 'focus on auth')).rejects.toMatchObject({
-                code: 'COMPACT_UNSUPPORTED',
-                provider: CODEX_PROVIDER,
-            });
-            const err = await svc.compactSession('any-id').catch((e) => e);
-            expect(isCompactUnsupportedError(err)).toBe(true);
-        } finally {
-            svc.dispose();
-        }
     });
 });

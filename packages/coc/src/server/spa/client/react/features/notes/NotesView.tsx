@@ -606,18 +606,22 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
                 a `»` expand button plus a vertical "Notes" label. */}
             {sidebarCollapsedDesktop && (
                 <div
-                    className="w-9 flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] flex flex-col items-center pt-2 gap-1"
+                    // `relative z-40` keeps the rail painted ABOVE the peek overlay
+                    // (`z-30`): while hovering floats the full tree out, the `»`
+                    // pin button stays uncovered and clickable at a fixed spot
+                    // instead of being hidden behind the auto-expanded panel.
+                    className="relative z-40 w-9 flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] flex flex-col items-center pt-2 gap-1"
                     data-testid="notes-sidebar-rail"
                     onMouseEnter={hoverPeek.onRailPointerEnter}
                     onMouseLeave={hoverPeek.onRailPointerLeave}
                 >
                     <button
                         type="button"
-                        className="w-7 h-7 flex items-center justify-center rounded text-[#848484] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
+                        className={`w-7 h-7 flex items-center justify-center rounded text-[#848484] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]${sidebarPeeking ? ' bg-[#e8e8e8] text-[#333] ring-1 ring-[#007acc]/40 dark:bg-[#2d2d2d] dark:text-[#ddd]' : ''}`}
                         onClick={toggleSidebarCollapsed}
-                        aria-label="Expand notes sidebar"
+                        aria-label={sidebarPeeking ? 'Keep notes sidebar open' : 'Expand notes sidebar'}
                         aria-expanded={!sidebarCollapsed}
-                        title="Expand notes sidebar"
+                        title={sidebarPeeking ? 'Keep notes sidebar open' : 'Expand notes sidebar'}
                         data-testid="notes-sidebar-expand"
                     >
                         »

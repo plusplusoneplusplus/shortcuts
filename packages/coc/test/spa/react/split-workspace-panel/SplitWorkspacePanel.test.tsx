@@ -744,4 +744,39 @@ describe('SplitWorkspacePanel collapsed rail — hover-to-peek', () => {
             vi.useRealTimers();
         }
     });
+
+    it('keeps the rail above the peek overlay so the pin button stays clickable', () => {
+        // Regression: the floated peek overlay (`z-30`) used to cover the collapsed
+        // rail, hiding the `»` pin button. The rail carries `relative z-40` so it
+        // stays above the overlay and the button is always hittable.
+        vi.useFakeTimers();
+        try {
+            localStorage.setItem(splitWorkspaceLeftCollapsedStorageKey('ws-peek'), '1');
+            render(
+                <SplitWorkspacePanel
+                    workspaceId="ws-peek"
+                    chatList={<div data-testid="chat-content">chat</div>}
+                    gitList={<div data-testid="git-content">git</div>}
+                    detail={<div data-testid="detail-content">detail</div>}
+                />,
+            );
+            const rail = screen.getByTestId('split-workspace-left-rail');
+            const expandBtn = screen.getByTestId('split-workspace-left-expand');
+            expect(rail.className).toContain('relative');
+            expect(rail.className).toContain('z-40');
+
+            // Float the peek out, then confirm the pin button is still present and
+            // re-labelled, and clicking it pins the column open.
+            act(() => { fireEvent.mouseEnter(rail); });
+            act(() => { vi.advanceTimersByTime(450); });
+            expect(screen.getByTestId('split-workspace-left').classList.contains('hidden')).toBe(false);
+            expect(expandBtn.getAttribute('aria-label')).toBe('Keep sidebar open');
+
+            act(() => { fireEvent.click(expandBtn); });
+            expect(screen.queryByTestId('split-workspace-left-rail')).toBeNull();
+            expect(localStorage.getItem(splitWorkspaceLeftCollapsedStorageKey('ws-peek'))).toBe('0');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
 });
