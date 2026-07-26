@@ -378,6 +378,25 @@ turndown.addRule('taskItem', {
     },
 });
 
+// Indented list containers (bulletList / orderedList / taskList with data-indent > 0):
+// standard Markdown list syntax cannot carry an indent attribute, so the whole
+// element is emitted as a raw HTML block that marked passes through unchanged and
+// Tiptap re-parses on reload. Level-0 lists fall through to the normal rules above.
+// NOTE: TurndownService.addRule() prepends (unshift) — last added = first checked.
+// This rule is added AFTER taskList/taskItem so it has higher priority and intercepts
+// indented task lists before the GFM task-list rules fire.
+turndown.addRule('indentedList', {
+    filter(node) {
+        if (node.nodeName !== 'UL' && node.nodeName !== 'OL') return false;
+        return parseIndentAttr(node as HTMLElement) > 0;
+    },
+    replacement(_content, node) {
+        // Emit the DOM element's current HTML (after pre-processing such as
+        // unwrapSingleParagraphListItems has already run) as a raw HTML block.
+        return `\n\n${(node as Element).outerHTML}\n\n`;
+    },
+});
+
 // GFM table: <table>/<thead>/<tbody>/<tr>/<th>/<td> → pipe-table markdown
 turndown.addRule('tableCell', {
     filter: ['th', 'td'],

@@ -128,26 +128,31 @@ describe('list-range Tab nests instead of half-indenting', () => {
         expect(editor.getHTML()).not.toContain('data-indent');
     });
 
-    it('mixed selection: heading + trailing paragraph indent, list paragraphs do not', () => {
+    it('mixed selection: heading, list container, and trailing paragraph all indent; list-item paragraphs do not', () => {
         editor = makeEditor('<h1>title</h1><ul><li><p>a</p></li><li><p>b</p></li></ul><p>tail</p>');
         editor.commands.selectAll();
         pressTab(editor);
 
         const html = editor.getHTML();
-        // Heading and the standalone trailing paragraph are indented.
+        // Heading, list container, and the standalone trailing paragraph are indented.
         expect(html).toMatch(/<h1[^>]*data-indent="1"/);
+        expect(html).toMatch(/<ul[^>]*data-indent="1"/);
         expect(html).toMatch(/<p[^>]*data-indent="1"[^>]*>tail<\/p>/);
-        // Exactly two data-indent occurrences → neither list paragraph got one.
-        expect((html.match(/data-indent/g) ?? []).length).toBe(2);
+        // The list-item paragraphs (<p>a</p>, <p>b</p>) must never carry data-indent.
+        expect(html).not.toMatch(/<p[^>]*data-indent[^>]*>[ab]<\/p>/);
     });
 
-    it('command-level increaseIndent (toolbar path) does not indent a list paragraph', () => {
+    it('command-level increaseIndent (toolbar path) indents the list container, not the paragraphs', () => {
         editor = makeEditor('<ul><li><p>one</p></li><li><p>two</p></li></ul>');
         selectAcrossParagraphs(editor, 1, 2);
-        // Toolbar buttons call the command directly (no keymap fall-through).
+        // Toolbar buttons call the command directly; should indent the list container.
         const changed = editor.chain().focus().increaseIndent().run();
-        expect(changed).toBe(false);
-        expect(editor.getHTML()).not.toContain('data-indent');
+        expect(changed).toBe(true);
+        const html = editor.getHTML();
+        // The list container gains data-indent.
+        expect(html).toContain('data-indent="1"');
+        // The child paragraphs must never carry data-indent.
+        expect(html).not.toMatch(/<p[^>]*data-indent/);
     });
 });
 

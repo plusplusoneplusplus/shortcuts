@@ -37,6 +37,14 @@ export const INDENT_TYPES = [...TEXT_INDENT_TYPES, ...EMBED_INDENT_TYPES];
  */
 export const LIST_ITEM_TYPES = ['listItem', 'taskItem'];
 
+/**
+ * List container nodes that the toolbar Increase/Decrease indent operates on as
+ * a whole unit. `data-indent` is stored on the container so the bullet marker and
+ * text move together. Tab/Shift-Tab inside lists remains structural nesting via
+ * sinkListItem/liftListItem; only the toolbar buttons reach this path.
+ */
+export const LIST_CONTAINER_TYPES = ['bulletList', 'orderedList', 'taskList'];
+
 /** True when a node's parent owns its indentation (a list/task item). */
 export function isListOwned(parent: { type: { name: string } } | null | undefined): boolean {
     return !!parent && LIST_ITEM_TYPES.includes(parent.type.name);
