@@ -14,6 +14,7 @@ import type { NoteEditorCommentBackend } from './NoteEditorCommentBackend';
 import { defaultCommentBackend } from './NoteEditorCommentBackend';
 import { NoteEditorToolbar } from './NoteEditorToolbar';
 import { RichEditorCore } from './RichEditorCore';
+import { NoteQuickAskLayer } from './extensions/NoteQuickAskLayer';
 import { SourceEditor } from '../../../shared/SourceEditor';
 import { findAnchorInDoc, applyCommentMark, buildAnchorFromMark } from './commentAnchoring';
 import { ContextMenu } from '../../../tasks/comments/ContextMenu';
@@ -1396,6 +1397,16 @@ export function NoteEditor({
                                 onChange={handlePdfFileSelected}
                             />
                         </div>
+
+                        {/* Quick Ask (✨ Ask AI) over the WYSIWYG note text. Mounted
+                            only in rich mode — never over the source textarea
+                            (AC-01). Gated internally by the quickAskSidenotes flag. */}
+                        {!editorHidden && viewMode === 'rich' && (
+                            <NoteQuickAskLayer
+                                containerRef={editorScrollContainerRef}
+                                workspaceId={workspaceId}
+                            />
+                        )}
 
                         {isEmpty && (
                             <div

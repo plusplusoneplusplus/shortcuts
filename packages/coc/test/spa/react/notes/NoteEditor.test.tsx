@@ -101,6 +101,9 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => 'http://localhost:4000/api',
     isRalphEnabled: () => mockRalphEnabled,
+    // NoteEditor mounts NoteQuickAskLayer, whose feature-flag hook reads these.
+    isQuickAskSidenotesEnabled: () => false,
+    DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
 }));
 
 // Mock RalphLaunchDialog — renders a simple stub
