@@ -210,6 +210,7 @@ export function PdfAnnotationsLayer({
                     const chip = injectInlineChip(container, res.range, {
                         id: ann.id,
                         label,
+                        fullText: ann.quote.selectedText,
                         onActivate: chip => openFromElement(ann, chip),
                     });
                     if (chip && ann.resolved) {
