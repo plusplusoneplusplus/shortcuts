@@ -16,6 +16,7 @@ import { PdfQuickAskLayer } from './PdfQuickAskLayer';
 import { PdfRegionAskLayer } from './PdfRegionAskLayer';
 import { PdfAnnotationsLayer } from './PdfAnnotationsLayer';
 import { paperTextPathFromPdfUrl } from './paperChatGrounding';
+import { isDesktopShell } from '../../../../hooks/ui/useDesktopShell';
 
 /** Payload handed to {@link PdfBlockOptions.onRequestFullWindow} (AC-05). */
 export interface PdfFullWindowRequest {
@@ -57,6 +58,10 @@ function PdfBlockView({ node, updateAttributes, selected, extension }: NodeViewP
     const label = String(node.attrs.label || 'PDF');
     const classification = classifyPdfBlockUrl(url, window.location.origin);
     const href = classification.kind === 'invalid' ? undefined : classification.href;
+    const opensDesktopWindow =
+        isDesktopShell() &&
+        href !== undefined &&
+        new URL(href).origin === window.location.origin;
     const onRequestFullWindow = (extension.options as PdfBlockOptions).onRequestFullWindow;
     const quickAskWorkspaceId = (extension.options as PdfBlockOptions).workspaceId;
     const getNotePath = (extension.options as PdfBlockOptions).getNotePath;
@@ -175,7 +180,7 @@ function PdfBlockView({ node, updateAttributes, selected, extension }: NodeViewP
                             }}
                             disabled={!href}
                         >
-                            Open in new tab
+                            {opensDesktopWindow ? 'Open in new window' : 'Open in new tab'}
                         </button>
                     </span>
                 </div>

@@ -265,6 +265,7 @@ describe('PdfBlockView', () => {
     afterEach(() => {
         cleanup();
         vi.unstubAllGlobals();
+        delete (window as unknown as { cocDesktop?: unknown }).cocDesktop;
     });
 
     it('renders the pdf.js text-layer viewport (not the iframe) by default', () => {
@@ -307,6 +308,17 @@ describe('PdfBlockView', () => {
         render(<PdfBlockView {...makeProps()} />);
         screen.getByRole('button', { name: 'Open in new tab' }).click();
         expect(window.open).toHaveBeenCalledWith(normalizedPdfUrl, '_blank', 'noopener,noreferrer');
+    });
+
+    it('labels a same-origin PDF as opening in a new window in Desktop', () => {
+        (window as unknown as { cocDesktop: { isDesktop: boolean } }).cocDesktop = {
+            isDesktop: true,
+        };
+
+        render(<PdfBlockView {...makeProps()} />);
+
+        expect(screen.getByRole('button', { name: 'Open in new window' })).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'Open in new tab' })).toBeNull();
     });
 
     it('renders an external PDF as a link without an iframe', () => {
