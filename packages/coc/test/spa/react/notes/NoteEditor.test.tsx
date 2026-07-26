@@ -29,6 +29,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
 const mockLoadContent = vi.fn();
 const mockIOSaveContent = vi.fn();
 const mockUploadImage = vi.fn();
+const mockIngestPaper = vi.fn();
 const mockImageApiUrl = vi.fn((wsId: string, relPath: string) =>
     `/api/workspaces/${encodeURIComponent(wsId)}/notes/image?path=${encodeURIComponent(relPath)}`);
 
@@ -36,6 +37,7 @@ const mockIo = {
     loadContent: (...args: unknown[]) => mockLoadContent(...(args as [string, string])),
     saveContent: (...args: unknown[]) => mockIOSaveContent(...(args as [string, string, string])),
     uploadImage: (...args: unknown[]) => mockUploadImage(...(args as [string, string, string])),
+    ingestPaper: (...args: unknown[]) => mockIngestPaper(...(args as [string, string, string?])),
     imageApiUrl: (...args: unknown[]) => mockImageApiUrl(...(args as [string, string])),
 };
 
@@ -53,8 +55,10 @@ const mockSetContent = vi.fn();
 const mockClearContent = vi.fn();
 const mockGetHTML = vi.fn(() => '<p>content</p>');
 let capturedOnChange: ((editor: unknown) => void) | null = null;
+let capturedHandlePaste: ((view: unknown, event: ClipboardEvent) => boolean) | null = null;
 
 let richEditorMountCount = 0;
+const mockInsertContent = vi.fn(() => ({ run: vi.fn() }));
 
 const mockEditor = {
     commands: { setContent: mockSetContent, clearContent: mockClearContent },
@@ -64,6 +68,7 @@ const mockEditor = {
     state: { doc: {}, selection: { empty: true } },
     chain: () => ({
         focus: () => ({
+            insertContent: mockInsertContent,
             toggleBold: () => ({ run: vi.fn() }),
             toggleItalic: () => ({ run: vi.fn() }),
             toggleStrike: () => ({ run: vi.fn() }),
@@ -85,8 +90,13 @@ const mockEditor = {
 // Captures the onChange callback and calls onEditorReady with mockEditor.
 // Tracks mount/unmount count for regression tests.
 vi.mock('../../../../src/server/spa/client/react/features/notes/editor/RichEditorCore', () => ({
-    RichEditorCore: (props: { onChange?: (editor: unknown) => void; onEditorReady?: (editor: unknown) => void }) => {
+    RichEditorCore: (props: {
+        onChange?: (editor: unknown) => void;
+        onEditorReady?: (editor: unknown) => void;
+        handlePaste?: (view: unknown, event: ClipboardEvent) => boolean;
+    }) => {
         if (props.onChange) capturedOnChange = props.onChange;
+        if (props.handlePaste) capturedHandlePaste = props.handlePaste;
         useEffect(() => {
             richEditorMountCount++;
             props.onEditorReady?.(mockEditor);
@@ -97,10 +107,12 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/editor/RichEdito
 
 // Mock config for isRalphEnabled
 let mockRalphEnabled = true;
+let mockArxivPaperIngestEnabled = false;
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => 'http://localhost:4000/api',
     isRalphEnabled: () => mockRalphEnabled,
+    isArxivPaperIngestEnabled: () => mockArxivPaperIngestEnabled,
     // NoteEditor mounts NoteQuickAskLayer, whose feature-flag hook reads these.
     isQuickAskSidenotesEnabled: () => false,
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
@@ -126,6 +138,8 @@ describe('NoteEditor', () => {
         mockLoadContent.mockReset();
         mockIOSaveContent.mockReset();
         mockUploadImage.mockReset();
+        mockIngestPaper.mockReset();
+        mockInsertContent.mockClear();
         mockImageApiUrl.mockClear();
         mockImageApiUrl.mockImplementation((wsId: string, relPath: string) =>
             `/api/workspaces/${encodeURIComponent(wsId)}/notes/image?path=${encodeURIComponent(relPath)}`);
@@ -135,8 +149,10 @@ describe('NoteEditor', () => {
         mockEditor.isDestroyed = false;
         mockEditor.state.doc = {};
         capturedOnChange = null;
+        capturedHandlePaste = null;
         richEditorMountCount = 0;
         mockQueueDispatch.mockReset();
+        mockArxivPaperIngestEnabled = false;
     });
 
     afterEach(() => {
@@ -351,6 +367,73 @@ describe('NoteEditor', () => {
             render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
         });
         await waitFor(() => expect(mockSetContent).toHaveBeenCalledTimes(1));
+    });
+
+    it('uses normal paste behavior and does not ingest arXiv links when the flag is disabled', async () => {
+        mockLoadContent.mockResolvedValue({ content: '', path: 'paper.md' });
+
+        await act(async () => {
+            render(<NoteEditor workspaceId="ws1" notePath="paper.md" io={mockIo} root="notes-a" />);
+        });
+        await waitFor(() => expect(capturedHandlePaste).not.toBeNull());
+
+        const preventDefault = vi.fn();
+        const handled = capturedHandlePaste?.({}, {
+            clipboardData: {
+                getData: () => 'https://arxiv.org/abs/1802.05799',
+                items: [],
+            },
+            preventDefault,
+        } as unknown as ClipboardEvent);
+
+        expect(handled).toBe(false);
+        expect(preventDefault).not.toHaveBeenCalled();
+        expect(mockIngestPaper).not.toHaveBeenCalled();
+    });
+
+    it('auto-ingests and embeds a lone arXiv link when the flag is enabled', async () => {
+        mockArxivPaperIngestEnabled = true;
+        mockLoadContent.mockResolvedValue({ content: '', path: 'paper.md' });
+        mockIngestPaper.mockResolvedValue({
+            arxivId: '1802.05799',
+            pdfPath: '.papers/1802.05799.pdf',
+        });
+
+        await act(async () => {
+            render(<NoteEditor workspaceId="ws1" notePath="paper.md" io={mockIo} root="notes-a" />);
+        });
+        await waitFor(() => expect(capturedHandlePaste).not.toBeNull());
+
+        const preventDefault = vi.fn();
+        const handled = capturedHandlePaste?.({}, {
+            clipboardData: {
+                getData: () => ' https://arxiv.org/abs/1802.05799 ',
+                items: [],
+            },
+            preventDefault,
+        } as unknown as ClipboardEvent);
+
+        expect(handled).toBe(true);
+        expect(preventDefault).toHaveBeenCalledOnce();
+        await waitFor(() => {
+            expect(mockIngestPaper).toHaveBeenCalledWith(
+                'ws1',
+                'https://arxiv.org/abs/1802.05799',
+                'notes-a',
+            );
+            expect(mockImageApiUrl).toHaveBeenCalledWith(
+                'ws1',
+                '.papers/1802.05799.pdf',
+                'notes-a',
+            );
+            expect(mockInsertContent).toHaveBeenCalledWith({
+                type: 'pdfBlock',
+                attrs: {
+                    url: '/api/workspaces/ws1/notes/image?path=.papers%2F1802.05799.pdf',
+                    label: '1802.05799',
+                },
+            });
+        });
     });
 
     // ── Load error ──────────────────────────────────────────────────────

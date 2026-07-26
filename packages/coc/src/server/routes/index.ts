@@ -955,14 +955,13 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         dataDir,
         getEnabled: getQuickAskSidenotesEnabled,
     });
-    // arXiv URL ingest (Goal 3): recognize a pasted arXiv URL, fetch + cache the
-    // PDF locally (link-rot proof / offline) and extract its text once as a
-    // sidecar for whole-paper grounding. Same flag gate as the rest of Quick Ask.
+    // arXiv URL ingest: fetch + cache the PDF locally and extract its text once
+    // as a sidecar for whole-paper grounding. The route stays available to API
+    // callers; the dedicated live flag gates only Notes paste interception.
     registerPaperIngestRoutes({
         routes,
         store,
         dataDir,
-        getEnabled: getQuickAskSidenotesEnabled,
     });
 
     const workItemStore = createWorkItemStore({ dataDir, processStore: store });
