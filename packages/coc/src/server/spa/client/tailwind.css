@@ -465,6 +465,74 @@
     margin: 0.5rem 0;
 }
 
+.paper-embed-inline-shell {
+    border: 1px solid var(--border, #e0e0e0);
+    border-radius: 6px;
+    overflow: hidden;
+    background: #ffffff;
+}
+
+.dark .paper-embed-inline-shell {
+    border-color: #3c3c3c;
+    background: #1e1e1e;
+}
+
+.paper-embed-inline-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    border-bottom: 1px solid var(--border, #e0e0e0);
+    font-size: 12px;
+}
+
+.dark .paper-embed-inline-toolbar {
+    border-bottom-color: #3c3c3c;
+}
+
+.paper-embed-inline-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.paper-embed-inline-close {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: inherit;
+    font-size: 13px;
+    line-height: 1;
+    padding: 0.15rem 0.35rem;
+    border-radius: 4px;
+}
+
+.paper-embed-inline-close:hover {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+.dark .paper-embed-inline-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.paper-embed-inline-status,
+.paper-embed-inline-error {
+    padding: 0.75rem;
+    font-size: 13px;
+}
+
+.paper-embed-inline-frame-wrap {
+    position: relative;
+}
+
+.paper-embed-inline-frame {
+    width: 100%;
+    height: 480px;
+    border: none;
+    display: block;
+}
+
 /* ── Inline PDF embed shell (shared with PdfBlock node view) ──────────────── */
 
 .md-pdf-embed-shell {

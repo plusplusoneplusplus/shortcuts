@@ -7,6 +7,7 @@
  */
 
 import { useRef, useEffect, useCallback, useState } from 'react';
+import { createRoot } from 'react-dom/client';
 import { useEditor, EditorContent } from '@tiptap/react';
 import type { Editor, EditorEvents } from '@tiptap/core';
 import { StarterKit } from '@tiptap/starter-kit';
@@ -33,6 +34,10 @@ import { AiEditDecorationExtension } from './extensions/AiEditDecorationExtensio
 import { YouTubeEmbedDecorationExtension } from './extensions/YouTubeEmbedDecorationExtension';
 import { YouTubePopupDialog } from './extensions/YouTubePopupDialog';
 import { PaperLinkEmbedDecorationExtension } from './extensions/PaperLinkEmbedDecorationExtension';
+import { PaperPopupDialog } from './extensions/PaperPopupDialog';
+import { PaperInlineViewer } from './extensions/PaperInlineViewer';
+import type { PdfPopupTarget } from './extensions/PdfPopupDialog';
+import type { PaperLinkInfo } from './extensions/paperLink';
 import { NoteLinkExtension } from './noteLinkExtension';
 import { SidenoteRefExtension } from './extensions/sidenoteRefExtension';
 import { FilePathNodeExtension } from './filePathNodeExtension';
@@ -75,6 +80,14 @@ export interface RichEditorCoreProps {
      * with the `.papers/<id>.txt` sidecar relpath. Undefined hides the button.
      */
     onChatAboutPaper?: (paperTextRelPath: string) => void;
+    /**
+     * paper-link-embed (AC-03/AC-04): resolve a decorated paper link to a
+     * pdf.js-loadable target ({url,label}). For arXiv the host ingests + caches
+     * the PDF (`.papers/<id>.pdf`); for a direct `.pdf` it echoes the href. Wires
+     * the Open inline (ephemeral) and Popout (maximized modal) actions. Undefined
+     * → those two actions are inert (New tab still works standalone).
+     */
+    resolvePaperSource?: (info: PaperLinkInfo) => Promise<PdfPopupTarget>;
 }
 
 export function getLinkOpenTitle(platform = globalThis.navigator?.platform ?? '') {
@@ -101,6 +114,7 @@ export function RichEditorCore({
     notePath,
     noteRoot,
     onChatAboutPaper,
+    resolvePaperSource,
 }: RichEditorCoreProps) {
     // Live persistence context for the PdfBlock's Quick Ask layer. The editor is
     // captured once by `useEditor`, but the note path/root change on navigation —
@@ -114,6 +128,11 @@ export function RichEditorCore({
     // callback even as the parent re-renders / the note changes.
     const onChatAboutPaperRef = useRef(onChatAboutPaper);
     onChatAboutPaperRef.current = onChatAboutPaper;
+    // paper-link-embed (AC-03): the inline viewer seam is baked into the extension
+    // config once by `useEditor`, so it reaches the latest resolver through a ref
+    // (the note — and thus the ingest target root — changes on navigation).
+    const resolvePaperSourceRef = useRef(resolvePaperSource);
+    resolvePaperSourceRef.current = resolvePaperSource;
     // Stable callback refs — avoids editor recreation when parent re-renders
     const onCommentActivatedRef = useRef(onCommentActivated);
     onCommentActivatedRef.current = onCommentActivated;
@@ -145,8 +164,22 @@ export function RichEditorCore({
     // Only one PDF overlay is open at a time; a new request replaces the prior one.
     const [popupPdf, setPopupPdf] = useState<PdfFullWindowRequest | null>(null);
 
+    // paper-link-embed (AC-04): the ⛶ Popout button on a decorated paper link asks
+    // us to open the paper in a maximized modal. Mirrors `popupPdf` — a stable
+    // setter is safe to wire into the extension config captured once by `useEditor`.
+    const [popupPaper, setPopupPaper] = useState<PaperLinkInfo | null>(null);
+
     const onUpdate = useCallback(({ editor: ed }: EditorEvents['update']) => {
         onChangeRef.current?.(ed as Editor);
+    }, []);
+
+    // Stable resolver handed to the popout dialog + inline viewer. Referentially
+    // stable (so their resolve effects do not refire) yet always calls the latest
+    // `resolvePaperSource` prop through the ref.
+    const stableResolvePaper = useCallback((info: PaperLinkInfo): Promise<PdfPopupTarget> => {
+        const fn = resolvePaperSourceRef.current;
+        if (!fn) return Promise.reject(new Error('paper resolver unavailable'));
+        return fn(info);
     }, []);
 
     const editor = useEditor({
@@ -194,9 +227,28 @@ export function RichEditorCore({
                 onRequestPopup: (videoId: string) => setPopupVideoId(videoId),
             }),
             // AC-02: paper/PDF links get view-only Open inline / Popout / New tab
-            // affordances (New tab wired here; Popout + inline render seams are
-            // filled by AC-04 / AC-03).
-            PaperLinkEmbedDecorationExtension,
+            // affordances. New tab works standalone; Popout (AC-04) and the inline
+            // pdf.js viewer (AC-03) are wired to host seams below.
+            PaperLinkEmbedDecorationExtension.configure({
+                // AC-04: open the paper in a maximized modal.
+                onRequestPopout: (info: PaperLinkInfo) => setPopupPaper(info),
+                // AC-03: mount the ephemeral inline pdf.js viewer into the widget
+                // container. A React root is torn down on collapse/destroy — the
+                // unmount is deferred so it never runs during a React render pass.
+                renderInlineViewer: (container, info, onClose) => {
+                    const root = createRoot(container);
+                    root.render(
+                        <PaperInlineViewer
+                            info={info}
+                            resolveSource={stableResolvePaper}
+                            onClose={onClose}
+                        />,
+                    );
+                    return () => {
+                        setTimeout(() => root.unmount(), 0);
+                    };
+                },
+            }),
             ...(commentsEnabled
                 ? [
                     CommentExtension.configure({
@@ -294,6 +346,16 @@ export function RichEditorCore({
                 notePath={notePath}
                 noteRoot={noteRoot}
             />
+            {resolvePaperSource && (
+                <PaperPopupDialog
+                    paper={popupPaper}
+                    resolveSource={stableResolvePaper}
+                    onClose={() => setPopupPaper(null)}
+                    workspaceId={workspaceId}
+                    notePath={notePath}
+                    noteRoot={noteRoot}
+                />
+            )}
         </>
     );
 }
