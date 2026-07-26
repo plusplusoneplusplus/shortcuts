@@ -10,11 +10,13 @@
  * When notes git is not initialized, shows an init prompt instead.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNotesGit } from './hooks/useNotesGit';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { Button, Spinner, SectionHeader } from '../../ui';
 import { UnifiedDiffViewer } from '../git/diff/UnifiedDiffViewer';
+import { getWorkspacePreferences } from '../../hooks/preferences/preferencesApi';
+import { useGlobalToast } from '../../contexts/ToastContext';
 import type { NotesGitLogEntry, NotesGitDiff } from '../../../../../notes/git/notes-git-types';
 
 interface NotesGitTabProps {
@@ -256,13 +258,78 @@ function NotesGitDetailPane({
     );
 }
 
+// ── Sub-component: Reset-from-origin confirm dialog ────────────────
+
+function ResetFromOriginConfirm({
+    remoteUrl,
+    branch,
+    resetting,
+    onConfirm,
+    onCancel,
+}: {
+    remoteUrl: string;
+    branch: string;
+    resetting: boolean;
+    onConfirm: () => void;
+    onCancel: () => void;
+}) {
+    return (
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+            data-testid="notes-git-reset-confirm"
+            role="dialog"
+            aria-modal="true"
+        >
+            <div className="max-w-md w-full rounded-lg border border-red-300 dark:border-red-800 bg-white dark:bg-[#252526] p-5 shadow-xl">
+                <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xl" aria-hidden>⚠️</span>
+                    <h2 className="text-base font-semibold text-red-700 dark:text-red-300">
+                        Reset notes from origin
+                    </h2>
+                </div>
+                <p className="text-sm text-[#1e1e1e] dark:text-[#cccccc] mb-2">
+                    This wipes all local notes and their version history, then re-clones from:
+                </p>
+                <div className="text-xs font-mono break-all mb-3 px-2 py-1 rounded bg-[#f0f0f0] dark:bg-[#2d2d2d] text-[#1e1e1e] dark:text-[#cccccc]">
+                    {remoteUrl}
+                    <span className="text-[#848484]"> @ {branch || 'main'}</span>
+                </div>
+                <p className="text-xs text-red-600 dark:text-red-400 mb-4">
+                    There is no backup and this cannot be undone.
+                </p>
+                <div className="flex justify-end gap-2">
+                    <button
+                        type="button"
+                        disabled={resetting}
+                        onClick={onCancel}
+                        className="px-3 py-1 text-xs rounded border border-[#e0e0e0] dark:border-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f0f0f0] dark:hover:bg-[#2a2a2a] disabled:opacity-60"
+                        data-testid="notes-git-reset-cancel-btn"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        disabled={resetting}
+                        onClick={onConfirm}
+                        className="px-3 py-1 text-xs rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                        data-testid="notes-git-reset-confirm-btn"
+                    >
+                        {resetting ? 'Resetting…' : 'Yes, reset from origin'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // ── Main component ─────────────────────────────────────────────────
 
 export function NotesGitTab({ workspaceId, isDefaultRoot = true }: NotesGitTabProps) {
     const {
         status, log, loading, error, initialized,
-        initialize, commit, getDiff, refresh,
+        initialize, commit, resetFromOrigin, getDiff, refresh,
     } = useNotesGit(workspaceId, isDefaultRoot);
+    const { addToast } = useGlobalToast();
 
     const [selectedHash, setSelectedHash] = useState<string | null>(null);
     const [diffData, setDiffData] = useState<NotesGitDiff | null>(null);
@@ -270,6 +337,12 @@ export function NotesGitTab({ workspaceId, isDefaultRoot = true }: NotesGitTabPr
     const [commitMsg, setCommitMsg] = useState('');
     const [committing, setCommitting] = useState(false);
     const [showMsgInput, setShowMsgInput] = useState(false);
+
+    // Origin config drives the "Reset from origin" affordance (hidden when unset).
+    const [remoteUrl, setRemoteUrl] = useState('');
+    const [branch, setBranch] = useState('');
+    const [showResetConfirm, setShowResetConfirm] = useState(false);
+    const [resetting, setResetting] = useState(false);
 
     const { width: sidebarWidth, isDragging, handleMouseDown, handleTouchStart } =
         useResizablePanel({ initialWidth: 320, minWidth: 160, maxWidth: 600, storageKey: 'notes-git-sidebar-width' });
@@ -302,6 +375,35 @@ export function NotesGitTab({ workspaceId, isDefaultRoot = true }: NotesGitTabPr
         setSelectedHash(null);
         setDiffData(null);
     }, []);
+
+    // Load origin config so the reset button knows whether a remote is configured.
+    useEffect(() => {
+        let cancelled = false;
+        if (!isDefaultRoot) return;
+        getWorkspacePreferences(workspaceId)
+            .then(prefs => {
+                if (cancelled) return;
+                setRemoteUrl(prefs?.notesGit?.remoteUrl ?? '');
+                setBranch(prefs?.notesGit?.branch ?? '');
+            })
+            .catch(() => { /* leave origin unset on failure — button stays hidden */ });
+        return () => { cancelled = true; };
+    }, [workspaceId, isDefaultRoot]);
+
+    const handleResetFromOrigin = useCallback(async () => {
+        setResetting(true);
+        try {
+            const { branch: clonedBranch } = await resetFromOrigin();
+            setSelectedHash(null);
+            setDiffData(null);
+            setShowResetConfirm(false);
+            addToast(`Notes reset from origin (${clonedBranch})`, 'success');
+        } catch (err: any) {
+            addToast(err?.message ?? 'Failed to reset notes from origin', 'error');
+        } finally {
+            setResetting(false);
+        }
+    }, [resetFromOrigin, addToast]);
 
     // Loading state
     if (loading) {
@@ -386,11 +488,32 @@ export function NotesGitTab({ workspaceId, isDefaultRoot = true }: NotesGitTabPr
             >
                 Commit Now
             </Button>
+            {remoteUrl.trim() && (
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowResetConfirm(true)}
+                    title="Wipe local notes and re-clone from the configured origin"
+                    className="text-red-600 dark:text-red-400"
+                    data-testid="notes-git-reset-btn"
+                >
+                    Reset from origin
+                </Button>
+            )}
         </div>
     );
 
     return (
         <div className={`repo-git-tab flex flex-col lg:flex-row h-full overflow-hidden${isDragging ? ' select-none' : ''}`} data-testid="notes-git-tab">
+            {showResetConfirm && (
+                <ResetFromOriginConfirm
+                    remoteUrl={remoteUrl}
+                    branch={branch}
+                    resetting={resetting}
+                    onConfirm={handleResetFromOrigin}
+                    onCancel={() => setShowResetConfirm(false)}
+                />
+            )}
             {/* Left panel — sidebar */}
             <aside
                 className={`w-full lg:shrink-0 overflow-y-auto border-b lg:border-b-0 lg:border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] flex flex-col${selectedHash ? ' hidden lg:flex' : ''}`}

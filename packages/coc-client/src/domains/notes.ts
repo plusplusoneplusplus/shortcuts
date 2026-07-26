@@ -356,6 +356,13 @@ export class NotesClient {
     return this.transport.request<{ deinitialized: boolean }>(notesGitPath(workspaceId), { method: 'DELETE' });
   }
 
+  resetFromOrigin(workspaceId: string): Promise<{ reset: boolean; branch: string }> {
+    return this.transport.request<{ reset: boolean; branch: string }>(
+      notesGitPath(workspaceId, '/reset-from-origin'),
+      { method: 'POST' },
+    );
+  }
+
   getGitStatus(workspaceId: string): Promise<NotesGitStatus> {
     return this.transport.request<NotesGitStatus>(notesGitPath(workspaceId, '/status'));
   }
