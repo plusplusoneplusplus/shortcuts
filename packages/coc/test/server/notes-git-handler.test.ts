@@ -12,7 +12,9 @@ import * as os from 'os';
 import * as path from 'path';
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore, getRepoDataPath } from '@plusplusoneplusplus/forge';
+import { execGitAsync } from '@plusplusoneplusplus/forge/git';
 import type { ExecutionServer } from '../../src/server/types';
+import { writeRepoPreferences, readRepoPreferences } from '../../src/server/preferences-handler';
 import { safeRm } from '../helpers/safe-rm';
 
 // ============================================================================
@@ -233,6 +235,108 @@ describe('Notes Git Handler', { timeout: 60_000 }, () => {
         it('returns 404 for unknown workspace', async () => {
             const srv = await startServer();
             const res = await deleteRequest(`${srv.url}/api/workspaces/does-not-exist/notes/git`);
+            expect(res.status).toBe(404);
+        });
+    });
+
+    // ========================================================================
+    // POST /reset-from-origin
+    // ========================================================================
+    describe('POST /api/workspaces/:id/notes/git/reset-from-origin', () => {
+        let originDir: string;
+
+        async function makeOrigin(): Promise<void> {
+            originDir = fs.mkdtempSync(path.join(os.tmpdir(), 'notes-git-origin-'));
+            await execGitAsync(['init', '-b', 'main'], originDir);
+            await execGitAsync(['config', 'user.email', 'origin@test.local'], originDir);
+            await execGitAsync(['config', 'user.name', 'Origin Test'], originDir);
+            fs.writeFileSync(path.join(originDir, 'from-origin.md'), '# From origin', 'utf-8');
+            await execGitAsync(['add', '-A'], originDir);
+            await execGitAsync(['commit', '-m', 'origin state'], originDir);
+        }
+
+        afterEach(async () => {
+            if (originDir) {
+                await safeRm(originDir);
+                originDir = '';
+            }
+        });
+
+        it('returns 400 when no remote URL is configured', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            await postJSON(gitUrl(srv, 'init'), {});
+
+            const res = await postJSON(gitUrl(srv, 'reset-from-origin'), {});
+            expect(res.status).toBe(400);
+        });
+
+        it('wipes the notes dir and re-clones from the configured origin', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            await postJSON(gitUrl(srv, 'init'), {});
+            writeNote('local-only.md', 'wipe me');
+            await makeOrigin();
+            writeRepoPreferences(dataDir, wsId, {
+                notesGit: { enabled: true, remoteUrl: originDir, branch: 'main' },
+            });
+
+            const res = await postJSON(gitUrl(srv, 'reset-from-origin'), {});
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.body)).toEqual({ reset: true, branch: 'main' });
+
+            expect(fs.existsSync(path.join(notesRoot(), 'from-origin.md'))).toBe(true);
+            expect(fs.existsSync(path.join(notesRoot(), 'local-only.md'))).toBe(false);
+        });
+
+        it('keeps notes-git tracking enabled after a reset', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            await makeOrigin();
+            writeRepoPreferences(dataDir, wsId, {
+                notesGit: { enabled: false, remoteUrl: originDir, branch: 'main' },
+            });
+
+            const res = await postJSON(gitUrl(srv, 'reset-from-origin'), {});
+            expect(res.status).toBe(200);
+
+            const prefs = readRepoPreferences(dataDir, wsId);
+            expect(prefs.notesGit?.enabled).toBe(true);
+            // Origin settings are preserved.
+            expect(prefs.notesGit?.remoteUrl).toBe(originDir);
+        });
+
+        it('defaults to branch main when branch preference is unset', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            await makeOrigin();
+            writeRepoPreferences(dataDir, wsId, {
+                notesGit: { enabled: true, remoteUrl: originDir },
+            });
+
+            const res = await postJSON(gitUrl(srv, 'reset-from-origin'), {});
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.body).branch).toBe('main');
+        });
+
+        it('returns 500 when the configured branch does not exist', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            await makeOrigin();
+            writeRepoPreferences(dataDir, wsId, {
+                notesGit: { enabled: true, remoteUrl: originDir, branch: 'nope' },
+            });
+
+            const res = await postJSON(gitUrl(srv, 'reset-from-origin'), {});
+            expect(res.status).toBe(500);
+        });
+
+        it('returns 404 for unknown workspace', async () => {
+            const srv = await startServer();
+            const res = await postJSON(
+                `${srv.url}/api/workspaces/does-not-exist/notes/git/reset-from-origin`,
+                {},
+            );
             expect(res.status).toBe(404);
         });
     });

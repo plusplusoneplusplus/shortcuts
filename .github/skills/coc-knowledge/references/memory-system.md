@@ -17,7 +17,7 @@ Bounded, file-backed persistence layer that lets AI chat sessions learn from pas
 | `types.ts` | `MemoryStore`, `MemoryConfig`, `MemoryLevel` | Core type definitions and store interface |
 | `bounded-memory-types.ts` | `BoundedMemoryStoreOptions`, `MemoryMutationResult`, `ENTRY_DELIMITER`, `DEFAULT_CHAR_LIMIT` | Types and constants for bounded memory |
 | `bounded-memory-store.ts` | `BoundedMemoryStore` | File-backed store with add/replace/remove, appendEntries (promotion), normalized duplicate checks, substring matching, char limits, `§` delimiters, mkdir-based file locking |
-| `memory-security-scanner.ts` | `scanMemoryContent` | Stateless security scanner for injection/exfiltration threats and invisible Unicode |
+| `memory-security-scanner.ts` | `scanMemoryContent`, `redactSensitiveValues`, `SECURITY_PATTERNS_DESCRIPTION` | Compatibility re-exports of the canonical scanner in `@plusplusoneplusplus/coc-memory` (`safety-scanner.ts`). Blocks prompt injection, exfiltration, SSH persistence, CoC-env access, credential literals (API keys, Bearer/Basic tokens, password assignments, connection strings), and invisible Unicode. Do not fork the patterns here — extend the canonical module |
 | `memory-prompt-builder.ts` | `MemoryPromptBuilder`, `MEMORY_GUIDANCE` | Frozen snapshot builder: reads store at construction, renders `═══`-separated blocks with usage headers |
 | `memory-tool.ts` | `createMemoryTool` | Factory returning AI-callable `memory` tool; supports `bounded` mode (direct MEMORY.md mutation) and `capture` mode (candidate append) |
 | `memory-candidate-store.ts` | `MemoryCandidateStore` | SQLite candidate lifecycle: pending/promoted/dropped/ignored statuses, signal counts, provenance, explicit intent |

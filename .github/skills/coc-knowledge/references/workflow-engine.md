@@ -89,7 +89,7 @@ Legacy pipeline YAML compatibility types live with the workflow compiler. Forge'
 
 `workflow/pipeline-compat.ts` contains legacy pipeline YAML config types used by the compiler. The old `pipeline/` directory has been deleted — all execution goes through the workflow engine.
 
-Forge's workflow compatibility barrels are thin re-exports over `@plusplusoneplusplus/coc-workflow/workflow`; do not add new workflow implementation code under `packages/forge/src/workflow/`. New workflow consumers should import from `@plusplusoneplusplus/coc-workflow` directly where practical.
+Forge's workflow compatibility barrels are thin re-exports over `@plusplusoneplusplus/coc-workflow/workflow`. `packages/forge/src/workflow/` holds only `index.ts` (`export * from '@plusplusoneplusplus/coc-workflow/workflow'`); the engine has no Forge-local copy. Do not add new workflow implementation code there. Forge keeps its own runtime cancellation/concurrency utilities under `packages/forge/src/runtime/` for map-reduce and the task queue — these are a separate class identity from the workflow package. New workflow consumers should import from `@plusplusoneplusplus/coc-workflow` directly where practical.
 
 ## Template Engine
 

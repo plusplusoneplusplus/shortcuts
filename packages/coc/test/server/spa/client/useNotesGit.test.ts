@@ -15,6 +15,7 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/notesApi', () =>
         getGitLog: vi.fn(),
         initializeGit: vi.fn(),
         commitGit: vi.fn(),
+        resetGitFromOrigin: vi.fn(),
         getGitDiff: vi.fn(),
     },
 }));
@@ -154,6 +155,29 @@ describe('useNotesGit', () => {
         });
 
         expect(mockNotesApi.commitGit).toHaveBeenCalledWith('ws-1', 'test message');
+    });
+
+    it('resetFromOrigin() calls reset endpoint, refreshes, and returns branch', async () => {
+        mockNotesApi.getGitStatus.mockResolvedValueOnce(makeStatus());
+        mockNotesApi.getGitLog.mockResolvedValueOnce({ entries: [], limit: 20, offset: 0 });
+
+        const { result } = renderHook(() => useNotesGit('ws-1'));
+
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        // Mock reset + subsequent refresh (re-cloned repo has one commit).
+        mockNotesApi.resetGitFromOrigin.mockResolvedValueOnce({ reset: true, branch: 'main' });
+        mockNotesApi.getGitStatus.mockResolvedValueOnce(makeStatus());
+        mockNotesApi.getGitLog.mockResolvedValueOnce({ entries: [makeLogEntry()], limit: 20, offset: 0 });
+
+        let returned: { reset: boolean; branch: string } | undefined;
+        await act(async () => {
+            returned = await result.current.resetFromOrigin();
+        });
+
+        expect(mockNotesApi.resetGitFromOrigin).toHaveBeenCalledWith('ws-1');
+        expect(returned).toEqual({ reset: true, branch: 'main' });
+        expect(result.current.log).toHaveLength(1);
     });
 
     it('commit() without message sends no body', async () => {

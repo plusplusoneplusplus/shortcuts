@@ -190,6 +190,10 @@ export const notesApi = {
         return withSpaErrors(notesClient(wsId).deinitializeGit(wsId));
     },
 
+    resetGitFromOrigin(wsId: string): Promise<{ reset: boolean; branch: string }> {
+        return withSpaErrors(notesClient(wsId).resetFromOrigin(wsId));
+    },
+
     getGitStatus(wsId: string): Promise<NotesGitStatus> {
         return withSpaErrors(notesClient(wsId).getGitStatus(wsId));
     },

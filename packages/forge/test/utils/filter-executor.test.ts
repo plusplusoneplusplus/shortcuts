@@ -19,7 +19,7 @@ import type {
     RuleFilterConfig,
     AIFilterConfig,
     FilterRule,
-} from '../../src/workflow/pipeline-compat';
+} from '../../src/workflow';
 
 // Suppress logger output during tests
 vi.mock('../../src/logger', () => ({

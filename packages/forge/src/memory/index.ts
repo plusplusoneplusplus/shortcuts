@@ -13,8 +13,8 @@ export type {
 export { computeRepoHash } from './repo-hash';
 export { BaseFileStore } from './base-file-store';
 
-// Memory security scanner
-export { scanMemoryContent, SECURITY_PATTERNS_DESCRIPTION } from './memory-security-scanner';
+// Memory security scanner (canonical impl re-exported from @plusplusoneplusplus/coc-memory)
+export { scanMemoryContent, redactSensitiveValues, SECURITY_PATTERNS_DESCRIPTION } from './memory-security-scanner';
 export type { MemoryScanResult, ThreatPatternId } from './memory-security-scanner';
 
 // Memory tool

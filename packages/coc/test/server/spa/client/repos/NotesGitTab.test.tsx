@@ -12,6 +12,7 @@ import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-libra
 // Mock the useNotesGit hook
 const mockInitialize = vi.fn();
 const mockCommit = vi.fn();
+const mockResetFromOrigin = vi.fn();
 const mockGetDiff = vi.fn();
 const mockRefresh = vi.fn();
 
@@ -23,6 +24,7 @@ const defaultHookReturn = {
     initialized: false,
     initialize: mockInitialize,
     commit: mockCommit,
+    resetFromOrigin: mockResetFromOrigin,
     getDiff: mockGetDiff,
     refresh: mockRefresh,
 };
@@ -31,6 +33,17 @@ let hookReturn = { ...defaultHookReturn };
 
 vi.mock('../../../../../src/server/spa/client/react/features/notes/hooks/useNotesGit', () => ({
     useNotesGit: () => hookReturn,
+}));
+
+// Origin config drives whether the "Reset from origin" button renders.
+const mockGetWorkspacePreferences = vi.fn();
+vi.mock('../../../../../src/server/spa/client/react/hooks/preferences/preferencesApi', () => ({
+    getWorkspacePreferences: (...args: any[]) => mockGetWorkspacePreferences(...args),
+}));
+
+const mockAddToast = vi.fn();
+vi.mock('../../../../../src/server/spa/client/react/contexts/ToastContext', () => ({
+    useGlobalToast: () => ({ addToast: mockAddToast }),
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useResizablePanel', () => ({
@@ -111,8 +124,13 @@ describe('NotesGitTab (notes-git)', () => {
         hookReturn = { ...defaultHookReturn };
         mockInitialize.mockReset();
         mockCommit.mockReset();
+        mockResetFromOrigin.mockReset();
         mockGetDiff.mockReset();
         mockRefresh.mockReset();
+        mockGetWorkspacePreferences.mockReset();
+        mockAddToast.mockReset();
+        // Default: no origin configured → reset button hidden.
+        mockGetWorkspacePreferences.mockResolvedValue({ notesGit: {} });
     });
 
     afterEach(() => {
@@ -381,6 +399,114 @@ describe('NotesGitTab (notes-git)', () => {
         await waitFor(() => {
             expect(screen.getByText('No changes in this commit.')).toBeDefined();
         });
+    });
+
+    // ── Reset from origin (AC-03) ───────────────────────────────────
+
+    it('hides "Reset from origin" button when no remoteUrl is configured', async () => {
+        hookReturn = { ...defaultHookReturn, initialized: true, status: makeStatus(), log: [] };
+        mockGetWorkspacePreferences.mockResolvedValue({ notesGit: { enabled: true } });
+
+        await act(async () => {
+            render(<NotesGitTab workspaceId="ws-1" />);
+        });
+
+        expect(screen.queryByTestId('notes-git-reset-btn')).toBeNull();
+    });
+
+    it('shows "Reset from origin" button when remoteUrl is configured', async () => {
+        hookReturn = { ...defaultHookReturn, initialized: true, status: makeStatus(), log: [] };
+        mockGetWorkspacePreferences.mockResolvedValue({
+            notesGit: { enabled: true, remoteUrl: 'https://github.com/owner/repo.git', branch: 'main' },
+        });
+
+        await act(async () => {
+            render(<NotesGitTab workspaceId="ws-1" />);
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('notes-git-reset-btn')).toBeDefined();
+        });
+    });
+
+    it('clicking "Reset from origin" opens a confirmation dialog (no immediate reset)', async () => {
+        hookReturn = { ...defaultHookReturn, initialized: true, status: makeStatus(), log: [] };
+        mockGetWorkspacePreferences.mockResolvedValue({
+            notesGit: { enabled: true, remoteUrl: 'https://github.com/owner/repo.git', branch: 'dev' },
+        });
+
+        await act(async () => {
+            render(<NotesGitTab workspaceId="ws-1" />);
+        });
+
+        await waitFor(() => expect(screen.getByTestId('notes-git-reset-btn')).toBeDefined());
+        fireEvent.click(screen.getByTestId('notes-git-reset-btn'));
+
+        expect(screen.getByTestId('notes-git-reset-confirm')).toBeDefined();
+        expect(mockResetFromOrigin).not.toHaveBeenCalled();
+    });
+
+    it('confirming reset calls resetFromOrigin and toasts success', async () => {
+        hookReturn = { ...defaultHookReturn, initialized: true, status: makeStatus(), log: [] };
+        mockGetWorkspacePreferences.mockResolvedValue({
+            notesGit: { enabled: true, remoteUrl: 'https://github.com/owner/repo.git', branch: 'main' },
+        });
+        mockResetFromOrigin.mockResolvedValue({ reset: true, branch: 'main' });
+
+        await act(async () => {
+            render(<NotesGitTab workspaceId="ws-1" />);
+        });
+
+        await waitFor(() => expect(screen.getByTestId('notes-git-reset-btn')).toBeDefined());
+        fireEvent.click(screen.getByTestId('notes-git-reset-btn'));
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('notes-git-reset-confirm-btn'));
+        });
+
+        expect(mockResetFromOrigin).toHaveBeenCalled();
+        expect(mockAddToast).toHaveBeenCalledWith(expect.stringContaining('main'), 'success');
+        // Dialog closes on success.
+        await waitFor(() => expect(screen.queryByTestId('notes-git-reset-confirm')).toBeNull());
+    });
+
+    it('cancelling reset closes the dialog without resetting', async () => {
+        hookReturn = { ...defaultHookReturn, initialized: true, status: makeStatus(), log: [] };
+        mockGetWorkspacePreferences.mockResolvedValue({
+            notesGit: { enabled: true, remoteUrl: 'https://github.com/owner/repo.git', branch: 'main' },
+        });
+
+        await act(async () => {
+            render(<NotesGitTab workspaceId="ws-1" />);
+        });
+
+        await waitFor(() => expect(screen.getByTestId('notes-git-reset-btn')).toBeDefined());
+        fireEvent.click(screen.getByTestId('notes-git-reset-btn'));
+        fireEvent.click(screen.getByTestId('notes-git-reset-cancel-btn'));
+
+        expect(screen.queryByTestId('notes-git-reset-confirm')).toBeNull();
+        expect(mockResetFromOrigin).not.toHaveBeenCalled();
+    });
+
+    it('surfaces an error toast when reset fails', async () => {
+        hookReturn = { ...defaultHookReturn, initialized: true, status: makeStatus(), log: [] };
+        mockGetWorkspacePreferences.mockResolvedValue({
+            notesGit: { enabled: true, remoteUrl: 'https://github.com/owner/repo.git', branch: 'main' },
+        });
+        mockResetFromOrigin.mockRejectedValue(new Error('clone failed'));
+
+        await act(async () => {
+            render(<NotesGitTab workspaceId="ws-1" />);
+        });
+
+        await waitFor(() => expect(screen.getByTestId('notes-git-reset-btn')).toBeDefined());
+        fireEvent.click(screen.getByTestId('notes-git-reset-btn'));
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('notes-git-reset-confirm-btn'));
+        });
+
+        expect(mockAddToast).toHaveBeenCalledWith('clone failed', 'error');
     });
 
     // matchCommitsByIdentity is in RepoGitTab, not NotesGitTab — no re-export needed

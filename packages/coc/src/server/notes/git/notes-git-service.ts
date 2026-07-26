@@ -12,6 +12,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { execGitAsync } from '@plusplusoneplusplus/forge/git';
+import { cloneRepository } from '../../routes/api-git-clone-routes';
 import type { NotesGitStatus, NotesGitLogEntry, NotesGitDiff, NotesGitDiffFile, NoteFileVersion } from './notes-git-types';
 
 /** Empty tree hash used for diffing the initial (parentless) commit. */
@@ -62,6 +63,43 @@ export class NotesGitService {
         // Stage everything and create initial commit
         await execGitAsync(['add', '-A'], this.notesDir);
         await execGitAsync(['commit', '--allow-empty', '-m', 'Initial notes commit'], this.notesDir);
+    }
+
+    /**
+     * Destructively reset the notes directory to the exact state of a remote origin.
+     *
+     * Wipes the entire notes directory (including any existing history), then
+     * re-clones `remoteUrl` at `branch` (default `main` when blank/unset) into it,
+     * reusing the code-repo clone plumbing (`cloneRepository`) so system git and
+     * configured credentials handle private-repo auth. After success the notes dir
+     * is a real clone with an `origin` remote; inherited git hooks are disabled to
+     * match `init()`.
+     *
+     * Loses all prior local notes and history — there is no backup.
+     * Throws when `remoteUrl` is blank or when the clone fails (bad branch/URL/auth).
+     */
+    async resetFromOrigin(remoteUrl: string, branch?: string): Promise<{ branch: string }> {
+        const url = remoteUrl?.trim();
+        if (!url) {
+            throw new Error('Cannot reset notes from origin: no remote URL configured');
+        }
+        const targetBranch = branch?.trim() || 'main';
+
+        // Wipe the entire notes directory (files + any existing .git history).
+        await fs.promises.rm(this.notesDir, { recursive: true, force: true });
+
+        // git clone creates the target directory; ensure its parent exists.
+        const parentDir = path.dirname(this.notesDir);
+        await fs.promises.mkdir(parentDir, { recursive: true });
+
+        // Clone the requested branch directly into notesDir using system git.
+        await cloneRepository(
+            ['clone', '--branch', targetBranch, url, this.notesDir],
+            parentDir,
+        );
+
+        await this.disableInheritedGitHooks();
+        return { branch: targetBranch };
     }
 
     private async disableInheritedGitHooks(): Promise<void> {

@@ -148,6 +148,13 @@ export {
     type AzureBoardsTypeMapping,
 } from './work-item-sync-azure-boards-mapping';
 export {
+    WorkspacePullPollScheduler,
+    type WorkspacePullPollSchedulerAdapter,
+    type WorkspacePullPollSchedulerOptions,
+    type WorkspacePullPollTimerApi,
+    type WorkspacePullPollWorkspaceConfig,
+} from './workspace-pull-poll-scheduler';
+export {
     DEFAULT_WORK_ITEM_GITHUB_PULL_INTERVAL_MINUTES,
     WorkItemGitHubPullPoller,
     type WorkItemGitHubPullPollerOptions,

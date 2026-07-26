@@ -92,6 +92,16 @@ export function applyRepoPreferencesPatch(
         merged.activityFilters = { ...current.activityFilters, ...patch.activityFilters };
     }
 
+    // Deep-merge notesGit so that patching the origin (remoteUrl/branch) from the
+    // Settings tab does not clobber the existing autoCommit block, and vice-versa.
+    if (patch.notesGit && current.notesGit) {
+        merged.notesGit = {
+            ...current.notesGit,
+            ...patch.notesGit,
+            autoCommit: patch.notesGit.autoCommit ?? current.notesGit.autoCommit,
+        };
+    }
+
     // Deep-merge work-item preferences so updating polling cadence does
     // not clear the workspace GitHub owner/repo override.
     if (patch.workItems && current.workItems) {

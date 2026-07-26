@@ -19,6 +19,7 @@ export interface UseNotesGitReturn {
     initialized: boolean;
     initialize: () => Promise<void>;
     commit: (message?: string) => Promise<void>;
+    resetFromOrigin: () => Promise<{ reset: boolean; branch: string }>;
     getDiff: (hash?: string) => Promise<NotesGitDiff>;
     refresh: () => Promise<void>;
 }
@@ -162,6 +163,19 @@ export function useNotesGit(workspaceId: string, isDefaultRoot = true): UseNotes
         return data;
     }, [workspaceId]);
 
+    // Destructive: wipe notes dir + re-clone from the configured origin, then refresh.
+    // Lets the caller surface errors (e.g. toast) by rethrowing.
+    const resetFromOrigin = useCallback(async (): Promise<{ reset: boolean; branch: string }> => {
+        setLoading(true);
+        try {
+            const result = await notesApi.resetGitFromOrigin(workspaceId);
+            await refresh();
+            return result;
+        } finally {
+            setLoading(false);
+        }
+    }, [workspaceId, refresh]);
+
     return {
         status,
         log,
@@ -170,6 +184,7 @@ export function useNotesGit(workspaceId: string, isDefaultRoot = true): UseNotes
         initialized,
         initialize,
         commit,
+        resetFromOrigin,
         getDiff,
         refresh,
     };
