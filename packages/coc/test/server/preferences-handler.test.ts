@@ -2402,6 +2402,49 @@ describe('Per-Repo Preferences REST API', () => {
         expect(body.notesGit).toEqual(prefs.notesGit);
     });
 
+    it('validates notesGit with remoteUrl and branch', async () => {
+        await putJSON(repoUrl(repoId), {
+            notesGit: {
+                enabled: true,
+                remoteUrl: 'https://github.com/acme/notes.git',
+                branch: 'main',
+            },
+        });
+        const res = await getJSON(repoUrl(repoId));
+        const body = JSON.parse(res.body);
+        expect(body.notesGit).toEqual({
+            enabled: true,
+            remoteUrl: 'https://github.com/acme/notes.git',
+            branch: 'main',
+        });
+    });
+
+    it('trims notesGit.remoteUrl and drops blank remoteUrl/branch', async () => {
+        await putJSON(repoUrl(repoId), {
+            notesGit: {
+                enabled: true,
+                remoteUrl: '  https://github.com/acme/notes.git  ',
+                branch: '   ',
+            },
+        });
+        const res = await getJSON(repoUrl(repoId));
+        const body = JSON.parse(res.body);
+        expect(body.notesGit).toEqual({
+            enabled: true,
+            remoteUrl: 'https://github.com/acme/notes.git',
+        });
+        expect(body.notesGit.branch).toBeUndefined();
+    });
+
+    it('drops notesGit.remoteUrl when wrong type but keeps enabled', async () => {
+        await putJSON(repoUrl(repoId), {
+            notesGit: { enabled: true, remoteUrl: 123, branch: ['x'] },
+        });
+        const res = await getJSON(repoUrl(repoId));
+        const body = JSON.parse(res.body);
+        expect(body.notesGit).toEqual({ enabled: true });
+    });
+
     // -- Isolation --
 
     it('two repos have independent preferences', async () => {

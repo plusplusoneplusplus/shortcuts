@@ -169,6 +169,20 @@ const NotesGitAutoCommitSchema = z.object({
 const NotesGitSchema = z.object({
     enabled: z.boolean(),
     autoCommit: NotesGitAutoCommitSchema.optional().catch(undefined),
+    /**
+     * Origin for the destructive "Reset from origin" action (My Work / My Life).
+     * When set, the notes dir can be wiped and re-cloned from this GitHub remote.
+     * Empty/unset disables the reset action. Trimmed; blank/non-string collapses to undefined.
+     */
+    remoteUrl: z.preprocess(
+        v => (typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined),
+        z.string().max(2048).optional().catch(undefined),
+    ),
+    /** Branch to reset from; defaults to `main` at reset time when unset/blank. */
+    branch: z.preprocess(
+        v => (typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined),
+        z.string().max(255).optional().catch(undefined),
+    ),
 }).strip();
 
 const ActivityFiltersSchema = z.object({
