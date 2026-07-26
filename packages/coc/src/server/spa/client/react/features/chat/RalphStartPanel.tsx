@@ -217,12 +217,15 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
                 throw new Error(msg || `HTTP ${resp.status}`);
             }
             const result = await resp.json();
-            // Path 2 (direct launch) mints a fresh session and returns its id.
-            // Persist a pointer onto the SOURCE chat's process metadata so the
-            // banner can recover/track this session on reopen + reload, then
-            // reflect it locally right away (latest-only). Best-effort: a failed
-            // patch must not block navigation.
-            if (useLaunchEndpoint && result?.sessionId) {
+            // Any launch that hits `/ralph-launch` mints a fresh session and
+            // returns its id — this covers both the direct launch path
+            // (`useLaunchEndpoint`) and a grilling-phase launch into a target
+            // that differs from the source chat (`!sameSourceTarget`, e.g. an
+            // SSH remote repo). Persist a pointer onto the SOURCE chat's process
+            // metadata so the banner can recover/track this session on reopen +
+            // reload, then reflect it locally right away (latest-only).
+            // Best-effort: a failed patch must not block navigation.
+            if ((useLaunchEndpoint || !sameSourceTarget) && result?.sessionId) {
                 const pointer: RalphLaunchedSession = {
                     sessionId: result.sessionId,
                     workspaceId: selectedTarget.workspaceId,

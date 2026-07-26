@@ -36,6 +36,8 @@ const MAX_PDF_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
 const ATTACHMENTS_DIR = '.attachments';
 /** Image directory for repo-folder roots (co-located in the repo). */
 const IMAGES_DIR = '.images';
+/** Cache directory for PDFs downloaded by the paper-ingest endpoint. */
+const PAPERS_DIR = '.papers';
 
 // ============================================================================
 // Helpers
@@ -47,6 +49,17 @@ const IMAGES_DIR = '.images';
  */
 function getImageDirName(resolved: ResolvedNotesRoot): string {
     return resolved.isDefault ? ATTACHMENTS_DIR : IMAGES_DIR;
+}
+
+/** Only cached PDF artifacts are public; extracted `.txt` sidecars stay private. */
+function isCachedPaperPdf(assetPath: string): boolean {
+    const normalized = assetPath.replace(/\\/g, '/');
+    const prefix = `${PAPERS_DIR}/`;
+    if (!normalized.startsWith(prefix)) return false;
+    const fileName = normalized.slice(prefix.length);
+    return fileName.length > 4
+        && !fileName.includes('/')
+        && fileName.toLowerCase().endsWith('.pdf');
 }
 
 /**
@@ -195,14 +208,27 @@ export function registerNotesImageRoutes(
             const notesRoot = resolved.absolutePath;
             const imgDirName = getImageDirName(resolved);
             const imgDir = path.join(notesRoot, imgDirName);
+            const cachedPaperPdf = isCachedPaperPdf(imagePath);
             let resolvedPath: string;
             if (resolved.isDefault) {
-                resolvedPath = path.resolve(notesRoot, imagePath);
+                if (cachedPaperPdf) {
+                    const safePaperPath = await resolveSafeNotesPath(
+                        notesRoot,
+                        imagePath,
+                        { rejectSymlinks: true },
+                    );
+                    if (isNotesPathSafetyError(safePaperPath)) {
+                        return sendError(res, safePaperPath.statusCode, safePaperPath.error);
+                    }
+                    resolvedPath = safePaperPath.absolutePath;
+                } else {
+                    resolvedPath = path.resolve(notesRoot, imagePath);
+                }
                 if (!isWithinDirectory(resolvedPath, notesRoot)) {
                     return sendError(res, 403, 'Access denied: path is outside notes directory');
                 }
-                if (!isWithinDirectory(resolvedPath, imgDir)) {
-                    return sendError(res, 403, `Access denied: path must be within ${imgDirName} directory`);
+                if (!isWithinDirectory(resolvedPath, imgDir) && !cachedPaperPdf) {
+                    return sendError(res, 403, `Access denied: path must be within ${imgDirName} directory or be a cached paper PDF`);
                 }
             } else {
                 const safePath = await resolveSafeNotesPath(notesRoot, imagePath);
@@ -210,17 +236,21 @@ export function registerNotesImageRoutes(
                     return sendError(res, safePath.statusCode, safePath.error);
                 }
                 const imagePrefix = `${imgDirName}/`;
-                if (!safePath.relativePath.startsWith(imagePrefix)) {
-                    return sendError(res, 403, `Access denied: path must be within ${imgDirName} directory`);
+                if (!safePath.relativePath.startsWith(imagePrefix) && !cachedPaperPdf) {
+                    return sendError(res, 403, `Access denied: path must be within ${imgDirName} directory or be a cached paper PDF`);
                 }
-                const safeImagePath = await resolveSafeNotesPath(
-                    imgDir,
-                    safePath.relativePath.slice(imagePrefix.length),
-                );
-                if (isNotesPathSafetyError(safeImagePath)) {
-                    return sendError(res, safeImagePath.statusCode, safeImagePath.error);
+                if (cachedPaperPdf) {
+                    resolvedPath = safePath.absolutePath;
+                } else {
+                    const safeImagePath = await resolveSafeNotesPath(
+                        imgDir,
+                        safePath.relativePath.slice(imagePrefix.length),
+                    );
+                    if (isNotesPathSafetyError(safeImagePath)) {
+                        return sendError(res, safeImagePath.statusCode, safeImagePath.error);
+                    }
+                    resolvedPath = safeImagePath.absolutePath;
                 }
-                resolvedPath = safeImagePath.absolutePath;
             }
 
             const served = serveStaticFile(resolvedPath, res);

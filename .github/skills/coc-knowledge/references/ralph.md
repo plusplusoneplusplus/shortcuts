@@ -173,7 +173,11 @@ launch. If the selected target is the same workspace/server as the completed
 grilling process, it posts to `/api/processes/:id/ralph-start` so the
 grilling-phase Ralph session is reused. If the selected target differs, it posts
 the reviewed `goalSpec` to that target server's `/api/ralph-launch` endpoint and
-mints a fresh execution session. The start route validates the resolved provider
+mints a fresh execution session. Any launch that hits `/api/ralph-launch` (direct
+launch, or a grilling-phase launch into a different/remote target) persists a
+`ralphLaunchedSession` pointer onto the source chat's process metadata so the
+panel's closed banner can recover and render that session's live executing/
+complete status on reopen and reload. The start route validates the resolved provider
 plus optional `config.model`/`config.reasoningEffort` overrides and applies them
 only to the first queued execution task.
 

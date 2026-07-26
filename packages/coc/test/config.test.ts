@@ -1073,6 +1073,7 @@ timeout: 300
                 '  enabled: true',
                 'defaultProvider: codex',
                 'features:',
+                '  arxivPaperIngest: true',
                 '  autoMemoryPromotion: true',
                 '  focusedDiff: true',
                 '  gitCrossCloneCherryPick: true',
@@ -1297,6 +1298,7 @@ timeout: 300
                     "enabled": false,
                   },
                   "features": {
+                    "arxivPaperIngest": false,
                     "autoAgentProviderRouting": false,
                     "autoMemoryPromotion": true,
                     "commitChatLens": true,
@@ -1483,6 +1485,7 @@ timeout: 300
                   "dreams.timeoutMs": "default",
                   "effortLevels.enabled": "default",
                   "excalidraw.enabled": "default",
+                  "features.arxivPaperIngest": "default",
                   "features.autoAgentProviderRouting": "default",
                   "features.autoMemoryPromotion": "file",
                   "features.commitChatLens": "default",

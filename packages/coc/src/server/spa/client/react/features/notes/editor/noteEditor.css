@@ -332,6 +332,23 @@
 .note-editor .ProseMirror [data-indent="7"] { padding-left: 14rem; }
 .note-editor .ProseMirror [data-indent="8"] { padding-left: 16rem; }
 
+/* ── List-container indentation (data-indent on ul/ol) ──────────────── */
+/* Uses margin-left so the bullet marker moves with the text.
+   The [data-indent] rules above use padding-left, which leaves markers behind for lists.
+   These more-specific selectors (tag + attribute = higher specificity) override
+   padding-left back to the normal list value and shift with margin-left instead. */
+.note-editor .ProseMirror ul[data-indent],
+.note-editor .ProseMirror ol[data-indent] { padding-left: 1.5rem; }
+
+.note-editor .ProseMirror ul[data-indent="1"], .note-editor .ProseMirror ol[data-indent="1"] { margin-left: 2rem; }
+.note-editor .ProseMirror ul[data-indent="2"], .note-editor .ProseMirror ol[data-indent="2"] { margin-left: 4rem; }
+.note-editor .ProseMirror ul[data-indent="3"], .note-editor .ProseMirror ol[data-indent="3"] { margin-left: 6rem; }
+.note-editor .ProseMirror ul[data-indent="4"], .note-editor .ProseMirror ol[data-indent="4"] { margin-left: 8rem; }
+.note-editor .ProseMirror ul[data-indent="5"], .note-editor .ProseMirror ol[data-indent="5"] { margin-left: 10rem; }
+.note-editor .ProseMirror ul[data-indent="6"], .note-editor .ProseMirror ol[data-indent="6"] { margin-left: 12rem; }
+.note-editor .ProseMirror ul[data-indent="7"], .note-editor .ProseMirror ol[data-indent="7"] { margin-left: 14rem; }
+.note-editor .ProseMirror ul[data-indent="8"], .note-editor .ProseMirror ol[data-indent="8"] { margin-left: 16rem; }
+
 /* ── File-path references ──────────────────────────────────────────── */
 
 .note-editor .ProseMirror .file-ref-link {
@@ -1282,10 +1299,9 @@
 
 /* Quick Ask side-note reference marker (notes-quick-ask AC-04).
    The persisted `[^qa-<id>]` footnote renders in the WYSIWYG editor as an
-   always-visible ✨ chip sitting at the end of its anchored phrase — the
-   persistent anchor indicator (visible whether or not the answer popover is
-   open). Clicking it reopens the answer popover (see NoteQuickAskLayer). Styling
-   mirrors the chat inline side-note chip for a consistent feel. */
+   always-visible ✨ action chip at the end of its anchored phrase. Clicking it
+   reopens the answer popover (see NoteQuickAskLayer). Styling mirrors the chat
+   inline side-note chip for a consistent feel. */
 .qa-sidenote-ref {
     display: inline-flex;
     align-items: center;
@@ -1305,6 +1321,13 @@
     user-select: none;
     -webkit-user-select: none;
     transition: transform 0.1s ease-out;
+}
+
+/* Persistent source indicator for an answered Notes Quick Ask. This is a
+   ProseMirror decoration only: it never enters the editable document or saved
+   Markdown. Keep it aligned with chat's Quick Ask anchor treatment. */
+.note-quick-ask-anchor {
+    border-bottom: 2px dotted rgba(55, 148, 255, 0.55);
 }
 
 .qa-sidenote-ref:hover {

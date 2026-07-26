@@ -84,6 +84,8 @@ interface DashboardConfig {
     remoteShellEnabled?: boolean;
     /** Whether Quick Ask side-notes on assistant chat turns are enabled (admin: Quick Ask side-notes). */
     quickAskSidenotesEnabled?: boolean;
+    /** Whether a lone pasted arXiv link is downloaded and embedded in Notes. */
+    arxivPaperIngestEnabled?: boolean;
     /** Whether the sliding scope switcher (My Work · My Life · active workspace) is enabled (feature flag). */
     scopeSwitcherEnabled?: boolean;
     /** Whether the split "Workspace" left panel (chat top / git bottom + shared detail pane) is enabled. */
@@ -413,6 +415,11 @@ export function isRemoteShellEnabled(): boolean {
 /** Live `features.quickAskSidenotes` flag (admin: Quick Ask side-notes). */
 export function isQuickAskSidenotesEnabled(): boolean {
     return getConfig().quickAskSidenotesEnabled === true;
+}
+
+/** Live `features.arxivPaperIngest` flag for Notes paste interception. */
+export function isArxivPaperIngestEnabled(): boolean {
+    return getConfig().arxivPaperIngestEnabled === true;
 }
 
 /** Returns true when the sliding scope switcher (My Work · My Life · active workspace) is enabled. */

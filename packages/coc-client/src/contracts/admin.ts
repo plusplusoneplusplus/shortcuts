@@ -123,6 +123,7 @@ export interface AdminResolvedConfig {
     ralphMultiAgentGrill?: boolean;
     nativeCliSessions?: boolean;
     quickAskSidenotes?: boolean;
+    arxivPaperIngest?: boolean;
     gitWorktreeExecution?: boolean;
   };
   workItems?: { hierarchy?: { enabled?: boolean }; sync?: { enabled?: boolean }; aiAuthoring?: { enabled?: boolean }; workflow?: { enabled?: boolean } };
@@ -208,6 +209,7 @@ export interface AdminConfigUpdate {
   'features.autoAgentProviderRouting'?: boolean;
   'features.nativeCliSessions'?: boolean;
   'features.quickAskSidenotes'?: boolean;
+  'features.arxivPaperIngest'?: boolean;
   'features.gitWorktreeExecution'?: boolean;
   'effortLevels.enabled'?: boolean;
   [key: string]: unknown;
@@ -261,6 +263,7 @@ export interface RuntimeDashboardConfig {
     effortLevelsEnabled: boolean;
     nativeCliSessionsEnabled: boolean;
     quickAskSidenotesEnabled: boolean;
+    arxivPaperIngestEnabled: boolean;
     remoteShellEnabled: boolean;
     singleRowShellEnabled: boolean;
     splitWorkspacePanelEnabled: boolean;

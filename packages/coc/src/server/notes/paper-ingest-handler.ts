@@ -61,8 +61,6 @@ export interface PaperIngestRouteOptions {
     routes: Route[];
     store: ProcessStore;
     dataDir: string;
-    /** Live getter for the admin `features.quickAskSidenotes` flag. */
-    getEnabled: () => boolean;
     /** Optional dependency overrides (tests inject stubs). */
     deps?: Partial<PaperIngestDeps>;
 }
@@ -86,7 +84,7 @@ async function resolvePapersDir(
  * Mutates the `routes` array in-place.
  */
 export function registerPaperIngestRoutes(opts: PaperIngestRouteOptions): void {
-    const { routes, store, dataDir, getEnabled } = opts;
+    const { routes, store, dataDir } = opts;
     const fetchPdf = opts.deps?.fetchPdf ?? defaultFetchPdf;
     const extractText = opts.deps?.extractText ?? extractPdfText;
 
@@ -99,8 +97,6 @@ export function registerPaperIngestRoutes(opts: PaperIngestRouteOptions): void {
         method: 'POST',
         pattern: /^\/api\/workspaces\/([^/]+)\/notes\/paper-ingest$/,
         handler: async (req, res, match) => {
-            if (!getEnabled()) return sendError(res, 404, 'Quick Ask is disabled');
-
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
 

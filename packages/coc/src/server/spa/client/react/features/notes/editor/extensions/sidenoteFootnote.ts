@@ -16,7 +16,8 @@
  *   Definition block (file bottom): `[^qa-<id>]: {"q":"…","a":"…"}`
  *
  * The definition payload is a single-line JSON object with a fixed key order
- * (`q` optional, then `a`) so the construct round-trips byte-for-byte. The `qa-`
+ * (`q` optional, then `a`, then optional anchor fields) so the construct
+ * round-trips byte-for-byte. The `qa-`
  * namespace on every footnote label keeps these markers from colliding with an
  * ordinary `[^1]`-style footnote a user might type (which the pipeline leaves as
  * literal text).
@@ -63,20 +64,32 @@ export interface QaFootnoteDef {
     question?: string;
     /** The frozen one-shot answer text. */
     answer: string;
+    /** Exact text selected when the side-note was created. */
+    selectedText?: string;
+    /** Plain-text context immediately before the selection. */
+    contextBefore?: string;
+    /** Plain-text context immediately after the selection. */
+    contextAfter?: string;
 }
 
 // ── payload codec ────────────────────────────────────────────────────────────
 
 /**
  * Serialize a side-note payload to the single-line JSON stored after `:` in a
- * definition. Key order is fixed (`q` then `a`) and an empty/absent question is
- * omitted, so the same payload always encodes to the same bytes.
+ * definition. Key order is fixed (`q`, `a`, then `s`/`p`/`x` for the optional
+ * selected text/prefix/suffix) and an empty/absent question is omitted, so the
+ * same payload always encodes to the same bytes. Anchor fields are emitted only
+ * when selected text is present, keeping legacy payloads byte-stable.
  */
 export function encodeQaPayload(def: QaFootnoteDef): string {
-    const obj =
-        def.question != null && def.question !== ''
-            ? { q: def.question, a: def.answer }
-            : { a: def.answer };
+    const obj: Record<string, string> = {};
+    if (def.question != null && def.question !== '') obj.q = def.question;
+    obj.a = def.answer;
+    if (def.selectedText != null && def.selectedText !== '') {
+        obj.s = def.selectedText;
+        obj.p = def.contextBefore ?? '';
+        obj.x = def.contextAfter ?? '';
+    }
     return JSON.stringify(obj);
 }
 
@@ -92,10 +105,24 @@ export function decodeQaPayload(raw: string): QaFootnoteDef | null {
         const obj = JSON.parse(trimmed) as unknown;
         if (obj && typeof obj === 'object' && typeof (obj as any).a === 'string') {
             const question = (obj as any).q;
-            return {
+            const selectedText = (obj as any).s;
+            const contextBefore = (obj as any).p;
+            const contextAfter = (obj as any).x;
+            const def: QaFootnoteDef = {
                 answer: (obj as any).a,
                 question: typeof question === 'string' && question !== '' ? question : undefined,
             };
+            if (
+                typeof selectedText === 'string' &&
+                selectedText !== '' &&
+                typeof contextBefore === 'string' &&
+                typeof contextAfter === 'string'
+            ) {
+                def.selectedText = selectedText;
+                def.contextBefore = contextBefore;
+                def.contextAfter = contextAfter;
+            }
+            return def;
         }
     } catch {
         /* not our payload — ignore */
@@ -196,7 +223,13 @@ export function injectQaAnswers(html: string, defs: Map<string, QaFootnoteDef>):
                 ? ` data-qa-question="${escapeHtmlAttr(def.question)}"`
                 : '';
         const a = ` data-qa-answer="${escapeHtmlAttr(def.answer)}"`;
-        return `<span class="${QA_SIDENOTE_REF_CLASS}" data-qa-id="${id}"${q}${a}>${QA_MARKER_GLYPH}</span>`;
+        const anchor =
+            def.selectedText != null && def.selectedText !== ''
+                ? ` data-qa-selected-text="${escapeHtmlAttr(def.selectedText)}"` +
+                  ` data-qa-context-before="${escapeHtmlAttr(def.contextBefore ?? '')}"` +
+                  ` data-qa-context-after="${escapeHtmlAttr(def.contextAfter ?? '')}"`
+                : '';
+        return `<span class="${QA_SIDENOTE_REF_CLASS}" data-qa-id="${id}"${q}${a}${anchor}>${QA_MARKER_GLYPH}</span>`;
     });
 }
 
@@ -245,7 +278,22 @@ export function appendQaFootnoteDefs(md: string, html: string): string {
         if (answer === '') return;
         seen.add(id);
         const question = span.getAttribute('data-qa-question') ?? undefined;
-        defLines.push(`[^${QA_LABEL_PREFIX}${id}]: ${encodeQaPayload({ question, answer })}`);
+        const selectedText = span.getAttribute('data-qa-selected-text') || undefined;
+        const contextBefore = selectedText
+            ? span.getAttribute('data-qa-context-before') ?? ''
+            : undefined;
+        const contextAfter = selectedText
+            ? span.getAttribute('data-qa-context-after') ?? ''
+            : undefined;
+        defLines.push(
+            `[^${QA_LABEL_PREFIX}${id}]: ${encodeQaPayload({
+                question,
+                answer,
+                selectedText,
+                contextBefore,
+                contextAfter,
+            })}`,
+        );
     });
     if (defLines.length === 0) return md;
 

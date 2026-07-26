@@ -777,6 +777,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.arxivPaperIngest', default: false, runtime: 'live', runtimeFlag: 'arxivPaperIngestEnabled',
+        ui: {
+            group: 'dashboard', order: 63, label: 'Automatic arXiv PDF ingest', badge: 'experimental',
+            hint: 'Pasting a lone arXiv link in the Notes editor downloads a local PDF copy and embeds it in the note. Disabled by default.',
+            testId: 'toggle-arxiv-paper-ingest-enabled',
+        },
+    }),
+    bool({
         key: 'features.remoteShell', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'remoteShellEnabled',
         ui: {
             group: 'dashboard', order: 65, label: 'Remote-first shell',

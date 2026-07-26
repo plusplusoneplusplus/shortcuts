@@ -21,8 +21,34 @@ const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
 const ZOOM_STEP = 0.25;
 
+// Mermaid renders at a fixed intrinsic pixel size (useMaxWidth: false), which
+// often looks tiny in the wide editor. On first render we enlarge a small
+// diagram to fill the available width for readability, but cap the upscale so a
+// trivial 2-node diagram doesn't balloon to full width.
+const MAX_AUTO_FIT_SCALE = 3;
+
 function escapeHtmlForMermaid(str: string): string {
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/**
+ * Compute a user-friendly render width for a freshly rendered diagram.
+ *
+ * Enlarges a diagram narrower than the available width up to `maxScale`, filling
+ * the width when possible. Returns `null` when no resize should be applied —
+ * when either measurement is unavailable (0) or the diagram already meets/exceeds
+ * the available width (CSS `max-width: 100%` handles shrinking those).
+ */
+export function computeAutoFitWidth(
+    availableWidth: number,
+    intrinsicWidth: number,
+    maxScale = MAX_AUTO_FIT_SCALE,
+): number | null {
+    if (!(availableWidth > 0) || !(intrinsicWidth > 0)) return null;
+    if (availableWidth <= intrinsicWidth) return null;
+    const scale = Math.min(maxScale, availableWidth / intrinsicWidth);
+    if (scale <= 1) return null;
+    return intrinsicWidth * scale;
 }
 
 function clampZoom(value: number): number {
@@ -31,6 +57,28 @@ function clampZoom(value: number): number {
 
 function formatZoomLabel(value: number): string {
     return `${Math.round(value * 100)}%`;
+}
+
+/**
+ * Enlarge the SVG mermaid just rendered inside `pre` so a small diagram fills
+ * the available preview width. No-op when there is no SVG yet (e.g. the diagram
+ * failed to render) or when measurements are unavailable.
+ */
+function autoFitDiagram(pre: HTMLPreElement | null, preview: HTMLDivElement | null): void {
+    if (!pre || !preview) return;
+    const svg = pre.querySelector('svg');
+    if (!svg) return;
+
+    const styles = window.getComputedStyle(preview);
+    const padX = (parseFloat(styles.paddingLeft) || 0) + (parseFloat(styles.paddingRight) || 0);
+    const available = preview.clientWidth - padX;
+    const intrinsic = svg.getBoundingClientRect().width;
+
+    const target = computeAutoFitWidth(available, intrinsic);
+    if (target == null) return;
+
+    svg.style.width = `${target}px`;
+    svg.style.height = 'auto';
 }
 
 // ── React NodeView Component ────────────────────────────────────────────────
@@ -61,6 +109,7 @@ export function MermaidBlockView({ node }: NodeViewProps) {
 
         ensureMermaid()
             .then(() => mermaid.run({ nodes: [el] }))
+            .then(() => autoFitDiagram(el, previewRef.current))
             .catch((err) => setError(err instanceof Error ? err.message : 'Render error'));
     }, [node.attrs.code, mode]);
 

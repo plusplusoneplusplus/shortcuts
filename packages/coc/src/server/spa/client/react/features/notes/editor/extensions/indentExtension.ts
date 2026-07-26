@@ -21,6 +21,7 @@
 import { Extension } from '@tiptap/core';
 import {
     INDENT_TYPES,
+    LIST_CONTAINER_TYPES,
     MAX_INDENT,
     TEXT_INDENT_TYPES,
     createIndentAttribute,
@@ -35,6 +36,7 @@ export {
     TEXT_INDENT_TYPES,
     EMBED_INDENT_TYPES,
     LIST_ITEM_TYPES,
+    LIST_CONTAINER_TYPES,
     clampIndent,
     parseIndentAttr,
     renderIndentAttr,
@@ -62,6 +64,14 @@ export const IndentExtension = Extension.create({
                     indent: createIndentAttribute(),
                 },
             },
+            {
+                // List container nodes: indent the whole list (marker + text move together).
+                // Tab/Shift-Tab inside lists remains structural nesting; only toolbar reaches here.
+                types: LIST_CONTAINER_TYPES,
+                attributes: {
+                    indent: createIndentAttribute(),
+                },
+            },
         ];
     },
 
@@ -73,6 +83,15 @@ export const IndentExtension = Extension.create({
                     const { from, to } = state.selection;
                     let changed = false;
                     state.doc.nodesBetween(from, to, (node, pos, parent) => {
+                        // List containers: indent the whole list, stop recursing into items.
+                        if (LIST_CONTAINER_TYPES.includes(node.type.name)) {
+                            const current = (node.attrs.indent as number) ?? 0;
+                            if (current < MAX_INDENT) {
+                                tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: current + 1 });
+                                changed = true;
+                            }
+                            return false; // do not recurse into list items
+                        }
                         if (!INDENT_TYPES.includes(node.type.name)) return;
                         if (isListOwned(parent)) return; // list/task item owns its child's indentation
                         const current = (node.attrs.indent as number) ?? 0;
@@ -90,6 +109,15 @@ export const IndentExtension = Extension.create({
                     const { from, to } = state.selection;
                     let changed = false;
                     state.doc.nodesBetween(from, to, (node, pos, parent) => {
+                        // List containers: decrease the whole list's indent, stop recursing.
+                        if (LIST_CONTAINER_TYPES.includes(node.type.name)) {
+                            const current = (node.attrs.indent as number) ?? 0;
+                            if (current > 0) {
+                                tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: current - 1 });
+                                changed = true;
+                            }
+                            return false; // do not recurse into list items
+                        }
                         if (!INDENT_TYPES.includes(node.type.name)) return;
                         if (isListOwned(parent)) return; // list/task item owns its child's indentation
                         const current = (node.attrs.indent as number) ?? 0;

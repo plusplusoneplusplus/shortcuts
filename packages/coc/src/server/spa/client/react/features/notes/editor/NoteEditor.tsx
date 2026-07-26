@@ -23,6 +23,7 @@ import { wordDiff } from './noteEditDiff';
 import type { DiffChunk } from './noteEditDiff';
 import type { AiEditRegion } from './extensions/AiEditDecorationExtension';
 import { isLikelyArxivUrl } from './extensions/arxivPaste';
+import { isArxivPaperIngestEnabled } from '../../../utils/config';
 import type { PaperLinkInfo } from './extensions/paperLink';
 import type { PdfPopupTarget } from './extensions/PdfPopupDialog';
 import { AIEditNavigator } from './AIEditNavigator';
@@ -477,7 +478,8 @@ export function NoteEditor({
         // text paste so nothing is lost. (Goal 3, AC-01 client.)
         const pastedText = event.clipboardData?.getData('text/plain');
         if (
-            pastedText
+            isArxivPaperIngestEnabled()
+            && pastedText
             && isLikelyArxivUrl(pastedText)
             && ioRef.current.ingestPaper
             && notePathRef.current
