@@ -19,8 +19,8 @@ export interface UseQuickAskSidenotesResult {
     enabled: boolean;
     /** Merged persisted + optimistic side-notes. */
     items: ClientSideNote[];
-    /** Run a lookup for a captured selection. */
-    createSidenote: (selection: QuickAskSelection) => void;
+    /** Run a lookup for a captured selection, optionally with a custom question. */
+    createSidenote: (selection: QuickAskSelection, question?: string) => void;
     /** Retry a failed lookup. */
     retrySidenote: (id: string) => void;
     /** Remove a side-note (persisted ones are deleted server-side). */
@@ -105,12 +105,15 @@ export function useQuickAskSidenotes(
             });
     }, [enabled, basePath]);
 
-    const createSidenote = useCallback((selection: QuickAskSelection) => {
+    const createSidenote = useCallback((selection: QuickAskSelection, question?: string) => {
         if (!enabled) {return;}
         // Re-derive context defensively in case the caller passed a partial rect.
         const ctx = (selection.contextBefore || selection.contextAfter)
             ? { contextBefore: selection.contextBefore, contextAfter: selection.contextAfter }
             : deriveContext(selection.selectedText, selection.selectedText);
+        // Empty/whitespace-only question stays unset so the server falls back to
+        // its default "Briefly explain" prompt (AC-02).
+        const trimmedQuestion = question?.trim();
         const draft: ClientSideNote = {
             id: newId(),
             processId: processId!,
@@ -121,6 +124,7 @@ export function useQuickAskSidenotes(
                 contextAfter: ctx.contextAfter,
                 fingerprint: '',
             },
+            question: trimmedQuestion || undefined,
             answer: '',
             label: labelFor(selection.selectedText),
             createdAt: new Date().toISOString(),

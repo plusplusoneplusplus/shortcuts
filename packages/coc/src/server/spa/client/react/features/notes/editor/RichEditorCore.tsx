@@ -33,6 +33,7 @@ import { AiEditDecorationExtension } from './extensions/AiEditDecorationExtensio
 import { YouTubeEmbedDecorationExtension } from './extensions/YouTubeEmbedDecorationExtension';
 import { YouTubePopupDialog } from './extensions/YouTubePopupDialog';
 import { NoteLinkExtension } from './noteLinkExtension';
+import { SidenoteRefExtension } from './extensions/sidenoteRefExtension';
 import { FilePathNodeExtension } from './filePathNodeExtension';
 import { useLinkHandlers } from '../../../hooks/useLinkHandlers';
 import { openLink } from '../../../utils/link-handler';
@@ -54,6 +55,25 @@ export interface RichEditorCoreProps {
     handlePaste?: (view: any, event: ClipboardEvent) => boolean;
     /** ProseMirror `handleDrop` override — lets the parent intercept file drops. */
     handleDrop?: (view: any, event: DragEvent) => boolean;
+    /**
+     * Goal 1: workspace the PDF Quick Ask answer endpoint runs against. Threaded
+     * into the PdfBlock + full-window overlay so a paper text-layer selection can
+     * be asked→answered. Undefined disables the Quick Ask layer.
+     */
+    workspaceId?: string;
+    /**
+     * Goal 2: current note path — persistence target for answered paper
+     * annotations. Passed live (this editor instance survives note switches).
+     */
+    notePath?: string | null;
+    /** Goal 2: current notes root id, if any. */
+    noteRoot?: string;
+    /**
+     * Goal 3 (AC-03): open the Notes chat grounded on an embedded paper's full
+     * extracted text. Invoked from a PDF embed's "💬 Chat about this paper" button
+     * with the `.papers/<id>.txt` sidecar relpath. Undefined hides the button.
+     */
+    onChatAboutPaper?: (paperTextRelPath: string) => void;
 }
 
 export function getLinkOpenTitle(platform = globalThis.navigator?.platform ?? '') {
@@ -76,7 +96,23 @@ export function RichEditorCore({
     onEditorReady,
     handlePaste,
     handleDrop,
+    workspaceId,
+    notePath,
+    noteRoot,
+    onChatAboutPaper,
 }: RichEditorCoreProps) {
+    // Live persistence context for the PdfBlock's Quick Ask layer. The editor is
+    // captured once by `useEditor`, but the note path/root change on navigation —
+    // so read them through refs at write time, not at editor-creation time.
+    const notePathRef = useRef(notePath);
+    notePathRef.current = notePath;
+    const noteRootRef = useRef(noteRoot);
+    noteRootRef.current = noteRoot;
+    // Goal 3 (AC-03): the "chat about this paper" handler is read through a ref so
+    // the extension config (captured once by `useEditor`) always calls the latest
+    // callback even as the parent re-renders / the note changes.
+    const onChatAboutPaperRef = useRef(onChatAboutPaper);
+    onChatAboutPaperRef.current = onChatAboutPaper;
     // Stable callback refs — avoids editor recreation when parent re-renders
     const onCommentActivatedRef = useRef(onCommentActivated);
     onCommentActivatedRef.current = onCommentActivated;
@@ -118,6 +154,11 @@ export function RichEditorCore({
             MapBlock,
             PdfBlock.configure({
                 onRequestFullWindow: (request: PdfFullWindowRequest) => setPopupPdf(request),
+                workspaceId,
+                getNotePath: () => notePathRef.current,
+                getNoteRoot: () => noteRootRef.current,
+                onChatAboutPaper: (paperTextRelPath: string) =>
+                    onChatAboutPaperRef.current?.(paperTextRelPath),
             }),                     // must precede StarterKit so its parseHTML rule wins
             MermaidBlock,           // must precede StarterKit so its parseHTML rule wins
             MathInline,
@@ -145,6 +186,7 @@ export function RichEditorCore({
             IndentExtension,
             ResizableImage.configure({ inline: false, allowBase64: false }),
             NoteLinkExtension,
+            SidenoteRefExtension,
             FilePathNodeExtension,
             AiEditDecorationExtension,
             YouTubeEmbedDecorationExtension.configure({
@@ -240,7 +282,13 @@ export function RichEditorCore({
         <>
             <EditorContent editor={editor} />
             <YouTubePopupDialog videoId={popupVideoId} onClose={() => setPopupVideoId(null)} />
-            <PdfPopupDialog pdf={popupPdf} onClose={() => setPopupPdf(null)} />
+            <PdfPopupDialog
+                pdf={popupPdf}
+                onClose={() => setPopupPdf(null)}
+                workspaceId={workspaceId}
+                notePath={notePath}
+                noteRoot={noteRoot}
+            />
         </>
     );
 }

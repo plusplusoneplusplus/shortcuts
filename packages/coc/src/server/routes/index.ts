@@ -31,6 +31,7 @@ import { registerAdminRoutes } from '../admin/admin-handler';
 import { registerTaskCommentsRoutes } from '../tasks/comments/task-comments-handler';
 import { registerDiffCommentsRoutes } from '../tasks/comments/diff-comments-handler';
 import { registerChatSidenotesRoutes } from '../processes/chat-sidenotes/chat-sidenotes-handler';
+import { registerQuickAskAnswerRoutes } from '../processes/chat-sidenotes/quick-ask-answer-handler';
 import { registerCanvasRoutes } from '../canvas/canvas-routes';
 import { registerWikiRoutes } from '../wiki';
 import { registerMemoryRoutes } from '../memory/memory-routes';
@@ -46,7 +47,7 @@ import { registerProcessResumeRoutes, registerFreshChatTerminalRoutes } from '..
 import { registerWorkflowRoutes, registerWorkflowWriteRoutes } from '../workflows/workflows-handler';
 import { registerWorkspaceSummaryRoutes } from '../workspaces/workspace-summary-handler';
 import { registerTemplateRoutes, registerTemplateWriteRoutes } from '../templates/templates-handler';
-import { registerNotesRoutes, registerNotesWriteRoutes, registerNotesCommentsRoutes, registerNotesImageRoutes, registerNotesGitRoutes, registerNotesGitAutoCommitRoutes, registerNotesFilePreviewRoutes, registerNotesAICreateRoutes, registerNotesRootsRoutes } from '../notes/notes-handler';
+import { registerNotesRoutes, registerNotesWriteRoutes, registerNotesCommentsRoutes, registerNotesImageRoutes, registerNotesGitRoutes, registerNotesGitAutoCommitRoutes, registerNotesFilePreviewRoutes, registerNotesAICreateRoutes, registerNotesRootsRoutes, registerPaperAnnotationsRoutes, registerPaperIngestRoutes } from '../notes/notes-handler';
 import { registerNotesEditsRoutes } from '../notes/notes-edits-handler';
 import { registerReplicateApplyRoutes } from '../templates/replicate-apply-handler';
 import { registerScheduleRoutes } from '../schedule/schedule-handler';
@@ -932,6 +933,32 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         ? () => opts.runtimeConfigService!.config.features?.quickAskSidenotes ?? false
         : () => opts.resolvedConfig?.features?.quickAskSidenotes ?? false;
     registerChatSidenotesRoutes({
+        routes,
+        store,
+        dataDir,
+        getEnabled: getQuickAskSidenotesEnabled,
+    });
+    // Stateless ask→answer half of the Quick Ask loop for note/paper selections
+    // (Goal 1): same one-shot grounded lookup, no persistence, no process/turn.
+    registerQuickAskAnswerRoutes({
+        routes,
+        dataDir,
+        store,
+        getEnabled: getQuickAskSidenotesEnabled,
+    });
+    // Persistent dual-anchor paper annotations sidecar (Goal 2): every Quick Ask
+    // Q&A over a paper can be pinned to its passage and survives note reload /
+    // app restart. Same flag gate as the rest of the Quick Ask loop.
+    registerPaperAnnotationsRoutes({
+        routes,
+        store,
+        dataDir,
+        getEnabled: getQuickAskSidenotesEnabled,
+    });
+    // arXiv URL ingest (Goal 3): recognize a pasted arXiv URL, fetch + cache the
+    // PDF locally (link-rot proof / offline) and extract its text once as a
+    // sidecar for whole-paper grounding. Same flag gate as the rest of Quick Ask.
+    registerPaperIngestRoutes({
         routes,
         store,
         dataDir,

@@ -41,6 +41,7 @@ import { getHostname } from '../utils/config';
 import { SHOW_WIKI_TAB, SHOW_MEMORY_TAB } from '../navFlags';
 import type { DashboardTab } from '../types/dashboard';
 import { useWorkspaceNavigation } from '../hooks/useWorkspaceNavigation';
+import { useLockedWorkspaceId } from '../features/scope-window/useWindowLock';
 
 // Nav flags live in navFlags.ts; re-exported here for modules that import them
 // from TopBar (BottomNav, Router).
@@ -75,6 +76,11 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     const myWorkEnabled = useMyWorkEnabled();
     const todayViewEnabled = useMyWorkTodayViewEnabled();
     const myLifeEnabled = useMyLifeEnabled();
+    // Locked pop-out window (AC-02): when set, this window is pinned to one scope,
+    // so every cross-scope switcher (segmented switcher, My Work / My Life toggles,
+    // classic repo tab strip, identity chip) is hidden. The in-scope tab clusters
+    // (Chat / WIs / PRs / Notes / Git / Settings) stay — the full app for the scope.
+    const isWindowLocked = !!useLockedWorkspaceId();
     // On macOS desktop the native title bar is replaced by hiddenInset traffic lights
     // that overlay the left edge of this header. Reserve space so they don't cover
     // the hamburger button. Falls back to navigator.platform for builds where the
@@ -139,7 +145,10 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     // standalone 💼/🏠 toggles and the identity chips inside the header
     // variants. Remote-first desktop shell only; classic shell and mobile keep
     // the legacy controls regardless of the flag.
-    const showScopeSwitcher = scopeSwitcherEnabled && showRemoteHeader;
+    const showScopeSwitcher = scopeSwitcherEnabled && showRemoteHeader && !isWindowLocked;
+    // Identity chip / picker is hidden either when the slide switcher owns identity
+    // OR when the window is locked to a single scope (no cross-scope UI at all).
+    const hideScopeIdentity = showScopeSwitcher || isWindowLocked;
 
     // Virtual workspaces (My Work / My Life) have no real repo, so they never hit
     // `showRemoteHeader`. Give them the same single-row shell via a dedicated
@@ -194,7 +203,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                     title={brandTooltip}
                     onClick={e => { e.preventDefault(); goToRepos(); }}
                 >{ brandLabel }</a>
-                {myWorkEnabled && !showScopeSwitcher && (
+                {myWorkEnabled && !showScopeSwitcher && !isWindowLocked && (
                     <button
                         id="my-work-toggle"
                         className={
@@ -210,7 +219,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                         💼
                     </button>
                 )}
-                {myLifeEnabled && !showScopeSwitcher && (
+                {myLifeEnabled && !showScopeSwitcher && !isWindowLocked && (
                     <button
                         id="my-life-toggle"
                         className={
@@ -230,11 +239,15 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                     <ScopeSlideSwitcher repo={displayRepo} repos={repos} />
                 )}
                 {!isMobile && (showVirtualHeader && virtualHeaderConfig ? (
-                    <VirtualWorkspaceShellHeader config={virtualHeaderConfig} repos={repos} onSelectRepo={navigateToWorkspace} hideIdentity={showScopeSwitcher} />
+                    <VirtualWorkspaceShellHeader config={virtualHeaderConfig} repos={repos} onSelectRepo={navigateToWorkspace} hideIdentity={hideScopeIdentity} />
                 ) : showRemoteHeader ? (
                     // Remote-first shell: always rendered; repo may be undefined
                     // (unselected state shows a "Select repository" picker).
-                    <RemoteShellHeader repo={selectedRepo} repos={repos} hideIdentity={showScopeSwitcher} />
+                    <RemoteShellHeader repo={selectedRepo} repos={repos} hideIdentity={hideScopeIdentity} />
+                ) : isWindowLocked ? (
+                    // Classic shell, locked window: the repo tab strip IS the
+                    // cross-scope switcher, so it is omitted entirely.
+                    null
                 ) : (
                     <RepoTabStrip
                         repos={repos}

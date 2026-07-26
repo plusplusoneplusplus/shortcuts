@@ -28,6 +28,20 @@ export const defaultNoteEditorIO: NoteEditorIO = {
     },
     localImageApiUrl: (workspaceId, absolutePath) =>
         `/api/workspaces/${encodeURIComponent(workspaceId)}/notes/local-image?path=${encodeURIComponent(absolutePath)}`,
+    ingestPaper: async (workspaceId, url, root) => {
+        const res = await fetch(
+            `/api/workspaces/${encodeURIComponent(workspaceId)}/notes/paper-ingest`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(root ? { url, root } : { url }),
+            },
+        );
+        if (!res.ok) {
+            throw new Error(`Paper ingest failed (HTTP ${res.status})`);
+        }
+        return res.json();
+    },
 };
 
 // ── HTML image-src rewriter ─────────────────────────────────────────────────
@@ -61,7 +75,7 @@ export function rewriteHtmlImageSrc(html: string, io: NoteEditorIO, workspaceId:
     return withImages.replace(
         /data-pdf-url="([^"]+)"/gi,
         (match, url: string) => {
-            if (/^\.attachments\//i.test(url) || /^\.images\//i.test(url)) {
+            if (/^\.attachments\//i.test(url) || /^\.images\//i.test(url) || /^\.papers\//i.test(url)) {
                 return `data-pdf-url="${io.imageApiUrl(workspaceId, url, root)}"`;
             }
             return match;

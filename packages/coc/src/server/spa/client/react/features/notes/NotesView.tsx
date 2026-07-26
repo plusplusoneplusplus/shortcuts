@@ -22,6 +22,7 @@ import { usePublishWorkspaceLeftColWidth } from '../../hooks/ui/useWorkspaceLeft
 import { useApp } from '../../contexts/AppContext';
 import { buildNoteHash } from '../../layout/Router';
 import { useNoteReferences } from './editor/useNoteReferences';
+import { formatPaperChatGrounding } from './editor/extensions/paperChatGrounding';
 import { useNotesRoots } from './hooks/useNotesRoots';
 import { ReviewChatPlacementFrame } from '../git/reviewChat/ReviewChatPlacementFrame';
 import { useReviewChatPresentation } from '../git/hooks/useReviewChatPresentation';
@@ -141,6 +142,21 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
     // ── Note references (shared between editor and chat panel) ──────────────
 
     const noteRefs = useNoteReferences();
+
+    // ── Whole-paper chat grounding (Goal 3, AC-03) ──────────────────────────
+    // The "💬 Chat about this paper" action on a cached-paper PDF embed opens the
+    // Notes chat with a grounding directive (pointing the model at the paper's
+    // `.papers/<id>.txt` sidecar) prepended to the next message.
+    const [paperGrounding, setPaperGrounding] = useState<string | null>(null);
+    const handleChatAboutPaper = useCallback((paperTextRelPath: string) => {
+        setPaperGrounding(formatPaperChatGrounding(paperTextRelPath));
+        // Ensure the chat panel is open so the user can type their question with
+        // the paper already attached as grounding.
+        if (!chatPanelOpen) handleToggleChatPanel();
+    }, [chatPanelOpen, handleToggleChatPanel]);
+    // Drop any pending paper grounding when the selected note changes so it never
+    // rides a message about a different note.
+    useEffect(() => { setPaperGrounding(null); }, [selectedPathState]);
 
     // ── Notes roots (multi-root support) ────────────────────────────────────
 
@@ -569,6 +585,8 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
             references={noteRefs.references}
             onRemoveReference={noteRefs.removeReference}
             onClearReferences={noteRefs.clearReferences}
+            paperGrounding={paperGrounding}
+            onClearPaperGrounding={() => setPaperGrounding(null)}
             onHasChatChange={setHasNoteChat}
             presentation={noteChatWindowMode}
             onMinimize={noteChatWindowMode === 'lens' ? minimizeNoteChat : undefined}
@@ -734,6 +752,7 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
                     hasExistingChat={hasNoteChat}
                     onNavigateToNote={handleNavigateToNote}
                     onAddNoteReference={chatVisible ? noteRefs.addReference : undefined}
+                    onChatAboutPaper={isDefaultRoot ? handleChatAboutPaper : undefined}
                     isDefaultRoot={isDefaultRoot}
                     root={rootParam}
                 />

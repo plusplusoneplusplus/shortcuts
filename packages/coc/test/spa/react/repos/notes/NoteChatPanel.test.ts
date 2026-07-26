@@ -120,8 +120,10 @@ describe('NoteChatPanel', () => {
     // AC-04: selected-text references ride as a pending prefix (removable chips
     // above the input); they are cleared only after a successful submission.
     describe('selected-text references', () => {
-        it('passes references as the composer pending prefix', () => {
-            expect(source).toContain('pendingPrefix={references && references.length > 0 ? formatNoteReferences(references) : undefined}');
+        it('passes references (folded with any paper grounding) as the composer pending prefix', () => {
+            expect(source).toContain("const referencePrefix = references && references.length > 0 ? formatNoteReferences(references) : '';");
+            expect(source).toContain('const combinedPrefix = `${paperGrounding ?? \'\'}${referencePrefix}`;');
+            expect(source).toContain('pendingPrefix={pendingPrefix}');
         });
 
         it('renders the removable reference chips in the accessory slot above the input', () => {
@@ -129,8 +131,10 @@ describe('NoteChatPanel', () => {
             expect(source).toContain('<NoteReferenceChips');
         });
 
-        it('clears references only via the composer success callback', () => {
-            expect(source).toContain('onClearPendingPrefix={onClearReferences}');
+        it('clears references (and paper grounding) only via the composer success callback', () => {
+            expect(source).toContain('onClearPendingPrefix={clearPendingPrefix}');
+            expect(source).toContain('onClearReferences?.();');
+            expect(source).toContain('onClearPaperGrounding?.();');
         });
     });
 

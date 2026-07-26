@@ -1,13 +1,14 @@
 /**
  * Tests for the redesigned chat input layout.
  *
- * The default layout is the new stacked design: a horizontal mode pill row
- * sits above an input "card" whose bottom toolbar holds the model picker,
- * tool buttons, and the Send button.
+ * The default (and now only) layout is the stacked design: the mode pill
+ * selector sits inside an input "card" whose bottom toolbar holds the model
+ * picker, tool buttons, and the Send button. It collapses responsively on
+ * narrow containers (mode pills → cycle button, tools → overflow menu).
  *
- * The legacy compact single-row layout (mode cycle button + dropdown + send
- * inline with the input) is retained for narrow side panels via the
- * `compactModeSelector` prop.
+ * The legacy compact single-row layout (and its `compactModeSelector` prop)
+ * has been removed; narrow side panels (e.g. Notes) now use this same
+ * stacked path.
  */
 /* @vitest-environment jsdom */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -261,6 +262,34 @@ describe('FollowUpInputArea — stacked input card layout', () => {
         expect(screen.queryByTestId('mode-cycle-btn')).toBeNull();
     });
 
+    // Notes AC-01: the Notes active-chat follow-up composer forwards
+    // allowedModes=['ask','autopilot'] through ChatDetail to FollowUpInputArea
+    // and no longer opts into the removed single-row layout, so it must render
+    // the SAME stacked rounded-card toolbar (provider/mode/model/tools/send)
+    // as the new-chat composer — never the legacy mode-cycle-btn single row.
+    it('renders the shared stacked composer (not the removed single-row) under the Notes-restricted config', () => {
+        render(<FollowUpInputArea {...makeFollowUpProps({
+            selectedMode: 'ask',
+            allowedModes: ['ask', 'autopilot'],
+        })} />);
+        // Stacked rounded input card + bottom toolbar.
+        expect(screen.getByTestId('chat-input-stack')).toBeTruthy();
+        const bar = screen.getByTestId('chat-input-bar');
+        expect(bar.className).toContain('flex-col');
+        expect(bar.className).toContain('rounded-lg');
+        expect(screen.getByTestId('chat-input-toolbar')).toBeTruthy();
+        // Segmented mode pills restricted to the Notes modes, attach tool, send.
+        expect(screen.getByTestId('mode-selector')).toBeTruthy();
+        expect(screen.getByTestId('mode-pill-ask')).toBeTruthy();
+        expect(screen.getByTestId('mode-pill-autopilot')).toBeTruthy();
+        expect(screen.queryByTestId('mode-pill-plan')).toBeNull();
+        expect(screen.getByTestId('follow-up-attach-btn')).toBeTruthy();
+        expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy();
+        // Removed legacy single-row controls must NOT appear.
+        expect(screen.queryByTestId('mode-cycle-btn')).toBeNull();
+        expect(screen.queryByTestId('mode-dropdown')).toBeNull();
+    });
+
     it('clicking a pill dispatches setSelectedMode with the new mode', () => {
         const setSelectedMode = vi.fn();
         render(<FollowUpInputArea {...makeFollowUpProps({ selectedMode: 'ask', setSelectedMode })} />);
@@ -491,61 +520,11 @@ describe('FollowUpInputArea — stacked input card layout', () => {
     });
 });
 
-// ── Legacy compact layout (compactModeSelector=true) ───────────────────────
-
-describe('FollowUpInputArea — compactModeSelector legacy single-row layout', () => {
-    it('renders chat-input-bar as a single horizontal row when compactModeSelector is true', () => {
-        render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true })} />);
-        const bar = screen.getByTestId('chat-input-bar');
-        expect(bar.className).toContain('flex-row');
-        expect(bar.className).toContain('items-center');
-        expect(bar.className).not.toContain('flex-col');
-    });
-
-    it('renders only the cycle button (no dropdown) when compactModeSelector is true', () => {
-        render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true })} />);
-        expect(screen.getByTestId('mode-cycle-btn')).toBeTruthy();
-        expect(screen.queryByTestId('mode-dropdown')).toBeNull();
-        expect(screen.queryByTestId('mode-pill-ask')).toBeNull();
-    });
-
-    it('cycle button shows the icon for the current mode', () => {
-        render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true, selectedMode: 'autopilot' })} />);
-        expect(screen.getByTestId('mode-cycle-btn').textContent).toContain('🤖');
-    });
-
-    it('clicking the cycle button advances to the next mode', () => {
-        const setSelectedMode = vi.fn();
-        render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true, selectedMode: 'ask', setSelectedMode })} />);
-        fireEvent.click(screen.getByTestId('mode-cycle-btn'));
-        expect(setSelectedMode).toHaveBeenCalledWith('autopilot');
-    });
-
-    it('respects allowedModes when cycling (ask → autopilot)', () => {
-        const setSelectedMode = vi.fn();
-        render(<FollowUpInputArea {...makeFollowUpProps({
-            compactModeSelector: true,
-            selectedMode: 'ask',
-            allowedModes: ['ask', 'autopilot'],
-            setSelectedMode,
-        })} />);
-        fireEvent.click(screen.getByTestId('mode-cycle-btn'));
-        expect(setSelectedMode).toHaveBeenCalledWith('autopilot');
-    });
-
-    it('hideModeSelector hides the selector even when compactModeSelector is true', () => {
-        render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true, hideModeSelector: true })} />);
-        expect(screen.queryByTestId('mode-selector')).toBeNull();
-        expect(screen.queryByTestId('mode-cycle-btn')).toBeNull();
-    });
-
-    it('text input wrapper has min-w-0 to prevent overflow in single-row layout', () => {
-        render(<FollowUpInputArea {...makeFollowUpProps({ compactModeSelector: true })} />);
-        const bar = screen.getByTestId('chat-input-bar');
-        const inputWrapper = bar.querySelector('.flex-1.min-w-0');
-        expect(inputWrapper).toBeTruthy();
-    });
-});
+// ── Regression: the legacy compact single-row layout (compactModeSelector)
+//    has been removed. The default stacked layout above is now the ONLY
+//    follow-up-composer path; narrow panels (e.g. Notes) rely on its
+//    responsive collapse, covered by FollowUpInputArea-compact-toolbar and
+//    FollowUpInputArea-container-compact. Nothing to render for the old path.
 
 // ── NewChatArea stacked layout ─────────────────────────────────────────────
 

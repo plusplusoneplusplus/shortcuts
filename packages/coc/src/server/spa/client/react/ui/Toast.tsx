@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { cn } from './cn';
 
@@ -15,6 +15,11 @@ export interface ToastProps {
 
 export function useToast() {
     const [toasts, setToasts] = useState<ToastItem[]>([]);
+    // Track pending auto-dismiss timers so they can be cancelled on unmount.
+    // A leaked timer fires setState after the component is gone — in tests that
+    // means "window is not defined" once the jsdom environment has been torn
+    // down, which vitest surfaces as an unhandled error and fails the run.
+    const timers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
     const removeToast = useCallback((id: string) => {
         setToasts(prev => prev.filter(t => t.id !== id));
@@ -23,8 +28,17 @@ export function useToast() {
     const addToast = useCallback((message: string, type: ToastItem['type'] = 'info') => {
         const id = Math.random().toString(36).slice(2);
         setToasts(prev => [...prev, { id, message, type }]);
-        setTimeout(() => removeToast(id), 3000);
+        const timer = setTimeout(() => {
+            timers.current.delete(timer);
+            removeToast(id);
+        }, 3000);
+        timers.current.add(timer);
     }, [removeToast]);
+
+    useEffect(() => () => {
+        timers.current.forEach(clearTimeout);
+        timers.current.clear();
+    }, []);
 
     return { toasts, addToast, removeToast };
 }

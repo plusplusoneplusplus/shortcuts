@@ -255,3 +255,27 @@ export function resolveCommentsSidecarPath(
     const commentsDir = path.join(dataDir, 'repos', workspaceId, 'notes-comments', encoded);
     return path.resolve(commentsDir, notePath + '.comments.json');
 }
+
+/**
+ * Resolve the filesystem path for a paper-annotations sidecar file (Goal 2).
+ *
+ * Same placement rules as {@link resolveCommentsSidecarPath} — co-located next
+ * to the note under the default managed root, or under the managed area for
+ * repo-folder roots — only the file suffix differs (`.paper-annotations.json`).
+ */
+export function resolvePaperAnnotationsSidecarPath(
+    dataDir: string,
+    workspaceId: string,
+    resolvedRoot: ResolvedNotesRoot,
+    notePath: string,
+): string {
+    if (resolvedRoot.isDefault) {
+        return path.isAbsolute(notePath)
+            ? path.resolve(notePath + '.paper-annotations.json')
+            : path.resolve(resolvedRoot.absolutePath, notePath + '.paper-annotations.json');
+    }
+
+    const encoded = encodeRootPath(resolvedRoot.rootId);
+    const annotationsDir = path.join(dataDir, 'repos', workspaceId, 'notes-comments', encoded);
+    return path.resolve(annotationsDir, notePath + '.paper-annotations.json');
+}

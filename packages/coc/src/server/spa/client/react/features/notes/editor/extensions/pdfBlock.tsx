@@ -11,6 +11,11 @@ import {
 } from './pdfHeightShared';
 import { classifyPdfBlockUrl } from './pdfBlockUrl';
 import { normalizeStoredPdfLabel } from '../pdfLabel';
+import { PdfJsRenderer } from './PdfJsRenderer';
+import { PdfQuickAskLayer } from './PdfQuickAskLayer';
+import { PdfRegionAskLayer } from './PdfRegionAskLayer';
+import { PdfAnnotationsLayer } from './PdfAnnotationsLayer';
+import { paperTextPathFromPdfUrl } from './paperChatGrounding';
 
 /** Payload handed to {@link PdfBlockOptions.onRequestFullWindow} (AC-05). */
 export interface PdfFullWindowRequest {
@@ -24,6 +29,27 @@ export interface PdfBlockOptions {
      * open the PDF in an in-app overlay. Undefined hides the button.
      */
     onRequestFullWindow?: (request: PdfFullWindowRequest) => void;
+    /**
+     * Goal 1: workspace the Quick Ask answer endpoint runs against. Threaded from
+     * NoteEditor so a text-layer selection can be asked→answered. Undefined
+     * disables the Quick Ask layer (e.g. non-note reuse of RichEditorCore).
+     */
+    workspaceId?: string;
+    /**
+     * Goal 2: live getter for the current note path (persistence target for
+     * answered paper annotations). A getter, not a value, because the editor
+     * instance survives note switches — the path must be read at write time.
+     */
+    getNotePath?: () => string | null | undefined;
+    /** Goal 2: live getter for the current notes root id, if any. */
+    getNoteRoot?: () => string | undefined;
+    /**
+     * Goal 3 (AC-03): the "💬 Chat about this paper" button asks the host to open
+     * the Notes chat grounded on the paper's full extracted text. Receives the
+     * `.papers/<id>.txt` sidecar relpath. Undefined (or a non-cached-paper embed)
+     * hides the button.
+     */
+    onChatAboutPaper?: (paperTextRelPath: string) => void;
 }
 
 function PdfBlockView({ node, updateAttributes, selected, extension }: NodeViewProps) {
@@ -32,13 +58,25 @@ function PdfBlockView({ node, updateAttributes, selected, extension }: NodeViewP
     const classification = classifyPdfBlockUrl(url, window.location.origin);
     const href = classification.kind === 'invalid' ? undefined : classification.href;
     const onRequestFullWindow = (extension.options as PdfBlockOptions).onRequestFullWindow;
+    const quickAskWorkspaceId = (extension.options as PdfBlockOptions).workspaceId;
+    const getNotePath = (extension.options as PdfBlockOptions).getNotePath;
+    const getNoteRoot = (extension.options as PdfBlockOptions).getNoteRoot;
+    const onChatAboutPaper = (extension.options as PdfBlockOptions).onChatAboutPaper;
+    // Goal 3 (AC-03): only cached, ingested arXiv papers have an extracted `.txt`
+    // sidecar to ground on, so the chat action is offered only for those embeds.
+    const paperTextPath = paperTextPathFromPdfUrl(url);
     const indent = Number(node.attrs.indent || 0);
     const collapsed = Boolean(node.attrs.collapsed);
 
     const attrHeight = node.attrs.height == null ? null : Number(node.attrs.height);
     const frameRef = useRef<HTMLIFrameElement>(null);
+    const frameInnerRef = useRef<HTMLDivElement>(null);
     const [dragging, setDragging] = useState(false);
     const [dragHeight, setDragHeight] = useState<number | null>(null);
+    // Inline PDFs render via pdf.js (host-selectable text layer) by default;
+    // fall back to the native iframe only if pdf.js fails to load the document.
+    const [pdfJsFailed, setPdfJsFailed] = useState(false);
+    const handlePdfJsError = useCallback(() => setPdfJsFailed(true), []);
 
     const displayHeight = dragging ? dragHeight : attrHeight;
 
@@ -56,6 +94,7 @@ function PdfBlockView({ node, updateAttributes, selected, extension }: NodeViewP
             const startHeight =
                 attrHeight ??
                 frameRef.current?.getBoundingClientRect().height ??
+                frameInnerRef.current?.getBoundingClientRect().height ??
                 DEFAULT_PDF_HEIGHT;
 
             setDragging(true);
@@ -100,6 +139,18 @@ function PdfBlockView({ node, updateAttributes, selected, extension }: NodeViewP
                         >
                             {collapsed ? '▸' : '▾'}
                         </button>
+                        {paperTextPath && onChatAboutPaper && (
+                            <button
+                                type="button"
+                                className="md-pdf-embed-chat"
+                                data-testid="pdf-node-view-chat-about-paper"
+                                title="Chat about this paper"
+                                aria-label="Chat about this paper"
+                                onClick={() => onChatAboutPaper(paperTextPath)}
+                            >
+                                💬
+                            </button>
+                        )}
                         <button
                             type="button"
                             className="md-pdf-embed-fullwindow"
@@ -130,16 +181,25 @@ function PdfBlockView({ node, updateAttributes, selected, extension }: NodeViewP
                 </div>
                 {!collapsed && (classification.kind === 'inline' ? (
                     <div className="md-pdf-embed-frame-wrap pdf-node-view-frame-wrap">
-                        <div className="pdf-node-view-frame-inner">
-                            <iframe
-                                ref={frameRef}
-                                className="md-pdf-embed-frame"
-                                data-testid="pdf-node-view-frame"
-                                src={classification.href}
-                                title={label}
-                                loading="lazy"
-                                style={displayHeight ? { height: `${displayHeight}px` } : undefined}
-                            />
+                        <div className="pdf-node-view-frame-inner" ref={frameInnerRef}>
+                            {pdfJsFailed ? (
+                                <iframe
+                                    ref={frameRef}
+                                    className="md-pdf-embed-frame"
+                                    data-testid="pdf-node-view-frame"
+                                    src={classification.href}
+                                    title={label}
+                                    loading="lazy"
+                                    style={displayHeight ? { height: `${displayHeight}px` } : undefined}
+                                />
+                            ) : (
+                                <PdfJsRenderer
+                                    url={classification.href}
+                                    label={label}
+                                    height={displayHeight}
+                                    onError={handlePdfJsError}
+                                />
+                            )}
                             <div
                                 className="pdf-node-view-resize-handle"
                                 data-testid="pdf-node-view-resize-handle"
@@ -151,6 +211,35 @@ function PdfBlockView({ node, updateAttributes, selected, extension }: NodeViewP
                                     <span className="pdf-node-view-resize-tooltip">{displayHeight}px</span>
                                 ) : null}
                             </div>
+                            {/* Goal 1: Quick Ask over the pdf.js text layer. No-op
+                                on the iframe fallback (no host-selectable text). */}
+                            {!pdfJsFailed && (
+                                <>
+                                    <PdfQuickAskLayer
+                                        containerRef={frameInnerRef}
+                                        workspaceId={quickAskWorkspaceId}
+                                        pdfUrl={url}
+                                        getNotePath={getNotePath}
+                                        getNoteRoot={getNoteRoot}
+                                    />
+                                    {/* Goal 4 AC-01: drag-a-box vision ask over a figure. */}
+                                    <PdfRegionAskLayer
+                                        containerRef={frameInnerRef}
+                                        workspaceId={quickAskWorkspaceId}
+                                        pdfUrl={url}
+                                        getNotePath={getNotePath}
+                                        getNoteRoot={getNoteRoot}
+                                    />
+                                    {/* Goal 2: re-render persisted annotations for this PDF. */}
+                                    <PdfAnnotationsLayer
+                                        containerRef={frameInnerRef}
+                                        workspaceId={quickAskWorkspaceId}
+                                        pdfUrl={url}
+                                        getNotePath={getNotePath}
+                                        getNoteRoot={getNoteRoot}
+                                    />
+                                </>
+                            )}
                         </div>
                         <div className="pdf-node-view-fallback">
                             If the PDF does not display,{' '}

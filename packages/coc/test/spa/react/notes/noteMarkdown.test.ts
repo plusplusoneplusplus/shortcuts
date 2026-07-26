@@ -1023,6 +1023,22 @@ describe('noteMarkdown', () => {
             expect(result).toBe('![Doc](.attachments/sample.pdf)');
         });
 
+        it('rewriteImageSrcToApi — rewrites a cached arXiv .papers/ pdf embed to the API URL', () => {
+            const html = '<div class="md-pdf-embed" data-pdf-url=".papers/1802.05799.pdf" data-pdf-label="1802.05799"></div>';
+            const result = rewriteImageSrcToApi(html, 'ws1');
+            expect(result).toContain('data-pdf-url="/api/workspaces/ws1/notes/image?path=');
+            expect(result).toContain(encodeURIComponent('.papers/1802.05799.pdf'));
+        });
+
+        it('round-trips a cached arXiv paper embed (markdown → API → relative)', () => {
+            const onDisk = '![1802.05799](.papers/1802.05799.pdf)\n';
+            const loaded = rewriteImageSrcToApi(markdownToHtml(onDisk), 'ws1');
+            expect(loaded).toContain('data-pdf-url="/api/workspaces/ws1/notes/image?path=');
+            const saved = rewriteImageSrcToRelative(htmlToMarkdown(loaded));
+            expect(saved).toContain('.papers/1802.05799.pdf');
+            expect(saved).not.toContain('/api/workspaces/');
+        });
+
         // The canonical `![label](x.pdf)` form may carry Markdown escapes in the
         // label (Turndown emits `_` as `\_`). The custom renderer must decode one
         // layer so `data-pdf-label` — and the visible title — is the literal

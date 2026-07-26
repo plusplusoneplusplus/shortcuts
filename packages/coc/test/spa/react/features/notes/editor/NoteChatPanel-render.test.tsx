@@ -199,10 +199,11 @@ describe('NoteChatPanel — rendered behavior', () => {
             const refs = [makeRef({ id: 'r1' }), makeRef({ id: 'r2', text: 'second' })];
             renderPanel({ references: refs, onClearReferences });
             expect(hoisted.composerProps.pendingPrefix).toBe(formatNoteReferences(refs));
-            // onClearReferences is wired to the composer's success-only clear callback,
-            // NOT invoked eagerly by the adapter.
-            expect(hoisted.composerProps.onClearPendingPrefix).toBe(onClearReferences);
+            // The success-only clear callback wraps onClearReferences (+ paper grounding),
+            // and is NOT invoked eagerly by the adapter.
             expect(onClearReferences).not.toHaveBeenCalled();
+            hoisted.composerProps.onClearPendingPrefix();
+            expect(onClearReferences).toHaveBeenCalledTimes(1);
         });
 
         it('renders removable reference chips in the accessory slot above the input', () => {
@@ -217,6 +218,42 @@ describe('NoteChatPanel — rendered behavior', () => {
 
         it('omits the pending prefix when there are no references', () => {
             renderPanel({ references: [] });
+            expect(hoisted.composerProps.pendingPrefix).toBeUndefined();
+        });
+    });
+
+    describe('whole-paper chat grounding (Goal 3, AC-03)', () => {
+        const grounding = '<paper_reference path=".papers/1802.05799.txt">read it</paper_reference>\n\n';
+
+        it('rides the paper grounding directive as the composer pending prefix on its own', () => {
+            renderPanel({ paperGrounding: grounding });
+            expect(hoisted.composerProps.pendingPrefix).toBe(grounding);
+        });
+
+        it('leads the paper grounding before note references in the combined prefix', () => {
+            const refs = [makeRef({ id: 'r1' })];
+            renderPanel({ references: refs, paperGrounding: grounding });
+            expect(hoisted.composerProps.pendingPrefix).toBe(grounding + formatNoteReferences(refs));
+        });
+
+        it('clears both references and paper grounding via the success-only clear callback', () => {
+            const onClearReferences = vi.fn();
+            const onClearPaperGrounding = vi.fn();
+            renderPanel({
+                references: [makeRef()],
+                onClearReferences,
+                paperGrounding: grounding,
+                onClearPaperGrounding,
+            });
+            expect(onClearReferences).not.toHaveBeenCalled();
+            expect(onClearPaperGrounding).not.toHaveBeenCalled();
+            hoisted.composerProps.onClearPendingPrefix();
+            expect(onClearReferences).toHaveBeenCalledTimes(1);
+            expect(onClearPaperGrounding).toHaveBeenCalledTimes(1);
+        });
+
+        it('omits the pending prefix when neither references nor paper grounding are present', () => {
+            renderPanel({ references: [], paperGrounding: null });
             expect(hoisted.composerProps.pendingPrefix).toBeUndefined();
         });
     });
@@ -311,7 +348,10 @@ describe('NoteChatPanel — rendered behavior', () => {
             // The single Notes header remains the only header after the transition.
             expect(screen.getAllByTestId('notes-chat-header')).toHaveLength(1);
             expect(hoisted.chatDetailProps.hideHeader).toBe(true);
-            expect(hoisted.chatDetailProps.compactModeSelector).toBe(true);
+            // Legacy compact single-row layout removed: Notes no longer opts
+            // into it — the active-chat follow-up now uses the same stacked
+            // composer (with responsive collapse) as every other embedded chat.
+            expect(hoisted.chatDetailProps.compactModeSelector).toBeUndefined();
             expect(hoisted.chatDetailProps.disableScratchpad).toBe(true);
             expect(hoisted.chatDetailProps.allowedModes).toEqual(['ask', 'autopilot']);
         });

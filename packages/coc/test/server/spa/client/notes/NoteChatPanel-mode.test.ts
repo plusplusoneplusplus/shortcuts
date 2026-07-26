@@ -59,13 +59,15 @@ describe('NoteChatPanel — mode restriction (Ask + Autopilot only)', () => {
         expect(source).not.toMatch(/hideModeSelector/);
     });
 
-    it('passes compactModeSelector and hideHeader to ChatDetail so the compact header is the only header', () => {
+    it('passes hideHeader to ChatDetail so the compact header is the only header, without opting into the removed legacy layout', () => {
         const chatDetailIdx = source.indexOf('<ChatDetail');
         expect(chatDetailIdx).toBeGreaterThan(-1);
         const chatDetailEnd = source.indexOf('/>', chatDetailIdx);
         expect(chatDetailEnd).toBeGreaterThan(-1);
         const chatDetailBlock = source.slice(chatDetailIdx, chatDetailEnd);
-        expect(chatDetailBlock).toContain('compactModeSelector');
+        // Legacy compact single-row layout removed: Notes no longer passes
+        // compactModeSelector; the follow-up composer is the shared stacked one.
+        expect(chatDetailBlock).not.toContain('compactModeSelector');
         expect(chatDetailBlock).toContain('hideHeader');
         expect(chatDetailBlock).toContain('allowedModes={NOTE_CHAT_ALLOWED_MODES}');
     });

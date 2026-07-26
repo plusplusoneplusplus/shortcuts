@@ -19,6 +19,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { cn } from '../../../ui';
 import { getQuickAskSelection } from './quick-ask-selection';
 import { QuickAskPill } from './QuickAskPill';
+import { QuickAskInput } from './QuickAskInput';
 import { QuickAskSidenotePopover } from './QuickAskSidenotePopover';
 import { resolveSidenoteAnchor } from './sidenoteAnchoring';
 import {
@@ -42,7 +43,7 @@ export interface QuickAskTurnLayerProps {
     streaming?: boolean;
     /** Side-notes for THIS turn (persisted + optimistic). */
     notes: ClientSideNote[];
-    onAsk: (selection: QuickAskSelection) => void;
+    onAsk: (selection: QuickAskSelection, question?: string) => void;
     onRetry: (id: string) => void;
     onDelete: (id: string) => void;
     onCopy: (note: ClientSideNote) => void;
@@ -77,9 +78,14 @@ export function QuickAskTurnLayer({
     onCopy,
 }: QuickAskTurnLayerProps) {
     const [selection, setSelection] = useState<QuickAskSelection | null>(null);
+    // Selection whose Ask AI pill has been triggered and expanded into the
+    // inline question input (AC-01). Null when no input is open.
+    const [input, setInput] = useState<QuickAskSelection | null>(null);
     const [open, setOpen] = useState<OpenPopover | null>(null);
     const selectionRef = useRef<QuickAskSelection | null>(null);
     selectionRef.current = selection;
+    const inputRef = useRef<QuickAskSelection | null>(input);
+    inputRef.current = input;
     const openRef = useRef<OpenPopover | null>(open);
     openRef.current = open;
     // Id of the side-note whose source phrase currently carries the persistent
@@ -132,7 +138,9 @@ export function QuickAskTurnLayer({
                 const next = getQuickAskSelection(container, turnIndex);
                 if (next) {
                     e.preventDefault();
-                    onAsk(next);
+                    // AC-01: expand into the inline question input instead of
+                    // firing the lookup immediately.
+                    setInput(next);
                     window.getSelection()?.removeAllRanges();
                     setSelection(null);
                 }
@@ -140,15 +148,43 @@ export function QuickAskTurnLayer({
         };
         document.addEventListener('keydown', onKey);
         return () => document.removeEventListener('keydown', onKey);
-    }, [containerRef, streaming, turnIndex, onAsk]);
+    }, [containerRef, streaming, turnIndex]);
 
+    // Dismiss the open input when the user points down anywhere outside it
+    // (mirrors today's pill dismiss-on-outside-click behavior). Escape is
+    // handled inside QuickAskInput.
+    useEffect(() => {
+        if (!input) {return;}
+        const onDown = (e: MouseEvent) => {
+            const target = e.target as HTMLElement | null;
+            if (target?.closest('[data-testid="quick-ask-input"]')) {return;}
+            setInput(null);
+        };
+        document.addEventListener('mousedown', onDown);
+        return () => document.removeEventListener('mousedown', onDown);
+    }, [input]);
+
+    // AC-01: clicking the pill expands into the inline question input at the
+    // same anchor rather than firing the lookup immediately.
     const handleAsk = useCallback(() => {
         const sel = selectionRef.current;
         if (!sel) {return;}
-        onAsk(sel);
+        setInput(sel);
         window.getSelection()?.removeAllRanges();
         setSelection(null);
+    }, []);
+
+    // Submit the input: pass the typed question through (empty/whitespace →
+    // undefined, preserving the default "Briefly explain" server behavior).
+    const submitInput = useCallback((question: string) => {
+        const sel = inputRef.current;
+        setInput(null);
+        if (!sel) {return;}
+        const trimmed = question.trim();
+        onAsk(sel, trimmed || undefined);
     }, [onAsk]);
+
+    const cancelInput = useCallback(() => setInput(null), []);
 
     // Activate a chip (footer button OR injected inline marker): (AC-01) locate +
     // scroll-to + persistently highlight the source phrase — or, when it can't be
@@ -271,8 +307,12 @@ export function QuickAskTurnLayer({
 
     return (
         <>
-            {selection && (
+            {selection && !input && (
                 <QuickAskPill rect={selection.rect} onAsk={handleAsk} onDismiss={clearSelection} />
+            )}
+
+            {input && (
+                <QuickAskInput rect={input.rect} onSubmit={submitInput} onCancel={cancelInput} />
             )}
 
             {footerNotes.length > 0 && (

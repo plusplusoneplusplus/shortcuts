@@ -23,6 +23,14 @@ export interface QuickAskSidenotePopoverProps {
     onCopy: (note: ClientSideNote) => void;
     onRetry: (id: string) => void;
     onDelete: (id: string) => void;
+    /**
+     * Optional resolve/reopen control (paper annotations only, Goal 4 AC-02).
+     * Chat side-notes omit it → no button is rendered.
+     */
+    resolve?: {
+        resolved: boolean;
+        onToggle: (id: string, resolved: boolean) => void;
+    };
 }
 
 export function QuickAskSidenotePopover({
@@ -32,6 +40,7 @@ export function QuickAskSidenotePopover({
     onCopy,
     onRetry,
     onDelete,
+    resolve,
 }: QuickAskSidenotePopoverProps) {
     const ref = useRef<HTMLDivElement>(null);
     const [clampedPos, setClampedPos] = useState(position);
@@ -104,6 +113,17 @@ export function QuickAskSidenotePopover({
                     : note.anchor.selectedText}
             </blockquote>
 
+            {/* Custom question (AC-03) — omitted entirely for the default-explain case. */}
+            {note.question && (
+                <div
+                    className="text-[11px] text-[#1e1e1e] dark:text-[#cccccc]"
+                    data-testid="quick-ask-popover-question"
+                >
+                    <span className="font-medium text-[#3794ff]">Q:</span>{' '}
+                    {note.question}
+                </div>
+            )}
+
             {/* Body */}
             {note.status === 'asking' && (
                 <div className="flex items-center gap-2 text-[11px] text-[#848484]" data-testid="quick-ask-popover-loading">
@@ -132,6 +152,16 @@ export function QuickAskSidenotePopover({
                 {note.status === 'ready' && (
                     <button className={ACTION_BTN} onClick={handleCopy} title="Copy answer" data-testid="quick-ask-popover-copy">
                         {copied ? '✓ Copied' : '⧉ Copy'}
+                    </button>
+                )}
+                {resolve && note.status === 'ready' && (
+                    <button
+                        className={ACTION_BTN}
+                        onClick={() => { resolve.onToggle(note.id, !resolve.resolved); onClose(); }}
+                        title={resolve.resolved ? 'Reopen this annotation' : 'Mark this annotation resolved'}
+                        data-testid="quick-ask-popover-resolve"
+                    >
+                        {resolve.resolved ? '↺ Reopen' : '✓ Resolve'}
                     </button>
                 )}
                 <button

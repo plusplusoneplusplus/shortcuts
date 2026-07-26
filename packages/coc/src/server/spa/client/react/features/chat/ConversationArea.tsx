@@ -136,7 +136,7 @@ export interface ConversationAreaProps {
      */
     sidenotes?: ClientSideNote[];
     /** Run a Quick Ask lookup for a captured selection. */
-    onCreateSidenote?: (selection: QuickAskSelection) => void;
+    onCreateSidenote?: (selection: QuickAskSelection, question?: string) => void;
     /** Retry a failed Quick Ask lookup. */
     onRetrySidenote?: (id: string) => void;
     /** Delete a Quick Ask side-note. */

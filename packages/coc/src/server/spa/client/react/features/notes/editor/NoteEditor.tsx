@@ -14,6 +14,7 @@ import type { NoteEditorCommentBackend } from './NoteEditorCommentBackend';
 import { defaultCommentBackend } from './NoteEditorCommentBackend';
 import { NoteEditorToolbar } from './NoteEditorToolbar';
 import { RichEditorCore } from './RichEditorCore';
+import { NoteQuickAskLayer } from './extensions/NoteQuickAskLayer';
 import { SourceEditor } from '../../../shared/SourceEditor';
 import { findAnchorInDoc, applyCommentMark, buildAnchorFromMark } from './commentAnchoring';
 import { ContextMenu } from '../../../tasks/comments/ContextMenu';
@@ -21,6 +22,7 @@ import type { ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import { wordDiff } from './noteEditDiff';
 import type { DiffChunk } from './noteEditDiff';
 import type { AiEditRegion } from './extensions/AiEditDecorationExtension';
+import { isLikelyArxivUrl } from './extensions/arxivPaste';
 import { AIEditNavigator } from './AIEditNavigator';
 import type { TocEntry } from './noteTocUtils';
 import { extractHeadings } from './noteTocUtils';
@@ -90,6 +92,9 @@ export interface NoteEditorProps {
     /** Called when the user selects "Add to chat as reference" from the context menu.
      *  Only provided when the chat panel is open and below the reference cap. */
     onAddNoteReference?: (text: string, notePath: string, noteTitle: string) => void;
+    /** Goal 3 (AC-03): open the Notes chat grounded on an embedded paper's full
+     *  extracted text. Wired to a PDF embed's "💬 Chat about this paper" button. */
+    onChatAboutPaper?: (paperTextRelPath: string) => void;
     /** Whether the current root is the default managed root. Defaults to true.
      *  When false, version history and git features are hidden. */
     isDefaultRoot?: boolean;
@@ -199,6 +204,7 @@ export function NoteEditor({
     hasExistingChat,
     onNavigateToNote,
     onAddNoteReference,
+    onChatAboutPaper,
     isDefaultRoot = true,
     root,
     scrollToLine,
@@ -433,6 +439,51 @@ export function NoteEditor({
     }, []);
 
     const handlePaste = useCallback((view: any, event: ClipboardEvent) => {
+        // Paste of a lone arXiv URL → fetch + cache the PDF locally and embed the
+        // cached copy (link-rot proof, host-selectable text layer). The server is
+        // the authoritative recognizer; on any failure we fall back to a plain
+        // text paste so nothing is lost. (Goal 3, AC-01 client.)
+        const pastedText = event.clipboardData?.getData('text/plain');
+        if (
+            pastedText
+            && isLikelyArxivUrl(pastedText)
+            && ioRef.current.ingestPaper
+            && notePathRef.current
+        ) {
+            event.preventDefault();
+            const url = pastedText.trim();
+            void (async () => {
+                setUploadingImage(true);
+                try {
+                    const result = await ioRef.current.ingestPaper!(
+                        workspaceIdRef.current,
+                        url,
+                        rootRef.current,
+                    );
+                    const apiUrl = ioRef.current.imageApiUrl(
+                        workspaceIdRef.current,
+                        result.pdfPath,
+                        rootRef.current,
+                    );
+                    editorRef.current
+                        ?.chain()
+                        .focus()
+                        .insertContent({
+                            type: 'pdfBlock',
+                            attrs: { url: apiUrl, label: result.arxivId || 'PDF' },
+                        })
+                        .run();
+                } catch (err) {
+                    console.error('Failed to ingest arXiv paper:', err);
+                    // Fall back to inserting the raw URL as text.
+                    editorRef.current?.chain().focus().insertContent(url).run();
+                } finally {
+                    setUploadingImage(false);
+                }
+            })();
+            return true;
+        }
+
         const items = event.clipboardData?.items;
         if (!items) return false;
 
@@ -1332,6 +1383,10 @@ export function NoteEditor({
                                 onEditorReady={handleEditorReady}
                                 handlePaste={handlePaste}
                                 handleDrop={handleDrop}
+                                workspaceId={workspaceId}
+                                notePath={notePath}
+                                noteRoot={root}
+                                onChatAboutPaper={onChatAboutPaper}
                             />
                             <input
                                 ref={pdfInputRef}
@@ -1342,6 +1397,17 @@ export function NoteEditor({
                                 onChange={handlePdfFileSelected}
                             />
                         </div>
+
+                        {/* Quick Ask (✨ Ask AI) over the WYSIWYG note text. Mounted
+                            only in rich mode — never over the source textarea
+                            (AC-01). Gated internally by the quickAskSidenotes flag. */}
+                        {!editorHidden && viewMode === 'rich' && (
+                            <NoteQuickAskLayer
+                                containerRef={editorScrollContainerRef}
+                                workspaceId={workspaceId}
+                                editor={editor}
+                            />
+                        )}
 
                         {isEmpty && (
                             <div
