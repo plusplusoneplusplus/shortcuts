@@ -45,8 +45,8 @@ import { QuickAskPill } from '../../../chat/quick-ask/QuickAskPill';
 import { QuickAskInput } from '../../../chat/quick-ask/QuickAskInput';
 import { QuickAskSidenotePopover } from '../../../chat/quick-ask/QuickAskSidenotePopover';
 import type { ClientSideNote, QuickAskSelection, QuickAskTurn } from '../../../chat/quick-ask/types';
-import { QA_SIDENOTE_REF_CLASS } from './sidenoteFootnote';
-import { deleteSidenoteRef, insertSidenoteRef } from './sidenoteRefPlacement';
+import { decodeQaTurns, QA_SIDENOTE_REF_CLASS, type QaTurn } from './sidenoteFootnote';
+import { deleteSidenoteRef, insertSidenoteRef, updateSidenoteRefTurns } from './sidenoteRefPlacement';
 
 /** Soft cap on turns per thread (AC-02): past this we stop accepting follow-ups
  * and show a small notice. Mirrors the server-side `MAX_HISTORY_TURNS`. */
@@ -181,16 +181,32 @@ export function NoteQuickAskLayer({ containerRef, workspaceId, editor }: NoteQui
             .then((data: { answer?: string; model?: string }) => {
                 const answer = typeof data?.answer === 'string' ? data.answer : '';
                 if (!answer) {throw new Error('Malformed response');}
-                if (turnIndex === 0) {
-                    insertSidenoteRef(
-                        editorRef.current,
-                        {
-                            selectedText: sel.selectedText,
-                            contextBefore: sel.contextBefore,
-                            contextAfter: sel.contextAfter,
-                        },
-                        { refId: noteId, question, answer },
-                    );
+                // Persist the whole thread onto the marker (AC-03). Fold this
+                // just-answered turn into the accumulated ready turns so turn 0
+                // *inserts* the marker and every follow-up *re-writes* its
+                // `data-qa-turns` — the marker never lags behind the thread.
+                const current = openRef.current;
+                if (current && current.note.id === noteId) {
+                    const persistTurns: QaTurn[] = current.turns
+                        .map((t, i) =>
+                            (i === turnIndex
+                                ? { question: t.question, answer, status: 'ready' as const }
+                                : t))
+                        .filter(t => t.status === 'ready')
+                        .map(t => ({ question: t.question, answer: t.answer }));
+                    if (turnIndex === 0) {
+                        insertSidenoteRef(
+                            editorRef.current,
+                            {
+                                selectedText: sel.selectedText,
+                                contextBefore: sel.contextBefore,
+                                contextAfter: sel.contextAfter,
+                            },
+                            { refId: noteId, question, answer, turns: persistTurns },
+                        );
+                    } else {
+                        updateSidenoteRefTurns(editorRef.current, noteId, persistTurns);
+                    }
                 }
                 setOpen(prev => {
                     const next = patchTurn(prev, noteId, turnIndex, { status: 'ready', answer, error: undefined });
@@ -286,8 +302,14 @@ export function NoteQuickAskLayer({ containerRef, workspaceId, editor }: NoteQui
                 setOpen(null);
                 return;
             }
-            const answer = chip.getAttribute('data-qa-answer') ?? '';
-            const question = chip.getAttribute('data-qa-question') || undefined;
+            // Reconstruct the full thread from the marker's `data-qa-turns` (AC-03);
+            // fall back to the turn-0 answer/question mirror for a legacy marker
+            // that predates multi-turn persistence.
+            const turnsAttr = chip.getAttribute('data-qa-turns');
+            const decodedTurns = turnsAttr ? decodeQaTurns(turnsAttr) : null;
+            const answer = decodedTurns?.[0]?.answer ?? chip.getAttribute('data-qa-answer') ?? '';
+            const question =
+                decodedTurns?.[0]?.question ?? (chip.getAttribute('data-qa-question') || undefined);
             const persistedPhrase = chip.getAttribute('data-qa-selected-text');
             const phrase = persistedPhrase || phraseBeforeChip(chip);
             const contextBefore = persistedPhrase
@@ -323,7 +345,9 @@ export function NoteQuickAskLayer({ containerRef, workspaceId, editor }: NoteQui
                     contextAfter,
                     rect,
                 },
-                turns: [{ question, answer, status: 'ready' }],
+                turns: decodedTurns && decodedTurns.length
+                    ? decodedTurns.map(t => ({ question: t.question, answer: t.answer, status: 'ready' as const }))
+                    : [{ question, answer, status: 'ready' }],
             });
         };
         document.addEventListener('click', onClick);

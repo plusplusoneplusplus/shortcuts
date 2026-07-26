@@ -12,12 +12,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useRef } from 'react';
 
-const { getSelectionMock, fetchApiMock, enabledMock, insertSidenoteRefMock, deleteSidenoteRefMock } = vi.hoisted(() => ({
+const {
+    getSelectionMock,
+    fetchApiMock,
+    enabledMock,
+    insertSidenoteRefMock,
+    deleteSidenoteRefMock,
+    updateSidenoteRefTurnsMock,
+} = vi.hoisted(() => ({
     getSelectionMock: vi.fn(),
     fetchApiMock: vi.fn(),
     enabledMock: vi.fn(() => true),
     insertSidenoteRefMock: vi.fn(() => true),
     deleteSidenoteRefMock: vi.fn(() => true),
+    updateSidenoteRefTurnsMock: vi.fn(() => true),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/quick-ask/quick-ask-selection', () => ({
@@ -39,6 +47,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useQuickAsk
 vi.mock('../../../../src/server/spa/client/react/features/notes/editor/extensions/sidenoteRefPlacement', () => ({
     insertSidenoteRef: insertSidenoteRefMock,
     deleteSidenoteRef: deleteSidenoteRefMock,
+    updateSidenoteRefTurns: updateSidenoteRefTurnsMock,
 }));
 
 import { NoteQuickAskLayer }
@@ -98,6 +107,8 @@ beforeEach(() => {
     insertSidenoteRefMock.mockReturnValue(true);
     deleteSidenoteRefMock.mockReset();
     deleteSidenoteRefMock.mockReturnValue(true);
+    updateSidenoteRefTurnsMock.mockReset();
+    updateSidenoteRefTurnsMock.mockReturnValue(true);
 });
 
 afterEach(() => {
@@ -367,6 +378,54 @@ describe('NoteQuickAskLayer — AC-04 chip, popover, delete', () => {
         expect(screen.getByTestId('qa-chip')).toBeInTheDocument();
     });
 
+    it('reconstructs the full multi-turn thread from data-qa-turns on chip reopen (AC-03)', async () => {
+        function ThreadChipHarness() {
+            const ref = useRef<HTMLDivElement>(null);
+            const turns = JSON.stringify([
+                { q: 'what is this?', a: 'Iterative first-order optimization.' },
+                { q: 'give an example', a: 'For example, SGD.' },
+            ]);
+            return (
+                <div>
+                    <div ref={ref} data-testid="note-container">
+                        <p>
+                            {'we optimize the loss with gradient descent'}
+                            <span
+                                className="qa-sidenote-ref"
+                                data-qa-id="thread1"
+                                data-qa-turns={turns}
+                                data-qa-question="what is this?"
+                                data-qa-answer="Iterative first-order optimization."
+                                data-qa-selected-text="gradient descent"
+                                data-qa-context-before="we optimize the loss with "
+                                data-qa-context-after=" over many epochs"
+                                data-testid="thread-chip"
+                            >
+                                ✨
+                            </span>
+                            {' over many epochs'}
+                        </p>
+                    </div>
+                    <NoteQuickAskLayer
+                        containerRef={ref as unknown as React.RefObject<HTMLElement | null>}
+                        workspaceId="ws-1"
+                        editor={EDITOR_SENTINEL}
+                    />
+                </div>
+            );
+        }
+
+        render(<ThreadChipHarness />);
+        fireEvent.click(screen.getByTestId('thread-chip'));
+
+        await waitFor(() => expect(screen.getByTestId('quick-ask-popover')).toBeInTheDocument());
+        // Both persisted turns render as separate Q/A blocks.
+        const answers = screen.getAllByTestId('quick-ask-popover-answer');
+        expect(answers).toHaveLength(2);
+        expect(answers[0].textContent).toContain('first-order optimization');
+        expect(answers[1].textContent).toContain('For example, SGD');
+    });
+
     it('falls back to preceding text for a legacy chip without anchor data', async () => {
         function LegacyHarness() {
             const ref = useRef<HTMLDivElement>(null);
@@ -438,18 +497,29 @@ describe('NoteQuickAskLayer — AC-02 follow-up thread', () => {
         expect(answers[1].textContent).toContain('For example, SGD');
     });
 
-    it('a follow-up does not re-embed the footnote marker (turn 0 only, AC-03 later)', async () => {
+    it('a follow-up re-writes the marker turns (AC-03) rather than re-embedding it', async () => {
         await askFirst();
         expect(insertSidenoteRefMock).toHaveBeenCalledTimes(1);
+        // Turn 0 embeds the marker with the one-turn thread persisted.
+        expect(insertSidenoteRefMock.mock.calls[0][2].turns).toEqual([
+            { question: 'what is this?', answer: 'Iterative first-order optimization.' },
+        ]);
         fetchApiMock.mockResolvedValueOnce({ answer: 'second', model: 'm1' });
 
         const replyInput = screen.getByTestId('quick-ask-reply-input');
         fireEvent.change(replyInput, { target: { value: 'and?' } });
         fireEvent.keyDown(replyInput, { key: 'Enter' });
 
-        await waitFor(() => expect(fetchApiMock).toHaveBeenCalledTimes(2));
-        // Follow-ups extend the in-session thread only; no new marker embed.
+        await waitFor(() => expect(updateSidenoteRefTurnsMock).toHaveBeenCalledTimes(1));
+        // No new marker embed — the follow-up folds into the existing one.
         expect(insertSidenoteRefMock).toHaveBeenCalledTimes(1);
+        const [, refId, turns] = updateSidenoteRefTurnsMock.mock.calls[0];
+        expect(refId).toEqual(insertSidenoteRefMock.mock.calls[0][2].refId);
+        // Both ready turns are persisted, in order.
+        expect(turns).toEqual([
+            { question: 'what is this?', answer: 'Iterative first-order optimization.' },
+            { question: 'and?', answer: 'second' },
+        ]);
     });
 
     it('a failed follow-up shows a per-turn error+retry that preserves turn 1', async () => {
