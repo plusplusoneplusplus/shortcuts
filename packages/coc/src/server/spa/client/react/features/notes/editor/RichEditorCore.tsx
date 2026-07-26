@@ -33,6 +33,7 @@ import { AiEditDecorationExtension } from './extensions/AiEditDecorationExtensio
 import { YouTubeEmbedDecorationExtension } from './extensions/YouTubeEmbedDecorationExtension';
 import { YouTubePopupDialog } from './extensions/YouTubePopupDialog';
 import { NoteLinkExtension } from './noteLinkExtension';
+import { SidenoteRefExtension } from './extensions/sidenoteRefExtension';
 import { FilePathNodeExtension } from './filePathNodeExtension';
 import { useLinkHandlers } from '../../../hooks/useLinkHandlers';
 import { openLink } from '../../../utils/link-handler';
@@ -185,6 +186,7 @@ export function RichEditorCore({
             IndentExtension,
             ResizableImage.configure({ inline: false, allowBase64: false }),
             NoteLinkExtension,
+            SidenoteRefExtension,
             FilePathNodeExtension,
             AiEditDecorationExtension,
             YouTubeEmbedDecorationExtension.configure({

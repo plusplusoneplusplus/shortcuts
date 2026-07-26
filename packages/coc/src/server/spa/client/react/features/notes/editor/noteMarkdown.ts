@@ -13,6 +13,13 @@ import { wrapMathDelimiters, type MathDelimiter } from '../../../../shared/math/
 import { clampIndent, parseIndentAttr } from './extensions/indentShared';
 import { clampPdfHeight, parsePdfHeightAttr } from './extensions/pdfHeightShared';
 import { pdfLabelFromMarkdown } from './pdfLabel';
+import {
+    appendQaFootnoteDefs,
+    extractQaFootnoteDefs,
+    injectQaAnswers,
+    QA_SIDENOTE_REF_CLASS,
+    qaFootnoteMarkedExtension,
+} from './extensions/sidenoteFootnote';
 
 // ── marked configuration ────────────────────────────────────────────────────
 
@@ -188,6 +195,11 @@ marked.use(highlightExtension);
 // placeholders (`<span/div data-math=… data-tex=… data-delim=…>`). The rendered
 // KaTeX lives only in the runtime NodeView — never in the persisted Markdown.
 marked.use(mathNodeMarkedExtension);
+
+// Quick Ask side-note reference markers (`[^qa-<id>]`) → bare marker span; the
+// answer/question are folded in from the stripped definition block afterwards
+// (see markdownToHtml / sidenoteFootnote.ts).
+marked.use(qaFootnoteMarkedExtension);
 
 // ── turndown singleton ──────────────────────────────────────────────────────
 
@@ -462,6 +474,23 @@ turndown.addRule('noteLink', {
     },
 });
 
+// Quick Ask side-note reference marker: <span class="qa-sidenote-ref" data-qa-id="..."> → [^qa-...].
+// The answer/question live in the definition block appended by appendQaFootnoteDefs (htmlToMarkdown),
+// so this rule only re-emits the inline marker; the leaf content (✨) is discarded.
+turndown.addRule('qaSidenoteRef', {
+    filter(node) {
+        return (
+            node.nodeName === 'SPAN' &&
+            (node as Element).classList.contains(QA_SIDENOTE_REF_CLASS) &&
+            node.hasAttribute('data-qa-id')
+        );
+    },
+    replacement(_content, node) {
+        const id = (node as HTMLElement).getAttribute('data-qa-id') ?? '';
+        return id ? `[^qa-${id}]` : '';
+    },
+});
+
 // File-path reference spans: <span class="file-ref-link" data-file-path="..."> → plain text path
 turndown.addRule('filePathRef', {
     filter(node) {
@@ -679,7 +708,11 @@ function stripNbspParagraphPlaceholders(html: string): string {
  */
 export function markdownToHtml(md: string): string {
     if (!md) return '';
-    const html = marked.parse(md) as string;
+    // Split the Quick Ask footnote definition block out of the body and fold
+    // each answer back into its inline marker after parsing (the marked
+    // tokenizer, a singleton, cannot see per-call definitions).
+    const { body, defs } = extractQaFootnoteDefs(md);
+    const html = injectQaAnswers(marked.parse(body) as string, defs);
     return stripNbspParagraphPlaceholders(postProcessTaskLists(html));
 }
 
@@ -702,7 +735,9 @@ export function htmlToMarkdown(html: string): string {
     );
     // Ensure single trailing newline
     md = md.replace(/\n*$/, '\n');
-    return md;
+    // Rebuild the Quick Ask footnote definition block from the marker spans in
+    // the source HTML so each answer is persisted at the file bottom.
+    return appendQaFootnoteDefs(md, html);
 }
 
 /**
