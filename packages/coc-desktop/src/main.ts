@@ -64,6 +64,7 @@ import {
     DEVTUNNEL_MODAL_CANCEL_CHANNEL,
     DEVTUNNEL_MODAL_SUBMIT_CHANNEL,
 } from './devtunnel-modal';
+import { wirePdfChildWindows } from './pdf-child-window';
 
 // Brand the app identity before anything builds the menu / dock / About panel.
 // In dev (electron launched against this package) this fixes the menu-bar name,
@@ -184,6 +185,19 @@ function wireExternalLinkRouting(win: BrowserWindow, servedUrl: string): void {
             event.preventDefault();
             void shell.openExternal(url);
         }
+    });
+    wirePdfChildWindows(win.webContents, servedUrl, {
+        confirmDiscard: (pdfWindow) =>
+            dialog.showMessageBoxSync(pdfWindow as BrowserWindow, {
+                type: 'warning',
+                title: 'Unsaved PDF annotations',
+                message: 'This PDF has unsaved annotations.',
+                detail: 'Discard the changes and close this window?',
+                buttons: ['Discard changes and close', 'Keep open'],
+                defaultId: 1,
+                cancelId: 1,
+                noLink: true,
+            }) === 0,
     });
 }
 
