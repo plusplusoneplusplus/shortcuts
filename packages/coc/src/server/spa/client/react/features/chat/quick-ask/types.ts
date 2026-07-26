@@ -36,6 +36,20 @@ export interface ClientSideNote extends ChatSideNote {
 }
 
 /**
+ * One turn of a Quick Ask thread (multi-turn follow-up, notes/paper surfaces).
+ * Turn 0 is the original ask; later turns are follow-ups. `question` is optional
+ * on the first turn (default explain-this) but present on every follow-up.
+ * `status` mirrors {@link ClientSideNote.status} per turn so each row can show
+ * its own spinner / answer / inline error.
+ */
+export interface QuickAskTurn {
+    question?: string;
+    answer: string;
+    status: 'asking' | 'ready' | 'error';
+    error?: string;
+}
+
+/**
  * A captured text selection inside an assistant turn, ready to become a
  * side-note lookup.
  */

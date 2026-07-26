@@ -30,7 +30,7 @@ import { getQuickAskSelection } from '../../../chat/quick-ask/quick-ask-selectio
 import { QuickAskPill } from '../../../chat/quick-ask/QuickAskPill';
 import { QuickAskInput } from '../../../chat/quick-ask/QuickAskInput';
 import { QuickAskSidenotePopover } from '../../../chat/quick-ask/QuickAskSidenotePopover';
-import type { ClientSideNote, QuickAskSelection } from '../../../chat/quick-ask/types';
+import type { ClientSideNote, QuickAskSelection, QuickAskTurn } from '../../../chat/quick-ask/types';
 import { extractPaperRectAnchor, type PaperRectAnchor } from './paperAnchorGeometry';
 import { PAPER_ANNOTATION_PERSISTED_EVENT } from './usePaperAnnotations';
 import { paperPathFromPdfUrl } from './paperPathFromUrl';
@@ -60,6 +60,37 @@ export interface PdfQuickAskLayerProps {
  * selection shape carries one. */
 const PDF_TURN_INDEX = 0;
 
+/** Soft cap on follow-up turns per thread (AC-02). */
+const MAX_TURNS = 10;
+
+/** One ordered prior Q/A turn sent as grounding history on a follow-up (AC-01). */
+type HistoryTurn = { question?: string; answer: string };
+
+/** Immutably patch turn `turnIndex` of the open thread and sync the note-level
+ * status/answer to the latest turn. No-op when the open note id doesn't match. */
+function patchTurn(
+    prev: OpenNote | null,
+    noteId: string,
+    turnIndex: number,
+    patch: Partial<QuickAskTurn>,
+): OpenNote | null {
+    if (!prev || prev.note.id !== noteId || !prev.turns[turnIndex]) {return prev;}
+    const turns = prev.turns.map((t, i) => (i === turnIndex ? { ...t, ...patch } : t));
+    const latest = turns[turns.length - 1];
+    return {
+        ...prev,
+        turns,
+        note: { ...prev.note, status: latest.status, answer: latest.answer, error: latest.error },
+    };
+}
+
+/** Prior ready turns, in order, as follow-up grounding history. */
+function historyBefore(turns: QuickAskTurn[], upto: number): HistoryTurn[] {
+    return turns.slice(0, upto)
+        .filter(t => t.status === 'ready')
+        .map(t => ({ question: t.question, answer: t.answer }));
+}
+
 function newId(): string {
     try {
         if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -79,12 +110,14 @@ function labelFor(selectedText: string): string {
 interface OpenNote {
     note: ClientSideNote;
     position: { top: number; left: number };
-    /** Selection that produced this note, kept for retry. */
+    /** Selection that produced this note, kept for retry + follow-up grounding. */
     selection: QuickAskSelection;
     /** Geometric anchor captured at ask time, for the persisted highlight. */
     rectAnchor: PaperRectAnchor | null;
-    /** Whether this Q&A was grounded on the whole paper (kept for retry). */
+    /** Whether this Q&A was grounded on the whole paper (kept for retry + follow-ups). */
     useFullPaper: boolean;
+    /** The full multi-turn thread (AC-02). Turn 0 is the original ask. */
+    turns: QuickAskTurn[];
 }
 
 export function PdfQuickAskLayer({
@@ -171,11 +204,17 @@ export function PdfQuickAskLayer({
             });
     }, [workspaceId]);
 
-    // Run the stateless one-shot lookup, updating the note in place by id.
-    const runLookup = useCallback((
+    // Run one stateless grounded turn, updating that turn in place by id+index.
+    // `history` carries the prior Q/A turns so a follow-up is answered coherently
+    // (AC-01); omitted when empty so turn 0 is byte-for-byte the one-shot request.
+    // Whole-paper grounding (when opted in on turn 1) is reused for every turn.
+    // Turn 0 persists the fresh annotation; follow-up persistence is AC-03.
+    const postTurn = useCallback((
         sel: QuickAskSelection,
         question: string | undefined,
+        history: HistoryTurn[],
         noteId: string,
+        turnIndex: number,
         rectAnchor: PaperRectAnchor | null,
         wantFullPaper: boolean,
     ) => {
@@ -193,6 +232,7 @@ export function PdfQuickAskLayer({
                 contextBefore: sel.contextBefore,
                 contextAfter: sel.contextAfter,
                 question,
+                ...(history.length ? { history } : {}),
                 ...(useFull
                     ? {
                         useFullPaper: true,
@@ -205,15 +245,16 @@ export function PdfQuickAskLayer({
             .then((data: { answer?: string; model?: string }) => {
                 const answer = typeof data?.answer === 'string' ? data.answer : '';
                 if (!answer) {throw new Error('Malformed response');}
-                setOpen(prev => (prev && prev.note.id === noteId
-                    ? { ...prev, note: { ...prev.note, status: 'ready', answer, model: data.model } }
-                    : prev));
-                persistAnnotation(sel, question, answer, data.model, rectAnchor);
+                setOpen(prev => {
+                    const next = patchTurn(prev, noteId, turnIndex, { status: 'ready', answer, error: undefined });
+                    return next ? { ...next, note: { ...next.note, model: data.model } } : next;
+                });
+                if (turnIndex === 0) {
+                    persistAnnotation(sel, question, answer, data.model, rectAnchor);
+                }
             })
             .catch(() => {
-                setOpen(prev => (prev && prev.note.id === noteId
-                    ? { ...prev, note: { ...prev.note, status: 'error', error: 'Lookup failed' } }
-                    : prev));
+                setOpen(prev => patchTurn(prev, noteId, turnIndex, { status: 'error', error: 'Lookup failed' }));
             });
     }, [workspaceId, persistAnnotation, paperPath]);
 
@@ -327,9 +368,10 @@ export function PdfQuickAskLayer({
             selection: sel,
             rectAnchor,
             useFullPaper: wantFullPaper,
+            turns: [{ question: trimmed, answer: '', status: 'asking' }],
         });
-        runLookup(sel, trimmed, id, rectAnchor, wantFullPaper);
-    }, [runLookup, fullPaper, paperPath]);
+        postTurn(sel, trimmed, [], id, 0, rectAnchor, wantFullPaper);
+    }, [postTurn, fullPaper, paperPath]);
 
     const cancelInput = useCallback(() => setInput(null), []);
 
@@ -343,13 +385,48 @@ export function PdfQuickAskLayer({
         }
     }, []);
 
-    const handleRetry = useCallback((id: string) => {
+    // Per-turn retry (AC-02): re-run turn `turnIndex` with its question and the
+    // prior ready turns as history, preserving the rest of the thread. Follow-up
+    // turns carry no fresh geometry — only turn 0 re-persists a highlight.
+    const handleRetry = useCallback((turnIndex: number) => {
         setOpen(prev => {
-            if (!prev || prev.note.id !== id) {return prev;}
-            runLookup(prev.selection, prev.note.question, id, prev.rectAnchor, prev.useFullPaper);
-            return { ...prev, note: { ...prev.note, status: 'asking', error: undefined } };
+            if (!prev) {return prev;}
+            const turn = prev.turns[turnIndex];
+            if (!turn) {return prev;}
+            postTurn(
+                prev.selection,
+                turn.question,
+                historyBefore(prev.turns, turnIndex),
+                prev.note.id,
+                turnIndex,
+                turnIndex === 0 ? prev.rectAnchor : null,
+                prev.useFullPaper,
+            );
+            const turns = prev.turns.map((t, i) =>
+                (i === turnIndex ? { ...t, status: 'asking' as const, error: undefined } : t));
+            return { ...prev, turns, note: { ...prev.note, status: 'asking', error: undefined } };
         });
-    }, [runLookup]);
+    }, [postTurn]);
+
+    // Send a follow-up (AC-02): append an asking turn and post it with the
+    // accumulated ready turns as grounding history. Blocked at the soft cap.
+    const handleSend = useCallback((question: string) => {
+        setOpen(prev => {
+            if (!prev || prev.turns.length >= MAX_TURNS) {return prev;}
+            const turnIndex = prev.turns.length;
+            postTurn(
+                prev.selection,
+                question,
+                historyBefore(prev.turns, turnIndex),
+                prev.note.id,
+                turnIndex,
+                null,
+                prev.useFullPaper,
+            );
+            const turns: QuickAskTurn[] = [...prev.turns, { question, answer: '', status: 'asking' }];
+            return { ...prev, turns, note: { ...prev.note, status: 'asking' } };
+        });
+    }, [postTurn]);
 
     const handleDelete = useCallback(() => setOpen(null), []);
 
@@ -378,8 +455,16 @@ export function PdfQuickAskLayer({
                     position={open.position}
                     onClose={closePopover}
                     onCopy={handleCopy}
-                    onRetry={handleRetry}
+                    onRetry={() => { /* per-turn retry handled via reply.onRetry */ }}
                     onDelete={handleDelete}
+                    reply={{
+                        turns: open.turns,
+                        onSend: handleSend,
+                        onRetry: handleRetry,
+                        disabled: open.turns.some(t => t.status === 'asking'),
+                        atCap: open.turns.length >= MAX_TURNS,
+                        maxTurns: MAX_TURNS,
+                    }}
                 />
             )}
         </>

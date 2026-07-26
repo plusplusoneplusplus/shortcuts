@@ -403,6 +403,74 @@ describe('NoteQuickAskLayer — AC-04 chip, popover, delete', () => {
     });
 });
 
+describe('NoteQuickAskLayer — AC-02 follow-up thread', () => {
+    /** Drive the pill → input → first answer, returning after turn 1 is ready. */
+    async function askFirst(answer = 'Iterative first-order optimization.') {
+        fetchApiMock.mockResolvedValueOnce({ answer, model: 'm1' });
+        render(<Harness />);
+        await raisePill();
+        fireEvent.click(screen.getByTestId('quick-ask-pill'));
+        fireEvent.change(field(), { target: { value: 'what is this?' } });
+        fireEvent.keyDown(field(), { key: 'Enter' });
+        await waitFor(() => expect(screen.getByTestId('quick-ask-popover-answer')).toBeInTheDocument());
+    }
+
+    it('sends a follow-up with the prior turn as history and appends a new Q/A', async () => {
+        await askFirst();
+        fetchApiMock.mockResolvedValueOnce({ answer: 'For example, SGD.', model: 'm1' });
+
+        const replyInput = screen.getByTestId('quick-ask-reply-input') as HTMLTextAreaElement;
+        fireEvent.change(replyInput, { target: { value: 'give an example' } });
+        fireEvent.keyDown(replyInput, { key: 'Enter' });
+
+        // Second POST carries the ordered prior turn as grounding history (AC-01).
+        await waitFor(() => expect(fetchApiMock).toHaveBeenCalledTimes(2));
+        const body = JSON.parse(fetchApiMock.mock.calls[1][1].body);
+        expect(body.selectedText).toBe('gradient descent');
+        expect(body.question).toBe('give an example');
+        expect(body.history).toEqual([
+            { question: 'what is this?', answer: 'Iterative first-order optimization.' },
+        ]);
+
+        // Both turns now render in the thread.
+        await waitFor(() => expect(screen.getAllByTestId('quick-ask-popover-answer')).toHaveLength(2));
+        const answers = screen.getAllByTestId('quick-ask-popover-answer');
+        expect(answers[1].textContent).toContain('For example, SGD');
+    });
+
+    it('a follow-up does not re-embed the footnote marker (turn 0 only, AC-03 later)', async () => {
+        await askFirst();
+        expect(insertSidenoteRefMock).toHaveBeenCalledTimes(1);
+        fetchApiMock.mockResolvedValueOnce({ answer: 'second', model: 'm1' });
+
+        const replyInput = screen.getByTestId('quick-ask-reply-input');
+        fireEvent.change(replyInput, { target: { value: 'and?' } });
+        fireEvent.keyDown(replyInput, { key: 'Enter' });
+
+        await waitFor(() => expect(fetchApiMock).toHaveBeenCalledTimes(2));
+        // Follow-ups extend the in-session thread only; no new marker embed.
+        expect(insertSidenoteRefMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('a failed follow-up shows a per-turn error+retry that preserves turn 1', async () => {
+        await askFirst();
+        fetchApiMock.mockRejectedValueOnce(new Error('boom'));
+
+        const replyInput = screen.getByTestId('quick-ask-reply-input');
+        fireEvent.change(replyInput, { target: { value: 'boom please' } });
+        fireEvent.keyDown(replyInput, { key: 'Enter' });
+
+        await waitFor(() => expect(screen.getByTestId('quick-ask-popover-error')).toBeInTheDocument());
+        // Turn 1's answer is still on screen.
+        expect(screen.getByTestId('quick-ask-popover-answer').textContent).toContain('first-order optimization');
+
+        fetchApiMock.mockResolvedValueOnce({ answer: 'recovered', model: 'm1' });
+        fireEvent.click(screen.getByTestId('quick-ask-popover-retry'));
+        await waitFor(() => expect(screen.getAllByTestId('quick-ask-popover-answer')).toHaveLength(2));
+        expect(fetchApiMock).toHaveBeenCalledTimes(3);
+    });
+});
+
 describe('NoteQuickAskLayer — disabled paths', () => {
     it('is a no-op with no workspaceId (no pill, no listeners)', async () => {
         render(<Harness omitWorkspace />);
