@@ -2,10 +2,11 @@
  * Codex SDK Service — conversation compaction over the app-server JSON-RPC.
  *
  * `CodexSDKService.compactSession()` has no high-level SDK API, so it drives
- * `codex app-server --listen stdio://` directly: `thread/read` to baseline token
- * usage, `thread/compact/start` to rewrite the rollout in place, then it waits
- * for a `thread/compacted` notification (or a forward-compatible
- * `context_compaction` `item/completed`) while tracking `thread/tokenUsage/updated`.
+ * `codex app-server --listen stdio://` directly: `thread/resume` to load the
+ * persisted thread into the freshly-spawned app-server, `thread/compact/start`
+ * to rewrite the rollout in place, then it waits for a `thread/compacted`
+ * notification (or a forward-compatible `context_compaction` `item/completed`)
+ * while tracking `thread/tokenUsage/updated` (`tokenUsage.total.totalTokens`).
  *
  * These tests fake the spawned child so no real binary runs (keeps Windows CI
  * unaffected) and assert the outgoing JSON-RPC frames, not just wrapper args.
@@ -69,6 +70,17 @@ async function flushMicrotasks(): Promise<void> {
     for (let i = 0; i < 20; i++) await Promise.resolve();
 }
 
+/** A `thread/tokenUsage/updated` notification frame with the nested total shape. */
+function usageFrame(totalTokens: number): Record<string, unknown> {
+    return {
+        method: 'thread/tokenUsage/updated',
+        params: { threadId: THREAD_ID, tokenUsage: { total: { totalTokens } } },
+    };
+}
+
+/** A successful `thread/resume` ack (id 1). */
+const RESUME_ACK = { id: 1, result: { thread: { id: THREAD_ID } } } as const;
+
 /** Build a service whose availability is forced true (no real SDK load). */
 function makeAvailableService(): CodexSDKService {
     const svc = new CodexSDKService();
@@ -91,7 +103,7 @@ describe('CodexSDKService.compactSession — app-server stdio RPC', () => {
         vi.restoreAllMocks();
     });
 
-    it('drives the full handshake → thread/read → compact/start flow and reports tokensRemoved', async () => {
+    it('drives the full handshake → thread/resume → compact/start flow and reports tokensRemoved', async () => {
         const child = new MockCodexAppServerChild();
         mockSpawn.mockReturnValueOnce(child as never);
 
@@ -104,12 +116,13 @@ describe('CodexSDKService.compactSession — app-server stdio RPC', () => {
         const appServerArgs = mockSpawn.mock.calls[0][1] as string[];
         expect(appServerArgs.slice(-3)).toEqual(['app-server', '--listen', 'stdio://']);
 
-        // Baseline usage → triggers thread/compact/start.
-        child.writeStdoutLine({ id: 1, result: { tokenUsage: { total: 1000 } } });
+        // Resume ack (loads the thread) + baseline usage → triggers compact.
+        child.writeStdoutLine(RESUME_ACK);
+        child.writeStdoutLine(usageFrame(1000));
         await flushMicrotasks();
 
         // Post-compaction total, then completion.
-        child.writeStdoutLine({ method: 'thread/tokenUsage/updated', params: { threadId: THREAD_ID, tokenUsage: { total: 300 } } });
+        child.writeStdoutLine(usageFrame(300));
         child.writeStdoutLine({ method: 'thread/compacted', params: { threadId: THREAD_ID, turnId: 't1' } });
 
         const result = await promise;
@@ -120,7 +133,7 @@ describe('CodexSDKService.compactSession — app-server stdio RPC', () => {
         expect(messages.map(m => m.method)).toEqual([
             'initialize',
             'initialized',
-            'thread/read',
+            'thread/resume',
             'thread/compact/start',
         ]);
         expect(messages[2].params).toEqual({ threadId: THREAD_ID });
@@ -136,8 +149,8 @@ describe('CodexSDKService.compactSession — app-server stdio RPC', () => {
         const promise = svc.compactSession(THREAD_ID);
         await flushMicrotasks();
 
-        // thread/read with no usable usage; no tokenUsage/updated frames.
-        child.writeStdoutLine({ id: 1, result: {} });
+        // Resume ack but no tokenUsage/updated frames at all.
+        child.writeStdoutLine(RESUME_ACK);
         await flushMicrotasks();
         child.writeStdoutLine({ method: 'thread/compacted', params: { threadId: THREAD_ID } });
 
@@ -153,16 +166,17 @@ describe('CodexSDKService.compactSession — app-server stdio RPC', () => {
         const promise = svc.compactSession(THREAD_ID);
         await flushMicrotasks();
 
-        child.writeStdoutLine({ id: 1, result: { tokenUsage: { total: 800 } } });
+        child.writeStdoutLine(RESUME_ACK);
+        child.writeStdoutLine(usageFrame(800));
         await flushMicrotasks();
-        child.writeStdoutLine({ method: 'thread/tokenUsage/updated', params: { threadId: THREAD_ID, tokenUsage: { total: 200 } } });
+        child.writeStdoutLine(usageFrame(200));
         child.writeStdoutLine({ method: 'item/completed', params: { threadId: THREAD_ID, item: { type: 'context_compaction' } } });
 
         const result = await promise;
         expect(result).toEqual({ success: true, tokensRemoved: 600, messagesRemoved: 0 });
     });
 
-    it('rejects with a thread-id-naming error when thread/read fails (unknown thread)', async () => {
+    it('rejects with a thread-id-naming error when thread/resume fails (unknown thread)', async () => {
         const child = new MockCodexAppServerChild();
         mockSpawn.mockReturnValueOnce(child as never);
 
@@ -170,9 +184,9 @@ describe('CodexSDKService.compactSession — app-server stdio RPC', () => {
         const promise = svc.compactSession(THREAD_ID);
         await flushMicrotasks();
 
-        child.writeStdoutLine({ id: 1, error: { code: -32000, message: 'no such thread' } });
+        child.writeStdoutLine({ id: 1, error: { code: -32000, message: 'thread not found' } });
 
-        await expect(promise).rejects.toThrow(new RegExp(`thread/read failed for thread ${THREAD_ID}.*no such thread`));
+        await expect(promise).rejects.toThrow(new RegExp(`thread/resume failed for thread ${THREAD_ID}.*thread not found`));
         // Never advanced to compact/start.
         expect(child.sentMessages().map(m => m.method)).not.toContain('thread/compact/start');
     });
@@ -185,7 +199,7 @@ describe('CodexSDKService.compactSession — app-server stdio RPC', () => {
         const promise = svc.compactSession(THREAD_ID);
         await flushMicrotasks();
 
-        child.writeStdoutLine({ id: 1, result: { tokenUsage: { total: 100 } } });
+        child.writeStdoutLine(RESUME_ACK);
         await flushMicrotasks();
         child.writeStdoutLine({ id: 2, error: { code: -32601, message: 'Method not found' } });
 
@@ -204,7 +218,7 @@ describe('CodexSDKService.compactSession — app-server stdio RPC', () => {
         const promise = svc.compactSession(THREAD_ID);
         await flushMicrotasks();
 
-        child.writeStdoutLine({ id: 1, result: { tokenUsage: { total: 100 } } });
+        child.writeStdoutLine(RESUME_ACK);
         // No completion notification — let the timer fire.
 
         await expect(promise).rejects.toThrow(/compaction timed out after 40ms/);
@@ -236,7 +250,7 @@ describe('CodexSDKService.compactSession — app-server stdio RPC', () => {
         const promise = svc.compactSession(THREAD_ID, 'focus on the auth flow');
         await flushMicrotasks();
 
-        child.writeStdoutLine({ id: 1, result: { tokenUsage: { total: 500 } } });
+        child.writeStdoutLine(RESUME_ACK);
         await flushMicrotasks();
         child.writeStdoutLine({ method: 'thread/compacted', params: { threadId: THREAD_ID } });
 

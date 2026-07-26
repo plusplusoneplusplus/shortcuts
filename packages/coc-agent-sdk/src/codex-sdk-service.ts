@@ -613,13 +613,18 @@ interface CodexAppServerRpcMessage {
 
 /**
  * `thread/tokenUsage/updated` notification params. The app-server emits this
- * during a turn (including the compaction turn); `tokenUsage.total` is the
- * post-turn total we diff against the pre-compaction baseline.
+ * right after `thread/resume` (the pre-compaction baseline) and again after the
+ * compaction turn (the reduced total). `tokenUsage.total.totalTokens` is the
+ * figure we diff.
  */
 interface CodexTokenUsageUpdatedParams {
     threadId?: string;
     turnId?: string;
-    tokenUsage?: { last?: number; total?: number; modelContextWindow?: number };
+    tokenUsage?: {
+        total?: { totalTokens?: number };
+        last?: { totalTokens?: number };
+        modelContextWindow?: number;
+    };
 }
 
 /**
@@ -2041,12 +2046,15 @@ export class CodexSDKService implements ISDKService {
      *
      * The high-level `@openai/codex-sdk` has no compact API, so this drives the
      * `codex app-server` JSON-RPC protocol (the same stdio channel the quota path
-     * uses): `thread/read` to baseline token usage, then `thread/compact/start`,
+     * uses): `thread/resume` to load the persisted thread into the freshly-spawned
+     * app-server (a bare `thread/read` would fail with "thread not found" — the
+     * server only knows threads resumed in-process), then `thread/compact/start`,
      * which rewrites the rollout under the same thread id and runs a model
      * summarization turn asynchronously. Completion arrives as a
      * `thread/compacted` notification (or a forward-compatible
-     * `context_compaction` `item/completed`); `thread/tokenUsage/updated` frames
-     * give the post-compaction total we diff for `tokensRemoved`.
+     * `context_compaction` `item/completed`). The `thread/tokenUsage/updated`
+     * frames give the totals we diff for `tokensRemoved`: the first (emitted by
+     * resume) is the pre-compaction baseline, the last is the reduced total.
      *
      * Because the rewrite keeps the thread id, CoC's `resumeThread(sessionId)`
      * follow-ups automatically carry the compacted history — no session remap.
@@ -2084,12 +2092,16 @@ export class CodexSDKService implements ISDKService {
                 + (stderr ? `: ${stderr.slice(0, 500)}` : ''),
             ),
             run: ({ send, onLine, resolve, reject }) => {
-                let preTotal: number | undefined;
+                let firstTotal: number | undefined;
                 let latestTotal: number | undefined;
 
                 const settleSuccess = () => {
-                    const tokensRemoved = preTotal != null && latestTotal != null
-                        ? Math.max(0, preTotal - latestTotal)
+                    // The first observed total is the pre-compaction baseline
+                    // (emitted by resume); the last is the reduced total. Ordering-
+                    // robust, so it does not matter whether the baseline notification
+                    // arrives before or after the resume ack.
+                    const tokensRemoved = firstTotal != null && latestTotal != null
+                        ? Math.max(0, firstTotal - latestTotal)
                         : 0;
                     // messagesRemoved is not derivable from the app-server frames
                     // (same convention as Claude, which also reports 0); the
@@ -2099,16 +2111,17 @@ export class CodexSDKService implements ISDKService {
                 };
 
                 onLine((msg) => {
-                    // thread/read response (id 1): baseline usage, then compact.
+                    // thread/resume response (id 1): loads the persisted thread.
+                    // On success, kick off compaction; an error here (unknown
+                    // thread) fails fast with the id in the message.
                     if (msg.id === 1) {
                         if (msg.error) {
                             reject(new Error(
-                                `Codex thread/read failed for thread ${sessionId}: `
+                                `Codex thread/resume failed for thread ${sessionId}: `
                                 + (msg.error.message ?? 'unknown error'),
                             ));
                             return;
                         }
-                        preTotal = readCodexUsageTotal(msg.result);
                         send({ method: 'thread/compact/start', id: 2, params: { threadId: sessionId } });
                         return;
                     }
@@ -2124,11 +2137,15 @@ export class CodexSDKService implements ISDKService {
                         return;
                     }
 
-                    // Track the newest token total for this thread as the turn runs.
+                    // Track token totals for this thread across resume + compaction.
                     if (msg.method === 'thread/tokenUsage/updated') {
                         const params = msg.params as CodexTokenUsageUpdatedParams | undefined;
-                        if (params?.threadId === sessionId && typeof params.tokenUsage?.total === 'number') {
-                            latestTotal = params.tokenUsage.total;
+                        if (params?.threadId === sessionId) {
+                            const total = params.tokenUsage?.total?.totalTokens;
+                            if (typeof total === 'number') {
+                                if (firstTotal == null) firstTotal = total;
+                                latestTotal = total;
+                            }
                         }
                         return;
                     }
@@ -2159,7 +2176,7 @@ export class CodexSDKService implements ISDKService {
                     },
                 });
                 send({ method: 'initialized', params: {} });
-                send({ method: 'thread/read', id: 1, params: { threadId: sessionId } });
+                send({ method: 'thread/resume', id: 1, params: { threadId: sessionId } });
             },
         });
     }
@@ -2216,27 +2233,6 @@ export class CodexSDKService implements ISDKService {
 // ============================================================================
 // Mapping helpers (testable without spawning a process)
 // ============================================================================
-
-/**
- * Extract a total-token count from an app-server `thread/read` result (or any
- * frame carrying a `tokenUsage`/`usage` object). Returns `undefined` when no
- * usable number is present, so the compaction baseline falls back to 0 rather
- * than a fabricated figure. Accepts either a numeric `total` (the
- * `thread/tokenUsage/updated` shape) or an object exposing `total_tokens`.
- */
-function readCodexUsageTotal(result: unknown): number | undefined {
-    if (!result || typeof result !== 'object') return undefined;
-    const usage = (result as { tokenUsage?: unknown; usage?: unknown }).tokenUsage
-        ?? (result as { tokenUsage?: unknown; usage?: unknown }).usage
-        ?? result;
-    if (!usage || typeof usage !== 'object') return undefined;
-    const total = (usage as { total?: unknown }).total;
-    if (typeof total === 'number') return total;
-    if (total && typeof total === 'object' && typeof (total as { total_tokens?: unknown }).total_tokens === 'number') {
-        return (total as { total_tokens: number }).total_tokens;
-    }
-    return undefined;
-}
 
 function emptyCodexTokenUsage(): TokenUsage {
     return {
