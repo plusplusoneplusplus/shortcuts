@@ -13,6 +13,8 @@ import {
 import type { NoteEditorCommentBackend } from './NoteEditorCommentBackend';
 import { defaultCommentBackend } from './NoteEditorCommentBackend';
 import { NoteEditorToolbar } from './NoteEditorToolbar';
+import { NoteZoomControl } from './NoteZoomControl';
+import { useNoteZoom } from './useNoteZoom';
 import { RichEditorCore } from './RichEditorCore';
 import { NoteQuickAskLayer } from './extensions/NoteQuickAskLayer';
 import { SourceEditor } from '../../../shared/SourceEditor';
@@ -219,6 +221,10 @@ export function NoteEditor({
     const canRunSkill = Boolean(notePath);
     const { dispatch: queueDispatch } = useQueue();
     const normalizedNotePath = notePath?.replace(/\\/g, '/') ?? '';
+    // Per-note zoom (AC-01/02/03) — remembered per note path in localStorage and
+    // applied via CSS `zoom` on the note content body (not the toolbar/chrome).
+    const noteZoom = useNoteZoom(workspaceId, normalizedNotePath);
+    const noteZoomCss = `${noteZoom.zoom}%`;
     const isGoal = useMemo(() => isGoalFile(normalizedNotePath), [normalizedNotePath]);
     const ralphEnabled = isRalphEnabled();
     const [ralphDialogOpen, setRalphDialogOpen] = useState(false);
@@ -1217,6 +1223,7 @@ export function NoteEditor({
                     onInsertPdf={openPdfPicker}
                     toolbarRight={
                         <>
+                            <NoteZoomControl zoom={noteZoom} />
                             {canRunSkill && (
                                 <button
                                     type="button"
@@ -1368,11 +1375,13 @@ export function NoteEditor({
                                 setContextMenu({ x: e.clientX, y: e.clientY, selectedText });
                             }}
                         >
-                            <SourceEditor
-                                content={rawMarkdown}
-                                onChange={handleSourceChange}
-                                ref={sourceTextareaRef}
-                            />
+                            <div style={{ zoom: noteZoomCss }} data-testid="note-source-zoom">
+                                <SourceEditor
+                                    content={rawMarkdown}
+                                    onChange={handleSourceChange}
+                                    ref={sourceTextareaRef}
+                                />
+                            </div>
                         </div>
                     )}
 
@@ -1409,7 +1418,10 @@ export function NoteEditor({
                             </div>
                         )}
 
-                        <div style={editorHidden ? { visibility: 'hidden', height: 0, overflow: 'hidden' } : undefined}>
+                        <div
+                            data-testid="note-rich-zoom"
+                            style={editorHidden ? { visibility: 'hidden', height: 0, overflow: 'hidden' } : { zoom: noteZoomCss }}
+                        >
                             <RichEditorCore
                                 commentsEnabled={commentsEnabled}
                                 onCommentActivated={onCommentActivated}
