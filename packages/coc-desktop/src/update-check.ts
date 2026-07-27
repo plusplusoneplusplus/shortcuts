@@ -154,7 +154,10 @@ export function inferChannel(version: string): UpdateChannel {
  * missing segment counts as 0 (so "3.4" === "3.4.0"). When the base segments are
  * equal, prerelease ordering follows the semver spec: a version without a
  * prerelease suffix is higher than one with (so "3.4.8" > "3.4.8-alpha.1"), and
- * when both have a prerelease suffix the suffixes are compared lexicographically.
+ * when both have a prerelease suffix the suffixes are compared identifier by
+ * identifier — numeric identifiers numerically (so "alpha.9" < "alpha.10"),
+ * numeric identifiers ranking below alphanumeric ones, and a longer set of
+ * identifiers winning when every preceding one is equal.
  */
 export function compareVersions(a: string, b: string): number {
     const parse = (v: string): { nums: number[]; pre: string } => {
@@ -181,7 +184,41 @@ export function compareVersions(a: string, b: string): number {
     if (!aPre && !bPre) return 0;
     if (!aPre) return 1;  // stable beats prerelease of same base
     if (!bPre) return -1; // prerelease loses to stable of same base
-    return aPre < bPre ? -1 : aPre > bPre ? 1 : 0;
+    return comparePrerelease(aPre, bPre);
+}
+
+/**
+ * Compare two prerelease suffixes (the part after "-") per the semver spec.
+ * Identifiers are split on ".". Purely numeric identifiers are compared
+ * numerically ("9" < "10"), a numeric identifier always ranks below an
+ * alphanumeric one, and when all shared identifiers are equal the suffix with
+ * more identifiers wins ("alpha.1" > "alpha"). Returns 1/-1/0 like a comparator.
+ */
+function comparePrerelease(aPre: string, bPre: string): number {
+    const aIds = aPre.split('.');
+    const bIds = bPre.split('.');
+    const len = Math.max(aIds.length, bIds.length);
+    for (let i = 0; i < len; i++) {
+        const a = aIds[i];
+        const b = bIds[i];
+        // A shorter identifier list is lower precedence when otherwise equal.
+        if (a === undefined) return -1;
+        if (b === undefined) return 1;
+        if (a === b) continue;
+        const aNum = /^\d+$/.test(a);
+        const bNum = /^\d+$/.test(b);
+        if (aNum && bNum) {
+            const diff = parseInt(a, 10) - parseInt(b, 10);
+            if (diff !== 0) return diff > 0 ? 1 : -1;
+        } else if (aNum) {
+            return -1; // numeric identifiers rank below alphanumeric ones
+        } else if (bNum) {
+            return 1;
+        } else {
+            return a < b ? -1 : 1; // both alphanumeric — ASCII order
+        }
+    }
+    return 0;
 }
 
 /** True iff `latest` is strictly newer than `current`. */

@@ -152,10 +152,31 @@ describe('compareVersions', () => {
         expect(compareVersions('3.5.0', '3.4.6-rc.1')).toBe(1);
     });
 
-    it('compares prerelease suffixes lexicographically when bases are equal', () => {
+    it('compares prerelease suffixes per semver when bases are equal', () => {
         expect(compareVersions('3.4.8-alpha.2', '3.4.8-alpha.1')).toBe(1);
         expect(compareVersions('3.4.8-alpha.1', '3.4.8-alpha.1')).toBe(0);
         expect(compareVersions('3.4.8-beta.1', '3.4.8-alpha.9')).toBe(1);
+    });
+
+    it('orders numeric prerelease identifiers numerically, not lexically (regression)', () => {
+        // "alpha.10" > "alpha.9": lexical string compare would wrongly rank
+        // "alpha.9" higher and offer it as an "update" over an installed alpha.10.
+        expect(compareVersions('3.4.9-alpha.10', '3.4.9-alpha.9')).toBe(1);
+        expect(compareVersions('3.4.9-alpha.9', '3.4.9-alpha.10')).toBe(-1);
+        expect(isNewerVersion('3.4.9-alpha.9', '3.4.9-alpha.10')).toBe(false);
+        expect(isNewerVersion('3.4.9-alpha.10', '3.4.9-alpha.9')).toBe(true);
+    });
+
+    it('ranks a numeric prerelease identifier below an alphanumeric one', () => {
+        // Per semver: "3.4.8-1" < "3.4.8-alpha".
+        expect(compareVersions('3.4.8-1', '3.4.8-alpha')).toBe(-1);
+        expect(compareVersions('3.4.8-alpha', '3.4.8-1')).toBe(1);
+    });
+
+    it('a longer prerelease identifier list wins when the prefix is equal', () => {
+        // Per semver: "3.4.8-alpha.1" > "3.4.8-alpha".
+        expect(compareVersions('3.4.8-alpha.1', '3.4.8-alpha')).toBe(1);
+        expect(compareVersions('3.4.8-alpha', '3.4.8-alpha.1')).toBe(-1);
     });
 
     it('treats non-numeric segments as 0 rather than NaN', () => {
