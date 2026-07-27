@@ -15,6 +15,15 @@ describe('isEmbeddableMapUrl', () => {
         expect(isEmbeddableMapUrl('https://maps.google.com/maps?q=Lake%20Chelan&output=embed')).toBe(true);
     });
 
+    it('allows www.google.com /maps with output=embed', () => {
+        expect(isEmbeddableMapUrl('https://www.google.com/maps?q=Lake%20Chelan&output=embed')).toBe(true);
+    });
+
+    it('rejects /maps without output=embed even on allowlisted hosts', () => {
+        expect(isEmbeddableMapUrl('https://maps.google.com/maps?q=Lake%20Chelan')).toBe(false);
+        expect(isEmbeddableMapUrl('https://www.google.com/maps?q=Lake%20Chelan')).toBe(false);
+    });
+
     it('trims surrounding whitespace', () => {
         expect(isEmbeddableMapUrl('  https://www.google.com/maps/embed?pb=test  ')).toBe(true);
     });
