@@ -107,6 +107,11 @@ export interface ChatDetailProps {
     /** When true (i.e., rendered inside a pop-out window), hides the pop-out button. */
     isPopOut?: boolean;
     /**
+     * Path of the note open in the editor. Forwarded to ConversationArea so
+     * NoteEditCards render only for the currently-open note (notes panel only).
+     */
+    openNotePath?: string;
+    /**
      * Controls the rendering variant:
      * - `'inline'` (default) — full header with back button, standard padding.
      * - `'floating'` — compact header (no back button, smaller padding, no border-b),
@@ -168,7 +173,7 @@ export interface ChatDetailProps {
     hidePlanBanners?: boolean;
 }
 
-export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onProcessLoaded, onOpenForEachRun, onOpenMapReduceRun, onStartFreshSameContext, startingFreshSameContext = false, searchHighlightQuery, hideHeader = false, hidePlanBanners = false }: ChatDetailProps) {
+export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, openNotePath, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onProcessLoaded, onOpenForEachRun, onOpenMapReduceRun, onStartFreshSameContext, startingFreshSameContext = false, searchHighlightQuery, hideHeader = false, hidePlanBanners = false }: ChatDetailProps) {
     // Per-clone REST client (AC-07): a remote clone's chat reads/writes go to its
     // own server; a local clone keeps the default origin client. All process/
     // queue/notes/canvas/skill calls below are scoped to this chat's workspace.
@@ -2495,6 +2500,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, vari
                         onUndoDelete={handleUndoDelete}
                         noteEdits={noteEdits}
                         processId={processId ?? bareTaskId}
+                        openNotePath={openNotePath}
                         processType={fullTask?.type ?? task?.type}
                         onCancelPendingMessage={handleCancelPendingMessage}
                         inputRef={richTextRef}

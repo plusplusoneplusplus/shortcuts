@@ -260,6 +260,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                     <ChatDetail
                         taskId={taskId}
                         workspaceId={workspaceId}
+                        openNotePath={notePath ?? undefined}
                         variant="floating"
                         standalone
                         title="Notes Chat"

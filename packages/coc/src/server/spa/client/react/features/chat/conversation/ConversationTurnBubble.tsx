@@ -116,6 +116,12 @@ interface ConversationTurnBubbleProps {
     /** Process ID — needed for NoteEditCard undo API call. */
     processId?: string;
     /**
+     * Path of the note currently open in the editor. When set (notes panel),
+     * only NoteEditCards whose recorded notePath matches this are rendered.
+     * Undefined elsewhere → no note-scoped filtering.
+     */
+    openNotePath?: string;
+    /**
      * Quick Ask side-notes for this process (persisted + optimistic), filtered
      * per turn inside the bubble. Only used on assistant turns when the
      * admin `features.quickAskSidenotes` flag is on.
@@ -1085,7 +1091,7 @@ function InterruptedTurnBanner({ reason, onContinue }: { reason?: string; onCont
     );
 }
 
-export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onDeleteTurn, onPinTurn, onArchiveTurn, onRewindTurn, noteEdits, processId, provider, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onDeleteTurn, onPinTurn, onArchiveTurn, onRewindTurn, noteEdits, processId, openNotePath, provider, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const sidenoteContentRef = useRef<HTMLDivElement>(null);
     const quickAskSidenotesEnabled = useQuickAskSidenotesEnabled();
@@ -1791,7 +1797,12 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                     {/* Note edit cards for AI turns that modified a note */}
                     {!isUser && noteEdits && processId && wsId && (() => {
                         const editsForTurn = noteEdits.filter(
-                            e => e.turnIndex === turnIndex && e.postEditContent !== undefined
+                            e =>
+                                e.turnIndex === turnIndex &&
+                                e.postEditContent !== undefined &&
+                                // Only show cards for the note currently open in the editor.
+                                // openNotePath is undefined outside the notes panel → no filtering.
+                                (openNotePath == null || e.notePath === openNotePath)
                         );
                         return editsForTurn.map(edit => (
                             <NoteEditCard
