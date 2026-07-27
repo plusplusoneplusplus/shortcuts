@@ -255,3 +255,95 @@ describe('NOTE_LINK_PASTE_RE — paste regex regression', () => {
         expect(second.exec('[[note:B.md]]')?.[1]).toBe('B.md');
     });
 });
+
+describe('table cells — in-cell line breaks', () => {
+    // The real save path feeds Tiptap's `getHTML()` into htmlToMarkdown, and
+    // Tiptap emits a single <tbody> with <th> header cells and <p>-wrapped cell
+    // content (no <thead>). These fixtures mirror that shape.
+    const tiptapTable = (rows: string[][]): string => {
+        const body = rows
+            .map((cols, r) =>
+                '<tr>' +
+                cols
+                    .map((c) =>
+                        r === 0
+                            ? `<th><p>${c}</p></th>`
+                            : `<td><p>${c}</p></td>`,
+                    )
+                    .join('') +
+                '</tr>',
+            )
+            .join('');
+        return `<table><tbody>${body}</tbody></table>`;
+    };
+
+    it('preserves an in-cell <br> on save instead of collapsing it to a space', () => {
+        const html = tiptapTable([
+            ['Day', 'Plan'],
+            ['Mon', 'Fly out<br>Check in'],
+        ]);
+        const md = htmlToMarkdown(html);
+        expect(md).toContain('| Mon | Fly out<br>Check in |');
+        expect(md).not.toContain('Fly out Check in');
+    });
+
+    it('round-trips a <br>-containing cell through markdownToHtml → htmlToMarkdown', () => {
+        // Literal Markdown source (task requirement #1): the <br> must survive a
+        // parse-then-reserialize pass rather than flattening to a space.
+        const source = '| Day | Plan |\n| --- | --- |\n| Mon | Fly out<br>Check in |\n';
+        const md = htmlToMarkdown(markdownToHtml(source));
+        expect(md).toContain('Fly out<br>Check in');
+        expect(md).not.toContain('Fly out Check in');
+    });
+
+    it('keeps the <br> token idempotent across repeated save cycles', () => {
+        // <br> → \n (lineBreak rule) → <br> (tableCell rule): the break token is
+        // stable, so re-saving an already-saved cell never loses or duplicates it.
+        const source = '| Day | Plan |\n| --- | --- |\n| Mon | Fly out<br>Check in |\n';
+        const once = htmlToMarkdown(markdownToHtml(source));
+        const twice = htmlToMarkdown(markdownToHtml(once));
+        expect(once).toContain('Fly out<br>Check in');
+        expect(twice).toContain('Fly out<br>Check in');
+        // No accumulation of stray break tokens on the cell.
+        expect(twice.match(/<br>/g)?.length).toBe(1);
+    });
+
+    it('collapses multi-paragraph cell content to a single <br>-joined line', () => {
+        // A pipe-table cell must be one physical line; two paragraphs join with <br>.
+        const html =
+            '<table><tbody>' +
+            '<tr><th><p>Day</p></th><th><p>Plan</p></th></tr>' +
+            '<tr><td><p>Mon</p></td><td><p>Fly out</p><p>Check in</p></td></tr>' +
+            '</tbody></table>';
+        const md = htmlToMarkdown(html);
+        expect(md).toContain('| Mon | Fly out<br>Check in |');
+        const cellRow = md.split('\n').find((l) => l.includes('Fly out'));
+        expect(cellRow).toBeDefined();
+        // Still a single table row: exactly three pipes (leading, middle, trailing).
+        expect(cellRow!.match(/\|/g)?.length).toBe(3);
+    });
+
+    it('trims edge breaks so a leading/trailing hard break leaves no stray <br>', () => {
+        const html =
+            '<table><tbody>' +
+            '<tr><th><p>H</p></th></tr>' +
+            '<tr><td><p><br>value<br></p></td></tr>' +
+            '</tbody></table>';
+        const md = htmlToMarkdown(html);
+        const cellRow = md.split('\n').find((l) => l.includes('value'));
+        expect(cellRow).toBeDefined();
+        expect(cellRow!).toContain('| value |');
+        expect(cellRow!).not.toContain('<br>');
+    });
+
+    it('leaves a plain single-line table cell unchanged', () => {
+        const html = tiptapTable([
+            ['A', 'B'],
+            ['1', '2'],
+        ]);
+        const md = htmlToMarkdown(html);
+        expect(md).toContain('| A | B |');
+        expect(md).toContain('| 1 | 2 |');
+        expect(md).not.toContain('<br>');
+    });
+});
