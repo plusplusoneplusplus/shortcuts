@@ -120,6 +120,9 @@ export function QuickAskSidenotePopover({
 }: QuickAskSidenotePopoverProps) {
     const ref = useRef<HTMLDivElement>(null);
     const [clampedPos, setClampedPos] = useState(position);
+    // User-chosen size (px). Null until the popover is resized, so it keeps its
+    // default auto width/height (and the min/max-width constraints) until then.
+    const [size, setSize] = useState<{ width: number; height: number } | null>(null);
     const [copied, setCopied] = useState(false);
     const [replyText, setReplyText] = useState('');
     const { isMobile } = useBreakpoint();
@@ -130,6 +133,52 @@ export function QuickAskSidenotePopover({
             setClampedPos(clampToViewport(position, rect.width, rect.height));
         }
     }, [position]);
+
+    // Drag the popover by its header. Presses on interactive controls (the close
+    // button) are ignored so they keep working. Tracks the pointer against the
+    // position at press-time and updates the fixed top/left live.
+    const beginDrag = (e: React.MouseEvent) => {
+        if (isMobile) {return;}
+        if ((e.target as HTMLElement | null)?.closest('button, textarea, input, a')) {return;}
+        e.preventDefault();
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startTop = clampedPos.top;
+        const startLeft = clampedPos.left;
+        const onMove = (ev: MouseEvent) => {
+            setClampedPos({ top: startTop + (ev.clientY - startY), left: startLeft + (ev.clientX - startX) });
+        };
+        const onUp = () => {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    };
+
+    // Resize from the bottom-right corner. Anchors to the current rendered size
+    // and clamps to a usable minimum so the popover can't collapse.
+    const beginResize = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const rect = ref.current?.getBoundingClientRect();
+        const startW = rect?.width ?? 300;
+        const startH = rect?.height ?? 200;
+        const onMove = (ev: MouseEvent) => {
+            setSize({
+                width: Math.max(240, startW + (ev.clientX - startX)),
+                height: Math.max(160, startH + (ev.clientY - startY)),
+            });
+        };
+        const onUp = () => {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    };
 
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
@@ -180,10 +229,19 @@ export function QuickAskSidenotePopover({
         ? reply.turns.some(t => t.status === 'ready')
         : note.status === 'ready';
 
+    // When the user has resized, let the scrollable body fill the chosen height
+    // instead of its fixed cap so the extra space is actually usable.
+    const threadScrollCls = size ? 'flex-1 min-h-0' : 'max-h-[240px]';
+    const answerScrollCls = size ? 'flex-1 min-h-0' : 'max-h-[200px]';
+
     const content = (
         <>
-            {/* Header */}
-            <div className="flex items-center gap-1.5">
+            {/* Header — doubles as the drag handle on desktop. */}
+            <div
+                className={`flex items-center gap-1.5 ${isMobile ? '' : 'cursor-move select-none'}`}
+                onMouseDown={isMobile ? undefined : beginDrag}
+                data-testid="quick-ask-popover-header"
+            >
                 <span className="text-[12px]" aria-hidden="true">💡</span>
                 <span className="text-[11px] font-medium text-[#3794ff]">Quick answer</span>
                 {note.createdAt && note.status === 'ready' && (
@@ -226,7 +284,7 @@ export function QuickAskSidenotePopover({
                 one-shot single answer (chat side-notes, unchanged). */}
             {reply ? (
                 <div
-                    className="flex flex-col gap-2 max-h-[240px] overflow-y-auto"
+                    className={`flex flex-col gap-2 overflow-y-auto ${threadScrollCls}`}
                     data-testid="quick-ask-thread"
                 >
                     {reply.turns.map((turn, i) => (
@@ -252,7 +310,7 @@ export function QuickAskSidenotePopover({
                         </div>
                     )}
                     {note.status === 'ready' && (
-                        <div className="max-h-[200px] overflow-y-auto text-[12px] text-[#1e1e1e] dark:text-[#cccccc]" data-testid="quick-ask-popover-answer">
+                        <div className={`overflow-y-auto text-[12px] text-[#1e1e1e] dark:text-[#cccccc] ${answerScrollCls}`} data-testid="quick-ask-popover-answer">
                             <MarkdownView html={renderMarkdownToHtml(note.answer)} />
                         </div>
                     )}
@@ -351,11 +409,25 @@ export function QuickAskSidenotePopover({
     return ReactDOM.createPortal(
         <div
             ref={ref}
-            className="fixed z-[10003] min-w-[300px] max-w-[380px] rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl p-2.5 flex flex-col gap-1.5 overflow-hidden"
-            style={{ top: clampedPos.top, left: clampedPos.left }}
+            className={`fixed z-[10003] min-w-[300px] ${size ? '' : 'max-w-[380px]'} rounded-lg bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl p-2.5 flex flex-col gap-1.5 overflow-hidden`}
+            style={{ top: clampedPos.top, left: clampedPos.left, width: size?.width, height: size?.height }}
             data-testid="quick-ask-popover"
         >
             {content}
+            {/* Bottom-right resize grip. */}
+            <div
+                className="absolute bottom-0 right-0 w-3.5 h-3.5 cursor-nwse-resize"
+                onMouseDown={beginResize}
+                data-testid="quick-ask-popover-resize"
+                aria-hidden="true"
+            >
+                <svg viewBox="0 0 10 10" className="w-full h-full text-[#a0a0a0]" fill="currentColor">
+                    <path d="M9 1v8H1z" opacity="0.15" />
+                    <circle cx="8" cy="8" r="0.9" />
+                    <circle cx="5" cy="8" r="0.9" />
+                    <circle cx="8" cy="5" r="0.9" />
+                </svg>
+            </div>
         </div>,
         document.body,
     );

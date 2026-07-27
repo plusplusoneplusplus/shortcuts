@@ -10,6 +10,12 @@ export interface NotesTreeItemProps {
     depth: number;
     isSystemFolder?: boolean;
     hasUpdate?: boolean;
+    /**
+     * When true, this note's bound chat task is currently running (AC-02). The
+     * animated ellipsis REPLACES the blue updated dot while running; once the run
+     * ends the updated dot returns if the note still has unseen changes.
+     */
+    isChatRunning?: boolean;
     /** Recursive page count rendered as a muted badge on folder rows. */
     pageCount?: number;
     /** Whether this item is part of a multi-selection (highlight without left accent bar). */
@@ -51,6 +57,7 @@ export function NotesTreeItem({
     depth,
     isSystemFolder,
     hasUpdate,
+    isChatRunning,
     pageCount,
     isMultiSelected,
     isCut,
@@ -207,14 +214,19 @@ export function NotesTreeItem({
                             {pageCount}
                         </span>
                     )}
-                    {hasUpdate && (
+                    {/* While the note's chat is running, the animated ellipsis
+                        replaces the updated dot; the dot returns once it settles
+                        (AC-02). */}
+                    {isChatRunning ? (
+                        <NoteChatInProgressIndicator />
+                    ) : hasUpdate ? (
                         <span
                             className="h-2 w-2 rounded-full bg-[#0969da] dark:bg-[#3794ff]"
                             data-testid="note-update-indicator"
                             title="Updated since last viewed"
                             aria-label="Updated since last viewed"
                         />
-                    )}
+                    ) : null}
                     {isSystemFolder && (
                         <span
                             className="text-[#656d76] dark:text-[#9d9d9d] opacity-60"
@@ -236,6 +248,33 @@ export function NotesTreeItem({
                 />
             )}
         </div>
+    );
+}
+
+/**
+ * Animated in-progress ellipsis shown on a note row while its bound chat task is
+ * running (AC-02). Three small dots with a staggered bounce, sized/coloured to
+ * match the 8px blue update dot they temporarily replace. Purely cosmetic — no
+ * tooltip/click behaviour is required, but an accessible label is provided.
+ */
+function NoteChatInProgressIndicator() {
+    return (
+        <span
+            className="inline-flex items-center gap-[3px]"
+            data-testid="note-chat-inprogress"
+            role="img"
+            aria-label="Chat in progress"
+            title="Chat in progress"
+        >
+            {[0, 1, 2].map(i => (
+                <span
+                    key={i}
+                    aria-hidden="true"
+                    className="h-1.5 w-1.5 rounded-full bg-[#0969da] dark:bg-[#3794ff] animate-bounce"
+                    style={{ animationDelay: `${i * 150}ms` }}
+                />
+            ))}
+        </span>
     );
 }
 

@@ -96,6 +96,11 @@ export interface ConversationAreaProps {
     /** Process ID — needed for NoteEditCard undo API call. */
     processId?: string;
     /**
+     * Path of the note currently open in the editor. Forwarded to
+     * ConversationTurnBubble so NoteEditCards are scoped to the open note.
+     */
+    openNotePath?: string;
+    /**
      * Process type (e.g. `'run-script'`, `'chat'`) — propagated to
      * ConversationTurnBubble so it can render script output as a styled
      * terminal block instead of plain markdown.
@@ -200,6 +205,7 @@ export function ConversationArea({
     onUndoDelete,
     noteEdits,
     processId,
+    openNotePath,
     processType,
     onCancelPendingMessage,
     inputRef,
@@ -317,6 +323,7 @@ export function ConversationArea({
                                                 onContinueInterrupted={() => continueInterruptedTurn(turn.interruptionReason)}
                                                 noteEdits={noteEdits}
                                                 processId={processId}
+                                                openNotePath={openNotePath}
                                                 processType={processType}
                                                 provider={provider}
                                             />
@@ -457,6 +464,7 @@ export function ConversationArea({
                                                     onContinueInterrupted={() => continueInterruptedTurn(turn.interruptionReason)}
                                                     noteEdits={noteEdits}
                                                     processId={processId}
+                                                    openNotePath={openNotePath}
                                                     processType={processType}
                                                     provider={provider}
                                                     sidenotes={sidenotes}

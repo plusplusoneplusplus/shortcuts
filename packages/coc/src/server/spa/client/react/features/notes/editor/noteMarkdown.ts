@@ -401,7 +401,9 @@ turndown.addRule('indentedList', {
 turndown.addRule('tableCell', {
     filter: ['th', 'td'],
     replacement(content) {
-        const cell = content.replace(/\n+/g, ' ').trim();
+        // Collapse in-cell breaks to GFM <br> (a pipe-table cell must be one
+        // physical line); trim first so edge breaks don't leave a stray <br>.
+        const cell = content.trim().replace(/\n+/g, '<br>');
         const escaped = cell.replace(/\|/g, '\\|');
         return `| ${escaped} `;
     },

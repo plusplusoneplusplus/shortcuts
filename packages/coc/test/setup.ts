@@ -73,6 +73,20 @@ if (typeof window !== 'undefined') {
             disconnect() {}
         } as unknown as typeof ResizeObserver;
     }
+    // jsdom also lacks IntersectionObserver; the lazy PDF page renderer
+    // (pdfJsLoader) uses it to paint pages on scroll. A no-op stub keeps tests
+    // that mount the real renderer from crashing; suites that assert lazy
+    // painting install their own controllable mock via vi.stubGlobal.
+    if (typeof globalThis.IntersectionObserver === 'undefined') {
+        globalThis.IntersectionObserver = class IntersectionObserver {
+            observe() {}
+            unobserve() {}
+            disconnect() {}
+            takeRecords() {
+                return [];
+            }
+        } as unknown as typeof IntersectionObserver;
+    }
 }
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {

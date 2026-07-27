@@ -1125,6 +1125,69 @@
     border-color: rgba(55, 148, 255, 0.75);
 }
 
+/* Full-window reader zoom controls (top-left, opposite the "Ask a figure" pill
+   at top-right). Positioned within the relatively-positioned frame wrapper. */
+.pdf-popup-zoom-controls {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    z-index: 5;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.92);
+}
+
+.pdf-popup-zoom-controls button {
+    min-width: 22px;
+    padding: 1px 6px;
+    font-size: 12px;
+    line-height: 1.4;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #1e1e1e;
+    cursor: pointer;
+}
+
+.pdf-popup-zoom-controls button:hover:not(:disabled) {
+    background: rgba(55, 148, 255, 0.14);
+}
+
+.pdf-popup-zoom-controls button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.pdf-popup-zoom-level {
+    min-width: 40px;
+    padding: 0 2px;
+    font-size: 11px;
+    text-align: center;
+    color: #444;
+    user-select: none;
+}
+
+.dark .pdf-popup-zoom-controls {
+    background: rgba(37, 37, 38, 0.92);
+    border-color: rgba(255, 255, 255, 0.14);
+}
+
+.dark .pdf-popup-zoom-controls button {
+    color: #cccccc;
+}
+
+.dark .pdf-popup-zoom-controls button:hover:not(:disabled) {
+    background: rgba(79, 195, 247, 0.22);
+}
+
+.dark .pdf-popup-zoom-level {
+    color: #bbbbbb;
+}
+
 .pdf-region-ask-surface {
     position: absolute;
     inset: 0;
@@ -1203,7 +1266,7 @@
     align-items: center;
     flex-wrap: wrap;
     gap: 8px;
-    padding: 6px 8px;
+    padding: 3px 8px;
     border-top: 1px solid #e0e0e0;
     background: #fafafa;
 }

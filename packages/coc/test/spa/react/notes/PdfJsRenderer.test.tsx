@@ -104,6 +104,20 @@ describe('PdfJsRenderer', () => {
         expect(loader.destroy).toHaveBeenCalled();
     });
 
+    it('forwards the scale prop to renderPdfDocument', async () => {
+        render(<PdfJsRenderer url="/x.pdf" label="p" scale={2.25} />);
+        await waitFor(() => expect(loader.render).toHaveBeenCalledTimes(1));
+        expect(loader.render.mock.calls[0][0].scale).toBe(2.25);
+    });
+
+    it('re-renders when the scale prop changes', async () => {
+        const { rerender } = render(<PdfJsRenderer url="/x.pdf" label="p" scale={1.5} />);
+        await waitFor(() => expect(loader.render).toHaveBeenCalledTimes(1));
+        rerender(<PdfJsRenderer url="/x.pdf" label="p" scale={2} />);
+        await waitFor(() => expect(loader.render).toHaveBeenCalledTimes(2));
+        expect(loader.render.mock.calls[1][0].scale).toBe(2);
+    });
+
     it('clears prior pages and re-renders when the url changes', async () => {
         const { rerender } = render(<PdfJsRenderer url="/a.pdf" label="p" />);
         await waitFor(() => expect(loader.render).toHaveBeenCalledTimes(1));

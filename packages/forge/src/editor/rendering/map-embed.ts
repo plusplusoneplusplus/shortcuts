@@ -18,12 +18,9 @@ export function isEmbeddableMapUrl(href: string | null | undefined): boolean {
     const pathname = url.pathname.replace(/\/+$/, '');
     const hasQuery = url.search.length > 1;
 
-    if (hostname === 'www.google.com') {
-        return pathname === '/maps/embed' && hasQuery;
-    }
-
-    if (hostname === 'maps.google.com') {
-        return pathname === '/maps' && hasQuery;
+    if (hostname === 'www.google.com' || hostname === 'maps.google.com') {
+        if (pathname === '/maps/embed' && hasQuery) return true;
+        if (pathname === '/maps' && url.searchParams.get('output') === 'embed') return true;
     }
 
     return false;
