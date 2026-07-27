@@ -101,6 +101,15 @@ describe('PdfPopupDialog', () => {
         expect(panel.className).not.toContain('max-w-lg');
     });
 
+    it('uses dense panel spacing so more height goes to the PDF (not the chrome)', () => {
+        render(<PdfPopupDialog pdf={PDF} onClose={vi.fn()} />);
+        const panel = screen.getByTestId('pdf-popup-frame-wrap').closest('div.relative') as HTMLElement;
+        // Tighter padding/gap than a normal dialog (p-6/gap-4).
+        expect(panel.className).toContain('p-3');
+        expect(panel.className).toContain('gap-2');
+        expect(panel.className).not.toContain('p-6');
+    });
+
     it('calls onClose when the dialog ✕ button is clicked (AC-04)', () => {
         const onClose = vi.fn();
         render(<PdfPopupDialog pdf={PDF} onClose={onClose} />);

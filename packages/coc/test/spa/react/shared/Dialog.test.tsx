@@ -116,6 +116,33 @@ describe('Dialog', () => {
         });
     });
 
+    describe('dense spacing', () => {
+        it('uses roomy padding/gap by default', () => {
+            render(<Dialog open={true} onClose={vi.fn()} title="T">Content</Dialog>);
+            const panel = screen.getByTestId('dialog-overlay').firstElementChild!;
+            expect(panel.className).toContain('p-6');
+            expect(panel.className).toContain('gap-4');
+            expect(panel.className).not.toContain('p-3');
+        });
+
+        it('tightens padding/gap when dense is set', () => {
+            render(<Dialog open={true} onClose={vi.fn()} title="T" dense>Content</Dialog>);
+            const panel = screen.getByTestId('dialog-overlay').firstElementChild!;
+            expect(panel.className).toContain('p-3');
+            expect(panel.className).toContain('gap-2');
+            expect(panel.className).not.toContain('p-6');
+            expect(panel.className).not.toContain('gap-4');
+        });
+
+        it('keeps the width-override branch intact when dense', () => {
+            render(<Dialog open={true} onClose={vi.fn()} className="max-w-[800px]" dense>Content</Dialog>);
+            const panel = screen.getByTestId('dialog-overlay').firstElementChild!;
+            expect(panel.className).toContain('max-w-[800px]');
+            expect(panel.className).not.toContain('max-w-lg');
+            expect(panel.className).toContain('p-3');
+        });
+    });
+
     it('renderHeader replaces built-in header', () => {
         render(
             <Dialog open={true} onClose={vi.fn()} title="Ignored" renderHeader={() => (

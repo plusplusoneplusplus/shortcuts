@@ -25,9 +25,15 @@ export interface DialogProps {
     renderHeader?: () => ReactNode;
     /** When true, the dialog remains mounted but is visually hidden and inert. */
     hidden?: boolean;
+    /**
+     * When true (desktop only), the panel uses tighter padding/gap so more of the
+     * dialog height goes to the body. Used by content-dense readers (e.g. the
+     * full-window PDF popup) that want maximum room for the actual content.
+     */
+    dense?: boolean;
 }
 
-export function Dialog({ open, onClose, onMinimize, title, children, footer, className, id, disableClose, renderHeader, hidden }: DialogProps) {
+export function Dialog({ open, onClose, onMinimize, title, children, footer, className, id, disableClose, renderHeader, hidden, dense }: DialogProps) {
     const { isMobile } = useBreakpoint();
     const portalContainer = usePortalContainer(open);
 
@@ -48,12 +54,14 @@ export function Dialog({ open, onClose, onMinimize, title, children, footer, cla
         ? 'fixed inset-0 z-[10002] bg-white dark:bg-[#252526]'
         : 'fixed inset-0 z-[10002] flex items-center justify-center bg-black/40 dark:bg-black/60';
 
+    const desktopBase = 'relative w-full max-h-[90vh] overflow-hidden rounded-lg bg-white dark:bg-[#252526] border border-[#c8c8c8] dark:border-[#555555] shadow-xl flex flex-col';
+    const desktopSpacing = dense ? 'p-3 gap-2' : 'p-6 gap-4';
     const panelClass = isMobile
         ? 'w-full h-full flex flex-col p-4 overflow-hidden'
         : cn(
-            hasMaxWOverride
-                ? 'relative w-full max-h-[90vh] overflow-hidden rounded-lg bg-white dark:bg-[#252526] border border-[#c8c8c8] dark:border-[#555555] shadow-xl p-6 flex flex-col gap-4'
-                : 'relative w-full max-w-lg max-h-[90vh] overflow-hidden rounded-lg bg-white dark:bg-[#252526] border border-[#c8c8c8] dark:border-[#555555] shadow-xl p-6 flex flex-col gap-4',
+            desktopBase,
+            hasMaxWOverride ? undefined : 'max-w-lg',
+            desktopSpacing,
             className,
         );
 

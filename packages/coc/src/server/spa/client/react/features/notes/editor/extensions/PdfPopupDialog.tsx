@@ -96,6 +96,7 @@ export function PdfPopupDialog({ pdf, onClose, workspaceId, notePath, noteRoot }
         <Dialog
             open
             onClose={onClose}
+            dense
             title={pdf.label}
             // Wide/landscape fill (AC-02): near-full app-window width and height,
             // not a narrow centered panel. The `max-w-[` token routes Dialog to
