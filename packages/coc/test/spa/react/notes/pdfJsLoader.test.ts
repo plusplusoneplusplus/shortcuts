@@ -68,7 +68,10 @@ vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => {
 import {
     renderPdfDocument,
     isLikelyImageOnly,
+    clampPdfScale,
     MIN_SELECTABLE_TEXT_CHARS,
+    MIN_PDF_SCALE,
+    MAX_PDF_SCALE,
     PDF_WORKER_URL,
     DEFAULT_PDF_SCALE,
 } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/pdfJsLoader';
@@ -269,5 +272,26 @@ describe('isLikelyImageOnly', () => {
     it('treats a single stray character as selectable (threshold is one char)', () => {
         expect(MIN_SELECTABLE_TEXT_CHARS).toBe(1);
         expect(isLikelyImageOnly({ totalTextLength: 1, totalPages: 2, pagesRendered: 2 })).toBe(false);
+    });
+});
+
+describe('clampPdfScale', () => {
+    it('keeps an in-range scale unchanged', () => {
+        expect(clampPdfScale(DEFAULT_PDF_SCALE)).toBe(DEFAULT_PDF_SCALE);
+        expect(clampPdfScale(2)).toBe(2);
+    });
+
+    it('clamps below the minimum up to MIN_PDF_SCALE', () => {
+        expect(clampPdfScale(0)).toBe(MIN_PDF_SCALE);
+        expect(clampPdfScale(-5)).toBe(MIN_PDF_SCALE);
+    });
+
+    it('clamps above the maximum down to MAX_PDF_SCALE', () => {
+        expect(clampPdfScale(99)).toBe(MAX_PDF_SCALE);
+    });
+
+    it('falls back to the default for non-finite input', () => {
+        expect(clampPdfScale(NaN)).toBe(DEFAULT_PDF_SCALE);
+        expect(clampPdfScale(Infinity)).toBe(DEFAULT_PDF_SCALE);
     });
 });

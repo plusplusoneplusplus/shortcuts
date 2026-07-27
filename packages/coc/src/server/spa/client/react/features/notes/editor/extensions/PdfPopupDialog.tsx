@@ -22,6 +22,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Dialog } from '../../../../ui/Dialog';
 import { PdfJsRenderer } from './PdfJsRenderer';
+import {
+    DEFAULT_PDF_SCALE,
+    MAX_PDF_SCALE,
+    MIN_PDF_SCALE,
+    PDF_SCALE_STEP,
+    clampPdfScale,
+} from './pdfJsLoader';
 import { PdfQuickAskLayer } from './PdfQuickAskLayer';
 import { PdfRegionAskLayer } from './PdfRegionAskLayer';
 import { PdfAnnotationsLayer } from './PdfAnnotationsLayer';
@@ -57,6 +64,16 @@ export function PdfPopupDialog({ pdf, onClose, workspaceId, notePath, noteRoot }
     const [pdfJsFailed, setPdfJsFailed] = useState(false);
     const handlePdfJsError = useCallback(() => setPdfJsFailed(true), []);
 
+    // User zoom for the pdf.js render. Re-rendering at a new scale keeps the text
+    // layer crisp (vs. a CSS transform, which would blur the canvas and desync
+    // the selectable text layer / annotation overlays).
+    const [scale, setScale] = useState(DEFAULT_PDF_SCALE);
+    const zoomBy = useCallback(
+        (delta: number) => setScale((s) => clampPdfScale(s + delta)),
+        [],
+    );
+    const resetZoom = useCallback(() => setScale(DEFAULT_PDF_SCALE), []);
+
     // Reset the fallback state when the target PDF *changes*, so a failure on one
     // paper does not force the iframe when a different paper is later opened. We
     // guard on a prev-url ref rather than resetting in the effect body directly:
@@ -68,6 +85,7 @@ export function PdfPopupDialog({ pdf, onClose, workspaceId, notePath, noteRoot }
         if (prevUrlRef.current !== url) {
             prevUrlRef.current = url;
             setPdfJsFailed(false);
+            setScale(DEFAULT_PDF_SCALE);
         }
     }, [url]);
 
@@ -94,7 +112,53 @@ export function PdfPopupDialog({ pdf, onClose, workspaceId, notePath, noteRoot }
                     />
                 ) : (
                     <>
-                        <PdfJsRenderer url={pdf.url} label={pdf.label} onError={handlePdfJsError} />
+                        {/* Zoom controls for the pdf.js render. Kept out of the
+                            iframe-fallback branch: a native <iframe> PDF has its
+                            own viewer chrome and no host-controllable scale. */}
+                        <div
+                            className="pdf-popup-zoom-controls"
+                            data-testid="pdf-popup-zoom-controls"
+                            aria-label="PDF zoom controls"
+                        >
+                            <button
+                                type="button"
+                                data-testid="pdf-popup-zoom-out"
+                                aria-label="Zoom out"
+                                title="Zoom out"
+                                disabled={scale <= MIN_PDF_SCALE}
+                                onClick={() => zoomBy(-PDF_SCALE_STEP)}
+                            >
+                                −
+                            </button>
+                            <span
+                                className="pdf-popup-zoom-level"
+                                data-testid="pdf-popup-zoom-level"
+                                aria-live="polite"
+                            >
+                                {Math.round((scale / DEFAULT_PDF_SCALE) * 100)}%
+                            </span>
+                            <button
+                                type="button"
+                                data-testid="pdf-popup-zoom-in"
+                                aria-label="Zoom in"
+                                title="Zoom in"
+                                disabled={scale >= MAX_PDF_SCALE}
+                                onClick={() => zoomBy(PDF_SCALE_STEP)}
+                            >
+                                +
+                            </button>
+                            <button
+                                type="button"
+                                data-testid="pdf-popup-zoom-reset"
+                                aria-label="Reset zoom"
+                                title="Reset zoom"
+                                disabled={scale === DEFAULT_PDF_SCALE}
+                                onClick={resetZoom}
+                            >
+                                Reset
+                            </button>
+                        </div>
+                        <PdfJsRenderer url={pdf.url} label={pdf.label} scale={scale} onError={handlePdfJsError} />
                         {/* Goal 1: Quick Ask over the full-window pdf.js text layer.
                             Goal 2: persist answered annotations to the note sidecar. */}
                         <PdfQuickAskLayer

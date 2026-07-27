@@ -131,6 +131,78 @@ describe('PdfPopupDialog', () => {
         expect(screen.queryByTestId('pdfjs-render-viewport')).toBeNull();
     });
 
+    it('renders zoom controls at 100% and passes the default scale to the reader', () => {
+        render(<PdfPopupDialog pdf={PDF} onClose={vi.fn()} />);
+        expect(screen.getByTestId('pdf-popup-zoom-controls')).toBeTruthy();
+        expect(screen.getByTestId('pdf-popup-zoom-level').textContent).toBe('100%');
+        // Default render scale is DEFAULT_PDF_SCALE (1.5) → shown as 100%.
+        expect(pdfjsStub.lastProps.scale).toBe(1.5);
+    });
+
+    it('zooms in and out, updating the reader scale and percentage label', () => {
+        render(<PdfPopupDialog pdf={PDF} onClose={vi.fn()} />);
+
+        fireEvent.click(screen.getByTestId('pdf-popup-zoom-in'));
+        expect(pdfjsStub.lastProps.scale).toBeCloseTo(1.75);
+        expect(screen.getByTestId('pdf-popup-zoom-level').textContent).toBe('117%');
+
+        fireEvent.click(screen.getByTestId('pdf-popup-zoom-out'));
+        fireEvent.click(screen.getByTestId('pdf-popup-zoom-out'));
+        expect(pdfjsStub.lastProps.scale).toBeCloseTo(1.25);
+        expect(screen.getByTestId('pdf-popup-zoom-level').textContent).toBe('83%');
+    });
+
+    it('resets the zoom back to 100% and disables Reset at the default', () => {
+        render(<PdfPopupDialog pdf={PDF} onClose={vi.fn()} />);
+        expect((screen.getByTestId('pdf-popup-zoom-reset') as HTMLButtonElement).disabled).toBe(true);
+
+        fireEvent.click(screen.getByTestId('pdf-popup-zoom-in'));
+        expect((screen.getByTestId('pdf-popup-zoom-reset') as HTMLButtonElement).disabled).toBe(false);
+
+        fireEvent.click(screen.getByTestId('pdf-popup-zoom-reset'));
+        expect(pdfjsStub.lastProps.scale).toBe(1.5);
+        expect(screen.getByTestId('pdf-popup-zoom-level').textContent).toBe('100%');
+    });
+
+    it('clamps zoom at the supported bounds and disables the buttons there', () => {
+        render(<PdfPopupDialog pdf={PDF} onClose={vi.fn()} />);
+        // Max is 3 (six steps of 0.25 above 1.5). Click well past it.
+        for (let i = 0; i < 12; i++) {fireEvent.click(screen.getByTestId('pdf-popup-zoom-in'));}
+        expect(pdfjsStub.lastProps.scale).toBe(3);
+        expect((screen.getByTestId('pdf-popup-zoom-in') as HTMLButtonElement).disabled).toBe(true);
+
+        // Min is 0.5. Click well past it.
+        for (let i = 0; i < 20; i++) {fireEvent.click(screen.getByTestId('pdf-popup-zoom-out'));}
+        expect(pdfjsStub.lastProps.scale).toBe(0.5);
+        expect((screen.getByTestId('pdf-popup-zoom-out') as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('does not show zoom controls in the iframe fallback', () => {
+        pdfjsStub.shouldError = true;
+        render(<PdfPopupDialog pdf={PDF} onClose={vi.fn()} />);
+        expect(screen.getByTestId('pdf-popup-frame')).toBeTruthy();
+        expect(screen.queryByTestId('pdf-popup-zoom-controls')).toBeNull();
+    });
+
+    it('resets the zoom to 100% when a different PDF is opened', () => {
+        function Harness() {
+            const [pdf, setPdf] = useState<typeof PDF | null>(PDF);
+            return (
+                <div>
+                    <button data-testid="swap" onClick={() => setPdf({ url: 'https://app.example/other.pdf', label: 'other.pdf' })} />
+                    <PdfPopupDialog pdf={pdf} onClose={() => setPdf(null)} />
+                </div>
+            );
+        }
+        render(<Harness />);
+        fireEvent.click(screen.getByTestId('pdf-popup-zoom-in'));
+        expect(screen.getByTestId('pdf-popup-zoom-level').textContent).not.toBe('100%');
+
+        fireEvent.click(screen.getByTestId('swap'));
+        expect(screen.getByTestId('pdf-popup-zoom-level').textContent).toBe('100%');
+        expect(pdfjsStub.lastProps.scale).toBe(1.5);
+    });
+
     it('recovers from a prior fallback when a different PDF is opened', () => {
         function Harness() {
             const [pdf, setPdf] = useState<typeof PDF | null>(PDF);

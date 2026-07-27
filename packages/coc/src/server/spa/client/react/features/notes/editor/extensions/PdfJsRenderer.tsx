@@ -20,6 +20,11 @@ export interface PdfJsRendererProps {
     /** Optional fixed viewport height (px); scrolls internally when set. */
     height?: number | null;
     /**
+     * Render scale (zoom). Defaults to {@link DEFAULT_PDF_SCALE} in the loader
+     * when omitted; a change re-renders the document at the new size.
+     */
+    scale?: number;
+    /**
      * Called when the document cannot be rendered by pdf.js. The host
      * (PdfBlockView) uses this to fall back to the native iframe so a broken or
      * unsupported PDF still shows something.
@@ -27,7 +32,7 @@ export interface PdfJsRendererProps {
     onError?: () => void;
 }
 
-export function PdfJsRenderer({ url, label, height, onError }: PdfJsRendererProps) {
+export function PdfJsRenderer({ url, label, height, scale, onError }: PdfJsRendererProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
     // True once a rendered document is found to have no selectable text
@@ -50,6 +55,7 @@ export function PdfJsRenderer({ url, label, height, onError }: PdfJsRendererProp
         renderPdfDocument({
             url,
             container,
+            scale,
             signal: controller.signal,
             onPageRendered: () => {
                 if (!cancelled) setStatus('ready');
@@ -74,7 +80,7 @@ export function PdfJsRenderer({ url, label, height, onError }: PdfJsRendererProp
             controller.abort();
             handle?.destroy();
         };
-    }, [url, onError]);
+    }, [url, scale, onError]);
 
     return (
         <div

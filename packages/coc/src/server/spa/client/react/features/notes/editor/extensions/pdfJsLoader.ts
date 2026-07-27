@@ -36,6 +36,19 @@ export const PDF_WORKER_URL = '/pdf.worker.js';
 /** Rendering scale. 1.5 keeps text crisp on HiDPI without huge canvases. */
 export const DEFAULT_PDF_SCALE = 1.5;
 
+/** Smallest / largest user zoom scale, and the per-click step, for the
+ *  full-window reader's zoom controls. Bounds keep the canvas from collapsing
+ *  to an unreadable size or ballooning into a memory-hungry render. */
+export const MIN_PDF_SCALE = 0.5;
+export const MAX_PDF_SCALE = 3;
+export const PDF_SCALE_STEP = 0.25;
+
+/** Clamp a requested zoom scale into the supported `[MIN, MAX]` range. */
+export function clampPdfScale(value: number): number {
+    if (!Number.isFinite(value)) {return DEFAULT_PDF_SCALE;}
+    return Math.max(MIN_PDF_SCALE, Math.min(MAX_PDF_SCALE, value));
+}
+
 /**
  * A rendered document with fewer than this many non-whitespace characters
  * across all of its text layers is treated as scanned / image-only: pdf.js drew
