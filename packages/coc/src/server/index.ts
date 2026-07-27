@@ -844,6 +844,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     const address = server.address();
     const actualPort = typeof address === 'object' && address ? address.port : port;
+    // Overlay the real bound address onto the config snapshot so the admin
+    // "Listening on" row reflects reality (e.g. desktop's ephemeral port).
+    runtimeConfigService.setRuntimeAddress(host, actualPort);
     localBaseUrl = formatLocalBaseUrl(host, actualPort);
     const displayHost = host === '0.0.0.0' || host === '::' || host === '127.0.0.1' ? 'localhost' : host;
     const url = `http://${displayHost}:${actualPort}`;

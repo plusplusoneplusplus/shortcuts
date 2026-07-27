@@ -138,6 +138,31 @@ export class RuntimeConfigService {
         this._sources = fresh.sources;
     }
 
+    // ── Runtime address overlay ──────────────────────────────────────────
+
+    /**
+     * Record the actual bound listening address after the server socket opens.
+     *
+     * Overlays serve.host/serve.port on the in-memory snapshot so the admin
+     * config reflects reality (e.g. desktop's ephemeral port) instead of the
+     * config-file / default value. Does not persist to disk and does not bump
+     * the revision — this is infrastructure truth, not a user edit.
+     */
+    setRuntimeAddress(host: string, port: number): void {
+        if (this._config.serve) {
+            this._config = {
+                ...this._config,
+                serve: { ...this._config.serve, host, port },
+            };
+        }
+        // Mark source so the UI can show it came from runtime, not the file.
+        this._sources = {
+            ...this._sources,
+            'serve.host': 'runtime',
+            'serve.port': 'runtime',
+        };
+    }
+
     // ── Update ───────────────────────────────────────────────────────────
 
     /**

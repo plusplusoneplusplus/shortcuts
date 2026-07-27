@@ -941,9 +941,11 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
 };
 
 /**
- * Source indicator for each config field
+ * Source indicator for each config field.
+ * 'runtime' marks a value overlaid from live infrastructure (e.g. the actual
+ * bound listening address) rather than the config file or a static default.
  */
-export type ConfigFieldSource = 'default' | 'file';
+export type ConfigFieldSource = 'default' | 'file' | 'runtime';
 
 const TOP_LEVEL_CONFIG_SOURCE_KEYS = [
     'model', 'parallel', 'output', 'approvePermissions', 'mcpConfig',

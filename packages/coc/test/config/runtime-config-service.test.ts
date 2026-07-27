@@ -143,6 +143,51 @@ describe('RuntimeConfigService', () => {
         });
     });
 
+    // ── setRuntimeAddress ────────────────────────────────────────────────
+
+    describe('setRuntimeAddress', () => {
+        it('should overlay the live host/port on the snapshot', () => {
+            const svc = new RuntimeConfigService({ configPath });
+            const before = svc.config.serve?.port;
+            expect(before).not.toBe(53271);
+
+            svc.setRuntimeAddress('127.0.0.1', 53271);
+
+            expect(svc.getSnapshot().config.serve?.host).toBe('127.0.0.1');
+            expect(svc.getSnapshot().config.serve?.port).toBe(53271);
+        });
+
+        it('should tag serve.host/serve.port sources as runtime', () => {
+            const svc = new RuntimeConfigService({ configPath });
+            svc.setRuntimeAddress('0.0.0.0', 8080);
+
+            expect(svc.sources['serve.host']).toBe('runtime');
+            expect(svc.sources['serve.port']).toBe('runtime');
+        });
+
+        it('should not persist to disk and should not bump the revision', () => {
+            const svc = new RuntimeConfigService({ configPath });
+            expect(svc.revision).toBe(0);
+
+            svc.setRuntimeAddress('127.0.0.1', 53271);
+
+            expect(svc.revision).toBe(0);
+            // No config file should have been written.
+            expect(fs.existsSync(configPath)).toBe(false);
+        });
+
+        it('should preserve other serve fields when overlaying the address', () => {
+            const svc = new RuntimeConfigService({ configPath });
+            const dataDir = svc.config.serve?.dataDir;
+            const theme = svc.config.serve?.theme;
+
+            svc.setRuntimeAddress('127.0.0.1', 53271);
+
+            expect(svc.config.serve?.dataDir).toBe(dataDir);
+            expect(svc.config.serve?.theme).toBe(theme);
+        });
+    });
+
     // ── updateConfig ─────────────────────────────────────────────────────
 
     describe('updateConfig', () => {
