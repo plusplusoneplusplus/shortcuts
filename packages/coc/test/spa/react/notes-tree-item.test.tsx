@@ -313,6 +313,53 @@ describe('NotesTreeItem', () => {
         expect(el.getAttribute('aria-selected')).toBe('true');
     });
 
+    // --- Note chat in-progress indicator ---
+
+    it('renders the animated in-progress ellipsis when isChatRunning is true', () => {
+        const node = makeNode({ name: 'Chatting', path: 'nb/chatting.md' });
+        const { getByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                isChatRunning
+                onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()} />,
+        );
+        const indicator = getByTestId('note-chat-inprogress');
+        expect(indicator).toBeTruthy();
+        // Three staggered dots.
+        expect(indicator.querySelectorAll('span.animate-bounce').length).toBe(3);
+        expect(indicator.getAttribute('aria-label')).toBe('Chat in progress');
+    });
+
+    it('does not render the in-progress ellipsis by default', () => {
+        const node = makeNode({ name: 'Idle', path: 'nb/idle.md' });
+        const { queryByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()} />,
+        );
+        expect(queryByTestId('note-chat-inprogress')).toBeNull();
+    });
+
+    it('the in-progress ellipsis replaces the update dot when both would apply', () => {
+        const node = makeNode({ name: 'Both', path: 'nb/both.md' });
+        const { getByTestId, queryByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                hasUpdate isChatRunning
+                onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()} />,
+        );
+        expect(getByTestId('note-chat-inprogress')).toBeTruthy();
+        expect(queryByTestId('note-update-indicator')).toBeNull();
+    });
+
+    it('shows the update dot again once the chat is no longer running', () => {
+        const node = makeNode({ name: 'Settled', path: 'nb/settled.md' });
+        const { getByTestId, queryByTestId } = render(
+            <NotesTreeItem node={node} selectedPath={null} isExpanded={false} depth={0}
+                hasUpdate isChatRunning={false}
+                onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()} />,
+        );
+        expect(getByTestId('note-update-indicator')).toBeTruthy();
+        expect(queryByTestId('note-chat-inprogress')).toBeNull();
+    });
+
     // --- AC-06: inline rename ---
 
     it('starts inline rename on double-click of the name', () => {

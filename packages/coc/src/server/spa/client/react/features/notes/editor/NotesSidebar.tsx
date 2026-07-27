@@ -9,6 +9,7 @@ import { useNotesTree } from './useNotesTree';
 import { useNotesContextMenu } from './useNotesContextMenu';
 import { useNotesDragDrop, getNotesParentPath, getDraggedItems, planBulkMove, type NoteDragItem, type DropPosition } from '../hooks/useNotesDragDrop';
 import { useNoteSeenState } from '../hooks/useNoteSeenState';
+import { useNoteChatRunning } from '../hooks/useNoteChatRunning';
 import { useNotesSelection } from '../hooks/useNotesSelection';
 import { useNotesClipboard, planClipboardPaste } from '../hooks/useNotesClipboard';
 import { getSpaCocClient } from '../../../api/cocClient';
@@ -203,6 +204,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     const rootParam = selectedRootId && selectedRootId !== 'default' ? selectedRootId : undefined;
     const { tree, notesRoot, systemFolders, loading, error, refresh, createNode, renameNode, deleteNode, reorderNodes } = useNotesTree(workspaceId, rootParam);
     const { isNoteUpdated, markAsSeen, syncSeenState } = useNoteSeenState(workspaceId);
+    const isNoteChatRunning = useNoteChatRunning(workspaceId);
     const { ctxMenu, dialog, openContextMenu, closeContextMenu, openDialog, closeDialog, setSubmitting } = useNotesContextMenu();
     const { selectedPaths: multiSelectedPaths, anchorPath, handleSelect: handleMultiSelect, clearSelection } = useNotesSelection();
     const { clipboard, cutPaths, setCut, setCopy, clearClipboard } = useNotesClipboard();
@@ -1301,6 +1303,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                         onSelectPage={handleSelectPage}
                         onContextMenu={handleContextMenu}
                         isNoteUpdated={isNoteUpdated}
+                        isNoteChatRunning={isNoteChatRunning}
                         visiblePaths={filter?.visible ?? null}
                         countDescendantPages={countDescendantPages}
                         multiSelectedPaths={multiSelectedPaths}

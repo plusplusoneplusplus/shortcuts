@@ -28,6 +28,13 @@ export interface NotesTreeProps {
     onContextMenu: (node: NoteTreeNode, x: number, y: number) => void;
     isNoteUpdated?: (node: NoteTreeNode) => boolean;
     /**
+     * Per-note "chat ongoing" predicate (AC-01). When it returns true for a page
+     * row, that row shows the animated in-progress ellipsis in place of the blue
+     * updated dot. Unlike `isNoteUpdated` there is NO folder rollup — collapsed
+     * parents never show a descendant's indicator (AC-02.3).
+     */
+    isNoteChatRunning?: (node: NoteTreeNode) => boolean;
+    /**
      * When non-null, only nodes whose path is in this set are rendered.
      * Used by the sidebar search filter; `null` means "no filter".
      */
@@ -73,6 +80,7 @@ export function NotesTree({
     onSelectPage,
     onContextMenu,
     isNoteUpdated,
+    isNoteChatRunning,
     visiblePaths,
     countDescendantPages,
     dragDrop,
@@ -122,6 +130,7 @@ export function NotesTree({
                             depth={depth}
                             isSystemFolder={isSysFolder}
                             hasUpdate={hasNodeUpdate(node, isNoteUpdated)}
+                            isChatRunning={isNoteChatRunning ? isNoteChatRunning(node) : false}
                             pageCount={folderCount}
                             isMultiSelected={multiSelectedPaths ? multiSelectedPaths.has(node.path) : false}
                             isCut={cutPaths ? cutPaths.has(node.path) : false}
@@ -156,6 +165,7 @@ export function NotesTree({
                                 onSelectPage={onSelectPage}
                                 onContextMenu={onContextMenu}
                                 isNoteUpdated={isNoteUpdated}
+                                isNoteChatRunning={isNoteChatRunning}
                                 visiblePaths={visiblePaths}
                                 countDescendantPages={countDescendantPages}
                                 dragDrop={dragDrop}

@@ -289,3 +289,13 @@ export function useQueue() {
     if (!ctx) throw new Error('useQueue must be used within QueueProvider');
     return ctx;
 }
+
+/**
+ * Non-throwing variant of {@link useQueue}. Returns `null` when rendered outside
+ * a {@link QueueProvider} instead of throwing, so cosmetic consumers (e.g. the
+ * notes-tree in-progress indicator) degrade to "no live queue data" rather than
+ * forcing every render tree — including isolated unit tests — to wrap a provider.
+ */
+export function useQueueOptional() {
+    return useContext(QueueContext);
+}
