@@ -79,6 +79,99 @@ describe('QuickAskSidenotePopover outside-click dismissal', () => {
     });
 });
 
+describe('QuickAskSidenotePopover - drag & resize', () => {
+    it('drags the popover by its header, updating its fixed top/left', () => {
+        render(
+            <QuickAskSidenotePopover
+                note={note()}
+                position={{ top: 40, left: 60 }}
+                onClose={noop}
+                onCopy={noop}
+                onRetry={noop}
+                onDelete={noop}
+            />,
+        );
+        const popover = screen.getByTestId('quick-ask-popover');
+        const header = screen.getByTestId('quick-ask-popover-header');
+        const startTop = parseFloat(popover.style.top);
+        const startLeft = parseFloat(popover.style.left);
+
+        fireEvent.mouseDown(header, { clientX: 100, clientY: 100 });
+        fireEvent.mouseMove(document, { clientX: 130, clientY: 125 });
+        fireEvent.mouseUp(document);
+
+        expect(parseFloat(popover.style.left)).toBe(startLeft + 30);
+        expect(parseFloat(popover.style.top)).toBe(startTop + 25);
+    });
+
+    it('does not start a drag from the header close button', () => {
+        const onClose = vi.fn();
+        render(
+            <QuickAskSidenotePopover
+                note={note()}
+                position={{ top: 40, left: 60 }}
+                onClose={onClose}
+                onCopy={noop}
+                onRetry={noop}
+                onDelete={noop}
+            />,
+        );
+        const popover = screen.getByTestId('quick-ask-popover');
+        const startLeft = parseFloat(popover.style.left);
+
+        fireEvent.mouseDown(screen.getByTestId('quick-ask-popover-close'), { clientX: 100, clientY: 100 });
+        fireEvent.mouseMove(document, { clientX: 140, clientY: 100 });
+        fireEvent.mouseUp(document);
+
+        expect(parseFloat(popover.style.left)).toBe(startLeft);
+    });
+
+    it('resizes the popover from the bottom-right grip', () => {
+        render(
+            <QuickAskSidenotePopover
+                note={note()}
+                position={{ top: 40, left: 60 }}
+                onClose={noop}
+                onCopy={noop}
+                onRetry={noop}
+                onDelete={noop}
+            />,
+        );
+        const popover = screen.getByTestId('quick-ask-popover');
+        expect(popover.style.width).toBe('');
+
+        fireEvent.mouseDown(screen.getByTestId('quick-ask-popover-resize'), { clientX: 0, clientY: 0 });
+        fireEvent.mouseMove(document, { clientX: 400, clientY: 500 });
+        fireEvent.mouseUp(document);
+
+        // jsdom reports a 0×0 rect, so the size is just the drag delta (clamped
+        // to the minimum), which here is well above it.
+        expect(parseFloat(popover.style.width)).toBe(400);
+        expect(parseFloat(popover.style.height)).toBe(500);
+    });
+
+    it('clamps resize to a usable minimum', () => {
+        render(
+            <QuickAskSidenotePopover
+                note={note()}
+                position={{ top: 40, left: 60 }}
+                onClose={noop}
+                onCopy={noop}
+                onRetry={noop}
+                onDelete={noop}
+            />,
+        );
+        const popover = screen.getByTestId('quick-ask-popover');
+
+        fireEvent.mouseDown(screen.getByTestId('quick-ask-popover-resize'), { clientX: 0, clientY: 0 });
+        fireEvent.mouseMove(document, { clientX: -1000, clientY: -1000 });
+        fireEvent.mouseUp(document);
+
+        expect(parseFloat(popover.style.width)).toBe(240);
+        expect(parseFloat(popover.style.height)).toBe(160);
+    });
+});
+
 describe('QuickAskSidenotePopover - AC-03 question rendering', () => {
     it('shows a "Q:" line when the note carries a custom question', () => {
         render(
