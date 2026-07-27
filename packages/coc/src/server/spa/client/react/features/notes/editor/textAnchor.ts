@@ -203,21 +203,45 @@ function commonSuffixLength(a: string, b: string): number {
     return len;
 }
 
-/** Compute length of the longest common substring between a and b using O(n*m) DP. */
-function longestCommonSubstringLength(a: string, b: string): number {
+/**
+ * Ceiling on the total DP cells the fuzzy sliding-window scan may compute for a
+ * single {@link resolveAnchor} call. The scan is O(region × windows × window ×
+ * quoted) — on a large document (e.g. a full pdf.js page's text layer) with a
+ * long, drifted quote that resolves to no exact/hint match, an unbounded scan is
+ * billions of ops and pegs the main thread for seconds (the paper-reader freeze).
+ * The cap keeps the worst case to a few hundred milliseconds; it is generous
+ * enough that a normal drifted quote still scans several candidate regions and
+ * resolves. Only pathologically large inputs get truncated, degrading gracefully
+ * to the best match found so far (or "orphaned").
+ */
+const MAX_FUZZY_LCS_CELLS = 40_000_000;
+
+/**
+ * A prefix 8-gram that occurs more often than this in the document carries almost
+ * no location signal (it is boilerplate/repetition), so the fuzzy scan skips it
+ * rather than scanning a region around every occurrence.
+ */
+const MAX_HINT_OCCURRENCES = 24;
+
+/**
+ * Length of the longest common substring between `a` and `b` using O(n*m) DP.
+ * `buf` is a caller-owned scratch row of length ≥ `b.length + 1`, reused across
+ * the many windows in a fuzzy scan to avoid a per-window allocation. It is
+ * zero-filled up front because the first DP row reads it as the all-zero row 0.
+ */
+function longestCommonSubstringLength(a: string, b: string, buf: Uint16Array): number {
     if (a.length === 0 || b.length === 0) return 0;
+    buf.fill(0, 0, b.length + 1);
     let maxLen = 0;
-    // Use a single row for space efficiency
-    const prev = new Uint16Array(b.length + 1);
     for (let i = 1; i <= a.length; i++) {
         let prevDiag = 0;
         for (let j = 1; j <= b.length; j++) {
-            const temp = prev[j];
+            const temp = buf[j];
             if (a[i - 1] === b[j - 1]) {
-                prev[j] = prevDiag + 1;
-                if (prev[j] > maxLen) maxLen = prev[j];
+                buf[j] = prevDiag + 1;
+                if (buf[j] > maxLen) maxLen = buf[j];
             } else {
-                prev[j] = 0;
+                buf[j] = 0;
             }
             prevDiag = temp;
         }
@@ -240,13 +264,22 @@ function fuzzyMatch(text: string, anchor: TextAnchor): AnchorMatch | null {
     let bestFrom = -1;
     let bestTo = -1;
 
+    // Scratch DP row reused across every window, plus a running cell budget so the
+    // whole scan is bounded regardless of document/quote size (see
+    // MAX_FUZZY_LCS_CELLS). Once the budget is exhausted the scan stops and the
+    // best match found so far stands.
+    const lcsBuf = new Uint16Array(quotedText.length + 1);
+    let cellsUsed = 0;
+
     const scanRegion = (start: number, end: number) => {
         const regionStart = Math.max(0, start);
         const regionEnd = Math.min(text.length, end);
         for (let i = regionStart; i < regionEnd; i++) {
             for (let wLen = minLen; wLen <= maxLen && i + wLen <= text.length; wLen++) {
+                cellsUsed += wLen * quotedText.length;
+                if (cellsUsed > MAX_FUZZY_LCS_CELLS) return;
                 const window = text.slice(i, i + wLen);
-                const lcsLen = longestCommonSubstringLength(window, quotedText);
+                const lcsLen = longestCommonSubstringLength(window, quotedText, lcsBuf);
                 const similarity = lcsLen / Math.max(wLen, quotedText.length);
                 if (similarity > bestSimilarity) {
                     bestSimilarity = similarity;
@@ -263,21 +296,34 @@ function fuzzyMatch(text: string, anchor: TextAnchor): AnchorMatch | null {
     let hintFound = false;
 
     if (prefix.length >= HINT_LEN) {
-        const hints = new Set<string>();
+        // Gather each distinct 8-char prefix hint with all of its positions, then
+        // scan the rarest (most distinctive) hints first. On a repetitive document
+        // a common hint carries almost no location signal but would burn the whole
+        // work budget scanning hundreds of useless regions before the one
+        // informative hint near the real match is reached; ordering by rarity (and
+        // skipping pathologically common hints) makes the guided scan land on the
+        // right region within budget.
+        const seen = new Set<string>();
+        const candidates: number[][] = [];
         for (let i = 0; i <= prefix.length - HINT_LEN; i++) {
-            hints.add(prefix.slice(i, i + HINT_LEN));
+            const hint = prefix.slice(i, i + HINT_LEN);
+            if (seen.has(hint)) continue;
+            seen.add(hint);
+            const occ = findAllOccurrences(text, hint);
+            if (occ.length > 0) candidates.push(occ);
         }
-        for (const hint of hints) {
-            let idx = text.indexOf(hint);
-            while (idx !== -1) {
+        candidates.sort((a, b) => a.length - b.length);
+        outer: for (const occ of candidates) {
+            if (occ.length > MAX_HINT_OCCURRENCES) continue; // too common to be useful
+            for (const idx of occ) {
                 hintFound = true;
                 scanRegion(idx - SCAN_RADIUS, idx + SCAN_RADIUS + maxLen);
-                idx = text.indexOf(hint, idx + 1);
+                if (cellsUsed > MAX_FUZZY_LCS_CELLS) break outer;
             }
         }
     }
 
-    // Fall back to full-document scan if no prefix hints found
+    // Fall back to a (budget-bounded) full-document scan if no prefix hints found.
     if (!hintFound) {
         scanRegion(0, text.length);
     }

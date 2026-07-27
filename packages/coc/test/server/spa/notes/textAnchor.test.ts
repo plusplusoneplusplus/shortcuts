@@ -112,6 +112,54 @@ describe('resolveAnchor', () => {
     });
 });
 
+describe('resolveAnchor — bounded fuzzy on large inputs', () => {
+    // Regression guard: an unbounded fuzzy scan over a large document with a long,
+    // drifted quote (no exact/hint match, so it falls into the full-document
+    // sliding-window LCS) is O(chars × windows × window × quote) — billions of ops
+    // that pegged the main thread for seconds and froze the paper reader when
+    // PdfAnnotationsLayer re-resolved annotations against a pdf.js text layer.
+    // The work budget must keep it fast; here we assert it returns promptly rather
+    // than hanging.
+    it('resolves a long non-matching quote over a large document without stalling', () => {
+        // ~80k chars of text that shares no long run with the quote.
+        const bigText = 'lorem ipsum dolor sit amet consectetur '.repeat(2048);
+        // Long quote, absent from the text; empty prefix forces the (worst-case)
+        // full-document scan rather than the hint-guided one.
+        const anchor = { quotedText: 'qwerty '.repeat(40).trim(), prefix: '', suffix: '' };
+
+        const start = Date.now();
+        const match = resolveAnchor(bigText, anchor);
+        const elapsedMs = Date.now() - start;
+
+        // Bounded: tens of ms in practice; the pre-fix path took many seconds.
+        expect(elapsedMs).toBeLessThan(2000);
+        expect(['fuzzy', 'orphaned']).toContain(match.confidence);
+    });
+
+    it('still fuzzy-matches a drifted quote inside a large document (budget is generous)', () => {
+        // Distinct, non-repetitive surrounding text so the prefix's 8-char hints are
+        // rare — the hint-guided scan lands on the real region and completes within
+        // the budget, exactly like a normal annotation quote in a paper's text.
+        const before = Array.from({ length: 150 }, (_, i) => `Sentence ${i} explores a distinct unrelated subject.`).join(' ');
+        const after = Array.from({ length: 150 }, (_, i) => `Clause ${i} mentions another separate matter.`).join(' ');
+        const quote = 'gradient checkpointing trades compute';
+        const doc = `${before} ${quote} for memory ${after}`;
+        const from = doc.indexOf(quote);
+        const anchor = createTextAnchor(doc, from, from + quote.length);
+
+        // Drift one word inside the quote; the passage still resolves fuzzily.
+        const driftedQuote = quote.replace('trades', 'swaps');
+        const driftedDoc = `${before} ${driftedQuote} for memory ${after}`;
+
+        const match = resolveAnchor(driftedDoc, anchor);
+        expect(match.confidence).toBe('fuzzy');
+        // Lands on the drifted passage near the before/quote boundary, not deep in
+        // the filler (the window may start a few chars into the trailing prefix).
+        expect(match.from).toBeGreaterThan(before.length - 60);
+        expect(match.from).toBeLessThan(before.length + quote.length + 40);
+    });
+});
+
 describe('resolveAnchors', () => {
     it('resolves multiple non-overlapping anchors', () => {
         const text = 'AAA BBB CCC DDD EEE FFF GGG';
