@@ -22,6 +22,10 @@ import { SourceEditor } from '../../../shared/SourceEditor';
 import { findAnchorInDoc, applyCommentMark, buildAnchorFromMark } from './commentAnchoring';
 import { ContextMenu } from '../../../tasks/comments/ContextMenu';
 import type { ContextMenuItem } from '../../../tasks/comments/ContextMenu';
+import { getLinkHrefFromEventTarget } from './linkContextMenu';
+import { openLink } from '../../../utils/link-handler';
+import { useLinkHandlers } from '../../../hooks/useLinkHandlers';
+import { copyToClipboard } from '../../../utils/format';
 import { wordDiff } from './noteEditDiff';
 import type { DiffChunk } from './noteEditDiff';
 import type { AiEditRegion } from './extensions/AiEditDecorationExtension';
@@ -216,7 +220,8 @@ export function NoteEditor({
     scrollToLine,
 }: NoteEditorProps) {
     const [uploadingImage, setUploadingImage] = useState(false);
-    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; selectedText: string } | null>(null);
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; selectedText: string; linkHref?: string } | null>(null);
+    const [linkHandlerConfig] = useLinkHandlers();
     const [frontMatterResult, setFrontMatterResult] = useState<NoteFrontMatterParseResult>({ kind: 'none' });
 
     const canRunSkill = Boolean(notePath);
@@ -1407,10 +1412,16 @@ export function NoteEditor({
                         onContextMenu={(e) => {
                             if (!editorHidden && viewMode !== 'source') {
                                 const hasSelection = editor && !editor.state.selection.empty;
-                                if (hasSelection) {
+                                const linkHref = getLinkHrefFromEventTarget(e.target);
+                                if (hasSelection || linkHref) {
                                     e.preventDefault();
                                     const selectedText = window.getSelection()?.toString() ?? '';
-                                    setContextMenu({ x: e.clientX, y: e.clientY, selectedText });
+                                    setContextMenu({
+                                        x: e.clientX,
+                                        y: e.clientY,
+                                        selectedText,
+                                        linkHref: linkHref ?? undefined,
+                                    });
                                 }
                             }
                         }}
@@ -1528,14 +1539,41 @@ export function NoteEditor({
             {contextMenu && (() => {
                 const noteTitle = notePath?.split('/').pop()?.replace(/\.md$/, '') ?? '';
                 const hasSelectedText = !!contextMenu.selectedText?.trim();
+                const linkHref = contextMenu.linkHref;
                 const items: ContextMenuItem[] = [];
 
+                // Link actions — only when right-clicking on a markdown link
+                if (linkHref) {
+                    items.push({
+                        label: 'Open link',
+                        icon: '🔗',
+                        onClick: () => {
+                            openLink(linkHref, linkHandlerConfig);
+                            setContextMenu(null);
+                        },
+                    });
+                    items.push({
+                        label: 'Copy link',
+                        icon: '📋',
+                        onClick: () => {
+                            void copyToClipboard(linkHref);
+                            setContextMenu(null);
+                        },
+                    });
+                }
+
+                const pushSeparator = () => {
+                    if (items.length > 0) {
+                        items.push({ label: '', separator: true, onClick: () => {} });
+                    }
+                };
+
                 // Add comment — only in rich mode with a live selection
-                if (viewMode === 'rich' && commentsEnabled) {
+                if (viewMode === 'rich' && commentsEnabled && !(editor?.state.selection.empty ?? true)) {
+                    pushSeparator();
                     items.push({
                         label: 'Add comment',
                         icon: '💬',
-                        disabled: editor?.state.selection.empty ?? true,
                         onClick: () => {
                             onCommentCreate?.();
                             setContextMenu(null);
@@ -1545,9 +1583,7 @@ export function NoteEditor({
 
                 // Add to chat as reference — only when handler provided and text is selected
                 if (onAddNoteReference && hasSelectedText) {
-                    if (items.length > 0) {
-                        items.push({ label: '', separator: true, onClick: () => {} });
-                    }
+                    pushSeparator();
                     items.push({
                         label: 'Add to chat as reference',
                         icon: '📎',

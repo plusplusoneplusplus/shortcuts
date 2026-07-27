@@ -226,3 +226,103 @@ describe('NoteEditor — right-click context menu', () => {
         expect(screen.queryByTestId('context-menu')).toBeNull();
     });
 });
+
+describe('NoteEditor — right-click on a markdown link', () => {
+    /** Insert an anchor into the rich-editor container and right-click it. */
+    function rightClickLink(href: string): void {
+        const editorWrapper = screen.getByTestId('editor-content').parentElement!;
+        const anchor = document.createElement('a');
+        anchor.setAttribute('href', href);
+        anchor.textContent = 'link text';
+        editorWrapper.appendChild(anchor);
+        fireEvent.contextMenu(anchor, { clientX: 120, clientY: 240 });
+    }
+
+    let openSpy: ReturnType<typeof vi.spyOn>;
+    let writeText: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+        mockGetContent.mockResolvedValue({ content: '', path: 'p.md' });
+        selectionEmpty = true;
+        contextMenuProps = null;
+        openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+        writeText = vi.fn(() => Promise.resolve());
+        Object.defineProperty(navigator, 'clipboard', {
+            value: { writeText },
+            configurable: true,
+        });
+    });
+
+    afterEach(() => {
+        cleanup();
+        openSpy.mockRestore();
+    });
+
+    it('shows Open/Copy link items when right-clicking a link with no selection', async () => {
+        await act(async () => {
+            render(<NoteEditor workspaceId="ws1" notePath="p.md" onCommentCreate={() => {}} />);
+        });
+        await waitFor(() => expect(screen.getByTestId('note-editor')).toBeDefined());
+
+        rightClickLink('https://example.com/page');
+
+        expect(screen.getByTestId('context-menu')).toBeDefined();
+        expect(screen.getByTestId('context-menu-item-open-link')).toBeDefined();
+        expect(screen.getByTestId('context-menu-item-copy-link')).toBeDefined();
+        // No selection → the "Add comment" item is not shown.
+        expect(screen.queryByTestId('context-menu-item-add-comment')).toBeNull();
+    });
+
+    it('clicking "Copy link" copies the raw href to the clipboard', async () => {
+        await act(async () => {
+            render(<NoteEditor workspaceId="ws1" notePath="p.md" onCommentCreate={() => {}} />);
+        });
+        await waitFor(() => expect(screen.getByTestId('note-editor')).toBeDefined());
+
+        rightClickLink('./docs/readme.md');
+        fireEvent.click(screen.getByTestId('context-menu-item-copy-link'));
+
+        expect(writeText).toHaveBeenCalledWith('./docs/readme.md');
+        // Menu closes after the action.
+        expect(screen.queryByTestId('context-menu')).toBeNull();
+    });
+
+    it('clicking "Open link" opens the href', async () => {
+        await act(async () => {
+            render(<NoteEditor workspaceId="ws1" notePath="p.md" onCommentCreate={() => {}} />);
+        });
+        await waitFor(() => expect(screen.getByTestId('note-editor')).toBeDefined());
+
+        rightClickLink('https://example.com/page');
+        fireEvent.click(screen.getByTestId('context-menu-item-open-link'));
+
+        expect(openSpy).toHaveBeenCalledWith('https://example.com/page', '_blank', 'noopener');
+        expect(screen.queryByTestId('context-menu')).toBeNull();
+    });
+
+    it('does not show the menu when right-clicking a non-link with no selection', async () => {
+        await act(async () => {
+            render(<NoteEditor workspaceId="ws1" notePath="p.md" onCommentCreate={() => {}} />);
+        });
+        await waitFor(() => expect(screen.getByTestId('note-editor')).toBeDefined());
+
+        const editorWrapper = screen.getByTestId('editor-content').parentElement!;
+        fireEvent.contextMenu(editorWrapper, { clientX: 100, clientY: 200 });
+
+        expect(screen.queryByTestId('context-menu')).toBeNull();
+    });
+
+    it('shows both link actions and "Add comment" when a link is right-clicked with a selection', async () => {
+        selectionEmpty = false;
+        await act(async () => {
+            render(<NoteEditor workspaceId="ws1" notePath="p.md" onCommentCreate={() => {}} />);
+        });
+        await waitFor(() => expect(screen.getByTestId('note-editor')).toBeDefined());
+
+        rightClickLink('https://example.com/page');
+
+        expect(screen.getByTestId('context-menu-item-open-link')).toBeDefined();
+        expect(screen.getByTestId('context-menu-item-copy-link')).toBeDefined();
+        expect(screen.getByTestId('context-menu-item-add-comment')).toBeDefined();
+    });
+});
