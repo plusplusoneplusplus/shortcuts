@@ -288,6 +288,89 @@ describe('paper-annotations handler', () => {
         }
     });
 
+    it('POST persists a multi-turn thread and GET round-trips the turns array (AC-03)', async () => {
+        const s = await startServer();
+        servers.push(s);
+        const threaded = {
+            ...validAnnotation,
+            turns: [
+                { question: 'Why is this bandwidth-optimal?', answer: 'Because each node sends/receives an equal share.' },
+                { question: 'Give an example.', answer: 'With N nodes, each transfers 2(N-1)/N of the data.' },
+            ],
+        };
+        const created = await req(s.baseUrl, 'POST', createPath, { path: 'paper.md', annotation: threaded });
+        expect(created.status).toBe(201);
+        const a = created.body.annotation;
+        expect(a.turns).toHaveLength(2);
+        expect(a.turns[1].question).toBe('Give an example.');
+        // Top-level answer (turn 0) is preserved for legacy readers.
+        expect(a.answer).toContain('equal share');
+
+        const get = await req(s.baseUrl, 'GET', `${listPath}?path=paper.md`);
+        expect(get.body.annotations[a.id].turns).toHaveLength(2);
+        expect(get.body.annotations[a.id].turns[1].answer).toContain('2(N-1)/N');
+    });
+
+    it('POST without a turns array stays a legacy single-answer annotation (no turns field)', async () => {
+        const s = await startServer();
+        servers.push(s);
+        const created = await req(s.baseUrl, 'POST', createPath, { path: 'paper.md', annotation: validAnnotation });
+        expect(created.body.annotation.turns).toBeUndefined();
+        const get = await req(s.baseUrl, 'GET', `${listPath}?path=paper.md`);
+        expect(get.body.annotations[created.body.annotation.id].turns).toBeUndefined();
+    });
+
+    it('PATCH updates the turns array of a reopened thread (AC-03 follow-up persistence)', async () => {
+        const s = await startServer();
+        servers.push(s);
+        const created = await req(s.baseUrl, 'POST', createPath, { path: 'paper.md', annotation: validAnnotation });
+        const id = created.body.annotation.id;
+        expect(created.body.annotation.turns).toBeUndefined();
+
+        // A follow-up re-persists the accumulated turns onto the existing annotation.
+        const patched = await req(s.baseUrl, 'PATCH', `${listPath}/annotation/${id}`, {
+            path: 'paper.md',
+            turns: [
+                { answer: created.body.annotation.answer },
+                { question: 'Give an example.', answer: 'Second-turn answer.' },
+            ],
+        });
+        expect(patched.status).toBe(200);
+        expect(patched.body.annotation.turns).toHaveLength(2);
+        expect(patched.body.annotation.turns[1].question).toBe('Give an example.');
+        expect(patched.body.annotation.updatedAt).toBeDefined();
+
+        // Survives a reload.
+        const get = await req(s.baseUrl, 'GET', `${listPath}?path=paper.md`);
+        expect(get.body.annotations[id].turns).toHaveLength(2);
+        expect(get.body.annotations[id].turns[1].answer).toBe('Second-turn answer.');
+    });
+
+    it('PATCH accepts resolved and turns independently; rejects a body with neither', async () => {
+        const s = await startServer();
+        servers.push(s);
+        const created = await req(s.baseUrl, 'POST', createPath, { path: 'paper.md', annotation: validAnnotation });
+        const id = created.body.annotation.id;
+
+        // Neither field → 400.
+        expect((await req(s.baseUrl, 'PATCH', `${listPath}/annotation/${id}`, { path: 'paper.md' })).status).toBe(400);
+        // A turns-only PATCH leaves resolved untouched.
+        const withTurns = await req(s.baseUrl, 'PATCH', `${listPath}/annotation/${id}`, {
+            path: 'paper.md',
+            turns: [{ answer: 'a' }, { answer: 'b' }],
+        });
+        expect(withTurns.status).toBe(200);
+        expect(withTurns.body.annotation.resolved).toBeUndefined();
+        expect(withTurns.body.annotation.turns).toHaveLength(2);
+        // A malformed/empty turns array never wipes the existing thread.
+        const empty = await req(s.baseUrl, 'PATCH', `${listPath}/annotation/${id}`, {
+            path: 'paper.md',
+            turns: [{ answer: '' }, 'garbage'],
+        });
+        expect(empty.status).toBe(200);
+        expect(empty.body.annotation.turns).toHaveLength(2);
+    });
+
     it('DELETE removes an annotation; unknown id is 404', async () => {
         const s = await startServer();
         servers.push(s);
@@ -351,6 +434,37 @@ describe('paper-annotations helpers', () => {
             region: { page: 3, rect: { x: 0.1, y: 0.2, width: 0.4, height: 0.3 } },
         });
         expect(a.quote).toBeUndefined();
+    });
+
+    it('normalizeAnnotationDraft cleans a turns array and drops malformed entries (AC-03)', () => {
+        const a = normalizeAnnotationDraft(
+            {
+                pdfUrl: 'u', answer: 'a1', quote: { selectedText: 's' },
+                turns: [
+                    { question: '  q1  ', answer: 'a1', junk: 1 },
+                    { answer: 'a2' }, // no question — turn 0 default-ask shape
+                    { question: 'bad', answer: '   ' }, // blank answer → dropped
+                    { question: 'no-answer' }, // no answer → dropped
+                    'garbage', // not an object → dropped
+                    null,
+                ],
+            } as any,
+            'id-t',
+            'created-t',
+        );
+        expect(a.turns).toEqual([
+            { question: 'q1', answer: 'a1' },
+            { answer: 'a2' },
+        ]);
+    });
+
+    it('normalizeAnnotationDraft drops a turns field that reduces to empty', () => {
+        const a = normalizeAnnotationDraft(
+            { pdfUrl: 'u', answer: 'a', quote: { selectedText: 's' }, turns: [{ answer: '' }, 'x'] } as any,
+            'id-e',
+            'created-e',
+        );
+        expect(a.turns).toBeUndefined();
     });
 
     it('normalizeAnnotationDraft keeps only known fields and coerces rects', () => {

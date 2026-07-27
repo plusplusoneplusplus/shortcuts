@@ -21,6 +21,7 @@ import {
     deleteSidenoteRef,
     insertSidenoteRef,
     resolveSidenoteInsertPos,
+    updateSidenoteRefTurns,
 } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/sidenoteRefPlacement';
 import { htmlToMarkdown }
     from '../../../../src/server/spa/client/react/features/notes/editor/noteMarkdown';
@@ -98,7 +99,7 @@ describe('insertSidenoteRef', () => {
             // the answer in a definition block at the file bottom.
             expect(htmlToMarkdown(html)).toBe(
                 'we optimize the loss with gradient descent[^qa-note1] over many epochs\n\n'
-                + '[^qa-note1]: {"q":"what is this?","a":"Iterative first-order optimization.",'
+                + '[^qa-note1]: {"turns":[{"q":"what is this?","a":"Iterative first-order optimization."}],'
                 + '"s":"gradient descent","p":"we optimize the loss with ","x":" over many epochs"}\n',
             );
         } finally {
@@ -112,7 +113,7 @@ describe('insertSidenoteRef', () => {
             insertSidenoteRef(editor, ANCHOR, { refId: 'd1', answer: 'A.' });
             expect(htmlToMarkdown(editor.getHTML())).toBe(
                 'we optimize the loss with gradient descent[^qa-d1] over many epochs\n\n'
-                + '[^qa-d1]: {"a":"A.","s":"gradient descent",'
+                + '[^qa-d1]: {"turns":[{"a":"A."}],"s":"gradient descent",'
                 + '"p":"we optimize the loss with ","x":" over many epochs"}\n',
             );
         } finally {
@@ -145,7 +146,7 @@ describe('insertSidenoteRef', () => {
             expect(insertSidenoteRef(editor, ANCHOR, { refId: 'g1', answer: 'grounded' })).toBe(true);
             expect(htmlToMarkdown(editor.getHTML())).toBe(
                 'A brand new opening sentence. we optimize the loss with gradient descent[^qa-g1] over many epochs\n\n'
-                + '[^qa-g1]: {"a":"grounded","s":"gradient descent",'
+                + '[^qa-g1]: {"turns":[{"a":"grounded"}],"s":"gradient descent",'
                 + '"p":"we optimize the loss with ","x":" over many epochs"}\n',
             );
         } finally {
@@ -164,7 +165,7 @@ describe('insertSidenoteRef', () => {
             // Marker lands after the SECOND "token" (the gamma…delta context), not the first.
             expect(htmlToMarkdown(editor.getHTML())).toBe(
                 'alpha token beta and gamma token[^qa-t2] delta\n\n'
-                + '[^qa-t2]: {"a":"second one","s":"token","p":"gamma ","x":" delta"}\n',
+                + '[^qa-t2]: {"turns":[{"a":"second one"}],"s":"token","p":"gamma ","x":" delta"}\n',
             );
         } finally {
             editor.destroy();
@@ -176,6 +177,82 @@ describe('insertSidenoteRef', () => {
         const editor = makeEditor(SENTENCE);
         editor.destroy();
         expect(insertSidenoteRef(editor, ANCHOR, { refId: 'n', answer: 'x' })).toBe(false);
+    });
+});
+
+describe('insertSidenoteRef — multi-turn payload (AC-03)', () => {
+    it('persists the whole thread into the definition when turns are supplied', () => {
+        const editor = makeEditor(SENTENCE);
+        try {
+            insertSidenoteRef(editor, ANCHOR, {
+                refId: 'm1',
+                question: 'what is this?',
+                answer: 'Iterative first-order optimization.',
+                turns: [
+                    { question: 'what is this?', answer: 'Iterative first-order optimization.' },
+                    { question: 'give an example', answer: 'For example, SGD.' },
+                ],
+            });
+            const html = editor.getHTML();
+            expect(html).toContain('data-qa-turns=');
+            expect(htmlToMarkdown(html)).toBe(
+                'we optimize the loss with gradient descent[^qa-m1] over many epochs\n\n'
+                + '[^qa-m1]: {"turns":['
+                + '{"q":"what is this?","a":"Iterative first-order optimization."},'
+                + '{"q":"give an example","a":"For example, SGD."}],'
+                + '"s":"gradient descent","p":"we optimize the loss with ","x":" over many epochs"}\n',
+            );
+        } finally {
+            editor.destroy();
+        }
+    });
+});
+
+describe('updateSidenoteRefTurns — follow-up persistence (AC-03)', () => {
+    it('re-writes the marker with the accumulated thread so a follow-up survives save', () => {
+        const editor = makeEditor(SENTENCE);
+        try {
+            // Turn 0 inserts the marker (one-turn persistence).
+            insertSidenoteRef(editor, ANCHOR, {
+                refId: 'f1',
+                question: 'what is this?',
+                answer: 'Iterative first-order optimization.',
+                turns: [{ question: 'what is this?', answer: 'Iterative first-order optimization.' }],
+            });
+
+            // A follow-up answer folds the accumulated ready turns back onto it.
+            const updated = updateSidenoteRefTurns(editor, 'f1', [
+                { question: 'what is this?', answer: 'Iterative first-order optimization.' },
+                { question: 'give an example', answer: 'For example, SGD.' },
+            ]);
+            expect(updated).toBe(true);
+
+            // The saved md now carries BOTH turns in the definition.
+            expect(htmlToMarkdown(editor.getHTML())).toBe(
+                'we optimize the loss with gradient descent[^qa-f1] over many epochs\n\n'
+                + '[^qa-f1]: {"turns":['
+                + '{"q":"what is this?","a":"Iterative first-order optimization."},'
+                + '{"q":"give an example","a":"For example, SGD."}],'
+                + '"s":"gradient descent","p":"we optimize the loss with ","x":" over many epochs"}\n',
+            );
+        } finally {
+            editor.destroy();
+        }
+    });
+
+    it('returns false for empty turns, an unknown id, and a null/destroyed editor', () => {
+        const editor = makeEditor(SENTENCE);
+        try {
+            insertSidenoteRef(editor, ANCHOR, { refId: 'u1', answer: 'A.' });
+            expect(updateSidenoteRefTurns(editor, 'u1', [])).toBe(false);
+            expect(updateSidenoteRefTurns(editor, 'missing', [{ answer: 'x' }])).toBe(false);
+        } finally {
+            editor.destroy();
+        }
+        expect(updateSidenoteRefTurns(null, 'u1', [{ answer: 'x' }])).toBe(false);
+        const destroyed = makeEditor(SENTENCE);
+        destroyed.destroy();
+        expect(updateSidenoteRefTurns(destroyed, 'u1', [{ answer: 'x' }])).toBe(false);
     });
 });
 

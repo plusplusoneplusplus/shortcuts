@@ -13,7 +13,7 @@
  *   GET    /api/workspaces/:id/notes/paper-annotations?path=&root=            → sidecar
  *   PUT    /api/workspaces/:id/notes/paper-annotations                        → replace all
  *   POST   /api/workspaces/:id/notes/paper-annotations/annotation            → create one
- *   PATCH  /api/workspaces/:id/notes/paper-annotations/annotation/:id        → resolve/reopen
+ *   PATCH  /api/workspaces/:id/notes/paper-annotations/annotation/:id        → resolve/reopen or update turns
  *   DELETE /api/workspaces/:id/notes/paper-annotations/annotation/:id?path=  → remove one
  *
  * Pure Node.js; cross-platform (Linux/Mac/Windows).
@@ -35,6 +35,7 @@ import {
     createEmptyPaperAnnotationsSidecar,
     validateAnnotationDraft,
     normalizeAnnotationDraft,
+    normalizeAnnotationTurns,
 } from './paper-annotations-types';
 import { formatPaperAnnotationsMarkdown } from './paper-annotations-export';
 import {
@@ -275,10 +276,15 @@ export function registerPaperAnnotationsRoutes(opts: PaperAnnotationsRouteOption
         },
     });
 
-    // PATCH /api/workspaces/:id/notes/paper-annotations/annotation/:id  (resolve/reopen)
+    // PATCH /api/workspaces/:id/notes/paper-annotations/annotation/:id
     // (Goal 4 AC-02) Mark an annotation resolved or reopen it, mirroring the
     // notes-comments thread status toggle. Resolved annotations are kept in the
     // sidecar (never deleted) so a client can filter them in/out of the view.
+    //
+    // (AC-03) Also updates the multi-turn Quick Ask thread when the body carries a
+    // `turns` array — a follow-up on a reopened paper annotation re-persists the
+    // accumulated turns so the thread survives the next reload. `resolved` and
+    // `turns` are each optional but at least one must be present.
     routes.push({
         method: 'PATCH',
         pattern: /^\/api\/workspaces\/([^/]+)\/notes\/paper-annotations\/annotation\/([^/]+)$/,
@@ -288,9 +294,11 @@ export function registerPaperAnnotationsRoutes(opts: PaperAnnotationsRouteOption
             if (body === null) return;
 
             const annotationId = decodeURIComponent(match![2]);
-            const { path: notePath, resolved, root: rootParam } = body || {};
-            if (typeof resolved !== 'boolean') {
-                return sendError(res, 400, 'Missing or invalid field: resolved (must be boolean)');
+            const { path: notePath, resolved, turns, root: rootParam } = body || {};
+            const hasResolved = typeof resolved === 'boolean';
+            const hasTurns = Array.isArray(turns);
+            if (!hasResolved && !hasTurns) {
+                return sendError(res, 400, 'Missing field: resolved (boolean) or turns (array)');
             }
 
             const resolvedPath = await resolveSidecarOrFail(req, res, match!, notePath, rootParam);
@@ -303,12 +311,29 @@ export function registerPaperAnnotationsRoutes(opts: PaperAnnotationsRouteOption
             }
 
             const now = new Date().toISOString();
-            if (resolved) {
-                annotation.resolved = true;
-                annotation.resolvedAt = now;
-            } else {
-                delete annotation.resolved;
-                delete annotation.resolvedAt;
+            if (hasResolved) {
+                if (resolved) {
+                    annotation.resolved = true;
+                    annotation.resolvedAt = now;
+                } else {
+                    delete annotation.resolved;
+                    delete annotation.resolvedAt;
+                }
+            }
+            // Multi-turn thread update (AC-03). Only overwrite when the cleaned
+            // turns are non-empty so a malformed/empty array never wipes the thread
+            // or the required top-level `answer`; keep turn 0 mirrored to `answer`.
+            if (hasTurns) {
+                const cleaned = normalizeAnnotationTurns(turns);
+                if (cleaned.length > 0) {
+                    annotation.turns = cleaned;
+                    annotation.answer = cleaned[0].answer;
+                    if (cleaned[0].question) {
+                        annotation.question = cleaned[0].question;
+                    } else {
+                        delete annotation.question;
+                    }
+                }
             }
             annotation.updatedAt = now;
 

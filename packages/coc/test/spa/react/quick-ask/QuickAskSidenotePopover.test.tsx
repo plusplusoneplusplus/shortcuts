@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { QuickAskSidenotePopover }
+import { QuickAskSidenotePopover, type QuickAskReply }
     from '../../../../src/server/spa/client/react/features/chat/quick-ask/QuickAskSidenotePopover';
-import type { ClientSideNote }
+import type { ClientSideNote, QuickAskTurn }
     from '../../../../src/server/spa/client/react/features/chat/quick-ask/types';
 
 function note(overrides: Partial<ClientSideNote> = {}): ClientSideNote {
@@ -184,5 +184,192 @@ describe('QuickAskSidenotePopover - resolve/reopen control (Goal 4 AC-02)', () =
             />,
         );
         expect(screen.queryByTestId('quick-ask-popover-resolve')).toBeNull();
+    });
+});
+
+/** A ready thread turn. */
+function turn(overrides: Partial<QuickAskTurn> = {}): QuickAskTurn {
+    return { question: undefined, answer: 'A fused batched matmul kernel.', status: 'ready', ...overrides };
+}
+
+function renderWithReply(reply: Partial<QuickAskReply> = {}, onDelete = vi.fn()) {
+    const full: QuickAskReply = {
+        turns: [turn()],
+        onSend: vi.fn(),
+        onRetry: vi.fn(),
+        ...reply,
+    };
+    render(
+        <QuickAskSidenotePopover
+            note={note()}
+            position={{ top: 100, left: 100 }}
+            onClose={noop}
+            onCopy={noop}
+            onRetry={noop}
+            onDelete={onDelete}
+            reply={full}
+        />,
+    );
+    return full;
+}
+
+describe('QuickAskSidenotePopover - AC-02 reply row', () => {
+    it('renders no reply input without the reply prop (chat side-notes unchanged)', () => {
+        render(
+            <QuickAskSidenotePopover
+                note={note()}
+                position={{ top: 100, left: 100 }}
+                onClose={noop}
+                onCopy={noop}
+                onRetry={noop}
+                onDelete={noop}
+            />,
+        );
+        expect(screen.queryByTestId('quick-ask-reply-input')).toBeNull();
+        // The one-shot Copy/Dismiss keep their text labels.
+        expect(screen.getByTestId('quick-ask-popover-dismiss')).toHaveTextContent('Dismiss');
+    });
+
+    it('renders the always-visible reply input + icon-only Copy/Dismiss with the reply prop', () => {
+        renderWithReply();
+        expect(screen.getByTestId('quick-ask-reply-input')).toBeInTheDocument();
+        // Icon-only on the reply row (no "Copy"/"Dismiss" word).
+        expect(screen.getByTestId('quick-ask-popover-copy')).not.toHaveTextContent('Copy');
+        expect(screen.getByTestId('quick-ask-popover-dismiss')).not.toHaveTextContent('Dismiss');
+    });
+
+    it('renders every thread turn as a stacked Q/A block', () => {
+        renderWithReply({
+            turns: [
+                turn({ question: undefined, answer: 'first answer' }),
+                turn({ question: 'give an example', answer: 'second answer' }),
+            ],
+        });
+        expect(screen.getAllByTestId('quick-ask-thread-turn')).toHaveLength(2);
+        const answers = screen.getAllByTestId('quick-ask-popover-answer');
+        expect(answers[0].textContent).toContain('first answer');
+        expect(answers[1].textContent).toContain('second answer');
+        expect(screen.getByTestId('quick-ask-popover-question').textContent).toContain('give an example');
+    });
+
+    it('Enter (no modifier) sends a trimmed follow-up and clears the input', () => {
+        const reply = renderWithReply();
+        const input = screen.getByTestId('quick-ask-reply-input') as HTMLTextAreaElement;
+        fireEvent.change(input, { target: { value: '  give an example  ' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(reply.onSend).toHaveBeenCalledTimes(1);
+        expect(reply.onSend).toHaveBeenCalledWith('give an example');
+        expect(input.value).toBe('');
+    });
+
+    it('Enter on an empty input is a no-op', () => {
+        const reply = renderWithReply();
+        const input = screen.getByTestId('quick-ask-reply-input');
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(reply.onSend).not.toHaveBeenCalled();
+    });
+
+    it('Shift+Enter does NOT send (newline)', () => {
+        const reply = renderWithReply();
+        const input = screen.getByTestId('quick-ask-reply-input');
+        fireEvent.change(input, { target: { value: 'a follow-up' } });
+        fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
+        expect(reply.onSend).not.toHaveBeenCalled();
+    });
+
+    it('does not send while a follow-up is in flight (disabled)', () => {
+        const reply = renderWithReply({ disabled: true });
+        const input = screen.getByTestId('quick-ask-reply-input') as HTMLTextAreaElement;
+        expect(input.disabled).toBe(true);
+        fireEvent.change(input, { target: { value: 'blocked' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(reply.onSend).not.toHaveBeenCalled();
+    });
+
+    it('shows a cap notice and disables the input at the soft cap', () => {
+        const reply = renderWithReply({ atCap: true, maxTurns: 10 });
+        const input = screen.getByTestId('quick-ask-reply-input') as HTMLTextAreaElement;
+        expect(input.disabled).toBe(true);
+        const notice = screen.getByTestId('quick-ask-reply-cap-notice');
+        expect(notice.textContent).toContain('10');
+        fireEvent.change(input, { target: { value: 'too many' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(reply.onSend).not.toHaveBeenCalled();
+    });
+
+    it('a per-turn error shows an inline Retry keyed to its turn index', () => {
+        const reply = renderWithReply({
+            turns: [
+                turn({ answer: 'first answer' }),
+                turn({ question: 'and?', answer: '', status: 'error', error: 'Lookup failed' }),
+            ],
+        });
+        expect(screen.getByTestId('quick-ask-popover-error')).toBeInTheDocument();
+        fireEvent.click(screen.getByTestId('quick-ask-popover-retry'));
+        expect(reply.onRetry).toHaveBeenCalledWith(1);
+    });
+
+    it('hides Copy until at least one turn is ready', () => {
+        renderWithReply({ turns: [turn({ question: 'q', answer: '', status: 'asking' })] });
+        expect(screen.queryByTestId('quick-ask-popover-copy')).toBeNull();
+        expect(screen.getByTestId('quick-ask-popover-loading')).toBeInTheDocument();
+    });
+
+    it('Dismiss on the reply row deletes the note and closes', () => {
+        const onDelete = vi.fn();
+        renderWithReply({}, onDelete);
+        fireEvent.click(screen.getByTestId('quick-ask-popover-dismiss'));
+        expect(onDelete).toHaveBeenCalledWith('n1');
+    });
+
+    it('Copy on a multi-turn thread passes the full Q/A transcript (AC-03)', () => {
+        const onCopy = vi.fn();
+        const full: QuickAskReply = {
+            turns: [
+                turn({ question: undefined, answer: 'first answer' }),
+                turn({ question: 'give an example', answer: 'second answer' }),
+            ],
+            onSend: vi.fn(),
+            onRetry: vi.fn(),
+        };
+        render(
+            <QuickAskSidenotePopover
+                note={note()}
+                position={{ top: 100, left: 100 }}
+                onClose={noop}
+                onCopy={onCopy}
+                onRetry={noop}
+                onDelete={noop}
+                reply={full}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('quick-ask-popover-copy'));
+        expect(onCopy).toHaveBeenCalledTimes(1);
+        const text = onCopy.mock.calls[0][1] as string;
+        expect(text).toContain('first answer');
+        expect(text).toContain('Q: give an example');
+        expect(text).toContain('A: second answer');
+    });
+
+    it('Copy on a single-turn thread passes just the answer (parity with one-shot)', () => {
+        const onCopy = vi.fn();
+        const full: QuickAskReply = {
+            turns: [turn({ question: 'q', answer: 'only answer' })],
+            onSend: vi.fn(),
+            onRetry: vi.fn(),
+        };
+        render(
+            <QuickAskSidenotePopover
+                note={note()}
+                position={{ top: 100, left: 100 }}
+                onClose={noop}
+                onCopy={onCopy}
+                onRetry={noop}
+                onDelete={noop}
+                reply={full}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('quick-ask-popover-copy'));
+        expect(onCopy.mock.calls[0][1]).toBe('only answer');
     });
 });

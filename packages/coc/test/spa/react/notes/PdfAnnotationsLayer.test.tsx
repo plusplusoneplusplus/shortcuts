@@ -175,6 +175,109 @@ describe('PdfAnnotationsLayer — reopen + dismiss', () => {
     });
 });
 
+describe('PdfAnnotationsLayer — reopen thread + follow-up (AC-03)', () => {
+    const threaded = () => annotation({
+        id: 'a1',
+        question: 'What is it?',
+        answer: 'A bandwidth-optimal collective.',
+        turns: [
+            { question: 'What is it?', answer: 'A bandwidth-optimal collective.' },
+            { question: 'Give an example', answer: 'Ring all-reduce in Horovod.' },
+        ],
+    });
+
+    it('reopens a persisted multi-turn thread as stacked Q/A blocks', async () => {
+        fetchApiMock.mockResolvedValue(sidecar(threaded()));
+        render(<Harness />);
+        fireEvent.click(await screen.findByTestId('quick-ask-chip-inline'));
+        await screen.findByTestId('quick-ask-popover');
+
+        expect(screen.getAllByTestId('quick-ask-thread-turn')).toHaveLength(2);
+        const answers = screen.getAllByTestId('quick-ask-popover-answer');
+        expect(answers[0]).toHaveTextContent('bandwidth-optimal');
+        expect(answers[1]).toHaveTextContent('Horovod');
+        // Reply row is present (this annotation has a text quote to re-ground on).
+        expect(screen.getByTestId('quick-ask-reply-input')).toBeInTheDocument();
+    });
+
+    it('sends a follow-up with prior turns as history and re-persists the turns array', async () => {
+        fetchApiMock.mockResolvedValue(sidecar(threaded()));
+        render(<Harness />);
+        fireEvent.click(await screen.findByTestId('quick-ask-chip-inline'));
+        const input = await screen.findByTestId('quick-ask-reply-input');
+
+        fetchApiMock.mockResolvedValueOnce({ answer: 'Yes, in NCCL too.', model: 'm2' }); // the answer POST
+        fireEvent.change(input, { target: { value: 'Any others?' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+
+        // The answer POST hits the stateless endpoint carrying the original
+        // selection grounding + the prior ready turns as history.
+        await waitFor(() => {
+            const post = fetchApiMock.mock.calls.find(([p]) =>
+                String(p).includes('/api/quick-ask/answer'));
+            expect(post).toBeTruthy();
+        });
+        const post = fetchApiMock.mock.calls.find(([p]) =>
+            String(p).includes('/api/quick-ask/answer'))!;
+        const body = JSON.parse(String((post[1] as RequestInit).body));
+        expect(body.selectedText).toBe('ring all-reduce');
+        expect(body.question).toBe('Any others?');
+        expect(body.history).toEqual([
+            { question: 'What is it?', answer: 'A bandwidth-optimal collective.' },
+            { question: 'Give an example', answer: 'Ring all-reduce in Horovod.' },
+        ]);
+
+        // On success the accumulated thread is PATCHed back to the sidecar.
+        await waitFor(() => {
+            const patch = fetchApiMock.mock.calls.find(
+                ([p, o]) => (o as RequestInit | undefined)?.method === 'PATCH'
+                    && String(p).includes('/paper-annotations/annotation/a1'));
+            expect(patch).toBeTruthy();
+        });
+        const patch = fetchApiMock.mock.calls.find(
+            ([p, o]) => (o as RequestInit | undefined)?.method === 'PATCH'
+                && String(p).includes('/paper-annotations/annotation/a1'))!;
+        const pbody = JSON.parse(String((patch[1] as RequestInit).body));
+        expect(pbody.turns).toEqual([
+            { question: 'What is it?', answer: 'A bandwidth-optimal collective.' },
+            { question: 'Give an example', answer: 'Ring all-reduce in Horovod.' },
+            { question: 'Any others?', answer: 'Yes, in NCCL too.' },
+        ]);
+        // The new turn renders in the thread.
+        await waitFor(() =>
+            expect(screen.getAllByTestId('quick-ask-thread-turn')).toHaveLength(3));
+    });
+
+    it('Copy on a reopened multi-turn thread copies the whole transcript', async () => {
+        const writeText = vi.fn();
+        Object.assign(navigator, { clipboard: { writeText } });
+        fetchApiMock.mockResolvedValue(sidecar(threaded()));
+        render(<Harness />);
+        fireEvent.click(await screen.findByTestId('quick-ask-chip-inline'));
+        fireEvent.click(await screen.findByTestId('quick-ask-popover-copy'));
+
+        expect(writeText).toHaveBeenCalledTimes(1);
+        const copied = writeText.mock.calls[0][0] as string;
+        expect(copied).toContain('Q: What is it?');
+        expect(copied).toContain('A: A bandwidth-optimal collective.');
+        expect(copied).toContain('Q: Give an example');
+        expect(copied).toContain('A: Ring all-reduce in Horovod.');
+    });
+
+    it('a region-only annotation reopens one-shot (no reply row)', async () => {
+        fetchApiMock.mockResolvedValue(sidecar(annotation({
+            id: 'r1',
+            quote: undefined,
+            region: { page: 2, rect: { x: 0.1, y: 0.1, width: 0.4, height: 0.3 } },
+            question: 'What does this figure show?',
+        })));
+        render(<Harness />);
+        fireEvent.click(await screen.findByTestId('paper-annotation-overlay'));
+        await screen.findByTestId('quick-ask-popover');
+        expect(screen.queryByTestId('quick-ask-reply-input')).toBeNull();
+    });
+});
+
 describe('PdfAnnotationsLayer — region annotations (Goal 4 AC-01)', () => {
     it('paints a region-anchor box for a figure annotation with no text quote', async () => {
         fetchApiMock.mockResolvedValue(sidecar(annotation({
@@ -297,8 +400,10 @@ describe('PdfAnnotationsLayer — resolve + filter (Goal 4 AC-02)', () => {
         const chip = await screen.findByTestId('quick-ask-chip-inline');
         fireEvent.click(chip);
 
+        // Reopened text-quote annotations render in reply (thread) mode, so the
+        // Resolve control is the icon-only variant (title carries the intent).
         const resolveBtn = await screen.findByTestId('quick-ask-popover-resolve');
-        expect(resolveBtn).toHaveTextContent('Resolve');
+        expect(resolveBtn).toHaveAttribute('title', 'Mark this annotation resolved');
 
         fetchApiMock.mockResolvedValue({ annotation: annotation({ id: 'a1', resolved: true }) });
         fireEvent.click(resolveBtn);
@@ -325,7 +430,7 @@ describe('PdfAnnotationsLayer — resolve + filter (Goal 4 AC-02)', () => {
         fireEvent.click(chip);
 
         const reopenBtn = await screen.findByTestId('quick-ask-popover-resolve');
-        expect(reopenBtn).toHaveTextContent('Reopen');
+        expect(reopenBtn).toHaveAttribute('title', 'Reopen this annotation');
 
         fireEvent.click(reopenBtn);
         await waitFor(() => {

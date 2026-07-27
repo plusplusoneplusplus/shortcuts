@@ -22,6 +22,7 @@ import type { Editor } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { findAnchorInDoc } from '../commentAnchoring';
 import type { TextAnchor } from '../textAnchor';
+import { encodeQaTurns, type QaTurn } from './sidenoteFootnote';
 import { QA_SIDENOTE_NODE_NAME } from './sidenoteRefExtension';
 
 /** The payload persisted into the `qaSidenoteRef` node (and thence the `.md`). */
@@ -32,6 +33,12 @@ export interface SidenoteRefPayload {
     question?: string;
     /** The frozen one-shot answer text. */
     answer: string;
+    /**
+     * The full multi-turn thread to persist on the marker's `data-qa-turns`
+     * attribute (AC-03). Omitted → only the turn-0 `question`/`answer` mirror is
+     * written (back-compat with a plain one-shot ask).
+     */
+    turns?: QaTurn[];
 }
 
 /** The anchor phrase + its surrounding window, as captured at ask time. */
@@ -90,6 +97,10 @@ export function insertSidenoteRef(
                     refId: payload.refId,
                     question: payload.question ?? null,
                     answer: payload.answer,
+                    turns:
+                        payload.turns && payload.turns.length
+                            ? encodeQaTurns(payload.turns)
+                            : null,
                     selectedText: anchor.selectedText,
                     contextBefore: anchor.contextBefore ?? '',
                     contextAfter: anchor.contextAfter ?? '',
@@ -98,6 +109,47 @@ export function insertSidenoteRef(
             { updateSelection: false },
         )
         .run();
+    return true;
+}
+
+/**
+ * Re-write the `turns` (and turn-0 `question`/`answer` mirror) attributes of the
+ * `qaSidenoteRef` marker with `refId` so a follow-up thread is persisted into the
+ * live document — and thence the `.md` on the next save (AC-03). The marker is
+ * inserted turn-0-only by {@link insertSidenoteRef}; each subsequent follow-up
+ * answer folds the accumulated ready turns back onto the same marker here.
+ *
+ * Returns `true` when a matching marker was found and updated, `false` when the
+ * editor is unavailable, `turns` is empty, or no marker with that id exists
+ * (e.g. the anchor phrase was deleted so the marker was never embedded — the
+ * in-session thread still updates, only persistence is skipped).
+ */
+export function updateSidenoteRefTurns(
+    editor: Editor | null | undefined,
+    refId: string,
+    turns: QaTurn[],
+): boolean {
+    if (!editor || editor.isDestroyed || !refId || turns.length === 0) return false;
+    const { state, view } = editor;
+    const targets: Array<{ pos: number; node: ProseMirrorNode }> = [];
+    state.doc.descendants((node, pos) => {
+        if (node.type.name === QA_SIDENOTE_NODE_NAME && node.attrs.refId === refId) {
+            targets.push({ pos, node });
+            return false;
+        }
+        return true;
+    });
+    if (targets.length === 0) return false;
+    const { pos, node } = targets[0];
+    const first = turns[0];
+    view.dispatch(
+        state.tr.setNodeMarkup(pos, undefined, {
+            ...node.attrs,
+            turns: encodeQaTurns(turns),
+            question: first.question ?? null,
+            answer: first.answer,
+        }),
+    );
     return true;
 }
 

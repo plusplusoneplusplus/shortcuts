@@ -52,14 +52,14 @@ const CODEX_DEFAULTS: EffortTierDefaultsMap = {
 };
 
 // Claude tier models use the Claude CLI catalog aliases ('opus', 'sonnet',
-// 'haiku') — the ids the CLI's initialize response advertises and accepts as
-// `--model` values. Haiku advertises no effort levels, so its tier pins no
-// reasoning effort.
+// 'haiku', 'fable') — the ids the CLI's initialize response advertises and
+// accepts as `--model` values. Haiku advertises no effort levels, so its tier
+// pins no reasoning effort.
 const CLAUDE_DEFAULTS: EffortTierDefaultsMap = {
     'very-low': { model: 'haiku',  reasoningEffort: null     },
     low:    { model: 'sonnet', reasoningEffort: 'high'   },
     medium: { model: 'opus',   reasoningEffort: 'medium' },
-    high:   { model: 'opus',   reasoningEffort: 'xhigh'  },
+    high:   { model: 'fable',  reasoningEffort: 'medium' },
 };
 
 // OpenCode uses provider/model composite IDs. These defaults use well-known

@@ -56,10 +56,10 @@ describe('resolveEffortTierConfig', () => {
         expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
     });
 
-    it('resolves Claude tiers to CLI catalog aliases (regression: high tier xhigh)', () => {
+    it('resolves Claude tiers to CLI catalog aliases (regression: high tier uses a catalog alias)', () => {
         // The Claude high-tier default must reference a model id the Claude
-        // CLI catalog advertises ('opus'), so executor-side effort validation
-        // can resolve its supported efforts and accept xhigh.
+        // CLI catalog advertises ('fable'), so executor-side effort validation
+        // can resolve its supported efforts and accept the pinned effort.
         const input = makeInput({
             payload: { kind: 'chat', mode: 'autopilot', prompt: 'test', provider: 'claude' },
             config: { effortTier: 'high' } as CreateTaskInput['config'] & { effortTier: string },
@@ -67,8 +67,8 @@ describe('resolveEffortTierConfig', () => {
 
         resolveEffortTierConfig(input, makeContext());
 
-        expect(input.config.model).toBe('opus');
-        expect(input.config.reasoningEffort).toBe('xhigh');
+        expect(input.config.model).toBe('fable');
+        expect(input.config.reasoningEffort).toBe('medium');
         expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
     });
 

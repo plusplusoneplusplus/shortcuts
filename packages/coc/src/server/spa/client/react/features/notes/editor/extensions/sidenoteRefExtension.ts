@@ -170,6 +170,15 @@ export const SidenoteRefExtension = Node.create({
                 renderHTML: (attrs) =>
                     attrs.answer != null ? { 'data-qa-answer': attrs.answer } : {},
             },
+            // The full multi-turn thread, carried verbatim as a JSON string so it
+            // survives an edit/save cycle (AC-03). Opaque to the node — parsed and
+            // re-encoded only on the `.md` save path (see appendQaFootnoteDefs).
+            turns: {
+                default: null,
+                parseHTML: (el: HTMLElement) => el.getAttribute('data-qa-turns') || null,
+                renderHTML: (attrs) =>
+                    attrs.turns ? { 'data-qa-turns': attrs.turns } : {},
+            },
             selectedText: {
                 default: null,
                 parseHTML: (el: HTMLElement) => el.getAttribute('data-qa-selected-text') || null,

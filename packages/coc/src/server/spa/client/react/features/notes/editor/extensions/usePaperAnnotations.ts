@@ -16,6 +16,7 @@ import { fetchApi } from '../../../../hooks/useApi';
 import type {
     PaperAnnotation,
     PaperAnnotationsSidecar,
+    PaperAnnotationTurn,
 } from '../../../../../../../notes/paper-annotations-types';
 
 /**
@@ -35,6 +36,13 @@ export interface UsePaperAnnotationsResult {
      * so local state can never drift from the persisted file.
      */
     setResolved: (id: string, resolved: boolean) => void;
+    /**
+     * Optimistically overwrite an annotation's multi-turn thread (AC-03) after a
+     * follow-up on a reopened paper annotation, and PATCH the sidecar `turns`.
+     * Turn 0 is mirrored to the top-level `question`/`answer`. Best-effort — a
+     * failed request re-loads from the server so local state can never drift.
+     */
+    setTurns: (id: string, turns: PaperAnnotationTurn[]) => void;
 }
 
 export function usePaperAnnotations(
@@ -120,5 +128,37 @@ export function usePaperAnnotations(
         });
     }, [enabled, workspaceId, getNotePath, getNoteRoot, load]);
 
-    return { annotations, reload, removeLocal, setResolved };
+    const setTurns = useCallback((id: string, turns: PaperAnnotationTurn[]) => {
+        if (!turns.length) {return;}
+        const now = new Date().toISOString();
+        // Optimistic local update so the reopened thread renders the new turn
+        // immediately; mirror turn 0 to the top-level question/answer.
+        setAnnotations(prev => prev.map(a => a.id !== id
+            ? a
+            : {
+                ...a,
+                turns,
+                answer: turns[0].answer,
+                question: turns[0].question,
+                updatedAt: now,
+            }));
+
+        if (!enabled || !workspaceId) {return;}
+        const notePath = getNotePath?.();
+        if (!notePath) {return;}
+        const body: { path: string; turns: PaperAnnotationTurn[]; root?: string } = { path: notePath, turns };
+        const root = getNoteRoot?.();
+        if (root) {body.root = root;}
+        const apiPath = `/api/workspaces/${encodeURIComponent(workspaceId)}/notes/paper-annotations/annotation/${encodeURIComponent(id)}`;
+        void fetchApi(apiPath, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        }).catch(() => {
+            // Roll the optimistic change back to whatever the server actually has.
+            load();
+        });
+    }, [enabled, workspaceId, getNotePath, getNoteRoot, load]);
+
+    return { annotations, reload, removeLocal, setResolved, setTurns };
 }

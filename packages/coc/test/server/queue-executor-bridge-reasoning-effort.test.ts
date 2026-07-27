@@ -533,7 +533,7 @@ describe('reasoningEffort wiring in queue executor bridge', () => {
     }
 
     // -------------------------------------------------------------------------
-    it("executeWithAI() resolves the Claude high-tier default ('opus' + xhigh) against the CLI alias catalog", async () => {
+    it("executeWithAI() resolves the 'opus' + xhigh Claude tier alias against the CLI alias catalog", async () => {
         getModelSpy.mockReturnValue(undefined);
         sdkMocks.mockListModels.mockResolvedValue(claudeCliCatalog());
 

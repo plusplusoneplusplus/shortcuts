@@ -293,6 +293,39 @@ describe('PdfQuickAskLayer — Goal 2 persistence (write path)', () => {
 
         expect(screen.getByTestId('quick-ask-popover-answer').textContent).toContain('still here');
     });
+
+    it('a follow-up on a fresh paper ask PATCHes the accumulated turns onto the created annotation (AC-03)', async () => {
+        geomMock.mockReturnValue(RECT_ANCHOR);
+        fetchApiMock.mockResolvedValueOnce({ answer: 'A bandwidth-optimal collective.', model: 'm1' }); // turn 0 answer
+        fetchApiMock.mockResolvedValueOnce({ annotation: { id: 'srv-1' } }); // create POST → server id
+
+        await askAndAnswer({ pdfUrl: 'paper.pdf', notePath: 'notes/paper.md', noteRoot: 'r1' });
+
+        const input = await screen.findByTestId('quick-ask-reply-input');
+        fetchApiMock.mockResolvedValueOnce({ answer: 'e.g. NCCL uses it.', model: 'm1' }); // follow-up answer
+        fetchApiMock.mockResolvedValueOnce({ annotation: { id: 'srv-1' } }); // the PATCH turns response
+        fireEvent.change(input, { target: { value: 'an example?' } });
+        fireEvent.keyDown(input, { key: 'Enter' });
+
+        // The follow-up re-persists the whole thread onto the annotation created
+        // by turn 0 — via the PATCH `turns` route keyed on the server id.
+        await waitFor(() => {
+            const patch = fetchApiMock.mock.calls.find(
+                ([p, o]) => (o as RequestInit | undefined)?.method === 'PATCH'
+                    && String(p).includes('/paper-annotations/annotation/srv-1'));
+            expect(patch).toBeTruthy();
+        });
+        const patch = fetchApiMock.mock.calls.find(
+            ([p, o]) => (o as RequestInit | undefined)?.method === 'PATCH'
+                && String(p).includes('/paper-annotations/annotation/srv-1'))!;
+        const pbody = JSON.parse(String((patch[1] as RequestInit).body));
+        expect(pbody.path).toBe('notes/paper.md');
+        expect(pbody.root).toBe('r1');
+        expect(pbody.turns).toEqual([
+            { answer: 'A bandwidth-optimal collective.' }, // turn 0 had no custom question
+            { question: 'an example?', answer: 'e.g. NCCL uses it.' },
+        ]);
+    });
 });
 
 describe('PdfQuickAskLayer — Goal 3 AC-04 "use full paper" toggle', () => {

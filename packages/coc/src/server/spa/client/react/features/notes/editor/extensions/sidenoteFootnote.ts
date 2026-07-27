@@ -13,14 +13,18 @@
  *
  * ## Markdown form
  *   Inline marker (at the phrase):  `[^qa-<id>]`
- *   Definition block (file bottom): `[^qa-<id>]: {"q":"…","a":"…"}`
+ *   Definition block (file bottom): `[^qa-<id>]: {"turns":[{"q":"…","a":"…"},…]}`
  *
- * The definition payload is a single-line JSON object with a fixed key order
- * (`q` optional, then `a`, then optional anchor fields) so the construct
- * round-trips byte-for-byte. The `qa-`
- * namespace on every footnote label keeps these markers from colliding with an
- * ordinary `[^1]`-style footnote a user might type (which the pipeline leaves as
- * literal text).
+ * The definition payload is a single-line JSON object holding the full
+ * multi-turn thread as an ordered `turns` array (AC-03), with a fixed key order
+ * (`turns` first, then optional `s`/`p`/`x` anchor fields; `q` optional then `a`
+ * within each turn) so the construct round-trips byte-for-byte. A legacy
+ * single-pair `{"q","a"}` payload (written before follow-ups existed) is still
+ * decoded — as a one-turn thread — so old notes keep their answer without a
+ * migration pass; it is re-serialized in the turns form on the next save. The
+ * `qa-` namespace on every footnote label keeps these markers from colliding
+ * with an ordinary `[^1]`-style footnote a user might type (which the pipeline
+ * leaves as literal text).
  *
  * ## Why the definition never enters the Tiptap document
  * On load the definition lines are stripped out of the body and folded into the
@@ -58,12 +62,20 @@ const QA_DEF_LINE_RE = /^\[\^qa-([A-Za-z0-9_-]+)\]:[ \t]*(.*)$/;
 const QA_BARE_REF_SPAN_RE =
     /<span class="qa-sidenote-ref" data-qa-id="([A-Za-z0-9_-]+)">✨<\/span>/g;
 
-/** Answer + optional question for one side-note. */
-export interface QaFootnoteDef {
-    /** The question the user asked, if any (a default ask persists as absent). */
+/** One ordered turn of a Quick Ask thread: an answer and its optional question. */
+export interface QaTurn {
+    /** The question the user asked for this turn, if any (a default first ask
+     * persists as absent). */
     question?: string;
-    /** The frozen one-shot answer text. */
+    /** The frozen answer text for this turn. */
     answer: string;
+}
+
+/** The full multi-turn Quick Ask thread for one side-note (AC-03). */
+export interface QaFootnoteDef {
+    /** The ordered conversation turns. Turn 0 is the original ask. Always at
+     * least one turn for a persisted note. */
+    turns: QaTurn[];
     /** Exact text selected when the side-note was created. */
     selectedText?: string;
     /** Plain-text context immediately before the selection. */
@@ -75,16 +87,70 @@ export interface QaFootnoteDef {
 // ── payload codec ────────────────────────────────────────────────────────────
 
 /**
- * Serialize a side-note payload to the single-line JSON stored after `:` in a
- * definition. Key order is fixed (`q`, `a`, then `s`/`p`/`x` for the optional
- * selected text/prefix/suffix) and an empty/absent question is omitted, so the
- * same payload always encodes to the same bytes. Anchor fields are emitted only
- * when selected text is present, keeping legacy payloads byte-stable.
+ * Serialize one turn to a fixed-key-order object (`q` optional, then `a`), so
+ * the same turn always encodes to the same bytes. An empty/absent question is
+ * omitted.
+ */
+function serializeTurn(turn: QaTurn): Record<string, string> {
+    const obj: Record<string, string> = {};
+    if (turn.question != null && turn.question !== '') obj.q = turn.question;
+    obj.a = turn.answer;
+    return obj;
+}
+
+/**
+ * Serialize just the ordered turns array to its single-line JSON form
+ * (`[{"a":"…"},{"q":"…","a":"…"}]`). Shared by {@link encodeQaPayload} (the `.md`
+ * definition payload) and the `data-qa-turns` marker attribute so the two forms
+ * stay byte-identical across a save/reload cycle.
+ */
+export function encodeQaTurns(turns: QaTurn[]): string {
+    return JSON.stringify(turns.map(serializeTurn));
+}
+
+/**
+ * Parse a `data-qa-turns` attribute value (a JSON turns array) back into turns.
+ * Returns `null` for anything that is not a non-empty array of `{a:string}`
+ * objects, so a corrupt attribute degrades gracefully. Turns whose answer is not
+ * a string are dropped.
+ */
+export function decodeQaTurns(raw: string): QaTurn[] | null {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    try {
+        const arr = JSON.parse(trimmed) as unknown;
+        return toTurns(arr);
+    } catch {
+        return null;
+    }
+}
+
+/** Coerce a parsed JSON value into a non-empty turns array, or `null`. */
+function toTurns(arr: unknown): QaTurn[] | null {
+    if (!Array.isArray(arr)) return null;
+    const turns: QaTurn[] = [];
+    for (const entry of arr) {
+        if (entry && typeof entry === 'object' && typeof (entry as any).a === 'string') {
+            const q = (entry as any).q;
+            turns.push({
+                answer: (entry as any).a,
+                question: typeof q === 'string' && q !== '' ? q : undefined,
+            });
+        }
+    }
+    return turns.length ? turns : null;
+}
+
+/**
+ * Serialize a side-note thread to the single-line JSON stored after `:` in a
+ * definition. Key order is fixed (`turns`, then `s`/`p`/`x` for the optional
+ * selected text/prefix/suffix), so the same payload always encodes to the same
+ * bytes. Anchor fields are emitted only when selected text is present, keeping
+ * anchorless payloads compact.
  */
 export function encodeQaPayload(def: QaFootnoteDef): string {
-    const obj: Record<string, string> = {};
-    if (def.question != null && def.question !== '') obj.q = def.question;
-    obj.a = def.answer;
+    const obj: Record<string, unknown> = {};
+    obj.turns = def.turns.map(serializeTurn);
     if (def.selectedText != null && def.selectedText !== '') {
         obj.s = def.selectedText;
         obj.p = def.contextBefore ?? '';
@@ -94,36 +160,49 @@ export function encodeQaPayload(def: QaFootnoteDef): string {
 }
 
 /**
- * Parse a definition payload back into a side-note. Returns `null` for anything
- * that is not our JSON shape (e.g. a hand-written definition), so a malformed or
- * foreign definition is ignored rather than crashing the load (AC-05).
+ * Parse a definition payload back into a side-note thread. Accepts either the
+ * current `{"turns":[…]}` form or a legacy single-pair `{"q","a"}` payload
+ * (decoded as a one-turn thread so pre-follow-up notes keep their answer — no
+ * migration pass). Returns `null` for anything that is not one of our JSON
+ * shapes (e.g. a hand-written definition), so a malformed or foreign definition
+ * is ignored rather than crashing the load (AC-05).
  */
 export function decodeQaPayload(raw: string): QaFootnoteDef | null {
     const trimmed = raw.trim();
     if (!trimmed) return null;
     try {
         const obj = JSON.parse(trimmed) as unknown;
-        if (obj && typeof obj === 'object' && typeof (obj as any).a === 'string') {
-            const question = (obj as any).q;
-            const selectedText = (obj as any).s;
-            const contextBefore = (obj as any).p;
-            const contextAfter = (obj as any).x;
-            const def: QaFootnoteDef = {
+        if (!obj || typeof obj !== 'object') return null;
+
+        let turns: QaTurn[] | null = null;
+        if (Array.isArray((obj as any).turns)) {
+            // Current multi-turn form.
+            turns = toTurns((obj as any).turns);
+        } else if (typeof (obj as any).a === 'string') {
+            // Legacy single-pair `{q,a}` — read as a one-turn thread (no migration).
+            const q = (obj as any).q;
+            turns = [{
                 answer: (obj as any).a,
-                question: typeof question === 'string' && question !== '' ? question : undefined,
-            };
-            if (
-                typeof selectedText === 'string' &&
-                selectedText !== '' &&
-                typeof contextBefore === 'string' &&
-                typeof contextAfter === 'string'
-            ) {
-                def.selectedText = selectedText;
-                def.contextBefore = contextBefore;
-                def.contextAfter = contextAfter;
-            }
-            return def;
+                question: typeof q === 'string' && q !== '' ? q : undefined,
+            }];
         }
+        if (!turns) return null;
+
+        const def: QaFootnoteDef = { turns };
+        const selectedText = (obj as any).s;
+        const contextBefore = (obj as any).p;
+        const contextAfter = (obj as any).x;
+        if (
+            typeof selectedText === 'string' &&
+            selectedText !== '' &&
+            typeof contextBefore === 'string' &&
+            typeof contextAfter === 'string'
+        ) {
+            def.selectedText = selectedText;
+            def.contextBefore = contextBefore;
+            def.contextAfter = contextAfter;
+        }
+        return def;
     } catch {
         /* not our payload — ignore */
     }
@@ -209,27 +288,33 @@ export function extractQaFootnoteDefs(md: string): {
 }
 
 /**
- * Fold each definition's answer/question into its matching marker span produced
- * by the marked tokenizer. A marker with no matching definition (anchorless) is
- * left bare so it still renders without crashing (AC-05).
+ * Fold each definition's thread into its matching marker span produced by the
+ * marked tokenizer. A marker with no matching definition (anchorless) is left
+ * bare so it still renders without crashing (AC-05).
+ *
+ * The full thread is folded in as a `data-qa-turns` JSON attribute (the
+ * save-path source of truth); turn 0's `data-qa-question`/`data-qa-answer` are
+ * also emitted as a display/back-compat mirror.
  */
 export function injectQaAnswers(html: string, defs: Map<string, QaFootnoteDef>): string {
     if (defs.size === 0) return html;
     return html.replace(QA_BARE_REF_SPAN_RE, (whole, id: string) => {
         const def = defs.get(id);
-        if (!def) return whole;
+        if (!def || def.turns.length === 0) return whole;
+        const first = def.turns[0];
+        const turns = ` data-qa-turns="${escapeHtmlAttr(encodeQaTurns(def.turns))}"`;
         const q =
-            def.question != null && def.question !== ''
-                ? ` data-qa-question="${escapeHtmlAttr(def.question)}"`
+            first.question != null && first.question !== ''
+                ? ` data-qa-question="${escapeHtmlAttr(first.question)}"`
                 : '';
-        const a = ` data-qa-answer="${escapeHtmlAttr(def.answer)}"`;
+        const a = ` data-qa-answer="${escapeHtmlAttr(first.answer)}"`;
         const anchor =
             def.selectedText != null && def.selectedText !== ''
                 ? ` data-qa-selected-text="${escapeHtmlAttr(def.selectedText)}"` +
                   ` data-qa-context-before="${escapeHtmlAttr(def.contextBefore ?? '')}"` +
                   ` data-qa-context-after="${escapeHtmlAttr(def.contextAfter ?? '')}"`
                 : '';
-        return `<span class="${QA_SIDENOTE_REF_CLASS}" data-qa-id="${id}"${q}${a}${anchor}>${QA_MARKER_GLYPH}</span>`;
+        return `<span class="${QA_SIDENOTE_REF_CLASS}" data-qa-id="${id}"${turns}${q}${a}${anchor}>${QA_MARKER_GLYPH}</span>`;
     });
 }
 
@@ -267,17 +352,30 @@ export function appendQaFootnoteDefs(md: string, html: string): string {
     spans.forEach((span) => {
         const id = span.getAttribute('data-qa-id');
         if (!id || seen.has(id)) return;
-        const answer = span.getAttribute('data-qa-answer') ?? '';
+
+        // Prefer the full thread carried in `data-qa-turns`. A freshly-inserted
+        // marker (turn-0-only persistence) carries no turns attribute, so fall
+        // back to the turn-0 `data-qa-answer`/`data-qa-question` mirror.
+        const turnsAttr = span.getAttribute('data-qa-turns');
+        let turns = turnsAttr ? decodeQaTurns(turnsAttr) : null;
+        if (!turns) {
+            const answer = span.getAttribute('data-qa-answer') ?? '';
+            if (answer !== '') {
+                const question = span.getAttribute('data-qa-question') || undefined;
+                turns = [{ question, answer }];
+            }
+        }
+        // Keep only turns with a real answer, dropping any degraded blank turns.
+        turns = turns ? turns.filter(t => t.answer !== '') : null;
         // An answerless marker is a degraded, manually-edited state: the user
         // hand-deleted the definition line in source view, leaving `[^qa-<id>]`
         // with nothing to fold back in. Emit no definition rather than
-        // resurrecting a meaningless `{"a":""}` line — the marker stays byte-stable
-        // and still renders as a bare chip (AC-05 manual-md tolerance). A real
-        // answered note is never empty (the layer rejects an empty answer before
-        // inserting the marker).
-        if (answer === '') return;
+        // resurrecting a meaningless `{"turns":[{"a":""}]}` line — the marker
+        // stays byte-stable and still renders as a bare chip (AC-05 manual-md
+        // tolerance). A real answered note is never empty (the layer rejects an
+        // empty answer before inserting the marker).
+        if (!turns || turns.length === 0) return;
         seen.add(id);
-        const question = span.getAttribute('data-qa-question') ?? undefined;
         const selectedText = span.getAttribute('data-qa-selected-text') || undefined;
         const contextBefore = selectedText
             ? span.getAttribute('data-qa-context-before') ?? ''
@@ -287,8 +385,7 @@ export function appendQaFootnoteDefs(md: string, html: string): string {
             : undefined;
         defLines.push(
             `[^${QA_LABEL_PREFIX}${id}]: ${encodeQaPayload({
-                question,
-                answer,
+                turns,
                 selectedText,
                 contextBefore,
                 contextAfter,

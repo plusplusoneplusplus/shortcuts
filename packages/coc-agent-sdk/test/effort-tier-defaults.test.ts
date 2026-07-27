@@ -61,7 +61,7 @@ describe('getDefaultEffortTiers', () => {
             'very-low': { model: 'haiku',  reasoningEffort: null     },
             low:    { model: 'sonnet', reasoningEffort: 'high'   },
             medium: { model: 'opus',   reasoningEffort: 'medium' },
-            high:   { model: 'opus',   reasoningEffort: 'xhigh'  },
+            high:   { model: 'fable',  reasoningEffort: 'medium' },
         });
     });
 

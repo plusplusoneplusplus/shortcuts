@@ -39,6 +39,34 @@ import { isImageDataUrl, saveImagesToTempFiles, cleanupTempDir } from '../../cor
 const MIN_SELECTION_CHARS = 2;
 /** Max context forwarded to the model on each side of the selection. */
 const MAX_CONTEXT_CHARS = 400;
+/**
+ * Soft cap on prior follow-up turns forwarded as conversation history
+ * (Goal quick-ask-follow-up, AC-01). Matches the client-side ~10-turn thread
+ * cap; oversized/malformed history is bounded to the most recent turns so a
+ * long thread can't blow up the prompt. Original grounding is always kept.
+ */
+const MAX_HISTORY_TURNS = 10;
+
+/**
+ * Defensively coerce a request `history` field into an ordered list of prior
+ * Q/A turns. A non-array, or entries without a usable string answer, are
+ * dropped; the result is bounded to the most recent {@link MAX_HISTORY_TURNS}.
+ * Absent/malformed history → `undefined` (identical to the one-shot behavior).
+ */
+function parseHistory(raw: unknown): Array<{ question?: string; answer: string }> | undefined {
+    if (!Array.isArray(raw)) {return undefined;}
+    const turns: Array<{ question?: string; answer: string }> = [];
+    for (const entry of raw) {
+        if (!entry || typeof entry !== 'object') {continue;}
+        const answer = typeof (entry as any).answer === 'string' ? (entry as any).answer : '';
+        if (!answer.trim()) {continue;}
+        const question = typeof (entry as any).question === 'string' && (entry as any).question.trim()
+            ? (entry as any).question.trim() : undefined;
+        turns.push({ question, answer });
+    }
+    if (turns.length === 0) {return undefined;}
+    return turns.slice(-MAX_HISTORY_TURNS);
+}
 
 const ANSWER_PATTERN = /^\/api\/quick-ask\/answer$/;
 
@@ -151,6 +179,11 @@ export function registerQuickAskAnswerRoutes(opts: QuickAskAnswerRouteOptions): 
                 paperText = text ?? undefined;
             }
 
+            // Ordered prior turns for a follow-up (Goal quick-ask-follow-up,
+            // AC-01). Stateless: the client re-sends the whole thread each time;
+            // absent/malformed history degrades to the one-shot answer.
+            const history = parseHistory(body.history);
+
             const model = resolveDefaultModel(dataDir, workspaceId, 'quickAsk');
             const prompt = buildSideNotePrompt({
                 selectedText: trimmedSelection,
@@ -158,6 +191,7 @@ export function registerQuickAskAnswerRoutes(opts: QuickAskAnswerRouteOptions): 
                 contextAfter,
                 question,
                 paperText,
+                history,
             });
 
             const aiResult = await invokeAI(prompt, model);
