@@ -487,6 +487,8 @@ all have their own `references/*.md`.
   `client.workItems.*ForOrigin(...)`, always passing `workspaceId`; workspace
   AI-draft route aliases are not registered.
 - **Direct package builds** use `scripts/prebuild.mjs` to build
-  `@plusplusoneplusplus/coc-client`, `@plusplusoneplusplus/coc-workflow`, and `@plusplusoneplusplus/coc-memory`
+  `@plusplusoneplusplus/coc-agent-sdk`, `@plusplusoneplusplus/coc-workflow`,
+  `@plusplusoneplusplus/coc-memory`, `@plusplusoneplusplus/forge`,
+  `@plusplusoneplusplus/coc-client`, and `@plusplusoneplusplus/coc-connector`
   before `tsc`, clean `dist` before emitting, and generate
   `src/server/core/build-info.ts`; keep this script cross-platform.
