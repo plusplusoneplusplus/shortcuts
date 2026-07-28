@@ -117,6 +117,11 @@ describe('getCommitChatLensDormantMode', () => {
         expect(getCommitChatLensDormantMode()).toBe('pill');
     });
 
+    it('returns ghost-then-pill when commitChatLensDormantMode is explicitly ghost-then-pill', () => {
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', commitChatLensDormantMode: 'ghost-then-pill' };
+        expect(getCommitChatLensDormantMode()).toBe('ghost-then-pill');
+    });
+
     it('returns ghost for unknown values', () => {
         (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', commitChatLensDormantMode: 'unknown' };
         expect(getCommitChatLensDormantMode()).toBe('ghost');

@@ -742,18 +742,19 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     }),
     {
         key: 'features.commitChatLensDormantMode',
-        value: { kind: 'enum', values: ['ghost', 'pill'], message: "features.commitChatLensDormantMode must be 'ghost' or 'pill'" },
+        value: { kind: 'enum', values: ['ghost', 'pill', 'ghost-then-pill'], message: "features.commitChatLensDormantMode must be 'ghost', 'pill', or 'ghost-then-pill'" },
         default: 'ghost',
         runtime: 'live',
         runtimeFlag: 'commitChatLensDormantMode',
         ui: {
             group: 'review', order: 50, label: 'Lens dormant mode', dependsOn: 'features.commitChatLens',
-            hint: 'How the lens recedes when your cursor leaves it. Ghost fades to near-transparent; Pill collapses to a compact status pill.',
+            hint: 'How the lens recedes when your cursor leaves it. Ghost fades to near-transparent; Pill collapses to a compact status pill; Ghost fade, then pill fades first and auto-collapses to the pill after 15s of inactivity.',
             control: {
                 type: 'select',
                 options: [
                     { value: 'ghost', label: 'Ghost fade' },
                     { value: 'pill', label: 'Collapse to pill' },
+                    { value: 'ghost-then-pill', label: 'Ghost fade, then pill' },
                 ],
             },
             testId: 'select-commit-chat-lens-dormant-mode',

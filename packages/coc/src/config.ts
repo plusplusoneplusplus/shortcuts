@@ -273,8 +273,8 @@ export interface CLIConfig {
         sessionContextAttachments?: boolean;
         /** Commit chat bottom-right lens placement on desktop commit-review surfaces. Disabled by default. */
         commitChatLens?: boolean;
-        /** Dormant mode for the lens when the cursor leaves: 'ghost' fades to near-transparent, 'pill' collapses to a compact pill. Defaults to 'ghost'. */
-        commitChatLensDormantMode?: 'ghost' | 'pill';
+        /** Dormant mode for the lens when the cursor leaves: 'ghost' fades to near-transparent, 'pill' collapses to a compact pill, 'ghost-then-pill' fades then auto-collapses to the pill after 15s. Defaults to 'ghost'. */
+        commitChatLensDormantMode?: 'ghost' | 'pill' | 'ghost-then-pill';
         /** Auto agent provider routing in Admin -> AI Provider. Disabled by default. */
         autoAgentProviderRouting?: boolean;
         /** Multi-agent Ralph grilling experience. Disabled by default. */
@@ -610,8 +610,8 @@ export interface ResolvedCLIConfig {
         sessionContextAttachments: boolean;
         /** Commit chat bottom-right lens placement on desktop commit-review surfaces. Disabled by default. */
         commitChatLens: boolean;
-        /** Dormant mode for the lens when the cursor leaves: 'ghost' fades to near-transparent, 'pill' collapses to a compact pill. Defaults to 'ghost'. */
-        commitChatLensDormantMode: 'ghost' | 'pill';
+        /** Dormant mode for the lens when the cursor leaves: 'ghost' fades to near-transparent, 'pill' collapses to a compact pill, 'ghost-then-pill' fades then auto-collapses to the pill after 15s. Defaults to 'ghost'. */
+        commitChatLensDormantMode: 'ghost' | 'pill' | 'ghost-then-pill';
         /** Auto agent provider routing in Admin -> AI Provider. Disabled by default. */
         autoAgentProviderRouting: boolean;
         /** Multi-agent Ralph grilling experience. Disabled by default. */

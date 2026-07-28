@@ -3,7 +3,7 @@ import type { CSSProperties, KeyboardEvent, MouseEvent as ReactMouseEvent, React
 import type { ReviewChatPresentation } from '../commits/commitChatPlacement';
 import { getCommitChatLensDormantMode } from '../../../utils/config';
 
-export type LensDormantMode = 'ghost' | 'pill';
+export type LensDormantMode = 'ghost' | 'pill' | 'ghost-then-pill';
 
 export interface ReviewChatPlacementFrameProps {
     title: string;
@@ -32,6 +32,12 @@ const LENS_MARGIN_PX = 16;
 const MIN_LENS_WIDTH_PX = 320;
 const MIN_LENS_HEIGHT_PX = 320;
 const DORMANT_DELAY_MS = 600;
+/**
+ * In 'ghost-then-pill' mode, how long the lens stays in the faded ghost
+ * sub-state (after losing focus) before auto-collapsing to the compact pill.
+ * Fixed by design — not user-configurable.
+ */
+const GHOST_TO_PILL_DELAY_MS = 15000;
 const DORMANT_TRANSITION_MS = 500;
 const DORMANT_GHOST_OPACITY = 0.18;
 const DORMANT_GHOST_SCALE = 0.94;
@@ -115,13 +121,24 @@ function useLensDormantState(
 ) {
     const [focused, setFocused] = useState(true);
     const focusedRef = useRef(true);
+    // In 'ghost-then-pill' mode, tracks whether the ghost has auto-collapsed to
+    // the compact pill. Always false in 'ghost'/'pill' modes.
+    const [collapsed, setCollapsed] = useState(false);
+    const collapsedRef = useRef(false);
     const dormantTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const ghostToPillTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const dormantMode = isLens ? getCommitChatLensDormantMode() : 'ghost';
 
     const setFocusedSync = useCallback((v: boolean) => {
         if (focusedRef.current === v) return;
         focusedRef.current = v;
         setFocused(v);
+    }, []);
+
+    const setCollapsedSync = useCallback((v: boolean) => {
+        if (collapsedRef.current === v) return;
+        collapsedRef.current = v;
+        setCollapsed(v);
     }, []);
 
     const clearDormantTimer = useCallback(() => {
@@ -131,15 +148,28 @@ function useLensDormantState(
         }
     }, []);
 
+    const clearGhostToPillTimer = useCallback(() => {
+        if (ghostToPillTimerRef.current) {
+            clearTimeout(ghostToPillTimerRef.current);
+            ghostToPillTimerRef.current = null;
+        }
+    }, []);
+
     useEffect(() => {
         if (!isLens || isExplicitlyMinimized) {
             clearDormantTimer();
+            clearGhostToPillTimer();
+            setCollapsedSync(false);
             setFocusedSync(true);
             return;
         }
 
         const tick = (cx: number, cy: number) => {
-            const isPill = dormantMode === 'pill' && !focusedRef.current;
+            // The active hit target is the compact pill only once the lens is
+            // actually collapsed to it: always in 'pill' dormant, or in
+            // 'ghost-then-pill' after the 15s ghost timer has fired.
+            const isPill = (dormantMode === 'pill' && !focusedRef.current)
+                || (dormantMode === 'ghost-then-pill' && collapsedRef.current);
             const hitEl = isPill ? pillRef.current : cardRef.current;
             if (!hitEl) return;
 
@@ -150,11 +180,21 @@ function useLensDormantState(
 
             if (inside) {
                 clearDormantTimer();
+                clearGhostToPillTimer();
+                setCollapsedSync(false);
                 setFocusedSync(true);
             } else if (focusedRef.current && !dormantTimerRef.current) {
                 dormantTimerRef.current = setTimeout(() => {
                     dormantTimerRef.current = null;
                     setFocusedSync(false);
+                    // Ghost-then-pill: start the fixed countdown from ghost to
+                    // the collapsed pill once the ghost sub-state is entered.
+                    if (dormantMode === 'ghost-then-pill' && !ghostToPillTimerRef.current) {
+                        ghostToPillTimerRef.current = setTimeout(() => {
+                            ghostToPillTimerRef.current = null;
+                            setCollapsedSync(true);
+                        }, GHOST_TO_PILL_DELAY_MS);
+                    }
                 }, DORMANT_DELAY_MS);
             }
         };
@@ -172,10 +212,11 @@ function useLensDormantState(
         return () => {
             window.removeEventListener('mousemove', onMove);
             clearDormantTimer();
+            clearGhostToPillTimer();
         };
-    }, [isLens, isExplicitlyMinimized, dormantMode, clearDormantTimer, setFocusedSync, cardRef, pillRef]);
+    }, [isLens, isExplicitlyMinimized, dormantMode, clearDormantTimer, clearGhostToPillTimer, setFocusedSync, setCollapsedSync, cardRef, pillRef]);
 
-    return { focused, dormantMode };
+    return { focused, dormantMode, collapsed };
 }
 
 export function ReviewChatPlacementFrame({
@@ -201,12 +242,18 @@ export function ReviewChatPlacementFrame({
     const placementTestId = isLens ? 'lens' : 'side-panel';
     const explicitlyMinimized = isLens && isMinimized && !!onRestore;
 
-    const { focused, dormantMode } =
+    const { focused, dormantMode, collapsed } =
         useLensDormantState(cardRef, pillRef, isLens, explicitlyMinimized);
 
+    // 'ghost-then-pill' renders as ghost until the 15s timer collapses it (then
+    // as pill); 'ghost'/'pill' map straight to their single dormant visual.
+    const usePillHitTarget = dormantMode === 'pill'
+        || (dormantMode === 'ghost-then-pill' && collapsed);
     const dormant = isLens && !focused && !explicitlyMinimized;
-    const isDormantPill = dormant && dormantMode === 'pill';
-    const isDormantGhost = dormant && dormantMode === 'ghost';
+    const isDormantPill = dormant && usePillHitTarget;
+    const isDormantGhost = dormant && !usePillHitTarget;
+    // The pill element must be in the DOM whenever it can become the hit target.
+    const pillEnabled = dormantMode === 'pill' || dormantMode === 'ghost-then-pill';
 
     const rootClassName = isLens
         ? 'absolute bottom-4 right-4 z-30 flex flex-col overflow-visible'
@@ -366,7 +413,7 @@ export function ReviewChatPlacementFrame({
             style={lensOuterStyle}
         >
             {/* Dormant pill — positioned at the bottom-right of the outer container */}
-            {isLens && dormantMode === 'pill' && (
+            {isLens && pillEnabled && (
                 <div
                     ref={pillRef}
                     className="absolute bottom-0 right-0 z-10 flex max-w-[320px] cursor-pointer items-center gap-2.5 rounded-full border border-[#d0d7de] bg-[#f8f8f8] px-3.5 py-2 shadow-2xl hover:bg-white dark:border-[#3c3c3c] dark:bg-[#1e1e1e] dark:hover:bg-[#252526]"

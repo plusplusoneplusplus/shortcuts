@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
-const dormantModeState = { value: 'ghost' as 'ghost' | 'pill' };
+const dormantModeState = { value: 'ghost' as 'ghost' | 'pill' | 'ghost-then-pill' };
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getCommitChatLensDormantMode: () => dormantModeState.value,
@@ -335,6 +335,150 @@ describe('CommitChatPlacementFrame', () => {
 
         expect(screen.queryByTestId('commit-chat-lens-dormant-pill')).toBeNull();
         expect(screen.getByTestId('commit-chat-lens').style.pointerEvents).toBe('auto');
+    });
+
+    describe('ghost-then-pill dormant mode', () => {
+        const PILL_RECT: DOMRect = {
+            left: 800, top: 580, right: 920, bottom: 600,
+            width: 120, height: 20, x: 800, y: 580, toJSON: () => ({}),
+        };
+
+        function refocusOnPill(pill: HTMLElement) {
+            vi.spyOn(pill, 'getBoundingClientRect').mockReturnValue(PILL_RECT);
+            vi.advanceTimersByTime(30);
+            window.dispatchEvent(new MouseEvent('mousemove', { clientX: 850, clientY: 590 }));
+        }
+
+        beforeEach(() => {
+            dormantModeState.value = 'ghost-then-pill';
+        });
+
+        it('enters ghost after the leave delay but stays a card before 15s', () => {
+            render(
+                <CommitChatPlacementFrame
+                    workspaceId="ws1"
+                    commitHash="abc123def456"
+                    presentation="lens"
+                    onClose={() => {}}
+                />,
+            );
+
+            const lens = screen.getByTestId('commit-chat-lens');
+            const card = screen.getByTestId('commit-chat-lens-card');
+            const pill = screen.getByTestId('commit-chat-lens-dormant-pill');
+            expect(lens.getAttribute('data-dormant-mode')).toBe('ghost-then-pill');
+
+            act(() => { simulateMouseFarAway(card); });
+            act(() => { vi.advanceTimersByTime(700); });
+
+            // Ghost sub-state: faded card, pill still hidden.
+            expect(lens.getAttribute('data-focused')).toBe('false');
+            expect(card.style.opacity).toBe('0.18');
+            expect(pill.style.opacity).toBe('0');
+            expect(lens.style.pointerEvents).toBe('auto');
+        });
+
+        it('collapses to the pill after 15000ms of continued inactivity', () => {
+            render(
+                <CommitChatPlacementFrame
+                    workspaceId="ws1"
+                    commitHash="abc123def456"
+                    presentation="lens"
+                    onClose={() => {}}
+                />,
+            );
+
+            const card = screen.getByTestId('commit-chat-lens-card');
+            const pill = screen.getByTestId('commit-chat-lens-dormant-pill');
+
+            act(() => { simulateMouseFarAway(card); });
+            act(() => { vi.advanceTimersByTime(700); });
+            expect(card.style.opacity).toBe('0.18');
+
+            // Just before the 15s threshold, still a ghost card.
+            act(() => { vi.advanceTimersByTime(14000); });
+            expect(card.style.opacity).toBe('0.18');
+            expect(pill.style.opacity).toBe('0');
+
+            // Cross the threshold — collapse to the compact pill.
+            act(() => { vi.advanceTimersByTime(1000); });
+            expect(card.style.opacity).toBe('0');
+            expect(card.getAttribute('inert')).toBe('');
+            expect(pill.style.opacity).toBe('1');
+            expect(pill.style.pointerEvents).toBe('auto');
+            expect(screen.getByTestId('commit-chat-lens').style.pointerEvents).toBe('none');
+        });
+
+        it('refocus before 15s cancels the collapse and stays a card', () => {
+            render(
+                <CommitChatPlacementFrame
+                    workspaceId="ws1"
+                    commitHash="abc123def456"
+                    presentation="lens"
+                    onClose={() => {}}
+                />,
+            );
+
+            const lens = screen.getByTestId('commit-chat-lens');
+            const card = screen.getByTestId('commit-chat-lens-card');
+            const pill = screen.getByTestId('commit-chat-lens-dormant-pill');
+
+            act(() => { simulateMouseFarAway(card); });
+            act(() => { vi.advanceTimersByTime(700); });
+            expect(card.style.opacity).toBe('0.18');
+
+            // Move back over the card while still in ghost, before the 15s fires.
+            act(() => { vi.advanceTimersByTime(10000); });
+            act(() => { simulateMouseOnElement(card); });
+
+            // Let the would-be collapse deadline pass — must not collapse.
+            act(() => { vi.advanceTimersByTime(20000); });
+
+            expect(lens.getAttribute('data-focused')).toBe('true');
+            expect(card.style.opacity).toBe('1');
+            expect(card.getAttribute('inert')).toBeNull();
+            expect(pill.style.opacity).toBe('0');
+        });
+
+        it('refocus after collapse restores the card and a fresh fade restarts the full sequence', () => {
+            render(
+                <CommitChatPlacementFrame
+                    workspaceId="ws1"
+                    commitHash="abc123def456"
+                    presentation="lens"
+                    onClose={() => {}}
+                />,
+            );
+
+            const lens = screen.getByTestId('commit-chat-lens');
+            const card = screen.getByTestId('commit-chat-lens-card');
+            const pill = screen.getByTestId('commit-chat-lens-dormant-pill');
+
+            // Fade then collapse to pill.
+            act(() => { simulateMouseFarAway(card); });
+            act(() => { vi.advanceTimersByTime(700); });
+            act(() => { vi.advanceTimersByTime(15000); });
+            expect(card.style.opacity).toBe('0');
+            expect(pill.style.opacity).toBe('1');
+
+            // Refocus by moving the cursor onto the pill — restores the card.
+            act(() => { refocusOnPill(pill); });
+            expect(lens.getAttribute('data-focused')).toBe('true');
+            expect(card.style.opacity).toBe('1');
+            expect(card.getAttribute('inert')).toBeNull();
+            expect(pill.style.opacity).toBe('0');
+
+            // A subsequent fade restarts from ghost and must NOT collapse instantly.
+            act(() => { simulateMouseFarAway(card); });
+            act(() => { vi.advanceTimersByTime(700); });
+            expect(card.style.opacity).toBe('0.18');
+            expect(pill.style.opacity).toBe('0');
+
+            // Only after another full 15s does it collapse again.
+            act(() => { vi.advanceTimersByTime(15000); });
+            expect(card.style.opacity).toBe('0');
+            expect(pill.style.opacity).toBe('1');
+        });
     });
 
     it('uses default size when localStorage is empty', () => {
