@@ -680,9 +680,9 @@ timeout: 300
             expect(result.excalidraw.enabled).toBe(true);
         });
 
-        it('should default canvas.enabled to false', () => {
+        it('should default canvas.enabled to true', () => {
             const result = mergeConfig(DEFAULT_CONFIG, {});
-            expect(result.canvas.enabled).toBe(false);
+            expect(result.canvas.enabled).toBe(true);
         });
 
         it('should override canvas.enabled from file', () => {
@@ -1261,7 +1261,7 @@ timeout: 300
                   },
                   "approvePermissions": true,
                   "canvas": {
-                    "enabled": false,
+                    "enabled": true,
                   },
                   "chat": {
                     "askUser": {
@@ -1308,11 +1308,11 @@ timeout: 300
                     "gitCrossCloneCherryPick": true,
                     "gitWorktreeExecution": true,
                     "nativeCliSessions": false,
-                    "quickAskSidenotes": false,
+                    "quickAskSidenotes": true,
                     "ralphMultiAgentGrill": false,
                     "remoteShell": true,
                     "schedulesInScheduledSlide": true,
-                    "scopeSwitcher": false,
+                    "scopeSwitcher": true,
                     "sessionContextAttachments": true,
                     "splitWorkspacePanel": true,
                   },

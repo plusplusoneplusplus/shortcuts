@@ -212,6 +212,9 @@ describe('validate()', () => {
         it('accepts pill', () => {
             expect(fieldFor('features.commitChatLensDormantMode').validate('pill')).toBeUndefined();
         });
+        it('accepts ghost-then-pill', () => {
+            expect(fieldFor('features.commitChatLensDormantMode').validate('ghost-then-pill')).toBeUndefined();
+        });
         it('rejects unknown string values', () => {
             expect(fieldFor('features.commitChatLensDormantMode').validate('frost')).toBeDefined();
         });
@@ -485,6 +488,11 @@ describe('apply()', () => {
             const cfg: CLIConfig = {};
             fieldFor('features.commitChatLensDormantMode').apply(cfg, 'pill');
             expect(cfg.features?.commitChatLensDormantMode).toBe('pill');
+        });
+        it('applies ghost-then-pill to config', () => {
+            const cfg: CLIConfig = {};
+            fieldFor('features.commitChatLensDormantMode').apply(cfg, 'ghost-then-pill');
+            expect(cfg.features?.commitChatLensDormantMode).toBe('ghost-then-pill');
         });
     });
 

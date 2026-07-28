@@ -863,9 +863,17 @@ export class ClaudeSDKService implements ISDKService {
         if (!avail.available) throw new Error(avail.error ?? 'Claude Code SDK is not available');
         // Linux reads the on-disk credentials file; macOS additionally falls back
         // to the Keychain (where `claude login` stores credentials). Both route to
-        // the credential-backed OAuth usage path. Windows keeps the cached-info
-        // fallback below.
+        // the credential-backed OAuth usage path unconditionally.
         if (process.platform === 'linux' || process.platform === 'darwin') return fetchClaudeOAuthQuota();
+        // Windows: `claude login` writes the same on-disk `~/.claude/.credentials.json`
+        // (identical path resolution and shape as Linux), so try the OAuth usage
+        // endpoint first. If it yields no snapshots — e.g. the token lives only in
+        // Windows Credential Manager, which has no reader here — fall through to the
+        // cached rate-limit / account-info snapshots below.
+        if (process.platform === 'win32') {
+            const oauthQuota = await fetchClaudeOAuthQuota();
+            if (Object.keys(oauthQuota.quotaSnapshots).length > 0) return oauthQuota;
+        }
         if (this.lastRateLimitInfo) return mapClaudeRateLimitInfoToQuota(this.lastRateLimitInfo);
         if (this.lastAccountInfo) return mapClaudeAccountInfoToQuota(this.lastAccountInfo);
         return { quotaSnapshots: {} };

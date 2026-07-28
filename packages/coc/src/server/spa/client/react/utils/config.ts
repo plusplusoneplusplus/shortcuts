@@ -45,7 +45,7 @@ interface DashboardConfig {
     focusedDiffEnabled?: boolean;
     sessionContextAttachmentsEnabled?: boolean;
     commitChatLensEnabled?: boolean;
-    commitChatLensDormantMode?: 'ghost' | 'pill';
+    commitChatLensDormantMode?: 'ghost' | 'pill' | 'ghost-then-pill';
     ralphMultiAgentGrillEnabled?: boolean;
     containerDefaultAgentEnabled?: boolean;
     bindAddress?: string;
@@ -469,9 +469,14 @@ export function isCommitChatLensEnabled(): boolean {
     return getConfig().commitChatLensEnabled === true;
 }
 
-/** Returns the dormant mode for the lens: 'ghost' (fade) or 'pill' (collapse). */
-export function getCommitChatLensDormantMode(): 'ghost' | 'pill' {
-    return getConfig().commitChatLensDormantMode === 'pill' ? 'pill' : 'ghost';
+/**
+ * Returns the dormant mode for the lens: 'ghost' (fade), 'pill' (collapse), or
+ * 'ghost-then-pill' (fade, then auto-collapse to the pill after 15s). Falls back
+ * to 'ghost' for any unknown/absent value.
+ */
+export function getCommitChatLensDormantMode(): 'ghost' | 'pill' | 'ghost-then-pill' {
+    const mode = getConfig().commitChatLensDormantMode;
+    return mode === 'pill' || mode === 'ghost-then-pill' ? mode : 'ghost';
 }
 
 export function isContainerDefaultAgentEnabled(): boolean {

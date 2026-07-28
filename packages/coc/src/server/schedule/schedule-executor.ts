@@ -274,6 +274,7 @@ export class ScheduleExecutor {
                         maxIterations,
                         dataDir: this.dataDir,
                         displayName: `[Schedule:Ralph] ${schedule.name}`,
+                        provider: schedule.provider,
                         extraContext: {
                             scheduleId: schedule.id,
                             scheduleRunId: run.id,
@@ -294,6 +295,7 @@ export class ScheduleExecutor {
                     kind: 'chat',
                     mode: scheduleMode,
                     prompt: `${outputPrefix}Follow the instruction ${schedule.target}.`,
+                    provider: schedule.provider,
                     context: {
                         files: [schedule.target],
                         scheduleId: schedule.id,

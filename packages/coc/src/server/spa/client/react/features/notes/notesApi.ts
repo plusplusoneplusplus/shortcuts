@@ -25,6 +25,7 @@ import {
     type NotesGitDiff,
     type NotesGitLogResponse,
     type NotesGitStatus,
+    type NotesGitSyncResponse,
     type RenameNoteNodeResponse,
     type ReorderNotesResponse,
     type RestoreNoteVersionResponse,
@@ -192,6 +193,10 @@ export const notesApi = {
 
     resetGitFromOrigin(wsId: string): Promise<{ reset: boolean; branch: string }> {
         return withSpaErrors(notesClient(wsId).resetFromOrigin(wsId));
+    },
+
+    syncGit(wsId: string): Promise<NotesGitSyncResponse> {
+        return withSpaErrors(notesClient(wsId).syncGit(wsId));
     },
 
     getGitStatus(wsId: string): Promise<NotesGitStatus> {

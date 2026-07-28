@@ -41,9 +41,9 @@ describe('E2E server boot config', () => {
             expect(runtime.splitWorkspacePanelEnabled).toBe(false);
 
             // The scope slide switcher replaces the My Work / My Life toggles and
-            // the workspace identity chip in the remote-first header. Default-off
-            // today, but pinned so a future graduation can't reshape the header
-            // the specs target.
+            // the workspace identity chip in the remote-first header. It graduated
+            // to default-on, so it stays pinned off here to keep the header the
+            // specs target intact.
             expect(runtime.scopeSwitcherEnabled).toBe(false);
 
             // The review chat lens reroutes unpinned commit/PR chat away from the

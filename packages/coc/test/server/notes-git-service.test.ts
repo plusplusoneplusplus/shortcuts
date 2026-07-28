@@ -233,6 +233,123 @@ describe('NotesGitService', { timeout: 60_000 }, () => {
     });
 
     // ========================================================================
+    // sync
+    // ========================================================================
+    describe('sync', () => {
+        let originDir: string; // bare remote we can push to
+
+        beforeEach(async () => {
+            const { execGitAsync } = await import('@plusplusoneplusplus/forge/git');
+            // A bare repo is required so `git push` can update its branches.
+            originDir = fs.mkdtempSync(path.join(os.tmpdir(), 'notes-git-sync-origin-'));
+            await execGitAsync(['init', '--bare', '-b', 'main'], originDir);
+        });
+
+        afterEach(() => {
+            safeRmSync(originDir);
+        });
+
+        // Seed the bare origin with one commit on `main` via a throwaway clone.
+        async function seedOrigin(fileName: string, content: string): Promise<void> {
+            const { execGitAsync } = await import('@plusplusoneplusplus/forge/git');
+            const seedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'notes-git-sync-seed-'));
+            try {
+                await execGitAsync(['clone', originDir, seedDir], path.dirname(seedDir));
+                await execGitAsync(['config', 'user.email', 'seed@test.local'], seedDir);
+                await execGitAsync(['config', 'user.name', 'Seed Test'], seedDir);
+                await execGitAsync(['checkout', '-B', 'main'], seedDir);
+                fs.writeFileSync(path.join(seedDir, fileName), content, 'utf-8');
+                await execGitAsync(['add', '-A'], seedDir);
+                await execGitAsync(['commit', '-m', 'seed origin'], seedDir);
+                await execGitAsync(['push', 'origin', 'HEAD:main'], seedDir);
+            } finally {
+                safeRmSync(seedDir);
+            }
+        }
+
+        it('throws when not initialized', async () => {
+            await expect(service.sync(originDir, 'main')).rejects.toThrow('not initialized');
+        });
+
+        it('throws when the remote URL is blank', async () => {
+            await service.init();
+            await expect(service.sync('   ')).rejects.toThrow(/no remote URL/i);
+        });
+
+        it('commits pending local changes and pushes them to an empty origin', async () => {
+            await service.init();
+            writeFile('note.md', '# Local note');
+
+            const result = await service.sync(originDir, 'main');
+
+            expect(result.committed).toBe(true);
+            expect(result.pushed).toBe(true);
+            expect(result.pulled).toBe(false); // origin had no branch yet
+            expect(result.branch).toBe('main');
+
+            // The pushed content is visible in the bare origin.
+            const { execGitAsync } = await import('@plusplusoneplusplus/forge/git');
+            const files = await execGitAsync(['ls-tree', '--name-only', 'main'], originDir);
+            expect(files.split('\n')).toContain('note.md');
+
+            // Working tree is clean after the sync committed everything.
+            const status = await service.getStatus();
+            expect(status.clean).toBe(true);
+        });
+
+        it('adds an origin remote when none exists', async () => {
+            await service.init();
+            await service.sync(originDir, 'main');
+
+            const { execGitAsync } = await import('@plusplusoneplusplus/forge/git');
+            const remote = await execGitAsync(['remote', 'get-url', 'origin'], tmpDir);
+            expect(remote.trim()).toBe(originDir);
+        });
+
+        it('defaults to branch "main" when branch is blank', async () => {
+            await service.init();
+            writeFile('note.md', 'x');
+            const result = await service.sync(originDir, '   ');
+            expect(result.branch).toBe('main');
+        });
+
+        it('pulls remote commits and rebases local work on top before pushing', async () => {
+            // Start from a clone of the seeded origin so histories share a base.
+            await seedOrigin('from-origin.md', '# From origin');
+            await service.resetFromOrigin(originDir, 'main');
+
+            // Add another commit directly on origin after the clone.
+            await seedOrigin('second-origin.md', '# Second');
+
+            // Make a local change that must survive the rebase.
+            writeFile('local.md', '# Local edit');
+
+            const result = await service.sync(originDir, 'main');
+            expect(result.committed).toBe(true);
+            expect(result.pulled).toBe(true);
+            expect(result.pushed).toBe(true);
+
+            // Remote-only file is now present locally, and the local file remains.
+            expect(fs.existsSync(path.join(tmpDir, 'second-origin.md'))).toBe(true);
+            expect(fs.existsSync(path.join(tmpDir, 'local.md'))).toBe(true);
+
+            // Origin now contains the local commit too.
+            const { execGitAsync } = await import('@plusplusoneplusplus/forge/git');
+            const files = await execGitAsync(['ls-tree', '--name-only', 'main'], originDir);
+            expect(files.split('\n')).toContain('local.md');
+        });
+
+        it('is a no-op push when there is nothing new on either side', async () => {
+            await seedOrigin('from-origin.md', '# From origin');
+            await service.resetFromOrigin(originDir, 'main');
+
+            const result = await service.sync(originDir, 'main');
+            expect(result.committed).toBe(false);
+            expect(result.pushed).toBe(true);
+        });
+    });
+
+    // ========================================================================
     // getStatus
     // ========================================================================
     describe('getStatus', () => {

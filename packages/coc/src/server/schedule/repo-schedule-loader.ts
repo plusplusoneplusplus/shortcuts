@@ -14,8 +14,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import type { ScheduleEntry, ScheduleStatus, ScheduleOnFailure } from './schedule-manager';
-import type { TargetType, ChatMode } from '../tasks/task-types';
-import { normalizeChatMode } from '../tasks/task-types';
+import type { TargetType, ChatMode, ChatProvider } from '../tasks/task-types';
+import { normalizeChatMode, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
 import type { RepoScheduleOverrides } from './repo-schedule-overrides';
 import { getServerLogger } from '../logging/server-logger';
 
@@ -92,6 +92,9 @@ export async function loadRepoSchedulesAsync(
                 outputFolder: parsed['outputFolder'] ? String(parsed['outputFolder']) : undefined,
                 model: parsed['model'] ? String(parsed['model']) : undefined,
                 mode: normalizeChatMode(parsed['mode']) ?? 'autopilot',
+                provider: VALID_CHAT_PROVIDERS.has(parsed['provider'] as ChatProvider)
+                    ? (parsed['provider'] as ChatProvider)
+                    : undefined,
                 source: 'repo',
             };
             result.push(entry);

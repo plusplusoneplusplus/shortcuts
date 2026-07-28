@@ -230,7 +230,7 @@ export interface CLIConfig {
     excalidraw?: {
         enabled?: boolean;
     };
-    /** Chat canvas side panel (AI co-edited markdown documents). Disabled by default. */
+    /** Chat canvas side panel (AI co-edited markdown documents). Enabled by default. */
     canvas?: {
         enabled?: boolean;
     };
@@ -273,8 +273,8 @@ export interface CLIConfig {
         sessionContextAttachments?: boolean;
         /** Commit chat bottom-right lens placement on desktop commit-review surfaces. Disabled by default. */
         commitChatLens?: boolean;
-        /** Dormant mode for the lens when the cursor leaves: 'ghost' fades to near-transparent, 'pill' collapses to a compact pill. Defaults to 'ghost'. */
-        commitChatLensDormantMode?: 'ghost' | 'pill';
+        /** Dormant mode for the lens when the cursor leaves: 'ghost' fades to near-transparent, 'pill' collapses to a compact pill, 'ghost-then-pill' fades then auto-collapses to the pill after 15s. Defaults to 'ghost'. */
+        commitChatLensDormantMode?: 'ghost' | 'pill' | 'ghost-then-pill';
         /** Auto agent provider routing in Admin -> AI Provider. Disabled by default. */
         autoAgentProviderRouting?: boolean;
         /** Multi-agent Ralph grilling experience. Disabled by default. */
@@ -610,21 +610,21 @@ export interface ResolvedCLIConfig {
         sessionContextAttachments: boolean;
         /** Commit chat bottom-right lens placement on desktop commit-review surfaces. Disabled by default. */
         commitChatLens: boolean;
-        /** Dormant mode for the lens when the cursor leaves: 'ghost' fades to near-transparent, 'pill' collapses to a compact pill. Defaults to 'ghost'. */
-        commitChatLensDormantMode: 'ghost' | 'pill';
+        /** Dormant mode for the lens when the cursor leaves: 'ghost' fades to near-transparent, 'pill' collapses to a compact pill, 'ghost-then-pill' fades then auto-collapses to the pill after 15s. Defaults to 'ghost'. */
+        commitChatLensDormantMode: 'ghost' | 'pill' | 'ghost-then-pill';
         /** Auto agent provider routing in Admin -> AI Provider. Disabled by default. */
         autoAgentProviderRouting: boolean;
         /** Multi-agent Ralph grilling experience. Disabled by default. */
         ralphMultiAgentGrill: boolean;
         /** Read-only native Copilot/Codex/Claude CLI sessions tab. Disabled by default. */
         nativeCliSessions: boolean;
-        /** Quick Ask side-notes on assistant chat turns (select → ✨ Ask AI → 💡 bubble). Disabled by default. */
+        /** Quick Ask side-notes on assistant chat turns (select → ✨ Ask AI → 💡 bubble). Enabled by default. */
         quickAskSidenotes: boolean;
         /** Ingest and embed a local PDF when a lone arXiv link is pasted into Notes. Disabled by default. */
         arxivPaperIngest: boolean;
         /** Remote-first dashboard shell (one tab per remote). Enabled by default. */
         remoteShell: boolean;
-        /** Sliding scope switcher (My Work · My Life · active workspace) in the remote-first header. Disabled by default. */
+        /** Sliding scope switcher (My Work · My Life · active workspace) in the remote-first header. Enabled by default. */
         scopeSwitcher: boolean;
         /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Enabled by default. */
         splitWorkspacePanel: boolean;
@@ -823,7 +823,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
     },
     canvas: {
-        enabled: false,
+        enabled: true,
     },
     kusto: {
         enabled: false,
@@ -886,10 +886,10 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         autoAgentProviderRouting: false,
         ralphMultiAgentGrill: false,
         nativeCliSessions: false,
-        quickAskSidenotes: false,
+        quickAskSidenotes: true,
         arxivPaperIngest: false,
         remoteShell: true,
-        scopeSwitcher: false,
+        scopeSwitcher: true,
         splitWorkspacePanel: true,
         schedulesInScheduledSlide: true,
         gitWorktreeExecution: false,

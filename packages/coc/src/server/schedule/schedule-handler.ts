@@ -16,8 +16,8 @@ import { getErrorMessage } from '../shared/fs-utils';
 import type { Route } from '../types';
 import { ScheduleManager, describeCron, nextCronTime, parseCron } from './schedule-manager';
 import type { ScheduleEntry, ScheduleOnFailure, ScheduleStatus } from './schedule-manager';
-import type { TargetType, ChatMode } from '../tasks/task-types';
-import { normalizeChatMode } from '../tasks/task-types';
+import type { TargetType, ChatMode, ChatProvider } from '../tasks/task-types';
+import { normalizeChatMode, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
 
 // ============================================================================
 // AI instruction refinement
@@ -54,6 +54,14 @@ function normalizeScheduleMode(mode: unknown): ChatMode | undefined {
     return undefined;
 }
 
+/** Coerce a raw provider value to a supported ChatProvider, else undefined. */
+function normalizeScheduleProvider(provider: unknown): ChatProvider | undefined {
+    if (typeof provider === 'string' && VALID_CHAT_PROVIDERS.has(provider as ChatProvider)) {
+        return provider as ChatProvider;
+    }
+    return undefined;
+}
+
 function validateScheduleInput(body: any): { valid: boolean; error?: string } {
     if (!body.name || typeof body.name !== 'string' || !body.name.trim()) {
         return { valid: false, error: 'Missing required field: name' };
@@ -81,6 +89,9 @@ function validateScheduleInput(body: any): { valid: boolean; error?: string } {
     if (body.mode !== undefined && !normalizeScheduleMode(body.mode)) {
         return { valid: false, error: `Invalid mode: ${body.mode}. Valid values: ask, autopilot` };
     }
+    if (body.provider !== undefined && !normalizeScheduleProvider(body.provider)) {
+        return { valid: false, error: `Invalid provider: ${body.provider}. Valid values: copilot, codex, claude, opencode` };
+    }
     return { valid: true };
 }
 
@@ -102,6 +113,7 @@ function serializeSchedule(entry: ScheduleEntry, manager: ScheduleManager): Reco
         outputFolder: entry.outputFolder,
         model: entry.model,
         mode: normalizeScheduleMode(entry.mode) ?? entry.mode ?? 'autopilot',
+        provider: entry.provider,
         source: entry.source ?? 'user',
     };
 }
@@ -174,6 +186,7 @@ export function registerScheduleRoutes(
                     outputFolder: body.outputFolder ? String(body.outputFolder).trim() : undefined,
                     model: body.model ? String(body.model).trim() : undefined,
                     mode: normalizeScheduleMode(body.mode) || 'autopilot',
+                    provider: normalizeScheduleProvider(body.provider),
                 });
                 sendJSON(res, 201, { schedule: serializeSchedule(schedule, manager) });
             } catch (err) {
@@ -285,6 +298,9 @@ export function registerScheduleRoutes(
             if (body.mode !== undefined && !normalizeScheduleMode(body.mode)) {
                 return sendError(res, 400, `Invalid mode: ${body.mode}. Valid values: ask, autopilot`);
             }
+            if (body.provider !== undefined && body.provider !== null && body.provider !== '' && !normalizeScheduleProvider(body.provider)) {
+                return sendError(res, 400, `Invalid provider: ${body.provider}. Valid values: copilot, codex, claude, opencode`);
+            }
 
             const updates: any = {};
             if (body.name) updates.name = body.name.trim();
@@ -297,6 +313,7 @@ export function registerScheduleRoutes(
             if (body.outputFolder !== undefined) updates.outputFolder = body.outputFolder ? String(body.outputFolder).trim() : undefined;
             if (body.model !== undefined) updates.model = body.model ? String(body.model).trim() : undefined;
             if (body.mode !== undefined) updates.mode = normalizeScheduleMode(body.mode);
+            if (body.provider !== undefined) updates.provider = normalizeScheduleProvider(body.provider);
 
             const schedule = await manager.updateSchedule(repoId, scheduleId, updates);
             if (!schedule) {

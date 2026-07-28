@@ -17,6 +17,9 @@
  *   `.repo-sub-tab[data-subtab="git"]`, or waiting on `ws-status-indicator`)
  *   hang until the test times out. Pin both off so the suite exercises the
  *   layout it targets.
+ * - `features.scopeSwitcher` also ships default-on; it swaps the My Work / My
+ *   Life toggles and the workspace identity chip for a sliding segmented switcher
+ *   in the remote-first header. Pin it off so the header stays what the specs target.
  * - `features.commitChatLens` also ships default-on, and it reroutes unpinned
  *   commit/PR review chat into a bottom-right lens instead of the inline
  *   `commit-chat-panel`. commit-chat-binding.spec.ts opens unpinned commit chat

@@ -47,7 +47,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 
 ## Canvases
 
-Chat canvas side panel (gated by `canvas.enabled`, default off). Markdown or code artifacts (`type` + optional `language` on the descriptor) the AI and the user co-edit; AI edits go through the canvas LLM tools, these routes serve the dashboard panel.
+Chat canvas side panel (gated by `canvas.enabled`, default on). Markdown or code artifacts (`type` + optional `language` on the descriptor) the AI and the user co-edit; AI edits go through the canvas LLM tools, these routes serve the dashboard panel.
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -118,7 +118,7 @@ Opt-in isolated-worktree execution mode for Work Item and Ralph runs, gated by t
 
 ## Quick Ask Side-notes
 
-Per-process AI lookups on assistant chat turns. A text selection triggers a cheap one-shot ask (never a follow-up turn); the answer is stored as a repo-scoped annotation and never enters the conversation. All endpoints are gated by the live admin flag `features.quickAskSidenotes` (default `false`) and return `404` when disabled. Storage: `{dataDir}/repos/<workspaceId>/chat-sidenotes/<sha256(processId)>.json`. Workspace is supplied via `?workspace=<id>`.
+Per-process AI lookups on assistant chat turns. A text selection triggers a cheap one-shot ask (never a follow-up turn); the answer is stored as a repo-scoped annotation and never enters the conversation. All endpoints are gated by the live admin flag `features.quickAskSidenotes` (default `true`) and return `404` when disabled. Storage: `{dataDir}/repos/<workspaceId>/chat-sidenotes/<sha256(processId)>.json`. Workspace is supplied via `?workspace=<id>`.
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -247,6 +247,8 @@ All Dreams routes are workspace-scoped and gated by `dreams.enabled` (default `f
 | POST | `/api/schedules/refine` | AI-refine prompt-routine instructions (`{ instructions, hint?, model? }` → `{ refined, raw }`) |
 
 Prompt schedules expose Ask and Autopilot modes. Stored or incoming schedule entries with `mode='plan'` are read as Ask at runtime; no schedule data migration is required.
+
+Prompt schedules also accept an optional `provider` override (`copilot | codex | claude | opencode`); omitted/empty means the server default provider. It round-trips through create/update, `schedules.json`, and repo-defined `.github/schedules/*.yaml`, and is passed to the enqueued chat/Ralph task's payload so the run executes under that provider. Invalid values are rejected (400) on create and ignored when parsing repo YAML.
 
 ## Tasks
 

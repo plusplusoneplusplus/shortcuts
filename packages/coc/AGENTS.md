@@ -221,7 +221,7 @@ all have their own `references/*.md`.
   (workspace-scoped expand/collapse for all group kinds), and
   `task-group-copy-info.ts` (context-menu copy text) under
   `src/server/spa/client/react/features/chat/`.
-- **Chat canvas** (`canvas.enabled`, default off) persists markdown, code,
+- **Chat canvas** (`canvas.enabled`, default on) persists markdown, code,
   extension, excalidraw, or kusto artifacts (descriptor `type` + normalized
   `language`) under
   `~/.coc/repos/<wsId>/canvases/<canvasId>/` through
@@ -245,8 +245,8 @@ all have their own `references/*.md`.
   (`node:vm`, no require/process, 1s timeout, 1 MB cap) — never execute
   extension scripts outside that runner. Do not write canvas files directly
   from other features.
-- **Quick Ask side-notes** (opt-in; live admin flag `features.quickAskSidenotes`
-  default off, gating both the server endpoints and the SPA UI via
+- **Quick Ask side-notes** (live admin flag `features.quickAskSidenotes`
+  default on, gating both the server endpoints and the SPA UI via
   `isQuickAskSidenotesEnabled()` / `useQuickAskSidenotesEnabled`) let a user
   select text in an assistant chat
   turn to run a cheap one-shot AI lookup, attached as a clickable 💡 bubble that
@@ -487,6 +487,8 @@ all have their own `references/*.md`.
   `client.workItems.*ForOrigin(...)`, always passing `workspaceId`; workspace
   AI-draft route aliases are not registered.
 - **Direct package builds** use `scripts/prebuild.mjs` to build
-  `@plusplusoneplusplus/coc-client`, `@plusplusoneplusplus/coc-workflow`, and `@plusplusoneplusplus/coc-memory`
+  `@plusplusoneplusplus/coc-agent-sdk`, `@plusplusoneplusplus/coc-workflow`,
+  `@plusplusoneplusplus/coc-memory`, `@plusplusoneplusplus/forge`,
+  `@plusplusoneplusplus/coc-client`, and `@plusplusoneplusplus/coc-connector`
   before `tsc`, clean `dist` before emitting, and generate
   `src/server/core/build-info.ts`; keep this script cross-platform.

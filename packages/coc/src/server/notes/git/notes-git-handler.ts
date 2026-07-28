@@ -162,6 +162,55 @@ export function registerNotesGitRoutes(
     });
 
     // ------------------------------------------------------------------
+    // POST /api/workspaces/:id/notes/git/sync
+    // Non-destructive two-way sync with the configured `notesGit.remoteUrl`
+    // at `notesGit.branch` (default `main`): commits pending changes, rebases
+    // remote commits in, then pushes local commits. Returns 400 when no remote
+    // URL is configured. Notes-git tracking stays enabled.
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/workspaces\/([^/]+)\/notes\/git\/sync$/,
+        handler: async (_req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+            const wsId = ws.id;
+
+            const prefs = readRepoPreferences(dataDir, wsId);
+            const remoteUrl = prefs.notesGit?.remoteUrl?.trim();
+            if (!remoteUrl) {
+                return sendError(res, 400, 'No notes origin remote URL is configured');
+            }
+            const branch = prefs.notesGit?.branch?.trim() || 'main';
+
+            const notesRoot = getNotesRoot(dataDir, wsId);
+
+            try {
+                // Stop any auto-commit timer so it cannot race the fetch/rebase/push.
+                if (timerManager) {
+                    timerManager.stopForWorkspace(wsId);
+                }
+
+                const service = new NotesGitService(notesRoot);
+                const result = await service.sync(remoteUrl, branch);
+
+                // Restart auto-commit if it was enabled before the sync.
+                if (timerManager && prefs.notesGit?.autoCommit?.enabled) {
+                    const intervalMs = prefs.notesGit.autoCommit.intervalMs ?? DEFAULT_AUTOCOMMIT_INTERVAL_MS;
+                    timerManager.startForWorkspace(wsId, notesRoot, intervalMs);
+                }
+
+                sendJSON(res, 200, { synced: true, ...result });
+            } catch (err: any) {
+                if (err.message?.includes('not initialized')) {
+                    return sendError(res, 409, 'Notes git repository is not initialized');
+                }
+                sendError(res, 500, 'Failed to sync notes: ' + err.message);
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
     // GET /api/workspaces/:id/notes/git/status
     // ------------------------------------------------------------------
     routes.push({

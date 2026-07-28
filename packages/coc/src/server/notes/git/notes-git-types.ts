@@ -30,6 +30,21 @@ export interface NotesGitConfig {
     branch?: string;
 }
 
+/**
+ * Result of a two-way notes sync with the configured origin remote.
+ * Non-destructive counterpart to the reset-from-origin flow.
+ */
+export interface NotesGitSyncResult {
+    /** Branch that was synced (defaults to `main` when unset/blank). */
+    branch: string;
+    /** True when pending local changes were committed before syncing. */
+    committed: boolean;
+    /** True when remote commits were integrated (rebased) into the local repo. */
+    pulled: boolean;
+    /** True when local commits were pushed to origin. */
+    pushed: boolean;
+}
+
 // ── API response types ──────────────────────────────────────────────
 
 /** GET /api/repos/:repoId/notes-git/status response. */

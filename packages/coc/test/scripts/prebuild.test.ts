@@ -46,12 +46,6 @@ describe('prebuild script', () => {
             },
             {
                 command: 'npm-test',
-                args: ['run', 'build', '-w', '@plusplusoneplusplus/coc-client'],
-                cwd: '/repo/root',
-                shell: undefined,
-            },
-            {
-                command: 'npm-test',
                 args: ['run', 'build', '-w', '@plusplusoneplusplus/coc-workflow'],
                 cwd: '/repo/root',
                 shell: undefined,
@@ -59,6 +53,24 @@ describe('prebuild script', () => {
             {
                 command: 'npm-test',
                 args: ['run', 'build', '-w', '@plusplusoneplusplus/coc-memory'],
+                cwd: '/repo/root',
+                shell: undefined,
+            },
+            {
+                command: 'npm-test',
+                args: ['run', 'build', '-w', '@plusplusoneplusplus/forge'],
+                cwd: '/repo/root',
+                shell: undefined,
+            },
+            {
+                command: 'npm-test',
+                args: ['run', 'build', '-w', '@plusplusoneplusplus/coc-client'],
+                cwd: '/repo/root',
+                shell: undefined,
+            },
+            {
+                command: 'npm-test',
+                args: ['run', 'build', '-w', '@plusplusoneplusplus/coc-connector'],
                 cwd: '/repo/root',
                 shell: undefined,
             },
@@ -85,12 +97,6 @@ describe('prebuild script', () => {
             },
             {
                 command: 'npm.cmd',
-                args: ['run', 'build', '-w', '@plusplusoneplusplus/coc-client'],
-                cwd: '/repo/root',
-                shell: true,
-            },
-            {
-                command: 'npm.cmd',
                 args: ['run', 'build', '-w', '@plusplusoneplusplus/coc-workflow'],
                 cwd: '/repo/root',
                 shell: true,
@@ -98,6 +104,24 @@ describe('prebuild script', () => {
             {
                 command: 'npm.cmd',
                 args: ['run', 'build', '-w', '@plusplusoneplusplus/coc-memory'],
+                cwd: '/repo/root',
+                shell: true,
+            },
+            {
+                command: 'npm.cmd',
+                args: ['run', 'build', '-w', '@plusplusoneplusplus/forge'],
+                cwd: '/repo/root',
+                shell: true,
+            },
+            {
+                command: 'npm.cmd',
+                args: ['run', 'build', '-w', '@plusplusoneplusplus/coc-client'],
+                cwd: '/repo/root',
+                shell: true,
+            },
+            {
+                command: 'npm.cmd',
+                args: ['run', 'build', '-w', '@plusplusoneplusplus/coc-connector'],
                 cwd: '/repo/root',
                 shell: true,
             },

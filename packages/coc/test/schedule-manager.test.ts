@@ -897,6 +897,78 @@ describe('ScheduleManager', () => {
             mgr.dispose();
         });
 
+        it('forwards schedule.provider onto the enqueued chat payload', async () => {
+            const enqueued: any[] = [];
+            const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_prov'; } };
+            const mgr = new ScheduleManager(persistence, mockQueue as any);
+
+            const schedule = await mgr.addSchedule(REPO_ID, {
+                name: 'Provider Prompt',
+                target: 'prompt.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+                targetType: 'prompt',
+                provider: 'claude',
+            });
+
+            await mgr.triggerRun(REPO_ID, schedule.id);
+
+            expect(enqueued).toHaveLength(1);
+            expect(enqueued[0].payload.provider).toBe('claude');
+
+            mgr.dispose();
+        });
+
+        it('leaves chat payload.provider undefined when the schedule has no provider', async () => {
+            const enqueued: any[] = [];
+            const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_noprov'; } };
+            const mgr = new ScheduleManager(persistence, mockQueue as any);
+
+            const schedule = await mgr.addSchedule(REPO_ID, {
+                name: 'Default Provider Prompt',
+                target: 'prompt.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+                targetType: 'prompt',
+            });
+
+            await mgr.triggerRun(REPO_ID, schedule.id);
+
+            expect(enqueued[0].payload.provider).toBeUndefined();
+
+            mgr.dispose();
+        });
+
+        it('forwards schedule.provider onto the enqueued Ralph payload', async () => {
+            const enqueued: any[] = [];
+            const mockQueue = { enqueue: (task: any) => { enqueued.push(task); return 'tid_ralph_prov'; } };
+            const mgr = new ScheduleManager(persistence, mockQueue as any);
+
+            const schedule = await mgr.addSchedule(REPO_ID, {
+                name: 'Provider Ralph',
+                target: 'goal.md',
+                cron: '0 9 * * *',
+                params: {},
+                onFailure: 'notify',
+                status: 'active',
+                targetType: 'prompt',
+                mode: 'ralph',
+                provider: 'codex',
+            });
+
+            await mgr.triggerRun(REPO_ID, schedule.id);
+
+            expect(enqueued).toHaveLength(1);
+            expect(enqueued[0].payload.mode).toBe('ralph');
+            expect(enqueued[0].payload.provider).toBe('codex');
+
+            mgr.dispose();
+        });
+
         it('sets run.processId to queue_<taskId> for script schedules', async () => {
             const mockQueue = { enqueue: (_task: any) => 'mytaskid' };
             const mgr = new ScheduleManager(persistence, mockQueue as any);

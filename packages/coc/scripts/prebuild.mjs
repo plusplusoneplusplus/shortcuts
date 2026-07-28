@@ -13,9 +13,11 @@ export function getNpmExecutable(platform = process.platform) {
 
 export const REQUIRED_BUILD_WORKSPACES = [
     '@plusplusoneplusplus/coc-agent-sdk',
-    '@plusplusoneplusplus/coc-client',
     '@plusplusoneplusplus/coc-workflow',
     '@plusplusoneplusplus/coc-memory',
+    '@plusplusoneplusplus/forge',
+    '@plusplusoneplusplus/coc-client',
+    '@plusplusoneplusplus/coc-connector',
 ];
 
 export function buildRequiredWorkspacePackages({

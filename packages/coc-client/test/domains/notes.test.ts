@@ -123,6 +123,7 @@ describe('NotesClient', () => {
     await client.undoNoteEdit('process/1', 'edit/1', { force: true });
     await client.initializeGit('repo/a');
     await client.getGitStatus('repo/a');
+    await client.syncGit('repo/a');
     await client.getGitLog('repo/a', { limit: 10, offset: 5 });
     await client.getGitDiff('repo/a', 'abc/def');
     await client.commitGit('repo/a', 'checkpoint');
@@ -171,6 +172,7 @@ describe('NotesClient', () => {
       { path: '/processes/process%2F1/note-edits/edit%2F1/undo', options: { method: 'POST', query: { force: true } } },
       { path: '/workspaces/repo%2Fa/notes/git/init', options: { method: 'POST' } },
       { path: '/workspaces/repo%2Fa/notes/git/status' },
+      { path: '/workspaces/repo%2Fa/notes/git/sync', options: { method: 'POST' } },
       { path: '/workspaces/repo%2Fa/notes/git/log', options: { query: { limit: 10, offset: 5 } } },
       { path: '/workspaces/repo%2Fa/notes/git/diff/abc%2Fdef' },
       { path: '/workspaces/repo%2Fa/notes/git/commit', options: { method: 'POST', body: { message: 'checkpoint' } } },

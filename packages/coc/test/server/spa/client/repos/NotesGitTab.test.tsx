@@ -13,6 +13,7 @@ import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-libra
 const mockInitialize = vi.fn();
 const mockCommit = vi.fn();
 const mockResetFromOrigin = vi.fn();
+const mockSync = vi.fn();
 const mockGetDiff = vi.fn();
 const mockRefresh = vi.fn();
 
@@ -25,6 +26,7 @@ const defaultHookReturn = {
     initialize: mockInitialize,
     commit: mockCommit,
     resetFromOrigin: mockResetFromOrigin,
+    sync: mockSync,
     getDiff: mockGetDiff,
     refresh: mockRefresh,
 };
@@ -125,6 +127,7 @@ describe('NotesGitTab (notes-git)', () => {
         mockInitialize.mockReset();
         mockCommit.mockReset();
         mockResetFromOrigin.mockReset();
+        mockSync.mockReset();
         mockGetDiff.mockReset();
         mockRefresh.mockReset();
         mockGetWorkspacePreferences.mockReset();
@@ -399,6 +402,75 @@ describe('NotesGitTab (notes-git)', () => {
         await waitFor(() => {
             expect(screen.getByText('No changes in this commit.')).toBeDefined();
         });
+    });
+
+    // ── Sync ────────────────────────────────────────────────────────
+
+    it('hides "Sync" button when no remoteUrl is configured', async () => {
+        hookReturn = { ...defaultHookReturn, initialized: true, status: makeStatus(), log: [] };
+        mockGetWorkspacePreferences.mockResolvedValue({ notesGit: { enabled: true } });
+
+        await act(async () => {
+            render(<NotesGitTab workspaceId="ws-1" />);
+        });
+
+        expect(screen.queryByTestId('notes-git-sync-btn')).toBeNull();
+    });
+
+    it('shows "Sync" button when remoteUrl is configured', async () => {
+        hookReturn = { ...defaultHookReturn, initialized: true, status: makeStatus(), log: [] };
+        mockGetWorkspacePreferences.mockResolvedValue({
+            notesGit: { enabled: true, remoteUrl: 'https://github.com/owner/repo.git', branch: 'main' },
+        });
+
+        await act(async () => {
+            render(<NotesGitTab workspaceId="ws-1" />);
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('notes-git-sync-btn')).toBeDefined();
+        });
+    });
+
+    it('clicking "Sync" calls sync and toasts a summary', async () => {
+        hookReturn = { ...defaultHookReturn, initialized: true, status: makeStatus(), log: [] };
+        mockGetWorkspacePreferences.mockResolvedValue({
+            notesGit: { enabled: true, remoteUrl: 'https://github.com/owner/repo.git', branch: 'dev' },
+        });
+        mockSync.mockResolvedValue({ synced: true, branch: 'dev', committed: true, pulled: true, pushed: true });
+
+        await act(async () => {
+            render(<NotesGitTab workspaceId="ws-1" />);
+        });
+
+        await waitFor(() => expect(screen.getByTestId('notes-git-sync-btn')).toBeDefined());
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('notes-git-sync-btn'));
+        });
+
+        expect(mockSync).toHaveBeenCalled();
+        expect(mockAddToast).toHaveBeenCalledWith(expect.stringContaining('dev'), 'success');
+    });
+
+    it('surfaces a sync failure as an error toast', async () => {
+        hookReturn = { ...defaultHookReturn, initialized: true, status: makeStatus(), log: [] };
+        mockGetWorkspacePreferences.mockResolvedValue({
+            notesGit: { enabled: true, remoteUrl: 'https://github.com/owner/repo.git', branch: 'main' },
+        });
+        mockSync.mockRejectedValue(new Error('conflict during rebase'));
+
+        await act(async () => {
+            render(<NotesGitTab workspaceId="ws-1" />);
+        });
+
+        await waitFor(() => expect(screen.getByTestId('notes-git-sync-btn')).toBeDefined());
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('notes-git-sync-btn'));
+        });
+
+        expect(mockAddToast).toHaveBeenCalledWith('conflict during rebase', 'error');
     });
 
     // ── Reset from origin (AC-03) ───────────────────────────────────

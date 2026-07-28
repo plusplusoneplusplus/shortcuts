@@ -191,6 +191,7 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                             target: schedule.target,
                             cron: schedule.cron,
                             model: schedule.model,
+                            provider: schedule.provider,
                             chatMode: normalizePromptScheduleMode(schedule.mode, 'ask'),
                             outputFolder: schedule.outputFolder,
                             onFailure: schedule.onFailure,
@@ -213,6 +214,7 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                             onFailure: schedule.onFailure,
                             outputFolder: schedule.outputFolder,
                             model: schedule.model,
+                            provider: schedule.provider,
                             chatMode: promptMode,
                         }}
                         onCreated={handleSaved}
@@ -436,6 +438,14 @@ export function ScheduleDetail({ schedule, workspaceId, history, editingId, onRu
                                             <dd className="text-[10px] font-mono text-[#1f2328] dark:text-[#cccccc] break-all m-0" title={schedule.outputFolder} data-testid="output-folder">
                                                 {schedule.outputFolder}
                                             </dd>
+                                        </>
+                                    )}
+
+                                    {/* Provider — only when set (else server default) */}
+                                    {schedule.provider && (
+                                        <>
+                                            <dt className="text-[#656d76] dark:text-[#777] whitespace-nowrap font-medium">Provider</dt>
+                                            <dd className="text-[#1f2328] dark:text-[#cccccc] m-0" data-testid="schedule-provider">{schedule.provider}</dd>
                                         </>
                                     )}
 
