@@ -2273,9 +2273,15 @@ describe('ClaudeSDKService.sendMessage', () => {
     });
 
     it('captures rate_limit_event messages for Windows quota fallback reporting', async () => {
-        // Windows is the only platform that still uses the cached rate-limit
-        // fallback; Linux and macOS route to the credential-backed OAuth path.
+        // On Windows getAccountQuota() tries the on-disk OAuth path first, then
+        // falls back to cached rate-limit info. Point at a missing creds file so the
+        // OAuth path is deterministically empty (env-var file is used exclusively —
+        // the real home dir is never read, avoiding a live network call) and the
+        // cached rate-limit fallback under test is exercised.
         const restorePlatform = stubProcessPlatform('win32');
+        const missingCredFile = path.join(os.tmpdir(), `coc-test-win-fallback-${Date.now()}.json`);
+        const priorCredEnv = process.env['CLAUDE_CREDENTIALS_FILE'];
+        process.env['CLAUDE_CREDENTIALS_FILE'] = missingCredFile;
         try {
             queryFn.mockReturnValueOnce(makeMessages([
                 {
@@ -2302,6 +2308,8 @@ describe('ClaudeSDKService.sendMessage', () => {
             expect(quota.quotaSnapshots.five_hour.usageAllowedWithExhaustedQuota).toBe(true);
         } finally {
             restorePlatform();
+            if (priorCredEnv === undefined) delete process.env['CLAUDE_CREDENTIALS_FILE'];
+            else process.env['CLAUDE_CREDENTIALS_FILE'] = priorCredEnv;
         }
     });
 });
@@ -2882,6 +2890,121 @@ describe('ClaudeSDKService.getAccountQuota (Linux OAuth)', () => {
         expect(accountInfoFn).toHaveBeenCalled();
         expect(fetchSpy).toHaveBeenCalledOnce();
         expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(10);
+    });
+});
+
+// ============================================================================
+// getAccountQuota — Windows OAuth integration
+// ============================================================================
+
+describe('ClaudeSDKService.getAccountQuota (Windows OAuth)', () => {
+    let svc: ClaudeSDKService;
+    const queryFn = vi.fn();
+    let fetchSpy: ReturnType<typeof vi.fn>;
+    let tempCredFile: string;
+    let restorePlatform: () => void;
+
+    beforeEach(() => {
+        restorePlatform = stubProcessPlatform('win32');
+        svc = new ClaudeSDKService();
+        mockDynamicImport.mockReset();
+        queryFn.mockReset();
+        mockDynamicImport.mockResolvedValue({ query: queryFn });
+        fetchSpy = vi.fn();
+        vi.stubGlobal('fetch', fetchSpy);
+        tempCredFile = path.join(os.tmpdir(), `coc-test-creds-win32-${Date.now()}.json`);
+        delete process.env['CLAUDE_CREDENTIALS_FILE'];
+    });
+
+    afterEach(() => {
+        svc.dispose();
+        restorePlatform();
+        vi.unstubAllGlobals();
+        delete process.env['CLAUDE_CREDENTIALS_FILE'];
+        try { fs.unlinkSync(tempCredFile); } catch { /* already removed or never created */ }
+    });
+
+    it('routes the win32 branch to the on-disk OAuth path with the Claude Code nested credential shape', async () => {
+        // Regression: Windows previously never called the OAuth usage endpoint, so
+        // the provider panel showed no quota until a live session emitted a
+        // rate_limit_event. `claude login` writes the same nested credential shape
+        // on Windows, so getAccountQuota() must read it and hit the usage API.
+        process.env['CLAUDE_CREDENTIALS_FILE'] = tempCredFile;
+        fs.writeFileSync(tempCredFile, JSON.stringify({
+            claudeAiOauth: { accessToken: 'win-tok', subscriptionType: 'max' },
+        }));
+        fetchSpy.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                five_hour: { utilization: 63, resets_at: '2026-06-04T12:00:00.000Z' },
+                seven_day: { utilization: 27, resets_at: '2026-06-11T00:00:00.000Z' },
+            }),
+        });
+
+        const quota = await svc.getAccountQuota();
+
+        expect(fetchSpy).toHaveBeenCalledWith(
+            'https://api.anthropic.com/api/oauth/usage',
+            expect.objectContaining({ headers: expect.objectContaining({ 'Authorization': 'Bearer win-tok' }) }),
+        );
+        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(63);
+        expect(quota.quotaSnapshots.seven_day.usedRequests).toBe(27);
+    });
+
+    it('prefers fresh OAuth usage over cached rate-limit data on Windows', async () => {
+        process.env['CLAUDE_CREDENTIALS_FILE'] = tempCredFile;
+        fs.writeFileSync(tempCredFile, JSON.stringify({ access_token: 'win-tok-2' }));
+        fetchSpy.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ five_hour: { utilization: 8 } }),
+        });
+
+        queryFn.mockReturnValueOnce(makeQueryHandle([
+            {
+                type: 'rate_limit_event',
+                rate_limit_info: { status: 'allowed_warning', rateLimitType: 'five_hour', utilization: 0.95 },
+            },
+            { type: 'result', subtype: 'success' },
+        ]));
+        await svc.sendMessage({ prompt: 'hello' });
+        await Promise.resolve();
+
+        const quota = await svc.getAccountQuota();
+
+        expect(fetchSpy).toHaveBeenCalledOnce();
+        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(8);
+    });
+
+    it('falls back to cached rate-limit snapshot when OAuth yields no snapshots on Windows', async () => {
+        // Point at a missing creds file so the OAuth path is deterministically empty
+        // (env-var file is used exclusively — the real home dir is never consulted).
+        // The cached rate-limit info must then win.
+        process.env['CLAUDE_CREDENTIALS_FILE'] = tempCredFile; // never written → missing
+        queryFn.mockReturnValueOnce(makeQueryHandle([
+            {
+                type: 'rate_limit_event',
+                rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour', utilization: 0.42 },
+            },
+            { type: 'result', subtype: 'success' },
+        ]));
+        await svc.sendMessage({ prompt: 'hello' });
+        await Promise.resolve();
+
+        const quota = await svc.getAccountQuota();
+
+        expect(fetchSpy).not.toHaveBeenCalled();
+        expect(quota.quotaSnapshots).toHaveProperty('five_hour');
+    });
+
+    it('returns empty snapshots when Windows has neither on-disk creds nor cached info', async () => {
+        // Point at a missing creds file so the OAuth path is deterministically empty
+        // (env-var file is used exclusively — the real home dir is never consulted).
+        process.env['CLAUDE_CREDENTIALS_FILE'] = tempCredFile; // never written → missing
+
+        const quota = await svc.getAccountQuota();
+
+        expect(quota).toEqual({ quotaSnapshots: {} });
+        expect(fetchSpy).not.toHaveBeenCalled();
     });
 });
 
