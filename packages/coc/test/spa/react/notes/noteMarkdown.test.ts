@@ -80,6 +80,16 @@ describe('noteMarkdown', () => {
             expect(html).toContain('const x = 1;');
         });
 
+        it('emits a language-cpp code element for an explicit ```cpp fence', () => {
+            // AC-02: an explicit fence language must reach the editor. marked emits
+            // `<code class="language-cpp">`, which CodeBlockLowlight parses to set the
+            // block's `language` attribute (so lowlight highlights it as C++, not
+            // auto-detect). Guards the explicit-fence half of AC-02 at the parse boundary.
+            const html = markdownToHtml('```cpp\nint main() { return 0; }\n```');
+            expect(html).toContain('<code class="language-cpp">');
+            expect(html).toContain('int main()');
+        });
+
         it('strips the trailing newline marked appends inside a code block', () => {
             // marked emits `<pre><code>…\n</code></pre>`; Tiptap's preserveWhitespace
             // renders that trailing newline as a phantom empty last line. It must be gone.
@@ -309,6 +319,18 @@ describe('noteMarkdown', () => {
             const rt = norm(roundTrip(md));
             expect(rt).toContain('```');
             expect(rt).toContain('const x = 1;');
+        });
+
+        it('preserves the language fence label on a ```cpp code block', () => {
+            // DoD-4: saving and reopening a note must keep the code block AND its
+            // language fence. The `cpp` label is what makes CodeBlockLowlight/lowlight
+            // highlight the block as C++ on reload; if the round-trip dropped it back to
+            // a bare ``` fence, the reopened block would fall back to auto-detection.
+            const md = '```cpp\nint main() {\n    dim3 grid(16, 16);\n    return 0;\n}\n```';
+            const rt = norm(roundTrip(md));
+            expect(rt).toContain('```cpp');
+            expect(rt).toContain('dim3 grid(16, 16);');
+            expect(rt).toContain('int main() {');
         });
 
         it('mermaid fenced block', () => {
