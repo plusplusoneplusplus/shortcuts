@@ -327,7 +327,7 @@ function ResetFromOriginConfirm({
 export function NotesGitTab({ workspaceId, isDefaultRoot = true }: NotesGitTabProps) {
     const {
         status, log, loading, error, initialized,
-        initialize, commit, resetFromOrigin, getDiff, refresh,
+        initialize, commit, resetFromOrigin, sync, getDiff, refresh,
     } = useNotesGit(workspaceId, isDefaultRoot);
     const { addToast } = useGlobalToast();
 
@@ -343,6 +343,7 @@ export function NotesGitTab({ workspaceId, isDefaultRoot = true }: NotesGitTabPr
     const [branch, setBranch] = useState('');
     const [showResetConfirm, setShowResetConfirm] = useState(false);
     const [resetting, setResetting] = useState(false);
+    const [syncing, setSyncing] = useState(false);
 
     const { width: sidebarWidth, isDragging, handleMouseDown, handleTouchStart } =
         useResizablePanel({ initialWidth: 320, minWidth: 160, maxWidth: 600, storageKey: 'notes-git-sidebar-width' });
@@ -389,6 +390,22 @@ export function NotesGitTab({ workspaceId, isDefaultRoot = true }: NotesGitTabPr
             .catch(() => { /* leave origin unset on failure — button stays hidden */ });
         return () => { cancelled = true; };
     }, [workspaceId, isDefaultRoot]);
+
+    const handleSync = useCallback(async () => {
+        setSyncing(true);
+        try {
+            const result = await sync();
+            const actions = [
+                result.pulled ? 'pulled' : null,
+                result.pushed ? 'pushed' : null,
+            ].filter(Boolean).join(' + ') || 'up to date';
+            addToast(`Notes synced with origin (${result.branch}: ${actions})`, 'success');
+        } catch (err: any) {
+            addToast(err?.message ?? 'Failed to sync notes with origin', 'error');
+        } finally {
+            setSyncing(false);
+        }
+    }, [sync, addToast]);
 
     const handleResetFromOrigin = useCallback(async () => {
         setResetting(true);
@@ -488,6 +505,18 @@ export function NotesGitTab({ workspaceId, isDefaultRoot = true }: NotesGitTabPr
             >
                 Commit Now
             </Button>
+            {remoteUrl.trim() && (
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleSync}
+                    loading={syncing}
+                    title="Commit local changes, pull from origin, and push to the configured remote"
+                    data-testid="notes-git-sync-btn"
+                >
+                    Sync
+                </Button>
+            )}
             {remoteUrl.trim() && (
                 <Button
                     variant="ghost"

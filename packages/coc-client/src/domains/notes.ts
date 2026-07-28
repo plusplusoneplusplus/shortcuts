@@ -21,6 +21,7 @@ import type {
   NotesGitDiff,
   NotesGitLogResponse,
   NotesGitStatus,
+  NotesGitSyncResponse,
   NotesRootEntry,
   NotesRootsResponse,
   NoteTreeResponse,
@@ -359,6 +360,13 @@ export class NotesClient {
   resetFromOrigin(workspaceId: string): Promise<{ reset: boolean; branch: string }> {
     return this.transport.request<{ reset: boolean; branch: string }>(
       notesGitPath(workspaceId, '/reset-from-origin'),
+      { method: 'POST' },
+    );
+  }
+
+  syncGit(workspaceId: string): Promise<NotesGitSyncResponse> {
+    return this.transport.request<NotesGitSyncResponse>(
+      notesGitPath(workspaceId, '/sync'),
       { method: 'POST' },
     );
   }

@@ -342,6 +342,82 @@ describe('Notes Git Handler', { timeout: 60_000 }, () => {
     });
 
     // ========================================================================
+    // POST /sync
+    // ========================================================================
+    describe('POST /api/workspaces/:id/notes/git/sync', () => {
+        let originDir: string;
+
+        async function makeBareOrigin(): Promise<void> {
+            originDir = fs.mkdtempSync(path.join(os.tmpdir(), 'notes-git-sync-origin-'));
+            // Bare so the notes repo can push to it.
+            await execGitAsync(['init', '--bare', '-b', 'main'], originDir);
+        }
+
+        afterEach(async () => {
+            if (originDir) {
+                await safeRm(originDir);
+                originDir = '';
+            }
+        });
+
+        it('returns 400 when no remote URL is configured', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            await postJSON(gitUrl(srv, 'init'), {});
+
+            const res = await postJSON(gitUrl(srv, 'sync'), {});
+            expect(res.status).toBe(400);
+        });
+
+        it('commits and pushes local notes to the configured origin', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            await postJSON(gitUrl(srv, 'init'), {});
+            writeNote('local.md', '# local');
+            await makeBareOrigin();
+            writeRepoPreferences(dataDir, wsId, {
+                notesGit: { enabled: true, remoteUrl: originDir, branch: 'main' },
+            });
+
+            const res = await postJSON(gitUrl(srv, 'sync'), {});
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.synced).toBe(true);
+            expect(body.branch).toBe('main');
+            expect(body.pushed).toBe(true);
+
+            const files = await execGitAsync(['ls-tree', '--name-only', 'main'], originDir);
+            expect(files.split('\n')).toContain('local.md');
+        });
+
+        it('keeps notes-git tracking enabled after a sync', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            await postJSON(gitUrl(srv, 'init'), {});
+            await makeBareOrigin();
+            writeRepoPreferences(dataDir, wsId, {
+                notesGit: { enabled: true, remoteUrl: originDir, branch: 'main' },
+            });
+
+            const res = await postJSON(gitUrl(srv, 'sync'), {});
+            expect(res.status).toBe(200);
+
+            const prefs = readRepoPreferences(dataDir, wsId);
+            expect(prefs.notesGit?.enabled).toBe(true);
+            expect(prefs.notesGit?.remoteUrl).toBe(originDir);
+        });
+
+        it('returns 404 for unknown workspace', async () => {
+            const srv = await startServer();
+            const res = await postJSON(
+                `${srv.url}/api/workspaces/does-not-exist/notes/git/sync`,
+                {},
+            );
+            expect(res.status).toBe(404);
+        });
+    });
+
+    // ========================================================================
     // GET /status
     // ========================================================================
     describe('GET /status', () => {

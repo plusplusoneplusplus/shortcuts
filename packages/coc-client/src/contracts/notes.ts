@@ -174,6 +174,14 @@ export interface NotesGitCommitResponse {
   [key: string]: unknown;
 }
 
+export interface NotesGitSyncResponse {
+  synced: boolean;
+  branch: string;
+  committed: boolean;
+  pulled: boolean;
+  pushed: boolean;
+}
+
 export interface NotesGitAutoCommitStatus {
   enabled: boolean;
   intervalMs?: number;
