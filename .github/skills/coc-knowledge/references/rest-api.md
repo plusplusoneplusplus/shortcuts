@@ -248,6 +248,8 @@ All Dreams routes are workspace-scoped and gated by `dreams.enabled` (default `f
 
 Prompt schedules expose Ask and Autopilot modes. Stored or incoming schedule entries with `mode='plan'` are read as Ask at runtime; no schedule data migration is required.
 
+Prompt schedules also accept an optional `provider` override (`copilot | codex | claude | opencode`); omitted/empty means the server default provider. It round-trips through create/update, `schedules.json`, and repo-defined `.github/schedules/*.yaml`, and is passed to the enqueued chat/Ralph task's payload so the run executes under that provider. Invalid values are rejected (400) on create and ignored when parsing repo YAML.
+
 ## Tasks
 
 | Method | Path | Description |

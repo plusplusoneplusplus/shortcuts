@@ -39,7 +39,7 @@ import type {
     ScheduleChangeEvent,
 } from './schedule-manager-types';
 
-type ScheduleMutableFields = Pick<ScheduleEntry, 'name' | 'target' | 'cron' | 'params' | 'onFailure' | 'status' | 'targetType' | 'outputFolder' | 'model' | 'mode'>;
+type ScheduleMutableFields = Pick<ScheduleEntry, 'name' | 'target' | 'cron' | 'params' | 'onFailure' | 'status' | 'targetType' | 'outputFolder' | 'model' | 'mode' | 'provider'>;
 type ScheduleUpdates = Partial<ScheduleMutableFields>;
 export interface RepoScheduleReloadResult {
     ok: boolean;
@@ -476,6 +476,7 @@ export class ScheduleManager extends EventEmitter {
         if (entry.outputFolder && entry.outputFolder !== defaultOutputFolder) yamlObj.outputFolder = entry.outputFolder;
         if (entry.model) yamlObj.model = entry.model;
         if (entry.mode && entry.mode !== 'autopilot') yamlObj.mode = entry.mode;
+        if (entry.provider) yamlObj.provider = entry.provider;
 
         const yamlContent = yaml.dump(yamlObj, { lineWidth: 120 });
         await fs.promises.writeFile(path.join(scheduleDir, `${stem}.yaml`), yamlContent, 'utf-8');

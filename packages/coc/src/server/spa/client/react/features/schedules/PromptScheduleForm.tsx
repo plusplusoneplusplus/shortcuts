@@ -11,6 +11,7 @@ import { SegmentedControl } from '../../ui/SegmentedControl';
 import { getSpaCocClient } from '../../api/cocClient';
 import { useCocClient } from '../../repos/cloneRouting';
 import { getActiveProvider } from '../../utils/config';
+import type { ConcreteChatProvider } from '../../utils/providerSelection';
 import { ScheduleTriggerPanel } from './ScheduleTriggerPanel';
 import { ScheduleInstructionsRefinePanel } from './ScheduleInstructionsRefinePanel';
 import {
@@ -30,10 +31,19 @@ export interface PromptScheduleFormValues {
     target?: string;
     cron?: string;
     model?: string;
+    provider?: ConcreteChatProvider;
     chatMode?: PromptScheduleMode;
     outputFolder?: string;
     onFailure?: string;
 }
+
+/** Selectable AI providers for a scheduled routine. Empty value = server default. */
+const SCHEDULE_PROVIDERS: ReadonlyArray<{ value: ConcreteChatProvider; label: string }> = [
+    { value: 'copilot', label: 'Copilot' },
+    { value: 'codex', label: 'Codex' },
+    { value: 'claude', label: 'Claude' },
+    { value: 'opencode', label: 'OpenCode' },
+];
 
 function defaultOutputFolder(workspaceId: string): string {
     return `~/.coc/repos/${workspaceId}/tasks`;
@@ -90,6 +100,7 @@ export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvance
     const [instructions, setInstructions] = useState(initialValues?.target ?? '');
     const [chatMode, setChatMode] = useState<PromptScheduleMode>(normalizePromptScheduleMode(initialValues?.chatMode, 'ask'));
     const [model, setModel] = useState(initialValues?.model ?? '');
+    const [provider, setProvider] = useState<ConcreteChatProvider | ''>(initialValues?.provider ?? '');
     const [outputFolder, setOutputFolder] = useState(initialValues?.outputFolder ?? defaultOutputFolder(workspaceId));
     const [onFailure, setOnFailure] = useState(initialValues?.onFailure ?? 'notify');
     const [models, setModels] = useState<string[]>([]);
@@ -119,6 +130,7 @@ export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvance
         instructions: initialValues?.target ?? '',
         chatMode: normalizePromptScheduleMode(initialValues?.chatMode, 'ask'),
         model: initialValues?.model ?? '',
+        provider: (initialValues?.provider ?? '') as ConcreteChatProvider | '',
         outputFolder: initialValues?.outputFolder ?? defaultOutputFolder(workspaceId),
         onFailure: initialValues?.onFailure ?? 'notify',
         preset: inferred?.preset ?? ('daily' as PromptSchedulePreset),
@@ -137,6 +149,7 @@ export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvance
         || instructions !== initial.instructions
         || chatMode !== initial.chatMode
         || model !== initial.model
+        || provider !== initial.provider
         || outputFolder !== initial.outputFolder
         || onFailure !== initial.onFailure
         || preset !== initial.preset
@@ -168,16 +181,25 @@ export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvance
             )
             .then(result => result.refined);
 
-    // Load available models
+    // Load available models for the selected provider (or the server default when
+    // no provider override is chosen), so the Model dropdown always matches the
+    // provider the routine will actually run under.
     useEffect(() => {
         let cancelled = false;
-        getSpaCocClient().agentProviders.listModels(getActiveProvider())
+        getSpaCocClient().agentProviders.listModels(provider || getActiveProvider())
             .then(data => {
                 if (!cancelled) setModels(Array.isArray(data.models) ? data.models.map((m: any) => m.id ?? m) : []);
             })
             .catch(() => { /* model override stays optional */ });
         return () => { cancelled = true; };
-    }, []);
+    }, [provider]);
+
+    // Switching provider clears any model override — model ids are provider-scoped,
+    // so a stale override would no longer be valid under the new provider.
+    const handleProviderChange = (next: ConcreteChatProvider | '') => {
+        setProvider(next);
+        setModel('');
+    };
 
     const showTimePicker = preset === 'daily' || preset === 'weekdays' || preset === 'weekly';
     const showDayPicker = preset === 'weekly';
@@ -238,6 +260,7 @@ export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvance
                 onFailure,
                 outputFolder: outputFolder.trim() || undefined,
                 model: model.trim() || undefined,
+                provider: provider || undefined,
                 mode: chatMode,
             };
             if (formMode === 'edit' && scheduleId) {
@@ -361,6 +384,18 @@ export function PromptScheduleForm({ workspaceId, onCreated, onCancel, onAdvance
                         value={chatMode}
                         onChange={setChatMode}
                     />
+                    <label className="flex items-center gap-1 text-xs">
+                        <span className="text-[#616161] dark:text-[#999]">Provider</span>
+                        <select
+                            className="px-1.5 py-0.5 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc] text-[10px]"
+                            value={provider}
+                            onChange={e => handleProviderChange(e.target.value as ConcreteChatProvider | '')}
+                            data-testid="prompt-provider-select"
+                        >
+                            <option value="">Default</option>
+                            {SCHEDULE_PROVIDERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                        </select>
+                    </label>
                     <label className="flex items-center gap-1 text-xs">
                         <span className="text-[#616161] dark:text-[#999]">Model</span>
                         <select

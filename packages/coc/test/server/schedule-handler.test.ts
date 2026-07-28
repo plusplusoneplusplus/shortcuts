@@ -709,4 +709,109 @@ describe('Schedule Handler', () => {
             expect(body.schedules[0].mode).toBe('ask');
         });
     });
+
+    // ========================================================================
+    // provider field
+    // ========================================================================
+
+    describe('provider field', () => {
+        it('should store and return provider when provided on create', async () => {
+            await startServer();
+
+            const res = await postJSON(schedulesUrl(), makeSchedule({ provider: 'claude' }));
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.schedule.provider).toBe('claude');
+        });
+
+        it('should return undefined provider when not provided on create (server default)', async () => {
+            await startServer();
+
+            const res = await postJSON(schedulesUrl(), makeSchedule());
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.schedule.provider).toBeUndefined();
+        });
+
+        it('should reject invalid provider on create', async () => {
+            await startServer();
+
+            const res = await postJSON(schedulesUrl(), makeSchedule({ provider: 'not-a-provider' }));
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('provider');
+        });
+
+        it('should accept each supported provider on create', async () => {
+            await startServer();
+
+            for (const provider of ['copilot', 'codex', 'claude', 'opencode']) {
+                const res = await postJSON(schedulesUrl(), makeSchedule({ name: `Sched ${provider}`, provider }));
+                expect(res.status).toBe(201);
+                expect(JSON.parse(res.body).schedule.provider).toBe(provider);
+            }
+        });
+
+        it('should update provider via PATCH', async () => {
+            await startServer();
+
+            const createRes = await postJSON(schedulesUrl(), makeSchedule());
+            const id = JSON.parse(createRes.body).schedule.id;
+
+            const res = await patchJSON(`${schedulesUrl()}/${id}`, { provider: 'codex' });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.schedule.provider).toBe('codex');
+        });
+
+        it('should clear provider via PATCH with empty string', async () => {
+            await startServer();
+
+            const createRes = await postJSON(schedulesUrl(), makeSchedule({ provider: 'claude' }));
+            const id = JSON.parse(createRes.body).schedule.id;
+
+            const res = await patchJSON(`${schedulesUrl()}/${id}`, { provider: '' });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.schedule.provider).toBeUndefined();
+        });
+
+        it('should reject invalid provider on PATCH', async () => {
+            await startServer();
+
+            const createRes = await postJSON(schedulesUrl(), makeSchedule());
+            const id = JSON.parse(createRes.body).schedule.id;
+
+            const res = await patchJSON(`${schedulesUrl()}/${id}`, { provider: 'bogus' });
+            expect(res.status).toBe(400);
+            const body = JSON.parse(res.body);
+            expect(body.error).toContain('provider');
+        });
+
+        it('should include provider in list response', async () => {
+            await startServer();
+
+            await postJSON(schedulesUrl(), makeSchedule({ provider: 'opencode' }));
+
+            const res = await request(schedulesUrl());
+            const body = JSON.parse(res.body);
+            expect(body.schedules[0].provider).toBe('opencode');
+        });
+
+        it('should persist provider across server restarts', async () => {
+            const store = new FileProcessStore({ dataDir });
+            server = await createExecutionServer({ port: 0, host: 'localhost', store, dataDir });
+
+            await postJSON(schedulesUrl(), makeSchedule({ name: 'Provider Schedule', provider: 'claude' }));
+
+            await server.close();
+
+            const store2 = new FileProcessStore({ dataDir });
+            server = await createExecutionServer({ port: 0, host: 'localhost', store: store2, dataDir });
+
+            const listRes = await request(schedulesUrl());
+            const body = JSON.parse(listRes.body);
+            expect(body.schedules[0].provider).toBe('claude');
+        });
+    });
 });

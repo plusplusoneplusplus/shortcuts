@@ -196,6 +196,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
                             target: duplicateValues.target,
                             cron: duplicateValues.cron,
                             model: duplicateValues.model,
+                            provider: duplicateValues.provider,
                             chatMode: normalizePromptScheduleMode(duplicateValues.mode, 'ask'),
                             outputFolder: duplicateValues.outputFolder,
                             onFailure: duplicateValues.onFailure,
@@ -217,6 +218,7 @@ export function RepoSchedulesTab({ workspaceId }: RepoSchedulesTabProps) {
                             onFailure: duplicateValues.onFailure,
                             outputFolder: duplicateValues.outputFolder,
                             model: duplicateValues.model,
+                            provider: duplicateValues.provider,
                             chatMode: normalizePromptScheduleMode(duplicateValues.mode, 'autopilot'),
                         } : undefined}
                     />

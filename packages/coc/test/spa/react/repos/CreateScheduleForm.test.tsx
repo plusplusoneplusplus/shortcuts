@@ -4,7 +4,7 @@
  */
 
 import { beforeEach, describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const { mockSchedulesClient, mockModelsClient, mockAgentProvidersClient, mockFeatureFlags } = vi.hoisted(() => ({
@@ -260,6 +260,39 @@ describe('CreateScheduleForm — payload compatibility', () => {
         expect(body.params).toEqual({ workingDirectory: './reports' });
         expect(body.mode).toBeUndefined();
     });
+
+    it('submits the selected provider for a prompt schedule and lists that provider\'s models', async () => {
+        mockAgentProvidersClient.listModels.mockImplementation((provider: string) =>
+            Promise.resolve({ models: [{ id: `${provider}-model` }] }));
+        const user = userEvent.setup();
+        const { onCreated } = await renderForm();
+
+        await user.clear(screen.getByPlaceholderText('Name (e.g., Daily Report)'));
+        await user.type(screen.getByPlaceholderText('Name (e.g., Daily Report)'), 'Provider Prompt');
+        await user.type(screen.getByTestId('target-input'), 'Run the recurring work');
+        await user.click(screen.getByTestId('advanced-options-toggle'));
+        await user.selectOptions(screen.getByTestId('provider-select'), 'claude');
+        await waitFor(() => expect(mockAgentProvidersClient.listModels).toHaveBeenCalledWith('claude'));
+        await waitFor(() => expect(within(screen.getByTestId('model-select')).queryByText('claude-model')).toBeTruthy());
+        await user.click(screen.getByRole('button', { name: /create/i }));
+
+        await waitFor(() => expect(onCreated).toHaveBeenCalled());
+        const [, body] = mockSchedulesClient.create.mock.calls[0];
+        expect(body.provider).toBe('claude');
+    });
+
+    it('omits provider for a script schedule (provider is prompt-only)', async () => {
+        const user = userEvent.setup();
+        await renderForm();
+
+        await user.click(screen.getByTestId('schedule-action-script'));
+        await user.type(screen.getByTestId('target-input'), 'npm run report');
+        await user.click(screen.getByRole('button', { name: /create/i }));
+
+        await waitFor(() => expect(mockSchedulesClient.create).toHaveBeenCalled());
+        const [, body] = mockSchedulesClient.create.mock.calls[0];
+        expect(body.provider).toBeUndefined();
+    });
 });
 
 describe('CreateScheduleForm — advanced and edit mode', () => {
@@ -292,5 +325,22 @@ describe('CreateScheduleForm — advanced and edit mode', () => {
         expect((screen.getByTestId('param-custom') as HTMLInputElement).value).toBe('value');
         expect(screen.getByTestId('chat-mode-ask').className).toContain('bg-[#0078d4]');
         expect(screen.queryByTestId('chat-mode-plan')).toBeNull();
+    });
+
+    it('opens advanced and pre-fills the provider for edit schedules with a provider override', async () => {
+        await renderForm({
+            mode: 'edit',
+            scheduleId: 'sched-2',
+            initialValues: {
+                name: 'Provider Edit',
+                target: 'Do the recurring work',
+                targetType: 'prompt',
+                cron: '0 9 * * *',
+                provider: 'codex',
+            } as any,
+        });
+
+        expect(screen.getByTestId('advanced-options-toggle').getAttribute('aria-expanded')).toBe('true');
+        expect((screen.getByTestId('provider-select') as HTMLSelectElement).value).toBe('codex');
     });
 });

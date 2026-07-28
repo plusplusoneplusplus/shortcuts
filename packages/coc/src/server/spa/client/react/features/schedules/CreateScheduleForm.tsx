@@ -4,6 +4,7 @@ import { SegmentedControl } from '../../ui/SegmentedControl';
 import { getSpaCocClient } from '../../api/cocClient';
 import { useCocClient } from '../../repos/cloneRouting';
 import { getActiveProvider } from '../../utils/config';
+import type { ConcreteChatProvider } from '../../utils/providerSelection';
 import { fetchWorkflows } from '../workflow/workflow-api';
 import { describeCron, parseCronToInterval, intervalToCron } from '../../utils/cron';
 import { SCHEDULE_TEMPLATES } from './scheduleTemplates';
@@ -28,8 +29,17 @@ interface ScheduleFormInitialValues {
     onFailure?: string;
     outputFolder?: string;
     model?: string;
+    provider?: ConcreteChatProvider;
     chatMode?: PromptScheduleMode;
 }
+
+/** Selectable AI providers for a scheduled routine. Empty value = server default. */
+const SCHEDULE_PROVIDERS: ReadonlyArray<{ value: ConcreteChatProvider; label: string }> = [
+    { value: 'copilot', label: 'Copilot' },
+    { value: 'codex', label: 'Codex' },
+    { value: 'claude', label: 'Claude' },
+    { value: 'opencode', label: 'OpenCode' },
+];
 
 const DEFAULT_CRON = '0 * * * *';
 const NOTES_AUTO_COMMIT_NAME = 'Notes Auto-Commit';
@@ -121,6 +131,7 @@ function hasAdvancedValues(initialValues: ScheduleFormInitialValues | undefined,
     const params = initialValues.params ?? {};
     return Boolean(
         initialValues.model
+        || initialValues.provider
         || (initialValues.chatMode && normalizePromptScheduleMode(initialValues.chatMode) !== 'autopilot')
         || (initialValues.outputFolder && initialValues.outputFolder !== defaultOutputFolder(workspaceId))
         || (initialValues.onFailure && initialValues.onFailure !== 'notify')
@@ -226,6 +237,7 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
     const [onFailure, setOnFailure] = useState(initialValues?.onFailure ?? 'notify');
     const [outputFolder, setOutputFolder] = useState(initialValues?.outputFolder ?? defaultOutputFolder(workspaceId));
     const [model, setModel] = useState(initialValues?.model ?? '');
+    const [provider, setProvider] = useState<ConcreteChatProvider | ''>(initialValues?.provider ?? '');
     const [chatMode, setChatMode] = useState<PromptScheduleMode>(normalizePromptScheduleMode(initialValues?.chatMode, 'autopilot'));
     const [models, setModels] = useState<string[]>([]);
     const [error, setError] = useState('');
@@ -280,7 +292,7 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
 
     useEffect(() => {
         let cancelled = false;
-        getSpaCocClient().agentProviders.listModels(getActiveProvider())
+        getSpaCocClient().agentProviders.listModels(provider || getActiveProvider())
             .then(data => {
                 if (!cancelled) {
                     setModels(Array.isArray(data.models) ? data.models.map((m: any) => m.id ?? m) : []);
@@ -288,7 +300,13 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
             })
             .catch(() => { /* keep the model override optional when the model API is unavailable */ });
         return () => { cancelled = true; };
-    }, []);
+    }, [provider]);
+
+    // Switching provider clears any model override — model ids are provider-scoped.
+    const handleProviderChange = (next: ConcreteChatProvider | '') => {
+        setProvider(next);
+        setModel('');
+    };
 
     const selectAction = (nextAction: ActionKind) => {
         const templateId = templateIdForAction(nextAction);
@@ -392,6 +410,7 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
                 onFailure,
                 outputFolder: outputFolder.trim() || undefined,
                 model: model.trim() || undefined,
+                provider: targetType === 'prompt' ? (provider || undefined) : undefined,
                 mode: targetType === 'prompt' ? chatMode : undefined,
             };
             if (formMode === 'edit' && scheduleId) {
@@ -637,6 +656,19 @@ export function CreateScheduleForm({ workspaceId, onCreated, onCancel, mode: for
                                     onChange={setChatMode}
                                     data-testid="chat-mode-picker"
                                 />
+
+                                <label className="flex items-center gap-2 text-xs">
+                                    <span className="text-[#616161] dark:text-[#999]">Provider</span>
+                                    <select
+                                        className="flex-1 px-2 py-1 border border-[#d0d0d0] dark:border-[#555] rounded bg-white dark:bg-[#2a2a2a] text-[#1e1e1e] dark:text-[#ccc]"
+                                        value={provider}
+                                        onChange={e => handleProviderChange(e.target.value as ConcreteChatProvider | '')}
+                                        data-testid="provider-select"
+                                    >
+                                        <option value="">Default</option>
+                                        {SCHEDULE_PROVIDERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                                    </select>
+                                </label>
 
                                 <label className="flex items-center gap-2 text-xs">
                                     <span className="text-[#616161] dark:text-[#999]">Model</span>

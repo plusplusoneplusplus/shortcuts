@@ -4,7 +4,7 @@
  * them without depending on the manager itself.
  */
 
-import type { TargetType, ChatMode } from '../tasks/task-types';
+import type { TargetType, ChatMode, ChatProvider } from '../tasks/task-types';
 
 export type ScheduleStatus = 'active' | 'paused' | 'stopped';
 export type ScheduleOnFailure = 'notify' | 'stop';
@@ -22,6 +22,7 @@ export interface ScheduleEntry {
     outputFolder?: string;     // output folder path prepended to prompt for prompt-type schedules
     model?: string;            // optional model override for prompt-type schedules
     mode?: ChatMode;           // chat mode for prompt-type schedules; defaults to 'autopilot'
+    provider?: ChatProvider;   // optional AI provider override for prompt-type schedules; defaults to server default
     /** 'user' = stored in schedules.json; 'repo' = loaded from .github/schedules/ */
     source?: 'user' | 'repo';
 }

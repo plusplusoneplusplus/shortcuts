@@ -2,6 +2,7 @@ export type ScheduleStatus = 'active' | 'paused' | 'stopped' | string;
 export type ScheduleOnFailure = 'notify' | 'stop' | string;
 export type ScheduleTargetType = 'prompt' | 'script';
 export type ScheduleMode = 'ask' | 'autopilot';
+export type ScheduleProvider = 'copilot' | 'codex' | 'claude' | 'opencode';
 export type ScheduleSource = 'user' | 'repo';
 
 export interface Schedule {
@@ -20,6 +21,7 @@ export interface Schedule {
   outputFolder?: string;
   model?: string;
   mode?: ScheduleMode;
+  provider?: ScheduleProvider;
   source?: ScheduleSource;
 }
 
@@ -70,6 +72,7 @@ export interface CreateScheduleRequest {
   outputFolder?: string;
   model?: string;
   mode?: ScheduleMode;
+  provider?: ScheduleProvider;
 }
 
 export interface UpdateScheduleRequest {
@@ -83,6 +86,7 @@ export interface UpdateScheduleRequest {
   outputFolder?: string;
   model?: string;
   mode?: ScheduleMode;
+  provider?: ScheduleProvider;
 }
 
 export interface MoveScheduleRequest {

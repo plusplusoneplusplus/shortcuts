@@ -301,6 +301,84 @@ describe('PromptScheduleForm — payload generation', () => {
     });
 });
 
+describe('PromptScheduleForm — provider selection', () => {
+    it('renders a provider select defaulting to Default (server default)', async () => {
+        await renderPromptForm();
+
+        const sel = screen.getByTestId('prompt-provider-select') as HTMLSelectElement;
+        expect(sel.value).toBe('');
+        expect(within(sel).getByText('Copilot')).toBeTruthy();
+        expect(within(sel).getByText('Codex')).toBeTruthy();
+        expect(within(sel).getByText('Claude')).toBeTruthy();
+        expect(within(sel).getByText('OpenCode')).toBeTruthy();
+    });
+
+    it('loads models for the default active provider on mount', async () => {
+        await renderPromptForm();
+        await waitFor(() => expect(mockAgentProvidersClient.listModels).toHaveBeenCalledWith('copilot'));
+    });
+
+    it('lists models for the selected provider and clears the model override', async () => {
+        mockAgentProvidersClient.listModels.mockImplementation((provider: string) =>
+            Promise.resolve({ models: [{ id: `${provider}-model` }] }));
+        const user = userEvent.setup();
+        await renderPromptForm();
+
+        // Pick a model under the default provider first.
+        await waitFor(() => expect(within(screen.getByTestId('prompt-model-select')).queryByText('copilot-model')).toBeTruthy());
+        await user.selectOptions(screen.getByTestId('prompt-model-select'), 'copilot-model');
+        expect((screen.getByTestId('prompt-model-select') as HTMLSelectElement).value).toBe('copilot-model');
+
+        // Switching provider reloads models for it and resets the override to Default.
+        await user.selectOptions(screen.getByTestId('prompt-provider-select'), 'claude');
+        await waitFor(() => expect(mockAgentProvidersClient.listModels).toHaveBeenCalledWith('claude'));
+        await waitFor(() => expect(within(screen.getByTestId('prompt-model-select')).queryByText('claude-model')).toBeTruthy());
+        expect((screen.getByTestId('prompt-model-select') as HTMLSelectElement).value).toBe('');
+    });
+
+    it('submits the selected provider in the create payload', async () => {
+        const user = userEvent.setup();
+        const { onCreated } = await renderPromptForm();
+
+        await user.type(screen.getByTestId('prompt-name-input'), 'Provider Routine');
+        await user.type(screen.getByTestId('prompt-instructions-input'), 'Do the work');
+        await user.selectOptions(screen.getByTestId('prompt-provider-select'), 'claude');
+        await user.click(screen.getByRole('button', { name: /create/i }));
+
+        await waitFor(() => expect(onCreated).toHaveBeenCalled());
+        const [, body] = mockSchedulesClient.create.mock.calls[0];
+        expect(body.provider).toBe('claude');
+    });
+
+    it('omits provider (server default) when left as Default', async () => {
+        const user = userEvent.setup();
+        const { onCreated } = await renderPromptForm();
+
+        await user.type(screen.getByTestId('prompt-name-input'), 'Default Routine');
+        await user.type(screen.getByTestId('prompt-instructions-input'), 'Do the work');
+        await user.click(screen.getByRole('button', { name: /create/i }));
+
+        await waitFor(() => expect(onCreated).toHaveBeenCalled());
+        const [, body] = mockSchedulesClient.create.mock.calls[0];
+        expect(body.provider).toBeUndefined();
+    });
+
+    it('pre-fills the provider in edit mode', async () => {
+        await renderPromptForm({
+            mode: 'edit',
+            scheduleId: 'sched-1',
+            initialValues: {
+                name: 'Existing',
+                target: 'Do work',
+                cron: '0 9 * * *',
+                provider: 'codex',
+            },
+        });
+
+        expect((screen.getByTestId('prompt-provider-select') as HTMLSelectElement).value).toBe('codex');
+    });
+});
+
 describe('PromptScheduleForm — edit mode', () => {
     it('pre-fills name, instructions, and infers preset from cron', async () => {
         await renderPromptForm({

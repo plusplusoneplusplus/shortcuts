@@ -131,6 +131,7 @@ onFailure: stop
 mode: plan
 outputFolder: /tmp/output
 model: gpt-4
+provider: claude
 params:
   ENV: production
   BRANCH: main
@@ -143,7 +144,33 @@ params:
         expect(s.mode).toBe('ask');
         expect(s.outputFolder).toBe('/tmp/output');
         expect(s.model).toBe('gpt-4');
+        expect(s.provider).toBe('claude');
         expect(s.params).toEqual({ ENV: 'production', BRANCH: 'main' });
+    });
+
+    it('parses each supported provider value', async () => {
+        for (const provider of ['copilot', 'codex', 'claude', 'opencode']) {
+            writeScheduleFile(scheduleDir, `p-${provider}.yaml`, `
+name: Provider ${provider}
+cron: "0 9 * * *"
+provider: ${provider}
+`);
+        }
+        const result = await loadRepoSchedulesAsync(tmpDir);
+        const byProvider = Object.fromEntries(result.map(s => [s.provider, s.provider]));
+        expect(byProvider).toEqual({ copilot: 'copilot', codex: 'codex', claude: 'claude', opencode: 'opencode' });
+    });
+
+    it('leaves provider undefined when absent (server default)', async () => {
+        writeScheduleFile(scheduleDir, 'no-provider.yaml', 'name: NoProvider\ncron: "0 9 * * *"');
+        const result = await loadRepoSchedulesAsync(tmpDir);
+        expect(result[0].provider).toBeUndefined();
+    });
+
+    it('ignores an unrecognized provider value', async () => {
+        writeScheduleFile(scheduleDir, 'bad-provider.yaml', 'name: BadProvider\ncron: "0 9 * * *"\nprovider: bogus');
+        const result = await loadRepoSchedulesAsync(tmpDir);
+        expect(result[0].provider).toBeUndefined();
     });
 
     it('skips files missing required name field', async () => {
