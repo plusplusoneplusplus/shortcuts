@@ -49,10 +49,10 @@ Git-backed synchronization of My Work and My Life notes across multiple machines
 |------|---------|
 | `src/server/sync/sync-engine.ts` | `SyncEngine` class, `copyDirContents()`/`copyFileIfChanged()`, `nextSyncDelayMs()`, `resolveConflictSimple()`, `resolveConflictWithAI()`, `backupTagStamp()`, `SYNC_IGNORE_NAMES`; re-exports the interval constants. Also owns the private initial-reconcile phase — `reconcile()` and its helpers `readRemoteTree()`/`remoteDefaultBranch()`/`stageMergedTree()` — which runs git around the pure pieces in `sync-reconcile.ts`, plus the two branches into it (`needsReconcile()`, the `isUnrelatedHistoriesError` catch around the pull) and `recordSyncBaseline()`. |
 | `src/server/sync/sync-constants.ts` | Side-effect-free `DEFAULT_SYNC_INTERVAL_MINUTES` / `MAX_SYNC_BACKOFF_MINUTES` (no `child_process`/`fs`), so lightweight consumers avoid pulling in the engine |
-| `src/server/sync/sync-reconcile.ts` | Detection, planning, and apply for the initial-reconcile phase. Detection: `ReconcileMarker`, `reconcileMarkerPath()`/`readReconcileMarker()`/`writeReconcileMarker()`, `isUnrelatedHistoriesError()`, `shouldReconcile()`, `isNotesTreeNonEmpty()`. Planning: `planUnionMerge()` plus `isDecodableText()`/`localVariantPath()`. Apply: `scanTreeToMap()` reads a tree into `Map<posix path, Buffer>`, `buildConflictBlob()` synthesizes the add/add blob the existing resolvers consume (local = ours, remote = theirs), `applyMergePlan()` writes the merged tree — materializing every entry, skipping unchanged bytes, deleting nothing. Reporting: `reconcileCommitMessage()` builds the squashed commit's subject + the body that enumerates every AI-combined and flagged path, and `summarizeMergePlan()`/`reconcileReport()` build the `SyncStatus` report the settings panel shows. A leaf of the import graph — the engine imports it, so the ignore set and the conflict resolver are passed in rather than imported back. Runs no git. |
+| `src/server/sync/sync-reconcile.ts` | Detection, planning, and apply for the initial-reconcile phase. Detection: `ReconcileMarker`, `reconcileMarkerPath()`/`readReconcileMarker()`/`writeReconcileMarker()`, `isUnrelatedHistoriesError()`, `shouldReconcile()`, `isNotesTreeNonEmpty()`. Planning: `planUnionMerge()` plus `isDecodableText()`/`localVariantPath()`. Apply: `scanTreeToMap()` reads a tree into `Map<posix path, Buffer>`, `buildConflictBlob()` synthesizes the add/add blob the existing resolvers consume (local = ours, remote = theirs), `applyMergePlan()` writes the merged tree — materializing every entry, skipping unchanged bytes, deleting nothing. Reporting: `reconcileCommitMessage()` builds the squashed commit's subject + the body that enumerates every AI-combined and flagged path, and `summarizeMergePlan()`/`reconcileReport()` build the `SyncStatus` report the settings panel shows. Steady-state resolution audit: `SyncResolutionReport`/`ResolvedFile`/`ResolutionStrategy`, `resolutionMarkerPath()`/`readResolutionMarker()`/`writeResolutionMarker()` (the `coc-last-resolution.json` marker), `resolutionCommitMessage()` and `resolutionStrategyLabel()`. A leaf of the import graph — the engine imports it, so the ignore set and the conflict resolver are passed in rather than imported back. Runs no git. |
 | `src/server/sync/sync-handler.ts` | REST route registration (`registerSyncRoutes`) — workspace-scoped |
 | `src/server/sync/index.ts` | Barrel exports |
-| `src/server/spa/client/react/features/repo-settings/SyncSettingsSection.tsx` | Per-report sync config UI (git remote, interval, status, trigger) plus the initial merge's in-progress state and one-time report; `reconcileSummaryText()` is the summary wording |
+| `src/server/spa/client/react/features/repo-settings/SyncSettingsSection.tsx` | Per-report sync config UI (git remote, interval, status, trigger) plus the initial merge's in-progress state and one-time report (`reconcileSummaryText()`), the "Push pending" pill + detail, and the steady-state "Last Merge" `ResolutionReportRow` |
 | `packages/coc-client/src/domains/sync.ts` | Hand-maintained mirror of `SyncStatus` + the report types — what the SPA compiles against. Rebuild its `dist` after a change |
 
 ## Per-Workspace Configuration
@@ -74,12 +74,13 @@ Server bootstrap creates two `SyncEngine` instances (`syncEngines: Map<string, S
 3. **Stage local changes** — `git add -A -- . :(exclude)<ignored>`, then `git diff --cached --quiet` to detect whether anything is actually staged. The exclusions match `stageMergedTree`: the ignored names are the engine's own, not notes, and a remote written before the lock moved out of the working tree still carries a `.lock` that must not be staged again. After the changed-only copy this is a cheap stat pass with nothing to re-hash on an idle tree.
 4. **Idle short-circuit** — If nothing is staged **and** the remote has no new commits (`ls-remote origin HEAD` vs local `HEAD`), skip the commit, pull and push, and finish the tick after the copy-back. The copy-back is not skipped: the mirror can hold notes this device has never had on disk (one cloned by an earlier tick, or a notes dir restored empty), and no other step puts them there. It is a stat pass over an unchanged tree and writes nothing when the device already agrees.
 5. **Commit local changes** — Only when there are staged changes: `git commit` with hostname + timestamp message.
-6. **Pull remote** — `git pull --no-rebase origin HEAD`. Detects conflicts via error output. A pull that fails with `isUnrelatedHistoriesError` falls back into reconcile and finishes the tick there — the self-healing path for a mirror with no shared history and no marker to detect it by (one left on its own history by an older version, or a remote re-pointed after reconcile already retired).
-7. **Resolve conflicts** — If merge conflicts, iterate conflicted files:
-   - **AI path**: Send file with conflict markers to `AIInvoker`, validate response (strip code fences, reject residual markers).
-   - **Fallback**: `resolveConflictSimple()` keeps both sides, deduplicates identical content.
-   - **Last resort**: `git checkout --theirs <file>`.
-8. **Push to remote** — `git push -u origin HEAD`. Failure is non-fatal (retries next cycle) but is reported: `pushToRemote()` returns whether the push landed.
+6. **Pull remote** — `git pull --no-rebase origin HEAD`. Conflicts are detected via `gitErrorText(err)`, which concatenates the exec error's `.message`, `.stdout`, and `.stderr` — git writes `CONFLICT`/`Automatic merge failed` to **stdout**, which Node keeps on `.stdout` rather than folding into `.message`, so a message-only check would miss every steady-state conflict and mislabel it a hard error. A pull that fails with `isUnrelatedHistoriesError` falls back into reconcile and finishes the tick there — the self-healing path for a mirror with no shared history and no marker to detect it by (one left on its own history by an older version, or a remote re-pointed after reconcile already retired).
+7. **Resolve conflicts** — If merge conflicts, iterate conflicted files, recording each file's `ResolutionStrategy` as it goes:
+   - **AI path** (`strategy: 'ai'`): Send file with conflict markers to `AIInvoker`, validate response (strip code fences, reject residual markers).
+   - **Fallback** (`strategy: 'simple'`): `resolveConflictSimple()` keeps both sides, deduplicates identical content (also the path when no `AIInvoker` is configured, or the AI call throws).
+   - **Last resort** (`strategy: 'keptRemoteFallback'`): `git checkout --theirs <file>` — drops this device's edit, so it is the one recorded loudly.
+   The resolution commit uses `resolutionCommitMessage()` (enumerating each file + strategy) instead of `--no-edit`, and after it lands `recordResolution()` sets `status.lastResolution` and writes a `coc-last-resolution.json` marker beside the reconcile one — see "The steady-state resolution report" below.
+8. **Push to remote** — `git push -u origin HEAD`. Failure is non-fatal (retries next cycle): `pushToRemote()` returns whether the push landed, and on failure sets `status.pushPending = true` + `status.lastPushError`, cleared only by a later successful push. A repeat failure while already pending logs at `error` (stuck) rather than `warn` (transient). This is kept out of `lastError`: the local sync completed, only the outbound push didn't land, so the pill shows amber "Push pending" not red "Error".
 9. **Copy repo → local** — Mirror resolved content back to local notes directory (changed files only; excludes `.git` and `.lock`).
 10. **Record the baseline** — Only when the push landed, and only if no marker exists: `recordSyncBaseline()` writes the same marker reconcile writes. A push that landed means the two sides now share history by the ordinary route (the remote was empty, so the first push *is* the shared history). Without it, the next tick would see a remote that suddenly has commits and no marker, re-enter reconcile, and union-merge the notes with the copies it just pushed.
 
@@ -162,14 +163,52 @@ An ordinary first push to an *empty* remote records a baseline marker with **no*
 report: nothing was merged, so there is nothing to report. `reconcileReport` stays
 null there.
 
+### The steady-state resolution report
+
+Reconcile explains only the *first* merge. The same audit pattern is extended to
+every steady-state tick that auto-merges, so a two-device conflict is not
+invisible once reconcile has retired:
+
+- `SyncResolutionReport` (`resolvedAt`, `files: ResolvedFile[]`, `commit`) records
+  what the last conflicting tick resolved — one `{ path, strategy }` per file.
+  `strategy` is `'ai'` | `'simple'` | `'keptRemoteFallback'`; the last is lossy
+  (the local edit was dropped) and is surfaced as such.
+- It lives on `status.lastResolution`, is persisted to `.git/coc-last-resolution.json`
+  (`readResolutionMarker()`/`writeResolutionMarker()` in `sync-reconcile.ts`, a
+  temp-file+rename write mirroring the reconcile marker), and is hydrated in
+  `start()` so it survives a restart. Like `reconcileReport`, it is never cleared
+  by an idle tick — only replaced when a newer tick resolves conflicts.
+- The resolution commit body (`resolutionCommitMessage()`) enumerates the same
+  files+strategies, so the record outlives the UI in git history the way the
+  reconcile commit body does.
+
+### Push pending
+
+`status.pushPending` / `status.lastPushError` are the third status axis. A push
+that fails leaves the local sync consistent (the merged tree is on disk and
+committed) but the commit unpushed. That is a soft, self-retrying state, distinct
+from `lastError` (a tick that didn't complete). The next tick retries because the
+local commit is ahead of the remote (`remoteHasNewCommits()` returns true), and a
+successful `pushToRemote()` clears both fields.
+
 ### Where the user reads it
 
 `SyncSettingsSection.tsx` renders the report under a "First Merge" row, off the
 `SyncStatus` its 30s poll already fetches. `SyncStatus` is mirrored by hand in
 `packages/coc-client/src/domains/sync.ts` (`ReconcileReport`, `FlaggedBinary`,
-`MergeOutcome`) — that copy, not the engine's, is the type the SPA compiles
-against, and `packages/coc` typechecks against coc-client's built `dist`, so a
-field added there needs a `npm run build` in coc-client before it is visible.
+`MergeOutcome`, plus `ResolutionStrategy`/`ResolvedFile`/`SyncResolutionReport`
+and the `pushPending`/`lastPushError`/`lastResolution` fields) — that copy, not
+the engine's, is the type the SPA compiles against, and `packages/coc` typechecks
+against coc-client's built `dist`, so a field added there needs a `npm run build`
+in coc-client before it is visible.
+
+Alongside the "First Merge" row, the panel renders:
+- a **"Push pending"** amber pill + detail row when `pushPending` (precedence:
+  `reconcileInProgress` → `inProgress` → `lastError` → `pushPending` → OK →
+  Disabled; a hard error still wins because the tick didn't complete), and
+- a **"Last Merge"** `ResolutionReportRow` listing each `lastResolution.files`
+  entry as "`<path>` — combined (AI)/combined (textual)/kept remote copy…", the
+  lossy `keptRemoteFallback` line rendered in the red error color.
 
 - **While it runs**, the status pill says "Merging notes…" instead of "Syncing…"
   and the row explains that nothing is deleted on either side. The pill checks

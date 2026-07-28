@@ -23,14 +23,24 @@ import {
     isUnrelatedHistoriesError,
     planUnionMerge,
     readReconcileMarker,
+    readResolutionMarker,
     reconcileCommitMessage,
     reconcileReport,
+    resolutionCommitMessage,
     scanTreeToMap,
     shouldReconcile,
     summarizeMergePlan,
     writeReconcileMarker,
+    writeResolutionMarker,
 } from './sync-reconcile';
-import type { MergePlan, ReconcileMarker, ReconcileReport } from './sync-reconcile';
+import type {
+    MergePlan,
+    ReconcileMarker,
+    ReconcileReport,
+    ResolvedFile,
+    ResolutionStrategy,
+    SyncResolutionReport,
+} from './sync-reconcile';
 
 const execFileAsync = promisify(execFile);
 
@@ -74,6 +84,21 @@ export interface SyncStatus {
      * later must not be what wipes the summary before the user has read it.
      */
     reconcileReport: ReconcileReport | null;
+    /**
+     * Whether a commit is waiting to reach the remote because the last push
+     * failed. Kept distinct from `lastError`: the local sync did complete (local
+     * notes are consistent with the merged tree), only the outbound push didn't
+     * land, and it retries next tick. Cleared only by a successful push.
+     */
+    pushPending: boolean;
+    /** The last push failure message, for a tooltip / detail line, or null. */
+    lastPushError: string | null;
+    /**
+     * What the most recent steady-state auto-merge did, or null if none has run.
+     * Like `reconcileReport`, it survives a restart and is never cleared by an
+     * idle tick; it is replaced when a newer tick resolves conflicts.
+     */
+    lastResolution: SyncResolutionReport | null;
 }
 
 /** What the one-time initial reconcile did, for reporting and for tests. */
@@ -145,6 +170,21 @@ async function gitBuffer(args: string[], cwd: string): Promise<Buffer> {
         timeout: 120_000,
     });
     return stdout;
+}
+
+/**
+ * The full text of a failed git command: its message plus stdout and stderr.
+ *
+ * A merge conflict is reported by git on stdout ("CONFLICT …", "Automatic merge
+ * failed …"), and Node's `execFile` error keeps stdout on `.stdout` rather than
+ * folding it into `.message` (which carries only stderr). A catch that inspects
+ * just the message therefore can't tell a conflict from any other pull failure.
+ */
+function gitErrorText(err: unknown): string {
+    const e = err as { message?: unknown; stdout?: unknown; stderr?: unknown };
+    return [e?.message, e?.stdout, e?.stderr]
+        .filter((s): s is string => typeof s === 'string')
+        .join('\n');
 }
 
 /**
@@ -337,6 +377,9 @@ export class SyncEngine {
         enabled: false,
         reconcileInProgress: false,
         reconcileReport: null,
+        pushPending: false,
+        lastPushError: null,
+        lastResolution: null,
     };
 
     private syncTimer: ReturnType<typeof setTimeout> | null = null;
@@ -392,6 +435,10 @@ export class SyncEngine {
         // previous run of the server. Its summary is the user's one account of
         // which notes got combined, so read it back rather than showing nothing.
         this.status.reconcileReport = reconcileReport(await readReconcileMarker(this.syncRepoDir));
+        // The last steady-state auto-merge may likewise predate this run; its
+        // summary is the only record of which notes were combined for the user
+        // (and whether any edit was dropped), so hydrate it the same way.
+        this.status.lastResolution = await readResolutionMarker(this.syncRepoDir);
 
         // Fire-and-forget initial sync — don't block server startup
         this.performSync(gitRemote).catch(() => {});
@@ -702,7 +749,11 @@ export class SyncEngine {
             await git(['pull', '--no-rebase', 'origin', 'HEAD'], this.syncRepoDir);
             return false;
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : String(err);
+            // git writes merge-conflict notices to stdout, which Node keeps on the
+            // exec error's `.stdout` rather than folding into `.message` — so read
+            // the full output, or every steady-state conflict reads as a hard error
+            // and never reaches the resolver.
+            const message = gitErrorText(err);
             if (message.includes('CONFLICT') || message.includes('Automatic merge failed')) {
                 this.logger.warn('Merge conflicts detected');
                 return true;
@@ -727,60 +778,107 @@ export class SyncEngine {
 
         this.logger.info(`Resolving ${conflictedFiles.length} conflicted file(s)`);
 
+        // Record how each note was resolved as we go, so the commit body and the
+        // status report can both enumerate it — the simple path used to be silent,
+        // and the `--theirs` fallback silently dropped this device's edit.
+        const resolved: ResolvedFile[] = [];
         for (const file of conflictedFiles) {
             const filePath = path.join(this.syncRepoDir, file);
             try {
                 const readResult = await safeReadFileAsync(filePath);
                 if (!readResult.success) throw readResult.error!;
-                const resolved = await this.resolveFileConflict(file, readResult.data!);
-                await fs.promises.writeFile(filePath, resolved, 'utf8');
+                const outcome = await this.resolveFileConflict(file, readResult.data!);
+                await fs.promises.writeFile(filePath, outcome.content, 'utf8');
                 await git(['add', file], this.syncRepoDir);
+                resolved.push({ path: file, strategy: outcome.strategy });
             } catch (err) {
                 this.logger.error(`Failed to resolve conflict in ${file}: ${err}`);
-                // Accept theirs as fallback
+                // Accept theirs as fallback — this discards the local edit, which
+                // is exactly why it is recorded rather than dropped silently.
                 try {
                     await git(['checkout', '--theirs', file], this.syncRepoDir);
                     await git(['add', file], this.syncRepoDir);
+                    resolved.push({ path: file, strategy: 'keptRemoteFallback' });
                 } catch { /* last resort: skip */ }
             }
         }
 
         try {
-            await git(['commit', '--no-edit'], this.syncRepoDir);
+            await git(['commit', '-m', resolutionCommitMessage(resolved)], this.syncRepoDir);
             this.logger.info('Committed conflict resolution');
+            // Only once the resolution commit has landed do we record it: the
+            // report carries that commit's SHA, and a marker beside the reconcile
+            // one lets the panel still show what the merge did after a restart.
+            if (resolved.length > 0) {
+                await this.recordResolution(resolved);
+            }
         } catch {
             // May already be committed
         }
     }
 
     /**
-     * Resolve a single file's merge conflicts. Uses AI when available,
-     * falls back to simple concatenation-based resolution.
+     * Persist the just-committed resolution to the status and a durable marker.
+     * Read back in `start()`, so it survives a restart the way the reconcile
+     * report does.
      */
-    private async resolveFileConflict(fileName: string, content: string): Promise<string> {
+    private async recordResolution(files: ResolvedFile[]): Promise<void> {
+        const report: SyncResolutionReport = {
+            resolvedAt: new Date().toISOString(),
+            files,
+            commit: await git(['rev-parse', 'HEAD'], this.syncRepoDir),
+        };
+        this.status.lastResolution = report;
+        await writeResolutionMarker(this.syncRepoDir, report);
+    }
+
+    /**
+     * Resolve a single file's merge conflicts. Uses AI when available, falls back
+     * to simple concatenation-based resolution. Returns the strategy alongside the
+     * content so the caller can record which path each note took — the simple path
+     * would otherwise leave no trace.
+     */
+    private async resolveFileConflict(
+        fileName: string,
+        content: string,
+    ): Promise<{ content: string; strategy: ResolutionStrategy }> {
         if (!this.aiInvoker) {
-            return resolveConflictSimple(content);
+            return { content: resolveConflictSimple(content), strategy: 'simple' };
         }
 
         try {
             const resolved = await resolveConflictWithAI(this.aiInvoker, fileName, content);
             this.logger.info(`AI resolved conflict in ${fileName}`);
-            return resolved;
+            return { content: resolved, strategy: 'ai' };
         } catch (err) {
             this.logger.warn(`AI conflict resolution failed for ${fileName}, falling back to simple merge: ${err}`);
-            return resolveConflictSimple(content);
+            return { content: resolveConflictSimple(content), strategy: 'simple' };
         }
     }
 
-    /** Push, reporting whether it landed. A failure retries on the next tick. */
+    /**
+     * Push, reporting whether it landed. A failure retries on the next tick, so
+     * it is kept out of `lastError` (the local sync did complete) and surfaced as
+     * `pushPending` instead — an amber "retrying" state rather than a red failure.
+     */
     private async pushToRemote(): Promise<boolean> {
         try {
             await git(['push', '-u', 'origin', 'HEAD'], this.syncRepoDir);
             this.logger.info('Pushed to remote');
+            this.status.pushPending = false;
+            this.status.lastPushError = null;
             return true;
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : String(err);
-            this.logger.warn(`Push failed (will retry next cycle): ${message}`);
+            // A repeated failure (already pending) is stuck, not transient — log it
+            // at error so the console distinguishes the two.
+            if (this.status.pushPending) {
+                this.logger.error(`Push still failing (commit stuck, will keep retrying): ${message}`);
+            } else {
+                this.logger.warn(`Push failed (will retry next cycle): ${message}`);
+            }
+            this.status.pushPending = true;
+            this.status.lastPushError = message;
             return false;
         }
     }
@@ -921,7 +1019,7 @@ export class SyncEngine {
             plan,
             local,
             remote,
-            resolveText: (filePath, blob) => this.resolveFileConflict(filePath, blob),
+            resolveText: async (filePath, blob) => (await this.resolveFileConflict(filePath, blob)).content,
         });
 
         let mergedCommit = remoteHead;

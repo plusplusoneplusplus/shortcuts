@@ -22,7 +22,7 @@ import {
     MAX_SYNC_BACKOFF_MINUTES,
 } from '../../src/server/sync/sync-engine';
 import type { SyncStatus, ReconcileResult } from '../../src/server/sync/sync-engine';
-import { readReconcileMarker } from '../../src/server/sync/sync-reconcile';
+import { readReconcileMarker, readResolutionMarker } from '../../src/server/sync/sync-reconcile';
 import type { AIInvoker } from '@plusplusoneplusplus/forge';
 
 interface GitEnvSnapshot {
@@ -1567,5 +1567,282 @@ describe('SyncEngine — unusable sync repo is rebuilt (real git)', () => {
 
         expect(git(['rev-parse', 'HEAD'], syncRepoDir())).toBe(remoteHead);
         expect(fs.existsSync(path.join(syncRepoDir(), 'remote-note.md'))).toBe(true);
+    });
+});
+
+// ── Push-pending state (real git) ────────────────────────────────────────────
+
+/**
+ * A push that never lands must not read as a healthy sync. The local reconcile
+ * did complete, so it is surfaced as `pushPending` (amber, retrying) rather than
+ * `lastError` (red, broken) — and cleared only when a later push succeeds.
+ */
+describe('SyncEngine push-pending state (real git)', () => {
+    let tmpDir: string;
+    let remoteDir: string;
+    let engine: SyncEngine;
+    let logs: string[];
+    let gitEnvSnapshot: GitEnvSnapshot | undefined;
+
+    const logger = {
+        info: (m: string) => logs.push(m),
+        warn: (m: string) => logs.push(m),
+        error: (m: string) => logs.push(m),
+    };
+
+    const notesDir = () => path.join(tmpDir, 'repos', 'my_work', 'notes');
+    const remoteUrl = () => remoteDir.replace(/\\/g, '/');
+
+    function writeNote(rel: string, content: string): void {
+        const p = path.join(notesDir(), rel);
+        fs.mkdirSync(path.dirname(p), { recursive: true });
+        fs.writeFileSync(p, content);
+    }
+
+    /** Make the remote reject every incoming push, or accept it again. */
+    function setRemotePushRejecting(reject: boolean): void {
+        const hook = path.join(remoteDir, 'hooks', 'pre-receive');
+        if (reject) fs.writeFileSync(hook, '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+        else if (fs.existsSync(hook)) fs.unlinkSync(hook);
+    }
+
+    beforeEach(() => {
+        logs = [];
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-sync-push-'));
+        gitEnvSnapshot = installIsolatedGitConfig(writeTestGitConfig(tmpDir));
+        remoteDir = path.join(tmpDir, 'remote.git');
+        execFileSync('git', ['init', '--bare', remoteDir], { stdio: 'ignore' });
+        engine = new SyncEngine({ dataDir: tmpDir, workspaceId: 'my_work', logger });
+    });
+
+    afterEach(() => {
+        engine?.stop();
+        restoreGitConfigEnv(gitEnvSnapshot);
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('flags a failed push as pending without reporting a hard error', async () => {
+        // First sync lands cleanly and establishes the baseline the steady-state
+        // flow needs — the remote now shares history with this mirror.
+        writeNote('a.md', '# A\n');
+        await engine.triggerSync(remoteUrl());
+        expect(engine.getStatus().pushPending).toBe(false);
+
+        // Now the remote rejects the next push. A fresh local commit is made, but
+        // it can't reach the remote.
+        setRemotePushRejecting(true);
+        writeNote('b.md', '# B\n');
+        const status = await engine.triggerSync(remoteUrl());
+
+        // The local sync completed; only the outbound push didn't land.
+        expect(status.pushPending).toBe(true);
+        expect(status.lastPushError).toBeTruthy();
+        expect(status.lastError).toBeNull();
+        expect(status.lastSyncTime).not.toBeNull();
+    });
+
+    it('clears pending once a later push succeeds', async () => {
+        writeNote('a.md', '# A\n');
+        await engine.triggerSync(remoteUrl());
+
+        setRemotePushRejecting(true);
+        writeNote('b.md', '# B\n');
+        await engine.triggerSync(remoteUrl());
+        expect(engine.getStatus().pushPending).toBe(true);
+
+        // The local commit is now ahead of the remote, so the next tick retries
+        // the push rather than short-circuiting as idle. With the remote accepting
+        // again, the commit lands and the pending state clears.
+        setRemotePushRejecting(false);
+        const status = await engine.triggerSync(remoteUrl());
+
+        expect(status.pushPending).toBe(false);
+        expect(status.lastPushError).toBeNull();
+        expect(status.lastError).toBeNull();
+    });
+
+    it('escalates the log to error when a push is stuck across ticks', async () => {
+        writeNote('a.md', '# A\n');
+        await engine.triggerSync(remoteUrl());
+
+        setRemotePushRejecting(true);
+        writeNote('b.md', '# B\n');
+        await engine.triggerSync(remoteUrl());
+        logs.length = 0;
+
+        // A note edit so the second failing tick has something to commit and push.
+        writeNote('b.md', '# B edited\n');
+        await engine.triggerSync(remoteUrl());
+
+        // The first failure warns "will retry"; a repeat while already pending is
+        // stuck, and logs at error so the console can tell them apart.
+        expect(logs.some(l => /Push still failing/.test(l))).toBe(true);
+    });
+});
+
+// ── Steady-state conflict resolution audit (real git) ────────────────────────
+
+/**
+ * When the same note is edited on two devices, the steady-state pull conflicts
+ * and the engine auto-merges it. These pin the durable audit trail that leaves:
+ * the strategy per file on the status, a persisted marker that survives a
+ * restart, and an enumerated commit body.
+ */
+describe('SyncEngine steady-state resolution (real git)', () => {
+    let tmpDir: string;
+    let remoteDir: string;
+    let engine: SyncEngine;
+    let logs: string[];
+    let gitEnvSnapshot: GitEnvSnapshot | undefined;
+
+    const logger = {
+        info: (m: string) => logs.push(m),
+        warn: (m: string) => logs.push(m),
+        error: (m: string) => logs.push(m),
+    };
+
+    const notesDir = () => path.join(tmpDir, 'repos', 'my_work', 'notes');
+    const syncRepoDir = () => path.join(tmpDir, 'sync', 'my-work');
+    const remoteUrl = () => remoteDir.replace(/\\/g, '/');
+
+    function git(args: string[], cwd: string): string {
+        return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+    }
+
+    function writeNote(rel: string, content: string): void {
+        const p = path.join(notesDir(), rel);
+        fs.mkdirSync(path.dirname(p), { recursive: true });
+        fs.writeFileSync(p, content);
+    }
+
+    /**
+     * Push a divergent edit from "another machine": clone the current remote
+     * (so history is shared), change a note, commit and push. A later local edit
+     * of the same note then produces a real steady-state merge conflict.
+     */
+    function seedRemoteEdit(rel: string, content: string): void {
+        const seed = path.join(tmpDir, `seed-${rel.replace(/[^a-z0-9]/gi, '-')}`);
+        execFileSync('git', ['clone', remoteUrl(), seed], { stdio: 'ignore' });
+        const p = path.join(seed, rel);
+        fs.mkdirSync(path.dirname(p), { recursive: true });
+        fs.writeFileSync(p, content);
+        git(['add', '-A'], seed);
+        git(['commit', '-m', 'edit from another machine'], seed);
+        git(['push', 'origin', 'HEAD'], seed);
+        fs.rmSync(seed, { recursive: true, force: true });
+    }
+
+    /** Drive a conflicting steady-state tick on note `rel`, returning the status. */
+    async function driveConflict(rel: string, localContent: string, remoteContent: string): Promise<SyncStatus> {
+        // Establish the shared baseline, then diverge the two sides on `rel`.
+        writeNote(rel, '# base\n');
+        await engine.triggerSync(remoteUrl());
+        seedRemoteEdit(rel, remoteContent);
+        writeNote(rel, localContent);
+        return engine.triggerSync(remoteUrl());
+    }
+
+    beforeEach(() => {
+        logs = [];
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-sync-resolve-'));
+        gitEnvSnapshot = installIsolatedGitConfig(writeTestGitConfig(tmpDir));
+        remoteDir = path.join(tmpDir, 'remote.git');
+        execFileSync('git', ['init', '--bare', remoteDir], { stdio: 'ignore' });
+        engine = new SyncEngine({ dataDir: tmpDir, workspaceId: 'my_work', logger });
+    });
+
+    afterEach(() => {
+        engine?.stop();
+        restoreGitConfigEnv(gitEnvSnapshot);
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('records the simple strategy when no AI resolver is configured', async () => {
+        const status = await driveConflict('a.md', '# A local\n', '# A remote\n');
+
+        expect(status.lastError).toBeNull();
+        expect(status.lastResolution?.files).toEqual([{ path: 'a.md', strategy: 'simple' }]);
+        // Both sides survive with no markers — the textual concat kept them.
+        const merged = fs.readFileSync(path.join(notesDir(), 'a.md'), 'utf8');
+        expect(merged).toContain('# A local');
+        expect(merged).toContain('# A remote');
+        expect(merged).not.toContain('<<<<<<<');
+    });
+
+    it('records the AI strategy when the resolver succeeds', async () => {
+        const invoker: AIInvoker = vi.fn().mockResolvedValue({ success: true, response: '# A combined\n' });
+        engine = new SyncEngine({ dataDir: tmpDir, workspaceId: 'my_work', logger, aiInvoker: invoker });
+
+        const status = await driveConflict('a.md', '# A local\n', '# A remote\n');
+
+        expect(status.lastResolution?.files).toEqual([{ path: 'a.md', strategy: 'ai' }]);
+        expect(invoker).toHaveBeenCalled();
+    });
+
+    it('records the simple strategy when the AI resolver throws (fallback)', async () => {
+        const invoker: AIInvoker = vi.fn().mockRejectedValue(new Error('offline'));
+        engine = new SyncEngine({ dataDir: tmpDir, workspaceId: 'my_work', logger, aiInvoker: invoker });
+
+        const status = await driveConflict('a.md', '# A local\n', '# A remote\n');
+
+        expect(status.lastResolution?.files).toEqual([{ path: 'a.md', strategy: 'simple' }]);
+    });
+
+    it('records the lossy keptRemoteFallback when resolution errors, keeping the remote copy', async () => {
+        // Force the resolver to throw so the `--theirs` fallback fires — the one
+        // path that drops this device's edit.
+        vi.spyOn(engine as any, 'resolveFileConflict').mockRejectedValue(new Error('boom'));
+
+        const status = await driveConflict('a.md', '# A local\n', '# A remote\n');
+
+        expect(status.lastError).toBeNull();
+        expect(status.lastResolution?.files).toEqual([{ path: 'a.md', strategy: 'keptRemoteFallback' }]);
+        // The local edit was dropped: disk holds the remote's version.
+        expect(fs.readFileSync(path.join(notesDir(), 'a.md'), 'utf8')).toBe('# A remote\n');
+    });
+
+    it('persists the resolution to a marker beside the reconcile one', async () => {
+        const status = await driveConflict('a.md', '# A local\n', '# A remote\n');
+
+        const marker = await readResolutionMarker(syncRepoDir());
+        expect(marker).not.toBeNull();
+        expect(marker!.files).toEqual([{ path: 'a.md', strategy: 'simple' }]);
+        expect(marker!.commit).toBe(status.lastResolution!.commit);
+        expect(Date.parse(marker!.resolvedAt)).not.toBeNaN();
+    });
+
+    it('enumerates the resolved files and strategy in the commit body', async () => {
+        await driveConflict('a.md', '# A local\n', '# A remote\n');
+
+        const message = git(['log', '-1', '--pretty=%B'], syncRepoDir());
+        expect(message).toContain('Sync: resolved 1 conflicted note');
+        expect(message).toContain('- a.md — combined (textual)');
+    });
+
+    it('records the marker commit as the resolution commit HEAD', async () => {
+        const status = await driveConflict('a.md', '# A local\n', '# A remote\n');
+        expect(status.lastResolution!.commit).toBe(git(['rev-parse', 'HEAD'], syncRepoDir()));
+    });
+
+    it('hydrates the last resolution on a restart from the marker', async () => {
+        const before = (await driveConflict('a.md', '# A local\n', '# A remote\n')).lastResolution;
+        expect(before).not.toBeNull();
+
+        // A new process, same data dir: only the on-disk marker can carry the
+        // summary across.
+        const restarted = new SyncEngine({ dataDir: tmpDir, workspaceId: 'my_work', logger });
+        vi.spyOn(restarted as any, 'performSync').mockResolvedValue(undefined);
+        await restarted.start(remoteUrl(), 60);
+        restarted.stop();
+
+        expect(restarted.getStatus().lastResolution).toEqual(before);
+    });
+
+    it('leaves the resolution report alone on a later idle tick', async () => {
+        const merged = (await driveConflict('a.md', '# A local\n', '# A remote\n')).lastResolution;
+
+        // An ordinary idle tick minutes later must not clear the summary.
+        const status = await engine.triggerSync(remoteUrl());
+        expect(status.lastResolution).toEqual(merged);
     });
 });

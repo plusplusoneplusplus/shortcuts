@@ -74,6 +74,23 @@ describe('registerSyncRoutes', () => {
             expect(body.lastError).toBeNull();
         });
 
+        it('no-engine fallback carries the full status shape', async () => {
+            const routes: Route[] = [];
+            registerSyncRoutes(routes, () => undefined, () => undefined);
+
+            const found = findRoute(routes, 'GET', STATUS_URL)!;
+            const res = createMockRes();
+            await found.route.handler(createMockReq(), res, found.match);
+
+            const body = JSON.parse((res.end as any).mock.calls[0][0]);
+            // Keeping the shape uniform means the client never sees an undefined field.
+            expect(body.pushPending).toBe(false);
+            expect(body.lastPushError).toBeNull();
+            expect(body.lastResolution).toBeNull();
+            expect(body.reconcileInProgress).toBe(false);
+            expect(body.reconcileReport).toBeNull();
+        });
+
         it('returns engine status when engine exists', async () => {
             const mockStatus: SyncStatus = {
                 enabled: true,

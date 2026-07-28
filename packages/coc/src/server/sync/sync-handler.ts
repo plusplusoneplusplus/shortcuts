@@ -37,6 +37,9 @@ export function registerSyncRoutes(
                     lastError: null,
                     reconcileInProgress: false,
                     reconcileReport: null,
+                    pushPending: false,
+                    lastPushError: null,
+                    lastResolution: null,
                 };
                 res.end(JSON.stringify(noEngine));
                 return;
