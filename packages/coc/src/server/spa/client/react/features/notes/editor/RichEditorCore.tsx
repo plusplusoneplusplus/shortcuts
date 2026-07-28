@@ -11,6 +11,8 @@ import { createRoot } from 'react-dom/client';
 import { useEditor, EditorContent } from '@tiptap/react';
 import type { Editor, EditorEvents } from '@tiptap/core';
 import { StarterKit } from '@tiptap/starter-kit';
+import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight';
+import { createLowlight, common } from 'lowlight';
 import { TaskList } from '@tiptap/extension-task-list';
 import { TaskItem } from '@tiptap/extension-task-item';
 import { Link } from '@tiptap/extension-link';
@@ -43,6 +45,12 @@ import { SidenoteRefExtension } from './extensions/sidenoteRefExtension';
 import { FilePathNodeExtension } from './filePathNodeExtension';
 import { useLinkHandlers } from '../../../hooks/useLinkHandlers';
 import { openLink } from '../../../utils/link-handler';
+
+// Shared lowlight registry for fenced code-block syntax highlighting. `common`
+// bundles ~37 highlight.js grammars (C/C++, Python, JS/TS, Go, Rust, …) — the
+// `.hljs-*` token spans it emits are colored by the globally-loaded github /
+// github-dark stylesheets (html-template.ts). Built once at module load.
+const lowlight = createLowlight(common);
 
 // ── Props ───────────────────────────────────────────────────────────────────
 
@@ -200,7 +208,13 @@ export function RichEditorCore({
             StarterKit.configure({
                 heading: { levels: [1, 2, 3] },
                 link: false,
+                // Disable StarterKit's plain CodeBlock so CodeBlockLowlight is the
+                // single `codeBlock` node type — its lowlight decorations color
+                // fenced-block tokens live while editing (honoring an explicit
+                // ```lang fence on import, else lowlight auto-detection).
+                codeBlock: false,
             }),
+            CodeBlockLowlight.configure({ lowlight }),
             TaskList,
             TaskItem.configure({ nested: true }),
             Link.configure({
