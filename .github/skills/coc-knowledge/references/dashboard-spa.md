@@ -315,7 +315,7 @@ their subresource caches (the detail route already evicts sub-caches).
 
 `features/canvas/CanvasPanel.tsx` renders the chat canvas side panel, gated by
 the `canvas.enabled` runtime flag (`isCanvasEnabled()` in `utils/config.ts`,
-default off). When enabled, `ChatDetail` discovers canvases linked to the open
+default on). When enabled, `ChatDetail` discovers canvases linked to the open
 process via `client.canvases.list(workspaceId, { processId })`, keeps those
 summaries in API order for the panel title switcher, and refreshes the list on
 live `canvas-updated` SSE events (surfaced by `useChatSSE`'s `onCanvasUpdated`
@@ -1280,7 +1280,7 @@ Enabled by default; desktop-only; takes effect on reload.
 - **Scope slide switcher (`ScopeSlideSwitcher`)** — gated by the experimental
   `features.scopeSwitcher` admin flag (runtime flag `scopeSwitcherEnabled`,
   `isScopeSwitcherEnabled()` in `utils/config.ts`, live hook
-  `useScopeSwitcherEnabled`; default **off**; remote-first desktop shell only).
+  `useScopeSwitcherEnabled`; default **on**; remote-first desktop shell only).
   When on, `TopBar` replaces the standalone 💼 My Work / 🏠 My Life toggles and
   the identity chips inside both header variants with one sliding segmented
   control: `[💼 My Work] [🏠 My Life] [● workspace ⧉N ▾]`

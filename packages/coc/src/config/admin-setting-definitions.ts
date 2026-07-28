@@ -658,10 +658,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'canvas.enabled', default: false, runtime: 'live', runtimeFlag: 'canvasEnabled',
+        key: 'canvas.enabled', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'canvasEnabled',
         ui: {
             group: 'review', order: 61, label: 'Canvas panel', badge: 'experimental',
-            hint: 'AI can maintain a markdown document in a side panel next to the chat, with live user co-editing. Disabled by default.',
+            hint: 'AI can maintain a markdown document in a side panel next to the chat, with live user co-editing. Enabled by default.',
             testId: 'toggle-canvas-enabled',
         },
     }),
@@ -769,10 +769,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.quickAskSidenotes', default: false, runtime: 'live', runtimeFlag: 'quickAskSidenotesEnabled',
+        key: 'features.quickAskSidenotes', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'quickAskSidenotesEnabled',
         ui: {
             group: 'dashboard', order: 62, label: 'Quick Ask side-notes', badge: 'experimental',
-            hint: 'Select text in an assistant chat message to run a cheap one-shot AI lookup, attached as a clickable side-note bubble (never posted into the main thread). Disabled by default.',
+            hint: 'Select text in an assistant chat message to run a cheap one-shot AI lookup, attached as a clickable side-note bubble (never posted into the main thread). Enabled by default.',
             testId: 'toggle-quick-ask-sidenotes-enabled',
         },
     }),
@@ -793,10 +793,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.scopeSwitcher', default: false, runtime: 'live', runtimeFlag: 'scopeSwitcherEnabled',
+        key: 'features.scopeSwitcher', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'scopeSwitcherEnabled',
         ui: {
             group: 'dashboard', order: 66, label: 'Scope slide switcher', badge: 'experimental',
-            hint: 'Replace the My Work / My Life toggles and the workspace identity chip with one sliding segmented switcher in the remote-first desktop header. Disabled by default.',
+            hint: 'Replace the My Work / My Life toggles and the workspace identity chip with one sliding segmented switcher in the remote-first desktop header. Enabled by default.',
             testId: 'toggle-scope-switcher-enabled',
         },
     }),

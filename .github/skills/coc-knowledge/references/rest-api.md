@@ -47,7 +47,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 
 ## Canvases
 
-Chat canvas side panel (gated by `canvas.enabled`, default off). Markdown or code artifacts (`type` + optional `language` on the descriptor) the AI and the user co-edit; AI edits go through the canvas LLM tools, these routes serve the dashboard panel.
+Chat canvas side panel (gated by `canvas.enabled`, default on). Markdown or code artifacts (`type` + optional `language` on the descriptor) the AI and the user co-edit; AI edits go through the canvas LLM tools, these routes serve the dashboard panel.
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -118,7 +118,7 @@ Opt-in isolated-worktree execution mode for Work Item and Ralph runs, gated by t
 
 ## Quick Ask Side-notes
 
-Per-process AI lookups on assistant chat turns. A text selection triggers a cheap one-shot ask (never a follow-up turn); the answer is stored as a repo-scoped annotation and never enters the conversation. All endpoints are gated by the live admin flag `features.quickAskSidenotes` (default `false`) and return `404` when disabled. Storage: `{dataDir}/repos/<workspaceId>/chat-sidenotes/<sha256(processId)>.json`. Workspace is supplied via `?workspace=<id>`.
+Per-process AI lookups on assistant chat turns. A text selection triggers a cheap one-shot ask (never a follow-up turn); the answer is stored as a repo-scoped annotation and never enters the conversation. All endpoints are gated by the live admin flag `features.quickAskSidenotes` (default `true`) and return `404` when disabled. Storage: `{dataDir}/repos/<workspaceId>/chat-sidenotes/<sha256(processId)>.json`. Workspace is supplied via `?workspace=<id>`.
 
 | Method | Path | Description |
 |--------|------|-------------|
