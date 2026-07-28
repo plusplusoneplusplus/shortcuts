@@ -194,6 +194,29 @@ describe('NoteEditor — Source Mode', () => {
             expect(hiddenAncestor!.style.display).toBe('none');
             expect(screen.getByTestId('note-source-container')).toBeTruthy();
         });
+
+        // Regression: the source textarea uses `height: 100%`, which only
+        // resolves when every ancestor between the flex scroll container and the
+        // textarea establishes a definite height. The per-note zoom wrapper
+        // (`note-source-zoom`) once had auto height, collapsing the textarea to
+        // its ~2-row intrinsic height. Lock in the flex height-chain classes so
+        // the textarea can fill the available space again.
+        it('gives the source container and zoom wrapper a definite-height flex chain', async () => {
+            await renderAndWaitForLoad();
+            await switchToSource();
+
+            const container = screen.getByTestId('note-source-container');
+            for (const cls of ['flex-1', 'flex', 'flex-col', 'min-h-0']) {
+                expect(container.className).toContain(cls);
+            }
+
+            const zoomWrapper = screen.getByTestId('note-source-zoom');
+            for (const cls of ['flex-1', 'min-h-0', 'flex', 'flex-col']) {
+                expect(zoomWrapper.className).toContain(cls);
+            }
+            // The wrapper is a direct ancestor of the textarea whose height it feeds.
+            expect(zoomWrapper.querySelector('textarea')).not.toBeNull();
+        });
     });
 
     // ── Toggle back to rich mode ────────────────────────────────────────────
