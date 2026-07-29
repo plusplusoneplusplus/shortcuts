@@ -334,6 +334,10 @@ export function NoteEditor({
                 resetEditorHistory(ed);
                 setSourceDirty(false);
                 contentLoadedRef.current = true;
+                // setContent used emitUpdate:false, so the change handler never
+                // fires — recompute the TOC from the freshly loaded doc so the
+                // TOC toolbar button is enabled on load without needing an edit.
+                setTocEntries(extractHeadings(ed));
 
                 if (commentsEnabled) {
                     if (threadsProp) {
