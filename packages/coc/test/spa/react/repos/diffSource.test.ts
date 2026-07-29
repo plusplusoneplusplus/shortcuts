@@ -4,6 +4,8 @@ import {
     createBranchRangeDiffSource,
     createPrDiffSource,
     fetchDiffFromSource,
+    peekDiffCache,
+    clearDiffFetchCache,
     extractFilePathsFromDiff,
     extractFileStatsFromDiff,
     extractFileDiffFromCombined,
@@ -195,9 +197,14 @@ describe('createBranchRangeDiffSource', () => {
 
 describe('fetchDiffFromSource', () => {
     const ws = 'ws1';
+    let urlCounter = 0;
+    // Each test uses a distinct URL so the module-level cache never bleeds across
+    // cases; the cache is also cleared between tests for good measure.
+    const uniqueUrl = () => `/some/url/${urlCounter++}`;
 
     beforeEach(() => {
         mockedRequestForWorkspace.mockReset();
+        clearDiffFetchCache();
     });
 
     it('normalizes standard response with all fields', async () => {
@@ -206,9 +213,10 @@ describe('fetchDiffFromSource', () => {
             truncated: true,
             totalLines: 8000,
         });
-        const result = await fetchDiffFromSource(ws, '/some/url');
+        const u = uniqueUrl();
+        const result = await fetchDiffFromSource(ws, u);
         // The relative url is routed to the workspace's clone (workspaceId, url).
-        expect(mockedRequestForWorkspace).toHaveBeenCalledWith(ws, '/some/url');
+        expect(mockedRequestForWorkspace).toHaveBeenCalledWith(ws, u);
         expect(result).toEqual({
             diff: '--- a/file\n+++ b/file',
             truncated: true,
@@ -218,7 +226,7 @@ describe('fetchDiffFromSource', () => {
 
     it('normalizes minimal response without truncation fields', async () => {
         mockedRequestForWorkspace.mockResolvedValue({ diff: 'some diff' });
-        const result = await fetchDiffFromSource(ws, '/some/url');
+        const result = await fetchDiffFromSource(ws, uniqueUrl());
         expect(result).toEqual({
             diff: 'some diff',
             truncated: false,
@@ -228,7 +236,7 @@ describe('fetchDiffFromSource', () => {
 
     it('handles missing diff field', async () => {
         mockedRequestForWorkspace.mockResolvedValue({});
-        const result = await fetchDiffFromSource(ws, '/some/url');
+        const result = await fetchDiffFromSource(ws, uniqueUrl());
         expect(result).toEqual({
             diff: '',
             truncated: false,
@@ -238,7 +246,82 @@ describe('fetchDiffFromSource', () => {
 
     it('propagates request errors', async () => {
         mockedRequestForWorkspace.mockRejectedValue(new Error('API error: 500'));
-        await expect(fetchDiffFromSource(ws, '/some/url')).rejects.toThrow('API error: 500');
+        await expect(fetchDiffFromSource(ws, uniqueUrl())).rejects.toThrow('API error: 500');
+    });
+
+    it('caches by workspace+url: a second fetch for the same URL hits no network', async () => {
+        mockedRequestForWorkspace.mockResolvedValue({ diff: 'cached body', truncated: false, totalLines: 0 });
+        const u = uniqueUrl();
+
+        const first = await fetchDiffFromSource(ws, u);
+        const second = await fetchDiffFromSource(ws, u);
+
+        expect(second).toEqual(first);
+        // Only one round-trip for the two identical fetches.
+        expect(mockedRequestForWorkspace).toHaveBeenCalledTimes(1);
+        // peekDiffCache reflects the cached value synchronously.
+        expect(peekDiffCache(ws, u)).toEqual(first);
+    });
+
+    it('does not share cache entries across workspaces or URLs', async () => {
+        mockedRequestForWorkspace.mockResolvedValue({ diff: 'x', truncated: false, totalLines: 0 });
+        const u = uniqueUrl();
+
+        await fetchDiffFromSource('ws-a', u);
+        await fetchDiffFromSource('ws-b', u);       // different workspace, same url
+        await fetchDiffFromSource('ws-a', uniqueUrl()); // same workspace, different url
+
+        expect(mockedRequestForWorkspace).toHaveBeenCalledTimes(3);
+    });
+
+    it('toggle A → B → A issues at most one request per distinct URL', async () => {
+        const urlA = uniqueUrl();
+        const urlB = uniqueUrl();
+        mockedRequestForWorkspace.mockImplementation(async (_ws: string, u: string) => ({
+            diff: `body ${u}`,
+            truncated: false,
+            totalLines: 0,
+        }));
+
+        await fetchDiffFromSource(ws, urlA);
+        await fetchDiffFromSource(ws, urlB);
+        await fetchDiffFromSource(ws, urlA); // cache hit
+        await fetchDiffFromSource(ws, urlB); // cache hit
+
+        expect(mockedRequestForWorkspace).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not cache failed fetches', async () => {
+        const u = uniqueUrl();
+        mockedRequestForWorkspace
+            .mockRejectedValueOnce(new Error('boom'))
+            .mockResolvedValueOnce({ diff: 'recovered', truncated: false, totalLines: 0 });
+
+        await expect(fetchDiffFromSource(ws, u)).rejects.toThrow('boom');
+        expect(peekDiffCache(ws, u)).toBeUndefined();
+
+        // A retry after the failure performs a fresh request and then caches.
+        const result = await fetchDiffFromSource(ws, u);
+        expect(result.diff).toBe('recovered');
+        expect(mockedRequestForWorkspace).toHaveBeenCalledTimes(2);
+    });
+
+    it('evicts the oldest entry past the cache cap', async () => {
+        mockedRequestForWorkspace.mockImplementation(async (_ws: string, u: string) => ({
+            diff: `body ${u}`,
+            truncated: false,
+            totalLines: 0,
+        }));
+
+        const firstUrl = '/cap/url/0';
+        await fetchDiffFromSource(ws, firstUrl);
+        // Fill past the 100-entry cap so the first entry is evicted.
+        for (let i = 1; i <= 100; i++) {
+            await fetchDiffFromSource(ws, `/cap/url/${i}`);
+        }
+
+        expect(peekDiffCache(ws, firstUrl)).toBeUndefined();
+        expect(peekDiffCache(ws, '/cap/url/100')).toBeDefined();
     });
 });
 

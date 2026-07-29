@@ -1013,6 +1013,15 @@ async function hasGitCommit(localPath: string, sha: string): Promise<boolean> {
     }
 }
 
+async function isGitRepo(localPath: string): Promise<boolean> {
+    try {
+        await runGit(localPath, ['rev-parse', '--git-dir']);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 function pushUnique(values: string[], value: string | undefined): void {
     const trimmed = value?.trim();
     if (trimmed && !values.includes(trimmed)) {
@@ -1038,6 +1047,49 @@ function buildFetchCandidates(prId: string, prData: ProviderPullRequest, missing
     return candidates;
 }
 
+// In-flight PR commit fetches, keyed by `localPath:headSha`. Concurrent callers
+// for the same PR head (e.g. several files opened at once, or a view-open
+// warm-up racing the first file click) share one `git fetch` instead of each
+// spawning their own. The entry is removed once the fetch settles.
+const inFlightPrFetches = new Map<string, Promise<boolean>>();
+
+/**
+ * Deduplicate concurrent runs that share a key: the first caller starts `run()`,
+ * later callers with the same key reuse the same in-flight promise until it
+ * settles. Exported for testing.
+ */
+export function dedupePrFetch(key: string, run: () => Promise<boolean>): Promise<boolean> {
+    const existing = inFlightPrFetches.get(key);
+    if (existing) return existing;
+    const promise = run();
+    inFlightPrFetches.set(key, promise);
+    promise.finally(() => {
+        if (inFlightPrFetches.get(key) === promise) {
+            inFlightPrFetches.delete(key);
+        }
+    });
+    return promise;
+}
+
+/**
+ * Deduped wrapper around {@link fetchMissingPrCommits}: concurrent callers for
+ * the same `localPath + headSha` share a single `git fetch`.
+ */
+function fetchMissingPrCommitsDeduped(
+    localPath: string,
+    remote: string,
+    prId: string,
+    prData: ProviderPullRequest,
+): Promise<boolean> {
+    const headSha = prData.headSha?.trim();
+    if (!headSha) {
+        return fetchMissingPrCommits(localPath, remote, prId, prData);
+    }
+    return dedupePrFetch(`${localPath}:${headSha}`, () =>
+        fetchMissingPrCommits(localPath, remote, prId, prData),
+    );
+}
+
 async function fetchMissingPrCommits(
     localPath: string,
     remote: string,
@@ -1051,6 +1103,11 @@ async function fetchMissingPrCommits(
     let missingBase = !(await hasGitCommit(localPath, baseSha));
     let missingHead = !(await hasGitCommit(localPath, headSha));
     if (!missingBase && !missingHead) return true;
+
+    // Only a real clone can be fetched into. Guards the fire-and-forget warm-up
+    // (which calls this directly) from attempting a network `git fetch` against
+    // a path that isn't a git repo.
+    if (!(await isGitRepo(localPath))) return false;
 
     const candidates = buildFetchCandidates(prId, prData, missingBase, missingHead);
     for (const candidate of candidates) {
@@ -1097,7 +1154,7 @@ async function getFullContextFileDiff(
         }
     }
 
-    const fetched = await fetchMissingPrCommits(localPath, remote, prId, prData);
+    const fetched = await fetchMissingPrCommitsDeduped(localPath, remote, prId, prData);
     if (!fetched) {
         return { diff: null, unavailableReason: 'git-fetch-failed' };
     }
@@ -1109,6 +1166,19 @@ async function getFullContextFileDiff(
         console.warn(`[pr-full-context] git diff failed after fetch: ${err instanceof Error ? err.message : String(err)}`);
         return { diff: null, unavailableReason: 'git-diff-failed' };
     }
+}
+
+/**
+ * Fire-and-forget warm-up of a PR's base/head commits into the local clone.
+ * Runs when the PR diff view opens so the commits are usually already present
+ * by the time the user clicks a file, hiding the one unavoidable `git fetch`.
+ * Best-effort: never blocks the response and never throws.
+ */
+function warmFullContextCommits(repo: RepoInfo | undefined, prId: string, prData: ProviderPullRequest | undefined): void {
+    if (!repo?.localPath || !prData) return;
+    fetchMissingPrCommitsDeduped(repo.localPath, repo.remoteUrl ?? 'origin', prId, prData).catch(err => {
+        console.warn(`[pr-full-context] warm-up fetch failed for pr=${prId}: ${err instanceof Error ? err.message : String(err)}`);
+    });
 }
 
 /**
@@ -1303,6 +1373,7 @@ export function registerPrRoutes(
             repoId: string;
             prId: string;
             cacheScopeId: string;
+            repo?: RepoInfo;
         },
     ): Promise<void> {
         const query = url.parse(req.url ?? '', true).query;
@@ -1320,6 +1391,9 @@ export function registerPrRoutes(
         const cached = !force ? prDetailCache.get(cacheKey) : undefined;
         if (cached && cached.expiresAt > Date.now()) {
             console.debug(`[pr-detail-cache] hit key=${cacheKey}`);
+            // View-open warm-up: prefetch the PR's commits into the local clone
+            // so the first full-context file open skips its `git fetch`.
+            warmFullContextCommits(options.repo, options.prId, cached.data as ProviderPullRequest);
             return sendJson(res, cached.data);
         }
 
@@ -1334,6 +1408,7 @@ export function registerPrRoutes(
             options.prId,
             prSvc.getPullRequest.bind(prSvc),
         );
+        warmFullContextCommits(options.repo, options.prId, pr);
         sendJson(res, pr);
     }
 
@@ -1474,27 +1549,17 @@ export function registerPrRoutes(
             options.prId,
             prSvc.getPullRequest.bind(prSvc),
         );
-        const combinedDiff = await getCachedCombinedDiff(
-            options.cacheScopeId,
-            options.repoId,
-            options.prId,
-            normalizePullRequestHeadSha(prData),
-            prSvc.getDiff.bind(prSvc),
-        );
-        const fileDiff = extractFileDiffFromCombined(combinedDiff, options.filePath);
 
+        // Full context = local git is the source of truth. When the repo has a
+        // local clone and we know the PR's SHAs, produce the diff from local git
+        // first and return without ever fetching the whole-PR combined diff from
+        // the provider. The combined diff is computed lazily only for the hunk
+        // view or the full-context fallback below.
         if (fullContext) {
+            let unavailableReason: FullContextUnavailableReason;
             if (!prData) {
-                return sendJson(res, {
-                    diff: fileDiff ?? '',
-                    fullContextUnavailable: true,
-                    fullContextUnavailableReason: 'pr-detail-unavailable',
-                });
-            }
-
-            let unavailableReason: FullContextUnavailableReason = 'missing-local-path';
-
-            if (options.repo.localPath) {
+                unavailableReason = 'pr-detail-unavailable';
+            } else if (options.repo.localPath) {
                 const fullCtxDiff = await getFullContextFileDiff(
                     options.repo.localPath,
                     options.repo.remoteUrl ?? 'origin',
@@ -1502,15 +1567,37 @@ export function registerPrRoutes(
                     prData,
                     options.filePath,
                 );
-                unavailableReason = fullCtxDiff.unavailableReason ?? 'git-diff-failed';
                 if (fullCtxDiff.diff) {
                     return sendJson(res, { diff: fullCtxDiff.diff, fullContextUnavailable: false });
                 }
+                unavailableReason = fullCtxDiff.unavailableReason ?? 'git-diff-failed';
+            } else {
+                unavailableReason = 'missing-local-path';
             }
-            return sendJson(res, { diff: fileDiff ?? '', fullContextUnavailable: true, fullContextUnavailableReason: unavailableReason });
+
+            // Fallback: no local clone, no PR detail, or local git produced
+            // nothing — serve the degraded hunk diff plus the unavailable reason.
+            const fallbackDiff = extractFileDiffFromCombined(
+                await getCachedCombinedDiff(
+                    options.cacheScopeId,
+                    options.repoId,
+                    options.prId,
+                    normalizePullRequestHeadSha(prData),
+                    prSvc.getDiff.bind(prSvc),
+                ),
+                options.filePath,
+            );
+            return sendJson(res, { diff: fallbackDiff ?? '', fullContextUnavailable: true, fullContextUnavailableReason: unavailableReason });
         }
 
-        sendJson(res, { diff: fileDiff ?? '' });
+        const combinedDiff = await getCachedCombinedDiff(
+            options.cacheScopeId,
+            options.repoId,
+            options.prId,
+            normalizePullRequestHeadSha(prData),
+            prSvc.getDiff.bind(prSvc),
+        );
+        sendJson(res, { diff: extractFileDiffFromCombined(combinedDiff, options.filePath) ?? '' });
     }
 
     async function sendPullRequestUnifiedDiff(
@@ -2188,12 +2275,13 @@ export function registerPrRoutes(
                 const prId = decodeURIComponent(match![2]);
                 const scopeResult = await resolveOriginPrRepoScope(req, undefined, originId, svc, store);
                 if (!scopeResult.ok) return sendOriginPrRepoScopeError(res, scopeResult);
-                const { repoId, storageScope } = scopeResult.value;
+                const { repoId, repo, storageScope } = scopeResult.value;
 
                 await sendPullRequestDetail(req, res, {
                     repoId,
                     prId,
                     cacheScopeId: storageScope.storageOriginId,
+                    repo,
                 });
             } catch (err) {
                 if (sendPullRequestRouteError(res, err)) return;

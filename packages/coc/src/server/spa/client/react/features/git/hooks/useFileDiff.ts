@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { fetchDiffFromSource } from '../diff/diffSource';
+import { fetchDiffFromSource, peekDiffCache } from '../diff/diffSource';
 import type { DiffFetchResult } from '../diff/diffSource';
 
 export interface FileDiffState {
@@ -57,17 +57,29 @@ export function useFileDiff(
     const urlRef = useRef(url);
     urlRef.current = url;
 
+    const applyResult = useCallback((result: DiffFetchResult) => {
+        setDiff(result.diff);
+        setTruncated(result.truncated);
+        setTotalLines(result.totalLines);
+        setFullContextUnavailable(result.fullContextUnavailable);
+    }, []);
+
     const doFetch = useCallback((fetchUrl: string) => {
+        // Cache hit: apply synchronously with no loading flash and no network.
+        const cached = peekDiffCache(workspaceId ?? '', fetchUrl);
+        if (cached) {
+            applyResult(cached);
+            setError(null);
+            setLoading(false);
+            return;
+        }
         setLoading(true);
         setError(null);
         fetchDiffFromSource(workspaceId ?? '', fetchUrl)
             .then((result: DiffFetchResult) => {
                 // Guard against stale responses after url changed
                 if (urlRef.current !== url) return;
-                setDiff(result.diff);
-                setTruncated(result.truncated);
-                setTotalLines(result.totalLines);
-                setFullContextUnavailable(result.fullContextUnavailable);
+                applyResult(result);
             })
             .catch((err: Error) => {
                 if (urlRef.current !== url) return;
@@ -77,7 +89,7 @@ export function useFileDiff(
                 if (urlRef.current !== url) return;
                 setLoading(false);
             });
-    }, [url, workspaceId]);
+    }, [url, workspaceId, applyResult]);
 
     // Initial fetch on URL change
     useEffect(() => {
