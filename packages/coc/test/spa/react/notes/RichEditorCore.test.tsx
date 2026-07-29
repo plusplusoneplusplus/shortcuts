@@ -46,16 +46,20 @@ vi.mock('@tiptap/starter-kit', () => ({
         },
     },
 }));
-// CodeBlockLowlight replaces StarterKit's plain CodeBlock; capture the lowlight
-// registry it is configured with so the swap can be asserted.
-vi.mock('@tiptap/extension-code-block-lowlight', () => ({
-    CodeBlockLowlight: {
-        configure: (opts: any) => {
-            capturedLowlightOptions = opts;
-            return { name: 'codeBlockLowlight' };
+// NotesCodeBlock (CodeBlockLowlight + language-picker NodeView) replaces
+// StarterKit's plain CodeBlock; capture the lowlight registry it is configured
+// with so the swap can be asserted.
+vi.mock(
+    '../../../../src/server/spa/client/react/features/notes/editor/extensions/notesCodeBlock',
+    () => ({
+        NotesCodeBlock: {
+            configure: (opts: any) => {
+                capturedLowlightOptions = opts;
+                return { name: 'codeBlockLowlight' };
+            },
         },
-    },
-}));
+    }),
+);
 // RichEditorCore imports the shared 16-language registry from notesLowlight;
 // stub it so the swap can assert CodeBlockLowlight is wired to that instance.
 vi.mock(
