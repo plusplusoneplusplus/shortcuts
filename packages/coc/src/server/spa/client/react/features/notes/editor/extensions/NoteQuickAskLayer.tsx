@@ -154,16 +154,21 @@ export function NoteQuickAskLayer({ containerRef, workspaceId, editor }: NoteQui
     // `history` carries the prior Q/A turns so a follow-up is answered coherently
     // (AC-01); it is omitted when empty so turn 0 is byte-for-byte the one-shot
     // request. On the FIRST turn's success the answer is embedded into the note
-    // `.md` as a footnote marker at the anchor phrase (AC-03); if the phrase was
-    // deleted while the answer was in flight the marker is dropped rather than
-    // orphaned (AC-05). Follow-up turns extend the in-session thread only —
-    // their persistence is handled in AC-03.
+    // `.md` as a footnote marker at the anchor phrase (AC-03); every follow-up
+    // re-writes that marker's turns. Persistence is UNCONDITIONAL (mirrors the
+    // PDF layers): it folds the just-answered turn into the launch-time
+    // `threadTurns` snapshot rather than reading popover-open state, so an answer
+    // that lands after the popover was dismissed is still persisted. If the
+    // anchor phrase was deleted while in flight the marker is dropped rather than
+    // orphaned (AC-05) — enforced downstream by `resolveSidenoteInsertPos`
+    // returning null, NOT by popover-open state.
     const postTurn = useCallback((
         sel: QuickAskSelection,
         question: string | undefined,
         history: HistoryTurn[],
         noteId: string,
         turnIndex: number,
+        threadTurns: QuickAskTurn[],
     ) => {
         if (!workspaceId) {return;}
         const path = `/api/quick-ask/answer?workspace=${encodeURIComponent(workspaceId)}`;
@@ -182,31 +187,29 @@ export function NoteQuickAskLayer({ containerRef, workspaceId, editor }: NoteQui
                 const answer = typeof data?.answer === 'string' ? data.answer : '';
                 if (!answer) {throw new Error('Malformed response');}
                 // Persist the whole thread onto the marker (AC-03). Fold this
-                // just-answered turn into the accumulated ready turns so turn 0
-                // *inserts* the marker and every follow-up *re-writes* its
-                // `data-qa-turns` — the marker never lags behind the thread.
-                const current = openRef.current;
-                if (current && current.note.id === noteId) {
-                    const persistTurns: QaTurn[] = current.turns
-                        .map((t, i) =>
-                            (i === turnIndex
-                                ? { question: t.question, answer, status: 'ready' as const }
-                                : t))
-                        .filter(t => t.status === 'ready')
-                        .map(t => ({ question: t.question, answer: t.answer }));
-                    if (turnIndex === 0) {
-                        insertSidenoteRef(
-                            editorRef.current,
-                            {
-                                selectedText: sel.selectedText,
-                                contextBefore: sel.contextBefore,
-                                contextAfter: sel.contextAfter,
-                            },
-                            { refId: noteId, question, answer, turns: persistTurns },
-                        );
-                    } else {
-                        updateSidenoteRefTurns(editorRef.current, noteId, persistTurns);
-                    }
+                // just-answered turn into the launch-time snapshot's ready turns
+                // so turn 0 *inserts* the marker and every follow-up *re-writes*
+                // its `data-qa-turns` — the marker never lags behind the thread,
+                // even if the popover was dismissed mid-flight.
+                const persistTurns: QaTurn[] = threadTurns
+                    .map((t, i) =>
+                        (i === turnIndex
+                            ? { question: t.question, answer, status: 'ready' as const }
+                            : t))
+                    .filter(t => t.status === 'ready')
+                    .map(t => ({ question: t.question, answer: t.answer }));
+                if (turnIndex === 0) {
+                    insertSidenoteRef(
+                        editorRef.current,
+                        {
+                            selectedText: sel.selectedText,
+                            contextBefore: sel.contextBefore,
+                            contextAfter: sel.contextAfter,
+                        },
+                        { refId: noteId, question, answer, turns: persistTurns },
+                    );
+                } else {
+                    updateSidenoteRefTurns(editorRef.current, noteId, persistTurns);
                 }
                 setOpen(prev => {
                     const next = patchTurn(prev, noteId, turnIndex, { status: 'ready', answer, error: undefined });
@@ -402,13 +405,14 @@ export function NoteQuickAskLayer({ containerRef, workspaceId, editor }: NoteQui
             createdAt: new Date().toISOString(),
             status: 'asking',
         };
+        const askingTurn: QuickAskTurn = { question: trimmed, answer: '', status: 'asking' };
         setOpen({
             note,
             position: { top: sel.rect.bottom + 6, left: sel.rect.left },
             selection: sel,
-            turns: [{ question: trimmed, answer: '', status: 'asking' }],
+            turns: [askingTurn],
         });
-        postTurn(sel, trimmed, [], id, 0);
+        postTurn(sel, trimmed, [], id, 0, [askingTurn]);
     }, [postTurn]);
 
     const cancelInput = useCallback(() => setInput(null), []);
@@ -432,9 +436,9 @@ export function NoteQuickAskLayer({ containerRef, workspaceId, editor }: NoteQui
             if (!prev) {return prev;}
             const turn = prev.turns[turnIndex];
             if (!turn) {return prev;}
-            postTurn(prev.selection, turn.question, historyBefore(prev.turns, turnIndex), prev.note.id, turnIndex);
             const turns = prev.turns.map((t, i) =>
                 (i === turnIndex ? { ...t, status: 'asking' as const, error: undefined } : t));
+            postTurn(prev.selection, turn.question, historyBefore(prev.turns, turnIndex), prev.note.id, turnIndex, turns);
             return { ...prev, turns, note: { ...prev.note, status: 'asking', error: undefined } };
         });
     }, [postTurn]);
@@ -445,8 +449,8 @@ export function NoteQuickAskLayer({ containerRef, workspaceId, editor }: NoteQui
         setOpen(prev => {
             if (!prev || prev.turns.length >= MAX_TURNS) {return prev;}
             const turnIndex = prev.turns.length;
-            postTurn(prev.selection, question, historyBefore(prev.turns, turnIndex), prev.note.id, turnIndex);
             const turns: QuickAskTurn[] = [...prev.turns, { question, answer: '', status: 'asking' }];
+            postTurn(prev.selection, question, historyBefore(prev.turns, turnIndex), prev.note.id, turnIndex, turns);
             return { ...prev, turns, note: { ...prev.note, status: 'asking' } };
         });
     }, [postTurn]);
