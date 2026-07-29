@@ -60,6 +60,8 @@ import type { AggregatedRemoteWorkspaces } from '../repos/remoteWorkspaceAggrega
 export interface ReposContextValue {
     repos: RepoData[];
     loading: boolean;
+    /** Non-fatal remote aggregation failures from the latest repository refresh. */
+    remoteWarnings?: string[];
     fetchRepos: () => Promise<void>;
     unseenCounts: Record<string, number>;
     refreshUnseenCounts: (wsIds: string[]) => Promise<void>;
@@ -96,6 +98,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
 
     const [repos, setRepos] = useState<RepoData[]>([]);
     const [loading, setLoading] = useState(true);
+    const [remoteWarnings, setRemoteWarnings] = useState<string[]>([]);
 
     const selectedRepoIdRef = useRef<string | null>(null);
 
@@ -157,8 +160,18 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             const [workspaces, processRes, remoteAggregate] = await Promise.all([
                 listWorkspaces(),
                 listProcessSummaries(5000).catch(() => null),
-                aggregateRemoteWorkspaces().catch(() => null),
+                aggregateRemoteWorkspaces().catch((error: unknown): AggregatedRemoteWorkspaces => ({
+                    sources: [],
+                    workspaces: [],
+                    gitInfo: {},
+                    warnings: [
+                        error instanceof Error
+                            ? error.message
+                            : 'Failed to load remote CoC workspaces',
+                    ],
+                })),
             ]);
+            setRemoteWarnings(remoteAggregate.warnings);
             if (!Array.isArray(workspaces)) {
                 setRepos([]);
                 setLoading(false);
@@ -340,6 +353,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             }
         } catch {
             setRepos([]);
+            setRemoteWarnings([]);
             setLoading(false);
         }
     }, [dispatch, refreshUnseenCounts, seedRepoQueueStats]);
@@ -441,8 +455,8 @@ export function ReposProvider({ children }: { children: ReactNode }) {
     }, [appState.selectedRepoId, repos]);
 
     const value = useMemo<ReposContextValue>(
-        () => ({ repos, loading, fetchRepos, unseenCounts, refreshUnseenCounts }),
-        [repos, loading, fetchRepos, unseenCounts, refreshUnseenCounts]
+        () => ({ repos, loading, remoteWarnings, fetchRepos, unseenCounts, refreshUnseenCounts }),
+        [repos, loading, remoteWarnings, fetchRepos, unseenCounts, refreshUnseenCounts]
     );
 
     return <ReposContext.Provider value={value}>{children}</ReposContext.Provider>;

@@ -80,6 +80,48 @@ describe('noteMarkdown', () => {
             expect(html).toContain('const x = 1;');
         });
 
+        it('emits a language-cpp code element for an explicit ```cpp fence', () => {
+            // AC-02: an explicit fence language must reach the editor. marked emits
+            // `<code class="language-cpp">`, which CodeBlockLowlight parses to set the
+            // block's `language` attribute (so lowlight highlights it as C++, not
+            // auto-detect). Guards the explicit-fence half of AC-02 at the parse boundary.
+            const html = markdownToHtml('```cpp\nint main() { return 0; }\n```');
+            expect(html).toContain('<code class="language-cpp">');
+            expect(html).toContain('int main()');
+        });
+
+        it('resolves fence aliases to their registered grammar name on import', () => {
+            // AC-03: authoring a fence with an alias (```ts, ```py, ```sh, ```yml,
+            // ```rs) must load as the registered language so CodeBlockLowlight
+            // highlights it. marked emits the alias verbatim as `language-ts`;
+            // resolveFencedCodeLanguages rewrites it to the canonical grammar name.
+            expect(markdownToHtml('```ts\nconst x = 1;\n```')).toContain('<code class="language-typescript">');
+            expect(markdownToHtml('```tsx\nconst x = 1;\n```')).toContain('<code class="language-typescript">');
+            expect(markdownToHtml('```js\nvar x = 1;\n```')).toContain('<code class="language-javascript">');
+            expect(markdownToHtml('```py\nx = 1\n```')).toContain('<code class="language-python">');
+            expect(markdownToHtml('```sh\necho hi\n```')).toContain('<code class="language-bash">');
+            expect(markdownToHtml('```yml\na: 1\n```')).toContain('<code class="language-yaml">');
+            expect(markdownToHtml('```rs\nfn main() {}\n```')).toContain('<code class="language-rust">');
+            expect(markdownToHtml('```htm\n<b>x</b>\n```')).toContain('<code class="language-xml">');
+        });
+
+        it('leaves a canonical fence language untouched on import', () => {
+            expect(markdownToHtml('```typescript\nconst x = 1;\n```')).toContain('<code class="language-typescript">');
+        });
+
+        it('leaves an unknown fence language plain (no rewrite) on import', () => {
+            // AC-03: an unregistered language stays as written and renders plain.
+            const html = markdownToHtml('```ruby\nputs 1\n```');
+            expect(html).toContain('<code class="language-ruby">');
+        });
+
+        it('does not disturb mermaid fences when resolving aliases', () => {
+            // AC-03: mermaid is not a registered grammar, so resolveCodeLanguage
+            // returns null and the language-mermaid class survives for MermaidBlock.
+            const html = markdownToHtml('```mermaid\ngraph TD\nA --> B\n```');
+            expect(html).toContain('<code class="language-mermaid">');
+        });
+
         it('strips the trailing newline marked appends inside a code block', () => {
             // marked emits `<pre><code>…\n</code></pre>`; Tiptap's preserveWhitespace
             // renders that trailing newline as a phantom empty last line. It must be gone.
@@ -309,6 +351,37 @@ describe('noteMarkdown', () => {
             const rt = norm(roundTrip(md));
             expect(rt).toContain('```');
             expect(rt).toContain('const x = 1;');
+        });
+
+        it('preserves the language fence label on a ```cpp code block', () => {
+            // DoD-4: saving and reopening a note must keep the code block AND its
+            // language fence. The `cpp` label is what makes CodeBlockLowlight/lowlight
+            // highlight the block as C++ on reload; if the round-trip dropped it back to
+            // a bare ``` fence, the reopened block would fall back to auto-detection.
+            const md = '```cpp\nint main() {\n    dim3 grid(16, 16);\n    return 0;\n}\n```';
+            const rt = norm(roundTrip(md));
+            expect(rt).toContain('```cpp');
+            expect(rt).toContain('dim3 grid(16, 16);');
+            expect(rt).toContain('int main() {');
+        });
+
+        it('resolves fence aliases to registered languages through the round-trip', () => {
+            // AC-03: a note authored with an alias reopens highlighted as the
+            // registered language, so the persisted fence normalizes to the
+            // canonical grammar name on the next save.
+            expect(norm(roundTrip('```ts\nconst x = 1;\n```'))).toContain('```typescript');
+            expect(norm(roundTrip('```py\nx = 1\n```'))).toContain('```python');
+            expect(norm(roundTrip('```sh\necho hi\n```'))).toContain('```bash');
+            expect(norm(roundTrip('```yml\na: 1\n```'))).toContain('```yaml');
+            expect(norm(roundTrip('```rs\nfn main() {}\n```'))).toContain('```rust');
+        });
+
+        it('round-trips a plain-text code block as a bare fence', () => {
+            // AC-03: a block left as "Plain text" (no language attr) serializes to a
+            // bare ``` fence and parses back with no language info-string.
+            const md = '```\nsome plain text\n```';
+            const rt = norm(roundTrip(md));
+            expect(rt).toMatch(/^```\nsome plain text\n```$/);
         });
 
         it('mermaid fenced block', () => {

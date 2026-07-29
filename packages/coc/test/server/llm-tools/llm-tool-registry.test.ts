@@ -28,7 +28,7 @@ describe('LLM_TOOL_REGISTRY', () => {
         expect(names).not.toContain('create_work_item');
         expect(names).not.toContain('update_work_item');
         expect(names).not.toContain('create_bug');
-        expect(names).toContain('memory');
+        expect(names).not.toContain('memory');
         expect(names).toContain('tavily_web_search');
     });
 

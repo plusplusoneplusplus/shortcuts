@@ -399,7 +399,6 @@ describe('Admin Handler', () => {
             expect(Object.keys(body).sort()).toEqual([
                 'follow-up-suggestions',
                 'memory-security-patterns',
-                'memory-tool-schema',
                 'plan-generation',
                 'read-only-mode',
                 'skill-prompt-wrapper',

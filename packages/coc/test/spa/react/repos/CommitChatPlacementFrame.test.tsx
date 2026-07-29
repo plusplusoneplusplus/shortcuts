@@ -20,7 +20,7 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitChat
 }));
 
 import { CommitChatPlacementFrame } from '../../../../src/server/spa/client/react/features/git/commits/CommitChatPlacementFrame';
-import { LENS_SIZE_STORAGE_KEY } from '../../../../src/server/spa/client/react/features/git/reviewChat/ReviewChatPlacementFrame';
+import { LENS_SIZE_STORAGE_KEY, ReviewChatPlacementFrame } from '../../../../src/server/spa/client/react/features/git/reviewChat/ReviewChatPlacementFrame';
 
 beforeEach(() => {
     dormantModeState.value = 'ghost';
@@ -570,5 +570,84 @@ describe('CommitChatPlacementFrame', () => {
         const lens = screen.getByTestId('commit-chat-lens');
         expect(lens.style.width).toBe('320px');
         expect(lens.style.height).toBe('320px');
+    });
+
+    describe('composer autofocus on hover re-expand', () => {
+        const PILL_RECT: DOMRect = {
+            left: 800, top: 580, right: 920, bottom: 600,
+            width: 120, height: 20, x: 800, y: 580, toJSON: () => ({}),
+        };
+
+        function renderLensWithInput() {
+            return render(
+                <ReviewChatPlacementFrame
+                    title="Notes Chat"
+                    presentation="lens"
+                    onClose={() => {}}
+                    testIdPrefix="note-chat"
+                >
+                    <textarea data-testid="note-composer" />
+                </ReviewChatPlacementFrame>,
+            );
+        }
+
+        it('does not steal focus from the composer on initial mount', () => {
+            dormantModeState.value = 'pill';
+            renderLensWithInput();
+
+            expect(document.activeElement).not.toBe(screen.getByTestId('note-composer'));
+        });
+
+        it('focuses the composer input when hovering the collapsed pill re-expands the lens', () => {
+            dormantModeState.value = 'pill';
+            renderLensWithInput();
+
+            const lens = screen.getByTestId('note-chat-lens');
+            const card = screen.getByTestId('note-chat-lens-card');
+
+            // Collapse to the dormant pill by moving the cursor away.
+            act(() => { simulateMouseFarAway(card); });
+            act(() => { vi.advanceTimersByTime(700); });
+            expect(lens.getAttribute('data-focused')).toBe('false');
+            expect(document.activeElement).not.toBe(screen.getByTestId('note-composer'));
+
+            // Hover the pill — the lens re-expands and the composer takes focus.
+            const pill = screen.getByTestId('note-chat-lens-dormant-pill');
+            vi.spyOn(pill, 'getBoundingClientRect').mockReturnValue(PILL_RECT);
+            act(() => {
+                vi.advanceTimersByTime(30);
+                window.dispatchEvent(new MouseEvent('mousemove', { clientX: 850, clientY: 590 }));
+            });
+
+            expect(lens.getAttribute('data-focused')).toBe('true');
+            expect(document.activeElement).toBe(screen.getByTestId('note-composer'));
+        });
+
+        it('skips disabled composer inputs when re-expanding', () => {
+            dormantModeState.value = 'pill';
+            render(
+                <ReviewChatPlacementFrame
+                    title="Notes Chat"
+                    presentation="lens"
+                    onClose={() => {}}
+                    testIdPrefix="note-chat"
+                >
+                    <textarea data-testid="note-composer" disabled />
+                </ReviewChatPlacementFrame>,
+            );
+
+            const card = screen.getByTestId('note-chat-lens-card');
+            act(() => { simulateMouseFarAway(card); });
+            act(() => { vi.advanceTimersByTime(700); });
+
+            const pill = screen.getByTestId('note-chat-lens-dormant-pill');
+            vi.spyOn(pill, 'getBoundingClientRect').mockReturnValue(PILL_RECT);
+            act(() => {
+                vi.advanceTimersByTime(30);
+                window.dispatchEvent(new MouseEvent('mousemove', { clientX: 850, clientY: 590 }));
+            });
+
+            expect(document.activeElement).not.toBe(screen.getByTestId('note-composer'));
+        });
     });
 });

@@ -18,6 +18,7 @@ vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => 
         state: {
             activeRepoSubTab: mockActiveRepoSubTab,
             selectedNotePath: mockSelectedNotePath,
+            settingsSection: 'info',
         },
         dispatch: mockDispatch,
     }),
@@ -103,11 +104,19 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () 
 }));
 
 import { MyLifeView, MY_LIFE_WORKSPACE_ID } from '../../../../../src/server/spa/client/react/repos/MyLifeView';
+import { QueueProvider } from '../../../../../src/server/spa/client/react/contexts/QueueContext';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+// The in-body header renders VirtualWorkspaceInlineHeader → useVirtualWorkspaceHeader,
+// which reads the queue (selected task per repo) via useQueue, so the tree needs a
+// real QueueProvider around it.
 function renderView() {
-    return render(<MyLifeView />);
+    return render(
+        <QueueProvider>
+            <MyLifeView />
+        </QueueProvider>,
+    );
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -410,7 +419,9 @@ describe('MyLifeView', () => {
             fireEvent.click(screen.getByTestId('my-life-tab-settings'));
 
             expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'settings' });
-            expect(location.hash).toBe('#repos/my_life/settings');
+            // switchTab now routes through buildRepoSubTabSuffix, which keeps the
+            // open settings section in the hash (defaults to 'info').
+            expect(location.hash).toBe('#repos/my_life/settings/info');
         });
     });
 

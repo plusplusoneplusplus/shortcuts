@@ -41,9 +41,9 @@ const TOOLS = [
         params: [],
     },
     {
-        name: 'memory',
-        label: 'Memory',
-        description: 'Reads and writes persistent memory.',
+        name: 'schemaless_tool',
+        label: 'Schemaless Tool',
+        description: 'A tool whose parameter schema is not declared locally.',
         enabledByDefault: true,
         // No params field at all -> schema unavailable.
     },
@@ -234,7 +234,7 @@ describe('LlmToolsPanel', () => {
         render(<LlmToolsPanel workspaceId="repo-a" />);
         await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
 
-        expect(screen.getByTestId('llm-tool-params-empty-memory').textContent).toBe('Parameters unavailable');
-        expect(screen.queryByTestId('llm-tool-params-toggle-memory')).toBeNull();
+        expect(screen.getByTestId('llm-tool-params-empty-schemaless_tool').textContent).toBe('Parameters unavailable');
+        expect(screen.queryByTestId('llm-tool-params-toggle-schemaless_tool')).toBeNull();
     });
 });

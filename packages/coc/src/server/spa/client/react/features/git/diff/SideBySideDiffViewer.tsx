@@ -24,6 +24,12 @@ import {
     type SideBySideLine,
     type IntraLinePart,
 } from './UnifiedDiffViewer';
+import {
+    applyMatchHighlights,
+    splitIntraPartsByRanges,
+    MATCH_HIGHLIGHT_CLASS,
+    ACTIVE_MATCH_HIGHLIGHT_CLASS,
+} from './diffFindModel';
 import { DiffContextMenu } from '../../../tasks/comments/DiffContextMenu';
 import type { DiffComment, DiffCommentSelection } from '../../../../comments/diff-comment-types';
 
@@ -78,6 +84,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
             onAskAI,
             onCopyAsContext,
             onCommentClick,
+            matchRangesByLine,
         },
         ref
     ) {
@@ -174,6 +181,17 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
             });
             return map;
         }, [sxsLines]);
+        // Map each diff-line index (of a code-content cell) to the row that shows it,
+        // so an in-diff find match on a virtualized off-screen line can be scrolled
+        // into view (the virtualizer scrolls by ROW index, not diff-line index).
+        const rowByLineIndex = useMemo(() => {
+            const map = new Map<number, number>();
+            sxsLines.forEach((row, idx) => {
+                if (row.left.originalIndex !== null) map.set(row.left.originalIndex, idx);
+                if (row.right.originalIndex !== null) map.set(row.right.originalIndex, idx);
+            });
+            return map;
+        }, [sxsLines]);
 
         useImperativeHandle(ref, () => {
             if (virtualized) {
@@ -203,6 +221,11 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                         const idx = fileHeaderRows.get(filePath);
                         if (idx === undefined) return;
                         rowVirtualizer.scrollToIndex(idx, { align: 'start' });
+                    },
+                    scrollLineIntoView: (lineIndex: number) => {
+                        const rowIdx = rowByLineIndex.get(lineIndex);
+                        if (rowIdx === undefined) return;
+                        rowVirtualizer.scrollToIndex(rowIdx, { align: 'center' });
                     },
                 };
             }
@@ -267,6 +290,19 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                 const parentTop = scrollParent.getBoundingClientRect().top;
                 scrollParent.scrollTo({
                     top: scrollParent.scrollTop + target.getBoundingClientRect().top - parentTop,
+                    behavior: 'smooth',
+                });
+            },
+            scrollLineIntoView: (lineIndex: number) => {
+                const container = containerRef.current;
+                if (!container) return;
+                const el = container.querySelector<HTMLElement>(`[data-diff-line-index="${lineIndex}"]`);
+                if (!el) return;
+                const scrollParent = getScrollableAncestor(container);
+                const parentTop = scrollParent.getBoundingClientRect().top;
+                const centerOffset = scrollParent.clientHeight / 3;
+                scrollParent.scrollTo({
+                    top: scrollParent.scrollTop + el.getBoundingClientRect().top - parentTop - centerOffset,
                     behavior: 'smooth',
                 });
             },
@@ -440,13 +476,32 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                         )}
                         <span className="px-1 flex-1 min-w-0 whitespace-pre-wrap break-words">
                             {row.left.type !== 'empty' && row.left.originalIndex !== null
-                                ? row.leftParts
-                                    ? row.leftParts.map((part: IntraLinePart, pi: number) =>
-                                        part.changed
-                                            ? <mark key={pi} className="bg-[#f97575] dark:bg-[#b91c1c] rounded-[2px]">{part.text}</mark>
-                                            : <span key={pi}>{part.text}</span>
-                                      )
-                                    : <span dangerouslySetInnerHTML={{ __html: highlightedHtml[row.left.originalIndex] }} />
+                                ? (() => {
+                                    const li = row.left.originalIndex as number;
+                                    const ranges = matchRangesByLine?.get(li);
+                                    const hasMatches = !!ranges && ranges.length > 0;
+                                    if (row.leftParts) {
+                                        // Word-diff parts: overlay find matches as an extra <mark> layer.
+                                        return hasMatches
+                                            ? splitIntraPartsByRanges(row.leftParts, ranges!).map((seg, pi) => {
+                                                const cls = [
+                                                    seg.changed ? 'bg-[#f97575] dark:bg-[#b91c1c] rounded-[2px]' : '',
+                                                    seg.match === 'active' ? ACTIVE_MATCH_HIGHLIGHT_CLASS : seg.match === 'match' ? MATCH_HIGHLIGHT_CLASS : '',
+                                                ].filter(Boolean).join(' ');
+                                                return cls ? <mark key={pi} className={cls}>{seg.text}</mark> : <span key={pi}>{seg.text}</span>;
+                                            })
+                                            : row.leftParts.map((part: IntraLinePart, pi: number) =>
+                                                part.changed
+                                                    ? <mark key={pi} className="bg-[#f97575] dark:bg-[#b91c1c] rounded-[2px]">{part.text}</mark>
+                                                    : <span key={pi}>{part.text}</span>
+                                              );
+                                    }
+                                    // hljs HTML path: overlay find matches without breaking syntax spans.
+                                    const html = hasMatches
+                                        ? applyMatchHighlights(highlightedHtml[li], ranges!, MATCH_HIGHLIGHT_CLASS, ACTIVE_MATCH_HIGHLIGHT_CLASS)
+                                        : highlightedHtml[li];
+                                    return <span dangerouslySetInnerHTML={{ __html: html }} />;
+                                  })()
                                 : '\u00a0'}
                         </span>
                     </div>
@@ -487,13 +542,32 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                         )}
                         <span className="px-1 flex-1 min-w-0 whitespace-pre-wrap break-words">
                             {row.right.type !== 'empty' && row.right.originalIndex !== null
-                                ? row.rightParts
-                                    ? row.rightParts.map((part: IntraLinePart, pi: number) =>
-                                        part.changed
-                                            ? <mark key={pi} className="bg-[#34c759] dark:bg-[#166534] rounded-[2px]">{part.text}</mark>
-                                            : <span key={pi}>{part.text}</span>
-                                      )
-                                    : <span dangerouslySetInnerHTML={{ __html: highlightedHtml[row.right.originalIndex] }} />
+                                ? (() => {
+                                    const ri = row.right.originalIndex as number;
+                                    const ranges = matchRangesByLine?.get(ri);
+                                    const hasMatches = !!ranges && ranges.length > 0;
+                                    if (row.rightParts) {
+                                        // Word-diff parts: overlay find matches as an extra <mark> layer.
+                                        return hasMatches
+                                            ? splitIntraPartsByRanges(row.rightParts, ranges!).map((seg, pi) => {
+                                                const cls = [
+                                                    seg.changed ? 'bg-[#34c759] dark:bg-[#166534] rounded-[2px]' : '',
+                                                    seg.match === 'active' ? ACTIVE_MATCH_HIGHLIGHT_CLASS : seg.match === 'match' ? MATCH_HIGHLIGHT_CLASS : '',
+                                                ].filter(Boolean).join(' ');
+                                                return cls ? <mark key={pi} className={cls}>{seg.text}</mark> : <span key={pi}>{seg.text}</span>;
+                                            })
+                                            : row.rightParts.map((part: IntraLinePart, pi: number) =>
+                                                part.changed
+                                                    ? <mark key={pi} className="bg-[#34c759] dark:bg-[#166534] rounded-[2px]">{part.text}</mark>
+                                                    : <span key={pi}>{part.text}</span>
+                                              );
+                                    }
+                                    // hljs HTML path: overlay find matches without breaking syntax spans.
+                                    const html = hasMatches
+                                        ? applyMatchHighlights(highlightedHtml[ri], ranges!, MATCH_HIGHLIGHT_CLASS, ACTIVE_MATCH_HIGHLIGHT_CLASS)
+                                        : highlightedHtml[ri];
+                                    return <span dangerouslySetInnerHTML={{ __html: html }} />;
+                                  })()
                                 : '\u00a0'}
                         </span>
                     </div>

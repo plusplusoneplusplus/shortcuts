@@ -11,6 +11,9 @@ let capturedOnUpdate: ((payload: { editor: unknown }) => void) | null = null;
 let capturedEditorProps: any = null;
 let capturedLinkConfig: any = null;
 let capturedExtensions: unknown[] = [];
+let capturedStarterKitConfig: any = null;
+let capturedLowlightOptions: any = null;
+const mockLowlightRegistry = vi.hoisted(() => ({ __lowlight: true }));
 
 const mockEditor = {
     commands: { setContent: mockSetContent, clearContent: mockClearContent },
@@ -35,7 +38,34 @@ vi.mock('@tiptap/react', () => ({
         editor ? <div data-testid="rich-editor-content" /> : null,
 }));
 
-vi.mock('@tiptap/starter-kit', () => ({ StarterKit: { configure: () => ({}) } }));
+vi.mock('@tiptap/starter-kit', () => ({
+    StarterKit: {
+        configure: (config: any) => {
+            capturedStarterKitConfig = config;
+            return { name: 'starterKit' };
+        },
+    },
+}));
+// NotesCodeBlock (CodeBlockLowlight + language-picker NodeView) replaces
+// StarterKit's plain CodeBlock; capture the lowlight registry it is configured
+// with so the swap can be asserted.
+vi.mock(
+    '../../../../src/server/spa/client/react/features/notes/editor/extensions/notesCodeBlock',
+    () => ({
+        NotesCodeBlock: {
+            configure: (opts: any) => {
+                capturedLowlightOptions = opts;
+                return { name: 'codeBlockLowlight' };
+            },
+        },
+    }),
+);
+// RichEditorCore imports the shared 16-language registry from notesLowlight;
+// stub it so the swap can assert CodeBlockLowlight is wired to that instance.
+vi.mock(
+    '../../../../src/server/spa/client/react/features/notes/editor/extensions/notesLowlight',
+    () => ({ notesLowlight: mockLowlightRegistry }),
+);
 vi.mock('@tiptap/extension-task-list', () => ({ TaskList: {} }));
 vi.mock('@tiptap/extension-task-item', () => ({ TaskItem: { configure: () => ({}) } }));
 vi.mock('@tiptap/extension-link', () => ({
@@ -111,6 +141,8 @@ describe('RichEditorCore', () => {
         capturedEditorProps = null;
         capturedLinkConfig = null;
         capturedExtensions = [];
+        capturedStarterKitConfig = null;
+        capturedLowlightOptions = null;
     });
 
     afterEach(() => {
@@ -220,6 +252,28 @@ describe('RichEditorCore', () => {
         expect(pdfIndex).toBeGreaterThanOrEqual(1);
         // MapBlock must remain first; PdfBlock sits alongside the other custom blocks.
         expect(capturedExtensions[0]).toBe(mockMapBlock);
+    });
+
+    // ── Code-block syntax highlighting (lowlight swap) ──────────────────
+
+    it('disables StarterKit\'s bundled code block so CodeBlockLowlight is the single codeBlock node', () => {
+        render(<RichEditorCore />);
+
+        expect(capturedStarterKitConfig).toBeDefined();
+        expect(capturedStarterKitConfig.codeBlock).toBe(false);
+    });
+
+    it('registers CodeBlockLowlight backed by the shared lowlight registry for live token colors', () => {
+        render(<RichEditorCore />);
+
+        const codeBlockExt = capturedExtensions.find(
+            (e: any) => e?.name === 'codeBlockLowlight',
+        );
+        expect(codeBlockExt).toBeDefined();
+        // Configured with the lowlight instance whose `.hljs-*` spans the global
+        // github / github-dark stylesheets color.
+        expect(capturedLowlightOptions).toBeDefined();
+        expect(capturedLowlightOptions.lowlight).toBe(mockLowlightRegistry);
     });
 
     // ── AC-03: ⛶ Popup wiring (extension → React Dialog) ────────────────

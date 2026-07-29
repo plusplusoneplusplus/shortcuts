@@ -1118,7 +1118,47 @@ New chats use `AgentSelectorChip` to choose a per-chat provider. When `features.
 
 `features/chat/MapReduceRunPane.tsx` renders the dedicated Map Reduce detail pane for `#repos/<workspaceId>/(activity|chats|tasks)/map-reduce/<runId>` links, approved generation chats, and Map Reduce group-row selection when `mapReduce.enabled` is true. It reads the parent run through `coc-client`'s `mapReduce` domain, shows the full original request, parent status, max parallelism, child mode, shared instructions, map item table, reduce-step status/instructions, a link back to the persisted generation chat when `generationProcessId` is present, map child process links, and an `Open final result` link to the completed reduce child process. It exposes explicit Start/Continue, Retry failed map item, Skip pending/failed map item, Retry reduce, Cancel remaining, and Refresh actions. Generation chats pass approval navigation through `ChatDetailPane`/`RepoChatTab`, which clears the selected chat and opens the run-pane hash after the reviewed plan is approved; Map Reduce group rows use the same parent routing, Map Reduce hashes restore the parent pane on desktop and mobile, and selecting a generation/map/reduce child chat clears the parent pane and opens the chat detail.
 
-Modal job-submission dialogs use `shared/ModalJobAiControls.tsx` when they need New Chat-compatible provider/model/reasoning controls. Its `useModalJobAiSelection()` hook centralizes workspace-scoped `lastChatProvider` restore/persist, provider-scoped model catalogs, effort-tier mode, legacy model picker + `EffortPillSelector` fallback, optional initial AI selections for Resume-style flows, a dirty bit, and resolved payload values for queue/chat submissions. Concrete selections resolve to `{ provider, model?, reasoningEffort? }`; Auto resolves to `{ effortTier, autoProviderRouting: true }` with no provider/model override, and submitters translate that flag to `context.autoProviderRouting.requested` or route-level `autoProviderRouting: true` so scheduling routes can pick a concrete provider first and then expand that tier through the selected provider's configuration. `queue/EnqueueDialog.tsx` uses these compact controls in its Advanced area for Ask AI, ad hoc autopilot tasks, skill/context-file runs, bulk context-file submissions, and floating-chat launches. `tasks/GenerateTaskDialog.tsx` uses these compact controls in its configuration area and forwards the resolved values to `/api/workspaces/:id/queue/generate`; `shared/UpdateDocumentDialog.tsx` uses them in the existing configuration area and enqueues custom chat tasks; `features/work-items/WorkItemExecuteDialog.tsx` renders the same controls through `RunSkillPanel` and forwards them to `/api/workspaces/:id/work-items/:wid/execute`; `features/chat/SkillContextDialog.tsx` uses them for git commit, multi-commit, and branch-range skill runs. Ralph start surfaces also use `shared/RalphExecutionRepoSelector.tsx`: `features/chat/RalphStartPanel.tsx` drives `ModalJobAiControls` from the selected execution workspace, reuses `/api/processes/:id/ralph-start` only for same-workspace/server grilling starts, and posts cross-workspace starts to the selected target's `/api/ralph-launch`; `shared/RalphLaunchDialog.tsx` uses the same selector for direct goal-file launches from Notes and New Chat, can accept a caller-owned resolved AI selection for New Chat direct-goal launches, and posts to the selected target server's `/api/ralph-launch`. `features/chat/RalphWorkflowPane.tsx` uses `ModalJobAiControls` in both the stuck-session Resume confirmation and the completed-session Continue-loop confirmation, each initialized from transient session `resumeDefaults` when recoverable and disabled while that action is submitting. Classify-diff toolbars call `useModalJobAiSelection()` directly and render `features/git/diff/ClassifyDiffAiControls.tsx`, an inline toolbar variant that hides the provider chip when only one provider is selectable and shows either an effort-tier selector or the pickable-model command picker. Diff classification categories are `logic`, `mechanical`, `test`, `simple`, and `generated`; `simple` is labeled "Simple function" and remains low-attention by default. PR and commit popout file rails show compact category badges plus a critical marker, and their selected-file unified diff views render test fidelity comments, logic summaries, and critical usage/call-stack evidence inline near each classified hunk; branch-range popout diff UI stays on the compact classification-free path.
+Modal job-submission dialogs use `shared/ModalJobAiControls.tsx` when they need New Chat-compatible provider/model/reasoning controls. Its `useModalJobAiSelection()` hook centralizes workspace-scoped `lastChatProvider` restore/persist, provider-scoped model catalogs, effort-tier mode, legacy model picker + `EffortPillSelector` fallback, optional initial AI selections for Resume-style flows, a dirty bit, and resolved payload values for queue/chat submissions. Concrete selections resolve to `{ provider, model?, reasoningEffort? }`; Auto resolves to `{ effortTier, autoProviderRouting: true }` with no provider/model override, and submitters translate that flag to `context.autoProviderRouting.requested` or route-level `autoProviderRouting: true` so scheduling routes can pick a concrete provider first and then expand that tier through the selected provider's configuration. `queue/EnqueueDialog.tsx` uses these compact controls in its Advanced area for Ask AI, ad hoc autopilot tasks, skill/context-file runs, bulk context-file submissions, and floating-chat launches. `tasks/GenerateTaskDialog.tsx` uses these compact controls in its configuration area and forwards the resolved values to `/api/workspaces/:id/queue/generate`; `shared/UpdateDocumentDialog.tsx` uses them in the existing configuration area and enqueues custom chat tasks; `features/work-items/WorkItemExecuteDialog.tsx` renders the same controls through `RunSkillPanel` and forwards them to `/api/workspaces/:id/work-items/:wid/execute`; `features/chat/SkillContextDialog.tsx` uses them for git commit, multi-commit, and branch-range skill runs.
+
+Ralph start surfaces use `shared/RalphExecutionRepoSelector.tsx`. Launch callers
+pass a transient source reference with the physical `workspaceId`, the
+clone-qualified `selectionId` from `getRepoSelectionId(repo)` when available,
+and a `baseUrl` fallback for clone-routed pop-out windows. The selector builds
+targets keyed by `(serverId, workspaceId)` (`local` is the dashboard server),
+resolves remote selection IDs by exact server and workspace, and uses a unique
+normalized base URL only as a compatibility fallback. It never treats a missing
+clone-registry entry as evidence that the source is local. An unresolved,
+ambiguous, connecting, or cached-offline source remains unselected and shows its
+focused availability warning; unrelated remote aggregation warnings remain
+visible without disabling healthy targets. Repo refreshes and reconnects restore
+the source target until the user explicitly selects another repository, after
+which that manual choice remains owned by the open dialog. Source-less callers
+retain the first-available default.
+
+`features/chat/RalphStartPanel.tsx` drives `ModalJobAiControls` from the selected
+execution workspace and reuses `/api/processes/:id/ralph-start` only when the
+resolved source and selection have the same exact target key.
+`shared/RalphLaunchDialog.tsx` uses the same target identity for direct
+goal-file launches from Notes and New Chat and can accept a caller-owned
+resolved AI selection. Every cross-workspace or cross-server launch posts to
+the selected target server's `/api/ralph-launch`, and source paths are forwarded
+only for an exact source-target match. `features/chat/RalphWorkflowPane.tsx`
+uses `ModalJobAiControls` in both the stuck-session Resume confirmation and the
+completed-session Continue-loop confirmation, each initialized from transient
+session `resumeDefaults` when recoverable and disabled while that action is
+submitting.
+
+Classify-diff toolbars call `useModalJobAiSelection()` directly and render
+`features/git/diff/ClassifyDiffAiControls.tsx`, an inline toolbar variant that
+hides the provider chip when only one provider is selectable and shows either
+an effort-tier selector or the pickable-model command picker. Diff
+classification categories are `logic`, `mechanical`, `test`, `simple`, and
+`generated`; `simple` is labeled "Simple function" and remains low-attention by
+default. PR and commit popout file rails show compact category badges plus a
+critical marker, and their selected-file unified diff views render test fidelity
+comments, logic summaries, and critical usage/call-stack evidence inline near
+each classified hunk; branch-range popout diff UI stays on the compact
+classification-free path.
 
 `EffortPillSelector` drives the per-turn `reasoningEffort` override (Low/Medium/High; `null` = no override, falls back to the persisted per-model effort then the SDK default). The chip is structurally a dropdown menu (`AgentSelectorChip` style): trigger button (bars icon + label + chevron) opens a popover listbox with `Auto`/`Low`/`Medium`/`High` entries. The `Auto` entry explicitly clears the override and is also what the currently-selected level toggles to when re-clicked. New chats persist the selection alongside the draft (`useDraftStore` → `Draft.effortOverride`). Follow-ups thread the choice through `useSendMessage → ProcessMessageRequest.reasoningEffort → POST /api/processes/:id/message` and into either `bridge.enqueue` (queued) or `bridge.executeFollowUp` (direct/buffered). The server mirrors the value into `task.config.reasoningEffort` via `queue-shared.validateAndParseTask`, so executors see it from a single canonical location.
 
@@ -1343,7 +1383,9 @@ and are skipped by the local Phase-2 git-info update. Offline / unreachable
 servers contribute their last-known list from a two-layer (in-memory +
 `localStorage['coc-remote-workspace-cache']`) per-server cache
 (`repos/remoteWorkspaceCache.ts`), each entry flagged `offline` (with the real
-`connection` preserved). When the flag is
+`connection` preserved). `ReposContext` also retains the aggregation warnings so
+target pickers can explain skipped or unavailable remote servers while leaving
+healthy local and remote repositories usable. When the flag is
 OFF, `aggregateRemoteWorkspaces()` returns empty and performs no remote fetch, so
 the classic flow is unchanged.
 
@@ -1420,13 +1462,18 @@ the input:
   `disabled` with an `(offline)` suffix when `remote.offline`. Selecting a remote
   workspace routes the enqueue to its server through the same
   `getCocClientForWorkspace` seam — no enqueue-path logic is remote-specific.
-- `RalphStartPanel` reads goal files from the source clone through
-  `cloneApiBase(workspaceId)` (`/fs/blob?path=...`) and routes the start POST via
-  the selected Ralph execution target. Same-workspace/server grilling starts use
+- Ralph source routing is transient and exact. `RepoDetail` threads its
+  clone-qualified selection ID through Activity, direct-goal, and Notes launch
+  surfaces; `PopOutChatShell` mounts `ReposProvider` and passes its parsed clone
+  base URL as the source fallback. `RalphStartPanel` resolves that source against
+  the current targets before reading `/fs/blob?path=...`, so an unresolved remote
+  source cannot fall through to the local API. Same-target grilling starts use
   that target's `processes/:id/ralph-start` endpoint so the grilling session is
-  reused; cross-workspace or remote-target starts use the selected target's
-  `ralph-launch` endpoint with the selected `workspaceId`. Remote target URLs are
-  built from the selected server's effective URL, not from the local API base.
+  reused; cross-workspace or cross-server starts use the selected target's
+  `ralph-launch` endpoint with its physical `workspaceId`. Direct-goal launches
+  forward `folderPath` and `workingDirectory` only when the selected target
+  exactly matches the resolved source. Remote server IDs and effective URLs stay
+  in component state and are not persisted into process or Ralph session data.
 - The Ralph workflow pane routes its whole data flow to the clone: the per-session
   journal READ (`useRalphSessionView` -> `workspaces.ralphSession`) resolves its
   client via `getCocClientForWorkspace(workspaceId)`, and the continue/new-loop/

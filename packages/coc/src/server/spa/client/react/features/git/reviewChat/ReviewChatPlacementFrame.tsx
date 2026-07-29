@@ -245,6 +245,26 @@ export function ReviewChatPlacementFrame({
     const { focused, dormantMode, collapsed } =
         useLensDormantState(cardRef, pillRef, isLens, explicitlyMinimized);
 
+    // When the lens re-expands from a dormant (hover-collapsed) pill back to its
+    // focused card — e.g. the user hovers the collapsed pill — move keyboard
+    // focus into the composer input so they can type immediately without an
+    // extra click. Only fires on the dormant→focused transition; the lens mounts
+    // focused, so this never steals focus on first render or for side panels.
+    const prevFocusedRef = useRef(focused);
+    useEffect(() => {
+        const wasFocused = prevFocusedRef.current;
+        prevFocusedRef.current = focused;
+        if (!isLens || explicitlyMinimized || !focused || wasFocused) return;
+        // The card body stays mounted while dormant, so its composer input (a
+        // textarea or the contenteditable RichTextInput) is already in the DOM;
+        // inert/pointer-events-none were shed in this same render before the
+        // effect runs, so focusing it now succeeds.
+        const input = cardRef.current?.querySelector<HTMLElement>(
+            'textarea:not([disabled]), [contenteditable="true"]',
+        );
+        input?.focus();
+    }, [focused, isLens, explicitlyMinimized]);
+
     // 'ghost-then-pill' renders as ghost until the 15s timer collapses it (then
     // as pill); 'ghost'/'pill' map straight to their single dormant visual.
     const usePillHitTarget = dormantMode === 'pill'

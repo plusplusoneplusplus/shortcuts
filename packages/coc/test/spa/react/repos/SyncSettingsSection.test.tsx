@@ -8,7 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import type { ReconcileReport, SyncStatus } from '@plusplusoneplusplus/coc-client';
+import type { ReconcileReport, SyncResolutionReport, SyncStatus } from '@plusplusoneplusplus/coc-client';
 
 const mockClient = vi.hoisted(() => ({
     sync: {
@@ -55,6 +55,9 @@ function makeStatus(overrides: Partial<SyncStatus> = {}): SyncStatus {
         lastError: null,
         reconcileInProgress: false,
         reconcileReport: null,
+        pushPending: false,
+        lastPushError: null,
+        lastResolution: null,
         ...overrides,
     };
 }
@@ -140,6 +143,75 @@ describe('SyncSettingsSection — initial reconcile report', () => {
         await renderPanel(makeStatus({ inProgress: true, reconcileInProgress: true }));
 
         expect((screen.getByTestId('btn-sync-trigger') as HTMLButtonElement).disabled).toBe(true);
+    });
+});
+
+describe('SyncSettingsSection — push-pending state', () => {
+    it('shows an amber "Push pending" pill when a push is waiting to land', async () => {
+        await renderPanel(makeStatus({ pushPending: true, lastPushError: 'remote rejected' }));
+
+        expect(screen.getByTestId('sync-status-pill').textContent).toContain('Push pending');
+    });
+
+    it('surfaces the push failure detail so it is discoverable without the console', async () => {
+        await renderPanel(makeStatus({ pushPending: true, lastPushError: 'remote rejected the push' }));
+
+        expect(screen.getByTestId('sync-push-pending-detail').textContent).toContain('remote rejected the push');
+    });
+
+    it('still shows OK when nothing is pending', async () => {
+        await renderPanel(makeStatus());
+
+        expect(screen.getByTestId('sync-status-pill').textContent).toContain('OK');
+        expect(screen.queryByTestId('sync-push-pending-detail')).toBeNull();
+    });
+
+    it('lets a hard error win over a pending push', async () => {
+        await renderPanel(makeStatus({ lastError: 'boom', pushPending: true, lastPushError: 'also stuck' }));
+
+        // A hard error means the tick didn't complete at all, so it takes precedence.
+        expect(screen.getByTestId('sync-status-pill').textContent).toContain('Error');
+    });
+});
+
+describe('SyncSettingsSection — steady-state resolution report', () => {
+    const resolution: SyncResolutionReport = {
+        resolvedAt: '2026-07-16T15:40:00.000Z',
+        commit: 'def5678',
+        files: [
+            { path: 'work/a.md', strategy: 'ai' },
+            { path: 'b.md', strategy: 'simple' },
+        ],
+    };
+
+    it('lists each resolved note with how it was merged', async () => {
+        await renderPanel(makeStatus({ lastResolution: resolution }));
+
+        const text = screen.getByTestId('sync-resolution-files').textContent ?? '';
+        expect(text).toContain('work/a.md');
+        expect(text).toContain('combined (AI)');
+        expect(text).toContain('b.md');
+        expect(text).toContain('combined (textual)');
+    });
+
+    it('marks a dropped-edit fallback as lossy and visually distinct', async () => {
+        await renderPanel(makeStatus({
+            lastResolution: {
+                ...resolution,
+                files: [{ path: 'c.md', strategy: 'keptRemoteFallback' }],
+            },
+        }));
+
+        const item = screen.getByText(/c\.md/);
+        expect(item.textContent).toContain("kept remote copy, this device's edit dropped");
+        // The lossy case is rendered in the red error color, not the muted grey.
+        expect(item.className).toContain('f85149');
+    });
+
+    it('renders nothing about a last merge when none has run', async () => {
+        await renderPanel(makeStatus({ lastResolution: null }));
+
+        expect(screen.queryByTestId('sync-resolution-report')).toBeNull();
     });
 });
 

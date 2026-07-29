@@ -79,7 +79,7 @@ vi.mock('../../../../../src/server/spa/client/react/contexts/ReposContext', () =
 // ---------------------------------------------------------------------------
 
 import { RalphLaunchDialog } from '../../../../../src/server/spa/client/react/shared/RalphLaunchDialog';
-import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../../../src/server/spa/client/react/repos/cloneRegistry';
+import { resetCloneRegistryForTests } from '../../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 async function waitForRepoSelector() {
     await waitFor(() => expect(screen.getByTestId('ralph-launch-execution-repo-select')).toBeDefined());
@@ -159,6 +159,14 @@ describe('RalphLaunchDialog', () => {
             .toContain('Ralph will run in Source Repo on Current CoC');
     });
 
+    it('keeps the first available target fallback for a genuinely source-less launch', async () => {
+        render(<RalphLaunchDialog {...defaultProps} workspaceId="" />);
+
+        await waitForRepoSelector();
+        expect((screen.getByTestId('ralph-launch-execution-repo-select') as HTMLSelectElement).value)
+            .toBe('local:ws-123');
+    });
+
     it('shows online remote workspace options', async () => {
         mockUseRepos.mockReturnValue({
             repos: [
@@ -187,6 +195,23 @@ describe('RalphLaunchDialog', () => {
         const select = screen.getByTestId('ralph-launch-execution-repo-select') as HTMLSelectElement;
         expect([...select.options].map(option => option.value)).toContain('srv-1:remote-ws');
         expect(screen.queryByTestId('ralph-launch-execution-repo-warning')).toBeNull();
+    });
+
+    it('surfaces remote aggregation warnings without blocking a healthy local target', async () => {
+        mockUseRepos.mockReturnValue({
+            repos: [
+                { workspace: { id: 'ws-123', name: 'Source Repo', rootPath: '/repos/source' } },
+            ],
+            loading: false,
+            remoteWarnings: ['ubuntu-arm: connection timed out'],
+        });
+
+        render(<RalphLaunchDialog {...defaultProps} />);
+        await waitForRepoSelector();
+
+        expect(screen.getByTestId('ralph-launch-execution-repo-warning').textContent)
+            .toContain('ubuntu-arm: connection timed out');
+        expect((screen.getByTestId('ralph-launch-confirm-btn') as HTMLButtonElement).disabled).toBe(false);
     });
 
     it('disables confirmation and explains when no selectable workspace exists', async () => {
@@ -411,7 +436,6 @@ describe('RalphLaunchDialog', () => {
     // -----------------------------------------------------------------------
 
     it('defaults to the remote-origin target when source is a remote workspace', async () => {
-        registerCloneBaseUrls([{ workspaceId: 'ws-123', baseUrl: 'http://127.0.0.1:8888' }]);
         mockUseRepos.mockReturnValue({
             repos: [
                 // Same workspace id exists locally (should NOT be chosen as default).
@@ -435,7 +459,13 @@ describe('RalphLaunchDialog', () => {
             loading: false,
         });
 
-        render(<RalphLaunchDialog {...defaultProps} workspaceId="ws-123" />);
+        render(
+            <RalphLaunchDialog
+                {...defaultProps}
+                workspaceId="ws-123"
+                sourceSelectionId="remote:srv-b:ws-123"
+            />,
+        );
 
         await waitFor(() => {
             const select = screen.getByTestId('ralph-launch-execution-repo-select') as HTMLSelectElement;

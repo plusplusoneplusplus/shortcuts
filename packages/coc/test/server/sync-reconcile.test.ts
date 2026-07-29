@@ -33,9 +33,16 @@ import {
     reconcileReport,
     LOCAL_CONFLICT_LABEL,
     REMOTE_CONFLICT_LABEL,
+    RESOLUTION_MARKER_NAME,
+    resolutionMarkerPath,
+    readResolutionMarker,
+    writeResolutionMarker,
+    resolutionCommitMessage,
+    resolutionStrategyLabel,
     type ReconcileMarker,
     type ReconcileSummary,
     type MergeOutcome,
+    type SyncResolutionReport,
 } from '../../src/server/sync/sync-reconcile';
 import { resolveConflictSimple } from '../../src/server/sync/sync-engine';
 
@@ -174,6 +181,116 @@ describe('reconcile marker read/write', () => {
             localTreeNonEmpty: true,
             remoteHasCommits: true,
         })).toBe(true);
+    });
+});
+
+// ── Steady-state resolution marker ───────────────────────────────────────────
+
+describe('resolution marker read/write', () => {
+    let tmpDir: string;
+    let repoDir: string;
+
+    const SAMPLE_REPORT: SyncResolutionReport = {
+        resolvedAt: '2026-07-16T12:00:00.000Z',
+        files: [
+            { path: 'a.md', strategy: 'ai' },
+            { path: 'journal/b.md', strategy: 'simple' },
+            { path: 'c.md', strategy: 'keptRemoteFallback' },
+        ],
+        commit: '0123456789abcdef0123456789abcdef01234567',
+    };
+
+    beforeEach(() => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-resolution-'));
+        repoDir = path.join(tmpDir, 'repo');
+        fs.mkdirSync(path.join(repoDir, '.git'), { recursive: true });
+    });
+
+    afterEach(() => {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('resolves the marker inside .git', () => {
+        expect(resolutionMarkerPath(repoDir)).toBe(path.join(repoDir, '.git', RESOLUTION_MARKER_NAME));
+    });
+
+    it('round-trips a written report', async () => {
+        await writeResolutionMarker(repoDir, SAMPLE_REPORT);
+        expect(await readResolutionMarker(repoDir)).toEqual(SAMPLE_REPORT);
+    });
+
+    it('overwrites a previous report', async () => {
+        await writeResolutionMarker(repoDir, SAMPLE_REPORT);
+        const next: SyncResolutionReport = { ...SAMPLE_REPORT, commit: 'ffff', files: [{ path: 'z.md', strategy: 'simple' }] };
+        await writeResolutionMarker(repoDir, next);
+        expect(await readResolutionMarker(repoDir)).toEqual(next);
+    });
+
+    it('returns null when the marker is absent', async () => {
+        expect(await readResolutionMarker(repoDir)).toBeNull();
+    });
+
+    it('returns null on truncated JSON', async () => {
+        await fs.promises.writeFile(resolutionMarkerPath(repoDir), '{"resolvedAt": "x", "files": [');
+        expect(await readResolutionMarker(repoDir)).toBeNull();
+    });
+
+    it('returns null when a required field is missing', async () => {
+        await fs.promises.writeFile(resolutionMarkerPath(repoDir), JSON.stringify({ files: [], commit: 'abc' }));
+        expect(await readResolutionMarker(repoDir)).toBeNull();
+    });
+
+    it('returns null when a file entry has an unknown strategy', async () => {
+        await fs.promises.writeFile(
+            resolutionMarkerPath(repoDir),
+            JSON.stringify({ resolvedAt: 'x', commit: 'abc', files: [{ path: 'a.md', strategy: 'wat' }] }),
+        );
+        expect(await readResolutionMarker(repoDir)).toBeNull();
+    });
+
+    it('returns null when files is not an array', async () => {
+        await fs.promises.writeFile(
+            resolutionMarkerPath(repoDir),
+            JSON.stringify({ resolvedAt: 'x', commit: 'abc', files: 'nope' }),
+        );
+        expect(await readResolutionMarker(repoDir)).toBeNull();
+    });
+
+    it('accepts an empty file list', async () => {
+        const report: SyncResolutionReport = { resolvedAt: 'x', commit: 'abc', files: [] };
+        await writeResolutionMarker(repoDir, report);
+        expect(await readResolutionMarker(repoDir)).toEqual(report);
+    });
+});
+
+// ── Resolution commit message + labels ───────────────────────────────────────
+
+describe('resolutionStrategyLabel', () => {
+    it('phrases each strategy, marking the lossy one plainly', () => {
+        expect(resolutionStrategyLabel('ai')).toBe('combined (AI)');
+        expect(resolutionStrategyLabel('simple')).toBe('combined (textual)');
+        expect(resolutionStrategyLabel('keptRemoteFallback')).toBe("kept remote copy, this device's edit dropped");
+    });
+});
+
+describe('resolutionCommitMessage', () => {
+    it('enumerates each resolved file and its strategy in the body', () => {
+        const msg = resolutionCommitMessage([
+            { path: 'a.md', strategy: 'ai' },
+            { path: 'b.md', strategy: 'keptRemoteFallback' },
+        ]);
+        expect(msg).toContain('Sync: resolved 2 conflicted notes');
+        expect(msg).toContain('- a.md — combined (AI)');
+        expect(msg).toContain("- b.md — kept remote copy, this device's edit dropped");
+    });
+
+    it('says "note" for a single file', () => {
+        const msg = resolutionCommitMessage([{ path: 'a.md', strategy: 'simple' }]);
+        expect(msg.split('\n')[0]).toBe('Sync: resolved 1 conflicted note');
+    });
+
+    it('is a bare subject with no body for an empty list', () => {
+        expect(resolutionCommitMessage([])).toBe('Sync: resolved 0 conflicted notes');
     });
 });
 

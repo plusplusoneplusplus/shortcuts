@@ -28,8 +28,9 @@ import { createMemoryStoreFactTool, createMemoryRecallTool } from '../../src/ser
 /**
  * Registry tools that intentionally have no locally-declared schema and so
  * should render "parameters unavailable" rather than appear in the mirror.
+ * (Currently empty — every registered tool declares a mirrored schema.)
  */
-const SCHEMA_EXCLUDED_TOOLS = new Set<string>(['memory']);
+const SCHEMA_EXCLUDED_TOOLS = new Set<string>([]);
 
 describe('LLM_TOOL_PARAMETER_SCHEMAS', () => {
     it('covers every registry tool except the documented exclusions', () => {
@@ -73,8 +74,8 @@ describe('withToolParameterMetadata', () => {
 
     it('omits params for tools without a mirrored schema', () => {
         const meta: LlmToolMeta = {
-            name: 'memory',
-            label: 'Memory',
+            name: 'tool_without_schema',
+            label: 'Tool Without Schema',
             description: 'desc',
             enabledByDefault: true,
         };

@@ -90,6 +90,8 @@ import { useContainerWidth } from './hooks/useContainerWidth';
 
 export interface NewChatAreaProps {
     workspaceId?: string;
+    /** Clone-qualified identity of the active repository. */
+    sourceSelectionId?: string;
     onBack?: () => void;
 }
 
@@ -110,6 +112,10 @@ export type InitialChatComposerSettingsLayout = 'full' | 'compact' | 'responsive
 
 export interface InitialChatComposerProps {
     workspaceId?: string;
+    /** Clone-qualified identity used by direct Ralph launches. */
+    sourceSelectionId?: string;
+    /** Optional source clone URL for standalone/pop-out callers. */
+    sourceBaseUrl?: string;
     workspaceRoot?: string;
     onBack?: () => void;
     onSubmit: (submission: InitialChatComposerSubmission) => Promise<string | null | void>;
@@ -198,7 +204,7 @@ function getEffortLabel(effort: EffortLevel | null): string {
     return effort ? EFFORT_LEVEL_LABELS[effort] : 'Auto';
 }
 
-export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
+export function NewChatArea({ workspaceId, sourceSelectionId, onBack }: NewChatAreaProps) {
     const { dispatch: queueDispatch } = useQueue();
     const { state: appState } = useApp();
     const { updateOnboarding } = useOnboardingPreferences();
@@ -245,6 +251,7 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
     return (
         <InitialChatComposer
             workspaceId={workspaceId}
+            sourceSelectionId={sourceSelectionId}
             workspaceRoot={getSelectedWorkspaceRoot()}
             onBack={onBack}
             onSubmit={handleSubmit}
@@ -256,6 +263,8 @@ export function NewChatArea({ workspaceId, onBack }: NewChatAreaProps) {
 
 export function InitialChatComposer({
     workspaceId,
+    sourceSelectionId,
+    sourceBaseUrl,
     workspaceRoot,
     onBack,
     onSubmit,
@@ -1366,6 +1375,8 @@ export function InitialChatComposer({
                 <RalphLaunchDialog
                     open={ralphDirectGoalDraft !== null}
                     workspaceId={workspaceId ?? ''}
+                    sourceSelectionId={sourceSelectionId}
+                    sourceBaseUrl={sourceBaseUrl}
                     sourceLabel={sourceLabel}
                     goalSpec={ralphDirectGoalDraft}
                     folderPath={getSelectedWorkspaceRoot()}

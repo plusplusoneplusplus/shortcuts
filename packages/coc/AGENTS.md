@@ -113,6 +113,11 @@ all have their own `references/*.md`.
   `src/server/executors/skill-config-resolver.ts`, and `loadSkillsForWorkspace`
   (UI listing behind `GET /api/workspaces/:id/skills`, tags configured-folder
   skills `source: 'global-extra-folder'`) in `src/server/skills/skill-handler.ts`.
+  Every configured global or per-repo extra folder is a possible container:
+  probe the folder itself, then `<folder>/.github/skills`, then
+  `<folder>/skills`. Keep this base-first candidate order for name precedence,
+  filter missing candidates at runtime, and store the actual candidate root in
+  each listed skill's `folderPath` so display and file reads match execution.
   Managed `~/.coc/skills` is the only install/delete target; extra/detected
   folders are read-only. `skills.globalExtraFolders` +
   `skills.autoDetectDefaultFolders` live in the config `skills` namespace, while

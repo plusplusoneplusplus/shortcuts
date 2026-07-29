@@ -439,6 +439,128 @@ export function reconcileReport(marker: ReconcileMarker | null): ReconcileReport
     return { ...marker.report, mergedCommit: marker.mergedCommit, reconciledAt: marker.reconciledAt };
 }
 
+// ── Steady-state resolution audit ────────────────────────────────────────────
+//
+// The reconcile machinery above records the one-time first merge. This records
+// the same class of audit trail for the steady-state ticks that follow: when the
+// same note is edited on two devices, the pull conflicts and the engine
+// auto-merges it. Without this, the only evidence a note was union-merged is the
+// git log inside the mirror, which users never inspect.
+
+/** Marker filename for the last steady-state resolution, inside `.git`. */
+export const RESOLUTION_MARKER_NAME = 'coc-last-resolution.json';
+
+/**
+ * How a single conflicted note was resolved this tick.
+ *   - `ai`: the AI resolver combined both sides into one.
+ *   - `simple`: textual concatenation kept both sides (no AI, or AI failed).
+ *   - `keptRemoteFallback`: resolution errored, so `--theirs` was taken and this
+ *     device's edit was dropped — the one lossy outcome, which most needs surfacing.
+ */
+export type ResolutionStrategy = 'ai' | 'simple' | 'keptRemoteFallback';
+
+const RESOLUTION_STRATEGIES: readonly ResolutionStrategy[] = ['ai', 'simple', 'keptRemoteFallback'];
+
+/** One conflicted note and how the auto-merge resolved it. */
+export interface ResolvedFile {
+    /** Repo-relative path of the conflicted note. */
+    path: string;
+    strategy: ResolutionStrategy;
+}
+
+/**
+ * What a steady-state tick's auto-merge did. Persisted beside the reconcile
+ * marker so it survives a restart, and set on `SyncStatus` so the settings panel
+ * can show it. Like the reconcile report, it is not cleared by a later idle tick
+ * — it describes a discrete event the user may not have read yet — but it is
+ * replaced when a newer tick resolves conflicts.
+ */
+export interface SyncResolutionReport {
+    /** ISO timestamp of when the resolution committed. */
+    resolvedAt: string;
+    /** Files that had a real conflict this tick, with how each was resolved. */
+    files: ResolvedFile[];
+    /** SHA of the merge-resolution commit. */
+    commit: string;
+}
+
+/** Absolute path of the resolution marker for a given sync repo. */
+export function resolutionMarkerPath(syncRepoDir: string): string {
+    return path.join(syncRepoDir, '.git', RESOLUTION_MARKER_NAME);
+}
+
+/**
+ * Read the last-resolution marker, or null when none exists or it can't be
+ * trusted. A missing, unreadable, or malformed marker all collapse to null —
+ * losing the summary is harmless, so any doubt drops it rather than surfacing
+ * a shape the panel can't render.
+ */
+export async function readResolutionMarker(syncRepoDir: string): Promise<SyncResolutionReport | null> {
+    let raw: string;
+    try {
+        raw = await fs.promises.readFile(resolutionMarkerPath(syncRepoDir), 'utf8');
+    } catch {
+        return null; // absent or unreadable
+    }
+    try {
+        return validResolutionReport(JSON.parse(raw));
+    } catch {
+        return null; // truncated/corrupt JSON
+    }
+}
+
+/** The report as read back from JSON, or null if it isn't one we can render. */
+function validResolutionReport(value: unknown): SyncResolutionReport | null {
+    if (!value || typeof value !== 'object') return null;
+    const r = value as Partial<SyncResolutionReport>;
+    if (typeof r.resolvedAt !== 'string' || !r.resolvedAt) return null;
+    if (typeof r.commit !== 'string' || !r.commit) return null;
+    if (!Array.isArray(r.files)) return null;
+
+    const files: ResolvedFile[] = [];
+    for (const entry of r.files) {
+        if (!entry || typeof entry !== 'object') return null;
+        const f = entry as Partial<ResolvedFile>;
+        if (typeof f.path !== 'string' || !f.path) return null;
+        if (!RESOLUTION_STRATEGIES.includes(f.strategy as ResolutionStrategy)) return null;
+        files.push({ path: f.path, strategy: f.strategy as ResolutionStrategy });
+    }
+    return { resolvedAt: r.resolvedAt, files, commit: r.commit };
+}
+
+/**
+ * Persist the resolution marker. Written via a temp file + rename so a crash
+ * mid-write can't leave a half-written marker behind.
+ */
+export async function writeResolutionMarker(syncRepoDir: string, report: SyncResolutionReport): Promise<void> {
+    const target = resolutionMarkerPath(syncRepoDir);
+    await fs.promises.mkdir(path.dirname(target), { recursive: true });
+    const tmp = `${target}.tmp`;
+    await fs.promises.writeFile(tmp, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+    await fs.promises.rename(tmp, target);
+}
+
+/** Human-readable phrasing of a strategy, shared by the commit body and the UI. */
+export function resolutionStrategyLabel(strategy: ResolutionStrategy): string {
+    switch (strategy) {
+        case 'ai': return 'combined (AI)';
+        case 'simple': return 'combined (textual)';
+        case 'keptRemoteFallback': return "kept remote copy, this device's edit dropped";
+    }
+}
+
+/**
+ * The message for the auto-merge resolution commit. Enumerates every resolved
+ * file and its strategy, so the resolution is auditable from `git log` alone —
+ * the same durable record `reconcileCommitMessage` gives the first merge.
+ */
+export function resolutionCommitMessage(files: readonly ResolvedFile[]): string {
+    const subject = `Sync: resolved ${files.length} conflicted ${files.length === 1 ? 'note' : 'notes'}`;
+    if (files.length === 0) return subject;
+    const body = files.map(f => `- ${f.path} — ${resolutionStrategyLabel(f.strategy)}`).join('\n');
+    return `${subject}\n\n${body}`;
+}
+
 // ── Applying a plan ──────────────────────────────────────────────────────────
 
 /** Conflict-marker label for the side that came from this device. */

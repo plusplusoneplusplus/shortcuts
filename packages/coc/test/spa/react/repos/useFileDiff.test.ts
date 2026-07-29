@@ -8,9 +8,11 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 // --- Module mocks ---
 
 const mockFetchDiffFromSource = vi.fn();
+const mockPeekDiffCache = vi.fn((..._args: any[]): any => undefined);
 
 vi.mock('../../../../src/server/spa/client/react/features/git/diff/diffSource', () => ({
     fetchDiffFromSource: (...args: any[]) => mockFetchDiffFromSource(...args),
+    peekDiffCache: (...args: any[]) => mockPeekDiffCache(...args),
 }));
 
 import { useFileDiff } from '../../../../src/server/spa/client/react/features/git/hooks/useFileDiff';
@@ -18,6 +20,8 @@ import { useFileDiff } from '../../../../src/server/spa/client/react/features/gi
 describe('useFileDiff', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        // Default: cache miss, so tests exercise the network path unless they opt in.
+        mockPeekDiffCache.mockReturnValue(undefined);
     });
 
     afterEach(() => {
@@ -257,6 +261,67 @@ describe('useFileDiff', () => {
         await waitFor(() => expect(result.current.loading).toBe(false));
 
         expect(result.current.fullContextUnavailable).toBeUndefined();
+    });
+
+    it('cache hit: applies cached result synchronously with no network fetch', async () => {
+        mockPeekDiffCache.mockReturnValue({
+            diff: 'cached diff',
+            truncated: false,
+            totalLines: 0,
+            fullContextUnavailable: undefined,
+        });
+
+        const { result } = renderHook(() => useFileDiff('/api/diff?fullContext=true', null, 'ws-1'));
+
+        // No loading flash and no network round-trip on a cache hit.
+        expect(result.current.loading).toBe(false);
+        expect(result.current.diff).toBe('cached diff');
+        expect(result.current.error).toBeNull();
+        expect(mockFetchDiffFromSource).not.toHaveBeenCalled();
+        expect(mockPeekDiffCache).toHaveBeenCalledWith('ws-1', '/api/diff?fullContext=true');
+    });
+
+    it('cache hit propagates fullContextUnavailable without a network fetch', async () => {
+        mockPeekDiffCache.mockReturnValue({
+            diff: 'hunk fallback',
+            truncated: false,
+            totalLines: 0,
+            fullContextUnavailable: true,
+        });
+
+        const { result } = renderHook(() => useFileDiff('/api/diff?fullContext=true'));
+
+        expect(result.current.loading).toBe(false);
+        expect(result.current.fullContextUnavailable).toBe(true);
+        expect(result.current.diff).toBe('hunk fallback');
+        expect(mockFetchDiffFromSource).not.toHaveBeenCalled();
+    });
+
+    it('toggle URL A → B → A: a cached URL resolves from cache, uncached URL fetches', async () => {
+        // A is cached; B is not. Toggling back to A must not re-fetch.
+        const cachedA = { diff: 'diff A', truncated: false, totalLines: 0, fullContextUnavailable: undefined };
+        mockPeekDiffCache.mockImplementation((_ws: string, u: string) => (u === '/api/A' ? cachedA : undefined));
+        mockFetchDiffFromSource.mockResolvedValue({ diff: 'diff B', truncated: false, totalLines: 0 });
+
+        const { result, rerender } = renderHook(
+            ({ url }) => useFileDiff(url),
+            { initialProps: { url: '/api/A' as string } },
+        );
+
+        // A: cache hit, no fetch.
+        expect(result.current.diff).toBe('diff A');
+        expect(mockFetchDiffFromSource).not.toHaveBeenCalled();
+
+        // B: cache miss, one fetch.
+        rerender({ url: '/api/B' });
+        await waitFor(() => expect(result.current.diff).toBe('diff B'));
+        expect(mockFetchDiffFromSource).toHaveBeenCalledTimes(1);
+        expect(mockFetchDiffFromSource).toHaveBeenCalledWith('', '/api/B');
+
+        // Back to A: cache hit again, still only the single B fetch total.
+        rerender({ url: '/api/A' });
+        expect(result.current.diff).toBe('diff A');
+        expect(mockFetchDiffFromSource).toHaveBeenCalledTimes(1);
     });
 
     it('resets fullContextUnavailable on URL change', async () => {

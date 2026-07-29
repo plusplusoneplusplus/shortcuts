@@ -23,8 +23,7 @@
  * `llm-tool-parameter-schemas` drift-guard test compares the summaries derived
  * here against the live tool schemas for every tool that is cheap to construct.
  *
- * Tools with no entry here (e.g. the built-in `memory` tool, whose schema is
- * not declared locally) intentionally render as "parameters unavailable".
+ * Tools with no entry here intentionally render as "parameters unavailable".
  */
 
 import type { LlmToolMeta } from './llm-tool-registry';

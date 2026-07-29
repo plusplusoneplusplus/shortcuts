@@ -9,7 +9,7 @@
  */
 
 import type { ProcessStore, TaskQueueManager, SDKServiceRegistry } from '@plusplusoneplusplus/forge';
-import { MEMORY_SCHEMA, READ_ONLY_SYSTEM_MESSAGE, SECURITY_PATTERNS_DESCRIPTION } from '@plusplusoneplusplus/forge';
+import { READ_ONLY_SYSTEM_MESSAGE, SECURITY_PATTERNS_DESCRIPTION } from '@plusplusoneplusplus/forge';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -996,14 +996,6 @@ The plan file should include:
 
 [Task]
 \${mainPrompt}`,
-        },
-        'memory-tool-schema': {
-            id: 'memory-tool-schema',
-            title: 'Memory Tool — Schema & Behavioral Guidance',
-            group: 'Memory',
-            source: 'forge/memory/memory-tool.ts',
-            description: 'Tool definition with add/replace/remove actions, capacity-awareness, and proactive-save guidance',
-            text: MEMORY_SCHEMA,
         },
         'memory-security-patterns': {
             id: 'memory-security-patterns',

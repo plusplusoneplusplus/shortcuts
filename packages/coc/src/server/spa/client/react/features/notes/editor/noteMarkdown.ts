@@ -11,6 +11,7 @@ import { isEmbeddableMapUrl, isPdfUrl } from '@plusplusoneplusplus/forge/editor/
 import { mathNodeMarkedExtension } from './mathNodeMarked';
 import { wrapMathDelimiters, type MathDelimiter } from '../../../../shared/math/mathTokenizer';
 import { clampIndent, parseIndentAttr } from './extensions/indentShared';
+import { resolveCodeLanguage } from './extensions/notesLowlight';
 import { clampPdfHeight, parsePdfHeightAttr } from './extensions/pdfHeightShared';
 import { pdfLabelFromMarkdown } from './pdfLabel';
 import {
@@ -732,6 +733,28 @@ function stripCodeBlockTrailingNewline(html: string): string {
     );
 }
 
+// marked emits a fenced code block's info-string verbatim as the `<code>`
+// class (```` ```ts ```` → `<code class="language-ts">`). CodeBlockLowlight only
+// highlights a block whose `language` attribute is one of the 16 registered
+// grammar names, so a fence written with an alias (`ts`, `py`, `sh`, `yml`, …)
+// would otherwise load unhighlighted. Rewrite each fence class to its resolved
+// canonical grammar name before Tiptap parses the HTML (AC-03).
+//
+// Only rewrite when `resolveCodeLanguage` returns a registered name that differs
+// from the token as written. Anything it can't resolve — an unknown language, or
+// `language-mermaid` (routed to the MermaidBlock node) — is left untouched, so
+// unknown fences stay plain and mermaid handling is unaffected.
+function resolveFencedCodeLanguages(html: string): string {
+    return html.replace(
+        /(<pre><code class=")language-([^"]+)(">)/gi,
+        (match, prefix: string, token: string, suffix: string) => {
+            const resolved = resolveCodeLanguage(token);
+            if (!resolved || resolved === token.toLowerCase()) return match;
+            return `${prefix}language-${resolved}${suffix}`;
+        },
+    );
+}
+
 // ── Public API ──────────────────────────────────────────────────────────────
 
 /**
@@ -747,7 +770,9 @@ export function markdownToHtml(md: string): string {
     // tokenizer, a singleton, cannot see per-call definitions).
     const { body, defs } = extractQaFootnoteDefs(md);
     const html = injectQaAnswers(marked.parse(body) as string, defs);
-    return stripCodeBlockTrailingNewline(stripNbspParagraphPlaceholders(postProcessTaskLists(html)));
+    return resolveFencedCodeLanguages(
+        stripCodeBlockTrailingNewline(stripNbspParagraphPlaceholders(postProcessTaskLists(html))),
+    );
 }
 
 /**

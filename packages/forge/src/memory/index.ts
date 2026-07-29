@@ -16,16 +16,3 @@ export { BaseFileStore } from './base-file-store';
 // Memory security scanner (canonical impl re-exported from @plusplusoneplusplus/coc-memory)
 export { scanMemoryContent, redactSensitiveValues, SECURITY_PATTERNS_DESCRIPTION } from './memory-security-scanner';
 export type { MemoryScanResult, ThreatPatternId } from './memory-security-scanner';
-
-// Memory tool
-export { createMemoryTool, MEMORY_SCHEMA, getMemorySchema } from './memory-tool';
-export type {
-    MemoryToolOptions,
-    MemoryToolArgs,
-    MemoryToolMode,
-    MemoryToolCaptureContext,
-    MemoryToolCaptureResult,
-    MemoryWriteFrequency,
-    MemoryCandidateCapturedCallback,
-    CapturedCandidate,
-} from './memory-tool';

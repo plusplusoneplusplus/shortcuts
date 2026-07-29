@@ -84,7 +84,7 @@ The `src/server/` tree is grouped by feature domain. Cross-cutting plumbing stay
 | `notes/` | read/write/comments/AI/file-preview/image/edits handlers, git/ sub-module, and workspace-scoped multi-root resolution. The roots API combines the managed root, user-configured Notes roots, and existing canonical task directories discovered from repo-scoped tasks, `.vscode/tasks`, and task `folderPaths`; task identities are opaque, protected, read-time-derived values rather than Notes preferences. `notes-path-safety.ts` enforces cross-platform lexical and canonical-symlink containment for every non-default-root file, folder, comment-sidecar, order, and image operation. |
 | `workflows/` | constants, utils, watcher, read/write handlers |
 | `templates/` | template-watcher, CRUD handler, replicate-apply |
-| `skills/` | skill-handler, route-handlers, global-skill-handler, instruction-handler |
+| `skills/` | skill-handler, route-handlers, global-skill-handler, instruction-handler. Manual global and per-repo extra folders are read-only containers probed in base → `.github/skills` → `skills` order; UI listing, file reads, runtime resolution, and effective-path diagnostics use the same candidate roots |
 | `prompts/` | prompt-handler, prompt-utils |
 | `servers/` | Remote CoC server registry, DevTunnel connector |
 | `git/` | git-cache, git-info-cache, repo-utils |

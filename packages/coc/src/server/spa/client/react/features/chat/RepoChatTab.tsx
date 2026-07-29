@@ -39,6 +39,8 @@ import { parseForEachRunDeepLink, parseMapReduceRunDeepLink, parseRalphSessionDe
 
 export interface RepoChatTabProps {
     workspaceId: string;
+    /** Clone-qualified identity of the active repository that owns this tab. */
+    sourceSelectionId?: string;
     mode?: 'chats' | 'tasks';
     /**
      * When `'split-workspace'`, the tab renders ONLY its conversation list in
@@ -133,7 +135,7 @@ function loadActivityListCollapsed(storageKey: string): boolean {
     try { return localStorage.getItem(storageKey) === 'true'; } catch { return false; }
 }
 
-export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detailActive, onActivateDetail }: RepoChatTabProps) {
+export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, detailContainer, detailActive, onActivateDetail }: RepoChatTabProps) {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
 
     // Per-clone client (AC-07): the Activity tab's conversation LIST + queue +
@@ -1112,6 +1114,7 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
             selectedTaskId={selectedTaskId}
             selectedTask={selectedTask}
             workspaceId={workspaceId}
+            sourceSelectionId={sourceSelectionId}
             readOnly={mode === 'tasks'}
             onOpenForEachRun={handleOpenForEachRun}
             onOpenMapReduceRun={handleOpenMapReduceRun}
@@ -1220,6 +1223,7 @@ export function RepoChatTab({ workspaceId, mode, layout, detailContainer, detail
                                     selectedTask={selectedTask}
                                      onBack={() => setMobileShowDetail(false)}
                                      workspaceId={workspaceId}
+                                     sourceSelectionId={sourceSelectionId}
                                      readOnly={mode === 'tasks'}
                                      onOpenForEachRun={handleOpenForEachRun}
                                      onOpenMapReduceRun={handleOpenMapReduceRun}

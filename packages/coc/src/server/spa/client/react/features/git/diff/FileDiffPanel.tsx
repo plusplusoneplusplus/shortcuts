@@ -14,6 +14,9 @@ import { SideBySideDiffViewer } from './SideBySideDiffViewer';
 import { useDiffViewMode } from '../hooks/useDiffViewMode';
 import { DiffViewToggle } from './DiffViewToggle';
 import { DiffMiniMap } from './DiffMiniMap';
+import { DiffFindWidget } from './DiffFindWidget';
+import { useDiffFind } from './useDiffFind';
+import { useDiffFindShortcut } from './useDiffFindShortcut';
 import { useDiffComments } from '../hooks/useDiffComments';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import { CommentPopover } from '../../../tasks/comments/CommentPopover';
@@ -108,6 +111,16 @@ export function FileDiffPanel({
     const viewerRef = useRef<UnifiedDiffViewerHandle>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
+
+    // ── In-diff find (Ctrl/Cmd+F) ──
+    // Searches the FULL diff model so off-screen matches in virtualized files
+    // (>500 lines) are reachable; the viewer's scrollLineIntoView handle drives
+    // the virtualizer to bring the active match into view.
+    const scrollActiveMatchIntoView = useCallback((lineIndex: number) => {
+        viewerRef.current?.scrollLineIntoView(lineIndex);
+    }, []);
+    const find = useDiffFind(diffLines, scrollActiveMatchIntoView);
+    useDiffFindShortcut(scrollContainerRef, find.openFind);
 
     // ── Comments ──
     const diffContext = source.commentContext(filePath);
@@ -395,11 +408,26 @@ export function FileDiffPanel({
 
             {/* ── Main content area ── */}
             <div className="relative flex flex-1 min-h-0">
+                {/* ── In-diff find widget (Ctrl/Cmd+F) ── */}
+                {find.open && diff && !loading && !error && (
+                    <DiffFindWidget
+                        query={find.query}
+                        caseSensitive={find.caseSensitive}
+                        matchCount={find.matchCount}
+                        activeIndex={find.activeIndex}
+                        onQueryChange={find.setQuery}
+                        onToggleCaseSensitive={find.toggleCaseSensitive}
+                        onNext={find.goToNext}
+                        onPrev={find.goToPrev}
+                        onClose={find.closeFind}
+                    />
+                )}
                 {/* ── Diff scroll container ── */}
                 <div
                     ref={scrollContainerRef}
-                    className="flex-1 overflow-auto px-1 py-1"
+                    className="flex-1 overflow-auto px-1 py-1 outline-none"
                     data-testid="file-diff-section"
+                    tabIndex={-1}
                 >
                     {loading ? (
                         <div className="flex items-center gap-2 text-xs text-[#848484]" data-testid="file-diff-loading">
@@ -432,6 +460,7 @@ export function FileDiffPanel({
                                     onAskAI={handleAskAIDiff}
                                     onCopyAsContext={handleCopyAsContext}
                                     onCommentClick={handleCommentClick}
+                                    matchRangesByLine={find.matchRangesByLine}
                                     data-testid="file-diff-content"
                                 />
                             ) : (
@@ -450,6 +479,7 @@ export function FileDiffPanel({
                                     filePath={filePath}
                                     getHunkClassification={getHunkClassification}
                                     activeFilters={hunkActiveFilters}
+                                    matchRangesByLine={find.matchRangesByLine}
                                     data-testid="file-diff-content"
                                 />
                             )}

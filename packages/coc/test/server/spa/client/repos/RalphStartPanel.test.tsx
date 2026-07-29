@@ -61,7 +61,13 @@ vi.mock('../../../../../src/server/spa/client/react/contexts/ReposContext', () =
 
 import { RalphStartPanel } from '../../../../../src/server/spa/client/react/features/chat/RalphStartPanel';
 import type { ClientConversationTurn } from '../../../../../src/server/spa/client/react/types/dashboard';
-import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../../../src/server/spa/client/react/repos/cloneRegistry';
+import { resetCloneRegistryForTests } from '../../../../../src/server/spa/client/react/repos/cloneRegistry';
+import {
+    getRalphExecutionRepoTargetKey,
+    isSameRalphExecutionTarget,
+    resolveRalphExecutionRepoSource,
+    type RalphExecutionRepoTarget,
+} from '../../../../../src/server/spa/client/react/shared/RalphExecutionRepoSelector';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -79,6 +85,78 @@ const GRILLING_TURNS: ClientConversationTurn[] = [
 async function waitForRepoSelector() {
     await waitFor(() => expect(screen.getByTestId('ralph-start-execution-repo-select')).toBeTruthy());
 }
+
+function makeTarget(
+    serverId: string,
+    workspaceId: string,
+    baseUrl?: string,
+): RalphExecutionRepoTarget {
+    const local = serverId === 'local';
+    return {
+        key: getRalphExecutionRepoTargetKey(serverId, workspaceId),
+        workspaceId,
+        workspaceName: `${serverId}/${workspaceId}`,
+        serverId,
+        serverLabel: local ? 'Current CoC' : serverId,
+        local,
+        baseUrl,
+    };
+}
+
+describe('Ralph execution source resolution', () => {
+    it('resolves the exact remote server when two servers expose the same workspace id', () => {
+        const serverA = makeTarget('srv-a', 'legacy-ws', 'http://127.0.0.1:7001');
+        const serverB = makeTarget('srv-b', 'legacy-ws', 'http://127.0.0.1:7002');
+
+        const resolution = resolveRalphExecutionRepoSource(
+            { workspaceId: 'legacy-ws', selectionId: 'remote:srv-b:legacy-ws' },
+            [serverA, serverB],
+        );
+
+        expect(resolution).toEqual({ status: 'resolved', target: serverB });
+        expect(isSameRalphExecutionTarget(resolution.target, serverA)).toBe(false);
+        expect(isSameRalphExecutionTarget(resolution.target, serverB)).toBe(true);
+    });
+
+    it('uses an explicit clone selection when local and remote targets share a legacy workspace id', () => {
+        const local = makeTarget('local', 'shared-ws');
+        const remote = makeTarget('srv-remote', 'shared-ws', 'http://127.0.0.1:7999');
+
+        expect(resolveRalphExecutionRepoSource(
+            { workspaceId: 'shared-ws', selectionId: 'remote:srv-remote:shared-ws' },
+            [local, remote],
+        )).toEqual({ status: 'resolved', target: remote });
+        expect(resolveRalphExecutionRepoSource(
+            { workspaceId: 'shared-ws', selectionId: 'shared-ws' },
+            [local, remote],
+        )).toEqual({ status: 'resolved', target: local });
+    });
+
+    it('uses a unique normalized base URL only as the legacy ambiguity fallback', () => {
+        const local = makeTarget('local', 'shared-ws');
+        const remote = makeTarget('srv-remote', 'shared-ws', 'http://127.0.0.1:7999');
+
+        expect(resolveRalphExecutionRepoSource(
+            { workspaceId: 'shared-ws', baseUrl: 'http://127.0.0.1:7999/' },
+            [local, remote],
+        )).toEqual({ status: 'resolved', target: remote });
+    });
+
+    it('does not classify an unresolved remote selection as local', () => {
+        const local = makeTarget('local', 'shared-ws');
+
+        expect(resolveRalphExecutionRepoSource(
+            { workspaceId: 'shared-ws', selectionId: 'remote:srv-missing:shared-ws' },
+            [local],
+        )).toEqual({ status: 'unresolved', target: null });
+    });
+
+    it('keeps source-less launch behavior on the first available target', () => {
+        const local = makeTarget('local', 'first');
+        expect(resolveRalphExecutionRepoSource(undefined, [local]))
+            .toEqual({ status: 'none', target: null });
+    });
+});
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -116,7 +194,6 @@ describe('RalphStartPanel', () => {
         // Regression: a remote clone's /fs/blob must target the clone's own server.
         // Reading the path on the LOCAL server 403s ("Path is outside trusted
         // directories") because that path only exists on the remote machine.
-        registerCloneBaseUrls([{ workspaceId: 'remote-ws', baseUrl: 'http://127.0.0.1:9999' }]);
         const fetchMock = vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ({ content: '## Goal\nremote goal body' }),
@@ -127,6 +204,7 @@ describe('RalphStartPanel', () => {
             <RalphStartPanel
                 processId="queue_remote"
                 workspaceId="remote-ws"
+                sourceBaseUrl="http://127.0.0.1:9999"
                 turns={[]}
                 goalFilePath="/home/u/.coc/repos/remote-ws/notes/Plans/x.goal.md"
                 onStarted={mockOnStarted}
@@ -807,11 +885,11 @@ describe('RalphStartPanel', () => {
     // -----------------------------------------------------------------------
 
     it('defaults to the remote-origin target when source is a remote workspace', async () => {
-        registerCloneBaseUrls([{ workspaceId: 'remote-ws', baseUrl: 'http://127.0.0.1:7777' }]);
         mockUseRepos.mockReturnValue({
             repos: [
                 // Same workspace id exists locally (should NOT be chosen as default).
                 { workspace: { id: 'remote-ws', name: 'Local Copy' } },
+                { workspace: { id: 'another-local', name: 'Another Local' } },
                 // The remote entry on the same origin as the source workspace.
                 {
                     workspace: {
@@ -835,6 +913,7 @@ describe('RalphStartPanel', () => {
             <RalphStartPanel
                 processId="queue_same-origin"
                 workspaceId="remote-ws"
+                sourceSelectionId="remote:srv-a:remote-ws"
                 turns={GRILLING_TURNS}
                 onStarted={mockOnStarted}
             />,
@@ -889,6 +968,262 @@ describe('RalphStartPanel', () => {
         const optionValues = [...select.options].map(o => o.value);
         expect(optionValues).not.toContain('srv-offline:offline-ws');
         expect(optionValues).toContain('local:ws-1');
+    });
+
+    it('leaves an offline remote source unselected, warns, and disables confirmation', async () => {
+        mockUseRepos.mockReturnValue({
+            repos: [
+                { workspace: { id: 'local-ws', name: 'Local Repo' } },
+                {
+                    workspace: {
+                        id: 'remote-ws',
+                        name: 'Remote Source',
+                        baseUrl: 'http://127.0.0.1:7777',
+                        remote: {
+                            serverId: 'srv-offline',
+                            serverLabel: 'ubuntu-arm',
+                            baseUrl: 'http://127.0.0.1:7777',
+                            offline: true,
+                            connection: 'offline',
+                        },
+                    },
+                },
+            ],
+            loading: false,
+            remoteWarnings: [],
+        });
+
+        render(
+            <RalphStartPanel
+                processId="queue_offline-source"
+                workspaceId="remote-ws"
+                sourceSelectionId="remote:srv-offline:remote-ws"
+                turns={GRILLING_TURNS}
+                onStarted={mockOnStarted}
+            />,
+        );
+
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+        await waitForRepoSelector();
+
+        expect((screen.getByTestId('ralph-start-execution-repo-select') as HTMLSelectElement).value).toBe('');
+        expect(screen.getByTestId('ralph-start-execution-repo-source-warning').textContent)
+            .toBe('The source workspace on ubuntu-arm is offline. Reconnect it or choose another repository.');
+        expect((screen.getByTestId('ralph-confirm-start-btn') as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('automatically selects an offline source after it reconnects when the user has not interacted', async () => {
+        const props = {
+            processId: 'queue_reconnecting-source',
+            workspaceId: 'remote-ws',
+            sourceSelectionId: 'remote:srv-a:remote-ws',
+            turns: GRILLING_TURNS,
+            onStarted: mockOnStarted,
+        };
+        mockUseRepos.mockReturnValue({
+            repos: [
+                { workspace: { id: 'local-ws', name: 'Local Repo' } },
+                {
+                    workspace: {
+                        id: 'remote-ws',
+                        name: 'Remote Source',
+                        baseUrl: 'http://127.0.0.1:7777',
+                        remote: {
+                            serverId: 'srv-a',
+                            serverLabel: 'ubuntu-arm',
+                            baseUrl: 'http://127.0.0.1:7777',
+                            offline: true,
+                            connection: 'connecting',
+                        },
+                    },
+                },
+            ],
+            loading: false,
+        });
+        const view = render(<RalphStartPanel {...props} />);
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+        await waitForRepoSelector();
+        expect((screen.getByTestId('ralph-start-execution-repo-select') as HTMLSelectElement).value).toBe('');
+
+        mockUseRepos.mockReturnValue({
+            repos: [
+                { workspace: { id: 'local-ws', name: 'Local Repo' } },
+                {
+                    workspace: {
+                        id: 'remote-ws',
+                        name: 'Remote Source',
+                        baseUrl: 'http://127.0.0.1:7778',
+                        remote: {
+                            serverId: 'srv-a',
+                            serverLabel: 'ubuntu-arm',
+                            baseUrl: 'http://127.0.0.1:7778',
+                            offline: false,
+                            connection: 'online',
+                        },
+                    },
+                },
+            ],
+            loading: false,
+        });
+        view.rerender(<RalphStartPanel {...props} />);
+
+        await waitFor(() => {
+            expect((screen.getByTestId('ralph-start-execution-repo-select') as HTMLSelectElement).value)
+                .toBe('srv-a:remote-ws');
+        });
+    });
+
+    it('preserves a manual local target when the remote source reconnects', async () => {
+        const props = {
+            processId: 'queue_manual-source',
+            workspaceId: 'remote-ws',
+            sourceSelectionId: 'remote:srv-a:remote-ws',
+            turns: GRILLING_TURNS,
+            onStarted: mockOnStarted,
+        };
+        mockUseRepos.mockReturnValue({
+            repos: [
+                { workspace: { id: 'local-ws', name: 'Local Repo' } },
+                {
+                    workspace: {
+                        id: 'remote-ws',
+                        name: 'Remote Source',
+                        baseUrl: 'http://127.0.0.1:7777',
+                        remote: {
+                            serverId: 'srv-a',
+                            serverLabel: 'ubuntu-arm',
+                            baseUrl: 'http://127.0.0.1:7777',
+                            offline: true,
+                            connection: 'offline',
+                        },
+                    },
+                },
+            ],
+            loading: false,
+        });
+        const view = render(<RalphStartPanel {...props} />);
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+        await waitForRepoSelector();
+        fireEvent.change(screen.getByTestId('ralph-start-execution-repo-select'), {
+            target: { value: 'local:local-ws' },
+        });
+
+        mockUseRepos.mockReturnValue({
+            repos: [
+                { workspace: { id: 'local-ws', name: 'Local Repo' } },
+                {
+                    workspace: {
+                        id: 'remote-ws',
+                        name: 'Remote Source',
+                        baseUrl: 'http://127.0.0.1:7778',
+                        remote: {
+                            serverId: 'srv-a',
+                            serverLabel: 'ubuntu-arm',
+                            baseUrl: 'http://127.0.0.1:7778',
+                            offline: false,
+                            connection: 'online',
+                        },
+                    },
+                },
+            ],
+            loading: false,
+        });
+        view.rerender(<RalphStartPanel {...props} />);
+
+        await waitFor(() => {
+            expect((screen.getByTestId('ralph-start-execution-repo-select') as HTMLSelectElement).value)
+                .toBe('local:local-ws');
+        });
+    });
+
+    it('posts a same-remote grilling start to the remote process endpoint', async () => {
+        mockUseRepos.mockReturnValue({
+            repos: [
+                { workspace: { id: 'local-ws', name: 'Local Repo' } },
+                {
+                    workspace: {
+                        id: 'remote-ws',
+                        name: 'Remote Source',
+                        baseUrl: 'http://127.0.0.1:7333',
+                        remote: {
+                            serverId: 'srv-a',
+                            serverLabel: 'ubuntu-arm',
+                            baseUrl: 'http://127.0.0.1:7333',
+                            offline: false,
+                        },
+                    },
+                },
+            ],
+            loading: false,
+        });
+        const mockFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ processId: 'queue_remote-execution' }),
+        });
+        vi.stubGlobal('fetch', mockFetch);
+
+        render(
+            <RalphStartPanel
+                processId="queue_remote-grill"
+                workspaceId="remote-ws"
+                sourceSelectionId="remote:srv-a:remote-ws"
+                turns={GRILLING_TURNS}
+                onStarted={mockOnStarted}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+        await waitForRepoSelector();
+        fireEvent.click(screen.getByTestId('ralph-confirm-start-btn'));
+
+        await waitFor(() => expect(mockOnStarted).toHaveBeenCalled());
+        expect(String(mockFetch.mock.calls[0][0]))
+            .toBe('http://127.0.0.1:7333/api/processes/queue_remote-grill/ralph-start');
+    });
+
+    it('posts to local ralph-launch when the user chooses a local target from a remote source', async () => {
+        mockUseRepos.mockReturnValue({
+            repos: [
+                { workspace: { id: 'local-ws', name: 'Local Repo' } },
+                {
+                    workspace: {
+                        id: 'remote-ws',
+                        name: 'Remote Source',
+                        baseUrl: 'http://127.0.0.1:7333',
+                        remote: {
+                            serverId: 'srv-a',
+                            serverLabel: 'ubuntu-arm',
+                            baseUrl: 'http://127.0.0.1:7333',
+                            offline: false,
+                        },
+                    },
+                },
+            ],
+            loading: false,
+        });
+        const mockFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ processId: 'queue_local-execution' }),
+        });
+        vi.stubGlobal('fetch', mockFetch);
+
+        render(
+            <RalphStartPanel
+                processId="queue_remote-grill"
+                workspaceId="remote-ws"
+                sourceSelectionId="remote:srv-a:remote-ws"
+                turns={GRILLING_TURNS}
+                onStarted={mockOnStarted}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('ralph-start-btn'));
+        await waitForRepoSelector();
+        fireEvent.change(screen.getByTestId('ralph-start-execution-repo-select'), {
+            target: { value: 'local:local-ws' },
+        });
+        fireEvent.click(screen.getByTestId('ralph-confirm-start-btn'));
+
+        await waitFor(() => expect(mockOnStarted).toHaveBeenCalledWith('queue_local-execution', 'local-ws'));
+        expect(String(mockFetch.mock.calls[0][0])).toBe('http://localhost:4000/api/ralph-launch');
     });
 
     // -----------------------------------------------------------------------

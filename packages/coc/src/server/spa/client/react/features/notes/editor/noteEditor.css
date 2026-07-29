@@ -62,6 +62,35 @@
 
 .note-editor .ProseMirror pre code { background: none; color: inherit; padding: 0; }
 
+/* Code — per-block language picker (AC-02). The NodeView wraps the <pre> so the
+   <select> can sit in the block's top-right corner; it stays hidden until the
+   block is hovered or the picker itself is focused. */
+.note-editor .ProseMirror .notes-code-block { position: relative; }
+.note-editor .ProseMirror .notes-code-block-lang {
+    position: absolute;
+    top: 0.35rem;
+    right: 0.5rem;
+    z-index: 1;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+    font-size: 0.75em;
+    padding: 0.1rem 0.25rem;
+    border: 1px solid #d0d7de;
+    border-radius: 4px;
+    background: #ffffff;
+    color: #24292f;
+    cursor: pointer;
+}
+.note-editor .ProseMirror .notes-code-block:hover .notes-code-block-lang,
+.note-editor .ProseMirror .notes-code-block:focus-within .notes-code-block-lang {
+    opacity: 1;
+}
+.dark .note-editor .ProseMirror .notes-code-block-lang {
+    border-color: #3c3c3c;
+    background: #2d2d2d;
+    color: #d4d4d4;
+}
+
 /* Horizontal rule */
 .note-editor .ProseMirror hr { border: none; border-top: 1px solid #e0e0e0; margin: 1.5rem 0; }
 

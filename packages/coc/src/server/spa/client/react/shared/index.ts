@@ -49,13 +49,19 @@ export { RalphLaunchDialog } from './RalphLaunchDialog';
 export type { RalphLaunchDialogProps } from './RalphLaunchDialog';
 export {
     RalphExecutionRepoSelector,
+    buildRalphExecutionRepoTargetGroups,
     getRalphExecutionRepoApiBase,
+    getRalphExecutionRepoSourceApiBase,
     getRalphExecutionRepoTargetKey,
     isSameRalphExecutionTarget,
+    resolveRalphExecutionRepoSource,
     useRalphExecutionRepoTargets,
 } from './RalphExecutionRepoSelector';
 export type {
     RalphExecutionRepoSelectorProps,
+    RalphExecutionRepoSource,
+    RalphExecutionRepoSourceResolution,
+    RalphExecutionRepoSourceResolutionStatus,
     RalphExecutionRepoTarget,
     RalphExecutionRepoTargetGroup,
     UseRalphExecutionRepoTargetsOptions,

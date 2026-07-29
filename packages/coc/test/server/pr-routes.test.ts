@@ -10,7 +10,7 @@ import * as path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { createRouter } from '../../src/server/shared/router';
-import { registerPrRoutes, clearPrListCache, clearPrDetailCache, clearPrDiffCache, clearPrThreadsCache, clearPrCommitsCache, clearPrReviewersCache, clearPrChecksCache, warmPullRequestWorkspaceCache } from '../../src/server/repos/pr-routes';
+import { registerPrRoutes, clearPrListCache, clearPrDetailCache, clearPrDiffCache, clearPrThreadsCache, clearPrCommitsCache, clearPrReviewersCache, clearPrChecksCache, warmPullRequestWorkspaceCache, dedupePrFetch } from '../../src/server/repos/pr-routes';
 import { addPullRequestCoworkerToRoster } from '../../src/server/repos/pr-coworker-roster-store';
 import type { Route } from '../../src/server/types';
 import { resolveCanonicalOriginId, type IPullRequestsService } from '@plusplusoneplusplus/forge';
@@ -1666,7 +1666,134 @@ describe('GET .../diff/files/:path?fullContext=true (AC-02)', () => {
         expect(body.diff).toContain('+line2 changed');
         expect(body.diff).toContain(' line5');
         expect(mockSvc.getPullRequest).toHaveBeenCalledWith(REPO_ID, '42');
+        // #1 regression: local git is the source of truth for full context, so the
+        // whole-PR combined diff is never fetched from the provider on this path.
+        expect(mockSvc.getDiff).not.toHaveBeenCalled();
         await git(localPath, ['rev-parse', `${headSha}^{commit}`]);
+        expect(await git(localPath, ['branch', '--show-current'])).toBe('main');
+        expect(await git(localPath, ['status', '--porcelain'])).toBe('');
+    });
+
+    it('with ?fullContext=true and no localPath: falls back to combined diff with missing-local-path', async () => {
+        const prWithShas = { ...mockPr, headSha: 'deadbeef111', baseSha: 'cafebabe222' };
+        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockResolvedValue(prWithShas);
+        // Repo without a local clone: full context can't be produced from git.
+        mockResolveRepo.mockResolvedValueOnce({ ...mockRepoInfo, localPath: undefined });
+
+        const res = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/foo.ts')}?fullContext=true`, REPO_ID));
+        expect(res.status).toBe(200);
+        const body = await res.json() as { diff: string; fullContextUnavailable: boolean; fullContextUnavailableReason?: string };
+        expect(body.fullContextUnavailable).toBe(true);
+        expect(body.fullContextUnavailableReason).toBe('missing-local-path');
+        // Fallback path DOES compute the combined diff.
+        expect(body.diff).toContain('diff --git a/src/foo.ts');
+        expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
+    });
+});
+
+// ── dedupePrFetch (in-flight git-fetch dedupe) ────────────────────────────────
+
+describe('dedupePrFetch', () => {
+    it('shares one in-flight run for concurrent callers with the same key', async () => {
+        let calls = 0;
+        let resolveRun!: (v: boolean) => void;
+        const run = () => {
+            calls++;
+            return new Promise<boolean>(resolve => { resolveRun = resolve; });
+        };
+
+        const p1 = dedupePrFetch('/tmp/local:headsha', run);
+        const p2 = dedupePrFetch('/tmp/local:headsha', run);
+
+        // Both callers observe the same in-flight promise; the underlying fetch
+        // (the real one being `git fetch`) runs exactly once.
+        expect(p2).toBe(p1);
+        expect(calls).toBe(1);
+
+        resolveRun(true);
+        await expect(p1).resolves.toBe(true);
+        await expect(p2).resolves.toBe(true);
+    });
+
+    it('starts a fresh run once the previous one settles', async () => {
+        let calls = 0;
+        const run = () => { calls++; return Promise.resolve(true); };
+
+        await dedupePrFetch('/tmp/local:headsha', run);
+        expect(calls).toBe(1);
+
+        // Key freed after settle → next caller runs again.
+        await dedupePrFetch('/tmp/local:headsha', run);
+        expect(calls).toBe(2);
+    });
+
+    it('does not share runs across different keys', async () => {
+        let calls = 0;
+        let resolveA!: (v: boolean) => void;
+        let resolveB!: (v: boolean) => void;
+        const runA = () => { calls++; return new Promise<boolean>(r => { resolveA = r; }); };
+        const runB = () => { calls++; return new Promise<boolean>(r => { resolveB = r; }); };
+
+        const pa = dedupePrFetch('/tmp/local:sha-a', runA);
+        const pb = dedupePrFetch('/tmp/local:sha-b', runB);
+        expect(pb).not.toBe(pa);
+        expect(calls).toBe(2);
+
+        resolveA(true);
+        resolveB(false);
+        await expect(pa).resolves.toBe(true);
+        await expect(pb).resolves.toBe(false);
+    });
+});
+
+// ── View-open warm-up of PR commits ──────────────────────────────────────────
+
+describe('PR detail view-open warm-up', () => {
+    it('fetches missing PR commits into the local clone on GET detail (best-effort)', async () => {
+        const remotePath = path.join(tmpDir, 'warm-remote.git');
+        const sourcePath = path.join(tmpDir, 'warm-source');
+        const localPath = path.join(tmpDir, 'warm-local');
+
+        fs.mkdirSync(sourcePath, { recursive: true });
+        await initGitRepo(sourcePath);
+        const baseSha = await writeAndCommitFile(sourcePath, 'src/foo.ts', ['a', ''].join('\n'), 'base');
+        await git(sourcePath, ['clone', '--bare', sourcePath, remotePath]);
+        await git(tmpDir, ['clone', remotePath, localPath]);
+
+        await git(sourcePath, ['checkout', '-b', 'feature/warm']);
+        const headSha = await writeAndCommitFile(sourcePath, 'src/foo.ts', ['a changed', ''].join('\n'), 'feature');
+        await git(sourcePath, ['push', remotePath, 'feature/warm']);
+
+        // Head commit is not present in the local clone yet.
+        await expect(execFileAsync('git', ['rev-parse', `${headSha}^{commit}`], { cwd: localPath, encoding: 'utf-8' })).rejects.toThrow();
+
+        mockResolveRepo.mockResolvedValueOnce({ ...mockRepoInfo, localPath, remoteUrl: remotePath });
+        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+            ...mockPr,
+            baseSha,
+            headSha,
+            sourceBranch: 'feature/warm',
+            targetBranch: 'main',
+        });
+
+        const localOriginId = resolveCanonicalOriginId({ workspaceId: REPO_ID, remoteUrl: remotePath });
+        const res = await fetch(originPullRequestsUrl('/42', REPO_ID, localOriginId));
+        expect(res.status).toBe(200);
+
+        // Warm-up is fire-and-forget; poll until the commit lands locally.
+        const deadline = Date.now() + 15_000;
+        let present = false;
+        while (Date.now() < deadline) {
+            try {
+                await git(localPath, ['rev-parse', `${headSha}^{commit}`]);
+                present = true;
+                break;
+            } catch {
+                await new Promise(r => setTimeout(r, 100));
+            }
+        }
+        expect(present).toBe(true);
+        // Warm-up must not touch the checked-out branch or working tree.
         expect(await git(localPath, ['branch', '--show-current'])).toBe('main');
         expect(await git(localPath, ['status', '--porcelain'])).toBe('');
     });

@@ -30,6 +30,8 @@ import type { ReviewChatTarget } from '../git/commits/commitChatPlacement';
 
 export interface NotesViewProps {
     workspaceId: string;
+    /** Clone-qualified identity of the repository that owns these notes. */
+    sourceSelectionId?: string;
     initialNotePath?: string | null;
     /** Default chat scope for the NoteChatPanel. Defaults to 'per-note'. */
     defaultScope?: ChatScope;
@@ -81,7 +83,7 @@ function hasFinePointerDevice(): boolean {
     }
 }
 
-export function NotesView({ workspaceId, initialNotePath, defaultScope, active = true, dockStatusFooter = false }: NotesViewProps) {
+export function NotesView({ workspaceId, sourceSelectionId, initialNotePath, defaultScope, active = true, dockStatusFooter = false }: NotesViewProps) {
     const { dispatch } = useApp();
     const [selectedPathState, setSelectedPathState] = useState<string | null>(initialNotePath ?? null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -737,6 +739,7 @@ export function NotesView({ workspaceId, initialNotePath, defaultScope, active =
                 {/* Desktop/tablet comments toggle — now merged into NoteEditorToolbar */}
                 <NoteEditor
                     workspaceId={workspaceId}
+                    sourceSelectionId={sourceSelectionId}
                     notePath={selectedPath}
                     notesRoot={notesRoot ?? undefined}
                     threads={comments.allThreads}

@@ -14,7 +14,8 @@
  *   - the Admin shell (its `.ar-sidebar` hosts `DockedStatusFooter`),
  *   - the workspace notes sub-tab (`NotesView`'s own `NotesSidebar` footer),
  *   - the workspace settings sub-tab (`RepoSettingsTab`'s own nav footer),
- *   - the workspace pull-requests sub-tab (`PullRequestsTab`'s PR queue footer).
+ *   - the workspace pull-requests sub-tab (`PullRequestsTab`'s PR queue footer),
+ *   - the workspace notes-git sub-tab (`NotesGitTab`'s commit-history sidebar).
  * This global dock covers every OTHER tab/sub-tab, so it renders null on those
  * views to avoid double-docking. Together they hide the topbar cluster on every
  * desktop remote-shell tab (`TopBar`'s `statusInDock`).
@@ -92,6 +93,15 @@ export function GlobalStatusDock({ onAdminOpen }: GlobalStatusDockProps) {
         !!state.selectedRepoId &&
         state.activeRepoSubTab === 'settings';
     if (inSettingsSidebarFooter) return null;
+
+    // The notes-git sub-tab (My Work / My Life) hosts the cluster at the bottom
+    // of `NotesGitTab`'s own commit-history sidebar, so the diff detail pane
+    // keeps full height. Stand down like Notes/Settings.
+    const inNotesGitSidebarFooter =
+        state.activeTab === 'repos' &&
+        !!state.selectedRepoId &&
+        state.activeRepoSubTab === 'git';
+    if (inNotesGitSidebarFooter) return null;
 
     // The pull-requests sub-tab hosts the cluster at the bottom of its own PR
     // queue sidebar (`PullRequestsTab` docks a `DockedStatusFooter` there). Its

@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useGlobalToast } from '../../contexts/ToastContext';
-import type { ReconcileReport, SyncStatus } from '@plusplusoneplusplus/coc-client';
+import type { ReconcileReport, ResolutionStrategy, SyncResolutionReport, SyncStatus } from '@plusplusoneplusplus/coc-client';
 
 const labelClass = 'text-xs w-28 shrink-0 text-[#616161] dark:text-[#999]';
 const inputClass =
@@ -204,6 +204,18 @@ export function SyncSettingsSection({ workspaceId }: SyncSettingsSectionProps) {
                     <span className="text-xs text-[#cf222e] dark:text-[#f85149]">{status.lastError}</span>
                 </div>
             )}
+            {status?.pushPending && status.lastPushError && (
+                <div className="flex items-start gap-2" data-testid="sync-push-pending-detail">
+                    <span className={labelClass}>Push</span>
+                    <span className="text-xs text-[#9a6700] dark:text-[#d29922]">
+                        Last push failed and will retry — {status.lastPushError}
+                    </span>
+                </div>
+            )}
+
+            {/* The most recent steady-state auto-merge: which notes were combined,
+                and — set apart — any whose local edit was dropped. */}
+            {status?.lastResolution && <ResolutionReportRow report={status.lastResolution} />}
 
             {/* The one-time initial merge: what it is doing, then what it did.
                 Never both at once — a merge that re-runs to heal an unrelated
@@ -270,6 +282,43 @@ function ReconcileReportRow({ report }: { report: ReconcileReport }) {
     );
 }
 
+/** How a resolution strategy reads on the panel; the fallback is lossy, so it stands out. */
+function resolutionStrategyText(strategy: ResolutionStrategy): string {
+    switch (strategy) {
+        case 'ai': return 'combined (AI)';
+        case 'simple': return 'combined (textual)';
+        case 'keptRemoteFallback': return "kept remote copy, this device's edit dropped";
+    }
+}
+
+/**
+ * The steady-state auto-merge summary: one line per note the last conflicting
+ * tick resolved. The `keptRemoteFallback` case is shown red because it discarded
+ * this device's edit — the one outcome the user needs to notice.
+ */
+function ResolutionReportRow({ report }: { report: SyncResolutionReport }) {
+    return (
+        <div className="flex items-start gap-2" data-testid="sync-resolution-report">
+            <span className={labelClass}>Last Merge</span>
+            <ul className="flex flex-col gap-0.5" data-testid="sync-resolution-files">
+                {report.files.map(f => {
+                    const lossy = f.strategy === 'keptRemoteFallback';
+                    return (
+                        <li
+                            key={f.path}
+                            className={lossy
+                                ? 'text-xs text-[#cf222e] dark:text-[#f85149]'
+                                : 'text-xs text-[#656d76] dark:text-[#999]'}
+                        >
+                            {f.path} — {resolutionStrategyText(f.strategy)}
+                        </li>
+                    );
+                })}
+            </ul>
+        </div>
+    );
+}
+
 function StatusPill({ status }: { status: SyncStatus }) {
     // Checked before inProgress: both are true during the merge, and the merge is
     // the one that runs long enough for a plain "Syncing…" to look stuck.
@@ -281,6 +330,12 @@ function StatusPill({ status }: { status: SyncStatus }) {
     }
     if (status.lastError) {
         return <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-[#ffebe9] dark:bg-[#3d1c1c] text-[#cf222e] dark:text-[#f85149]" data-testid="sync-status-pill">✗ Error</span>;
+    }
+    // Soft, retrying state: the local sync completed but the commit hasn't reached
+    // the remote. Amber rather than red — sync isn't broken, the push just didn't
+    // land yet — and below a hard error, which means the tick didn't complete.
+    if (status.pushPending) {
+        return <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-[#fff8c5] dark:bg-[#3d2e00] text-[#9a6700] dark:text-[#d29922]" data-testid="sync-status-pill">⚠ Push pending</span>;
     }
     if (status.enabled) {
         return <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-[#dafbe1] dark:bg-[#1a3524] text-[#1a7f37] dark:text-[#3fb950]" data-testid="sync-status-pill">✓ OK</span>;

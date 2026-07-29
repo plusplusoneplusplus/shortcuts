@@ -11,6 +11,8 @@ import { createRoot } from 'react-dom/client';
 import { useEditor, EditorContent } from '@tiptap/react';
 import type { Editor, EditorEvents } from '@tiptap/core';
 import { StarterKit } from '@tiptap/starter-kit';
+import { NotesCodeBlock } from './extensions/notesCodeBlock';
+import { notesLowlight } from './extensions/notesLowlight';
 import { TaskList } from '@tiptap/extension-task-list';
 import { TaskItem } from '@tiptap/extension-task-item';
 import { Link } from '@tiptap/extension-link';
@@ -200,7 +202,18 @@ export function RichEditorCore({
             StarterKit.configure({
                 heading: { levels: [1, 2, 3] },
                 link: false,
+                // Disable StarterKit's plain CodeBlock so CodeBlockLowlight is the
+                // single `codeBlock` node type — its lowlight decorations color
+                // fenced-block tokens live while editing. A block with an explicit
+                // language (set via the per-block picker or a ```lang fence on
+                // import) is highlighted; one with no language stays plain
+                // (notesLowlight disables auto-detection).
+                codeBlock: false,
             }),
+            // CodeBlockLowlight extended with a per-block language picker NodeView
+            // (AC-02). The lowlight instance colors tokens; the picker sets the
+            // node's `language` attribute.
+            NotesCodeBlock.configure({ lowlight: notesLowlight }),
             TaskList,
             TaskItem.configure({ nested: true }),
             Link.configure({

@@ -246,6 +246,18 @@ describe('MyWorkTodayTab', () => {
         await waitFor(() => expect(getTasks).toHaveBeenCalledTimes(2));
     });
 
+    it('gives the tab a theme-flipping default text color so item text stays legible in dark mode', async () => {
+        renderTab();
+        await screen.findByText('Ship the parser');
+
+        const root = screen.getByTestId('my-work-today-tab');
+        // A dark default text color for light mode, flipped light for dark mode,
+        // so the inherited item text ("Ship the parser", follow-ups) is readable
+        // against both backgrounds instead of dark-on-dark.
+        expect(root.classList.contains('text-gray-900')).toBe(true);
+        expect(root.classList.contains('dark:text-gray-100')).toBe(true);
+    });
+
     it('styles "Clear completed" to match the sibling "Open note" link', async () => {
         renderTab();
         await screen.findByText('Ship the parser');
