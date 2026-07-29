@@ -6,14 +6,11 @@
  * scoped under `.admin-redesign`).
  */
 
-import type { AdminAutoProviderRoutingConfig, AdminDefaultProvider, ProviderInstallStatus } from '@plusplusoneplusplus/coc-client';
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 import { useApp } from '../contexts/AppContext';
 import { SHOW_WELCOME_TUTORIAL } from '../featureFlags';
-import { invalidateDisplaySettings } from '../hooks/preferences/useDisplaySettings';
 import { isDesktopShell } from '../hooks/ui/useDesktopShell';
-import { invalidateHtmlEmbedPreference } from '../hooks/preferences/useHtmlEmbedPreference';
 import { useLinkHandlers } from '../hooks/useLinkHandlers';
 import { useOnboardingPreferences } from '../hooks/useOnboardingPreferences';
 import type { AdminSubTab, DashboardTab } from '../types/dashboard';
@@ -21,30 +18,46 @@ import { Spinner, ToastContainer, useToast } from '../ui';
 import { getLinkHandlersMeta } from '../utils/link-handler';
 import { patchGlobalPreferences } from '../utils/preferencesApi';
 import { FeatureTip } from '../welcome/FeatureTip';
-import { loadDreamProviderActivity, type AgentProviderWorkActivity } from '../shared/providerActivity';
 import './admin-redesign.css';
 import { DbBrowserSection } from './DbBrowserSection';
 import { PromptsPanel } from './PromptsPanel';
 import { ProviderTokensSection } from './ProviderTokensSection';
 import { SettingsCard } from './SettingsCard';
-import { AdminInputSuffix, AdminRow, AdminSeg, AdminToggle, SourceBadge } from './adminControls';
+import { AdminRow, AdminToggle, SourceBadge } from './adminControls';
 import { DockedStatusFooter } from '../layout/DockedStatusFooter';
 
-import { applyRuntimeConfigPatch, isContainerMode, isServersEnabled } from '../utils/config';
-import { AIProviderPage, normalizeAutoProviderRoutingConfig, type NormalizedAutoProviderRoutingConfig } from './AIProviderPage';
-import type { DreamsConfigForm } from '../features/dreams/DreamsView';
+import { isContainerMode, isServersEnabled } from '../utils/config';
+import { AIProviderPage } from './AIProviderPage';
 import {
-    ADMIN_SETTING_DEFINITIONS,
-    FEATURE_CARD_GROUPS,
-    getFeatureCardSettings,
-    readAdminSettingValue,
-    type AdminSettingDefinition,
-} from '../../../../../config/admin-setting-definitions';
+    ALL_TOOL_NAV_ITEMS,
+    DEFAULT_SETTINGS_SUBTAB,
+    SETTINGS_SUBTABS,
+    TOOL_NAV_LOOKUP,
+    TOOL_TAB_GROUP_LABELS,
+    buildAdminNavGroups,
+    deriveActiveNav,
+    parseSettingsSubTabFromHash,
+    type AdminNavItem,
+    type SettingsSubTab,
+} from './adminNavigation';
+import { useAdminFeatureSettings } from './useAdminFeatureSettings';
+import { FeatureSettingsCard } from './FeatureSettingsCard';
+import { useAdminConfigForm } from './useAdminConfigForm';
+import { useAdminPreferencesForm } from './useAdminPreferencesForm';
+import { AiExecutionCard, AppearanceCard, ChatExperienceCard } from './configSettingsCards';
+import { useAdminProviderSettings } from './useAdminProviderSettings';
+import { useDreamsAdminConfig } from './useDreamsAdminConfig';
+import { useServerRuntime } from './useServerRuntime';
+import { DataOperationsPanel } from './DataOperationsPanel';
+import { ServerRuntimePanel } from './ServerRuntimePanel';
 
-const StorageSection = lazy(() => import('./StorageSection'));
+// Re-exported so existing consumers (e.g. AdminPanel.nav.test) keep importing
+// the navigation constants from the admin shell. Pure policy now lives in
+// `./adminNavigation`.
+export { ALL_TOOL_NAV_ITEMS, TOOL_TAB_GROUP_LABELS };
+
 const AgentManagementPanel = lazy(() => import('../repos/AgentManagementPanel').then(m => ({ default: m.AgentManagementPanel })));
 const IMSettingsSection = lazy(() => import('./IMSettingsSection').then(m => ({ default: m.IMSettingsSection })));
-const ContainerLinkSection = lazy(() => import('./ContainerLinkSection').then(m => ({ default: m.ContainerLinkSection })));
 
 // Tool views embedded in the admin right panel. Keeping the imports here
 // (not in Router.tsx) means the admin shell owns their layout.
@@ -56,253 +69,13 @@ const MemoryV2Panel = lazy(() => import('../features/memory/MemoryV2Panel').then
 const ProviderModelsSection = lazy(() => import('../features/models/ProviderModelsSection').then(m => ({ default: m.ProviderModelsSection })));
 const DreamsView = lazy(() => import('../features/dreams/DreamsView').then(m => ({ default: m.DreamsView })));
 
-function formatBytes(bytes: number): string {
-    if (bytes === 0) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-    const value = bytes / Math.pow(1024, i);
-    return value.toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
-}
-
 interface Stats {
     processCount: number | null;
     wikiCount: number | null;
     totalBytes: number | null;
 }
 
-const VALID_OUTPUT_OPTIONS = ['table', 'json', 'csv', 'markdown'] as const;
-
-/**
- * Features-card state: current and last-saved values keyed by flat config key
- * (e.g. 'loops.enabled'). Rows, dirty state, and the save payload all derive
- * from the admin setting registry — adding a setting there with `ui` metadata
- * surfaces it here with no per-setting code.
- */
-type FeatureValues = Record<string, boolean | string>;
-
-const FEATURES_CARD_SETTINGS: readonly AdminSettingDefinition[] =
-    ADMIN_SETTING_DEFINITIONS.filter(def => def.ui !== undefined);
-
-function readFeatureValues(resolved: unknown): FeatureValues {
-    const values: FeatureValues = {};
-    for (const def of FEATURES_CARD_SETTINGS) {
-        values[def.key] = readAdminSettingValue(def, resolved) as boolean | string;
-    }
-    return values;
-}
-
-function readRuntimeFeatureValues(values: FeatureValues): Record<string, unknown> {
-    const runtimeValues: Record<string, unknown> = {};
-    for (const def of FEATURES_CARD_SETTINGS) {
-        if (def.runtimeFlag) runtimeValues[def.runtimeFlag] = values[def.key];
-    }
-    return runtimeValues;
-}
-
-const FEATURE_BADGES: Record<string, { className: string; label: string }> = {
-    restart: { className: 'ar-badge ar-badge-warning', label: 'Restart' },
-    experimental: { className: 'ar-badge ar-badge-accent', label: 'Experimental' },
-    preview: { className: 'ar-badge ar-badge-accent', label: 'Preview' },
-};
-
-type DefaultProviderSnapshot = {
-    provider: AdminDefaultProvider;
-    codexEnabled: boolean;
-    claudeEnabled: boolean;
-    opencodeEnabled: boolean;
-    autoAgentProviderRouting: boolean;
-    autoRoutingConfig: NormalizedAutoProviderRoutingConfig;
-};
-
-function autoRoutingConfigsEqual(
-    a: AdminAutoProviderRoutingConfig | null | undefined,
-    b: AdminAutoProviderRoutingConfig | null | undefined,
-): boolean {
-    return JSON.stringify(normalizeAutoProviderRoutingConfig(a)) === JSON.stringify(normalizeAutoProviderRoutingConfig(b));
-}
-
-const TAB_LABELS: Record<AdminSubTab, string> = {
-    settings: 'AI & Execution',
-    providers: 'Providers',
-    data: 'Backup & Reset',
-    server: 'Server',
-    prompts: 'System Prompts',
-    database: 'Database Browser',
-    agents: isContainerMode() ? 'Agents' : 'AI Provider',
-    messaging: 'Messaging',
-};
-const TAB_ICONS: Record<AdminSubTab, string> = {
-    settings: '⚙',
-    providers: '◇',
-    data: '▦',
-    server: '⌗',
-    prompts: '✎',
-    database: '◫',
-    agents: isContainerMode() ? '⊞' : '◉',
-    messaging: '✉',
-};
-const TAB_DESCRIPTIONS: Record<AdminSubTab, string> = {
-    settings: 'Default model, execution limits, timeout, and output format for AI tasks.',
-    providers: 'Manage credentials for GitHub, Azure DevOps, and other connected providers.',
-    data: 'Storage backend, JSON import / export, and destructive cleanup actions.',
-    server: 'Inspect the running CoC process, change its display name, or restart it.',
-    prompts: 'Read-only view of the system prompts the assistant uses.',
-    database: 'Browse the underlying SQLite tables that back CoC.',
-    agents: isContainerMode() ? 'View and manage agents connected to this container.' : '',
-    messaging: 'Configure container messaging integrations (e.g. WhatsApp).',
-};
-// ── Settings sections promoted into the sidebar. Each entry maps 1:1 to a
-// `SettingsCard` further down. Selection is kept in component state and synced
-// to the URL fragment so refreshes land on the same section.
-type SettingsSubTab = 'ai' | 'chat' | 'appearance' | 'features' | 'integrations' | 'providers' | 'advanced';
-const SETTINGS_SUBTABS: { id: SettingsSubTab; label: string; icon: string }[] = [
-    { id: 'ai', label: 'AI & Execution', icon: '✦' },
-    { id: 'chat', label: 'Chat', icon: '◌' },
-    { id: 'appearance', label: 'Appearance', icon: '◐' },
-    { id: 'features', label: 'Features', icon: '◫' },
-    { id: 'integrations', label: 'Integrations', icon: '⇄' },
-    { id: 'providers', label: 'Providers', icon: '◇' },
-    { id: 'advanced', label: 'Advanced', icon: '⚙' },
-];
-const DEFAULT_SETTINGS_SUBTAB: SettingsSubTab = 'ai';
-const VALID_SETTINGS_SUBTABS = new Set<SettingsSubTab>(SETTINGS_SUBTABS.map(t => t.id));
-const SETTINGS_SUBTAB_DESCRIPTIONS: Record<SettingsSubTab, string> = {
-    ai: '',
-    chat: 'Conversation behavior, follow-up suggestions, and transcript detail.',
-    appearance: 'Theme, layout density, navigation, and prompt autocomplete preferences.',
-    features: 'Enable or disable optional workspace and dashboard features.',
-    integrations: 'Desktop link handlers and local integration preferences.',
-    providers: 'Manage credentials for GitHub, Azure DevOps, and other connected providers.',
-    advanced: 'Read-only diagnostics and recovery actions.',
-};
-
-function getSettingsSubTabMeta(subTab: SettingsSubTab): { id: SettingsSubTab; label: string; icon: string } {
-    return SETTINGS_SUBTABS.find(t => t.id === subTab) ?? SETTINGS_SUBTABS[0];
-}
-
-function parseSettingsSubTabFromHash(hash: string): SettingsSubTab | null {
-    const parts = hash.replace(/^#/, '').split('/');
-    if (parts[0] !== 'admin' || parts[1] !== 'settings') return null;
-    const candidate = parts[2] as SettingsSubTab | undefined;
-    if (!candidate) return DEFAULT_SETTINGS_SUBTAB;
-    return VALID_SETTINGS_SUBTABS.has(candidate) ? candidate : null;
-}
-
 const WELCOME_RESET_PROGRESS = { hasRunWorkflow: false, hasOpenedWiki: false, hasUsedChat: false, settingsVisited: false, dismissed: false, hasCompletedTour: false };
-
-// ── Embedded tool routes. Each entry stays a top-level dashboard route (so
-// deep links like `#skills` continue to work), but the corresponding view is
-// rendered inside the admin right panel. Sidebar grouping is defined below by
-// user task, not by whether the destination is a config section or a tool route.
-interface ToolNavItem {
-    id: string;
-    tab: DashboardTab;
-    label: string;
-    icon: string;
-    description: string;
-}
-export const ALL_TOOL_NAV_ITEMS: ToolNavItem[] = [
-    { id: 'memory-toggle', tab: 'memory', label: 'Memory', icon: '◈', description: 'View and manage global and workspace memory facts, reviews, and episodes.' },
-    { id: 'skills-toggle', tab: 'skills', label: 'Skills', icon: '⚡', description: 'Install, configure, and inspect agent skills surfaced to the assistant.' },
-    { id: 'dreams-admin-toggle', tab: 'dreams-admin', label: 'Dreams', icon: '☾', description: 'Enable Dreams, tune the idle-reflection schedule and defaults, and watch provider activity.' },
-    { id: 'logs-toggle', tab: 'logs', label: 'Logs', icon: '📋', description: 'Live and historical server logs streamed via SSE.' },
-    { id: 'stats-toggle', tab: 'stats', label: 'Usage & Costs', icon: '📊', description: 'Aggregated usage statistics for chats, tokens, costs, and processes.' },
-    { id: 'servers-toggle', tab: 'servers', label: 'Servers', icon: '🖥', description: 'Browse running CoC server instances and their health.' },
-];
-export const TOOL_TAB_GROUP_LABELS: Partial<Record<DashboardTab, string>> = {
-    memory: 'Knowledge',
-    skills: 'Knowledge',
-    'dreams-admin': 'Knowledge',
-    servers: 'Configure',
-    stats: 'Operations',
-    logs: 'Operations',
-};
-const TOOL_NAV_LOOKUP: ReadonlyMap<DashboardTab, ToolNavItem> = new Map(ALL_TOOL_NAV_ITEMS.map(item => [item.tab, item]));
-
-type AdminNavAction =
-    | { kind: 'settings'; subTab: SettingsSubTab }
-    | { kind: 'admin'; tab: AdminSubTab }
-    | { kind: 'tool'; tab: DashboardTab };
-
-interface AdminNavItem {
-    key: string;
-    label: string;
-    icon: string;
-    testId: string;
-    action: AdminNavAction;
-}
-
-interface AdminNavGroup {
-    label: string;
-    items: AdminNavItem[];
-}
-
-const ADMIN_TAB_GROUP_LABELS: Partial<Record<AdminSubTab, string>> = {
-    messaging: 'Connections',
-    server: 'Operations',
-    data: 'Operations',
-    prompts: 'Developer / Internals',
-    database: 'Developer / Internals',
-    agents: 'Configure',
-};
-
-function settingsNavItem(subTab: SettingsSubTab): AdminNavItem {
-    const meta = getSettingsSubTabMeta(subTab);
-    return {
-        key: `settings:${subTab}`,
-        label: meta.label,
-        icon: meta.icon,
-        testId: `settings-subtab-${subTab}`,
-        action: { kind: 'settings', subTab },
-    };
-}
-
-function adminNavItem(tab: AdminSubTab): AdminNavItem {
-    return {
-        key: `admin:${tab}`,
-        label: TAB_LABELS[tab],
-        icon: TAB_ICONS[tab],
-        testId: `admin-tab-${tab}`,
-        action: { kind: 'admin', tab },
-    };
-}
-
-function toolNavItem(tab: DashboardTab): AdminNavItem {
-    const item = TOOL_NAV_LOOKUP.get(tab);
-    if (!item) {
-        throw new Error(`Unknown admin tool tab: ${tab}`);
-    }
-    return {
-        key: `tool:${tab}`,
-        label: item.label,
-        icon: item.icon,
-        testId: item.id,
-        action: { kind: 'tool', tab },
-    };
-}
-
-// ── SDK Install Badge ──────────────────────────────────────────────────────
-
-const SDK_INSTALL_BADGE_LABEL: Record<ProviderInstallStatus, string> = {
-    'not-installed': 'Not Installed',
-    'installing': 'Installing…',
-    'installed': 'Installed',
-    'install-failed': 'Install Failed',
-};
-const SDK_INSTALL_BADGE_CLASS: Record<ProviderInstallStatus, string> = {
-    'not-installed': 'ar-badge',
-    'installing': 'ar-badge ar-badge-accent',
-    'installed': 'ar-badge ar-badge-success',
-    'install-failed': 'ar-badge ar-badge-danger',
-};
-
-function SdkInstallBadge({ status }: { status: ProviderInstallStatus }) {
-    return (
-        <span className={SDK_INSTALL_BADGE_CLASS[status]} data-testid={`sdk-install-badge-${status}`}>
-            {SDK_INSTALL_BADGE_LABEL[status]}
-        </span>
-    );
-}
 
 export function AdminPanel() {
     const { toasts, addToast, removeToast } = useToast();
@@ -364,114 +137,40 @@ export function AdminPanel() {
     const [config, setConfig] = useState<any>(null);
     const [configLoading, setConfigLoading] = useState(true);
     const [configError, setConfigError] = useState<string | null>(null);
-    const [configForm, setConfigForm] = useState<Record<string, string>>({});
-    // Display settings
-    const [showReportIntent, setShowReportIntent] = useState(false);
-    const [toolCompactness, setToolCompactness] = useState<0 | 1 | 2 | 3>(3);
-    const [taskCardDensity, setTaskCardDensity] = useState<'compact' | 'dense'>('dense');
-    const [historyGrouping, setHistoryGrouping] = useState(true);
 
-    // Chat settings
-    const [chatFollowUpEnabled, setChatFollowUpEnabled] = useState(true);
-    const [chatFollowUpCount, setChatFollowUpCount] = useState('3');
-    const [chatAskUserEnabled, setChatAskUserEnabled] = useState(false);
+    // AI & Execution + Chat Experience cards — form values, validation, dirty
+    // state, and updateConfig payloads live in the controller hook.
+    const configFormCtl = useAdminConfigForm({ addToast });
+
+    // Appearance & Navigation card — global preferences + the two config-backed
+    // display values (task-card density, history grouping).
+    const prefsCtl = useAdminPreferencesForm({ addToast });
 
     // Server name
-    const [serverName, setServerName] = useState('');
-
-    // Feature toggles
-    const [featureValues, setFeatureValues] = useState<FeatureValues>(() => readFeatureValues(undefined));
-    // Live search/filter for the Workspace Features card. Local UI state only —
-    // never persisted, never part of the save payload, and not counted toward
-    // dirty state. Reset whenever the Features sub-tab is left so it does not
-    // linger when the user switches away and back (or navigates away).
-    const [featureSearch, setFeatureSearch] = useState('');
-    useEffect(() => {
-        if (settingsSubTab !== 'features') setFeatureSearch('');
-    }, [settingsSubTab]);
-    const [autoAgentProviderRoutingEnabled, setAutoAgentProviderRoutingEnabled] = useState(false);
-    const [codexEnabled, setCodexEnabled] = useState(false);
-    const [claudeEnabled, setClaudeEnabled] = useState(false);
-    const [opencodeEnabled, setOpencodeEnabled] = useState(false);
-    const [defaultProvider, setDefaultProvider] = useState<AdminDefaultProvider>('copilot');
-    const [autoRoutingConfig, setAutoRoutingConfig] = useState<NormalizedAutoProviderRoutingConfig>(() => normalizeAutoProviderRoutingConfig(undefined));
-    const [providerAvailability, setProviderAvailability] = useState<Record<string, { available: boolean; error?: string }>>({});
-    const [sdkInstallStatuses, setSdkInstallStatuses] = useState<Record<string, ProviderInstallStatus>>({});
-    const [sdkInstallErrors, setSdkInstallErrors] = useState<Record<string, string | undefined>>({});
-    const sdkPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-    // Preferences(theme, reposSidebarCollapsed, uiLayoutMode) — for Appearance card
-    const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('auto');
-    const [reposSidebarCollapsed, setReposSidebarCollapsed] = useState(false);
-    const [uiLayoutMode, setUiLayoutMode] = useState<'classic' | 'dev-workflow'>('classic');
-    const [htmlEmbedEnabled, setHtmlEmbedEnabled] = useState(true);
-    const [promptAutocompleteEnabled, setPromptAutocompleteEnabled] = useState(false);
-    const [promptAutocompleteAiEnabled, setPromptAutocompleteAiEnabled] = useState(false);
+    // Workspace Features card — registry-driven values, live search, dirty
+    // state, runtime-config patching, and the Ctrl/Cmd+S save shortcut all live
+    // in the controller hook.
+    const features = useAdminFeatureSettings({
+        addToast,
+        searchActive: settingsSubTab === 'features',
+        shortcutActive: activeTab === 'settings' && settingsSubTab === 'features' && !isToolEmbedded,
+    });
+    // AI Provider page (non-container Agents tab) — default provider, enable
+    // flags, Auto routing, availability, SDK install polling, and quotas.
+    const providers = useAdminProviderSettings({
+        addToast,
+        quotaActive: activeTab === 'agents' && !isContainerMode(),
+    });
+    // Dreams tab config + provider activity (Knowledge nav group). Loaded with
+    // the rest of the admin config; edited + saved from the Dreams tab.
+    const dreams = useDreamsAdminConfig({
+        addToast,
+        activityActive: activeDashboardTab === 'dreams-admin' && !isContainerMode(),
+    });
 
     // Link handlers — shared module-level state via hook
     const [linkHandlersConfig, setHandlerEnabled] = useLinkHandlers();
 
-    // Per-card saving state
-    const [aiExecSaving, setAiExecSaving] = useState(false);
-    const [chatSaving, setChatSaving] = useState(false);
-    const [appearanceSaving, setAppearanceSaving] = useState(false);
-    const [featuresSaving, setFeaturesSaving] = useState(false);
-    const [defaultProviderSaving, setDefaultProviderSaving] = useState(false);
-
-    // Quota state
-    const [quotaData, setQuotaData] = useState<import('@plusplusoneplusplus/coc-client').AgentProvidersQuotaResponse | null>(null);
-    const [quotaLoading, setQuotaLoading] = useState(false);
-    const [quotaError, setQuotaError] = useState<string | null>(null);
-    const [dreamProviderActivity, setDreamProviderActivity] = useState<AgentProviderWorkActivity[]>([]);
-    const [dreamProviderActivityError, setDreamProviderActivityError] = useState<string | null>(null);
-
-    // Dreams tab config (global). Owned here so it loads with the rest of the
-    // admin config; edited + saved from the Dreams tab (Knowledge nav group).
-    const [dreamsForm, setDreamsForm] = useState<DreamsConfigForm>({ enabled: false, provider: '', model: '', timeoutMinutes: '60', intervalMinutes: '5' });
-    const [dreamsSnapshot, setDreamsSnapshot] = useState<DreamsConfigForm>({ enabled: false, provider: '', model: '', timeoutMinutes: '60', intervalMinutes: '5' });
-    const [dreamsSaving, setDreamsSaving] = useState(false);
-
-    // Snapshots for per-card dirty tracking (set when config/prefs loads)
-    const [aiExecSnapshot, setAiExecSnapshot] = useState({ model: '', parallel: '1', timeout: '', output: 'table' });
-    const [defaultProviderSnapshot, setDefaultProviderSnapshot] = useState<DefaultProviderSnapshot>({
-        provider: 'copilot',
-        codexEnabled: false,
-        claudeEnabled: false,
-        opencodeEnabled: false,
-        autoAgentProviderRouting: false,
-        autoRoutingConfig: normalizeAutoProviderRoutingConfig(undefined),
-    });
-    const [chatSnapshot, setChatSnapshot] = useState({ followUpEnabled: true, followUpCount: '3', askUserEnabled: false, showReportIntent: false, toolCompactness: 3 as 0 | 1 | 2 | 3 });
-    const [appearanceSnapshot, setAppearanceSnapshot] = useState({
-        theme: 'auto' as string,
-        reposSidebarCollapsed: false,
-        uiLayoutMode: 'classic' as string,
-        htmlEmbedEnabled: true,
-        promptAutocompleteEnabled: false,
-        promptAutocompleteAiEnabled: false,
-        taskCardDensity: 'compact' as 'compact' | 'dense',
-        historyGrouping: true,
-    });
-    const [featuresSnapshot, setFeaturesSnapshot] = useState<FeatureValues>(() => readFeatureValues(undefined));
-
-    // Export
-    const [exportStatus, setExportStatus] = useState<string>('');
-
-    // Import
-    const [importFile, setImportFile] = useState<File | null>(null);
-    const [importMode, setImportMode] = useState<'replace' | 'merge'>('replace');
-    const [importPreview, setImportPreview] = useState<string | null>(null);
-    const [importStatus, setImportStatus] = useState<string>('');
-
-    // Wipe
-    const [wipeToken, setWipeToken] = useState<string | null>(null);
-    const [includeWikis, setIncludeWikis] = useState(false);
-    const [wipeStatus, setWipeStatus] = useState<string>('');
-    const [wipePreview, setWipePreview] = useState<string | null>(null);
-
-    // Restart
-    const [restarting, setRestarting] = useState(false);
-    const [restartStatus, setRestartStatus] = useState<string>('');
     // Restart is broken inside the Electron desktop shell: the server exits with
     // code 75 expecting an external supervisor to re-fork it, but coc-desktop has
     // no such supervisor, so the server never comes back. Hide the restart
@@ -513,58 +212,11 @@ export function AdminPanel() {
             const data = await getSpaCocClient().admin.getConfig();
             setConfig(data);
             const resolved = data.resolved ?? {};
-            const form = {
-                model: resolved.model ?? '',
-                parallel: String(resolved.parallel ?? 1),
-                timeout: resolved.timeout != null ? String(resolved.timeout) : '',
-                output: resolved.output ?? 'table',
-            };
-            setConfigForm(form);
-            const sri = resolved.showReportIntent ?? false;
-            const tc = (resolved.toolCompactness ?? 1) as 0 | 1 | 2 | 3;
-            const fue = resolved.chat?.followUpSuggestions?.enabled ?? true;
-            const fuc = String(resolved.chat?.followUpSuggestions?.count ?? 3);
-            const aue = resolved.chat?.askUser?.enabled ?? false;
-            setShowReportIntent(sri);
-            setToolCompactness(tc);
-            setChatFollowUpEnabled(fue);
-            setChatFollowUpCount(fuc);
-            setChatAskUserEnabled(aue);
-            setChatSnapshot({ followUpEnabled: fue, followUpCount: fuc, askUserEnabled: aue, showReportIntent: sri, toolCompactness: tc });
-            const tcd = (resolved.taskCardDensity === 'dense' ? 'dense' : 'compact') as 'compact' | 'dense';
-            const hg = resolved.historyGrouping ?? true;
-            setTaskCardDensity(tcd);
-            setHistoryGrouping(hg);
-            setAppearanceSnapshot(prev => ({ ...prev, taskCardDensity: tcd, historyGrouping: hg }));
-            setServerName(resolved.serve?.serverName ?? '');
-            const loadedFeatures = readFeatureValues(resolved);
-            setFeatureValues(loadedFeatures);
-            setFeaturesSnapshot(loadedFeatures);
-            const loadedDreams: DreamsConfigForm = {
-                enabled: resolved.dreams?.enabled ?? false,
-                provider: resolved.dreams?.provider === 'codex' || resolved.dreams?.provider === 'claude' || resolved.dreams?.provider === 'copilot'
-                    ? resolved.dreams.provider
-                    : '',
-                model: resolved.dreams?.model ?? '',
-                timeoutMinutes: String(Math.round((resolved.dreams?.timeoutMs ?? 3_600_000) / 60_000)),
-                intervalMinutes: String(Math.round((resolved.dreams?.idleCheckIntervalMs ?? 5 * 60 * 1000) / 60_000)),
-            };
-            setDreamsForm(loadedDreams);
-            setDreamsSnapshot(loadedDreams);
-            const aapre = resolved.features?.autoAgentProviderRouting ?? false;
-            setAutoAgentProviderRoutingEnabled(aapre);
-            const cxe = resolved.codex?.enabled ?? false;
-            setCodexEnabled(cxe);
-            const cle = resolved.claude?.enabled ?? false;
-            setClaudeEnabled(cle);
-            const oce = resolved.opencode?.enabled ?? false;
-            setOpencodeEnabled(oce);
-            const dp = (resolved.defaultProvider === 'codex' ? 'codex' : resolved.defaultProvider === 'claude' ? 'claude' : resolved.defaultProvider === 'opencode' ? 'opencode' : 'copilot') as AdminDefaultProvider;
-            const arc = normalizeAutoProviderRoutingConfig(resolved.agentProviderRouting?.auto);
-            setDefaultProvider(dp);
-            setAutoRoutingConfig(arc);
-            setAiExecSnapshot({ model: form.model, parallel: form.parallel, timeout: form.timeout, output: form.output });
-            setDefaultProviderSnapshot({ provider: dp, codexEnabled: cxe, claudeEnabled: cle, opencodeEnabled: oce, autoAgentProviderRouting: aapre, autoRoutingConfig: arc });
+            configFormCtl.hydrate(resolved);
+            prefsCtl.hydrateFromConfig(resolved);
+            features.hydrate(resolved);
+            dreams.hydrate(resolved);
+            providers.hydrate(resolved);
             const sgr = resolved.sync?.gitRemote ?? '';
             const sim = String(resolved.sync?.intervalMinutes ?? 5);
             setSyncGitRemote(sgr);
@@ -576,50 +228,19 @@ export function AdminPanel() {
         } finally {
             setConfigLoading(false);
         }
-    }, []);
+    }, [configFormCtl.hydrate, prefsCtl.hydrateFromConfig, features.hydrate, dreams.hydrate, providers.hydrate]);
 
     const loadPreferences = useCallback(async () => {
         try {
             const data = await getSpaCocClient().preferences.getGlobal();
-            const t = (data.theme ?? 'auto') as 'light' | 'dark' | 'auto';
-            const r = data.reposSidebarCollapsed ?? false;
-            const u = (data.uiLayoutMode === 'classic' || data.uiLayoutMode === 'dev-workflow') ? data.uiLayoutMode : 'classic';
-            const h = data.htmlEmbed?.enabled !== false;
-            const pae = data.promptAutocomplete?.enabled === true;
-            const paai = data.promptAutocomplete?.ai?.enabled === true;
-            setTheme(t);
-            setReposSidebarCollapsed(r);
-            setUiLayoutMode(u);
-            setHtmlEmbedEnabled(h);
-            setPromptAutocompleteEnabled(pae);
-            setPromptAutocompleteAiEnabled(paai);
-            setAppearanceSnapshot(prev => ({
-                ...prev,
-                theme: t,
-                reposSidebarCollapsed: r,
-                uiLayoutMode: u,
-                htmlEmbedEnabled: h,
-                promptAutocompleteEnabled: pae,
-                promptAutocompleteAiEnabled: paai,
-            }));
+            prefsCtl.hydrateFromPreferences(data);
         } catch { /* ignore */ }
-    }, []);
+    }, [prefsCtl.hydrateFromPreferences]);
 
-    /** Refreshes install status for both optional SDK providers from the providers list. */
-    const loadSdkInstallStatuses = useCallback(() => {
-        getSpaCocClient().agentProviders.list()
-            .then(data => {
-                if (!data?.providers) return;
-                const statuses: Record<string, ProviderInstallStatus> = {};
-                for (const p of data.providers) {
-                    if (p.installStatus) {
-                        statuses[p.id] = p.installStatus;
-                    }
-                }
-                setSdkInstallStatuses(statuses);
-            })
-            .catch(() => { /* non-fatal */ });
-    }, []);
+    // Server display-name + lifecycle (rebuild/restart). Restart state is shared
+    // with the sidebar restart button, so it lives in this hook rather than the
+    // Server tab panel. Save reloads config to reflect the change.
+    const serverRuntime = useServerRuntime({ addToast, reloadConfig: loadConfig });
 
     useEffect(() => {
         loadStats();
@@ -628,547 +249,12 @@ export function AdminPanel() {
         getSpaCocClient().admin.getVersion()
             .then(data => { if (data) setVersionInfo(data); })
             .catch(() => { });
-        fetch('/api/admin/providers/availability')
-            .then(r => r.json())
-            .then((data: Record<string, { available: boolean; error?: string }>) => setProviderAvailability(data))
-            .catch(() => { });
-        loadSdkInstallStatuses();
-    }, [loadStats, loadConfig, loadPreferences, loadSdkInstallStatuses]);
+    }, [loadStats, loadConfig, loadPreferences]);
 
-    // ── Per-card dirty state ──
-    const aiExecDirty = configForm.model !== aiExecSnapshot.model ||
-        configForm.parallel !== aiExecSnapshot.parallel ||
-        configForm.timeout !== aiExecSnapshot.timeout ||
-        configForm.output !== aiExecSnapshot.output;
-
-    const defaultProviderDirty = defaultProvider !== defaultProviderSnapshot.provider ||
-        codexEnabled !== defaultProviderSnapshot.codexEnabled ||
-        claudeEnabled !== defaultProviderSnapshot.claudeEnabled ||
-        opencodeEnabled !== defaultProviderSnapshot.opencodeEnabled ||
-        autoAgentProviderRoutingEnabled !== defaultProviderSnapshot.autoAgentProviderRouting ||
-        !autoRoutingConfigsEqual(autoRoutingConfig, defaultProviderSnapshot.autoRoutingConfig);
-
-    const chatDirty = chatFollowUpEnabled !== chatSnapshot.followUpEnabled ||
-        chatFollowUpCount !== chatSnapshot.followUpCount ||
-        chatAskUserEnabled !== chatSnapshot.askUserEnabled ||
-        showReportIntent !== chatSnapshot.showReportIntent ||
-        toolCompactness !== chatSnapshot.toolCompactness;
-
-    const appearanceDirty = theme !== appearanceSnapshot.theme ||
-        reposSidebarCollapsed !== appearanceSnapshot.reposSidebarCollapsed ||
-        uiLayoutMode !== appearanceSnapshot.uiLayoutMode ||
-        htmlEmbedEnabled !== appearanceSnapshot.htmlEmbedEnabled ||
-        promptAutocompleteEnabled !== appearanceSnapshot.promptAutocompleteEnabled ||
-        promptAutocompleteAiEnabled !== appearanceSnapshot.promptAutocompleteAiEnabled ||
-        taskCardDensity !== appearanceSnapshot.taskCardDensity ||
-        historyGrouping !== appearanceSnapshot.historyGrouping;
-
-    const featuresDirty = FEATURES_CARD_SETTINGS.some(def => featureValues[def.key] !== featuresSnapshot[def.key]);
-
-    const dreamsDirty = dreamsForm.enabled !== dreamsSnapshot.enabled ||
-        dreamsForm.provider !== dreamsSnapshot.provider ||
-        dreamsForm.model !== dreamsSnapshot.model ||
-        dreamsForm.timeoutMinutes !== dreamsSnapshot.timeoutMinutes ||
-        dreamsForm.intervalMinutes !== dreamsSnapshot.intervalMinutes;
-
-    // ── AI & Execution card ──
-    const handleSaveAiExec = useCallback(async () => {
-        const errors: string[] = [];
-        const parallel = Number(configForm.parallel);
-        if (isNaN(parallel) || parallel < 1) errors.push('Parallelism must be at least 1');
-        const timeoutStr = configForm.timeout.trim();
-        let timeoutValue: number | null = null;
-        if (timeoutStr !== '') {
-            const timeout = Number(timeoutStr);
-            if (isNaN(timeout) || !Number.isInteger(timeout) || timeout < 1) {
-                errors.push('Timeout must be a positive integer');
-            } else {
-                timeoutValue = timeout;
-            }
-        }
-        if (!(VALID_OUTPUT_OPTIONS as readonly string[]).includes(configForm.output)) {
-            errors.push(`Output must be one of: ${VALID_OUTPUT_OPTIONS.join(', ')}`);
-        }
-        if (errors.length) { addToast(errors.join('; '), 'error'); return; }
-        setAiExecSaving(true);
-        try {
-            const payload: Record<string, unknown> = { parallel, output: configForm.output };
-            if (configForm.model?.trim()) payload.model = configForm.model.trim();
-            payload.timeout = timeoutValue;
-            await getSpaCocClient().admin.updateConfig(payload);
-            addToast('Settings saved', 'success');
-            setAiExecSnapshot({ ...configForm });
-        } catch (err: unknown) {
-            addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
-        } finally {
-            setAiExecSaving(false);
-        }
-    }, [configForm, addToast]);
-
-    const handleCancelAiExec = useCallback(() => {
-        setConfigForm({ ...aiExecSnapshot });
-    }, [aiExecSnapshot]);
-
-    // ── Default Provider card (Agents tab) ──
-    const handleSaveDefaultProvider = useCallback(async () => {
-        setDefaultProviderSaving(true);
-        try {
-            const normalizedAutoRouting = normalizeAutoProviderRoutingConfig(autoRoutingConfig);
-            const payload: Record<string, unknown> = {
-                defaultProvider,
-                'codex.enabled': codexEnabled,
-                'claude.enabled': claudeEnabled,
-                'opencode.enabled': opencodeEnabled,
-                'features.autoAgentProviderRouting': autoAgentProviderRoutingEnabled,
-            };
-            if (autoAgentProviderRoutingEnabled) {
-                payload['agentProviderRouting.auto'] = normalizedAutoRouting;
-            }
-            await getSpaCocClient().admin.updateConfig(payload);
-            addToast('AI provider settings saved — restart required to apply changes', 'success');
-            setAutoRoutingConfig(normalizedAutoRouting);
-            setDefaultProviderSnapshot({ provider: defaultProvider, codexEnabled, claudeEnabled, opencodeEnabled, autoAgentProviderRouting: autoAgentProviderRoutingEnabled, autoRoutingConfig: normalizedAutoRouting });
-        } catch (err: unknown) {
-            addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
-        } finally {
-            setDefaultProviderSaving(false);
-        }
-    }, [defaultProvider, autoAgentProviderRoutingEnabled, codexEnabled, claudeEnabled, opencodeEnabled, autoRoutingConfig, addToast]);
-
-    const handleCancelDefaultProvider = useCallback(() => {
-        setDefaultProvider(defaultProviderSnapshot.provider);
-        setCodexEnabled(defaultProviderSnapshot.codexEnabled);
-        setClaudeEnabled(defaultProviderSnapshot.claudeEnabled);
-        setOpencodeEnabled(defaultProviderSnapshot.opencodeEnabled);
-        setAutoAgentProviderRoutingEnabled(defaultProviderSnapshot.autoAgentProviderRouting);
-        setAutoRoutingConfig(defaultProviderSnapshot.autoRoutingConfig);
-    }, [defaultProviderSnapshot]);
-
-    // ── SDK install status helpers ──
-
-    /** Starts npm install for the given optional provider (codex|claude). */
-    const handleInstallSdk = useCallback(async (provider: 'codex' | 'claude') => {
-        setSdkInstallStatuses(prev => ({ ...prev, [provider]: 'installing' }));
-        setSdkInstallErrors(prev => ({ ...prev, [provider]: undefined }));
-        try {
-            await getSpaCocClient().agentProviders.installProvider(provider);
-        } catch (err: unknown) {
-            const msg = getSpaCocClientErrorMessage(err, 'Install request failed');
-            setSdkInstallStatuses(prev => ({ ...prev, [provider]: 'install-failed' }));
-            setSdkInstallErrors(prev => ({ ...prev, [provider]: msg }));
-            return;
-        }
-        // Poll until status resolves (installed or install-failed).
-        if (sdkPollRef.current) clearInterval(sdkPollRef.current);
-        sdkPollRef.current = setInterval(async () => {
-            try {
-                const res = await getSpaCocClient().agentProviders.getProviderInstallStatus(provider);
-                setSdkInstallStatuses(prev => ({ ...prev, [provider]: res.status }));
-                if (res.status === 'install-failed') {
-                    setSdkInstallErrors(prev => ({ ...prev, [provider]: res.error }));
-                }
-                if (res.status === 'installed' || res.status === 'install-failed') {
-                    if (sdkPollRef.current) { clearInterval(sdkPollRef.current); sdkPollRef.current = null; }
-                    // Reload providers list so the main UI reflects the change.
-                    loadSdkInstallStatuses();
-                }
-            } catch { /* ignore transient poll errors */ }
-        }, 2000);
-    }, [loadSdkInstallStatuses]);
-
-    // Stop polling when the component unmounts.
-    useEffect(() => () => { if (sdkPollRef.current) clearInterval(sdkPollRef.current); }, []);
-
-    const handleRefreshQuota = useCallback(async (options: { force?: boolean } = {}) => {
-        setQuotaLoading(true);
-        setQuotaError(null);
-        try {
-            const data = await getSpaCocClient().admin.getAgentProvidersQuota({ force: options.force });
-            if (!Array.isArray(data.providers)) {
-                throw new Error('Quota response missing providers');
-            }
-            setQuotaData(data);
-        } catch (err: unknown) {
-            setQuotaError(getSpaCocClientErrorMessage(err, 'Failed to fetch quota'));
-        } finally {
-            setQuotaLoading(false);
-        }
-    }, []);
-
-    const refreshDreamProviderActivity = useCallback(async () => {
-        setDreamProviderActivityError(null);
-        try {
-            setDreamProviderActivity(await loadDreamProviderActivity());
-        } catch (err: unknown) {
-            setDreamProviderActivityError(getSpaCocClientErrorMessage(err, 'Failed to fetch Dreams provider activity'));
-        }
-    }, []);
-
+    // Hydrate the server display-name field whenever the config (re)loads.
     useEffect(() => {
-        if (activeTab !== 'agents' || isContainerMode()) {
-            return;
-        }
-        void handleRefreshQuota();
-    }, [activeTab, handleRefreshQuota]);
-
-    // Dreams provider activity now lives in the admin Dreams tab; auto-load it
-    // whenever that tab becomes the active dashboard route.
-    useEffect(() => {
-        if (activeDashboardTab !== 'dreams-admin' || isContainerMode()) {
-            return;
-        }
-        void refreshDreamProviderActivity();
-    }, [activeDashboardTab, refreshDreamProviderActivity]);
-
-    // ── Chat Experience card ──
-    const handleSaveChat = useCallback(async () => {
-        const errors: string[] = [];
-        const count = Number(chatFollowUpCount);
-        if (isNaN(count) || !Number.isInteger(count) || count < 1 || count > 5) {
-            errors.push('Follow-up count must be an integer between 1 and 5');
-        }
-        if (errors.length) { addToast(errors.join('; '), 'error'); return; }
-        setChatSaving(true);
-        try {
-            const payload: Record<string, unknown> = {
-                'chat.followUpSuggestions.enabled': chatFollowUpEnabled,
-                'chat.followUpSuggestions.count': count,
-                'chat.askUser.enabled': chatAskUserEnabled,
-                showReportIntent,
-                toolCompactness,
-            };
-            await getSpaCocClient().admin.updateConfig(payload);
-            addToast('Settings saved', 'success');
-            invalidateDisplaySettings();
-            setChatSnapshot({ followUpEnabled: chatFollowUpEnabled, followUpCount: chatFollowUpCount, askUserEnabled: chatAskUserEnabled, showReportIntent, toolCompactness });
-        } catch (err: unknown) {
-            addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
-        } finally {
-            setChatSaving(false);
-        }
-    }, [chatFollowUpEnabled, chatFollowUpCount, chatAskUserEnabled, showReportIntent, toolCompactness, addToast]);
-
-    const handleCancelChat = useCallback(() => {
-        setChatFollowUpEnabled(chatSnapshot.followUpEnabled);
-        setChatFollowUpCount(chatSnapshot.followUpCount);
-        setChatAskUserEnabled(chatSnapshot.askUserEnabled);
-        setShowReportIntent(chatSnapshot.showReportIntent);
-        setToolCompactness(chatSnapshot.toolCompactness);
-    }, [chatSnapshot]);
-
-    // ── Appearance & Navigation card ──
-    const handleSaveAppearance = useCallback(async () => {
-        setAppearanceSaving(true);
-        try {
-            // Save preferences (theme, reposSidebarCollapsed, uiLayoutMode, htmlEmbed)
-            const prefsChanged = theme !== appearanceSnapshot.theme ||
-                reposSidebarCollapsed !== appearanceSnapshot.reposSidebarCollapsed ||
-                uiLayoutMode !== appearanceSnapshot.uiLayoutMode ||
-                htmlEmbedEnabled !== appearanceSnapshot.htmlEmbedEnabled ||
-                promptAutocompleteEnabled !== appearanceSnapshot.promptAutocompleteEnabled ||
-                promptAutocompleteAiEnabled !== appearanceSnapshot.promptAutocompleteAiEnabled;
-            if (prefsChanged) {
-                await getSpaCocClient().preferences.patchGlobal({
-                    theme,
-                    reposSidebarCollapsed,
-                    uiLayoutMode,
-                    htmlEmbed: { enabled: htmlEmbedEnabled },
-                    promptAutocomplete: {
-                        enabled: promptAutocompleteEnabled,
-                        ai: { enabled: promptAutocompleteAiEnabled },
-                    },
-                });
-            }
-            // Save config (taskCardDensity, historyGrouping)
-            const configChanged = taskCardDensity !== appearanceSnapshot.taskCardDensity || historyGrouping !== appearanceSnapshot.historyGrouping;
-            if (configChanged) {
-                await getSpaCocClient().admin.updateConfig({ taskCardDensity, historyGrouping });
-            }
-            addToast('Settings saved', 'success');
-            invalidateDisplaySettings();
-            invalidateHtmlEmbedPreference();
-            setAppearanceSnapshot({
-                theme,
-                reposSidebarCollapsed,
-                uiLayoutMode,
-                htmlEmbedEnabled,
-                promptAutocompleteEnabled,
-                promptAutocompleteAiEnabled,
-                taskCardDensity,
-                historyGrouping,
-            });
-        } catch (err: unknown) {
-            addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
-        } finally {
-            setAppearanceSaving(false);
-        }
-    }, [theme, reposSidebarCollapsed, uiLayoutMode, htmlEmbedEnabled, promptAutocompleteEnabled, promptAutocompleteAiEnabled, taskCardDensity, historyGrouping, appearanceSnapshot, addToast]);
-
-    const handleCancelAppearance = useCallback(() => {
-        setTheme(appearanceSnapshot.theme as 'light' | 'dark' | 'auto');
-        setReposSidebarCollapsed(appearanceSnapshot.reposSidebarCollapsed);
-        setUiLayoutMode(appearanceSnapshot.uiLayoutMode as 'classic' | 'dev-workflow');
-        setHtmlEmbedEnabled(appearanceSnapshot.htmlEmbedEnabled);
-        setPromptAutocompleteEnabled(appearanceSnapshot.promptAutocompleteEnabled);
-        setPromptAutocompleteAiEnabled(appearanceSnapshot.promptAutocompleteAiEnabled);
-        setTaskCardDensity(appearanceSnapshot.taskCardDensity);
-        setHistoryGrouping(appearanceSnapshot.historyGrouping);
-    }, [appearanceSnapshot]);
-
-    // ── Workspace Features card ──
-    const handleSaveFeatures = useCallback(async () => {
-        setFeaturesSaving(true);
-        try {
-            await getSpaCocClient().admin.updateConfig({ ...featureValues });
-            addToast('Settings saved', 'success');
-            invalidateDisplaySettings();
-            applyRuntimeConfigPatch(readRuntimeFeatureValues(featureValues));
-            setFeaturesSnapshot({ ...featureValues });
-        } catch (err: unknown) {
-            addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
-        } finally {
-            setFeaturesSaving(false);
-        }
-    }, [featureValues, addToast]);
-
-    const handleCancelFeatures = useCallback(() => {
-        setFeatureValues({ ...featuresSnapshot });
-    }, [featuresSnapshot]);
-
-    useEffect(() => {
-        if (activeTab !== 'settings' || settingsSubTab !== 'features' || isToolEmbedded) return;
-
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (
-                !(event.ctrlKey || event.metaKey)
-                || event.altKey
-                || event.shiftKey
-                || event.key.toLowerCase() !== 's'
-            ) {
-                return;
-            }
-
-            event.preventDefault();
-            if (!featuresDirty || featuresSaving) return;
-            void handleSaveFeatures();
-        };
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [
-        activeTab,
-        settingsSubTab,
-        isToolEmbedded,
-        featuresDirty,
-        featuresSaving,
-        handleSaveFeatures,
-    ]);
-
-    // ── Dreams tab config card ──
-    const handleSaveDreams = useCallback(async () => {
-        const intervalMinutes = Number(dreamsForm.intervalMinutes);
-        if (!Number.isInteger(intervalMinutes) || intervalMinutes < 1) {
-            addToast('Dreams idle check interval must be a positive whole number of minutes', 'error');
-            return;
-        }
-        const timeoutMinutes = Number(dreamsForm.timeoutMinutes);
-        if (!Number.isInteger(timeoutMinutes) || timeoutMinutes < 1) {
-            addToast('Dreams run timeout must be a positive whole number of minutes', 'error');
-            return;
-        }
-        setDreamsSaving(true);
-        try {
-            await getSpaCocClient().admin.updateConfig({
-                'dreams.enabled': dreamsForm.enabled,
-                'dreams.provider': dreamsForm.provider || null,
-                'dreams.model': dreamsForm.model.trim() || null,
-                'dreams.idleCheckIntervalMs': intervalMinutes * 60_000,
-                'dreams.timeoutMs': timeoutMinutes * 60_000,
-            });
-            addToast('Settings saved', 'success');
-            invalidateDisplaySettings();
-            applyRuntimeConfigPatch({ dreamsEnabled: dreamsForm.enabled });
-            setDreamsSnapshot({ ...dreamsForm });
-        } catch (err: unknown) {
-            addToast(getSpaCocClientErrorMessage(err, 'Save failed'), 'error');
-        } finally {
-            setDreamsSaving(false);
-        }
-    }, [dreamsForm, addToast]);
-
-    const handleCancelDreams = useCallback(() => {
-        setDreamsForm({ ...dreamsSnapshot });
-    }, [dreamsSnapshot]);
-
-    const handleSaveServerName = useCallback(async () => {
-        const trimmed = serverName.trim();
-        try {
-            await getSpaCocClient().admin.updateConfig({ 'serve.serverName': trimmed || null });
-            setServerName(trimmed);
-            addToast('Server name saved — takes effect on next page reload', 'success');
-            await loadConfig();
-        } catch (err: unknown) {
-            addToast(getSpaCocClientErrorMessage(err, 'Could not save server name'), 'error');
-        }
-    }, [serverName, addToast, loadConfig]);
-
-    const handleExport = useCallback(async () => {
-        setExportStatus('Exporting…');
-        try {
-            const res = await getSpaCocClient().admin.exportData();
-            if (!res.ok) {
-                const body = await res.json().catch(() => ({}));
-                const message = typeof body === 'object' && body !== null && 'error' in body ? String(body.error) : res.statusText;
-                throw new Error(message);
-            }
-            const disposition = res.headers.get('Content-Disposition') || '';
-            const match = disposition.match(/filename="([^"]+)"/);
-            const filename = match ? match[1] : `coc-export-${new Date().toISOString().replace(/:/g, '-')}.json`;
-            const blob = await res.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            setExportStatus('Exported successfully.');
-        } catch (err: unknown) {
-            setExportStatus('Export failed: ' + getSpaCocClientErrorMessage(err, 'Network error'));
-        }
-    }, []);
-
-    const handlePreviewImport = useCallback(async () => {
-        if (!importFile) { setImportStatus('Please select a JSON file first.'); return; }
-        setImportStatus('Loading preview…');
-        try {
-            const text = await importFile.text();
-            const payload = JSON.parse(text);
-            const data = await getSpaCocClient().admin.previewImport(payload);
-            if (!data.valid) {
-                setImportPreview('Preview failed: ' + (data?.error || 'Invalid file'));
-                setImportStatus('Preview failed.');
-                return;
-            }
-            const p = data.preview;
-            const lines: string[] = [];
-            if (p.processCount != null) lines.push('Processes: ' + p.processCount);
-            if (p.workspaceCount != null) lines.push('Workspaces: ' + p.workspaceCount);
-            if (p.wikiCount != null) lines.push('Wikis: ' + p.wikiCount);
-            setImportPreview(lines.length ? lines.join('\n') : JSON.stringify(p, null, 2));
-            setImportStatus('Preview loaded.');
-        } catch (err: unknown) {
-            if (err instanceof SyntaxError) {
-                setImportPreview(null);
-                setImportStatus('Invalid JSON file.');
-            } else {
-                setImportPreview('Preview failed: ' + getSpaCocClientErrorMessage(err, 'Invalid file'));
-                setImportStatus('Preview failed.');
-            }
-        }
-    }, [importFile]);
-
-    const handleImport = useCallback(async () => {
-        if (!importFile) { setImportStatus('Please select a JSON file first.'); return; }
-        setImportStatus('Requesting confirmation token…');
-        let payload: unknown;
-        try {
-            const text = await importFile.text();
-            payload = JSON.parse(text);
-        } catch (err: unknown) {
-            setImportStatus('Import failed: ' + getSpaCocClientErrorMessage(err, 'Invalid JSON file.'));
-            return;
-        }
-        let tokenRes: { token?: string } | null = null;
-        try {
-            tokenRes = await getSpaCocClient().admin.getImportToken();
-        } catch {
-            setImportStatus('Failed to get import token.');
-            return;
-        }
-        if (!tokenRes?.token) { setImportStatus('Failed to get import token.'); return; }
-        setImportStatus('Importing…');
-        try {
-            await getSpaCocClient().admin.importData(payload, { token: tokenRes.token, mode: importMode });
-            setImportStatus('Import complete.');
-            addToast('Import complete', 'success');
-            loadStats();
-        } catch (err: unknown) {
-            setImportStatus('Import failed: ' + getSpaCocClientErrorMessage(err, 'Network error'));
-        }
-    }, [importFile, importMode, addToast, loadStats]);
-
-    const handlePreviewWipe = useCallback(async () => {
-        try {
-            const data = await getSpaCocClient().admin.getDataStats({ includeWikis });
-            const lines: string[] = [];
-            if (data.processCount != null) lines.push('Processes: ' + data.processCount);
-            if (data.wikiCount != null) lines.push('Wikis: ' + data.wikiCount);
-            if (data.totalBytes != null) lines.push('Disk: ' + formatBytes(data.totalBytes));
-            setWipePreview(lines.length ? lines.join('\n') : JSON.stringify(data, null, 2));
-        } catch {
-            setWipePreview('Failed to load preview.');
-        }
-    }, [includeWikis]);
-
-    const handleWipeStep1 = useCallback(async () => {
-        setWipeStatus('Requesting confirmation token…');
-        try {
-            const data = await getSpaCocClient().admin.getWipeToken();
-            if (!data.token) throw new Error('No token received');
-            setWipeToken(data.token);
-            setWipeStatus('');
-        } catch (err: unknown) {
-            const detail = getSpaCocClientErrorMessage(err, '');
-            setWipeStatus(detail ? `Failed to get wipe token: ${detail}` : 'Failed to get wipe token');
-        }
-    }, []);
-
-    const handleWipeConfirm = useCallback(async () => {
-        if (!wipeToken) return;
-        setWipeStatus('Wiping data…');
-        try {
-            await getSpaCocClient().admin.wipeData({ token: wipeToken, includeWikis });
-            setWipeStatus('Data wiped successfully.');
-            addToast('Data wiped', 'success');
-            setWipeToken(null);
-            loadStats();
-        } catch (err: unknown) {
-            setWipeStatus('Wipe failed: ' + getSpaCocClientErrorMessage(err, 'Network error'));
-        }
-    }, [wipeToken, includeWikis, addToast, loadStats]);
-
-    const handleWipeCancel = useCallback(() => {
-        setWipeToken(null);
-        setWipeStatus('Cancelled.');
-    }, []);
-
-    const handleRestart = useCallback(async () => {
-        setRestarting(true);
-        setRestartStatus('Sending restart request…');
-        try {
-            await getSpaCocClient().admin.restart();
-            setRestartStatus('Server is restarting. Waiting for it to come back…');
-            addToast('Restart initiated — rebuilding…', 'success');
-            // Poll until the server comes back, then reload the page
-            const poll = () => {
-                setTimeout(async () => {
-                    try {
-                        await getSpaCocClient().admin.getDataStats(undefined, { signal: AbortSignal.timeout(2000) });
-                        setRestartStatus('Server is back!');
-                        window.location.reload();
-                        return;
-                    } catch { /* server still down */ }
-                    poll();
-                }, 3000);
-            };
-            poll();
-        } catch (err: unknown) {
-            setRestartStatus('Restart failed: ' + getSpaCocClientErrorMessage(err, 'Network error'));
-            setRestarting(false);
-        }
-    }, [addToast]);
+        serverRuntime.setServerName(config?.resolved?.serve?.serverName ?? '');
+    }, [config, serverRuntime.setServerName]);
 
     const handleRelaunchWelcome = useCallback(async () => {
         setRelaunchingWelcome(true);
@@ -1205,67 +291,14 @@ export function AdminPanel() {
         return current === def;
     }, [config?.defaults, resolved, defaults]);
 
-    // Servers row is gated by the dashboard runtime config, same source the
-    // legacy topbar dropdown consulted. It is independent of the editable
-    // `serversEnabled` Features form state above.
-    const serversNavItems = isServersEnabled() ? [toolNavItem('servers')] : [];
-    const containerNavItems = isContainerMode() ? [adminNavItem('messaging')] : [];
-    const containerAgentsNavItem = isContainerMode() ? [adminNavItem('agents')] : [];
-    const nonContainerAgentsNavItem = !isContainerMode() ? [adminNavItem('agents')] : [];
-
     const handleToolNavClick = useCallback((tab: DashboardTab) => {
         dispatch({ type: 'SET_ACTIVE_TAB', tab });
         window.location.hash = '#' + tab;
     }, [dispatch]);
 
-    const navGroups: AdminNavGroup[] = [
-        {
-            label: 'Configure',
-            items: [
-                {
-                    key: 'settings:configure',
-                    label: 'Configure',
-                    icon: '✦',
-                    testId: 'settings-nav-configure',
-                    action: { kind: 'settings', subTab: DEFAULT_SETTINGS_SUBTAB } as AdminNavAction,
-                },
-                ...nonContainerAgentsNavItem,
-                ...serversNavItems,
-            ],
-        },
-        {
-            label: 'Knowledge',
-            items: [
-                toolNavItem('memory'),
-                toolNavItem('skills'),
-                toolNavItem('dreams-admin'),
-            ],
-        },
-        {
-            label: 'Connections',
-            items: [
-                ...containerNavItems,
-                ...containerAgentsNavItem,
-            ],
-        },
-        {
-            label: 'Operations',
-            items: [
-                toolNavItem('stats'),
-                toolNavItem('logs'),
-                adminNavItem('server'),
-                adminNavItem('data'),
-            ],
-        },
-        {
-            label: 'Developer / Internals',
-            items: [
-                adminNavItem('prompts'),
-                adminNavItem('database'),
-                settingsNavItem('advanced'),
-            ],
-        },
-    ].filter(group => group.items.length > 0);
+    // Sidebar nav groups are pure policy — container mode and the runtime
+    // `serversEnabled` gate are passed as explicit inputs (see adminNavigation).
+    const navGroups = buildAdminNavGroups({ isContainer: isContainerMode(), serversEnabled: isServersEnabled() });
 
     const handleNavItemClick = useCallback((item: AdminNavItem) => {
         switch (item.action.kind) {
@@ -1288,22 +321,13 @@ export function AdminPanel() {
         }
     };
 
-    const activeNavKey = isToolEmbedded
-        ? `tool:${activeDashboardTab}`
-        : activeTab === 'settings'
-            ? (settingsSubTab === 'advanced' ? 'settings:advanced' : 'settings:configure')
-            : `admin:${activeTab}`;
-    const activeTabLabel = activeTab === 'settings'
-        ? getSettingsSubTabMeta(settingsSubTab).label
-        : TAB_LABELS[activeTab];
-    const activeBreadcrumbGroup = isToolEmbedded
-        ? TOOL_TAB_GROUP_LABELS[activeDashboardTab] ?? 'Operations'
-        : activeTab === 'settings'
-            ? 'Configure'
-            : ADMIN_TAB_GROUP_LABELS[activeTab] ?? 'Configure';
-    const activePageDescription = activeTab === 'settings'
-        ? SETTINGS_SUBTAB_DESCRIPTIONS[settingsSubTab]
-        : TAB_DESCRIPTIONS[activeTab];
+    const { activeNavKey, activeTabLabel, activeBreadcrumbGroup, activePageDescription } = deriveActiveNav({
+        isContainer: isContainerMode(),
+        isToolEmbedded,
+        activeDashboardTab,
+        activeTab,
+        settingsSubTab,
+    });
 
     return (
         <div id="view-admin" className="admin-redesign">
@@ -1356,12 +380,12 @@ export function AdminPanel() {
                             <button
                                 type="button"
                                 className="ar-sidebar-restart"
-                                onClick={handleRestart}
-                                disabled={restarting}
+                                onClick={serverRuntime.handleRestart}
+                                disabled={serverRuntime.restarting}
                                 data-testid="sidebar-restart-btn"
-                                title={restarting ? restartStatus : 'Rebuild & restart the CoC server'}
+                                title={serverRuntime.restarting ? serverRuntime.restartStatus : 'Rebuild & restart the CoC server'}
                             >
-                                {restarting ? <><Spinner size="sm" /> Restarting…</> : '↻ Restart Server'}
+                                {serverRuntime.restarting ? <><Spinner size="sm" /> Restarting…</> : '↻ Restart Server'}
                             </button>
                         )}
                     </div>
@@ -1421,15 +445,15 @@ export function AdminPanel() {
                                 />}
                                 {activeToolItem.tab === 'skills' && <SkillsView />}
                                 {activeToolItem.tab === 'dreams-admin' && <DreamsView
-                                    config={dreamsForm}
-                                    onConfigChange={patch => setDreamsForm(prev => ({ ...prev, ...patch }))}
-                                    configDirty={dreamsDirty}
-                                    configSaving={dreamsSaving}
-                                    onSaveConfig={handleSaveDreams}
-                                    onCancelConfig={handleCancelDreams}
-                                    providerActivity={dreamProviderActivity}
-                                    providerActivityError={dreamProviderActivityError}
-                                    onRefreshProviderActivity={refreshDreamProviderActivity}
+                                    config={dreams.dreamsForm}
+                                    onConfigChange={patch => dreams.setDreamsForm(prev => ({ ...prev, ...patch }))}
+                                    configDirty={dreams.dreamsDirty}
+                                    configSaving={dreams.dreamsSaving}
+                                    onSaveConfig={dreams.handleSaveDreams}
+                                    onCancelConfig={dreams.handleCancelDreams}
+                                    providerActivity={dreams.dreamProviderActivity}
+                                    providerActivityError={dreams.dreamProviderActivityError}
+                                    onRefreshProviderActivity={dreams.refreshDreamProviderActivity}
                                 />}
                                 {activeToolItem.tab === 'logs' && <LogsView />}
                                 {activeToolItem.tab === 'stats' && <UsageStatsView />}
@@ -1484,357 +508,82 @@ export function AdminPanel() {
                                         <>
                                             {/* ── AI & Execution ── */}
                                             {settingsSubTab === 'ai' && (
-                                                <SettingsCard
-                                                    title="AI & Execution"
-                                                    description="Default model, parallelism, timeout, and output format for AI tasks."
-                                                    dirty={aiExecDirty}
-                                                    saving={aiExecSaving}
-                                                    onSave={handleSaveAiExec}
-                                                    onCancel={handleCancelAiExec}
-                                                    data-testid="settings-ai-execution"
-                                                >
-                                                    <AdminRow
-                                                        name="Model"
-                                                        hint="AI model identifier (leave blank to use server default)."
-                                                    >
-                                                        <input
-                                                            id="admin-config-model"
-                                                            className="ar-input ar-long ar-mono"
-                                                            value={configForm.model}
-                                                            onChange={e => setConfigForm(f => ({ ...f, model: e.target.value }))}
-                                                        />
-                                                        <SourceBadge source={sources['model']} isDefault={isDefaultValue('model')} />
-                                                    </AdminRow>
-                                                    <AdminRow
-                                                        name="Parallelism"
-                                                        hint="Number of parallel AI tasks. Read-write tasks always run sequentially."
-                                                    >
-                                                        <input
-                                                            id="admin-config-parallel"
-                                                            type="number"
-                                                            min={1}
-                                                            className="ar-input ar-short"
-                                                            value={configForm.parallel}
-                                                            onChange={e => setConfigForm(f => ({ ...f, parallel: e.target.value }))}
-                                                        />
-                                                        <SourceBadge source={sources['parallel']} isDefault={isDefaultValue('parallel')} />
-                                                    </AdminRow>
-                                                    <AdminRow
-                                                        name="Timeout"
-                                                        hint="Per-task wall-clock limit. Leave blank for the 1-hour default."
-                                                    >
-                                                        <AdminInputSuffix suffix="sec">
-                                                            <input
-                                                                id="admin-config-timeout"
-                                                                type="number"
-                                                                min={1}
-                                                                placeholder="3600"
-                                                                className="ar-input ar-short"
-                                                                value={configForm.timeout}
-                                                                onChange={e => setConfigForm(f => ({ ...f, timeout: e.target.value }))}
-                                                            />
-                                                        </AdminInputSuffix>
-                                                        <SourceBadge source={sources['timeout']} isDefault={isDefaultValue('timeout')} />
-                                                    </AdminRow>
-                                                    <AdminRow
-                                                        name="Output"
-                                                        hint="Default format for CLI commands that print structured data."
-                                                    >
-                                                        <select
-                                                            id="admin-config-output"
-                                                            className="ar-select ar-med"
-                                                            value={configForm.output}
-                                                            onChange={e => setConfigForm(f => ({ ...f, output: e.target.value }))}
-                                                        >
-                                                            {VALID_OUTPUT_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-                                                        </select>
-                                                        <SourceBadge source={sources['output']} isDefault={isDefaultValue('output')} />
-                                                    </AdminRow>
-                                                </SettingsCard>
+                                                <AiExecutionCard
+                                                    configForm={configFormCtl.configForm}
+                                                    setConfigForm={configFormCtl.setConfigForm}
+                                                    dirty={configFormCtl.aiExecDirty}
+                                                    saving={configFormCtl.aiExecSaving}
+                                                    onSave={configFormCtl.handleSaveAiExec}
+                                                    onCancel={configFormCtl.handleCancelAiExec}
+                                                    sources={sources}
+                                                    isDefaultValue={isDefaultValue}
+                                                />
                                             )}
 
                                             {/* ── Chat Experience ── */}
                                             {settingsSubTab === 'chat' && (
-                                                <SettingsCard
-                                                    title="Chat Experience"
-                                                    description="Controls how the AI assistant behaves during conversations."
-                                                    dirty={chatDirty}
-                                                    saving={chatSaving}
-                                                    onSave={handleSaveChat}
-                                                    onCancel={handleCancelChat}
-                                                    data-testid="settings-chat"
-                                                >
-                                                    <AdminRow
-                                                        name="Follow-up suggestions"
-                                                        hint="Generate clickable next-question chips after each response."
-                                                    >
-                                                        <SourceBadge source={sources['chat.followUpSuggestions.enabled']} isDefault={isDefaultValue('chat.followUpSuggestions.enabled')} />
-                                                        <AdminToggle
-                                                            checked={chatFollowUpEnabled}
-                                                            onChange={setChatFollowUpEnabled}
-                                                            data-testid="toggle-chat-followup-enabled"
-                                                        />
-                                                    </AdminRow>
-                                                    <AdminRow
-                                                        name="Count"
-                                                        hint="Number of follow-up suggestions to generate (1–5)."
-                                                    >
-                                                        <input
-                                                            type="number"
-                                                            min={1}
-                                                            max={5}
-                                                            className="ar-input ar-short"
-                                                            value={chatFollowUpCount}
-                                                            onChange={e => setChatFollowUpCount(e.target.value)}
-                                                            data-testid="input-chat-followup-count"
-                                                        />
-                                                        <SourceBadge source={sources['chat.followUpSuggestions.count']} isDefault={isDefaultValue('chat.followUpSuggestions.count')} />
-                                                    </AdminRow>
-                                                    <AdminRow
-                                                        name="Ask user (interactive questions)"
-                                                        hint="Allow the AI to pause and ask the user a question mid-task instead of guessing."
-                                                    >
-                                                        <SourceBadge source={sources['chat.askUser.enabled']} isDefault={isDefaultValue('chat.askUser.enabled')} />
-                                                        <AdminToggle
-                                                            checked={chatAskUserEnabled}
-                                                            onChange={setChatAskUserEnabled}
-                                                            data-testid="toggle-chat-askuser-enabled"
-                                                        />
-                                                    </AdminRow>
-                                                    <AdminRow
-                                                        name="Intent announcements"
-                                                        hint="Show the report_intent badge above each tool call (“I'm about to read X…”)."
-                                                    >
-                                                        <SourceBadge source={sources['showReportIntent']} isDefault={isDefaultValue('showReportIntent')} />
-                                                        <AdminToggle
-                                                            checked={showReportIntent}
-                                                            onChange={setShowReportIntent}
-                                                            data-testid="toggle-show-report-intent"
-                                                        />
-                                                    </AdminRow>
-                                                    <AdminRow
-                                                        name="Tool call verbosity"
-                                                        hint="How much detail to show for each tool invocation in the transcript."
-                                                    >
-                                                        <SourceBadge source={sources['toolCompactness']} isDefault={isDefaultValue('toolCompactness')} />
-                                                        <AdminSeg<0 | 1 | 2 | 3>
-                                                            value={toolCompactness}
-                                                            onChange={setToolCompactness}
-                                                            aria-label="Tool call verbosity"
-                                                            options={[
-                                                                { value: 0, label: 'Full', testId: 'tool-compactness-full' },
-                                                                { value: 1, label: 'Compact', testId: 'tool-compactness-compact' },
-                                                                { value: 2, label: 'Minimal', testId: 'tool-compactness-minimal' },
-                                                                { value: 3, label: 'Whisper', testId: 'tool-compactness-whisper' },
-                                                            ]}
-                                                        />
-                                                    </AdminRow>
-                                                </SettingsCard>
+                                                <ChatExperienceCard
+                                                    chatFollowUpEnabled={configFormCtl.chatFollowUpEnabled}
+                                                    setChatFollowUpEnabled={configFormCtl.setChatFollowUpEnabled}
+                                                    chatFollowUpCount={configFormCtl.chatFollowUpCount}
+                                                    setChatFollowUpCount={configFormCtl.setChatFollowUpCount}
+                                                    chatAskUserEnabled={configFormCtl.chatAskUserEnabled}
+                                                    setChatAskUserEnabled={configFormCtl.setChatAskUserEnabled}
+                                                    showReportIntent={configFormCtl.showReportIntent}
+                                                    setShowReportIntent={configFormCtl.setShowReportIntent}
+                                                    toolCompactness={configFormCtl.toolCompactness}
+                                                    setToolCompactness={configFormCtl.setToolCompactness}
+                                                    dirty={configFormCtl.chatDirty}
+                                                    saving={configFormCtl.chatSaving}
+                                                    onSave={configFormCtl.handleSaveChat}
+                                                    onCancel={configFormCtl.handleCancelChat}
+                                                    sources={sources}
+                                                    isDefaultValue={isDefaultValue}
+                                                />
                                             )}
 
                                             {/* ── Appearance & Navigation ── */}
                                             {settingsSubTab === 'appearance' && (
-                                                <SettingsCard
-                                                    title="Appearance & Navigation"
-                                                    badge="Global"
-                                                    description="Theme, layout density, and navigation preferences."
-                                                    dirty={appearanceDirty}
-                                                    saving={appearanceSaving}
-                                                    onSave={handleSaveAppearance}
-                                                    onCancel={handleCancelAppearance}
-                                                    data-testid="settings-appearance"
-                                                >
-                                                    <AdminRow name="Theme" hint="Color scheme for this device. Auto follows the OS preference.">
-                                                        <select
-                                                            className="ar-select ar-med"
-                                                            value={theme}
-                                                            onChange={e => setTheme(e.target.value as 'light' | 'dark' | 'auto')}
-                                                            data-testid="pref-theme"
-                                                        >
-                                                            <option value="auto">auto</option>
-                                                            <option value="light">light</option>
-                                                            <option value="dark">dark</option>
-                                                        </select>
-                                                    </AdminRow>
-                                                    <AdminRow name="UI Mode" hint="Classic shows the activity tab. Dev workflow uses chats, work items, and tasks.">
-                                                        <select
-                                                            className="ar-select ar-long"
-                                                            value={uiLayoutMode}
-                                                            onChange={e => setUiLayoutMode(e.target.value as 'classic' | 'dev-workflow')}
-                                                            data-testid="pref-ui-layout-mode"
-                                                        >
-                                                            <option value="dev-workflow">Dev Workflow (Chats + Work Items + Tasks)</option>
-                                                            <option value="classic">Classic (Activity)</option>
-                                                        </select>
-                                                    </AdminRow>
-                                                    <AdminRow
-                                                        name="Repos sidebar collapsed"
-                                                        hint="Whether the repos sidebar starts collapsed on load."
-                                                    >
-                                                        <AdminToggle
-                                                            checked={reposSidebarCollapsed}
-                                                            onChange={setReposSidebarCollapsed}
-                                                            data-testid="pref-repos-sidebar-collapsed"
-                                                        />
-                                                    </AdminRow>
-                                                    <AdminRow
-                                                        name="Inline HTML previews"
-                                                        hint={<>Render local <span className="ar-mono">.html</span> links titled <span className="ar-mono">embed</span> as sandboxed chat previews.</>}
-                                                    >
-                                                        <AdminToggle
-                                                            checked={htmlEmbedEnabled}
-                                                            onChange={setHtmlEmbedEnabled}
-                                                            data-testid="pref-html-embed-enabled"
-                                                        />
-                                                    </AdminRow>
-                                                    <AdminRow
-                                                        name="Prompt ghost text"
-                                                        hint="Show inline autocomplete in Queue Task and follow-up inputs."
-                                                    >
-                                                        <AdminToggle
-                                                            checked={promptAutocompleteEnabled}
-                                                            onChange={setPromptAutocompleteEnabled}
-                                                            data-testid="pref-prompt-autocomplete-enabled"
-                                                        />
-                                                    </AdminRow>
-                                                    <AdminRow
-                                                        name="AI prompt ghost text"
-                                                        hint="Generate ghost text with AI using workspace-scoped user history. Disabled by default."
-                                                    >
-                                                        <AdminToggle
-                                                            checked={promptAutocompleteAiEnabled}
-                                                            disabled={!promptAutocompleteEnabled}
-                                                            onChange={setPromptAutocompleteAiEnabled}
-                                                            data-testid="pref-prompt-autocomplete-ai-enabled"
-                                                        />
-                                                    </AdminRow>
-                                                    <AdminRow
-                                                        name="Task card density"
-                                                        hint="Density of task cards in the activity tab."
-                                                    >
-                                                        <SourceBadge source={sources['taskCardDensity']} isDefault={isDefaultValue('taskCardDensity')} />
-                                                        <AdminSeg<'compact' | 'dense'>
-                                                            value={taskCardDensity}
-                                                            onChange={setTaskCardDensity}
-                                                            aria-label="Task card density"
-                                                            options={[
-                                                                { value: 'compact', label: 'Compact', testId: 'task-card-density-compact' },
-                                                                { value: 'dense', label: 'Dense', testId: 'task-card-density-dense' },
-                                                            ]}
-                                                        />
-                                                    </AdminRow>
-                                                    <AdminRow
-                                                        name="History grouping"
-                                                        hint="Group related plan and autopilot tasks together in the history list."
-                                                    >
-                                                        <SourceBadge source={sources['historyGrouping']} isDefault={isDefaultValue('historyGrouping')} />
-                                                        <AdminToggle
-                                                            checked={historyGrouping}
-                                                            onChange={setHistoryGrouping}
-                                                            data-testid="toggle-history-grouping"
-                                                        />
-                                                    </AdminRow>
-                                                </SettingsCard>
+                                                <AppearanceCard
+                                                    theme={prefsCtl.theme}
+                                                    setTheme={prefsCtl.setTheme}
+                                                    uiLayoutMode={prefsCtl.uiLayoutMode}
+                                                    setUiLayoutMode={prefsCtl.setUiLayoutMode}
+                                                    reposSidebarCollapsed={prefsCtl.reposSidebarCollapsed}
+                                                    setReposSidebarCollapsed={prefsCtl.setReposSidebarCollapsed}
+                                                    htmlEmbedEnabled={prefsCtl.htmlEmbedEnabled}
+                                                    setHtmlEmbedEnabled={prefsCtl.setHtmlEmbedEnabled}
+                                                    promptAutocompleteEnabled={prefsCtl.promptAutocompleteEnabled}
+                                                    setPromptAutocompleteEnabled={prefsCtl.setPromptAutocompleteEnabled}
+                                                    promptAutocompleteAiEnabled={prefsCtl.promptAutocompleteAiEnabled}
+                                                    setPromptAutocompleteAiEnabled={prefsCtl.setPromptAutocompleteAiEnabled}
+                                                    taskCardDensity={prefsCtl.taskCardDensity}
+                                                    setTaskCardDensity={prefsCtl.setTaskCardDensity}
+                                                    historyGrouping={prefsCtl.historyGrouping}
+                                                    setHistoryGrouping={prefsCtl.setHistoryGrouping}
+                                                    dirty={prefsCtl.appearanceDirty}
+                                                    saving={prefsCtl.appearanceSaving}
+                                                    onSave={prefsCtl.handleSaveAppearance}
+                                                    onCancel={prefsCtl.handleCancelAppearance}
+                                                    sources={sources}
+                                                    isDefaultValue={isDefaultValue}
+                                                />
                                             )}
 
                                             {/* ── Workspace Features ── */}
                                             {settingsSubTab === 'features' && (
-                                                <SettingsCard
-                                                    title="Workspace Features"
-                                                    description="Enable or disable optional dashboard features."
-                                                    dirty={featuresDirty}
-                                                    saving={featuresSaving}
-                                                    onSave={handleSaveFeatures}
-                                                    onCancel={handleCancelFeatures}
-                                                    data-testid="settings-features"
-                                                >
-                                                    <div className="ar-feature-search">
-                                                        <span className="ar-feature-search-icon" aria-hidden="true">🔍</span>
-                                                        <input
-                                                            type="text"
-                                                            className="ar-input ar-full"
-                                                            placeholder="Search features…"
-                                                            value={featureSearch}
-                                                            onChange={e => setFeatureSearch(e.target.value)}
-                                                            aria-label="Search features"
-                                                            data-testid="feature-search-input"
-                                                        />
-                                                        {featureSearch && (
-                                                            <button
-                                                                type="button"
-                                                                className="ar-feature-search-clear"
-                                                                onClick={() => setFeatureSearch('')}
-                                                                title="Clear search"
-                                                                aria-label="Clear search"
-                                                                data-testid="feature-search-clear"
-                                                            >
-                                                                ✕
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                    {(() => {
-                                                        // Case-insensitive substring match against label + hint.
-                                                        // Whitespace-only query is treated as empty (full list).
-                                                        const query = featureSearch.trim().toLowerCase();
-                                                        const groups = FEATURE_CARD_GROUPS
-                                                            .map(group => ({
-                                                                group,
-                                                                defs: getFeatureCardSettings(group.id).filter(def => {
-                                                                    const ui = def.ui!;
-                                                                    // dependsOn-hidden rows never appear, regardless of text match.
-                                                                    if (ui.dependsOn && featureValues[ui.dependsOn] !== true) return false;
-                                                                    if (!query) return true;
-                                                                    return ui.label.toLowerCase().includes(query)
-                                                                        || ui.hint.toLowerCase().includes(query);
-                                                                }),
-                                                            }))
-                                                            .filter(entry => entry.defs.length > 0);
-
-                                                        if (query && groups.length === 0) {
-                                                            return (
-                                                                <div className="ar-feature-empty" data-testid="feature-search-empty">
-                                                                    No features match.
-                                                                </div>
-                                                            );
-                                                        }
-
-                                                        return groups.map(({ group, defs }) => (
-                                                            <div className="ar-feature-group" data-testid={group.testId} key={group.id}>
-                                                                <div className="ar-feature-group-head">{group.heading}</div>
-                                                                {defs.map(def => {
-                                                                    const ui = def.ui!;
-                                                                    const badge = ui.badge ? FEATURE_BADGES[ui.badge] : undefined;
-                                                                    const name = badge
-                                                                        ? <>{ui.label} <span className={badge.className}>{badge.label}</span></>
-                                                                        : ui.label;
-                                                                    return (
-                                                                        <AdminRow key={def.key} name={name} hint={ui.hint}>
-                                                                            <SourceBadge source={sources[def.key]} isDefault={isDefaultValue(def.key)} />
-                                                                            {ui.control?.type === 'select' ? (
-                                                                                <select
-                                                                                    className="ar-select ar-med"
-                                                                                    value={String(featureValues[def.key] ?? '')}
-                                                                                    onChange={e => setFeatureValues(prev => ({ ...prev, [def.key]: e.target.value }))}
-                                                                                    data-testid={ui.testId}
-                                                                                >
-                                                                                    {ui.control.options.map(option => (
-                                                                                        <option key={option.value} value={option.value}>{option.label}</option>
-                                                                                    ))}
-                                                                                </select>
-                                                                            ) : (
-                                                                                <AdminToggle
-                                                                                    checked={featureValues[def.key] === true}
-                                                                                    onChange={checked => setFeatureValues(prev => ({ ...prev, [def.key]: checked }))}
-                                                                                    data-testid={ui.testId}
-                                                                                />
-                                                                            )}
-                                                                        </AdminRow>
-                                                                    );
-                                                                })}
-                                                            </div>
-                                                        ));
-                                                    })()}
-                                                </SettingsCard>
+                                                <FeatureSettingsCard
+                                                    featureValues={features.featureValues}
+                                                    setFeatureValues={features.setFeatureValues}
+                                                    featureSearch={features.featureSearch}
+                                                    setFeatureSearch={features.setFeatureSearch}
+                                                    dirty={features.featuresDirty}
+                                                    saving={features.featuresSaving}
+                                                    onSave={features.handleSaveFeatures}
+                                                    onCancel={features.handleCancelFeatures}
+                                                    sources={sources}
+                                                    isDefaultValue={isDefaultValue}
+                                                />
                                             )}
 
                                             {/* ── Link Handlers (Integrations) ── */}
@@ -1915,225 +664,27 @@ export function AdminPanel() {
 
                             {/* ── Data tab ── */}
                             {activeTab === 'data' && (
-                                <>
-                                    <section className="ar-card">
-                                        <div style={{ padding: 4 }}>
-                                            <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
-                                                <StorageSection />
-                                            </Suspense>
-                                        </div>
-                                    </section>
-
-                                    <section className="ar-card">
-                                        <header className="ar-card-head">
-                                            <div className="min-w-0 flex-1">
-                                                <h3>Backup</h3>
-                                                <p className="ar-card-desc">Export everything as JSON or restore from a previous export.</p>
-                                            </div>
-                                        </header>
-                                        <div className="ar-card-body">
-                                            <AdminRow
-                                                name="Export all data"
-                                                hint="Includes processes, workspaces, wikis, and preferences. Tokens are not exported."
-                                            >
-                                                <button id="admin-export-btn" type="button" className="ar-btn ar-btn-secondary ar-btn-sm" onClick={handleExport}>
-                                                    Export JSON ↓
-                                                </button>
-                                                {exportStatus && <span id="admin-export-status" className="ar-muted" style={{ fontSize: 12 }}>{exportStatus}</span>}
-                                            </AdminRow>
-                                            <AdminRow
-                                                name="Import from JSON"
-                                                hint="Replace wipes existing rows; merge adds and updates only."
-                                            >
-                                                <div className="ar-hstack">
-                                                    <AdminSeg<'replace' | 'merge'>
-                                                        value={importMode}
-                                                        onChange={setImportMode}
-                                                        aria-label="Import mode"
-                                                        options={[
-                                                            { value: 'replace', label: 'Replace', testId: 'import-mode-replace' },
-                                                            { value: 'merge', label: 'Merge', testId: 'import-mode-merge' },
-                                                        ]}
-                                                    />
-                                                    <input
-                                                        id="admin-import-file"
-                                                        type="file"
-                                                        accept=".json,application/json"
-                                                        className="ar-input"
-                                                        style={{ padding: '4px 8px', fontSize: 12 }}
-                                                        onChange={e => setImportFile(e.target.files?.[0] ?? null)}
-                                                    />
-                                                    <button id="admin-import-preview-btn" type="button" className="ar-btn ar-btn-ghost ar-btn-sm" onClick={handlePreviewImport}>Preview</button>
-                                                    <button id="admin-import-btn" type="button" className="ar-btn ar-btn-primary ar-btn-sm" onClick={handleImport}>Import</button>
-                                                    {importStatus && <span id="admin-import-status" className="ar-muted" style={{ fontSize: 12 }}>{importStatus}</span>}
-                                                </div>
-                                            </AdminRow>
-                                            {importPreview && (
-                                                <div className="ar-section">
-                                                    <pre id="admin-import-preview" className="ar-pre">{importPreview}</pre>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </section>
-
-                                    <section className="ar-card is-danger">
-                                        <header className="ar-card-head">
-                                            <div className="min-w-0 flex-1">
-                                                <h3>Danger Zone</h3>
-                                                <p className="ar-card-desc">Permanent destructive operations. Always preview before confirming.</p>
-                                            </div>
-                                            <div className="ar-badge-row">
-                                                <span className="ar-badge ar-badge-danger">Irreversible</span>
-                                            </div>
-                                        </header>
-                                        <div className="ar-card-body">
-                                            <AdminRow
-                                                name="Erase everything"
-                                                hint="Deletes every process, conversation, and workspace. Tokens and preferences are kept."
-                                            >
-                                                <label className="ar-hstack" style={{ fontSize: 12, color: 'var(--ar-text-mute)', cursor: 'pointer' }}>
-                                                    <input
-                                                        id="admin-include-wikis"
-                                                        type="checkbox"
-                                                        checked={includeWikis}
-                                                        onChange={e => setIncludeWikis(e.target.checked)}
-                                                        style={{ accentColor: 'var(--ar-danger)' }}
-                                                    />
-                                                    Include wikis
-                                                </label>
-                                                <button id="admin-preview-wipe" type="button" className="ar-btn ar-btn-ghost ar-btn-sm" onClick={handlePreviewWipe}>Preview</button>
-                                                {wipeToken === null ? (
-                                                    <button id="admin-wipe-btn" type="button" className="ar-btn ar-btn-danger-outline ar-btn-sm" onClick={handleWipeStep1}>Wipe Data</button>
-                                                ) : (
-                                                    <>
-                                                        <button id="admin-wipe-confirm" type="button" className="ar-btn ar-btn-danger ar-btn-sm" onClick={handleWipeConfirm}>Confirm Wipe</button>
-                                                        <button id="admin-wipe-cancel" type="button" className="ar-btn ar-btn-ghost ar-btn-sm" onClick={handleWipeCancel}>Cancel</button>
-                                                    </>
-                                                )}
-                                                {wipeStatus && <span id="admin-wipe-status" className="ar-muted" style={{ fontSize: 12 }}>{wipeStatus}</span>}
-                                            </AdminRow>
-                                            {wipePreview && (
-                                                <div className="ar-section">
-                                                    <pre id="admin-wipe-preview" className="ar-pre">{wipePreview}</pre>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </section>
-                                </>
+                                <DataOperationsPanel addToast={addToast} onDataChanged={loadStats} />
                             )}
 
                             {/* ── Server tab ── */}
                             {activeTab === 'server' && (
-                                <>
-                                    <section className="ar-card">
-                                        <header className="ar-card-head">
-                                            <div className="min-w-0 flex-1">
-                                                <h3>Runtime</h3>
-                                                <p className="ar-card-desc">Live information about this server process.</p>
-                                            </div>
-                                            <div className="ar-badge-row">
-                                                <span className="ar-pill"><span className="ar-pill-dot" /> Healthy</span>
-                                            </div>
-                                        </header>
-                                        <div className="ar-card-body">
-                                            {config?.configFilePath && (
-                                                <AdminRow name="Config file">
-                                                    <code className="ar-code">{config.configFilePath}</code>
-                                                </AdminRow>
-                                            )}
-                                            <AdminRow name="Listening on">
-                                                <code className="ar-code">{resolved.serve?.host ?? '127.0.0.1'}:{resolved.serve?.port ?? '4000'}</code>
-                                            </AdminRow>
-                                            {resolved.serve?.dataDir && (
-                                                <AdminRow name="Data directory">
-                                                    <code className="ar-code">{resolved.serve.dataDir}</code>
-                                                </AdminRow>
-                                            )}
-                                            {versionInfo && (
-                                                <AdminRow name="Version">
-                                                    <code className="ar-code">{versionInfo.version}</code>
-                                                    <span className="ar-muted" style={{ fontSize: 12 }}>commit</span>
-                                                    <code className="ar-code" title={versionInfo.commit}>{versionInfo.commit.slice(0, 7)}</code>
-                                                </AdminRow>
-                                            )}
-                                        </div>
-                                    </section>
-
-                                    <section className="ar-card">
-                                        <header className="ar-card-head">
-                                            <div className="min-w-0 flex-1">
-                                                <h3>Display name</h3>
-                                                <p className="ar-card-desc">
-                                                    Short name shown in the dashboard title bar (e.g. <code className="ar-code">MBP</code>). Leave blank to use the auto-shortened hostname. Takes effect on next page reload.
-                                                </p>
-                                            </div>
-                                        </header>
-                                        <div className="ar-card-body">
-                                            <AdminRow name="Name">
-                                                <input
-                                                    id="admin-server-name"
-                                                    type="text"
-                                                    maxLength={64}
-                                                    placeholder={resolved.serve?.host ? `auto (${resolved.serve.host})` : 'auto'}
-                                                    value={serverName}
-                                                    onChange={e => setServerName(e.target.value)}
-                                                    onKeyDown={e => { if (e.key === 'Enter') handleSaveServerName(); }}
-                                                    className="ar-input ar-long ar-mono"
-                                                />
-                                                <SourceBadge source={sources['serve.serverName']} isDefault={isDefaultValue('serve.serverName')} />
-                                                <button id="admin-server-name-save" type="button" className="ar-btn ar-btn-primary ar-btn-sm" onClick={handleSaveServerName}>Save</button>
-                                            </AdminRow>
-                                        </div>
-                                    </section>
-
-                                    {!isContainerMode() && (
-                                        <section className="ar-card">
-                                            <header className="ar-card-head">
-                                                <div className="min-w-0 flex-1">
-                                                    <h3>Container Link</h3>
-                                                    <p className="ar-card-desc">
-                                                        Connect this agent to a container server using the call-home pattern. The agent connects outbound via WebSocket — no inbound port required.
-                                                    </p>
-                                                </div>
-                                            </header>
-                                            <Suspense fallback={<div style={{ padding: 16 }}><Spinner size="sm" /></div>}>
-                                                <ContainerLinkSection onError={msg => addToast(msg, 'error')} />
-                                            </Suspense>
-                                        </section>
-                                    )}
-
-                                    <section className="ar-card">
-                                        <header className="ar-card-head">
-                                            <div className="min-w-0 flex-1">
-                                                <h3>Lifecycle</h3>
-                                                <p className="ar-card-desc">Rebuild and restart the CoC server process. Active sessions reconnect automatically.</p>
-                                            </div>
-                                        </header>
-                                        <div className="ar-card-body">
-                                            {/* Hidden in the Electron desktop shell: exit-75 restart has no
-                                                supervisor there, so the server never comes back. Drop the
-                                                whole row rather than leave an empty one. */}
-                                            {!isDesktop && (
-                                                <AdminRow
-                                                    name="Rebuild & restart"
-                                                    hint="Runs npm rebuild and re-launches the server."
-                                                >
-                                                    <button
-                                                        id="admin-restart-btn"
-                                                        type="button"
-                                                        className="ar-btn ar-btn-secondary ar-btn-sm"
-                                                        onClick={handleRestart}
-                                                        disabled={restarting}
-                                                    >
-                                                        {restarting && <Spinner size="sm" />}
-                                                        {restarting ? 'Restarting…' : 'Rebuild & Restart'}
-                                                    </button>
-                                                    {restartStatus && <span id="admin-restart-status" className="ar-muted" style={{ fontSize: 12 }}>{restartStatus}</span>}
-                                                </AdminRow>
-                                            )}
-                                        </div>
-                                    </section>
-                                </>
+                                <ServerRuntimePanel
+                                    config={config}
+                                    resolved={resolved}
+                                    versionInfo={versionInfo}
+                                    isContainer={isContainerMode()}
+                                    isDesktop={isDesktop}
+                                    sources={sources}
+                                    isDefaultValue={isDefaultValue}
+                                    addToast={addToast}
+                                    serverName={serverRuntime.serverName}
+                                    setServerName={serverRuntime.setServerName}
+                                    handleSaveServerName={serverRuntime.handleSaveServerName}
+                                    restarting={serverRuntime.restarting}
+                                    restartStatus={serverRuntime.restartStatus}
+                                    handleRestart={serverRuntime.handleRestart}
+                                />
                             )}
 
                             {/* ── Prompts tab ── */}
@@ -2161,30 +712,30 @@ export function AdminPanel() {
 
                             {activeTab === 'agents' && !isContainerMode() && (
                                 <AIProviderPage
-                                    defaultProvider={defaultProvider}
-                                    setDefaultProvider={setDefaultProvider}
-                                    codexEnabled={codexEnabled}
-                                    setCodexEnabled={setCodexEnabled}
-                                    claudeEnabled={claudeEnabled}
-                                    setClaudeEnabled={setClaudeEnabled}
-                                    opencodeEnabled={opencodeEnabled}
-                                    setOpencodeEnabled={setOpencodeEnabled}
-                                    autoAgentProviderRoutingEnabled={autoAgentProviderRoutingEnabled}
-                                    setAutoAgentProviderRoutingEnabled={setAutoAgentProviderRoutingEnabled}
-                                    autoRoutingConfig={autoRoutingConfig}
-                                    setAutoRoutingConfig={setAutoRoutingConfig}
-                                    providerAvailability={providerAvailability}
-                                    sdkInstallStatuses={sdkInstallStatuses}
-                                    sdkInstallErrors={sdkInstallErrors}
-                                    onInstallSdk={handleInstallSdk}
-                                    dirty={defaultProviderDirty}
-                                    saving={defaultProviderSaving}
-                                    onSave={handleSaveDefaultProvider}
-                                    onCancel={handleCancelDefaultProvider}
-                                    quotaData={quotaData}
-                                    quotaLoading={quotaLoading}
-                                    quotaError={quotaError}
-                                    onRefreshQuota={handleRefreshQuota}
+                                    defaultProvider={providers.defaultProvider}
+                                    setDefaultProvider={providers.setDefaultProvider}
+                                    codexEnabled={providers.codexEnabled}
+                                    setCodexEnabled={providers.setCodexEnabled}
+                                    claudeEnabled={providers.claudeEnabled}
+                                    setClaudeEnabled={providers.setClaudeEnabled}
+                                    opencodeEnabled={providers.opencodeEnabled}
+                                    setOpencodeEnabled={providers.setOpencodeEnabled}
+                                    autoAgentProviderRoutingEnabled={providers.autoAgentProviderRoutingEnabled}
+                                    setAutoAgentProviderRoutingEnabled={providers.setAutoAgentProviderRoutingEnabled}
+                                    autoRoutingConfig={providers.autoRoutingConfig}
+                                    setAutoRoutingConfig={providers.setAutoRoutingConfig}
+                                    providerAvailability={providers.providerAvailability}
+                                    sdkInstallStatuses={providers.sdkInstallStatuses}
+                                    sdkInstallErrors={providers.sdkInstallErrors}
+                                    onInstallSdk={providers.handleInstallSdk}
+                                    dirty={providers.defaultProviderDirty}
+                                    saving={providers.defaultProviderSaving}
+                                    onSave={providers.handleSaveDefaultProvider}
+                                    onCancel={providers.handleCancelDefaultProvider}
+                                    quotaData={providers.quotaData}
+                                    quotaLoading={providers.quotaLoading}
+                                    quotaError={providers.quotaError}
+                                    onRefreshQuota={providers.handleRefreshQuota}
                                     sources={sources}
                                 />
                             )}
