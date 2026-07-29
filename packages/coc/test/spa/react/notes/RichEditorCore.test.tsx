@@ -56,10 +56,12 @@ vi.mock('@tiptap/extension-code-block-lowlight', () => ({
         },
     },
 }));
-vi.mock('lowlight', () => ({
-    createLowlight: () => mockLowlightRegistry,
-    common: {},
-}));
+// RichEditorCore imports the shared 16-language registry from notesLowlight;
+// stub it so the swap can assert CodeBlockLowlight is wired to that instance.
+vi.mock(
+    '../../../../src/server/spa/client/react/features/notes/editor/extensions/notesLowlight',
+    () => ({ notesLowlight: mockLowlightRegistry }),
+);
 vi.mock('@tiptap/extension-task-list', () => ({ TaskList: {} }));
 vi.mock('@tiptap/extension-task-item', () => ({ TaskItem: { configure: () => ({}) } }));
 vi.mock('@tiptap/extension-link', () => ({

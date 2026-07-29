@@ -1,15 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { createLowlight, common } from 'lowlight';
+import {
+    notesLowlight,
+    NOTES_CODE_LANGUAGES,
+    resolveCodeLanguage,
+} from '../../../../src/server/spa/client/react/features/notes/editor/extensions/notesLowlight';
 
 /**
- * Guards the lowlight registry that backs the Notes editor's CodeBlockLowlight
- * extension (RichEditorCore.tsx). These assert the two things the feature relies
- * on at the grammar level:
- *   - AC-01: highlighting a snippet emits `.hljs-*` token spans (which the
- *     globally-loaded github / github-dark stylesheets color live).
- *   - AC-02: an explicit fence language (e.g. `cpp`) is honored, and lowlight
- *     auto-detection colors a block with no language.
- * `common` (not `all`) must include C/C++, Python, JS/TS, Go, Rust.
+ * Guards the shared lowlight registry that backs the Notes editor's
+ * CodeBlockLowlight extension (RichEditorCore.tsx). Per the feature spec this
+ * registers exactly the 16 highlight.js grammars the Git diff viewer uses —
+ * deliberately NOT lowlight's `common` bundle — and disables auto-detection so a
+ * block with no language renders plain.
+ *   - AC-01: highlighting a known-language snippet emits `.hljs-*` token spans
+ *     (colored live by the globally-loaded github / github-dark stylesheets);
+ *     a block with no language is NOT auto-highlighted.
+ *   - AC-03: fence aliases (ts, py, sh, yml, rs, …) resolve to registered langs.
  */
 
 // Walk a hast tree and collect every className token on element nodes.
@@ -25,33 +30,33 @@ function collectClassNames(node: any, out: string[] = []): string[] {
 const CPP_SNIPPET = [
     '// launch the kernel',
     'int main() {',
-    '    dim3 grid(16, 16);',
     '    const char* msg = "hello";',
     '    return 0;',
     '}',
 ].join('\n');
 
 describe('notes code-block lowlight registry', () => {
-    const lowlight = createLowlight(common);
+    it('registers exactly the 16 supported grammars', () => {
+        for (const { value } of NOTES_CODE_LANGUAGES) {
+            expect(notesLowlight.registered(value)).toBe(true);
+        }
+        expect(notesLowlight.listLanguages().sort()).toEqual(
+            NOTES_CODE_LANGUAGES.map((l) => l.value).sort(),
+        );
+    });
 
-    it('bundles the common language set (C++, Python, JS/TS, Go, Rust)', () => {
-        for (const lang of ['cpp', 'python', 'javascript', 'typescript', 'go', 'rust']) {
-            expect(lowlight.registered(lang)).toBe(true);
+    it('does NOT bundle lowlight `common` grammars outside the 16 (php, ruby, sql)', () => {
+        // These ship in lowlight's `common` set but are intentionally excluded —
+        // guards the decision against a future accidental `createLowlight(common)`.
+        for (const lang of ['php', 'ruby', 'sql', 'kotlin', 'swift', 'perl']) {
+            expect(notesLowlight.registered(lang)).toBe(false);
         }
     });
 
-    it('does not register a CUDA grammar (cpp is the documented closest match)', () => {
-        // CUDA is not a highlight.js language; the feature deliberately maps such
-        // snippets to `cpp`. Guards the decision against a future accidental add.
-        expect(lowlight.registered('cuda')).toBe(false);
-        expect(lowlight.registered('cpp')).toBe(true);
-    });
-
-    it('AC-02: honors an explicit `cpp` fence, coloring keywords, strings, and comments', () => {
-        const tree = lowlight.highlight('cpp', CPP_SNIPPET);
+    it('AC-01: honors an explicit language, coloring keywords, strings, and comments', () => {
+        const tree = notesLowlight.highlight('cpp', CPP_SNIPPET);
         const classes = collectClassNames(tree);
 
-        // Every token span carries an hljs-prefixed class the theme stylesheets color.
         expect(classes.length).toBeGreaterThan(0);
         expect(classes.every((c) => c.startsWith('hljs-'))).toBe(true);
         expect(classes).toContain('hljs-keyword'); // int / return / const
@@ -59,11 +64,48 @@ describe('notes code-block lowlight registry', () => {
         expect(classes).toContain('hljs-comment'); // // launch the kernel
     });
 
-    it('AC-02: auto-detects a language and still emits colored tokens with no fence', () => {
-        const tree = lowlight.highlightAuto(CPP_SNIPPET);
-        const classes = collectClassNames(tree);
+    it('AC-01: does not auto-detect — a block with no language emits no token nodes', () => {
+        // The extension calls highlightAuto() when a block has no resolvable
+        // language; our registry overrides it to a no-op so the block stays plain.
+        const tree = notesLowlight.highlightAuto(CPP_SNIPPET) as any;
+        expect(collectClassNames(tree)).toEqual([]);
+        expect(tree.children).toEqual([]);
+    });
+});
 
-        expect(classes.length).toBeGreaterThan(0);
-        expect(classes.some((c) => c.startsWith('hljs-'))).toBe(true);
+describe('resolveCodeLanguage (AC-03 alias map)', () => {
+    it('maps common fence aliases to their registered grammar', () => {
+        const cases: Record<string, string> = {
+            ts: 'typescript',
+            tsx: 'typescript',
+            js: 'javascript',
+            jsx: 'javascript',
+            py: 'python',
+            sh: 'bash',
+            zsh: 'bash',
+            yml: 'yaml',
+            rs: 'rust',
+            htm: 'xml',
+            html: 'xml',
+            'c++': 'cpp',
+            'c#': 'csharp',
+        };
+        for (const [alias, lang] of Object.entries(cases)) {
+            expect(resolveCodeLanguage(alias)).toBe(lang);
+        }
+    });
+
+    it('passes through canonical names and is case-insensitive / prefix-tolerant', () => {
+        expect(resolveCodeLanguage('typescript')).toBe('typescript');
+        expect(resolveCodeLanguage('TypeScript')).toBe('typescript');
+        expect(resolveCodeLanguage('language-python')).toBe('python');
+    });
+
+    it('returns null for unknown, empty, or missing tokens', () => {
+        expect(resolveCodeLanguage('brainfuck')).toBeNull();
+        expect(resolveCodeLanguage('')).toBeNull();
+        expect(resolveCodeLanguage('   ')).toBeNull();
+        expect(resolveCodeLanguage(null)).toBeNull();
+        expect(resolveCodeLanguage(undefined)).toBeNull();
     });
 });
