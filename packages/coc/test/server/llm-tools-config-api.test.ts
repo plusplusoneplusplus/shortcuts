@@ -261,15 +261,6 @@ describe('LLM Tools Config API endpoints', () => {
             expect(createWi.find(p => p.name === 'workItemNumber')).toEqual({ name: 'workItemNumber', type: 'any', required: false });
         });
 
-        it('omits param metadata for tools without an available schema', async () => {
-            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`);
-            const data = res.json();
-            const memory = data.tools.find((t: any) => t.name === 'memory');
-            // The built-in memory tool has no locally-declared schema -> field absent.
-            expect(memory).toBeTruthy();
-            expect(memory.params).toBeUndefined();
-        });
-
         it('preserves the existing tool contract fields unchanged', async () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`);
             const data = res.json();

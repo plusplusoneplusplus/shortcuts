@@ -1,6 +1,6 @@
 # Memory System
 
-Bounded, file-backed persistence layer that lets AI chat sessions learn from past interactions. The AI writes `memory` tool calls (add/replace/remove), which are applied to `MEMORY.md`; the frozen snapshot is injected into subsequent prompts.
+Bounded, file-backed persistence layer that lets AI chat sessions learn from past interactions. Durable facts are captured through the Memory V2 tools (`save_memory` / `recall_memory`) and a frozen snapshot is injected into subsequent prompts.
 
 ## Storage Layout
 
@@ -19,7 +19,6 @@ Bounded, file-backed persistence layer that lets AI chat sessions learn from pas
 | `bounded-memory-store.ts` | `BoundedMemoryStore` | File-backed store with add/replace/remove, appendEntries (promotion), normalized duplicate checks, substring matching, char limits, `§` delimiters, mkdir-based file locking |
 | `memory-security-scanner.ts` | `scanMemoryContent`, `redactSensitiveValues`, `SECURITY_PATTERNS_DESCRIPTION` | Compatibility re-exports of the canonical scanner in `@plusplusoneplusplus/coc-memory` (`safety-scanner.ts`). Blocks prompt injection, exfiltration, SSH persistence, CoC-env access, credential literals (API keys, Bearer/Basic tokens, password assignments, connection strings), and invisible Unicode. Do not fork the patterns here — extend the canonical module |
 | `memory-prompt-builder.ts` | `MemoryPromptBuilder`, `MEMORY_GUIDANCE` | Frozen snapshot builder: reads store at construction, renders `═══`-separated blocks with usage headers |
-| `memory-tool.ts` | `createMemoryTool` | Factory returning AI-callable `memory` tool; supports `bounded` mode (direct MEMORY.md mutation) and `capture` mode (candidate append) |
 | `memory-candidate-store.ts` | `MemoryCandidateStore` | SQLite candidate lifecycle: pending/promoted/dropped/ignored statuses, signal counts, provenance, explicit intent |
 | `memory-candidate-ranking.ts` | `rankMemoryCandidates` | Pure deterministic ranking: frequency, relevance, diversity, recency, consolidation, explicit intent |
 | `repo-hash.ts` | `computeRepoHash` | Stable 16-char hex hash for repository paths |
@@ -27,17 +26,16 @@ Bounded, file-backed persistence layer that lets AI chat sessions learn from pas
 ## Usage Pattern
 
 ```typescript
-import { MemoryPromptBuilder, BoundedMemoryStore, createMemoryTool } from 'forge';
+import { MemoryPromptBuilder, BoundedMemoryStore } from 'forge';
 
 const repoStore = new BoundedMemoryStore({ filePath: '~/.coc/repos/<id>/memory/MEMORY.md' });
 const sysStore = new BoundedMemoryStore({ filePath: '~/.coc/memory/system/MEMORY.md' });
 await repoStore.load();
 const builder = new MemoryPromptBuilder({ store: repoStore, systemStore: sysStore });
 const block = builder.getSystemPromptBlock(); // inject into system prompt
-
-const { tool } = createMemoryTool({ memory: repoStore, system: sysStore });
-// Pass tool to AI session's available tools...
 ```
+
+Memory writes are handled by the Memory V2 tools (`save_memory` / `recall_memory`); see the Memory V2 section below.
 
 ## Capture Mode
 
@@ -125,6 +123,6 @@ The dashboard Memory route uses `MemoryV2Panel` with Facts, Review, and Episodes
 ## Key Design Decisions
 
 - Memory is **caller-side opt-in** — the AI invoker is never modified
-- Capture uses a **tool** (`memory` via `defineTool`), not a follow-up prompt
+- Memory writes use **tools** (`save_memory` / `recall_memory` via `defineTool`), not a follow-up prompt
 - `MemoryPromptBuilder` preserves LLM prefix cache stability (frozen snapshot)
 - `appendEntries()` is the trusted promotion path; `setEntries()` is explicit rewrite

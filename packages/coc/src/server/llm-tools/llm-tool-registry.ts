@@ -95,12 +95,6 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         enabledByDefault: true,
     },
     {
-        name: 'memory',
-        label: 'Memory',
-        description: 'Reads and writes persistent memory entries across sessions.',
-        enabledByDefault: true,
-    },
-    {
         name: 'save_memory',
         label: 'Save Memory (V2)',
         description: 'Explicitly stores a new fact in the redesigned memory system.',

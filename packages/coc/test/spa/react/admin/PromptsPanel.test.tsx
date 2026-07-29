@@ -54,13 +54,13 @@ const MOCK_PROMPTS = {
         description: 'System message blocking file edits',
         text: 'You are in read-only mode.',
     },
-    'memory-tool-schema': {
-        id: 'memory-tool-schema',
-        title: 'Memory Tool Schema',
+    'memory-security-patterns': {
+        id: 'memory-security-patterns',
+        title: 'Memory — Security Scanning Patterns',
         group: 'Memory',
-        source: 'forge/memory/memory-tool.ts',
-        description: 'Schema for write_memory tool',
-        text: 'The write_memory tool schema.',
+        source: 'forge/memory/memory-security.ts',
+        description: 'Injection/exfiltration patterns blocked before memory writes',
+        text: 'The memory security scanning patterns.',
     },
     'follow-up-suggestions': {
         id: 'follow-up-suggestions',
@@ -96,7 +96,7 @@ describe('PromptsPanel', () => {
 
         // Prompt titles
         expect(screen.getByText('Read-only Mode')).toBeDefined();
-        expect(screen.getByText('Memory Tool Schema')).toBeDefined();
+        expect(screen.getByText('Memory — Security Scanning Patterns')).toBeDefined();
         expect(screen.getByText('Follow-up Suggestions')).toBeDefined();
     });
 
