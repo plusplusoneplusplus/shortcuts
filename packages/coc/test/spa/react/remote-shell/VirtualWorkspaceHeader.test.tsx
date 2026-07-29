@@ -18,6 +18,13 @@ let mockSchedulesInScheduledSlideEnabled = false;
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: { activeRepoSubTab: mockActiveRepoSubTab }, dispatch: mockDispatch }),
 }));
+vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
+    useQueue: () => ({ state: { selectedTaskIdByRepo: {} } }),
+}));
+vi.mock('../../../../src/server/spa/client/react/layout/Router', async () => {
+    const routes = await import('../../../../src/server/spa/client/react/layout/dashboardRoutes');
+    return { buildRepoSubTabSuffix: routes.buildRepoSubTabSuffix };
+});
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSchedulesInScheduledSlideEnabled', () => ({
     useSchedulesInScheduledSlideEnabled: () => mockSchedulesInScheduledSlideEnabled,
 }));
