@@ -146,7 +146,7 @@ export function MyWorkTodayTab({ workspaceId, active = true }: MyWorkTodayTabPro
     };
 
     return (
-        <div className="flex flex-col h-full min-h-0 overflow-auto p-4 gap-4" data-testid="my-work-today-tab">
+        <div className="flex flex-col h-full min-h-0 overflow-auto p-4 gap-4 text-gray-900 dark:text-gray-100" data-testid="my-work-today-tab">
             <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Today</h2>
                 {totalCount > 0 && (
