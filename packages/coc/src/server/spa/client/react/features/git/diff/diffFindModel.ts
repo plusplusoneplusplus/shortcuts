@@ -107,6 +107,15 @@ export interface LineMatchRange {
 }
 
 /**
+ * Shared Tailwind class strings for the find-match overlay, reused by both
+ * viewers (and injected into hljs HTML by `applyMatchHighlights`) so match
+ * highlighting reads correctly in light and dark themes. The active match is
+ * emphasized with a distinct, stronger background.
+ */
+export const MATCH_HIGHLIGHT_CLASS = 'bg-[#ffe066] text-black dark:bg-[#8a6d00] dark:text-white rounded-[2px]';
+export const ACTIVE_MATCH_HIGHLIGHT_CLASS = 'bg-[#ff9e2c] text-black dark:bg-[#c2410c] dark:text-white rounded-[2px]';
+
+/**
  * Group matches by their containing line so a row renderer can look up the
  * ranges for a given line in O(1). The match at `activeIndex` (into the flat
  * `matches` array) is flagged `active` so the viewer can emphasize it.
@@ -212,4 +221,57 @@ export function applyMatchHighlights(
 
     closeMark();
     return out;
+}
+
+/** One rendered segment of a word-diff line, carrying both its intra-line
+ * change state and its find-match state so the renderer can style them as a
+ * single span. */
+export interface IntraMatchSegment {
+    text: string;
+    /** True when the segment is part of a word-level intra-line change. */
+    changed: boolean;
+    /** Find-match state: not a match, a match, or the active match. */
+    match: 'none' | 'match' | 'active';
+}
+
+/**
+ * Overlay find-match ranges onto the word-level intra-line diff parts of a line
+ * (the React-node render path, not the hljs-HTML path). The concatenated part
+ * texts equal the line content (each character = one offset), so the `start`/
+ * `end` offsets from `computeDiffMatches` index directly into it. Splits parts
+ * at range boundaries and coalesces runs sharing the same (changed, match)
+ * state so the renderer emits a minimal number of spans.
+ */
+export function splitIntraPartsByRanges(
+    parts: { text: string; changed: boolean }[],
+    ranges: LineMatchRange[],
+): IntraMatchSegment[] {
+    if (ranges.length === 0) {
+        return parts.map(p => ({ text: p.text, changed: p.changed, match: 'none' as const }));
+    }
+    const matchAt = (off: number): 'none' | 'match' | 'active' => {
+        for (const r of ranges) {
+            if (off >= r.start && off < r.end) return r.active ? 'active' : 'match';
+        }
+        return 'none';
+    };
+    const segs: IntraMatchSegment[] = [];
+    let offset = 0;
+    for (const part of parts) {
+        const len = part.text.length;
+        if (len === 0) { continue; }
+        let runStart = 0;
+        let runState = matchAt(offset);
+        for (let k = 1; k < len; k++) {
+            const st = matchAt(offset + k);
+            if (st !== runState) {
+                segs.push({ text: part.text.slice(runStart, k), changed: part.changed, match: runState });
+                runStart = k;
+                runState = st;
+            }
+        }
+        segs.push({ text: part.text.slice(runStart), changed: part.changed, match: runState });
+        offset += len;
+    }
+    return segs;
 }

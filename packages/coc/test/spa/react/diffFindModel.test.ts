@@ -18,6 +18,7 @@ import {
     applyMatchHighlights,
     isSearchableLine,
     lineSearchText,
+    splitIntraPartsByRanges,
     type DiffMatch,
 } from '../../../src/server/spa/client/react/features/git/diff/diffFindModel';
 
@@ -187,5 +188,51 @@ describe('applyMatchHighlights', () => {
 
     it('returns the input unchanged when there are no ranges', () => {
         expect(applyMatchHighlights('foo', [], 'm', 'am')).toBe('foo');
+    });
+});
+
+describe('splitIntraPartsByRanges', () => {
+    it('passes parts through untouched when there are no ranges', () => {
+        const parts = [{ text: 'foo', changed: false }, { text: 'bar', changed: true }];
+        expect(splitIntraPartsByRanges(parts, [])).toEqual([
+            { text: 'foo', changed: false, match: 'none' },
+            { text: 'bar', changed: true, match: 'none' },
+        ]);
+    });
+
+    it('splits a single part at a match boundary', () => {
+        // "foobar", match "bar" at offsets 3..6.
+        const parts = [{ text: 'foobar', changed: false }];
+        expect(splitIntraPartsByRanges(parts, [{ start: 3, end: 6, active: false }])).toEqual([
+            { text: 'foo', changed: false, match: 'none' },
+            { text: 'bar', changed: false, match: 'match' },
+        ]);
+    });
+
+    it('flags the active match distinctly', () => {
+        const parts = [{ text: 'abcd', changed: true }];
+        expect(splitIntraPartsByRanges(parts, [{ start: 1, end: 3, active: true }])).toEqual([
+            { text: 'a', changed: true, match: 'none' },
+            { text: 'bc', changed: true, match: 'active' },
+            { text: 'd', changed: true, match: 'none' },
+        ]);
+    });
+
+    it('carries a match that spans two parts, preserving each part changed flag', () => {
+        // parts: "foo"(unchanged) + "BAR"(changed); match covers offsets 2..4 → "o" + "B".
+        const parts = [{ text: 'foo', changed: false }, { text: 'BAR', changed: true }];
+        expect(splitIntraPartsByRanges(parts, [{ start: 2, end: 4, active: false }])).toEqual([
+            { text: 'fo', changed: false, match: 'none' },
+            { text: 'o', changed: false, match: 'match' },
+            { text: 'B', changed: true, match: 'match' },
+            { text: 'AR', changed: true, match: 'none' },
+        ]);
+    });
+
+    it('skips empty parts', () => {
+        const parts = [{ text: '', changed: false }, { text: 'x', changed: true }];
+        expect(splitIntraPartsByRanges(parts, [{ start: 0, end: 1, active: false }])).toEqual([
+            { text: 'x', changed: true, match: 'match' },
+        ]);
     });
 });

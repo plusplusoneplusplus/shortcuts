@@ -13,6 +13,13 @@ import { DiffContextMenu } from '../../../tasks/comments/DiffContextMenu';
 import type { DiffCommentSelection, DiffComment } from '../../../../comments/diff-comment-types';
 import type { HunkCategory, HunkClassification } from '../../pull-requests/classification-types';
 import { CATEGORY_LABELS, HUNK_CATEGORIES, pickDominantClassification } from '../../pull-requests/classification-types';
+import {
+    applyMatchHighlights,
+    splitIntraPartsByRanges,
+    MATCH_HIGHLIGHT_CLASS,
+    ACTIVE_MATCH_HIGHLIGHT_CLASS,
+    type LineMatchRange,
+} from './diffFindModel';
 
 export interface UnifiedDiffViewerProps {
     diff: string;
@@ -56,6 +63,14 @@ export interface UnifiedDiffViewerProps {
     filePath?: string;
     getHunkClassification?: (filePath: string, hunkIndex: number) => HunkClassification | undefined;
     activeFilters?: Set<HunkCategory>;
+    /**
+     * In-diff Ctrl+F find highlight ranges, keyed by diff-line index. When a
+     * line has ranges they are overlaid as `<mark>` on top of the syntax-
+     * highlighted HTML (or the word-diff parts) with the active match
+     * emphasized. Off-screen (virtualized) lines still receive ranges so the
+     * full-model search stays correct; only mounted rows render them.
+     */
+    matchRangesByLine?: Map<number, LineMatchRange[]>;
 }
 
 /** Per-hunk metadata used to drive AC-02 collapsed summary rows. */
@@ -572,6 +587,12 @@ export interface UnifiedDiffViewerHandle {
     scrollToHunk: (index: number) => void;
     /** Scrolls to the first row of the given file in a multi-file diff. */
     scrollToFile: (filePath: string) => void;
+    /**
+     * Scrolls the diff-line at the given model index into view. Drives the
+     * virtualizer for off-screen rows so an in-diff find match on a virtualized
+     * line becomes visible; centers the row in the scroll viewport.
+     */
+    scrollLineIntoView: (lineIndex: number) => void;
 }
 
 /** Reusable up/down buttons for navigating between diff hunks. */
@@ -831,7 +852,7 @@ function getScrollableAncestor(el: HTMLElement): HTMLElement {
     return document.documentElement as HTMLElement;
 }
 
-export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiffViewerProps>(function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enableComments, showLineNumbers, hideFileHeaders, onLinesReady, onAddComment, onAskAI, onCopyAsContext, comments, onCommentClick, filePath, getHunkClassification, activeFilters }, ref) {
+export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiffViewerProps>(function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enableComments, showLineNumbers, hideFileHeaders, onLinesReady, onAddComment, onAskAI, onCopyAsContext, comments, onCommentClick, filePath, getHunkClassification, activeFilters, matchRangesByLine }, ref) {
     const lines = useMemo(() => diff.split('\n'), [diff]);
     const languages = useMemo(() => getLanguagesForLines(lines, fileName), [lines, fileName]);
     const diffLines = useMemo(() => computeDiffLines(lines), [lines]);
@@ -1015,6 +1036,10 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                     if (idx === undefined) return;
                     rowVirtualizer.scrollToIndex(idx, { align: 'start' });
                 },
+                scrollLineIntoView: (lineIndex: number) => {
+                    if (lineIndex < 0 || lineIndex >= lines.length) return;
+                    rowVirtualizer.scrollToIndex(lineIndex, { align: 'center' });
+                },
             };
         }
         return {
@@ -1081,6 +1106,19 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             const parentTop = scrollParent.getBoundingClientRect().top;
             scrollParent.scrollTo({
                 top: scrollParent.scrollTop + target.getBoundingClientRect().top - parentTop,
+                behavior: 'smooth',
+            });
+        },
+        scrollLineIntoView: (lineIndex: number) => {
+            const container = containerRef.current;
+            if (!container) return;
+            const el = container.querySelector<HTMLElement>(`[data-diff-line-index="${lineIndex}"]`);
+            if (!el) return;
+            const scrollParent = getScrollableAncestor(container);
+            const parentTop = scrollParent.getBoundingClientRect().top;
+            const centerOffset = scrollParent.clientHeight / 3;
+            scrollParent.scrollTo({
+                top: scrollParent.scrollTop + el.getBoundingClientRect().top - parentTop - centerOffset,
                 behavior: 'smooth',
             });
         },
@@ -1251,9 +1289,18 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                     const markClass = type === 'removed'
                         ? 'bg-[#f97575] dark:bg-[#b91c1c] rounded-[2px]'
                         : 'bg-[#34c759] dark:bg-[#166534] rounded-[2px]';
+                    // In-diff Ctrl+F find ranges for this line (empty/undefined for most).
+                    const matchRanges = matchRangesByLine?.get(i);
+                    const hasMatches = !!matchRanges && matchRanges.length > 0;
                     // Highlighting is precomputed once (computeHighlightedHtml) instead of
                     // calling highlightLine(content, languages[i]) per-line on every render.
-                    const html = intraParts ? null : highlightedHtml[i];
+                    // Find matches are overlaid as <mark> on top of the hljs HTML without
+                    // breaking its syntax spans (applyMatchHighlights).
+                    const html = intraParts
+                        ? null
+                        : (hasMatches
+                            ? applyMatchHighlights(highlightedHtml[i], matchRanges!, MATCH_HIGHLIGHT_CLASS, ACTIVE_MATCH_HIGHLIGHT_CLASS)
+                            : highlightedHtml[i]);
                     return (
                         <div
                             key={i}
@@ -1294,11 +1341,21 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                             )}
                             <span className="px-1 flex-1 min-w-0 whitespace-pre-wrap break-words font-mono">
                                 {intraParts
-                                    ? intraParts.map((part, pi) =>
-                                        part.changed
-                                            ? <mark key={pi} className={markClass}>{part.text}</mark>
-                                            : <span key={pi}>{part.text}</span>
-                                      )
+                                    ? (hasMatches
+                                        ? splitIntraPartsByRanges(intraParts, matchRanges!).map((seg, pi) => {
+                                            const cls = [
+                                                seg.changed ? markClass : '',
+                                                seg.match === 'active' ? ACTIVE_MATCH_HIGHLIGHT_CLASS : seg.match === 'match' ? MATCH_HIGHLIGHT_CLASS : '',
+                                            ].filter(Boolean).join(' ');
+                                            return cls
+                                                ? <mark key={pi} className={cls}>{seg.text}</mark>
+                                                : <span key={pi}>{seg.text}</span>;
+                                        })
+                                        : intraParts.map((part, pi) =>
+                                            part.changed
+                                                ? <mark key={pi} className={markClass}>{part.text}</mark>
+                                                : <span key={pi}>{part.text}</span>
+                                          ))
                                     : <span dangerouslySetInnerHTML={{ __html: html! }} />
                                 }
                             </span>
