@@ -158,7 +158,7 @@ export function MyWorkView() {
                     />
                 </div>
                 <div style={{ display: activeTab === 'git' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
-                    <NotesGitTab workspaceId={MY_WORK_WORKSPACE_ID} />
+                    <NotesGitTab workspaceId={MY_WORK_WORKSPACE_ID} dockStatusFooter />
                 </div>
                 {!schedulesInScheduledSlideEnabled && (
                     <div style={{ display: activeTab === 'schedules' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">

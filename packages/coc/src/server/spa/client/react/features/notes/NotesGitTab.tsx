@@ -15,6 +15,7 @@ import { useNotesGit } from './hooks/useNotesGit';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { Button, Spinner, SectionHeader } from '../../ui';
 import { UnifiedDiffViewer } from '../git/diff/UnifiedDiffViewer';
+import { DockedStatusFooter } from '../../layout/DockedStatusFooter';
 import { getWorkspacePreferences } from '../../hooks/preferences/preferencesApi';
 import { useGlobalToast } from '../../contexts/ToastContext';
 import type { NotesGitLogEntry, NotesGitDiff } from '../../../../../notes/git/notes-git-types';
@@ -23,6 +24,12 @@ interface NotesGitTabProps {
     workspaceId: string;
     /** Whether the current root is the default managed root. Defaults to true. */
     isDefaultRoot?: boolean;
+    /** Dock the shared status/action cluster at the bottom of this tab's own
+     *  left sidebar (remote-first desktop shell), so the content pane keeps full
+     *  height instead of the app-wide `GlobalStatusDock` painting a partial-width
+     *  band beneath it. No-ops in classic / mobile via `DockedStatusFooter`'s own
+     *  gate. */
+    dockStatusFooter?: boolean;
 }
 
 // ── Sub-component: Init prompt ─────────────────────────────────────
@@ -324,7 +331,7 @@ function ResetFromOriginConfirm({
 
 // ── Main component ─────────────────────────────────────────────────
 
-export function NotesGitTab({ workspaceId, isDefaultRoot = true }: NotesGitTabProps) {
+export function NotesGitTab({ workspaceId, isDefaultRoot = true, dockStatusFooter = false }: NotesGitTabProps) {
     const {
         status, log, loading, error, initialized,
         initialize, commit, resetFromOrigin, sync, getDiff, refresh,
@@ -557,6 +564,9 @@ export function NotesGitTab({ workspaceId, isDefaultRoot = true }: NotesGitTabPr
                 />
                 {status && <NotesGitStatusSection status={status} />}
                 <NotesGitHistoryList log={log} selectedHash={selectedHash} onSelect={handleSelectCommit} />
+                {/* Docked status/action cluster (remote-first shell). No-ops in
+                    classic / mobile via DockedStatusFooter's own gate. */}
+                {dockStatusFooter && <DockedStatusFooter />}
             </aside>
             {/* Resize handle — desktop only */}
             <div

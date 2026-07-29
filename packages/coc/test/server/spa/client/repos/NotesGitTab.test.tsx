@@ -83,6 +83,13 @@ vi.mock('../../../../../src/server/spa/client/react/ui', () => ({
     ),
 }));
 
+// The docked status/action cluster is app-shell chrome (gated to the
+// remote-first desktop shell inside a ThemeProvider); stub it so we can assert
+// it is placed inside the tab's own sidebar when `dockStatusFooter` is set.
+vi.mock('../../../../../src/server/spa/client/react/layout/DockedStatusFooter', () => ({
+    DockedStatusFooter: () => <div data-testid="docked-status-footer" />,
+}));
+
 vi.mock('../../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer', () => ({
     UnifiedDiffViewer: ({ diff, enableComments, ...rest }: any) => (
         <div data-testid={rest['data-testid'] ?? 'unified-diff-viewer'} data-enable-comments={enableComments}>
@@ -579,6 +586,36 @@ describe('NotesGitTab (notes-git)', () => {
         });
 
         expect(mockAddToast).toHaveBeenCalledWith('clone failed', 'error');
+    });
+
+    // ── Docked status footer ────────────────────────────────────────
+
+    it('docks the status cluster inside its own sidebar when dockStatusFooter is set', () => {
+        hookReturn = {
+            ...defaultHookReturn,
+            initialized: true,
+            status: makeStatus(),
+            log: [makeLogEntry()],
+        };
+        render(<NotesGitTab workspaceId="ws-1" dockStatusFooter />);
+
+        const footer = screen.getByTestId('docked-status-footer');
+        expect(footer).toBeDefined();
+        // It must live inside the tab's own commit-history sidebar, not floating
+        // elsewhere — that is what keeps the diff pane full height.
+        const sidebar = screen.getByTestId('notes-git-sidebar');
+        expect(sidebar.contains(footer)).toBe(true);
+    });
+
+    it('does not dock the status cluster when dockStatusFooter is unset', () => {
+        hookReturn = {
+            ...defaultHookReturn,
+            initialized: true,
+            status: makeStatus(),
+            log: [makeLogEntry()],
+        };
+        render(<NotesGitTab workspaceId="ws-1" />);
+        expect(screen.queryByTestId('docked-status-footer')).toBeNull();
     });
 
     // matchCommitsByIdentity is in RepoGitTab, not NotesGitTab — no re-export needed

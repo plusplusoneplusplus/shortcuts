@@ -6,8 +6,9 @@
  * column. Off (classic mode) or on mobile it renders nothing (topbar keeps the
  * cluster). It also renders nothing on views that dock the cluster in their own
  * left-column footer: the workspace chat/activity sub-tab, the admin shell, the
- * workspace notes sub-tab, and the workspace settings sub-tab. My Work docks
- * per-sub-tab like a regular repo, so those same sub-tab stand-downs cover it.
+ * workspace notes sub-tab, the workspace settings sub-tab, and the workspace
+ * notes-git sub-tab. My Work docks per-sub-tab like a regular repo, so those
+ * same sub-tab stand-downs cover it.
  *
  * @vitest-environment jsdom
  */
@@ -104,13 +105,22 @@ describe('GlobalStatusDock', () => {
         expect(container.firstChild).toBeNull();
     });
 
-    it('renders the band on a non-docked My Work sub-tab (git), like a regular repo', () => {
-        // The Git sub-tab has no owned left-column footer, so the global dock
-        // paints the left-column-width band. The old wholesale My-Work return
-        // would have wrongly suppressed it here.
+    it('renders nothing on the My Work git sub-tab (NotesGitTab docks the cluster in its commit-history sidebar footer)', () => {
+        // The Git sub-tab now owns a left-column footer (`NotesGitTab` docks a
+        // `DockedStatusFooter` at the bottom of its commit-history sidebar), so
+        // the global band stands down like Notes/Settings — otherwise a
+        // partial-width band paints an empty strip beside the diff pane.
         mockAppState = { activeTab: 'repos', selectedRepoId: 'my_work', activeRepoSubTab: 'git' };
-        render(<GlobalStatusDock />);
-        expect(screen.getByTestId('status-actions')).toBeTruthy();
+        const { container } = render(<GlobalStatusDock />);
+        expect(screen.queryByTestId('status-actions')).toBeNull();
+        expect(container.firstChild).toBeNull();
+    });
+
+    it('renders nothing on the workspace git sub-tab too', () => {
+        mockAppState = { activeTab: 'repos', selectedRepoId: 'ws-a', activeRepoSubTab: 'git' };
+        const { container } = render(<GlobalStatusDock />);
+        expect(screen.queryByTestId('status-actions')).toBeNull();
+        expect(container.firstChild).toBeNull();
     });
 
     it('renders nothing on the workspace notes sub-tab (NotesView docks the cluster in its own sidebar footer)', () => {
