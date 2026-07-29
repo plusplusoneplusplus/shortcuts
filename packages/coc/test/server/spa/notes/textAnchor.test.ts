@@ -131,8 +131,12 @@ describe('resolveAnchor — bounded fuzzy on large inputs', () => {
         const match = resolveAnchor(bigText, anchor);
         const elapsedMs = Date.now() - start;
 
-        // Bounded: tens of ms in practice; the pre-fix path took many seconds.
-        expect(elapsedMs).toBeLessThan(2000);
+        // Bounded: tens of ms uninstrumented, but the worst-case 40M-cell scan can
+        // take ~2s under `vitest --coverage` (v8 instrumentation) on a contended CI
+        // runner. The pre-fix unbounded path took *many seconds* (~100x the cell
+        // budget → tens of seconds / the 60s test timeout), so a generous ceiling
+        // still catches the regression without flaking on coverage-run timing.
+        expect(elapsedMs).toBeLessThan(8000);
         expect(['fuzzy', 'orphaned']).toContain(match.confidence);
     });
 
