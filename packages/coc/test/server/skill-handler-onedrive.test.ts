@@ -187,4 +187,72 @@ describe('loadSkillsForWorkspace — OneDrive skill directories', () => {
         expect(shared!.source).toBe('extra-folder');
         expect(shared!.description).toBe('extra version');
     });
+
+    it('discovers skills under both conventional roots of a manually added container', async () => {
+        const fakeHome = path.join(tmpDir, 'home');
+        fs.mkdirSync(fakeHome, { recursive: true });
+        vi.mocked(os.homedir).mockReturnValue(fakeHome);
+
+        const container = path.join(tmpDir, 'manual-container');
+        const githubSkillsDir = path.join(container, '.github', 'skills');
+        const plainSkillsDir = path.join(container, 'skills');
+        fs.mkdirSync(path.join(githubSkillsDir, 'github-skill', 'references'), { recursive: true });
+        fs.writeFileSync(path.join(githubSkillsDir, 'github-skill', 'SKILL.md'), '# github-skill');
+        fs.writeFileSync(path.join(githubSkillsDir, 'github-skill', 'references', 'guide.md'), 'nested guide');
+        fs.mkdirSync(path.join(plainSkillsDir, 'plain-skill'), { recursive: true });
+        fs.writeFileSync(path.join(plainSkillsDir, 'plain-skill', 'SKILL.md'), '# plain-skill');
+
+        const ws: WorkspaceInfo = {
+            id: workspaceId,
+            name: 'Test',
+            rootPath: workspaceDir,
+            extraSkillFolders: [container],
+        } as WorkspaceInfo;
+        store.getWorkspaces = vi.fn(async () => [ws]);
+
+        const skills = await loadSkillsForWorkspace(ws, undefined, store);
+        const githubSkill = skills.find(s => s.name === 'github-skill');
+        const plainSkill = skills.find(s => s.name === 'plain-skill');
+
+        expect(githubSkill?.folderPath).toBe(githubSkillsDir);
+        expect(plainSkill?.folderPath).toBe(plainSkillsDir);
+        expect(fs.readFileSync(
+            path.join(githubSkill!.folderPath!, githubSkill!.name, 'references', 'guide.md'),
+            'utf-8',
+        )).toBe('nested guide');
+    });
+
+    it('keeps a manually added base skill root first and de-duplicates nested collisions', async () => {
+        const fakeHome = path.join(tmpDir, 'home');
+        fs.mkdirSync(fakeHome, { recursive: true });
+        vi.mocked(os.homedir).mockReturnValue(fakeHome);
+
+        const container = path.join(tmpDir, 'manual-root');
+        const nestedRoot = path.join(container, '.github', 'skills');
+        fs.mkdirSync(path.join(container, 'shared-skill'), { recursive: true });
+        fs.writeFileSync(
+            path.join(container, 'shared-skill', 'SKILL.md'),
+            '---\ndescription: base version\n---\n# shared-skill',
+        );
+        fs.mkdirSync(path.join(nestedRoot, 'shared-skill'), { recursive: true });
+        fs.writeFileSync(
+            path.join(nestedRoot, 'shared-skill', 'SKILL.md'),
+            '---\ndescription: nested version\n---\n# shared-skill',
+        );
+
+        const ws: WorkspaceInfo = {
+            id: workspaceId,
+            name: 'Test',
+            rootPath: workspaceDir,
+            extraSkillFolders: [container],
+        } as WorkspaceInfo;
+        store.getWorkspaces = vi.fn(async () => [ws]);
+
+        const skills = await loadSkillsForWorkspace(ws, undefined, store);
+        const sharedSkills = skills.filter(s => s.name === 'shared-skill');
+
+        expect(sharedSkills).toHaveLength(1);
+        expect(sharedSkills[0].description).toBe('base version');
+        expect(sharedSkills[0].folderPath).toBe(container);
+    });
 });

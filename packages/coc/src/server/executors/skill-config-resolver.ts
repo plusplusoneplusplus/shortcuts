@@ -22,6 +22,18 @@ import {
 } from '@plusplusoneplusplus/forge';
 import { getEffectiveEnDevExtraSkillFolders } from '../endev/endev-detector';
 
+/** Conventional subfolders probed under a user-supplied skill container. */
+export const SKILL_ROOT_SUBDIRS = ['.github/skills', 'skills'] as const;
+
+/**
+ * Return candidate skill roots in precedence order without checking existence.
+ * The base directory stays first so folders that already are skill roots keep
+ * their current behavior and win name collisions.
+ */
+export function expandSkillFolderCandidates(baseDir: string): string[] {
+    return [baseDir, ...SKILL_ROOT_SUBDIRS.map(subdir => path.join(baseDir, subdir))];
+}
+
 /**
  * Enumerate default OneDrive/CloudStorage skill-folder candidates for a home
  * directory. Returns candidate `<root>/.github/skills` paths to probe; callers
@@ -197,7 +209,11 @@ export async function resolveSkillConfig(
                     continue; // global folders must be absolute (no repo root to anchor to)
                 }
                 const hostPath = resolvePathForHostFilesystem(expanded);
-                await tryAddSkillDirectory(expanded, hostPath);
+                const sourceCandidates = expandSkillFolderCandidates(expanded);
+                const hostCandidates = expandSkillFolderCandidates(hostPath);
+                for (let i = 0; i < sourceCandidates.length; i++) {
+                    await tryAddSkillDirectory(sourceCandidates[i], hostCandidates[i]);
+                }
             } catch {
                 // Non-fatal: skip global extra folders when path translation fails
             }
@@ -214,7 +230,11 @@ export async function resolveSkillConfig(
                     ? resolvePathForHostFilesystem(folder)
                     : (root ? resolvePathForHostFilesystem(root, folder) : null);
                 if (sourcePath && hostPath) {
-                    await tryAddSkillDirectory(sourcePath, hostPath);
+                    const sourceCandidates = expandSkillFolderCandidates(sourcePath);
+                    const hostCandidates = expandSkillFolderCandidates(hostPath);
+                    for (let i = 0; i < sourceCandidates.length; i++) {
+                        await tryAddSkillDirectory(sourceCandidates[i], hostCandidates[i]);
+                    }
                 }
             } catch {
                 // Non-fatal: skip extra skill folders when path translation fails
@@ -318,6 +338,28 @@ async function describeSkillDir(
 }
 
 /**
+ * Describe the existing candidate roots under a manually supplied folder.
+ * Missing nested conventions stay silent. If a populated candidate exists,
+ * empty container candidates are omitted; when no candidate exists, only the
+ * base missing entry is retained.
+ */
+async function describeSkillFolderCandidates(
+    baseHostPath: string,
+    source: EffectiveSkillPathEntry['source'],
+    scope: EffectiveSkillPathEntry['scope'],
+): Promise<EffectiveSkillPathEntry[]> {
+    const described = await Promise.all(
+        expandSkillFolderCandidates(baseHostPath).map(candidate => describeSkillDir(candidate, source, scope)),
+    );
+    const existing = described.filter(entry => entry.status !== 'missing');
+    const available = existing.filter(entry => entry.status === 'available');
+    if (available.length > 0) {
+        return available;
+    }
+    return existing.length > 0 ? existing : [described[0]];
+}
+
+/**
  * Enumerate the agent's effective skill search order as structured diagnostic
  * data, in priority order:
  *
@@ -407,7 +449,7 @@ export async function resolveEffectiveSkillPaths(
             }
             try {
                 const hostPath = resolvePathForHostFilesystem(expanded);
-                entries.push(await describeSkillDir(hostPath, 'configured', 'global'));
+                entries.push(...await describeSkillFolderCandidates(hostPath, 'configured', 'global'));
             } catch {
                 entries.push({ source: 'configured', scope: 'global', status: 'skipped', path: folder, note: 'Path could not be resolved' });
             }
@@ -424,7 +466,7 @@ export async function resolveEffectiveSkillPaths(
                 const hostPath = isAbsoluteOrWsl
                     ? resolvePathForHostFilesystem(folder)
                     : resolvePathForHostFilesystem(args.workspaceRootPath, folder);
-                entries.push(await describeSkillDir(hostPath, 'repo-extra', 'workspace'));
+                entries.push(...await describeSkillFolderCandidates(hostPath, 'repo-extra', 'workspace'));
             } catch {
                 entries.push({ source: 'repo-extra', scope: 'workspace', status: 'skipped', path: folder, note: 'Path could not be resolved' });
             }

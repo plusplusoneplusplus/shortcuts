@@ -27,7 +27,7 @@ import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import { createSkillRouteHandlers } from './skill-route-handlers';
 import { getRepoDataPath } from '../paths';
 import { loadConfigFile } from '../../config';
-import { expandHomePath } from '../executors/skill-config-resolver';
+import { expandHomePath, expandSkillFolderCandidates } from '../executors/skill-config-resolver';
 import type { Route } from '../types';
 import {
     ENDEV_XDPU_SKILL_NAME,
@@ -414,47 +414,64 @@ export async function loadSkillsForWorkspace(
     for (const folder of options?.globalExtraFolders ?? []) {
         const resolved = resolveGlobalExtraSkillFolderPaths(folder);
         if (!resolved) continue;
-        for (const skill of listInstalledSkills(resolved.installPath)) {
-            if (localNames.has(skill.name) || globalNames.has(skill.name) || globalExtraNames.has(skill.name)) {
-                continue;
+        const sourceCandidates = expandSkillFolderCandidates(resolved.sourcePath);
+        const installCandidates = expandSkillFolderCandidates(resolved.installPath);
+        for (let i = 0; i < sourceCandidates.length; i++) {
+            for (const skill of listInstalledSkills(installCandidates[i])) {
+                if (localNames.has(skill.name) || globalNames.has(skill.name) || globalExtraNames.has(skill.name)) {
+                    continue;
+                }
+                skill.source = 'global-extra-folder';
+                skill.folderPath = sourceCandidates[i];
+                globalExtraSkills.push(skill);
+                globalExtraNames.add(skill.name);
             }
-            skill.source = 'global-extra-folder';
-            skill.folderPath = resolved.sourcePath;
-            globalExtraSkills.push(skill);
-            globalExtraNames.add(skill.name);
         }
     }
 
     let allWorkspaces: WorkspaceInfo[] | null = null;
     const extraSkillFolders = await getEffectiveEnDevExtraSkillFolders(dataDir, ws);
     const extraSkills: SkillInfo[] = [];
+    const extraNames = new Set<string>();
     for (const folder of extraSkillFolders) {
         const folderSourcePath = resolveExtraSkillFolderSourcePath(ws.rootPath, folder);
         const folderInstallPath = resolveExtraSkillFolderInstallPath(ws.rootPath, folder);
-        const folderSkills = listInstalledSkills(folderInstallPath);
-        let sourceRepoId: string | undefined;
-        if (allWorkspaces === null) {
-            try { allWorkspaces = await store.getWorkspaces(); } catch { allWorkspaces = []; }
-        }
-        for (const otherWs of allWorkspaces) {
-            if (
-                otherWs.id !== id
-                && normalizeExecutionPath(getSkillsSourcePath(otherWs.rootPath)) === normalizeExecutionPath(folderSourcePath)
-            ) {
-                sourceRepoId = otherWs.id;
-                break;
+        const sourceCandidates = expandSkillFolderCandidates(folderSourcePath);
+        const installCandidates = expandSkillFolderCandidates(folderInstallPath);
+        for (let i = 0; i < sourceCandidates.length; i++) {
+            const candidateSourcePath = sourceCandidates[i];
+            let sourceRepoId: string | undefined;
+            if (allWorkspaces === null) {
+                try { allWorkspaces = await store.getWorkspaces(); } catch { allWorkspaces = []; }
             }
-        }
-        for (const skill of folderSkills) {
-            if (localNames.has(skill.name) || globalNames.has(skill.name) || globalExtraNames.has(skill.name)) continue;
-            skill.folderPath = folderSourcePath;
-            if (sourceRepoId) {
-                skill.source = 'linked-repo';
-                skill.sourceRepoId = sourceRepoId;
-            } else {
-                skill.source = 'extra-folder';
+            for (const otherWs of allWorkspaces) {
+                if (
+                    otherWs.id !== id
+                    && normalizeExecutionPath(getSkillsSourcePath(otherWs.rootPath)) === normalizeExecutionPath(candidateSourcePath)
+                ) {
+                    sourceRepoId = otherWs.id;
+                    break;
+                }
             }
-            extraSkills.push(skill);
+            for (const skill of listInstalledSkills(installCandidates[i])) {
+                if (
+                    localNames.has(skill.name)
+                    || globalNames.has(skill.name)
+                    || globalExtraNames.has(skill.name)
+                    || extraNames.has(skill.name)
+                ) {
+                    continue;
+                }
+                skill.folderPath = candidateSourcePath;
+                if (sourceRepoId) {
+                    skill.source = 'linked-repo';
+                    skill.sourceRepoId = sourceRepoId;
+                } else {
+                    skill.source = 'extra-folder';
+                }
+                extraSkills.push(skill);
+                extraNames.add(skill.name);
+            }
         }
     }
 

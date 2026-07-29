@@ -474,6 +474,31 @@ describe('registerSkillRoutes', () => {
         expect(body.size).toBeGreaterThan(0);
     });
 
+    it('GET /api/workspaces/:id/skills/:name/file reads from a nested root in a manual container', async () => {
+        const container = path.join(workspaceDir, 'manual-skill-container');
+        const nestedRoot = path.join(container, '.github', 'skills');
+        const skillDir = path.join(nestedRoot, 'nested-file-skill');
+        fs.mkdirSync(path.join(skillDir, 'references'), { recursive: true });
+        fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '# Nested File Skill');
+        fs.writeFileSync(path.join(skillDir, 'references', 'spec.md'), 'nested reference');
+
+        store.getWorkspaces = vi.fn(async () => [{
+            id: workspaceId,
+            name: 'Test Workspace',
+            rootPath: workspaceDir,
+            extraSkillFolders: [container],
+        } as WorkspaceInfo]);
+
+        const { statusCode, body } = await dispatchRoute(
+            routes,
+            'GET',
+            `/api/workspaces/${workspaceId}/skills/nested-file-skill/file?path=${encodeURIComponent('references/spec.md')}`,
+        );
+
+        expect(statusCode).toBe(200);
+        expect(body.content).toBe('nested reference');
+    });
+
     it('GET /api/workspaces/:id/skills/:name/file returns script file content', async () => {
         makeFileSkill();
         const { statusCode, body } = await dispatchRoute(
@@ -676,7 +701,7 @@ describe('registerSkillRoutes', () => {
         fs.rmSync(extraDir, { recursive: true, force: true });
     });
 
-    it('GET /api/workspaces/:id/skills tags skills from linked workspace with sourceRepoId', async () => {
+    it('GET /api/workspaces/:id/skills recognizes a linked workspace from its container root', async () => {
         const linkedWsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'linked-ws-'));
         const linkedSkillsDir = path.join(linkedWsDir, '.github', 'skills');
         fs.mkdirSync(path.join(linkedSkillsDir, 'linked-skill'), { recursive: true });
@@ -684,7 +709,7 @@ describe('registerSkillRoutes', () => {
 
         const linkedWsId = 'linked-ws-999';
         store.getWorkspaces = vi.fn(async () => [
-            { id: workspaceId, name: 'Main', rootPath: workspaceDir, extraSkillFolders: [linkedSkillsDir] } as WorkspaceInfo,
+            { id: workspaceId, name: 'Main', rootPath: workspaceDir, extraSkillFolders: [linkedWsDir] } as WorkspaceInfo,
             { id: linkedWsId, name: 'Linked Repo', rootPath: linkedWsDir } as WorkspaceInfo,
         ]);
 
@@ -1027,6 +1052,19 @@ describe('loadSkillsForWorkspace — configured global extra folders (AC #2)', (
         expect(s!.source).toBe('global-extra-folder');
         expect(s!.folderPath).toBe(geDir);
         expect(s!.description).toBe('A global extra skill');
+    });
+
+    it('surfaces skills from conventional roots beneath a configured global extra folder', async () => {
+        const geDir = mkTmp('ge-container-');
+        const nestedRoot = path.join(geDir, 'skills');
+        mkSkill(nestedRoot, 'nested-global', 'description: A nested global extra skill');
+
+        const skills = await loadSkillsForWorkspace(ws(), undefined, store, { globalExtraFolders: [geDir] });
+        const nested = skills.find(x => x.name === 'nested-global');
+
+        expect(nested).toBeDefined();
+        expect(nested!.source).toBe('global-extra-folder');
+        expect(nested!.folderPath).toBe(nestedRoot);
     });
 
     it('skips a configured global extra folder that does not exist', async () => {

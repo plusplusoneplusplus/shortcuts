@@ -21,7 +21,13 @@ vi.mock('os', async (importOriginal) => {
     };
 });
 
-import { resolveSkillConfig, resolveDefaultOneDriveSkillDirs, expandHomePath, resolveEffectiveSkillPaths } from '../../../src/server/executors/skill-config-resolver';
+import {
+    expandHomePath,
+    expandSkillFolderCandidates,
+    resolveDefaultOneDriveSkillDirs,
+    resolveEffectiveSkillPaths,
+    resolveSkillConfig,
+} from '../../../src/server/executors/skill-config-resolver';
 import { getBundledSkillsPath } from '@plusplusoneplusplus/forge';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 
@@ -344,6 +350,23 @@ describe('resolveSkillConfig', () => {
             expect(result.skillDirectories).toContain(extraDir);
         });
 
+        it('includes existing conventional roots beneath a configured global extra folder', async () => {
+            const extraDir = path.join(tmpDir, 'shared-container');
+            const githubSkillsDir = path.join(extraDir, '.github', 'skills');
+            fs.mkdirSync(githubSkillsDir, { recursive: true });
+
+            const result = await resolveSkillConfig(store, undefined, undefined, undefined, {
+                globalExtraFolders: [extraDir],
+                autoDetectDefaultFolders: false,
+            });
+
+            const dirs = result.skillDirectories ?? [];
+            expect(dirs).toContain(extraDir);
+            expect(dirs).toContain(githubSkillsDir);
+            expect(dirs).not.toContain(path.join(extraDir, 'skills'));
+            expect(dirs.indexOf(extraDir)).toBeLessThan(dirs.indexOf(githubSkillsDir));
+        });
+
         it('expands a ~-prefixed global extra folder against the home directory', async () => {
             const fakeHome = path.join(tmpDir, 'home');
             const extraDir = path.join(fakeHome, 'team-skills');
@@ -469,6 +492,36 @@ describe('resolveSkillConfig', () => {
             expect(resultB.skillDirectories ?? []).not.toContain(wsAExtra);
         });
 
+        it('expands a relative workspace extra folder after anchoring it to the workspace root', async () => {
+            const repoRoot = path.join(tmpDir, 'repo-relative');
+            const extraDir = path.join(repoRoot, 'skill-container');
+            const plainSkillsDir = path.join(extraDir, 'skills');
+            fs.mkdirSync(plainSkillsDir, { recursive: true });
+            useEmptyHome();
+
+            const relativeStore = createMockProcessStore({
+                initialWorkspaces: [{
+                    id: 'ws-relative',
+                    name: 'Relative Repo',
+                    rootPath: repoRoot,
+                    extraSkillFolders: ['skill-container'],
+                }] as any,
+            });
+
+            const result = await resolveSkillConfig(
+                relativeStore,
+                undefined,
+                'ws-relative',
+                repoRoot,
+                { autoDetectDefaultFolders: false },
+            );
+
+            const dirs = result.skillDirectories ?? [];
+            expect(dirs).toContain(extraDir);
+            expect(dirs).toContain(plainSkillsDir);
+            expect(dirs).not.toContain(path.join(extraDir, '.github', 'skills'));
+        });
+
         it('applies configured global extra folders to every workspace while keeping per-repo extras scoped', async () => {
             const globalExtra = path.join(tmpDir, 'global-extra');
             const wsAExtra = path.join(tmpDir, 'ws-a-extra');
@@ -519,6 +572,19 @@ describe('resolveSkillConfig', () => {
 
         it('leaves absolute paths untouched', () => {
             expect(expandHomePath('/opt/skills', '/home/alice')).toBe('/opt/skills');
+        });
+    });
+
+    describe('expandSkillFolderCandidates helper', () => {
+        it('returns the base, .github/skills, and skills roots in order with platform separators', () => {
+            const pathApi = process.platform === 'win32' ? path.win32 : path.posix;
+            const base = process.platform === 'win32' ? String.raw`C:\shared\skills` : '/shared/skills';
+
+            expect(expandSkillFolderCandidates(base)).toEqual([
+                base,
+                pathApi.join(base, '.github', 'skills'),
+                pathApi.join(base, 'skills'),
+            ]);
         });
     });
 });
@@ -646,6 +712,27 @@ describe('resolveEffectiveSkillPaths', () => {
         expect(rel.note).toBeTruthy();
     });
 
+    it('reports a populated nested root instead of the empty configured container', async () => {
+        const container = path.join(tmpDir, 'configured-container');
+        const nestedRoot = path.join(container, '.github', 'skills');
+        makeSkill(nestedRoot, 'nested');
+
+        const entries = await resolveEffectiveSkillPaths({
+            homedir: fakeHome,
+            globalExtraFolders: [container],
+            autoDetectDefaultFolders: false,
+        });
+
+        const configured = entries.filter(e => e.source === 'configured');
+        expect(configured).toEqual([{
+            source: 'configured',
+            scope: 'global',
+            status: 'available',
+            path: nestedRoot,
+            skillCount: 1,
+        }]);
+    });
+
     it('expands ~ in configured global extra folders', async () => {
         const extra = path.join(fakeHome, 'team-skills');
         makeSkill(extra, 'y');
@@ -656,6 +743,29 @@ describe('resolveEffectiveSkillPaths', () => {
         const configured = entries.find(e => e.source === 'configured')!;
         expect(configured.path).toBe(extra);
         expect(configured.status).toBe('available');
+    });
+
+    it('reports populated nested roots for relative per-repo extra folders', async () => {
+        const repoRoot = path.join(tmpDir, 'repo-nested');
+        const container = path.join(repoRoot, 'skill-container');
+        const nestedRoot = path.join(container, 'skills');
+        makeSkill(nestedRoot, 'nested');
+
+        const entries = await resolveEffectiveSkillPaths({
+            homedir: fakeHome,
+            workspaceRootPath: repoRoot,
+            extraSkillFolders: ['skill-container'],
+            autoDetectDefaultFolders: false,
+        });
+
+        const repoExtra = entries.filter(e => e.source === 'repo-extra');
+        expect(repoExtra).toEqual([{
+            source: 'repo-extra',
+            scope: 'workspace',
+            status: 'available',
+            path: nestedRoot,
+            skillCount: 1,
+        }]);
     });
 
     it('skips auto-detected OneDrive folders when auto-detection is disabled', async () => {
