@@ -9,6 +9,7 @@ import {
     getRalphExecutionRepoApiBase,
     isSameRalphExecutionTarget,
     RalphExecutionRepoSelector,
+    type RalphExecutionRepoSource,
     useRalphExecutionRepoTargets,
 } from './RalphExecutionRepoSelector';
 import {
@@ -21,6 +22,10 @@ import { isGitWorktreeExecutionEnabled } from '../utils/config';
 export interface RalphLaunchDialogProps {
     open: boolean;
     workspaceId: string;
+    /** Clone-qualified dashboard identity for the source workspace. */
+    sourceSelectionId?: string;
+    /** Pop-out fallback when the initiating window carries only a clone URL. */
+    sourceBaseUrl?: string;
     /** Display name of the source file (e.g., "auth-refactor.goal.md") */
     sourceLabel: string;
     /** The goal spec content (markdown from the editor) */
@@ -45,6 +50,8 @@ export interface RalphLaunchDialogProps {
 export function RalphLaunchDialog({
     open,
     workspaceId,
+    sourceSelectionId,
+    sourceBaseUrl,
     sourceLabel,
     goalSpec,
     folderPath,
@@ -57,7 +64,12 @@ export function RalphLaunchDialog({
     onClose,
     onLaunched,
 }: RalphLaunchDialogProps) {
-    const repoSelection = useRalphExecutionRepoTargets({ open, sourceWorkspaceId: workspaceId });
+    const source: RalphExecutionRepoSource = {
+        workspaceId,
+        selectionId: sourceSelectionId,
+        baseUrl: sourceBaseUrl,
+    };
+    const repoSelection = useRalphExecutionRepoTargets({ open, source });
     const selectedWorkspaceId = repoSelection.selectedTarget?.workspaceId ?? workspaceId;
     const aiSelection = useModalJobAiSelection({ workspaceId: selectedWorkspaceId, mode: 'ralph' });
     const resolvedAi = resolvedAiSelection ?? aiSelection.resolved;
@@ -107,7 +119,7 @@ export function RalphLaunchDialog({
             if (resolvedAi.model) config.model = resolvedAi.model;
             if (resolvedAi.reasoningEffort) config.reasoningEffort = resolvedAi.reasoningEffort;
             if (resolvedAi.effortTier) config.effortTier = resolvedAi.effortTier;
-            const sameTarget = isSameRalphExecutionTarget(workspaceId, selectedTarget);
+            const sameTarget = isSameRalphExecutionTarget(repoSelection.sourceTarget, selectedTarget);
             const body: Record<string, unknown> = { goalSpec: trimmed, workspaceId: selectedTarget.workspaceId };
             if (resolvedAi.provider) body.provider = resolvedAi.provider;
             if (resolvedAi.autoProviderRouting) body.autoProviderRouting = true;
@@ -176,6 +188,7 @@ export function RalphLaunchDialog({
                         loading={repoSelection.loading}
                         loadError={repoSelection.loadError}
                         warnings={repoSelection.warnings}
+                        sourceWarning={repoSelection.sourceWarning}
                         selectedKey={repoSelection.selectedKey}
                         onSelectedKeyChange={repoSelection.setSelectedKey}
                         disabled={launching}

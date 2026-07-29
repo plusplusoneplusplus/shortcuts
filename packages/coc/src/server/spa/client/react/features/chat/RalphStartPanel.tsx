@@ -19,15 +19,16 @@
  */
 import { useState, useEffect } from 'react';
 import type { RalphSessionRecord } from '@plusplusoneplusplus/coc-client';
-import { cloneApiBase } from '../../repos/cloneRegistry';
 import { useCocClient } from '../../repos/cloneRouting';
 import { cn } from '../../ui/cn';
 import type { ClientConversationTurn } from '../../types/dashboard';
 import { ModalJobAiControls, useModalJobAiSelection } from '../../shared/ModalJobAiControls';
 import {
     getRalphExecutionRepoApiBase,
+    getRalphExecutionRepoSourceApiBase,
     isSameRalphExecutionTarget,
     RalphExecutionRepoSelector,
+    type RalphExecutionRepoSource,
     useRalphExecutionRepoTargets,
 } from '../../shared/RalphExecutionRepoSelector';
 import {
@@ -57,6 +58,10 @@ export interface RalphLaunchedSession {
 export interface RalphStartPanelProps {
     processId: string;
     workspaceId?: string;
+    /** Clone-qualified dashboard identity for the source workspace. */
+    sourceSelectionId?: string;
+    /** Pop-out fallback when the initiating window carries only a clone URL. */
+    sourceBaseUrl?: string;
     turns: ClientConversationTurn[];
     onStarted: (newProcessId: string, workspaceId?: string) => void;
     /**
@@ -119,9 +124,24 @@ function renderRalphGlyph() {
     );
 }
 
-export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goalFilePath, useLaunchEndpoint, launchedSession }: RalphStartPanelProps) {
+export function RalphStartPanel({
+    processId,
+    workspaceId,
+    sourceSelectionId,
+    sourceBaseUrl,
+    turns,
+    onStarted,
+    goalFilePath,
+    useLaunchEndpoint,
+    launchedSession,
+}: RalphStartPanelProps) {
     const [open, setOpen] = useState(false);
-    const repoSelection = useRalphExecutionRepoTargets({ open, sourceWorkspaceId: workspaceId });
+    const source: RalphExecutionRepoSource = {
+        workspaceId,
+        selectionId: sourceSelectionId,
+        baseUrl: sourceBaseUrl,
+    };
+    const repoSelection = useRalphExecutionRepoTargets({ open, source });
     const selectedWorkspaceId = repoSelection.selectedTarget?.workspaceId ?? workspaceId;
     const aiSelection = useModalJobAiSelection({ workspaceId: selectedWorkspaceId, mode: 'ralph' });
     const [goalSpec, setGoalSpec] = useState('');
@@ -135,9 +155,18 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
         : undefined;
     const worktreeSupported = useWorktreeCapability(selectedTargetApiBase, { enabled: worktreeFeatureEnabled });
 
-    // Remote-safe client for the SOURCE chat's own server — where the launched
-    // pointer is persisted (the same pattern as ImplementPlanCard).
-    const sourceClient = useCocClient(workspaceId);
+    // Route source metadata persistence from the exact resolved target. A local
+    // source deliberately uses the page-origin client, while a remote source
+    // carries its URL directly instead of depending on the clone registry.
+    const sourceClientRef = repoSelection.sourceTarget?.local
+        ? undefined
+        : repoSelection.sourceTarget?.baseUrl
+            ? { id: workspaceId, baseUrl: repoSelection.sourceTarget.baseUrl, remote: {} }
+            : sourceBaseUrl
+                ? { id: workspaceId, baseUrl: sourceBaseUrl, remote: {} }
+                : undefined;
+    const sourceClient = useCocClient(sourceClientRef);
+    const canPersistSourceMetadata = repoSelection.sourceTarget?.local === true || !!sourceClientRef;
     // Reflect the just-launched session immediately (local-state wins over the
     // persisted prop so the banner is correct even before metadata round-trips
     // and regardless of whether navigation later happens). Latest launch only.
@@ -157,8 +186,15 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
             // File-based flow: fetch goal content from disk
             setLoadingFile(true);
             try {
+                const sourceApiBase = getRalphExecutionRepoSourceApiBase(source, repoSelection.sourceTarget);
+                if (!sourceApiBase) {
+                    throw new Error(
+                        repoSelection.sourceWarning
+                        ?? 'The source workspace is unavailable. Reconnect it before reading the goal file.',
+                    );
+                }
                 const resp = await fetch(
-                    `${cloneApiBase(workspaceId)}/fs/blob?path=${encodeURIComponent(goalFilePath)}`,
+                    `${sourceApiBase}/fs/blob?path=${encodeURIComponent(goalFilePath)}`,
                 );
                 if (!resp.ok) throw new Error(`Failed to read goal file (HTTP ${resp.status})`);
                 const data = await resp.json();
@@ -187,7 +223,7 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
             // whether the goal came from a file. Grilling-phase callers pass a
             // `goalFilePath` to load the file's content but keep the
             // ralph-start endpoint so the existing process/session is reused.
-            const sameSourceTarget = isSameRalphExecutionTarget(workspaceId, selectedTarget);
+            const sameSourceTarget = isSameRalphExecutionTarget(repoSelection.sourceTarget, selectedTarget);
             const targetApiBase = getRalphExecutionRepoApiBase(selectedTarget);
             const url = useLaunchEndpoint || !sameSourceTarget
                 ? `${targetApiBase}/ralph-launch`
@@ -232,12 +268,14 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
                     executionProcessId: result.processId,
                     launchedAt: new Date().toISOString(),
                 };
-                try {
-                    await sourceClient.processes.patchMetadata(processId, {
-                        set: { ralphLaunchedSession: pointer },
-                    });
-                } catch (persistErr) {
-                    console.warn('Failed to persist ralphLaunchedSession pointer:', persistErr);
+                if (canPersistSourceMetadata) {
+                    try {
+                        await sourceClient.processes.patchMetadata(processId, {
+                            set: { ralphLaunchedSession: pointer },
+                        });
+                    } catch (persistErr) {
+                        console.warn('Failed to persist ralphLaunchedSession pointer:', persistErr);
+                    }
                 }
                 setLocalLaunched(pointer);
             }
@@ -349,6 +387,7 @@ export function RalphStartPanel({ processId, workspaceId, turns, onStarted, goal
                         loading={repoSelection.loading}
                         loadError={repoSelection.loadError}
                         warnings={repoSelection.warnings}
+                        sourceWarning={repoSelection.sourceWarning}
                         selectedKey={repoSelection.selectedKey}
                         onSelectedKeyChange={repoSelection.setSelectedKey}
                         disabled={starting || loadingFile}

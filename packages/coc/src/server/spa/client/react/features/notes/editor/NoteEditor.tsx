@@ -60,6 +60,8 @@ export type NoteViewMode = 'rich' | 'source';
 
 export interface NoteEditorProps {
     workspaceId: string;
+    /** Clone-qualified identity used by goal-file Ralph launches. */
+    sourceSelectionId?: string;
     notePath: string | null;
     /** Injectable content I/O adapter. Defaults to the notes-backed implementation. */
     io?: NoteEditorIO;
@@ -190,6 +192,7 @@ function findChangedRegionsInDoc(
 
 export function NoteEditor({
     workspaceId,
+    sourceSelectionId,
     notePath,
     io = defaultNoteEditorIO,
     commentBackend = defaultCommentBackend,
@@ -1655,6 +1658,7 @@ export function NoteEditor({
                 <RalphLaunchDialog
                     open={ralphDialogOpen}
                     workspaceId={workspaceId}
+                    sourceSelectionId={sourceSelectionId}
                     sourceLabel={normalizedNotePath.split('/').pop() ?? ''}
                     goalSpec={getCurrentGoalSpec()}
                     folderPath={notesRoot}

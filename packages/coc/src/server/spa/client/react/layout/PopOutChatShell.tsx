@@ -11,6 +11,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { AppProvider } from '../contexts/AppContext';
 import { QueueProvider } from '../contexts/QueueContext';
+import { ReposProvider } from '../contexts/ReposContext';
 import { useQueueBootstrap } from '../contexts/useQueueBootstrap';
 import { ThemeProvider } from './ThemeProvider';
 import { ToastProvider } from '../contexts/ToastContext';
@@ -43,7 +44,15 @@ export function parsePopOutActivityRoute(hash: string, search = ''): PopOutRoute
 
 // ── Inner component (uses toast + channel) ─────────────────────────────────────
 
-function PopOutContent({ taskId, workspaceId }: { taskId: string; workspaceId: string | null }) {
+function PopOutContent({
+    taskId,
+    workspaceId,
+    cloneBaseUrl,
+}: {
+    taskId: string;
+    workspaceId: string | null;
+    cloneBaseUrl?: string;
+}) {
     const { toasts, addToast, removeToast } = useToast();
     const hasNotifiedRef = useRef(false);
 
@@ -90,6 +99,7 @@ function PopOutContent({ taskId, workspaceId }: { taskId: string; workspaceId: s
                     <ChatDetail
                         taskId={taskId}
                         workspaceId={workspaceId ?? undefined}
+                        sourceBaseUrl={cloneBaseUrl}
                         isPopOut={true}
                     />
                 </div>
@@ -121,9 +131,15 @@ export function PopOutChatShell() {
     return (
         <AppProvider>
             <QueueProvider>
-                <ThemeProvider>
-                    <PopOutContent taskId={parsed.taskId} workspaceId={parsed.workspaceId ?? null} />
-                </ThemeProvider>
+                <ReposProvider>
+                    <ThemeProvider>
+                        <PopOutContent
+                            taskId={parsed.taskId}
+                            workspaceId={parsed.workspaceId ?? null}
+                            cloneBaseUrl={parsed.cloneBaseUrl}
+                        />
+                    </ThemeProvider>
+                </ReposProvider>
             </QueueProvider>
         </AppProvider>
     );

@@ -104,6 +104,10 @@ export interface ChatDetailProps {
     taskId: string;
     onBack?: () => void;
     workspaceId?: string;
+    /** Clone-qualified dashboard identity for Ralph launches from this chat. */
+    sourceSelectionId?: string;
+    /** Pop-out fallback for source routing when no server registry id is present. */
+    sourceBaseUrl?: string;
     /** When true (i.e., rendered inside a pop-out window), hides the pop-out button. */
     isPopOut?: boolean;
     /**
@@ -173,7 +177,7 @@ export interface ChatDetailProps {
     hidePlanBanners?: boolean;
 }
 
-export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, openNotePath, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onProcessLoaded, onOpenForEachRun, onOpenMapReduceRun, onStartFreshSameContext, startingFreshSameContext = false, searchHighlightQuery, hideHeader = false, hidePlanBanners = false }: ChatDetailProps) {
+export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sourceBaseUrl, isPopOut = false, openNotePath, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onProcessLoaded, onOpenForEachRun, onOpenMapReduceRun, onStartFreshSameContext, startingFreshSameContext = false, searchHighlightQuery, hideHeader = false, hidePlanBanners = false }: ChatDetailProps) {
     // Per-clone REST client (AC-07): a remote clone's chat reads/writes go to its
     // own server; a local clone keeps the default origin client. All process/
     // queue/notes/canvas/skill calls below are scoped to this chat's workspace.
@@ -2546,6 +2550,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, open
                                 <RalphStartPanel
                                     processId={processId ?? taskId}
                                     workspaceId={workspaceId}
+                                    sourceSelectionId={sourceSelectionId}
+                                    sourceBaseUrl={sourceBaseUrl}
                                     turns={turns}
                                     goalFilePath={goalPath || undefined}
                                     onStarted={(newProcessId, executionWorkspaceId) => {
@@ -2565,6 +2571,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, isPopOut = false, open
                                 <RalphStartPanel
                                     processId={processId ?? taskId}
                                     workspaceId={workspaceId}
+                                    sourceSelectionId={sourceSelectionId}
+                                    sourceBaseUrl={sourceBaseUrl}
                                     turns={turns}
                                     goalFilePath={goalPath}
                                     useLaunchEndpoint

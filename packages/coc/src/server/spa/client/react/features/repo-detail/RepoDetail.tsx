@@ -51,6 +51,7 @@ import { MobileTabBar } from '../../layout/MobileTabBar';
 import { buildRepoSubTabSuffix } from '../../layout/Router';
 import { TAB_GROUP_INDEX, computeVisibleSubTabs } from './repoSubTabs';
 import type { RepoData } from '../../repos/repoGrouping';
+import { getRepoSelectionId } from '../../repos/cloneIdentity';
 import type { RepoSubTab, TasksPanelNavState } from '../../types/dashboard';
 import { isSessionContextAttachmentsEnabled } from '../../utils/config';
 import {
@@ -101,6 +102,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     }>({ open: false, minimized: false, targetFolder: undefined });
     const [uiLayoutMode, setUiLayoutMode] = useUiLayoutMode();
     const ws = repo.workspace;
+    const sourceSelectionId = getRepoSelectionId(repo);
     const tasksNavStateKey = `${ws.id}::tasks`;
     const color = ws.color || '#848484';
     const activeSubTab = state.activeRepoSubTab;
@@ -754,7 +756,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                 onNavStateChange={handleTasksNavStateChange}
                             />
                         ) : (
-                            <RepoChatTab key={`${ws.id}-tasks`} workspaceId={ws.id} mode="tasks" />
+                            <RepoChatTab key={`${ws.id}-tasks`} workspaceId={ws.id} sourceSelectionId={sourceSelectionId} mode="tasks" />
                         )}
                     </div>
                 ) : (
@@ -772,12 +774,12 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                         */}
                         {!splitWorkspacePanelEnabled && uiLayoutMode === 'classic' && (
                             <div style={{ display: (activeSubTab === 'activity' || activeSubTab === 'chats') ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-                                <RepoChatTab key={`${ws.id}-activity`} workspaceId={ws.id} />
+                                <RepoChatTab key={`${ws.id}-activity`} workspaceId={ws.id} sourceSelectionId={sourceSelectionId} />
                             </div>
                         )}
                         {!splitWorkspacePanelEnabled && uiLayoutMode === 'dev-workflow' && (
                             <div style={{ display: (activeSubTab === 'chats' || activeSubTab === 'activity') ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-                                <RepoChatTab key={`${ws.id}-chats`} workspaceId={ws.id} mode="chats" />
+                                <RepoChatTab key={`${ws.id}-chats`} workspaceId={ws.id} sourceSelectionId={sourceSelectionId} mode="chats" />
                             </div>
                         )}
                         {/*
@@ -799,6 +801,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                         <RepoChatTab
                                             key={`${ws.id}-split-chat`}
                                             workspaceId={ws.id}
+                                            sourceSelectionId={sourceSelectionId}
                                             mode={uiLayoutMode === 'dev-workflow' ? 'chats' : undefined}
                                             layout="split-workspace"
                                             detailContainer={splitDetailNode}
@@ -859,6 +862,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                 {wasVisited('notes') && <NotesView
                                     key={ws.id}
                                     workspaceId={ws.id}
+                                    sourceSelectionId={sourceSelectionId}
                                     initialNotePath={state.selectedNotePath}
                                     defaultScope="per-note"
                                     active={activeSubTab === 'notes'}

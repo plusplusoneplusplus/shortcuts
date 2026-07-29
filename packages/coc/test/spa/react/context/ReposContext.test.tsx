@@ -110,7 +110,7 @@ function Wrapper({ children }: { children: ReactNode }) {
 }
 
 function ReposConsumer() {
-    const { repos, loading, refreshUnseenCounts } = useRepos();
+    const { repos, loading, remoteWarnings, refreshUnseenCounts } = useRepos();
     if (loading) return <div data-testid="loading">Loading</div>;
     return (
         <ul>
@@ -121,6 +121,7 @@ function ReposConsumer() {
             ))}
             {repos.length === 0 && <li data-testid="empty">empty</li>}
             <li data-testid="has-refresh">{typeof refreshUnseenCounts}</li>
+            <li data-testid="remote-warnings">{(remoteWarnings ?? []).join('|')}</li>
         </ul>
     );
 }
@@ -278,6 +279,26 @@ describe('ReposContext', () => {
             expect(screen.getByTestId('repo-ws-1')).toBeTruthy();
         });
         expect(screen.getByTestId('has-refresh').textContent).toBe('function');
+    });
+
+    it('retains non-fatal remote aggregation warnings in context', async () => {
+        repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce([
+            makeWorkspace('local-1', 'Local Repo'),
+        ]);
+        aggregateRemoteWorkspacesMock.mockResolvedValueOnce({
+            sources: [],
+            workspaces: [],
+            gitInfo: {},
+            warnings: ['ubuntu-arm: connection timed out'],
+        });
+
+        render(<ProviderWithConsumer />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('remote-warnings').textContent)
+                .toBe('ubuntu-arm: connection timed out');
+        });
+        expect(screen.getByTestId('repo-local-1')).toBeTruthy();
     });
 
     it('does not deselect a virtual workspace (e.g. my_work) on refresh', async () => {

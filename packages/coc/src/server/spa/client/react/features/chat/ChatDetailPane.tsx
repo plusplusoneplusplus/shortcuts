@@ -23,6 +23,8 @@ export interface ChatDetailPaneProps {
     selectedTask: any | null;
     onBack?: () => void;
     workspaceId?: string;
+    /** Clone-qualified identity for Ralph launches opened from this workspace. */
+    sourceSelectionId?: string;
     /** When true, hides the follow-up input area (read-only view). */
     readOnly?: boolean;
     /** When true, hides the ask/autopilot mode selector in the follow-up input. */
@@ -38,7 +40,7 @@ export interface ChatDetailPaneProps {
     searchHighlightQuery?: string;
 }
 
-export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, readOnly, hideModeSelector, onOpenForEachRun, onOpenMapReduceRun, searchHighlightQuery }: ChatDetailPaneProps) {
+export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, sourceSelectionId, readOnly, hideModeSelector, onOpenForEachRun, onOpenMapReduceRun, searchHighlightQuery }: ChatDetailPaneProps) {
     const { poppedOutTasks, markRestored } = usePopOut();
     const { floatingChats, unfloatChat } = useFloatingChats();
 
@@ -53,7 +55,7 @@ export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, readOnly, 
                 </div>
             );
         }
-        return <NewChatArea workspaceId={workspaceId} onBack={onBack} />;
+        return <NewChatArea workspaceId={workspaceId} sourceSelectionId={sourceSelectionId} onBack={onBack} />;
     }
 
     if (poppedOutTasks.has(selectedTaskId)) {
@@ -92,5 +94,5 @@ export function ChatDetailPane({ selectedTaskId, onBack, workspaceId, readOnly, 
         );
     }
 
-    return <ChatDetail key={selectedTaskId} taskId={selectedTaskId} onBack={onBack} workspaceId={workspaceId} readOnly={readOnly} hideModeSelector={hideModeSelector} onOpenForEachRun={onOpenForEachRun} onOpenMapReduceRun={onOpenMapReduceRun} searchHighlightQuery={searchHighlightQuery} />;
+    return <ChatDetail key={selectedTaskId} taskId={selectedTaskId} onBack={onBack} workspaceId={workspaceId} sourceSelectionId={sourceSelectionId} readOnly={readOnly} hideModeSelector={hideModeSelector} onOpenForEachRun={onOpenForEachRun} onOpenMapReduceRun={onOpenMapReduceRun} searchHighlightQuery={searchHighlightQuery} />;
 }

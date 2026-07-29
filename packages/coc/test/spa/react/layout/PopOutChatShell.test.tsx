@@ -37,6 +37,10 @@ describe('PopOutChatShell: providers', () => {
         expect(SOURCE).toContain('<QueueProvider>');
     });
 
+    it('wraps with ReposProvider so Ralph can enumerate exact execution targets', () => {
+        expect(SOURCE).toContain('<ReposProvider>');
+    });
+
     it('wraps with ThemeProvider', () => {
         expect(SOURCE).toContain('<ThemeProvider>');
     });
@@ -68,6 +72,10 @@ describe('PopOutChatShell: ChatDetail usage', () => {
 
     it('passes workspaceId to ChatDetail', () => {
         expect(SOURCE).toContain('workspaceId=');
+    });
+
+    it('passes cloneBaseUrl to ChatDetail as the Ralph source fallback', () => {
+        expect(SOURCE).toContain('sourceBaseUrl={cloneBaseUrl}');
     });
 });
 
