@@ -365,6 +365,15 @@ describe('noteMarkdown', () => {
             expect(rt).toContain('int main() {');
         });
 
+        it('preserves an unsupported ```text fence label and content', () => {
+            const md = '```text\nplain <content> stays literal\nsecond line\n```';
+            const rt = norm(roundTrip(md));
+
+            expect(rt).toContain('```text');
+            expect(rt).toContain('plain <content> stays literal');
+            expect(rt).toContain('second line');
+        });
+
         it('resolves fence aliases to registered languages through the round-trip', () => {
             // AC-03: a note authored with an alias reopens highlighted as the
             // registered language, so the persisted fence normalizes to the

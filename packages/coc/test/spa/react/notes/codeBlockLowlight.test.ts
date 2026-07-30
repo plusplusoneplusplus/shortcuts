@@ -1,9 +1,13 @@
 import { describe, it, expect } from 'vitest';
+import { Editor } from '@tiptap/core';
+import { StarterKit } from '@tiptap/starter-kit';
+import hljs from 'highlight.js';
 import {
     notesLowlight,
     NOTES_CODE_LANGUAGES,
     resolveCodeLanguage,
 } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/notesLowlight';
+import { NotesCodeBlock } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/notesCodeBlock';
 
 /**
  * Guards the shared lowlight registry that backs the Notes editor's
@@ -70,6 +74,38 @@ describe('notes code-block lowlight registry', () => {
         const tree = notesLowlight.highlightAuto(CPP_SNIPPET) as any;
         expect(collectClassNames(tree)).toEqual([]);
         expect(tree.children).toEqual([]);
+    });
+
+    it('renders an unsupported text fence as plain code instead of throwing', () => {
+        expect(notesLowlight.registered('text')).toBe(false);
+
+        const tree = notesLowlight.highlight('text', 'plain text') as any;
+
+        expect(collectClassNames(tree)).toEqual([]);
+        expect(tree.children).toEqual([]);
+    });
+
+    it('loads a text fence through the real TipTap lowlight plugin without token decorations', () => {
+        // The full Highlight.js package registers the `text` alias process-wide.
+        // TipTap 3.22.4 consults that registry before calling the isolated Notes
+        // registry, which is the cross-registry path that caused the regression.
+        expect(hljs.getLanguage('text')).toBeDefined();
+        expect(notesLowlight.registered('text')).toBe(false);
+
+        let editor: Editor | undefined;
+        expect(() => {
+            editor = new Editor({
+                extensions: [
+                    StarterKit.configure({ codeBlock: false }),
+                    NotesCodeBlock.configure({ lowlight: notesLowlight }),
+                ],
+                content: '<pre><code class="language-text">plain text</code></pre>',
+            });
+        }).not.toThrow();
+
+        expect(editor?.getHTML()).toContain('class="language-text"');
+        expect(editor?.view.dom.querySelectorAll('[class*="hljs-"]')).toHaveLength(0);
+        editor?.destroy();
     });
 });
 

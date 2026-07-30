@@ -152,9 +152,11 @@ const EMPTY_ROOT = { type: 'root' as const, children: [] as unknown[] };
  * when the node has no resolvable language, which is exactly the plain-text case.
  */
 export const notesLowlight = {
-    highlight: (language: string, value: string, options?: unknown) =>
+    highlight: (language: string, value: string, options?: unknown) => {
+        if (!registry.registered(language)) return EMPTY_ROOT;
         // @ts-expect-error — lowlight's highlight signature accepts optional opts.
-        registry.highlight(language, value, options),
+        return registry.highlight(language, value, options);
+    },
     highlightAuto: () => EMPTY_ROOT,
     listLanguages: () => registry.listLanguages(),
     registered: (aliasOrLanguage: string) => registry.registered(aliasOrLanguage),
