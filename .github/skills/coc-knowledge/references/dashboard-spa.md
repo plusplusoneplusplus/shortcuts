@@ -80,6 +80,12 @@ platform-specific modifier-click instruction in a native hover hint. The hint
 is applied only to the live anchor DOM so it does not become part of the saved
 Markdown.
 
+The Notes rich editor highlights only its 16 explicitly registered Lowlight
+grammars. Unsupported fenced-code labels such as `text` and `plaintext` render
+as plain code while retaining the original label for Markdown round-trip, even
+when another SPA import registered that language in the process-wide
+Highlight.js instance.
+
 The shared Markdown math tokenizer accepts digit-led inline formulas such as
 `$2MNK$` when their next unescaped dollar is a valid closer. If that next dollar
 is not a valid closer, the digit-led opener stays literal so currency before a

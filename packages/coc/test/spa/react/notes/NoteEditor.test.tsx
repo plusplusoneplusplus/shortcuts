@@ -173,6 +173,32 @@ describe('NoteEditor', () => {
         });
     });
 
+    // ── TOC button enabled after load (regression) ─────────────────────
+    // Content is injected via setContent with emitUpdate:false, so the change
+    // handler never fires. The TOC must still be recomputed from the freshly
+    // loaded doc so the toolbar's TOC button is enabled without any user edit.
+    it('enables the TOC button after loading a note with headings (no edit needed)', async () => {
+        mockLoadContent.mockResolvedValue({ content: '# Title\n## Section', path: 'page.md' });
+        // Reflect injected content in the editor doc so extractHeadings (called
+        // by NoteEditor right after setContent) can walk real heading nodes.
+        mockSetContent.mockImplementation(() => {
+            mockEditor.state.doc = {
+                descendants(cb: (node: unknown, pos: number) => void) {
+                    cb({ type: { name: 'heading' }, attrs: { level: 1 }, textContent: 'Title' }, 1);
+                    cb({ type: { name: 'heading' }, attrs: { level: 2 }, textContent: 'Section' }, 10);
+                },
+            } as typeof mockEditor.state.doc;
+        });
+
+        await act(async () => {
+            render(<NoteEditor workspaceId="ws1" notePath="page.md" io={mockIo} />);
+        });
+        await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+
+        const tocBtn = await screen.findByTestId('toc-toggle-btn');
+        await waitFor(() => expect(tocBtn).not.toBeDisabled());
+    });
+
     // ── No spurious autosave after load (Fix 3) ─────────────────────────
 
     it('does not trigger spurious autosave after loading content', async () => {
