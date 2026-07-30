@@ -275,7 +275,7 @@ Page create and rename operations normalize page filenames by appending `.md` wh
 | GET | `/api/workspaces/:id/notes/:path` | Read note (`?root=` optional) |
 | PUT | `/api/workspaces/:id/notes/:path` | Update note (body `root` optional) |
 | DELETE | `/api/workspaces/:id/notes/:path` | Delete note (`?root=` optional) |
-| GET | `/api/workspaces/:id/notes-git/status` | Git status (default root only) |
+| GET | `/api/workspaces/:id/notes-git/status` | Git status (default root only). Includes working-tree state plus upstream sync fields `hasUpstream`, `ahead`, `behind` (local commits un/pushed vs `origin/<branch>`, computed locally with no fetch; `ahead`/`behind` are null when no tracking ref exists) |
 | POST | `/api/workspaces/:id/notes-git/commit` | Git commit (default root only) |
 | GET | `/api/workspaces/:id/notes/roots` | List configured and task-derived roots |
 | POST | `/api/workspaces/:id/notes/roots` | Add a repo-folder root |

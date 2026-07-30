@@ -140,6 +140,12 @@ export interface NotesGitStatus {
   unstaged: string[];
   untracked: string[];
   totalChanges: number;
+  /** True when a local `origin/<branch>` tracking ref exists. */
+  hasUpstream: boolean;
+  /** Local commits not yet pushed to `origin/<branch>` (null when no upstream). */
+  ahead: number | null;
+  /** `origin/<branch>` commits not in local, as of last fetch (null when no upstream). */
+  behind: number | null;
 }
 
 export interface NotesGitLogEntry {

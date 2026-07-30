@@ -222,6 +222,80 @@ describe('NotesGitTab (notes-git)', () => {
         expect(screen.getByText('1 new')).toBeDefined();
     });
 
+    // ── Sync status indicator (ahead/behind) ────────────────────────
+
+    it('shows "N commits not pushed" when the local branch is ahead of origin', () => {
+        hookReturn = {
+            ...defaultHookReturn,
+            initialized: true,
+            status: makeStatus({ hasUpstream: true, ahead: 2, behind: 0 }),
+            log: [],
+        };
+        render(<NotesGitTab workspaceId="ws-1" />);
+        const sync = screen.getByTestId('notes-git-sync-status');
+        expect(sync).toBeDefined();
+        expect(screen.getByText(/2 commits not pushed/)).toBeDefined();
+    });
+
+    it('singularizes "1 commit not pushed"', () => {
+        hookReturn = {
+            ...defaultHookReturn,
+            initialized: true,
+            status: makeStatus({ hasUpstream: true, ahead: 1, behind: 0 }),
+            log: [],
+        };
+        render(<NotesGitTab workspaceId="ws-1" />);
+        expect(screen.getByText(/1 commit not pushed/)).toBeDefined();
+    });
+
+    it('shows "Synced with origin" when ahead and behind are both zero', () => {
+        hookReturn = {
+            ...defaultHookReturn,
+            initialized: true,
+            status: makeStatus({ hasUpstream: true, ahead: 0, behind: 0 }),
+            log: [],
+        };
+        render(<NotesGitTab workspaceId="ws-1" />);
+        expect(screen.getByTestId('notes-git-sync-status')).toBeDefined();
+        expect(screen.getByText(/Synced with origin/)).toBeDefined();
+    });
+
+    it('shows "N behind" when origin is ahead of the local branch', () => {
+        hookReturn = {
+            ...defaultHookReturn,
+            initialized: true,
+            status: makeStatus({ hasUpstream: true, ahead: 0, behind: 3 }),
+            log: [],
+        };
+        render(<NotesGitTab workspaceId="ws-1" />);
+        expect(screen.getByText(/3 behind/)).toBeDefined();
+    });
+
+    it('renders no sync line when there is no upstream tracking ref', () => {
+        hookReturn = {
+            ...defaultHookReturn,
+            initialized: true,
+            status: makeStatus({ hasUpstream: false, ahead: null, behind: null }),
+            log: [],
+        };
+        render(<NotesGitTab workspaceId="ws-1" />);
+        expect(screen.queryByTestId('notes-git-sync-status')).toBeNull();
+    });
+
+    it('still shows the unpushed line when the working tree is clean (early-return regression)', () => {
+        hookReturn = {
+            ...defaultHookReturn,
+            initialized: true,
+            status: makeStatus({ clean: true, hasUpstream: true, ahead: 2, behind: 0 }),
+            log: [],
+        };
+        render(<NotesGitTab workspaceId="ws-1" />);
+        // Working tree still reads Clean...
+        expect(screen.getByText(/Clean/)).toBeDefined();
+        // ...but the unpushed commits are surfaced alongside it.
+        expect(screen.getByText(/2 commits not pushed/)).toBeDefined();
+    });
+
     // ── Initialized view: History list ──────────────────────────────
 
     it('renders commit history list', () => {
