@@ -25,6 +25,8 @@ import {
 } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/sidenoteRefPlacement';
 import { htmlToMarkdown }
     from '../../../../src/server/spa/client/react/features/notes/editor/noteMarkdown';
+import { findAnchorInDoc }
+    from '../../../../src/server/spa/client/react/features/notes/editor/commentAnchoring';
 
 function makeEditor(html: string): Editor {
     return new Editor({
@@ -70,6 +72,102 @@ describe('resolveSidenoteInsertPos', () => {
         const editor = makeEditor(SENTENCE);
         try {
             expect(resolveSidenoteInsertPos(editor.state.doc, { selectedText: '' })).toBeNull();
+        } finally {
+            editor.destroy();
+        }
+    });
+});
+
+const CODE_HTML =
+    '<pre><code>from dataclasses import dataclass\nx = 1_000_000\ny = x $ 2</code></pre>';
+const CODE_ANCHOR = {
+    selectedText: 'from dataclasses import dataclass',
+    contextBefore: '',
+    contextAfter: '\nx = 1_000_000',
+};
+
+describe('resolveSidenoteInsertPos — code block (fence-corruption guard)', () => {
+    it('relocates the marker to just AFTER a code block, never inside it', () => {
+        const editor = makeEditor(CODE_HTML);
+        try {
+            const pos = resolveSidenoteInsertPos(editor.state.doc, CODE_ANCHOR);
+            expect(pos).not.toBeNull();
+            // The resolved position must NOT sit inside the codeBlock.
+            const $pos = editor.state.doc.resolve(pos!);
+            expect($pos.parent.type.name).not.toBe('codeBlock');
+            // The anchor SEARCH still located the code phrase inside the block…
+            const match = findAnchorInDoc(editor.state.doc, {
+                quotedText: CODE_ANCHOR.selectedText,
+                prefix: CODE_ANCHOR.contextBefore,
+                suffix: CODE_ANCHOR.contextAfter,
+            });
+            const $match = editor.state.doc.resolve(match!.to);
+            expect($match.parent.type.name).toBe('codeBlock');
+            // …but the insert position was pushed past the enclosing block.
+            expect(pos!).toBeGreaterThanOrEqual(match!.to);
+        } finally {
+            editor.destroy();
+        }
+    });
+
+    it('inserts the marker span OUTSIDE the single <pre> block', () => {
+        const editor = makeEditor(CODE_HTML);
+        try {
+            expect(
+                insertSidenoteRef(editor, CODE_ANCHOR, { refId: 'code1', answer: 'A.' }),
+            ).toBe(true);
+            const html = editor.getHTML();
+            // Exactly one <pre> survives — the block was not split.
+            expect(html.match(/<pre>/g) ?? []).toHaveLength(1);
+            expect(html.match(/<\/pre>/g) ?? []).toHaveLength(1);
+            // The marker span sits after the closing </pre>, not inside it.
+            const preEnd = html.indexOf('</pre>');
+            const spanAt = html.indexOf('class="qa-sidenote-ref"');
+            expect(spanAt).toBeGreaterThan(preEnd);
+        } finally {
+            editor.destroy();
+        }
+    });
+
+    it('serializes to one intact fenced block with a [^qa-] marker after the fence', () => {
+        const editor = makeEditor(CODE_HTML);
+        try {
+            insertSidenoteRef(editor, CODE_ANCHOR, { refId: 'code2', answer: 'A.' });
+            const md = htmlToMarkdown(editor.getHTML());
+            // Exactly one fenced block, code text intact (never split mid-line).
+            expect(md.match(/```/g) ?? []).toHaveLength(2);
+            expect(md).toContain('from dataclasses import dataclass');
+            expect(md).toContain('x = 1_000_000');
+            expect(md).toContain('y = x $ 2');
+            // The marker + definition land AFTER the closing fence.
+            const fenceClose = md.lastIndexOf('```');
+            expect(md.indexOf('[^qa-code2]')).toBeGreaterThan(fenceClose);
+        } finally {
+            editor.destroy();
+        }
+    });
+
+    it('leaves the code block text byte-for-byte unchanged (regression guard)', () => {
+        const editor = makeEditor(CODE_HTML);
+        try {
+            const codeTextBefore = editor.state.doc.child(0).textContent;
+            insertSidenoteRef(editor, CODE_ANCHOR, { refId: 'code3', answer: 'A.' });
+            // The first node is still the codeBlock, with identical text.
+            const firstNode = editor.state.doc.child(0);
+            expect(firstNode.type.name).toBe('codeBlock');
+            expect(firstNode.textContent).toBe(codeTextBefore);
+        } finally {
+            editor.destroy();
+        }
+    });
+
+    it('leaves a prose selection resolving inline (unchanged behavior)', () => {
+        const editor = makeEditor(SENTENCE);
+        try {
+            const pos = resolveSidenoteInsertPos(editor.state.doc, ANCHOR);
+            expect(pos).not.toBeNull();
+            expect(editor.state.doc.resolve(pos!).parent.type.name).toBe('paragraph');
+            expect(editor.state.doc.textBetween(pos!, pos! + 5, '')).toBe(' over');
         } finally {
             editor.destroy();
         }
