@@ -68,7 +68,18 @@ export function resolveSidenoteInsertPos(
 ): number | null {
     if (!anchor.selectedText) return null;
     const match = findAnchorInDoc(doc, toTextAnchor(anchor));
-    return match ? match.to : null;
+    if (!match) return null;
+    // An inline atom marker cannot live inside a code block (content spec
+    // `text*`); inserting it there would split the fence and corrupt the code
+    // (the marker becomes prose after a mid-code closing fence on save). If the
+    // anchor lands inside a code block, place the marker just AFTER that block.
+    const $to = doc.resolve(match.to);
+    for (let d = $to.depth; d > 0; d--) {
+        if ($to.node(d).type.spec.code) {
+            return $to.after(d);
+        }
+    }
+    return match.to;
 }
 
 /**
