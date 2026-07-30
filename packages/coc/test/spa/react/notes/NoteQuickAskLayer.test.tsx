@@ -541,6 +541,115 @@ describe('NoteQuickAskLayer — AC-02 follow-up thread', () => {
     });
 });
 
+describe('NoteQuickAskLayer — dismiss during in-flight request still persists', () => {
+    /** A fetch that resolves only when the returned `resolve` is called, so the
+     *  test can dismiss the popover before the answer lands. */
+    function deferFetch() {
+        let resolve!: (v: { answer?: string; model?: string }) => void;
+        fetchApiMock.mockReturnValueOnce(new Promise(r => { resolve = r; }));
+        return { resolve };
+    }
+
+    /** Pill → input → submit turn 0, leaving the request pending. */
+    async function askPending(question = 'what is this?') {
+        const deferred = deferFetch();
+        render(<Harness />);
+        await raisePill();
+        fireEvent.click(screen.getByTestId('quick-ask-pill'));
+        fireEvent.change(field(), { target: { value: question } });
+        fireEvent.keyDown(field(), { key: 'Enter' });
+        await waitFor(() => expect(screen.getByTestId('quick-ask-popover-loading')).toBeInTheDocument());
+        return deferred;
+    }
+
+    it('turn 0: closing via the close button before resolve still inserts the marker', async () => {
+        const { resolve } = await askPending();
+
+        fireEvent.click(screen.getByTestId('quick-ask-popover-close'));
+        await waitFor(() => expect(screen.queryByTestId('quick-ask-popover')).toBeNull());
+
+        resolve({ answer: 'because it descends the gradient', model: 'm' });
+        await waitFor(() => expect(insertSidenoteRefMock).toHaveBeenCalledTimes(1));
+        const [editorArg, anchorArg, payloadArg] = insertSidenoteRefMock.mock.calls[0];
+        expect(editorArg).toBe(EDITOR_SENTINEL);
+        expect(anchorArg).toEqual({
+            selectedText: 'gradient descent',
+            contextBefore: 'we optimize the loss with ',
+            contextAfter: ' over many epochs',
+        });
+        expect(payloadArg.answer).toBe('because it descends the gradient');
+        expect(payloadArg.question).toBe('what is this?');
+        expect(payloadArg.turns).toEqual([
+            { question: 'what is this?', answer: 'because it descends the gradient' },
+        ]);
+    });
+
+    it('turn 0: an outside pointer-down before resolve still inserts the marker', async () => {
+        const { resolve } = await askPending();
+
+        fireEvent.mouseDown(document.body);
+        await waitFor(() => expect(screen.queryByTestId('quick-ask-popover')).toBeNull());
+
+        resolve({ answer: 'because it descends the gradient', model: 'm' });
+        await waitFor(() => expect(insertSidenoteRefMock).toHaveBeenCalledTimes(1));
+    });
+
+    it('turn 0: the delete control before resolve still inserts the marker (no crash)', async () => {
+        const { resolve } = await askPending();
+
+        // Delete while asking closes the popover (nothing embedded yet to remove).
+        fireEvent.click(screen.getByTestId('quick-ask-popover-dismiss'));
+        await waitFor(() => expect(screen.queryByTestId('quick-ask-popover')).toBeNull());
+
+        resolve({ answer: 'because it descends the gradient', model: 'm' });
+        await waitFor(() => expect(insertSidenoteRefMock).toHaveBeenCalledTimes(1));
+    });
+
+    it('follow-up: closing before resolve still re-writes the marker turns', async () => {
+        // Turn 0 lands normally.
+        fetchApiMock.mockResolvedValueOnce({ answer: 'Iterative first-order optimization.', model: 'm1' });
+        render(<Harness />);
+        await raisePill();
+        fireEvent.click(screen.getByTestId('quick-ask-pill'));
+        fireEvent.change(field(), { target: { value: 'what is this?' } });
+        fireEvent.keyDown(field(), { key: 'Enter' });
+        await waitFor(() => expect(screen.getByTestId('quick-ask-popover-answer')).toBeInTheDocument());
+        expect(insertSidenoteRefMock).toHaveBeenCalledTimes(1);
+
+        // Follow-up request is left pending, then the popover is dismissed.
+        const { resolve } = deferFetch();
+        const replyInput = screen.getByTestId('quick-ask-reply-input');
+        fireEvent.change(replyInput, { target: { value: 'give an example' } });
+        fireEvent.keyDown(replyInput, { key: 'Enter' });
+        fireEvent.click(screen.getByTestId('quick-ask-popover-close'));
+        await waitFor(() => expect(screen.queryByTestId('quick-ask-popover')).toBeNull());
+
+        resolve({ answer: 'For example, SGD.', model: 'm1' });
+        await waitFor(() => expect(updateSidenoteRefTurnsMock).toHaveBeenCalledTimes(1));
+        // No re-embed; the full accumulated thread is persisted.
+        expect(insertSidenoteRefMock).toHaveBeenCalledTimes(1);
+        const [, refId, turns] = updateSidenoteRefTurnsMock.mock.calls[0];
+        expect(refId).toEqual(insertSidenoteRefMock.mock.calls[0][2].refId);
+        expect(turns).toEqual([
+            { question: 'what is this?', answer: 'Iterative first-order optimization.' },
+            { question: 'give an example', answer: 'For example, SGD.' },
+        ]);
+    });
+
+    it('AC-05: a deleted anchor (insert returns false) still calls insert once and does not throw', async () => {
+        // The placement helper — not the layer — owns the drop decision: it returns
+        // false when the phrase is gone. The layer persists unconditionally.
+        insertSidenoteRefMock.mockReturnValue(false);
+        const { resolve } = await askPending();
+
+        fireEvent.mouseDown(document.body);
+        await waitFor(() => expect(screen.queryByTestId('quick-ask-popover')).toBeNull());
+
+        resolve({ answer: 'because it descends the gradient', model: 'm' });
+        await waitFor(() => expect(insertSidenoteRefMock).toHaveBeenCalledTimes(1));
+    });
+});
+
 describe('NoteQuickAskLayer — disabled paths', () => {
     it('is a no-op with no workspaceId (no pill, no listeners)', async () => {
         render(<Harness omitWorkspace />);

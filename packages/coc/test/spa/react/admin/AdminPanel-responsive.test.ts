@@ -28,6 +28,12 @@ const adminRedesignCss = readFileSync(
     resolve(__dirname, '../../../../src/server/spa/client/react/admin/admin-redesign.css'),
     'utf-8'
 );
+// Form controls were extracted from the AdminPanel shell into focused card
+// components; the ar-input sizing primitives now live there.
+const configCardsSource = readFileSync(
+    resolve(__dirname, '../../../../src/server/spa/client/react/admin/configSettingsCards.tsx'),
+    'utf-8'
+);
 
 describe('AdminPanel responsive layout', () => {
     it('uses .ar-shell as the sidebar + main two-column layout', () => {
@@ -47,9 +53,9 @@ describe('AdminPanel responsive layout', () => {
     });
 
     it('uses the ar-input sizing primitives for form controls', () => {
-        // Admin panel uses ar-input (with ar-short / ar-med / ar-long / ar-full
-        // size variants) instead of bespoke padding utilities.
-        expect(adminPanelSource).toMatch(/ar-input\b/);
+        // The settings cards use ar-input (with ar-short / ar-med / ar-long /
+        // ar-full size variants) instead of bespoke padding utilities.
+        expect(configCardsSource).toMatch(/ar-input\b/);
         expect(adminRedesignCss).toMatch(/\.admin-redesign \.ar-input\b/);
     });
 
