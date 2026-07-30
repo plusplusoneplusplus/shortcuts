@@ -365,6 +365,29 @@ function findMarkdownReferenceLink(target: EventTarget | null): HTMLElement | nu
     return findMdLink(target) ?? findChatMarkdownAnchor(target);
 }
 
+/**
+ * Match any `<a href>` markdown link inside a conversation bubble
+ * (`.chat-message`) for the lightweight hover *source hint* — a small tooltip
+ * that reveals the link's raw target. Applies to BOTH internal note/file
+ * anchors and external URLs; unlike {@link findChatMarkdownAnchor} it does not
+ * filter by kind because the hint shows the bare href for everything.
+ *
+ * `.file-path-link` spans keep their own rich content preview and are skipped
+ * here; bare in-page `#`/process-deeplink anchors have no useful target and are
+ * skipped too.
+ */
+function findChatAnchorForHint(target: EventTarget | null): HTMLAnchorElement | null {
+    if (!(target instanceof HTMLElement)) return null;
+    const link = target.closest<HTMLAnchorElement>('a[href]');
+    if (!link) return null;
+    if (!link.closest('.chat-message')) return null;
+    // File-path spans keep their existing rich preview tooltip.
+    if (link.classList.contains('file-path-link') || link.hasAttribute('data-full-path')) return null;
+    const href = link.getAttribute('href') || '';
+    if (!href || href.startsWith('#')) return null;
+    return link;
+}
+
 function readMarkdownHref(link: HTMLElement): string {
     return link.getAttribute('data-href') || link.getAttribute('href') || '';
 }
@@ -481,6 +504,8 @@ function attachBodyScrollGuard(): void {
 
 function renderLoading(path: string): void {
     const tip = createTooltip();
+    // Rich preview reuses the shared tooltip; shed the compact hint variant.
+    tip.classList.remove('file-preview-tooltip--hint');
     const fileName = path.split('/').pop() || path;
     tip.innerHTML =
         `<div class="file-preview-tooltip-header">${escapeHtml(fileName)}</div>` +
@@ -669,6 +694,38 @@ async function showTooltip(target: HTMLElement): Promise<void> {
     }
 }
 
+/**
+ * Show the lightweight hover *source hint* for a conversation-bubble anchor:
+ * a small floating tooltip whose text is the link's raw `href` target, shown
+ * bare (no label/prefix). Reuses the shared tooltip element, positioning and
+ * viewport clamp; unlike {@link showTooltip} it renders synchronously with no
+ * content fetch.
+ */
+function showAnchorHint(anchor: HTMLAnchorElement): void {
+    const href = anchor.getAttribute('href') || '';
+    if (!href) return;
+
+    activeTarget = anchor;
+    activeRequestId++;
+
+    const tip = createTooltip();
+    // Compact single-line variant: drops the rich preview's fixed width/min-height.
+    tip.classList.add('file-preview-tooltip--hint');
+    tip.innerHTML =
+        `<div class="file-preview-tooltip-body file-path-link-hint">${escapeHtml(href)}</div>`;
+    tip.style.display = 'block';
+    positionTooltip(anchor);
+
+    // Brief pointer-events grace period so a hint rendered over the link does
+    // not swallow an immediate click (mirrors showTooltip).
+    if (tooltipEl) {
+        tooltipEl.style.pointerEvents = 'none';
+        setTimeout(() => {
+            if (tooltipEl) tooltipEl.style.pointerEvents = '';
+        }, 150);
+    }
+}
+
 function isMobile(): boolean {
     return (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches) ||
         /Mobi|Android|iPhone|iPad|Touch/i.test(navigator.userAgent);
@@ -696,6 +753,36 @@ function initFilePathPreviewDelegation(): void {
         document.body.addEventListener('mouseout', (event) => {
             const target = findPathLink(event.target);
             if (!target) return;
+
+            if (hoverTimer) {
+                clearTimeout(hoverTimer);
+                hoverTimer = null;
+            }
+            scheduleHide();
+        });
+
+        // Lightweight source hint for conversation-bubble `<a href>` links:
+        // reveal the link's raw target on hover (mirrors the file-path preview
+        // lifecycle above, but renders bare href text with no content fetch).
+        document.body.addEventListener('mouseover', (event) => {
+            const anchor = findChatAnchorForHint(event.target);
+            if (!anchor) return;
+
+            if (hideTimer) {
+                clearTimeout(hideTimer);
+                hideTimer = null;
+            }
+            if (activeTarget === anchor) return;
+
+            if (hoverTimer) clearTimeout(hoverTimer);
+            hoverTimer = setTimeout(() => {
+                showAnchorHint(anchor);
+            }, HOVER_DELAY_MS);
+        });
+
+        document.body.addEventListener('mouseout', (event) => {
+            const anchor = findChatAnchorForHint(event.target);
+            if (!anchor) return;
 
             if (hoverTimer) {
                 clearTimeout(hoverTimer);

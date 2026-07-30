@@ -2251,3 +2251,165 @@ describe('click-through fallback on tooltip click (Fix 3)', () => {
         }
     });
 });
+
+describe('conversation-bubble anchor source hint (chat-link-source-hint)', () => {
+    const PREVIEW_MODULE = '../../../src/server/spa/client/react/shared/file-path/file-path-preview';
+
+    function freshBody(): void {
+        document.body = document.createElement('body');
+    }
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+        freshBody();
+        vi.resetModules();
+        delete (window as any).__COC_FILE_PATH_PREVIEW_DELEGATION__;
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ workspaces: [] }),
+        }) as any);
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+        delete (window as any).__COC_FILE_PATH_PREVIEW_DELEGATION__;
+        freshBody();
+    });
+
+    async function hover(el: HTMLElement) {
+        el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+        await vi.advanceTimersByTimeAsync(300);
+        await Promise.resolve();
+    }
+
+    function tooltip(): HTMLElement | null {
+        return document.querySelector('.file-preview-tooltip') as HTMLElement | null;
+    }
+
+    it('shows the raw internal note/file path as a bare hint on hover', async () => {
+        const href = '~/.coc/repos/ws-1/notes/Plans/chat-note-links.md';
+        document.body.innerHTML = `
+            <div class="chat-message assistant">
+                <a href="${href}">open plan note</a>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        await hover(document.querySelector('a') as HTMLElement);
+
+        const tip = tooltip();
+        expect(tip).not.toBeNull();
+        expect(tip?.style.display).toBe('block');
+        // Bare target only — no "Opens note:" / "Go to:" prefix.
+        expect(tip?.textContent?.trim()).toBe(href);
+        expect(tip?.classList.contains('file-preview-tooltip--hint')).toBe(true);
+    });
+
+    it('shows the full URL as a bare hint for external links', async () => {
+        const href = 'https://example.com/docs/guide?x=1#frag';
+        document.body.innerHTML = `
+            <div class="chat-message user">
+                <a href="${href}" target="_blank" rel="noopener noreferrer">the guide</a>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        await hover(document.querySelector('a') as HTMLElement);
+
+        const tip = tooltip();
+        expect(tip).not.toBeNull();
+        expect(tip?.textContent?.trim()).toBe(href);
+    });
+
+    it('hides the hint on mouse-out', async () => {
+        document.body.innerHTML = `
+            <div class="chat-message assistant">
+                <a href="https://example.com/">x</a>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const anchor = document.querySelector('a') as HTMLElement;
+        await hover(anchor);
+        expect(tooltip()?.style.display).toBe('block');
+
+        anchor.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+        await vi.advanceTimersByTimeAsync(300);
+        expect(tooltip()?.style.display).toBe('none');
+    });
+
+    it('does NOT show the bare hint for `.file-path-link` spans (rich preview unchanged)', async () => {
+        // A file-path span rendered as an anchor must keep its rich content
+        // preview, not the bare-href hint.
+        document.body.innerHTML = `
+            <div class="chat-message assistant">
+                <a href="/repo/src/foo.ts" class="file-path-link" data-full-path="/repo/src/foo.ts">foo.ts</a>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        await hover(document.querySelector('a') as HTMLElement);
+
+        const tip = tooltip();
+        // Either no tooltip yet, or if one exists it must not be the hint variant.
+        if (tip && tip.style.display === 'block') {
+            expect(tip.classList.contains('file-preview-tooltip--hint')).toBe(false);
+        }
+    });
+
+    it('ignores in-page `#` anchors (no useful target)', async () => {
+        document.body.innerHTML = `
+            <div class="chat-message assistant">
+                <a href="#/process/abc">jump</a>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        await hover(document.querySelector('a') as HTMLElement);
+
+        const tip = tooltip();
+        expect(tip === null || tip.style.display === 'none').toBe(true);
+    });
+
+    it('ignores anchors outside a conversation bubble', async () => {
+        document.body.innerHTML = `
+            <div class="not-a-chat">
+                <a href="https://example.com/">x</a>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        await hover(document.querySelector('a') as HTMLElement);
+
+        const tip = tooltip();
+        expect(tip === null || tip.style.display === 'none').toBe(true);
+    });
+
+    it('does not register hover listeners on mobile (pointer: coarse)', async () => {
+        document.body.innerHTML = `
+            <div class="chat-message assistant"><a href="https://example.com/">x</a></div>
+        `;
+
+        const originalMatchMedia = window.matchMedia;
+        window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+            matches: query === '(pointer: coarse)',
+            media: query,
+            onchange: null,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            addListener: vi.fn(),
+            removeListener: vi.fn(),
+            dispatchEvent: vi.fn(),
+        }));
+
+        try {
+            await import(PREVIEW_MODULE);
+            await hover(document.querySelector('a') as HTMLElement);
+            const tip = tooltip();
+            expect(tip === null || tip.style.display === 'none').toBe(true);
+        } finally {
+            window.matchMedia = originalMatchMedia;
+        }
+    });
+});
