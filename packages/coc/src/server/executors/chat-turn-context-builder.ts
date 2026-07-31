@@ -17,7 +17,6 @@
 
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
-import type { BroadcastWorkItemFn } from '../llm-tools/create-update-work-item-tool';
 import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { WakeupToolDeps, LoopToolDeps } from '../llm-tools/loop-tools';
@@ -41,7 +40,6 @@ export interface ChatTurnContextInput {
      */
     query?: string;
     followUpSuggestions?: { enabled: boolean; count: number };
-    broadcastWorkItem?: BroadcastWorkItemFn;
     /**
      * Bound in-process enqueue capability. When present (and the opt-in
      * `send_to_conversation` tool is enabled by preferences), an agent can spawn a
@@ -127,7 +125,6 @@ const EMPTY_MEM_V2: MemoryV2Addon = Object.freeze({
  *     processId,
  *     query: prompt,
  *     followUpSuggestions: this.followUpSuggestions,
- *     broadcastWorkItem,
  *     scheduleWakeup: loopDeps.scheduleWakeup,
  *     loopTools: loopDeps.loopTools,
  * });
@@ -163,7 +160,6 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         workspaceId: input.workspaceId,
         processId: input.processId,
         followUpSuggestions: input.followUpSuggestions,
-        broadcastWorkItem: input.broadcastWorkItem,
         enqueueChat: input.enqueueChat,
         sendMessage: input.sendMessage,
         sendToConversationRuntime: input.sendToConversationRuntime,

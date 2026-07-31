@@ -32,17 +32,14 @@ import type { AskUserAnswerInput, AskUserAnswerValue, AskUserToolDeps } from '..
 import { createAskUserTool } from '../llm-tools/ask-user-tool';
 import { createCanvasTools } from '../llm-tools/canvas-tools';
 import { createKustoTools } from '../llm-tools/kusto-tools';
-import { createCreateUpdateWorkItemTool, type BroadcastWorkItemFn, type CreateUpdateWorkItemToolDeps } from '../llm-tools/create-update-work-item-tool';
 import { createSendToConversationTool, type EnqueueChatFn, type SendMessageFn, type SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import { createGetConversationTool } from '../llm-tools/get-conversation-tool';
-import { createGetWorkItemTool } from '../llm-tools/get-work-item-tool';
 import { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';
 import type { LoopToolDeps } from '../llm-tools/loop-tools';
 import { createLoopTool, createScheduleWakeupTool } from '../llm-tools/loop-tools';
 import { createSearchConversationsTool } from '../llm-tools/search-conversations-tool';
 import { createSuggestFollowUpsTool } from '../llm-tools/suggest-follow-ups-tool';
 import { createTavilyWebSearchTool } from '../llm-tools/tavily-web-search-tool';
-import { createWorkItemStore } from '../work-items/work-item-store';
 import { tagBlock, tagGuidanceSuffix } from './prompt-tags';
 import type { ChatMode, ChatPayload, ChatProvider, DreamRunPayload, ForEachGenerationContext, MapReduceGenerationContext, PrClassificationPayload, RunScriptPayload } from '../tasks/task-types';
 import {
@@ -588,45 +585,6 @@ export function buildAskUserAddon(
     const suffix = '';
 
     return { tools: [tool], suffix, answerQuestion, skipQuestion, answerQuestions, cancelAll, hasPending };
-}
-
-// ============================================================================
-// Create/Update Work Item
-// ============================================================================
-
-/**
- * Builds the tools array and prompt suffix for the work-item tool family: the
- * read-only `get_work_item` lookup tool and the mutating `create_update_work_item`
- * tool. Both are only injected when a valid dataDir and repoId are available.
- *
- * @param dataDir     - Base data directory (e.g. `~/.coc`).
- * @param repoId      - Workspace / repo ID the items belong to.
- * @param broadcastFn - Optional function to broadcast a WebSocket event after creation.
- * @param deps        - Optional server-side dependencies (process store, feature flags, transports).
- */
-export function buildCreateWorkItemAddon(
-    dataDir: string | undefined,
-    repoId: string | undefined,
-    broadcastFn?: BroadcastWorkItemFn,
-    deps?: CreateUpdateWorkItemToolDeps,
-): { tools: Tool<any>[]; suffix: string } {
-    if (!dataDir || !repoId) {
-        return { tools: [], suffix: '' };
-    }
-
-    // Build one correctly-scoped store and inject it into both tools so they
-    // share a single instance and cannot diverge on which directory they use.
-    const workItemStore = deps?.workItemStore
-        ?? createWorkItemStore({ dataDir, processStore: deps?.processStore });
-    const scopedDeps: CreateUpdateWorkItemToolDeps = { ...deps, workItemStore };
-
-    const { tool: getWorkItemTool } = createGetWorkItemTool(dataDir, repoId, scopedDeps);
-    const { tool: workItemTool } = createCreateUpdateWorkItemTool(dataDir, repoId, broadcastFn, scopedDeps);
-
-    // No prose suffix — both work-item tool descriptions carry their own guidance.
-    const suffix = '';
-
-    return { tools: [getWorkItemTool, workItemTool], suffix };
 }
 
 /**

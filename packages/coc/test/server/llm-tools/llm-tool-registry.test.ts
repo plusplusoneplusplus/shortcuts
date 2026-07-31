@@ -8,7 +8,6 @@ import { describe, it, expect } from 'vitest';
 import {
     LLM_TOOL_REGISTRY,
     DEFAULT_DISABLED_LLM_TOOLS,
-    CLASSIC_MODE_EXTRA_DISABLED_TOOLS,
     getEffectiveDefaultDisabledTools,
     isLlmToolEnabled,
     filterDisabledLlmTools,
@@ -22,9 +21,9 @@ describe('LLM_TOOL_REGISTRY', () => {
         expect(names).toContain('search_conversations');
         expect(names).toContain('get_conversation');
         expect(names).toContain('ask_user');
-        expect(names).toContain('get_work_item');
-        expect(names).toContain('create_update_work_item');
         expect(names).toContain('send_to_conversation');
+        expect(names).not.toContain('get_work_item');
+        expect(names).not.toContain('create_update_work_item');
         expect(names).not.toContain('create_work_item');
         expect(names).not.toContain('update_work_item');
         expect(names).not.toContain('create_bug');
@@ -86,10 +85,10 @@ describe('DEFAULT_DISABLED_LLM_TOOLS', () => {
 });
 
 describe('getEffectiveDefaultDisabledTools', () => {
-    it('disables the work item tool family and web search tools in classic mode', () => {
-        expect(getEffectiveDefaultDisabledTools('classic')).toEqual(
-            expect.arrayContaining(['get_work_item', 'create_update_work_item', 'tavily_web_search']),
-        );
+    it('disables web search tools and never the removed work-item tools in classic mode', () => {
+        expect(getEffectiveDefaultDisabledTools('classic')).toContain('tavily_web_search');
+        expect(getEffectiveDefaultDisabledTools('classic')).not.toContain('get_work_item');
+        expect(getEffectiveDefaultDisabledTools('classic')).not.toContain('create_update_work_item');
         expect(getEffectiveDefaultDisabledTools('classic')).not.toContain('create_bug');
     });
 
@@ -100,15 +99,18 @@ describe('getEffectiveDefaultDisabledTools', () => {
     it('uses only registry-level defaults in dev-workflow mode', () => {
         expect(getEffectiveDefaultDisabledTools('dev-workflow')).toEqual(DEFAULT_DISABLED_LLM_TOOLS);
         expect(getEffectiveDefaultDisabledTools('dev-workflow')).not.toContain('get_work_item');
-        expect(getEffectiveDefaultDisabledTools('dev-workflow')).not.toEqual(
-            expect.arrayContaining(CLASSIC_MODE_EXTRA_DISABLED_TOOLS),
-        );
     });
 });
 
 describe('filterRemovedLlmToolNames', () => {
-    it('drops stale create_bug disabled-tool preferences', () => {
-        expect(filterRemovedLlmToolNames(['suggest_follow_ups', 'create_bug', 'memory'])).toEqual([
+    it('drops stale removed disabled-tool preferences', () => {
+        expect(filterRemovedLlmToolNames([
+            'suggest_follow_ups',
+            'create_bug',
+            'get_work_item',
+            'create_update_work_item',
+            'memory',
+        ])).toEqual([
             'suggest_follow_ups',
             'memory',
         ]);
@@ -151,9 +153,12 @@ describe('isLlmToolEnabled', () => {
         expect(isLlmToolEnabled('unknown_tool', ['unknown_tool'])).toBe(false);
     });
 
-    it('treats removed create_bug as disabled', () => {
+    it('treats removed tools as disabled', () => {
         expect(isLlmToolEnabled('create_bug', undefined)).toBe(false);
         expect(isLlmToolEnabled('create_bug', [])).toBe(false);
+        expect(isLlmToolEnabled('get_work_item', undefined)).toBe(false);
+        expect(isLlmToolEnabled('create_update_work_item', undefined)).toBe(false);
+        expect(isLlmToolEnabled('create_update_work_item', [])).toBe(false);
     });
 });
 
@@ -196,13 +201,15 @@ describe('filterDisabledLlmTools', () => {
         expect(filtered[1]).toBe(mockTools[2]);
     });
 
-    it('removes stale create_bug tools even when explicitly enabled', () => {
+    it('removes stale removed tools even when explicitly enabled', () => {
         const filtered = filterDisabledLlmTools([
-            { name: 'create_update_work_item', handler: () => {} },
+            { name: 'suggest_follow_ups', handler: () => {} },
             { name: 'create_bug', handler: () => {} },
+            { name: 'get_work_item', handler: () => {} },
+            { name: 'create_update_work_item', handler: () => {} },
         ], []);
 
-        expect(filtered.map(t => t.name)).toEqual(['create_update_work_item']);
+        expect(filtered.map(t => t.name)).toEqual(['suggest_follow_ups']);
     });
 });
 

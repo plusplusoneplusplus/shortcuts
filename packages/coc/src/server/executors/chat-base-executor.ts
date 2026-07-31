@@ -49,7 +49,6 @@ import {
 import type { ChatPayload, ChatProvider, PrClassificationPayload } from '../tasks/task-types';
 import { getForEachContext, getMapReduceContext, isForEachGenerationContext, isMapReduceGenerationContext, normalizeChatModeOrDefault } from '../tasks/task-types';
 import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
-import type { BroadcastWorkItemFn } from '../llm-tools/create-update-work-item-tool';
 import { BaseExecutor } from './base-executor';
 import { resolveDefaultModel } from '../preferences-handler';
 import { loadConfigFile } from '../../config';
@@ -499,7 +498,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         prompt: string,
         mode: 'ask',
         workingDirectory: string | undefined,
-        broadcastWorkItem?: BroadcastWorkItemFn,
     ): Promise<ChatModeAIOptions> {
         const payload = task.payload as unknown as ChatPayload;
 
@@ -520,7 +518,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             processId,
             query: prompt,
             followUpSuggestions: this.followUpSuggestions,
-            broadcastWorkItem,
             enqueueChat: this.getEnqueueChat?.(),
             sendMessage: this.getSendMessage?.(),
             sendToConversationRuntime: this.getSendToConversationRuntime?.(),

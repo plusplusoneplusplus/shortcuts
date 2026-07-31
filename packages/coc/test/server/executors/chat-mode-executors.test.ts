@@ -1417,10 +1417,10 @@ describe('ChatBaseExecutor selected skills', () => {
 });
 
 // ============================================================================
-// Live chat executors include the unified create_update_work_item tool
+// Work-item LLM tools are removed — regression guard against re-wiring
 // ============================================================================
 
-describe('create_update_work_item tool wiring', () => {
+describe('work-item tool wiring (removed)', () => {
     let store: ReturnType<typeof createMockProcessStore>;
     let dataDir: string;
 
@@ -1468,40 +1468,10 @@ describe('create_update_work_item tool wiring', () => {
         };
     }
 
-    it('ChatExecutor includes create_update_work_item and not create_bug', async () => {
-        const executor = new ChatExecutor(store, makeOptions(store), dataDir);
-        const task = makeTaskWithWorkspace('ask', 'task-wi-ask');
-
-        await executor.execute(task, 'Hello');
-
-        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-        const toolNames = (call.tools ?? []).map((t: any) => t.name);
-        expect(toolNames).toContain('get_work_item');
-        expect(toolNames).toContain('create_update_work_item');
-        expect(toolNames).not.toContain('create_work_item');
-        expect(toolNames).not.toContain('update_work_item');
-        expect(toolNames).not.toContain('create_bug');
-    });
-
-    it('AutopilotExecutor includes create_update_work_item and not create_bug', async () => {
-        const executor = new AutopilotExecutor(store, makeOptions(store), dataDir);
-        const task = makeTaskWithWorkspace('autopilot', 'task-wi-auto');
-
-        await executor.execute(task, 'Hello');
-
-        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-        const toolNames = (call.tools ?? []).map((t: any) => t.name);
-        expect(toolNames).toContain('get_work_item');
-        expect(toolNames).toContain('create_update_work_item');
-        expect(toolNames).not.toContain('create_work_item');
-        expect(toolNames).not.toContain('update_work_item');
-        expect(toolNames).not.toContain('create_bug');
-    });
-
-    it('all live initial executors include create_update_work_item and not create_bug', async () => {
+    it('no live initial executor wires the removed work-item tools', async () => {
         for (const { mode, Ctor, id } of [
-            { mode: 'ask' as const, Ctor: ChatExecutor, id: 'sfx-ask' },
-            { mode: 'autopilot' as const, Ctor: AutopilotExecutor, id: 'sfx-auto' },
+            { mode: 'ask' as const, Ctor: ChatExecutor, id: 'wi-ask' },
+            { mode: 'autopilot' as const, Ctor: AutopilotExecutor, id: 'wi-auto' },
         ]) {
             sdkMocks.resetAll();
             sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
@@ -1514,8 +1484,8 @@ describe('create_update_work_item tool wiring', () => {
 
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
             const toolNames = (call.tools ?? []).map((t: any) => t.name);
-            expect(toolNames).toContain('get_work_item');
-            expect(toolNames).toContain('create_update_work_item');
+            expect(toolNames).not.toContain('get_work_item');
+            expect(toolNames).not.toContain('create_update_work_item');
             expect(toolNames).not.toContain('create_work_item');
             expect(toolNames).not.toContain('update_work_item');
             expect(toolNames).not.toContain('create_bug');
@@ -1543,34 +1513,6 @@ describe('create_update_work_item tool wiring', () => {
             expect(toolNames).toContain('tavily_web_search');
             const systemContent = call.systemMessage?.content ?? '';
             expect(systemContent).toContain('tavily_web_search');
-        }
-    });
-
-    it('classic mode disables create_update_work_item by default', async () => {
-        writeLayoutMode('classic');
-
-        for (const { mode, Ctor, id } of [
-            { mode: 'ask' as const, Ctor: ChatExecutor, id: 'classic-ask' },
-            { mode: 'autopilot' as const, Ctor: AutopilotExecutor, id: 'classic-auto' },
-        ]) {
-            sdkMocks.resetAll();
-            sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
-            sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'ok', sessionId: 's1', toolCalls: [] });
-
-            const executor = new Ctor(store, makeOptions(store), dataDir);
-            const task = makeTaskWithWorkspace(mode, id);
-
-            await executor.execute(task, 'Hello');
-
-            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
-            const toolNames = (call.tools ?? []).map((t: any) => t.name);
-            expect(toolNames).not.toContain('get_work_item');
-            expect(toolNames).not.toContain('create_update_work_item');
-            expect(toolNames).not.toContain('create_work_item');
-            expect(toolNames).not.toContain('update_work_item');
-            expect(toolNames).not.toContain('create_bug');
-            expect(call.prompt).not.toContain('create-work-item');
-            expect(call.prompt).not.toContain('create-bug');
         }
     });
 });

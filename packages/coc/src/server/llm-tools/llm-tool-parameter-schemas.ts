@@ -8,8 +8,8 @@
  * Why a mirror instead of importing the live schemas?
  *  - The real schemas are declared inline inside each `defineTool()` call, and
  *    several factories build heavyweight dependencies at construction time
- *    (e.g. `create_update_work_item` instantiates a `FileWorkItemStore`). The
- *    settings route must NOT instantiate tools just to read a schema.
+ *    (e.g. the Kusto tool resolves cluster config). The settings route must NOT
+ *    instantiate tools just to read a schema.
  *  - This module is display-only: it never affects tool execution, validation,
  *    provider routing, or persisted preferences (per the feature's scope).
  *
@@ -87,35 +87,6 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
             questions: { type: 'array', items: { type: 'object' } },
         },
         required: ['questions'],
-    },
-    get_work_item: {
-        type: 'object',
-        properties: {
-            workItemId: { type: 'string' },
-            target: { type: 'string' },
-            workItemNumber: { oneOf: [{ type: 'number' }, { type: 'string' }] },
-        },
-        required: [],
-    },
-    create_update_work_item: {
-        type: 'object',
-        properties: {
-            workItemId: { type: 'string' },
-            target: { type: 'string' },
-            workItemNumber: { oneOf: [{ type: 'number' }, { type: 'string' }] },
-            type: { type: 'string' },
-            title: { type: 'string' },
-            description: { type: 'string' },
-            priority: { type: 'string' },
-            status: { type: 'string' },
-            tags: { type: 'array', items: { type: 'string' } },
-            plan: { type: 'string' },
-            summary: { type: 'string' },
-            parentId: { oneOf: [{ type: 'string' }, { type: 'null' }] },
-            parentTarget: { type: 'string' },
-            parentWorkItemNumber: { oneOf: [{ type: 'number' }, { type: 'string' }] },
-        },
-        required: [],
     },
     save_memory: {
         type: 'object',

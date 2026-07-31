@@ -96,7 +96,6 @@ vi.mock('../../../src/server/executors/prompt-builder', () => ({
         cancelAll: () => {},
         hasPending: () => false,
     }),
-    buildCreateWorkItemAddon: () => ({ tools: [], suffix: '' }),
     buildSearchConversationsAddon: () => ({ tools: [], suffix: '' }),
     buildTavilyWebSearchAddon: () => ({ tools: [], suffix: '' }),
     withRepoInstructions: (...args: any[]) => mockWithRepoInstructions(...args),

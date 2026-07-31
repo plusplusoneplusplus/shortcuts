@@ -14,15 +14,16 @@ Exports: `DEFAULT_DISABLED_LLM_TOOLS`, `isLlmToolEnabled()`, `filterDisabledLlmT
 
 **Feature-gated registry entries:** `getEffectiveLlmToolRegistry({ loopsEnabled, canvasEnabled, kustoEnabled })` filters `scheduleWakeup`, the canvas tools (`write_canvas`/`read_canvas`/`extension_canvas`, `CANVAS_LLM_TOOL_NAMES`), and the Kusto tool (`kusto_query`, `KUSTO_LLM_TOOL_NAMES`) out of the settings list when their flags are off.
 
-**Mode-aware defaults:** `getEffectiveDefaultDisabledTools(uiLayoutMode)` disables `tavily_web_search` at registry level, and also disables the work-item tool family (`get_work_item` and `create_update_work_item`) in classic mode.
+**Mode-aware defaults:** `getEffectiveDefaultDisabledTools(uiLayoutMode)` disables `tavily_web_search` at registry level. `CLASSIC_MODE_EXTRA_DISABLED_TOOLS` is currently empty, so classic and dev-workflow modes share the same defaults.
 
 **Per-repo overrides:** `PerRepoPreferences.disabledLlmTools` explicitly overrides defaults (empty array = enable all). API: `GET/PUT /api/workspaces/:id/llm-tools-config`.
 The GET/PUT response also includes `conversationRetrievalAvailable`, which is
 true only when the active `ProcessStore` supports `searchConversations`; the SPA
 uses it with the `get_conversation` toggle to decide whether session-context
-attachments can be dropped into chat composers. Removed tool names such as
-`create_bug` are filtered from config responses and from preferences when those
-preferences are rewritten.
+attachments can be dropped into chat composers. Removed tool names (`create_bug`,
+`get_work_item`, `create_update_work_item` — tracked in `REMOVED_LLM_TOOL_NAMES`)
+are filtered from config responses and from preferences when those preferences
+are rewritten.
 
 ## Tool Factories
 
@@ -39,8 +40,8 @@ preferences are rewritten.
 | `get-conversation-tool.ts` | `get_conversation` | Full transcript by processId, compacted to token budget. 5-level progressive compaction. Supports `fromTurn`/`toTurn` paging. |
 | `suggest-follow-ups-tool.ts` | `suggest_follow_ups` | Emits follow-up action suggestions after AI response. |
 | `tavily-web-search-tool.ts` | `tavily_web_search` | Live web search via Tavily API. Key from `~/.coc/providers.json`. Disabled by default. |
-| `get-work-item-tool.ts` | `get_work_item` | Read-only lookup of an existing work item by UUID, `WI-N`, or work-item number. Resolves one target from `workItemId`/`target`/`workItemNumber`; numeric refs match the workspace listing, UUID-like refs read directly via `store.getWorkItem(target, repoId)`. Returns `{ found: true, item }` (full `WorkItem`) or `{ found: false, error }`. Workspace-scoped (`repoId`), so it cannot read items from another workspace, and never mutates, versions, broadcasts, or calls provider write transports. Factory accepts optional `GetWorkItemToolDeps` (`workItemStore`) for injection. |
-| `create-update-work-item-tool.ts` | `create_update_work_item` | Creates typed work items and bugs (`work-item`, `bug`, `goal`, `epic`, `feature`, `pbi`), patches common fields on existing items, or saves a full revised plan as the next version for an existing item. Field-update mode patches `title`/`description`/`priority`/`tags`/`status`; the optional `status` (any `WORK_ITEM_STATUSES` value, e.g. `done`) transitions or closes an existing item without editing the plan — validated against the status transition rules and synced to the GitHub/Azure Boards mirror (a terminal status closes the mirrored issue). Plan updates reset status to `planning` unless an explicit `status` is supplied. Supports hierarchy links via `parentId` (UUID or `null` to unlink), `parentTarget` (UUID/WI-N), and `parentWorkItemNumber`: create children, move items, and unlink parents without REST. All creates and hierarchy-sensitive updates run through the shared command service (`work-items/work-item-commands.ts`) so the tool reuses REST-route validation, GitHub/Azure Boards provider sync, response-cache invalidation, and dashboard broadcasts; the factory accepts optional `CreateUpdateWorkItemToolDeps` (store, process store, feature flags, transports) and reads `workItems.hierarchy.enabled` / `workItems.sync.enabled` from `<dataDir>/config.yaml` when not injected. To keep the tool-schema context small, the tool description does NOT embed `WORK_ITEM_PLAN_TEMPLATE`; instead a plan-less create succeeds and returns `planTemplate` + a follow-up `hint` in its result, and the update-mode empty-plan error also carries `planTemplate`. |
+
+> Work items are managed exclusively through the REST routes (`work-item-routes.ts`) and the dashboard; there are no `get_work_item` / `create_update_work_item` LLM tools. The shared command service (`work-items/work-item-commands.ts`) still owns hierarchy validation, provider sync, cache invalidation, and broadcasts for the REST path.
 
 ## Supporting Modules
 
@@ -57,7 +58,7 @@ preferences are rewritten.
 - Applies `applyLlmToolPreferences()` filtering from `prompt-builder.ts`
 - Filters by the effective disabled tools list
 
-Some addons emit a prompt `suffix` wrapped in a named XML-style tag via `tagGuidanceSuffix()` from `prompt-tags.ts` (currently `<web_search_tool>` and the Memory V2 `<memory_tool>` block), so the aggregated `toolGuidance` is self-delimiting. Most addons emit an empty suffix — the follow-up, `ask_user`, work-item, and canvas guidance lives entirely in each tool's own `description` (and JSON schema) rather than being duplicated as injected prose, which keeps the assembled system prompt smaller with no loss of instruction. `tagGuidanceSuffix` includes the leading blank-line separator `applyLlmToolPreferences` relies on; the standalone `tagBlock()` helper wraps non-suffix blocks (e.g. the `<citing_rule>` source-location directive). When a tool is disabled its whole tagged block (if any) is dropped with it.
+Some addons emit a prompt `suffix` wrapped in a named XML-style tag via `tagGuidanceSuffix()` from `prompt-tags.ts` (currently `<web_search_tool>` and the Memory V2 `<memory_tool>` block), so the aggregated `toolGuidance` is self-delimiting. Most addons emit an empty suffix — the follow-up, `ask_user`, and canvas guidance lives entirely in each tool's own `description` (and JSON schema) rather than being duplicated as injected prose, which keeps the assembled system prompt smaller with no loss of instruction. `tagGuidanceSuffix` includes the leading blank-line separator `applyLlmToolPreferences` relies on; the standalone `tagBlock()` helper wraps non-suffix blocks (e.g. the `<citing_rule>` source-location directive). When a tool is disabled its whole tagged block (if any) is dropped with it.
 
 ## Provider Parity (Copilot / Codex / Claude)
 

@@ -147,7 +147,8 @@ describe('LLM Tools Config API endpoints', () => {
             const names = data.tools.map((t: any) => t.name);
             expect(names).toContain('tavily_web_search');
             expect(names).toContain('suggest_follow_ups');
-            expect(names).toContain('create_update_work_item');
+            expect(names).not.toContain('get_work_item');
+            expect(names).not.toContain('create_update_work_item');
             expect(names).not.toContain('create_bug');
             expect(names).not.toContain('scheduleWakeup');
         });
@@ -157,9 +158,9 @@ describe('LLM Tools Config API endpoints', () => {
             expect(res.status).toBe(200);
             const data = res.json();
             expect(data.disabledLlmTools).toEqual(getEffectiveDefaultDisabledTools(undefined));
-            expect(data.disabledLlmTools).toEqual(
-                expect.arrayContaining(['create_update_work_item', 'tavily_web_search']),
-            );
+            expect(data.disabledLlmTools).toContain('tavily_web_search');
+            expect(data.disabledLlmTools).not.toContain('create_update_work_item');
+            expect(data.disabledLlmTools).not.toContain('get_work_item');
             expect(data.disabledLlmTools).not.toContain('create_bug');
         });
 
@@ -185,9 +186,7 @@ describe('LLM Tools Config API endpoints', () => {
             expect(res.status).toBe(200);
             const data = res.json();
             expect(data.disabledLlmTools).toEqual(getEffectiveDefaultDisabledTools('dev-workflow'));
-            expect(data.disabledLlmTools).not.toEqual(
-                expect.arrayContaining(['create_update_work_item']),
-            );
+            expect(data.disabledLlmTools).not.toContain('create_update_work_item');
             expect(data.disabledLlmTools).not.toContain('create_bug');
         });
 
@@ -255,10 +254,11 @@ describe('LLM Tools Config API endpoints', () => {
                 { name: 'toTurn', type: 'number', required: false },
             ]);
 
-            // Nested object param -> compact `{...}` shape; union/oneOf -> `any`.
-            const createWi = byName('create_update_work_item').params as Array<{ name: string; type: string; required: boolean }>;
-            expect(createWi.find(p => p.name === 'tags')).toEqual({ name: 'tags', type: '[...]', required: false });
-            expect(createWi.find(p => p.name === 'workItemNumber')).toEqual({ name: 'workItemNumber', type: 'any', required: false });
+            // Array param on an always-present tool -> compact `[...]` shape.
+            // (Object `{...}` and typeless `any` derivation are covered by the
+            // llm-tool-parameters unit tests.)
+            const saveMem = byName('save_memory').params as Array<{ name: string; type: string; required: boolean }>;
+            expect(saveMem.find(p => p.name === 'tags')).toEqual({ name: 'tags', type: '[...]', required: false });
         });
 
         it('preserves the existing tool contract fields unchanged', async () => {

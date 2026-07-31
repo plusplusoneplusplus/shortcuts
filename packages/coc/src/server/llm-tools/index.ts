@@ -22,17 +22,6 @@ export {
     type EnqueueChatFn,
     type SendMessageFn,
 } from './send-to-conversation-tool';
-export {
-    createGetWorkItemTool,
-    type GetWorkItemArgs,
-    type GetWorkItemToolDeps,
-    type GetWorkItemResult,
-    type GetWorkItemSuccess,
-    type GetWorkItemNotFound,
-    type GetWorkItemWithChildren,
-    type WorkItemHierarchyNode,
-    type WorkItemDescendantNode,
-} from './get-work-item-tool';
 export { createAddDiffCommentTool, type AddDiffCommentArgs, type AddDiffCommentDeps } from './add-diff-comment-tool';
 export {
     createTavilyWebSearchTool,

@@ -23,9 +23,9 @@ import { LlmToolsPanel } from '../../../../src/server/spa/client/react/features/
 
 const TOOLS = [
     {
-        name: 'create_update_work_item',
-        label: 'Create/Update Work Item',
-        description: 'Creates typed work items and updates existing items.',
+        name: 'demo_tool',
+        label: 'Demo Tool',
+        description: 'A demo tool with a locally declared parameter schema.',
         enabledByDefault: true,
         params: [
             { name: 'title', type: 'string', required: true },
@@ -68,36 +68,36 @@ describe('LlmToolsPanel', () => {
         await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
 
         expect(mocks.preferences.getLlmToolsConfig).toHaveBeenCalledWith('repo/a');
-        expect(screen.getByText('Create/Update Work Item')).toBeTruthy();
+        expect(screen.getByText('Demo Tool')).toBeTruthy();
         expect(screen.getByText('Tavily Web Search')).toBeTruthy();
-        expect((screen.getByTestId('llm-tool-toggle-create_update_work_item') as HTMLInputElement).checked).toBe(true);
+        expect((screen.getByTestId('llm-tool-toggle-demo_tool') as HTMLInputElement).checked).toBe(true);
         expect((screen.getByTestId('llm-tool-toggle-tavily_web_search') as HTMLInputElement).checked).toBe(false);
     });
 
     it('sends disabled tool overrides when a tool is turned off', async () => {
         render(<LlmToolsPanel workspaceId="repo-a" />);
-        await waitFor(() => expect(screen.getByTestId('llm-tool-toggle-create_update_work_item')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('llm-tool-toggle-demo_tool')).toBeTruthy());
 
         await act(async () => {
-            fireEvent.click(screen.getByTestId('llm-tool-toggle-create_update_work_item'));
+            fireEvent.click(screen.getByTestId('llm-tool-toggle-demo_tool'));
         });
 
         expect(mocks.preferences.updateLlmToolsConfig).toHaveBeenCalledWith('repo-a', {
-            disabledLlmTools: ['tavily_web_search', 'create_update_work_item'],
+            disabledLlmTools: ['tavily_web_search', 'demo_tool'],
         });
     });
 
     it('preserves explicit empty disabled-tool override arrays when enabling all tools', async () => {
         mocks.preferences.getLlmToolsConfig.mockResolvedValue({
             tools: TOOLS,
-            disabledLlmTools: ['create_update_work_item'],
+            disabledLlmTools: ['demo_tool'],
         });
 
         render(<LlmToolsPanel workspaceId="repo-a" />);
-        await waitFor(() => expect(screen.getByTestId('llm-tool-toggle-create_update_work_item')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('llm-tool-toggle-demo_tool')).toBeTruthy());
 
         await act(async () => {
-            fireEvent.click(screen.getByTestId('llm-tool-toggle-create_update_work_item'));
+            fireEvent.click(screen.getByTestId('llm-tool-toggle-demo_tool'));
         });
 
         expect(mocks.preferences.updateLlmToolsConfig).toHaveBeenCalledWith('repo-a', {
@@ -108,15 +108,15 @@ describe('LlmToolsPanel', () => {
     it('reverts local state and shows a toast when saving fails', async () => {
         mocks.preferences.updateLlmToolsConfig.mockRejectedValue(new Error('Save failed'));
         render(<LlmToolsPanel workspaceId="repo-a" />);
-        await waitFor(() => expect(screen.getByTestId('llm-tool-toggle-create_update_work_item')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('llm-tool-toggle-demo_tool')).toBeTruthy());
 
         await act(async () => {
-            fireEvent.click(screen.getByTestId('llm-tool-toggle-create_update_work_item'));
+            fireEvent.click(screen.getByTestId('llm-tool-toggle-demo_tool'));
         });
 
         await waitFor(() => {
             expect(mocks.addToast).toHaveBeenCalledWith('Save failed', 'error');
-            expect((screen.getByTestId('llm-tool-toggle-create_update_work_item') as HTMLInputElement).checked).toBe(true);
+            expect((screen.getByTestId('llm-tool-toggle-demo_tool') as HTMLInputElement).checked).toBe(true);
         });
     });
 
@@ -124,26 +124,26 @@ describe('LlmToolsPanel', () => {
         render(<LlmToolsPanel workspaceId="repo-a" />);
         await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
 
-        const toggle = screen.getByTestId('llm-tool-params-toggle-create_update_work_item');
+        const toggle = screen.getByTestId('llm-tool-params-toggle-demo_tool');
         // Count is visible, but the per-parameter summary is collapsed by default.
         expect(toggle.textContent).toContain('3 parameters');
         expect(toggle.getAttribute('aria-expanded')).toBe('false');
-        expect(screen.queryByTestId('llm-tool-params-create_update_work_item')).toBeNull();
+        expect(screen.queryByTestId('llm-tool-params-demo_tool')).toBeNull();
     });
 
     it('expands inline to show required/optional parameter summaries on demand', async () => {
         render(<LlmToolsPanel workspaceId="repo-a" />);
         await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
 
-        const toggle = screen.getByTestId('llm-tool-params-toggle-create_update_work_item');
+        const toggle = screen.getByTestId('llm-tool-params-toggle-demo_tool');
         await act(async () => { fireEvent.click(toggle); });
 
         expect(toggle.getAttribute('aria-expanded')).toBe('true');
-        const panel = screen.getByTestId('llm-tool-params-create_update_work_item');
+        const panel = screen.getByTestId('llm-tool-params-demo_tool');
         // Required -> `name: type*`; optional -> `name?: type`; nested stays `{...}`.
-        expect(screen.getByTestId('llm-tool-param-create_update_work_item-title').textContent).toBe('title: string*');
-        expect(screen.getByTestId('llm-tool-param-create_update_work_item-description').textContent).toBe('description?: string');
-        expect(screen.getByTestId('llm-tool-param-create_update_work_item-plan').textContent).toBe('plan?: {...}');
+        expect(screen.getByTestId('llm-tool-param-demo_tool-title').textContent).toBe('title: string*');
+        expect(screen.getByTestId('llm-tool-param-demo_tool-description').textContent).toBe('description?: string');
+        expect(screen.getByTestId('llm-tool-param-demo_tool-plan').textContent).toBe('plan?: {...}');
         expect(toggle.getAttribute('aria-controls')).toBe(panel.id);
     });
 
@@ -151,23 +151,23 @@ describe('LlmToolsPanel', () => {
         render(<LlmToolsPanel workspaceId="repo-a" />);
         await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
 
-        const toggle = screen.getByTestId('llm-tool-params-toggle-create_update_work_item');
+        const toggle = screen.getByTestId('llm-tool-params-toggle-demo_tool');
         await act(async () => { fireEvent.click(toggle); });
-        expect(screen.getByTestId('llm-tool-params-create_update_work_item')).toBeTruthy();
+        expect(screen.getByTestId('llm-tool-params-demo_tool')).toBeTruthy();
 
         await act(async () => { fireEvent.click(toggle); });
         expect(toggle.getAttribute('aria-expanded')).toBe('false');
-        expect(screen.queryByTestId('llm-tool-params-create_update_work_item')).toBeNull();
+        expect(screen.queryByTestId('llm-tool-params-demo_tool')).toBeNull();
     });
 
     it('expanding parameters does not toggle the tool enable/disable checkbox', async () => {
         render(<LlmToolsPanel workspaceId="repo-a" />);
         await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
 
-        const checkbox = screen.getByTestId('llm-tool-toggle-create_update_work_item') as HTMLInputElement;
+        const checkbox = screen.getByTestId('llm-tool-toggle-demo_tool') as HTMLInputElement;
         expect(checkbox.checked).toBe(true);
 
-        await act(async () => { fireEvent.click(screen.getByTestId('llm-tool-params-toggle-create_update_work_item')); });
+        await act(async () => { fireEvent.click(screen.getByTestId('llm-tool-params-toggle-demo_tool')); });
 
         expect(checkbox.checked).toBe(true);
         expect(mocks.preferences.updateLlmToolsConfig).not.toHaveBeenCalled();
@@ -178,14 +178,14 @@ describe('LlmToolsPanel', () => {
         render(<LlmToolsPanel workspaceId="repo-a" />);
         await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
 
-        const toggle = screen.getByTestId('llm-tool-params-toggle-create_update_work_item') as HTMLButtonElement;
+        const toggle = screen.getByTestId('llm-tool-params-toggle-demo_tool') as HTMLButtonElement;
         // Native <button> => platform-provided keyboard operability, reachable in the
         // tab order, with an accessible label/state and no hover-only dependency.
         expect(toggle.tagName).toBe('BUTTON');
         expect(toggle.disabled).toBe(false);
         expect(toggle.getAttribute('aria-hidden')).toBeNull();
         expect(toggle.getAttribute('tabindex')).not.toBe('-1');
-        expect(toggle.getAttribute('aria-label')).toBe('Create/Update Work Item: 3 parameters');
+        expect(toggle.getAttribute('aria-label')).toBe('Demo Tool: 3 parameters');
         expect(toggle.getAttribute('aria-expanded')).toBe('false');
 
         // Reachable via keyboard focus.
@@ -195,13 +195,13 @@ describe('LlmToolsPanel', () => {
         // Enter expands the summary without any pointer interaction.
         await user.keyboard('{Enter}');
         expect(toggle.getAttribute('aria-expanded')).toBe('true');
-        expect(screen.getByTestId('llm-tool-params-create_update_work_item')).toBeTruthy();
+        expect(screen.getByTestId('llm-tool-params-demo_tool')).toBeTruthy();
 
         // Space collapses it again (button keeps focus across the re-render).
         expect(document.activeElement).toBe(toggle);
         await user.keyboard(' ');
         expect(toggle.getAttribute('aria-expanded')).toBe('false');
-        expect(screen.queryByTestId('llm-tool-params-create_update_work_item')).toBeNull();
+        expect(screen.queryByTestId('llm-tool-params-demo_tool')).toBeNull();
     });
 
     it('lays out for narrow screens: single-column grid, wrapping params, and a fit-width affordance', async () => {
@@ -214,12 +214,12 @@ describe('LlmToolsPanel', () => {
         expect(list.className).toContain('sm:grid-cols-2');
 
         // The affordance hugs its content rather than stretching, and is not hover-only.
-        const toggle = screen.getByTestId('llm-tool-params-toggle-create_update_work_item');
+        const toggle = screen.getByTestId('llm-tool-params-toggle-demo_tool');
         expect(toggle.className).toContain('w-fit');
 
         // Expanded parameter tokens wrap instead of overflowing on narrow widths.
         await act(async () => { fireEvent.click(toggle); });
-        expect(screen.getByTestId('llm-tool-params-create_update_work_item').className).toContain('flex-wrap');
+        expect(screen.getByTestId('llm-tool-params-demo_tool').className).toContain('flex-wrap');
     });
 
     it('renders a compact empty-state for tools with no parameters', async () => {

@@ -55,22 +55,6 @@ vi.mock('../../src/server/suggest-follow-ups-tool', () => ({
     createSuggestFollowUpsTool: () => mockCreateSuggestFollowUpsTool(),
 }));
 
-const mockCreateUpdateWorkItemTool = vi.fn(() => ({ tool: { name: 'create_update_work_item' } }));
-vi.mock('../../src/server/llm-tools/create-update-work-item-tool', () => ({
-    createCreateUpdateWorkItemTool: (...args: any[]) => mockCreateUpdateWorkItemTool(...args),
-}));
-
-const mockCreateGetWorkItemTool = vi.fn(() => ({ tool: { name: 'get_work_item' } }));
-vi.mock('../../src/server/llm-tools/get-work-item-tool', () => ({
-    createGetWorkItemTool: (...args: any[]) => mockCreateGetWorkItemTool(...args),
-}));
-
-const mockScopedStore = { _isScopedStore: true };
-const mockCreateWorkItemStore = vi.fn(() => mockScopedStore);
-vi.mock('../../src/server/work-items/work-item-store', () => ({
-    createWorkItemStore: (...args: any[]) => mockCreateWorkItemStore(...args),
-}));
-
 import {
     buildForEachGenerationSystemMessage,
     buildModeSystemMessage,
@@ -86,7 +70,6 @@ import {
     buildConversationHistoryContext,
     buildFollowUpSuggestionsAddon,
     buildSearchConversationsAddon,
-    buildCreateWorkItemAddon,
 } from '../../src/server/executors/prompt-builder';
 
 // ============================================================================
@@ -701,57 +684,6 @@ describe('buildSearchConversationsAddon', () => {
         const result = buildSearchConversationsAddon(store);
         expect(result.suffix).toBe('');
     });
-});
-
-// ============================================================================
-// buildCreateWorkItemAddon
-// ============================================================================
-
-describe('buildCreateWorkItemAddon', () => {
-    beforeEach(() => {
-        mockCreateUpdateWorkItemTool.mockReset();
-        mockCreateUpdateWorkItemTool.mockReturnValue({ tool: { name: 'create_update_work_item' } });
-        mockCreateGetWorkItemTool.mockReset();
-        mockCreateGetWorkItemTool.mockReturnValue({ tool: { name: 'get_work_item' } });
-    });
-
-    it('returns empty tools when dataDir is undefined', () => {
-        const result = buildCreateWorkItemAddon(undefined, 'repo-1');
-        expect(result.tools).toEqual([]);
-        expect(result.suffix).toBe('');
-    });
-
-    it('returns empty tools when repoId is undefined', () => {
-        const result = buildCreateWorkItemAddon('/data', undefined);
-        expect(result.tools).toEqual([]);
-        expect(result.suffix).toBe('');
-    });
-
-    it('returns both the read get_work_item and write create_update_work_item tools', () => {
-        const result = buildCreateWorkItemAddon('/data', 'repo-1');
-        expect(result.tools.map(t => t.name)).toEqual(['get_work_item', 'create_update_work_item']);
-        expect(result.tools.map(t => t.name)).not.toContain('update_work_item');
-        expect(result.tools.map(t => t.name)).not.toContain('create_bug');
-    });
-
-    it('emits no suffix — guidance lives in the get_work_item / create_update_work_item descriptions', () => {
-        const result = buildCreateWorkItemAddon('/data', 'repo-1');
-        expect(result.suffix).toBe('');
-    });
-
-    it('passes dataDir, repoId, broadcastFn, and a scoped workItemStore to factories', () => {
-        const broadcast = vi.fn();
-        const processStore = {} as any;
-        const deps = { processStore };
-        buildCreateWorkItemAddon('/data', 'repo-1', broadcast, deps);
-
-        // The addon builds one scoped store and injects it into both tools.
-        expect(mockCreateWorkItemStore).toHaveBeenCalledWith({ dataDir: '/data', processStore });
-        const scopedDeps = { processStore, workItemStore: mockScopedStore };
-        expect(mockCreateUpdateWorkItemTool).toHaveBeenCalledWith('/data', 'repo-1', broadcast, scopedDeps);
-        expect(mockCreateGetWorkItemTool).toHaveBeenCalledWith('/data', 'repo-1', scopedDeps);
-    });
-
 });
 
 // ============================================================================
