@@ -63,6 +63,24 @@ export interface NotesGitStatus {
     untracked: string[];
     /** Total count: staged + unstaged + untracked. */
     totalChanges: number;
+    /**
+     * True when a local `origin/<branch>` tracking ref exists (a remote is
+     * configured and the branch has been pushed/fetched at least once). When
+     * false, {@link ahead} and {@link behind} are null — sync state is unknown.
+     */
+    hasUpstream: boolean;
+    /**
+     * Local commits not yet in `origin/<branch>` (i.e. "unpushed"). Always
+     * accurate locally since `origin/<branch>` only advances when we push.
+     * Null when {@link hasUpstream} is false.
+     */
+    ahead: number | null;
+    /**
+     * `origin/<branch>` commits not in the local branch, as of the last
+     * fetch/sync — may be stale until the next Sync. Null when
+     * {@link hasUpstream} is false.
+     */
+    behind: number | null;
 }
 
 /** Single entry in the notes git log. */

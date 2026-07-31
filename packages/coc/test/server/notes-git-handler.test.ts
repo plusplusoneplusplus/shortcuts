@@ -436,6 +436,10 @@ describe('Notes Git Handler', { timeout: 60_000 }, () => {
             expect(data).toHaveProperty('unstaged');
             expect(data).toHaveProperty('untracked');
             expect(data).toHaveProperty('totalChanges', 0);
+            // Upstream sync fields are always present; no remote configured here.
+            expect(data).toHaveProperty('hasUpstream', false);
+            expect(data).toHaveProperty('ahead', null);
+            expect(data).toHaveProperty('behind', null);
         });
 
         it('works when not initialized (dir does not exist)', async () => {
@@ -447,6 +451,9 @@ describe('Notes Git Handler', { timeout: 60_000 }, () => {
             const data = JSON.parse(res.body);
             expect(data.initialized).toBe(false);
             expect(data.clean).toBe(true);
+            expect(data.hasUpstream).toBe(false);
+            expect(data.ahead).toBeNull();
+            expect(data.behind).toBeNull();
         });
 
         it('detects new file as untracked', async () => {

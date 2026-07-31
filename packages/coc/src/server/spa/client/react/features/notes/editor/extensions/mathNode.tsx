@@ -34,6 +34,32 @@ function coerceDelimiter(value: unknown, display: boolean): MathDelimiter {
     return display ? 'double-dollar' : 'dollar';
 }
 
+// KaTeX prefixes every parse error with a verbose "KaTeX parse error: " and
+// often a trailing "at position N: …" pointer. Trim the boilerplate prefix so
+// the inline hint reads as a plain, actionable reason.
+function formatMathError(message: string): string {
+    return message.replace(/^KaTeX parse error:\s*/i, '').trim() || 'Invalid TeX';
+}
+
+// Size the TeX textarea to its content so the source is never clipped: inline
+// math grows its width to the longest line (bounded), display math grows its
+// row count. Pure string math — no DOM measurement, so it stays testable.
+const INLINE_MIN_CH = 12;
+const INLINE_MAX_CH = 60;
+const DISPLAY_MIN_ROWS = 3;
+const DISPLAY_MAX_ROWS = 12;
+
+function textareaSizing(draft: string, display: boolean): { rows: number; widthCh?: number } {
+    const lines = draft.split('\n');
+    if (display) {
+        const rows = Math.min(DISPLAY_MAX_ROWS, Math.max(DISPLAY_MIN_ROWS, lines.length));
+        return { rows };
+    }
+    const longest = lines.reduce((max, line) => Math.max(max, line.length), 0);
+    const widthCh = Math.min(INLINE_MAX_CH, Math.max(INLINE_MIN_CH, longest + 1));
+    return { rows: 1, widthCh };
+}
+
 // ── Shared React NodeView ─────────────────────────────────────────────────────
 
 function MathNodeView({ node, updateAttributes, selected }: NodeViewProps) {
@@ -63,7 +89,9 @@ function MathNodeView({ node, updateAttributes, selected }: NodeViewProps) {
         () => (editing && draft.trim().length > 0 ? getMathError(draft, { display }) : null),
         [editing, draft, display],
     );
-    const previewInvalid = draftError !== null;
+    const sizing = useMemo(() => textareaSizing(draft, display), [draft, display]);
+    // Discoverability: spell out the apply/cancel chords right in the editor.
+    const applyHint = display ? '⌘/Ctrl+Enter to apply' : 'Enter to apply';
 
     const openEditor = useCallback(() => {
         setDraft(tex);
@@ -136,24 +164,37 @@ function MathNodeView({ node, updateAttributes, selected }: NodeViewProps) {
                         ref={inputRef}
                         className="math-node-editor-input"
                         aria-label="Formula TeX source"
-                        rows={display ? 3 : 1}
+                        placeholder={display ? 'TeX source, e.g. \\int_0^1 x\\,dx' : 'TeX, e.g. \\frac{a}{b}'}
+                        spellCheck={false}
+                        rows={sizing.rows}
+                        style={sizing.widthCh ? { width: `${sizing.widthCh}ch` } : undefined}
                         value={draft}
                         onChange={(event) => setDraft(event.target.value)}
                         onKeyDown={onKeyDown}
                     />
-                    {previewInvalid && (
-                        <span className="math-node-editor-error" role="alert">
-                            Invalid TeX
-                        </span>
-                    )}
                     <span className="math-node-editor-actions">
-                        <button type="button" className="math-node-editor-apply" onClick={apply}>
+                        <button
+                            type="button"
+                            className="math-node-editor-btn math-node-editor-apply"
+                            onClick={apply}
+                        >
                             Apply
                         </button>
-                        <button type="button" className="math-node-editor-cancel" onClick={cancel}>
+                        <button
+                            type="button"
+                            className="math-node-editor-btn math-node-editor-cancel"
+                            onClick={cancel}
+                        >
                             Cancel
                         </button>
                     </span>
+                    {draftError ? (
+                        <span className="math-node-editor-error" role="alert" title={draftError}>
+                            {formatMathError(draftError)}
+                        </span>
+                    ) : (
+                        <span className="math-node-editor-hint">{applyHint} · Esc to cancel</span>
+                    )}
                 </span>
             )}
         </NodeViewWrapper>

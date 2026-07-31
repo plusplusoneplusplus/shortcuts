@@ -3383,12 +3383,24 @@
 }
 
 .math-node-editor-error {
+    flex-basis: 100%;
+    max-width: 40ch;
     color: #cc0000;
     font-size: 0.8em;
+    line-height: 1.3;
+    word-break: break-word;
 }
 
 .dark .math-node-editor-error {
     color: #f48771;
+}
+
+/* Muted keyboard-shortcut hint; shares the error row so the editor height is
+   stable whether the draft is valid or not. */
+.math-node-editor-hint {
+    flex-basis: 100%;
+    font-size: 0.75em;
+    opacity: 0.6;
 }
 
 .math-node-editor-actions {
@@ -3396,9 +3408,35 @@
     gap: 4px;
 }
 
-.math-node-editor-actions button {
+.math-node-editor-btn {
     font-size: 0.8em;
-    padding: 2px 8px;
-    border-radius: 3px;
+    padding: 3px 10px;
+    border: 1px solid transparent;
+    border-radius: 4px;
     cursor: pointer;
+    line-height: 1.4;
+}
+
+/* Apply is the primary action — accent fill matching the selection outline. */
+.math-node-editor-apply {
+    background: rgba(59, 130, 246, 0.9);
+    border-color: rgba(59, 130, 246, 0.9);
+    color: #fff;
+    font-weight: 600;
+}
+
+.math-node-editor-apply:hover {
+    background: rgba(37, 99, 235, 1);
+    border-color: rgba(37, 99, 235, 1);
+}
+
+/* Cancel is secondary — a quiet ghost button. */
+.math-node-editor-cancel {
+    background: transparent;
+    border-color: rgba(120, 120, 120, 0.5);
+    color: inherit;
+}
+
+.math-node-editor-cancel:hover {
+    background: rgba(127, 127, 127, 0.12);
 }

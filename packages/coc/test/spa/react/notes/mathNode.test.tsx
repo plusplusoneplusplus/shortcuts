@@ -211,14 +211,60 @@ describe('MathNodeView', () => {
         expect(updateAttributes).toHaveBeenCalledWith({ tex: 'q' });
     });
 
-    it('reports invalid TeX without losing the draft', () => {
+    it('reports the specific KaTeX error without losing the draft', () => {
         render(<MathNodeView {...makeProps({ tex: 'a' })} />);
         fireEvent.click(screen.getByRole('button', { name: /Edit formula/ }));
         const input = screen.getByLabelText('Formula TeX source');
-        fireEvent.change(input, { target: { value: '\\frac{1}{' } });
-        expect(document.querySelector('.math-node-editor-error')?.textContent).toContain('Invalid TeX');
+        fireEvent.change(input, { target: { value: '\\notacommand' } });
+        const error = document.querySelector('.math-node-editor-error');
+        // The actual KaTeX reason is surfaced, not a generic "Invalid TeX".
+        expect(error?.textContent).toContain('Undefined control sequence');
+        // The verbose "KaTeX parse error:" prefix is trimmed off.
+        expect(error?.textContent).not.toContain('KaTeX parse error');
         // Draft is preserved (not cleared) so the user can fix it.
-        expect((input as HTMLTextAreaElement).value).toBe('\\frac{1}{');
+        expect((input as HTMLTextAreaElement).value).toBe('\\notacommand');
+    });
+
+    it('shows the keyboard-shortcut hint while the draft is valid, and hides it on error', () => {
+        render(<MathNodeView {...makeProps({ tex: 'a' })} />);
+        fireEvent.click(screen.getByRole('button', { name: /Edit formula/ }));
+        const input = screen.getByLabelText('Formula TeX source');
+        // Valid draft → hint visible, no error.
+        expect(document.querySelector('.math-node-editor-hint')?.textContent).toContain('Enter to apply');
+        expect(document.querySelector('.math-node-editor-error')).toBeNull();
+        // Invalid draft → error takes the hint's place.
+        fireEvent.change(input, { target: { value: '\\notacommand' } });
+        expect(document.querySelector('.math-node-editor-hint')).toBeNull();
+        expect(document.querySelector('.math-node-editor-error')).not.toBeNull();
+    });
+
+    it('uses the display apply chord in the hint for block math', () => {
+        render(<MathNodeView {...makeProps({ tex: 'a', display: true })} />);
+        fireEvent.click(screen.getByRole('button', { name: /Edit formula/ }));
+        expect(document.querySelector('.math-node-editor-hint')?.textContent).toContain('Ctrl+Enter to apply');
+    });
+
+    it('grows the inline input width with the source and caps it', () => {
+        render(<MathNodeView {...makeProps({ tex: 'x' })} />);
+        fireEvent.click(screen.getByRole('button', { name: /Edit formula/ }));
+        const input = screen.getByLabelText('Formula TeX source') as HTMLTextAreaElement;
+        // Short source → the minimum width floor.
+        expect(input.style.width).toBe('12ch');
+        // Long source grows the box, bounded by the 60ch cap.
+        fireEvent.change(input, { target: { value: 'y'.repeat(200) } });
+        expect(input.style.width).toBe('60ch');
+    });
+
+    it('grows the display input rows with the source and caps them', () => {
+        render(<MathNodeView {...makeProps({ tex: 'a', display: true })} />);
+        fireEvent.click(screen.getByRole('button', { name: /Edit formula/ }));
+        const input = screen.getByLabelText('Formula TeX source') as HTMLTextAreaElement;
+        // Display math has no fixed width and a 3-row floor.
+        expect(input.style.width).toBe('');
+        expect(input.rows).toBe(3);
+        // Many lines grow the box, bounded by the 12-row cap.
+        fireEvent.change(input, { target: { value: Array(30).fill('x').join('\n') } });
+        expect(input.rows).toBe(12);
     });
 
     it('renders a display formula in a block wrapper', () => {

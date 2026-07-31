@@ -234,6 +234,9 @@ export function registerNotesGitRoutes(
                     unstaged: [],
                     untracked: [],
                     totalChanges: 0,
+                    hasUpstream: false,
+                    ahead: null,
+                    behind: null,
                 });
                 return;
             }

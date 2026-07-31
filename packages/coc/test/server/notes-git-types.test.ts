@@ -55,6 +55,9 @@ describe('NotesGitStatus', () => {
             unstaged: ['file2.md'],
             untracked: ['file3.md'],
             totalChanges: 3,
+            hasUpstream: true,
+            ahead: 2,
+            behind: 0,
         } satisfies NotesGitStatus;
         expectTypeOf(status).toMatchTypeOf<NotesGitStatus>();
     });

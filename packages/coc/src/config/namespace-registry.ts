@@ -9,15 +9,8 @@ import {
 type ConfigObject = Record<string, unknown>;
 type ResolvedAutoProviderRoutingConfig = ResolvedCLIConfig['agentProviderRouting']['auto'];
 
-export interface ConfigNamespaceSourceDescriptor {
-    readonly prefix: string;
-    readonly sourceKeys: readonly string[];
-    readonly path: readonly string[];
-}
-
 export interface ConfigNamespaceDescriptor {
     readonly name: string;
-    readonly sourceDescriptors: readonly ConfigNamespaceSourceDescriptor[];
     readonly merge: (base: ResolvedCLIConfig, override: CLIConfig | undefined) => Partial<ResolvedConfigNamespaceValues>;
 }
 
@@ -61,53 +54,75 @@ export type ResolvedConfigNamespaceValues = Pick<
     | 'effortLevels'
 >;
 
-// ── hand-tracked source keys (fields NOT covered by the admin setting registry) ──
+// ── file-only config leaves ─────────────────────────────────────────────────
 
-const SERVE_BASE_SOURCE_KEYS = [
-    'serve.port',
-    'serve.host',
-    'serve.dataDir',
-    'serve.theme',
-] as const;
+/**
+ * A source-tracked config leaf that is NOT owned by the admin setting registry.
+ *
+ * File-only leaves are resolved with the same generic `override ?? base ?? default`
+ * rule as admin leaves, and their defaults live here (not in a hand-written merge)
+ * so CONFIG_SOURCE_KEYS, default values, and drift guards are all generated from
+ * one place. A contract test asserts each default matches DEFAULT_CONFIG.
+ */
+export interface FileOnlyConfigLeaf {
+    readonly key: string;
+    readonly default: unknown;
+    /**
+     * Track this key in CONFIG_SOURCE_KEYS (admin source badges). Defaults to
+     * true; set false for a merged-but-not-source-badged field (e.g.
+     * features.gitCommitLookup, which today carries no source indicator).
+     */
+    readonly sourceTracked?: boolean;
+}
 
-const FEATURES_BASE_SOURCE_KEYS = [
-    'features.autoMemoryPromotion',
-] as const;
+/** Top-level (non-namespaced) file-only scalars — merged by config.ts. */
+export const FILE_ONLY_TOP_LEVEL_LEAVES: readonly FileOnlyConfigLeaf[] = [
+    { key: 'approvePermissions', default: false },
+    { key: 'mcpConfig', default: undefined },
+    { key: 'persist', default: true },
+];
 
-const DREAMS_BASE_SOURCE_KEYS = [
-    'dreams.idleCheckIntervalMs',
-    'dreams.minIdleMs',
-    'dreams.confidenceThreshold',
-    'dreams.maxCandidates',
-    'dreams.conversationLimit',
-] as const;
+/**
+ * Namespaced file-only leaves — resolved generically and (unless
+ * `sourceTracked` is false) reported in per-field source tracking.
+ */
+export const FILE_ONLY_NAMESPACE_LEAVES: readonly FileOnlyConfigLeaf[] = [
+    { key: 'serve.port', default: 4000 },
+    { key: 'serve.host', default: '127.0.0.1' },
+    { key: 'serve.dataDir', default: '~/.coc' },
+    { key: 'serve.theme', default: 'auto' },
+    { key: 'features.autoMemoryPromotion', default: false },
+    // Merged, but intentionally not source-badged (no source indicator today).
+    { key: 'features.gitCommitLookup', default: false, sourceTracked: false },
+    { key: 'dreams.minIdleMs', default: 15 * 60 * 1000 },
+    { key: 'dreams.confidenceThreshold', default: 0.85 },
+    { key: 'dreams.maxCandidates', default: 8 },
+    { key: 'dreams.conversationLimit', default: 20 },
+    { key: 'memoryPromotion.batchSize', default: 50 },
+    { key: 'memoryPromotion.timeoutMs', default: 90_000 },
+    { key: 'memoryPromotion.model', default: undefined },
+    { key: 'memoryPromotion.aiNormalization.enabled', default: false },
+    { key: 'memoryPromotion.aiNormalization.timeoutMs', default: 60_000 },
+    { key: 'memoryPromotion.aiNormalization.model', default: undefined },
+];
 
-const MEMORY_PROMOTION_SOURCE_KEYS = [
-    'memoryPromotion.batchSize',
-    'memoryPromotion.timeoutMs',
-    'memoryPromotion.model',
-] as const;
-
-const MEMORY_PROMOTION_AI_NORMALIZATION_SOURCE_KEYS = [
-    'memoryPromotion.aiNormalization.enabled',
-    'memoryPromotion.aiNormalization.timeoutMs',
-    'memoryPromotion.aiNormalization.model',
-] as const;
+const FILE_ONLY_NAMESPACE_SOURCE_KEYS: readonly string[] = FILE_ONLY_NAMESPACE_LEAVES
+    .filter(leaf => leaf.sourceTracked !== false)
+    .map(leaf => leaf.key);
 
 /**
  * All namespaced (dot-notation) config keys with per-field source tracking:
- * every namespaced admin setting plus the hand-tracked non-admin fields above.
+ * every namespaced admin setting plus the source-tracked file-only leaves.
  */
 export const CONFIG_NAMESPACE_SOURCE_KEYS: readonly string[] = [
     ...NAMESPACED_ADMIN_SETTING_KEYS,
-    ...SERVE_BASE_SOURCE_KEYS,
-    ...FEATURES_BASE_SOURCE_KEYS,
-    ...DREAMS_BASE_SOURCE_KEYS,
-    ...MEMORY_PROMOTION_SOURCE_KEYS,
-    ...MEMORY_PROMOTION_AI_NORMALIZATION_SOURCE_KEYS,
+    ...FILE_ONLY_NAMESPACE_SOURCE_KEYS,
 ];
 
-const NAMESPACED_ADMIN_SETTING_KEY_SET = new Set(NAMESPACED_ADMIN_SETTING_KEYS);
+const NAMESPACE_SOURCE_KEY_SET = new Set<string>([
+    ...NAMESPACED_ADMIN_SETTING_KEYS,
+    ...FILE_ONLY_NAMESPACE_SOURCE_KEYS,
+]);
 
 const DEFAULT_AUTO_PROVIDER_ROUTING: ResolvedAutoProviderRoutingConfig = {
     rules: [
@@ -133,45 +148,22 @@ const DEFAULT_AUTO_PROVIDER_ROUTING: ResolvedAutoProviderRoutingConfig = {
     fallbackProvider: 'copilot',
 };
 
-const source = (
-    prefix: string,
-    path: readonly string[],
-    sourceKeys: readonly string[]
-): ConfigNamespaceSourceDescriptor => ({
-    prefix,
-    path,
-    sourceKeys,
-});
-
 /**
  * Registry of namespaced CoC config sections that need HAND-WRITTEN merge
- * logic — sections that are not (or not fully) admin-editable, plus custom
- * resolution like agentProviderRouting.
+ * logic — genuinely structural sections (provider routing, model provider maps,
+ * skills defaults, monitoring, store, queue) that do not fit the generic leaf
+ * model.
  *
- * Admin-editable leaves are merged GENERICALLY from the setting registry in
- * admin-setting-definitions.ts (see mergeConfigNamespaces) — a new admin
- * setting in an existing or new namespace needs NO entry here.
+ * Admin-editable leaves and file-only leaves are merged GENERICALLY from the
+ * setting registries (see mergeConfigNamespaces / applyLeafSettings) — a new
+ * leaf in an existing or new namespace needs NO entry here.
  *
- * Top-level scalar fields remain in config.ts.
+ * Top-level scalar fields are merged generically in config.ts.
  */
 export function createConfigNamespaceRegistry(defaultBundledSkills: readonly string[]): readonly ConfigNamespaceDescriptor[] {
     return [
         {
-            name: 'serve',
-            sourceDescriptors: [source('serve.', ['serve'], SERVE_BASE_SOURCE_KEYS)],
-            merge: (base, override) => ({
-                serve: {
-                    port: override?.serve?.port ?? base.serve?.port ?? 4000,
-                    host: override?.serve?.host ?? base.serve?.host ?? '127.0.0.1',
-                    dataDir: override?.serve?.dataDir ?? base.serve?.dataDir ?? '~/.coc',
-                    theme: override?.serve?.theme ?? base.serve?.theme ?? 'auto',
-                    serverName: override?.serve?.serverName ?? base.serve?.serverName,
-                },
-            }),
-        },
-        {
             name: 'queue',
-            sourceDescriptors: [],
             merge: (base, override) => ({
                 queue: (override?.queue || base.queue) ? {
                     historyLimit: override?.queue?.historyLimit ?? base.queue?.historyLimit,
@@ -182,7 +174,6 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
         },
         {
             name: 'models',
-            sourceDescriptors: [],
             merge: (base, override) => {
                 const enabled = override?.models?.enabled ?? base.models?.enabled;
                 const reasoningEfforts = override?.models?.reasoningEfforts ?? base.models?.reasoningEfforts;
@@ -198,12 +189,10 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
         },
         {
             name: 'logging',
-            sourceDescriptors: [],
             merge: (base, override) => ({ logging: override?.logging ?? base.logging }),
         },
         {
             name: 'agentProviderRouting',
-            sourceDescriptors: [],
             merge: (base, override) => ({
                 agentProviderRouting: {
                     auto: resolveAutoProviderRouting(base.agentProviderRouting?.auto, override?.agentProviderRouting?.auto),
@@ -211,72 +200,11 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
             }),
         },
         {
-            name: 'features',
-            sourceDescriptors: [source('features.', ['features'], FEATURES_BASE_SOURCE_KEYS)],
-            merge: (base, override) => ({
-                // Admin-editable features.* leaves are filled in by the generic
-                // registry merge pass; only file-only flags are merged here.
-                features: {
-                    autoMemoryPromotion: override?.features?.autoMemoryPromotion ?? base.features?.autoMemoryPromotion ?? false,
-                    gitCommitLookup: override?.features?.gitCommitLookup ?? base.features?.gitCommitLookup ?? false,
-                } as ResolvedCLIConfig['features'],
-            }),
-        },
-        {
-            name: 'dreams',
-            sourceDescriptors: [source('dreams.', ['dreams'], DREAMS_BASE_SOURCE_KEYS)],
-            merge: (base, override) => ({
-                // dreams.enabled is admin-editable and filled in by the generic
-                // registry merge pass; only file-only tuning knobs are merged here.
-                dreams: {
-                    idleCheckIntervalMs: override?.dreams?.idleCheckIntervalMs ?? base.dreams?.idleCheckIntervalMs ?? 5 * 60 * 1000,
-                    minIdleMs: override?.dreams?.minIdleMs ?? base.dreams?.minIdleMs ?? 15 * 60 * 1000,
-                    confidenceThreshold: override?.dreams?.confidenceThreshold ?? base.dreams?.confidenceThreshold ?? 0.85,
-                    maxCandidates: override?.dreams?.maxCandidates ?? base.dreams?.maxCandidates ?? 8,
-                    conversationLimit: override?.dreams?.conversationLimit ?? base.dreams?.conversationLimit ?? 20,
-                } as ResolvedCLIConfig['dreams'],
-            }),
-        },
-        {
-            name: 'memoryPromotion',
-            sourceDescriptors: [
-                source('memoryPromotion.aiNormalization.', ['memoryPromotion', 'aiNormalization'], MEMORY_PROMOTION_AI_NORMALIZATION_SOURCE_KEYS),
-                source('memoryPromotion.', ['memoryPromotion'], MEMORY_PROMOTION_SOURCE_KEYS),
-            ],
-            merge: (base, override) => {
-                const baseMemoryPromotion = base.memoryPromotion ?? {
-                    batchSize: 50,
-                    timeoutMs: 90_000,
-                    model: undefined,
-                    aiNormalization: {
-                        enabled: false,
-                        timeoutMs: 60_000,
-                        model: undefined,
-                    },
-                };
-
-                return {
-                    memoryPromotion: {
-                        batchSize: override?.memoryPromotion?.batchSize ?? baseMemoryPromotion.batchSize,
-                        timeoutMs: override?.memoryPromotion?.timeoutMs ?? baseMemoryPromotion.timeoutMs,
-                        model: override?.memoryPromotion?.model ?? baseMemoryPromotion.model,
-                        aiNormalization: {
-                            enabled: override?.memoryPromotion?.aiNormalization?.enabled ?? baseMemoryPromotion.aiNormalization.enabled,
-                            timeoutMs: override?.memoryPromotion?.aiNormalization?.timeoutMs ?? baseMemoryPromotion.aiNormalization.timeoutMs,
-                            model: override?.memoryPromotion?.aiNormalization?.model ?? baseMemoryPromotion.aiNormalization.model,
-                        },
-                    },
-                };
-            },
-        },
-        {
             name: 'store',
-            sourceDescriptors: [],
             merge: (base, override) => ({ store: { backend: override?.store?.backend ?? base.store?.backend ?? 'sqlite' } }),
         },
         {
             name: 'monitoring',
-            sourceDescriptors: [],
             merge: (base, override) => ({
                 monitoring: {
                     heapCheck: {
@@ -290,7 +218,6 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
         },
         {
             name: 'skills',
-            sourceDescriptors: [],
             merge: (base, override) => ({
                 skills: {
                     autoUpdate: override?.skills?.autoUpdate ?? base.skills?.autoUpdate ?? true,
@@ -303,17 +230,15 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
     ];
 }
 
-export const CONFIG_NAMESPACE_SOURCE_DESCRIPTORS = createConfigNamespaceRegistry([])
-    .flatMap(descriptor => descriptor.sourceDescriptors)
-    .sort((a, b) => b.prefix.length - a.prefix.length);
-
 /**
- * Generic merge for namespaced admin settings: for every dot-notation setting
- * in the registry (except custom-merged ones), resolve
- * `override ?? base ?? default` and write it into the result, creating
- * namespace containers as needed.
+ * Generic merge for source-tracked leaves:
+ *   - admin leaves (except top-level scalars and custom-merged ones) are
+ *     resolved `override ?? base ?? default` and skipped when undefined.
+ *   - file-only namespace leaves are always written (preserving present-as-
+ *     undefined fields such as memoryPromotion.model), so structural containers
+ *     keep the same shape they had under hand-written merges.
  */
-function applyAdminSettingLeaves(
+function applyLeafSettings(
     result: ConfigObject,
     base: ResolvedCLIConfig,
     override: CLIConfig | undefined
@@ -329,6 +254,13 @@ function applyAdminSettingLeaves(
             setConfigValueAtPath(result, def.key, value);
         }
     }
+
+    for (const leaf of FILE_ONLY_NAMESPACE_LEAVES) {
+        const value = getConfigValueAtPath(override, leaf.key)
+            ?? getConfigValueAtPath(base, leaf.key)
+            ?? leaf.default;
+        setConfigValueAtPath(result, leaf.key, value);
+    }
 }
 
 export function mergeConfigNamespaces(
@@ -340,7 +272,7 @@ export function mergeConfigNamespaces(
         (merged, descriptor) => ({ ...merged, ...descriptor.merge(base, override) }),
         {}
     );
-    applyAdminSettingLeaves(merged as ConfigObject, base, override);
+    applyLeafSettings(merged as ConfigObject, base, override);
     return merged as ResolvedConfigNamespaceValues;
 }
 
@@ -349,34 +281,11 @@ export function getNamespaceFieldSource(key: string, fileConfig: CLIConfig | und
         return 'default';
     }
 
-    if (NAMESPACED_ADMIN_SETTING_KEY_SET.has(key)) {
+    if (NAMESPACE_SOURCE_KEY_SET.has(key)) {
         return getConfigValueAtPath(fileConfig, key) !== undefined ? 'file' : 'default';
     }
 
-    for (const descriptor of CONFIG_NAMESPACE_SOURCE_DESCRIPTORS) {
-        if (key.startsWith(descriptor.prefix)) {
-            const subKey = key.slice(descriptor.prefix.length);
-            const container = getNestedObject(fileConfig, descriptor.path);
-            return container?.[subKey] !== undefined ? 'file' : 'default';
-        }
-    }
-
     return undefined;
-}
-
-function getNestedObject(config: CLIConfig, path: readonly string[]): ConfigObject | undefined {
-    let current: unknown = config;
-    for (const segment of path) {
-        if (!isObject(current)) {
-            return undefined;
-        }
-        current = current[segment];
-    }
-    return isObject(current) ? current : undefined;
-}
-
-function isObject(value: unknown): value is ConfigObject {
-    return typeof value === 'object' && value !== null;
 }
 
 function resolveAutoProviderRouting(

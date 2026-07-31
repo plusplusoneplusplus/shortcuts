@@ -887,6 +887,10 @@ export const ADMIN_SETTING_KEYS: readonly string[] = ADMIN_SETTING_DEFINITIONS.m
 export const NAMESPACED_ADMIN_SETTING_KEYS: readonly string[] =
     ADMIN_SETTING_KEYS.filter(key => key.includes('.'));
 
+/** Flat (non-namespaced) admin keys — top-level scalars merged by the kernel. */
+export const TOP_LEVEL_ADMIN_SETTING_KEYS: readonly string[] =
+    ADMIN_SETTING_KEYS.filter(key => !key.includes('.'));
+
 /** Look up a definition by flat key. */
 export function getAdminSettingDefinition(key: string): AdminSettingDefinition | undefined {
     return ADMIN_SETTING_DEFINITIONS.find(d => d.key === key);

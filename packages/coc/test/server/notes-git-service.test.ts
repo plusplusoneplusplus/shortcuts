@@ -417,6 +417,79 @@ describe('NotesGitService', { timeout: 60_000 }, () => {
             // Could be 'main' or 'master' depending on git config
             expect(['main', 'master']).toContain(status.branch);
         });
+
+        it('reports no upstream before any remote is configured', async () => {
+            await service.init();
+            const status = await service.getStatus();
+            expect(status.hasUpstream).toBe(false);
+            expect(status.ahead).toBeNull();
+            expect(status.behind).toBeNull();
+        });
+    });
+
+    // ========================================================================
+    // getStatus — upstream ahead/behind (local, no network)
+    // ========================================================================
+    describe('getStatus upstream (ahead/behind)', () => {
+        let originDir: string; // bare remote so the notes repo can push to it
+
+        beforeEach(async () => {
+            const { execGitAsync } = await import('@plusplusoneplusplus/forge/git');
+            originDir = fs.mkdtempSync(path.join(os.tmpdir(), 'notes-git-status-origin-'));
+            await execGitAsync(['init', '--bare', '-b', 'main'], originDir);
+        });
+
+        afterEach(() => {
+            safeRmSync(originDir);
+        });
+
+        // Sync to whatever the repo's default branch is (`git init` yields
+        // `main` or `master` per the host git config) so `origin/<branch>`
+        // matches the local branch getStatus inspects.
+        async function currentBranch(): Promise<string> {
+            return (await service.getStatus()).branch;
+        }
+
+        it('reports hasUpstream/ahead=0/behind=0 right after a sync', async () => {
+            await service.init();
+            writeFile('a.md', 'a');
+            await service.sync(originDir, await currentBranch());
+
+            const status = await service.getStatus();
+            expect(status.hasUpstream).toBe(true);
+            expect(status.ahead).toBe(0);
+            expect(status.behind).toBe(0);
+        });
+
+        it('reports ahead: 1 when a local commit has not been pushed', async () => {
+            await service.init();
+            writeFile('a.md', 'a');
+            await service.sync(originDir, await currentBranch()); // origin/<branch> now tracks HEAD
+
+            // Commit locally without pushing.
+            writeFile('b.md', 'b');
+            await service.commit('local only');
+
+            const status = await service.getStatus();
+            expect(status.hasUpstream).toBe(true);
+            expect(status.ahead).toBe(1);
+            expect(status.behind).toBe(0);
+        });
+
+        it('reports behind > 0 when origin has commits the local branch lacks', async () => {
+            await service.init();
+            writeFile('a.md', 'a');
+            await service.sync(originDir, await currentBranch()); // both HEAD and origin/<branch> at same commit
+
+            // Rewind the local branch one commit while origin/<branch> stays ahead.
+            const { execGitAsync } = await import('@plusplusoneplusplus/forge/git');
+            await execGitAsync(['reset', '--hard', 'HEAD~1'], tmpDir);
+
+            const status = await service.getStatus();
+            expect(status.hasUpstream).toBe(true);
+            expect(status.behind).toBe(1);
+            expect(status.ahead).toBe(0);
+        });
     });
 
     // ========================================================================

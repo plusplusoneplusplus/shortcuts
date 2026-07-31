@@ -69,37 +69,102 @@ function NotesGitInitPrompt({ onInit }: { onInit: () => void }) {
 
 // ── Sub-component: Status section ──────────────────────────────────
 
-function NotesGitStatusSection({ status }: { status: { clean: boolean; staged: string[]; unstaged: string[]; untracked: string[] } }) {
+function NotesGitStatusSection({
+    status,
+}: {
+    status: {
+        clean: boolean;
+        staged: string[];
+        unstaged: string[];
+        untracked: string[];
+        /** True when a local `origin/<branch>` tracking ref exists. */
+        hasUpstream?: boolean;
+        /** Local commits not yet pushed (null/undefined when no upstream). */
+        ahead?: number | null;
+        /** Origin commits not in local as of last fetch (null/undefined when no upstream). */
+        behind?: number | null;
+    };
+}) {
     const modifiedCount = status.unstaged.length;
     const addedCount = status.untracked.length;
     const deletedCount = status.staged.filter(p => !status.unstaged.includes(p)).length;
-
-    if (status.clean && modifiedCount === 0 && addedCount === 0) {
-        return (
-            <div className="px-4 py-2 text-xs text-[#22863a] dark:text-[#85e89d]" data-testid="notes-git-status">
-                ● Clean ✔
-            </div>
-        );
-    }
+    const workingTreeClean = status.clean && modifiedCount === 0 && addedCount === 0;
 
     return (
-        <div className="px-4 py-2 text-xs space-y-0.5" data-testid="notes-git-status">
-            {modifiedCount > 0 && (
+        <>
+            {workingTreeClean ? (
+                <div className="px-4 py-2 text-xs text-[#22863a] dark:text-[#85e89d]" data-testid="notes-git-status">
+                    ● Clean ✔
+                </div>
+            ) : (
+                <div className="px-4 py-2 text-xs space-y-0.5" data-testid="notes-git-status">
+                    {modifiedCount > 0 && (
+                        <div className="flex items-center gap-1.5">
+                            <span className="inline-block w-2 h-2 rounded-full bg-[#e5a100]" />
+                            <span className="text-[#1e1e1e] dark:text-[#cccccc]">{modifiedCount} modified</span>
+                        </div>
+                    )}
+                    {addedCount > 0 && (
+                        <div className="flex items-center gap-1.5">
+                            <span className="inline-block w-2 h-2 rounded-full bg-[#22863a]" />
+                            <span className="text-[#1e1e1e] dark:text-[#cccccc]">{addedCount} new</span>
+                        </div>
+                    )}
+                    {deletedCount > 0 && (
+                        <div className="flex items-center gap-1.5">
+                            <span className="inline-block w-2 h-2 rounded-full bg-[#d32f2f]" />
+                            <span className="text-[#1e1e1e] dark:text-[#cccccc]">{deletedCount} deleted</span>
+                        </div>
+                    )}
+                </div>
+            )}
+            <NotesGitSyncStatus hasUpstream={status.hasUpstream} ahead={status.ahead} behind={status.behind} />
+        </>
+    );
+}
+
+/**
+ * Sync line: whether committed changes have reached `origin/<branch>`.
+ * Orthogonal to working-tree state, so it renders for both clean and dirty
+ * trees. Hidden entirely when there is no local upstream tracking ref
+ * (`hasUpstream` false) — sync state is unknown then. `ahead` is always
+ * accurate; `behind` reflects the last fetch/sync and may be stale.
+ */
+function NotesGitSyncStatus({
+    hasUpstream,
+    ahead,
+    behind,
+}: {
+    hasUpstream?: boolean;
+    ahead?: number | null;
+    behind?: number | null;
+}) {
+    if (!hasUpstream || ahead == null) return null;
+
+    const aheadCount = ahead ?? 0;
+    const behindCount = behind ?? 0;
+
+    return (
+        <div className="px-4 pb-2 text-xs space-y-0.5" data-testid="notes-git-sync-status">
+            {aheadCount > 0 && (
                 <div className="flex items-center gap-1.5">
                     <span className="inline-block w-2 h-2 rounded-full bg-[#e5a100]" />
-                    <span className="text-[#1e1e1e] dark:text-[#cccccc]">{modifiedCount} modified</span>
+                    <span className="text-[#1e1e1e] dark:text-[#cccccc]">
+                        ↑ {aheadCount} commit{aheadCount === 1 ? '' : 's'} not pushed
+                    </span>
                 </div>
             )}
-            {addedCount > 0 && (
+            {behindCount > 0 && (
                 <div className="flex items-center gap-1.5">
-                    <span className="inline-block w-2 h-2 rounded-full bg-[#22863a]" />
-                    <span className="text-[#1e1e1e] dark:text-[#cccccc]">{addedCount} new</span>
+                    <span className="inline-block w-2 h-2 rounded-full bg-[#848484]" />
+                    <span className="text-[#848484]">
+                        ↓ {behindCount} behind <span className="opacity-70">(since last sync)</span>
+                    </span>
                 </div>
             )}
-            {deletedCount > 0 && (
-                <div className="flex items-center gap-1.5">
-                    <span className="inline-block w-2 h-2 rounded-full bg-[#d32f2f]" />
-                    <span className="text-[#1e1e1e] dark:text-[#cccccc]">{deletedCount} deleted</span>
+            {aheadCount === 0 && behindCount === 0 && (
+                <div className="flex items-center gap-1.5 text-[#22863a] dark:text-[#85e89d]">
+                    <span>✔ Synced with origin</span>
                 </div>
             )}
         </div>

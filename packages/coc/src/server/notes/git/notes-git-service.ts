@@ -220,7 +220,7 @@ export class NotesGitService {
      */
     async getStatus(): Promise<NotesGitStatus> {
         if (!(await this.isInitialized())) {
-            return { initialized: false, branch: '', clean: true, staged: [], unstaged: [], untracked: [], totalChanges: 0 };
+            return { initialized: false, branch: '', clean: true, staged: [], unstaged: [], untracked: [], totalChanges: 0, hasUpstream: false, ahead: null, behind: null };
         }
 
         // Get current branch
@@ -229,6 +229,31 @@ export class NotesGitService {
             branch = await execGitAsync(['rev-parse', '--abbrev-ref', 'HEAD'], this.notesDir);
         } catch {
             // may fail if no commits yet
+        }
+
+        // Compute ahead/behind against the locally-known `origin/<branch>` ref.
+        // No network — `origin/<branch>` only advances when we fetch or push, so
+        // `ahead` (unpushed) is always accurate; `behind` may be stale until the
+        // next Sync. When no tracking ref exists (no remote / never pushed),
+        // leave nulls and report no upstream.
+        let hasUpstream = false;
+        let ahead: number | null = null;
+        let behind: number | null = null;
+        if (branch) {
+            try {
+                await execGitAsync(['rev-parse', '--verify', `origin/${branch}`], this.notesDir);
+                hasUpstream = true;
+                // left = behind (origin has), right = ahead (local has)
+                const counts = await execGitAsync(
+                    ['rev-list', '--left-right', '--count', `origin/${branch}...HEAD`],
+                    this.notesDir,
+                );
+                const [b, a] = counts.trim().split(/\s+/).map(n => parseInt(n, 10));
+                behind = Number.isFinite(b) ? b : 0;
+                ahead = Number.isFinite(a) ? a : 0;
+            } catch {
+                // no upstream ref locally — leave nulls
+            }
         }
 
         const output = await execGitAsync(['status', '--porcelain=v1'], this.notesDir);
@@ -265,6 +290,9 @@ export class NotesGitService {
             unstaged,
             untracked,
             totalChanges,
+            hasUpstream,
+            ahead,
+            behind,
         };
     }
 
