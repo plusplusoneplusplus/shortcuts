@@ -16,6 +16,7 @@ import type { Route } from '../../src/server/types';
 import { resolveCanonicalOriginId, type IPullRequestsService } from '@plusplusoneplusplus/forge';
 import type { ProviderPullRequest, CommentThread, Reviewer } from '@plusplusoneplusplus/forge';
 import type { ProviderPullRequestCheck, ProviderPullRequestCommit } from '@plusplusoneplusplus/forge';
+import { safeRm } from '../helpers/safe-rm';
 
 // ── Mock ProviderFactory and RepoTreeService ─────────────────────────────────
 
@@ -253,7 +254,7 @@ beforeEach(async () => {
 afterEach(async () => {
     vi.clearAllMocks();
     await stopServer();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    await safeRm(tmpDir);
 });
 
 // ── GET /api/origins/:originId/pull-requests ─────────────────────────────────────────

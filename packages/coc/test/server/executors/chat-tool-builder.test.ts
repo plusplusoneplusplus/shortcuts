@@ -44,17 +44,16 @@ describe('buildChatToolBundle', () => {
 
         expect(result.tools.map(t => t.name).sort()).toEqual([
             'ask_user',
-            'create_update_work_item',
             'extension_canvas',
             'get_conversation',
-            'get_work_item',
             'read_canvas',
             'search_conversations',
             'suggest_follow_ups',
             'tavily_web_search',
             'write_canvas',
         ]);
-        expect(result.tools.map(t => t.name)).not.toContain('update_work_item');
+        expect(result.tools.map(t => t.name)).not.toContain('get_work_item');
+        expect(result.tools.map(t => t.name)).not.toContain('create_update_work_item');
         expect(result.tools.map(t => t.name)).not.toContain('create_bug');
         expect(result.toolGuidance).toContain('tavily_web_search');
         // search_conversations / get_conversation tools are still wired (asserted

@@ -83,18 +83,6 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         enabledByDefault: true,
     },
     {
-        name: 'get_work_item',
-        label: 'Get Work Item',
-        description: 'Reads the current detail of an existing work item by UUID, WI-N, or work-item number (read-only).',
-        enabledByDefault: true,
-    },
-    {
-        name: 'create_update_work_item',
-        label: 'Create/Update Work Item',
-        description: 'Creates typed work items and bugs, patches common fields, saves revised plan versions, and links/moves/unlinks items in the hierarchy.',
-        enabledByDefault: true,
-    },
-    {
         name: 'save_memory',
         label: 'Save Memory (V2)',
         description: 'Explicitly stores a new fact in the redesigned memory system.',
@@ -177,13 +165,12 @@ export const DEFAULT_DISABLED_LLM_TOOLS: string[] = LLM_TOOL_REGISTRY
     .map(t => t.name);
 
 /** Additional tool names disabled by default when the dashboard uses classic mode. */
-export const CLASSIC_MODE_EXTRA_DISABLED_TOOLS: string[] = [
-    'get_work_item',
-    'create_update_work_item',
-];
+export const CLASSIC_MODE_EXTRA_DISABLED_TOOLS: string[] = [];
 
 const REMOVED_LLM_TOOL_NAMES = new Set([
     'create_bug',
+    'get_work_item',
+    'create_update_work_item',
 ]);
 
 export function isRemovedLlmToolName(toolName: string): boolean {

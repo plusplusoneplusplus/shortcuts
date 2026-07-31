@@ -66,9 +66,6 @@ export class AutopilotExecutor extends ChatBaseExecutor {
             processId,
             query: prompt,
             followUpSuggestions: this.followUpSuggestions,
-            broadcastWorkItem: this.getWsServerFn
-                ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event as any)
-                : undefined,
             enqueueChat: this.getEnqueueChat?.(),
             sendMessage: this.getSendMessage?.(),
             sendToConversationRuntime: this.getSendToConversationRuntime?.(),

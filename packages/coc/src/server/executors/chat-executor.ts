@@ -48,9 +48,6 @@ export class ChatExecutor extends ChatBaseExecutor {
             prompt,
             'ask',
             workingDirectory,
-            this.getWsServerFn
-                ? (event) => this.getWsServerFn!()?.broadcastProcessEvent(event)
-                : undefined,
         );
     }
 }

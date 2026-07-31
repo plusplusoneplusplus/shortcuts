@@ -1,15 +1,13 @@
 /**
  * Work Item Command Service
  *
- * Shared create/update command logic used by both the Work Items REST routes
- * and the `create_update_work_item` AI tool. Owns hierarchy (parentId)
- * validation, provider-backed remote sync (GitHub / Azure Boards child
- * creation and reparent/unlink updates), response-cache invalidation, and
- * dashboard broadcasts so REST and AI tool calls behave identically.
+ * Shared create/update command logic used by the Work Items REST routes. Owns
+ * hierarchy (parentId) validation, provider-backed remote sync (GitHub / Azure
+ * Boards child creation and reparent/unlink updates), response-cache
+ * invalidation, and dashboard broadcasts.
  *
  * Commands throw {@link APIError} on validation/sync failures; REST routes
- * translate them via `handleAPIError`, the AI tool maps them to tool-result
- * error payloads.
+ * translate them via `handleAPIError`.
  */
 
 import * as crypto from 'crypto';

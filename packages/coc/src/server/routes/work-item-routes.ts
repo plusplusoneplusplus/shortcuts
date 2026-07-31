@@ -2,9 +2,9 @@
  * Work Item REST API Routes
  *
  * CRUD operations for CoC work items. Create and update operations delegate
- * to the shared work-item command service (`work-item-commands.ts`) so the
- * REST routes and the `create_update_work_item` AI tool share hierarchy
- * validation, provider sync, cache invalidation, and broadcast behavior.
+ * to the shared work-item command service (`work-item-commands.ts`) for
+ * hierarchy validation, provider sync, cache invalidation, and broadcast
+ * behavior.
  *
  * Routes:
  *   GET    /api/origins/:originId/work-items              — List work items (with filters)

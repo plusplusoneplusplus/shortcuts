@@ -1,6 +1,5 @@
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
-import type { BroadcastWorkItemFn } from '../llm-tools/create-update-work-item-tool';
 import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { WakeupToolDeps, LoopToolDeps } from '../llm-tools/loop-tools';
@@ -13,7 +12,6 @@ import {
     buildCanvasToolsAddon,
     buildKustoToolsAddon,
     buildSendToConversationAddon,
-    buildCreateWorkItemAddon,
     buildFollowUpSuggestionsAddon,
     buildLoopToolsAddon,
     buildScheduleWakeupAddon,
@@ -47,14 +45,12 @@ export interface ChatToolBundleOptions {
         enabled: boolean;
         deps: AskUserToolDeps;
     };
-    broadcastWorkItem?: BroadcastWorkItemFn;
     /** Memory V2 addon (redesigned coc-memory system). */
     memoryV2?: MemoryV2Addon;
     scheduleWakeup?: WakeupToolDeps;
     loopTools?: LoopToolDeps;
     includeFollowUpSuggestions?: boolean;
     includeSearchConversations?: boolean;
-    includeWorkItemTools?: boolean;
     includeTavilyWebSearch?: boolean;
     includeScheduleWakeup?: boolean;
     includeCanvasTools?: boolean;
@@ -122,15 +118,6 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
         : undefined;
     if (askUser) {
         addons.push(askUser);
-    }
-
-    if (options.includeWorkItemTools !== false) {
-        addons.push(buildCreateWorkItemAddon(
-            options.dataDir,
-            options.workspaceId,
-            options.broadcastWorkItem,
-            { processStore: options.store },
-        ));
     }
 
     if (options.includeTavilyWebSearch !== false) {
