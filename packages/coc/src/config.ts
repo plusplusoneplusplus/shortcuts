@@ -13,8 +13,10 @@ import * as os from 'os';
 import yaml from 'js-yaml';
 import { FileProcessStore, SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import { validateConfigWithSchema } from './config/schema';
+import { TOP_LEVEL_ADMIN_SETTING_KEYS } from './config/admin-setting-definitions';
 import {
     CONFIG_NAMESPACE_SOURCE_KEYS,
+    FILE_ONLY_TOP_LEVEL_LEAVES,
     getNamespaceFieldSource,
     mergeConfigNamespaces,
 } from './config/namespace-registry';
@@ -947,11 +949,15 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
  */
 export type ConfigFieldSource = 'default' | 'file' | 'runtime';
 
-const TOP_LEVEL_CONFIG_SOURCE_KEYS = [
-    'model', 'parallel', 'output', 'approvePermissions', 'mcpConfig',
-    'timeout', 'persist', 'showReportIntent', 'showPlanDepTab', 'toolCompactness', 'taskCardDensity', 'groupSingleLineMessages',
-    'defaultProvider',
-] as const;
+/**
+ * Top-level (non-namespaced) scalar keys, generated from the admin registry
+ * (editable scalars) plus the file-only scalar leaves. These are both the
+ * source-tracked keys and the keys resolved by the generic top-level merge.
+ */
+const TOP_LEVEL_CONFIG_SOURCE_KEYS: readonly string[] = [
+    ...TOP_LEVEL_ADMIN_SETTING_KEYS,
+    ...FILE_ONLY_TOP_LEVEL_LEAVES.map(leaf => leaf.key),
+];
 
 /**
  * All tracked config field keys (flat, with dot notation for nested fields)
@@ -1090,21 +1096,25 @@ export function mergeConfig(base: ResolvedCLIConfig, override?: CLIConfig): Reso
     }
 
     return {
-        model: override.model ?? base.model,
-        parallel: override.parallel ?? base.parallel,
-        output: override.output ?? base.output,
-        approvePermissions: override.approvePermissions ?? base.approvePermissions,
-        mcpConfig: override.mcpConfig ?? base.mcpConfig,
-        timeout: override.timeout ?? base.timeout,
-        persist: override.persist ?? base.persist,
-        showReportIntent: override.showReportIntent ?? base.showReportIntent,
-        showPlanDepTab: override.showPlanDepTab ?? base.showPlanDepTab,
-        toolCompactness: (override.toolCompactness ?? base.toolCompactness) as 0 | 1 | 2 | 3,
-        taskCardDensity: (override.taskCardDensity ?? base.taskCardDensity) as 'compact' | 'dense',
-        groupSingleLineMessages: override.groupSingleLineMessages ?? base.groupSingleLineMessages,
-        defaultProvider: (override.defaultProvider ?? base.defaultProvider) as DefaultAgentProvider,
+        ...mergeTopLevelScalars(base, override),
         ...mergeConfigNamespaces(base, override, DEFAULT_BUNDLED_SKILLS),
-    };
+    } as ResolvedCLIConfig;
+}
+
+/**
+ * Resolve every top-level scalar key with the same `override ?? base` rule the
+ * hand-written merge used, driven by the registry-generated key list. Every key
+ * is written (undefined included) so optional scalars keep present-as-undefined
+ * shape, matching the prior literal merge.
+ */
+function mergeTopLevelScalars(base: ResolvedCLIConfig, override: CLIConfig): Partial<ResolvedCLIConfig> {
+    const result: Record<string, unknown> = {};
+    const baseRecord = base as unknown as Record<string, unknown>;
+    const overrideRecord = override as unknown as Record<string, unknown>;
+    for (const key of TOP_LEVEL_CONFIG_SOURCE_KEYS) {
+        result[key] = overrideRecord[key] ?? baseRecord[key];
+    }
+    return result as Partial<ResolvedCLIConfig>;
 }
 
 /**
