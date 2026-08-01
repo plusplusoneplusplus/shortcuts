@@ -81,12 +81,68 @@ describe('SyncMirrorCopier', () => {
         fs.mkdirSync(path.join(repoDir, 'sub'), { recursive: true });
         fs.writeFileSync(path.join(repoDir, 'sub', 'b.md'), '# b');
 
-        await mirror.copyRepoToLocal();
+        await mirror.copyRepoToLocal(false, 0);
 
         expect(fs.readFileSync(path.join(localDir, 'a.md'), 'utf8')).toBe('# a');
         expect(fs.readFileSync(path.join(localDir, 'sub', 'b.md'), 'utf8')).toBe('# b');
         expect(fs.existsSync(path.join(localDir, '.git'))).toBe(false);
         expect(fs.existsSync(path.join(localDir, '.lock'))).toBe(false);
+    });
+
+    // A cutoff far past every real file mtime → nothing falls in the preserve
+    // window, so a genuine deletion is mirror-deleted (the steady-state case
+    // where the deleted note predates the tick).
+    const FUTURE_CUTOFF = 10_000_000_000_000;
+
+    it('copyRepoToLocal with a baseline mirror-deletes a local-only top-level note', async () => {
+        // The clone (repoDir) no longer has this note — a deletion pulled from
+        // the remote. A baseline means it must reach local, not survive.
+        fs.writeFileSync(path.join(localDir, 'stale.md'), '# stale');
+        fs.writeFileSync(path.join(repoDir, 'keep.md'), '# keep');
+
+        await mirror.copyRepoToLocal(true, FUTURE_CUTOFF);
+
+        expect(fs.existsSync(path.join(localDir, 'stale.md'))).toBe(false);
+        expect(fs.readFileSync(path.join(localDir, 'keep.md'), 'utf8')).toBe('# keep');
+    });
+
+    it('copyRepoToLocal with a baseline mirror-deletes a local-only top-level folder', async () => {
+        fs.mkdirSync(path.join(localDir, 'gone'), { recursive: true });
+        fs.writeFileSync(path.join(localDir, 'gone', 'inner.md'), '# inner');
+        fs.writeFileSync(path.join(repoDir, 'keep.md'), '# keep');
+
+        await mirror.copyRepoToLocal(true, FUTURE_CUTOFF);
+
+        expect(fs.existsSync(path.join(localDir, 'gone'))).toBe(false);
+        expect(fs.readFileSync(path.join(localDir, 'keep.md'), 'utf8')).toBe('# keep');
+    });
+
+    it('copyRepoToLocal without a baseline never deletes local-only notes (inbound gate)', async () => {
+        fs.writeFileSync(path.join(localDir, 'local-only.md'), '# local-only');
+        fs.writeFileSync(path.join(repoDir, 'keep.md'), '# keep');
+
+        await mirror.copyRepoToLocal(false, 0);
+
+        // No baseline → "absent in the clone" is not proven to be a deletion.
+        expect(fs.existsSync(path.join(localDir, 'local-only.md'))).toBe(true);
+        expect(fs.readFileSync(path.join(localDir, 'keep.md'), 'utf8')).toBe('# keep');
+    });
+
+    it('copyRepoToLocal spares a local note freshened at/after the tick cutoff', async () => {
+        // A note written mid-tick (after the clone was snapshotted) is absent
+        // from the clone but is not a deletion; the cutoff must preserve it while
+        // still deleting a note that predates the tick.
+        fs.writeFileSync(path.join(localDir, 'fresh.md'), '# fresh');
+        fs.writeFileSync(path.join(localDir, 'old.md'), '# old');
+        const cutoff = 5_000_000;
+        // fresh: mtime at/after cutoff → preserved; old: before cutoff → deleted.
+        fs.utimesSync(path.join(localDir, 'fresh.md'), cutoff / 1000, cutoff / 1000);
+        fs.utimesSync(path.join(localDir, 'old.md'), (cutoff - 60_000) / 1000, (cutoff - 60_000) / 1000);
+
+        await mirror.copyRepoToLocal(true, cutoff);
+
+        expect(fs.existsSync(path.join(localDir, 'fresh.md'))).toBe(true);
+        expect(fs.existsSync(path.join(localDir, 'old.md'))).toBe(false);
     });
 });
 

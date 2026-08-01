@@ -81,7 +81,7 @@ Server bootstrap creates two `SyncEngine` instances (`syncEngines: Map<string, S
    - **Last resort** (`strategy: 'keptRemoteFallback'`): `git checkout --theirs <file>` — drops this device's edit, so it is the one recorded loudly.
    The resolution commit uses `resolutionCommitMessage()` (enumerating each file + strategy) instead of `--no-edit`, and after it lands `recordResolution()` sets `status.lastResolution` and writes a `coc-last-resolution.json` marker beside the reconcile one — see "The steady-state resolution report" below.
 8. **Push to remote** — `git push -u origin HEAD`. Failure is non-fatal (retries next cycle): `pushToRemote()` returns whether the push landed, and on failure sets `status.pushPending = true` + `status.lastPushError`, cleared only by a later successful push. A repeat failure while already pending logs at `error` (stuck) rather than `warn` (transient). This is kept out of `lastError`: the local sync completed, only the outbound push didn't land, so the pill shows amber "Push pending" not red "Error".
-9. **Copy repo → local** — Mirror resolved content back to local notes directory (changed files only; excludes `.git` and `.lock`).
+9. **Copy repo → local** — `copyRepoToLocal(hasBaseline, tickStartMs)`: a full mirror back to the local notes directory (changed files only; excludes `.git`/`.lock`). This is a mirror, not an append: a note deleted on the remote must reach local, or it survives here and step 2 re-pushes it next tick (resurrection). **Baseline-gated the same way as step 2** — `mirrorDeletes: hasBaseline`, so a note the clone lacks is deleted locally only once a marker proves shared history. **Mid-tick creation guard**: `preserveNewerThanMs: tickStartMs` (the tick's start time, stamped before any copy) makes the delete pass spare any local entry whose mtime is at/after the cutoff — a note written after the clone was snapshotted but before this copy is absent from the clone yet is not a deletion; it syncs on the next tick. Reconcile calls this with `hasBaseline: false` (union merge never deletes).
 10. **Record the baseline** — Only when the push landed, and only if no marker exists: `recordSyncBaseline()` writes the same marker reconcile writes. A push that landed means the two sides now share history by the ordinary route (the remote was empty, so the first push *is* the shared history). Without it, the next tick would see a remote that suddenly has commits and no marker, re-enter reconcile, and union-merge the notes with the copies it just pushed.
 
 ## Initial Reconcile (SyncEngine.reconcile)
@@ -118,8 +118,9 @@ one sync:
    older version wrote stays out of the commit.
    The push is raw `git push` — deliberately *not* `pushToRemote()`, which swallows
    failures to retry later; here a failed push must abort before the marker.
-6. **Copy back + retire** — `copyRepoToLocal()`, then `writeReconcileMarker()`,
-   carrying the `ReconcileSummary` the report is served from.
+6. **Copy back + retire** — `copyRepoToLocal(false, …)` (union merge never
+   deletes, so mirror-delete stays off), then `writeReconcileMarker()`, carrying
+   the `ReconcileSummary` the report is served from.
 
 Ordering is the correctness property: **marker only after a successful push**. If
 anything fails, no marker is written and the next tick re-runs the merge, which is

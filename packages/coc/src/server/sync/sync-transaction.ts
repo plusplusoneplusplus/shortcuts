@@ -76,6 +76,13 @@ export class SyncTransactionRunner {
      * success/idle/reconcile path.
      */
     async run(gitRemote: string): Promise<void> {
+        // Stamp the tick's start before any copy runs. The inbound copy-back
+        // mirror-deletes local notes the clone lacks; a note written locally
+        // after this point but before that copy is absent from the clone yet is
+        // not a deletion, so the delete pass preserves anything freshened at or
+        // after this cutoff (it syncs on the next tick instead).
+        const tickStartMs = Date.now();
+
         // 1. Ensure the sync repo exists (clone or verify)
         await this.ensureSyncRepo(gitRemote);
 
@@ -109,7 +116,7 @@ export class SyncTransactionRunner {
         //    the device already agrees.
         const remoteHasChanges = await this.git.hasRemoteChanges();
         if (!hasLocalChanges && !remoteHasChanges) {
-            await this.mirror.copyRepoToLocal();
+            await this.mirror.copyRepoToLocal(baseline !== null, tickStartMs);
             this.status.lastSyncTime = new Date().toISOString();
             this.status.lastError = null;
             this.logger.info('Sync idle — no local or remote changes');
@@ -145,8 +152,9 @@ export class SyncTransactionRunner {
         // 8. Push to remote
         const pushed = await this.pushStep();
 
-        // 9. Copy sync repo → local notes
-        await this.mirror.copyRepoToLocal();
+        // 9. Copy sync repo → local notes (a full mirror: a deletion pulled from
+        //    the remote must reach local notes, not survive and be re-pushed).
+        await this.mirror.copyRepoToLocal(baseline !== null, tickStartMs);
 
         // 10. A push that landed means this mirror and the remote now share
         //     history by the ordinary route — typically the first push to a
@@ -344,7 +352,10 @@ export class SyncTransactionRunner {
             this.logger.info('Reconcile: local and remote already agree, nothing to push');
         }
 
-        await this.mirror.copyRepoToLocal();
+        // Reconcile is a union merge — it must never delete either side. Pass
+        // hasBaseline=false so the inbound copy keeps its mirror-delete off; the
+        // timestamp is then unused, but the parameter is required.
+        await this.mirror.copyRepoToLocal(false, Date.now());
 
         // Only now, with the merged tree on the remote and back on disk, does the
         // marker retire this phase and unlock steady-state mirror-deletes. It

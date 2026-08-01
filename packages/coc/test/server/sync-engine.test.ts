@@ -495,6 +495,23 @@ describe('copyDirContents', () => {
         expect(fs.readFileSync(path.join(dest, 'keep.md'), 'utf8')).toBe('keep');
     });
 
+    it('preserveNewerThanMs keeps a dest-only entry at/after the cutoff, deletes older ones', async () => {
+        fs.writeFileSync(path.join(dest, 'fresh.md'), 'written mid-tick');
+        fs.writeFileSync(path.join(dest, 'old.md'), 'predates the tick');
+        fs.writeFileSync(path.join(src, 'keep.md'), 'keep');
+        const cutoff = 5_000_000;
+        fs.utimesSync(path.join(dest, 'fresh.md'), cutoff / 1000, cutoff / 1000);
+        fs.utimesSync(path.join(dest, 'old.md'), (cutoff - 60_000) / 1000, (cutoff - 60_000) / 1000);
+
+        await copyDirContents(src, dest, { preserveNewerThanMs: cutoff });
+
+        // fresh.md's mtime is at the cutoff → not a deletion yet, kept for next tick.
+        expect(fs.existsSync(path.join(dest, 'fresh.md'))).toBe(true);
+        // old.md predates the tick → a real deletion, removed.
+        expect(fs.existsSync(path.join(dest, 'old.md'))).toBe(false);
+        expect(fs.existsSync(path.join(dest, 'keep.md'))).toBe(true);
+    });
+
     it('preserves ignored names in the destination (never deletes .git/.lock)', async () => {
         // .git and .lock exist only in dest (the sync repo), not the notes source.
         fs.mkdirSync(path.join(dest, '.git'));
@@ -720,6 +737,104 @@ describe('SyncEngine performSync (real git)', () => {
         const remoteTree = git(['ls-tree', '-r', '--name-only', 'HEAD'], remoteDir)
             .split('\n').map(s => s.trim()).filter(f => f && f !== '.lock').sort();
         expect(remoteTree).toEqual(['a.md']);
+    });
+});
+
+// ── SyncEngine inbound deletion mirror (two machines, one remote) ─────────────
+
+/**
+ * Two engines on separate data dirs share one bare remote — machine A and
+ * machine B holding the same workspace. This pins the resurrection regression:
+ * a note A deletes must not survive on B and get re-pushed on B's next tick.
+ */
+describe('SyncEngine inbound deletion (two machines, real git)', () => {
+    let tmpDir: string;
+    let remoteDir: string;
+    let engineA: SyncEngine;
+    let engineB: SyncEngine;
+    let gitEnvSnapshot: GitEnvSnapshot | undefined;
+
+    const silentLogger = { info: () => {}, warn: () => {}, error: () => {} };
+    const notesA = () => path.join(tmpDir, 'a', 'repos', 'my_work', 'notes');
+    const notesB = () => path.join(tmpDir, 'b', 'repos', 'my_work', 'notes');
+    const remoteUrl = () => remoteDir.replace(/\\/g, '/');
+
+    function git(args: string[], cwd: string): string {
+        return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+    }
+    function remoteTree(): string[] {
+        return git(['ls-tree', '-r', '--name-only', 'HEAD'], remoteDir)
+            .split('\n').map(s => s.trim()).filter(f => f && f !== '.lock').sort();
+    }
+    function writeNote(base: string, rel: string, content: string): void {
+        const p = path.join(base, rel);
+        fs.mkdirSync(path.dirname(p), { recursive: true });
+        fs.writeFileSync(p, content);
+    }
+
+    beforeEach(() => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-sync-2m-'));
+        gitEnvSnapshot = installIsolatedGitConfig(writeTestGitConfig(tmpDir));
+        remoteDir = path.join(tmpDir, 'remote.git');
+        execFileSync('git', ['init', '--bare', remoteDir], { stdio: 'ignore' });
+        engineA = new SyncEngine({ dataDir: path.join(tmpDir, 'a'), workspaceId: 'my_work', logger: silentLogger });
+        engineB = new SyncEngine({ dataDir: path.join(tmpDir, 'b'), workspaceId: 'my_work', logger: silentLogger });
+    });
+
+    afterEach(() => {
+        engineA?.stop();
+        engineB?.stop();
+        restoreGitConfigEnv(gitEnvSnapshot);
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('a top-level note A deletes is removed on B and never re-pushed', async () => {
+        // A creates two notes and pushes; B clones them down.
+        writeNote(notesA(), 'a.md', '# A\n');
+        writeNote(notesA(), 'b.md', '# B\n');
+        await engineA.triggerSync(remoteUrl());
+        // B's first tick clones + copies down (no baseline yet); its second is a
+        // no-op reconcile that writes the baseline, so a later inbound deletion
+        // runs the steady-state mirror path instead of the union merge.
+        await engineB.triggerSync(remoteUrl());
+        await engineB.triggerSync(remoteUrl());
+        expect(await readReconcileMarker(path.join(tmpDir, 'b', 'sync', 'my-work'))).not.toBeNull();
+        expect(fs.existsSync(path.join(notesB(), 'b.md'))).toBe(true);
+
+        // A deletes b.md and pushes the deletion.
+        fs.unlinkSync(path.join(notesA(), 'b.md'));
+        await engineA.triggerSync(remoteUrl());
+        expect(remoteTree()).toEqual(['a.md']);
+
+        // B pulls: the inbound mirror must delete b.md from B's local notes.
+        await engineB.triggerSync(remoteUrl());
+        expect(fs.existsSync(path.join(notesB(), 'b.md'))).toBe(false);
+
+        // B's next tick must NOT resurrect b.md by re-pushing its stale local copy.
+        await engineB.triggerSync(remoteUrl());
+        expect(remoteTree()).toEqual(['a.md']);
+        expect(fs.existsSync(path.join(notesB(), 'b.md'))).toBe(false);
+    });
+
+    it('a whole top-level folder A deletes is removed on B and never re-pushed', async () => {
+        writeNote(notesA(), 'keep.md', '# keep\n');
+        writeNote(notesA(), 'folder/note.md', '# nested\n');
+        await engineA.triggerSync(remoteUrl());
+        // Two ticks so B holds a baseline (see the top-level-note test above).
+        await engineB.triggerSync(remoteUrl());
+        await engineB.triggerSync(remoteUrl());
+        expect(fs.existsSync(path.join(notesB(), 'folder', 'note.md'))).toBe(true);
+
+        fs.rmSync(path.join(notesA(), 'folder'), { recursive: true, force: true });
+        await engineA.triggerSync(remoteUrl());
+        expect(remoteTree()).toEqual(['keep.md']);
+
+        await engineB.triggerSync(remoteUrl());
+        expect(fs.existsSync(path.join(notesB(), 'folder'))).toBe(false);
+
+        await engineB.triggerSync(remoteUrl());
+        expect(remoteTree()).toEqual(['keep.md']);
+        expect(fs.existsSync(path.join(notesB(), 'folder'))).toBe(false);
     });
 });
 

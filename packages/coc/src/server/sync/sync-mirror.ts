@@ -30,6 +30,23 @@ export interface CopyDirOptions {
      * copy does exactly that until reconcile has established a baseline.
      */
     mirrorDeletes?: boolean;
+    /**
+     * A cutoff (epoch ms) below which a `dest`-only entry may be mirror-deleted.
+     * When set, the delete pass skips any entry whose own mtime is at or after
+     * the cutoff, treating it as created too recently to be a deletion `src` is
+     * authoritative about.
+     *
+     * This guards the inbound copy's mid-tick creation race: `src` (the clone)
+     * is snapshotted early in a tick, but a note can be written locally before
+     * the copy-back runs, so it is absent from `src` yet is not a deletion —
+     * deleting it would destroy fresh work. Skipped entries sync normally on the
+     * next tick. Checking each entry's own mtime is enough at every depth: a new
+     * note freshens its parent dir's mtime too, and a stale dir holding a
+     * brand-new file is the nested case the recursion handles by descending and
+     * re-checking that file's own mtime. Only meaningful when
+     * `mirrorDeletes` is not false.
+     */
+    preserveNewerThanMs?: number;
 }
 
 /**
@@ -51,12 +68,19 @@ export async function copyDirContents(src: string, dest: string, options?: CopyD
 
     // Remove files in dest that don't exist in src (mirror-delete), skipping ignored names.
     if (options?.mirrorDeletes !== false) {
+        const cutoff = options?.preserveNewerThanMs;
         const destEntries = await safeReadDirAsync(dest, true);
         if (destEntries.success) {
             for (const entry of destEntries.data!) {
                 if (ignore?.has(entry.name)) continue;
                 const destPath = path.join(dest, entry.name);
                 if (!await safeExistsAsync(path.join(src, entry.name))) {
+                    // Freshly written during this tick (absent from the early src
+                    // snapshot but not a deletion) — leave it for the next tick.
+                    if (cutoff !== undefined) {
+                        const stat = await fs.promises.stat(destPath).catch(() => null);
+                        if (stat && stat.mtimeMs >= cutoff) continue;
+                    }
                     if (entry.isDirectory()) {
                         await fs.promises.rm(destPath, { recursive: true, force: true });
                     } else {
@@ -164,24 +188,31 @@ export class SyncMirrorCopier {
         }
     }
 
-    /** Copy the sync repo's tree back onto local notes, changed files only. */
-    async copyRepoToLocal(): Promise<void> {
+    /**
+     * Copy the sync repo's tree back onto local notes: a full mirror, changed
+     * files only, so a deletion pulled from the remote reaches this device's
+     * notes dir instead of surviving and being re-pushed next tick.
+     *
+     * `hasBaseline` gates the mirror-delete the same way {@link copyLocalToRepo}
+     * does — this is the destructive direction inbound, so a note the clone
+     * lacks is only treated as a deletion once reconcile has proven the clone
+     * shares history with local. `tickStartMs` (the tick's start time) protects
+     * a note created after the clone was snapshotted but before this copy runs:
+     * such a note is absent from the clone yet is not a deletion, so the delete
+     * pass skips anything freshened at or after it. Both are required rather
+     * than defaulted: this direction can destroy local notes, and a caller that
+     * forgets should not compile.
+     */
+    async copyRepoToLocal(hasBaseline: boolean, tickStartMs: number): Promise<void> {
         if (await safeExistsAsync(this.syncRepoDir)) {
             await fs.promises.mkdir(this.localDir, { recursive: true });
-            // Copy everything except .git and .lock, writing only changed files so
-            // an idle inbound copy doesn't churn mtimes (and the notes fs-watcher).
-            const entries = await safeReadDirAsync(this.syncRepoDir, true);
-            if (!entries.success) return;
-            for (const entry of entries.data!) {
-                if (SYNC_IGNORE_NAMES.has(entry.name)) continue;
-                const src = path.join(this.syncRepoDir, entry.name);
-                const dest = path.join(this.localDir, entry.name);
-                if (entry.isDirectory()) {
-                    await copyDirContents(src, dest, { ignore: SYNC_IGNORE_NAMES });
-                } else {
-                    await copyFileIfChanged(src, dest);
-                }
-            }
+            // Everything except .git and .lock, writing only changed files so an
+            // idle inbound copy doesn't churn mtimes (and the notes fs-watcher).
+            await copyDirContents(this.syncRepoDir, this.localDir, {
+                ignore: SYNC_IGNORE_NAMES,
+                mirrorDeletes: hasBaseline,
+                preserveNewerThanMs: tickStartMs,
+            });
         }
     }
 }

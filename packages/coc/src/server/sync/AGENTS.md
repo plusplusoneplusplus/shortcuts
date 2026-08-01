@@ -26,7 +26,12 @@ baseline for a push that never landed. Preserve step ordering when editing.
   highest-risk external dependency, isolated for failure-mode testing.
 - `sync-mirror.ts` — `SyncMirrorCopier` + `copyDirContents`/`copyFileIfChanged`:
   change-only copy, baseline-gated mirror deletes, and `SYNC_IGNORE_NAMES`
-  (`.git`, `.lock` — never copied or mirror-deleted).
+  (`.git`, `.lock` — never copied or mirror-deleted). Both directions mirror:
+  `copyLocalToRepo(hasBaseline)` outbound and `copyRepoToLocal(hasBaseline,
+  tickStartMs)` inbound — a note deleted on the remote must reach local, not
+  survive and get re-pushed. Inbound passes `preserveNewerThanMs: tickStartMs`
+  so the delete pass spares a note written mid-tick (absent from the early clone
+  snapshot but not a deletion); it syncs next tick.
 - `sync-conflict.ts` — `SyncConflictResolver` + `resolveConflictSimple` /
   `resolveConflictWithAI`: steady-state conflict resolution (AI → simple →
   keep-remote fallback), the fallback audit trail, and the resolution marker.
@@ -44,6 +49,9 @@ baseline for a push that never landed. Preserve step ordering when editing.
 ## Ordering invariants (do not reorder)
 
 - Baseline/reconcile check runs **before** the destructive `copyLocalToRepo`.
+- Both mirror directions are baseline-gated: `copyLocalToRepo` and
+  `copyRepoToLocal` only mirror-delete once a reconcile baseline exists. Reconcile
+  (union merge) calls `copyRepoToLocal(false, …)` — it never deletes either side.
 - Reconcile pushes the merged tree (and the backup tag first) **before** writing
   the reconcile marker; a failed push must leave no marker.
 - Steady-state records a baseline only **after** a push actually lands.
