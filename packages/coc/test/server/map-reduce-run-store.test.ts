@@ -292,4 +292,70 @@ describe('FileMapReduceRunStore', () => {
             expect(cancelledReduce.run.reduceStep.status).toBe('cancelled');
         });
     });
+
+    // Stage 2 behavior pins: lock the multi-running item state machine so the
+    // ItemRunPolicy refactor (concurrency=maxParallel, output capture, reduce
+    // handoff) is proven to preserve current behavior.
+    describe('item state-machine pins', () => {
+        it('keeps status running while a sibling runs, then flips to reducing on the last drain', async () => {
+            await withTempDir(async (dataDir) => {
+                const store = new FileMapReduceRunStore({ dataDir });
+                const runId = await createApprovedRun(store, [
+                    item({ id: 'item-1', title: 'First' }),
+                    item({ id: 'item-2', title: 'Second' }),
+                ], 2);
+
+                const claim = await store.claimRunnableItems(WORKSPACE_ID, runId);
+                expect(claim?.items.map(entry => entry.id)).toEqual(['item-1', 'item-2']);
+                await store.linkRunningItemChild(WORKSPACE_ID, runId, 'item-1', 'task-1', 'queue_task-1');
+                await store.linkRunningItemChild(WORKSPACE_ID, runId, 'item-2', 'task-2', 'queue_task-2');
+
+                // item-2 is still running, so completing item-1 must keep the run running.
+                const stillRunning = await store.markRunningItemCompleted(WORKSPACE_ID, runId, 'item-1', 'task-1', 'first output');
+                expect(stillRunning.status).toBe('running');
+                expect(stillRunning.items.find(entry => entry.id === 'item-1')?.output).toBe('first output');
+
+                // Draining the last running item hands off to the reduce phase.
+                const reducing = await store.markRunningItemCompleted(WORKSPACE_ID, runId, 'item-2', 'task-2', 'second output');
+                expect(reducing.status).toBe('reducing');
+                expect(reducing.reduceStep.status).toBe('pending');
+                expect(reducing.items.find(entry => entry.id === 'item-2')?.output).toBe('second output');
+            });
+        });
+
+        it('retries a failed map item back to running after draining', async () => {
+            await withTempDir(async (dataDir) => {
+                const store = new FileMapReduceRunStore({ dataDir });
+                const runId = await createApprovedRun(store, [item()], 1);
+                await store.claimRunnableItems(WORKSPACE_ID, runId);
+                await store.linkRunningItemChild(WORKSPACE_ID, runId, 'item-1', 'task-1', 'queue_task-1');
+                const failed = await store.markRunningItemFailed(WORKSPACE_ID, runId, 'item-1', 'boom', 'task-1');
+                expect(failed.status).toBe('failed');
+
+                const retry = await store.claimFailedItemForRetry(WORKSPACE_ID, runId, 'item-1');
+                expect(retry.items[0]).toMatchObject({ id: 'item-1', status: 'running' });
+                expect(retry.items[0].output).toBeUndefined();
+                expect(retry.run.status).toBe('running');
+            });
+        });
+
+        it('collects running map child task ids when cancelled mid-flight', async () => {
+            await withTempDir(async (dataDir) => {
+                const store = new FileMapReduceRunStore({ dataDir });
+                const runId = await createApprovedRun(store, [
+                    item({ id: 'item-1', title: 'First' }),
+                    item({ id: 'item-2', title: 'Second' }),
+                ], 2);
+                await store.claimRunnableItems(WORKSPACE_ID, runId);
+                await store.linkRunningItemChild(WORKSPACE_ID, runId, 'item-1', 'task-1', 'queue_task-1');
+                await store.linkRunningItemChild(WORKSPACE_ID, runId, 'item-2', 'task-2', 'queue_task-2');
+
+                const cancelled = await store.cancelRun(WORKSPACE_ID, runId);
+                expect(cancelled.childTaskIds).toEqual(['task-1', 'task-2']);
+                expect(cancelled.run.status).toBe('cancelled');
+                expect(cancelled.run.items.map(entry => entry.status)).toEqual(['skipped', 'skipped']);
+                expect(cancelled.run.reduceStep.status).toBe('cancelled');
+            });
+        });
+    });
 });

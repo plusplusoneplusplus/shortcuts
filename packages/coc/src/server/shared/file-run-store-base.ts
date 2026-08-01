@@ -9,6 +9,55 @@ import { atomicWriteJSON } from './fs-utils';
  */
 export const RUN_ID_PATTERN = /^[A-Za-z0-9._-]+$/;
 
+/** The five item lifecycle states shared by every run subsystem. */
+export type RunItemStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+
+/** Minimal shape of a run item the shared item state machine mutates. */
+export interface RunItemLike {
+    id: string;
+    status: RunItemStatus;
+    dependsOn?: string[];
+    childProcessId?: string;
+    childTaskId?: string;
+    startedAt?: string;
+    completedAt?: string;
+    error?: string;
+    output?: unknown;
+}
+
+/** Minimal shape of a run the shared item state machine reads and rewrites. */
+export interface RunLike<TItem extends RunItemLike> {
+    workspaceId: string;
+    runId: string;
+    status: string;
+    updatedAt: string;
+    completedAt?: string;
+    items: TItem[];
+}
+
+/**
+ * The four genuine forks between the For Each and Map Reduce item state
+ * machines, made explicit. Everything else about claiming/marking/skipping
+ * items is shared in {@link FileRunStoreBase}.
+ */
+export interface ItemRunPolicy<TRun extends RunLike<TItem>, TItem extends RunItemLike> {
+    /** Max items allowed running at once. for-each: `() => 1`; map-reduce: `r => r.maxParallel`. */
+    concurrency(run: TRun): number;
+    /** Whether a completing item persists its child output (map-reduce only). */
+    captureOutput: boolean;
+    /** Run status after an item reaches a terminal (completed/failed) state. */
+    statusAfterItemTerminal(items: TItem[], run: TRun): TRun['status'];
+    /** Run status after a manual skip. */
+    statusAfterManualSkip(items: TItem[], run: TRun): TRun['status'];
+    /**
+     * State to persist when a claim finds every item terminal and nothing left
+     * to run. for-each completes the run; map-reduce hands off to its reduce
+     * phase (only while the reduce step is still pending). Returns the run to
+     * write, or `undefined` to write nothing.
+     */
+    drainToTerminal(run: TRun, now: string): TRun | undefined;
+}
+
 /** One JSON file persisted for a run, relative to the run directory. */
 export interface RunArtifact {
     /** File name inside the run directory, e.g. `run.json`. */
@@ -27,19 +76,80 @@ export interface FileRunStoreBaseOptions<TRun> {
     onRunChanged?: (run: TRun) => void;
 }
 
+export function isTerminalItemStatus(status: RunItemStatus): boolean {
+    return status === 'completed' || status === 'skipped';
+}
+
+export function allItemsTerminal(items: RunItemLike[]): boolean {
+    return items.every(item => isTerminalItemStatus(item.status));
+}
+
+export function hasRunningItem(items: RunItemLike[]): boolean {
+    return items.some(item => item.status === 'running');
+}
+
+export function findFailedItem<TItem extends RunItemLike>(items: TItem[]): TItem | undefined {
+    return items.find(item => item.status === 'failed');
+}
+
+function dependenciesSatisfied(item: RunItemLike, items: RunItemLike[]): boolean {
+    const byId = new Map(items.map(entry => [entry.id, entry]));
+    return (item.dependsOn ?? []).every(id => {
+        const dependency = byId.get(id);
+        return dependency ? isTerminalItemStatus(dependency.status) : false;
+    });
+}
+
+function findRunnableItems<TItem extends RunItemLike>(items: TItem[], limit: number): TItem[] {
+    if (limit <= 0) {
+        return [];
+    }
+    const runnable: TItem[] = [];
+    for (const item of items) {
+        if (item.status === 'pending' && dependenciesSatisfied(item, items)) {
+            runnable.push(item);
+            if (runnable.length >= limit) {
+                break;
+            }
+        }
+    }
+    return runnable;
+}
+
+function clearItemExecutionState(item: RunItemLike, now: string, captureOutput: boolean): void {
+    item.status = 'running';
+    item.startedAt = now;
+    item.completedAt = undefined;
+    item.error = undefined;
+    if (captureOutput) {
+        item.output = undefined;
+    }
+    item.childTaskId = undefined;
+    item.childProcessId = undefined;
+}
+
+/** Result of a successful item claim: the persisted run plus the claimed items. */
+export interface ClaimedRunItems<TRun, TItem> {
+    run: TRun;
+    items: TItem[];
+}
+
 /**
  * Shared file-backed persistence for the near-identical For Each and Map Reduce
  * run stores. Owns the serialized write queue, run-id minting/sanitizing,
  * repo-scoped path layout, the `onRunChanged` notification, the multi-file
- * `writeRun`, and the `listRuns` directory-scan skeleton.
+ * `writeRun`, the `listRuns` directory-scan skeleton, and the item state
+ * machine (claim / mark completed / mark failed / manual skip) parametrized by
+ * an {@link ItemRunPolicy}.
  *
  * Subsystem-specific behavior (which files a run persists, how a run is
- * normalized on read, how a run projects to its list summary) is delegated to
- * the concrete subclass.
+ * normalized on read, how a run projects to its list summary, and the four
+ * policy forks) is delegated to the concrete subclass.
  */
 export abstract class FileRunStoreBase<
-    TRun extends { workspaceId: string; runId: string; updatedAt: string },
+    TRun extends RunLike<TItem>,
     TSummary extends { updatedAt: string },
+    TItem extends RunItemLike,
 > {
     protected readonly dataDir: string;
     private readonly onRunChanged?: (run: TRun) => void;
@@ -51,6 +161,8 @@ export abstract class FileRunStoreBase<
     protected abstract readonly subsystemLabel: string;
     /** Repo-scoped storage subdirectory, e.g. `for-each-runs`. */
     protected abstract readonly runsSubdir: string;
+    /** The four genuine item state-machine forks for this subsystem. */
+    protected abstract readonly policy: ItemRunPolicy<TRun, TItem>;
 
     constructor(options: FileRunStoreBaseOptions<TRun>) {
         this.dataDir = options.dataDir;
@@ -102,6 +214,14 @@ export abstract class FileRunStoreBase<
         return path.join(this.runDir(workspaceId, runId), file);
     }
 
+    protected findRunItem(items: TItem[], itemId: string): TItem {
+        const item = items.find(entry => entry.id === itemId);
+        if (!item) {
+            throw new Error(`${this.subsystemLabel} item not found: ${itemId}`);
+        }
+        return item;
+    }
+
     protected enqueueWrite<T>(fn: () => Promise<T>): Promise<T> {
         const result = this.writeQueue.then(fn);
         this.writeQueue = result.then(() => undefined, () => undefined);
@@ -143,5 +263,165 @@ export abstract class FileRunStoreBase<
         return runs
             .map(run => this.summarize(run))
             .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    }
+
+    /**
+     * Shared item claim. Honors the policy's concurrency fork (for-each claims
+     * a single item because concurrency is 1; map-reduce fills open parallel
+     * slots), the `blocked by failed item` guard, and the terminal handoff
+     * (`drainToTerminal`). Returns the persisted run plus the newly-running
+     * items, or `undefined` when nothing is claimable right now.
+     */
+    protected claimRunnable(workspaceId: string, runId: string): Promise<ClaimedRunItems<TRun, TItem> | undefined> {
+        return this.enqueueWrite(async () => {
+            const current = await this.getRun(workspaceId, runId);
+            if (!current) {
+                throw new Error(`${this.subsystemLabel} run not found: ${runId}`);
+            }
+            if (current.status === 'draft') {
+                throw new Error(`${this.subsystemLabel} run '${runId}' must be approved before execution`);
+            }
+            if (current.status === 'cancelled' || current.status === 'completed' || current.status === 'reducing') {
+                return undefined;
+            }
+
+            const failed = findFailedItem(current.items);
+            if (failed) {
+                if (hasRunningItem(current.items)) {
+                    return undefined;
+                }
+                if (current.status !== 'failed') {
+                    const failedRun = { ...current, status: 'failed', updatedAt: new Date().toISOString() } as TRun;
+                    await this.writeRun(failedRun);
+                }
+                throw new Error(`${this.subsystemLabel} run '${runId}' is blocked by failed item '${failed.id}'`);
+            }
+            if (current.status === 'failed') {
+                return undefined;
+            }
+
+            if (allItemsTerminal(current.items)) {
+                const drained = this.policy.drainToTerminal(current, new Date().toISOString());
+                if (drained) {
+                    await this.writeRun(drained);
+                }
+                return undefined;
+            }
+
+            const runningCount = current.items.filter(item => item.status === 'running').length;
+            const availableSlots = Math.max(0, this.policy.concurrency(current) - runningCount);
+            const runnableItems = findRunnableItems(current.items, availableSlots);
+            if (runnableItems.length === 0) {
+                if (availableSlots === 0 || hasRunningItem(current.items)) {
+                    return undefined;
+                }
+                throw new Error(`${this.subsystemLabel} run '${runId}' has no runnable pending items`);
+            }
+
+            const now = new Date().toISOString();
+            for (const item of runnableItems) {
+                clearItemExecutionState(item, now, this.policy.captureOutput);
+            }
+            const nextRun = { ...current, status: 'running', updatedAt: now, completedAt: undefined } as TRun;
+            await this.writeRun(nextRun);
+            return { run: nextRun, items: runnableItems.map(item => ({ ...item })) };
+        });
+    }
+
+    async markRunningItemCompleted(
+        workspaceId: string,
+        runId: string,
+        itemId: string,
+        childTaskId?: string,
+        output?: unknown,
+    ): Promise<TRun> {
+        return this.enqueueWrite(async () => {
+            const current = await this.getRun(workspaceId, runId);
+            if (!current) {
+                throw new Error(`${this.subsystemLabel} run not found: ${runId}`);
+            }
+            if (current.status === 'cancelled') {
+                return current;
+            }
+            const item = this.findRunItem(current.items, itemId);
+            if (item.status !== 'running') {
+                return current;
+            }
+            if (childTaskId && item.childTaskId && item.childTaskId !== childTaskId) {
+                return current;
+            }
+
+            const now = new Date().toISOString();
+            item.status = 'completed';
+            item.completedAt = now;
+            item.error = undefined;
+            if (this.policy.captureOutput) {
+                item.output = output;
+            }
+            const nextStatus = this.policy.statusAfterItemTerminal(current.items, current);
+            const nextRun = {
+                ...current,
+                status: nextStatus,
+                completedAt: nextStatus === 'completed' ? now : undefined,
+                updatedAt: now,
+            } as TRun;
+            await this.writeRun(nextRun);
+            return nextRun;
+        });
+    }
+
+    async markRunningItemFailed(
+        workspaceId: string,
+        runId: string,
+        itemId: string,
+        error: string,
+        childTaskId?: string,
+    ): Promise<TRun> {
+        return this.enqueueWrite(async () => {
+            const current = await this.getRun(workspaceId, runId);
+            if (!current) {
+                throw new Error(`${this.subsystemLabel} run not found: ${runId}`);
+            }
+            if (current.status === 'cancelled') {
+                return current;
+            }
+            const item = this.findRunItem(current.items, itemId);
+            if (item.status !== 'running') {
+                return current;
+            }
+            if (childTaskId && item.childTaskId && item.childTaskId !== childTaskId) {
+                return current;
+            }
+
+            const now = new Date().toISOString();
+            item.status = 'failed';
+            item.completedAt = now;
+            item.error = error;
+            const nextRun = {
+                ...current,
+                status: this.policy.statusAfterItemTerminal(current.items, current),
+                updatedAt: now,
+            } as TRun;
+            await this.writeRun(nextRun);
+            return nextRun;
+        });
+    }
+
+    /**
+     * Applies a manual skip to `item` and returns the run to persist. Callers
+     * own the subsystem-specific guard checks (which statuses forbid skipping,
+     * the drain-first requirement) before invoking this shared core.
+     */
+    protected applyManualSkip(current: TRun, item: TItem, now: string): TRun {
+        item.status = 'skipped';
+        item.completedAt = now;
+        item.error = undefined;
+        const nextStatus = this.policy.statusAfterManualSkip(current.items, current);
+        return {
+            ...current,
+            status: nextStatus,
+            completedAt: nextStatus === 'completed' ? now : undefined,
+            updatedAt: now,
+        } as TRun;
     }
 }

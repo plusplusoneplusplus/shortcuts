@@ -227,4 +227,92 @@ describe('FileForEachRunStore', () => {
             expect(cancelled.run.items[0].status).toBe('skipped');
         });
     });
+
+    // Stage 2 behavior pins: lock the item state machine so the ItemRunPolicy
+    // refactor (concurrency=1, no output capture, no reduce phase) is proven to
+    // preserve current behavior.
+    describe('item state-machine pins', () => {
+        async function approvedRun(store: FileForEachRunStore, items: ForEachItem[]): Promise<string> {
+            const run = await store.createDraftRun({
+                workspaceId: WORKSPACE_ID,
+                originalRequest: 'Split this request',
+                childMode: 'ask',
+                items,
+            });
+            await store.approveRun(WORKSPACE_ID, run.runId);
+            return run.runId;
+        }
+
+        it('claims exactly one item at a time in order (concurrency 1)', async () => {
+            await withTempDir(async (dataDir) => {
+                const store = new FileForEachRunStore({ dataDir });
+                const runId = await approvedRun(store, [
+                    item({ id: 'item-1', title: 'First' }),
+                    item({ id: 'item-2', title: 'Second' }),
+                    item({ id: 'item-3', title: 'Third' }),
+                ]);
+
+                const first = await store.claimNextRunnableItem(WORKSPACE_ID, runId);
+                expect(first?.item.id).toBe('item-1');
+                // A running item blocks any further claim — the concurrency-1 fork.
+                await store.linkRunningItemChild(WORKSPACE_ID, runId, 'item-1', 'task-1', 'queue_task-1');
+                await expect(store.claimNextRunnableItem(WORKSPACE_ID, runId)).resolves.toBeUndefined();
+
+                await store.markRunningItemCompleted(WORKSPACE_ID, runId, 'item-1', 'task-1');
+                const second = await store.claimNextRunnableItem(WORKSPACE_ID, runId);
+                expect(second?.item.id).toBe('item-2');
+                expect(second?.run.status).toBe('running');
+            });
+        });
+
+        it('marks the run failed unconditionally when an item fails, and stays blocked', async () => {
+            await withTempDir(async (dataDir) => {
+                const store = new FileForEachRunStore({ dataDir });
+                const runId = await approvedRun(store, [
+                    item({ id: 'item-1', title: 'First' }),
+                    item({ id: 'item-2', title: 'Second' }),
+                ]);
+
+                await store.claimNextRunnableItem(WORKSPACE_ID, runId);
+                await store.linkRunningItemChild(WORKSPACE_ID, runId, 'item-1', 'task-1', 'queue_task-1');
+                // With concurrency 1 there is never a running sibling, so a single
+                // failure must always drive the run to 'failed'.
+                const failed = await store.markRunningItemFailed(WORKSPACE_ID, runId, 'item-1', 'boom', 'task-1');
+                expect(failed.status).toBe('failed');
+                await expect(store.claimNextRunnableItem(WORKSPACE_ID, runId)).rejects.toThrow(/blocked by failed item 'item-1'/i);
+            });
+        });
+
+        it('retries a failed item back to running', async () => {
+            await withTempDir(async (dataDir) => {
+                const store = new FileForEachRunStore({ dataDir });
+                const runId = await approvedRun(store, [item()]);
+                await store.claimNextRunnableItem(WORKSPACE_ID, runId);
+                await store.linkRunningItemChild(WORKSPACE_ID, runId, 'item-1', 'task-1', 'queue_task-1');
+                await store.markRunningItemFailed(WORKSPACE_ID, runId, 'item-1', 'boom', 'task-1');
+
+                const retry = await store.claimFailedItemForRetry(WORKSPACE_ID, runId, 'item-1');
+                expect(retry.item).toMatchObject({ id: 'item-1', status: 'running' });
+                expect(retry.item.error).toBeUndefined();
+                expect(retry.run.status).toBe('running');
+            });
+        });
+
+        it('collects the running child task id when cancelled mid-flight', async () => {
+            await withTempDir(async (dataDir) => {
+                const store = new FileForEachRunStore({ dataDir });
+                const runId = await approvedRun(store, [
+                    item({ id: 'item-1', title: 'First' }),
+                    item({ id: 'item-2', title: 'Second' }),
+                ]);
+                await store.claimNextRunnableItem(WORKSPACE_ID, runId);
+                await store.linkRunningItemChild(WORKSPACE_ID, runId, 'item-1', 'task-run', 'queue_task-run');
+
+                const cancelled = await store.cancelRun(WORKSPACE_ID, runId);
+                expect(cancelled.childTaskIds).toEqual(['task-run']);
+                expect(cancelled.run.status).toBe('cancelled');
+                expect(cancelled.run.items.map(entry => entry.status)).toEqual(['skipped', 'skipped']);
+            });
+        });
+    });
 });
