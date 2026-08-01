@@ -1,7 +1,3 @@
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import { getRepoDataPath } from '@plusplusoneplusplus/forge';
-import { atomicWriteJSON } from '../shared/fs-utils';
 import type {
     CancelForEachRunResult,
     ClaimedForEachItem,
@@ -15,45 +11,13 @@ import type {
 } from './types';
 import { FOR_EACH_ITEM_STATUSES } from './types';
 import { assertDraftInitialStatuses, normalizeForEachItems } from './for-each-plan-validation';
+import type { FileRunStoreBaseOptions, RunArtifact } from '../shared/file-run-store-base';
+import { FileRunStoreBase } from '../shared/file-run-store-base';
 
-export interface FileForEachRunStoreOptions {
-    dataDir: string;
-    /**
-     * Invoked after every successful run write with the fresh run state.
-     * Used to keep the generic task-group registry in sync. Errors thrown
-     * by the hook are swallowed — registry sync must never break runs.
-     */
-    onRunChanged?: (run: ForEachRun) => void;
-}
-
-const RUN_ID_PATTERN = /^[A-Za-z0-9._-]+$/;
-
-function sanitizeRunId(runId: string): string {
-    if (!RUN_ID_PATTERN.test(runId)) {
-        throw new Error(`Invalid For Each run ID: ${runId}`);
-    }
-    return runId;
-}
-
-function mintRunId(): string {
-    return `for-each-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
+export type FileForEachRunStoreOptions = FileRunStoreBaseOptions<ForEachRun>;
 
 function emptyStatusCounts(): Record<ForEachItemStatus, number> {
     return Object.fromEntries(FOR_EACH_ITEM_STATUSES.map(status => [status, 0])) as Record<ForEachItemStatus, number>;
-}
-
-function summarizeRun(run: ForEachRun): ForEachRunSummary {
-    const counts = emptyStatusCounts();
-    for (const item of run.items) {
-        counts[item.status] += 1;
-    }
-    const { items: _items, ...metadata } = run;
-    return {
-        ...metadata,
-        itemCount: run.items.length,
-        itemStatusCounts: counts,
-    };
 }
 
 function isTerminalItemStatus(status: ForEachItemStatus): boolean {
@@ -92,61 +56,30 @@ function hasFailedItem(items: ForEachItem[]): boolean {
     return items.some(item => item.status === 'failed');
 }
 
-export class FileForEachRunStore {
-    private readonly dataDir: string;
-    private readonly onRunChanged?: (run: ForEachRun) => void;
-    private writeQueue: Promise<void> = Promise.resolve();
+export class FileForEachRunStore extends FileRunStoreBase<ForEachRun, ForEachRunSummary> {
+    protected readonly runIdPrefix = 'for-each';
+    protected readonly subsystemLabel = 'For Each';
+    protected readonly runsSubdir = 'for-each-runs';
 
-    constructor(options: FileForEachRunStoreOptions) {
-        this.dataDir = options.dataDir;
-        this.onRunChanged = options.onRunChanged;
-    }
-
-    private notifyRunChanged(run: ForEachRun): void {
-        try {
-            this.onRunChanged?.(run);
-        } catch {
-            // Registry sync must never break run persistence.
-        }
-    }
-
-    private runsDir(workspaceId: string): string {
-        return getRepoDataPath(this.dataDir, workspaceId, 'for-each-runs');
-    }
-
-    private runDir(workspaceId: string, runId: string): string {
-        return path.join(this.runsDir(workspaceId), sanitizeRunId(runId));
-    }
-
-    private runPath(workspaceId: string, runId: string): string {
-        return path.join(this.runDir(workspaceId, runId), 'run.json');
-    }
-
-    private itemsPath(workspaceId: string, runId: string): string {
-        return path.join(this.runDir(workspaceId, runId), 'items.json');
-    }
-
-    private enqueueWrite<T>(fn: () => Promise<T>): Promise<T> {
-        const result = this.writeQueue.then(fn);
-        this.writeQueue = result.then(() => undefined, () => undefined);
-        return result;
-    }
-
-    private async readJSONIfExists<T>(filePath: string): Promise<T | undefined> {
-        try {
-            const raw = await fs.readFile(filePath, 'utf-8');
-            return JSON.parse(raw) as T;
-        } catch (err: any) {
-            if (err?.code === 'ENOENT') return undefined;
-            throw err;
-        }
-    }
-
-    private async writeRun(run: ForEachRun): Promise<void> {
+    protected artifacts(run: ForEachRun): RunArtifact[] {
         const { items, ...metadata } = run;
-        await atomicWriteJSON(this.runPath(run.workspaceId, run.runId), metadata);
-        await atomicWriteJSON(this.itemsPath(run.workspaceId, run.runId), items);
-        this.notifyRunChanged(run);
+        return [
+            { file: 'run.json', data: metadata },
+            { file: 'items.json', data: items },
+        ];
+    }
+
+    protected summarize(run: ForEachRun): ForEachRunSummary {
+        const counts = emptyStatusCounts();
+        for (const item of run.items) {
+            counts[item.status] += 1;
+        }
+        const { items: _items, ...metadata } = run;
+        return {
+            ...metadata,
+            itemCount: run.items.length,
+            itemStatusCounts: counts,
+        };
     }
 
     async createDraftRun(input: CreateForEachRunInput): Promise<ForEachRun> {
@@ -155,7 +88,7 @@ export class FileForEachRunStore {
 
         return this.enqueueWrite(async () => {
             const now = new Date().toISOString();
-            const runId = mintRunId();
+            const runId = this.mintRunId();
             const metadata: ForEachRunMetadata = {
                 runId,
                 workspaceId: input.workspaceId,
@@ -179,33 +112,13 @@ export class FileForEachRunStore {
         });
     }
 
-    async listRuns(workspaceId: string): Promise<ForEachRunSummary[]> {
-        let entries: string[];
-        try {
-            entries = await fs.readdir(this.runsDir(workspaceId));
-        } catch (err: any) {
-            if (err?.code === 'ENOENT') return [];
-            throw err;
-        }
-
-        const runs: ForEachRun[] = [];
-        for (const entry of entries) {
-            if (!RUN_ID_PATTERN.test(entry)) continue;
-            const run = await this.getRun(workspaceId, entry);
-            if (run) runs.push(run);
-        }
-        return runs
-            .map(summarizeRun)
-            .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    }
-
     async getRun(workspaceId: string, runId: string): Promise<ForEachRun | undefined> {
         const metadata = await this.readJSONIfExists<ForEachRunMetadata>(this.runPath(workspaceId, runId));
         if (!metadata) return undefined;
         if (metadata.workspaceId !== workspaceId || metadata.runId !== runId) {
             throw new Error(`For Each run metadata mismatch for ${runId}`);
         }
-        const rawItems = await this.readJSONIfExists<unknown>(this.itemsPath(workspaceId, runId));
+        const rawItems = await this.readJSONIfExists<unknown>(this.artifactPath(workspaceId, runId, 'items.json'));
         const items = normalizeForEachItems(rawItems);
         return { ...metadata, items };
     }

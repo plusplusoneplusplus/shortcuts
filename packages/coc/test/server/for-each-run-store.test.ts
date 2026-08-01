@@ -66,6 +66,30 @@ describe('FileForEachRunStore', () => {
         });
     });
 
+    it('persists exactly the run and items artifacts and round-trips them', async () => {
+        await withTempDir(async (dataDir) => {
+            const store = new FileForEachRunStore({ dataDir });
+            const run = await store.createDraftRun({
+                workspaceId: WORKSPACE_ID,
+                originalRequest: 'Split this request',
+                childMode: 'ask',
+                items: [
+                    item({ id: 'item-1', title: 'First', metadata: { area: 'server' } }),
+                    item({ id: 'item-2', title: 'Second', dependsOn: ['item-1'] }),
+                ],
+            });
+
+            // The base store's artifact loop must write exactly two files for
+            // For Each: run.json + items.json (no reduce-step.json like Map Reduce).
+            const runDir = path.join(getRepoDataPath(dataDir, WORKSPACE_ID, 'for-each-runs'), run.runId);
+            const files = (await fs.readdir(runDir)).sort();
+            expect(files).toEqual(['items.json', 'run.json']);
+
+            const reloaded = await new FileForEachRunStore({ dataDir }).getRun(WORKSPACE_ID, run.runId);
+            expect(reloaded).toEqual(run);
+        });
+    });
+
     it('updates reviewed draft item plans and approves without child links', async () => {
         await withTempDir(async (dataDir) => {
             const store = new FileForEachRunStore({ dataDir });

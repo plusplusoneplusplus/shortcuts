@@ -89,6 +89,33 @@ describe('FileMapReduceRunStore', () => {
         });
     });
 
+    it('persists run, items, and reduce-step artifacts and round-trips them', async () => {
+        await withTempDir(async (dataDir) => {
+            const store = new FileMapReduceRunStore({ dataDir });
+            const run = await store.createDraftRun({
+                workspaceId: WORKSPACE_ID,
+                originalRequest: 'Split this request',
+                reduceInstructions: 'Combine every result.',
+                maxParallel: 2,
+                childMode: 'ask',
+                items: [
+                    item({ id: 'item-1', title: 'First', metadata: { area: 'server' } }),
+                    item({ id: 'item-2', title: 'Second', dependsOn: ['item-1'] }),
+                ],
+            });
+
+            // The base store's artifact loop must write three files for Map Reduce:
+            // run.json + items.json + reduce-step.json (the extra reduce phase).
+            const runDir = path.join(getRepoDataPath(dataDir, WORKSPACE_ID, 'map-reduce-runs'), run.runId);
+            const files = (await fs.readdir(runDir)).sort();
+            expect(files).toEqual(['items.json', 'reduce-step.json', 'run.json']);
+
+            const reloaded = await new FileMapReduceRunStore({ dataDir }).getRun(WORKSPACE_ID, run.runId);
+            expect(reloaded).toEqual(run);
+            expect(reloaded?.reduceStep).toEqual({ status: 'pending' });
+        });
+    });
+
     it('updates reviewed draft plans including reduce controls and summaries', async () => {
         await withTempDir(async (dataDir) => {
             const store = new FileMapReduceRunStore({ dataDir });

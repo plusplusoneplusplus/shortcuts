@@ -1,7 +1,3 @@
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import { getRepoDataPath } from '@plusplusoneplusplus/forge';
-import { atomicWriteJSON } from '../shared/fs-utils';
 import type {
     CancelMapReduceRunResult,
     ClaimedMapReduceItems,
@@ -24,46 +20,13 @@ import {
     normalizeMapReduceReduceInstructions,
     normalizeMapReduceReduceStep,
 } from './map-reduce-plan-validation';
+import type { FileRunStoreBaseOptions, RunArtifact } from '../shared/file-run-store-base';
+import { FileRunStoreBase } from '../shared/file-run-store-base';
 
-export interface FileMapReduceRunStoreOptions {
-    dataDir: string;
-    /**
-     * Invoked after every successful run write with the fresh run state.
-     * Used to keep the generic task-group registry in sync. Errors thrown
-     * by the hook are swallowed — registry sync must never break runs.
-     */
-    onRunChanged?: (run: MapReduceRun) => void;
-}
-
-const RUN_ID_PATTERN = /^[A-Za-z0-9._-]+$/;
-
-function sanitizeRunId(runId: string): string {
-    if (!RUN_ID_PATTERN.test(runId)) {
-        throw new Error(`Invalid Map Reduce run ID: ${runId}`);
-    }
-    return runId;
-}
-
-function mintRunId(): string {
-    return `map-reduce-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
+export type FileMapReduceRunStoreOptions = FileRunStoreBaseOptions<MapReduceRun>;
 
 function emptyStatusCounts(): Record<MapReduceItemStatus, number> {
     return Object.fromEntries(MAP_REDUCE_ITEM_STATUSES.map(status => [status, 0])) as Record<MapReduceItemStatus, number>;
-}
-
-function summarizeRun(run: MapReduceRun): MapReduceRunSummary {
-    const counts = emptyStatusCounts();
-    for (const item of run.items) {
-        counts[item.status] += 1;
-    }
-    const { items: _items, reduceStep: _reduceStep, ...metadata } = run;
-    return {
-        ...metadata,
-        itemCount: run.items.length,
-        itemStatusCounts: counts,
-        reduceStatus: run.reduceStep.status,
-    };
 }
 
 function isTerminalSuccessfulItemStatus(status: MapReduceItemStatus): boolean {
@@ -153,64 +116,32 @@ function mapPhaseStatusAfterManualSkip(items: MapReduceItem[]): MapReduceRun['st
     return allItemsTerminalSuccessful(items) ? 'reducing' : 'approved';
 }
 
-export class FileMapReduceRunStore {
-    private readonly dataDir: string;
-    private readonly onRunChanged?: (run: MapReduceRun) => void;
-    private writeQueue: Promise<void> = Promise.resolve();
+export class FileMapReduceRunStore extends FileRunStoreBase<MapReduceRun, MapReduceRunSummary> {
+    protected readonly runIdPrefix = 'map-reduce';
+    protected readonly subsystemLabel = 'Map Reduce';
+    protected readonly runsSubdir = 'map-reduce-runs';
 
-    constructor(options: FileMapReduceRunStoreOptions) {
-        this.dataDir = options.dataDir;
-        this.onRunChanged = options.onRunChanged;
-    }
-
-    private runsDir(workspaceId: string): string {
-        return getRepoDataPath(this.dataDir, workspaceId, 'map-reduce-runs');
-    }
-
-    private runDir(workspaceId: string, runId: string): string {
-        return path.join(this.runsDir(workspaceId), sanitizeRunId(runId));
-    }
-
-    private runPath(workspaceId: string, runId: string): string {
-        return path.join(this.runDir(workspaceId, runId), 'run.json');
-    }
-
-    private itemsPath(workspaceId: string, runId: string): string {
-        return path.join(this.runDir(workspaceId, runId), 'items.json');
-    }
-
-    private reduceStepPath(workspaceId: string, runId: string): string {
-        return path.join(this.runDir(workspaceId, runId), 'reduce-step.json');
-    }
-
-    private enqueueWrite<T>(fn: () => Promise<T>): Promise<T> {
-        const result = this.writeQueue.then(fn);
-        this.writeQueue = result.then(() => undefined, () => undefined);
-        return result;
-    }
-
-    private async readJSONIfExists<T>(filePath: string): Promise<T | undefined> {
-        try {
-            const raw = await fs.readFile(filePath, 'utf-8');
-            return JSON.parse(raw) as T;
-        } catch (err: any) {
-            if (err?.code === 'ENOENT') {
-                return undefined;
-            }
-            throw err;
-        }
-    }
-
-    private async writeRun(run: MapReduceRun): Promise<void> {
+    protected artifacts(run: MapReduceRun): RunArtifact[] {
         const { items, reduceStep, ...metadata } = run;
-        await atomicWriteJSON(this.runPath(run.workspaceId, run.runId), metadata);
-        await atomicWriteJSON(this.itemsPath(run.workspaceId, run.runId), items);
-        await atomicWriteJSON(this.reduceStepPath(run.workspaceId, run.runId), reduceStep);
-        try {
-            this.onRunChanged?.(run);
-        } catch {
-            // Registry sync must never break run persistence.
+        return [
+            { file: 'run.json', data: metadata },
+            { file: 'items.json', data: items },
+            { file: 'reduce-step.json', data: reduceStep },
+        ];
+    }
+
+    protected summarize(run: MapReduceRun): MapReduceRunSummary {
+        const counts = emptyStatusCounts();
+        for (const item of run.items) {
+            counts[item.status] += 1;
         }
+        const { items: _items, reduceStep: _reduceStep, ...metadata } = run;
+        return {
+            ...metadata,
+            itemCount: run.items.length,
+            itemStatusCounts: counts,
+            reduceStatus: run.reduceStep.status,
+        };
     }
 
     async createDraftRun(input: CreateMapReduceRunInput): Promise<MapReduceRun> {
@@ -220,7 +151,7 @@ export class FileMapReduceRunStore {
 
         return this.enqueueWrite(async () => {
             const now = new Date().toISOString();
-            const runId = mintRunId();
+            const runId = this.mintRunId();
             const metadata: MapReduceRunMetadata = {
                 runId,
                 workspaceId: input.workspaceId,
@@ -260,32 +191,6 @@ export class FileMapReduceRunStore {
         });
     }
 
-    async listRuns(workspaceId: string): Promise<MapReduceRunSummary[]> {
-        let entries: string[];
-        try {
-            entries = await fs.readdir(this.runsDir(workspaceId));
-        } catch (err: any) {
-            if (err?.code === 'ENOENT') {
-                return [];
-            }
-            throw err;
-        }
-
-        const runs: MapReduceRun[] = [];
-        for (const entry of entries) {
-            if (!RUN_ID_PATTERN.test(entry)) {
-                continue;
-            }
-            const run = await this.getRun(workspaceId, entry);
-            if (run) {
-                runs.push(run);
-            }
-        }
-        return runs
-            .map(summarizeRun)
-            .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    }
-
     async getRun(workspaceId: string, runId: string): Promise<MapReduceRun | undefined> {
         const metadata = await this.readJSONIfExists<MapReduceRunMetadata>(this.runPath(workspaceId, runId));
         if (!metadata) {
@@ -294,8 +199,8 @@ export class FileMapReduceRunStore {
         if (metadata.workspaceId !== workspaceId || metadata.runId !== runId) {
             throw new Error(`Map Reduce run metadata mismatch for ${runId}`);
         }
-        const rawItems = await this.readJSONIfExists<unknown>(this.itemsPath(workspaceId, runId));
-        const rawReduceStep = await this.readJSONIfExists<unknown>(this.reduceStepPath(workspaceId, runId));
+        const rawItems = await this.readJSONIfExists<unknown>(this.artifactPath(workspaceId, runId, 'items.json'));
+        const rawReduceStep = await this.readJSONIfExists<unknown>(this.artifactPath(workspaceId, runId, 'reduce-step.json'));
         const normalizedMetadata: MapReduceRunMetadata = {
             ...metadata,
             reduceInstructions: normalizeMapReduceReduceInstructions(metadata.reduceInstructions),
