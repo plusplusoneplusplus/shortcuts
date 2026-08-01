@@ -10,6 +10,7 @@ import * as path from 'path';
 import { readCSVFile } from '../../utils/csv-reader';
 import type { Item, Items, LoadNodeConfig, WorkflowExecutionOptions } from '../types';
 import { throwIfWorkflowCancelled } from '../cancellation';
+import { invokeWorkflowAI } from './ai-invocation-kernel';
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -139,21 +140,17 @@ export async function executeLoad(
                 'Return ONLY a JSON array of objects. No explanation.',
             ].join('\n');
 
-            let result;
-            try {
-                throwIfWorkflowCancelled(options.signal);
-                result = await options.aiInvoker(prompt, {
-                    model: config.source.model,
-                    signal: options.signal,
-                });
-                throwIfWorkflowCancelled(options.signal);
-            } catch (err) {
-                if (options.signal?.aborted) {
-                    throwIfWorkflowCancelled(options.signal);
-                }
-                throw err;
-            }
+            const result = await invokeWorkflowAI({
+                prompt,
+                options,
+                model: config.source.model,
+            });
 
+            // Load's failure policy is to throw, not annotate: rethrow the invoker's
+            // original error verbatim, otherwise raise a wrapped failure.
+            if (result.thrownError !== undefined) {
+                throw result.thrownError;
+            }
             if (!result.success || !result.response) {
                 throw new Error(`Load node (ai): AI invocation failed: ${result.error ?? 'unknown error'}`);
             }

@@ -13,7 +13,8 @@
  */
 
 import type { ReduceNodeConfig, Item, Items, WorkflowExecutionOptions } from '../types';
-import { isWorkflowCancellationError, throwIfWorkflowCancelled } from '../cancellation';
+import { throwIfWorkflowCancelled } from '../cancellation';
+import { invokeWorkflowAI } from './ai-invocation-kernel';
 import { resolvePrompt, mergeOutput } from './utils';
 
 // ---------------------------------------------------------------------------
@@ -76,30 +77,20 @@ async function executeAIReduce(
         .replace(/\{\{RESULTS\}\}/g, JSON.stringify(inputs, null, 2))
         .replace(/\{\{COUNT\}\}/g, String(inputs.length));
 
-    let result;
-    try {
-        throwIfWorkflowCancelled(options.signal);
-        result = await options.aiInvoker!(prompt, {
-            model: config.model ?? options.model,
-            timeoutMs: config.timeoutMs ?? options.timeoutMs,
-            workingDirectory: options.workingDirectory ?? options.workflowDirectory,
-            signal: options.signal,
-        });
-        throwIfWorkflowCancelled(options.signal);
-    } catch (err) {
-        if (isWorkflowCancellationError(err) || options.signal?.aborted) {
-            throwIfWorkflowCancelled(options.signal);
-            throw err;
-        }
+    const result = await invokeWorkflowAI({
+        prompt,
+        options,
+        model: config.model,
+        timeoutMs: config.timeoutMs,
+        requireResponse: true,
+        failureMessage: 'AI reduce invocation failed',
+    });
 
-        return [{ __error: err instanceof Error ? err.message : String(err) } as Item];
-    }
-
-    if (!result.success || !result.response) {
+    if (!result.success) {
         return [{ __error: result.error ?? 'AI reduce invocation failed' } as Item];
     }
 
-    const aggregated = mergeOutput({} as Item, result.response, config.output);
+    const aggregated = mergeOutput({} as Item, result.response!, config.output);
     return [aggregated];
 }
 
