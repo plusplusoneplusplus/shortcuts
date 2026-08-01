@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+    assertDraftInitialStatuses,
     assertMapReduceDraftStatuses,
     createPendingMapReduceReduceStep,
+    normalizeMapReduceItems,
     normalizeMapReduceMaxParallel,
     normalizeMapReducePlan,
     normalizeMapReducePlanItems,
@@ -116,6 +118,58 @@ describe('map-reduce plan validation', () => {
             item({ id: 'item-1', dependsOn: ['item-2'] }),
             item({ id: 'item-2', dependsOn: ['item-1'] }),
         ])).toThrow(/dependency cycle/i);
+    });
+
+    it('round-trips a full plan through the re-exported client normalizers', () => {
+        // Exercises the Stage 0 re-export shim end to end: every server-local name
+        // (normalizeMapReducePlan, normalizeMapReduceItems, assertDraftInitialStatuses,
+        // reduce-step + maxParallel + instructions normalizers) resolves to the coc-client
+        // implementation and behaves identically to the former in-tree copy.
+        const rawPlan = {
+            maxParallel: '5',
+            reduceInstructions: '  Aggregate all outputs.  ',
+            items: [
+                {
+                    id: ' alpha ',
+                    title: ' Alpha ',
+                    prompt: ' Do alpha work. ',
+                    status: 'pending',
+                    metadata: { area: 'alpha' },
+                },
+                {
+                    id: 'beta',
+                    title: 'Beta',
+                    prompt: 'Do beta work.',
+                    dependsOn: [' alpha '],
+                    status: 'pending',
+                },
+            ],
+        };
+
+        // normalizeMapReduceItems is the aliased normalizeMapReducePlanItems export.
+        const normalizedItems = normalizeMapReduceItems(rawPlan.items);
+        expect(normalizedItems.map(entry => entry.id)).toEqual(['alpha', 'beta']);
+        expect(normalizedItems[1].dependsOn).toEqual(['alpha']);
+        // Fresh draft items are all pending, so the alias-backed assert must pass.
+        expect(() => assertDraftInitialStatuses(normalizedItems, createPendingMapReduceReduceStep())).not.toThrow();
+
+        // maxParallel came in as a string, so the whole-plan normalizer must reject it.
+        expect(() => normalizeMapReducePlan(rawPlan)).toThrow(/positive integer/i);
+
+        const plan = normalizeMapReducePlan({ ...rawPlan, maxParallel: 5 });
+        expect(plan).toEqual({
+            maxParallel: 5,
+            reduceInstructions: 'Aggregate all outputs.',
+            items: [
+                { id: 'alpha', title: 'Alpha', prompt: 'Do alpha work.', status: 'pending', metadata: { area: 'alpha' } },
+                { id: 'beta', title: 'Beta', prompt: 'Do beta work.', status: 'pending', dependsOn: ['alpha'] },
+            ],
+        });
+
+        // The reduce-step normalizer + instructions helper resolve through the shim too.
+        expect(normalizeMapReduceReduceStep(undefined)).toEqual({ status: 'pending' });
+        expect(normalizeMapReduceReduceInstructions(' Combine. ')).toBe('Combine.');
+        expect(normalizeMapReduceMaxParallel(undefined)).toBe(DEFAULT_MAP_REDUCE_MAX_PARALLEL);
     });
 
     it('returns validation errors without throwing from validateMapReduceDraftPlan', () => {
