@@ -324,6 +324,120 @@ describe('MapReduceRunExecutor', () => {
         });
     });
 
+    it('builds a byte-identical CreateTaskInput for a map item', async () => {
+        await withTempDir(async (dataDir) => {
+            const store = new FileMapReduceRunStore({ dataDir });
+            const enqueued: CreateTaskInput[] = [];
+            const executor = new MapReduceRunExecutor({
+                store,
+                enqueueChildTask: async (input) => {
+                    enqueued.push(input);
+                    return `task-${enqueued.length}`;
+                },
+            });
+            const run = await createApprovedRun(store, [item({ id: 'item-1', title: 'First', prompt: 'Map first.' })], {
+                childMode: 'autopilot',
+                provider: 'copilot',
+                model: 'gpt-5.5',
+                reasoningEffort: 'high',
+                maxParallel: 1,
+            });
+
+            await executor.startOrContinueRun(WORKSPACE_ID, run.runId);
+
+            expect(enqueued).toHaveLength(1);
+            expect(enqueued[0]).toEqual({
+                type: 'chat',
+                priority: 'normal',
+                repoId: WORKSPACE_ID,
+                payload: {
+                    kind: 'chat',
+                    mode: 'autopilot',
+                    prompt: buildMapReduceMapChildPrompt(run, run.items[0]),
+                    workspaceId: WORKSPACE_ID,
+                    provider: 'copilot',
+                    model: 'gpt-5.5',
+                    reasoningEffort: 'high',
+                    context: {
+                        mapReduce: {
+                            workspaceId: WORKSPACE_ID,
+                            runId: run.runId,
+                            itemId: 'item-1',
+                            phase: 'map',
+                            childMode: 'autopilot',
+                        },
+                        taskGroup: {
+                            groupId: run.runId,
+                            groupType: 'map-reduce',
+                            role: 'item',
+                            itemKey: 'item-1',
+                            workspaceId: WORKSPACE_ID,
+                        },
+                    },
+                },
+                config: { model: 'gpt-5.5', reasoningEffort: 'high' },
+                displayName: '[Map Reduce] First',
+            });
+        });
+    });
+
+    it('builds a byte-identical CreateTaskInput for the reduce step', async () => {
+        await withTempDir(async (dataDir) => {
+            const store = new FileMapReduceRunStore({ dataDir });
+            const enqueued: CreateTaskInput[] = [];
+            const executor = new MapReduceRunExecutor({
+                store,
+                enqueueChildTask: async (input) => {
+                    enqueued.push(input);
+                    return `task-${enqueued.length}`;
+                },
+            });
+            const run = await createApprovedRun(store, [item({ id: 'item-1', title: 'First', prompt: 'Map first.' })], {
+                childMode: 'autopilot',
+                provider: 'copilot',
+                model: 'gpt-5.5',
+                reasoningEffort: 'high',
+                maxParallel: 1,
+            });
+
+            await executor.startOrContinueRun(WORKSPACE_ID, run.runId);
+            await executor.handleChildTaskCompleted(queuedTask(enqueued[0], 'task-1'), 'map output');
+
+            expect(enqueued).toHaveLength(2);
+            const reducing = await store.getRun(WORKSPACE_ID, run.runId);
+            expect(enqueued[1]).toEqual({
+                type: 'chat',
+                priority: 'normal',
+                repoId: WORKSPACE_ID,
+                payload: {
+                    kind: 'chat',
+                    mode: 'autopilot',
+                    prompt: buildMapReduceReduceChildPrompt(reducing!),
+                    workspaceId: WORKSPACE_ID,
+                    provider: 'copilot',
+                    model: 'gpt-5.5',
+                    reasoningEffort: 'high',
+                    context: {
+                        mapReduce: {
+                            workspaceId: WORKSPACE_ID,
+                            runId: run.runId,
+                            phase: 'reduce',
+                            childMode: 'autopilot',
+                        },
+                        taskGroup: {
+                            groupId: run.runId,
+                            groupType: 'map-reduce',
+                            role: 'reduce',
+                            workspaceId: WORKSPACE_ID,
+                        },
+                    },
+                },
+                config: { model: 'gpt-5.5', reasoningEffort: 'high' },
+                displayName: `[Map Reduce] Reduce ${run.runId}`,
+            });
+        });
+    });
+
     it('builds prompts without mutating run data', async () => {
         const run = {
             runId: 'map-reduce-test',

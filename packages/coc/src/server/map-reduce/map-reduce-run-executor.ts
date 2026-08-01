@@ -1,5 +1,5 @@
-import type { CreateTaskInput, QueuedTask, RepoQueueRegistry } from '@plusplusoneplusplus/forge';
-import { getLogger, LogCategory, toQueueProcessId } from '@plusplusoneplusplus/forge';
+import type { CreateTaskInput, QueuedTask } from '@plusplusoneplusplus/forge';
+import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { FileMapReduceRunStore } from './map-reduce-run-store';
 import type {
     ClaimedMapReduceItems,
@@ -7,9 +7,11 @@ import type {
     MapReduceItem,
     MapReduceRun,
 } from './types';
+import type { CancelRunChildTask, EnqueueRunChildTask } from '../shared/run-executor-base';
+import { buildChatChildTask, RunExecutorBase } from '../shared/run-executor-base';
 
-export type EnqueueMapReduceChildTask = (input: CreateTaskInput) => string | Promise<string>;
-export type CancelMapReduceChildTask = (taskId: string) => boolean | Promise<boolean>;
+export type EnqueueMapReduceChildTask = EnqueueRunChildTask;
+export type CancelMapReduceChildTask = CancelRunChildTask;
 
 export interface MapReduceRunExecutorOptions {
     store: FileMapReduceRunStore;
@@ -19,13 +21,6 @@ export interface MapReduceRunExecutorOptions {
 
 function jsonBlock(value: unknown): string {
     return JSON.stringify(value, null, 2);
-}
-
-function childTaskConfig(run: MapReduceRun): CreateTaskInput['config'] {
-    return {
-        ...(run.model ? { model: run.model } : {}),
-        ...(run.reasoningEffort ? { reasoningEffort: run.reasoningEffort } : {}),
-    };
 }
 
 export function buildMapReduceMapChildPrompt(run: MapReduceRun, item: MapReduceItem): string {
@@ -80,75 +75,39 @@ export function buildMapReduceReduceChildPrompt(run: MapReduceRun): string {
 }
 
 function buildMapChildTask(run: MapReduceRun, item: MapReduceItem): CreateTaskInput {
-    const prompt = buildMapReduceMapChildPrompt(run, item);
-    return {
-        type: 'chat',
-        priority: 'normal',
-        repoId: run.workspaceId,
-        payload: {
-            kind: 'chat',
-            mode: run.childMode,
-            prompt,
+    return buildChatChildTask({
+        run,
+        prompt: buildMapReduceMapChildPrompt(run, item),
+        contextKey: 'mapReduce',
+        contextValue: {
             workspaceId: run.workspaceId,
-            ...(run.provider ? { provider: run.provider } : {}),
-            ...(run.model ? { model: run.model } : {}),
-            ...(run.reasoningEffort ? { reasoningEffort: run.reasoningEffort } : {}),
-            context: {
-                ...(run.autoProviderRouting?.requested ? { autoProviderRouting: { requested: true as const } } : {}),
-                mapReduce: {
-                    workspaceId: run.workspaceId,
-                    runId: run.runId,
-                    itemId: item.id,
-                    phase: 'map',
-                    childMode: run.childMode,
-                },
-                taskGroup: {
-                    groupId: run.runId,
-                    groupType: 'map-reduce',
-                    role: 'item',
-                    itemKey: item.id,
-                    workspaceId: run.workspaceId,
-                },
-            },
+            runId: run.runId,
+            itemId: item.id,
+            phase: 'map',
+            childMode: run.childMode,
         },
-        config: childTaskConfig(run),
+        groupType: 'map-reduce',
+        role: 'item',
+        itemKey: item.id,
         displayName: `[Map Reduce] ${item.title}`,
-    };
+    });
 }
 
 function buildReduceChildTask(run: MapReduceRun): CreateTaskInput {
-    const prompt = buildMapReduceReduceChildPrompt(run);
-    return {
-        type: 'chat',
-        priority: 'normal',
-        repoId: run.workspaceId,
-        payload: {
-            kind: 'chat',
-            mode: run.childMode,
-            prompt,
+    return buildChatChildTask({
+        run,
+        prompt: buildMapReduceReduceChildPrompt(run),
+        contextKey: 'mapReduce',
+        contextValue: {
             workspaceId: run.workspaceId,
-            ...(run.provider ? { provider: run.provider } : {}),
-            ...(run.model ? { model: run.model } : {}),
-            ...(run.reasoningEffort ? { reasoningEffort: run.reasoningEffort } : {}),
-            context: {
-                ...(run.autoProviderRouting?.requested ? { autoProviderRouting: { requested: true as const } } : {}),
-                mapReduce: {
-                    workspaceId: run.workspaceId,
-                    runId: run.runId,
-                    phase: 'reduce',
-                    childMode: run.childMode,
-                },
-                taskGroup: {
-                    groupId: run.runId,
-                    groupType: 'map-reduce',
-                    role: 'reduce',
-                    workspaceId: run.workspaceId,
-                },
-            },
+            runId: run.runId,
+            phase: 'reduce',
+            childMode: run.childMode,
         },
-        config: childTaskConfig(run),
+        groupType: 'map-reduce',
+        role: 'reduce',
         displayName: `[Map Reduce] Reduce ${run.runId}`,
-    };
+    });
 }
 
 type MapReduceTaskContext =
@@ -186,27 +145,13 @@ function getMapReduceContext(task: QueuedTask): MapReduceTaskContext | undefined
     return undefined;
 }
 
-export class MapReduceRunExecutor {
+export class MapReduceRunExecutor extends RunExecutorBase<MapReduceRun> {
+    protected readonly logLabel = 'MapReduce';
     private readonly store: FileMapReduceRunStore;
-    private readonly enqueueChildTask: EnqueueMapReduceChildTask;
-    private readonly cancelChildTask?: CancelMapReduceChildTask;
 
     constructor(options: MapReduceRunExecutorOptions) {
+        super({ enqueueChildTask: options.enqueueChildTask, cancelChildTask: options.cancelChildTask });
         this.store = options.store;
-        this.enqueueChildTask = options.enqueueChildTask;
-        this.cancelChildTask = options.cancelChildTask;
-    }
-
-    attachToQueueRegistry(registry: RepoQueueRegistry): void {
-        registry.on('taskCompleted', (_repoPath: string, task: QueuedTask, result: unknown) => {
-            void this.handleChildTaskCompleted(task, result).catch(err => this.logListenerError(err));
-        });
-        registry.on('taskFailed', (_repoPath: string, task: QueuedTask, error: Error) => {
-            void this.handleChildTaskFailed(task, error).catch(err => this.logListenerError(err));
-        });
-        registry.on('taskCancelled', (_repoPath: string, task: QueuedTask) => {
-            void this.handleChildTaskCancelled(task).catch(err => this.logListenerError(err));
-        });
     }
 
     async startOrContinueRun(workspaceId: string, runId: string): Promise<MapReduceRun> {
@@ -349,28 +294,11 @@ export class MapReduceRunExecutor {
     }
 
     private async enqueueClaimedReduceStep(claimed: ClaimedMapReduceReduceStep): Promise<MapReduceRun> {
-        let taskId: string;
-        try {
-            taskId = await this.enqueueChildTask(buildReduceChildTask(claimed.run));
-        } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            await this.store.markRunningReduceFailed(
-                claimed.run.workspaceId,
-                claimed.run.runId,
-                `Failed to enqueue reduce child task: ${message}`,
-            );
-            throw err;
-        }
-        return this.store.linkRunningReduceChild(
-            claimed.run.workspaceId,
-            claimed.run.runId,
-            taskId,
-            toQueueProcessId(taskId),
+        const { workspaceId, runId } = claimed.run;
+        return this.enqueueSingleChild(
+            buildReduceChildTask(claimed.run),
+            message => this.store.markRunningReduceFailed(workspaceId, runId, `Failed to enqueue reduce child task: ${message}`),
+            taskId => this.store.linkRunningReduceChild(workspaceId, runId, taskId, toQueueProcessId(taskId)),
         );
-    }
-
-    private logListenerError(error: unknown): void {
-        const message = error instanceof Error ? error.message : String(error);
-        getLogger().warn(LogCategory.AI, `[MapReduce] Failed to update run from child task event: ${message}`);
     }
 }
