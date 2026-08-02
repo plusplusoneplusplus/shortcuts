@@ -114,7 +114,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
-        loops: { listAll: mockListAllLoops },
+        crons: { listAll: mockListAllLoops },
         queue: {
             summarize: vi.fn().mockResolvedValue({ taskId: null }),
             deleteHistoryEntry: mockDeleteHistoryEntry,
