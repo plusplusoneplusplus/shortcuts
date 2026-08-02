@@ -26,7 +26,7 @@ export interface ClaudeCatalogModelLike {
 const CLAUDE_PROVIDER_DEFAULT_IDS = new Set(['default', 'provider-default', 'claude-provider-default']);
 
 /** Claude model families recognized for fuzzy catalog matching. */
-const CLAUDE_MODEL_FAMILIES = ['opus', 'sonnet', 'haiku'] as const;
+const CLAUDE_MODEL_FAMILIES = ['opus', 'sonnet', 'haiku', 'fable'] as const;
 
 function findById<T extends ClaudeCatalogModelLike>(models: readonly T[], id: string): T | undefined {
     return models.find(m => m.id.trim().toLowerCase() === id);
@@ -49,7 +49,7 @@ function findByFamily<T extends ClaudeCatalogModelLike>(models: readonly T[], fa
  *   3. Exact match after normalizing a dotted marketing id to the dashed CLI
  *      form (`claude-sonnet-4.6` → `claude-sonnet-4-6`).
  *   4. Family match — the first entry whose id, name, or description mentions
- *      the requested model's family (`opus` / `sonnet` / `haiku`).
+ *      the requested model's family (`opus` / `sonnet` / `haiku` / `fable`).
  *   5. Family recognized but absent from the catalog → the `default` entry as
  *      a proxy (its advertised efforts approximate the CLI default model).
  *

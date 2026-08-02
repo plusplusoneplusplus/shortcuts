@@ -72,6 +72,27 @@ describe('findClaudeCatalogModel', () => {
         expect(findClaudeCatalogModel(FALLBACK_CATALOG, 'haiku')?.id).toBe('claude-haiku-4-5');
     });
 
+    it("resolves the 'fable' high-tier alias instead of failing 'Supported efforts: unknown'", () => {
+        // Regression: the Claude high-tier default is { model: 'fable',
+        // reasoningEffort: 'medium' }. 'fable' must be recognized as a family so
+        // its supported efforts resolve. When the live catalog advertises no
+        // fable entry, fall back to the default proxy rather than returning
+        // undefined (which surfaced as 'Supported efforts: unknown').
+        const match = findClaudeCatalogModel(LIVE_CATALOG, 'fable');
+        expect(match?.id).toBe('default');
+        expect(match?.supportedReasoningEfforts).toContain('medium');
+    });
+
+    it("matches a 'fable' catalog entry directly when the catalog advertises one", () => {
+        const withFable = [
+            ...LIVE_CATALOG,
+            { id: 'fable', name: 'Fable', description: 'Fable 5 · Balanced', supportedReasoningEfforts: ['low', 'medium', 'high'] },
+        ];
+        const match = findClaudeCatalogModel(withFable, 'fable');
+        expect(match?.id).toBe('fable');
+        expect(match?.supportedReasoningEfforts).toContain('medium');
+    });
+
     // ── Legacy dashed/dotted ids (stored configs and process metadata) ──────
     it('matches legacy dashed CLI ids to the live catalog by family', () => {
         // Regression: the old high-tier default 'claude-opus-4-7' must resolve
