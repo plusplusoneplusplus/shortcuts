@@ -32,7 +32,7 @@ describe('sqlite-schema', () => {
         expect(tables).toContain('queue_repo_state');
         expect(tables).toContain('commit_chat_bindings');
         expect(tables).toContain('work_item_chat_bindings');
-        expect(tables).toContain('loops');
+        expect(tables).toContain('crons');
     });
 
     it('creates all expected indexes', () => {
@@ -59,8 +59,8 @@ describe('sqlite-schema', () => {
             'idx_schedule_runs_schedule_id',
             'idx_schedule_runs_repo_id',
             'idx_schedule_runs_status',
-            'idx_loops_process_id',
-            'idx_loops_status',
+            'idx_crons_process_id',
+            'idx_crons_status',
             'idx_wakeups_process_id',
             'idx_wakeups_status',
             'idx_wakeups_workspace_id',
@@ -106,7 +106,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(25);
+        expect(SCHEMA_VERSION).toBe(26);
     });
 
     it('creates context-window breakdown columns on processes', () => {
@@ -1051,6 +1051,85 @@ describe('sqlite-schema', () => {
                 SELECT display_only FROM conversation_turns WHERE process_id = 'p-v24'
             `).get() as any;
             expect(updated.display_only).toBe(1);
+        });
+    });
+
+    describe('V25 → V26 migration (rename loops → crons)', () => {
+        it('fresh DB has a crons table and no legacy loops table', () => {
+            initializeDatabase(db);
+
+            const tables = db
+                .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+                .all()
+                .map((r: any) => r.name);
+            expect(tables).toContain('crons');
+            expect(tables).not.toContain('loops');
+        });
+
+        it('renames a legacy loops table to crons, preserving rows and swapping indexes', () => {
+            // Simulate a V25 database with the legacy `loops` table (same columns
+            // as the current `crons` CREATE) plus its legacy indexes.
+            db.exec(`
+                CREATE TABLE loops (
+                    id                    TEXT PRIMARY KEY,
+                    process_id            TEXT NOT NULL,
+                    description           TEXT NOT NULL DEFAULT '',
+                    interval_ms           INTEGER NOT NULL,
+                    status                TEXT NOT NULL DEFAULT 'active',
+                    created_at            TEXT NOT NULL,
+                    last_tick_at          TEXT,
+                    next_tick_at          TEXT,
+                    tick_count            INTEGER NOT NULL DEFAULT 0,
+                    consecutive_failures  INTEGER NOT NULL DEFAULT 0,
+                    expires_at            TEXT NOT NULL,
+                    paused_reason         TEXT,
+                    prompt                TEXT NOT NULL DEFAULT '',
+                    model                 TEXT
+                );
+                CREATE INDEX idx_loops_process_id ON loops(process_id);
+                CREATE INDEX idx_loops_status ON loops(status);
+            `);
+            db.prepare(`
+                INSERT INTO loops (id, process_id, interval_ms, status, created_at, expires_at, prompt)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            `).run('loop-1', 'p1', 60000, 'active', '2026-01-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z', 'tick one');
+            db.prepare(`
+                INSERT INTO loops (id, process_id, interval_ms, status, created_at, expires_at, prompt)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            `).run('loop-2', 'p2', 120000, 'paused', '2026-01-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z', 'tick two');
+            db.pragma('user_version = 25');
+
+            initializeDatabase(db);
+
+            // Version stamped to current.
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+            expect(SCHEMA_VERSION).toBe(26);
+
+            // crons exists, loops is gone.
+            const tables = db
+                .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+                .all()
+                .map((r: any) => r.name);
+            expect(tables).toContain('crons');
+            expect(tables).not.toContain('loops');
+
+            // Seeded rows survived the rename (not lost to the empty `crons` stub
+            // that the idempotent DDL creates before the migration runs).
+            const count = db.prepare('SELECT COUNT(*) as cnt FROM crons').get() as any;
+            expect(count.cnt).toBe(2);
+            const row = db.prepare('SELECT id, process_id, prompt FROM crons WHERE id = ?').get('loop-1') as any;
+            expect(row.process_id).toBe('p1');
+            expect(row.prompt).toBe('tick one');
+
+            // Indexes were renamed: new ones present, old ones gone.
+            const indexes = db
+                .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'")
+                .all()
+                .map((r: any) => r.name);
+            expect(indexes).toContain('idx_crons_process_id');
+            expect(indexes).toContain('idx_crons_status');
+            expect(indexes).not.toContain('idx_loops_process_id');
+            expect(indexes).not.toContain('idx_loops_status');
         });
     });
 });
