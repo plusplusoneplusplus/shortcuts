@@ -105,7 +105,7 @@ export interface AdminSettingUiSpec {
 // ── definition ────────────────────────────────────────────────────────────────
 
 export interface AdminSettingDefinition {
-    /** Flat dot-notation key used in PUT /api/admin/config, e.g. 'loops.enabled'. */
+    /** Flat dot-notation key used in PUT /api/admin/config, e.g. 'cron.enabled'. */
     key: string;
     value: AdminSettingValueSpec;
     /** Resolved default — must match DEFAULT_CONFIG (enforced by contract test). */
@@ -604,11 +604,11 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'loops.enabled', default: true, absentFallback: false, runtime: 'restartRequired', runtimeFlag: 'loopsEnabled',
+        key: 'cron.enabled', default: true, absentFallback: false, runtime: 'restartRequired', runtimeFlag: 'cronEnabled',
         ui: {
-            group: 'infrastructure', order: 10, label: 'Loops & Wakeups', badge: 'restart',
-            hint: 'Recurring follow-up loops and one-shot scheduleWakeup tool. Disabled by default — toggling requires a server restart to (de)wire infrastructure.',
-            testId: 'toggle-loops-enabled',
+            group: 'infrastructure', order: 10, label: 'Cron & Wakeups', badge: 'restart',
+            hint: 'Recurring follow-up crons and one-shot scheduleWakeup tool. Disabled by default — toggling requires a server restart to (de)wire infrastructure.',
+            testId: 'toggle-cron-enabled',
         },
     }),
     bool({

@@ -35,8 +35,8 @@ import { createKustoTools } from '../llm-tools/kusto-tools';
 import { createSendToConversationTool, type EnqueueChatFn, type SendMessageFn, type SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import { createGetConversationTool } from '../llm-tools/get-conversation-tool';
 import { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';
-import type { LoopToolDeps } from '../llm-tools/loop-tools';
-import { createLoopTool, createScheduleWakeupTool } from '../llm-tools/loop-tools';
+import type { CronToolDeps } from '../llm-tools/cron-tools';
+import { createCronTool, createScheduleWakeupTool } from '../llm-tools/cron-tools';
 import { createSearchConversationsTool } from '../llm-tools/search-conversations-tool';
 import { createSuggestFollowUpsTool } from '../llm-tools/suggest-follow-ups-tool';
 import { createTavilyWebSearchTool } from '../llm-tools/tavily-web-search-tool';
@@ -646,7 +646,7 @@ export function buildTavilyWebSearchAddon(
 // ============================================================================
 
 export function buildScheduleWakeupAddon(
-    deps: import('../llm-tools/loop-tools').WakeupToolDeps | undefined,
+    deps: import('../llm-tools/cron-tools').WakeupToolDeps | undefined,
 ): { tools: Tool<any>[]; suffix: string } {
     if (!deps) {
         return { tools: [], suffix: '' };
@@ -657,17 +657,17 @@ export function buildScheduleWakeupAddon(
 }
 
 // ============================================================================
-// Loop Tool (skill-gated — injected only when /loop skill is active)
+// Cron Tool (skill-gated — injected only when /cron skill is active)
 // ============================================================================
 
-export function buildLoopToolsAddon(
-    deps: LoopToolDeps | undefined,
+export function buildCronToolsAddon(
+    deps: CronToolDeps | undefined,
 ): { tools: Tool<any>[]; suffix: string } {
     if (!deps) {
         return { tools: [], suffix: '' };
     }
 
-    const { tool } = createLoopTool(deps);
+    const { tool } = createCronTool(deps);
     return { tools: [tool], suffix: '' };
 }
 

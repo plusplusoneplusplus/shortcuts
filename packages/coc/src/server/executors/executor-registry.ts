@@ -52,7 +52,7 @@ export interface ExecutorRegistryOptions {
     resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
     onTitleNeeded: (processId: string, turns: ConversationTurn[]) => void;
     getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
-    getLoopInfra?: () => import('./chat-base-executor').LoopInfraDeps | undefined;
+    getCronInfra?: () => import('./chat-base-executor').CronInfraDeps | undefined;
     /** Late-bound in-process enqueue capability for the `send_to_conversation` tool. */
     getEnqueueChat?: () => import('../llm-tools/send-to-conversation-tool').EnqueueChatFn | undefined;
     /** Late-bound follow-up delivery capability for the post mode of `send_to_conversation`. */
@@ -116,7 +116,7 @@ export class ExecutorRegistry {
             askUser: options.askUser,
             resolveSkillConfig: options.resolveSkillConfig,
             resolveWorkspaceIdForPath: options.resolveWorkspaceIdForPath,
-            getLoopInfra: options.getLoopInfra,
+            getCronInfra: options.getCronInfra,
             getEnqueueChat: options.getEnqueueChat,
             getSendMessage: options.getSendMessage,
             getSendToConversationRuntime: options.getSendToConversationRuntime,

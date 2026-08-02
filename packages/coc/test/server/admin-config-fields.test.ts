@@ -40,7 +40,7 @@ describe('ADMIN_EDITABLE_KEYS', () => {
             'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled',
             'scratchpad.enabled', 'scratchpad.layout',
             'workflows.enabled', 'pullRequests.enabled', 'pullRequests.autoClassifyTeam', 'servers.enabled',
-            'ralph.enabled', 'forEach.enabled', 'vimNavigation.enabled', 'loops.enabled', 'dreams.enabled',
+            'ralph.enabled', 'forEach.enabled', 'vimNavigation.enabled', 'cron.enabled', 'dreams.enabled',
             'dreams.idleCheckIntervalMs',
             'excalidraw.enabled',
             'mcpOauth.enabled', 'mcpOauth.autoRefresh.enabled',
@@ -281,7 +281,7 @@ describe('validate()', () => {
         'chat.followUpSuggestions.enabled', 'chat.askUser.enabled',
         'terminal.enabled', 'notes.enabled', 'myWork.enabled', 'myLife.enabled',
         'scratchpad.enabled', 'workflows.enabled', 'pullRequests.enabled', 'pullRequests.autoClassifyTeam',
-        'servers.enabled', 'ralph.enabled', 'forEach.enabled', 'vimNavigation.enabled', 'loops.enabled', 'dreams.enabled',
+        'servers.enabled', 'ralph.enabled', 'forEach.enabled', 'vimNavigation.enabled', 'cron.enabled', 'dreams.enabled',
         'excalidraw.enabled',
         'mcpOauth.enabled',
         'mcpOauth.autoRefresh.enabled',
@@ -432,7 +432,7 @@ describe('apply()', () => {
         ['ralph.enabled', (c) => c.ralph?.enabled],
         ['forEach.enabled', (c) => c.forEach?.enabled],
         ['vimNavigation.enabled', (c) => c.vimNavigation?.enabled],
-        ['loops.enabled', (c) => c.loops?.enabled],
+        ['cron.enabled', (c) => c.cron?.enabled],
         ['dreams.enabled', (c) => c.dreams?.enabled],
         ['excalidraw.enabled', (c) => c.excalidraw?.enabled],
         ['mcpOauth.enabled', (c) => c.mcpOauth?.enabled],
@@ -530,8 +530,8 @@ describe('runtime classification', () => {
         expect(fieldFor('terminal.enabled').runtime).toBe('restartRequired');
     });
 
-    it('marks loops.enabled as restartRequired', () => {
-        expect(fieldFor('loops.enabled').runtime).toBe('restartRequired');
+    it('marks cron.enabled as restartRequired', () => {
+        expect(fieldFor('cron.enabled').runtime).toBe('restartRequired');
     });
 
     it('marks mcpOauth.enabled as restartRequired', () => {

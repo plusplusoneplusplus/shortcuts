@@ -216,7 +216,7 @@ export interface ConversationTurn {
     pinnedAt?: Date;
     /** True when this turn is archived (collapsed/hidden by default) */
     archived?: boolean;
-    /** Source metadata for automated follow-up turns (loops/wakeups). */
+    /** Source metadata for automated follow-up turns (crons/wakeups). */
     turnSource?: TurnSource;
     /**
      * copilot-sdk `user.message` event id that produced this turn. Durable
@@ -228,7 +228,7 @@ export interface ConversationTurn {
 }
 
 /** Metadata identifying the automated source of a conversation turn. */
-export type TurnSource = { source: 'loop' | 'wakeup' | 'trigger'; loopId?: string; wakeupId?: string; triggerId?: string };
+export type TurnSource = { source: 'cron' | 'wakeup' | 'trigger'; cronId?: string; wakeupId?: string; triggerId?: string };
 
 /**
  * Serialized format of ConversationTurn for persistence (Date -> ISO string)
@@ -268,7 +268,7 @@ export interface SerializedConversationTurn {
     pinnedAt?: string;
     /** True when this turn is archived (collapsed/hidden by default) */
     archived?: boolean;
-    /** Source metadata for automated follow-up turns (loops/wakeups). */
+    /** Source metadata for automated follow-up turns (crons/wakeups). */
     turnSource?: TurnSource;
     /** copilot-sdk `user.message` event id for this turn (rewind anchor; user turns on copilot only). */
     sdkEventId?: string;

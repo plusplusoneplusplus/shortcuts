@@ -237,7 +237,7 @@ export function stripExcludedFields(process: any, exclude?: string[]): any {
 export function registerApiRoutes(
     routes: Route[], store: ProcessStore, bridge?: QueueExecutorBridge,
     dataDir?: string, getWsServer?: () => ProcessWebSocketServer | undefined,
-    db?: Database.Database, loopsEnabled?: boolean,
+    db?: Database.Database, cronEnabled?: boolean,
     getLiveFeatureFlags?: () => { excalidrawEnabled: boolean; canvasEnabled: boolean; kustoEnabled: boolean },
     activeWorkspaceTracker?: ActiveWorkspaceTracker,
 ): void {
@@ -293,7 +293,7 @@ export function registerApiRoutes(
             activeWorkspaceTracker: activeWorkspaceTracker ?? new ActiveWorkspaceTracker(),
             gitOpsStore,
             db: resolvedDb,
-            loopsEnabled,
+            cronEnabled,
             getLiveFeatureFlags,
         };
 

@@ -128,12 +128,12 @@ Goal file: persist the final goal spec as a file at \`${root}/<chosen-folder>/<d
 // Types
 // ============================================================================
 
-/** Late-bound loop infrastructure deps (created after executor registry). */
-export interface LoopInfraDeps {
-    store: import('../loops/loop-store').LoopStore;
-    executor: import('../loops/loop-executor').LoopExecutor;
-    /** Loop event emitter (used by LLM tools to broadcast state changes). */
-    emit?: import('../loops/loop-executor').LoopEventEmit;
+/** Late-bound cron infrastructure deps (created after executor registry). */
+export interface CronInfraDeps {
+    store: import('../cron/cron-store').CronStore;
+    executor: import('../cron/cron-executor').CronExecutor;
+    /** Cron event emitter (used by LLM tools to broadcast state changes). */
+    emit?: import('../cron/cron-executor').CronEventEmit;
     resolveWorkspaceId: (processId: string) => Promise<string | undefined>;
     enqueueWakeup: (opts: {
         processId: string;
@@ -162,8 +162,8 @@ export interface ChatModeExecutorOptions {
     resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     /** Resolve workspace ID for a root path */
     resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
-    /** Late-bound loop infrastructure (getter because loop infra is created after executor registry). */
-    getLoopInfra?: () => LoopInfraDeps | undefined;
+    /** Late-bound cron infrastructure (getter because cron infra is created after executor registry). */
+    getCronInfra?: () => CronInfraDeps | undefined;
     /**
      * Late-bound in-process enqueue capability (getter because the bound callback
      * is constructed at the route layer — where the queue router + global state
@@ -257,7 +257,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly askUser: { enabled: boolean };
     protected readonly resolveSkillConfigFn: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     protected readonly resolveWorkspaceIdForPathFn: (rootPath: string) => Promise<string>;
-    protected readonly getLoopInfra?: () => LoopInfraDeps | undefined;
+    protected readonly getCronInfra?: () => CronInfraDeps | undefined;
     protected readonly getEnqueueChat?: () => import('../llm-tools/send-to-conversation-tool').EnqueueChatFn | undefined;
     protected readonly getSendMessage?: () => import('../llm-tools/send-to-conversation-tool').SendMessageFn | undefined;
     protected readonly getSendToConversationRuntime?: () => import('../llm-tools/send-to-conversation-tool').SendToConversationRuntimeOptions | undefined;
@@ -289,7 +289,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.askUser = options.askUser ?? { enabled: false };
         this.resolveSkillConfigFn = options.resolveSkillConfig;
         this.resolveWorkspaceIdForPathFn = options.resolveWorkspaceIdForPath;
-        this.getLoopInfra = options.getLoopInfra;
+        this.getCronInfra = options.getCronInfra;
         this.getEnqueueChat = options.getEnqueueChat;
         this.getSendMessage = options.getSendMessage;
         this.getSendToConversationRuntime = options.getSendToConversationRuntime;
@@ -363,15 +363,15 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     }
 
     /**
-     * Build per-request loop tool deps from the late-bound loop infrastructure.
-     * Returns `scheduleWakeup` deps (always) and `loopTools` deps (always,
+     * Build per-request cron tool deps from the late-bound cron infrastructure.
+     * Returns `scheduleWakeup` deps (always) and `cronTools` deps (always,
      * but gated by skill activation in buildChatTurnContext).
      */
-    protected buildLoopToolDeps(processId: string): {
-        scheduleWakeup?: import('../llm-tools/loop-tools').WakeupToolDeps;
-        loopTools?: import('../llm-tools/loop-tools').LoopToolDeps;
+    protected buildCronToolDeps(processId: string): {
+        scheduleWakeup?: import('../llm-tools/cron-tools').WakeupToolDeps;
+        cronTools?: import('../llm-tools/cron-tools').CronToolDeps;
     } {
-        const infra = this.getLoopInfra?.();
+        const infra = this.getCronInfra?.();
         if (!infra) return {};
         return {
             scheduleWakeup: {
@@ -380,7 +380,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 resolveWorkspaceId: infra.resolveWorkspaceId,
                 enqueueWakeup: infra.enqueueWakeup,
             },
-            loopTools: {
+            cronTools: {
                 store: infra.store,
                 executor: infra.executor,
                 processId,
@@ -508,7 +508,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         const processId = toQueueProcessId(task.id);
         const notePath = payload.context?.noteChat?.notePath;
 
-        const loopDeps = this.buildLoopToolDeps(processId);
+        const cronDeps = this.buildCronToolDeps(processId);
 
         const ralphGrillPlanningState: { plan?: RalphGrillQuestionPlanningResult } = {};
         const ctx = await buildChatTurnContext({
@@ -521,8 +521,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             enqueueChat: this.getEnqueueChat?.(),
             sendMessage: this.getSendMessage?.(),
             sendToConversationRuntime: this.getSendToConversationRuntime?.(),
-            scheduleWakeup: loopDeps.scheduleWakeup,
-            loopTools: loopDeps.loopTools,
+            scheduleWakeup: cronDeps.scheduleWakeup,
+            cronTools: cronDeps.cronTools,
             askUser: {
                 enabled: mode === 'ask' && this.askUser.enabled,
                 deps: {

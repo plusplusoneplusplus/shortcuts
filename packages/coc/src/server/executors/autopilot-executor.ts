@@ -55,7 +55,7 @@ export class AutopilotExecutor extends ChatBaseExecutor {
         const payload = task.payload as unknown as ChatPayload;
 
         const processId = toQueueProcessId(task.id);
-        const loopDeps = this.buildLoopToolDeps(processId);
+        const cronDeps = this.buildCronToolDeps(processId);
 
         // Autopilot explicitly opts out of Memory V2 — it operates in full-access
         // mode without per-session memory scoping.
@@ -69,8 +69,8 @@ export class AutopilotExecutor extends ChatBaseExecutor {
             enqueueChat: this.getEnqueueChat?.(),
             sendMessage: this.getSendMessage?.(),
             sendToConversationRuntime: this.getSendToConversationRuntime?.(),
-            scheduleWakeup: loopDeps.scheduleWakeup,
-            loopTools: loopDeps.loopTools,
+            scheduleWakeup: cronDeps.scheduleWakeup,
+            cronTools: cronDeps.cronTools,
             includeMemoryV2: false,
         });
 

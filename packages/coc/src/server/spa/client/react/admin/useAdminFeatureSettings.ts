@@ -3,7 +3,7 @@
  * Features" card.
  *
  * Owns the current + last-saved feature values (keyed by flat config key, e.g.
- * 'loops.enabled'), the live search string, per-card saving/dirty state, the
+ * 'cron.enabled'), the live search string, per-card saving/dirty state, the
  * runtime-config patch on save, and the Ctrl/Cmd+S save shortcut. Rows, dirty
  * state, and the save payload all derive from the admin setting registry —
  * adding a setting there with `ui` metadata surfaces it with no per-setting

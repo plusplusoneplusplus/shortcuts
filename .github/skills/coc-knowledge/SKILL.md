@@ -28,7 +28,7 @@ It consists of three packages (`coc`, `forge`, `deep-wiki`) plus a shared client
 | EnDev xDPU | [endev.md](references/endev.md) | Workspace eligibility cache, REST status/revalidate, skill surfacing |
 | CoC Service (Windows) | [coc-service.md](references/coc-service.md) | `Manage-CoCService.ps1` Task Scheduler service, devtunnel integration, logs |
 | Ralph | [ralph.md](references/ralph.md) | Iterative execution session journal, writer protocol, size cap, promote-to-ralph endpoint |
-| Loops | [loops.md](references/loops.md) | Recurring follow-ups, executor, circuit breakers, REST API, dashboard integration |
+| Cron | [cron.md](references/cron.md) | Recurring follow-ups, executor, circuit breakers, REST API, dashboard integration |
 | Memory System | [memory-system.md](references/memory-system.md) | Bounded memory, capture mode, candidate ranking, promotion, recall index |
 | LLM Tools | [llm-tools.md](references/llm-tools.md) | Tool registry, per-invocation factories, permissions, web search |
 | SDK Wrapper | [sdk-wrapper.md](references/sdk-wrapper.md) | `coc-agent-sdk` package: Copilot + Codex providers, `ISDKService`, `SDKServiceRegistry`, session lifecycle, streaming state machine, MCP config, model registry |

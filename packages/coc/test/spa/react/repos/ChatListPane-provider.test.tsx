@@ -9,11 +9,11 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, cleanup as testingCleanup } from '@testing-library/react';
 
-// --- Mocks (same as ChatListPane-loops pattern) ---
+// --- Mocks (same as ChatListPane-crons pattern) ---
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
-        loops: { listAll: vi.fn().mockResolvedValue([]) },
+        crons: { listAll: vi.fn().mockResolvedValue([]) },
     }),
 }));
 
@@ -21,7 +21,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '',
     isRalphEnabled: () => false,
-    isLoopsEnabled: () => false,
+    isCronEnabled: () => false,
     isForEachEnabled: () => false,
     isMapReduceEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => false,

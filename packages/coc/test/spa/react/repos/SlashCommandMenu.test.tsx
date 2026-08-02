@@ -245,19 +245,19 @@ describe('SlashCommandMenu (redesigned card)', () => {
 });
 
 describe('getMetaSkillItems', () => {
-    it('includes cron when loops are enabled', () => {
+    it('includes cron when crons are enabled', () => {
         const items = getMetaSkillItems(true);
         expect(items.find(s => s.name === 'cron')).toBeDefined();
         expect(items.find(s => s.name === 'model')).toBeDefined();
     });
 
-    it('excludes cron when loops are disabled', () => {
+    it('excludes cron when crons are disabled', () => {
         const items = getMetaSkillItems(false);
         expect(items.find(s => s.name === 'cron')).toBeUndefined();
         expect(items.find(s => s.name === 'model')).toBeDefined();
     });
 
-    it('always includes compact regardless of the loops flag', () => {
+    it('always includes compact regardless of the cron flag', () => {
         expect(getMetaSkillItems(true).find(s => s.name === 'compact')).toBeDefined();
         expect(getMetaSkillItems(false).find(s => s.name === 'compact')).toBeDefined();
     });
@@ -275,7 +275,7 @@ describe('mergeSkillsWithMeta', () => {
 
     it('deduplicates when server skill has same name as meta item', () => {
         const serverSkills = [
-            { name: 'cron', description: 'Rich loop description from SKILL.md' },
+            { name: 'cron', description: 'Rich cron description from SKILL.md' },
             { name: 'impl', description: 'Implement code' },
         ];
         const meta = [
@@ -290,14 +290,14 @@ describe('mergeSkillsWithMeta', () => {
 
     it('preserves server description but overlays meta args when server lacks args', () => {
         const serverSkills = [
-            { name: 'cron', description: 'Rich loop description from SKILL.md' },
+            { name: 'cron', description: 'Rich cron description from SKILL.md' },
         ];
         const meta = [
             { name: 'cron', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
         ];
         const merged = mergeSkillsWithMeta(serverSkills, meta);
         const cron = merged.find(s => s.name === 'cron')!;
-        expect(cron.description).toBe('Rich loop description from SKILL.md');
+        expect(cron.description).toBe('Rich cron description from SKILL.md');
         expect(cron.args).toBe('[interval] <prompt>');
     });
 
@@ -346,14 +346,14 @@ describe('mergeSkillsWithMeta', () => {
     });
 
     it('tags an overlapping server+meta name (e.g. cron) as kind "builtin"', () => {
-        const serverSkills = [{ name: 'cron', description: 'Rich loop description from SKILL.md' }];
+        const serverSkills = [{ name: 'cron', description: 'Rich cron description from SKILL.md' }];
         const meta = [{ name: 'cron', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>', kind: 'builtin' as const }];
         const merged = mergeSkillsWithMeta(serverSkills, meta);
         const cron = merged.find(s => s.name === 'cron')!;
         expect(cron.kind).toBe('builtin');
         // dedup + description/args semantics still hold
         expect(merged.filter(s => s.name === 'cron')).toHaveLength(1);
-        expect(cron.description).toBe('Rich loop description from SKILL.md');
+        expect(cron.description).toBe('Rich cron description from SKILL.md');
         expect(cron.args).toBe('[interval] <prompt>');
     });
 });

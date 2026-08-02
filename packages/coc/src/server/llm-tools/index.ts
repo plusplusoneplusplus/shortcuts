@@ -53,15 +53,15 @@ export {
 export { summarizeToolParameters, compactParamType } from './llm-tool-parameters';
 export { LLM_TOOL_PARAMETER_SCHEMAS, withToolParameterMetadata } from './llm-tool-parameter-schemas';
 export {
-    createLoopTool,
+    createCronTool,
     createScheduleWakeupTool,
     parseDuration,
-    type LoopToolDeps,
+    type CronToolDeps,
     type WakeupToolDeps,
-    type LoopAction,
-    type LoopToolArgs,
+    type CronAction,
+    type CronToolArgs,
     type ScheduleWakeupArgs,
-} from './loop-tools';
+} from './cron-tools';
 export {
     createCanvasTools,
     type CanvasToolsDeps,

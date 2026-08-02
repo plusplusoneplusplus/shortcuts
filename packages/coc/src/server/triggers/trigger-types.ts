@@ -14,7 +14,7 @@
  * The framework reuses existing plumbing rather than inventing new plumbing:
  *  - `ScheduleTimerRegistry` for timing (see `TriggerManager`)
  *  - `TaskQueueManager` to enqueue and `FollowUpExecutor` to deliver actions
- *  - the `loop-store.ts` SQLite persistence pattern (see `trigger-store.ts`)
+ *  - the `cron-store.ts` SQLite persistence pattern (see `trigger-store.ts`)
  */
 
 // ============================================================================
@@ -169,16 +169,16 @@ export interface TriggerChangeEvent {
 }
 
 // ============================================================================
-// Constants (mirror the loop module)
+// Constants (mirror the cron module)
 // ============================================================================
 
-/** Default TTL for triggers (3 days), mirroring loops. */
+/** Default TTL for triggers (3 days), mirroring crons. */
 export const DEFAULT_TRIGGER_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 
 /** Default CI-failure poll cadence (~60s). */
 export const DEFAULT_CI_POLL_INTERVAL_MS = 60_000;
 
-/** Minimum allowed poll cadence (10s), mirroring the loop minimum. */
+/** Minimum allowed poll cadence (10s), mirroring the cron minimum. */
 export const MIN_POLL_INTERVAL_MS = 10_000;
 
 /** Max active triggers per server. */

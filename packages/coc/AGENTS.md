@@ -18,7 +18,7 @@ detailed architecture lives in its `references/*.md` files.
 | `~/.copilot/mcp-config.json` + `.vscode/mcp.json` merge, allow-list | [mcp-settings.md](../../.github/skills/coc-knowledge/references/mcp-settings.md) |
 | `src/server/endev/`, `EnDev-xDpu` skill visibility | [endev.md](../../.github/skills/coc-knowledge/references/endev.md) |
 | Ralph sessions, iteration prompt, promote-to-ralph endpoint | [ralph.md](../../.github/skills/coc-knowledge/references/ralph.md) |
-| `src/server/loops/`, loop tools, tick lifecycle | [loops.md](../../.github/skills/coc-knowledge/references/loops.md) |
+| `src/server/cron/`, cron tools, tick lifecycle | [cron.md](../../.github/skills/coc-knowledge/references/cron.md) |
 | Process store / SQLite schema / FTS5 / pin / archive | [process-store.md](../../.github/skills/coc-knowledge/references/process-store.md) |
 | Dashboard SPA (`src/server/spa/`) | [dashboard-spa.md](../../.github/skills/coc-knowledge/references/dashboard-spa.md) |
 | REST endpoints | [rest-api.md](../../.github/skills/coc-knowledge/references/rest-api.md) |
@@ -185,8 +185,8 @@ all have their own `references/*.md`.
   `git worktree remove` **without** `--force`, never deletes the generated
   branch, and surfaces the raw Git error (leaving the record intact) rather than
   discarding a dirty worktree.
-- **Loop ticks** must route completion through
-  `ProcessLifecycleRunner → onLoopTickComplete → LoopExecutor.onTickComplete`;
+- **Cron ticks** must route completion through
+  `ProcessLifecycleRunner → onCronTickComplete → CronExecutor.onTickComplete`;
   bookkeeping errors must never mask the follow-up's actual result.
 - **Wakeups are durable and one-shot.** `scheduleWakeup` persists a `pending`
   `WakeupEntry` (absolute `firesAt`) in the `wakeups` table via
@@ -195,7 +195,7 @@ all have their own `references/*.md`.
   immediately). Firing runs `executeFollowUp` directly (not via the queue) and
   marks the record terminally `fired`/`failed` — persisting `failure_reason` on
   error — never recurring. Wakeups keep their own store/executor and only share
-  the `ScheduleTimerRegistry`/`processes.db` with loops.
+  the `ScheduleTimerRegistry`/`processes.db` with crons.
 - **Schedule persistence and reloads** are async. User schedules live as
   per-entry YAML files under `getRepoDataPath(dataDir, repoId, 'schedules')`;
   `ScheduleManager.restore`, `addSchedule`, `setSchedule`, `removeSchedule`,
@@ -327,7 +327,7 @@ all have their own `references/*.md`.
   keyed by **workspace**; the provider/workspace config hooks read through
   `getOrFetchConfig` and seed from `peekConfig` (no loading flash), and every
   mutation site `invalidateConfig`s its own key (invalidate-on-mutate, no reload).
-  Workspace-scoped data must not refetch per conversation: `useLoops` fetches
+  Workspace-scoped data must not refetch per conversation: `useCrons` fetches
   keyed by `[workspaceId, cloneClient]` only (processId drives a `useMemo` view,
   never a round-trip) and the unseen `count` refresh fires only when a `markSeen`
   family call actually changes seen-state. The two remaining non-critical

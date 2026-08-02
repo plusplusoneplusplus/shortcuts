@@ -26,6 +26,6 @@ export * from './work-items';
 export * from './workspaces';
 export * from './workflows';
 export * from './wiki';
-export * from './loops';
+export * from './cron';
 export * from './triggers';
 export * from './worktree';

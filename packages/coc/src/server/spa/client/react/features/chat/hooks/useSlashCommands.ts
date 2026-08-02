@@ -7,7 +7,7 @@
 
 import { useState, useCallback, useRef, useMemo } from 'react';
 import { parseSlashCommands, getSlashCommandContext, getActiveMetaCommands, type ParsedSlashCommands } from '../slash-command-parser';
-import { isLoopsEnabled } from '../../../utils/config';
+import { isCronEnabled } from '../../../utils/config';
 import { orderSkillItems, type SkillItem } from '../SlashCommandMenu';
 import type { RichTextInputHandle } from '../../../shared/RichTextInput';
 
@@ -127,11 +127,11 @@ export function useSlashCommands(skills: SkillItem[]): UseSlashCommandsResult {
     }, []);
 
     const parseAndExtract = useCallback((text: string) => {
-        const loopsEnabled = isLoopsEnabled();
-        const activeMeta = getActiveMetaCommands(loopsEnabled);
+        const cronEnabled = isCronEnabled();
+        const activeMeta = getActiveMetaCommands(cronEnabled);
         const result = parseSlashCommands(text, skillNames, activeMeta);
-        // /cron meta-command activates the 'cron' bundled skill (when loops feature is enabled)
-        if (loopsEnabled && result.metaCommands.includes('cron') && !result.skills.includes('cron')) {
+        // /cron meta-command activates the 'cron' bundled skill (when cron feature is enabled)
+        if (cronEnabled && result.metaCommands.includes('cron') && !result.skills.includes('cron')) {
             result.skills.push('cron');
         }
         return result;

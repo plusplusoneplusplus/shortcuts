@@ -22,7 +22,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isAutoAgentProviderRoutingEnabled: () => false,
     isForEachEnabled: () => false,
     isMapReduceEnabled: () => false,
-    isLoopsEnabled: () => false,
+    isCronEnabled: () => false,
     isEffortLevelsEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => false,
     isCommitChatLensEnabled: configMocks.isCommitChatLensEnabled,

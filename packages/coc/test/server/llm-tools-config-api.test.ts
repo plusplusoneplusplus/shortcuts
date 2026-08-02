@@ -143,7 +143,7 @@ describe('LLM Tools Config API endpoints', () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`);
             expect(res.status).toBe(200);
             const data = res.json();
-            expect(data.tools).toHaveLength(getEffectiveLlmToolRegistry({ loopsEnabled: false }).length);
+            expect(data.tools).toHaveLength(getEffectiveLlmToolRegistry({ cronEnabled: false }).length);
             const names = data.tools.map((t: any) => t.name);
             expect(names).toContain('tavily_web_search');
             expect(names).toContain('suggest_follow_ups');
@@ -264,7 +264,7 @@ describe('LLM Tools Config API endpoints', () => {
         it('preserves the existing tool contract fields unchanged', async () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`);
             const data = res.json();
-            const registryBase = getEffectiveLlmToolRegistry({ loopsEnabled: false });
+            const registryBase = getEffectiveLlmToolRegistry({ cronEnabled: false });
             for (const expected of registryBase) {
                 const tool = data.tools.find((t: any) => t.name === expected.name);
                 expect(tool).toBeTruthy();
@@ -334,7 +334,7 @@ describe('LLM Tools Config API endpoints', () => {
             expect(res.status).toBe(200);
             const data = res.json();
             expect(data.disabledLlmTools).toEqual(['tavily_web_search', 'memory']);
-            expect(data.tools).toHaveLength(getEffectiveLlmToolRegistry({ loopsEnabled: false }).length);
+            expect(data.tools).toHaveLength(getEffectiveLlmToolRegistry({ cronEnabled: false }).length);
             expect(data.conversationRetrievalAvailable).toBe(true);
             // The PUT response carries the same additive param metadata as GET.
             const followUps = data.tools.find((t: any) => t.name === 'suggest_follow_ups');

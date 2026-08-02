@@ -237,13 +237,13 @@ describe('RuntimeConfigService', () => {
             const svc = new RuntimeConfigService({ configPath });
             const result = await svc.updateConfig({
                 'ralph.enabled': true,
-                'loops.enabled': true,
+                'cron.enabled': true,
                 'forEach.enabled': true,
             });
 
             expect(result.effects).toHaveLength(3);
             const fieldNames = result.effects.map(e => e.field).sort();
-            expect(fieldNames).toEqual(['forEach.enabled', 'loops.enabled', 'ralph.enabled']);
+            expect(fieldNames).toEqual(['cron.enabled', 'forEach.enabled', 'ralph.enabled']);
         });
 
         it('should update source metadata after write', async () => {
@@ -317,14 +317,14 @@ describe('RuntimeConfigService', () => {
             await svc.updateConfig({ 'ralph.enabled': true });
             expect(svc.revision).toBe(1);
 
-            await svc.updateConfig({ 'loops.enabled': true });
+            await svc.updateConfig({ 'cron.enabled': true });
             expect(svc.revision).toBe(2);
 
             await svc.updateConfig({ 'forEach.enabled': true });
             expect(svc.revision).toBe(3);
 
             expect(svc.config.ralph.enabled).toBe(true);
-            expect(svc.config.loops.enabled).toBe(true);
+            expect(svc.config.cron.enabled).toBe(true);
             expect(svc.config.forEach.enabled).toBe(true);
         });
 
@@ -334,7 +334,7 @@ describe('RuntimeConfigService', () => {
             // Fire two updates concurrently
             const [r1, r2] = await Promise.all([
                 svc.updateConfig({ 'ralph.enabled': true }),
-                svc.updateConfig({ 'loops.enabled': true }),
+                svc.updateConfig({ 'cron.enabled': true }),
             ]);
 
             // Both should succeed with sequential revisions
@@ -342,7 +342,7 @@ describe('RuntimeConfigService', () => {
             expect(r2.revision).toBe(2);
             expect(svc.revision).toBe(2);
             expect(svc.config.ralph.enabled).toBe(true);
-            expect(svc.config.loops.enabled).toBe(true);
+            expect(svc.config.cron.enabled).toBe(true);
         });
     });
 
@@ -380,7 +380,7 @@ describe('RuntimeConfigService', () => {
             expect(snapshots).toHaveLength(1);
 
             unsub();
-            await svc.updateConfig({ 'loops.enabled': true });
+            await svc.updateConfig({ 'cron.enabled': true });
             expect(snapshots).toHaveLength(1); // not called again
         });
 
@@ -414,12 +414,12 @@ describe('RuntimeConfigService', () => {
             writeConfig({ parallel: 10, ralph: { enabled: true } });
             const svc = new RuntimeConfigService({ configPath });
 
-            await svc.updateConfig({ 'loops.enabled': true });
+            await svc.updateConfig({ 'cron.enabled': true });
 
             // Pre-existing values should be preserved
             expect(svc.config.parallel).toBe(10);
             expect(svc.config.ralph.enabled).toBe(true);
-            expect(svc.config.loops.enabled).toBe(true);
+            expect(svc.config.cron.enabled).toBe(true);
         });
 
         it('should preserve non-admin fields in config file', async () => {
@@ -450,19 +450,19 @@ describe('RuntimeConfigService', () => {
 
         it('should return restartRequired classification for infrastructure fields', async () => {
             const svc = new RuntimeConfigService({ configPath });
-            const result = await svc.updateConfig({ 'loops.enabled': true });
+            const result = await svc.updateConfig({ 'cron.enabled': true });
 
-            const loopsEffect = result.effects.find(e => e.field === 'loops.enabled');
-            expect(loopsEffect).toBeDefined();
-            expect(loopsEffect!.runtime).toBe('restartRequired');
-            expect(loopsEffect!.requiresRestart).toBe(true);
+            const cronEffect = result.effects.find(e => e.field === 'cron.enabled');
+            expect(cronEffect).toBeDefined();
+            expect(cronEffect!.runtime).toBe('restartRequired');
+            expect(cronEffect!.requiresRestart).toBe(true);
         });
 
         it('should return mixed classifications for mixed updates', async () => {
             const svc = new RuntimeConfigService({ configPath });
             const result = await svc.updateConfig({
                 'ralph.enabled': true,
-                'loops.enabled': true,
+                'cron.enabled': true,
                 'terminal.enabled': false,
             });
 
@@ -472,9 +472,9 @@ describe('RuntimeConfigService', () => {
             expect(ralph.runtime).toBe('live');
             expect(ralph.requiresRestart).toBe(false);
 
-            const loops = result.effects.find(e => e.field === 'loops.enabled')!;
-            expect(loops.runtime).toBe('restartRequired');
-            expect(loops.requiresRestart).toBe(true);
+            const cron = result.effects.find(e => e.field === 'cron.enabled')!;
+            expect(cron.runtime).toBe('restartRequired');
+            expect(cron.requiresRestart).toBe(true);
 
             const terminal = result.effects.find(e => e.field === 'terminal.enabled')!;
             expect(terminal.runtime).toBe('restartRequired');

@@ -185,8 +185,8 @@ export interface CLIConfig {
     mapReduce?: {
         enabled?: boolean;
     };
-    /** Loops/recurring follow-up subsystem configuration. Disabled by default. */
-    loops?: {
+    /** Cron/recurring follow-up subsystem configuration. Disabled by default. */
+    cron?: {
         enabled?: boolean;
     };
     /** Triggers (event → action) subsystem configuration. Enabled by default. */
@@ -521,8 +521,8 @@ export interface ResolvedCLIConfig {
     mapReduce: {
         enabled: boolean;
     };
-    /** Loops/recurring follow-up subsystem configuration. */
-    loops: {
+    /** Cron/recurring follow-up subsystem configuration. */
+    cron: {
         enabled: boolean;
     };
     /** Triggers (event → action) subsystem configuration. */
@@ -795,7 +795,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
     mapReduce: {
         enabled: false,
     },
-    loops: {
+    cron: {
         enabled: true,
     },
     triggers: {

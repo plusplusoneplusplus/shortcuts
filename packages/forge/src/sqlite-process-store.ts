@@ -59,7 +59,7 @@ const WORKSPACE_ID_REFERENCE_COLUMNS = [
     { table: 'work_item_chat_bindings', column: 'workspace_id' },
     { table: 'task_groups', column: 'workspace_id' },
     { table: 'task_group_members', column: 'workspace_id' },
-    { table: 'loops', column: 'workspace_id' },
+    { table: 'crons', column: 'workspace_id' },
     { table: 'container_sessions', column: 'routing_override_workspace_id' },
     { table: 'container_session_turns', column: 'routing_workspace_id' },
     { table: 'queue_tasks', column: 'repo_id' },
@@ -1564,7 +1564,7 @@ export class SqliteProcessStore implements ProcessStore {
      * inside this database, in a single transaction. Covers the workspace
      * record, process history (and the seen/unseen state carried on those
      * rows), process metadata, workspace-scoped bindings, task-group records,
-     * loop/container routing references, and queued/scheduled work keyed by
+     * cron/container routing references, and queued/scheduled work keyed by
      * repo id. Returns false without changing anything when `oldId` is unknown
      * or a workspace `newId` already exists, so the startup migration can treat
      * a false result as a conflict and never merge two workspaces.

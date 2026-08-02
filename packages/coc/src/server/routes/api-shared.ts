@@ -27,11 +27,11 @@ export interface ApiRouteContext {
     gitOpsStore: GitOpsStore;
     db?: Database.Database;
     /**
-     * Whether the loops/recurring follow-up subsystem is enabled.
-     * Remains startup-captured because loop infrastructure (executor, timers)
+     * Whether the cron/recurring follow-up subsystem is enabled.
+     * Remains startup-captured because cron infrastructure (executor, timers)
      * is wired once at startup — classified as `restartRequired`.
      */
-    loopsEnabled?: boolean;
+    cronEnabled?: boolean;
     /**
      * Live getter for runtime config feature flags.
      * Reads from RuntimeConfigService so per-request handlers see admin

@@ -5,7 +5,7 @@
  * Workspace-scoped primary routes at `/api/workspaces/:id/triggers`, plus a
  * secondary server-wide route at `/api/triggers`.
  *
- * Mirrors `loop-handler.ts` (same in-process route shape, validation, and
+ * Mirrors `cron-handler.ts` (same in-process route shape, validation, and
  * best-effort emit). Only the `condition-monitor` / `ci-failure` event and the
  * `send-message` action are implemented this iteration.
  *

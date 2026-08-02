@@ -21,7 +21,7 @@ import { createSuggestFollowUpsTool } from '../../src/server/llm-tools/suggest-f
 import { createSearchConversationsTool } from '../../src/server/llm-tools/search-conversations-tool';
 import { createGetConversationTool } from '../../src/server/llm-tools/get-conversation-tool';
 import { createSendToConversationTool } from '../../src/server/llm-tools/send-to-conversation-tool';
-import { createScheduleWakeupTool } from '../../src/server/llm-tools/loop-tools';
+import { createScheduleWakeupTool } from '../../src/server/llm-tools/cron-tools';
 import { createAskUserTool } from '../../src/server/llm-tools/ask-user-tool';
 import { createMemoryStoreFactTool, createMemoryRecallTool } from '../../src/server/llm-tools/memory-v2-tools';
 

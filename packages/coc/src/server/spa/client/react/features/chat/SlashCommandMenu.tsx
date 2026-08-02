@@ -31,10 +31,10 @@ export const META_SKILL_ITEMS: SkillItem[] = [
 
 /**
  * Return meta skill items filtered by feature flags.
- * `/cron` is excluded when the loops feature is disabled.
+ * `/cron` is excluded when the cron feature is disabled.
  */
-export function getMetaSkillItems(loopsEnabled: boolean): SkillItem[] {
-    return META_SKILL_ITEMS.filter(m => m.name !== 'cron' || loopsEnabled);
+export function getMetaSkillItems(cronEnabled: boolean): SkillItem[] {
+    return META_SKILL_ITEMS.filter(m => m.name !== 'cron' || cronEnabled);
 }
 
 /**

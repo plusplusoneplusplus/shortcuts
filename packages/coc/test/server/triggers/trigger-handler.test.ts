@@ -2,7 +2,7 @@
  * Tests for Trigger REST API handler (trigger-handler.ts).
  *
  * Uses in-memory stubs to exercise route logic without HTTP I/O, mirroring
- * loop-handler.test.ts.
+ * cron-handler.test.ts.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';

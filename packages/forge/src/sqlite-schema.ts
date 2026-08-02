@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 25;
+export const SCHEMA_VERSION = 26;
 
 /**
  * Read the current schema version from the database.
@@ -192,9 +192,9 @@ export function initializeDatabase(db: Database.Database): void {
             )
         `);
 
-        // ── loops ────────────────────────────────────────────────────
+        // ── crons ────────────────────────────────────────────────────
         db.exec(`
-            CREATE TABLE IF NOT EXISTS loops (
+            CREATE TABLE IF NOT EXISTS crons (
                 id                    TEXT PRIMARY KEY,
                 process_id            TEXT NOT NULL,
                 description           TEXT NOT NULL DEFAULT '',
@@ -213,7 +213,7 @@ export function initializeDatabase(db: Database.Database): void {
         `);
 
         // ── wakeups ──────────────────────────────────────────────────
-        // Durable one-shot counterpart to loops: a single future follow-up
+        // Durable one-shot counterpart to crons: a single future follow-up
         // that fires exactly once and is terminal afterwards.
         db.exec(`
             CREATE TABLE IF NOT EXISTS wakeups (
@@ -312,11 +312,11 @@ export function initializeDatabase(db: Database.Database): void {
             CREATE INDEX IF NOT EXISTS idx_schedule_runs_status
                 ON schedule_runs(status);
 
-            CREATE INDEX IF NOT EXISTS idx_loops_process_id
-                ON loops(process_id);
+            CREATE INDEX IF NOT EXISTS idx_crons_process_id
+                ON crons(process_id);
 
-            CREATE INDEX IF NOT EXISTS idx_loops_status
-                ON loops(status);
+            CREATE INDEX IF NOT EXISTS idx_crons_status
+                ON crons(status);
 
             CREATE INDEX IF NOT EXISTS idx_wakeups_process_id
                 ON wakeups(process_id);
@@ -509,6 +509,9 @@ export function initializeDatabase(db: Database.Database): void {
         if (versionBefore < 25) {
             migrateV24toV25(db);
         }
+        if (versionBefore < 26) {
+            migrateV25toV26(db);
+        }
 
         // Stamp the schema version
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
@@ -648,9 +651,10 @@ function migrateV11toV12(db: Database.Database): void {
 }
 
 /**
- * V12 → V13: add `loops` table for the loop subsystem.
- * The CREATE TABLE IF NOT EXISTS above handles fresh databases;
- * this migration is a no-op but keeps the version chain explicit.
+ * V12 → V13: add the recurring-follow-up subsystem table (originally named
+ * `loops`; renamed to `crons` in V26). The CREATE TABLE IF NOT EXISTS above
+ * handles fresh databases; this migration is a no-op but keeps the version
+ * chain explicit.
  */
 function migrateV12toV13(_db: Database.Database): void {
     // Table already created by the idempotent DDL above.
@@ -831,6 +835,33 @@ function migrateV23toV24(db: Database.Database): void {
  */
 function migrateV24toV25(db: Database.Database): void {
     ensureColumn(db, 'conversation_turns', 'display_only', 'INTEGER DEFAULT 0');
+}
+
+/**
+ * V25 → V26: rename the recurring-follow-up table `loops` → `crons`.
+ *
+ * The idempotent DDL above already created an (empty) `crons` table for every
+ * database. On an installation carrying the legacy `loops` table we drop that
+ * empty stub and rename the real table into place — this preserves the row data
+ * plus any columns added at runtime (e.g. `workspace_id`, added by the store's
+ * `ensureTable`). Fresh installs have no `loops` table, so this is a no-op.
+ */
+function migrateV25toV26(db: Database.Database): void {
+    const hasLoops = db
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'loops'")
+        .get();
+    if (!hasLoops) return;
+
+    // Discard the empty `crons` stub the DDL just created, then rename the
+    // legacy table (with its data + runtime-added columns) into its place.
+    db.exec('DROP TABLE IF EXISTS crons');
+    db.exec('ALTER TABLE loops RENAME TO crons');
+
+    // Indexes survive the table rename but keep their old names — replace them.
+    db.exec('DROP INDEX IF EXISTS idx_loops_process_id');
+    db.exec('DROP INDEX IF EXISTS idx_loops_status');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_crons_process_id ON crons(process_id)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_crons_status ON crons(status)');
 }
 
 /**

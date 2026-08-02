@@ -5,7 +5,7 @@
  * trigger-originated follow-ups (AC-01/AC-03):
  *   - on follow-up success → onTriggerActionComplete(triggerId, true)
  *   - on follow-up failure → onTriggerActionComplete(triggerId, false)
- *   - non-trigger follow-ups (loop, wakeup, normal chat) → not invoked
+ *   - non-trigger follow-ups (cron, wakeup, normal chat) → not invoked
  *   - errors from the callback do not mask the follow-up's outcome
  *
  * This is the seam that clears a trigger's in-flight suppression guard once its
@@ -103,10 +103,10 @@ describe('ProcessLifecycleRunner — onTriggerActionComplete wiring', () => {
         expect(onTriggerActionComplete).toHaveBeenCalledWith('trigger_abc', false);
     });
 
-    it('does not invoke onTriggerActionComplete for loop follow-ups', async () => {
+    it('does not invoke onTriggerActionComplete for cron follow-ups', async () => {
         const onTriggerActionComplete = vi.fn().mockResolvedValue(undefined);
         const opts = makeOpts({ onTriggerActionComplete });
-        const task = makeFollowUpTask({ source: 'loop', loopId: 'loop_1' });
+        const task = makeFollowUpTask({ source: 'cron', cronId: 'cron_1' });
 
         await runner.run(task, opts);
 

@@ -33,7 +33,7 @@ export type ResolvedConfigNamespaceValues = Pick<
     | 'forEach'
     | 'mapReduce'
     | 'vimNavigation'
-    | 'loops'
+    | 'cron'
     | 'triggers'
     | 'dreams'
     | 'mcpOauth'

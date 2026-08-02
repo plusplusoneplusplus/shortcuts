@@ -295,7 +295,7 @@ describe('parseSlashCommands — /compact meta-command', () => {
 });
 
 describe('getActiveMetaCommands — compact always active', () => {
-    it('includes "compact" regardless of the loops feature flag', async () => {
+    it('includes "compact" regardless of the cron feature flag', async () => {
         const { getActiveMetaCommands } = await import('../../../src/server/spa/client/react/features/chat/slash-command-parser');
         expect(getActiveMetaCommands(true)).toContain('compact');
         expect(getActiveMetaCommands(false)).toContain('compact');
@@ -341,13 +341,13 @@ describe('parseSlashCommands — /cron meta-command', () => {
 });
 
 describe('getActiveMetaCommands', () => {
-    it('includes "cron" when loops feature is enabled', async () => {
+    it('includes "cron" when cron feature is enabled', async () => {
         const { getActiveMetaCommands } = await import('../../../src/server/spa/client/react/features/chat/slash-command-parser');
         expect(getActiveMetaCommands(true)).toContain('cron');
         expect(getActiveMetaCommands(true)).toContain('model');
     });
 
-    it('excludes "cron" when loops feature is disabled', async () => {
+    it('excludes "cron" when cron feature is disabled', async () => {
         const { getActiveMetaCommands } = await import('../../../src/server/spa/client/react/features/chat/slash-command-parser');
         expect(getActiveMetaCommands(false)).not.toContain('cron');
         expect(getActiveMetaCommands(false)).toContain('model');

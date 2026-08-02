@@ -19,15 +19,15 @@ describe('bundled cron skill', () => {
         expect(content).toContain('name: cron');
     });
 
-    it('SKILL.md documents the merged loop tool with create/cancel/list actions', () => {
+    it('SKILL.md documents the merged cron tool with create/cancel/list actions', () => {
         const skillPath = path.join(getBundledSkillsPath(), 'cron', 'SKILL.md');
         const content = fs.readFileSync(skillPath, 'utf-8');
-        expect(content).toContain('`loop` action `create`');
-        expect(content).toContain('`loop` action `cancel`');
-        expect(content).toContain('`loop` action `list`');
-        expect(content).not.toContain('createLoop');
-        expect(content).not.toContain('cancelLoop');
-        expect(content).not.toContain('listLoops');
+        expect(content).toContain('`cron` action `create`');
+        expect(content).toContain('`cron` action `cancel`');
+        expect(content).toContain('`cron` action `list`');
+        expect(content).not.toContain('createCron');
+        expect(content).not.toContain('cancelCron');
+        expect(content).not.toContain('listCrons');
     });
 
     it('SKILL.md documents scheduleWakeup as always available', () => {
@@ -47,7 +47,7 @@ describe('bundled cron skill', () => {
         const content = fs.readFileSync(skillPath, 'utf-8');
         expect(content).toContain('Slash-Compatible Fixed Interval Mode');
         expect(content).toContain("`1m what's the time now?`");
-        expect(content).toContain('Call the `loop` tool with action `create`, the parsed interval, and the remaining prompt');
+        expect(content).toContain('Call the `cron` tool with action `create`, the parsed interval, and the remaining prompt');
         expect(content).toContain('Do not call `scheduleWakeup`');
         expect(content).toContain("the user's command is the confirmation");
     });

@@ -162,10 +162,10 @@ describe('buildChatToolBundle', () => {
         expect(result.tools.map(t => t.name)).not.toContain('kusto_query');
     });
 
-    it('includes loop tools when loopTools deps are provided', () => {
+    it('includes cron tools when cronTools deps are provided', () => {
         writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: [] });
 
-        const mockLoopStore = {
+        const mockCronStore = {
             insert: vi.fn(),
             getById: vi.fn(),
             getByProcess: vi.fn().mockReturnValue([]),
@@ -173,7 +173,7 @@ describe('buildChatToolBundle', () => {
             getActive: vi.fn().mockReturnValue([]),
         } as any;
 
-        const mockLoopExecutor = {
+        const mockCronExecutor = {
             armTimer: vi.fn(),
             disarmTimer: vi.fn(),
         } as any;
@@ -183,19 +183,19 @@ describe('buildChatToolBundle', () => {
             store: makeStore(false),
             workspaceId: WS_ID,
             followUpSuggestions: { enabled: false, count: 0 },
-            loopTools: {
-                store: mockLoopStore,
-                executor: mockLoopExecutor,
+            cronTools: {
+                store: mockCronStore,
+                executor: mockCronExecutor,
                 processId: 'proc-1',
             },
         });
 
         const toolNames = result.tools.map(t => t.name);
-        expect(toolNames).toContain('loop');
-        // The loop tool is wired; its descriptive suffix was intentionally removed.
+        expect(toolNames).toContain('cron');
+        // The cron tool is wired; its descriptive suffix was intentionally removed.
     });
 
-    it('does not include the loop tool when loopTools deps are not provided', () => {
+    it('does not include the cron tool when cronTools deps are not provided', () => {
         writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: [] });
 
         const result = buildChatToolBundle({
@@ -206,6 +206,6 @@ describe('buildChatToolBundle', () => {
         });
 
         const toolNames = result.tools.map(t => t.name);
-        expect(toolNames).not.toContain('loop');
+        expect(toolNames).not.toContain('cron');
     });
 });

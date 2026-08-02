@@ -273,7 +273,7 @@ CoC LLM tools are assembled in the coc package as `Tool<any>[]`
 provider through `SendMessageOptions.tools`. Copilot consumes them natively; Codex
 and Claude consume the **same already-filtered array** through a provider-neutral
 MCP bridge so features like `ask_user`, conversation search, work-item/bug
-creation, wakeups/loops, Tavily, comments, and memory tools work uniformly.
+creation, wakeups/crons, Tavily, comments, and memory tools work uniformly.
 
 The tool contract (`Tool`, `ToolHandler`, `ToolInvocation`, `ToolResultObject`,
 `ZodSchema`) is owned natively by `coc-agent-sdk/src/types.ts`, not aliased from a
