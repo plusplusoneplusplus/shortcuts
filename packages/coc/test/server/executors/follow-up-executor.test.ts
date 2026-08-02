@@ -744,7 +744,7 @@ describe('FollowUpExecutor', () => {
     });
 
     it('preserves process mode when follow-up supplies no mode override', async () => {
-        // Regression: loop ticks invoke executeFollowUp without a mode.
+        // Regression: cron ticks invoke executeFollowUp without a mode.
         // The process's existing mode (e.g. Ask) must not be overwritten,
         // and `previousMode` must not be recorded.
         const proc = makeProcess({
@@ -1258,17 +1258,17 @@ describe('FollowUpExecutor', () => {
     });
 
     // -------------------------------------------------------------------------
-    // turnSource — loop/wakeup follow-up user turn creation
+    // turnSource — cron/wakeup follow-up user turn creation
     // -------------------------------------------------------------------------
 
-    it('creates user turn with turnSource for loop-triggered follow-ups', async () => {
+    it('creates user turn with turnSource for cron-triggered follow-ups', async () => {
         sdkMocks.mockSendMessage.mockResolvedValue({
             success: true,
-            response: 'Loop check result',
-            sessionId: 'sess-loop',
+            response: 'Cron check result',
+            sessionId: 'sess-cron',
         });
         const proc = makeProcess({
-            id: 'proc-loop',
+            id: 'proc-cron',
             conversationTurns: [
                 { role: 'user', content: 'initial', timestamp: new Date(), turnIndex: 0, timeline: [] },
                 { role: 'assistant', content: 'reply', timestamp: new Date(), turnIndex: 1, timeline: [] },
@@ -1277,37 +1277,37 @@ describe('FollowUpExecutor', () => {
         await store.addProcess(proc);
 
         const executor = makeExecutor(store);
-        const turnSource = { source: 'loop' as const, loopId: 'loop_abc' };
-        await executor.executeFollowUp('proc-loop', 'Check status', undefined, undefined, undefined, undefined, undefined, undefined, turnSource);
+        const turnSource = { source: 'cron' as const, cronId: 'cron_abc' };
+        await executor.executeFollowUp('proc-cron', 'Check status', undefined, undefined, undefined, undefined, undefined, undefined, turnSource);
 
-        const updated = store.processes.get('proc-loop');
+        const updated = store.processes.get('proc-cron');
         const turns = updated?.conversationTurns ?? [];
-        // Should have: original user + assistant + loop user turn + loop assistant turn
+        // Should have: original user + assistant + cron user turn + cron assistant turn
         expect(turns.length).toBeGreaterThanOrEqual(4);
-        const loopUserTurn = turns.find(t => t.role === 'user' && t.turnSource?.source === 'loop');
-        expect(loopUserTurn).toBeDefined();
-        expect(loopUserTurn!.content).toBe('Check status');
-        expect(loopUserTurn!.turnSource).toEqual({ source: 'loop', loopId: 'loop_abc' });
+        const cronUserTurn = turns.find(t => t.role === 'user' && t.turnSource?.source === 'cron');
+        expect(cronUserTurn).toBeDefined();
+        expect(cronUserTurn!.content).toBe('Check status');
+        expect(cronUserTurn!.turnSource).toEqual({ source: 'cron', cronId: 'cron_abc' });
     });
 
-    it('tags assistant turn with turnSource for loop follow-ups', async () => {
+    it('tags assistant turn with turnSource for cron follow-ups', async () => {
         sdkMocks.mockSendMessage.mockResolvedValue({
             success: true,
-            response: 'Loop response',
-            sessionId: 'sess-loop-assist',
+            response: 'Cron response',
+            sessionId: 'sess-cron-assist',
         });
-        const proc = makeProcess({ id: 'proc-loop-assist' });
+        const proc = makeProcess({ id: 'proc-cron-assist' });
         await store.addProcess(proc);
 
         const executor = makeExecutor(store);
-        const turnSource = { source: 'loop' as const, loopId: 'loop_xyz' };
-        await executor.executeFollowUp('proc-loop-assist', 'Check', undefined, undefined, undefined, undefined, undefined, undefined, turnSource);
+        const turnSource = { source: 'cron' as const, cronId: 'cron_xyz' };
+        await executor.executeFollowUp('proc-cron-assist', 'Check', undefined, undefined, undefined, undefined, undefined, undefined, turnSource);
 
-        const updated = store.processes.get('proc-loop-assist');
+        const updated = store.processes.get('proc-cron-assist');
         const turns = updated?.conversationTurns ?? [];
-        const assistantTurns = turns.filter(t => t.role === 'assistant' && t.turnSource?.source === 'loop');
+        const assistantTurns = turns.filter(t => t.role === 'assistant' && t.turnSource?.source === 'cron');
         expect(assistantTurns.length).toBeGreaterThanOrEqual(1);
-        expect(assistantTurns[assistantTurns.length - 1].turnSource).toEqual({ source: 'loop', loopId: 'loop_xyz' });
+        expect(assistantTurns[assistantTurns.length - 1].turnSource).toEqual({ source: 'cron', cronId: 'cron_xyz' });
     });
 
     it('does not create extra user turn for normal follow-ups (no turnSource)', async () => {

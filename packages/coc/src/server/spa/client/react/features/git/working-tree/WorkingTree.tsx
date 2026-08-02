@@ -58,7 +58,7 @@ function basename(filePath: string): string {
 }
 
 /** Convert an absolute path to a repo-relative path with '/' separators. */
-function repoRelative(absPath: string, repositoryRoot: string): string {
+export function repoRelative(absPath: string, repositoryRoot: string): string {
     const root = repositoryRoot.replace(/\\/g, '/').replace(/\/$/, '');
     const abs = absPath.replace(/\\/g, '/');
     return abs.startsWith(root + '/') ? abs.slice(root.length + 1) : abs;

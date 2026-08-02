@@ -14,6 +14,7 @@ import {
     resolveConflictSimple,
     resolveConflictWithAI,
     SyncEngine,
+    SyncScheduler,
     copyDirContents,
     nextSyncDelayMs,
     backupTagStamp,
@@ -494,6 +495,23 @@ describe('copyDirContents', () => {
         expect(fs.readFileSync(path.join(dest, 'keep.md'), 'utf8')).toBe('keep');
     });
 
+    it('preserveNewerThanMs keeps a dest-only entry at/after the cutoff, deletes older ones', async () => {
+        fs.writeFileSync(path.join(dest, 'fresh.md'), 'written mid-tick');
+        fs.writeFileSync(path.join(dest, 'old.md'), 'predates the tick');
+        fs.writeFileSync(path.join(src, 'keep.md'), 'keep');
+        const cutoff = 5_000_000;
+        fs.utimesSync(path.join(dest, 'fresh.md'), cutoff / 1000, cutoff / 1000);
+        fs.utimesSync(path.join(dest, 'old.md'), (cutoff - 60_000) / 1000, (cutoff - 60_000) / 1000);
+
+        await copyDirContents(src, dest, { preserveNewerThanMs: cutoff });
+
+        // fresh.md's mtime is at the cutoff → not a deletion yet, kept for next tick.
+        expect(fs.existsSync(path.join(dest, 'fresh.md'))).toBe(true);
+        // old.md predates the tick → a real deletion, removed.
+        expect(fs.existsSync(path.join(dest, 'old.md'))).toBe(false);
+        expect(fs.existsSync(path.join(dest, 'keep.md'))).toBe(true);
+    });
+
     it('preserves ignored names in the destination (never deletes .git/.lock)', async () => {
         // .git and .lock exist only in dest (the sync repo), not the notes source.
         fs.mkdirSync(path.join(dest, '.git'));
@@ -521,67 +539,86 @@ describe('copyDirContents', () => {
 
 // ── SyncEngine backoff scheduling ────────────────────────────────────────────
 
-describe('SyncEngine periodic backoff', () => {
-    let tmpDir: string;
-    let engine: SyncEngine;
+describe('SyncScheduler periodic backoff', () => {
     const silentLogger = { info: () => {}, warn: () => {}, error: () => {} };
-
-    beforeEach(() => {
-        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-sync-backoff-'));
-    });
+    const maxBackoffMs = MAX_SYNC_BACKOFF_MINUTES * 60_000;
 
     afterEach(() => {
-        engine?.stop();
         vi.useRealTimers();
-        fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
     it('grows the delay on repeated failures and resets on success', async () => {
         vi.useFakeTimers();
-        engine = new SyncEngine({ dataDir: tmpDir, workspaceId: 'my_work', logger: silentLogger });
 
         const state = { fail: true };
-        const perform = vi.fn(async () => {
-            (engine as any).status.lastError = state.fail ? 'boom' : null;
+        const tick = vi.fn(async () => {});
+        const scheduler = new SyncScheduler({
+            logger: silentLogger,
+            maxBackoffMs,
+            tick,
+            didFail: () => state.fail,
         });
-        (engine as any).performSync = perform;
-        (engine as any).status.enabled = true;
-        (engine as any).gitRemoteCache = 'git@github.com:user/notes.git';
 
         // Base interval 1 min → 60_000 ms.
-        (engine as any).startPeriodicSync(1);
-        expect((engine as any).nextDelayMs).toBe(60_000);
+        scheduler.start(1);
+        expect(scheduler.nextDelayMs).toBe(60_000);
 
         // Tick 1 fails → delay doubles.
         await vi.advanceTimersByTimeAsync(60_000);
-        expect(perform).toHaveBeenCalledTimes(1);
-        expect((engine as any).nextDelayMs).toBe(120_000);
+        expect(tick).toHaveBeenCalledTimes(1);
+        expect(scheduler.nextDelayMs).toBe(120_000);
 
         // Tick 2 fails → doubles again.
         await vi.advanceTimersByTimeAsync(120_000);
-        expect(perform).toHaveBeenCalledTimes(2);
-        expect((engine as any).nextDelayMs).toBe(240_000);
+        expect(tick).toHaveBeenCalledTimes(2);
+        expect(scheduler.nextDelayMs).toBe(240_000);
 
         // Tick 3 succeeds → resets to base.
         state.fail = false;
         await vi.advanceTimersByTimeAsync(240_000);
-        expect(perform).toHaveBeenCalledTimes(3);
-        expect((engine as any).nextDelayMs).toBe(60_000);
+        expect(tick).toHaveBeenCalledTimes(3);
+        expect(scheduler.nextDelayMs).toBe(60_000);
+
+        scheduler.stop();
     });
 
     it('stop() prevents any further scheduled ticks', async () => {
         vi.useFakeTimers();
-        engine = new SyncEngine({ dataDir: tmpDir, workspaceId: 'my_work', logger: silentLogger });
-        const perform = vi.fn(async () => { (engine as any).status.lastError = null; });
-        (engine as any).performSync = perform;
-        (engine as any).status.enabled = true;
-        (engine as any).gitRemoteCache = 'remote';
+        const tick = vi.fn(async () => {});
+        const scheduler = new SyncScheduler({
+            logger: silentLogger,
+            maxBackoffMs,
+            tick,
+            didFail: () => false,
+        });
 
-        (engine as any).startPeriodicSync(1);
-        engine.stop();
+        scheduler.start(1);
+        scheduler.stop();
 
         await vi.advanceTimersByTimeAsync(10 * 60_000);
-        expect(perform).not.toHaveBeenCalled();
+        expect(tick).not.toHaveBeenCalled();
+    });
+
+    it('skips a tick and stops rescheduling while shouldRun is false', async () => {
+        vi.useFakeTimers();
+        const tick = vi.fn(async () => {});
+        const scheduler = new SyncScheduler({
+            logger: silentLogger,
+            maxBackoffMs,
+            tick,
+            didFail: () => false,
+            shouldRun: () => false,
+        });
+
+        scheduler.start(1);
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(tick).not.toHaveBeenCalled();
+
+        // A disabled tick must not schedule a successor, so later time never fires it.
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+        expect(tick).not.toHaveBeenCalled();
+
+        scheduler.stop();
     });
 });
 
@@ -703,6 +740,104 @@ describe('SyncEngine performSync (real git)', () => {
     });
 });
 
+// ── SyncEngine inbound deletion mirror (two machines, one remote) ─────────────
+
+/**
+ * Two engines on separate data dirs share one bare remote — machine A and
+ * machine B holding the same workspace. This pins the resurrection regression:
+ * a note A deletes must not survive on B and get re-pushed on B's next tick.
+ */
+describe('SyncEngine inbound deletion (two machines, real git)', () => {
+    let tmpDir: string;
+    let remoteDir: string;
+    let engineA: SyncEngine;
+    let engineB: SyncEngine;
+    let gitEnvSnapshot: GitEnvSnapshot | undefined;
+
+    const silentLogger = { info: () => {}, warn: () => {}, error: () => {} };
+    const notesA = () => path.join(tmpDir, 'a', 'repos', 'my_work', 'notes');
+    const notesB = () => path.join(tmpDir, 'b', 'repos', 'my_work', 'notes');
+    const remoteUrl = () => remoteDir.replace(/\\/g, '/');
+
+    function git(args: string[], cwd: string): string {
+        return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+    }
+    function remoteTree(): string[] {
+        return git(['ls-tree', '-r', '--name-only', 'HEAD'], remoteDir)
+            .split('\n').map(s => s.trim()).filter(f => f && f !== '.lock').sort();
+    }
+    function writeNote(base: string, rel: string, content: string): void {
+        const p = path.join(base, rel);
+        fs.mkdirSync(path.dirname(p), { recursive: true });
+        fs.writeFileSync(p, content);
+    }
+
+    beforeEach(() => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-sync-2m-'));
+        gitEnvSnapshot = installIsolatedGitConfig(writeTestGitConfig(tmpDir));
+        remoteDir = path.join(tmpDir, 'remote.git');
+        execFileSync('git', ['init', '--bare', remoteDir], { stdio: 'ignore' });
+        engineA = new SyncEngine({ dataDir: path.join(tmpDir, 'a'), workspaceId: 'my_work', logger: silentLogger });
+        engineB = new SyncEngine({ dataDir: path.join(tmpDir, 'b'), workspaceId: 'my_work', logger: silentLogger });
+    });
+
+    afterEach(() => {
+        engineA?.stop();
+        engineB?.stop();
+        restoreGitConfigEnv(gitEnvSnapshot);
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('a top-level note A deletes is removed on B and never re-pushed', async () => {
+        // A creates two notes and pushes; B clones them down.
+        writeNote(notesA(), 'a.md', '# A\n');
+        writeNote(notesA(), 'b.md', '# B\n');
+        await engineA.triggerSync(remoteUrl());
+        // B's first tick clones + copies down (no baseline yet); its second is a
+        // no-op reconcile that writes the baseline, so a later inbound deletion
+        // runs the steady-state mirror path instead of the union merge.
+        await engineB.triggerSync(remoteUrl());
+        await engineB.triggerSync(remoteUrl());
+        expect(await readReconcileMarker(path.join(tmpDir, 'b', 'sync', 'my-work'))).not.toBeNull();
+        expect(fs.existsSync(path.join(notesB(), 'b.md'))).toBe(true);
+
+        // A deletes b.md and pushes the deletion.
+        fs.unlinkSync(path.join(notesA(), 'b.md'));
+        await engineA.triggerSync(remoteUrl());
+        expect(remoteTree()).toEqual(['a.md']);
+
+        // B pulls: the inbound mirror must delete b.md from B's local notes.
+        await engineB.triggerSync(remoteUrl());
+        expect(fs.existsSync(path.join(notesB(), 'b.md'))).toBe(false);
+
+        // B's next tick must NOT resurrect b.md by re-pushing its stale local copy.
+        await engineB.triggerSync(remoteUrl());
+        expect(remoteTree()).toEqual(['a.md']);
+        expect(fs.existsSync(path.join(notesB(), 'b.md'))).toBe(false);
+    });
+
+    it('a whole top-level folder A deletes is removed on B and never re-pushed', async () => {
+        writeNote(notesA(), 'keep.md', '# keep\n');
+        writeNote(notesA(), 'folder/note.md', '# nested\n');
+        await engineA.triggerSync(remoteUrl());
+        // Two ticks so B holds a baseline (see the top-level-note test above).
+        await engineB.triggerSync(remoteUrl());
+        await engineB.triggerSync(remoteUrl());
+        expect(fs.existsSync(path.join(notesB(), 'folder', 'note.md'))).toBe(true);
+
+        fs.rmSync(path.join(notesA(), 'folder'), { recursive: true, force: true });
+        await engineA.triggerSync(remoteUrl());
+        expect(remoteTree()).toEqual(['keep.md']);
+
+        await engineB.triggerSync(remoteUrl());
+        expect(fs.existsSync(path.join(notesB(), 'folder'))).toBe(false);
+
+        await engineB.triggerSync(remoteUrl());
+        expect(remoteTree()).toEqual(['keep.md']);
+        expect(fs.existsSync(path.join(notesB(), 'folder'))).toBe(false);
+    });
+});
+
 // ── backupTagStamp ───────────────────────────────────────────────────────────
 
 describe('backupTagStamp', () => {
@@ -784,8 +919,8 @@ describe('SyncEngine reconcile (real git)', () => {
     }
 
     async function runReconcile(): Promise<ReconcileResult> {
-        await (engine as any).ensureSyncRepo(remoteUrl());
-        return (engine as any).reconcile();
+        await (engine as any).transaction.ensureSyncRepo(remoteUrl());
+        return (engine as any).transaction.reconcile();
     }
 
     beforeEach(() => {
@@ -907,13 +1042,13 @@ describe('SyncEngine reconcile (real git)', () => {
     it('leaves no marker when the push fails, so the next tick retries', async () => {
         writeNote('a.md', '# A\n');
         const preMergeHead = seedRemote({ 'd.md': '# D\n' });
-        await (engine as any).ensureSyncRepo(remoteUrl());
+        await (engine as any).transaction.ensureSyncRepo(remoteUrl());
         // Let the merge succeed and reject only the push, so this pins the
         // marker-after-push ordering rather than an early bail-out.
         const hook = path.join(remoteDir, 'hooks', 'pre-receive');
         fs.writeFileSync(hook, '#!/bin/sh\nexit 1\n', { mode: 0o755 });
 
-        await expect((engine as any).reconcile()).rejects.toThrow(/pre-receive|push|remote rejected/i);
+        await expect((engine as any).transaction.reconcile()).rejects.toThrow(/pre-receive|push|remote rejected/i);
 
         // The merge itself completed — the local tree holds the merged note — so
         // this pins the push→marker ordering rather than an early bail-out.
@@ -927,7 +1062,7 @@ describe('SyncEngine reconcile (real git)', () => {
     it('gets the backup tag onto the remote before the branch push, and writes no marker if that push fails', async () => {
         writeNote('a.md', '# A\n');
         const preMergeHead = seedRemote({ 'd.md': '# D\n' });
-        await (engine as any).ensureSyncRepo(remoteUrl());
+        await (engine as any).transaction.ensureSyncRepo(remoteUrl());
         // Accept the tag, reject the branch: the exact window where a half-done
         // reconcile must still be undoable and must not retire itself.
         const hook = path.join(remoteDir, 'hooks', 'pre-receive');
@@ -940,7 +1075,7 @@ describe('SyncEngine reconcile (real git)', () => {
             '',
         ].join('\n'), { mode: 0o755 });
 
-        await expect((engine as any).reconcile()).rejects.toThrow();
+        await expect((engine as any).transaction.reconcile()).rejects.toThrow();
 
         // The backup landed first, so the pre-merge state is still recoverable
         // from the remote even though the merge never completed.
@@ -965,7 +1100,7 @@ describe('SyncEngine reconcile (real git)', () => {
         git(['add', '-A'], syncRepoDir());
         git(['commit', '-m', 'unrelated local history'], syncRepoDir());
 
-        const result = await (engine as any).reconcile() as ReconcileResult;
+        const result = await (engine as any).transaction.reconcile() as ReconcileResult;
 
         expect(remoteFiles()).toEqual(['a.md', 'd.md', 'e.md']);
         expect(result.plan.counts.keptFromRemote).toBe(2);
@@ -1035,7 +1170,7 @@ describe('SyncEngine reconcile (real git)', () => {
         // Idempotent: a reconcile that died before writing its marker re-runs
         // safely, because the union merge decides the same thing twice.
         fs.rmSync(path.join(syncRepoDir(), '.git', 'coc-reconciled.json'));
-        const second = await (engine as any).reconcile() as ReconcileResult;
+        const second = await (engine as any).transaction.reconcile() as ReconcileResult;
 
         expect(git(['rev-parse', 'HEAD'], remoteDir)).toBe(headAfterFirst);
         expect(second.backupTag).toBeNull();
@@ -1047,12 +1182,12 @@ describe('SyncEngine reconcile (real git)', () => {
     it('keeps the sync lock out of the merged commit', async () => {
         writeNote('a.md', '# A\n');
         seedRemote({ 'd.md': '# D\n' });
-        await (engine as any).ensureSyncRepo(remoteUrl());
+        await (engine as any).transaction.ensureSyncRepo(remoteUrl());
         // performSync holds this lock for the whole phase, so it sits in the
         // working tree while the merged tree is staged.
         fs.writeFileSync(path.join(syncRepoDir(), '.lock'), String(process.pid));
 
-        await (engine as any).reconcile();
+        await (engine as any).transaction.reconcile();
 
         expect(remoteFiles()).toEqual(['a.md', 'd.md']);
     });
@@ -1280,7 +1415,7 @@ describe('SyncEngine reconcile (real git)', () => {
     it('stops reporting reconcile in progress when the merge fails', async () => {
         writeNote('a.md', '# A\n');
         seedRemote({ 'd.md': '# D\n' });
-        vi.spyOn(engine as any, 'reconcile').mockRejectedValue(new Error('merge exploded'));
+        vi.spyOn((engine as any).transaction, 'reconcile').mockRejectedValue(new Error('merge exploded'));
 
         const status = await engine.triggerSync(remoteUrl());
 
@@ -1430,7 +1565,7 @@ describe('SyncEngine — unusable sync repo is rebuilt (real git)', () => {
         await engine.triggerSync(remoteUrl());
         breakMirrorRef();
 
-        await (engine as any).ensureSyncRepo(remoteUrl());
+        await (engine as any).transaction.ensureSyncRepo(remoteUrl());
 
         // The two commands the broken mirror failed: every ref resolves, and a
         // fetch completes its connectivity check.
@@ -1488,11 +1623,11 @@ describe('SyncEngine — unusable sync repo is rebuilt (real git)', () => {
     // called it damage (`rev-parse --verify HEAD` would) rebuilds the mirror on
     // every single tick.
     it('does not rebuild a healthy mirror, including one with an unborn HEAD', async () => {
-        await (engine as any).ensureSyncRepo(remoteUrl());
+        await (engine as any).transaction.ensureSyncRepo(remoteUrl());
         expect(cloneCount()).toBe(1);
         expect(() => git(['rev-parse', '--verify', 'HEAD'], syncRepoDir())).toThrow();
 
-        await (engine as any).ensureSyncRepo(remoteUrl());
+        await (engine as any).transaction.ensureSyncRepo(remoteUrl());
         writeNote('a.md', '# A\n');
         await engine.triggerSync(remoteUrl());
         await engine.triggerSync(remoteUrl());
@@ -1541,7 +1676,7 @@ describe('SyncEngine — unusable sync repo is rebuilt (real git)', () => {
     it('fails the tick instead of inventing a history when the remote is unreachable', async () => {
         const missingRemote = path.join(tmpDir, 'not-there.git').replace(/\\/g, '/');
 
-        await expect((engine as any).ensureSyncRepo(missingRemote)).rejects.toThrow();
+        await expect((engine as any).transaction.ensureSyncRepo(missingRemote)).rejects.toThrow();
 
         // The old fallback turned any clone failure into `git init`, leaving a
         // repo whose history the remote had never seen and could never merge.
@@ -1563,7 +1698,7 @@ describe('SyncEngine — unusable sync repo is rebuilt (real git)', () => {
         fs.mkdirSync(syncRepoDir(), { recursive: true });
         fs.writeFileSync(path.join(syncRepoDir(), 'leftover.md'), '# stray\n');
 
-        await (engine as any).ensureSyncRepo(remoteUrl());
+        await (engine as any).transaction.ensureSyncRepo(remoteUrl());
 
         expect(git(['rev-parse', 'HEAD'], syncRepoDir())).toBe(remoteHead);
         expect(fs.existsSync(path.join(syncRepoDir(), 'remote-note.md'))).toBe(true);
@@ -1791,7 +1926,7 @@ describe('SyncEngine steady-state resolution (real git)', () => {
     it('records the lossy keptRemoteFallback when resolution errors, keeping the remote copy', async () => {
         // Force the resolver to throw so the `--theirs` fallback fires — the one
         // path that drops this device's edit.
-        vi.spyOn(engine as any, 'resolveFileConflict').mockRejectedValue(new Error('boom'));
+        vi.spyOn((engine as any).resolver, 'resolveFileConflict').mockRejectedValue(new Error('boom'));
 
         const status = await driveConflict('a.md', '# A local\n', '# A remote\n');
 

@@ -141,13 +141,13 @@ export const KUSTO_LLM_TOOL_NAMES = ['kusto_query'] as const;
 /**
  * Returns the effective LLM tool registry given runtime feature flags.
  *
- * When `loops.enabled` is false, the `scheduleWakeup` tool is filtered out so
+ * When `cron.enabled` is false, the `scheduleWakeup` tool is filtered out so
  * the dashboard tool list and per-workspace settings do not advertise a tool
  * the executor will not register.
  */
-export function getEffectiveLlmToolRegistry(opts: { loopsEnabled?: boolean; canvasEnabled?: boolean; kustoEnabled?: boolean } = {}): readonly LlmToolMeta[] {
+export function getEffectiveLlmToolRegistry(opts: { cronEnabled?: boolean; canvasEnabled?: boolean; kustoEnabled?: boolean } = {}): readonly LlmToolMeta[] {
     let registry = [...LLM_TOOL_REGISTRY];
-    if (!opts.loopsEnabled) {
+    if (!opts.cronEnabled) {
         registry = registry.filter(t => t.name !== 'scheduleWakeup');
     }
     if (!opts.canvasEnabled) {

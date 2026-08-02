@@ -45,10 +45,10 @@ import { buildSpawnedTreeChatView, collectSpawnedEntryTasks, getSpawnedEntryTime
 import { SpawnedTreeRow } from './SpawnedTreeRow';
 import { isSpawnedTreeViewEnabled, loadCollapsedSpawnedRootIds, toggleCollapsedSpawnedRoot } from './spawned-tree-view-state';
 import { getGroupPinKey, isPinnedGroupEntry, mergePinnedEntries, partitionPinnedGroups, type PinnedGroupEntry, type PinnedListEntry } from './group-pinning';
-import { isRalphEnabled, isLoopsEnabled, isSessionContextAttachmentsEnabled, isForEachEnabled, isMapReduceEnabled, isCommitChatLensEnabled } from '../../utils/config';
+import { isRalphEnabled, isCronEnabled, isSessionContextAttachmentsEnabled, isForEachEnabled, isMapReduceEnabled, isCommitChatLensEnabled } from '../../utils/config';
 import { getListModeConfig } from './list-mode-config';
-import { useAllLoops, type ProcessLoopState } from './hooks/useAllLoops';
-import { LoopIcon } from './icons/LoopIcon';
+import { useAllCrons, type ProcessCronState } from './hooks/useAllCrons';
+import { CronIcon } from './icons/CronIcon';
 import { isRalphTask } from '../../../../../tasks/task-types';
 import { getProviderDotClasses, getTaskChatProvider } from './ProviderBadge';
 import { normalizeChatMode } from '../../repos/modeConfig';
@@ -121,7 +121,7 @@ const isAutomation = isAutomationTask;
  *  `scheduleId` (on `payload.scheduleId` or top-level `task.scheduleId`).
  *  Mirrors the 📅 icon check in {@link getTaskTypeIcon}. The Activity-tab
  *  "Scheduled" scope (internal id `'loops'`) groups these runs together with
- *  chats that have an attached `/loop`. */
+ *  chats that have an attached `/cron`. */
 export function isScheduledTask(task: any): boolean {
     return Boolean(task?.payload?.scheduleId || task?.scheduleId);
 }
@@ -131,19 +131,19 @@ export function isScheduledTask(task: any): boolean {
  *  though its visible label is now "Scheduled". */
 export type ActivityScope = 'chat' | 'auto' | 'loops' | 'all';
 
-/** Pure membership test for the Activity scope segmented control. `hasLoop`
- *  indicates the task's process has an active/paused `/loop` attached.
+/** Pure membership test for the Activity scope segmented control. `hasCron`
+ *  indicates the task's process has an active/paused `/cron` attached.
  *  - `chat` → chat tasks that are NOT scheduled runs
  *  - `auto` → automations that are NOT scheduled runs
- *  - `loops` (labelled "Scheduled") → scheduled runs OR chats with a `/loop`
+ *  - `loops` (labelled "Scheduled") → scheduled runs OR chats with a `/cron`
  *  - `all` → everything (true superset, still includes scheduled runs)
  *  Extracted as a pure helper so scope membership is unit-testable without
  *  rendering the component. */
-export function taskInScope(scope: ActivityScope, task: any, hasLoop: boolean): boolean {
+export function taskInScope(scope: ActivityScope, task: any, hasCron: boolean): boolean {
     if (scope === 'all') return true;
     if (scope === 'chat') return isChatTask(task) && !isScheduledTask(task);
     if (scope === 'auto') return isAutomationTask(task) && !isScheduledTask(task);
-    if (scope === 'loops') return isScheduledTask(task) || hasLoop;
+    if (scope === 'loops') return isScheduledTask(task) || hasCron;
     return true;
 }
 
@@ -1047,9 +1047,9 @@ export function ChatListPane({
      */
     const excludedTypes = useMemo(() => new Set(appState.myWorkExcludedTypes), [appState.myWorkExcludedTypes]);
 
-    // Fetch all loops server-wide for inline indicators and the "Loops" scope tab.
-    const { loopStateByProcess, processIdsWithLoops, loopProcessCount } = useAllLoops();
-    const loopsEnabled = isLoopsEnabled();
+    // Fetch all crons server-wide for inline indicators and the "Scheduled" scope tab.
+    const { cronStateByProcess, processIdsWithCrons, cronProcessCount } = useAllCrons();
+    const cronEnabled = isCronEnabled();
     const sessionContextDragEnabled = isSessionContextAttachmentsEnabled();
 
     // AC-01: the desktop "+ New chat" button is a drop target for session-context
@@ -1111,7 +1111,7 @@ export function ChatListPane({
      * Activity-tab scope segmented control: filters by task source.
      *   - 'chat'  → chat tasks that are not scheduled runs
      *   - 'auto'  → automations (run-script / run-workflow) that are not scheduled runs
-     *   - 'loops' → "Scheduled" scope: scheduled-job runs ∪ chats with a `/loop`
+     *   - 'loops' → "Scheduled" scope: scheduled-job runs ∪ chats with a `/cron`
      *               (id kept as 'loops' for the persisted value + test ids)
      *   - 'all'   → no source filter
      * Persisted in localStorage so the user's choice survives reloads.
@@ -1355,9 +1355,9 @@ export function ChatListPane({
      *  Chats and Tasks branches keep their existing per-tab filters intact. */
     const passesScope = useCallback((task: any): boolean => {
         if (activeTab === 'chats' || activeTab === 'tasks') return true;
-        const hasLoop = processIdsWithLoops.has(task.id) || processIdsWithLoops.has(task.processId);
-        return taskInScope(activeScope, task, hasLoop);
-    }, [activeTab, activeScope, processIdsWithLoops]);
+        const hasCron = processIdsWithCrons.has(task.id) || processIdsWithCrons.has(task.processId);
+        return taskInScope(activeScope, task, hasCron);
+    }, [activeTab, activeScope, processIdsWithCrons]);
 
     const tabFilteredRunning = useMemo(() => {
         if (activeTab === 'chats') return filteredRunning.filter(isChat);
@@ -1552,16 +1552,16 @@ export function ChatListPane({
             else if (isAutomation(t)) auto++;
         }
         // "Scheduled" scope (internal id `loops`) = scheduled runs ∪ chats with a
-        // `/loop`. A task that is BOTH is counted once via the single guard.
+        // `/cron`. A task that is BOTH is counted once via the single guard.
         let loops = 0;
         let hasScheduledRuns = false;
         for (const t of allRaw) {
             const scheduled = isScheduledTask(t);
             if (scheduled) hasScheduledRuns = true;
-            if (scheduled || processIdsWithLoops.has(t.id) || processIdsWithLoops.has(t.processId)) loops++;
+            if (scheduled || processIdsWithCrons.has(t.id) || processIdsWithCrons.has(t.processId)) loops++;
         }
         return { chat, auto, loops, all: all.length + forEachRunGroups.length + mapReduceRunGroups.length + activeSpawnedTreeGroups.length + archivedSpawnedTreeGroups.length, hasScheduledRuns };
-    }, [running, queued, history, processIdsWithLoops, groupedTaskIds, forEachRunGroups.length, mapReduceRunGroups.length, activeSpawnedTreeGroups.length, archivedSpawnedTreeGroups.length]);
+    }, [running, queued, history, processIdsWithCrons, groupedTaskIds, forEachRunGroups.length, mapReduceRunGroups.length, activeSpawnedTreeGroups.length, archivedSpawnedTreeGroups.length]);
 
     // Separate archived from non-archived history (uses tab-filtered history for proper exclusions)
     const { activeHistory, filteredArchived } = useMemo(() => {
@@ -2688,9 +2688,9 @@ export function ChatListPane({
                             ) : null;
                         })()}
                         {(() => {
-                            if (!loopsEnabled) return null;
+                            if (!cronEnabled) return null;
                             const taskProcessId = task.processId || task.id;
-                            const state = loopStateByProcess.get(task.id) ?? loopStateByProcess.get(taskProcessId);
+                            const state = cronStateByProcess.get(task.id) ?? cronStateByProcess.get(taskProcessId);
                             if (!state) return null;
                             return (
                                 <span
@@ -2700,10 +2700,10 @@ export function ChatListPane({
                                             ? 'text-[#15703a] dark:text-[#4ade80]'
                                             : 'text-[#8a5a00] dark:text-[#fbbf24]',
                                     )}
-                                    title={state === 'active' ? 'Has active loops' : 'Has paused loops'}
-                                    data-testid="loop-indicator"
+                                    title={state === 'active' ? 'Has active crons' : 'Has paused crons'}
+                                    data-testid="cron-indicator"
                                 >
-                                    <LoopIcon className="w-3.5 h-3.5" />
+                                    <CronIcon className="w-3.5 h-3.5" />
                                 </span>
                             );
                         })()}
@@ -2789,8 +2789,8 @@ export function ChatListPane({
         onUnarchiveChat,
         onPinChat,
         onUnpinChat,
-        loopStateByProcess,
-        loopsEnabled,
+        cronStateByProcess,
+        cronEnabled,
         sessionContextDragEnabled,
         onSelectTask,
         historyLongPress,
@@ -3647,15 +3647,15 @@ export function ChatListPane({
                 {/* Scope segmented control — Chats / [Scheduled] / Automations / All.
                     Only rendered in the Activity branch (`!activeTab`); Chats and
                     Tasks tabs already have their own narrow scope. The "Scheduled"
-                    segment (internal id `loops`) is shown when loops are enabled OR
+                    segment (internal id `loops`) is shown when crons are enabled OR
                     any scheduled-job run exists, so it appears whenever it has
-                    content even if the loops feature flag is off. Inner spans use
+                    content even if the cron feature flag is off. Inner spans use
                     `whitespace-nowrap` and `min-w-0 truncate` on the label so narrow
                     widths show ellipsis on the longest label ("Automations")
                     instead of wrapping the count below. */}
                 {!activeTab && (
                     <div
-                        className={cn('grid gap-0 p-0.5 bg-[#f5f5f5] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#474749] rounded-md', (loopsEnabled || scopeCounts.hasScheduledRuns) ? 'grid-cols-4' : 'grid-cols-3')}
+                        className={cn('grid gap-0 p-0.5 bg-[#f5f5f5] dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#474749] rounded-md', (cronEnabled || scopeCounts.hasScheduledRuns) ? 'grid-cols-4' : 'grid-cols-3')}
                         role="tablist"
                         aria-label="Activity scope"
                         data-testid="activity-scope-tabs"
@@ -3684,7 +3684,7 @@ export function ChatListPane({
                                         <path d="M2 6h10M5 1.5v2.5M9 1.5v2.5" />
                                     </svg>
                                 ),
-                                hidden: !(loopsEnabled || scopeCounts.hasScheduledRuns),
+                                hidden: !(cronEnabled || scopeCounts.hasScheduledRuns),
                             },
                             {
                                 id: 'auto' as const,

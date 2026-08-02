@@ -777,7 +777,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             // Static config — short-lived private cache (both branches below are 200s).
             setStaticConfigCacheHeaders(res);
             const liveFlags = ctx.getLiveFeatureFlags?.() ?? { excalidrawEnabled: false, canvasEnabled: false, kustoEnabled: false };
-            const effectiveRegistry = withToolParameterMetadata(getEffectiveLlmToolRegistry({ loopsEnabled: ctx.loopsEnabled, canvasEnabled: liveFlags.canvasEnabled, kustoEnabled: liveFlags.kustoEnabled }));
+            const effectiveRegistry = withToolParameterMetadata(getEffectiveLlmToolRegistry({ cronEnabled: ctx.cronEnabled, canvasEnabled: liveFlags.canvasEnabled, kustoEnabled: liveFlags.kustoEnabled }));
             const conversationRetrievalAvailable = typeof ctx.store.searchConversations === 'function';
             if (!ctx.dataDir) {
                 sendJSON(res, 200, {
@@ -824,7 +824,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             writeRepoPreferences(ctx.dataDir, ws.id, merged);
             const globalPrefs = readGlobalPreferences(ctx.dataDir);
             sendJSON(res, 200, {
-                tools: withToolParameterMetadata(getEffectiveLlmToolRegistry({ loopsEnabled: ctx.loopsEnabled, canvasEnabled: ctx.getLiveFeatureFlags?.()?.canvasEnabled ?? false, kustoEnabled: ctx.getLiveFeatureFlags?.()?.kustoEnabled ?? false })),
+                tools: withToolParameterMetadata(getEffectiveLlmToolRegistry({ cronEnabled: ctx.cronEnabled, canvasEnabled: ctx.getLiveFeatureFlags?.()?.canvasEnabled ?? false, kustoEnabled: ctx.getLiveFeatureFlags?.()?.kustoEnabled ?? false })),
                 disabledLlmTools: merged.disabledLlmTools ?? getEffectiveDefaultDisabledTools(globalPrefs.uiLayoutMode),
                 conversationRetrievalAvailable: typeof ctx.store.searchConversations === 'function',
             });

@@ -352,7 +352,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             // (atomically with the status: 'running' update) so the executor
             // only needs to handle the AI call and assistant turn.
             //
-            // Exception: loop/wakeup-triggered follow-ups have no POST /message
+            // Exception: cron/wakeup-triggered follow-ups have no POST /message
             // route — the user turn must be created here.
             if (turnSource) {
                 await this.store.appendConversationTurn(
@@ -369,7 +369,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 );
             }
 
-            const loopDeps = this.buildLoopToolDeps(processId);
+            const cronDeps = this.buildCronToolDeps(processId);
             chatCtx = await buildChatTurnContext({
                 dataDir: this.dataDir,
                 store: this.store,
@@ -380,8 +380,8 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 enqueueChat: this.getEnqueueChat?.(),
                 sendMessage: this.getSendMessage?.(),
                 sendToConversationRuntime: this.getSendToConversationRuntime?.(),
-                scheduleWakeup: loopDeps.scheduleWakeup,
-                loopTools: loopDeps.loopTools,
+                scheduleWakeup: cronDeps.scheduleWakeup,
+                cronTools: cronDeps.cronTools,
                 askUser: {
                     enabled: currentMode === 'ask' && this.askUser.enabled,
                     deps: {

@@ -73,7 +73,7 @@ export class RalphExecutor extends ChatBaseExecutor {
             : this.resolveContextPath(payload.workspaceId, ralphCtx?.sessionId);
 
         const processId = toQueueProcessId(task.id);
-        const loopDeps = this.buildLoopToolDeps(processId);
+        const cronDeps = this.buildCronToolDeps(processId);
 
         const ctx = await buildChatTurnContext({
             dataDir: this.dataDir,
@@ -85,8 +85,8 @@ export class RalphExecutor extends ChatBaseExecutor {
             enqueueChat: this.getEnqueueChat?.(),
             sendMessage: this.getSendMessage?.(),
             sendToConversationRuntime: this.getSendToConversationRuntime?.(),
-            scheduleWakeup: loopDeps.scheduleWakeup,
-            loopTools: loopDeps.loopTools,
+            scheduleWakeup: cronDeps.scheduleWakeup,
+            cronTools: cronDeps.cronTools,
         });
 
         // System message carries only generic, non-Ralph blocks. All Ralph

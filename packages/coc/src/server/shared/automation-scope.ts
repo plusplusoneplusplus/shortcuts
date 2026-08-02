@@ -1,8 +1,8 @@
 /**
  * Automation Route Ownership Contract
  *
- * Loops and triggers are advertised as workspace-scoped REST surfaces
- * (`/api/workspaces/:id/loops`, `/api/workspaces/:id/triggers`), but their
+ * Crons and triggers are advertised as workspace-scoped REST surfaces
+ * (`/api/workspaces/:id/crons`, `/api/workspaces/:id/triggers`), but their
  * records are keyed by a globally unique ID. Item-level routes must therefore
  * verify that a record actually belongs to the route workspace before reading
  * or mutating it — otherwise a known/stale ID can cross the multi-repo boundary.
@@ -16,7 +16,7 @@
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 
 /** Entity kinds guarded by the automation workspace boundary. */
-export type AutomationEntity = 'loop' | 'trigger';
+export type AutomationEntity = 'cron' | 'trigger';
 
 /**
  * Log a structured warning when an automation record is requested through a

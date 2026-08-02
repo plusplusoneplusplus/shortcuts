@@ -635,19 +635,19 @@ timeout: 300
             expect(result.store.backend).toBe('sqlite');
         });
 
-        it('should default loops.enabled to true', () => {
+        it('should default cron.enabled to true', () => {
             const result = mergeConfig(DEFAULT_CONFIG, {});
-            expect(result.loops.enabled).toBe(true);
+            expect(result.cron.enabled).toBe(true);
         });
 
-        it('should preserve loops.enabled default when not overridden', () => {
+        it('should preserve cron.enabled default when not overridden', () => {
             const result = mergeConfig(DEFAULT_CONFIG, { model: 'x' });
-            expect(result.loops.enabled).toBe(true);
+            expect(result.cron.enabled).toBe(true);
         });
 
-        it('should override loops.enabled from file', () => {
-            const result = mergeConfig(DEFAULT_CONFIG, { loops: { enabled: true } });
-            expect(result.loops.enabled).toBe(true);
+        it('should override cron.enabled from file', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { cron: { enabled: true } });
+            expect(result.cron.enabled).toBe(true);
         });
 
         it('should default triggers.enabled to true', () => {
@@ -1019,7 +1019,7 @@ timeout: 300
                 '  enabled: true',
                 'vimNavigation:',
                 '  enabled: true',
-                'loops:',
+                'cron:',
                 '  enabled: true',
                 'dreams:',
                 '  enabled: true',
@@ -1188,7 +1188,7 @@ timeout: 300
                 '  enabled: true',
                 'vimNavigation:',
                 '  enabled: true',
-                'loops:',
+                'cron:',
                 '  enabled: true',
                 'features:',
                 '  autoMemoryPromotion: true',
@@ -1281,6 +1281,9 @@ timeout: 300
                   "containerDefaultAgent": {
                     "enabled": false,
                   },
+                  "cron": {
+                    "enabled": true,
+                  },
                   "defaultProvider": "copilot",
                   "dreams": {
                     "confidenceThreshold": 0.85,
@@ -1333,9 +1336,6 @@ timeout: 300
                         "level": "info",
                       },
                     },
-                  },
-                  "loops": {
-                    "enabled": true,
                   },
                   "mapReduce": {
                     "enabled": true,
@@ -1473,6 +1473,7 @@ timeout: 300
                   "claude.enabled": "default",
                   "codex.enabled": "default",
                   "containerDefaultAgent.enabled": "default",
+                  "cron.enabled": "file",
                   "defaultProvider": "default",
                   "dreams.confidenceThreshold": "default",
                   "dreams.conversationLimit": "default",
@@ -1504,7 +1505,6 @@ timeout: 300
                   "forEach.enabled": "file",
                   "groupSingleLineMessages": "file",
                   "kusto.enabled": "default",
-                  "loops.enabled": "file",
                   "mapReduce.enabled": "file",
                   "mcpConfig": "file",
                   "mcpOauth.autoRefresh.enabled": "default",
@@ -1602,7 +1602,7 @@ timeout: 300
             expect(defaults['terminal.enabled']).toBe(DEFAULT_CONFIG.terminal.enabled);
             expect(defaults['workflows.enabled']).toBe(DEFAULT_CONFIG.workflows.enabled);
             expect(defaults['excalidraw.enabled']).toBe(DEFAULT_CONFIG.excalidraw.enabled);
-            expect(defaults['loops.enabled']).toBe(DEFAULT_CONFIG.loops.enabled);
+            expect(defaults['cron.enabled']).toBe(DEFAULT_CONFIG.cron.enabled);
             expect(defaults['dreams.enabled']).toBe(DEFAULT_CONFIG.dreams.enabled);
             expect(defaults['dreams.provider']).toBe(DEFAULT_CONFIG.dreams.provider);
             expect(defaults['dreams.model']).toBe(DEFAULT_CONFIG.dreams.model);

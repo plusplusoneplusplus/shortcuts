@@ -30,7 +30,7 @@ export { WorkItemsClient } from './work-items';
 export { WorkspacesClient } from './workspaces';
 export { WorkflowClient } from './workflows';
 export { WikiClient } from './wiki';
-export { LoopsClient } from './loops';
+export { CronsClient } from './cron';
 export { TriggersClient } from './triggers';
 export { MapReduceClient } from './map-reduce';
 export { MyWorkClient } from './my-work';

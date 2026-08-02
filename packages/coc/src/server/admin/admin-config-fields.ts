@@ -19,7 +19,7 @@ import {
 export type { AdminConfigFieldRuntime };
 
 export interface AdminConfigFieldSpec {
-    /** Flat key used in the PUT /api/admin/config request body, e.g. 'loops.enabled' */
+    /** Flat key used in the PUT /api/admin/config request body, e.g. 'cron.enabled' */
     key: string;
     /** Runtime behavior: 'live' (immediate), 'reloadable', or 'restartRequired' */
     runtime: AdminConfigFieldRuntime;

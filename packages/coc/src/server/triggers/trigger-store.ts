@@ -2,7 +2,7 @@
  * Trigger Store — SQLite Persistence
  *
  * CRUD operations for `Trigger` records in the shared `processes.db`.
- * Follows the same pattern as `LoopStore`: receives a shared Database handle,
+ * Follows the same pattern as `CronStore`: receives a shared Database handle,
  * uses prepared statements, and self-creates its table (`ensureTable`) so it
  * works even when the schema migration has not been applied (e.g. in-memory
  * test databases).

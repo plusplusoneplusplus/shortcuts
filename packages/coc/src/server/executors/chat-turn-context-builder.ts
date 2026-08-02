@@ -19,7 +19,7 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
-import type { WakeupToolDeps, LoopToolDeps } from '../llm-tools/loop-tools';
+import type { WakeupToolDeps, CronToolDeps } from '../llm-tools/cron-tools';
 import type { MemoryV2Addon } from './memory-v2-addon';
 import { buildMemoryV2Addon } from './memory-v2-addon';
 import { buildChatToolBundle } from './chat-tool-builder';
@@ -55,7 +55,7 @@ export interface ChatTurnContextInput {
     /** Runtime provider/tier helpers used by send_to_conversation. */
     sendToConversationRuntime?: SendToConversationRuntimeOptions;
     scheduleWakeup?: WakeupToolDeps;
-    loopTools?: LoopToolDeps;
+    cronTools?: CronToolDeps;
     askUser?: {
         enabled: boolean;
         deps: AskUserToolDeps;
@@ -111,7 +111,7 @@ const EMPTY_MEM_V2: MemoryV2Addon = Object.freeze({
  * Assemble the common chat-turn capability context for any executor path.
  *
  * This is the single source-of-truth for wiring Memory V2 tools, Memory V2
- * prompt context, SDK built-in exclusions, ask-user handles, and loop/work-item
+ * prompt context, SDK built-in exclusions, ask-user handles, and cron/work-item
  * tools into one cohesive object. Callers pass the returned `ChatTurnContext`
  * into their system message builder and `sendMessage` options rather than
  * assembling these artifacts individually.
@@ -125,8 +125,8 @@ const EMPTY_MEM_V2: MemoryV2Addon = Object.freeze({
  *     processId,
  *     query: prompt,
  *     followUpSuggestions: this.followUpSuggestions,
- *     scheduleWakeup: loopDeps.scheduleWakeup,
- *     loopTools: loopDeps.loopTools,
+ *     scheduleWakeup: cronDeps.scheduleWakeup,
+ *     cronTools: cronDeps.cronTools,
  * });
  *
  * try {
@@ -165,7 +165,7 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         sendToConversationRuntime: input.sendToConversationRuntime,
         memoryV2: includeMemoryV2 ? memoryV2 : undefined,
         scheduleWakeup: input.scheduleWakeup,
-        loopTools: input.loopTools,
+        cronTools: input.cronTools,
         askUser: input.askUser,
         excludeTools: input.excludeTools,
     });

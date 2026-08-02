@@ -7,7 +7,7 @@
 
 import { useState, useCallback, useRef, useMemo } from 'react';
 import { parseSlashCommands, getSlashCommandContext, getActiveMetaCommands, type ParsedSlashCommands } from '../slash-command-parser';
-import { isLoopsEnabled } from '../../../utils/config';
+import { isCronEnabled } from '../../../utils/config';
 import { orderSkillItems, type SkillItem } from '../SlashCommandMenu';
 import type { RichTextInputHandle } from '../../../shared/RichTextInput';
 
@@ -31,7 +31,7 @@ export interface UseSlashCommandsResult {
     parseAndExtract: (text: string) => ParsedSlashCommands;
     /** Dismiss the menu */
     dismissMenu: () => void;
-    /** Ghost text hint shown after a meta-command with no argument yet (e.g. "[interval] <prompt>" after /loop) */
+    /** Ghost text hint shown after a meta-command with no argument yet (e.g. "[interval] <prompt>" after /cron) */
     activeCommandHint: string | null;
 }
 
@@ -51,8 +51,8 @@ export function useSlashCommands(skills: SkillItem[]): UseSlashCommandsResult {
         : [];
 
     const activeCommandHint = useMemo((): string | null => {
-        if (!/\/loop(\s*)$/.test(currentText)) return null;
-        return skills.find(s => s.name === 'loop')?.args ?? null;
+        if (!/\/cron(\s*)$/.test(currentText)) return null;
+        return skills.find(s => s.name === 'cron')?.args ?? null;
     }, [currentText, skills]);
 
     const handleInputChange = useCallback((text: string, cursorPos: number) => {
@@ -127,12 +127,12 @@ export function useSlashCommands(skills: SkillItem[]): UseSlashCommandsResult {
     }, []);
 
     const parseAndExtract = useCallback((text: string) => {
-        const loopsEnabled = isLoopsEnabled();
-        const activeMeta = getActiveMetaCommands(loopsEnabled);
+        const cronEnabled = isCronEnabled();
+        const activeMeta = getActiveMetaCommands(cronEnabled);
         const result = parseSlashCommands(text, skillNames, activeMeta);
-        // /loop meta-command activates the 'loop' bundled skill (when loops feature is enabled)
-        if (loopsEnabled && result.metaCommands.includes('loop') && !result.skills.includes('loop')) {
-            result.skills.push('loop');
+        // /cron meta-command activates the 'cron' bundled skill (when cron feature is enabled)
+        if (cronEnabled && result.metaCommands.includes('cron') && !result.skills.includes('cron')) {
+            result.skills.push('cron');
         }
         return result;
     }, [skillNames]);

@@ -3,7 +3,7 @@
  *
  * SQLite-backed persistence for container sessions. Stores session metadata
  * and turns with per-turn routing decisions. Uses an in-process SQLite
- * database (same pattern as LoopStore).
+ * database (same pattern as CronStore).
  */
 
 import type Database from 'better-sqlite3';

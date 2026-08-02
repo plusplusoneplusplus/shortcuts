@@ -68,7 +68,8 @@ interface WorkflowSettings {
 ## Features
 
 - **Concurrency control:** `ConcurrencyLimiter` enforces max parallel node execution
-- **Cancellation:** `AbortSignal` checked before/after node and AI invocations
+- **AI invocation kernel:** `workflow/nodes/ai-invocation-kernel.ts` (`invokeWorkflowAI`) owns the shared AI-call lifecycle for every AI-capable node (map, ai, reduce, ai-filter, ai-load): missing-`aiInvoker` preflight guard, provider-option resolution (`model`/`timeoutMs` with node override, `workingDirectory ?? workflowDirectory`, `signal`), cancellation guards, error normalization, and opt-in `processTracker`/`onItemProcess` reporting. Node executors are thin adapters that build prompts and map the normalized result into their own output shapes (map/ai/reduce annotate `__error`, ai-filter excludes conservatively, ai-load throws).
+- **Cancellation:** `AbortSignal` checked before/after node and AI invocations (centralized in the invocation kernel for AI nodes)
 - **Skill resolution:** Per-node `skill`/`skills` field for single or multi-skill prompt injection
 - **Parameters:** Template substitution via `parameters` map
 - **Progress events:** Structured `WorkflowProgressEvent` and per-item `WorkflowItemProcessEvent`

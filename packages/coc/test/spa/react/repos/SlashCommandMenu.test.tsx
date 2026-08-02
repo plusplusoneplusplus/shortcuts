@@ -193,7 +193,7 @@ describe('SlashCommandMenu (redesigned card)', () => {
 
     it('renders args as a dim monospace hint when provided', () => {
         const skillsWithArgs = [
-            { name: 'loop', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
+            { name: 'cron', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
             { name: 'model', description: 'Switch AI model' },
         ];
         render(
@@ -226,14 +226,14 @@ describe('SlashCommandMenu (redesigned card)', () => {
         expect(row?.textContent).not.toContain('[');
     });
 
-    it('META_SKILL_ITEMS includes model and loop with correct shape', () => {
+    it('META_SKILL_ITEMS includes model and cron with correct shape', () => {
         const model = META_SKILL_ITEMS.find(s => s.name === 'model');
-        const loop = META_SKILL_ITEMS.find(s => s.name === 'loop');
+        const cron = META_SKILL_ITEMS.find(s => s.name === 'cron');
         expect(model).toBeDefined();
         expect(model?.description).toBeTruthy();
-        expect(loop).toBeDefined();
-        expect(loop?.description).toBeTruthy();
-        expect(loop?.args).toBe('[interval] <prompt>');
+        expect(cron).toBeDefined();
+        expect(cron?.description).toBeTruthy();
+        expect(cron?.args).toBe('[interval] <prompt>');
     });
 
     it('META_SKILL_ITEMS includes compact with description and [instructions] args', () => {
@@ -245,19 +245,19 @@ describe('SlashCommandMenu (redesigned card)', () => {
 });
 
 describe('getMetaSkillItems', () => {
-    it('includes loop when loops are enabled', () => {
+    it('includes cron when crons are enabled', () => {
         const items = getMetaSkillItems(true);
-        expect(items.find(s => s.name === 'loop')).toBeDefined();
+        expect(items.find(s => s.name === 'cron')).toBeDefined();
         expect(items.find(s => s.name === 'model')).toBeDefined();
     });
 
-    it('excludes loop when loops are disabled', () => {
+    it('excludes cron when crons are disabled', () => {
         const items = getMetaSkillItems(false);
-        expect(items.find(s => s.name === 'loop')).toBeUndefined();
+        expect(items.find(s => s.name === 'cron')).toBeUndefined();
         expect(items.find(s => s.name === 'model')).toBeDefined();
     });
 
-    it('always includes compact regardless of the loops flag', () => {
+    it('always includes compact regardless of the cron flag', () => {
         expect(getMetaSkillItems(true).find(s => s.name === 'compact')).toBeDefined();
         expect(getMetaSkillItems(false).find(s => s.name === 'compact')).toBeDefined();
     });
@@ -275,54 +275,54 @@ describe('mergeSkillsWithMeta', () => {
 
     it('deduplicates when server skill has same name as meta item', () => {
         const serverSkills = [
-            { name: 'loop', description: 'Rich loop description from SKILL.md' },
+            { name: 'cron', description: 'Rich cron description from SKILL.md' },
             { name: 'impl', description: 'Implement code' },
         ];
         const meta = [
-            { name: 'loop', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
+            { name: 'cron', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
             { name: 'model', description: 'Switch AI model' },
         ];
         const merged = mergeSkillsWithMeta(serverSkills, meta);
         expect(merged).toHaveLength(3);
-        const loopEntries = merged.filter(s => s.name === 'loop');
-        expect(loopEntries).toHaveLength(1);
+        const cronEntries = merged.filter(s => s.name === 'cron');
+        expect(cronEntries).toHaveLength(1);
     });
 
     it('preserves server description but overlays meta args when server lacks args', () => {
         const serverSkills = [
-            { name: 'loop', description: 'Rich loop description from SKILL.md' },
+            { name: 'cron', description: 'Rich cron description from SKILL.md' },
         ];
         const meta = [
-            { name: 'loop', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
+            { name: 'cron', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
         ];
         const merged = mergeSkillsWithMeta(serverSkills, meta);
-        const loop = merged.find(s => s.name === 'loop')!;
-        expect(loop.description).toBe('Rich loop description from SKILL.md');
-        expect(loop.args).toBe('[interval] <prompt>');
+        const cron = merged.find(s => s.name === 'cron')!;
+        expect(cron.description).toBe('Rich cron description from SKILL.md');
+        expect(cron.args).toBe('[interval] <prompt>');
     });
 
     it('keeps server args when server skill already has args', () => {
         const serverSkills = [
-            { name: 'loop', description: 'Rich description', args: '<server-args>' },
+            { name: 'cron', description: 'Rich description', args: '<server-args>' },
         ];
         const meta = [
-            { name: 'loop', description: 'Meta description', args: '[interval] <prompt>' },
+            { name: 'cron', description: 'Meta description', args: '[interval] <prompt>' },
         ];
         const merged = mergeSkillsWithMeta(serverSkills, meta);
-        const loop = merged.find(s => s.name === 'loop')!;
-        expect(loop.args).toBe('<server-args>');
+        const cron = merged.find(s => s.name === 'cron')!;
+        expect(cron.args).toBe('<server-args>');
     });
 
-    it('uses meta item as fallback when loop is NOT in server skills', () => {
+    it('uses meta item as fallback when cron is NOT in server skills', () => {
         const serverSkills = [{ name: 'impl', description: 'Implement code' }];
         const meta = [
-            { name: 'loop', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
+            { name: 'cron', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
         ];
         const merged = mergeSkillsWithMeta(serverSkills, meta);
         expect(merged).toHaveLength(2);
-        const loop = merged.find(s => s.name === 'loop')!;
-        expect(loop.description).toBe('Run a prompt on a recurring interval');
-        expect(loop.args).toBe('[interval] <prompt>');
+        const cron = merged.find(s => s.name === 'cron')!;
+        expect(cron.description).toBe('Run a prompt on a recurring interval');
+        expect(cron.args).toBe('[interval] <prompt>');
     });
 
     it('handles empty server skills list', () => {
@@ -345,16 +345,16 @@ describe('mergeSkillsWithMeta', () => {
         expect(merged.find(s => s.name === 'model')?.kind).toBe('builtin');
     });
 
-    it('tags an overlapping server+meta name (e.g. loop) as kind "builtin"', () => {
-        const serverSkills = [{ name: 'loop', description: 'Rich loop description from SKILL.md' }];
-        const meta = [{ name: 'loop', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>', kind: 'builtin' as const }];
+    it('tags an overlapping server+meta name (e.g. cron) as kind "builtin"', () => {
+        const serverSkills = [{ name: 'cron', description: 'Rich cron description from SKILL.md' }];
+        const meta = [{ name: 'cron', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>', kind: 'builtin' as const }];
         const merged = mergeSkillsWithMeta(serverSkills, meta);
-        const loop = merged.find(s => s.name === 'loop')!;
-        expect(loop.kind).toBe('builtin');
+        const cron = merged.find(s => s.name === 'cron')!;
+        expect(cron.kind).toBe('builtin');
         // dedup + description/args semantics still hold
-        expect(merged.filter(s => s.name === 'loop')).toHaveLength(1);
-        expect(loop.description).toBe('Rich loop description from SKILL.md');
-        expect(loop.args).toBe('[interval] <prompt>');
+        expect(merged.filter(s => s.name === 'cron')).toHaveLength(1);
+        expect(cron.description).toBe('Rich cron description from SKILL.md');
+        expect(cron.args).toBe('[interval] <prompt>');
     });
 });
 
@@ -378,10 +378,10 @@ describe('orderSkillItems', () => {
             { name: 'apple', kind: 'skill' },
             { name: 'model', kind: 'builtin' },
             { name: 'banana', kind: 'skill' },
-            { name: 'loop', kind: 'builtin' },
+            { name: 'cron', kind: 'builtin' },
         ];
         const ordered = orderSkillItems(items).map(s => s.name);
-        expect(ordered).toEqual(['model', 'loop', 'apple', 'banana']);
+        expect(ordered).toEqual(['model', 'cron', 'apple', 'banana']);
     });
 
     it('is stable within each bucket (preserves relative order)', () => {

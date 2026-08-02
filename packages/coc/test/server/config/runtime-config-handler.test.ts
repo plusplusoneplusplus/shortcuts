@@ -32,7 +32,7 @@ function createMockRuntimeConfigService(overrides: Partial<ResolvedCLIConfig> = 
         ralph: { enabled: false },
         forEach: { enabled: false },
         vimNavigation: { enabled: false },
-        loops: { enabled: false },
+        cron: { enabled: false },
         excalidraw: { enabled: false },
         mcpOauth: { enabled: false },
         features: { focusedDiff: false, autoMemoryPromotion: false, gitCommitLookup: false, gitCrossCloneCherryPick: true, sessionContextAttachments: false, commitChatLens: false, ralphMultiAgentGrill: false },
@@ -74,7 +74,7 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.ralphEnabled).toBe(false);
         expect(result.features.forEachEnabled).toBe(false);
         expect(result.features.vimNavigationEnabled).toBe(false);
-        expect(result.features.loopsEnabled).toBe(false);
+        expect(result.features.cronEnabled).toBe(false);
         expect(result.features.dreamsEnabled).toBe(false);
         expect(result.features.excalidrawEnabled).toBe(false);
         expect(result.features.kustoEnabled).toBe(false);
@@ -737,13 +737,13 @@ describe('AC-08: live-classified route registration', () => {
         expect(sessionContextField!.runtime).toBe('live');
     });
 
-    it('terminal.enabled and loops.enabled are classified as restartRequired', async () => {
+    it('terminal.enabled and cron.enabled are classified as restartRequired', async () => {
         const { ADMIN_CONFIG_FIELDS } = await import('../../../src/server/admin/admin-config-fields');
         const terminalField = ADMIN_CONFIG_FIELDS.find(f => f.key === 'terminal.enabled');
-        const loopsField = ADMIN_CONFIG_FIELDS.find(f => f.key === 'loops.enabled');
+        const cronField = ADMIN_CONFIG_FIELDS.find(f => f.key === 'cron.enabled');
         expect(terminalField).toBeDefined();
         expect(terminalField!.runtime).toBe('restartRequired');
-        expect(loopsField).toBeDefined();
-        expect(loopsField!.runtime).toBe('restartRequired');
+        expect(cronField).toBeDefined();
+        expect(cronField!.runtime).toBe('restartRequired');
     });
 });

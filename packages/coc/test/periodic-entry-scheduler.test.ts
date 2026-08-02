@@ -1,7 +1,7 @@
 /**
  * Tests for the shared periodic-entry scheduling kernel.
  *
- * Covers the timer-arming lifecycle that both `LoopExecutor` and
+ * Covers the timer-arming lifecycle that both `CronExecutor` and
  * `TriggerManager` delegate to: delay calculation from `nextTickAt`, overdue
  * clamping, missing/invalid-timestamp fallback, active-only arming, disarm,
  * reschedule (advance → persist → re-arm ordering), shutdown clearing with

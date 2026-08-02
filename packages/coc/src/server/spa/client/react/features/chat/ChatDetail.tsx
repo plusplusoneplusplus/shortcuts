@@ -73,7 +73,7 @@ import { MobileScratchpadTabBar } from './scratchpad/MobileScratchpadTabBar';
 import { buildScratchpadCandidates } from './scratchpad/scratchpadCandidates';
 import { resolveLoadedTaskMode } from './chatMode';
 import { normalizeChatMode } from '../../repos/modeConfig';
-import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isLoopsEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, isCanvasEnabled, isRemoteShellEnabled } from '../../utils/config';
+import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isCronEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, isCanvasEnabled, isRemoteShellEnabled } from '../../utils/config';
 import type { ChatMode } from '../../repos/modeConfig';
 import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
@@ -88,8 +88,8 @@ import { buildImplementTargets } from './implementTargets';
 import { ForEachPlanReviewCard, type ForEachGenerationMetadata } from './ForEachPlanReviewCard';
 import { MapReducePlanReviewCard, type MapReduceGenerationMetadata } from './MapReducePlanReviewCard';
 import { getRalphContext, getStoppedChatResumeUnavailableMessage } from '../../../../../tasks/task-types';
-import { useLoops } from './hooks/useLoops';
-import { LoopManagementPanel } from './LoopManagementPanel';
+import { useCrons } from './hooks/useCrons';
+import { CronManagementPanel } from './CronManagementPanel';
 import { RenameDialog } from '../../ui/RenameDialog';
 import { ToastContainer, useToast } from '../../ui/Toast';
 import { RewindConfirmDialog } from './conversation/RewindConfirmDialog';
@@ -329,7 +329,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const lastRefreshVersionRef = useRef(queueState.refreshVersion);
     const { state: appState, dispatch: appDispatch } = useApp();
 
-    // Loop management
+    // Cron management
     const processId = task?.processId ?? (taskId
         ? (isQueueProcessId(taskId) ? taskId : toQueueProcessId(taskId))
         : null);
@@ -371,7 +371,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const useFollowUpEffortTierMode = isEffortLevelsEnabled() && followUpHasTiers;
     const pickableModels = selectPickableModels(availableModels);
     const modelCommand = useModelCommand(pickableModels);
-    const augmentedSkills = useMemo(() => mergeSkillsWithMeta(skills, getMetaSkillItems(isLoopsEnabled())), [skills]);
+    const augmentedSkills = useMemo(() => mergeSkillsWithMeta(skills, getMetaSkillItems(isCronEnabled())), [skills]);
     const slashCommands = useSlashCommands(augmentedSkills);
 
     useEffect(() => {
@@ -385,8 +385,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         }
     }, [sessionProvider, modelCommand.setModelOverride]);
 
-    const loopsHook = useLoops(workspaceId, processId);
-    const [loopPanelOpen, setLoopPanelOpen] = useState(false);
+    const cronsHook = useCrons(workspaceId, processId);
+    const [cronPanelOpen, setCronPanelOpen] = useState(false);
     const [renameOpen, setRenameOpen] = useState(false);
 
     const scratchpadEnabled = useScratchpadEnabled() && !disableScratchpad;
@@ -2403,9 +2403,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     explorerOpen={explorerOpen}
                     onFork={metadataProcess?.sdkSessionId && task?.status === 'completed' ? handleFork : undefined}
                     forking={forking}
-                    loopCount={loopsHook.manageableCount}
-                    hasActiveLoops={loopsHook.hasActiveLoops}
-                    onToggleLoopPanel={() => setLoopPanelOpen(v => !v)}
+                    cronCount={cronsHook.manageableCount}
+                    hasActiveCrons={cronsHook.hasActiveCrons}
+                    onToggleCronPanel={() => setCronPanelOpen(v => !v)}
                     onRenameTitle={processId ? () => setRenameOpen(true) : undefined}
                     onStartFreshSameContext={onStartFreshSameContext}
                     startingFreshSameContext={startingFreshSameContext}
@@ -2422,15 +2422,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         : undefined}
                 />
             )}
-            {loopPanelOpen && isLoopsEnabled() && (
+            {cronPanelOpen && isCronEnabled() && (
                 <div className="relative">
-                    <LoopManagementPanel
-                        loops={loopsHook.loops}
-                        isOpen={loopPanelOpen}
-                        onClose={() => setLoopPanelOpen(false)}
-                        onPause={loopsHook.pause}
-                        onResume={loopsHook.resume}
-                        onCancel={loopsHook.cancel}
+                    <CronManagementPanel
+                        crons={cronsHook.crons}
+                        isOpen={cronPanelOpen}
+                        onClose={() => setCronPanelOpen(false)}
+                        onPause={cronsHook.pause}
+                        onResume={cronsHook.resume}
+                        onCancel={cronsHook.cancel}
                     />
                 </div>
             )}

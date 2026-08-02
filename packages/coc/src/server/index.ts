@@ -32,13 +32,13 @@ import { ensureGlobalWorkspace, GLOBAL_WORKSPACE_ID } from './workspaces/global-
 import { ensureMyWorkWorkspace, seedMyWorkDefaultNotes } from './workspaces/my-work-workspace';
 import { ensureMyLifeWorkspace, seedMyLifeDefaultNotes } from './workspaces/my-life-workspace';
 import { createScheduleInfrastructure } from './infrastructure/schedule-infrastructure';
-import { createLoopInfrastructure } from './infrastructure/loop-infrastructure';
-import { createEnqueueWakeup } from './loops/enqueue-wakeup';
+import { createCronInfrastructure } from './infrastructure/cron-infrastructure';
+import { createEnqueueWakeup } from './cron/enqueue-wakeup';
 import { createTriggerInfrastructure } from './infrastructure/trigger-infrastructure';
 import { createCiChecksFetcher } from './triggers/ci-checks-fetcher';
 import { createCiLogFetcher } from './triggers/ci-log-fetcher';
 import { createMcpOauthInfrastructure } from './mcp-oauth';
-import type { LoopInfrastructure } from './infrastructure/loop-infrastructure';
+import type { CronInfrastructure } from './infrastructure/cron-infrastructure';
 import type { TriggerInfrastructure } from './infrastructure/trigger-infrastructure';
 import { createCleanupInfrastructure } from './infrastructure/cleanup-infrastructure';
 import { createWebSocketInfrastructure } from './infrastructure/websocket-infrastructure';
@@ -95,8 +95,8 @@ interface CloseHandlerDeps {
     terminalSessionManager?: { destroyAll(): void };
     remoteServerConnector: { dispose(): void };
     remoteServerSshConnector: { dispose(): void };
-    loopExecutor?: { shutdownAll(): void };
-    loopInfraDispose?: () => void;
+    cronExecutor?: { shutdownAll(): void };
+    cronInfraDispose?: () => void;
     triggerManager?: { shutdownAll(): void };
     triggerInfraDispose?: () => void;
     mcpOauthDispose?: () => void;
@@ -127,8 +127,8 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         wikiManager?.disposeAll();
         scheduleManager.dispose();
         deps.scheduleInfraDispose();
-        deps.loopExecutor?.shutdownAll();
-        deps.loopInfraDispose?.();
+        deps.cronExecutor?.shutdownAll();
+        deps.cronInfraDispose?.();
         deps.triggerManager?.shutdownAll();
         deps.triggerInfraDispose?.();
         deps.mcpOauthDispose?.();
@@ -198,7 +198,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     //
     //   restartRequired (infrastructure wired at startup):
     //     - terminal.enabled   → terminal pty/session manager
-    //     - loops.enabled      → loop executor, timer registry
+    //     - cron.enabled      → cron executor, timer registry
     //
     //   Live but still startup-captured in queue infrastructure (future migration):
     //     - timeout            → defaultTimeoutMs passed to queue infra
@@ -221,8 +221,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // Forward declaration — terminal infra is created after the HTTP server
     let terminalInfra: import('./infrastructure/terminal-infrastructure').TerminalInfrastructure | undefined;
 
-    // Forward declaration — loop infra is created after queue infra
-    let loopInfra: LoopInfrastructure | undefined;
+    // Forward declaration — cron infra is created after queue infra
+    let cronInfra: CronInfrastructure | undefined;
 
     // Forward declaration — trigger infra is created after queue infra
     let triggerInfra: TriggerInfrastructure | undefined;
@@ -335,11 +335,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         store, dataDir, { ...options, aiService: resolvedAiService }, defaultTimeoutMs,
         resolvedConfig.chat.followUpSuggestions, resolvedConfig.chat.askUser, () => wsServer,
         () => {
-            if (!loopInfra) return undefined;
+            if (!cronInfra) return undefined;
             return {
-                store: loopInfra.loopStore,
-                executor: loopInfra.loopExecutor,
-                emit: loopInfra.emit,
+                store: cronInfra.cronStore,
+                executor: cronInfra.cronExecutor,
+                emit: cronInfra.emit,
                 resolveWorkspaceId: async (processId: string) => {
                     try {
                         const taskId = processId.startsWith('queue_') ? processId.slice(6) : processId;
@@ -348,8 +348,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                     } catch { return undefined; }
                 },
                 enqueueWakeup: createEnqueueWakeup({
-                    store: loopInfra!.wakeupStore,
-                    executor: loopInfra!.wakeupExecutor,
+                    store: cronInfra!.wakeupStore,
+                    executor: cronInfra!.wakeupExecutor,
                 }),
             };
         },
@@ -362,7 +362,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         () => runtimeConfigService.config.chat.globalSystemPrompt,
         // Forward-reference accessor for the trigger manager so the queue bridge
         // can clear a trigger's in-flight guard when its fix turn completes.
-        // triggerInfra is created after queue infra (like loopInfra), so read it
+        // triggerInfra is created after queue infra (like cronInfra), so read it
         // lazily through this closure.
         () => triggerInfra ? { manager: triggerInfra.triggerManager } : undefined,
         // Late-bound enqueue capability for the `send_to_conversation` tool;
@@ -423,11 +423,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     const { scheduleManager, dispose: scheduleInfraDispose } = await createScheduleInfrastructure(dataDir, queueFacade, store);
 
-    const loopsEnabled = resolvedConfig.loops?.enabled ?? false;
+    const cronEnabled = resolvedConfig.cron?.enabled ?? false;
 
-    // Loop infrastructure — separate from schedules. Gated by loops.enabled feature flag (default false).
-    if (loopsEnabled) {
-        loopInfra = await createLoopInfrastructure({
+    // Cron infrastructure — separate from schedules. Gated by cron.enabled feature flag (default false).
+    if (cronEnabled) {
+        cronInfra = await createCronInfrastructure({
             dataDir,
             queueFacade,
             store,
@@ -435,10 +435,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                 try {
                     wsServer?.broadcastProcessEvent({
                         type: event.type,
-                        loopId: event.loop.id,
-                        processId: event.loop.processId,
-                        status: event.loop.status,
-                        workspaceId: event.loop.workspaceId,
+                        cronId: event.cron.id,
+                        processId: event.cron.processId,
+                        status: event.cron.status,
+                        workspaceId: event.cron.workspaceId,
                         timestamp: Date.now(),
                     });
                 } catch { /* best-effort broadcast */ }
@@ -473,7 +473,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     // Trigger infrastructure — generic event → action framework (CI auto-fix
     // monitor this iteration). Gated by triggers.enabled feature flag (default
-    // true). Mirrors the loop infra wiring; re-arms active triggers on startup.
+    // true). Mirrors the cron infra wiring; re-arms active triggers on startup.
     if (triggersEnabled) {
         triggerInfra = await createTriggerInfrastructure({
             dataDir,
@@ -538,11 +538,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     }
 
     // Auto-install default bundled skills into the global skills dir (non-blocking on errors).
-    // When loops feature is disabled, strip the `loop` skill so its prompt suffix doesn't
+    // When cron feature is disabled, strip the `cron` skill so its prompt suffix doesn't
     // leak into sessions where the underlying tools aren't wired.
-    const defaultSkillsToInstall = loopsEnabled
+    const defaultSkillsToInstall = cronEnabled
         ? resolvedConfig.skills.defaultSkills
-        : resolvedConfig.skills.defaultSkills.filter(name => name !== 'loop');
+        : resolvedConfig.skills.defaultSkills.filter(name => name !== 'cron');
     if (defaultSkillsToInstall.length > 0) {
         const globalSkillsDir = path.join(dataDir, 'skills');
         autoInstallDefaultSkills(globalSkillsDir, defaultSkillsToInstall).then(result => {
@@ -688,14 +688,14 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         remoteServerConnector,
         remoteServerSshConnector,
         getLocalBaseUrl: () => localBaseUrl,
-        loopStore: loopInfra?.loopStore,
-        loopExecutor: loopInfra?.loopExecutor,
+        cronStore: cronInfra?.cronStore,
+        cronExecutor: cronInfra?.cronExecutor,
         triggerStore: triggerInfra?.triggerStore,
         triggerManager: triggerInfra?.triggerManager,
         triggerEmit: triggerInfra?.emit,
         mcpOauthManager: mcpOauthInfra?.manager,
         resolveAiServiceForProvider,
-        loopEmit: loopInfra?.emit,
+        cronEmit: cronInfra?.emit,
         hostname: os.hostname(),
         bindAddress: host,
         syncEngines,
@@ -879,8 +879,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             terminalSessionManager: terminalInfra?.terminalSessionManager,
             remoteServerConnector,
             remoteServerSshConnector,
-            loopExecutor: loopInfra?.loopExecutor,
-            loopInfraDispose: loopInfra?.dispose,
+            cronExecutor: cronInfra?.cronExecutor,
+            cronInfraDispose: cronInfra?.dispose,
             triggerManager: triggerInfra?.triggerManager,
             triggerInfraDispose: triggerInfra?.dispose,
             mcpOauthDispose: mcpOauthInfra?.dispose,
@@ -973,11 +973,11 @@ export { SqliteScheduleRunPersistence } from './schedule/sqlite-schedule-run-per
 export { ScheduleManager, parseCron, nextCronTime, describeCron } from './schedule/schedule-manager';
 export type { ScheduleEntry, ScheduleRunRecord, ScheduleStatus, ScheduleOnFailure, ScheduleChangeEvent } from './schedule/schedule-manager';
 
-// Loops
-export { LoopStore, LoopExecutor, registerLoopRoutes } from './loops';
-export type { LoopEntry, LoopStatus, LoopChangeEvent, LoopEventEmit, LoopExecutorDeps, LoopRouteContext } from './loops';
-export { createLoopInfrastructure } from './infrastructure/loop-infrastructure';
-export type { LoopInfrastructure, LoopInfrastructureOptions } from './infrastructure/loop-infrastructure';
+// Crons
+export { CronStore, CronExecutor, registerCronRoutes } from './cron';
+export type { CronEntry, CronStatus, CronChangeEvent, CronEventEmit, CronExecutorDeps, CronRouteContext } from './cron';
+export { createCronInfrastructure } from './infrastructure/cron-infrastructure';
+export type { CronInfrastructure, CronInfrastructureOptions } from './infrastructure/cron-infrastructure';
 
 // Tasks
 export type { ChatPayload } from './tasks/task-types';

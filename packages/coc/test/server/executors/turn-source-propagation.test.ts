@@ -1,5 +1,5 @@
 /**
- * Tests that turnSource metadata from loop/wakeup-triggered follow-ups
+ * Tests that turnSource metadata from cron/wakeup-triggered follow-ups
  * is correctly extracted from payload context and passed through to
  * executeFollowUpFn.
  */
@@ -71,11 +71,11 @@ describe('ProcessLifecycleRunner — turnSource propagation', () => {
         runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn());
     });
 
-    it('extracts loop turnSource from payload context and passes to executeFollowUpFn', async () => {
+    it('extracts cron turnSource from payload context and passes to executeFollowUpFn', async () => {
         const opts = makeOpts();
         const task = makeFollowUpTask({
-            source: 'loop',
-            loopId: 'loop_abc123',
+            source: 'cron',
+            cronId: 'cron_abc123',
         });
 
         await runner.run(task, opts);
@@ -83,7 +83,7 @@ describe('ProcessLifecycleRunner — turnSource propagation', () => {
         expect(opts.executeFollowUpFn).toHaveBeenCalledOnce();
         const args = (opts.executeFollowUpFn as ReturnType<typeof vi.fn>).mock.calls[0];
         const turnSource: TurnSource = args[8];
-        expect(turnSource).toEqual({ source: 'loop', loopId: 'loop_abc123' });
+        expect(turnSource).toEqual({ source: 'cron', cronId: 'cron_abc123' });
     });
 
     it('extracts wakeup turnSource from payload context and passes to executeFollowUpFn', async () => {
@@ -154,12 +154,12 @@ describe('ProcessLifecycleRunner — turnSource propagation', () => {
         expect(args[8]).toBeUndefined();
     });
 
-    it('does not include loopId in turnSource when source is wakeup', async () => {
+    it('does not include cronId in turnSource when source is wakeup', async () => {
         const opts = makeOpts();
         const task = makeFollowUpTask({
             source: 'wakeup',
             wakeupId: 'w1',
-            loopId: undefined,
+            cronId: undefined,
         });
 
         await runner.run(task, opts);
@@ -167,6 +167,6 @@ describe('ProcessLifecycleRunner — turnSource propagation', () => {
         const args = (opts.executeFollowUpFn as ReturnType<typeof vi.fn>).mock.calls[0];
         const turnSource: TurnSource = args[8];
         expect(turnSource).toEqual({ source: 'wakeup', wakeupId: 'w1' });
-        expect(turnSource).not.toHaveProperty('loopId');
+        expect(turnSource).not.toHaveProperty('cronId');
     });
 });

@@ -85,13 +85,18 @@ describe('WorkingTreeFileDiff — untracked file rendering', () => {
         mockUseDiffComments.mockReturnValue(makeHook());
     });
 
-    async function renderDiff(stage: 'staged' | 'unstaged' | 'untracked' = 'untracked', filePath = 'src/newfile.ts') {
+    async function renderDiff(
+        stage: 'staged' | 'unstaged' | 'untracked' = 'untracked',
+        filePath = 'src/newfile.ts',
+        repoRoot?: string,
+    ) {
         await act(async () => {
             render(
                 <WorkingTreeFileDiff
                     workspaceId="ws1"
                     filePath={filePath}
                     stage={stage}
+                    repoRoot={repoRoot}
                 />
             );
         });
@@ -150,6 +155,23 @@ describe('WorkingTreeFileDiff — untracked file rendering', () => {
     it('does not render comment sidebar toggle for untracked files', async () => {
         await renderDiff('untracked');
         expect(screen.queryByTestId('toggle-comments-btn')).toBeNull();
+    });
+
+    it('converts an absolute filePath to repo-relative for PreviewPane when repoRoot is set', async () => {
+        await renderDiff('untracked', '/home/user/RSL/AGENTS.md', '/home/user/RSL');
+        expect(screen.getByTestId('mock-preview-pane').getAttribute('data-file-path')).toBe('AGENTS.md');
+        // fileName still derives from the (absolute) filePath.
+        expect(screen.getByTestId('mock-preview-pane').getAttribute('data-file-name')).toBe('AGENTS.md');
+    });
+
+    it('converts a nested absolute filePath to repo-relative for PreviewPane', async () => {
+        await renderDiff('untracked', '/home/user/RSL/src/lib/new.ts', '/home/user/RSL');
+        expect(screen.getByTestId('mock-preview-pane').getAttribute('data-file-path')).toBe('src/lib/new.ts');
+    });
+
+    it('leaves filePath unchanged when repoRoot is not supplied', async () => {
+        await renderDiff('untracked', '/home/user/RSL/AGENTS.md');
+        expect(screen.getByTestId('mock-preview-pane').getAttribute('data-file-path')).toBe('/home/user/RSL/AGENTS.md');
     });
 
     it('renders diff viewer (not PreviewPane) for staged files', async () => {

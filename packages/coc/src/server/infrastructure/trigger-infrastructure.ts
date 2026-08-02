@@ -6,7 +6,7 @@
  * `QueueActionExecutor`, and a dedicated `ScheduleTimerRegistry`) used by the
  * execution server.
  *
- * Mirrors `loop-infrastructure.ts`: reuses the shared SQLite DB handle from
+ * Mirrors `cron-infrastructure.ts`: reuses the shared SQLite DB handle from
  * `SqliteProcessStore`, re-arms active triggers from their persisted
  * `nextTickAt` on startup, and exposes a `dispose()` for shutdown.
  *

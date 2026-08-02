@@ -12,7 +12,7 @@ import { ToolCallView } from './tool-calls/ToolCallView';
 import { JsonResponseView } from '../../../ui/JsonResponseView';
 import { isJsonResponse } from '../../../ui/json-utils';
 import { mergeConsecutiveContentItems } from './timeline-utils';
-import { LoopIcon } from '../icons/LoopIcon';
+import { CronIcon } from '../icons/CronIcon';
 import { useDisplaySettings } from '../../../hooks/preferences/useDisplaySettings';
 import { useHtmlEmbedPreference } from '../../../hooks/preferences/useHtmlEmbedPreference';
 import { isExcalidrawEnabled, isCanvasEnabled } from '../../../utils/config';
@@ -1639,18 +1639,18 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                         <span
                             className={cn(
                                 'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono border',
-                                turn.turnSource.source === 'loop'
+                                turn.turnSource.source === 'cron'
                                     ? 'bg-[#e6f4ea] dark:bg-[#1a3a2a] text-[#15703a] dark:text-[#4ade80] border-[#b7e1cd] dark:border-[#2a5a3a]'
                                     : 'bg-[#fff8e1] dark:bg-[#3a2f1a] text-[#b08800] dark:text-[#fbbf24] border-[#ffe082] dark:border-[#5a4a2a]',
                             )}
-                            title={turn.turnSource.source === 'loop'
-                                ? `Loop tick${turn.turnSource.loopId ? ` (${turn.turnSource.loopId})` : ''}`
+                            title={turn.turnSource.source === 'cron'
+                                ? `Cron tick${turn.turnSource.cronId ? ` (${turn.turnSource.cronId})` : ''}`
                                 : `Scheduled wakeup${turn.turnSource.wakeupId ? ` (${turn.turnSource.wakeupId})` : ''}`
                             }
                             data-testid="turn-source-badge"
                         >
-                            <span aria-hidden="true">{turn.turnSource.source === 'loop' ? <LoopIcon className="w-3 h-3 inline-block" /> : '⏰'}</span>
-                            <span>{turn.turnSource.source === 'loop' ? 'loop' : 'wakeup'}</span>
+                            <span aria-hidden="true">{turn.turnSource.source === 'cron' ? <CronIcon className="w-3 h-3 inline-block" /> : '⏰'}</span>
+                            <span>{turn.turnSource.source === 'cron' ? 'cron' : 'wakeup'}</span>
                         </span>
                     )}
                     {isUser && !showRaw && parsedUserContent.attachedContexts.map((context, index) => (

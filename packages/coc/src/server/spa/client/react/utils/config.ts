@@ -35,7 +35,7 @@ interface DashboardConfig {
     mapReduceEnabled?: boolean;
     vimNavigationEnabled?: boolean;
     containerMode?: boolean;
-    loopsEnabled?: boolean;
+    cronEnabled?: boolean;
     triggersEnabled?: boolean;
     dreamsEnabled?: boolean;
     excalidrawEnabled?: boolean;
@@ -386,8 +386,8 @@ export function isContainerMode(): boolean {
     return getConfig().containerMode === true;
 }
 
-export function isLoopsEnabled(): boolean {
-    return getConfig().loopsEnabled === true;
+export function isCronEnabled(): boolean {
+    return getConfig().cronEnabled === true;
 }
 
 export function isTriggersEnabled(): boolean {

@@ -1,7 +1,3 @@
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import { getRepoDataPath } from '@plusplusoneplusplus/forge';
-import { atomicWriteJSON } from '../shared/fs-utils';
 import type {
     CancelMapReduceRunResult,
     ClaimedMapReduceItems,
@@ -24,98 +20,13 @@ import {
     normalizeMapReduceReduceInstructions,
     normalizeMapReduceReduceStep,
 } from './map-reduce-plan-validation';
+import type { FileRunStoreBaseOptions, ItemRunPolicy, RunArtifact } from '../shared/file-run-store-base';
+import { allItemsTerminal, FileRunStoreBase, findFailedItem, hasRunningItem } from '../shared/file-run-store-base';
 
-export interface FileMapReduceRunStoreOptions {
-    dataDir: string;
-    /**
-     * Invoked after every successful run write with the fresh run state.
-     * Used to keep the generic task-group registry in sync. Errors thrown
-     * by the hook are swallowed — registry sync must never break runs.
-     */
-    onRunChanged?: (run: MapReduceRun) => void;
-}
-
-const RUN_ID_PATTERN = /^[A-Za-z0-9._-]+$/;
-
-function sanitizeRunId(runId: string): string {
-    if (!RUN_ID_PATTERN.test(runId)) {
-        throw new Error(`Invalid Map Reduce run ID: ${runId}`);
-    }
-    return runId;
-}
-
-function mintRunId(): string {
-    return `map-reduce-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
+export type FileMapReduceRunStoreOptions = FileRunStoreBaseOptions<MapReduceRun>;
 
 function emptyStatusCounts(): Record<MapReduceItemStatus, number> {
     return Object.fromEntries(MAP_REDUCE_ITEM_STATUSES.map(status => [status, 0])) as Record<MapReduceItemStatus, number>;
-}
-
-function summarizeRun(run: MapReduceRun): MapReduceRunSummary {
-    const counts = emptyStatusCounts();
-    for (const item of run.items) {
-        counts[item.status] += 1;
-    }
-    const { items: _items, reduceStep: _reduceStep, ...metadata } = run;
-    return {
-        ...metadata,
-        itemCount: run.items.length,
-        itemStatusCounts: counts,
-        reduceStatus: run.reduceStep.status,
-    };
-}
-
-function isTerminalSuccessfulItemStatus(status: MapReduceItemStatus): boolean {
-    return status === 'completed' || status === 'skipped';
-}
-
-function allItemsTerminalSuccessful(items: MapReduceItem[]): boolean {
-    return items.every(item => isTerminalSuccessfulItemStatus(item.status));
-}
-
-function dependenciesSatisfied(item: MapReduceItem, items: MapReduceItem[]): boolean {
-    const byId = new Map(items.map(entry => [entry.id, entry]));
-    return (item.dependsOn ?? []).every(id => {
-        const dependency = byId.get(id);
-        return dependency ? isTerminalSuccessfulItemStatus(dependency.status) : false;
-    });
-}
-
-function findRunnableItems(items: MapReduceItem[], limit: number): MapReduceItem[] {
-    if (limit <= 0) {
-        return [];
-    }
-    const runnable: MapReduceItem[] = [];
-    for (const item of items) {
-        if (item.status === 'pending' && dependenciesSatisfied(item, items)) {
-            runnable.push(item);
-            if (runnable.length >= limit) {
-                break;
-            }
-        }
-    }
-    return runnable;
-}
-
-function findItem(items: MapReduceItem[], itemId: string): MapReduceItem {
-    const item = items.find(entry => entry.id === itemId);
-    if (!item) {
-        throw new Error(`Map Reduce item not found: ${itemId}`);
-    }
-    return item;
-}
-
-function runningItemCount(items: MapReduceItem[]): number {
-    return items.filter(item => item.status === 'running').length;
-}
-
-function hasRunningItem(items: MapReduceItem[]): boolean {
-    return items.some(item => item.status === 'running');
-}
-
-function findFailedItem(items: MapReduceItem[]): MapReduceItem | undefined {
-    return items.find(item => item.status === 'failed');
 }
 
 function clearMapItemExecutionState(item: MapReduceItem, now: string): void {
@@ -142,7 +53,7 @@ function mapPhaseStatusAfterTerminalChange(items: MapReduceItem[]): MapReduceRun
     if (failed) {
         return hasRunningItem(items) ? 'running' : 'failed';
     }
-    return allItemsTerminalSuccessful(items) ? 'reducing' : 'running';
+    return allItemsTerminal(items) ? 'reducing' : 'running';
 }
 
 function mapPhaseStatusAfterManualSkip(items: MapReduceItem[]): MapReduceRun['status'] {
@@ -150,67 +61,52 @@ function mapPhaseStatusAfterManualSkip(items: MapReduceItem[]): MapReduceRun['st
     if (failed) {
         return 'failed';
     }
-    return allItemsTerminalSuccessful(items) ? 'reducing' : 'approved';
+    return allItemsTerminal(items) ? 'reducing' : 'approved';
 }
 
-export class FileMapReduceRunStore {
-    private readonly dataDir: string;
-    private readonly onRunChanged?: (run: MapReduceRun) => void;
-    private writeQueue: Promise<void> = Promise.resolve();
+/**
+ * Map Reduce runs up to `maxParallel` items at once, captures each item's
+ * output for the reduce step, and hands off to the reduce phase (rather than
+ * completing) once every map item is terminal-successful.
+ */
+const mapReduceItemPolicy: ItemRunPolicy<MapReduceRun, MapReduceItem> = {
+    concurrency: run => run.maxParallel,
+    captureOutput: true,
+    statusAfterItemTerminal: items => mapPhaseStatusAfterTerminalChange(items),
+    statusAfterManualSkip: items => mapPhaseStatusAfterManualSkip(items),
+    drainToTerminal: (run, now) =>
+        run.reduceStep.status === 'pending'
+            ? { ...run, status: 'reducing', updatedAt: now }
+            : undefined,
+};
 
-    constructor(options: FileMapReduceRunStoreOptions) {
-        this.dataDir = options.dataDir;
-        this.onRunChanged = options.onRunChanged;
-    }
+export class FileMapReduceRunStore extends FileRunStoreBase<MapReduceRun, MapReduceRunSummary, MapReduceItem> {
+    protected readonly runIdPrefix = 'map-reduce';
+    protected readonly subsystemLabel = 'Map Reduce';
+    protected readonly runsSubdir = 'map-reduce-runs';
+    protected readonly policy = mapReduceItemPolicy;
 
-    private runsDir(workspaceId: string): string {
-        return getRepoDataPath(this.dataDir, workspaceId, 'map-reduce-runs');
-    }
-
-    private runDir(workspaceId: string, runId: string): string {
-        return path.join(this.runsDir(workspaceId), sanitizeRunId(runId));
-    }
-
-    private runPath(workspaceId: string, runId: string): string {
-        return path.join(this.runDir(workspaceId, runId), 'run.json');
-    }
-
-    private itemsPath(workspaceId: string, runId: string): string {
-        return path.join(this.runDir(workspaceId, runId), 'items.json');
-    }
-
-    private reduceStepPath(workspaceId: string, runId: string): string {
-        return path.join(this.runDir(workspaceId, runId), 'reduce-step.json');
-    }
-
-    private enqueueWrite<T>(fn: () => Promise<T>): Promise<T> {
-        const result = this.writeQueue.then(fn);
-        this.writeQueue = result.then(() => undefined, () => undefined);
-        return result;
-    }
-
-    private async readJSONIfExists<T>(filePath: string): Promise<T | undefined> {
-        try {
-            const raw = await fs.readFile(filePath, 'utf-8');
-            return JSON.parse(raw) as T;
-        } catch (err: any) {
-            if (err?.code === 'ENOENT') {
-                return undefined;
-            }
-            throw err;
-        }
-    }
-
-    private async writeRun(run: MapReduceRun): Promise<void> {
+    protected artifacts(run: MapReduceRun): RunArtifact[] {
         const { items, reduceStep, ...metadata } = run;
-        await atomicWriteJSON(this.runPath(run.workspaceId, run.runId), metadata);
-        await atomicWriteJSON(this.itemsPath(run.workspaceId, run.runId), items);
-        await atomicWriteJSON(this.reduceStepPath(run.workspaceId, run.runId), reduceStep);
-        try {
-            this.onRunChanged?.(run);
-        } catch {
-            // Registry sync must never break run persistence.
+        return [
+            { file: 'run.json', data: metadata },
+            { file: 'items.json', data: items },
+            { file: 'reduce-step.json', data: reduceStep },
+        ];
+    }
+
+    protected summarize(run: MapReduceRun): MapReduceRunSummary {
+        const counts = emptyStatusCounts();
+        for (const item of run.items) {
+            counts[item.status] += 1;
         }
+        const { items: _items, reduceStep: _reduceStep, ...metadata } = run;
+        return {
+            ...metadata,
+            itemCount: run.items.length,
+            itemStatusCounts: counts,
+            reduceStatus: run.reduceStep.status,
+        };
     }
 
     async createDraftRun(input: CreateMapReduceRunInput): Promise<MapReduceRun> {
@@ -220,7 +116,7 @@ export class FileMapReduceRunStore {
 
         return this.enqueueWrite(async () => {
             const now = new Date().toISOString();
-            const runId = mintRunId();
+            const runId = this.mintRunId();
             const metadata: MapReduceRunMetadata = {
                 runId,
                 workspaceId: input.workspaceId,
@@ -260,32 +156,6 @@ export class FileMapReduceRunStore {
         });
     }
 
-    async listRuns(workspaceId: string): Promise<MapReduceRunSummary[]> {
-        let entries: string[];
-        try {
-            entries = await fs.readdir(this.runsDir(workspaceId));
-        } catch (err: any) {
-            if (err?.code === 'ENOENT') {
-                return [];
-            }
-            throw err;
-        }
-
-        const runs: MapReduceRun[] = [];
-        for (const entry of entries) {
-            if (!RUN_ID_PATTERN.test(entry)) {
-                continue;
-            }
-            const run = await this.getRun(workspaceId, entry);
-            if (run) {
-                runs.push(run);
-            }
-        }
-        return runs
-            .map(summarizeRun)
-            .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    }
-
     async getRun(workspaceId: string, runId: string): Promise<MapReduceRun | undefined> {
         const metadata = await this.readJSONIfExists<MapReduceRunMetadata>(this.runPath(workspaceId, runId));
         if (!metadata) {
@@ -294,8 +164,8 @@ export class FileMapReduceRunStore {
         if (metadata.workspaceId !== workspaceId || metadata.runId !== runId) {
             throw new Error(`Map Reduce run metadata mismatch for ${runId}`);
         }
-        const rawItems = await this.readJSONIfExists<unknown>(this.itemsPath(workspaceId, runId));
-        const rawReduceStep = await this.readJSONIfExists<unknown>(this.reduceStepPath(workspaceId, runId));
+        const rawItems = await this.readJSONIfExists<unknown>(this.artifactPath(workspaceId, runId, 'items.json'));
+        const rawReduceStep = await this.readJSONIfExists<unknown>(this.artifactPath(workspaceId, runId, 'reduce-step.json'));
         const normalizedMetadata: MapReduceRunMetadata = {
             ...metadata,
             reduceInstructions: normalizeMapReduceReduceInstructions(metadata.reduceInstructions),
@@ -362,72 +232,7 @@ export class FileMapReduceRunStore {
     }
 
     async claimRunnableItems(workspaceId: string, runId: string): Promise<ClaimedMapReduceItems | undefined> {
-        return this.enqueueWrite(async () => {
-            const current = await this.getRun(workspaceId, runId);
-            if (!current) {
-                throw new Error(`Map Reduce run not found: ${runId}`);
-            }
-            if (current.status === 'draft') {
-                throw new Error(`Map Reduce run '${runId}' must be approved before execution`);
-            }
-            if (current.status === 'cancelled' || current.status === 'completed' || current.status === 'reducing') {
-                return undefined;
-            }
-
-            const failed = findFailedItem(current.items);
-            if (failed) {
-                if (hasRunningItem(current.items)) {
-                    return undefined;
-                }
-                const failedRun: MapReduceRun = current.status === 'failed'
-                    ? current
-                    : { ...current, status: 'failed', updatedAt: new Date().toISOString() };
-                if (failedRun !== current) {
-                    await this.writeRun(failedRun);
-                }
-                throw new Error(`Map Reduce run '${runId}' is blocked by failed item '${failed.id}'`);
-            }
-            if (current.status === 'failed') {
-                return undefined;
-            }
-
-            if (allItemsTerminalSuccessful(current.items)) {
-                if (current.reduceStep.status === 'pending') {
-                    const reducingRun: MapReduceRun = {
-                        ...current,
-                        status: 'reducing',
-                        updatedAt: new Date().toISOString(),
-                    };
-                    await this.writeRun(reducingRun);
-                }
-                return undefined;
-            }
-
-            const availableSlots = Math.max(0, current.maxParallel - runningItemCount(current.items));
-            const runnableItems = findRunnableItems(current.items, availableSlots);
-            if (runnableItems.length === 0) {
-                if (availableSlots === 0 || hasRunningItem(current.items)) {
-                    return undefined;
-                }
-                throw new Error(`Map Reduce run '${runId}' has no runnable pending items`);
-            }
-
-            const now = new Date().toISOString();
-            for (const item of runnableItems) {
-                clearMapItemExecutionState(item, now);
-            }
-            const nextRun: MapReduceRun = {
-                ...current,
-                status: 'running',
-                updatedAt: now,
-                completedAt: undefined,
-            };
-            await this.writeRun(nextRun);
-            return {
-                run: nextRun,
-                items: runnableItems.map(item => ({ ...item })),
-            };
-        });
+        return this.claimRunnable(workspaceId, runId);
     }
 
     async claimFailedItemForRetry(workspaceId: string, runId: string, itemId: string): Promise<ClaimedMapReduceItems> {
@@ -442,7 +247,7 @@ export class FileMapReduceRunStore {
             if (hasRunningItem(current.items)) {
                 throw new Error(`Map Reduce run '${runId}' is still draining running items`);
             }
-            const item = findItem(current.items, itemId);
+            const item = this.findRunItem(current.items, itemId);
             if (item.status !== 'failed') {
                 throw new Error(`Map Reduce item '${itemId}' is ${item.status}; only failed items can be retried`);
             }
@@ -472,7 +277,7 @@ export class FileMapReduceRunStore {
             if (!current) {
                 throw new Error(`Map Reduce run not found: ${runId}`);
             }
-            const item = findItem(current.items, itemId);
+            const item = this.findRunItem(current.items, itemId);
             if (item.status !== 'running') {
                 throw new Error(`Map Reduce item '${itemId}' is ${item.status}; only running items can be linked`);
             }
@@ -482,75 +287,6 @@ export class FileMapReduceRunStore {
             const nextRun: MapReduceRun = {
                 ...current,
                 updatedAt: new Date().toISOString(),
-            };
-            await this.writeRun(nextRun);
-            return nextRun;
-        });
-    }
-
-    async markRunningItemCompleted(
-        workspaceId: string,
-        runId: string,
-        itemId: string,
-        childTaskId?: string,
-        output?: unknown,
-    ): Promise<MapReduceRun> {
-        return this.enqueueWrite(async () => {
-            const current = await this.getRun(workspaceId, runId);
-            if (!current) {
-                throw new Error(`Map Reduce run not found: ${runId}`);
-            }
-            if (current.status === 'cancelled') {
-                return current;
-            }
-            const item = findItem(current.items, itemId);
-            if (item.status !== 'running') {
-                return current;
-            }
-            if (childTaskId && item.childTaskId && item.childTaskId !== childTaskId) {
-                return current;
-            }
-
-            const now = new Date().toISOString();
-            item.status = 'completed';
-            item.completedAt = now;
-            item.error = undefined;
-            item.output = output;
-            const nextRun: MapReduceRun = {
-                ...current,
-                status: mapPhaseStatusAfterTerminalChange(current.items),
-                updatedAt: now,
-            };
-            await this.writeRun(nextRun);
-            return nextRun;
-        });
-    }
-
-    async markRunningItemFailed(workspaceId: string, runId: string, itemId: string, error: string, childTaskId?: string): Promise<MapReduceRun> {
-        return this.enqueueWrite(async () => {
-            const current = await this.getRun(workspaceId, runId);
-            if (!current) {
-                throw new Error(`Map Reduce run not found: ${runId}`);
-            }
-            if (current.status === 'cancelled') {
-                return current;
-            }
-            const item = findItem(current.items, itemId);
-            if (item.status !== 'running') {
-                return current;
-            }
-            if (childTaskId && item.childTaskId && item.childTaskId !== childTaskId) {
-                return current;
-            }
-
-            const now = new Date().toISOString();
-            item.status = 'failed';
-            item.completedAt = now;
-            item.error = error;
-            const nextRun: MapReduceRun = {
-                ...current,
-                status: mapPhaseStatusAfterTerminalChange(current.items),
-                updatedAt: now,
             };
             await this.writeRun(nextRun);
             return nextRun;
@@ -569,20 +305,12 @@ export class FileMapReduceRunStore {
             if (hasRunningItem(current.items)) {
                 throw new Error(`Map Reduce run '${runId}' is still draining running items`);
             }
-            const item = findItem(current.items, itemId);
+            const item = this.findRunItem(current.items, itemId);
             if (item.status !== 'pending' && item.status !== 'failed') {
                 throw new Error(`Map Reduce item '${itemId}' is ${item.status}; only pending or failed items can be skipped`);
             }
 
-            const now = new Date().toISOString();
-            item.status = 'skipped';
-            item.completedAt = now;
-            item.error = undefined;
-            const nextRun: MapReduceRun = {
-                ...current,
-                status: mapPhaseStatusAfterManualSkip(current.items),
-                updatedAt: now,
-            };
+            const nextRun = this.applyManualSkip(current, item, new Date().toISOString());
             await this.writeRun(nextRun);
             return nextRun;
         });
@@ -604,7 +332,7 @@ export class FileMapReduceRunStore {
             if (failed) {
                 throw new Error(`Map Reduce run '${runId}' is blocked by failed item '${failed.id}'`);
             }
-            if (!allItemsTerminalSuccessful(current.items)) {
+            if (!allItemsTerminal(current.items)) {
                 return undefined;
             }
             if (current.reduceStep.status !== 'pending') {
@@ -637,7 +365,7 @@ export class FileMapReduceRunStore {
             if (failed) {
                 throw new Error(`Map Reduce run '${runId}' is blocked by failed item '${failed.id}'`);
             }
-            if (!allItemsTerminalSuccessful(current.items)) {
+            if (!allItemsTerminal(current.items)) {
                 throw new Error(`Map Reduce run '${runId}' cannot reduce before all map items are terminal-successful`);
             }
             if (current.reduceStep.status !== 'failed') {

@@ -22,6 +22,7 @@ import { InlineCommentPopup } from '../../../tasks/comments/InlineCommentPopup';
 import { useQueue } from '../../../contexts/QueueContext';
 import { useCrossFileNav } from '../hooks/useCrossFileNav';
 import { PreviewPane } from '../../repo-detail/explorer';
+import { repoRelative } from './WorkingTree';
 import { buildDiffContext } from '../../../../comments/diff-context-utils';
 import { copyToClipboard } from '../../../utils/format';
 import type { DiffCommentSelection, DiffComment } from '../../../../comments/diff-comment-types';
@@ -32,6 +33,9 @@ export interface WorkingTreeFileDiffProps {
     workspaceId: string;
     filePath: string;
     stage: 'staged' | 'unstaged' | 'untracked';
+    /** Workspace repo root; used to convert the absolute `filePath` to a
+     * repo-relative path for the untracked-file preview. */
+    repoRoot?: string;
     /** Ordered file paths for the working tree (enables cross-file hunk nav). */
     workingTreeFiles?: string[];
     /** Called when cross-file navigation requests switching to a different file. */
@@ -52,7 +56,7 @@ type PopupState = {
     selectedText: string;
 } | null;
 
-export function WorkingTreeFileDiff({ workspaceId, filePath, stage, workingTreeFiles, onNavigateToFile, initialHunkTarget }: WorkingTreeFileDiffProps) {
+export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, workingTreeFiles, onNavigateToFile, initialHunkTarget }: WorkingTreeFileDiffProps) {
     const { dispatch: queueDispatch } = useQueue();
     const [diff, setDiff] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
@@ -220,7 +224,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, workingTreeF
                         <div className="h-full w-full" data-testid="working-tree-file-diff-untracked">
                             <PreviewPane
                                 repoId={workspaceId}
-                                filePath={filePath}
+                                filePath={repoRoot ? repoRelative(filePath, repoRoot) : filePath}
                                 fileName={filePath.split('/').pop() ?? filePath}
                                 readOnly
                             />

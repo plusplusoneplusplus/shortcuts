@@ -52,7 +52,7 @@ export interface CLITaskExecutorOptions {
     /** Live read of admin-configured effort tiers, for execution-time tier resolution. */
     getEffortTiersForProvider?: GetEffortTiersForProvider;
     getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
-    getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined;
+    getCronInfra?: () => import('../executors/chat-base-executor').CronInfraDeps | undefined;
     getTriggerInfra?: () => { manager: import('../triggers/trigger-manager').TriggerManager } | undefined;
     /**
      * Late-bound in-process enqueue capability supplied by the server/route layer
@@ -141,7 +141,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private readonly executors: ExecutorRegistry;
     private readonly titleGenerationService: TitleGenerationService;
     private readonly getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
-    private readonly getLoopInfra?: () => import('../executors/chat-base-executor').LoopInfraDeps | undefined;
+    private readonly getCronInfra?: () => import('../executors/chat-base-executor').CronInfraDeps | undefined;
     private readonly getTriggerInfra?: () => { manager: import('../triggers/trigger-manager').TriggerManager } | undefined;
     private readonly onRalphSessionComplete?: (event: RalphSessionCompleteEvent) => void;
     private resolveDefaultProvider?: ResolveDefaultProviderForExecution;
@@ -202,7 +202,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             resolveWorkspaceIdForPath: (p: string) => this.resolveWorkspaceIdForPath(p),
             onTitleNeeded: (pid: string, turns: ConversationTurn[]) => this.generateTitleIfNeeded(pid, turns),
             getWsServer: options.getWsServer,
-            getLoopInfra: options.getLoopInfra,
+            getCronInfra: options.getCronInfra,
             getEnqueueChat: options.getEnqueueChat,
             getSendMessage: options.getSendMessage,
             getSendToConversationRuntime: options.getSendToConversationRuntime,
@@ -211,7 +211,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             cancelledTasks: this.cancelledTasks,
             processAbortControllers: this.processAbortControllers,
         });
-        this.getLoopInfra = options.getLoopInfra;
+        this.getCronInfra = options.getCronInfra;
         this.getTriggerInfra = options.getTriggerInfra;
     }
 
@@ -441,10 +441,10 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 getEffortTiersForProvider: this.getEffortTiersForProvider,
                 onDrainPendingMessages: (processId, taskId) => this.drainPendingMessages(processId, taskId),
                 onRalphNext: (processId, completedTask, responseText) => this.enqueueRalphNextIteration(processId, completedTask, responseText),
-                onLoopTickComplete: (loopId, success) => {
-                    const infra = this.getLoopInfra?.();
+                onCronTickComplete: (cronId, success) => {
+                    const infra = this.getCronInfra?.();
                     if (!infra) return;
-                    return infra.executor.onTickComplete(loopId, success);
+                    return infra.executor.onTickComplete(cronId, success);
                 },
                 onTriggerActionComplete: (triggerId, success) => {
                     const infra = this.getTriggerInfra?.();

@@ -1,10 +1,12 @@
-import type { CreateTaskInput, QueuedTask, RepoQueueRegistry } from '@plusplusoneplusplus/forge';
-import { getLogger, LogCategory, toQueueProcessId } from '@plusplusoneplusplus/forge';
+import type { CreateTaskInput, QueuedTask } from '@plusplusoneplusplus/forge';
+import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { FileForEachRunStore } from './for-each-run-store';
 import type { ClaimedForEachItem, ForEachItem, ForEachRun } from './types';
+import type { CancelRunChildTask, EnqueueRunChildTask } from '../shared/run-executor-base';
+import { buildChatChildTask, RunExecutorBase } from '../shared/run-executor-base';
 
-export type EnqueueForEachChildTask = (input: CreateTaskInput) => string | Promise<string>;
-export type CancelForEachChildTask = (taskId: string) => boolean | Promise<boolean>;
+export type EnqueueForEachChildTask = EnqueueRunChildTask;
+export type CancelForEachChildTask = CancelRunChildTask;
 
 export interface ForEachRunExecutorOptions {
     store: FileForEachRunStore;
@@ -43,42 +45,21 @@ export function buildForEachChildPrompt(run: ForEachRun, item: ForEachItem): str
 }
 
 function buildChildTask(run: ForEachRun, item: ForEachItem): CreateTaskInput {
-    const prompt = buildForEachChildPrompt(run, item);
-    return {
-        type: 'chat',
-        priority: 'normal',
-        repoId: run.workspaceId,
-        payload: {
-            kind: 'chat',
-            mode: run.childMode,
-            prompt,
+    return buildChatChildTask({
+        run,
+        prompt: buildForEachChildPrompt(run, item),
+        contextKey: 'forEach',
+        contextValue: {
             workspaceId: run.workspaceId,
-            ...(run.provider ? { provider: run.provider } : {}),
-            ...(run.model ? { model: run.model } : {}),
-            ...(run.reasoningEffort ? { reasoningEffort: run.reasoningEffort } : {}),
-            context: {
-                ...(run.autoProviderRouting?.requested ? { autoProviderRouting: { requested: true as const } } : {}),
-                forEach: {
-                    workspaceId: run.workspaceId,
-                    runId: run.runId,
-                    itemId: item.id,
-                    childMode: run.childMode,
-                },
-                taskGroup: {
-                    groupId: run.runId,
-                    groupType: 'for-each',
-                    role: 'item',
-                    itemKey: item.id,
-                    workspaceId: run.workspaceId,
-                },
-            },
+            runId: run.runId,
+            itemId: item.id,
+            childMode: run.childMode,
         },
-        config: {
-            ...(run.model ? { model: run.model } : {}),
-            ...(run.reasoningEffort ? { reasoningEffort: run.reasoningEffort } : {}),
-        },
+        groupType: 'for-each',
+        role: 'item',
+        itemKey: item.id,
         displayName: `[For Each] ${item.title}`,
-    };
+    });
 }
 
 function getForEachContext(task: QueuedTask): { workspaceId: string; runId: string; itemId: string } | undefined {
@@ -95,27 +76,13 @@ function getForEachContext(task: QueuedTask): { workspaceId: string; runId: stri
     };
 }
 
-export class ForEachRunExecutor {
+export class ForEachRunExecutor extends RunExecutorBase<ForEachRun> {
+    protected readonly logLabel = 'ForEach';
     private readonly store: FileForEachRunStore;
-    private readonly enqueueChildTask: EnqueueForEachChildTask;
-    private readonly cancelChildTask?: CancelForEachChildTask;
 
     constructor(options: ForEachRunExecutorOptions) {
+        super({ enqueueChildTask: options.enqueueChildTask, cancelChildTask: options.cancelChildTask });
         this.store = options.store;
-        this.enqueueChildTask = options.enqueueChildTask;
-        this.cancelChildTask = options.cancelChildTask;
-    }
-
-    attachToQueueRegistry(registry: RepoQueueRegistry): void {
-        registry.on('taskCompleted', (_repoPath: string, task: QueuedTask) => {
-            void this.handleChildTaskCompleted(task).catch(err => this.logListenerError(err));
-        });
-        registry.on('taskFailed', (_repoPath: string, task: QueuedTask, error: Error) => {
-            void this.handleChildTaskFailed(task, error).catch(err => this.logListenerError(err));
-        });
-        registry.on('taskCancelled', (_repoPath: string, task: QueuedTask) => {
-            void this.handleChildTaskCancelled(task).catch(err => this.logListenerError(err));
-        });
     }
 
     async startOrContinueRun(workspaceId: string, runId: string): Promise<ForEachRun> {
@@ -175,30 +142,12 @@ export class ForEachRunExecutor {
     }
 
     private async enqueueClaimedItem(claimed: ClaimedForEachItem): Promise<ForEachRun> {
-        let taskId: string;
-        try {
-            taskId = await this.enqueueChildTask(buildChildTask(claimed.run, claimed.item));
-        } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            await this.store.markRunningItemFailed(
-                claimed.run.workspaceId,
-                claimed.run.runId,
-                claimed.item.id,
-                `Failed to enqueue child task: ${message}`,
-            );
-            throw err;
-        }
-        return this.store.linkRunningItemChild(
-            claimed.run.workspaceId,
-            claimed.run.runId,
-            claimed.item.id,
-            taskId,
-            toQueueProcessId(taskId),
+        const { workspaceId, runId } = claimed.run;
+        const itemId = claimed.item.id;
+        return this.enqueueSingleChild(
+            buildChildTask(claimed.run, claimed.item),
+            message => this.store.markRunningItemFailed(workspaceId, runId, itemId, `Failed to enqueue child task: ${message}`),
+            taskId => this.store.linkRunningItemChild(workspaceId, runId, itemId, taskId, toQueueProcessId(taskId)),
         );
-    }
-
-    private logListenerError(error: unknown): void {
-        const message = error instanceof Error ? error.message : String(error);
-        getLogger().warn(LogCategory.AI, `[ForEach] Failed to update run from child task event: ${message}`);
     }
 }

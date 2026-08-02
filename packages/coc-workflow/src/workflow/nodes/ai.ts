@@ -7,7 +7,8 @@
  */
 
 import type { AINodeConfig, Item, Items, WorkflowExecutionOptions } from '../types';
-import { isWorkflowCancellationError, throwIfWorkflowCancelled } from '../cancellation';
+import { throwIfWorkflowCancelled } from '../cancellation';
+import { invokeWorkflowAI } from './ai-invocation-kernel';
 import { resolvePrompt, mergeOutput } from './utils';
 
 // ---------------------------------------------------------------------------
@@ -36,47 +37,23 @@ export async function executeAI(
     const processId = options.processTracker?.registerProcess(`AI: ${nodeId}`)
         ?? `${nodeId}-ai`;
 
-    options.onItemProcess?.({
-        nodeId, itemIndex: 0, processId, status: 'running',
+    const result = await invokeWorkflowAI({
+        prompt,
+        options,
+        model: config.model,
+        timeoutMs: config.timeoutMs,
+        requireResponse: true,
+        failureMessage: 'AI node invocation failed',
+        lifecycle: {
+            processTracker: options.processTracker,
+            onItemProcess: options.onItemProcess,
+            processId, nodeId, itemIndex: 0,
+        },
     });
 
-    let result;
-    try {
-        throwIfWorkflowCancelled(options.signal);
-        result = await options.aiInvoker!(prompt, {
-            model: config.model ?? options.model,
-            timeoutMs: config.timeoutMs ?? options.timeoutMs,
-            workingDirectory: options.workingDirectory ?? options.workflowDirectory,
-            signal: options.signal,
-        });
-        throwIfWorkflowCancelled(options.signal);
-    } catch (err) {
-        if (isWorkflowCancellationError(err) || options.signal?.aborted) {
-            throwIfWorkflowCancelled(options.signal);
-            throw err;
-        }
-
-        const error = err instanceof Error ? err.message : String(err);
-        options.processTracker?.updateProcess(processId, 'failed', undefined, error);
-        options.onItemProcess?.({
-            nodeId, itemIndex: 0, processId, status: 'failed', error,
-        });
-        return [{ __error: error } as Item];
+    if (!result.success) {
+        return [{ __error: result.error ?? 'AI node invocation failed' } as Item];
     }
 
-    if (!result.success || !result.response) {
-        const error = result.error ?? 'AI node invocation failed';
-        options.processTracker?.updateProcess(processId, 'failed', undefined, error);
-        options.onItemProcess?.({
-            nodeId, itemIndex: 0, processId, status: 'failed', error,
-        });
-        return [{ __error: error } as Item];
-    }
-
-    options.processTracker?.updateProcess(processId, 'completed', result.response);
-    options.onItemProcess?.({
-        nodeId, itemIndex: 0, processId, status: 'completed',
-    });
-
-    return [mergeOutput({} as Item, result.response, config.output)];
+    return [mergeOutput({} as Item, result.response!, config.output)];
 }

@@ -569,9 +569,9 @@ deferral, and additive cache headers.
   `effortTiers.save()` → `effort-tiers:<provider>`, and `LlmToolsPanel`'s toggle
   → `llm-tools-config:<workspaceId>` after a successful `updateLlmToolsConfig`.
 - **Workspace-scoped data is not refetched per conversation** —
-  `features/chat/hooks/useLoops.ts` fetches `loops.list` keyed by
+  `features/chat/hooks/useCrons.ts` fetches `crons.list` keyed by
   `[workspaceId, cloneClient]` only (processId is dropped from the fetch dep); the
-  per-process view is a `useMemo([allLoops, processId])`, so a conversation switch
+  per-process view is a `useMemo([allCrons, processId])`, so a conversation switch
   re-derives the filtered list with no round-trip and only a workspace change
   refetches. The unseen `count` refresh is gated on a real seen-state change:
   `useUnseenChat`'s `markSeen`/`markAllSeen`/`markTasksSeen`/`markUnseen` now
@@ -1551,7 +1551,7 @@ Workspace while Git remains available inside `SplitWorkspacePanel`.
 ## Activity Tab
 
 - Action bar: New chat + refresh + ALL/AP split pause pill
-- Scope segmented control: Chats / Loops (when `loops.enabled`) / Automations / All
+- Scope segmented control: Chats / Scheduled (when `cron.enabled`) / Automations / All
 - Search box: hidden by default, gated behind `searchVisible`. Ctrl+F / ⌘F
   routes by which pane owns keyboard focus (never mouse hover) through the shared
   `useScopedFindShortcut(containerRef, onTrigger, opts)` hook
@@ -1649,8 +1649,8 @@ Workspace while Git remains available inside `SplitWorkspacePanel`.
   of rounded cards, `Range`/`Local` tags, shortened summaries and `{n}f`
   file-count badges with the full text preserved in `title` tooltips.
 - For Each parent run group rows render in Activity Chats and All, but not in
-  Activity Automations or Loops; loop-linked child chats can still appear in
-  Loops independently of the hidden parent group row.
+  Activity Automations or Scheduled; cron-linked child chats can still appear in
+  Scheduled independently of the hidden parent group row.
 
 Ralph activity deep-links mount `RalphWorkflowPane`, which shows a unified task timeline alongside a read-only session file browser. The timeline interleaves iteration nodes (the union of `record.iterations` and parsed `progress.md` sections) with final-check nodes built from `record.finalChecks`: each `RalphFinalCheckRecord` renders a distinct `RalphFinalCheckNode` labeled `Final check #<checkIndex>` immediately after the iteration it validates (`sourceIteration`), and therefore before the first iteration of any gap-fix loop it starts. Final-check nodes show status (`queued`/`running`/`completed`/`failed`) and a gap summary (`No gaps`, `1 gap`, `<N> gaps`, or an in-progress/unknown copy); a node with a recorded `processId` is clickable and opens that final-check chat process, while one without is rendered disabled. Gap-fix loops (a loop whose index matches a `finalCheck.gapLoopStarted`/`gapLoopIndex`) render a `Gap fix loop <N>` divider that is not gated behind `RALPH_MULTI_LOOP` since it follows final-check visibility; generic `Loop <N>` dividers keep their existing `RALPH_MULTI_LOOP`-gated behavior. Final-check visibility is display/navigation only — it reads already-persisted session data and adds no new persistence. The file browser lists the raw files returned by the Ralph session API, selects the first file by default, renders Markdown files through the shared markdown renderer, and formats JSON files as plain indented text. For stuck executing sessions with no running iteration, the pane's Resume confirmation renders `ModalJobAiControls`; unchanged recovered `resumeDefaults` are omitted so the resume route preserves prior AI settings, while changed selections are serialized to `workspaces.resumeRalphSession()`. The completed-session Continue-loop confirmation renders the same controls and serializes the extension to `workspaces.continueRalphSession()` (a `RalphContinueRequest` carrying `additionalIterations` plus the optional AI overrides) with the identical omit-when-unchanged behavior. The pane accepts an optional selected filename from the router and reports file selections back to the host so URL hash wiring can deep-link individual session files with `#repos/{workspaceId}/activity/ralph/{sessionId}/{filename}`; bare and trailing-slash session hashes have no pre-selected file and fall back to the first file.
 

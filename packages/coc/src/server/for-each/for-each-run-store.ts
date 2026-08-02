@@ -1,7 +1,3 @@
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import { getRepoDataPath } from '@plusplusoneplusplus/forge';
-import { atomicWriteJSON } from '../shared/fs-utils';
 import type {
     CancelForEachRunResult,
     ClaimedForEachItem,
@@ -15,138 +11,63 @@ import type {
 } from './types';
 import { FOR_EACH_ITEM_STATUSES } from './types';
 import { assertDraftInitialStatuses, normalizeForEachItems } from './for-each-plan-validation';
+import type { FileRunStoreBaseOptions, ItemRunPolicy, RunArtifact } from '../shared/file-run-store-base';
+import { allItemsTerminal, FileRunStoreBase, hasRunningItem } from '../shared/file-run-store-base';
 
-export interface FileForEachRunStoreOptions {
-    dataDir: string;
-    /**
-     * Invoked after every successful run write with the fresh run state.
-     * Used to keep the generic task-group registry in sync. Errors thrown
-     * by the hook are swallowed — registry sync must never break runs.
-     */
-    onRunChanged?: (run: ForEachRun) => void;
-}
-
-const RUN_ID_PATTERN = /^[A-Za-z0-9._-]+$/;
-
-function sanitizeRunId(runId: string): string {
-    if (!RUN_ID_PATTERN.test(runId)) {
-        throw new Error(`Invalid For Each run ID: ${runId}`);
-    }
-    return runId;
-}
-
-function mintRunId(): string {
-    return `for-each-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
+export type FileForEachRunStoreOptions = FileRunStoreBaseOptions<ForEachRun>;
 
 function emptyStatusCounts(): Record<ForEachItemStatus, number> {
     return Object.fromEntries(FOR_EACH_ITEM_STATUSES.map(status => [status, 0])) as Record<ForEachItemStatus, number>;
 }
 
-function summarizeRun(run: ForEachRun): ForEachRunSummary {
-    const counts = emptyStatusCounts();
-    for (const item of run.items) {
-        counts[item.status] += 1;
-    }
-    const { items: _items, ...metadata } = run;
-    return {
-        ...metadata,
-        itemCount: run.items.length,
-        itemStatusCounts: counts,
-    };
-}
+/**
+ * For Each runs one item at a time (concurrency 1), never capture item output,
+ * and complete the run once every item is terminal — there is no reduce phase.
+ */
+const forEachItemPolicy: ItemRunPolicy<ForEachRun, ForEachItem> = {
+    concurrency: () => 1,
+    captureOutput: false,
+    statusAfterItemTerminal: items =>
+        items.some(item => item.status === 'failed')
+            ? 'failed'
+            : allItemsTerminal(items) ? 'completed' : 'running',
+    statusAfterManualSkip: items =>
+        allItemsTerminal(items)
+            ? 'completed'
+            : items.some(item => item.status === 'failed') ? 'failed' : 'approved',
+    drainToTerminal: (run, now) => ({
+        ...run,
+        status: 'completed',
+        completedAt: run.completedAt ?? now,
+        updatedAt: now,
+    }),
+};
 
-function isTerminalItemStatus(status: ForEachItemStatus): boolean {
-    return status === 'completed' || status === 'skipped';
-}
+export class FileForEachRunStore extends FileRunStoreBase<ForEachRun, ForEachRunSummary, ForEachItem> {
+    protected readonly runIdPrefix = 'for-each';
+    protected readonly subsystemLabel = 'For Each';
+    protected readonly runsSubdir = 'for-each-runs';
+    protected readonly policy = forEachItemPolicy;
 
-function allItemsTerminal(items: ForEachItem[]): boolean {
-    return items.every(item => isTerminalItemStatus(item.status));
-}
-
-function dependenciesSatisfied(item: ForEachItem, items: ForEachItem[]): boolean {
-    const byId = new Map(items.map(entry => [entry.id, entry]));
-    return (item.dependsOn ?? []).every(id => {
-        const dependency = byId.get(id);
-        return dependency ? isTerminalItemStatus(dependency.status) : false;
-    });
-}
-
-function findNextRunnableItem(items: ForEachItem[]): ForEachItem | undefined {
-    return items.find(item => item.status === 'pending' && dependenciesSatisfied(item, items));
-}
-
-function findItem(items: ForEachItem[], itemId: string): ForEachItem {
-    const item = items.find(entry => entry.id === itemId);
-    if (!item) {
-        throw new Error(`For Each item not found: ${itemId}`);
-    }
-    return item;
-}
-
-function hasRunningItem(items: ForEachItem[]): boolean {
-    return items.some(item => item.status === 'running');
-}
-
-function hasFailedItem(items: ForEachItem[]): boolean {
-    return items.some(item => item.status === 'failed');
-}
-
-export class FileForEachRunStore {
-    private readonly dataDir: string;
-    private readonly onRunChanged?: (run: ForEachRun) => void;
-    private writeQueue: Promise<void> = Promise.resolve();
-
-    constructor(options: FileForEachRunStoreOptions) {
-        this.dataDir = options.dataDir;
-        this.onRunChanged = options.onRunChanged;
-    }
-
-    private notifyRunChanged(run: ForEachRun): void {
-        try {
-            this.onRunChanged?.(run);
-        } catch {
-            // Registry sync must never break run persistence.
-        }
-    }
-
-    private runsDir(workspaceId: string): string {
-        return getRepoDataPath(this.dataDir, workspaceId, 'for-each-runs');
-    }
-
-    private runDir(workspaceId: string, runId: string): string {
-        return path.join(this.runsDir(workspaceId), sanitizeRunId(runId));
-    }
-
-    private runPath(workspaceId: string, runId: string): string {
-        return path.join(this.runDir(workspaceId, runId), 'run.json');
-    }
-
-    private itemsPath(workspaceId: string, runId: string): string {
-        return path.join(this.runDir(workspaceId, runId), 'items.json');
-    }
-
-    private enqueueWrite<T>(fn: () => Promise<T>): Promise<T> {
-        const result = this.writeQueue.then(fn);
-        this.writeQueue = result.then(() => undefined, () => undefined);
-        return result;
-    }
-
-    private async readJSONIfExists<T>(filePath: string): Promise<T | undefined> {
-        try {
-            const raw = await fs.readFile(filePath, 'utf-8');
-            return JSON.parse(raw) as T;
-        } catch (err: any) {
-            if (err?.code === 'ENOENT') return undefined;
-            throw err;
-        }
-    }
-
-    private async writeRun(run: ForEachRun): Promise<void> {
+    protected artifacts(run: ForEachRun): RunArtifact[] {
         const { items, ...metadata } = run;
-        await atomicWriteJSON(this.runPath(run.workspaceId, run.runId), metadata);
-        await atomicWriteJSON(this.itemsPath(run.workspaceId, run.runId), items);
-        this.notifyRunChanged(run);
+        return [
+            { file: 'run.json', data: metadata },
+            { file: 'items.json', data: items },
+        ];
+    }
+
+    protected summarize(run: ForEachRun): ForEachRunSummary {
+        const counts = emptyStatusCounts();
+        for (const item of run.items) {
+            counts[item.status] += 1;
+        }
+        const { items: _items, ...metadata } = run;
+        return {
+            ...metadata,
+            itemCount: run.items.length,
+            itemStatusCounts: counts,
+        };
     }
 
     async createDraftRun(input: CreateForEachRunInput): Promise<ForEachRun> {
@@ -155,7 +76,7 @@ export class FileForEachRunStore {
 
         return this.enqueueWrite(async () => {
             const now = new Date().toISOString();
-            const runId = mintRunId();
+            const runId = this.mintRunId();
             const metadata: ForEachRunMetadata = {
                 runId,
                 workspaceId: input.workspaceId,
@@ -179,33 +100,13 @@ export class FileForEachRunStore {
         });
     }
 
-    async listRuns(workspaceId: string): Promise<ForEachRunSummary[]> {
-        let entries: string[];
-        try {
-            entries = await fs.readdir(this.runsDir(workspaceId));
-        } catch (err: any) {
-            if (err?.code === 'ENOENT') return [];
-            throw err;
-        }
-
-        const runs: ForEachRun[] = [];
-        for (const entry of entries) {
-            if (!RUN_ID_PATTERN.test(entry)) continue;
-            const run = await this.getRun(workspaceId, entry);
-            if (run) runs.push(run);
-        }
-        return runs
-            .map(summarizeRun)
-            .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    }
-
     async getRun(workspaceId: string, runId: string): Promise<ForEachRun | undefined> {
         const metadata = await this.readJSONIfExists<ForEachRunMetadata>(this.runPath(workspaceId, runId));
         if (!metadata) return undefined;
         if (metadata.workspaceId !== workspaceId || metadata.runId !== runId) {
             throw new Error(`For Each run metadata mismatch for ${runId}`);
         }
-        const rawItems = await this.readJSONIfExists<unknown>(this.itemsPath(workspaceId, runId));
+        const rawItems = await this.readJSONIfExists<unknown>(this.artifactPath(workspaceId, runId, 'items.json'));
         const items = normalizeForEachItems(rawItems);
         return { ...metadata, items };
     }
@@ -262,57 +163,12 @@ export class FileForEachRunStore {
     }
 
     async claimNextRunnableItem(workspaceId: string, runId: string): Promise<ClaimedForEachItem | undefined> {
-        return this.enqueueWrite(async () => {
-            const current = await this.getRun(workspaceId, runId);
-            if (!current) {
-                throw new Error(`For Each run not found: ${runId}`);
-            }
-            if (current.status === 'draft') {
-                throw new Error(`For Each run '${runId}' must be approved before execution`);
-            }
-            if (current.status === 'cancelled' || current.status === 'completed') {
-                return undefined;
-            }
-            if (hasRunningItem(current.items)) {
-                return undefined;
-            }
-            const failed = current.items.find(item => item.status === 'failed');
-            if (failed) {
-                throw new Error(`For Each run '${runId}' is blocked by failed item '${failed.id}'`);
-            }
-
-            const nextItem = findNextRunnableItem(current.items);
-            if (!nextItem) {
-                if (allItemsTerminal(current.items)) {
-                    const now = new Date().toISOString();
-                    const completedRun: ForEachRun = {
-                        ...current,
-                        status: 'completed',
-                        completedAt: current.completedAt ?? now,
-                        updatedAt: now,
-                    };
-                    await this.writeRun(completedRun);
-                    return undefined;
-                }
-                throw new Error(`For Each run '${runId}' has no runnable pending items`);
-            }
-
-            const now = new Date().toISOString();
-            nextItem.status = 'running';
-            nextItem.startedAt = now;
-            nextItem.completedAt = undefined;
-            nextItem.error = undefined;
-            nextItem.childTaskId = undefined;
-            nextItem.childProcessId = undefined;
-            const nextRun: ForEachRun = {
-                ...current,
-                status: 'running',
-                updatedAt: now,
-                completedAt: undefined,
-            };
-            await this.writeRun(nextRun);
-            return { run: nextRun, item: { ...nextItem } };
-        });
+        const claimed = await this.claimRunnable(workspaceId, runId);
+        if (!claimed) {
+            return undefined;
+        }
+        // Concurrency is 1, so the shared claim yields at most one item.
+        return { run: claimed.run, item: claimed.items[0] };
     }
 
     async claimFailedItemForRetry(workspaceId: string, runId: string, itemId: string): Promise<ClaimedForEachItem> {
@@ -327,7 +183,7 @@ export class FileForEachRunStore {
             if (hasRunningItem(current.items)) {
                 throw new Error(`For Each run '${runId}' already has a running item`);
             }
-            const item = findItem(current.items, itemId);
+            const item = this.findRunItem(current.items, itemId);
             if (item.status !== 'failed') {
                 throw new Error(`For Each item '${itemId}' is ${item.status}; only failed items can be retried`);
             }
@@ -362,7 +218,7 @@ export class FileForEachRunStore {
             if (!current) {
                 throw new Error(`For Each run not found: ${runId}`);
             }
-            const item = findItem(current.items, itemId);
+            const item = this.findRunItem(current.items, itemId);
             if (item.status !== 'running') {
                 throw new Error(`For Each item '${itemId}' is ${item.status}; only running items can be linked`);
             }
@@ -372,69 +228,6 @@ export class FileForEachRunStore {
             const nextRun: ForEachRun = {
                 ...current,
                 updatedAt: new Date().toISOString(),
-            };
-            await this.writeRun(nextRun);
-            return nextRun;
-        });
-    }
-
-    async markRunningItemCompleted(workspaceId: string, runId: string, itemId: string, childTaskId?: string): Promise<ForEachRun> {
-        return this.enqueueWrite(async () => {
-            const current = await this.getRun(workspaceId, runId);
-            if (!current) {
-                throw new Error(`For Each run not found: ${runId}`);
-            }
-            if (current.status === 'cancelled') {
-                return current;
-            }
-            const item = findItem(current.items, itemId);
-            if (item.status !== 'running') {
-                return current;
-            }
-            if (childTaskId && item.childTaskId && item.childTaskId !== childTaskId) {
-                return current;
-            }
-
-            const now = new Date().toISOString();
-            item.status = 'completed';
-            item.completedAt = now;
-            item.error = undefined;
-            const nextRun: ForEachRun = {
-                ...current,
-                status: allItemsTerminal(current.items) ? 'completed' : 'running',
-                completedAt: allItemsTerminal(current.items) ? now : undefined,
-                updatedAt: now,
-            };
-            await this.writeRun(nextRun);
-            return nextRun;
-        });
-    }
-
-    async markRunningItemFailed(workspaceId: string, runId: string, itemId: string, error: string, childTaskId?: string): Promise<ForEachRun> {
-        return this.enqueueWrite(async () => {
-            const current = await this.getRun(workspaceId, runId);
-            if (!current) {
-                throw new Error(`For Each run not found: ${runId}`);
-            }
-            if (current.status === 'cancelled') {
-                return current;
-            }
-            const item = findItem(current.items, itemId);
-            if (item.status !== 'running') {
-                return current;
-            }
-            if (childTaskId && item.childTaskId && item.childTaskId !== childTaskId) {
-                return current;
-            }
-
-            const now = new Date().toISOString();
-            item.status = 'failed';
-            item.completedAt = now;
-            item.error = error;
-            const nextRun: ForEachRun = {
-                ...current,
-                status: 'failed',
-                updatedAt: now,
             };
             await this.writeRun(nextRun);
             return nextRun;
@@ -453,26 +246,12 @@ export class FileForEachRunStore {
             if (hasRunningItem(current.items)) {
                 throw new Error(`For Each run '${runId}' already has a running item`);
             }
-            const item = findItem(current.items, itemId);
+            const item = this.findRunItem(current.items, itemId);
             if (item.status !== 'pending' && item.status !== 'failed') {
                 throw new Error(`For Each item '${itemId}' is ${item.status}; only pending or failed items can be skipped`);
             }
 
-            const now = new Date().toISOString();
-            item.status = 'skipped';
-            item.completedAt = now;
-            item.error = undefined;
-            const nextStatus = allItemsTerminal(current.items)
-                ? 'completed'
-                : hasFailedItem(current.items)
-                    ? 'failed'
-                    : 'approved';
-            const nextRun: ForEachRun = {
-                ...current,
-                status: nextStatus,
-                updatedAt: now,
-                completedAt: nextStatus === 'completed' ? now : undefined,
-            };
+            const nextRun = this.applyManualSkip(current, item, new Date().toISOString());
             await this.writeRun(nextRun);
             return nextRun;
         });

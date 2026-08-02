@@ -238,7 +238,7 @@ export interface RuntimeDashboardConfig {
     forEachEnabled: boolean;
     mapReduceEnabled: boolean;
     vimNavigationEnabled: boolean;
-    loopsEnabled: boolean;
+    cronEnabled: boolean;
     dreamsEnabled: boolean;
     excalidrawEnabled: boolean;
     kustoEnabled: boolean;

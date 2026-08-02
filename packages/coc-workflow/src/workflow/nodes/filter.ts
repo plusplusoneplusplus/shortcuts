@@ -13,7 +13,8 @@ import type {
     WorkflowExecutionOptions
 } from '../types';
 import { ConcurrencyLimiter } from '../concurrency-limiter';
-import { isWorkflowCancelled, isWorkflowCancellationError, throwIfWorkflowCancelled } from '../cancellation';
+import { isWorkflowCancelled, throwIfWorkflowCancelled } from '../cancellation';
+import { invokeWorkflowAI } from './ai-invocation-kernel';
 
 // ---------------------------------------------------------------------------
 // Module-level concurrency limiter cache
@@ -157,35 +158,23 @@ async function evaluateAIRule(
     }
 
     const invoke = async (): Promise<boolean> => {
-        throwIfWorkflowCancelled(options.signal);
-
         const prompt = rule.prompt.replace(
             /\{\{(\w+)\}\}/g,
             (_, key) => String(item[key] ?? '')
         );
 
-        let response: string;
-        try {
-            throwIfWorkflowCancelled(options.signal);
-            const result = await options.aiInvoker!(prompt, {
-                model: rule.model,
-                timeoutMs: rule.timeoutMs,
-                signal: options.signal,
-            });
-            throwIfWorkflowCancelled(options.signal);
-            if (!result.success) {
-                return false;
-            }
-            response = result.response ?? '';
-        } catch (err) {
-            if (isWorkflowCancellationError(err) || options.signal?.aborted) {
-                throwIfWorkflowCancelled(options.signal);
-                throw err;
-            }
+        // Conservative: any non-cancellation failure excludes the item.
+        const result = await invokeWorkflowAI({
+            prompt,
+            options,
+            model: rule.model,
+            timeoutMs: rule.timeoutMs,
+        });
+        if (!result.success) {
             return false;
         }
 
-        return parseAIIncludeResponse(response);
+        return parseAIIncludeResponse(result.response ?? '');
     };
 
     if (rule.concurrency !== undefined && rule.concurrency > 0) {

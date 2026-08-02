@@ -298,7 +298,7 @@ describe('buildChatTurnContext', () => {
     it('passes all input options through to buildChatToolBundle', async () => {
         const store = makeStore();
         const scheduleWakeup = { executor: {} as any, processId: 'p', resolveWorkspaceId: vi.fn(), enqueueWakeup: vi.fn() };
-        const loopTools = { store: {} as any, executor: {} as any, processId: 'p', resolveWorkspaceId: vi.fn() };
+        const cronTools = { store: {} as any, executor: {} as any, processId: 'p', resolveWorkspaceId: vi.fn() };
 
         await buildChatTurnContext({
             dataDir: '/d',
@@ -307,7 +307,7 @@ describe('buildChatTurnContext', () => {
             processId: 'proc-2',
             followUpSuggestions: { enabled: true, count: 3 },
             scheduleWakeup,
-            loopTools,
+            cronTools,
             excludeTools: ['some_tool'],
         });
 
@@ -319,7 +319,7 @@ describe('buildChatTurnContext', () => {
                 processId: 'proc-2',
                 followUpSuggestions: { enabled: true, count: 3 },
                 scheduleWakeup,
-                loopTools,
+                cronTools,
                 excludeTools: ['some_tool'],
             }),
         );

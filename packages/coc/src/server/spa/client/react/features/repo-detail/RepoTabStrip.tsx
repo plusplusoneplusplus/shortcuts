@@ -3,49 +3,41 @@
  * Shows visible tabs that fit, with a "+N" overflow pill and dropdown for the rest.
  */
 
-import { useState, useRef, useEffect, useCallback, useMemo, useContext, type DragEvent as ReactDragEvent } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, useContext } from 'react';
 import { AddRepoDialog } from '../../repos/AddRepoDialog';
 import { AddFolderDialog } from '../../repos/AddFolderDialog';
 import { CloneRepoDialog } from '../../repos/CloneRepoDialog';
 import type { RepoData, RepoGroup } from '../../repos/repoGrouping';
 import { groupReposByRemote, groupReposByAgent, applyGroupOrder, getRepoHashColor } from '../../repos/repoGrouping';
-import { moveRepoTabOrder, moveRepoTabOrderToIndex, resolveRepoTabOrder, sanitizeRepoTabOrder } from '../../repos/repoOrder';
+import { resolveRepoTabOrder, sanitizeRepoTabOrder } from '../../repos/repoOrder';
 import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
 import { useContainerAgents } from '../../contexts/ContainerAgentContext';
 import { ToastContext } from '../../contexts/ToastContext';
-import { isHidden as isHiddenTask } from '../../queue/hooks/useRepoQueueStats';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getSpaCocClient } from '../../api/cocClient';
 import { isContainerMode, getHostname } from '../../utils/config';
 import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { GenerateTaskDialog } from '../../tasks/GenerateTaskDialog';
 import { openScopePopOut } from '../scope-window/scopeWindow';
+import {
+    type RepoQueueStatus,
+    type RepoQueueStatusInfo,
+    getRepoQueueStatusInfo,
+    getRepoQueueAccessibleLabel,
+    getRepoDisplayName,
+    computeVisibleRepoIds,
+    computeVisibleAgentIds,
+    flattenGroups,
+    buildRepoQueueStatusMap,
+    computeRepoOverflowState,
+} from './repoTabModel';
+import { useRepoTabSelection } from './useRepoTabSelection';
+import { useRepoTabOrdering } from './useRepoTabOrdering';
 
-export type RepoQueueStatus = 'idle' | 'running' | 'queued' | 'paused';
-
-export interface RepoQueueStatusInfo {
-    status: RepoQueueStatus;
-    label: string;
-    icon: 'play' | 'pause' | 'pending' | null;
-}
-
-export function getRepoQueueStatusInfo(status: RepoQueueStatus): RepoQueueStatusInfo {
-    switch (status) {
-        case 'running':
-            return { status, label: 'running jobs', icon: 'play' };
-        case 'queued':
-            return { status, label: 'queued jobs', icon: 'pending' };
-        case 'paused':
-            return { status, label: 'queue paused', icon: 'pause' };
-        default:
-            return { status: 'idle', label: 'idle', icon: null };
-    }
-}
-
-function getRepoQueueAccessibleLabel(repoName: string, status: RepoQueueStatus): string {
-    const info = getRepoQueueStatusInfo(status);
-    return status === 'idle' ? repoName : `${repoName}, ${info.label}`;
-}
+// Re-export the navigation-model surface consumed by RepoDetail, TopBar, and the
+// tab-strip test suites, now sourced from the extracted kernel modules.
+export type { RepoQueueStatus, RepoQueueStatusInfo };
+export { getRepoQueueStatusInfo, getRepoDisplayName, computeVisibleRepoIds, computeVisibleAgentIds };
 
 function RepoQueueStatusIcon({ icon }: { icon: NonNullable<RepoQueueStatusInfo['icon']> }) {
     if (icon === 'play') {
@@ -112,14 +104,6 @@ function RepoQueueStatusIndicator({
     );
 }
 
-/** Display name for a workspace: prefix agent name for container repos to disambiguate same-named repos across agents. */
-export function getRepoDisplayName(ws: any): string {
-    if (ws.agentName) {
-        return `${ws.agentName}:${ws.name}`;
-    }
-    return ws.name;
-}
-
 export interface RepoTabStripProps {
     repos: RepoData[];
     selectedRepoId: string | null;
@@ -132,120 +116,6 @@ interface ContextMenuState {
     repoId: string;
     x: number;
     y: number;
-}
-
-type RepoDropIndicator = { targetId: string; position: 'before' | 'after' } | null;
-
-const REPO_TAB_DRAG_MIME = 'application/x-coc-repo-tab';
-
-function getHorizontalDropPosition(event: ReactDragEvent<HTMLElement>): 'before' | 'after' {
-    const rect = event.currentTarget.getBoundingClientRect();
-    return event.clientX < rect.left + rect.width / 2 ? 'before' : 'after';
-}
-
-function getVerticalDropPosition(event: ReactDragEvent<HTMLElement>): 'before' | 'after' {
-    const rect = event.currentTarget.getBoundingClientRect();
-    return event.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
-}
-
-/**
- * Compute which repo IDs are visible given a container width.
- * Measures each tab's offsetWidth and accumulates until the budget runs out.
- * The selected repo is always included; if it doesn't fit naturally it replaces
- * the last visible tab.
- */
-export function computeVisibleRepoIds(
-    tabElements: HTMLElement[],
-    containerWidth: number,
-    selectedRepoId: string | null,
-): Set<string> {
-    if (containerWidth <= 0) {
-        // Extremely narrow: show only the selected repo (if any)
-        if (selectedRepoId) return new Set([selectedRepoId]);
-        return new Set<string>();
-    }
-
-    const visible = new Set<string>();
-    let usedWidth = 0;
-    let lastVisibleId: string | null = null;
-
-    for (const el of tabElements) {
-        const id = el.getAttribute('data-repo-id');
-        if (!id) continue;
-        // Include the gap between tabs (approximate 2px for gap-0.5)
-        const width = el.offsetWidth + 2;
-        if (usedWidth + width <= containerWidth) {
-            visible.add(id);
-            usedWidth += width;
-            lastVisibleId = id;
-        } else {
-            break;
-        }
-    }
-
-    // Ensure selected repo is always visible
-    if (selectedRepoId && !visible.has(selectedRepoId)) {
-        if (lastVisibleId && visible.size > 0) {
-            visible.delete(lastVisibleId);
-        }
-        visible.add(selectedRepoId);
-    }
-
-    return visible;
-}
-
-/**
- * Compute which agent group IDs are visible given a container width.
- * Works like computeVisibleRepoIds but for agent pill elements.
- * The agent containing the selected repo is always included.
- */
-export function computeVisibleAgentIds(
-    pillElements: HTMLElement[],
-    containerWidth: number,
-    selectedAgentId: string | null,
-): Set<string> {
-    if (containerWidth <= 0) {
-        if (selectedAgentId) return new Set([selectedAgentId]);
-        return new Set<string>();
-    }
-
-    const visible = new Set<string>();
-    let usedWidth = 0;
-    let lastVisibleId: string | null = null;
-
-    for (const el of pillElements) {
-        const id = el.getAttribute('data-agent-id');
-        if (!id) continue;
-        const width = el.offsetWidth + 2;
-        if (usedWidth + width <= containerWidth) {
-            visible.add(id);
-            usedWidth += width;
-            lastVisibleId = id;
-        } else {
-            break;
-        }
-    }
-
-    // Ensure agent with selected repo is always visible
-    if (selectedAgentId && !visible.has(selectedAgentId)) {
-        if (lastVisibleId && visible.size > 0) {
-            visible.delete(lastVisibleId);
-        }
-        visible.add(selectedAgentId);
-    }
-
-    return visible;
-}
-
-/**
- * Flatten grouped repos into a flat ordered list of repo IDs.
- */
-function flattenGroups(groups: RepoGroup[]): string[] {
-    const ids: string[] = [];
-    for (const g of groups) {
-        for (const r of g.repos) ids.push(r.workspace.id);
-    }
-    return ids;
 }
 
 export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, onRefresh }: RepoTabStripProps) {
@@ -267,12 +137,6 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     const [overflowFilter, setOverflowFilter] = useState('');
     const [overflowHighlight, setOverflowHighlight] = useState(-1);
     const [visibleRepoIds, setVisibleRepoIds] = useState<Set<string> | null>(null);
-    const [groupOrder, setGroupOrder] = useState<string[]>([]);
-    const [repoTabOrder, setRepoTabOrder] = useState<string[] | undefined>();
-    const [customizeRepoTabs, setCustomizeRepoTabs] = useState(false);
-    const [draggedRepoId, setDraggedRepoId] = useState<string | null>(null);
-    const [repoDropIndicator, setRepoDropIndicator] = useState<RepoDropIndicator>(null);
-    const [repoLiveMessage, setRepoLiveMessage] = useState('');
     const [openAgentDropdown, setOpenAgentDropdown] = useState<string | null>(null);
     const [agentOverflowOpen, setAgentOverflowOpen] = useState(false);
     const agentDropdownRef = useRef<HTMLDivElement>(null);
@@ -284,25 +148,31 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     const tabContainerRef = useRef<HTMLDivElement>(null);
     const measureContainerRef = useRef<HTMLDivElement>(null);
     const toast = useContext(ToastContext);
-
-    useEffect(() => {
-        let cancelled = false;
-        getSpaCocClient().preferences.getGlobal().then((prefs) => {
-            if (!cancelled) {
-                if (Array.isArray(prefs?.gitGroupOrder)) {
-                    setGroupOrder(prefs.gitGroupOrder);
-                }
-                setRepoTabOrder(Array.isArray(prefs?.repoTabOrder) ? prefs.repoTabOrder : undefined);
-            }
-        }).catch((error) => {
-            if (!cancelled) {
-                console.warn('Failed to load repo tab preferences', error);
-            }
-        });
-        return () => { cancelled = true; };
-    }, []);
+    const { state: appState, dispatch } = useApp();
+    const { state: queueState, dispatch: queueDispatch } = useQueue();
 
     const repoIds = useMemo(() => repos.map(repo => String(repo.workspace.id)), [repos]);
+    // Ref to the flat ordered id list; synced below so the ordering hook's
+    // drag/drop callbacks read the latest order without depending on it at
+    // render time (the order is itself derived from the hook's repoTabOrder).
+    const allRepoIdsRef = useRef<string[]>([]);
+    const {
+        groupOrder,
+        repoTabOrder,
+        customizeRepoTabs,
+        setCustomizeRepoTabs,
+        draggedRepoId,
+        repoDropIndicator,
+        repoLiveMessage,
+        enterCustomizeRepoTabs,
+        resetRepoTabOrder,
+        moveRepoToIndex,
+        startRepoDrag,
+        updateRepoDropTarget,
+        dropRepoOnTarget,
+        cancelRepoDrag,
+    } = useRepoTabOrdering({ repoIds, allRepoIdsRef, toast });
+
     const hasCustomRepoOrder = useMemo(
         () => sanitizeRepoTabOrder(repoTabOrder, repoIds).length > 0,
         [repoIds, repoTabOrder],
@@ -335,25 +205,24 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
         [groupOrder, hasCustomRepoOrder, rawGroups],
     );
     const allRepoIds = useMemo(() => flattenGroups(groups), [groups]);
-    const { state: appState, dispatch } = useApp();
-    const { state: queueState, dispatch: queueDispatch } = useQueue();
+    allRepoIdsRef.current = allRepoIds;
 
     /** Pre-computed queue status for each repo. */
-    const repoQueueStatusMap = useMemo<Record<string, RepoQueueStatus>>(() => {
-        const map: Record<string, RepoQueueStatus> = {};
-        for (const repo of repos) {
-            const wsId = repo.workspace.id;
-            const entry = queueState.repoQueueMap?.[wsId];
-            if (!entry) { map[wsId] = 'idle'; continue; }
-            if (entry.stats?.isPaused) { map[wsId] = 'paused'; continue; }
-            const running = (entry.running ?? []).filter(t => !isHiddenTask(t)).length;
-            if (running > 0) { map[wsId] = 'running'; continue; }
-            const queued = (entry.queued ?? []).filter(t => !isHiddenTask(t)).length;
-            if (queued > 0) { map[wsId] = 'queued'; continue; }
-            map[wsId] = 'idle';
-        }
-        return map;
-    }, [repos, queueState.repoQueueMap]);
+    const repoQueueStatusMap = useMemo<Record<string, RepoQueueStatus>>(
+        () => buildRepoQueueStatusMap(repos, queueState.repoQueueMap),
+        [repos, queueState.repoQueueMap],
+    );
+
+    // The single selection command shared by tabs, agent pills, agent submenus,
+    // and overflow rows — switches agent, selects, and refreshes on same-repo
+    // cross-agent switches, so those surfaces cannot drift apart.
+    const selectRepo = useRepoTabSelection({
+        dispatch,
+        currentAgentId: appState.currentAgentId,
+        onSelect,
+        selectedRepoId,
+        onRefresh,
+    });
 
     const handleRemove = async (repoId: string) => {
         if (!confirm('Remove this repo from the dashboard? Processes will be preserved.')) return;
@@ -362,109 +231,6 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
         location.hash = '';
         onRefresh();
     };
-
-    const persistRepoTabOrder = useCallback(async (nextOrder: string[]) => {
-        const sanitized = sanitizeRepoTabOrder(nextOrder, repoIds);
-        setRepoTabOrder(sanitized);
-        try {
-            await getSpaCocClient().preferences.patchGlobal({ repoTabOrder: sanitized });
-        } catch (error) {
-            console.warn('Failed to save repo tab order', error);
-            toast?.addToast(`${getSpaCocClientErrorMessage(error, 'Failed to save repo tab order')}. The order will stay for this session and retry on the next reorder.`, 'error');
-        }
-    }, [repoIds, toast]);
-
-    const finishRepoReorder = useCallback((nextOrder: string[]) => {
-        setDraggedRepoId(null);
-        setRepoDropIndicator(null);
-        void persistRepoTabOrder(nextOrder);
-        setRepoLiveMessage('Repository tab order updated.');
-    }, [persistRepoTabOrder]);
-
-    const resetRepoTabOrder = useCallback(async () => {
-        setRepoTabOrder(undefined);
-        try {
-            const prefs = await getSpaCocClient().preferences.getGlobal();
-            const { repoTabOrder: _repoTabOrder, ...rest } = prefs;
-            await getSpaCocClient().preferences.replaceGlobal(rest);
-            setCustomizeRepoTabs(false);
-            toast?.addToast('Repo tab order reset', 'success');
-            setRepoLiveMessage('Repository tab order reset.');
-        } catch (error) {
-            console.warn('Failed to reset repo tab order', error);
-            toast?.addToast(getSpaCocClientErrorMessage(error, 'Failed to reset repo tab order'), 'error');
-        }
-    }, [toast]);
-
-    const enterCustomizeRepoTabs = useCallback(() => {
-        setCustomizeRepoTabs(true);
-        setContextMenu(null);
-        setRepoLiveMessage('Repo tab customize mode started.');
-    }, []);
-
-    useEffect(() => {
-        const handler = () => enterCustomizeRepoTabs();
-        window.addEventListener('coc-customize-repo-tabs', handler);
-        return () => window.removeEventListener('coc-customize-repo-tabs', handler);
-    }, [enterCustomizeRepoTabs]);
-
-    useEffect(() => {
-        if (!customizeRepoTabs && !draggedRepoId) {
-            return;
-        }
-        const handler = (event: KeyboardEvent) => {
-            if (event.key !== 'Escape') {
-                return;
-            }
-            event.preventDefault();
-            setDraggedRepoId(null);
-            setRepoDropIndicator(null);
-            setCustomizeRepoTabs(false);
-            setRepoLiveMessage('Repo tab customize mode finished.');
-        };
-        document.addEventListener('keydown', handler);
-        return () => document.removeEventListener('keydown', handler);
-    }, [customizeRepoTabs, draggedRepoId]);
-
-    const moveRepoToIndex = useCallback((repoId: string, targetIndex: number) => {
-        finishRepoReorder(moveRepoTabOrderToIndex(allRepoIds, repoId, targetIndex));
-    }, [allRepoIds, finishRepoReorder]);
-
-    const startRepoDrag = useCallback((event: ReactDragEvent<HTMLElement>, repoId: string) => {
-        if (!customizeRepoTabs) {
-            return;
-        }
-        event.dataTransfer.effectAllowed = 'move';
-        event.dataTransfer.setData(REPO_TAB_DRAG_MIME, repoId);
-        event.dataTransfer.setData('text/plain', repoId);
-        setDraggedRepoId(repoId);
-    }, [customizeRepoTabs]);
-
-    const updateRepoDropTarget = useCallback((event: ReactDragEvent<HTMLElement>, targetId: string, orientation: 'horizontal' | 'vertical') => {
-        if (!draggedRepoId || draggedRepoId === targetId) {
-            return;
-        }
-        event.preventDefault();
-        event.dataTransfer.dropEffect = 'move';
-        setRepoDropIndicator({
-            targetId,
-            position: orientation === 'horizontal' ? getHorizontalDropPosition(event) : getVerticalDropPosition(event),
-        });
-    }, [draggedRepoId]);
-
-    const dropRepoOnTarget = useCallback((event: ReactDragEvent<HTMLElement>, targetId: string, orientation: 'horizontal' | 'vertical') => {
-        if (!draggedRepoId || draggedRepoId === targetId) {
-            setDraggedRepoId(null);
-            setRepoDropIndicator(null);
-            return;
-        }
-        event.preventDefault();
-        const sourceId = event.dataTransfer.getData(REPO_TAB_DRAG_MIME) || event.dataTransfer.getData('text/plain') || draggedRepoId;
-        const position = repoDropIndicator?.targetId === targetId
-            ? repoDropIndicator.position
-            : (orientation === 'horizontal' ? getHorizontalDropPosition(event) : getVerticalDropPosition(event));
-        finishRepoReorder(moveRepoTabOrder(allRepoIds, sourceId, targetId, position));
-    }, [allRepoIds, draggedRepoId, finishRepoReorder, repoDropIndicator]);
 
     // Overflow detection via ResizeObserver
     const recalcOverflow = useCallback(() => {
@@ -524,13 +290,13 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     );
     const hasAgentOverflow = hiddenAgentGroups.length > 0;
 
-    const overflowCount = visibleRepoIds ? allRepoIds.length - visibleRepoIds.size : 0;
-    const hasOverflow = overflowCount > 0;
-    const showOverflowControl = !isContainerMode() && (hasOverflow || customizeRepoTabs);
-    const overflowHasUnseen = hasOverflow && allRepoIds.some(
-        id => !visibleRepoIds!.has(id) && (unseenCounts[id] ?? 0) > 0
+    const { overflowCount, hasOverflow, overflowHasUnseen, selectedIsHidden } = computeRepoOverflowState(
+        visibleRepoIds,
+        allRepoIds,
+        selectedRepoId,
+        unseenCounts,
     );
-    const selectedIsHidden = hasOverflow && selectedRepoId != null && !visibleRepoIds!.has(selectedRepoId);
+    const showOverflowControl = !isContainerMode() && (hasOverflow || customizeRepoTabs);
 
     // Filtered repos for overflow dropdown (all repos, filtered by search)
     const filteredReposForDropdown = useMemo(() => {
@@ -642,11 +408,8 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
         } else if (e.key === 'Enter' && overflowHighlight >= 0 && overflowHighlight < flatFilteredRepos.length) {
             e.preventDefault();
             const targetWs = flatFilteredRepos[overflowHighlight].workspace;
-            if (targetWs.agentId) dispatch({ type: 'SET_CURRENT_AGENT', agentId: targetWs.agentId });
-            const sw = targetWs.agentId && appState.currentAgentId !== targetWs.agentId;
-            onSelect(targetWs.id);
+            selectRepo(targetWs.id, targetWs.agentId);
             setOverflowOpen(false);
-            if (sw && targetWs.id === selectedRepoId) onRefresh();
         }
     };
 
@@ -672,10 +435,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                 onDragOver={event => updateRepoDropTarget(event, ws.id, 'horizontal')}
                 onDragEnter={event => updateRepoDropTarget(event, ws.id, 'horizontal')}
                 onDrop={event => dropRepoOnTarget(event, ws.id, 'horizontal')}
-                onDragEnd={() => {
-                    setDraggedRepoId(null);
-                    setRepoDropIndicator(null);
-                }}
+                onDragEnd={cancelRepoDrag}
             >
                 {showBefore && <span className="absolute -left-0.5 top-1 bottom-1 w-0.5 rounded bg-[#0078d4] dark:bg-[#60b4ff]" aria-hidden />}
                 <button
@@ -696,10 +456,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                             event.preventDefault();
                             return;
                         }
-                        const switchingAgent = ws.agentId && appState.currentAgentId !== ws.agentId;
-                        if (ws.agentId) dispatch({ type: 'SET_CURRENT_AGENT', agentId: ws.agentId });
-                        onSelect(ws.id);
-                        if (switchingAgent && ws.id === selectedRepoId) onRefresh();
+                        selectRepo(ws.id, ws.agentId);
                     }}
                     onContextMenu={e => {
                         e.preventDefault();
@@ -841,12 +598,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                     if (group.repos.length === 0) {
                                         dispatch({ type: 'SET_CURRENT_AGENT', agentId });
                                     } else if (group.repos.length === 1) {
-                                        const switchingAgent = appState.currentAgentId !== agentId;
-                                        dispatch({ type: 'SET_CURRENT_AGENT', agentId });
-                                        onSelect(group.repos[0].workspace.id);
-                                        if (switchingAgent && group.repos[0].workspace.id === selectedRepoId) {
-                                            onRefresh();
-                                        }
+                                        selectRepo(group.repos[0].workspace.id, agentId);
                                     } else {
                                         setOpenAgentDropdown(isOpen ? null : agentId);
                                     }
@@ -880,14 +632,8 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                                 }
                                                 onClick={() => {
                                                     // Switch to this agent before selecting the repo
-                                                    const switchingAgent = appState.currentAgentId !== agentId;
-                                                    dispatch({ type: 'SET_CURRENT_AGENT', agentId });
-                                                    onSelect(ws.id);
+                                                    selectRepo(ws.id, agentId);
                                                     setOpenAgentDropdown(null);
-                                                    // If same repo ID is already selected but agent changed, force data refresh
-                                                    if (switchingAgent && ws.id === selectedRepoId) {
-                                                        onRefresh();
-                                                    }
                                                 }}
                                                 onContextMenu={e => {
                                                     e.preventDefault();
@@ -1006,7 +752,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                                                 ? 'bg-[#0078d4]/10 dark:bg-[#3794ff]/15 text-[#0078d4] dark:text-[#60b4ff] font-medium'
                                                                 : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/5 dark:hover:bg-[#3794ff]/10')
                                                         }
-                                                        onClick={() => { const sw = appState.currentAgentId !== agentId; dispatch({ type: 'SET_CURRENT_AGENT', agentId }); onSelect(ws.id); setOpenAgentDropdown(null); setAgentOverflowOpen(false); if (sw && ws.id === selectedRepoId) onRefresh(); }}
+                                                        onClick={() => { selectRepo(ws.id, agentId); setOpenAgentDropdown(null); setAgentOverflowOpen(false); }}
                                                     >
                                                         <RepoQueueStatusIndicator status={queueStatus} color={color} idleShape="rounded-full" isSelected={isSelected} testId="agent-overflow-repo-dot" />
                                                         <span className="truncate">{getRepoDisplayName(ws)}</span>
@@ -1163,10 +909,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                                             onDragOver={event => updateRepoDropTarget(event, ws.id, 'vertical')}
                                                             onDragEnter={event => updateRepoDropTarget(event, ws.id, 'vertical')}
                                                             onDrop={event => dropRepoOnTarget(event, ws.id, 'vertical')}
-                                                            onDragEnd={() => {
-                                                                setDraggedRepoId(null);
-                                                                setRepoDropIndicator(null);
-                                                            }}
+                                                            onDragEnd={cancelRepoDrag}
                                                         >
                                                             {rowContent}
                                                             <button
@@ -1212,7 +955,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                                     role="menuitem"
                                                     aria-label={accessibleLabel}
                                                     title={accessibleLabel}
-                                                    onClick={() => { if (ws.agentId) dispatch({ type: 'SET_CURRENT_AGENT', agentId: ws.agentId }); const sw = ws.agentId && appState.currentAgentId !== ws.agentId; onSelect(ws.id); setOverflowOpen(false); if (sw && ws.id === selectedRepoId) onRefresh(); }}
+                                                    onClick={() => { selectRepo(ws.id, ws.agentId); setOverflowOpen(false); }}
                                                     onContextMenu={e => {
                                                         e.preventDefault();
                                                         setContextMenu({ repoId: ws.id, x: e.clientX, y: e.clientY });
@@ -1388,7 +1131,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                             data-testid="repo-tab-context-customize-order"
                             className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
                             role="menuitem"
-                            onClick={enterCustomizeRepoTabs}
+                            onClick={() => { enterCustomizeRepoTabs(); setContextMenu(null); }}
                         >
                             Customize repo tabs
                         </button>

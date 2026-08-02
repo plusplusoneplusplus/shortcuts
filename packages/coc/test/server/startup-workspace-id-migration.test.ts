@@ -79,8 +79,8 @@ describe('migrateWorkspaceIdsToV2IfNeeded', () => {
             db.exec('CREATE TABLE IF NOT EXISTS queue_repo_paths (repo_id TEXT PRIMARY KEY, root_path TEXT NOT NULL)');
             db.prepare('INSERT INTO queue_repo_paths (repo_id, root_path) VALUES (?, ?)').run(oldId, rootPath);
             db.prepare('INSERT INTO schedule_runs (id, schedule_id, repo_id, started_at, status) VALUES (?, ?, ?, ?, ?)').run('sr1', 'sched1', oldId, seenAt, 'running');
-            db.exec('ALTER TABLE loops ADD COLUMN workspace_id TEXT');
-            db.prepare('INSERT INTO loops (id, process_id, interval_ms, created_at, expires_at, workspace_id) VALUES (?, ?, ?, ?, ?, ?)').run('loop1', 'p1', 1000, seenAt, seenAt, oldId);
+            db.exec('ALTER TABLE crons ADD COLUMN workspace_id TEXT');
+            db.prepare('INSERT INTO crons (id, process_id, interval_ms, created_at, expires_at, workspace_id) VALUES (?, ?, ?, ?, ?, ?)').run('cron1', 'p1', 1000, seenAt, seenAt, oldId);
             db.exec('CREATE TABLE IF NOT EXISTS container_sessions (id TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT \'active\', routing_override_agent_id TEXT, routing_override_workspace_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)');
             db.exec('CREATE TABLE IF NOT EXISTS container_session_turns (session_id TEXT NOT NULL, turn_index INTEGER NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, routing_agent_id TEXT NOT NULL, routing_workspace_id TEXT NOT NULL, routing_confidence REAL NOT NULL DEFAULT 1.0, routing_reason TEXT NOT NULL DEFAULT \'\', downstream_process_id TEXT, timestamp TEXT NOT NULL, PRIMARY KEY (session_id, turn_index))');
             db.prepare('INSERT INTO container_sessions (id, routing_override_agent_id, routing_override_workspace_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run('cs1', 'agent-a', oldId, seenAt, seenAt);
@@ -112,7 +112,7 @@ describe('migrateWorkspaceIdsToV2IfNeeded', () => {
                 expect(scalarCount(db.prepare(`SELECT COUNT(*) AS cnt FROM ${table} WHERE repo_id = ?`).get(newId))).toBeGreaterThan(0);
                 expect(scalarCount(db.prepare(`SELECT COUNT(*) AS cnt FROM ${table} WHERE repo_id = ?`).get(oldId))).toBe(0);
             }
-            expect(scalarCount(db.prepare('SELECT COUNT(*) AS cnt FROM loops WHERE workspace_id = ?').get(newId))).toBe(1);
+            expect(scalarCount(db.prepare('SELECT COUNT(*) AS cnt FROM crons WHERE workspace_id = ?').get(newId))).toBe(1);
             expect(scalarCount(db.prepare('SELECT COUNT(*) AS cnt FROM container_sessions WHERE routing_override_workspace_id = ?').get(newId))).toBe(1);
             expect(scalarCount(db.prepare('SELECT COUNT(*) AS cnt FROM container_session_turns WHERE routing_workspace_id = ?').get(newId))).toBe(1);
             expect(stderrSpy.mock.calls.some(call => String(call[0]).includes(`Migrated workspace ${oldId}`))).toBe(true);

@@ -250,8 +250,8 @@ describe('META_COMMANDS constant', () => {
         expect(META_COMMANDS).toContain('model');
     });
 
-    it('contains loop', () => {
-        expect(META_COMMANDS).toContain('loop');
+    it('contains cron', () => {
+        expect(META_COMMANDS).toContain('cron');
     });
 
     it('contains compact', () => {
@@ -295,7 +295,7 @@ describe('parseSlashCommands — /compact meta-command', () => {
 });
 
 describe('getActiveMetaCommands — compact always active', () => {
-    it('includes "compact" regardless of the loops feature flag', async () => {
+    it('includes "compact" regardless of the cron feature flag', async () => {
         const { getActiveMetaCommands } = await import('../../../src/server/spa/client/react/features/chat/slash-command-parser');
         expect(getActiveMetaCommands(true)).toContain('compact');
         expect(getActiveMetaCommands(false)).toContain('compact');
@@ -303,73 +303,73 @@ describe('getActiveMetaCommands — compact always active', () => {
 });
 
 // ============================================================================
-// /loop meta-command
+// /cron meta-command
 // ============================================================================
 
-describe('parseSlashCommands — /loop meta-command', () => {
-    it('detects /loop as a meta-command', () => {
-        const result = parseSlashCommands('/loop', AVAILABLE_SKILLS);
-        expect(result.metaCommands).toContain('loop');
+describe('parseSlashCommands — /cron meta-command', () => {
+    it('detects /cron as a meta-command', () => {
+        const result = parseSlashCommands('/cron', AVAILABLE_SKILLS);
+        expect(result.metaCommands).toContain('cron');
         expect(result.skills).toEqual([]);
         expect(result.prompt).toBe('');
     });
 
-    it('strips /loop from the prompt', () => {
-        const result = parseSlashCommands('/loop monitor CI every 5m', AVAILABLE_SKILLS);
-        expect(result.metaCommands).toContain('loop');
+    it('strips /cron from the prompt', () => {
+        const result = parseSlashCommands('/cron monitor CI every 5m', AVAILABLE_SKILLS);
+        expect(result.metaCommands).toContain('cron');
         expect(result.prompt).toBe('monitor CI every 5m');
     });
 
-    it('handles /loop mixed with skills', () => {
-        const result = parseSlashCommands('/impl /loop check build status', AVAILABLE_SKILLS);
+    it('handles /cron mixed with skills', () => {
+        const result = parseSlashCommands('/impl /cron check build status', AVAILABLE_SKILLS);
         expect(result.skills).toEqual(['impl']);
-        expect(result.metaCommands).toContain('loop');
+        expect(result.metaCommands).toContain('cron');
         expect(result.prompt).toBe('check build status');
     });
 
-    it('recognizes /loop as a meta-command via isMetaCommand', () => {
-        expect(isMetaCommand('loop')).toBe(true);
-        expect(isMetaCommand('LOOP')).toBe(true);
+    it('recognizes /cron as a meta-command via isMetaCommand', () => {
+        expect(isMetaCommand('cron')).toBe(true);
+        expect(isMetaCommand('CRON')).toBe(true);
     });
 
-    it('meta-command /loop has priority over a skill named loop', () => {
-        const skills = [...AVAILABLE_SKILLS, 'loop'];
-        const result = parseSlashCommands('/loop test', skills);
-        expect(result.metaCommands).toContain('loop');
+    it('meta-command /cron has priority over a skill named cron', () => {
+        const skills = [...AVAILABLE_SKILLS, 'cron'];
+        const result = parseSlashCommands('/cron test', skills);
+        expect(result.metaCommands).toContain('cron');
         expect(result.skills).toEqual([]);
     });
 });
 
 describe('getActiveMetaCommands', () => {
-    it('includes "loop" when loops feature is enabled', async () => {
+    it('includes "cron" when cron feature is enabled', async () => {
         const { getActiveMetaCommands } = await import('../../../src/server/spa/client/react/features/chat/slash-command-parser');
-        expect(getActiveMetaCommands(true)).toContain('loop');
+        expect(getActiveMetaCommands(true)).toContain('cron');
         expect(getActiveMetaCommands(true)).toContain('model');
     });
 
-    it('excludes "loop" when loops feature is disabled', async () => {
+    it('excludes "cron" when cron feature is disabled', async () => {
         const { getActiveMetaCommands } = await import('../../../src/server/spa/client/react/features/chat/slash-command-parser');
-        expect(getActiveMetaCommands(false)).not.toContain('loop');
+        expect(getActiveMetaCommands(false)).not.toContain('cron');
         expect(getActiveMetaCommands(false)).toContain('model');
     });
 });
 
 describe('parseSlashCommands with restricted meta-commands', () => {
-    it('does not match /loop when meta-commands excludes "loop"', async () => {
+    it('does not match /cron when meta-commands excludes "cron"', async () => {
         const { parseSlashCommands, getActiveMetaCommands } = await import('../../../src/server/spa/client/react/features/chat/slash-command-parser');
-        const result = parseSlashCommands('/loop every 5m', [], getActiveMetaCommands(false));
-        expect(result.metaCommands).not.toContain('loop');
+        const result = parseSlashCommands('/cron every 5m', [], getActiveMetaCommands(false));
+        expect(result.metaCommands).not.toContain('cron');
     });
 
-    it('still matches /model when meta-commands excludes "loop"', async () => {
+    it('still matches /model when meta-commands excludes "cron"', async () => {
         const { parseSlashCommands, getActiveMetaCommands } = await import('../../../src/server/spa/client/react/features/chat/slash-command-parser');
         const result = parseSlashCommands('/model gpt-5', [], getActiveMetaCommands(false));
         expect(result.metaCommands).toContain('model');
     });
 
-    it('matches /loop when meta-commands includes "loop"', async () => {
+    it('matches /cron when meta-commands includes "cron"', async () => {
         const { parseSlashCommands, getActiveMetaCommands } = await import('../../../src/server/spa/client/react/features/chat/slash-command-parser');
-        const result = parseSlashCommands('/loop every 5m', [], getActiveMetaCommands(true));
-        expect(result.metaCommands).toContain('loop');
+        const result = parseSlashCommands('/cron every 5m', [], getActiveMetaCommands(true));
+        expect(result.metaCommands).toContain('cron');
     });
 });

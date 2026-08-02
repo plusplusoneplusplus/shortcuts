@@ -128,9 +128,9 @@ import { DreamIdleScheduler } from '../dreams/dream-idle-scheduler';
 import { DEFAULT_DREAM_ANALYSIS_TIMEOUT_MS } from '../dreams/dream-analyzer';
 import { resolveDreamSystemPrompt } from '../dreams/dream-prompt-resolver';
 import { DreamInternalProcessExecutor } from '../executors/dream-internal-process-executor';
-import { registerLoopRoutes } from '../loops/loop-handler';
-import type { LoopStore } from '../loops/loop-store';
-import type { LoopExecutor, LoopEventEmit } from '../loops/loop-executor';
+import { registerCronRoutes } from '../cron/cron-handler';
+import type { CronStore } from '../cron/cron-store';
+import type { CronExecutor, CronEventEmit } from '../cron/cron-executor';
 import { registerTriggerRoutes } from '../triggers/trigger-handler';
 import type { TriggerStore } from '../triggers/trigger-store';
 import type { TriggerManager, TriggerEventEmit } from '../triggers/trigger-manager';
@@ -214,14 +214,14 @@ export interface RegisterRoutesOptions {
     remoteServerConnector?: DevTunnelConnector;
     remoteServerSshConnector?: SshConnector;
     getLocalBaseUrl?: () => string | undefined;
-    loopStore?: LoopStore;
-    loopExecutor?: LoopExecutor;
+    cronStore?: CronStore;
+    cronExecutor?: CronExecutor;
     triggerStore?: TriggerStore;
     triggerManager?: TriggerManager;
     triggerEmit?: TriggerEventEmit;
     mcpOauthManager?: McpOauthManager;
     resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
-    loopEmit?: LoopEventEmit;
+    cronEmit?: CronEventEmit;
     hostname?: string;
     bindAddress?: string;
     syncEngines?: Map<string, SyncEngine>;
@@ -460,8 +460,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
 
     // excalidrawEnabled uses a live getter via runtimeConfigService so admin
-    // changes take effect without restart. loopsEnabled stays startup-captured
-    // (restartRequired — loop executor infrastructure wires at startup).
+    // changes take effect without restart. cronEnabled stays startup-captured
+    // (restartRequired — cron executor infrastructure wires at startup).
     const getLiveFeatureFlags = opts.runtimeConfigService
         ? () => ({
             excalidrawEnabled: opts.runtimeConfigService!.config.excalidraw?.enabled ?? false,
@@ -475,7 +475,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         });
     const isKustoEnabled = (): boolean => getLiveFeatureFlags().kustoEnabled;
     const activeWorkspaceTracker = new ActiveWorkspaceTracker();
-    registerApiRoutes(routes, store, bridge, dataDir, getWsServer, undefined, opts.resolvedConfig?.loops?.enabled ?? false, getLiveFeatureFlags, activeWorkspaceTracker);
+    registerApiRoutes(routes, store, bridge, dataDir, getWsServer, undefined, opts.resolvedConfig?.cron?.enabled ?? false, getLiveFeatureFlags, activeWorkspaceTracker);
     const repoTreeService = new RepoTreeService(dataDir, undefined, store);
     registerRepoRoutes(routes, dataDir, repoTreeService);
     const isPullRequestTeamAutoClassificationEnabled = (): boolean => {
@@ -622,7 +622,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     }, resolvedAiService);
 
     // Resolve a process (conversation) ID to its owning workspace. Backs the
-    // automation route workspace-boundary checks (legacy loop compatibility and
+    // automation route workspace-boundary checks (legacy cron compatibility and
     // trigger create verification). Prefers the live queue task's repoId and
     // falls back to the persisted process metadata.
     const resolveProcessWorkspaceId = async (processId: string): Promise<string | undefined> => {
@@ -637,12 +637,12 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         }
     };
 
-    // Loop routes
-    if (opts.loopStore && opts.loopExecutor) {
-        registerLoopRoutes(routes, {
-            store: opts.loopStore,
-            executor: opts.loopExecutor,
-            emit: opts.loopEmit,
+    // Cron routes
+    if (opts.cronStore && opts.cronExecutor) {
+        registerCronRoutes(routes, {
+            store: opts.cronStore,
+            executor: opts.cronExecutor,
+            emit: opts.cronEmit,
             resolveWorkspaceId: resolveProcessWorkspaceId,
         });
     }

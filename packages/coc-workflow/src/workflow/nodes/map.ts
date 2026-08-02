@@ -10,7 +10,8 @@
 
 import type { MapNodeConfig, Items, WorkflowExecutionOptions, Item } from '../types';
 import { ConcurrencyLimiter } from '../concurrency-limiter';
-import { isWorkflowCancelled, isWorkflowCancellationError, throwIfWorkflowCancelled } from '../cancellation';
+import { isWorkflowCancelled, throwIfWorkflowCancelled } from '../cancellation';
+import { invokeWorkflowAI } from './ai-invocation-kernel';
 import {
     resolvePrompt,
     buildItemPrompt,
@@ -98,47 +99,21 @@ export async function executeMap(
                     const processId = options.processTracker?.registerProcess(`Map: ${itemLabel}`)
                         ?? `${nodeId}-batch-${batchIndex}`;
 
-                    options.onItemProcess?.({
-                        nodeId, itemIndex: batchIndex, processId, status: 'running', itemLabel,
+                    const result = await invokeWorkflowAI({
+                        prompt: buildBatchPrompt(resolvedPrompt, batch),
+                        options,
+                        model: config.model,
+                        timeoutMs: config.timeoutMs,
+                        lifecycle: {
+                            processTracker: options.processTracker,
+                            onItemProcess: options.onItemProcess,
+                            processId, nodeId, itemIndex: batchIndex, itemLabel,
+                        },
                     });
-
-                    const prompt = buildBatchPrompt(resolvedPrompt, batch);
-                    let result;
-                    try {
-                        throwIfWorkflowCancelled(options.signal);
-                        result = await options.aiInvoker!(prompt, {
-                            model: config.model ?? options.model,
-                            timeoutMs: config.timeoutMs ?? options.timeoutMs,
-                            workingDirectory: options.workingDirectory ?? options.workflowDirectory,
-                            signal: options.signal,
-                        });
-                        throwIfWorkflowCancelled(options.signal);
-                    } catch (err) {
-                        if (isWorkflowCancellationError(err) || options.signal?.aborted) {
-                            throwIfWorkflowCancelled(options.signal);
-                            throw err;
-                        }
-
-                        const error = err instanceof Error ? err.message : String(err);
-                        options.processTracker?.updateProcess(processId, 'failed', undefined, error);
-                        options.onItemProcess?.({
-                            nodeId, itemIndex: batchIndex, processId, status: 'failed', itemLabel, error,
-                        });
-                        return batch.map(item => ({ ...item, __error: error }));
-                    }
                     if (!result.success) {
                         const error = result.error ?? 'AI invocation failed';
-                        options.processTracker?.updateProcess(processId, 'failed', undefined, error);
-                        options.onItemProcess?.({
-                            nodeId, itemIndex: batchIndex, processId, status: 'failed', itemLabel, error,
-                        });
                         return batch.map(item => ({ ...item, __error: error }));
                     }
-
-                    options.processTracker?.updateProcess(processId, 'completed', result.response);
-                    options.onItemProcess?.({
-                        nodeId, itemIndex: batchIndex, processId, status: 'completed', itemLabel,
-                    });
                     return parseBatchResponse(result.response!, batch, config.output);
                 }, isCancelled)
             )
@@ -157,47 +132,20 @@ export async function executeMap(
                 const processId = options.processTracker?.registerProcess(`Map: ${itemLabel}`)
                     ?? `${nodeId}-${index}`;
 
-                options.onItemProcess?.({
-                    nodeId, itemIndex: index, processId, status: 'running', itemLabel,
+                const result = await invokeWorkflowAI({
+                    prompt: buildItemPrompt(resolvedPrompt, item),
+                    options,
+                    model: config.model,
+                    timeoutMs: config.timeoutMs,
+                    lifecycle: {
+                        processTracker: options.processTracker,
+                        onItemProcess: options.onItemProcess,
+                        processId, nodeId, itemIndex: index, itemLabel,
+                    },
                 });
-
-                const prompt = buildItemPrompt(resolvedPrompt, item);
-                let result;
-                try {
-                    throwIfWorkflowCancelled(options.signal);
-                    result = await options.aiInvoker!(prompt, {
-                        model: config.model ?? options.model,
-                        timeoutMs: config.timeoutMs ?? options.timeoutMs,
-                        workingDirectory: options.workingDirectory ?? options.workflowDirectory,
-                        signal: options.signal,
-                    });
-                    throwIfWorkflowCancelled(options.signal);
-                } catch (err) {
-                    if (isWorkflowCancellationError(err) || options.signal?.aborted) {
-                        throwIfWorkflowCancelled(options.signal);
-                        throw err;
-                    }
-
-                    const error = err instanceof Error ? err.message : String(err);
-                    options.processTracker?.updateProcess(processId, 'failed', undefined, error);
-                    options.onItemProcess?.({
-                        nodeId, itemIndex: index, processId, status: 'failed', itemLabel, error,
-                    });
-                    return { ...item, __error: error };
-                }
                 if (!result.success) {
-                    const error = result.error ?? 'AI invocation failed';
-                    options.processTracker?.updateProcess(processId, 'failed', undefined, error);
-                    options.onItemProcess?.({
-                        nodeId, itemIndex: index, processId, status: 'failed', itemLabel, error,
-                    });
-                    return { ...item, __error: error };
+                    return { ...item, __error: result.error ?? 'AI invocation failed' };
                 }
-
-                options.processTracker?.updateProcess(processId, 'completed', result.response);
-                options.onItemProcess?.({
-                    nodeId, itemIndex: index, processId, status: 'completed', itemLabel,
-                });
                 return mergeOutput(item, result.response!, config.output);
             }, isCancelled)
         )

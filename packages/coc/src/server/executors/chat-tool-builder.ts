@@ -2,7 +2,7 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
-import type { WakeupToolDeps, LoopToolDeps } from '../llm-tools/loop-tools';
+import type { WakeupToolDeps, CronToolDeps } from '../llm-tools/cron-tools';
 import { DEFAULT_DISABLED_LLM_TOOLS } from '../llm-tools/llm-tool-registry';
 import { readEffectiveDisabledLlmTools } from '../preferences-handler';
 import type { MemoryV2Addon } from './memory-v2-addon';
@@ -13,7 +13,7 @@ import {
     buildKustoToolsAddon,
     buildSendToConversationAddon,
     buildFollowUpSuggestionsAddon,
-    buildLoopToolsAddon,
+    buildCronToolsAddon,
     buildScheduleWakeupAddon,
     buildSearchConversationsAddon,
     buildTavilyWebSearchAddon,
@@ -48,7 +48,7 @@ export interface ChatToolBundleOptions {
     /** Memory V2 addon (redesigned coc-memory system). */
     memoryV2?: MemoryV2Addon;
     scheduleWakeup?: WakeupToolDeps;
-    loopTools?: LoopToolDeps;
+    cronTools?: CronToolDeps;
     includeFollowUpSuggestions?: boolean;
     includeSearchConversations?: boolean;
     includeTavilyWebSearch?: boolean;
@@ -128,8 +128,8 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
         addons.push(buildScheduleWakeupAddon(options.scheduleWakeup));
     }
 
-    if (options.loopTools) {
-        addons.push(buildLoopToolsAddon(options.loopTools));
+    if (options.cronTools) {
+        addons.push(buildCronToolsAddon(options.cronTools));
     }
 
     if (options.includeCanvasTools !== false) {

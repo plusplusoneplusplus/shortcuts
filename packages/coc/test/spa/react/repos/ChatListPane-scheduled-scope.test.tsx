@@ -2,8 +2,8 @@
  * Tests for the Activity-tab "Scheduled" scope (internal id `loops`):
  * - pure helpers `isScheduledTask` / `taskInScope` (scope membership rules)
  * - scheduled runs move Chats → Scheduled, stay in All, leave Automations
- * - "counted once" when a task is both scheduled and has a `/loop`
- * - visibility gating: segment shows when loops enabled OR a scheduled run exists
+ * - "counted once" when a task is both scheduled and has a `/cron`
+ * - visibility gating: segment shows when crons enabled OR a scheduled run exists
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -16,16 +16,16 @@ const mockListAll = vi.fn().mockResolvedValue([]);
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
-        loops: { listAll: mockListAll },
+        crons: { listAll: mockListAll },
     }),
 }));
 
-let loopsEnabledValue = false;
+let cronEnabledValue = false;
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
     getApiBase: () => '',
     isRalphEnabled: () => false,
-    isLoopsEnabled: () => loopsEnabledValue,
+    isCronEnabled: () => cronEnabledValue,
     isForEachEnabled: () => false,
     isMapReduceEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => false,
@@ -196,7 +196,7 @@ describe('taskInScope', () => {
         expect(taskInScope('auto', chat, false)).toBe(false);
     });
 
-    it('loops (Scheduled) scope: scheduled runs OR tasks with a loop', () => {
+    it('loops (Scheduled) scope: scheduled runs OR tasks with a cron', () => {
         expect(taskInScope('loops', scheduledChat, false)).toBe(true);   // scheduled, no loop
         expect(taskInScope('loops', scheduledAuto, false)).toBe(true);   // scheduled automation
         expect(taskInScope('loops', chat, true)).toBe(true);             // not scheduled, has loop
@@ -245,13 +245,13 @@ const defaultProps = {
 describe('ChatListPane Scheduled scope', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        loopsEnabledValue = false;
+        cronEnabledValue = false;
         mockListAll.mockResolvedValue([]);
         try { localStorage.removeItem('coc-activity-scope'); } catch { /* ignore */ }
     });
 
     it('renders the third segment labelled "Scheduled" (id stays loops)', async () => {
-        loopsEnabledValue = true;
+        cronEnabledValue = true;
         await act(async () => {
             render(<ChatListPane {...defaultProps} history={[makeTask()]} />);
         });
@@ -264,7 +264,7 @@ describe('ChatListPane Scheduled scope', () => {
     });
 
     it('excludes scheduled runs from Chats count and includes them in Scheduled count', async () => {
-        loopsEnabledValue = true;
+        cronEnabledValue = true;
         const tasks = [
             makeTask({ id: 'plain-chat', displayName: 'Plain Chat' }),
             makeTask({ id: 'sched-chat', displayName: 'Scheduled Chat', payload: { scheduleId: 'sch-1' } }),
@@ -279,7 +279,7 @@ describe('ChatListPane Scheduled scope', () => {
     });
 
     it('excludes scheduled automations from the Automations count', async () => {
-        loopsEnabledValue = true;
+        cronEnabledValue = true;
         const tasks = [
             makeTask({ id: 'auto-1', type: 'run-script', displayName: 'Script' }),
             makeTask({ id: 'sched-auto', type: 'run-workflow', displayName: 'Scheduled WF', payload: { scheduleId: 'sch-2' } }),
@@ -292,7 +292,7 @@ describe('ChatListPane Scheduled scope', () => {
     });
 
     it('routes a scheduled run into Scheduled and out of Chats in the list', async () => {
-        loopsEnabledValue = true;
+        cronEnabledValue = true;
         const tasks = [
             makeTask({ id: 'plain-chat', title: 'Plain Chat' }),
             makeTask({ id: 'sched-chat', title: 'Scheduled Chat', payload: { scheduleId: 'sch-1' } }),
@@ -314,11 +314,11 @@ describe('ChatListPane Scheduled scope', () => {
         expect(rowText()).toHaveLength(2);
     });
 
-    it('counts a task that is both scheduled and has a loop only once', async () => {
-        loopsEnabledValue = true;
-        const tasks = [makeTask({ id: 'sched-loop', displayName: 'Sched+Loop', payload: { scheduleId: 'sch-1' } })];
+    it('counts a task that is both scheduled and has a cron only once', async () => {
+        cronEnabledValue = true;
+        const tasks = [makeTask({ id: 'sched-cron', displayName: 'Sched+Cron', payload: { scheduleId: 'sch-1' } })];
         mockListAll.mockResolvedValue([
-            { id: 'loop-1', processId: 'sched-loop', status: 'active', description: '', intervalMs: 60000, createdAt: '', lastTickAt: null, nextTickAt: null, tickCount: 0, consecutiveFailures: 0, expiresAt: '', pausedReason: null, prompt: '', model: null },
+            { id: 'cron-1', processId: 'sched-cron', status: 'active', description: '', intervalMs: 60000, createdAt: '', lastTickAt: null, nextTickAt: null, tickCount: 0, consecutiveFailures: 0, expiresAt: '', pausedReason: null, prompt: '', model: null },
         ]);
         await act(async () => {
             render(<ChatListPane {...defaultProps} history={tasks} />);
@@ -329,8 +329,8 @@ describe('ChatListPane Scheduled scope', () => {
     });
 
     describe('visibility gating (AC-03)', () => {
-        it('shows the Scheduled segment with 4 columns when loops OFF but a scheduled run exists', async () => {
-            loopsEnabledValue = false;
+        it('shows the Scheduled segment with 4 columns when crons OFF but a scheduled run exists', async () => {
+            cronEnabledValue = false;
             const tasks = [makeTask({ id: 'sched-chat', displayName: 'Scheduled Chat', payload: { scheduleId: 'sch-1' } })];
             await act(async () => {
                 render(<ChatListPane {...defaultProps} history={tasks} />);
@@ -340,8 +340,8 @@ describe('ChatListPane Scheduled scope', () => {
             expect(tabs.className).toContain('grid-cols-4');
         });
 
-        it('hides the Scheduled segment with 3 columns when loops OFF and no scheduled runs', async () => {
-            loopsEnabledValue = false;
+        it('hides the Scheduled segment with 3 columns when crons OFF and no scheduled runs', async () => {
+            cronEnabledValue = false;
             const tasks = [makeTask({ id: 'plain-chat', displayName: 'Plain Chat' })];
             await act(async () => {
                 render(<ChatListPane {...defaultProps} history={tasks} />);
@@ -351,8 +351,8 @@ describe('ChatListPane Scheduled scope', () => {
             expect(tabs.className).toContain('grid-cols-3');
         });
 
-        it('shows the Scheduled segment when loops ON regardless of scheduled runs', async () => {
-            loopsEnabledValue = true;
+        it('shows the Scheduled segment when crons ON regardless of scheduled runs', async () => {
+            cronEnabledValue = true;
             const tasks = [makeTask({ id: 'plain-chat', displayName: 'Plain Chat' })];
             await act(async () => {
                 render(<ChatListPane {...defaultProps} history={tasks} />);
@@ -364,7 +364,7 @@ describe('ChatListPane Scheduled scope', () => {
     });
 
     it('persists the selected scope id as "loops" to localStorage', async () => {
-        loopsEnabledValue = true;
+        cronEnabledValue = true;
         await act(async () => {
             render(<ChatListPane {...defaultProps} history={[makeTask()]} />);
         });
@@ -379,7 +379,7 @@ describe('ChatListPane forceScope', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         // The Scheduled segment must be visible for the force to have a target.
-        loopsEnabledValue = true;
+        cronEnabledValue = true;
         mockListAll.mockResolvedValue([]);
         try { localStorage.removeItem('coc-activity-scope'); } catch { /* ignore */ }
     });

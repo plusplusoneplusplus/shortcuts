@@ -13,9 +13,9 @@ import { useContainerWidth, type ContainerWidthTier } from './hooks/useContainer
 import { useFloatingChats } from '../../contexts/FloatingChatsContext';
 import { ChatHeaderOverflowMenu, type OverflowMenuItem } from './ChatHeaderOverflowMenu';
 import type { ClientConversationTurn } from '../../types/dashboard';
-import { LoopBadge } from './LoopBadge';
+import { CronBadge } from './CronBadge';
 import { ProviderBadge, getTaskProviderBadgeProvider } from './ProviderBadge';
-import { isLoopsEnabled } from '../../utils/config';
+import { isCronEnabled } from '../../utils/config';
 
 /**
  * Shared icon-button class for the right-side chat header actions.
@@ -105,12 +105,12 @@ export interface ChatHeaderProps {
     onFork?: () => void;
     /** Whether a fork operation is in progress */
     forking?: boolean;
-    /** Number of non-cancelled loops for this conversation */
-    loopCount?: number;
-    /** Whether any non-cancelled loops are actively running */
-    hasActiveLoops?: boolean;
-    /** Called when the user clicks the loop badge */
-    onToggleLoopPanel?: () => void;
+    /** Number of non-cancelled crons for this conversation */
+    cronCount?: number;
+    /** Whether any non-cancelled crons are actively running */
+    hasActiveCrons?: boolean;
+    /** Called when the user clicks the cron badge */
+    onToggleCronPanel?: () => void;
     /** Called when the user double-clicks the title to rename. Header always shows the user-set name. */
     onRenameTitle?: () => void;
     /** Called by lens chat embeddings to archive the current binding and show an empty same-target composer. */
@@ -366,9 +366,9 @@ export function ChatHeader({
     explorerOpen = false,
     onFork,
     forking,
-    loopCount,
-    hasActiveLoops = false,
-    onToggleLoopPanel,
+    cronCount,
+    hasActiveCrons = false,
+    onToggleCronPanel,
     onRenameTitle,
     onStartFreshSameContext,
     startingFreshSameContext = false,
@@ -540,8 +540,8 @@ export function ChatHeader({
                         iconOnly={!isWide}
                     />
                 )}
-                {isLoopsEnabled() && (loopCount ?? 0) > 0 && (
-                    <LoopBadge count={loopCount!} hasActiveLoops={hasActiveLoops} onClick={onToggleLoopPanel} />
+                {isCronEnabled() && (cronCount ?? 0) > 0 && (
+                    <CronBadge count={cronCount!} hasActiveCrons={hasActiveCrons} onClick={onToggleCronPanel} />
                 )}
                 {providerBadgeProvider && (
                     <ProviderBadge provider={providerBadgeProvider} />

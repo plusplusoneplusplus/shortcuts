@@ -241,7 +241,7 @@ describe('ChatDetail', () => {
 
         it('passes augmentedSkills (not raw skills) to FollowUpInputArea so meta-commands appear in the slash menu', () => {
             // Regression: the follow-up input previously received the raw `skills` list,
-            // which excludes meta-commands (compact/model/loop). The menu render must use
+            // which excludes meta-commands (compact/model/cron). The menu render must use
             // the same augmentedSkills list that drives parsing/selection, otherwise
             // `/compact` & co. never autocomplete in existing chats and the displayed rows
             // drift out of sync with slashCommands.highlightIndex.

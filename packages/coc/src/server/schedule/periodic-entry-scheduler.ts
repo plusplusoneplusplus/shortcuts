@@ -1,7 +1,7 @@
 /**
  * PeriodicEntryScheduler
  *
- * Shared timer-arming lifecycle kernel for persisted periodic work. Loops and
+ * Shared timer-arming lifecycle kernel for persisted periodic work. Crons and
  * triggers are both long-lived background automation surfaces that drive off the
  * same contract: load active entries, compute a `nextTickAt` delay, clamp overdue
  * entries to immediate execution, register with `ScheduleTimerRegistry`, disarm
@@ -10,7 +10,7 @@
  * shutdown, and restart behavior identical across the two features.
  *
  * Domain-specific concerns — tick execution, status transitions, expiration, and
- * store semantics — stay in `LoopExecutor` / `TriggerManager`. This kernel owns
+ * store semantics — stay in `CronExecutor` / `TriggerManager`. This kernel owns
  * only the timer mechanics and the arm-after-persist ordering.
  */
 
@@ -32,7 +32,7 @@ export interface PeriodicEntrySchedulerDeps<TEntry extends PeriodicEntry> {
     timerRegistry: ScheduleTimerRegistry;
     /**
      * Fallback delay (ms) when an entry has no usable `nextTickAt` (fresh arm or
-     * a corrupt timestamp). Loops use their fixed interval; triggers use the
+     * a corrupt timestamp). Crons use their fixed interval; triggers use the
      * event's poll cadence.
      */
     getFallbackIntervalMs: (entry: TEntry) => number;
@@ -44,13 +44,13 @@ export interface PeriodicEntrySchedulerDeps<TEntry extends PeriodicEntry> {
      * production, awaitable in tests) rather than floated inside the kernel.
      */
     onTick: (id: string) => void | Promise<void>;
-    /** Label used in lifecycle log lines (e.g. `LoopExecutor`). */
+    /** Label used in lifecycle log lines (e.g. `CronExecutor`). */
     logLabel: string;
     /** Clock injection for deterministic tests. Defaults to `Date.now`. */
     now?: () => number;
     /**
      * Optional domain cleanup run during `shutdownAll` after timers are cleared
-     * (e.g. `LoopExecutor` clears its in-flight set).
+     * (e.g. `CronExecutor` clears its in-flight set).
      */
     onShutdownCleanup?: () => void;
     /**

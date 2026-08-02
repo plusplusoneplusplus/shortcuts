@@ -184,7 +184,7 @@ describe('ChatHeader', () => {
         mockBreakpoint.isTablet = false;
         mockBreakpoint.isDesktop = true;
         mockBreakpoint.breakpoint = 'desktop';
-        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', loopsEnabled: true };
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', cronEnabled: true };
     });
 
     describe('wide tier (>= 960px)', () => {
@@ -266,13 +266,13 @@ describe('ChatHeader', () => {
             expect(screen.queryByTestId('context-window')).toBeNull();
         });
 
-        it('shows the loop badge for paused non-cancelled loops', () => {
-            render(<ChatHeader {...defaultProps({ loopCount: 1, hasActiveLoops: false })} />);
+        it('shows the cron badge for paused non-cancelled crons', () => {
+            render(<ChatHeader {...defaultProps({ cronCount: 1, hasActiveCrons: false })} />);
 
-            const badge = screen.getByTestId('loop-badge');
+            const badge = screen.getByTestId('cron-badge');
             expect(badge).toBeTruthy();
             expect(badge.textContent).toContain('1');
-            expect(badge.title).toBe('1 loop — click to manage');
+            expect(badge.title).toBe('1 cron — click to manage');
         });
 
         it('has no inline HTML/PDF buttons (always in overflow)', () => {

@@ -80,7 +80,7 @@ export interface CLIConfig {
     vimNavigation?: {
         enabled?: boolean;
     };
-    loops?: {
+    cron?: {
         enabled?: boolean;
     };
     features?: {

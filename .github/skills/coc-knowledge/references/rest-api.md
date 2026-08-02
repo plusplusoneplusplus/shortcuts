@@ -162,7 +162,7 @@ Generic parent/child task relationship registry shared by For Each, Map Reduce, 
 | POST | `/api/ralph-launch` | Direct Ralph launch (skip grilling). Body accepts optional `folderPath` as goal source context and optional `workingDirectory` as an explicit execution directory; omitted `workingDirectory` is resolved from `workspaceId` by the multi-repo queue router. Also accepts optional `provider`, `config.model`, `config.reasoningEffort`, `config.effortTier`, and `autoProviderRouting` overrides for the first execution task; omitted provider resolves through Auto when `features.autoAgentProviderRouting` is enabled. When `features.gitWorktreeExecution` is enabled, an optional `worktree: { enabled: true, baseRef? }` opts the session into isolated-worktree execution on the target server (see [Git Worktrees](#git-worktrees)). |
 | GET | `/api/workspaces/:wsId/ralph-sessions/:sessionId` | Read session journal (`record`, parsed progress `sections`, alphabetically ordered raw session `files`, and optional transient `resumeDefaults` recovered from the latest iteration process for stuck-session Resume UI) |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/continue` | Extend completed session (CAP_REACHED or NO_SIGNAL) by N iterations, preserving the prior concrete provider/model when recoverable and accepting optional `provider`, `config.model`, `config.reasoningEffort`, `config.effortTier`, and `autoProviderRouting` overrides for the continued iteration; an explicit `config.effortTier` suppresses recovered model/reasoning-effort unless those fields are also explicit |
-| POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/new-loop` | New goal loop after RALPH_COMPLETE, preserving the prior concrete provider/model when recoverable |
+| POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/new-cron` | New goal cron after RALPH_COMPLETE, preserving the prior concrete provider/model when recoverable |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/resume` | Resume stuck executing session (no in-flight task), preserving prior provider/model/reasoning-effort when recoverable and accepting optional `provider`, `config.model`, `config.reasoningEffort`, `config.effortTier`, and `autoProviderRouting` overrides for the resumed iteration; an explicit `config.effortTier` suppresses recovered model/reasoning-effort unless those fields are also explicit |
 
 ## For Each Runs
@@ -383,27 +383,27 @@ Users can add up to **10** additional notes roots per workspace — subfolders i
 | GET | `/api/repos/:repoId/classify-diff/batch-status` | Batch-check whether multiple commit or branch-range identifiers have a stored result under the resolved canonical origin. Query: `type=commit\|branch-range`, `identifiers` (comma-separated, max 200), `workspaceId?`. PR classification is rejected on this route. Returns `{ statuses: { [identifier]: 'none'\|'ready'\|'running' } }`. Read-only — never triggers a new classification task. |
 | GET | `/api/origins/:originId/classify-diff/batch-status` | Batch-check PR classification identifiers under a canonical origin. Query: `type=pr`, `identifiers` (comma-separated, max 200), optional `workspaceId`/`repoId` metadata for legacy migration. Returns `{ statuses: { [identifier]: 'none'\|'ready'\|'running' } }`. Read-only — never triggers a new classification task. |
 
-## Loops
+## Crons
 
-See [loops.md](loops.md) for the full subsystem. Gated by `loops.enabled` (default `false`).
+See [cron.md](cron.md) for the full subsystem. Gated by `cron.enabled` (default `false`).
 
 ### Workspace-scoped
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/workspaces/:id/loops` | List loops for workspace |
-| GET | `/api/workspaces/:id/loops/:loopId` | Get single loop |
-| PATCH | `/api/workspaces/:id/loops/:loopId` | Update loop fields (description, prompt, intervalMs, model) |
-| DELETE | `/api/workspaces/:id/loops/:loopId` | Cancel & soft-delete loop |
-| POST | `/api/workspaces/:id/loops/:loopId/pause` | Pause loop (body: `{ reason? }`) |
-| POST | `/api/workspaces/:id/loops/:loopId/resume` | Resume paused loop |
+| GET | `/api/workspaces/:id/crons` | List crons for workspace |
+| GET | `/api/workspaces/:id/crons/:cronId` | Get single cron |
+| PATCH | `/api/workspaces/:id/crons/:cronId` | Update cron fields (description, prompt, intervalMs, model) |
+| DELETE | `/api/workspaces/:id/crons/:cronId` | Cancel & soft-delete cron |
+| POST | `/api/workspaces/:id/crons/:cronId/pause` | Pause cron (body: `{ reason? }`) |
+| POST | `/api/workspaces/:id/crons/:cronId/resume` | Resume paused cron |
 
 ### Server-wide
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/loops` | List all loops server-wide |
-| GET | `/api/loops/:loopId` | Get a loop by ID |
+| GET | `/api/crons` | List all crons server-wide |
+| GET | `/api/crons/:cronId` | Get a cron by ID |
 
 ## MCP Settings
 
