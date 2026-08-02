@@ -9,16 +9,16 @@
  */
 
 /** Built-in meta-commands (not skills). */
-export const META_COMMANDS = ['model', 'loop', 'compact'] as const;
+export const META_COMMANDS = ['model', 'cron', 'compact'] as const;
 export type MetaCommand = (typeof META_COMMANDS)[number];
 
 /**
  * Return the set of meta-commands available in the current runtime.
- * Filters out `loop` when the loops feature is disabled.
+ * Filters out `cron` when the loops feature is disabled.
  */
 export function getActiveMetaCommands(loopsEnabled: boolean): readonly MetaCommand[] {
     if (loopsEnabled) return META_COMMANDS;
-    return META_COMMANDS.filter(c => c !== 'loop');
+    return META_COMMANDS.filter(c => c !== 'cron');
 }
 
 export interface ParsedSlashCommands {

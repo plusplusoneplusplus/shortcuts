@@ -19,7 +19,7 @@ const skills: SkillItem[] = [
 
 const skillsWithMeta: SkillItem[] = [
     ...skills,
-    { name: 'loop', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
+    { name: 'cron', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>' },
     { name: 'model', description: 'Switch AI model' },
 ];
 
@@ -167,21 +167,21 @@ describe('useSlashCommands', () => {
             expect(result.current.activeCommandHint).toBeNull();
         });
 
-        it('returns args when input is exactly /loop', () => {
+        it('returns args when input is exactly /cron', () => {
             const { result } = renderHook(() => useSlashCommands(skillsWithMeta));
-            act(() => { result.current.handleInputChange('/loop', 5); });
+            act(() => { result.current.handleInputChange('/cron', 5); });
             expect(result.current.activeCommandHint).toBe('[interval] <prompt>');
         });
 
-        it('returns args when input is /loop with trailing space (separator)', () => {
+        it('returns args when input is /cron with trailing space (separator)', () => {
             const { result } = renderHook(() => useSlashCommands(skillsWithMeta));
-            act(() => { result.current.handleInputChange('/loop ', 6); });
+            act(() => { result.current.handleInputChange('/cron ', 6); });
             expect(result.current.activeCommandHint).toBe('[interval] <prompt>');
         });
 
-        it('is null when user has typed an argument after /loop', () => {
+        it('is null when user has typed an argument after /cron', () => {
             const { result } = renderHook(() => useSlashCommands(skillsWithMeta));
-            act(() => { result.current.handleInputChange('/loop 5m', 8); });
+            act(() => { result.current.handleInputChange('/cron 5m', 8); });
             expect(result.current.activeCommandHint).toBeNull();
         });
 
@@ -191,17 +191,17 @@ describe('useSlashCommands', () => {
             expect(result.current.activeCommandHint).toBeNull();
         });
 
-        it('is null when skills list has no loop entry', () => {
+        it('is null when skills list has no cron entry', () => {
             const { result } = renderHook(() => useSlashCommands(skills));
-            act(() => { result.current.handleInputChange('/loop', 5); });
+            act(() => { result.current.handleInputChange('/cron', 5); });
             expect(result.current.activeCommandHint).toBeNull();
         });
 
         it('clears after typing a real argument', () => {
             const { result } = renderHook(() => useSlashCommands(skillsWithMeta));
-            act(() => { result.current.handleInputChange('/loop ', 6); });
+            act(() => { result.current.handleInputChange('/cron ', 6); });
             expect(result.current.activeCommandHint).toBe('[interval] <prompt>');
-            act(() => { result.current.handleInputChange('/loop 5m', 8); });
+            act(() => { result.current.handleInputChange('/cron 5m', 8); });
             expect(result.current.activeCommandHint).toBeNull();
         });
     });

@@ -538,11 +538,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     }
 
     // Auto-install default bundled skills into the global skills dir (non-blocking on errors).
-    // When loops feature is disabled, strip the `loop` skill so its prompt suffix doesn't
+    // When loops feature is disabled, strip the `cron` skill so its prompt suffix doesn't
     // leak into sessions where the underlying tools aren't wired.
     const defaultSkillsToInstall = loopsEnabled
         ? resolvedConfig.skills.defaultSkills
-        : resolvedConfig.skills.defaultSkills.filter(name => name !== 'loop');
+        : resolvedConfig.skills.defaultSkills.filter(name => name !== 'cron');
     if (defaultSkillsToInstall.length > 0) {
         const globalSkillsDir = path.join(dataDir, 'skills');
         autoInstallDefaultSkills(globalSkillsDir, defaultSkillsToInstall).then(result => {

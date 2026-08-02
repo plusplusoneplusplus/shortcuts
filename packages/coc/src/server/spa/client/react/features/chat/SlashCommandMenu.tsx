@@ -15,7 +15,7 @@ export interface SkillItem {
     description?: string;
     args?: string;
     /**
-     * Discriminates a built-in meta command (`/model`, `/loop`, `/compact`) from a
+     * Discriminates a built-in meta command (`/model`, `/cron`, `/compact`) from a
      * server-fetched SKILL.md skill. Derived client-side; when absent it is treated
      * as `'skill'` (see {@link effectiveKind}) so surfaces that don't merge meta
      * still render sanely.
@@ -25,16 +25,16 @@ export interface SkillItem {
 
 export const META_SKILL_ITEMS: SkillItem[] = [
     { name: 'model', description: 'Switch AI model', kind: 'builtin' },
-    { name: 'loop', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>', kind: 'builtin' },
+    { name: 'cron', description: 'Run a prompt on a recurring interval', args: '[interval] <prompt>', kind: 'builtin' },
     { name: 'compact', description: 'Compact the conversation to free context', args: '[instructions]', kind: 'builtin' },
 ];
 
 /**
  * Return meta skill items filtered by feature flags.
- * `/loop` is excluded when the loops feature is disabled.
+ * `/cron` is excluded when the loops feature is disabled.
  */
 export function getMetaSkillItems(loopsEnabled: boolean): SkillItem[] {
-    return META_SKILL_ITEMS.filter(m => m.name !== 'loop' || loopsEnabled);
+    return META_SKILL_ITEMS.filter(m => m.name !== 'cron' || loopsEnabled);
 }
 
 /**

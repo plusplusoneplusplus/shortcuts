@@ -31,10 +31,10 @@ describe('skills config', () => {
         expect(config.skills.defaultSkills).toContain('grill-me');
     });
 
-    it('includes loop in default bundled skills', () => {
+    it('includes cron in default bundled skills', () => {
         const config = resolveConfig(undefined, undefined);
-        expect(DEFAULT_BUNDLED_SKILLS).toContain('loop');
-        expect(config.skills.defaultSkills).toContain('loop');
+        expect(DEFAULT_BUNDLED_SKILLS).toContain('cron');
+        expect(config.skills.defaultSkills).toContain('cron');
     });
 
     it('includes classify-diff in default bundled skills', () => {

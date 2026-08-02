@@ -1,12 +1,12 @@
 ---
-name: loop
+name: cron
 description: Schedule recurring follow-up messages into the current conversation. Supports fixed-interval monitoring and one-shot wakeups for dynamic self-pacing.
 metadata:
   author: CoC
   version: "0.0.2"
 ---
 
-# Loop — Recurring Follow-Ups
+# Cron — Recurring Follow-Ups
 
 Schedule recurring follow-up messages into the current conversation so the AI can monitor, check, or re-evaluate on a cadence without human intervention.
 

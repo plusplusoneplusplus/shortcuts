@@ -70,9 +70,9 @@ export const BUNDLED_SKILLS_REGISTRY: readonly BundledSkill[] = [
         relativePath: 'map-reduce',
     },
     {
-        name: 'loop',
+        name: 'cron',
         description: 'Schedule recurring follow-up messages into the current conversation. Supports fixed-interval monitoring and one-shot wakeups for dynamic self-pacing',
-        relativePath: 'loop',
+        relativePath: 'cron',
     },
     {
         name: 'classify-diff',
