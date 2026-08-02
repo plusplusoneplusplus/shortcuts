@@ -1852,6 +1852,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
             workspaceId={workspaceId}
             filePath={rightPanelView.filePath}
             stage={rightPanelView.stage}
+            repoRoot={repoRoot}
             onNavigateToFile={handleNavigateToWorkingTreeFile}
             initialHunkTarget={hunkTarget}
         />
