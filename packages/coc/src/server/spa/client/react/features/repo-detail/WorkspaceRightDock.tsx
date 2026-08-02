@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '../../ui';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
+import { useViewportWidth } from '../../hooks/ui/useViewportWidth';
 import { TerminalView } from '../terminal/TerminalView';
 import { ExplorerPanel } from './explorer/ExplorerPanel';
 import {
     DOCK_INITIAL_WIDTH,
-    DOCK_MAX_WIDTH,
+    DOCK_MIN_CHAT_WIDTH,
     DOCK_MIN_WIDTH,
     useDockOpen,
     workspaceDockOpenStorageKey,
@@ -20,7 +21,7 @@ import {
 // ExplorerPanel (xterm / Monaco) graph that this module pulls in.
 export {
     DOCK_INITIAL_WIDTH,
-    DOCK_MAX_WIDTH,
+    DOCK_MIN_CHAT_WIDTH,
     DOCK_MIN_WIDTH,
     WorkspaceDockToggleButton,
     useWorkspaceDockToggle,
@@ -103,8 +104,17 @@ export interface WorkspaceDockController {
     view: WorkspaceDockView;
     /** Switch the active view (persisted). */
     setView: (view: WorkspaceDockView) => void;
-    /** Current dock width in px (persisted, default ~420, clamped 280–800). */
+    /**
+     * Current dock width in px (persisted, default ~420). Clamped between
+     * `DOCK_MIN_WIDTH` and the live viewport-relative `maxWidth`.
+     */
     width: number;
+    /**
+     * Current max dock width in px — `max(DOCK_MIN_WIDTH, viewportWidth −
+     * DOCK_MIN_CHAT_WIDTH)`. Recomputed as the window resizes; feeds the resize
+     * handle's `aria-valuemax`.
+     */
+    maxWidth: number;
     /** Whether the resize handle is being dragged. */
     isDragging: boolean;
     /** Attach to the resize handle for mouse drags. */
@@ -122,15 +132,20 @@ export interface WorkspaceDockController {
 export function useWorkspaceDock(workspaceId: string): WorkspaceDockController {
     const [isOpen, toggleOpen] = useDockOpen(workspaceDockOpenStorageKey(workspaceId));
     const [view, setView] = useDockView(workspaceDockViewStorageKey(workspaceId));
+    // Cap the dock relative to the live window so it can be dragged as wide as the
+    // monitor allows, while always reserving DOCK_MIN_CHAT_WIDTH for the chat pane.
+    // The floor at DOCK_MIN_WIDTH guards the min > max inversion on narrow windows.
+    const viewportWidth = useViewportWidth();
+    const maxWidth = Math.max(DOCK_MIN_WIDTH, viewportWidth - DOCK_MIN_CHAT_WIDTH);
     const { width, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
         direction: 'right',
         initialWidth: DOCK_INITIAL_WIDTH,
         minWidth: DOCK_MIN_WIDTH,
-        maxWidth: DOCK_MAX_WIDTH,
+        maxWidth,
         storageKey: workspaceDockWidthStorageKey(workspaceId),
     });
 
-    return { isOpen, toggleOpen, view, setView, width, isDragging, handleMouseDown, handleTouchStart };
+    return { isOpen, toggleOpen, view, setView, width, maxWidth, isDragging, handleMouseDown, handleTouchStart };
 }
 
 const DOCK_VIEW_TABS: readonly {
@@ -217,7 +232,7 @@ export interface WorkspaceRightDockProps {
  * store. Callers gate this on `splitWorkspacePanel` + desktop breakpoint.
  */
 export function WorkspaceRightDock({ workspaceId, dock }: WorkspaceRightDockProps) {
-    const { isOpen, view, setView, width, isDragging, handleMouseDown, handleTouchStart } = dock;
+    const { isOpen, view, setView, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
 
     // Lazily mount the views on first open so opening a workspace never eagerly
     // spawns a terminal session for a dock the user never touches. Once opened,
@@ -254,7 +269,7 @@ export function WorkspaceRightDock({ workspaceId, dock }: WorkspaceRightDockProp
                 aria-orientation="vertical"
                 aria-label="Resize terminal / explorer dock"
                 aria-valuemin={DOCK_MIN_WIDTH}
-                aria-valuemax={DOCK_MAX_WIDTH}
+                aria-valuemax={maxWidth}
                 aria-valuenow={width}
                 tabIndex={0}
             >
