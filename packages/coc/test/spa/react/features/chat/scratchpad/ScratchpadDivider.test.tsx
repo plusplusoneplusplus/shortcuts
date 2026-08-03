@@ -73,6 +73,21 @@ describe('ScratchpadDivider — tab strip mode (files.length >= 2)', () => {
         expect(screen.getByTestId('scratchpad-tab-notes')).toBeTruthy();
     });
 
+    it('scroll container hides its scrollbar with the defined scrollbar-hide utility', () => {
+        // Regression: the container previously used the undefined `scrollbar-none`
+        // class, which left the native horizontal scrollbar visible over the tabs.
+        renderDivider({
+            files: ['tasks/output.md', 'tasks/notes.md'],
+            linkedNotePath: 'tasks/output.md',
+            onSelectFile: vi.fn(),
+        });
+        const scroller = screen.getByTestId('scratchpad-file-tabs')
+            .querySelector('.overflow-x-auto') as HTMLElement;
+        expect(scroller).toBeTruthy();
+        expect(scroller.className).toContain('scrollbar-hide');
+        expect(scroller.className).not.toContain('scrollbar-none');
+    });
+
     it('strips .md extension from tab labels', () => {
         renderDivider({
             files: ['report.md', 'summary.md'],
