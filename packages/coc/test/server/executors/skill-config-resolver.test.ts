@@ -190,6 +190,19 @@ describe('resolveSkillConfig', () => {
             expect(result.skillDirectories).toContain(cloudSkillsDir);
         });
 
+        it('includes the plain skills convention under macOS CloudStorage', async () => {
+            const fakeHome = path.join(tmpDir, 'home');
+            const cloudSkillsDir = path.join(
+                fakeHome, 'Library', 'CloudStorage', 'OneDrive-Personal', 'skills',
+            );
+            fs.mkdirSync(cloudSkillsDir, { recursive: true });
+            vi.mocked(os.homedir).mockReturnValue(fakeHome);
+
+            const result = await resolveSkillConfig(store, undefined, undefined, undefined);
+
+            expect(result.skillDirectories).toContain(cloudSkillsDir);
+        });
+
         it('includes multiple CloudStorage OneDrive roots when several exist', async () => {
             const fakeHome = path.join(tmpDir, 'home');
             const personalSkillsDir = path.join(
@@ -271,7 +284,11 @@ describe('resolveSkillConfig', () => {
             const dirs = await resolveDefaultOneDriveSkillDirs(fakeHome);
 
             expect(dirs).toContain(path.join(fakeHome, 'OneDrive', '.github', 'skills'));
+            expect(dirs).toContain(path.join(fakeHome, 'OneDrive', 'skills'));
             expect(dirs).toContain(path.join(fakeHome, 'OneDrive - Microsoft', '.github', 'skills'));
+            expect(dirs).toContain(path.join(fakeHome, 'OneDrive - Microsoft', 'skills'));
+            expect(dirs.indexOf(path.join(fakeHome, 'OneDrive', '.github', 'skills')))
+                .toBeLessThan(dirs.indexOf(path.join(fakeHome, 'OneDrive', 'skills')));
         });
 
         it('appends CloudStorage OneDrive candidates after the Windows-style ones', async () => {
@@ -293,7 +310,7 @@ describe('resolveSkillConfig', () => {
 
             const dirs = await resolveDefaultOneDriveSkillDirs(fakeHome);
 
-            expect(dirs).toHaveLength(2);
+            expect(dirs).toHaveLength(4);
         });
     });
 
@@ -301,7 +318,9 @@ describe('resolveSkillConfig', () => {
         it('skips OneDrive detection when autoDetectDefaultFolders is false', async () => {
             const fakeHome = path.join(tmpDir, 'home');
             const oneDriveSkillsDir = path.join(fakeHome, 'OneDrive', '.github', 'skills');
+            const plainSkillsDir = path.join(fakeHome, 'OneDrive', 'skills');
             fs.mkdirSync(oneDriveSkillsDir, { recursive: true });
+            fs.mkdirSync(plainSkillsDir, { recursive: true });
             vi.mocked(os.homedir).mockReturnValue(fakeHome);
 
             const result = await resolveSkillConfig(store, undefined, undefined, undefined, {
@@ -310,6 +329,7 @@ describe('resolveSkillConfig', () => {
 
             const dirs = result.skillDirectories ?? [];
             expect(dirs).not.toContain(oneDriveSkillsDir);
+            expect(dirs).not.toContain(plainSkillsDir);
         });
 
         it('detects OneDrive folders when autoDetectDefaultFolders is true', async () => {
@@ -787,13 +807,42 @@ describe('resolveEffectiveSkillPaths', () => {
         expect(detected!.skillCount).toBe(1);
     });
 
+    it('surfaces the plain skills convention under macOS CloudStorage', async () => {
+        const plainSkills = path.join(
+            fakeHome, 'Library', 'CloudStorage', 'OneDrive-Personal', 'skills',
+        );
+        makeSkill(plainSkills, 'google-flights');
+
+        const entries = await resolveEffectiveSkillPaths({ homedir: fakeHome });
+
+        expect(entries).toContainEqual({
+            source: 'auto-detected',
+            scope: 'global',
+            status: 'available',
+            path: plainSkills,
+            skillCount: 1,
+        });
+    });
+
+    it('reports both conventions in priority order when both exist', async () => {
+        const root = path.join(fakeHome, 'OneDrive');
+        const githubSkills = path.join(root, '.github', 'skills');
+        const plainSkills = path.join(root, 'skills');
+        makeSkill(githubSkills, 'github-skill');
+        makeSkill(plainSkills, 'plain-skill');
+
+        const entries = (await resolveEffectiveSkillPaths({ homedir: fakeHome }))
+            .filter(e => e.source === 'auto-detected');
+
+        expect(entries.map(e => e.path)).toEqual([githubSkills, plainSkills]);
+    });
+
     it('does not surface missing default OneDrive folders (concise diagnostics)', async () => {
         const entries = await resolveEffectiveSkillPaths({ homedir: fakeHome });
         expect(entries.some(e => e.source === 'auto-detected')).toBe(false);
     });
 
-    it('emits a skipped auto-detected entry when a OneDrive root exists but lacks .github/skills', async () => {
-        // Root present, but no .github/skills beneath it (AC #7 diagnostics case).
+    it('emits one skipped entry only when a OneDrive root lacks both conventions', async () => {
         const oneDriveRoot = path.join(fakeHome, 'OneDrive');
         fs.mkdirSync(oneDriveRoot, { recursive: true });
 
@@ -807,7 +856,7 @@ describe('resolveEffectiveSkillPaths', () => {
         expect(skipped.status).toBe('skipped');
         expect(skipped.path).toBe(path.join(oneDriveRoot, '.github', 'skills'));
         expect(skipped.scope).toBe('global');
-        expect(skipped.note).toBeTruthy();
+        expect(skipped.note).toContain('neither .github/skills nor skills');
         expect(skipped.skillCount).toBeUndefined();
     });
 

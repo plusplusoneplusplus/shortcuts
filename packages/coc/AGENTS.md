@@ -104,9 +104,9 @@ all have their own `references/*.md`.
   `.coc-<name>.json` tracks CoC-managed commands to distinguish them from
   user-authored ones.
 - **Skill-folder resolution order** is: repo-local `.github/skills` →
-  managed global `~/.coc/skills` → auto-detected OneDrive/CloudStorage →
-  configured global extra folders (`skills.globalExtraFolders`) → per-repo
-  extra folders → bundled. Three consumers must keep this order identical:
+  managed global `~/.coc/skills` → configured global extra folders
+  (`skills.globalExtraFolders`) → per-repo extra folders → auto-detected
+  OneDrive/CloudStorage → bundled. Three consumers must keep this order identical:
   `resolveSkillConfig` (execution-time, existence-filtered — what the agent
   uses) and `resolveEffectiveSkillPaths` (read-only diagnostic behind
   `GET /api/skills/effective-paths`, keeps declared-but-missing sources) in
@@ -118,6 +118,8 @@ all have their own `references/*.md`.
   `<folder>/skills`. Keep this base-first candidate order for name precedence,
   filter missing candidates at runtime, and store the actual candidate root in
   each listed skill's `folderPath` so display and file reads match execution.
+  Each detected OneDrive root is probed at `.github/skills` and then `skills`;
+  Windows-style roots stay ahead of sorted macOS CloudStorage roots.
   Managed `~/.coc/skills` is the only install/delete target; extra/detected
   folders are read-only. `skills.globalExtraFolders` +
   `skills.autoDetectDefaultFolders` live in the config `skills` namespace, while

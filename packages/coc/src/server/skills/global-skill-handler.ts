@@ -253,6 +253,7 @@ export function registerGlobalSkillRoutes(
 
             if (folderPatch.globalExtraFolders !== undefined || folderPatch.autoDetectDefaultFolders !== undefined) {
                 persistGlobalSkillFolderConfig(configAccess, folderPatch);
+                skillCache.clear();
             }
 
             const folderCfg = readGlobalSkillFolderConfig(configAccess);
@@ -363,8 +364,8 @@ export function registerGlobalSkillRoutes(
                 return handleAPIError(res, notFound('Workspace'));
             }
 
-            const { globalExtraFolders } = readGlobalSkillFolderConfig(configAccess);
-            const allSkills = await loadSkillsForWorkspace(ws, dataDir, store, { globalExtraFolders });
+            const folderCfg = readGlobalSkillFolderConfig(configAccess);
+            const allSkills = await loadSkillsForWorkspace(ws, dataDir, store, folderCfg);
             const visibleSkills = await filterVisibleSkillsForWorkspace(allSkills, ws, dataDir);
             const globalSkills = visibleSkills.filter(s => s.source === 'global');
             const repoSkills = visibleSkills.filter(s => s.source === 'repo');

@@ -42,17 +42,17 @@ Namespaced config merge/source tracking is registered in `packages/coc/src/confi
 Skill discovery draws from several folders. Two of them are config-file settings under the non-admin `skills` namespace (not the admin registry — they are surfaced through the Skills Config API/UI, not the Features card):
 
 - `skills.globalExtraFolders: string[]` (default `[]`) — read-only global skill-source folders applied across all workspaces. Entries are absolute paths or `~`-prefixed home paths; malformed/relative/empty entries are skipped, not fatal. CoC never installs or deletes into them.
-- `skills.autoDetectDefaultFolders: boolean` (default `true`) — enables auto-detection of OneDrive/CloudStorage skill folders (`~/OneDrive/.github/skills`, `~/OneDrive - Microsoft/.github/skills`, and macOS `~/Library/CloudStorage/OneDrive-*/…/.github/skills`). Set `false` to disable all default folder auto-detection.
+- `skills.autoDetectDefaultFolders: boolean` (default `true`) — enables auto-detection of OneDrive/CloudStorage skill folders. Every Windows-style root (`~/OneDrive`, `~/OneDrive - Microsoft`) and macOS root (`~/Library/CloudStorage/OneDrive-*`) is probed at `.github/skills` and then `skills`. Set `false` to disable all default folder auto-detection.
 
 Adding a `skills.*` field touches FOUR spots (all non-admin, hand-written): the optional + required `skills` types and `DEFAULT_CONFIG` in `packages/coc/src/config.ts`, the `BASE_SCHEMA_TREE.skills` leaf in `packages/coc/src/config/schema.ts` (optional + passthrough so old config files still validate), and the hand-coded `skills` merge in `packages/coc/src/config/namespace-registry.ts` (miss the last and tsc goes red).
 
 **Persistence split.** Global disabled skills live in `preferences.json` (`globalDisabledSkills`); `globalExtraFolders` and `autoDetectDefaultFolders` live in the config file's `skills` namespace. The `GET`/`PUT /api/skills/config` endpoint spans both stores. The managed global skills directory (`dataDir/skills`, normally `~/.coc/skills`) is a fixed install target and is NOT configurable.
 
-**Resolution order** (repo → managed-global → auto-detected → global-extra → per-repo-extra → bundled) has three consumers that must agree, all in `packages/coc/src/server/executors/skill-config-resolver.ts` (except the listing helper):
+**Resolution order** (repo → managed-global → global-extra → per-repo-extra → auto-detected → bundled) has three consumers that must agree, all in `packages/coc/src/server/executors/skill-config-resolver.ts` (except the listing helper):
 
 - `resolveSkillConfig(...)` — execution-time; existence-filtered ordered `skillDirectories[]` the agent actually uses. Reads `skills` config via the queue-executor bridge (config file = single source of truth).
 - `resolveEffectiveSkillPaths(...)` — read-only diagnostic behind `GET /api/skills/effective-paths`; keeps declared-but-missing sources so the UI can explain them (auto-detected folders surface only when their OneDrive root exists).
-- `loadSkillsForWorkspace(...)` (in `packages/coc/src/server/skills/skill-handler.ts`) — UI listing behind `GET /api/workspaces/:id/skills`; tags configured-folder skills `source: 'global-extra-folder'` and inserts them after managed-global and before per-repo extras. Has no auto-detected/bundled entries.
+- `loadSkillsForWorkspace(...)` (in `packages/coc/src/server/skills/skill-handler.ts`) — UI listing behind `GET /api/workspaces/:id/skills` and `/skills/all`; tags configured-folder skills `source: 'global-extra-folder'`, loads both OneDrive conventions from the shared helper, and applies the same folder settings to list, cache refresh, file, and detail reads. Folder-source config writes clear cached workspace skill lists.
 
 Keep the order identical across all three if you touch one. See [rest-api.md](rest-api.md) for the endpoints and [dashboard-spa.md](dashboard-spa.md) for the Skills Config panel UI.
 
