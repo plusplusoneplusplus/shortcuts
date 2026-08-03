@@ -126,6 +126,14 @@ all have their own `references/*.md`.
   `globalDisabledSkills` lives in `preferences.json`; `GET`/`PUT
   /api/skills/config` spans both (see
   [admin-config.md](../../.github/skills/coc-knowledge/references/admin-config.md)).
+- **Workspace Agent Skills UI state** lives in
+  `react/features/skills/useWorkspaceSkillsController.ts`. Both
+  `RepoSettingsTab` and `RepoCopilotTab` inject their workspace client resolver;
+  visual skills components must not choose a default or clone-routed transport.
+  Keep source grouping/filtering/resolution rows pure in `skills-ui-model.ts`,
+  keep install requests typed through `useSkillInstallController`, and guard
+  list/config/detail/file-preview/repo-probe/install responses so late work from
+  an old workspace, source, card, or repo list cannot update the active view.
 - **Adding an admin-exposed config setting** is ONE definition entry in
   `src/config/admin-setting-definitions.ts` (value spec, default, runtime,
   optional `runtimeFlag` + Features-card `ui` metadata) plus the

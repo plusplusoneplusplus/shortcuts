@@ -1267,14 +1267,26 @@ globally), and **Globally Disabled Skills** (unchanged; writes send only
 `available → Available`, `missing → Missing`, `no-skills → No skills`,
 `skipped → Skipped`.
 
-The skill-source taxonomy is duplicated across four shapes that must stay in
-sync: server `SkillInfo.source` (`skill-handler.ts`), coc-client `SkillSource`
-(`contracts/skills.ts`), SPA shared `SkillInfo.source` (`shared/SkillDetailPanel.tsx`),
-and `SkillFolderGroup.source` + grouping logic in the Repo Settings → Agent
-Skills tab (`features/skills/AgentSkillsPanel.tsx`). The `global-extra-folder`
-source forms its own NON-removable group (`🌐 <folderPath>`) placed after
-global/repo and before per-repo extras, since those folders are managed globally
-in the Config tab, not per-repo.
+The skill-source taxonomy is defined by the server `SkillInfo.source`
+(`skill-handler.ts`) and coc-client `SkillSource` (`contracts/skills.ts`); SPA
+skill views consume the coc-client `SkillInfo` type. Repo Settings → Agent
+Skills keeps pure source grouping, filtering, source presentation, and
+resolution rows in `features/skills/skills-ui-model.ts`. A
+`global-extra-folder` forms its own non-removable group (`🌐 <folderPath>`)
+placed after global/repo and before per-repo extras because the Config tab owns
+those folders.
+
+`useWorkspaceSkillsController.ts` owns workspace list/config/detail loading,
+toggle/delete mutations, extra folders, linked-repo preferences, optimistic
+rollback, refresh, and visible errors. `RepoSettingsTab` injects
+`getCocClientForWorkspace`; `RepoCopilotTab` injects the default SPA client, so
+both hosts share behavior without losing clone routing. The panel composes
+`SkillsSourceRail`, `SkillsResolutionOrder`, `WorkspaceSkillCard`,
+`SkillFilePreview`, `LinkSkillSourcePopover`, and `InstallSkillsDialog`.
+`useSkillInstallController` uses coc-client scan/install contracts rather than
+local loose shapes. Request generations guard workspace/config/detail loads,
+file previews, batched linked-repo probes, and install loads/scans so late
+responses cannot replace the active workspace, card, source, or repo-list state.
 
 ### Remote-first shell
 
@@ -1459,8 +1471,9 @@ the input:
   seams inline (not the hook) — `requestForWorkspace(id, url, opts?)` for raw
   fetches, `getCocClientForWorkspace(id)` for typed-client calls: `EnqueueDialog`
   (`/summary` + `/skills/all` loads, the `queue.enqueue` mutation, and
-  `recordSkillUsage`), `RepoSettingsTab` (mcp-config, skills, instructions, repo
-  prefs, processes, description PATCH), `RepoDetail` (work-items badge preview),
+  `recordSkillUsage`), `RepoSettingsTab` (mcp-config, instructions, processes,
+  description PATCH, plus Agent Skills through its injected
+  `useWorkspaceSkillsController` resolver), `RepoDetail` (work-items badge preview),
   `WorkItemsTab` (commit file list), and `BranchPickerModal` (branch list/switch).
   `EnqueueDialog`'s Workspace dropdown merges local `appState.workspaces` with the
   remote workspaces from `ReposContext.repos` (via `useReposOptional`, filtered by

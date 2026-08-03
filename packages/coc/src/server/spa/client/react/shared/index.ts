@@ -3,6 +3,8 @@ export { SkillDetailPanel } from './SkillDetailPanel';
 export type { SkillDetailPanelProps, SkillInfo } from './SkillDetailPanel';
 export { SkillListItem } from './SkillListItem';
 export type { SkillListItemProps } from './SkillListItem';
+export { getSkillFileEntries, SkillVersionBadge } from './SkillMetadata';
+export type { SkillFileEntry } from './SkillMetadata';
 export { RichTextInput } from './RichTextInput';
 export type { RichTextInputProps, RichTextInputHandle } from './RichTextInput';
 export { MarkdownView } from './MarkdownView';

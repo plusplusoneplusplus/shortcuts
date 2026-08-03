@@ -1,26 +1,9 @@
-/**
- * Shared SkillDetailPanel — expanded detail view for a single skill.
- * Used by both AgentSkillsPanel (repo skills) and SkillsInstalledPanel (global skills).
- */
+/** Expanded detail view used by the compact global skills list. */
 
-export interface SkillInfo {
-    name: string;
-    description?: string;
-    version?: string;
-    variables?: string[];
-    output?: string[];
-    promptBody?: string;
-    references?: string[];
-    scripts?: string[];
-    relativePath?: string;
-    source?: 'global' | 'repo' | 'bundled' | 'linked-repo' | 'extra-folder' | 'global-extra-folder';
-    /** Workspace ID of the repo this skill was loaded from (only set when source = 'linked-repo'). */
-    sourceRepoId?: string;
-    /** Absolute path of the directory containing this skill. */
-    folderPath?: string;
-    /** Human-readable label for the folder. */
-    folderLabel?: string;
-}
+import type { SkillInfo } from '@plusplusoneplusplus/coc-client';
+import { SkillVersionBadge } from './SkillMetadata';
+
+export type { SkillInfo } from '@plusplusoneplusplus/coc-client';
 
 export interface SkillDetailPanelProps {
     detail: SkillInfo | null;
@@ -33,16 +16,12 @@ export function SkillDetailPanel({ detail, loading }: SkillDetailPanelProps) {
             <div className="px-3 pb-3 text-xs text-[#848484]" data-testid="skill-detail-loading">Loading detail...</div>
         );
     }
-    if (!detail) return null;
+    if (!detail) {return null;}
 
     return (
         <div className="px-3 pb-3 border-t border-[#e0e0e0] dark:border-[#3c3c3c] pt-2 flex flex-col gap-2" data-testid="skill-detail-panel">
             <div className="flex flex-wrap gap-1.5">
-                {detail.version && (
-                    <span className="text-[10px] bg-[#e8f0fe] dark:bg-[#1a3a5c] text-[#1a73e8] dark:text-[#8ab4f8] px-1.5 py-0.5 rounded" data-testid="skill-detail-version">
-                        v{detail.version}
-                    </span>
-                )}
+                <SkillVersionBadge version={detail.version} testId="skill-detail-version" />
                 {detail.variables && detail.variables.length > 0 && (
                     <span className="text-[10px] bg-[#fef3e0] dark:bg-[#3c2e00] text-[#e37400] dark:text-[#fdd663] px-1.5 py-0.5 rounded" data-testid="skill-detail-variables">
                         {detail.variables.length} variable{detail.variables.length !== 1 ? 's' : ''}: {detail.variables.join(', ')}

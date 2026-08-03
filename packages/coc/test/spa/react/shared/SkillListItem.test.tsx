@@ -1,6 +1,6 @@
 /**
  * Tests for shared SkillListItem — skill card row with toggle, delete, expand, and detail panel.
- * Regression coverage to ensure the shared component works for both AgentSkillsPanel and SkillsInstalledPanel.
+ * Regression coverage for the compact global installed-skills surface.
  */
 
 import { describe, it, expect, vi } from 'vitest';

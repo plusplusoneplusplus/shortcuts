@@ -11,7 +11,7 @@ import { useApp } from '../../contexts/AppContext';
 import { McpServersPanel } from '../skills/McpServersPanel';
 import type { McpServerEntry, McpServerSources } from '../skills/McpServersPanel';
 import { AgentSkillsPanel } from '../skills/AgentSkillsPanel';
-import type { Skill, SkillDetail } from '../skills/AgentSkillsPanel';
+import { useWorkspaceSkillsController } from '../skills/useWorkspaceSkillsController';
 import { CustomInstructionsPanel } from '../skills/CustomInstructionsPanel';
 import type { InstructionMode } from '../skills/CustomInstructionsPanel';
 import type { SettingsSection } from '../../types/dashboard';
@@ -22,6 +22,8 @@ interface RepoCopilotTabProps {
 
 type ActiveSection = SettingsSection;
 
+const resolveSpaClient = () => getSpaCocClient();
+
 const NAV_ITEMS: { id: ActiveSection; label: string; icon: string }[] = [
     { id: 'mcp', label: 'MCP Servers', icon: '🖥️' },
     { id: 'skills', label: 'Agent Skills', icon: '🧩' },
@@ -31,6 +33,11 @@ const NAV_ITEMS: { id: ActiveSection; label: string; icon: string }[] = [
 export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
     const { addToast } = useGlobalToast();
     const { state, dispatch } = useApp();
+    const skillsController = useWorkspaceSkillsController({
+        workspaceId,
+        resolveClient: resolveSpaClient,
+        notify: addToast,
+    });
 
     // ── MCP state ────────────────────────────────────────────────────────────
     const [loading, setLoading] = useState(true);
@@ -90,99 +97,6 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
             setEnabledMcpServers(prevValue); // revert on error
         } finally {
             setSaving(false);
-        }
-    };
-
-    // ── Skills state ─────────────────────────────────────────────────────────
-    const [skills, setSkills] = useState<Skill[]>([]);
-    const [skillsLoading, setSkillsLoading] = useState(true);
-    const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-    const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
-    const [skillDetail, setSkillDetail] = useState<SkillDetail | null>(null);
-    const [detailLoading, setDetailLoading] = useState(false);
-    const [disabledSkills, setDisabledSkills] = useState<string[]>([]);
-    const [skillToggleSaving, setSkillToggleSaving] = useState(false);
-    const [extraSkillFolders, setExtraSkillFolders] = useState<string[]>([]);
-
-    const fetchSkills = useCallback(async () => {
-        setSkillsLoading(true);
-        try {
-            const skills = await getSpaCocClient().skills.listWorkspace(workspaceId);
-            setSkills(skills);
-        } catch {
-            // ignore
-        } finally {
-            setSkillsLoading(false);
-        }
-    }, [workspaceId]);
-
-    useEffect(() => { fetchSkills(); }, [fetchSkills]);
-
-    // Fetch disabled skills config
-    useEffect(() => {
-        getSpaCocClient().skills.getWorkspaceConfig(workspaceId)
-            .then((data) => {
-                setDisabledSkills(data.disabledSkills ?? []);
-                setExtraSkillFolders(data.extraSkillFolders ?? []);
-            })
-            .catch(() => {});
-    }, [workspaceId]);
-
-    const handleExpandSkill = useCallback(async (name: string) => {
-        if (expandedSkill === name) {
-            setExpandedSkill(null);
-            setSkillDetail(null);
-            return;
-        }
-        setExpandedSkill(name);
-        setSkillDetail(null);
-        setDetailLoading(true);
-        try {
-            const data = await getSpaCocClient().skills.detailWorkspace(workspaceId, name);
-            setSkillDetail(data.skill || null);
-        } catch {
-            // ignore
-        } finally {
-            setDetailLoading(false);
-        }
-    }, [workspaceId, expandedSkill]);
-
-    const handleDeleteSkill = async (name: string) => {
-        try {
-            await getSpaCocClient().skills.deleteWorkspace(workspaceId, name);
-            addToast(`Deleted skill: ${name}`, 'success');
-            fetchSkills();
-        } catch (err: unknown) {
-            addToast(getSpaCocClientErrorMessage(err, 'Failed to delete skill'), 'error');
-        }
-        setDeleteConfirm(null);
-    };
-
-    const handleSkillToggle= async (skillName: string, enabled: boolean) => {
-        const nextDisabled = enabled
-            ? disabledSkills.filter(n => n !== skillName)
-            : [...disabledSkills, skillName];
-        const prevDisabled = disabledSkills;
-        setDisabledSkills(nextDisabled); // optimistic update
-        setSkillToggleSaving(true);
-        try {
-            await getSpaCocClient().skills.updateWorkspaceConfig(workspaceId, { disabledSkills: nextDisabled });
-        } catch (e: any) {
-            setDisabledSkills(prevDisabled); // revert on error
-            addToast(e?.message ?? 'Failed to save skill config', 'error');
-        } finally {
-            setSkillToggleSaving(false);
-        }
-    };
-
-    const handleExtraSkillFoldersChange = async (nextFolders: string[]) => {
-        const prevFolders = extraSkillFolders;
-        setExtraSkillFolders(nextFolders); // optimistic update
-        try {
-            await getSpaCocClient().skills.updateWorkspaceConfig(workspaceId, { disabledSkills, extraSkillFolders: nextFolders });
-        } catch (e: any) {
-            setExtraSkillFolders(prevFolders); // revert on error
-            addToast(e?.message ?? 'Failed to save skill config', 'error');
         }
     };
 
@@ -263,7 +177,7 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
 
     // Count badges for sidebar
     const enabledMcpCount = availableServers.filter(s => isEnabled(s.name)).length;
-    const installedSkillsCount = skills.length;
+    const installedSkillsCount = skillsController.skills.length;
     const hasInstructions = Object.values(instrContents).some(v => v !== null && v !== '');
 
     return (
@@ -282,7 +196,7 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
                                 {enabledMcpCount}
                             </span>
                         );
-                    } else if (item.id === 'skills' && !skillsLoading) {
+                    } else if (item.id === 'skills' && !skillsController.skillsLoading) {
                         badge = (
                             <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#616161] dark:text-[#999]">
                                 {installedSkillsCount}
@@ -333,21 +247,8 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
                 {activeSection === 'skills' && (
                     <AgentSkillsPanel
                         workspaceId={workspaceId}
-                        skills={skills}
-                        skillsLoading={skillsLoading}
-                        disabledSkills={disabledSkills}
-                        skillToggleSaving={skillToggleSaving}
-                        expandedSkill={expandedSkill}
-                        skillDetail={skillDetail}
-                        detailLoading={detailLoading}
-                        deleteConfirm={deleteConfirm}
-                        onExpandSkill={handleExpandSkill}
-                        onDeleteSkill={handleDeleteSkill}
-                        onSkillToggle={handleSkillToggle}
-                        onSetDeleteConfirm={setDeleteConfirm}
-                        onInstalled={fetchSkills}
-                        extraSkillFolders={extraSkillFolders}
-                        onExtraSkillFoldersChange={handleExtraSkillFoldersChange}
+                        controller={skillsController}
+                        resolveClient={resolveSpaClient}
                     />
                 )}
                 {activeSection === 'instructions' && (

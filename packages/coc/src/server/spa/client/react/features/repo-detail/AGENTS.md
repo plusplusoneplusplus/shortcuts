@@ -31,6 +31,15 @@ in three extracted kernels so the component stays composition glue:
 the queue-status types) that RepoDetail, TopBar, and the tab-strip test suites
 import.
 
+## RepoCopilotTab Agent Skills
+
+`RepoCopilotTab.tsx` shares `useWorkspaceSkillsController` with
+`RepoSettingsTab`; it injects the default SPA client resolver and passes the
+controller to `AgentSkillsPanel`. Keep workspace skill loading, detail, config,
+toggle, delete, and extra-folder behavior in that controller instead of adding
+tab-local copies. `AgentSkillsPanel` and its focused child components are the
+visual layer.
+
 ## Tests
 
 `test/spa/react/repos/RepoTabStrip*.test.tsx` cover the component (tabs, overflow,
