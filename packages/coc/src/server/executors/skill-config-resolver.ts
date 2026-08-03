@@ -36,7 +36,8 @@ export function expandSkillFolderCandidates(baseDir: string): string[] {
 
 /**
  * Enumerate default OneDrive/CloudStorage skill-folder candidates for a home
- * directory. Returns candidate `<root>/.github/skills` paths to probe; callers
+ * directory. Returns both supported candidate containers for every detected
+ * root in stable priority order (`.github/skills` before `skills`); callers
  * are responsible for filtering to those that actually exist (existence is not
  * checked here so the result stays deterministic and cheap to test).
  *
@@ -79,26 +80,37 @@ export function expandHomePath(folder: string, homedir: string): string {
 }
 
 export async function resolveDefaultOneDriveSkillDirs(homedir: string): Promise<string[]> {
-    const candidates: string[] = [];
+    const roots: string[] = [];
 
     // Windows-style fixed OneDrive roots.
     for (const variant of ['OneDrive', 'OneDrive - Microsoft']) {
-        candidates.push(path.join(homedir, variant, '.github', 'skills'));
+        roots.push(path.join(homedir, variant));
     }
 
     // macOS CloudStorage OneDrive roots (dynamically named under Library/CloudStorage).
     const cloudStorageDir = path.join(homedir, 'Library', 'CloudStorage');
     try {
         const entries = await fs.promises.readdir(cloudStorageDir, { withFileTypes: true });
-        for (const entry of entries) {
+        for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
             if ((entry.isDirectory() || entry.isSymbolicLink()) && entry.name.startsWith('OneDrive')) {
-                candidates.push(path.join(cloudStorageDir, entry.name, '.github', 'skills'));
+                roots.push(path.join(cloudStorageDir, entry.name));
             }
         }
     } catch {
         // Non-fatal: no CloudStorage directory (non-macOS host or OneDrive not installed).
     }
 
+    const seen = new Set<string>();
+    const candidates: string[] = [];
+    for (const root of roots) {
+        for (const subdir of SKILL_ROOT_SUBDIRS) {
+            const candidate = path.normalize(path.join(root, subdir));
+            const key = process.platform === 'win32' ? candidate.toLowerCase() : candidate;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            candidates.push(candidate);
+        }
+    }
     return candidates;
 }
 
@@ -185,17 +197,9 @@ export async function resolveSkillConfig(
 
     const homedir = os.homedir();
 
-    // Check default OneDrive skill directories (Windows-style roots + macOS
-    // CloudStorage), unless auto-detection is explicitly disabled.
-    if (options?.autoDetectDefaultFolders !== false) {
-        for (const oneDriveSkillsDir of await resolveDefaultOneDriveSkillDirs(homedir)) {
-            await tryAddSkillDirectory(oneDriveSkillsDir, oneDriveSkillsDir);
-        }
-    }
-
     // Configured global extra skill folders (read-only, apply across all
-    // workspaces). Ordered after auto-detected folders and before per-workspace
-    // extra folders. Absolute or `~`-prefixed; relative/malformed entries skip.
+    // workspaces). Ordered before per-workspace and auto-detected folders.
+    // Absolute or `~`-prefixed; relative/malformed entries skip.
     if (Array.isArray(options?.globalExtraFolders)) {
         for (const folder of options.globalExtraFolders) {
             if (typeof folder !== 'string' || folder.trim().length === 0) {
@@ -239,6 +243,15 @@ export async function resolveSkillConfig(
             } catch {
                 // Non-fatal: skip extra skill folders when path translation fails
             }
+        }
+    }
+
+    // Default OneDrive skill directories have lower precedence than explicit
+    // global and per-workspace folders, and are omitted when auto-detection is
+    // disabled.
+    if (options?.autoDetectDefaultFolders !== false) {
+        for (const oneDriveSkillsDir of await resolveDefaultOneDriveSkillDirs(homedir)) {
+            await tryAddSkillDirectory(oneDriveSkillsDir, oneDriveSkillsDir);
         }
     }
 
@@ -363,8 +376,8 @@ async function describeSkillFolderCandidates(
  * Enumerate the agent's effective skill search order as structured diagnostic
  * data, in priority order:
  *
- *   repo-local → managed global → auto-detected OneDrive/CloudStorage →
- *   configured global extra → per-repo extra → bundled
+ *   repo-local → managed global → configured global extra → per-repo extra →
+ *   auto-detected OneDrive/CloudStorage → bundled
  *
  * Global-scoped sources are always included; workspace-scoped sources
  * (repo-local, per-repo extra) are included only when `workspaceRootPath` is
@@ -395,42 +408,7 @@ export async function resolveEffectiveSkillPaths(
         entries.push(await describeSkillDir(hostPath, 'managed-global', 'global'));
     }
 
-    // 3. Auto-detected OneDrive/CloudStorage. Surface existing `.github/skills`
-    // folders, and add a `skipped` diagnostic when a OneDrive root exists but has
-    // no `.github/skills` beneath it (so the UI can explain why a known root was
-    // passed over). Roots that don't exist at all stay silent, keeping the
-    // diagnostic view from being flooded with missing default paths (AC #7).
-    if (args.autoDetectDefaultFolders !== false) {
-        for (const candidate of await resolveDefaultOneDriveSkillDirs(homedir)) {
-            const exists = await fs.promises.access(candidate).then(() => true).catch(() => false);
-            if (exists) {
-                const skillCount = await countInstalledSkills(candidate);
-                entries.push({
-                    source: 'auto-detected',
-                    scope: 'global',
-                    status: skillCount > 0 ? 'available' : 'no-skills',
-                    path: candidate,
-                    skillCount,
-                });
-                continue;
-            }
-            // `<root>/.github/skills` is missing. If the OneDrive root itself
-            // exists, note it as skipped; otherwise stay silent.
-            const root = path.dirname(path.dirname(candidate));
-            const rootExists = await fs.promises.access(root).then(() => true).catch(() => false);
-            if (rootExists) {
-                entries.push({
-                    source: 'auto-detected',
-                    scope: 'global',
-                    status: 'skipped',
-                    path: candidate,
-                    note: 'OneDrive root exists but has no .github/skills folder',
-                });
-            }
-        }
-    }
-
-    // 4. Configured global extra folders (global-scoped, read-only).
+    // 3. Configured global extra folders (global-scoped, read-only).
     if (Array.isArray(args.globalExtraFolders)) {
         for (const folder of args.globalExtraFolders) {
             if (typeof folder !== 'string' || folder.trim().length === 0) continue;
@@ -456,7 +434,7 @@ export async function resolveEffectiveSkillPaths(
         }
     }
 
-    // 5. Per-repo extra folders (workspace-scoped).
+    // 4. Per-repo extra folders (workspace-scoped).
     if (args.workspaceRootPath && Array.isArray(args.extraSkillFolders)) {
         for (const folder of args.extraSkillFolders) {
             if (typeof folder !== 'string' || folder.trim().length === 0) continue;
@@ -469,6 +447,33 @@ export async function resolveEffectiveSkillPaths(
                 entries.push(...await describeSkillFolderCandidates(hostPath, 'repo-extra', 'workspace'));
             } catch {
                 entries.push({ source: 'repo-extra', scope: 'workspace', status: 'skipped', path: folder, note: 'Path could not be resolved' });
+            }
+        }
+    }
+
+    // 5. Auto-detected OneDrive/CloudStorage. Report every existing supported
+    // container. If a detected root has neither convention, report one skipped
+    // entry at the higher-priority conventional path.
+    if (args.autoDetectDefaultFolders !== false) {
+        const candidates = await resolveDefaultOneDriveSkillDirs(homedir);
+        for (let i = 0; i < candidates.length; i += SKILL_ROOT_SUBDIRS.length) {
+            const rootCandidates = candidates.slice(i, i + SKILL_ROOT_SUBDIRS.length);
+            const root = path.dirname(rootCandidates[rootCandidates.length - 1]);
+            const existing: EffectiveSkillPathEntry[] = [];
+            for (const candidate of rootCandidates) {
+                const described = await describeSkillDir(candidate, 'auto-detected', 'global');
+                if (described.status !== 'missing') existing.push(described);
+            }
+            if (existing.length > 0) {
+                entries.push(...existing);
+            } else if (await fs.promises.access(root).then(() => true).catch(() => false)) {
+                entries.push({
+                    source: 'auto-detected',
+                    scope: 'global',
+                    status: 'skipped',
+                    path: rootCandidates[0],
+                    note: 'OneDrive root exists but has neither .github/skills nor skills folder',
+                });
             }
         }
     }

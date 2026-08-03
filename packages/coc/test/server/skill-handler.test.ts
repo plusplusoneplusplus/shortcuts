@@ -423,6 +423,27 @@ describe('registerSkillRoutes', () => {
         expect(body.skill.relativePath).toContain('detail-skill');
     });
 
+    it('GET /api/workspaces/:id/skills/:name reads configured global skill details', async () => {
+        const configuredRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'detail-global-extra-'));
+        const skillDir = path.join(configuredRoot, 'external-detail');
+        fs.mkdirSync(skillDir, { recursive: true });
+        fs.writeFileSync(path.join(skillDir, 'SKILL.md'), '---\ndescription: External detail\n---');
+        const detailRoutes: Route[] = [];
+        registerSkillRoutes(detailRoutes, store, undefined, () => ({
+            globalExtraFolders: [configuredRoot],
+            autoDetectDefaultFolders: false,
+        }));
+
+        const { statusCode, body } = await dispatchRoute(
+            detailRoutes, 'GET', `/api/workspaces/${workspaceId}/skills/external-detail`,
+        );
+
+        expect(statusCode).toBe(200);
+        expect(body.skill.description).toBe('External detail');
+        expect(body.skill.folderPath).toBe(configuredRoot);
+        fs.rmSync(configuredRoot, { recursive: true, force: true });
+    });
+
     it('GET /api/workspaces/:id/skills/:name returns 404 for non-existent skill', async () => {
         const { statusCode } = await dispatchRoute(
             routes, 'GET', `/api/workspaces/${workspaceId}/skills/nonexistent`
@@ -1210,6 +1231,27 @@ describe('GET /api/workspaces/:id/skills — configured global extra folders (AC
         expect(s.source).toBe('global-extra-folder');
 
         fs.rmSync(geDir, { recursive: true, force: true });
+        fs.rmSync(wsDir, { recursive: true, force: true });
+    });
+
+    it('passes autoDetectDefaultFolders false through the workspace route', async () => {
+        const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'route-auto-home-'));
+        const oneDriveSkills = path.join(fakeHome, 'OneDrive', 'skills', 'auto-skill');
+        fs.mkdirSync(oneDriveSkills, { recursive: true });
+        fs.writeFileSync(path.join(oneDriveSkills, 'SKILL.md'), '# auto-skill');
+        vi.mocked(os.homedir).mockReturnValue(fakeHome);
+
+        const wsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'route-auto-ws-'));
+        const id = 'ws-auto-route';
+        const store = createMockProcessStore({ initialWorkspaces: [{ id, name: 'W', rootPath: wsDir } as WorkspaceInfo] });
+        store.getWorkspaces = vi.fn(async () => [{ id, name: 'W', rootPath: wsDir } as WorkspaceInfo]);
+        const routes: Route[] = [];
+        registerSkillRoutes(routes, store, undefined, () => ({ autoDetectDefaultFolders: false }));
+
+        const { body } = await dispatchRoute(routes, 'GET', `/api/workspaces/${id}/skills`);
+
+        expect(body.skills.some((skill: any) => skill.name === 'auto-skill')).toBe(false);
+        fs.rmSync(fakeHome, { recursive: true, force: true });
         fs.rmSync(wsDir, { recursive: true, force: true });
     });
 });

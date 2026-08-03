@@ -8,6 +8,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { registerGlobalSkillRoutes } from '../../src/server/skills/global-skill-handler';
+import { skillCache } from '../../src/server/skills/skill-handler';
 import { loadConfigFile, writeConfigFile } from '../../src/config';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { Route } from '../../src/server/types';
@@ -340,6 +341,21 @@ describe('registerGlobalSkillRoutes', () => {
             expect(loadConfigFile(configPath)?.skills?.autoDetectDefaultFolders).toBe(false);
         });
 
+        it('invalidates cached workspace skill lists when folder sources change', async () => {
+            skillCache.set(workspaceId, {
+                skills: [{ name: 'stale-skill', source: 'repo' }],
+                refreshing: false,
+                lastUpdated: Date.now(),
+            });
+
+            await dispatchRoute(routes, 'PUT', '/api/skills/config', {
+                globalDisabledSkills: [],
+                autoDetectDefaultFolders: false,
+            });
+
+            expect(skillCache.has(workspaceId)).toBe(false);
+        });
+
         it('preserves unrelated config fields when updating folder sources', async () => {
             writeConfigFile(configPath, {
                 skills: { autoUpdate: false, globalExtraFolders: ['/old'] },
@@ -537,6 +553,10 @@ describe('registerGlobalSkillRoutes', () => {
     // -----------------------------------------------------------------------
 
     describe('GET /api/workspaces/:id/skills/all', () => {
+        beforeEach(() => {
+            writeConfigFile(configPath, { skills: { autoDetectDefaultFolders: false } } as any);
+        });
+
         it('returns global and repo skills with source annotations', async () => {
             // Create a global skill
             const globalSkill = path.join(globalSkillsDir, 'global-skill');

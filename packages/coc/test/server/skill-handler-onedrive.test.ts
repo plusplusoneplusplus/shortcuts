@@ -71,6 +71,74 @@ describe('loadSkillsForWorkspace — OneDrive skill directories', () => {
         expect(odSkill!.description).toBe('OneDrive skill');
     });
 
+    it('includes skills from the plain OneDrive/skills convention', async () => {
+        const fakeHome = path.join(tmpDir, 'home');
+        const oneDriveSkillsDir = path.join(fakeHome, 'OneDrive', 'skills');
+        fs.mkdirSync(path.join(oneDriveSkillsDir, 'plain-skill'), { recursive: true });
+        fs.writeFileSync(path.join(oneDriveSkillsDir, 'plain-skill', 'SKILL.md'), '# plain-skill');
+        vi.mocked(os.homedir).mockReturnValue(fakeHome);
+
+        const ws: WorkspaceInfo = { id: workspaceId, name: 'Test', rootPath: workspaceDir } as WorkspaceInfo;
+        const skills = await loadSkillsForWorkspace(ws, undefined, store);
+
+        expect(skills.find(s => s.name === 'plain-skill')?.folderPath).toBe(oneDriveSkillsDir);
+    });
+
+    it('includes skills from macOS CloudStorage OneDrive/skills', async () => {
+        const fakeHome = path.join(tmpDir, 'home');
+        const cloudSkillsDir = path.join(
+            fakeHome, 'Library', 'CloudStorage', 'OneDrive-Personal', 'skills',
+        );
+        fs.mkdirSync(path.join(cloudSkillsDir, 'google-flights'), { recursive: true });
+        fs.writeFileSync(path.join(cloudSkillsDir, 'google-flights', 'SKILL.md'), '# google-flights');
+        vi.mocked(os.homedir).mockReturnValue(fakeHome);
+
+        const ws: WorkspaceInfo = { id: workspaceId, name: 'Test', rootPath: workspaceDir } as WorkspaceInfo;
+        const skills = await loadSkillsForWorkspace(ws, undefined, store);
+
+        expect(skills.find(s => s.name === 'google-flights')?.folderPath).toBe(cloudSkillsDir);
+    });
+
+    it('loads both conventions and keeps .github/skills first on name collisions', async () => {
+        const fakeHome = path.join(tmpDir, 'home');
+        const githubSkillsDir = path.join(fakeHome, 'OneDrive', '.github', 'skills');
+        const plainSkillsDir = path.join(fakeHome, 'OneDrive', 'skills');
+        for (const [dir, description] of [[githubSkillsDir, 'github version'], [plainSkillsDir, 'plain version']] as const) {
+            fs.mkdirSync(path.join(dir, 'shared-skill'), { recursive: true });
+            fs.writeFileSync(path.join(dir, 'shared-skill', 'SKILL.md'), `---\ndescription: ${description}\n---`);
+        }
+        fs.mkdirSync(path.join(plainSkillsDir, 'plain-only'), { recursive: true });
+        fs.writeFileSync(path.join(plainSkillsDir, 'plain-only', 'SKILL.md'), '# plain-only');
+        vi.mocked(os.homedir).mockReturnValue(fakeHome);
+
+        const ws: WorkspaceInfo = { id: workspaceId, name: 'Test', rootPath: workspaceDir } as WorkspaceInfo;
+        const skills = await loadSkillsForWorkspace(ws, undefined, store);
+
+        expect(skills.find(s => s.name === 'shared-skill')?.description).toBe('github version');
+        expect(skills.find(s => s.name === 'plain-only')).toBeDefined();
+        expect(skills.filter(s => s.name === 'shared-skill')).toHaveLength(1);
+    });
+
+    it('honors autoDetectDefaultFolders false without disabling configured folders', async () => {
+        const fakeHome = path.join(tmpDir, 'home');
+        const oneDriveSkillsDir = path.join(fakeHome, 'OneDrive', 'skills');
+        fs.mkdirSync(path.join(oneDriveSkillsDir, 'auto-skill'), { recursive: true });
+        fs.writeFileSync(path.join(oneDriveSkillsDir, 'auto-skill', 'SKILL.md'), '# auto-skill');
+        const configuredDir = path.join(tmpDir, 'configured');
+        fs.mkdirSync(path.join(configuredDir, 'configured-skill'), { recursive: true });
+        fs.writeFileSync(path.join(configuredDir, 'configured-skill', 'SKILL.md'), '# configured-skill');
+        vi.mocked(os.homedir).mockReturnValue(fakeHome);
+
+        const ws: WorkspaceInfo = { id: workspaceId, name: 'Test', rootPath: workspaceDir } as WorkspaceInfo;
+        const skills = await loadSkillsForWorkspace(ws, undefined, store, {
+            globalExtraFolders: [configuredDir],
+            autoDetectDefaultFolders: false,
+        });
+
+        expect(skills.some(s => s.name === 'auto-skill')).toBe(false);
+        expect(skills.find(s => s.name === 'configured-skill')?.source).toBe('global-extra-folder');
+    });
+
     it('includes skills from OneDrive - Microsoft/.github/skills', async () => {
         const fakeHome = path.join(tmpDir, 'home');
         const oneDriveMsSkillsDir = path.join(fakeHome, 'OneDrive - Microsoft', '.github', 'skills');
