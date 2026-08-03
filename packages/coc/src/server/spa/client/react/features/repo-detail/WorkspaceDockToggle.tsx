@@ -30,8 +30,13 @@ export function workspaceDockWidthStorageKey(workspaceId: string): string {
 }
 
 export const DOCK_MIN_WIDTH = 280;
-export const DOCK_MAX_WIDTH = 800;
 export const DOCK_INITIAL_WIDTH = 420;
+/**
+ * px reserved for the left/chat column. The dock's max-width is computed as
+ * `viewportWidth − DOCK_MIN_CHAT_WIDTH` (floored at `DOCK_MIN_WIDTH`), so the dock
+ * scales with the monitor while never crushing the chat pane below this width.
+ */
+export const DOCK_MIN_CHAT_WIDTH = 360;
 
 /**
  * Cross-tree open/closed store for the dock, keyed by its localStorage key.

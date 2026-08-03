@@ -158,7 +158,7 @@ export function ScratchpadDivider({
                     className="relative flex-1 min-w-0"
                     data-testid="scratchpad-file-tabs"
                 >
-                    <div className="flex items-stretch overflow-x-auto gap-0 scrollbar-none" onScroll={closeContextMenu}>
+                    <div className="flex items-stretch overflow-x-auto gap-0 scrollbar-hide" onScroll={closeContextMenu}>
                         {files.map(f => {
                             const name = fileBaseName(f);
                             const isActive = linkedNotePath !== null &&

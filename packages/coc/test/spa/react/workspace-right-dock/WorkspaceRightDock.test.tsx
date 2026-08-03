@@ -24,7 +24,26 @@ import {
     workspaceDockViewStorageKey,
     workspaceDockWidthStorageKey,
     DOCK_INITIAL_WIDTH,
+    DOCK_MIN_WIDTH,
+    DOCK_MIN_CHAT_WIDTH,
 } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceRightDock';
+
+/**
+ * Set jsdom's window.innerWidth, fire a resize event, and flush the hook's
+ * debounce. Requires fake timers (vi.useFakeTimers) to be active.
+ */
+function setViewportWidth(px: number) {
+    Object.defineProperty(window, 'innerWidth', { value: px, writable: true, configurable: true });
+    act(() => {
+        window.dispatchEvent(new Event('resize'));
+        vi.advanceTimersByTime(150); // clear the 100ms resize debounce
+    });
+}
+
+/** Live viewport-relative dock ceiling, mirroring useWorkspaceDock's formula. */
+function expectedMaxWidth(): number {
+    return Math.max(DOCK_MIN_WIDTH, window.innerWidth - DOCK_MIN_CHAT_WIDTH);
+}
 
 /**
  * Test harness: mirrors how RepoDetail wires the dock — one shared controller
@@ -114,7 +133,8 @@ describe('WorkspaceRightDock', () => {
         expect(handle.getAttribute('role')).toBe('separator');
         expect(handle.getAttribute('aria-orientation')).toBe('vertical');
         expect(handle.getAttribute('aria-valuemin')).toBe('280');
-        expect(handle.getAttribute('aria-valuemax')).toBe('800');
+        // aria-valuemax tracks the live viewport-relative ceiling, not a fixed 800.
+        expect(handle.getAttribute('aria-valuemax')).toBe(String(expectedMaxWidth()));
         expect(handle.getAttribute('aria-valuenow')).toBe(String(DOCK_INITIAL_WIDTH));
 
         // direction:'right' — dragging left (clientX 500 -> 400) widens the dock by 100.
@@ -181,6 +201,73 @@ describe('WorkspaceRightDock', () => {
         // The open/close control lives in RepoDetail's header or the TopBar — the
         // dock body itself renders no toggle.
         expect(screen.queryByTestId('workspace-dock-toggle')).toBeNull();
+    });
+});
+
+/**
+ * The dock max-width scales with the window (`max(DOCK_MIN_WIDTH, viewportWidth −
+ * DOCK_MIN_CHAT_WIDTH)`) instead of a fixed 800px cap, so it can be dragged as
+ * wide as a big monitor allows while always reserving room for the chat pane.
+ */
+describe('WorkspaceRightDock viewport-relative max width', () => {
+    let originalWidth: number;
+
+    beforeEach(() => {
+        localStorage.clear();
+        vi.useFakeTimers();
+        originalWidth = window.innerWidth;
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        Object.defineProperty(window, 'innerWidth', { value: originalWidth, writable: true, configurable: true });
+    });
+
+    it('lets the dock widen past the old 800px cap on a large monitor', () => {
+        render(<Harness />);
+        openDock();
+        setViewportWidth(4000); // max = 4000 − 360 = 3640, well past 800
+
+        const handle = screen.getByTestId('workspace-dock-resize-handle');
+        expect(handle.getAttribute('aria-valuemax')).toBe('3640');
+
+        // direction:'right' — drag left 1000px (clientX 1500 → 500) to widen the dock.
+        act(() => {
+            fireEvent.mouseDown(handle, { clientX: 1500 });
+        });
+        act(() => {
+            document.dispatchEvent(new MouseEvent('mousemove', { clientX: 500 }));
+        });
+        expect(screen.getByTestId('workspace-dock-body').style.width).toBe(`${DOCK_INITIAL_WIDTH + 1000}px`);
+    });
+
+    it('never lets the max fall below DOCK_MIN_WIDTH on a narrow window (inversion guard)', () => {
+        render(<Harness />);
+        openDock();
+        setViewportWidth(400); // 400 − 360 = 40 < DOCK_MIN_WIDTH → floored at DOCK_MIN_WIDTH
+
+        const handle = screen.getByTestId('workspace-dock-resize-handle');
+        expect(handle.getAttribute('aria-valuemax')).toBe(String(DOCK_MIN_WIDTH));
+    });
+
+    it('clamps a persisted over-max width down on shrink and restores it on grow', () => {
+        // Start on a wide viewport so the persisted 1000px fits under the cap.
+        Object.defineProperty(window, 'innerWidth', { value: 1600, writable: true, configurable: true });
+        localStorage.setItem(workspaceDockOpenStorageKey('ws-clamp'), '1');
+        localStorage.setItem(workspaceDockWidthStorageKey('ws-clamp'), '1000');
+
+        render(<Harness workspaceId="ws-clamp" />);
+        const body = screen.getByTestId('workspace-dock-body');
+        expect(body.style.width).toBe('1000px'); // 1000 < 1600 − 360 = 1240
+
+        // Shrink so the persisted width exceeds the new cap → clamps down to it.
+        setViewportWidth(1200); // max = 1200 − 360 = 840
+        expect(body.style.width).toBe('840px');
+
+        // Grow back → the user's persisted intent (1000) is restored from storage.
+        setViewportWidth(1600); // max = 1240
+        expect(body.style.width).toBe('1000px');
+        expect(localStorage.getItem(workspaceDockWidthStorageKey('ws-clamp'))).toBe('1000');
     });
 });
 
