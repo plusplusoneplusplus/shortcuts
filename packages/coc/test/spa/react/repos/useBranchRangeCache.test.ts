@@ -1,5 +1,6 @@
 /**
- * Tests for useBranchRangeCache — module-level branch range caching per workspace.
+ * Tests for useBranchRangeCache — module-level branch range caching per
+ * workspace and comparison base mode.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -54,6 +55,27 @@ describe('getBranchRangeCache', () => {
     });
 });
 
+describe('per base mode keying', () => {
+    it('keeps default-branch and upstream entries apart', () => {
+        setBranchRangeCache('ws1', SAMPLE_CACHE, 'default-branch');
+        setBranchRangeCache('ws1', DEFAULT_BRANCH_CACHE, 'upstream');
+        expect(getBranchRangeCache('ws1', 'default-branch')).toBe(SAMPLE_CACHE);
+        expect(getBranchRangeCache('ws1', 'upstream')).toBe(DEFAULT_BRANCH_CACHE);
+        expect(_getBranchRangeCacheSize()).toBe(2);
+    });
+
+    it('defaults to default-branch when the mode is omitted', () => {
+        setBranchRangeCache('ws1', SAMPLE_CACHE);
+        expect(getBranchRangeCache('ws1', 'default-branch')).toBe(SAMPLE_CACHE);
+        expect(getBranchRangeCache('ws1', 'upstream')).toBeUndefined();
+    });
+
+    it('does not serve one mode\'s data for the other', () => {
+        setBranchRangeCache('ws1', SAMPLE_CACHE, 'upstream');
+        expect(getBranchRangeCache('ws1')).toBeUndefined();
+    });
+});
+
 describe('setBranchRangeCache', () => {
     it('stores separate entries per workspace', () => {
         setBranchRangeCache('ws1', SAMPLE_CACHE);
@@ -72,6 +94,16 @@ describe('setBranchRangeCache', () => {
 });
 
 describe('clearBranchRangeCache', () => {
+    it('drops every base mode for the workspace', () => {
+        setBranchRangeCache('ws1', SAMPLE_CACHE, 'default-branch');
+        setBranchRangeCache('ws1', DEFAULT_BRANCH_CACHE, 'upstream');
+        setBranchRangeCache('ws2', SAMPLE_CACHE, 'upstream');
+        clearBranchRangeCache('ws1');
+        expect(getBranchRangeCache('ws1', 'default-branch')).toBeUndefined();
+        expect(getBranchRangeCache('ws1', 'upstream')).toBeUndefined();
+        expect(getBranchRangeCache('ws2', 'upstream')).toBe(SAMPLE_CACHE);
+    });
+
     it('removes only the specified workspace entry', () => {
         setBranchRangeCache('ws1', SAMPLE_CACHE);
         setBranchRangeCache('ws2', DEFAULT_BRANCH_CACHE);
@@ -114,7 +146,7 @@ describe('RepoGitTab integration', () => {
             path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'RepoGitTab.tsx'),
             'utf-8',
         );
-        expect(source).toContain('getBranchRangeCache(workspaceId)');
+        expect(source).toContain('getBranchRangeCache(workspaceId, mode)');
     });
 
     it('fetchBranchRange populates cache after fetch', async () => {
@@ -125,6 +157,7 @@ describe('RepoGitTab integration', () => {
             'utf-8',
         );
         expect(source).toContain('setBranchRangeCache(workspaceId,');
+        expect(source).toContain('}, mode);');
     });
 
     it('refresh=true clears cache before fetching', async () => {

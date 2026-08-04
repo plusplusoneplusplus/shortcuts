@@ -55,7 +55,7 @@ import type { ReviewChatTarget } from '../features/git/commits/commitChatPlaceme
 import type { BranchRangeInfo } from '../features/git/branches/BranchChanges';
 import type { BranchRangeFile } from '../features/git/branches/BranchAllFilesDiff';
 import type { FileChange } from '../features/git/diff/FileTree';
-import type { GitBranchRangeResponse } from '@plusplusoneplusplus/coc-client';
+import type { GitBranchRangeResponse, GitRangeBaseMode } from '@plusplusoneplusplus/coc-client';
 
 // ── URL parsing ────────────────────────────────────────────────────────────────
 
@@ -68,6 +68,8 @@ export interface PopOutGitReviewParams {
     originId?: string;
     /** Remote clone baseUrl for the workspace, when the workspace lives on a remote CoC server. */
     cloneBaseUrl?: string;
+    /** Branch-range comparison base. Defaults to 'default-branch'. */
+    baseMode?: GitRangeBaseMode;
 }
 
 export function parsePopOutGitReviewRoute(hash: string, search: string): PopOutGitReviewParams | null {
@@ -82,7 +84,8 @@ export function parsePopOutGitReviewRoute(hash: string, search: string): PopOutG
     const cloneBaseUrl = searchParams.get('cloneBaseUrl') || undefined;
 
     if (parts[2] === 'branch-range') {
-        return { workspaceId, reviewType: 'branch-range', cloneBaseUrl };
+        const baseMode: GitRangeBaseMode = searchParams.get('base') === 'upstream' ? 'upstream' : 'default-branch';
+        return { workspaceId, reviewType: 'branch-range', cloneBaseUrl, baseMode };
     }
 
     if (parts[2] === 'pr' && parts[3]) {
@@ -433,7 +436,7 @@ function CommitReviewContent({ workspaceId, commitHash }: { workspaceId: string;
 
 // ── Branch range review content ────────────────────────────────────────────────
 
-function BranchRangeReviewContent({ workspaceId }: { workspaceId: string }) {
+function BranchRangeReviewContent({ workspaceId, baseMode = 'default-branch' }: { workspaceId: string; baseMode?: GitRangeBaseMode }) {
     const [range, setRange] = useState<BranchRangeInfo | null>(null);
     const [commits, setCommits] = useState<GitCommitItem[]>([]);
     const [files, setFiles] = useState<BranchRangeFile[]>([]);
@@ -464,8 +467,8 @@ function BranchRangeReviewContent({ workspaceId }: { workspaceId: string }) {
 
         const client = getCocClientForWorkspace(workspaceId);
         Promise.all([
-            client.git.getBranchRange(workspaceId),
-            client.git.listBranchRangeFiles(workspaceId),
+            client.git.getBranchRange(workspaceId, { base: baseMode }),
+            client.git.listBranchRangeFiles(workspaceId, { base: baseMode }),
         ])
             .then(([rangeData, filesData]) => {
                 if (isBranchRangeInfo(rangeData)) setRange(rangeData);
@@ -474,7 +477,7 @@ function BranchRangeReviewContent({ workspaceId }: { workspaceId: string }) {
             })
             .catch((err: Error) => setError(err.message))
             .finally(() => setLoading(false));
-    }, [workspaceId]);
+    }, [workspaceId, baseMode]);
 
     // Convert BranchRangeFile[] to FileChange[] for the file panel
     const fileChanges: FileChange[] = files.map(f => ({
@@ -540,6 +543,7 @@ function BranchRangeReviewContent({ workspaceId }: { workspaceId: string }) {
                         filePath={selectedFilePath}
                         source={createBranchRangeDiffSource(workspaceId, {
                             files: files.map(file => file.path).sort(),
+                            baseMode,
                         })}
                         onNavigateToFile={handleNavigateToFile}
                         initialHunkTarget={hunkTarget}
@@ -553,6 +557,7 @@ function BranchRangeReviewContent({ workspaceId }: { workspaceId: string }) {
                         commits={commits}
                         files={files}
                         isPopOut
+                        baseMode={baseMode}
                     />
                 )}
             </div>
@@ -1009,7 +1014,7 @@ function PopOutGitReviewContent({ params }: { params: PopOutGitReviewParams }) {
                     ) : params.reviewType === 'pr' ? (
                         <PrReviewContent workspaceId={params.workspaceId} repoId={params.repoId!} prId={params.prId!} originId={params.originId} onTitleLoaded={setPrTitle} />
                     ) : (
-                        <BranchRangeReviewContent workspaceId={params.workspaceId} />
+                        <BranchRangeReviewContent workspaceId={params.workspaceId} baseMode={params.baseMode} />
                     )}
                 </div>
             </div>

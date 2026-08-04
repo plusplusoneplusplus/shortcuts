@@ -12,6 +12,7 @@ import { getSpaCocClient } from '../../../api/cocClient';
 import { Spinner, TruncatedPath } from '../../../ui';
 import { UnifiedDiffViewer } from '../diff/UnifiedDiffViewer';
 import { STATUS_COLORS, STATUS_LABELS, normalizeStatus } from '../diff/FileTree';
+import type { GitRangeBaseMode } from '@plusplusoneplusplus/coc-client';
 
 export interface BranchRangeFile {
     path: string;
@@ -27,6 +28,8 @@ interface BranchAllFilesDiffProps {
     onFileSelect: (filePath: string) => void;
     /** When set, scrolls the given file row into view. */
     scrollToFilePath?: string | null;
+    /** Comparison base for the per-file diff requests. */
+    baseMode?: GitRangeBaseMode;
 }
 
 type FileState = {
@@ -38,9 +41,14 @@ type FileState = {
 
 const DIFF_LINE_LIMIT = 200;
 
-export function BranchAllFilesDiff({ workspaceId, files, onFileSelect, scrollToFilePath }: BranchAllFilesDiffProps) {
+export function BranchAllFilesDiff({ workspaceId, files, onFileSelect, scrollToFilePath, baseMode }: BranchAllFilesDiffProps) {
     const [fileStates, setFileStates] = useState<Record<string, FileState>>({});
     const containerRef = useRef<HTMLDivElement>(null);
+
+    // Diffs are per base mode — drop the cached ones when the base changes.
+    useEffect(() => {
+        setFileStates({});
+    }, [workspaceId, baseMode]);
 
     // Scroll to file when requested
     useEffect(() => {
@@ -76,7 +84,7 @@ export function BranchAllFilesDiff({ workspaceId, files, onFileSelect, scrollToF
             [filePath]: { expanded: true, diff: null, loading: true, error: null },
         }));
 
-        getSpaCocClient().git.getBranchRangeFileDiff(workspaceId, filePath)
+        getSpaCocClient().git.getBranchRangeFileDiff(workspaceId, filePath, { base: baseMode })
             .then(data => {
                 setFileStates(prev => ({
                     ...prev,

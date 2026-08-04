@@ -58,6 +58,15 @@ describe('buildGitBranchRangePopOutUrl', () => {
         const url = buildGitBranchRangePopOutUrl('ws-1');
         expect(url).not.toContain('cloneBaseUrl');
     });
+
+    it('serializes the upstream base mode', () => {
+        const url = buildGitBranchRangePopOutUrl('ws-1', undefined, 'upstream');
+        expect(url).toBe('/?workspace=ws-1&base=upstream#popout/git-review/branch-range');
+    });
+
+    it('omits the base param for the default mode', () => {
+        expect(buildGitBranchRangePopOutUrl('ws-1', undefined, 'default-branch')).not.toContain('base=');
+    });
 });
 
 describe('buildGitPrPopOutUrl', () => {

@@ -28,6 +28,7 @@ const mockDetectCommitRange = vi.fn();
 const mockGetRangeDiff = vi.fn();
 const mockGetFileDiff = vi.fn();
 const mockGetCurrentBranch = vi.fn().mockResolvedValue('feature/foo');
+const mockResolveBaseRef = vi.fn().mockReturnValue({ baseRef: 'origin/main', baseMode: 'default-branch' });
 
 const mockExecSync = vi.fn();
 vi.mock('child_process', function () { return ({
@@ -43,6 +44,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             getRangeDiff: mockGetRangeDiff,
             getFileDiff: mockGetFileDiff,
             getCurrentBranch: mockGetCurrentBranch,
+            resolveBaseRef: mockResolveBaseRef,
         }); }),
     };
 });
@@ -164,6 +166,8 @@ describe('Git Branch Range API endpoints', () => {
         mockGetFileDiff.mockReset();
         mockExecSync.mockReset();
         mockGetCurrentBranch.mockResolvedValue('feature/foo');
+        mockResolveBaseRef.mockReset();
+        mockResolveBaseRef.mockReturnValue({ baseRef: 'origin/main', baseMode: 'default-branch' });
         gitCache.clear();
     });
 
@@ -193,7 +197,12 @@ describe('Git Branch Range API endpoints', () => {
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-range`);
             expect(res.status).toBe(200);
-            expect(res.json()).toEqual({ onDefaultBranch: true, branchName: 'pr/some-feature-branch' });
+            expect(res.json()).toEqual({
+                onDefaultBranch: true,
+                branchName: 'pr/some-feature-branch',
+                baseMode: 'default-branch',
+                baseRef: 'origin/main',
+            });
         });
 
         it('returns onDefaultBranch with branchName on git error', async () => {
@@ -353,6 +362,122 @@ describe('Git Branch Range API endpoints', () => {
             const data = res.json();
             expect(data.path).toBe('src/my file.ts');
             expect(mockGetFileDiff).toHaveBeenCalledWith(WORKSPACE_ROOT, 'origin/main', 'HEAD', 'src/my file.ts');
+        });
+    });
+
+    // ========================================================================
+    // ?base= comparison base selector
+    // ========================================================================
+
+    describe('?base= query param', () => {
+        const UPSTREAM_RANGE = {
+            ...MOCK_RANGE,
+            baseRef: 'origin/feature/foo',
+            commitCount: 1,
+            baseMode: 'upstream' as const,
+        };
+
+        it('passes baseMode upstream to detectCommitRange on the range endpoint', async () => {
+            mockDetectCommitRange.mockReturnValue(UPSTREAM_RANGE);
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-range?base=upstream`);
+            expect(res.status).toBe(200);
+            expect(mockDetectCommitRange).toHaveBeenCalledWith(WORKSPACE_ROOT, { baseMode: 'upstream' });
+            expect(res.json().baseRef).toBe('origin/feature/foo');
+            expect(res.json().baseMode).toBe('upstream');
+        });
+
+        it('passes baseMode upstream on the files endpoint', async () => {
+            mockDetectCommitRange.mockReturnValue(UPSTREAM_RANGE);
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-range/files?base=upstream`);
+            expect(res.status).toBe(200);
+            expect(mockDetectCommitRange).toHaveBeenCalledWith(WORKSPACE_ROOT, { baseMode: 'upstream' });
+        });
+
+        it('passes baseMode upstream on the diff endpoint and diffs against the upstream ref', async () => {
+            mockDetectCommitRange.mockReturnValue(UPSTREAM_RANGE);
+            mockGetRangeDiff.mockReturnValue(MOCK_DIFF);
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-range/diff?base=upstream`);
+            expect(res.status).toBe(200);
+            expect(mockDetectCommitRange).toHaveBeenCalledWith(WORKSPACE_ROOT, { baseMode: 'upstream' });
+            expect(mockGetRangeDiff).toHaveBeenCalledWith(WORKSPACE_ROOT, 'origin/feature/foo', 'HEAD');
+        });
+
+        it('passes baseMode upstream on the per-file diff endpoint', async () => {
+            mockDetectCommitRange.mockReturnValue(UPSTREAM_RANGE);
+            mockGetFileDiff.mockReturnValue(MOCK_FILE_DIFF);
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-range/files/src/index.ts/diff?base=upstream`);
+            expect(res.status).toBe(200);
+            expect(mockDetectCommitRange).toHaveBeenCalledWith(WORKSPACE_ROOT, { baseMode: 'upstream' });
+            expect(mockGetFileDiff).toHaveBeenCalledWith(WORKSPACE_ROOT, 'origin/feature/foo', 'HEAD', 'src/index.ts');
+        });
+
+        it('falls back to default-branch for an unknown base value', async () => {
+            mockDetectCommitRange.mockReturnValue(MOCK_RANGE);
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-range?base=bogus`);
+            expect(res.status).toBe(200);
+            expect(mockDetectCommitRange).toHaveBeenCalledWith(WORKSPACE_ROOT, { baseMode: 'default-branch' });
+        });
+
+        it('defaults to default-branch when base is absent', async () => {
+            mockDetectCommitRange.mockReturnValue(MOCK_RANGE);
+
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-range`);
+            expect(mockDetectCommitRange).toHaveBeenCalledWith(WORKSPACE_ROOT, { baseMode: 'default-branch' });
+        });
+
+        it('caches each base mode separately', async () => {
+            mockDetectCommitRange.mockReturnValue(MOCK_RANGE);
+            const first = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-range`);
+            expect(first.json().baseRef).toBe('origin/main');
+
+            mockDetectCommitRange.mockReturnValue(UPSTREAM_RANGE);
+            const second = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-range?base=upstream`);
+            expect(second.json().baseRef).toBe('origin/feature/foo');
+
+            // The default-branch entry is still its own cached value, not the upstream one.
+            mockDetectCommitRange.mockClear();
+            const third = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-range`);
+            expect(third.json().baseRef).toBe('origin/main');
+            expect(mockDetectCommitRange).not.toHaveBeenCalled();
+        });
+
+        it('refresh drops every base mode for the workspace', async () => {
+            mockDetectCommitRange.mockReturnValue(MOCK_RANGE);
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-range`);
+            mockDetectCommitRange.mockReturnValue(UPSTREAM_RANGE);
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-range?base=upstream`);
+
+            // Refreshing one mode wipes the other's cache too.
+            mockDetectCommitRange.mockClear();
+            mockDetectCommitRange.mockReturnValue(MOCK_RANGE);
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-range?refresh=true`);
+            await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-range?base=upstream`);
+            expect(mockDetectCommitRange).toHaveBeenCalledTimes(2);
+        });
+
+        it('reports the fallback when upstream is unavailable and no range is found', async () => {
+            mockDetectCommitRange.mockReturnValue(null);
+            mockGetCurrentBranch.mockResolvedValue('local-only');
+            mockResolveBaseRef.mockReturnValue({
+                baseRef: 'origin/main',
+                baseMode: 'default-branch',
+                baseModeFallback: true,
+            });
+
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/branch-range?base=upstream`);
+            expect(res.status).toBe(200);
+            expect(res.json()).toEqual({
+                onDefaultBranch: true,
+                branchName: 'local-only',
+                baseMode: 'default-branch',
+                baseRef: 'origin/main',
+                baseModeFallback: true,
+            });
         });
     });
 

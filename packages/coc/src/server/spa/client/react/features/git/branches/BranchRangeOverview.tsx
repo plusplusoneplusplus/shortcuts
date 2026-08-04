@@ -19,6 +19,7 @@ import { buildGitBranchRangePopOutUrl } from '../../../layout/Router';
 import { createGitRangeContextDragPayload } from '../../chat/sessionContextDrag';
 import { lookupCloneBaseUrl } from '../../../repos/cloneRegistry';
 import { isSessionContextAttachmentsEnabled } from '../../../utils/config';
+import type { GitRangeBaseMode } from '@plusplusoneplusplus/coc-client';
 
 const RANGE_STORAGE_KEY = 'coc.branchRangeOverview.upperHeight';
 const DEFAULT_UPPER_HEIGHT = 160;
@@ -47,9 +48,13 @@ export interface BranchRangeOverviewProps {
     isPopOut?: boolean;
     /** When set, scrolls the file list to the given file. */
     scrollToFilePath?: string | null;
+    /** Comparison base for the range. Defaults to 'default-branch'. */
+    baseMode?: GitRangeBaseMode;
+    /** Called when the user flips the base toggle. Omit to hide the toggle. */
+    onBaseModeChange?: (mode: GitRangeBaseMode) => void;
 }
 
-export function BranchRangeOverview({ workspaceId, range, commits: rangeCommits, files: rangeFiles, unpushedCount, onFileSelect, onAllCommentsClick, onAskAI, isPopOut, scrollToFilePath }: BranchRangeOverviewProps) {
+export function BranchRangeOverview({ workspaceId, range, commits: rangeCommits, files: rangeFiles, unpushedCount, onFileSelect, onAllCommentsClick, onAskAI, isPopOut, scrollToFilePath, baseMode = 'default-branch', onBaseModeChange }: BranchRangeOverviewProps) {
     const [upperHeight, setUpperHeight] = useState(loadUpperHeight);
     const [isDragging, setIsDragging] = useState(false);
     const [branchCommentCount, setBranchCommentCount] = useState(0);
@@ -62,12 +67,12 @@ export function BranchRangeOverview({ workspaceId, range, commits: rangeCommits,
         : null;
 
     const handlePopOut = useCallback(() => {
-        const url = buildGitBranchRangePopOutUrl(workspaceId, lookupCloneBaseUrl(workspaceId));
+        const url = buildGitBranchRangePopOutUrl(workspaceId, lookupCloneBaseUrl(workspaceId), baseMode);
         const win = window.open(url, `coc-git-review-branch-${workspaceId}`, 'width=1200,height=800');
         if (win) {
             markPoppedOut(gitReviewBranchPopOutKey(workspaceId));
         }
-    }, [workspaceId, markPoppedOut]);
+    }, [workspaceId, markPoppedOut, baseMode]);
 
     const getMaxUpperHeight = useCallback(() => {
         if (!rangeContainerRef.current) return 400;
@@ -155,6 +160,8 @@ export function BranchRangeOverview({ workspaceId, range, commits: rangeCommits,
                     commentCount={branchCommentCount}
                     onAskAI={onAskAI}
                     sessionContextPayload={sessionContextPayload}
+                    baseMode={baseMode}
+                    onBaseModeChange={onBaseModeChange}
                 />
             </div>
 
@@ -194,6 +201,7 @@ export function BranchRangeOverview({ workspaceId, range, commits: rangeCommits,
                     files={rangeFiles ?? []}
                     onFileSelect={onFileSelect ?? (() => {})}
                     scrollToFilePath={scrollToFilePath}
+                    baseMode={baseMode}
                 />
             </div>
         </div>

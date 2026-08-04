@@ -37,7 +37,24 @@ describe('parsePopOutGitReviewRoute', () => {
         expect(result).toEqual({
             workspaceId: 'ws1',
             reviewType: 'branch-range',
+            baseMode: 'default-branch',
         });
+    });
+
+    it('parses the upstream base mode for branch-range routes', () => {
+        const result = parsePopOutGitReviewRoute(
+            '#popout/git-review/branch-range',
+            '?workspace=ws1&base=upstream'
+        );
+        expect(result!.baseMode).toBe('upstream');
+    });
+
+    it('falls back to default-branch for an unknown base value', () => {
+        const result = parsePopOutGitReviewRoute(
+            '#popout/git-review/branch-range',
+            '?workspace=ws1&base=bogus'
+        );
+        expect(result!.baseMode).toBe('default-branch');
     });
 
     it('decodes URI-encoded commit hash', () => {

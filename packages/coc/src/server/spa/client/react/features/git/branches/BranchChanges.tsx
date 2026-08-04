@@ -20,6 +20,7 @@ import { useFilesViewMode } from '../hooks/useFilesViewMode';
 import { UnifiedDiffViewer } from '../diff/UnifiedDiffViewer';
 import { createGitRangeContextDragPayload, writePointerContextDragData } from '../../chat/sessionContextDrag';
 import { isSessionContextAttachmentsEnabled } from '../../../utils/config';
+import type { GitRangeBaseMode } from '@plusplusoneplusplus/coc-client';
 
 export interface BranchRangeInfo {
     baseRef: string;
@@ -30,6 +31,10 @@ export interface BranchRangeInfo {
     mergeBase: string;
     branchName?: string;
     fileCount: number;
+    /** Base mode the server actually used. */
+    baseMode?: GitRangeBaseMode;
+    /** True when 'upstream' was requested but the branch has no upstream. */
+    baseModeFallback?: true;
 }
 
 interface BranchChangesProps {
@@ -48,11 +53,13 @@ interface BranchChangesProps {
      * tag, shortened summary and file-count. Full text stays in the tooltips.
      */
     compact?: boolean;
+    /** Comparison base for the range's own file/diff requests. */
+    baseMode?: GitRangeBaseMode;
 }
 
 interface BranchRangeFile extends FileChange {}
 
-export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDefaultBranch, onFileSelect, selectedFile, onBranchContextMenu, onBranchRangeSelect, compact }: BranchChangesProps) {
+export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDefaultBranch, onFileSelect, selectedFile, onBranchContextMenu, onBranchRangeSelect, compact, baseMode }: BranchChangesProps) {
     const rangeInfo = branchRangeData ?? null;
     const sessionContextPayload = isSessionContextAttachmentsEnabled() && rangeInfo
         ? createGitRangeContextDragPayload(rangeInfo, { activeWorkspaceId: workspaceId })
@@ -113,7 +120,7 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
 
         setFilesLoading(true);
         setFilesError(null);
-        getSpaCocClient().git.listBranchRangeFiles(workspaceId)
+        getSpaCocClient().git.listBranchRangeFiles(workspaceId, { base: baseMode })
             .then(data => {
                 setFiles(data.files || []);
             })
@@ -121,7 +128,7 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
                 setFilesError(err.message || 'Failed to load files');
             })
             .finally(() => setFilesLoading(false));
-    }, [expanded, files.length, rangeInfo, workspaceId, initialFiles]);
+    }, [expanded, files.length, rangeInfo, workspaceId, initialFiles, baseMode]);
 
     const toggleFileDiff = (filePath: string) => {
         if (expandedFile === filePath) {
@@ -135,7 +142,7 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
         setFileDiffError(null);
         setFileDiffLoading(true);
 
-        getSpaCocClient().git.getBranchRangeFileDiff(workspaceId, filePath)
+        getSpaCocClient().git.getBranchRangeFileDiff(workspaceId, filePath, { base: baseMode })
             .then(data => setFileDiff(data.diff ?? ''))
             .catch(err => setFileDiffError(err.message || 'Failed to load diff'))
             .finally(() => setFileDiffLoading(false));

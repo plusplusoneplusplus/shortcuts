@@ -137,6 +137,14 @@ export interface GitCommentCounts {
 /**
  * Represents a range of commits (e.g., feature branch changes vs origin/main).
  */
+/**
+ * Which ref the branch diff is compared against.
+ *
+ * - `default-branch`: the repo's default remote branch (origin/main, …) — everything on this branch.
+ * - `upstream`: the current branch's `@{upstream}` — unpushed commits only.
+ */
+export type GitRangeBaseMode = 'default-branch' | 'upstream';
+
 export interface GitCommitRange {
     /** Base reference (usually origin/main or origin/master) */
     baseRef: string;
@@ -158,6 +166,10 @@ export interface GitCommitRange {
     repositoryRoot: string;
     /** Repository display name */
     repositoryName: string;
+    /** Base mode actually used to resolve `baseRef` */
+    baseMode: GitRangeBaseMode;
+    /** Set when `upstream` was requested but the branch has no upstream, so the default branch was used instead */
+    baseModeFallback?: true;
 }
 
 /**

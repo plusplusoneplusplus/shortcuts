@@ -5,8 +5,10 @@
  * in the range, full range diff, and per-file range diff.
  */
 
+import type { IncomingMessage } from 'http';
 import * as url from 'url';
 import { GitRangeService } from '@plusplusoneplusplus/forge';
+import type { GitRangeBaseMode } from '@plusplusoneplusplus/forge';
 import { sendJSON } from '../core/api-handler';
 import { handleAPIError, badRequest } from '../errors';
 import { gitCache } from '../git/git-cache';
@@ -31,6 +33,17 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
         }));
     }
 
+    /**
+     * Read `?base=upstream|default-branch`. Anything else (missing, misspelled,
+     * repeated) falls back to `default-branch` rather than erroring.
+     */
+    function parseBaseMode(req: IncomingMessage): GitRangeBaseMode {
+        const parsed = url.parse(req.url || '/', true);
+        const raw = parsed.query.base;
+        const value = Array.isArray(raw) ? raw[0] : raw;
+        return value === 'upstream' ? 'upstream' : 'default-branch';
+    }
+
     // Lazy singleton
     let _gitRangeService: GitRangeService | undefined;
     function getGitRangeService(): GitRangeService {
@@ -49,12 +62,16 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
 
             const parsed = url.parse(req.url || '/', true);
             const refresh = parsed.query.refresh === 'true';
+            const baseMode = parseBaseMode(req);
 
             if (refresh) {
                 gitCache.invalidateMutable(id);
             }
 
-            const cacheKey = `${id}:branch-range`;
+            // Keyed per base mode — the two modes produce different diffs and must
+            // not serve each other's data. `invalidateMutable` sweeps by workspace
+            // prefix, so a refresh still drops both.
+            const cacheKey = `${id}:branch-range:${baseMode}`;
             const cached = gitCache.get(cacheKey);
             if (cached) {
                 return sendJSON(res, 200, cached);
@@ -62,10 +79,17 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
 
             try {
                 const rangeService = getGitRangeService();
-                const range = await rangeService.detectCommitRange(ws.rootPath);
+                const range = await rangeService.detectCommitRange(ws.rootPath, { baseMode });
                 if (!range) {
                     const branchName = await rangeService.getCurrentBranch(ws.rootPath);
-                    const result = { onDefaultBranch: true as const, branchName };
+                    const resolved = rangeService.resolveBaseRef(ws.rootPath, baseMode);
+                    const result = {
+                        onDefaultBranch: true as const,
+                        branchName,
+                        baseMode: resolved.baseMode,
+                        ...(resolved.baseRef && { baseRef: resolved.baseRef }),
+                        ...(resolved.baseModeFallback && { baseModeFallback: true as const }),
+                    };
                     gitCache.set(cacheKey, result);
                     return sendJSON(res, 200, result);
                 }
@@ -86,13 +110,13 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
     routes.push({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/branch-range\/files$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
 
             try {
                 const rangeService = getGitRangeService();
-                const range = await rangeService.detectCommitRange(ws.rootPath);
+                const range = await rangeService.detectCommitRange(ws.rootPath, { baseMode: parseBaseMode(req) });
                 if (!range) {
                     return sendJSON(res, 200, { files: [] });
                 }
@@ -108,13 +132,13 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
     routes.push({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/git\/branch-range\/diff$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             const ws = await resolveWorkspaceOrFail(store, match!, res);
             if (!ws) return;
 
             try {
                 const rangeService = getGitRangeService();
-                const range = await rangeService.detectCommitRange(ws.rootPath);
+                const range = await rangeService.detectCommitRange(ws.rootPath, { baseMode: parseBaseMode(req) });
                 if (!range) {
                     return sendJSON(res, 200, { diff: '' });
                 }
@@ -140,7 +164,7 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
 
             try {
                 const rangeService = getGitRangeService();
-                const range = await rangeService.detectCommitRange(ws.rootPath);
+                const range = await rangeService.detectCommitRange(ws.rootPath, { baseMode: parseBaseMode(req) });
                 if (!range) {
                     return sendJSON(res, 200, { diff: '', path: filePath });
                 }

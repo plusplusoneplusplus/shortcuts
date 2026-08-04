@@ -177,6 +177,17 @@ all have their own `references/*.md`.
   same-named remote branch, and never fetch sibling refs from these UI actions.
   The generic Forge `fetch`/`pull` methods retain their broad public behavior
   for non-Git-tab callers.
+- **Branch-range comparison base** is selectable: `?base=default-branch`
+  (default, vs the detected default remote branch) or `?base=upstream` (vs
+  `@{upstream}`, unpushed commits only) on all four
+  `/git/branch-range*` routes; unknown values fall back to `default-branch`
+  rather than erroring. `default-branch` must stay the default. Any cache
+  holding branch-range data must include the mode in its key — server
+  `{wsId}:branch-range:{baseMode}`, SPA `useBranchRangeCache`
+  `{wsId}:{baseMode}`, and `createBranchRangeDiffSource`'s `cacheKey` — or one
+  mode serves the other's diff. In `upstream` mode a zero-commit range is
+  returned as an empty range rather than `null`, so the base toggle stays
+  reachable when nothing is unpushed.
 - **Git worktree execution** (opt-in, `features.gitWorktreeExecution`, default
   off) lives in `src/server/worktree/` (`GitWorktreeService` +
   `WorktreeMetadataStore`) with Ralph wiring in

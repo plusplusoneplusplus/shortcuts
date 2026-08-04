@@ -355,6 +355,138 @@ describe('GitRangeService', () => {
             expect(range!.files).toHaveLength(1);
             svc.dispose();
         });
+
+        it('should report baseMode default-branch by default', async () => {
+            setupMocksForFullRange();
+            const range = await service.detectCommitRange('/repo');
+            expect(range!.baseMode).toBe('default-branch');
+            expect(range!.baseModeFallback).toBeUndefined();
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // getUpstreamBranch
+    // -----------------------------------------------------------------------
+    describe('getUpstreamBranch', () => {
+        it('should return the tracking ref', () => {
+            mockExecGit.mockReturnValue('origin/feature/test');
+            expect(service.getUpstreamBranch('/repo')).toBe('origin/feature/test');
+            expect(mockExecGit).toHaveBeenCalledWith(
+                ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'], '/repo'
+            );
+        });
+
+        it('should return null when the branch has no upstream', () => {
+            mockExecGit.mockImplementation(() => { throw new Error('no upstream configured'); });
+            expect(service.getUpstreamBranch('/repo')).toBeNull();
+        });
+
+        it('should return null on empty output', () => {
+            mockExecGit.mockReturnValue('');
+            expect(service.getUpstreamBranch('/repo')).toBeNull();
+        });
+
+        it('should not cache — a second call re-runs rev-parse', () => {
+            mockExecGit.mockReturnValueOnce('origin/one').mockReturnValueOnce('origin/two');
+            expect(service.getUpstreamBranch('/repo')).toBe('origin/one');
+            expect(service.getUpstreamBranch('/repo')).toBe('origin/two');
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // detectCommitRange — baseMode: 'upstream'
+    // -----------------------------------------------------------------------
+    describe("detectCommitRange with baseMode 'upstream'", () => {
+        it('should diff against @{upstream}', async () => {
+            mockExecGitAsync.mockResolvedValueOnce('feature/test'); // getCurrentBranch
+            mockExecGit
+                .mockReturnValueOnce('origin/feature/test')  // getUpstreamBranch
+                .mockReturnValueOnce('merge-base-hash')      // getMergeBase
+                .mockReturnValueOnce('2')                    // countCommitsAhead
+                .mockReturnValueOnce('10\t5\tsrc/a.ts')      // numstat
+                .mockReturnValueOnce('M\tsrc/a.ts')          // name-status
+                .mockReturnValueOnce('1 file changed, 10 insertions(+), 5 deletions(-)');
+
+            const range = await service.detectCommitRange('/repo', { baseMode: 'upstream' });
+            expect(range!.baseRef).toBe('origin/feature/test');
+            expect(range!.baseMode).toBe('upstream');
+            expect(range!.baseModeFallback).toBeUndefined();
+            expect(range!.commitCount).toBe(2);
+        });
+
+        it('should still return an empty range when nothing is unpushed', async () => {
+            mockExecGitAsync.mockResolvedValueOnce('feature/test');
+            mockExecGit
+                .mockReturnValueOnce('origin/feature/test')  // getUpstreamBranch
+                .mockReturnValueOnce('merge-base-hash')      // getMergeBase
+                .mockReturnValueOnce('0')                    // countCommitsAhead
+                .mockReturnValueOnce('')                     // numstat
+                .mockReturnValueOnce('')                     // name-status
+                .mockReturnValueOnce('');                    // shortstat
+
+            const range = await service.detectCommitRange('/repo', { baseMode: 'upstream' });
+            expect(range).not.toBeNull();
+            expect(range!.commitCount).toBe(0);
+            expect(range!.files).toEqual([]);
+            expect(range!.baseMode).toBe('upstream');
+        });
+
+        it('should fall back to the default branch when there is no upstream', async () => {
+            mockExecGitAsync.mockResolvedValueOnce('feature/test');
+            let call = 0;
+            mockExecGit.mockImplementation((args: string[]) => {
+                call++;
+                if (args.includes('@{upstream}')) throw new Error('no upstream');
+                if (args.includes('--verify')) return 'abc123';      // origin/main exists
+                if (args[0] === 'merge-base') return 'merge-base-hash';
+                if (args[0] === 'rev-list') return '3';
+                if (args.includes('--numstat')) return '10\t5\tsrc/a.ts';
+                if (args.includes('--name-status')) return 'M\tsrc/a.ts';
+                if (args.includes('--shortstat')) return '1 file changed, 10 insertions(+), 5 deletions(-)';
+                return String(call);
+            });
+
+            const range = await service.detectCommitRange('/repo', { baseMode: 'upstream' });
+            expect(range!.baseRef).toBe('origin/main');
+            expect(range!.baseMode).toBe('default-branch');
+            expect(range!.baseModeFallback).toBe(true);
+        });
+
+        it('should return null when neither upstream nor default branch resolves', async () => {
+            mockExecGitAsync.mockResolvedValueOnce('feature/test');
+            mockExecGit.mockImplementation(() => { throw new Error('nope'); });
+
+            expect(await service.detectCommitRange('/repo', { baseMode: 'upstream' })).toBeNull();
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // resolveBaseRef
+    // -----------------------------------------------------------------------
+    describe('resolveBaseRef', () => {
+        it('should resolve the default branch by default', () => {
+            mockExecGit.mockReturnValue('abc123');
+            expect(service.resolveBaseRef('/repo')).toEqual({
+                baseRef: 'origin/main', baseMode: 'default-branch',
+            });
+        });
+
+        it('should resolve the upstream when asked', () => {
+            mockExecGit.mockReturnValue('origin/feature/test');
+            expect(service.resolveBaseRef('/repo', 'upstream')).toEqual({
+                baseRef: 'origin/feature/test', baseMode: 'upstream',
+            });
+        });
+
+        it('should flag the fallback when there is no upstream', () => {
+            mockExecGit.mockImplementation((args: string[]) => {
+                if (args.includes('@{upstream}')) throw new Error('no upstream');
+                return 'abc123';
+            });
+            expect(service.resolveBaseRef('/repo', 'upstream')).toEqual({
+                baseRef: 'origin/main', baseMode: 'default-branch', baseModeFallback: true,
+            });
+        });
     });
 
     // -----------------------------------------------------------------------

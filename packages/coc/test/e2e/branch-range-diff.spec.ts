@@ -453,3 +453,112 @@ test.describe('BranchRangeOverview — large diff truncation', () => {
         await expect(page.getByTestId('file-diff-loading')).toBeHidden({ timeout: 10_000 });
     });
 });
+
+// ================================================================
+// Comparison base toggle (vs main | unpushed)
+// ================================================================
+
+const UNPUSHED_FILES = [
+    { path: 'src/unpushed.ts', status: 'A', additions: 4, deletions: 0 },
+];
+
+const UNPUSHED_BRANCH_RANGE = {
+    ...DEFAULT_BRANCH_RANGE,
+    baseRef:     'origin/feature/test-branch',
+    baseMode:    'upstream',
+    commitCount: 1,
+    additions:   4,
+    fileCount:   1,
+    files:       UNPUSHED_FILES,
+};
+
+test.describe('BranchRangeOverview — base mode toggle', () => {
+    test('switching to "unpushed" refetches with base=upstream and shows the upstream diff', async ({ page, serverUrl }) => {
+        const wsId = 'ws-bro-bm-1';
+        const requestedBases: string[] = [];
+
+        await seedWorkspace(serverUrl, wsId, `${wsId}-repo`);
+        await dismissOnboarding(serverUrl);
+        await mockGitRoutes(page, wsId);
+
+        // Registered after mockGitRoutes so it takes precedence for branch-range.
+        await page.route(
+            (url: string) => {
+                const p = new URL(url).pathname;
+                return p.includes(`/workspaces/${wsId}/git/branch-range`) && !p.includes('/files');
+            },
+            (route: any) => {
+                const base = new URL(route.request().url()).searchParams.get('base') ?? 'default-branch';
+                requestedBases.push(base);
+                route.fulfill({
+                    status:      200,
+                    contentType: 'application/json',
+                    body:        JSON.stringify(base === 'upstream' ? UNPUSHED_BRANCH_RANGE : DEFAULT_BRANCH_RANGE),
+                });
+            },
+        );
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
+        await page.locator('[data-testid="repo-tab"]').first().click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+        await page.click('.repo-sub-tab[data-subtab="git"]');
+        await expect(page.getByTestId('branch-changes')).toBeVisible({ timeout: 10_000 });
+        await page.getByTestId('branch-changes-header').click();
+        await expect(page.getByTestId('branch-commit-strip')).toBeVisible({ timeout: 10_000 });
+
+        // Starts on the default branch base.
+        await expect(page.getByTestId('branch-range-base-ref')).toHaveText('origin/main');
+        expect(requestedBases[0]).toBe('default-branch');
+
+        // Flip to unpushed.
+        await page.getByTestId('branch-range-base-upstream').click();
+        await expect(page.getByTestId('branch-range-base-ref')).toHaveText('origin/feature/test-branch', { timeout: 10_000 });
+        expect(requestedBases).toContain('upstream');
+
+        // The file list now reflects the upstream range.
+        await expect(page.getByTestId('branch-all-file-row-src/unpushed.ts')).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByTestId('branch-all-file-row-src/feature.ts')).toHaveCount(0);
+    });
+
+    test('flipping back to "vs main" restores the default-branch range', async ({ page, serverUrl }) => {
+        const wsId = 'ws-bro-bm-2';
+
+        await seedWorkspace(serverUrl, wsId, `${wsId}-repo`);
+        await dismissOnboarding(serverUrl);
+        await mockGitRoutes(page, wsId);
+
+        await page.route(
+            (url: string) => {
+                const p = new URL(url).pathname;
+                return p.includes(`/workspaces/${wsId}/git/branch-range`) && !p.includes('/files');
+            },
+            (route: any) => {
+                const base = new URL(route.request().url()).searchParams.get('base') ?? 'default-branch';
+                route.fulfill({
+                    status:      200,
+                    contentType: 'application/json',
+                    body:        JSON.stringify(base === 'upstream' ? UNPUSHED_BRANCH_RANGE : DEFAULT_BRANCH_RANGE),
+                });
+            },
+        );
+
+        await page.goto(serverUrl);
+        await page.click('[data-tab="repos"]');
+        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
+        await page.locator('[data-testid="repo-tab"]').first().click();
+        await expect(page.locator('#repo-detail-content')).toBeVisible();
+        await page.click('.repo-sub-tab[data-subtab="git"]');
+        await expect(page.getByTestId('branch-changes')).toBeVisible({ timeout: 10_000 });
+        await page.getByTestId('branch-changes-header').click();
+        await expect(page.getByTestId('branch-commit-strip')).toBeVisible({ timeout: 10_000 });
+
+        await page.getByTestId('branch-range-base-upstream').click();
+        await expect(page.getByTestId('branch-range-base-ref')).toHaveText('origin/feature/test-branch', { timeout: 10_000 });
+
+        await page.getByTestId('branch-range-base-default-branch').click();
+        await expect(page.getByTestId('branch-range-base-ref')).toHaveText('origin/main', { timeout: 10_000 });
+        await expect(page.getByTestId('branch-all-file-row-src/feature.ts')).toBeVisible({ timeout: 10_000 });
+    });
+});
