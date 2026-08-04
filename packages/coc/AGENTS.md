@@ -177,6 +177,24 @@ all have their own `references/*.md`.
   same-named remote branch, and never fetch sibling refs from these UI actions.
   The generic Forge `fetch`/`pull` methods retain their broad public behavior
   for non-Git-tab callers.
+- **Git branch REST routes** (`src/server/routes/api-git-branch-routes.ts`) are a
+  thin HTTP adapter over the operation kernel in `src/server/git/`. Add new git
+  operations through the kernel, not inline in the route file:
+  `GitOperationRunner.start()` for anything returning `202 { jobId }` (it owns
+  job IDs, the already-running 409 guard, terminal status, cache invalidation,
+  and the `broadcastGitChanged` reason), `git-request-validators.ts` for input
+  validation and the 409 dirty/conflict payloads, `GitPatchTransferService` for
+  patch export/apply, and `GitRebaseReorderService` for the queue-backed reorder.
+  Validators and services throw `APIError`s; `createRoute` renders them, so
+  handlers should not hand-roll early returns. Route declaration order is
+  load-bearing — the `DELETE /branches/:name` catch-all must stay after the
+  specific branch endpoints.
+- **Patch-transfer metadata is untrusted** (it can originate on another CoC
+  server) and is persisted plus rendered, so every field goes through
+  `git-patch-transfer-metadata.ts`, which caps length, strips newlines, and
+  rejects POSIX, Windows-drive, and UNC absolute paths. An explicit
+  `normalizedSourceRemoteUrl: null` means "source has no remote" and is
+  preserved; an absent value means "not reported" and is omitted.
 - **Branch-range comparison base** is selectable: `?base=default-branch`
   (default, vs the detected default remote branch) or `?base=upstream` (vs
   `@{upstream}`, unpushed commits only) on all four
