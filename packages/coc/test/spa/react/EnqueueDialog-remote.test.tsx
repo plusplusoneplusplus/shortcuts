@@ -19,14 +19,16 @@ if (!Element.prototype.scrollIntoView) {
 }
 
 // Controllable repos + routing spies, shared between the mocks and the tests.
-const { reposRef, enqueueSpy, recordSkillUsageSpy, getClientSpy } = vi.hoisted(() => {
+const { reposRef, enqueueSpy, recordSkillUsageSpy, getRepoPrefsSpy, getClientSpy } = vi.hoisted(() => {
     const enqueueSpy = vi.fn(() => Promise.resolve({ task: { id: 'remote-task-1' } }));
     const recordSkillUsageSpy = vi.fn(() => Promise.resolve({}));
+    // The dialog's ModalJobAiControls reads per-repo prefs off the same routed client.
+    const getRepoPrefsSpy = vi.fn(() => Promise.resolve({}));
     const getClientSpy = vi.fn(() => ({
         queue: { enqueue: enqueueSpy },
-        preferences: { recordSkillUsage: recordSkillUsageSpy },
+        preferences: { recordSkillUsage: recordSkillUsageSpy, getRepo: getRepoPrefsSpy },
     }));
-    return { reposRef: { current: [] as any[] }, enqueueSpy, recordSkillUsageSpy, getClientSpy };
+    return { reposRef: { current: [] as any[] }, enqueueSpy, recordSkillUsageSpy, getRepoPrefsSpy, getClientSpy };
 });
 
 vi.mock('../../../src/server/spa/client/react/contexts/ReposContext', () => {

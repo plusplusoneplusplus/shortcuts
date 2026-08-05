@@ -95,7 +95,7 @@ describe('BranchChanges', () => {
         });
 
         it('fetches from /git/branch-range/files endpoint for file list', () => {
-            expect(source).toContain('listBranchRangeFiles(workspaceId)');
+            expect(source).toContain('listBranchRangeFiles(workspaceId, { base: baseMode })');
         });
 
         it('uses typed client for workspace-scoped routes', () => {
@@ -159,7 +159,7 @@ describe('BranchChanges', () => {
             // The useEffect for files depends on expanded state
             expect(source).toContain('expanded');
             expect(source).toContain('files.length');
-            expect(source).toContain('listBranchRangeFiles(workspaceId)');
+            expect(source).toContain('listBranchRangeFiles(workspaceId, { base: baseMode })');
         });
 
         it('shows expand/collapse indicators', () => {
@@ -340,7 +340,7 @@ describe('BranchChanges', () => {
             });
 
             it('fetches per-file diff from correct API endpoint', () => {
-                expect(source).toContain('getBranchRangeFileDiff(workspaceId, filePath)');
+                expect(source).toContain('getBranchRangeFileDiff(workspaceId, filePath, { base: baseMode })');
             });
 
             it('resets fileDiff to null when switching files', () => {
@@ -541,7 +541,7 @@ describe('BranchChanges', () => {
         });
 
         it('destructures compact in the function signature', () => {
-            expect(source).toContain('onBranchRangeSelect, compact }: BranchChangesProps');
+            expect(source).toContain('onBranchRangeSelect, compact, baseMode }: BranchChangesProps');
         });
 
         it('drops the card border/rounding in compact but keeps the left accent', () => {

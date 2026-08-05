@@ -17,8 +17,17 @@ const mockTemplatesClient = vi.hoisted(() => ({
 
 const mockFetchApi = vi.hoisted(() => vi.fn());
 
+// Commit-template writes and the commit-hash lookup are routed to the clone that
+// owns the workspace, so both go through cloneRegistry rather than the SPA client.
+const mockRequestForWorkspace = vi.hoisted(() => vi.fn());
+
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({ templates: mockTemplatesClient }),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    getCocClientForWorkspace: () => ({ templates: mockTemplatesClient }),
+    requestForWorkspace: (...args: any[]) => mockRequestForWorkspace(...args),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
@@ -103,6 +112,7 @@ describe('TemplatesTab typed templates client migration', () => {
         mockTemplatesClient.delete.mockResolvedValue({ deleted: 'fix-parser' });
         mockTemplatesClient.replicate.mockResolvedValue({ taskId: 'task-1' });
         mockFetchApi.mockResolvedValue({ subject: 'Valid commit' });
+        mockRequestForWorkspace.mockResolvedValue({ subject: 'Valid commit' });
     });
 
     it('loads and refreshes commit templates through client.templates', async () => {
@@ -136,7 +146,7 @@ describe('TemplatesTab typed templates client migration', () => {
         fireEvent.change(screen.getByTestId('template-commit-input'), { target: { value: 'abc123' } });
         fireEvent.blur(screen.getByTestId('template-commit-input'));
 
-        await waitFor(() => expect(mockFetchApi).toHaveBeenCalledWith('/workspaces/ws-1/git/commits/abc123'));
+        await waitFor(() => expect(mockRequestForWorkspace).toHaveBeenCalledWith('ws-1', '/workspaces/ws-1/git/commits/abc123'));
         fireEvent.change(screen.getByTestId('template-description-input'), { target: { value: 'New template description' } });
         fireEvent.change(screen.getByTestId('template-hints-input'), { target: { value: 'one\ntwo' } });
         fireEvent.click(screen.getByTestId('template-form-submit'));
@@ -163,6 +173,7 @@ describe('RepoTemplatesTab typed templates client migration', () => {
         mockTemplatesClient.delete.mockResolvedValue({ deleted: 'fix-parser' });
         mockTemplatesClient.replicate.mockResolvedValue({ taskId: 'task-1' });
         mockFetchApi.mockResolvedValue({ subject: 'Valid commit' });
+        mockRequestForWorkspace.mockResolvedValue({ subject: 'Valid commit' });
     });
 
     it('loads repo templates and reads details through the same templates client domain', async () => {

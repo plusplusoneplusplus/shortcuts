@@ -96,7 +96,7 @@ describe('BranchAllFilesDiff', () => {
 
     describe('API integration', () => {
         it('calls branch-range/files/:filePath/diff endpoint', () => {
-            expect(source).toContain('getBranchRangeFileDiff(workspaceId, filePath)');
+            expect(source).toContain('getBranchRangeFileDiff(workspaceId, filePath, { base: baseMode })');
         });
 
         it('lazy-fetches diff only when expanding', () => {
