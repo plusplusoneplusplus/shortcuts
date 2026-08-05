@@ -334,13 +334,17 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
         render(<PopOutGitReviewShell />);
 
         await screen.findByTestId('branch-range-overview');
-        expect(mocks.getBranchRange).toHaveBeenCalledWith('ws1');
-        expect(mocks.listBranchRangeFiles).toHaveBeenCalledWith('ws1');
+        // The popout defaults to comparing against the default branch, so both
+        // branch-range reads carry the base mode.
+        expect(mocks.getBranchRange).toHaveBeenCalledWith('ws1', { base: 'default-branch' });
+        expect(mocks.listBranchRangeFiles).toHaveBeenCalledWith('ws1', { base: 'default-branch' });
         fireEvent.click(screen.getByText('src/branch.ts'));
 
         const panel = await screen.findByTestId('file-diff-panel');
         expect(panel.getAttribute('data-file')).toBe('src/branch.ts');
-        expect(panel.getAttribute('data-cache-key')).toBe('branch-range');
+        // Cache key carries the base mode so an upstream comparison can't reuse
+        // the default-branch diff.
+        expect(panel.getAttribute('data-cache-key')).toBe('branch-range:default-branch');
         expect(panel.getAttribute('data-old-ref')).toBe('branch-base');
         expect(panel.getAttribute('data-new-ref')).toBe('branch-head');
         expect(screen.queryByTestId('branch-range-overview')).toBeNull();

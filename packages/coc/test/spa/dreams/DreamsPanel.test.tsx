@@ -16,22 +16,30 @@ vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     isDreamsEnabled: () => true,
 }));
 
+const makeClient = () => ({
+    preferences: {
+        getRepo: mockGetRepo,
+        patchRepo: mockPatchRepo,
+    },
+    dreams: {
+        listCards: mockListCards,
+        runNow: mockRunNow,
+        approve: mockApprove,
+        dismiss: mockDismiss,
+        convert: mockConvert,
+        markSuperseded: mockMarkSuperseded,
+    },
+});
+
 vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({
-        preferences: {
-            getRepo: mockGetRepo,
-            patchRepo: mockPatchRepo,
-        },
-        dreams: {
-            listCards: mockListCards,
-            runNow: mockRunNow,
-            approve: mockApprove,
-            dismiss: mockDismiss,
-            convert: mockConvert,
-            markSuperseded: mockMarkSuperseded,
-        },
-    }),
+    getSpaCocClient: () => makeClient(),
     getSpaCocClientErrorMessage: (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback,
+}));
+
+// DreamsPanel routes every workspace-scoped call through the clone registry so a
+// remote clone hits its own server; locally this resolves to the same client.
+vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    getCocClientForWorkspace: () => makeClient(),
 }));
 
 function makeDreamCard(overrides: Partial<DreamCard> = {}): DreamCard {

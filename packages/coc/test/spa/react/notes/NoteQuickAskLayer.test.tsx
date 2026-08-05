@@ -15,6 +15,7 @@ import { useRef } from 'react';
 const {
     getSelectionMock,
     fetchApiMock,
+    requestForWorkspaceMock,
     enabledMock,
     insertSidenoteRefMock,
     deleteSidenoteRefMock,
@@ -22,6 +23,7 @@ const {
 } = vi.hoisted(() => ({
     getSelectionMock: vi.fn(),
     fetchApiMock: vi.fn(),
+    requestForWorkspaceMock: vi.fn(),
     enabledMock: vi.fn(() => true),
     insertSidenoteRefMock: vi.fn(() => true),
     deleteSidenoteRefMock: vi.fn(() => true),
@@ -35,8 +37,12 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/quick-ask/quick-a
     MIN_SELECTION_CHARS: 2,
     CONTEXT_CHARS: 80,
 }));
-vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: fetchApiMock,
+// The layer routes every request through `requestForWorkspace(workspaceId, …)`
+// so it follows the workspace's clone. The adapter below keeps the existing
+// `fetchApiMock(path, opts)` assertions readable; `requestForWorkspaceMock`
+// additionally records the workspace id each call was routed with.
+vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    requestForWorkspace: requestForWorkspaceMock,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useQuickAskSidenotesEnabled', () => ({
     useQuickAskSidenotesEnabled: () => enabledMock(),
@@ -101,6 +107,9 @@ beforeEach(() => {
     getSelectionMock.mockReset();
     getSelectionMock.mockReturnValue(SELECTION);
     fetchApiMock.mockReset();
+    requestForWorkspaceMock.mockReset();
+    requestForWorkspaceMock.mockImplementation(
+        (_workspaceId: unknown, path: string, opts?: RequestInit) => fetchApiMock(path, opts));
     enabledMock.mockReset();
     enabledMock.mockReturnValue(true);
     insertSidenoteRefMock.mockReset();

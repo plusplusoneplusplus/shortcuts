@@ -126,6 +126,50 @@ all have their own `references/*.md`.
   `globalDisabledSkills` lives in `preferences.json`; `GET`/`PUT
   /api/skills/config` spans both (see
   [admin-config.md](../../.github/skills/coc-knowledge/references/admin-config.md)).
+- **Workspace Agent Skills UI state** lives in
+  `react/features/skills/useWorkspaceSkillsController.ts`. Both
+  `RepoSettingsTab` and `RepoCopilotTab` inject their workspace client resolver;
+  visual skills components must not choose a default or clone-routed transport.
+  Keep source grouping/filtering/resolution rows pure in `skills-ui-model.ts`,
+  keep install requests typed through `useSkillInstallController`, and guard
+  list/config/detail/file-preview/repo-probe/install responses so late work from
+  an old workspace, source, card, or repo list cannot update the active view.
+- **Diff-comment REST** all lives in `react/utils/diffCommentApi.ts` and is
+  clone-routed through `getCocClientForWorkspace(wsId)` — reads
+  (`listDiffCommentsForRange`) as well as writes. The list route only validates
+  the id, so a local-origin read for a remote clone returns 200 with an EMPTY
+  list rather than 404: a missed route here shows "no comments" instead of
+  failing. Call the helper; do not call `getSpaCocClient().git.listDiffComments`
+  or `fetchApi('/diff-comments/...')` from components.
+- **Workflow (pipelines) REST** lives in `react/features/workflow/workflow-api.ts`
+  and is clone-routed through `getCocClientForWorkspace(workspaceId)` for all
+  eight calls; `WorkflowRunHistory` routes its `/queue/history` read the same way
+  (that route returns 200 with an EMPTY list for an unknown `repoId`, so a missed
+  route reads as "no runs"). `runWorkflow` enqueues on the SERVING host, so the
+  returned process only exists there — `WorkflowDetailView` takes a `workspaceId`
+  and uses it for both the process fetch and the SSE stream URL. Remote rows get
+  their workflow list from the per-server `/summary` fetch in
+  `remoteWorkspaceAggregation`; the local queue WebSocket stays local.
+- **Shared dialogs that take a workspace id** (`ResolveContextDialog`,
+  `ModalJobAiControls`, `MarkdownReviewDialog`) route through
+  `getCocClientForWorkspace(wsId)` — or, for reveal-in-explorer, through
+  `explorerApi`. Repo preferences (`/workspaces/:id/preferences`) only validate
+  the id, so a missed route silently reads and writes the WRONG server's
+  preference file instead of 404ing.
+- **File-path hover previews** (`react/shared/file-path/file-path-preview.ts`)
+  take the workspace from the link's own `data-ws-id` and route the preview to
+  that clone. The `rootPath`-prefix match over the workspace list is a fallback
+  for links without one and sees the LOCAL server only — on its own it resolves a
+  remote clone to `workspaces[0]`, an arbitrary unrelated repo. The preview cache
+  key is workspace-scoped for the same reason.
+- **Workspace MCP inspector state** lives in
+  `react/features/skills/useMcpServerInspectorController.ts`. Unlike the skills
+  controller it resolves its own transport from the `workspaceId` it already
+  receives — `getCocClientForWorkspace(workspaceId)` for the `mcp-config` REST
+  calls and `cloneApiBase(startedWs)` for the raw `mcp-oauth/start` fetch plus
+  its status poller — because those routes read the host machine's disk via
+  `ws.rootPath` and store credentials on the owning server. `McpServersPanel`
+  takes no client-resolver prop; do not add one.
 - **Adding an admin-exposed config setting** is ONE definition entry in
   `src/config/admin-setting-definitions.ts` (value spec, default, runtime,
   optional `runtimeFlag` + Features-card `ui` metadata) plus the
@@ -169,6 +213,35 @@ all have their own `references/*.md`.
   same-named remote branch, and never fetch sibling refs from these UI actions.
   The generic Forge `fetch`/`pull` methods retain their broad public behavior
   for non-Git-tab callers.
+- **Git branch REST routes** (`src/server/routes/api-git-branch-routes.ts`) are a
+  thin HTTP adapter over the operation kernel in `src/server/git/`. Add new git
+  operations through the kernel, not inline in the route file:
+  `GitOperationRunner.start()` for anything returning `202 { jobId }` (it owns
+  job IDs, the already-running 409 guard, terminal status, cache invalidation,
+  and the `broadcastGitChanged` reason), `git-request-validators.ts` for input
+  validation and the 409 dirty/conflict payloads, `GitPatchTransferService` for
+  patch export/apply, and `GitRebaseReorderService` for the queue-backed reorder.
+  Validators and services throw `APIError`s; `createRoute` renders them, so
+  handlers should not hand-roll early returns. Route declaration order is
+  load-bearing — the `DELETE /branches/:name` catch-all must stay after the
+  specific branch endpoints.
+- **Patch-transfer metadata is untrusted** (it can originate on another CoC
+  server) and is persisted plus rendered, so every field goes through
+  `git-patch-transfer-metadata.ts`, which caps length, strips newlines, and
+  rejects POSIX, Windows-drive, and UNC absolute paths. An explicit
+  `normalizedSourceRemoteUrl: null` means "source has no remote" and is
+  preserved; an absent value means "not reported" and is omitted.
+- **Branch-range comparison base** is selectable: `?base=default-branch`
+  (default, vs the detected default remote branch) or `?base=upstream` (vs
+  `@{upstream}`, unpushed commits only) on all four
+  `/git/branch-range*` routes; unknown values fall back to `default-branch`
+  rather than erroring. `default-branch` must stay the default. Any cache
+  holding branch-range data must include the mode in its key — server
+  `{wsId}:branch-range:{baseMode}`, SPA `useBranchRangeCache`
+  `{wsId}:{baseMode}`, and `createBranchRangeDiffSource`'s `cacheKey` — or one
+  mode serves the other's diff. In `upstream` mode a zero-commit range is
+  returned as an empty range rather than `null`, so the base toggle stays
+  reachable when nothing is unpushed.
 - **Git worktree execution** (opt-in, `features.gitWorktreeExecution`, default
   off) lives in `src/server/worktree/` (`GitWorktreeService` +
   `WorktreeMetadataStore`) with Ralph wiring in
@@ -263,7 +336,10 @@ all have their own `references/*.md`.
   is repo-scoped at `~/.coc/repos/<workspaceId>/chat-sidenotes/<sha256(processId)>.json`
   via `getRepoDataPath` (never a new top-level `~/.coc` dir). Model resolves
   `defaultModels.quickAsk` > `defaultModel` > CLI default. SPA components live in
-  `.../react/features/chat/quick-ask/`.
+  `.../react/features/chat/quick-ask/`; `useQuickAskSidenotes` issues all three
+  calls via `requestForWorkspace(workspaceId, …)` so a remote clone's side-notes
+  are stored on its own server — the routes only check the id shape, so a
+  local-origin call would write the file under the LOCAL data dir.
 - **Kusto query canvas** (`kusto.enabled`, default off) is a
   `type: 'kusto'` canvas branch on the generic canvas infrastructure. Its full
   state (KQL query, cluster/database, typed columns+rows capped at

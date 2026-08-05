@@ -9,6 +9,12 @@ import { formatRelativeTime } from '../../../utils/format';
 import type { GitCommitItem } from '../commits/CommitList';
 import type { BranchRangeInfo } from './BranchChanges';
 import { type GitRangeContextDragPayload, writePointerContextDragData } from '../../chat/sessionContextDrag';
+import type { GitRangeBaseMode } from '@plusplusoneplusplus/coc-client';
+
+const BASE_MODE_OPTIONS: Array<{ mode: GitRangeBaseMode; label: string; title: string }> = [
+    { mode: 'default-branch', label: 'vs main', title: 'Diff everything on this branch against the default branch' },
+    { mode: 'upstream', label: 'unpushed', title: 'Diff against the branch upstream — unpushed commits only' },
+];
 
 interface BranchCommitStripProps {
     commits: GitCommitItem[];
@@ -17,11 +23,18 @@ interface BranchCommitStripProps {
     commentCount?: number;
     onAskAI?: () => void;
     sessionContextPayload?: GitRangeContextDragPayload | null;
+    /** Comparison base currently in effect. */
+    baseMode?: GitRangeBaseMode;
+    /** Called when the user picks a different base. Omit to hide the toggle. */
+    onBaseModeChange?: (mode: GitRangeBaseMode) => void;
 }
 
-export function BranchCommitStrip({ commits, branchRangeData, onAllCommentsClick, commentCount, onAskAI, sessionContextPayload }: BranchCommitStripProps) {
+export function BranchCommitStrip({ commits, branchRangeData, onAllCommentsClick, commentCount, onAskAI, sessionContextPayload, baseMode = 'default-branch', onBaseModeChange }: BranchCommitStripProps) {
     const branchLabel = branchRangeData.branchName || branchRangeData.headRef;
     const baseShort = branchRangeData.baseRef.replace(/^origin\//, '');
+    // The server may have fallen back to the default branch when the branch has
+    // no upstream — say so rather than silently showing a different diff.
+    const fellBack = baseMode === 'upstream' && !!branchRangeData.baseModeFallback;
 
     return (
         <div className="flex flex-col h-full" data-testid="branch-commit-strip">
@@ -71,6 +84,32 @@ export function BranchCommitStrip({ commits, branchRangeData, onAllCommentsClick
                     {' · '}
                     {branchRangeData.fileCount} file{branchRangeData.fileCount !== 1 ? 's' : ''}
                 </div>
+                {onBaseModeChange && (
+                    <div className="flex items-center gap-1 mt-1" data-testid="branch-range-base-toggle">
+                        {BASE_MODE_OPTIONS.map(option => (
+                            <button
+                                key={option.mode}
+                                onClick={() => onBaseModeChange(option.mode)}
+                                title={option.title}
+                                aria-pressed={baseMode === option.mode}
+                                className={`text-[11px] px-1.5 py-0.5 rounded border ${baseMode === option.mode
+                                    ? 'border-[#007acc] text-[#007acc] bg-[#007acc]/10'
+                                    : 'border-[#e0e0e0] dark:border-[#3c3c3c] text-[#848484] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]'}`}
+                                data-testid={`branch-range-base-${option.mode}`}
+                            >
+                                {option.label}
+                            </button>
+                        ))}
+                        <span className="text-[11px] text-[#848484] truncate" data-testid="branch-range-base-ref">
+                            {branchRangeData.baseRef}
+                        </span>
+                    </div>
+                )}
+                {fellBack && (
+                    <div className="text-[11px] text-[#848484] mt-0.5" data-testid="branch-range-base-fallback">
+                        no upstream — showing vs {branchRangeData.baseRef}
+                    </div>
+                )}
             </div>
 
             {/* Commit rows */}

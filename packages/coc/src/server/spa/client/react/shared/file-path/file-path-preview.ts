@@ -9,6 +9,7 @@ import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
 import { getLinkHandlersConfig } from '../../hooks/useLinkHandlers';
 import { openLink } from '../../utils/link-handler';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
 import { SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS } from '../../featureFlags';
 import {
     isExternalFileReferenceHref,
@@ -145,26 +146,28 @@ function createTooltip(): HTMLDivElement {
     return el;
 }
 
-function getCacheKey(path: string): string {
-    return `${path}::20`;
+// The workspace id is part of the key: two clones of the same repo share file
+// paths, so a path-only key would serve one clone's preview for the other's link.
+function getCacheKey(path: string, wsId?: string): string {
+    return `${wsId ?? ''}::${path}::20`;
 }
 
-function getFromCache(path: string): CacheEntry | null {
-    const entry = previewCache.get(getCacheKey(path));
+function getFromCache(path: string, wsId?: string): CacheEntry | null {
+    const entry = previewCache.get(getCacheKey(path, wsId));
     if (!entry) return null;
     if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
-        previewCache.delete(getCacheKey(path));
+        previewCache.delete(getCacheKey(path, wsId));
         return null;
     }
     return entry;
 }
 
-function setCache(path: string, data: PreviewResponse | null, error: string | null): void {
+function setCache(path: string, data: PreviewResponse | null, error: string | null, wsId?: string): void {
     if (previewCache.size >= MAX_CACHE_ENTRIES) {
         const oldest = previewCache.keys().next().value;
         if (oldest) previewCache.delete(oldest);
     }
-    previewCache.set(getCacheKey(path), { data, error, timestamp: Date.now() });
+    previewCache.set(getCacheKey(path, wsId), { data, error, timestamp: Date.now() });
 }
 
 async function fetchWorkspaces(): Promise<WorkspaceInfo[]> {
@@ -208,18 +211,29 @@ async function resolveWorkspaceId(filePath: string): Promise<string | null> {
     return best?.id || workspaces[0]?.id || null;
 }
 
-async function fetchPreview(path: string): Promise<PreviewResponse> {
-    const wsId = await resolveWorkspaceId(path);
+/**
+ * `knownWsId` is the link's own `data-ws-id`, and it wins over the rootPath
+ * heuristic below: `resolveWorkspaceId` only sees the LOCAL server's workspace
+ * list, so for a remote clone it either finds nothing or falls through to
+ * `workspaces[0]` and previews an arbitrary unrelated local repo. The heuristic
+ * stays as the fallback for links that carry no workspace id.
+ */
+async function fetchPreview(path: string, knownWsId?: string): Promise<PreviewResponse> {
+    // Always resolve: it warms `workspacesCache` for the rootPath lookup below.
+    const resolved = await resolveWorkspaceId(path);
+    const wsId = knownWsId || resolved;
     if (!wsId) {
         throw new Error('No workspace available');
     }
 
-    // Cache rootPath for task file detection in renderPreview
+    // Cache rootPath for task file detection in renderPreview. A remote clone is
+    // absent from the local list, so this falls back to '' (heuristic disabled)
+    // rather than an unrelated local repo's root.
     const ws = (workspacesCache || []).find(w => w.id === wsId);
     lastResolvedRootPath = ws?.rootPath ? normalizePath(ws.rootPath) : '';
 
     try {
-        return await getSpaCocClient().tasks.previewWorkspaceFile(wsId, path) as PreviewResponse;
+        return await getCocClientForWorkspace(wsId).tasks.previewWorkspaceFile(wsId, path) as PreviewResponse;
     } catch (err) {
         throw new Error(getSpaCocClientErrorMessage(err, 'Failed to load preview'));
     }
@@ -670,7 +684,9 @@ async function showTooltip(target: HTMLElement): Promise<void> {
         }, 150);
     }
 
-    const cached = getFromCache(fullPath);
+    const linkWsId = readWorkspaceId(target);
+
+    const cached = getFromCache(fullPath, linkWsId);
     if (cached) {
         if (activeTarget !== target || reqId !== activeRequestId) return;
         if (cached.error) renderError(cached.error);
@@ -680,14 +696,14 @@ async function showTooltip(target: HTMLElement): Promise<void> {
     }
 
     try {
-        const data = await fetchPreview(fullPath);
-        setCache(fullPath, data, null);
+        const data = await fetchPreview(fullPath, linkWsId);
+        setCache(fullPath, data, null, linkWsId);
         if (activeTarget !== target || reqId !== activeRequestId) return;
         renderResponse(data);
         positionTooltip(target);
     } catch (err: any) {
         const msg = err?.message || 'Failed to load preview';
-        setCache(fullPath, null, msg);
+        setCache(fullPath, null, msg, linkWsId);
         if (activeTarget !== target || reqId !== activeRequestId) return;
         renderError(msg);
         positionTooltip(target);

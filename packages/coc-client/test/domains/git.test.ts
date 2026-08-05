@@ -53,8 +53,8 @@ describe('GitClient', () => {
       search: 'fix app',
     });
     expect(adapter.calls[4].options?.query).toEqual({ full: true });
-    expect(adapter.calls[6].options?.query).toEqual({ refresh: true });
-    expect(adapter.calls[9].options?.query).toEqual({ full: true });
+    expect(adapter.calls[6].options?.query).toEqual({ refresh: true, base: undefined });
+    expect(adapter.calls[9].options?.query).toEqual({ full: true, base: undefined });
     expect(adapter.calls[10].options?.query).toEqual({
       type: 'local',
       limit: 50,
@@ -67,6 +67,21 @@ describe('GitClient', () => {
     expect(adapter.calls[15].options).toMatchObject({ method: 'POST', body: {} });
     expect(adapter.calls[16].options).toMatchObject({ method: 'POST', body: { oldHash: 'abc123', newHash: 'def456' } });
     expect(adapter.calls[17].options?.query).toEqual({ oldRef: 'abc^', newRef: 'abc', status: 'open,resolved' });
+  });
+
+  it('serializes the branch-range base mode on every branch-range route', async () => {
+    const adapter = createMockAdapter({});
+    const client = new GitClient(adapter);
+
+    await client.getBranchRange('repo/a', { base: 'upstream' });
+    await client.listBranchRangeFiles('repo/a', { base: 'upstream' });
+    await client.getBranchRangeDiff('repo/a', { base: 'upstream' });
+    await client.getBranchRangeFileDiff('repo/a', 'src/a.ts', { base: 'upstream', full: true });
+
+    expect(adapter.calls[0].options?.query).toEqual({ refresh: undefined, base: 'upstream' });
+    expect(adapter.calls[1].options?.query).toEqual({ refresh: undefined, base: 'upstream' });
+    expect(adapter.calls[2].options?.query).toEqual({ refresh: undefined, base: 'upstream' });
+    expect(adapter.calls[3].options?.query).toEqual({ full: true, base: 'upstream' });
   });
 
   it('routes worktree list/cleanup under /workspaces/:id/worktrees (not /git/) with encoded ids', async () => {

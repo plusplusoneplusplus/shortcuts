@@ -12,9 +12,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useRef } from 'react';
 
-const { captureMock, fetchApiMock, enabledMock } = vi.hoisted(() => ({
+const { captureMock, fetchApiMock, requestForWorkspaceMock, enabledMock } = vi.hoisted(() => ({
     captureMock: vi.fn(),
     fetchApiMock: vi.fn(),
+    requestForWorkspaceMock: vi.fn(),
     enabledMock: vi.fn(() => true),
 }));
 
@@ -22,8 +23,12 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/editor/extension
     captureRegion: (...args: unknown[]) => captureMock(...(args as [])),
     MIN_REGION_PX: 8,
 }));
-vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: fetchApiMock,
+// The layer routes every request through `requestForWorkspace(workspaceId, …)`
+// so it follows the workspace's clone. The adapter below keeps the existing
+// `fetchApiMock(path, opts)` assertions readable; `requestForWorkspaceMock`
+// additionally records the workspace id each call was routed with.
+vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    requestForWorkspace: requestForWorkspaceMock,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useQuickAskSidenotesEnabled', () => ({
     useQuickAskSidenotesEnabled: () => enabledMock(),
@@ -87,6 +92,9 @@ beforeEach(() => {
     // in production fetchApi always returns a Promise. Tests queue answer /
     // persist responses with mockResolvedValueOnce, which take precedence.
     fetchApiMock.mockResolvedValue({});
+    requestForWorkspaceMock.mockReset();
+    requestForWorkspaceMock.mockImplementation(
+        (_workspaceId: unknown, path: string, opts?: RequestInit) => fetchApiMock(path, opts));
     enabledMock.mockReset();
     enabledMock.mockReturnValue(true);
 });

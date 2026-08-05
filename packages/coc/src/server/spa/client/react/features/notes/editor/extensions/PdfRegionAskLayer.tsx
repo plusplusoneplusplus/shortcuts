@@ -23,7 +23,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { fetchApi } from '../../../../hooks/useApi';
+import { requestForWorkspace } from '../../../../repos/cloneRegistry';
 import { useQuickAskSidenotesEnabled } from '../../../../hooks/feature-flags/useQuickAskSidenotesEnabled';
 import { QuickAskInput } from '../../../chat/quick-ask/QuickAskInput';
 import { QuickAskSidenotePopover } from '../../../chat/quick-ask/QuickAskSidenotePopover';
@@ -117,7 +117,7 @@ export function PdfRegionAskLayer({
         const notePath = notePathGetter?.();
         if (!url || !notePath) {return;}
         const path = `/api/workspaces/${encodeURIComponent(workspaceId)}/notes/paper-annotations/annotation`;
-        void fetchApi(path, {
+        void requestForWorkspace(workspaceId, path, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -155,7 +155,7 @@ export function PdfRegionAskLayer({
     ) => {
         if (!workspaceId) {return;}
         const path = `/api/quick-ask/answer?workspace=${encodeURIComponent(workspaceId)}`;
-        fetchApi(path, {
+        requestForWorkspace<{ answer?: string; model?: string }>(workspaceId, path, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -165,7 +165,7 @@ export function PdfRegionAskLayer({
                 contextBefore: capture.pageText || undefined,
             }),
         })
-            .then((data: { answer?: string; model?: string }) => {
+            .then(data => {
                 const answer = typeof data?.answer === 'string' ? data.answer : '';
                 if (!answer) {throw new Error('Malformed response');}
                 setOpen(prev => (prev && prev.note.id === noteId

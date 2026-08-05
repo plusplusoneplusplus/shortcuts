@@ -189,9 +189,34 @@ describe('createBranchRangeDiffSource', () => {
         expect(source.files).toEqual(['x.ts', 'y.ts']);
     });
 
-    it('cacheKey is "branch-range"', () => {
+    it('cacheKey is "branch-range:default-branch"', () => {
         const source = createBranchRangeDiffSource(ws);
-        expect(source.cacheKey).toBe('branch-range');
+        expect(source.cacheKey).toBe('branch-range:default-branch');
+    });
+
+    describe("baseMode 'upstream'", () => {
+        const upstream = () => createBranchRangeDiffSource(ws, { baseMode: 'upstream' });
+
+        it('fileDiffUrl appends base=upstream', () => {
+            expect(upstream().fileDiffUrl('src/foo.ts')).toBe(
+                '/workspaces/ws1/git/branch-range/files/src%2Ffoo.ts/diff?base=upstream',
+            );
+        });
+
+        it('fileDiffUrl combines full and base', () => {
+            expect(upstream().fileDiffUrl('src/foo.ts', true)).toBe(
+                '/workspaces/ws1/git/branch-range/files/src%2Ffoo.ts/diff?full=true&base=upstream',
+            );
+        });
+
+        it('uses its own cache key so modes do not share cached diffs', () => {
+            expect(upstream().cacheKey).toBe('branch-range:upstream');
+            expect(upstream().cacheKey).not.toBe(createBranchRangeDiffSource(ws).cacheKey);
+        });
+
+        it('labels the panel "Unpushed diff"', () => {
+            expect(upstream().label).toBe('Unpushed diff');
+        });
     });
 });
 

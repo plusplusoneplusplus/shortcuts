@@ -278,8 +278,8 @@ describe('RepoDetail Activity badge wiring', () => {
         expect(runningIdx).toBeLessThan(queuedIdx);
     });
 
-    it('seeds repo queue map via useEffect on ws.id change', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("fetchApi('/queue?repoId='");
+    it('seeds repo queue map via useEffect on ws.id change, routed to the owning clone', () => {
+        expect(REPO_DETAIL_SOURCE).toContain("getCocClientForWorkspace(ws.id).queue.list({ repoId: ws.id })");
         expect(REPO_DETAIL_SOURCE).toContain("type: 'REPO_QUEUE_UPDATED'");
     });
 
@@ -355,11 +355,10 @@ describe('RepoDetail Resume Queue button in header', () => {
         expect(REPO_DETAIL_SOURCE).toContain('queueState.repoQueueMap[ws.id]?.stats?.isPaused');
     });
 
-    it('handleResumeQueue calls fetchApi with /queue/resume endpoint', () => {
+    it('handleResumeQueue resumes through the clone that owns the repo', () => {
         const fnStart = REPO_DETAIL_SOURCE.indexOf('handleResumeQueue');
         const fnBody = REPO_DETAIL_SOURCE.slice(fnStart, fnStart + 400);
-        expect(fnBody).toContain("fetchApi('/queue/resume?repoId='");
-        expect(fnBody).toContain("method: 'POST'");
+        expect(fnBody).toContain("getCocClientForWorkspace(ws.id).queue.resume({ repoId: ws.id })");
     });
 
     it('handleResumeQueue resets isPauseResumeLoading in finally block', () => {

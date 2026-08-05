@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { FilesViewMode } from '../diff/FileTree';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 
 const DEFAULT_MODE: FilesViewMode = 'tree';
 
@@ -26,7 +26,7 @@ export function useFilesViewMode(workspaceId?: string): UseFilesViewModeResult {
         let cancelled = false;
         (async () => {
             try {
-                const prefs = await getSpaCocClient().preferences.getRepo(workspaceId);
+                const prefs = await getCocClientForWorkspace(workspaceId).preferences.getRepo(workspaceId);
                 if (!cancelled && (prefs.filesViewMode === 'flat' || prefs.filesViewMode === 'tree')) {
                     setModeState(prefs.filesViewMode);
                 }
@@ -40,7 +40,7 @@ export function useFilesViewMode(workspaceId?: string): UseFilesViewModeResult {
     const setMode = useCallback((m: FilesViewMode) => {
         setModeState(m);
         if (!workspaceId) return;
-        getSpaCocClient().preferences.updateRepo(workspaceId, { filesViewMode: m }).catch(() => {});
+        getCocClientForWorkspace(workspaceId).preferences.updateRepo(workspaceId, { filesViewMode: m }).catch(() => {});
     }, [workspaceId]);
 
     return { mode, setMode };

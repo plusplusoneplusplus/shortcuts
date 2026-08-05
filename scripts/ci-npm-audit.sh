@@ -42,16 +42,11 @@ endpoint_error_re='audit endpoint returned an error|Service Unavailable|Internal
 # (`--omit=dev`) passes on its own and never consults this list. Remove an entry
 # the moment the upstream parent ships a release that pulls the patched version.
 #
-#   GHSA-mh99-v99m-4gvg  brace-expansion <=5.0.7 DoS (high). Reachable only via
-#                        dev build/lint tooling (electron-builder ->
-#                        app-builder-lib / @electron/universal, eslint,
-#                        jake -> filelist). Fixed in brace-expansion 5.0.8
-#                        (published 2026-07-24), but no dependent dev parent has
-#                        re-released to pull it and npm `overrides` cannot reach
-#                        those nested copies without a destructive lockfile
-#                        regen. Revisit when electron-builder / jake / eslint
-#                        update.
-AUDIT_ALLOWLIST="${AUDIT_ALLOWLIST-GHSA-mh99-v99m-4gvg}"
+# The list is currently EMPTY, so the gate is fully strict: any blocking (>=high)
+# advisory fails the build. The previous entry, GHSA-mh99-v99m-4gvg
+# (brace-expansion DoS), was dropped once `npm audit fix` could bump every copy
+# — including the nested dev ones under electron-builder and jake — in place.
+AUDIT_ALLOWLIST="${AUDIT_ALLOWLIST-}"
 
 # Exit 0 iff `npm audit` reports at least one blocking (>= high) advisory AND
 # every blocking advisory is in AUDIT_ALLOWLIST. Any non-allowlisted blocking

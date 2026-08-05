@@ -22,7 +22,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchApi } from '../../../../hooks/useApi';
+import { requestForWorkspace } from '../../../../repos/cloneRegistry';
 import { useQuickAskSidenotesEnabled } from '../../../../hooks/feature-flags/useQuickAskSidenotesEnabled';
 import { QuickAskSidenotePopover } from '../../../chat/quick-ask/QuickAskSidenotePopover';
 import { resolveSidenoteAnchor } from '../../../chat/quick-ask/sidenoteAnchoring';
@@ -238,7 +238,7 @@ export function PdfAnnotationsLayer({
     ) => {
         if (!workspaceId) {return;}
         const path = `/api/quick-ask/answer?workspace=${encodeURIComponent(workspaceId)}`;
-        fetchApi(path, {
+        requestForWorkspace<{ answer?: string; model?: string }>(workspaceId, path, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -249,7 +249,7 @@ export function PdfAnnotationsLayer({
                 ...(history.length ? { history } : {}),
             }),
         })
-            .then((data: { answer?: string; model?: string }) => {
+            .then(data => {
                 const answer = typeof data?.answer === 'string' ? data.answer : '';
                 if (!answer) {throw new Error('Malformed response');}
                 // Persist the whole thread (fold this just-answered turn in — the
@@ -425,7 +425,7 @@ export function PdfAnnotationsLayer({
             const root = getNoteRoot?.();
             if (root) {params.set('root', root);}
             const path = `/api/workspaces/${encodeURIComponent(workspaceId)}/notes/paper-annotations/annotation/${encodeURIComponent(id)}?${params.toString()}`;
-            void fetchApi(path, { method: 'DELETE' }).catch(() => { /* best-effort */ });
+            void requestForWorkspace(workspaceId, path, { method: 'DELETE' }).catch(() => { /* best-effort */ });
         }
         removeLocal(id);
         setOpen(null);
@@ -445,8 +445,8 @@ export function PdfAnnotationsLayer({
         if (!workspaceId || !notePath) {return;}
         setExporting(true);
         const url = paperAnnotationsExportUrl(workspaceId, notePath, getNoteRoot?.());
-        fetchApi(url)
-            .then((data: PaperAnnotationsExportResponse) => {
+        requestForWorkspace<PaperAnnotationsExportResponse>(workspaceId, url)
+            .then(data => {
                 downloadMarkdown(exportAnnotationsFilename(notePath), data?.markdown ?? '');
             })
             .catch(() => { /* best-effort */ })

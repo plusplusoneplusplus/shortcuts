@@ -12,11 +12,16 @@
  * the workspace switched is dropped rather than written into the fresh state.
  * This keeps same-named servers in different repos from ever sharing detail,
  * tool counts, allow-list toggles, or OAuth results.
+ *
+ * Every request is routed to the server that OWNS the workspace: the MCP routes
+ * read/write the host machine's disk via `ws.rootPath`, so a remote clone's calls
+ * must go to its own CoC server rather than the local one. A local workspace
+ * resolves to the same default client, so local behavior is unchanged.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
-import { getApiBase } from '../../utils/config';
+import { getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getCocClientForWorkspace, cloneApiBase } from '../../repos/cloneRegistry';
 import type {
     McpServerDetail as ClientMcpServerDetail,
     McpConfigScope,
@@ -116,7 +121,7 @@ export function useMcpServerInspectorController(
         setDiscoveryState('loading');
         setDiscoveryError(null);
         try {
-            const resp = await getSpaCocClient().workspaces.discoverMcpTools(
+            const resp = await getCocClientForWorkspace(workspaceId).workspaces.discoverMcpTools(
                 workspaceId,
                 forceReload ? { forceReload: true } : undefined,
             );
@@ -162,7 +167,7 @@ export function useMcpServerInspectorController(
         setToolsAllowList(curr => { prev = curr; return nextMap; }); // optimistic
         setToolsSaving(true);
         try {
-            await getSpaCocClient().workspaces.updateMcpConfig(workspaceId, {
+            await getCocClientForWorkspace(workspaceId).workspaces.updateMcpConfig(workspaceId, {
                 enabledMcpServers: enabledMcpServers ?? null,
                 enabledMcpTools: normalizeEnabledMcpTools(nextMap),
             });
@@ -201,7 +206,7 @@ export function useMcpServerInspectorController(
         const gen = genRef.current;
         setDetailCache(prev => ({ ...prev, [name]: 'loading' }));
         try {
-            const detail = await getSpaCocClient().workspaces.getMcpServerDetail(workspaceId, name);
+            const detail = await getCocClientForWorkspace(workspaceId).workspaces.getMcpServerDetail(workspaceId, name);
             if (genRef.current !== gen) return; // workspace switched mid-flight
             setDetailCache(prev => ({ ...prev, [name]: detail }));
         } catch {
@@ -258,7 +263,10 @@ export function useMcpServerInspectorController(
         const startedWs = workspaceId;
         setFlow(serverName, { phase: 'starting' });
         try {
-            const r = await fetch(`${getApiBase()}/mcp-oauth/start`, {
+            // `mcp-oauth` is not workspace-guarded, so a remote id would not 404 —
+            // it would silently resolve to no workspace root and stash the token in
+            // the LOCAL credential store. Target the clone that owns the repo.
+            const r = await fetch(`${cloneApiBase(startedWs)}/mcp-oauth/start`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ serverName, workspaceId: startedWs || undefined }),
@@ -296,7 +304,7 @@ export function useMcpServerInspectorController(
                 {
                     key: serverName,
                     requestId,
-                    apiBase: getApiBase(),
+                    apiBase: cloneApiBase(startedWs),
                     isStale: () => genRef.current !== gen,
                 },
                 {
@@ -322,25 +330,25 @@ export function useMcpServerInspectorController(
     // ── Config mutations ─────────────────────────────────────────────────────
     const updateServer = useCallback(async (serverName: string, request: McpServerUpdateRequest) => {
         if (!workspaceId) return;
-        await getSpaCocClient().workspaces.updateMcpServer(workspaceId, serverName, request);
+        await getCocClientForWorkspace(workspaceId).workspaces.updateMcpServer(workspaceId, serverName, request);
         invalidateDetail(serverName);
     }, [workspaceId, invalidateDetail]);
 
     const migrateServer = useCallback(async (serverName: string, targetScope: McpConfigScope) => {
         if (!workspaceId) return;
-        await getSpaCocClient().workspaces.migrateMcpServer(workspaceId, serverName, targetScope);
+        await getCocClientForWorkspace(workspaceId).workspaces.migrateMcpServer(workspaceId, serverName, targetScope);
         invalidateDetail(serverName);
     }, [workspaceId, invalidateDetail]);
 
     const deleteServer = useCallback(async (serverName: string) => {
         if (!workspaceId) return;
-        await getSpaCocClient().workspaces.deleteMcpServer(workspaceId, serverName);
+        await getCocClientForWorkspace(workspaceId).workspaces.deleteMcpServer(workspaceId, serverName);
         handleServerDeleted();
     }, [workspaceId, handleServerDeleted]);
 
     const addServer = useCallback(async (request: McpServerCreateRequest) => {
         if (!workspaceId) return;
-        await getSpaCocClient().workspaces.addMcpServer(workspaceId, request);
+        await getCocClientForWorkspace(workspaceId).workspaces.addMcpServer(workspaceId, request);
         onMutate?.();
         onRefresh?.();
     }, [workspaceId, onMutate, onRefresh]);

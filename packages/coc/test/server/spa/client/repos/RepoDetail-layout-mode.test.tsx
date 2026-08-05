@@ -109,8 +109,23 @@ vi.mock('../../../../../src/server/spa/client/react/features/notes/hooks/useNote
     useNotesAutoCommit: () => false,
 }));
 
+// fetchApi is still used elsewhere in RepoDetail (e.g. /chat/launch-terminal).
 vi.mock('../../../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: vi.fn().mockResolvedValue(null),
+}));
+
+// The queue seed/resume and the work-items badge go through the clone-routed client.
+vi.mock('../../../../../src/server/spa/client/react/repos/cloneRegistry', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../../../../../src/server/spa/client/react/repos/cloneRegistry')>()),
+    getCocClientForWorkspace: () => ({
+        queue: {
+            list: vi.fn().mockResolvedValue(null),
+            resume: vi.fn().mockResolvedValue(null),
+        },
+        workItems: {
+            listForOrigin: vi.fn().mockResolvedValue(null),
+        },
+    }),
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/ui', () => ({

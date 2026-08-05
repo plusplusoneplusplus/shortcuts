@@ -363,7 +363,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     async function handleResumeQueue() {
         setIsPauseResumeLoading(true);
         try {
-            await fetchApi('/queue/resume?repoId=' + encodeURIComponent(ws.id), { method: 'POST' });
+            await getCocClientForWorkspace(ws.id).queue.resume({ repoId: ws.id });
         } finally {
             setIsPauseResumeLoading(false);
         }
@@ -382,11 +382,17 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
         }
     }
 
-    // Seed repo queue map on first render if not yet populated with task-level data
+    // Seed repo queue map on first render if not yet populated with task-level data.
+    // Routed to the workspace's own server: /queue?repoId= answers 200 with an EMPTY
+    // queue for an id the LOCAL server doesn't know, so a remote clone looked idle.
+    // Known limitation (same as RepoChatTab): the shared QueueContext is also fed by
+    // the LOCAL server's websocket (App.tsx REPO_QUEUE_UPDATED), so a later local WS
+    // message can overwrite these remote-sourced rows for the same repoId. Fixing that
+    // needs per-clone queue WebSocket fan-in.
     useEffect(() => {
         const existing = queueState.repoQueueMap[ws.id];
         if (existing && (existing.running.length > 0 || existing.queued.length > 0)) return;
-        fetchApi('/queue?repoId=' + encodeURIComponent(ws.id))
+        getCocClientForWorkspace(ws.id).queue.list({ repoId: ws.id })
             .then(data => {
                 if (data) queueDispatch({ type: 'REPO_QUEUE_UPDATED', repoId: ws.id, queue: data });
             })
@@ -880,7 +886,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                 {(wasVisited('cli-sessions') || wasVisited('copilot-sessions')) && <NativeCliSessionsPanel key={ws.id} workspaceId={ws.id} />}
                             </div>
                         )}
-                        {activeSubTab === 'workflow' && state.selectedWorkflowProcessId && <WorkflowDetailView key={state.selectedWorkflowProcessId} processId={state.selectedWorkflowProcessId} />}
+                        {activeSubTab === 'workflow' && state.selectedWorkflowProcessId && <WorkflowDetailView key={state.selectedWorkflowProcessId} processId={state.selectedWorkflowProcessId} workspaceId={ws.id} />}
                     </div>
                 )}
             </div>

@@ -33,6 +33,9 @@ export interface GitDiffResponse {
   path?: string;
 }
 
+/** Which ref a branch range is compared against. */
+export type GitRangeBaseMode = 'default-branch' | 'upstream';
+
 export interface GitBranchRangeInfo {
   baseRef: string;
   headRef: string;
@@ -44,11 +47,19 @@ export interface GitBranchRangeInfo {
   fileCount: number;
   files?: GitFileChange[];
   commits?: GitCommit[];
+  /** Base mode actually used to resolve `baseRef`. */
+  baseMode?: GitRangeBaseMode;
+  /** Set when `upstream` was requested but the branch has no upstream. */
+  baseModeFallback?: true;
 }
 
 export interface GitDefaultBranchResponse {
   onDefaultBranch: true;
   branchName?: string;
+  /** Resolved base ref, when the server could determine one. */
+  baseRef?: string;
+  baseMode?: GitRangeBaseMode;
+  baseModeFallback?: true;
 }
 
 export type GitBranchRangeResponse = GitBranchRangeInfo | GitDefaultBranchResponse;

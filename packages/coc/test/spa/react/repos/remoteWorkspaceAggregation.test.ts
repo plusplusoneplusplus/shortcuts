@@ -41,6 +41,10 @@ interface RemoteResponse {
     queueRepos?: QueueRepoEntry[];
     /** When set, queue.repos() rejects (queue fetch must stay resilient). */
     queueError?: Error;
+    /** Canned `/summary` workflow lists keyed by workspace id. */
+    workflows?: Record<string, unknown[]>;
+    /** Workspace ids whose `/summary` rejects (must degrade to an empty list). */
+    summaryErrors?: string[];
 }
 const remoteResponses = new Map<string, RemoteResponse>();
 const constructedBaseUrls: string[] = [];
@@ -52,6 +56,7 @@ vi.mock('@plusplusoneplusplus/coc-client', async (importOriginal) => {
         readonly workspaces: {
             list: () => Promise<{ workspaces: WorkspaceInfo[] }>;
             gitInfoBatch: (ids: string[]) => Promise<{ results: Record<string, unknown> }>;
+            summary: (workspaceId: string) => Promise<{ workflows: unknown[]; tasks: unknown }>;
         };
         readonly queue: {
             repos: () => Promise<{ repos: QueueRepoEntry[] }>;
@@ -66,6 +71,12 @@ vi.mock('@plusplusoneplusplus/coc-client', async (importOriginal) => {
                     return { workspaces: resp.workspaces ?? [] };
                 },
                 gitInfoBatch: async () => ({ results: resp.gitInfo ?? {} }),
+                summary: async (workspaceId: string) => {
+                    if (resp.summaryErrors?.includes(workspaceId)) {
+                        throw new Error(`summary failed for ${workspaceId}`);
+                    }
+                    return { workflows: resp.workflows?.[workspaceId] ?? [], tasks: null };
+                },
             };
             this.queue = {
                 repos: async () => {
@@ -296,6 +307,55 @@ describe('aggregateRemoteWorkspaces — online merge', () => {
 
 // ── offline-cache fallback ──────────────────────────────────────────────────
 
+describe('aggregateRemoteWorkspaces — remote workflow lists', () => {
+    it('reads each online workspace\'s workflows from its own server, keyed by id and clone key', async () => {
+        serversList.mockResolvedValue([onlineServer('srv-1', 'S1', 'http://127.0.0.1:4000')]);
+        remoteResponses.set('http://127.0.0.1:4000', {
+            workspaces: [ws('w1'), ws('w2')],
+            workflows: {
+                w1: [{ name: 'triage', path: 'p/triage.yaml', isValid: true }],
+                w2: [],
+            },
+        });
+
+        const result = await aggregateRemoteWorkspaces();
+
+        expect(result.workflows.w1).toEqual([{ name: 'triage', path: 'p/triage.yaml', isValid: true }]);
+        expect(result.workflows.w2).toEqual([]);
+        // Also reachable by the clone key, which is what a selected repo row uses.
+        expect(result.workflows['remote:srv-1:w1']).toEqual(result.workflows.w1);
+    });
+
+    it('degrades a failing /summary to an empty list without dropping the server', async () => {
+        serversList.mockResolvedValue([onlineServer('srv-1', 'S1', 'http://127.0.0.1:4000')]);
+        remoteResponses.set('http://127.0.0.1:4000', {
+            workspaces: [ws('w1'), ws('w2')],
+            workflows: { w2: [{ name: 'ok', path: 'p/ok.yaml', isValid: true }] },
+            summaryErrors: ['w1'],
+        });
+
+        const result = await aggregateRemoteWorkspaces();
+
+        expect(result.workspaces.map(w => w.id).sort()).toEqual(['w1', 'w2']);
+        expect(result.workflows.w1).toEqual([]);
+        expect(result.workflows.w2).toHaveLength(1);
+        expect(result.warnings).toHaveLength(0);
+    });
+
+    it('leaves offline (cached) rows with no workflow entry', async () => {
+        serversList.mockResolvedValue([offlineServer('srv-1', 'S1')]);
+        saveRemoteWorkspaceCacheEntry('srv-1', {
+            baseUrl: 'http://127.0.0.1:4000',
+            workspaces: [ws('w1')],
+        });
+
+        const result = await aggregateRemoteWorkspaces();
+
+        expect(result.workspaces.map(w => w.id)).toEqual(['w1']);
+        expect(result.workflows.w1).toBeUndefined();
+    });
+});
+
 describe('aggregateRemoteWorkspaces — offline cache fallback', () => {
     it('returns last-known cached entries flagged offline when the server is offline', async () => {
         // Seed cache as if a prior online fetch happened.
@@ -383,7 +443,7 @@ describe('aggregateRemoteWorkspaces — feature flag', () => {
         const result = await aggregateRemoteWorkspaces();
         expect(serversList).not.toHaveBeenCalled();
         expect(constructedBaseUrls).toHaveLength(0);
-        expect(result).toEqual({ sources: [], workspaces: [], gitInfo: {}, warnings: [] });
+        expect(result).toEqual({ sources: [], workspaces: [], gitInfo: {}, workflows: {}, warnings: [] });
     });
 
     it('returns an empty aggregate when the registry list fails', async () => {

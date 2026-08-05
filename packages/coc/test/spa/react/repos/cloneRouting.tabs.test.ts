@@ -23,6 +23,7 @@ interface StubClient {
     workspaces: Record<string, ReturnType<typeof vi.fn>>;
     queue: Record<string, ReturnType<typeof vi.fn>>;
     seenState: Record<string, ReturnType<typeof vi.fn>>;
+    workflow: Record<string, ReturnType<typeof vi.fn>>;
 }
 
 const stubsByBaseUrl = new Map<string, StubClient>();
@@ -54,6 +55,19 @@ function makeStub(baseUrl: string): StubClient {
         seenState: {
             getMap: vi.fn(async () => ({})),
             getUnseenCount: vi.fn(async () => ({ unseenCount: 0 })),
+        },
+        // Workflows (pipelines) tab — every endpoint is workspace-scoped and 404s
+        // on the wrong server.
+        workflow: {
+            list: vi.fn(async () => []),
+            content: vi.fn(async () => ({ content: '', path: '' })),
+            saveContent: vi.fn(async () => ({ path: '' })),
+            generate: vi.fn(async () => ({ yaml: '', valid: true })),
+            refine: vi.fn(async () => ({ yaml: '', valid: true })),
+            create: vi.fn(async () => ({ name: 'wf', path: '', template: '' })),
+            delete: vi.fn(async () => ({ deleted: 'wf' })),
+            run: vi.fn(async () => ({ taskId: 't1', pipelineName: 'wf' })),
+            runHistory: vi.fn(async () => ({ history: [] })),
         },
     };
 }
@@ -94,13 +108,23 @@ import { explorerApi } from '../../../../src/server/spa/client/react/features/re
 import { notesApi } from '../../../../src/server/spa/client/react/features/notes/notesApi';
 import { useCocClient } from '../../../../src/server/spa/client/react/repos/cloneRouting';
 import { fetchSeenMap, fetchUnseenCount } from '../../../../src/server/spa/client/react/hooks/preferences/seenStateApi';
+import {
+    fetchWorkflows,
+    fetchWorkflowContent,
+    saveWorkflowContent,
+    generateWorkflow,
+    refineWorkflow,
+    createWorkflow,
+    deleteWorkflow,
+    runWorkflow,
+} from '../../../../src/server/spa/client/react/features/workflow/workflow-api';
 
 const REMOTE_WS = 'remote-ws';
 const REMOTE_URL = 'http://127.0.0.1:4000';
 const LOCAL_WS = 'local-ws';
 
 function clearAllMocks(stub: StubClient): void {
-    for (const domain of [stub.explorer, stub.notes, stub.processes, stub.workspaces, stub.queue, stub.seenState]) {
+    for (const domain of [stub.explorer, stub.notes, stub.processes, stub.workspaces, stub.queue, stub.seenState, stub.workflow]) {
         for (const fn of Object.values(domain)) fn.mockClear();
     }
 }
@@ -233,5 +257,44 @@ describe('Seen-state routing (seenStateApi)', () => {
     it('reads a LOCAL clone seen-map from the default origin client', async () => {
         await fetchSeenMap(LOCAL_WS);
         expect(LOCAL.seenState.getMap).toHaveBeenCalledWith(LOCAL_WS);
+    });
+});
+
+// ── Workflows (pipelines) tab ─────────────────────────────────────────────────
+
+describe('Workflows tab routing (workflow-api)', () => {
+    it('routes every workflow call for a remote clone to the remote server', async () => {
+        await fetchWorkflows(REMOTE_WS);
+        await fetchWorkflowContent(REMOTE_WS, 'wf-1');
+        await saveWorkflowContent(REMOTE_WS, 'wf-1', 'name: x');
+        await generateWorkflow(REMOTE_WS, 'wf-2', 'describe');
+        await refineWorkflow(REMOTE_WS, 'wf-1', 'tweak', 'name: x');
+        await createWorkflow(REMOTE_WS, 'wf-3');
+        await deleteWorkflow(REMOTE_WS, 'wf-1');
+        await runWorkflow(REMOTE_WS, 'wf-1');
+
+        const remote = clientFor(REMOTE_URL);
+        expect(remote.workflow.list).toHaveBeenCalledWith(REMOTE_WS);
+        expect(remote.workflow.content).toHaveBeenCalledWith(REMOTE_WS, 'wf-1');
+        expect(remote.workflow.saveContent).toHaveBeenCalledWith(REMOTE_WS, 'wf-1', 'name: x');
+        expect(remote.workflow.generate).toHaveBeenCalled();
+        expect(remote.workflow.refine).toHaveBeenCalled();
+        expect(remote.workflow.create).toHaveBeenCalledWith(REMOTE_WS, { name: 'wf-3', template: undefined, content: undefined });
+        expect(remote.workflow.delete).toHaveBeenCalledWith(REMOTE_WS, 'wf-1');
+        expect(remote.workflow.run).toHaveBeenCalledWith(REMOTE_WS, 'wf-1');
+
+        // No local fallthrough for any of them.
+        for (const fn of Object.values(LOCAL.workflow)) {
+            expect(fn).not.toHaveBeenCalled();
+        }
+    });
+
+    it('routes a LOCAL clone workflow list + run to the default origin client', async () => {
+        await fetchWorkflows(LOCAL_WS);
+        await runWorkflow(LOCAL_WS, 'wf-1');
+
+        expect(LOCAL.workflow.list).toHaveBeenCalledWith(LOCAL_WS);
+        expect(LOCAL.workflow.run).toHaveBeenCalledWith(LOCAL_WS, 'wf-1');
+        expect(stubsByBaseUrl.has(REMOTE_URL)).toBe(false);
     });
 });

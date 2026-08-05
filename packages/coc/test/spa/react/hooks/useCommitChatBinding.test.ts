@@ -40,6 +40,12 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => mockClient,
 }));
 
+// The hook resolves its client per workspace so remote clones hit their own
+// server; every workspace in this file is local, so it resolves to mockClient.
+vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    getCocClientForWorkspace: () => mockClient,
+}));
+
 import { useCommitChatBinding } from '../../../../src/server/spa/client/react/features/git/hooks/useCommitChatBinding';
 
 const HOOK_PATH = path.join(

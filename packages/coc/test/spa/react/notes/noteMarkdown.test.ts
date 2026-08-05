@@ -1126,6 +1126,23 @@ describe('noteMarkdown', () => {
             expect(result).toBe('![Doc](.attachments/sample.pdf)');
         });
 
+        // On a REMOTE clone the load-side rewrite emits an absolute URL against
+        // that clone's origin. If the strip did not accept a `scheme://host`
+        // prefix, the origin would be baked into the persisted `.md`.
+        it('rewriteImageSrcToRelative — strips a remote clone origin from every URL form', () => {
+            const base = 'http://127.0.0.1:4001/api/workspaces/ws1/notes';
+            expect(rewriteImageSrcToRelative(`![Doc](${base}/image?path=.attachments%2Fsample.pdf)`))
+                .toBe('![Doc](.attachments/sample.pdf)');
+            expect(rewriteImageSrcToRelative(`<img src="${base}/image?path=.attachments%2Fa.png" />`))
+                .toContain('src=".attachments/a.png"');
+            expect(rewriteImageSrcToRelative(`![C](${base}/local-image?path=%2Fhome%2Fu%2Fchart.png)`))
+                .toBe('![C](/home/u/chart.png)');
+            expect(rewriteImageSrcToRelative(`<img src="${base}/local-image?path=%2Fhome%2Fu%2Fchart.png" />`))
+                .toContain('src="/home/u/chart.png"');
+            expect(rewriteImageSrcToRelative(`<div data-pdf-url="${base}/image?path=.papers%2F1802.05799.pdf"></div>`))
+                .toContain('data-pdf-url=".papers/1802.05799.pdf"');
+        });
+
         it('rewriteImageSrcToApi — rewrites a cached arXiv .papers/ pdf embed to the API URL', () => {
             const html = '<div class="md-pdf-embed" data-pdf-url=".papers/1802.05799.pdf" data-pdf-label="1802.05799"></div>';
             const result = rewriteImageSrcToApi(html, 'ws1');

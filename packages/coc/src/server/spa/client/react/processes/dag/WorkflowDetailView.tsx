@@ -7,7 +7,7 @@ import { ItemConversationPanel } from './ItemConversationPanel';
 import { useWorkflowPhase } from '../../features/workflow/hooks/useWorkflowPhase';
 import { useItemProcessEvents } from '../hooks/useItemProcessEvents';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
-import { getSpaCocClient } from '../../api/cocClient';
+import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
 import { formatDuration, statusIcon } from '../../utils/format';
 import { detectDarkMode } from '../../utils/theme';
 import { BottomSheet } from '../../ui';
@@ -15,10 +15,16 @@ import type { PhaseDetail } from './WorkflowPhasePopover';
 
 export interface WorkflowDetailViewProps {
     processId: string;
+    /**
+     * Workspace owning the run. A workflow started on a remote clone gets a
+     * process id that only exists on THAT server, so both the REST fetch and the
+     * SSE stream below must follow the clone. Omitted / local → default origin.
+     */
+    workspaceId?: string;
     onNavigateToProcess?: (processId: string) => void;
 }
 
-export function WorkflowDetailView({ processId, onNavigateToProcess }: WorkflowDetailViewProps) {
+export function WorkflowDetailView({ processId, workspaceId, onNavigateToProcess }: WorkflowDetailViewProps) {
     const [process, setProcess] = useState<any>(null);
     const [children, setChildren] = useState<ChildProcess[]>([]);
     const [loading, setLoading] = useState(true);
@@ -38,7 +44,7 @@ export function WorkflowDetailView({ processId, onNavigateToProcess }: WorkflowD
         setLoading(true);
         setError(null);
 
-        getSpaCocClient().processes.get(processId, { include: 'children' })
+        getCocClientForWorkspace(workspaceId).processes.get(processId, { include: 'children' })
             .then((data) => {
                 if (cancelled) return;
                 setProcess(data.process ?? data);
@@ -60,7 +66,7 @@ export function WorkflowDetailView({ processId, onNavigateToProcess }: WorkflowD
             });
 
         return () => { cancelled = true; };
-    }, [processId]);
+    }, [processId, workspaceId]);
 
     // SSE for live processes
     useEffect(() => {
@@ -71,7 +77,10 @@ export function WorkflowDetailView({ processId, onNavigateToProcess }: WorkflowD
 
         if (!isRunning) return;
 
-        const es = new EventSource(getSpaCocClient().processes.streamUrl(processId));
+        // `streamUrl` is built off the routed client's own baseUrl, so a remote
+        // clone's SSE goes to that clone's server (an EventSource can't go through
+        // CocClient.request). Local ids resolve to the default client → unchanged.
+        const es = new EventSource(getCocClientForWorkspace(workspaceId).processes.streamUrl(processId));
         eventSourceRef.current = es;
 
         es.onerror = () => {
@@ -83,7 +92,7 @@ export function WorkflowDetailView({ processId, onNavigateToProcess }: WorkflowD
             es.close();
             eventSourceRef.current = null;
         };
-    }, [processId, isRunning]);
+    }, [processId, workspaceId, isRunning]);
 
     // Live timer for running process
     useEffect(() => {

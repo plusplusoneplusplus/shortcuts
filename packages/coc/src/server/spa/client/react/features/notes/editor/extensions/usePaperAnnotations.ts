@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { fetchApi } from '../../../../hooks/useApi';
+import { requestForWorkspace } from '../../../../repos/cloneRegistry';
 import type {
     PaperAnnotation,
     PaperAnnotationsSidecar,
@@ -68,8 +68,8 @@ export function usePaperAnnotations(
         if (root) {params.set('root', root);}
         const path = `/api/workspaces/${encodeURIComponent(workspaceId)}/notes/paper-annotations?${params.toString()}`;
         let cancelled = false;
-        fetchApi(path)
-            .then((data: PaperAnnotationsSidecar) => {
+        requestForWorkspace<PaperAnnotationsSidecar>(workspaceId, path)
+            .then(data => {
                 if (cancelled) {return;}
                 const map = data?.annotations && typeof data.annotations === 'object' ? data.annotations : {};
                 setAnnotations(Object.values(map));
@@ -118,7 +118,7 @@ export function usePaperAnnotations(
         const root = getNoteRoot?.();
         if (root) {body.root = root;}
         const apiPath = `/api/workspaces/${encodeURIComponent(workspaceId)}/notes/paper-annotations/annotation/${encodeURIComponent(id)}`;
-        void fetchApi(apiPath, {
+        void requestForWorkspace(workspaceId, apiPath, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
@@ -150,7 +150,7 @@ export function usePaperAnnotations(
         const root = getNoteRoot?.();
         if (root) {body.root = root;}
         const apiPath = `/api/workspaces/${encodeURIComponent(workspaceId)}/notes/paper-annotations/annotation/${encodeURIComponent(id)}`;
-        void fetchApi(apiPath, {
+        void requestForWorkspace(workspaceId, apiPath, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),

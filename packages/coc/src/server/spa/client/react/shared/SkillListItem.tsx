@@ -1,10 +1,8 @@
-/**
- * Shared SkillListItem — collapsed skill card row with toggle, delete, and expand.
- * Used by AgentSkillsPanel (repo skills) and SkillsInstalledPanel (global skills).
- */
+/** Compact skill row used by the global installed-skills surface. */
 
 import type { SkillInfo } from './SkillDetailPanel';
 import { SkillDetailPanel } from './SkillDetailPanel';
+import { SkillVersionBadge } from './SkillMetadata';
 
 export interface SkillListItemProps {
     skill: SkillInfo;
@@ -56,11 +54,7 @@ export function SkillListItem({
                 <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-[#1e1e1e] dark:text-[#cccccc] flex items-center gap-2 flex-wrap">
                         🧩 {skill.name}
-                        {skill.version && (
-                            <span className="text-[10px] bg-[#e8f0fe] dark:bg-[#1a3a5c] text-[#1a73e8] dark:text-[#8ab4f8] px-1.5 py-0.5 rounded">
-                                v{skill.version}
-                            </span>
-                        )}
+                        <SkillVersionBadge version={skill.version} />
                         {sourceRepoName && (
                             <span
                                 className="text-[10px] bg-[#f3f3f3] dark:bg-[#333] text-[#848484] px-1.5 py-0.5 rounded-full"

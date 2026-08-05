@@ -7,9 +7,8 @@
 
 import { useState } from 'react';
 import type { Template, TemplateDetail } from '@plusplusoneplusplus/coc-client';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { getCocClientForWorkspace, requestForWorkspace } from '../../../repos/cloneRegistry';
 import { Button, cn, Dialog, Spinner } from '../../../ui';
-import { fetchApi } from '../../../hooks/useApi';
 import { formatRelativeTime } from '../../../utils/format';
 import { ContextMenu } from './ContextMenu';
 import {
@@ -225,7 +224,8 @@ export function CreateTemplateForm({ workspaceId, editingTemplate, onClose, onSa
     const handleCommitBlur = async () => {
         if (!commitHash.trim()) { setCommitValid(null); setCommitInfo(null); return; }
         try {
-            const data = await fetchApi(
+            const data = await requestForWorkspace<any>(
+                workspaceId,
                 `/workspaces/${enc(workspaceId)}/git/commits/${enc(commitHash.trim())}`
             );
             setCommitValid(true);
@@ -245,12 +245,12 @@ export function CreateTemplateForm({ workspaceId, editingTemplate, onClose, onSa
         setError(null);
         try {
             if (isEdit) {
-                await getSpaCocClient().templates.update(workspaceId, editingTemplate!.name, {
+                await getCocClientForWorkspace(workspaceId).templates.update(workspaceId, editingTemplate!.name, {
                     description,
                     hints: parseTemplateHints(hintsText),
                 });
             } else {
-                await getSpaCocClient().templates.create(workspaceId, {
+                await getCocClientForWorkspace(workspaceId).templates.create(workspaceId, {
                     name,
                     kind,
                     commitHash: commitHash.trim(),
@@ -414,7 +414,7 @@ export function ReplicateDialog({ workspaceId, template, onClose }: ReplicateDia
         setSubmitting(true);
         setError(null);
         try {
-            await getSpaCocClient().templates.replicate(workspaceId, template.name, {
+            await getCocClientForWorkspace(workspaceId).templates.replicate(workspaceId, template.name, {
                 instruction: instruction.trim(),
                 model: model || undefined,
             });

@@ -575,7 +575,7 @@ jobs:
           node-version: 24.x
 
       - name: Run workflow policy tests
-        run: node --test scripts/release-workflow.test.mjs
+        run: node --test scripts/release-workflow.test.mjs scripts/ci-npm-audit.test.mjs
 
   ci:
     runs-on: ubuntu-latest

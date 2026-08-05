@@ -11,7 +11,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, renderHook, waitFor } from '@testing-library/react';
+import { act, render, renderHook, waitFor } from '@testing-library/react';
 
 // ── Mock the client factory layer ────────────────────────────────────────────
 // getSpaCocClient → the LOCAL stub; getCocClientFor(baseUrl) → a per-baseUrl stub.
@@ -21,6 +21,7 @@ interface StubClient {
     baseUrl: string;
     git: Record<string, ReturnType<typeof vi.fn>>;
     preferences: Record<string, ReturnType<typeof vi.fn>>;
+    queue: Record<string, ReturnType<typeof vi.fn>>;
     request: ReturnType<typeof vi.fn>;
 }
 
@@ -43,9 +44,16 @@ function makeStub(baseUrl: string): StubClient {
             branchRangeFileDiffPath: vi.fn((ws: string, fp: string) =>
                 `/workspaces/${ws}/git/branch-range/files/${encodeURIComponent(fp)}/diff`),
             stageFile: vi.fn(async () => ({ success: true, baseUrl })),
+            getCommitChatBinding: vi.fn(async () => ({ taskId: `task@${baseUrl}` })),
+            createCommitChatBinding: vi.fn(async () => ({})),
+            startFreshCommitChat: vi.fn(async () => ({})),
         },
         preferences: {
-            getRepo: vi.fn(async () => ({})),
+            getRepo: vi.fn(async () => ({ filesViewMode: 'flat' })),
+            updateRepo: vi.fn(async () => ({})),
+        },
+        queue: {
+            enqueue: vi.fn(async () => ({ task: { id: `queued@${baseUrl}` } })),
         },
         // The generic transport used by requestForWorkspace (diff fetches).
         request: vi.fn(async (path: string) => ({ diff: `body@${baseUrl}:${path}`, truncated: false, totalLines: 0 })),
@@ -88,6 +96,9 @@ import { useCocClient } from '../../../../src/server/spa/client/react/repos/clon
 import { fetchDiffFromSource } from '../../../../src/server/spa/client/react/features/git/diff/diffSource';
 import { createElement } from 'react';
 import { WorkingTree } from '../../../../src/server/spa/client/react/features/git/working-tree/WorkingTree';
+import { useCommitChatBinding } from '../../../../src/server/spa/client/react/features/git/hooks/useCommitChatBinding';
+import { usePrChatBinding } from '../../../../src/server/spa/client/react/features/git/hooks/usePrChatBinding';
+import { useFilesViewMode } from '../../../../src/server/spa/client/react/features/git/hooks/useFilesViewMode';
 
 const REMOTE_WS = 'remote-ws';
 const REMOTE_URL = 'http://127.0.0.1:4000';
@@ -96,6 +107,7 @@ const LOCAL_WS = 'local-ws';
 function clearAllMocks(stub: StubClient): void {
     for (const fn of Object.values(stub.git)) fn.mockClear();
     for (const fn of Object.values(stub.preferences)) fn.mockClear();
+    for (const fn of Object.values(stub.queue)) fn.mockClear();
     stub.request.mockClear();
 }
 
@@ -186,6 +198,116 @@ describe('Working-tree action routing (getCocClientForWorkspace)', () => {
     it('routes a LOCAL clone stage-file action to the default origin client', async () => {
         await getCocClientForWorkspace(LOCAL_WS).git.stageFile(LOCAL_WS, 'a.ts');
         expect(LOCAL.git.stageFile).toHaveBeenCalledWith(LOCAL_WS, 'a.ts');
+        expect(stubsByBaseUrl.has(REMOTE_URL)).toBe(false);
+    });
+});
+
+// ── Commit chat binding (useCommitChatBinding) ────────────────────────────────
+// The commit chat panel was the last git surface still on the local singleton:
+// against a remote clone every call 404'd "Workspace not found".
+
+describe('Commit chat routing (useCommitChatBinding)', () => {
+    it('reads, creates, and freshens a remote clone commit chat on the REMOTE server', async () => {
+        const { result } = renderHook(() => useCommitChatBinding({
+            workspaceId: REMOTE_WS,
+            commitHash: 'abc123',
+            commitMessage: 'fix: bug',
+        }));
+
+        const remote = clientFor(REMOTE_URL);
+        await waitFor(() => expect(result.current.taskId).toBe(`task@${REMOTE_URL}`));
+        expect(remote.git.getCommitChatBinding).toHaveBeenCalledWith(REMOTE_WS, 'abc123');
+
+        await act(async () => {
+            await result.current.createChat('review this');
+        });
+        expect(remote.queue.enqueue).toHaveBeenCalled();
+        expect(remote.git.createCommitChatBinding).toHaveBeenCalledWith(REMOTE_WS, 'abc123', `queued@${REMOTE_URL}`);
+
+        await act(async () => {
+            await result.current.startFreshChat();
+        });
+        expect(remote.git.startFreshCommitChat).toHaveBeenCalledWith(REMOTE_WS, 'abc123');
+
+        // No local fallthrough — the local server has no such workspace.
+        expect(LOCAL.git.getCommitChatBinding).not.toHaveBeenCalled();
+        expect(LOCAL.queue.enqueue).not.toHaveBeenCalled();
+        expect(LOCAL.git.createCommitChatBinding).not.toHaveBeenCalled();
+        expect(LOCAL.git.startFreshCommitChat).not.toHaveBeenCalled();
+        expect(result.current.error).toBeNull();
+    });
+
+    it('keeps a LOCAL clone commit chat on the default origin client', async () => {
+        const { result } = renderHook(() => useCommitChatBinding({
+            workspaceId: LOCAL_WS,
+            commitHash: 'abc123',
+        }));
+
+        await waitFor(() => expect(result.current.taskId).toBe('task@LOCAL'));
+        expect(LOCAL.git.getCommitChatBinding).toHaveBeenCalledWith(LOCAL_WS, 'abc123');
+
+        await act(async () => {
+            await result.current.createChat('review this');
+        });
+        expect(LOCAL.queue.enqueue).toHaveBeenCalled();
+        expect(LOCAL.git.createCommitChatBinding).toHaveBeenCalledWith(LOCAL_WS, 'abc123', 'queued@LOCAL');
+        expect(stubsByBaseUrl.has(REMOTE_URL)).toBe(false);
+    });
+});
+
+// ── PR chat binding (usePrChatBinding) ────────────────────────────────────────
+
+describe('PR chat routing (usePrChatBinding)', () => {
+    it('enqueues a remote clone PR chat on the REMOTE server', async () => {
+        const { result } = renderHook(() => usePrChatBinding({ workspaceId: REMOTE_WS, prId: 'pr-1' }));
+
+        await act(async () => {
+            await result.current.createChat('review this PR');
+        });
+
+        expect(clientFor(REMOTE_URL).queue.enqueue).toHaveBeenCalled();
+        expect(LOCAL.queue.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('enqueues a LOCAL clone PR chat on the default origin client', async () => {
+        const { result } = renderHook(() => usePrChatBinding({ workspaceId: LOCAL_WS, prId: 'pr-1' }));
+
+        await act(async () => {
+            await result.current.createChat('review this PR');
+        });
+
+        expect(LOCAL.queue.enqueue).toHaveBeenCalled();
+        expect(stubsByBaseUrl.has(REMOTE_URL)).toBe(false);
+    });
+});
+
+// ── Files view-mode preference (useFilesViewMode) ─────────────────────────────
+
+describe('Files view-mode preference routing (useFilesViewMode)', () => {
+    it('reads and writes a remote clone preference on the REMOTE server', async () => {
+        const { result } = renderHook(() => useFilesViewMode(REMOTE_WS));
+        const remote = clientFor(REMOTE_URL);
+
+        await waitFor(() => expect(result.current.mode).toBe('flat'));
+        expect(remote.preferences.getRepo).toHaveBeenCalledWith(REMOTE_WS);
+
+        await act(async () => {
+            result.current.setMode('tree');
+        });
+        expect(remote.preferences.updateRepo).toHaveBeenCalledWith(REMOTE_WS, { filesViewMode: 'tree' });
+        expect(LOCAL.preferences.getRepo).not.toHaveBeenCalled();
+        expect(LOCAL.preferences.updateRepo).not.toHaveBeenCalled();
+    });
+
+    it('reads and writes a LOCAL clone preference on the default origin client', async () => {
+        const { result } = renderHook(() => useFilesViewMode(LOCAL_WS));
+
+        await waitFor(() => expect(LOCAL.preferences.getRepo).toHaveBeenCalledWith(LOCAL_WS));
+
+        await act(async () => {
+            result.current.setMode('flat');
+        });
+        expect(LOCAL.preferences.updateRepo).toHaveBeenCalledWith(LOCAL_WS, { filesViewMode: 'flat' });
         expect(stubsByBaseUrl.has(REMOTE_URL)).toBe(false);
     });
 });

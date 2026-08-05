@@ -29,13 +29,17 @@ const COMPONENT_PATH = path.resolve(
 // ============================================================================
 
 const mockListDiffComments = vi.fn();
+const mockGetCocClientForWorkspace = vi.fn((_wsId: string) => ({
+    git: {
+        listDiffComments: (...args: any[]) => mockListDiffComments(...args),
+    },
+}));
 
-vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({
-        git: {
-            listDiffComments: (...args: any[]) => mockListDiffComments(...args),
-        },
-    }),
+// The read must go through the clone registry: the list route does not resolve
+// the workspace, so a local-origin read for a remote clone answers 200 with an
+// EMPTY list and the panel silently shows no comments.
+vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    getCocClientForWorkspace: (wsId: string) => mockGetCocClientForWorkspace(wsId),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/tasks/comments/CommentSidebar', () => ({
@@ -131,8 +135,9 @@ describe('BranchRangeAllComments — source structure', () => {
         expect(source).toContain('navigator.clipboard.writeText');
     });
 
-    it('builds API URL with oldRef and newRef query params', () => {
-        expect(source).toContain('listDiffComments(workspaceId, { oldRef: baseRef, newRef: headRef })');
+    it('reads the range comments through the clone-aware helper', () => {
+        expect(source).toContain('listDiffCommentsForRange(workspaceId, baseRef, headRef)');
+        expect(source).not.toContain('getSpaCocClient');
     });
 });
 
@@ -171,6 +176,17 @@ describe('BranchRangeAllComments — rendering', () => {
         mockListDiffComments.mockResolvedValue({ comments: [] });
         await renderComponent();
         await waitFor(() => expect(screen.getByTestId('branch-range-all-comments')).toBeTruthy());
+    });
+
+    it('routes the read to the workspace owning server with the range refs', async () => {
+        mockListDiffComments.mockResolvedValue({ comments: [] });
+        await renderComponent();
+        await waitFor(() => expect(screen.getByTestId('branch-range-all-comments')).toBeTruthy());
+        expect(mockGetCocClientForWorkspace).toHaveBeenCalledWith('ws-test');
+        expect(mockListDiffComments).toHaveBeenCalledWith('ws-test', {
+            oldRef: 'origin/main',
+            newRef: 'feature/my-branch',
+        });
     });
 
     it('renders sidebar after successful fetch', async () => {

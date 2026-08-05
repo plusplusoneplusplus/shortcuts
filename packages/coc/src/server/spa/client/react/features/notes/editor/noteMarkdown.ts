@@ -923,20 +923,25 @@ export function rewriteImageSrcToApi(html: string, workspaceId: string): string 
  *
  * Converts: `![alt](/api/workspaces/<wsId>/notes/local-image?path=C%3A%5Csrc%5Cchart.png)`
  * To:       `![alt](C:\src\chart.png)`
+ *
+ * On a REMOTE clone the load-side rewrite emits an absolute URL against that
+ * clone's origin (`http://host:4000/api/workspaces/...`), so every pattern here
+ * accepts an optional `scheme://host` prefix — otherwise the origin would be
+ * baked into the persisted Markdown.
  */
 export function rewriteImageSrcToRelative(markdown: string): string {
     if (!markdown) return markdown;
 
     // Standard markdown images: ![alt](/api/workspaces/.../image?path=...)
     let result = markdown.replace(
-        /!\[([^\]]*)\]\(\/api\/workspaces\/[^/]+\/notes\/image\?path=([^)]+)\)/g,
+        /!\[([^\]]*)\]\((?:https?:\/\/[^/"\s)]+)?\/api\/workspaces\/[^/]+\/notes\/image\?path=([^)]+)\)/g,
         (_match, alt: string, encodedPath: string) => {
             return `![${alt}](${decodeURIComponent(encodedPath)})`;
         },
     );
     // HTML <img> tags with API URLs (from resized images)
     result = result.replace(
-        /<img\s([^>]*?)src="\/api\/workspaces\/[^/]+\/notes\/image\?path=([^"]+)"([^>]*?)\/?\s*>/gi,
+        /<img\s([^>]*?)src="(?:https?:\/\/[^/"\s)]+)?\/api\/workspaces\/[^/]+\/notes\/image\?path=([^"]+)"([^>]*?)\/?\s*>/gi,
         (_match, before: string, encodedPath: string, after: string) => {
             return `<img ${before}src="${decodeURIComponent(encodedPath)}"${after} />`;
         },
@@ -944,14 +949,14 @@ export function rewriteImageSrcToRelative(markdown: string): string {
 
     // Standard markdown images: ![alt](/api/workspaces/.../local-image?path=...)
     result = result.replace(
-        /!\[([^\]]*)\]\(\/api\/workspaces\/[^/]+\/notes\/local-image\?path=([^)]+)\)/g,
+        /!\[([^\]]*)\]\((?:https?:\/\/[^/"\s)]+)?\/api\/workspaces\/[^/]+\/notes\/local-image\?path=([^)]+)\)/g,
         (_match, alt: string, encodedPath: string) => {
             return `![${alt}](${decodeURIComponent(encodedPath)})`;
         },
     );
     // HTML <img> tags with local-image API URLs (from resized images)
     result = result.replace(
-        /<img\s([^>]*?)src="\/api\/workspaces\/[^/]+\/notes\/local-image\?path=([^"]+)"([^>]*?)\/?\s*>/gi,
+        /<img\s([^>]*?)src="(?:https?:\/\/[^/"\s)]+)?\/api\/workspaces\/[^/]+\/notes\/local-image\?path=([^"]+)"([^>]*?)\/?\s*>/gi,
         (_match, before: string, encodedPath: string, after: string) => {
             return `<img ${before}src="${decodeURIComponent(encodedPath)}"${after} />`;
         },
@@ -961,7 +966,7 @@ export function rewriteImageSrcToRelative(markdown: string): string {
     // URL → relative `.attachments/` path, mirroring rewriteImageSrcToApi so the
     // persisted Markdown never contains a workspace-specific API URL.
     result = result.replace(
-        /data-pdf-url="\/api\/workspaces\/[^/]+\/notes\/image\?path=([^"]+)"/gi,
+        /data-pdf-url="(?:https?:\/\/[^/"\s)]+)?\/api\/workspaces\/[^/]+\/notes\/image\?path=([^"]+)"/gi,
         (_match, encodedPath: string) => {
             return `data-pdf-url="${decodeURIComponent(encodedPath)}"`;
         },

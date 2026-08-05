@@ -38,7 +38,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/core';
-import { fetchApi } from '../../../../hooks/useApi';
+import { requestForWorkspace } from '../../../../repos/cloneRegistry';
 import { useQuickAskSidenotesEnabled } from '../../../../hooks/feature-flags/useQuickAskSidenotesEnabled';
 import { getQuickAskSelection } from '../../../chat/quick-ask/quick-ask-selection';
 import { QuickAskPill } from '../../../chat/quick-ask/QuickAskPill';
@@ -172,7 +172,7 @@ export function NoteQuickAskLayer({ containerRef, workspaceId, editor }: NoteQui
     ) => {
         if (!workspaceId) {return;}
         const path = `/api/quick-ask/answer?workspace=${encodeURIComponent(workspaceId)}`;
-        fetchApi(path, {
+        requestForWorkspace<{ answer?: string; model?: string }>(workspaceId, path, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -183,7 +183,7 @@ export function NoteQuickAskLayer({ containerRef, workspaceId, editor }: NoteQui
                 ...(history.length ? { history } : {}),
             }),
         })
-            .then((data: { answer?: string; model?: string }) => {
+            .then(data => {
                 const answer = typeof data?.answer === 'string' ? data.answer : '';
                 if (!answer) {throw new Error('Malformed response');}
                 // Persist the whole thread onto the marker (AC-03). Fold this

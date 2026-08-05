@@ -26,6 +26,7 @@ import type {
   GitPatchExportResponse,
   GitOpJob,
   GitOperationResult,
+  GitRangeBaseMode,
   GitRepoState,
   GitWorkingTreeChangesResponse,
   ListWorktreesResponse,
@@ -43,10 +44,17 @@ export interface GitCommitListQuery {
 
 export interface GitBranchRangeQuery {
   refresh?: boolean;
+  /** Comparison base. Omitted / unknown values mean `default-branch`. */
+  base?: GitRangeBaseMode;
 }
 
 export interface GitFileDiffQuery {
   full?: boolean;
+}
+
+export interface GitBranchRangeFileDiffQuery extends GitFileDiffQuery {
+  /** Comparison base. Omitted / unknown values mean `default-branch`. */
+  base?: GitRangeBaseMode;
 }
 
 export interface GitBranchListQuery {
@@ -138,6 +146,15 @@ function serializeBranchRangeQuery(query?: GitBranchRangeQuery): CocRequestOptio
   if (!query) return undefined;
   return {
     refresh: query.refresh,
+    base: query.base,
+  };
+}
+
+function serializeBranchRangeFileDiffQuery(query?: GitBranchRangeFileDiffQuery): CocRequestOptions['query'] {
+  if (!query) return undefined;
+  return {
+    full: query.full,
+    base: query.base,
   };
 }
 
@@ -253,18 +270,22 @@ export class GitClient {
     });
   }
 
-  listBranchRangeFiles(workspaceId: string): Promise<GitBranchRangeFilesResponse> {
-    return this.transport.request<GitBranchRangeFilesResponse>(workspaceGitPath(workspaceId, '/branch-range/files'));
+  listBranchRangeFiles(workspaceId: string, query?: GitBranchRangeQuery): Promise<GitBranchRangeFilesResponse> {
+    return this.transport.request<GitBranchRangeFilesResponse>(workspaceGitPath(workspaceId, '/branch-range/files'), {
+      query: serializeBranchRangeQuery(query),
+    });
   }
 
-  getBranchRangeDiff(workspaceId: string): Promise<GitDiffResponse> {
-    return this.transport.request<GitDiffResponse>(workspaceGitPath(workspaceId, '/branch-range/diff'));
+  getBranchRangeDiff(workspaceId: string, query?: GitBranchRangeQuery): Promise<GitDiffResponse> {
+    return this.transport.request<GitDiffResponse>(workspaceGitPath(workspaceId, '/branch-range/diff'), {
+      query: serializeBranchRangeQuery(query),
+    });
   }
 
-  getBranchRangeFileDiff(workspaceId: string, filePath: string, query?: GitFileDiffQuery): Promise<GitDiffResponse> {
+  getBranchRangeFileDiff(workspaceId: string, filePath: string, query?: GitBranchRangeFileDiffQuery): Promise<GitDiffResponse> {
     return this.transport.request<GitDiffResponse>(
       workspaceGitPath(workspaceId, `/branch-range/files/${encodePathSegment(filePath)}/diff`),
-      { query: serializeFileDiffQuery(query) },
+      { query: serializeBranchRangeFileDiffQuery(query) },
     );
   }
 

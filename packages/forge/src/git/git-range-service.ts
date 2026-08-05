@@ -15,7 +15,15 @@ import * as path from 'path';
 import { getLogger, LogCategory } from '../logger';
 import { execGit } from './exec';
 import { execGitAsync } from './exec';
-import { GitChangeStatus, GitCommitRange, GitCommitRangeFile, GitRangeConfig } from './types';
+import { GitChangeStatus, GitCommitRange, GitCommitRangeFile, GitRangeBaseMode, GitRangeConfig } from './types';
+
+/**
+ * Options for {@link GitRangeService.detectCommitRange}.
+ */
+export interface DetectCommitRangeOptions {
+    /** Which ref to diff against. Defaults to `'default-branch'`. */
+    baseMode?: GitRangeBaseMode;
+}
 
 /**
  * Internal resolved config with all defaults applied.
@@ -132,6 +140,30 @@ export class GitRangeService {
             return null;
         } catch (error) {
             getLogger().error(LogCategory.GIT, 'Failed to detect default branch', error instanceof Error ? error : undefined);
+            return null;
+        }
+    }
+
+    /**
+     * Resolve the current branch's upstream (tracking) ref, e.g. `origin/my-feature`.
+     *
+     * Deliberately uncached: the upstream changes whenever the branch changes, and
+     * this is a single cheap `rev-parse`.
+     *
+     * @returns The upstream ref, or null when the branch has no upstream.
+     */
+    getUpstreamBranch(repoRoot: string): string | null {
+        if (!fs.existsSync(repoRoot)) {
+            return null;
+        }
+        try {
+            const upstream = this.execGitCommand(
+                ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'],
+                repoRoot
+            );
+            return upstream || null;
+        } catch {
+            // No upstream configured for this branch (or detached HEAD).
             return null;
         }
     }
@@ -283,50 +315,77 @@ export class GitRangeService {
     }
 
     /**
+     * Resolve the base ref for a requested base mode.
+     *
+     * `upstream` silently degrades to the default branch when the current branch
+     * has no upstream — the caller learns about it from `baseModeFallback`.
+     */
+    resolveBaseRef(
+        repoRoot: string,
+        baseMode: GitRangeBaseMode = 'default-branch'
+    ): { baseRef: string | null; baseMode: GitRangeBaseMode; baseModeFallback?: true } {
+        if (baseMode === 'upstream') {
+            const upstream = this.getUpstreamBranch(repoRoot);
+            if (upstream) {
+                return { baseRef: upstream, baseMode: 'upstream' };
+            }
+            return {
+                baseRef: this.getDefaultRemoteBranch(repoRoot),
+                baseMode: 'default-branch',
+                baseModeFallback: true,
+            };
+        }
+        return { baseRef: this.getDefaultRemoteBranch(repoRoot), baseMode: 'default-branch' };
+    }
+
+    /**
      * Detect and return the commit range for the current branch.
+     *
+     * @param options.baseMode `'default-branch'` (default) diffs against the repo's
+     *   default remote branch; `'upstream'` diffs against `@{upstream}` so only
+     *   unpushed commits show. In `upstream` mode an empty range is still returned
+     *   (there is nothing unpushed) so callers can keep the range view open.
      * @returns GitCommitRange or null if no range detected
      */
-    async detectCommitRange(repoRoot: string): Promise<GitCommitRange | null> {
+    async detectCommitRange(repoRoot: string, options?: DetectCommitRangeOptions): Promise<GitCommitRange | null> {
         if (!fs.existsSync(repoRoot)) {
             return null;
         }
         try {
             const currentBranch = await this.getCurrentBranch(repoRoot);
 
-            const defaultBranch = this.getDefaultRemoteBranch(repoRoot);
-            if (!defaultBranch) {
+            const resolved = this.resolveBaseRef(repoRoot, options?.baseMode);
+            const baseRef = resolved.baseRef;
+            if (!baseRef) {
                 return null;
             }
 
-            const mergeBase = this.getMergeBase(repoRoot, 'HEAD', defaultBranch);
+            const mergeBase = this.getMergeBase(repoRoot, 'HEAD', baseRef);
             if (!mergeBase) {
                 return null;
             }
 
-            const commitCount = this.countCommitsAhead(repoRoot, defaultBranch, 'HEAD');
+            const commitCount = this.countCommitsAhead(repoRoot, baseRef, 'HEAD');
 
-            // If no commits ahead and not showing on default branch, return null
-            if (commitCount === 0 && !this.config.showOnDefaultBranch) {
+            // If no commits ahead, don't show the range — except in upstream mode,
+            // where "nothing unpushed" is a valid, informative result and hiding
+            // the range would also hide the base-mode toggle.
+            if (commitCount === 0 && resolved.baseMode !== 'upstream') {
                 return null;
             }
 
-            // If no commits ahead, don't show the range
-            if (commitCount === 0) {
-                return null;
-            }
-
-            let files = this.getChangedFiles(repoRoot, defaultBranch, 'HEAD');
+            let files = this.getChangedFiles(repoRoot, baseRef, 'HEAD');
 
             if (files.length > this.config.maxFiles) {
                 files = files.slice(0, this.config.maxFiles);
             }
 
-            const { additions, deletions } = this.getDiffStats(repoRoot, defaultBranch, 'HEAD');
+            const { additions, deletions } = this.getDiffStats(repoRoot, baseRef, 'HEAD');
 
             const repoName = path.basename(repoRoot);
 
             return {
-                baseRef: defaultBranch,
+                baseRef,
                 headRef: 'HEAD',
                 commitCount,
                 files,
@@ -335,7 +394,9 @@ export class GitRangeService {
                 mergeBase,
                 branchName: currentBranch !== 'HEAD' ? currentBranch : undefined,
                 repositoryRoot: repoRoot,
-                repositoryName: repoName
+                repositoryName: repoName,
+                baseMode: resolved.baseMode,
+                ...(resolved.baseModeFallback && { baseModeFallback: true as const })
             };
         } catch (error) {
             getLogger().error(LogCategory.GIT, 'Failed to detect commit range', error instanceof Error ? error : undefined);

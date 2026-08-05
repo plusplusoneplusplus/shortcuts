@@ -14,6 +14,7 @@ export {
     GitCommentCounts,
     GitCommitRange,
     GitCommitRangeFile,
+    GitRangeBaseMode,
     GitRangeConfig,
     BranchStatus,
     GitBranch,

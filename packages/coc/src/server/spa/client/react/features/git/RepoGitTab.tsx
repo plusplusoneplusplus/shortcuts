@@ -13,7 +13,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import type { GitPatchApplyResponse } from '@plusplusoneplusplus/coc-client';
+import type { GitPatchApplyResponse, GitRangeBaseMode } from '@plusplusoneplusplus/coc-client';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
@@ -41,6 +41,7 @@ import { CrossCloneCherryPickModal } from './CrossCloneCherryPickModal';
 import { SkillContextDialog } from '../chat/SkillContextDialog';
 import { clearCacheForHash } from './hooks/useCommitDiffCache';
 import { getBranchRangeCache, setBranchRangeCache, clearBranchRangeCache } from './hooks/useBranchRangeCache';
+import { useBranchRangeBaseMode } from './hooks/useBranchRangeBaseMode';
 import { getCommitsCache, setCommitsCache, clearCommitsCache } from './hooks/useCommitsCache';
 import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
@@ -127,9 +128,11 @@ export function matchCommitsByIdentity(
 
 export function buildBranchRangeSkillPrompt(
     branchRangeData: Pick<BranchRangeInfo, 'baseRef' | 'headRef'> | null | undefined,
-    branchName?: string
+    branchName?: string,
+    /** Base ref reported by the server when there's no range object to read it from. */
+    resolvedBaseRef?: string | null
 ): string {
-    const base = branchRangeData?.baseRef ?? 'main';
+    const base = branchRangeData?.baseRef ?? resolvedBaseRef ?? 'main';
     const head = branchRangeData?.headRef ?? branchName ?? 'HEAD';
     return `Run the selected skill on this commit range:\n<commit-range>${base}..${head}</commit-range>`;
 }
@@ -228,8 +231,11 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
     const [openedCommit, setOpenedCommit] = useState<GitCommitItem | null>(null);
 
     // Branch-range state (lifted from BranchChanges)
+    const [baseMode, setBaseMode] = useBranchRangeBaseMode(workspaceId);
     const [branchRangeData, setBranchRangeData] = useState<BranchRangeInfo | null>(null);
     const [branchRangeFiles, setBranchRangeFiles] = useState<any[]>([]);
+    /** Base ref the server resolved, kept even when there is no range to show. */
+    const [resolvedBaseRef, setResolvedBaseRef] = useState<string | null>(null);
     const [onDefaultBranch, setOnDefaultBranch] = useState(false);
     const [branchName, setBranchName] = useState<string>('');
     const [ahead, setAhead] = useState(0);
@@ -325,11 +331,18 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
             });
     }, [workspaceId]);
 
-    const fetchBranchRange = useCallback((refresh = false) => {
+    // Read through a ref so switching the base mode doesn't change this callback's
+    // identity (which would re-run the whole initial-load effect and reset the
+    // right panel). The toggle passes the new mode explicitly instead.
+    const baseModeRef = useRef(baseMode);
+    baseModeRef.current = baseMode;
+
+    const fetchBranchRange = useCallback((refresh = false, modeOverride?: GitRangeBaseMode) => {
+        const mode = modeOverride ?? baseModeRef.current;
         if (refresh) {
             clearBranchRangeCache(workspaceId);
         } else {
-            const cached = getBranchRangeCache(workspaceId);
+            const cached = getBranchRangeCache(workspaceId, mode);
             if (cached) {
                 setBranchRangeData(cached.data);
                 setBranchRangeFiles(cached.files);
@@ -337,10 +350,11 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
                 setOnDefaultBranch(cached.onDefaultBranch);
                 setAhead(cached.ahead);
                 setBehind(cached.behind);
+                setResolvedBaseRef(cached.baseRef ?? null);
                 return Promise.resolve(cached.data);
             }
         }
-        return cloneClient.git.getBranchRange(workspaceId, { refresh })
+        return cloneClient.git.getBranchRange(workspaceId, { refresh, base: mode })
             .then(data => {
                 if (data.onDefaultBranch) {
                     setOnDefaultBranch(true);
@@ -350,11 +364,14 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
                     setBranchName(resolvedBranchName);
                     setAhead(0);
                     setBehind(0);
+                    setResolvedBaseRef(data.baseRef ?? null);
                     setBranchRangeCache(workspaceId, {
                         data: null, files: [], ahead: 0, behind: 0,
                         branchName: resolvedBranchName,
                         onDefaultBranch: true,
-                    });
+                        baseRef: data.baseRef,
+                        baseModeFallback: data.baseModeFallback,
+                    }, mode);
                     return null as BranchRangeInfo | null;
                 } else {
                     setOnDefaultBranch(false);
@@ -367,6 +384,8 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
                         mergeBase: data.mergeBase,
                         branchName: data.branchName,
                         fileCount: Array.isArray(data.files) ? data.files.length : 0,
+                        baseMode: data.baseMode,
+                        baseModeFallback: data.baseModeFallback,
                     };
                     const files = Array.isArray(data.files) ? data.files : [];
                     setBranchRangeData(rangeInfo);
@@ -374,12 +393,15 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
                     setBranchName(data.branchName || data.headRef || '');
                     setAhead(data.commitCount || 0);
                     setBehind(data.behindCount || 0);
+                    setResolvedBaseRef(data.baseRef ?? null);
                     setBranchRangeCache(workspaceId, {
                         data: rangeInfo, files, ahead: data.commitCount || 0,
                         behind: data.behindCount || 0,
                         branchName: data.branchName || data.headRef || '',
                         onDefaultBranch: false,
-                    });
+                        baseRef: data.baseRef,
+                        baseModeFallback: data.baseModeFallback,
+                    }, mode);
                     return rangeInfo;
                 }
             })
@@ -389,6 +411,14 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
                 return null as BranchRangeInfo | null;
             });
     }, [workspaceId]);
+
+    /** Switch the comparison base (vs default branch ⇄ unpushed) and refetch. */
+    const handleBaseModeChange = useCallback((mode: GitRangeBaseMode) => {
+        if (mode === baseModeRef.current) return;
+        setBaseMode(mode);
+        baseModeRef.current = mode;
+        void fetchBranchRange(false, mode);
+    }, [setBaseMode, fetchBranchRange]);
 
     // Initial load
     useEffect(() => {
@@ -1160,7 +1190,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
 
     const buildBranchReferencePrompt = useCallback((): string => {
         const branchLabel = branchRangeData?.branchName || branchRangeData?.headRef || branchName || 'current branch';
-        const baseShort = (branchRangeData?.baseRef ?? 'main').replace(/^origin\//, '');
+        const baseShort = (branchRangeData?.baseRef ?? resolvedBaseRef ?? 'main').replace(/^origin\//, '');
         const headShort = branchRangeData?.headRef ?? 'HEAD';
         const commitCount = branchRangeData?.commitCount ?? 0;
         const additions = branchRangeData?.additions ?? 0;
@@ -1177,7 +1207,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
         }
 
         return prompt;
-    }, [branchRangeData, branchName, commits]);
+    }, [branchRangeData, branchName, commits, resolvedBaseRef]);
 
     const handleBranchAskAI = useCallback((mode: 'ask' | 'task') => {
         const initialPrompt = buildBranchReferencePrompt();
@@ -1217,7 +1247,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
         } else if (pendingSkillRun.type === 'multi-commit' && pendingSkillRun.commits?.length) {
             promptContent = `Run the selected skill on these commits:\n<commits>\n${pendingSkillRun.commits.map(c => c.hash).join('\n')}\n</commits>`;
         } else {
-            promptContent = buildBranchRangeSkillPrompt(branchRangeData, branchName);
+            promptContent = buildBranchRangeSkillPrompt(branchRangeData, branchName, resolvedBaseRef);
         }
 
         if (userContext) {
@@ -1263,7 +1293,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
         const skillName = pendingSkillRun.skillName;
         setCommitSkillUsageMap(prev => ({ ...prev, [skillName]: new Date().toISOString() }));
         cloneClient.preferences.recordCommitSkillUsage(workspaceId, skillName).catch(() => {});
-    }, [pendingSkillRun, workspaceId, branchRangeData, branchName, state.workspaces]);
+    }, [pendingSkillRun, workspaceId, branchRangeData, branchName, resolvedBaseRef, state.workspaces]);
 
     const handleSquashCommits = useCallback(async () => {
         if (!contextMenu || contextMenu.type !== 'multi-commit' || !contextMenu.commits?.length) return;
@@ -1834,12 +1864,15 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
             onAllCommentsClick={handleAllBranchCommentsClick}
             onAskAI={() => { void handleBranchAskAI('ask'); }}
             onQueueTask={() => { void handleBranchAskAI('task'); }}
+            baseMode={baseMode}
+            onBaseModeChange={handleBaseModeChange}
         />
     ) : rightPanelView?.type === 'branch-file' ? (
         <FileDiffPanel
             key={rightPanelView.filePath}
             source={createBranchRangeDiffSource(workspaceId, {
                 files: (branchRangeFiles ?? []).map((f: { path: string }) => f.path).sort(),
+                baseMode,
             })}
             workspaceId={workspaceId}
             filePath={rightPanelView.filePath}
@@ -2056,6 +2089,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
                         onBranchContextMenu={handleBranchContextMenu}
                         onBranchRangeSelect={handleBranchRangeSelect}
                         compact={isSplitWorkspace}
+                        baseMode={baseMode}
                     />
                     <WorkingTree
                         workspaceId={workspaceId}

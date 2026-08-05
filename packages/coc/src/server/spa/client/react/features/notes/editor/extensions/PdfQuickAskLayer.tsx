@@ -24,7 +24,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchApi } from '../../../../hooks/useApi';
+import { requestForWorkspace } from '../../../../repos/cloneRegistry';
 import { useQuickAskSidenotesEnabled } from '../../../../hooks/feature-flags/useQuickAskSidenotesEnabled';
 import { getQuickAskSelection } from '../../../chat/quick-ask/quick-ask-selection';
 import { QuickAskPill } from '../../../chat/quick-ask/QuickAskPill';
@@ -178,7 +178,7 @@ export function PdfQuickAskLayer({
         const notePath = notePathGetter?.();
         if (!url || !notePath) {return Promise.resolve(null);}
         const path = `/api/workspaces/${encodeURIComponent(workspaceId)}/notes/paper-annotations/annotation`;
-        return fetchApi(path, {
+        return requestForWorkspace<{ annotation?: { id?: string } }>(workspaceId, path, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -198,7 +198,7 @@ export function PdfQuickAskLayer({
                 },
             }),
         })
-            .then((data: { annotation?: { id?: string } }) => {
+            .then(data => {
                 // Let any mounted read/render layer for this note pick up the new
                 // annotation without prop coupling (it reloads the sidecar).
                 try {
@@ -228,7 +228,7 @@ export function PdfQuickAskLayer({
         const body: { path: string; turns: HistoryTurn[]; root?: string } = { path: notePath, turns };
         const root = rootGetter?.();
         if (root) {body.root = root;}
-        void fetchApi(path, {
+        void requestForWorkspace(workspaceId, path, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
@@ -265,7 +265,7 @@ export function PdfQuickAskLayer({
         // cached arXiv paper with a text sidecar the server can read (AC-04);
         // otherwise the request is byte-for-byte the cheap selection-only path.
         const useFull = wantFullPaper && !!paperPath;
-        fetchApi(path, {
+        requestForWorkspace<{ answer?: string; model?: string }>(workspaceId, path, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -283,7 +283,7 @@ export function PdfQuickAskLayer({
                     : {}),
             }),
         })
-            .then((data: { answer?: string; model?: string }) => {
+            .then(data => {
                 const answer = typeof data?.answer === 'string' ? data.answer : '';
                 if (!answer) {throw new Error('Malformed response');}
                 setOpen(prev => {

@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { Template, TemplateDetail } from '@plusplusoneplusplus/coc-client';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 
 export interface CommitTemplatesController {
     templates: Template[];
@@ -51,7 +51,7 @@ export function useCommitTemplatesController(workspaceId: string): CommitTemplat
 
     const fetchTemplates = useCallback(async () => {
         try {
-            const nextTemplates = await getSpaCocClient().templates.list(workspaceId);
+            const nextTemplates = await getCocClientForWorkspace(workspaceId).templates.list(workspaceId);
             setTemplates(nextTemplates);
         } catch {
             setTemplates([]);
@@ -65,7 +65,7 @@ export function useCommitTemplatesController(workspaceId: string): CommitTemplat
         if (!selectedName) { setDetail(null); return; }
         let cancelled = false;
         setDetailLoading(true);
-        getSpaCocClient().templates.detail(workspaceId, selectedName).then(data => {
+        getCocClientForWorkspace(workspaceId).templates.detail(workspaceId, selectedName).then(data => {
             if (!cancelled) { setDetail(data); setDetailLoading(false); }
         }).catch(() => {
             if (!cancelled) { setDetail(null); setDetailLoading(false); }
@@ -75,7 +75,7 @@ export function useCommitTemplatesController(workspaceId: string): CommitTemplat
 
     const handleDelete = useCallback(async (name: string) => {
         if (!confirm(`Delete template "${name}"?`)) return;
-        await getSpaCocClient().templates.delete(workspaceId, name);
+        await getCocClientForWorkspace(workspaceId).templates.delete(workspaceId, name);
         setSelectedName(prev => (prev === name ? null : prev));
         fetchTemplates();
     }, [workspaceId, fetchTemplates]);

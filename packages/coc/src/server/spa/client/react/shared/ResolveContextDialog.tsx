@@ -11,7 +11,7 @@ import { Dialog } from '../ui/Dialog';
 import { RichTextInput, type RichTextInputHandle } from './RichTextInput';
 import { useSlashCommands } from '../features/chat/hooks/useSlashCommands';
 import { SlashCommandMenu, type SkillItem } from '../features/chat/SlashCommandMenu';
-import { getSpaCocClient } from '../api/cocClient';
+import { getCocClientForWorkspace } from '../repos/cloneRegistry';
 
 const SESSION_KEY = 'coc:skipResolveDialog';
 
@@ -41,7 +41,7 @@ export function ResolveContextDialog({
     useEffect(() => {
         if (!open || !wsId) return;
         let cancelled = false;
-        getSpaCocClient().skills.listAllWorkspace(wsId)
+        getCocClientForWorkspace(wsId).skills.listAllWorkspace(wsId)
             .then((data) => {
                 if (cancelled) return;
                 setSkills(data?.merged ?? []);

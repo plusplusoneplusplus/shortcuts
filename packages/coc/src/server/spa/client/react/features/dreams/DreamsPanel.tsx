@@ -12,7 +12,8 @@ import type {
 } from '@plusplusoneplusplus/coc-client';
 import { DREAM_CONVERSION_ARTIFACT_TYPES } from '@plusplusoneplusplus/coc-client';
 import { Button, Card, Spinner, cn } from '../../ui';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
 import { isDreamsEnabled } from '../../utils/config';
 import { toQueueProcessId } from '../../utils/queue-process-id';
 import { resolveWorkItemOriginId } from '../work-items/workItemOriginScope';
@@ -453,7 +454,7 @@ function NextActionDialog({ card, workspaceId, originId, onClose, onConverted }:
         setSaving(true);
         setError(null);
         try {
-            const client = getSpaCocClient();
+            const client = getCocClientForWorkspace(workspaceId);
             if (actionKind === 'skill-hardening-task') {
                 const prompt = skillPrompt.trim();
                 if (!prompt) throw new Error('Skill-hardening prompt is required.');
@@ -901,7 +902,7 @@ export function DreamsPanel({ workspaceId, originId }: DreamsPanelProps) {
         setPreferencesLoading(true);
         setPreferencesError(null);
         runDreamsRequest<PerRepoPreferences>(
-            () => getSpaCocClient().preferences.getRepo(workspaceId),
+            () => getCocClientForWorkspace(workspaceId).preferences.getRepo(workspaceId),
             'Failed to load dream preferences',
         )
             .then(preferences => {
@@ -927,7 +928,7 @@ export function DreamsPanel({ workspaceId, originId }: DreamsPanelProps) {
         setCardsError(null);
         try {
             const nextCards = await runDreamsRequest(
-                () => getSpaCocClient().dreams.listCards(workspaceId, filterOptions(activeFilter)),
+                () => getCocClientForWorkspace(workspaceId).dreams.listCards(workspaceId, filterOptions(activeFilter)),
                 'Failed to load dream cards',
             );
             setCards(nextCards);
@@ -948,7 +949,7 @@ export function DreamsPanel({ workspaceId, originId }: DreamsPanelProps) {
         setPreferencesError(null);
         try {
             await runDreamsRequest(
-                () => getSpaCocClient().preferences.patchRepo(workspaceId, { dreams: { enabled: true } }),
+                () => getCocClientForWorkspace(workspaceId).preferences.patchRepo(workspaceId, { dreams: { enabled: true } }),
                 'Failed to enable workspace dreams',
             );
             setWorkspaceEnabled(true);
@@ -964,7 +965,7 @@ export function DreamsPanel({ workspaceId, originId }: DreamsPanelProps) {
         setCardsError(null);
         try {
             const result = await runDreamsRequest(
-                () => getSpaCocClient().dreams.runNow(workspaceId),
+                () => getCocClientForWorkspace(workspaceId).dreams.runNow(workspaceId),
                 'Failed to run dreams',
             );
             setLastRun(result);
@@ -997,7 +998,7 @@ export function DreamsPanel({ workspaceId, originId }: DreamsPanelProps) {
         const rationale = window.prompt('Why should this dream be superseded?');
         if (!rationale?.trim()) return;
         void performCardAction(card, 'supersede', () =>
-            getSpaCocClient().dreams.markSuperseded(workspaceId, card.id, { dedupRationale: rationale.trim() }),
+            getCocClientForWorkspace(workspaceId).dreams.markSuperseded(workspaceId, card.id, { dedupRationale: rationale.trim() }),
         ).catch(() => undefined);
     }
 
@@ -1137,12 +1138,12 @@ export function DreamsPanel({ workspaceId, originId }: DreamsPanelProps) {
                                 onApprove={approvedCard => void performCardAction(
                                     approvedCard,
                                     'approve',
-                                    () => getSpaCocClient().dreams.approve(workspaceId, approvedCard.id),
+                                    () => getCocClientForWorkspace(workspaceId).dreams.approve(workspaceId, approvedCard.id),
                                 ).catch(() => undefined)}
                                  onDismiss={dismissedCard => void performCardAction(
                                      dismissedCard,
                                      'dismiss',
-                                     () => getSpaCocClient().dreams.dismiss(workspaceId, dismissedCard.id, { dedupRationale: 'Dismissed from Dreams review.' }),
+                                     () => getCocClientForWorkspace(workspaceId).dreams.dismiss(workspaceId, dismissedCard.id, { dedupRationale: 'Dismissed from Dreams review.' }),
                                  ).catch(() => undefined)}
                                  onConvert={setConvertCard}
                                  onTakeNextAction={setNextActionCard}
@@ -1161,7 +1162,7 @@ export function DreamsPanel({ workspaceId, originId }: DreamsPanelProps) {
                         await performCardAction(
                             convertCard,
                             'convert',
-                            () => getSpaCocClient().dreams.convert(workspaceId, convertCard.id, request),
+                            () => getCocClientForWorkspace(workspaceId).dreams.convert(workspaceId, convertCard.id, request),
                         );
                         setConvertCard(null);
                     }}
@@ -1178,7 +1179,7 @@ export function DreamsPanel({ workspaceId, originId }: DreamsPanelProps) {
                         await performCardAction(
                             nextActionCard,
                             'convert',
-                            () => getSpaCocClient().dreams.convert(workspaceId, nextActionCard.id, request),
+                            () => getCocClientForWorkspace(workspaceId).dreams.convert(workspaceId, nextActionCard.id, request),
                         );
                     }}
                 />

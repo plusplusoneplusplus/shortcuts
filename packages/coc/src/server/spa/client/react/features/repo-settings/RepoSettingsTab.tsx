@@ -17,7 +17,7 @@ import { formatRelativeTime, copyToClipboard } from '../../utils/format';
 import { McpServersPanel } from '../skills/McpServersPanel';
 import type { McpServerEntry, McpServerSources } from '../skills/McpServersPanel';
 import { AgentSkillsPanel } from '../skills/AgentSkillsPanel';
-import type { Skill, SkillDetail } from '../skills/AgentSkillsPanel';
+import { useWorkspaceSkillsController } from '../skills/useWorkspaceSkillsController';
 import { CustomInstructionsPanel } from '../skills/CustomInstructionsPanel';
 import type { InstructionMode } from '../skills/CustomInstructionsPanel';
 import type { SettingsSection } from '../../types/dashboard';
@@ -297,6 +297,13 @@ export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false }:
     const { state, dispatch } = useApp();
     const { repos: allRepos } = useRepos();
     const ws = repo.workspace;
+    const skillsController = useWorkspaceSkillsController({
+        workspaceId,
+        resolveClient: getCocClientForWorkspace,
+        repos: allRepos,
+        loadLinkedRepoPreferences: true,
+        notify: addToast,
+    });
 
     // ── MCP state ────────────────────────────────────────────────────────────
     const [loading, setLoading] = useState(true);
@@ -350,116 +357,6 @@ export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false }:
             setEnabledMcpServers(prevValue);
         } finally {
             setSaving(false);
-        }
-    };
-
-    // ── Skills state ─────────────────────────────────────────────────────────
-    const [skills, setSkills] = useState<Skill[]>([]);
-    const [skillsLoading, setSkillsLoading] = useState(true);
-    const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-    const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
-    const [skillDetail, setSkillDetail] = useState<SkillDetail | null>(null);
-    const [detailLoading, setDetailLoading] = useState(false);
-    const [disabledSkills, setDisabledSkills] = useState<string[]>([]);
-    const [skillToggleSaving, setSkillToggleSaving] = useState(false);
-    const [extraSkillFolders, setExtraSkillFolders] = useState<string[]>([]);
-    const [linkedRepoIds, setLinkedRepoIds] = useState<string[]>([]);
-
-    const fetchSkills = useCallback(async () => {
-        setSkillsLoading(true);
-        try {
-            const skills = await getCocClientForWorkspace(workspaceId).skills.listWorkspace(workspaceId);
-            setSkills(skills);
-        } catch {
-            // ignore
-        } finally {
-            setSkillsLoading(false);
-        }
-    }, [workspaceId]);
-
-    useEffect(() => { fetchSkills(); }, [fetchSkills]);
-
-    useEffect(() => {
-        getCocClientForWorkspace(workspaceId).skills.getWorkspaceConfig(workspaceId)
-            .then((data) => {
-                setDisabledSkills(data.disabledSkills ?? []);
-                setExtraSkillFolders(data.extraSkillFolders ?? []);
-            })
-            .catch(() => {});
-        getCocClientForWorkspace(workspaceId).preferences.getRepo(workspaceId)
-            .then((data) => {
-                setLinkedRepoIds(data.linkedRepoIds ?? []);
-            })
-            .catch(() => {});
-    }, [workspaceId]);
-
-    const handleExpandSkill = useCallback(async (name: string) => {
-        if (expandedSkill === name) {
-            setExpandedSkill(null);
-            setSkillDetail(null);
-            return;
-        }
-        setExpandedSkill(name);
-        setSkillDetail(null);
-        setDetailLoading(true);
-        try {
-            const data = await getCocClientForWorkspace(workspaceId).skills.detailWorkspace(workspaceId, name);
-            setSkillDetail(data.skill || null);
-        } catch {
-            // ignore
-        } finally {
-            setDetailLoading(false);
-        }
-    }, [workspaceId, expandedSkill]);
-
-    const handleDeleteSkill = async (name: string) => {
-        try {
-            await getCocClientForWorkspace(workspaceId).skills.deleteWorkspace(workspaceId, name);
-            addToast(`Deleted skill: ${name}`, 'success');
-            fetchSkills();
-        } catch (err: any) {
-            addToast(getSpaCocClientErrorMessage(err, `Failed to delete ${name}`), 'error');
-        }
-        setDeleteConfirm(null);
-    };
-
-    const handleSkillToggle = async (skillName: string, enabled: boolean) => {
-        const nextDisabled = enabled
-            ? disabledSkills.filter(n => n !== skillName)
-            : [...disabledSkills, skillName];
-        const prevDisabled = disabledSkills;
-        setDisabledSkills(nextDisabled);
-        setSkillToggleSaving(true);
-        try {
-            await getCocClientForWorkspace(workspaceId).skills.updateWorkspaceConfig(workspaceId, { disabledSkills: nextDisabled });
-        } catch (e: any) {
-            setDisabledSkills(prevDisabled);
-            addToast(e?.message ?? 'Failed to save skill config', 'error');
-        } finally {
-            setSkillToggleSaving(false);
-        }
-    };
-
-    const handleExtraSkillFoldersChange = async (nextFolders: string[]) => {
-        const prevFolders = extraSkillFolders;
-        setExtraSkillFolders(nextFolders);
-        try {
-            await getCocClientForWorkspace(workspaceId).skills.updateWorkspaceConfig(workspaceId, { disabledSkills, extraSkillFolders: nextFolders });
-            fetchSkills();
-        } catch (e: any) {
-            setExtraSkillFolders(prevFolders);
-            addToast(e?.message ?? 'Failed to save skill config', 'error');
-        }
-    };
-
-    const handleLinkedRepoIdsChange = async (nextIds: string[]) => {
-        const prevIds = linkedRepoIds;
-        setLinkedRepoIds(nextIds);
-        try {
-            await getCocClientForWorkspace(workspaceId).preferences.patchRepo(workspaceId, { linkedRepoIds: nextIds });
-        } catch (e: any) {
-            setLinkedRepoIds(prevIds);
-            addToast(e?.message ?? 'Failed to save linked repos', 'error');
         }
     };
 
@@ -630,7 +527,7 @@ export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false }:
     }, [visibleGroups, normalizedQuery]);
 
     const enabledMcpCount = availableServers.filter(s => isEnabled(s.name)).length;
-    const installedSkillsCount = skills.length;
+    const installedSkillsCount = skillsController.skills.length;
     const hasInstructions = Object.values(instrContents).some(v => v !== null && v !== '');
     const memoryHint = !isVirtualWorkspace;
     const preferencesHint = !!ws.description || tasksFolder !== null;
@@ -650,7 +547,7 @@ export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false }:
                 </span>
             );
         }
-        if (id === 'skills' && !skillsLoading) {
+        if (id === 'skills' && !skillsController.skillsLoading) {
             return (
                 <span className="ml-auto text-[10px] font-mono px-1.5 py-px rounded text-[#6e7781] dark:text-[#8b949e] bg-[#eaeef2] dark:bg-[#2d2d30]">
                     {installedSkillsCount}
@@ -924,23 +821,8 @@ export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false }:
                         <AgentSkillsPanel
                             workspaceId={workspaceId}
                             workspaceName={ws.name}
-                            skills={skills}
-                            skillsLoading={skillsLoading}
-                            disabledSkills={disabledSkills}
-                            skillToggleSaving={skillToggleSaving}
-                            expandedSkill={expandedSkill}
-                            skillDetail={skillDetail}
-                            detailLoading={detailLoading}
-                            deleteConfirm={deleteConfirm}
-                            onExpandSkill={handleExpandSkill}
-                            onDeleteSkill={handleDeleteSkill}
-                            onSkillToggle={handleSkillToggle}
-                            onSetDeleteConfirm={setDeleteConfirm}
-                            onInstalled={fetchSkills}
-                            extraSkillFolders={extraSkillFolders}
-                            onExtraSkillFoldersChange={handleExtraSkillFoldersChange}
-                            linkedRepoIds={linkedRepoIds}
-                            onLinkedRepoIdsChange={handleLinkedRepoIdsChange}
+                            controller={skillsController}
+                            resolveClient={getCocClientForWorkspace}
                             allRepos={allRepos}
                         />
                     )}

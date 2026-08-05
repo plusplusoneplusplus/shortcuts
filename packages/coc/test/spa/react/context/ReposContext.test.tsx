@@ -81,7 +81,7 @@ function makeWorkspacesResponse(workspaces: any[]) {
 }
 
 function emptyAggregate(): AggregatedRemoteWorkspaces {
-    return { sources: [], workspaces: [], gitInfo: {}, warnings: [] };
+    return { sources: [], workspaces: [], gitInfo: {}, workflows: {}, warnings: [] };
 }
 
 /**
@@ -96,7 +96,7 @@ function remoteAggregate(serverId: string, baseUrl: string, wsId: string, wsName
         false,
         { connection: 'online' },
     );
-    return { sources: [], workspaces: tagged, gitInfo: {}, warnings: [] };
+    return { sources: [], workspaces: tagged, gitInfo: {}, workflows: {}, warnings: [] };
 }
 
 function Wrapper({ children }: { children: ReactNode }) {
@@ -289,6 +289,7 @@ describe('ReposContext', () => {
             sources: [],
             workspaces: [],
             gitInfo: {},
+            workflows: {},
             warnings: ['ubuntu-arm: connection timed out'],
         });
 
@@ -340,6 +341,58 @@ describe('ReposContext', () => {
     });
 
     // ── AC-08: remote-clone selection persistence across reload ──────────────
+    describe('remote workflow lists', () => {
+        function WorkflowCountConsumer() {
+            const { repos, loading } = useRepos();
+            if (loading) return <div data-testid="loading">Loading</div>;
+            return (
+                <div>
+                    {repos.map(r => (
+                        <div key={r.workspace.id} data-testid={`workflows-${r.workspace.id}`}>
+                            {(r.workflows ?? []).map((w: any) => w.name).join('|')}
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+
+        function renderWorkflowCounts() {
+            return render(
+                <Wrapper>
+                    <ReposProvider>
+                        <WorkflowCountConsumer />
+                    </ReposProvider>
+                </Wrapper>
+            );
+        }
+
+        it('carries a remote clone\'s aggregated workflows into its repo row', async () => {
+            repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce([]);
+            const aggregate = remoteAggregate('srv-1', 'http://127.0.0.1:4000', 'remote-ws');
+            aggregate.workflows = { 'remote-ws': [{ name: 'triage', path: 'p/triage.yaml', isValid: true }] };
+            aggregateRemoteWorkspacesMock.mockResolvedValueOnce(aggregate);
+
+            renderWorkflowCounts();
+
+            await waitFor(() => {
+                expect(screen.getByTestId('workflows-remote-ws').textContent).toBe('triage');
+            });
+        });
+
+        it('falls back to an empty list when the aggregate has no workflows for the clone', async () => {
+            repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce([]);
+            aggregateRemoteWorkspacesMock.mockResolvedValueOnce(
+                remoteAggregate('srv-1', 'http://127.0.0.1:4000', 'remote-ws'),
+            );
+
+            renderWorkflowCounts();
+
+            await waitFor(() => {
+                expect(screen.getByTestId('workflows-remote-ws').textContent).toBe('');
+            });
+        });
+    });
+
     describe('remote-clone selection persistence (AC-08)', () => {
         const remoteSelectionId = buildRemoteCloneKey('srv-1', 'remote-ws');
 
@@ -576,7 +629,7 @@ describe('ReposContext', () => {
                 { connection: 'online' },
             );
             repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([]).workspaces);
-            aggregateRemoteWorkspacesMock.mockResolvedValueOnce({ sources: [], workspaces: tagged, gitInfo: {}, warnings: [] });
+            aggregateRemoteWorkspacesMock.mockResolvedValueOnce({ sources: [], workspaces: tagged, gitInfo: {}, workflows: {}, warnings: [] });
             location.hash = '#repos/' + encodeURIComponent(legacyId) + '/chats';
 
             render(<ProviderWithPreselectedRepo repoId={legacyId} />);

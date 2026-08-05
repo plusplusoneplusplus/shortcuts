@@ -164,10 +164,20 @@ export function buildGitReviewPopOutUrl(workspaceId: string, commitHash: string,
     return `/?workspace=${encodeURIComponent(workspaceId)}${cloneParam}#popout/git-review/${encodeURIComponent(commitHash)}`;
 }
 
-/** Build a pop-out URL for branch-range review. */
-export function buildGitBranchRangePopOutUrl(workspaceId: string, cloneBaseUrl?: string): string {
+/**
+ * Build a pop-out URL for branch-range review.
+ *
+ * `baseMode` is only serialized for `upstream` — `default-branch` is the default
+ * on parse, so its URL stays exactly as before.
+ */
+export function buildGitBranchRangePopOutUrl(
+    workspaceId: string,
+    cloneBaseUrl?: string,
+    baseMode?: 'default-branch' | 'upstream',
+): string {
     const cloneParam = cloneBaseUrl ? `&cloneBaseUrl=${encodeURIComponent(cloneBaseUrl)}` : '';
-    return `/?workspace=${encodeURIComponent(workspaceId)}${cloneParam}#popout/git-review/branch-range`;
+    const baseParam = baseMode === 'upstream' ? '&base=upstream' : '';
+    return `/?workspace=${encodeURIComponent(workspaceId)}${cloneParam}${baseParam}#popout/git-review/branch-range`;
 }
 
 /** Build a pop-out URL for PR review. */

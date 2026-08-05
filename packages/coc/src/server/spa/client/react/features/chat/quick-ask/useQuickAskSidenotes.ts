@@ -6,11 +6,17 @@
  * hook is a no-op (stable empty state, no network) when the admin
  * `features.quickAskSidenotes` flag is off or when process/workspace are
  * unknown, so it is always safe to call unconditionally.
+ *
+ * Every call goes through `requestForWorkspace` so it lands on the workspace's
+ * OWN server. The sidenotes routes only validate the id SHAPE — they never look
+ * the workspace up — so a local-origin call for a remote clone answers 200 after
+ * writing `{dataDir}/repos/<remote-id>/chat-sidenotes/...` on the LOCAL disk (and
+ * its POST then fails the local `processExists` check anyway).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuickAskSidenotesEnabled } from '../../../hooks/feature-flags/useQuickAskSidenotesEnabled';
-import { fetchApi } from '../../../hooks/useApi';
+import { requestForWorkspace } from '../../../repos/cloneRegistry';
 import { deriveContext } from './quick-ask-selection';
 import type { ChatSideNote, ClientSideNote, QuickAskSelection } from './types';
 
@@ -66,8 +72,8 @@ export function useQuickAskSidenotes(
         if (hydratedFor.current === key) {return;}
         hydratedFor.current = key;
         let cancelled = false;
-        fetchApi(basePath)
-            .then((data: { sidenotes?: ChatSideNote[] }) => {
+        requestForWorkspace<{ sidenotes?: ChatSideNote[] }>(workspaceId, basePath)
+            .then(data => {
                 if (cancelled || !Array.isArray(data?.sidenotes)) {return;}
                 const ready: ClientSideNote[] = data.sidenotes.map(n => ({ ...n, status: 'ready' as const }));
                 setItems(prev => {
@@ -89,12 +95,12 @@ export function useQuickAskSidenotes(
             contextAfter: draft.anchor.contextAfter,
             question: draft.question,
         });
-        fetchApi(basePath, {
+        requestForWorkspace<{ sidenote?: ChatSideNote }>(workspaceId, basePath, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body,
         })
-            .then((data: { sidenote?: ChatSideNote }) => {
+            .then(data => {
                 if (!data?.sidenote) {throw new Error('Malformed response');}
                 setItems(prev => prev.map(p => (p.id === draft.id ? { ...data.sidenote!, status: 'ready' as const } : p)));
             })
@@ -103,7 +109,7 @@ export function useQuickAskSidenotes(
                     p.id === draft.id ? { ...p, status: 'error' as const, error: 'Lookup failed' } : p
                 )));
             });
-    }, [enabled, basePath]);
+    }, [enabled, basePath, workspaceId]);
 
     const createSidenote = useCallback((selection: QuickAskSelection, question?: string) => {
         if (!enabled) {return;}
@@ -150,7 +156,7 @@ export function useQuickAskSidenotes(
         setItems(prev => prev.filter(p => p.id !== id));
         if (wasPersisted) {
             const delPath = `/api/processes/${encodeURIComponent(processId!)}/sidenotes/${encodeURIComponent(id)}?workspace=${encodeURIComponent(workspaceId!)}`;
-            fetchApi(delPath, { method: 'DELETE' }).catch(() => { /* best-effort */ });
+            requestForWorkspace(workspaceId, delPath, { method: 'DELETE' }).catch(() => { /* best-effort */ });
         }
     }, [enabled, processId, workspaceId]);
 

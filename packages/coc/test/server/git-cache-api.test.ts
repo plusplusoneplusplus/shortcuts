@@ -43,6 +43,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         GitRangeService: class {
             detectCommitRange = mockDetectCommitRange;
             getCurrentBranch = vi.fn().mockResolvedValue('main');
+            resolveBaseRef = vi.fn().mockReturnValue({ baseRef: 'origin/main', baseMode: 'default-branch' });
         },
         BranchService: vi.fn().mockImplementation(function () { return ({
             getBranchStatus: vi.fn(async (...args: any[]) => mockGetBranchStatus(...args)),

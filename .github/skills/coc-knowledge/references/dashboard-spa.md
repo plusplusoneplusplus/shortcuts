@@ -1267,14 +1267,26 @@ globally), and **Globally Disabled Skills** (unchanged; writes send only
 `available → Available`, `missing → Missing`, `no-skills → No skills`,
 `skipped → Skipped`.
 
-The skill-source taxonomy is duplicated across four shapes that must stay in
-sync: server `SkillInfo.source` (`skill-handler.ts`), coc-client `SkillSource`
-(`contracts/skills.ts`), SPA shared `SkillInfo.source` (`shared/SkillDetailPanel.tsx`),
-and `SkillFolderGroup.source` + grouping logic in the Repo Settings → Agent
-Skills tab (`features/skills/AgentSkillsPanel.tsx`). The `global-extra-folder`
-source forms its own NON-removable group (`🌐 <folderPath>`) placed after
-global/repo and before per-repo extras, since those folders are managed globally
-in the Config tab, not per-repo.
+The skill-source taxonomy is defined by the server `SkillInfo.source`
+(`skill-handler.ts`) and coc-client `SkillSource` (`contracts/skills.ts`); SPA
+skill views consume the coc-client `SkillInfo` type. Repo Settings → Agent
+Skills keeps pure source grouping, filtering, source presentation, and
+resolution rows in `features/skills/skills-ui-model.ts`. A
+`global-extra-folder` forms its own non-removable group (`🌐 <folderPath>`)
+placed after global/repo and before per-repo extras because the Config tab owns
+those folders.
+
+`useWorkspaceSkillsController.ts` owns workspace list/config/detail loading,
+toggle/delete mutations, extra folders, linked-repo preferences, optimistic
+rollback, refresh, and visible errors. `RepoSettingsTab` injects
+`getCocClientForWorkspace`; `RepoCopilotTab` injects the default SPA client, so
+both hosts share behavior without losing clone routing. The panel composes
+`SkillsSourceRail`, `SkillsResolutionOrder`, `WorkspaceSkillCard`,
+`SkillFilePreview`, `LinkSkillSourcePopover`, and `InstallSkillsDialog`.
+`useSkillInstallController` uses coc-client scan/install contracts rather than
+local loose shapes. Request generations guard workspace/config/detail loads,
+file previews, batched linked-repo probes, and install loads/scans so late
+responses cannot replace the active workspace, card, source, or repo-list state.
 
 ### Remote-first shell
 
@@ -1450,8 +1462,10 @@ the input:
   list/pin), `ChatDetail` (every `processes`/`queue`/`notes`/`canvases`/`skills`
   call), `RepoSchedulesTab` (schedule CRUD + notes-git status),
   `WorkItemSection` + `WorkItemHierarchyTree` (list/tree/mutations),
-  `WorkItemExecuteDialog` (skill-list load), and
-  `PullRequestsTab` (list/suggestions/roster/classification).
+  `WorkItemExecuteDialog` (skill-list load),
+  `PullRequestsTab` (list/suggestions/roster/classification), and
+  `NativeCliSessionsPanel` (native CLI session list + detail, which read the
+  host machine's session store off `workspace.rootPath`).
 - Non-React services that take a `workspaceId` resolve via
   `getCocClientForWorkspace(workspaceId)`: `explorerApi.*`, `notesApi.*`, and the
   recent-skills hook `useRecentSkills` (per-workspace preferences get/patch).
@@ -1459,8 +1473,13 @@ the input:
   seams inline (not the hook) — `requestForWorkspace(id, url, opts?)` for raw
   fetches, `getCocClientForWorkspace(id)` for typed-client calls: `EnqueueDialog`
   (`/summary` + `/skills/all` loads, the `queue.enqueue` mutation, and
-  `recordSkillUsage`), `RepoSettingsTab` (mcp-config, skills, instructions, repo
-  prefs, processes, description PATCH), `RepoDetail` (work-items badge preview),
+  `recordSkillUsage`), `RepoSettingsTab` (mcp-config, instructions, processes,
+  description PATCH, plus Agent Skills through its injected
+  `useWorkspaceSkillsController` resolver), `useMcpServerInspectorController`
+  (tool discovery, server detail, add/update/migrate/delete, the tools allow-list
+  PUT, and — via `cloneApiBase(workspaceId)` — the raw `mcp-oauth/start` fetch and
+  its status poller, so an OAuth token is stored on the host that owns the repo),
+  `RepoDetail` (work-items badge preview),
   `WorkItemsTab` (commit file list), and `BranchPickerModal` (branch list/switch).
   `EnqueueDialog`'s Workspace dropdown merges local `appState.workspaces` with the
   remote workspaces from `ReposContext.repos` (via `useReposOptional`, filtered by
@@ -1491,6 +1510,30 @@ the input:
   `promoteToRalph` through `getCocClientForWorkspace(workspaceId)`; the
   Activity events stream `useChatSSE` opens its `EventSource` at
   `cloneApiBase(workspaceId)`.
+- The Workflows (pipelines) tab routes through the same seam:
+  `features/workflow/workflow-api.ts` resolves every call (list/content/save/
+  generate/refine/create/delete/run) via `getCocClientForWorkspace(workspaceId)`,
+  and `WorkflowRunHistory` routes its `/queue/history` read the same way — that
+  route answers 200 with an EMPTY list for an unknown `repoId`, so a missed route
+  shows "no runs" rather than failing. Because `runWorkflow` enqueues on the
+  SERVING host, the returned process exists only there: `WorkflowDetailView` takes
+  a `workspaceId` and uses it for the process fetch AND the SSE stream URL (built
+  off the routed client's own `baseUrl`). Remote repo rows get their workflow list
+  from a per-workspace `/summary` fetch in `remoteWorkspaceAggregation`
+  (keyed by workspace id and clone key, empty for offline/cached rows); the
+  active-task list still comes from the LOCAL queue WebSocket.
+- The Workflows (pipelines) tab routes through the same seam:
+  `features/workflow/workflow-api.ts` resolves every call (list/content/save/
+  generate/refine/create/delete/run) via `getCocClientForWorkspace(workspaceId)`,
+  and `WorkflowRunHistory` routes its `/queue/history` read the same way — that
+  route answers 200 with an EMPTY list for an unknown `repoId`, so a missed route
+  shows "no runs" rather than failing. Because `runWorkflow` enqueues on the
+  SERVING host, the returned process exists only there: `WorkflowDetailView` takes
+  a `workspaceId` and uses it for the process fetch AND the SSE stream URL (built
+  off the routed client's own `baseUrl`). Remote repo rows get their workflow list
+  from a per-workspace `/summary` fetch in `remoteWorkspaceAggregation`
+  (keyed by workspace id and clone key, empty for offline/cached rows); the
+  active-task list still comes from the LOCAL queue WebSocket.
 - The GLOBAL `/ws` event stream is mirrored per-clone by `RemoteCloneEventBridge`
   (`features/remote-shell/`, rendered inside `ReposProvider`): it opens one
   `getCocClientFor(baseUrl).events.connect(...)` socket per ONLINE remote clone
@@ -1521,6 +1564,34 @@ the input:
   threads the id from `FileDiffPanel`. Non-React `diffCommentApi`
   (`patchDiffComment`/`deleteDiffCommentById`) routes via
   `getCocClientForWorkspace(wsId)`.
+- The review-chat and preference surfaces of the Git tab route the same way:
+  `useCommitChatBinding` (binding read, queue enqueue, binding create, fresh-chat
+  reset), `usePrChatBinding` (queue enqueue), `useFilesViewMode` (repo
+  preferences get/update), and `CommitDetail`'s `git.commitDiffPath` builder all
+  resolve their client with `getCocClientForWorkspace(workspaceId)`.
+- The notes paper/PDF surface routes the same way. `usePaperAnnotations` (sidecar
+  GET + the resolve and turns PATCHes), `PdfAnnotationsLayer` (follow-up answer,
+  annotation DELETE, `paperAnnotationsExportUrl` export), `PdfQuickAskLayer` and
+  `PdfRegionAskLayer` (annotation POST/PATCH) and `NoteQuickAskLayer` all call
+  `requestForWorkspace(workspaceId, path, opts)`. Two distinct failures motivate
+  this: the paper-annotations routes begin with `resolveWorkspaceOrFail` so a
+  local-origin call hard-404s, while `POST /api/quick-ask/answer?workspace=` only
+  validates the id SHAPE — it never looks the workspace up — so a local-origin
+  call runs the model on the WRONG host with the wrong workspace's model config
+  and returns 200. `NoteEditorIO`'s `imageApiUrl` / `localImageApiUrl` /
+  `ingestPaper` build their URLs from a `notesApiBase(workspaceId)` helper
+  (`cloneApiBase` when remote, the literal `/api` when local) because those URLs
+  are consumed by `<img src>` / `data-pdf-url` / a raw `fetch`. `noteMarkdown`'s
+  `rewriteImageSrcToRelative` accepts an optional `scheme://host` prefix on every
+  pattern so a remote clone's origin is never baked into the persisted `.md`.
+
+- Chat Quick Ask side-notes route the same way: `useQuickAskSidenotes` sends its
+  hydrate GET, lookup POST and DELETE through `requestForWorkspace(workspaceId,
+  path, opts)`. The `/api/processes/:id/sidenotes` routes only call
+  `isValidWorkspaceId` — no workspace resolution — so a local-origin call for a
+  remote clone answered 200 while the manager created a real
+  `{dataDir}/repos/<remote-id>/chat-sidenotes/<sha256(processId)>.json` tree on the
+  LOCAL disk (and the POST's local `processExists` check then failed anyway).
 
 No-local-fallthrough guarantee: a selected remote clone's clone key, or its bare
 workspace id when unique / active-disambiguated, resolves to its `baseUrl`, so
@@ -1738,7 +1809,7 @@ The split Local/Remote tracker views do not show the legacy per-item preview/imp
 
 ## coc-client Integration
 
-The SPA consumes `@plusplusoneplusplus/coc-client` for typed REST transport. Domain clients: admin, processes, queue, schedules, tasks, notes, workflows, wiki, memory, memoryV2, skills, preferences, seen-state, work-items, agentProviders, git. The git domain includes commit/diff/branch helpers, operation history, patch-transfer export/apply methods used by cross-clone cherry-pick flows, and the worktree-execution `listWorktrees` / `cleanupWorktree` helpers. The Git tab treats async git operation responses with `jobId` as pending work, polling operation history until terminal status before refreshing; failed Drop Commit jobs render the tab-level action-error banner. Pull, rebase autosquash, drop commit, and reorder share the `useGitOperationPoller` hook (`features/git/hooks/`), which owns each poll's `setInterval` in a ref and clears it on unmount and repo switch, captures the workspace id plus a generation token per `start()` to drop stale ticks, and routes terminal jobs through per-operation `onSuccess`/`onFailure`/`onMissing`/`isComplete` callbacks (lifecycle in the hook, refresh/error semantics in the caller); pull additionally keeps its `pulling` flag and exposes the active job id to the WebSocket `git-changed` handler. The same-clone commit context menu opens `BranchPickerModal` as a local-branch selector for `Cherry-pick to branch…`, sends selected commit hashes oldest-first through `client.git.cherryPick(..., { hashes, targetBranch })`, shows server dirty/conflict errors in the tab action banner, refreshes on success, and keeps the user on the original branch after the server switches back. When enabled, both the single-commit and multi-commit Git context menus open `CrossCloneCherryPickModal` with a `commits[]` (multi-commit selections are ordered oldest-first via `orderOldestFirst`), which lists current-CoC registered workspaces plus online registered remote-CoC workspaces using typed workspace/git-info clients, groups targets by normalized remote URL, recommends same-remote clones, labels each target with its CoC server, requires explicit cross-remote confirmation, and requires explicit dirty-target stash opt-in. The modal exports the whole range as one concatenated `git am` mailbox and reports the applied count ("applied k of N", or a partial count with the conflicting commit on a mid-range conflict). Local targets call `git.exportCommitPatches` + `git.applyCommitPatch` directly; remote targets call the initiating server's `servers.cherryPickTransfer` orchestrator with `source.commitHashes`.
+The SPA consumes `@plusplusoneplusplus/coc-client` for typed REST transport. Domain clients: admin, processes, queue, schedules, tasks, notes, workflows, wiki, memory, memoryV2, skills, preferences, seen-state, work-items, agentProviders, git. The git domain includes commit/diff/branch helpers, operation history, patch-transfer export/apply methods used by cross-clone cherry-pick flows, and the worktree-execution `listWorktrees` / `cleanupWorktree` helpers. All four branch-range helpers (`getBranchRange`, `listBranchRangeFiles`, `getBranchRangeDiff`, `getBranchRangeFileDiff`) accept a `base` query of `default-branch` (default) or `upstream`. The Git tab's branch-range view exposes this as a **vs main | unpushed** toggle in `BranchCommitStrip`, labeled with the server-resolved `baseRef`; `upstream` diffs against `@{upstream}` so only unpushed commits show. `useBranchRangeBaseMode` remembers the choice per workspace in localStorage, `useBranchRangeCache` keys entries by `workspaceId:baseMode` (an explicit Refresh drops every mode for the workspace), and `createBranchRangeDiffSource` carries the mode into its file-diff URLs and cache key. When the branch has no upstream the server falls back to the default branch and sets `baseModeFallback`, which the strip surfaces as a one-line note. Branch-range pop-out URLs serialize the mode as `&base=upstream`; the default mode is omitted. The Git tab treats async git operation responses with `jobId` as pending work, polling operation history until terminal status before refreshing; failed Drop Commit jobs render the tab-level action-error banner. Pull, rebase autosquash, drop commit, and reorder share the `useGitOperationPoller` hook (`features/git/hooks/`), which owns each poll's `setInterval` in a ref and clears it on unmount and repo switch, captures the workspace id plus a generation token per `start()` to drop stale ticks, and routes terminal jobs through per-operation `onSuccess`/`onFailure`/`onMissing`/`isComplete` callbacks (lifecycle in the hook, refresh/error semantics in the caller); pull additionally keeps its `pulling` flag and exposes the active job id to the WebSocket `git-changed` handler. The same-clone commit context menu opens `BranchPickerModal` as a local-branch selector for `Cherry-pick to branch…`, sends selected commit hashes oldest-first through `client.git.cherryPick(..., { hashes, targetBranch })`, shows server dirty/conflict errors in the tab action banner, refreshes on success, and keeps the user on the original branch after the server switches back. When enabled, both the single-commit and multi-commit Git context menus open `CrossCloneCherryPickModal` with a `commits[]` (multi-commit selections are ordered oldest-first via `orderOldestFirst`), which lists current-CoC registered workspaces plus online registered remote-CoC workspaces using typed workspace/git-info clients, groups targets by normalized remote URL, recommends same-remote clones, labels each target with its CoC server, requires explicit cross-remote confirmation, and requires explicit dirty-target stash opt-in. The modal exports the whole range as one concatenated `git am` mailbox and reports the applied count ("applied k of N", or a partial count with the conflicting commit on a mid-range conflict). Local targets call `git.exportCommitPatches` + `git.applyCommitPatch` directly; remote targets call the initiating server's `servers.cherryPickTransfer` orchestrator with `source.commitHashes`.
 
 Local React hooks (`fetchApi`, `useWebSocket`, `seenStateApi`) wrap the client for React state management.
 

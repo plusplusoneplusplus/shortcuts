@@ -1,6 +1,6 @@
 /**
  * Tests for shared SkillDetailPanel — loading state, null detail, and rendering all fields.
- * Regression coverage to ensure the shared component works for both AgentSkillsPanel and SkillsInstalledPanel.
+ * Regression coverage for the compact global installed-skills surface.
  */
 
 import { describe, it, expect } from 'vitest';
