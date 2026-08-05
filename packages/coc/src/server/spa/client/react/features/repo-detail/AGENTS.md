@@ -40,6 +40,15 @@ toggle, delete, and extra-folder behavior in that controller instead of adding
 tab-local copies. `AgentSkillsPanel` and its focused child components are the
 visual layer.
 
+## Clone routing
+
+`RepoDetail.tsx` runs its workspace-scoped calls (work-items badge, queue seed,
+Resume Queue) through `getCocClientForWorkspace(ws.id)` so a remote clone hits its
+own server. `/chat/launch-terminal` deliberately stays on the local-origin
+`fetchApi` — it spawns a terminal on whichever machine runs the server. The queue
+store is still fed by the LOCAL websocket only, so remote-sourced rows can be
+overwritten by a local `REPO_QUEUE_UPDATED`; per-clone queue WS fan-in is the fix.
+
 ## Tests
 
 `test/spa/react/repos/RepoTabStrip*.test.tsx` cover the component (tabs, overflow,

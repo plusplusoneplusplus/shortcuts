@@ -53,6 +53,15 @@ describe('remote-clone routing sweep', () => {
         expect(repoDetail).not.toContain('fetchApi(`/workspaces/${encodeURIComponent(ws.id)}/work-items');
     });
 
+    it('RepoDetail routes the queue seed and Resume Queue to the clone', () => {
+        expect(repoDetail).toContain("getCocClientForWorkspace(ws.id).queue.list({ repoId: ws.id })");
+        expect(repoDetail).toContain("getCocClientForWorkspace(ws.id).queue.resume({ repoId: ws.id })");
+        // GET /queue?repoId= answers 200 with an EMPTY queue for an id the local
+        // server doesn't know, so a remote clone's queue looked permanently idle.
+        expect(repoDetail).not.toContain("fetchApi('/queue?repoId=");
+        expect(repoDetail).not.toContain("fetchApi('/queue/resume?repoId=");
+    });
+
     it('WorkItemsTab routes the commit file list to the clone', () => {
         expect(workItemsTab).toContain('requestForWorkspace');
         expect(workItemsTab).toContain('/git/commits/');
