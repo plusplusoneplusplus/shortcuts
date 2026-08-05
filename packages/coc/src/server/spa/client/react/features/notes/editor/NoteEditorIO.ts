@@ -7,6 +7,7 @@
  */
 
 import { notesApi } from '../notesApi';
+import { cloneApiBase, lookupCloneBaseUrl } from '../../../repos/cloneRegistry';
 import type { MarkdownDocumentIO } from '../../../shared/markdown-document/MarkdownDocumentIO';
 
 // ── Contract ────────────────────────────────────────────────────────────────
@@ -14,6 +15,19 @@ import type { MarkdownDocumentIO } from '../../../shared/markdown-document/Markd
 export type NoteEditorIO = MarkdownDocumentIO;
 
 // ── Default (notes-backed) implementation ───────────────────────────────────
+
+/**
+ * API base for the notes byte-serving routes (`image`, `local-image`,
+ * `paper-ingest`) of a workspace's clone. These URLs are handed to `<img src>` /
+ * `data-pdf-url` / a raw `fetch`, so they must be absolute for a REMOTE clone —
+ * otherwise the page origin serves them and a 404 leaves nothing to annotate.
+ *
+ * A LOCAL workspace keeps the literal `/api` prefix these URLs have always had
+ * (rather than `getApiBase()`), so local behavior is byte-for-byte unchanged.
+ */
+function notesApiBase(workspaceId: string): string {
+    return lookupCloneBaseUrl(workspaceId) ? cloneApiBase(workspaceId) : '/api';
+}
 
 export const defaultNoteEditorIO: NoteEditorIO = {
     loadContent: (workspaceId, path, root?) =>
@@ -23,14 +37,14 @@ export const defaultNoteEditorIO: NoteEditorIO = {
     uploadImage: (workspaceId, fileName, dataUrl, root?) =>
         notesApi.uploadImage(workspaceId, fileName, dataUrl, root),
     imageApiUrl: (workspaceId, relativePath, root?) => {
-        const base = `/api/workspaces/${encodeURIComponent(workspaceId)}/notes/image?path=${encodeURIComponent(relativePath)}`;
+        const base = `${notesApiBase(workspaceId)}/workspaces/${encodeURIComponent(workspaceId)}/notes/image?path=${encodeURIComponent(relativePath)}`;
         return root ? `${base}&root=${encodeURIComponent(root)}` : base;
     },
     localImageApiUrl: (workspaceId, absolutePath) =>
-        `/api/workspaces/${encodeURIComponent(workspaceId)}/notes/local-image?path=${encodeURIComponent(absolutePath)}`,
+        `${notesApiBase(workspaceId)}/workspaces/${encodeURIComponent(workspaceId)}/notes/local-image?path=${encodeURIComponent(absolutePath)}`,
     ingestPaper: async (workspaceId, url, root) => {
         const res = await fetch(
-            `/api/workspaces/${encodeURIComponent(workspaceId)}/notes/paper-ingest`,
+            `${notesApiBase(workspaceId)}/workspaces/${encodeURIComponent(workspaceId)}/notes/paper-ingest`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

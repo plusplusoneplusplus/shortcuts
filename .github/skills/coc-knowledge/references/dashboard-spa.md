@@ -1569,6 +1569,21 @@ the input:
   reset), `usePrChatBinding` (queue enqueue), `useFilesViewMode` (repo
   preferences get/update), and `CommitDetail`'s `git.commitDiffPath` builder all
   resolve their client with `getCocClientForWorkspace(workspaceId)`.
+- The notes paper/PDF surface routes the same way. `usePaperAnnotations` (sidecar
+  GET + the resolve and turns PATCHes), `PdfAnnotationsLayer` (follow-up answer,
+  annotation DELETE, `paperAnnotationsExportUrl` export), `PdfQuickAskLayer` and
+  `PdfRegionAskLayer` (annotation POST/PATCH) and `NoteQuickAskLayer` all call
+  `requestForWorkspace(workspaceId, path, opts)`. Two distinct failures motivate
+  this: the paper-annotations routes begin with `resolveWorkspaceOrFail` so a
+  local-origin call hard-404s, while `POST /api/quick-ask/answer?workspace=` only
+  validates the id SHAPE — it never looks the workspace up — so a local-origin
+  call runs the model on the WRONG host with the wrong workspace's model config
+  and returns 200. `NoteEditorIO`'s `imageApiUrl` / `localImageApiUrl` /
+  `ingestPaper` build their URLs from a `notesApiBase(workspaceId)` helper
+  (`cloneApiBase` when remote, the literal `/api` when local) because those URLs
+  are consumed by `<img src>` / `data-pdf-url` / a raw `fetch`. `noteMarkdown`'s
+  `rewriteImageSrcToRelative` accepts an optional `scheme://host` prefix on every
+  pattern so a remote clone's origin is never baked into the persisted `.md`.
 
 No-local-fallthrough guarantee: a selected remote clone's clone key, or its bare
 workspace id when unique / active-disambiguated, resolves to its `baseUrl`, so

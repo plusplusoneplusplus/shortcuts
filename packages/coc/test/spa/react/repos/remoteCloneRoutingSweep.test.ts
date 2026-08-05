@@ -177,6 +177,48 @@ describe('remote-clone routing sweep', () => {
         expect(dialog).not.toContain('getSpaCocClient');
     });
 
+    it('the notes paper-annotation layers route every sidecar read/write to the clone', () => {
+        for (const rel of [
+            'features/notes/editor/extensions/usePaperAnnotations.ts',
+            'features/notes/editor/extensions/PdfAnnotationsLayer.tsx',
+            'features/notes/editor/extensions/PdfQuickAskLayer.tsx',
+            'features/notes/editor/extensions/PdfRegionAskLayer.tsx',
+        ]) {
+            const src = read(rel);
+            expect(src).toContain('requestForWorkspace');
+            // Every paper-annotations route starts with resolveWorkspaceOrFail, so
+            // the local-origin client hard-404s a remote clone's note.
+            expect(src).not.toContain('fetchApi');
+        }
+    });
+
+    it('the quick-ask layers run the AI invocation on the workspace\'s own host', () => {
+        for (const rel of [
+            'features/notes/editor/extensions/NoteQuickAskLayer.tsx',
+            'features/notes/editor/extensions/PdfQuickAskLayer.tsx',
+            'features/notes/editor/extensions/PdfRegionAskLayer.tsx',
+            'features/notes/editor/extensions/PdfAnnotationsLayer.tsx',
+        ]) {
+            const src = read(rel);
+            expect(src).toContain('/api/quick-ask/answer?workspace=');
+            expect(src).toContain('requestForWorkspace');
+            // POST /api/quick-ask/answer only validates the id SHAPE — it never
+            // looks the workspace up — so a local-origin call answers 200 having
+            // run the model on the WRONG host with the wrong model config.
+            expect(src).not.toContain('fetchApi');
+        }
+    });
+
+    it('NoteEditorIO builds the PDF/image byte URLs against the clone', () => {
+        const io = read('features/notes/editor/NoteEditorIO.ts');
+        expect(io).toContain('cloneApiBase(workspaceId)');
+        expect(io).toContain('${notesApiBase(workspaceId)}/workspaces/');
+        // No bare `/api/workspaces/...` literals: those are handed to <img src> /
+        // data-pdf-url / a raw fetch, so a remote clone's PDF 404'd from the page
+        // origin and there was nothing to annotate.
+        expect(io).not.toContain('`/api/workspaces/');
+    });
+
     it('ModalJobAiControls reads and writes the last-provider repo preference on the clone', () => {
         const controls = read('shared/ModalJobAiControls.tsx');
         expect(controls).toContain('getCocClientForWorkspace(workspaceId).preferences.getRepo(workspaceId)');
