@@ -25,13 +25,12 @@ const mockTemplatesClient = vi.hoisted(() => ({
     replicate: vi.fn(),
 }));
 
-const mockFetchApi = vi.fn().mockResolvedValue({ templates: [] });
-vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({ templates: mockTemplatesClient }),
-}));
-
-vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: (...args: any[]) => mockFetchApi(...args),
+const mockRequest = vi.fn().mockResolvedValue({ templates: [] });
+// The commit-template surfaces route every workspace-scoped call through the clone
+// registry so a REMOTE clone hits its own server (see remoteCloneRoutingSweep).
+vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    getCocClientForWorkspace: () => ({ templates: mockTemplatesClient }),
+    requestForWorkspace: (...args: any[]) => mockRequest(...args),
 }));
 
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
@@ -406,8 +405,8 @@ describe('commit-templates shared module — source structure', () => {
     });
 
     it('reads template list and detail through the typed client (controller)', () => {
-        expect(CONTROLLER_SOURCE).toContain('getSpaCocClient().templates.list');
-        expect(CONTROLLER_SOURCE).toContain('getSpaCocClient().templates.detail');
+        expect(CONTROLLER_SOURCE).toContain('getCocClientForWorkspace(workspaceId).templates.list');
+        expect(CONTROLLER_SOURCE).toContain('getCocClientForWorkspace(workspaceId).templates.detail');
     });
 
     it('listens for templates-changed window event in the controller', () => {
@@ -415,7 +414,7 @@ describe('commit-templates shared module — source structure', () => {
     });
 
     it('deletes through client.templates with a confirm guard in the controller', () => {
-        expect(CONTROLLER_SOURCE).toContain('getSpaCocClient().templates.delete');
+        expect(CONTROLLER_SOURCE).toContain('getCocClientForWorkspace(workspaceId).templates.delete');
         expect(CONTROLLER_SOURCE).toContain('confirm(');
     });
 
@@ -426,9 +425,9 @@ describe('commit-templates shared module — source structure', () => {
     });
 
     it('supports template editing, creation, and replication through client.templates', () => {
-        expect(COMPONENTS_SOURCE).toContain('getSpaCocClient().templates.update');
-        expect(COMPONENTS_SOURCE).toContain('getSpaCocClient().templates.create');
-        expect(COMPONENTS_SOURCE).toContain('getSpaCocClient().templates.replicate');
+        expect(COMPONENTS_SOURCE).toContain('getCocClientForWorkspace(workspaceId).templates.update');
+        expect(COMPONENTS_SOURCE).toContain('getCocClientForWorkspace(workspaceId).templates.create');
+        expect(COMPONENTS_SOURCE).toContain('getCocClientForWorkspace(workspaceId).templates.replicate');
     });
 
     it('uses encodeURIComponent for commit validation calls', () => {

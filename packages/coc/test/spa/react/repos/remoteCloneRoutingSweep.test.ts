@@ -136,6 +136,30 @@ describe('remote-clone routing sweep', () => {
         expect(panel).toContain('getSpaCocClientErrorMessage');
     });
 
+    it('useCommitTemplatesController routes list/detail/delete to the clone', () => {
+        const controller = read('features/templates/commit-templates/useCommitTemplatesController.ts');
+        expect(controller).toContain('getCocClientForWorkspace(workspaceId).templates.list(workspaceId)');
+        expect(controller).toContain('getCocClientForWorkspace(workspaceId).templates.detail(workspaceId, selectedName)');
+        expect(controller).toContain('getCocClientForWorkspace(workspaceId).templates.delete(workspaceId, name)');
+        // Every templates route calls resolveWorkspaceOrFail, so the local singleton
+        // hard-404s a remote clone — and the list 404 is swallowed into an empty tab.
+        expect(controller).not.toContain('getSpaCocClient');
+        expect(controller).not.toContain('fetchApi');
+    });
+
+    it('the commit-template components route create/update/replicate and commit validation to the clone', () => {
+        const components = read('features/templates/commit-templates/components.tsx');
+        expect(components).toContain('getCocClientForWorkspace(workspaceId).templates.update(workspaceId');
+        expect(components).toContain('getCocClientForWorkspace(workspaceId).templates.create(workspaceId');
+        expect(components).toContain('getCocClientForWorkspace(workspaceId).templates.replicate(workspaceId');
+        // Commit-hash validation on blur: local-origin fetch always said
+        // "Commit not found or not reachable" for a remote clone.
+        expect(components).toContain('requestForWorkspace');
+        expect(components).toContain('/git/commits/');
+        expect(components).not.toContain('getSpaCocClient');
+        expect(components).not.toContain('fetchApi');
+    });
+
     it('useRalphSessionView routes the per-session journal read to the clone', () => {
         const ralphView = read('features/chat/useRalphSessionView.ts');
         expect(ralphView).toContain('getCocClientForWorkspace(workspaceId)');
