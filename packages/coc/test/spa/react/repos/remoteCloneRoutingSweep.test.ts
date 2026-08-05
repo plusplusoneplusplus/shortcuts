@@ -103,6 +103,16 @@ describe('remote-clone routing sweep', () => {
         expect(detail).not.toContain('fetchApi');
     });
 
+    it('WorkItemPlanSection enqueues the single-comment AI resolve on the clone', () => {
+        const planSection = read('features/work-items/WorkItemPlanSection.tsx');
+        expect(planSection).toContain('requestForWorkspace');
+        expect(planSection).toContain('/batch-resolve');
+        // POST /comments/:wsId/:taskPath/batch-resolve only validates the id SHAPE,
+        // so a local-origin call answered 200 having enqueued the AI resolve task
+        // on the WRONG host under the remote workspace's id.
+        expect(planSection).not.toContain('fetchApi');
+    });
+
     it('the branch-range comment views read through the clone-aware helper', () => {
         const overview = read('features/git/branches/BranchRangeOverview.tsx');
         expect(overview).toContain('listDiffCommentsForRange(workspaceId, range.baseRef, range.headRef)');

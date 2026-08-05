@@ -15,8 +15,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Button, cn } from '../../ui';
 import { Dialog } from '../../ui/Dialog';
-import { fetchApi } from '../../hooks/useApi';
 import { useCocClient } from '../../repos/cloneRouting';
+import { requestForWorkspace } from '../../repos/cloneRegistry';
 import { formatRelativeTime } from '../../utils/format';
 import { useMarkdownPreview } from '../../hooks/ui/useMarkdownPreview';
 import { SourceEditor } from '../../shared/SourceEditor';
@@ -303,7 +303,11 @@ export function WorkItemPlanSection({
     const handleResolveSingleComment = useCallback(async (commentId: string) => {
         const taskPath = planCommentPath(workItemId);
         try {
-            await fetchApi(
+            // Route to the workspace's OWN server: the batch-resolve route only
+            // validates the id SHAPE, so a local-origin call for a remote clone
+            // answers 200 having enqueued the AI task on the WRONG host.
+            await requestForWorkspace(
+                workspaceId,
                 `/comments/${encodeURIComponent(workspaceId)}/${encodeURIComponent(taskPath)}/batch-resolve`,
                 {
                     method: 'POST',
