@@ -141,6 +141,18 @@ all have their own `references/*.md`.
   list rather than 404: a missed route here shows "no comments" instead of
   failing. Call the helper; do not call `getSpaCocClient().git.listDiffComments`
   or `fetchApi('/diff-comments/...')` from components.
+- **Shared dialogs that take a workspace id** (`ResolveContextDialog`,
+  `ModalJobAiControls`, `MarkdownReviewDialog`) route through
+  `getCocClientForWorkspace(wsId)` — or, for reveal-in-explorer, through
+  `explorerApi`. Repo preferences (`/workspaces/:id/preferences`) only validate
+  the id, so a missed route silently reads and writes the WRONG server's
+  preference file instead of 404ing.
+- **File-path hover previews** (`react/shared/file-path/file-path-preview.ts`)
+  take the workspace from the link's own `data-ws-id` and route the preview to
+  that clone. The `rootPath`-prefix match over the workspace list is a fallback
+  for links without one and sees the LOCAL server only — on its own it resolves a
+  remote clone to `workspaces[0]`, an arbitrary unrelated repo. The preview cache
+  key is workspace-scoped for the same reason.
 - **Workspace MCP inspector state** lives in
   `react/features/skills/useMcpServerInspectorController.ts`. Unlike the skills
   controller it resolves its own transport from the `workspaceId` it already

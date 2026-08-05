@@ -168,4 +168,42 @@ describe('remote-clone routing sweep', () => {
         // session ("Ralph session not found").
         expect(ralphView).not.toContain('getSpaCocClient');
     });
+
+    it('ResolveContextDialog loads the /skill autocomplete list from the clone', () => {
+        const dialog = read('shared/ResolveContextDialog.tsx');
+        expect(dialog).toContain('getCocClientForWorkspace(wsId).skills.listAllWorkspace(wsId)');
+        // GET /workspaces/:id/skills/all does an inline workspace lookup + 404, and
+        // the dialog swallows the error — a remote clone silently showed zero skills.
+        expect(dialog).not.toContain('getSpaCocClient');
+    });
+
+    it('ModalJobAiControls reads and writes the last-provider repo preference on the clone', () => {
+        const controls = read('shared/ModalJobAiControls.tsx');
+        expect(controls).toContain('getCocClientForWorkspace(workspaceId).preferences.getRepo(workspaceId)');
+        expect(controls).toContain('getCocClientForWorkspace(workspaceId).preferences.patchRepo(workspaceId');
+        // /workspaces/:id/preferences is keyed by id only (no workspace resolve), so
+        // the local singleton answered 200 from the WRONG server's preference file
+        // and the provider selector reset to the fallback on every open.
+        expect(controls).not.toContain('getSpaCocClient');
+    });
+
+    it('MarkdownReviewDialog reveals through the clone-aware explorerApi', () => {
+        const dialog = read('processes/MarkdownReviewDialog.tsx');
+        expect(dialog).toContain('explorerApi.reveal(wsId, filePath)');
+        // GET /repos/:id/reveal resolves the repo and 404s an unknown id.
+        expect(dialog).not.toContain('getSpaCocClient');
+    });
+
+    it('file-path hover previews use the link\'s own workspace id, routed to its clone', () => {
+        const preview = read('shared/file-path/file-path-preview.ts');
+        expect(preview).toContain('getCocClientForWorkspace(wsId).tasks.previewWorkspaceFile(wsId, path)');
+        // The link's data-ws-id wins over the local-only rootPath heuristic, which
+        // for a remote clone previewed an arbitrary unrelated local repo via
+        // `workspaces[0]?.id`.
+        expect(preview).toContain('fetchPreview(fullPath, linkWsId)');
+        expect(preview).toContain('const wsId = knownWsId || resolved;');
+        // The workspace list itself is a local-server call by design (it only
+        // backs the fallback heuristic), so getSpaCocClient stays for that one.
+        expect(preview).not.toContain('getSpaCocClient().tasks');
+    });
 });

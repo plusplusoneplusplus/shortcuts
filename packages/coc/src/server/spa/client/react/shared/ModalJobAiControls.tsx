@@ -8,7 +8,7 @@
  * state into each dialog.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getSpaCocClient } from '../api/cocClient';
+import { getCocClientForWorkspace } from '../repos/cloneRegistry';
 import { useAgentProviders } from '../hooks/useAgentProviders';
 import { useDefaultModelForMode } from '../hooks/useDefaultModelForMode';
 import type { ChatModeForModel } from '../hooks/useDefaultModelForMode';
@@ -239,7 +239,7 @@ export function useModalJobAiSelection({
             setProviderState(fallbackProvider);
             return;
         }
-        getSpaCocClient().preferences.getRepo(workspaceId)
+        getCocClientForWorkspace(workspaceId).preferences.getRepo(workspaceId)
             .then((prefs: unknown) => {
                 if (cancelled) {
                     return;
@@ -312,7 +312,7 @@ export function useModalJobAiSelection({
         setDirty(true);
         setProviderState(nextProvider);
         if (workspaceId) {
-            getSpaCocClient().preferences.patchRepo(workspaceId, { lastChatProvider: nextProvider })
+            getCocClientForWorkspace(workspaceId).preferences.patchRepo(workspaceId, { lastChatProvider: nextProvider })
                 .catch(() => { /* non-fatal */ });
         }
     };

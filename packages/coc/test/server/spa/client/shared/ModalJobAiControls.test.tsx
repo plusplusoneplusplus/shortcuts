@@ -20,6 +20,19 @@ const mocks = vi.hoisted(() => ({
     patchRepo: vi.fn(),
 }));
 
+const mockClient = vi.hoisted(() => () => ({
+    agentProviders: {
+        list: mocks.listProviders,
+        listModels: mocks.listModels,
+        getReasoningEfforts: mocks.getReasoningEfforts,
+        getEffortTiers: mocks.getEffortTiers,
+    },
+    preferences: {
+        getRepo: mocks.getRepo,
+        patchRepo: mocks.patchRepo,
+    },
+}));
+
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     getDefaultProvider: () => mocks.defaultProvider,
     getConfiguredDefaultProvider: () => mocks.configuredDefaultProvider,
@@ -28,19 +41,15 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isEffortLevelsEnabled: () => mocks.effortLevelsEnabled,
 }));
 
+// The repo-preference calls go through `getCocClientForWorkspace`, whose real
+// implementation falls back to `getSpaCocClient()` for a local (unregistered)
+// workspace id — so cloneRegistry stays real here and its extra cocClient
+// imports must exist on this mock or the module fails to load.
 vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({
-        agentProviders: {
-            list: mocks.listProviders,
-            listModels: mocks.listModels,
-            getReasoningEfforts: mocks.getReasoningEfforts,
-            getEffortTiers: mocks.getEffortTiers,
-        },
-        preferences: {
-            getRepo: mocks.getRepo,
-            patchRepo: mocks.patchRepo,
-        },
-    }),
+    getSpaCocClient: mockClient,
+    getCocClientFor: mockClient,
+    toSpaCocRequestOptions: (options: unknown) => options,
+    translateSpaCocClientError: (err: unknown) => err,
     getSpaCocClientErrorMessage: (err: unknown, fallback: string) =>
         err instanceof Error ? err.message : fallback,
 }));
