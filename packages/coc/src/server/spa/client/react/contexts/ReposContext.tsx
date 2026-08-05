@@ -70,20 +70,23 @@ export interface ReposContextValue {
 const ReposContext = createContext<ReposContextValue | null>(null);
 
 /**
- * Build RepoData entries for aggregated remote workspaces. git-info comes from
- * the per-server batch already fetched by the aggregator (online sources); offline
- * (cached) sources have no git-info, so those rows fall back to the workspace's
- * own isGitRepo flag. Remote rows are never re-sent to the local git-info batch.
+ * Build RepoData entries for aggregated remote workspaces. git-info and the
+ * workflow list come from the per-server data already fetched by the aggregator
+ * (online sources); offline (cached) sources have neither, so those rows fall
+ * back to the workspace's own isGitRepo flag and an empty workflow list. Remote
+ * rows are never re-sent to the local git-info batch.
  */
 function buildRemoteRepoData(aggregate: AggregatedRemoteWorkspaces): RepoData[] {
     return aggregate.workspaces.map((ws): RepoData => {
-        const git = aggregate.gitInfo[getWorkspaceSelectionId(ws)] ?? aggregate.gitInfo[ws.id];
+        const selectionId = getWorkspaceSelectionId(ws);
+        const git = aggregate.gitInfo[selectionId] ?? aggregate.gitInfo[ws.id];
+        const workflows = aggregate.workflows?.[selectionId] ?? aggregate.workflows?.[ws.id] ?? [];
         return {
             workspace: ws,
             gitInfo: git ?? { isGitRepo: !!ws.isGitRepo, branch: null, dirty: false },
             // Offline (cached) rows never resolve git-info; online rows already have it.
             gitInfoLoading: false,
-            workflows: [],
+            workflows: workflows as any[],
             stats: { success: 0, failed: 0, running: 0 },
             taskCount: 0,
         };
@@ -164,6 +167,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
                     sources: [],
                     workspaces: [],
                     gitInfo: {},
+                    workflows: {},
                     warnings: [
                         error instanceof Error
                             ? error.message

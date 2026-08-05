@@ -94,6 +94,13 @@ export type RemoteWorkspaceInfo = WorkspaceInfo & {
 /** Per-server git-info results keyed by remote workspace id. */
 export type RemoteGitInfoMap = Record<string, GitInfoResponse | null>;
 
+/**
+ * Per-server workflow (pipeline) lists keyed by remote workspace id. Read from
+ * each workspace's `/summary` on its own server — the same source the local rows
+ * use — so the Workflows tab has something to list for a remote clone.
+ */
+export type RemoteWorkflowsMap = Record<string, unknown[]>;
+
 export interface RemoteWorkspaceSource {
     serverId: string;
     serverLabel: string;
@@ -103,6 +110,8 @@ export interface RemoteWorkspaceSource {
     workspaces: RemoteWorkspaceInfo[];
     /** git-info keyed by remote workspace id; empty for offline (cached) sources. */
     gitInfo: RemoteGitInfoMap;
+    /** Workflow lists keyed by remote workspace id; empty for offline sources. */
+    workflows: RemoteWorkflowsMap;
 }
 
 export interface AggregatedRemoteWorkspaces {
@@ -111,6 +120,8 @@ export interface AggregatedRemoteWorkspaces {
     workspaces: RemoteWorkspaceInfo[];
     /** Merged git-info across all online sources, keyed by remote workspace id. */
     gitInfo: RemoteGitInfoMap;
+    /** Merged workflow lists across all online sources, keyed by workspace id and clone key. */
+    workflows: RemoteWorkflowsMap;
     /** Non-fatal per-server problems (e.g. fetch failures) for surfacing/logging. */
     warnings: string[];
 }
@@ -119,6 +130,7 @@ const EMPTY_AGGREGATE: AggregatedRemoteWorkspaces = {
     sources: [],
     workspaces: [],
     gitInfo: {},
+    workflows: {},
     warnings: [],
 };
 
@@ -233,6 +245,7 @@ function offlineSourceFromCache(
         online: false,
         workspaces: tagRemoteWorkspaces(server, baseUrl, cached.workspaces, true, { connection }),
         gitInfo: {},
+        workflows: {},
     };
 }
 
@@ -254,6 +267,19 @@ async function loadOnlineSource(
         const gitInfo: RemoteGitInfoMap = visible.length > 0
             ? (await remoteClient.workspaces.gitInfoBatch(visible.map(ws => ws.id))).results ?? {}
             : {};
+
+        // Workflow lists come from each workspace's own `/summary`, mirroring what
+        // the local rows do. Per-workspace failures degrade to an empty list rather
+        // than dropping the whole server.
+        const workflows: RemoteWorkflowsMap = {};
+        await Promise.all(visible.map(async ws => {
+            try {
+                const summary = await remoteClient.workspaces.summary(ws.id);
+                workflows[ws.id] = Array.isArray(summary?.workflows) ? summary.workflows : [];
+            } catch {
+                workflows[ws.id] = [];
+            }
+        }));
 
         // Remote queue status (AC-05) for the status dot. Resilient: a queue
         // fetch failure must never drop the server — fall back to an idle map.
@@ -278,6 +304,7 @@ async function loadOnlineSource(
                     queueByWorkspace,
                 }),
                 gitInfo,
+                workflows,
             },
         };
     } catch (error) {
@@ -330,14 +357,20 @@ export async function aggregateRemoteWorkspaces(): Promise<AggregatedRemoteWorks
 
     const workspaces: RemoteWorkspaceInfo[] = [];
     const gitInfo: RemoteGitInfoMap = {};
+    const workflows: RemoteWorkflowsMap = {};
     for (const source of sources) {
         workspaces.push(...source.workspaces);
         for (const workspace of source.workspaces) {
+            const cloneKey = workspace.remote.cloneKey ?? buildRemoteCloneKey(workspace.remote.serverId, workspace.id);
+            if (Object.prototype.hasOwnProperty.call(source.workflows, workspace.id)) {
+                const list = source.workflows[workspace.id] ?? [];
+                workflows[cloneKey] = list;
+                workflows[workspace.id] = list;
+            }
             if (!Object.prototype.hasOwnProperty.call(source.gitInfo, workspace.id)) {
                 continue;
             }
             const info = source.gitInfo[workspace.id] ?? null;
-            const cloneKey = workspace.remote.cloneKey ?? buildRemoteCloneKey(workspace.remote.serverId, workspace.id);
             gitInfo[cloneKey] = info;
             gitInfo[workspace.id] = info;
         }
@@ -355,5 +388,5 @@ export async function aggregateRemoteWorkspaces(): Promise<AggregatedRemoteWorks
         baseUrl: ws.baseUrl,
     })));
 
-    return { sources, workspaces, gitInfo, warnings };
+    return { sources, workspaces, gitInfo, workflows, warnings };
 }
