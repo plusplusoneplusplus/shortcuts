@@ -141,6 +141,15 @@ all have their own `references/*.md`.
   list rather than 404: a missed route here shows "no comments" instead of
   failing. Call the helper; do not call `getSpaCocClient().git.listDiffComments`
   or `fetchApi('/diff-comments/...')` from components.
+- **Workflow (pipelines) REST** lives in `react/features/workflow/workflow-api.ts`
+  and is clone-routed through `getCocClientForWorkspace(workspaceId)` for all
+  eight calls; `WorkflowRunHistory` routes its `/queue/history` read the same way
+  (that route returns 200 with an EMPTY list for an unknown `repoId`, so a missed
+  route reads as "no runs"). `runWorkflow` enqueues on the SERVING host, so the
+  returned process only exists there — `WorkflowDetailView` takes a `workspaceId`
+  and uses it for both the process fetch and the SSE stream URL. Remote rows get
+  their workflow list from the per-server `/summary` fetch in
+  `remoteWorkspaceAggregation`; the local queue WebSocket stays local.
 - **Shared dialogs that take a workspace id** (`ResolveContextDialog`,
   `ModalJobAiControls`, `MarkdownReviewDialog`) route through
   `getCocClientForWorkspace(wsId)` — or, for reveal-in-explorer, through

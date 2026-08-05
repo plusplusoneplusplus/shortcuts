@@ -1510,6 +1510,30 @@ the input:
   `promoteToRalph` through `getCocClientForWorkspace(workspaceId)`; the
   Activity events stream `useChatSSE` opens its `EventSource` at
   `cloneApiBase(workspaceId)`.
+- The Workflows (pipelines) tab routes through the same seam:
+  `features/workflow/workflow-api.ts` resolves every call (list/content/save/
+  generate/refine/create/delete/run) via `getCocClientForWorkspace(workspaceId)`,
+  and `WorkflowRunHistory` routes its `/queue/history` read the same way — that
+  route answers 200 with an EMPTY list for an unknown `repoId`, so a missed route
+  shows "no runs" rather than failing. Because `runWorkflow` enqueues on the
+  SERVING host, the returned process exists only there: `WorkflowDetailView` takes
+  a `workspaceId` and uses it for the process fetch AND the SSE stream URL (built
+  off the routed client's own `baseUrl`). Remote repo rows get their workflow list
+  from a per-workspace `/summary` fetch in `remoteWorkspaceAggregation`
+  (keyed by workspace id and clone key, empty for offline/cached rows); the
+  active-task list still comes from the LOCAL queue WebSocket.
+- The Workflows (pipelines) tab routes through the same seam:
+  `features/workflow/workflow-api.ts` resolves every call (list/content/save/
+  generate/refine/create/delete/run) via `getCocClientForWorkspace(workspaceId)`,
+  and `WorkflowRunHistory` routes its `/queue/history` read the same way — that
+  route answers 200 with an EMPTY list for an unknown `repoId`, so a missed route
+  shows "no runs" rather than failing. Because `runWorkflow` enqueues on the
+  SERVING host, the returned process exists only there: `WorkflowDetailView` takes
+  a `workspaceId` and uses it for the process fetch AND the SSE stream URL (built
+  off the routed client's own `baseUrl`). Remote repo rows get their workflow list
+  from a per-workspace `/summary` fetch in `remoteWorkspaceAggregation`
+  (keyed by workspace id and clone key, empty for offline/cached rows); the
+  active-task list still comes from the LOCAL queue WebSocket.
 - The GLOBAL `/ws` event stream is mirrored per-clone by `RemoteCloneEventBridge`
   (`features/remote-shell/`, rendered inside `ReposProvider`): it opens one
   `getCocClientFor(baseUrl).events.connect(...)` socket per ONLINE remote clone
