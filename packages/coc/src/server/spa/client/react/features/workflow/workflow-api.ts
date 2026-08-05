@@ -1,9 +1,14 @@
 /**
  * Typed API client for workflow CRUD endpoints.
- * Delegates to the coc-client WorkflowClient via getSpaCocClient().
+ *
+ * Every call here is workspace-scoped, so it resolves its client through
+ * `getCocClientForWorkspace(workspaceId)`: a remote clone's workflow REST goes to
+ * that clone's server, a local id misses the registry and falls back to the
+ * default origin client (unchanged local behavior).
  */
 
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
 import type {
     WorkflowDefinition,
     GenerateWorkflowResponse,
@@ -15,7 +20,7 @@ export type RefineResult = GenerateWorkflowResponse;
 
 export async function fetchWorkflows(workspaceId: string): Promise<WorkflowDefinition[]> {
     try {
-        return await getSpaCocClient().workflow.list(workspaceId);
+        return await getCocClientForWorkspace(workspaceId).workflow.list(workspaceId);
     } catch (err) {
         throw new Error(getSpaCocClientErrorMessage(err, 'Failed to fetch workflows'));
     }
@@ -26,7 +31,7 @@ export async function fetchWorkflowContent(
     pipelineName: string
 ): Promise<{ content: string; path: string }> {
     try {
-        return await getSpaCocClient().workflow.content(workspaceId, pipelineName);
+        return await getCocClientForWorkspace(workspaceId).workflow.content(workspaceId, pipelineName);
     } catch (err) {
         throw new Error(getSpaCocClientErrorMessage(err, 'Failed to fetch workflow content'));
     }
@@ -38,7 +43,7 @@ export async function saveWorkflowContent(
     content: string
 ): Promise<void> {
     try {
-        await getSpaCocClient().workflow.saveContent(workspaceId, pipelineName, content);
+        await getCocClientForWorkspace(workspaceId).workflow.saveContent(workspaceId, pipelineName, content);
     } catch (err) {
         throw new Error(getSpaCocClientErrorMessage(err, 'Failed to save workflow'));
     }
@@ -51,7 +56,7 @@ export async function generateWorkflow(
     signal?: AbortSignal
 ): Promise<GenerateResult> {
     try {
-        return await getSpaCocClient().workflow.generate(
+        return await getCocClientForWorkspace(workspaceId).workflow.generate(
             workspaceId,
             { description, name },
             { signal },
@@ -70,7 +75,7 @@ export async function refineWorkflow(
     signal?: AbortSignal
 ): Promise<RefineResult> {
     try {
-        return await getSpaCocClient().workflow.refine(
+        return await getCocClientForWorkspace(workspaceId).workflow.refine(
             workspaceId,
             { instruction, currentYaml, model },
             { signal },
@@ -87,7 +92,7 @@ export async function createWorkflow(
     content?: string
 ): Promise<void> {
     try {
-        await getSpaCocClient().workflow.create(workspaceId, { name, template, content });
+        await getCocClientForWorkspace(workspaceId).workflow.create(workspaceId, { name, template, content });
     } catch (err) {
         throw new Error(getSpaCocClientErrorMessage(err, 'Failed to create workflow'));
     }
@@ -98,7 +103,7 @@ export async function deleteWorkflow(
     pipelineName: string
 ): Promise<void> {
     try {
-        await getSpaCocClient().workflow.delete(workspaceId, pipelineName);
+        await getCocClientForWorkspace(workspaceId).workflow.delete(workspaceId, pipelineName);
     } catch (err) {
         throw new Error(getSpaCocClientErrorMessage(err, 'Failed to delete workflow'));
     }
@@ -109,7 +114,7 @@ export async function runWorkflow(
     pipelineName: string
 ): Promise<RunWorkflowResponse> {
     try {
-        return await getSpaCocClient().workflow.run(workspaceId, pipelineName);
+        return await getCocClientForWorkspace(workspaceId).workflow.run(workspaceId, pipelineName);
     } catch (err) {
         throw new Error(getSpaCocClientErrorMessage(err, 'Failed to run workflow'));
     }

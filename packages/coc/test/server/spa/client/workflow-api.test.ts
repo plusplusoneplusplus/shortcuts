@@ -10,6 +10,10 @@ import {
     runWorkflow,
 } from '../../../../src/server/spa/client/react/features/workflow/workflow-api';
 import { resetSpaCocClientForTests } from '../../../../src/server/spa/client/react/api/cocClient';
+import {
+    registerCloneBaseUrls,
+    resetCloneRegistryForTests,
+} from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isContainerMode: () => false,
@@ -29,11 +33,13 @@ describe('workflow-api (cocClient migration)', () => {
 
     beforeEach(() => {
         resetSpaCocClientForTests();
+        resetCloneRegistryForTests();
         globalThis.fetch = mockFetch as unknown as typeof fetch;
     });
 
     afterEach(() => {
         resetSpaCocClientForTests();
+        resetCloneRegistryForTests();
         vi.resetAllMocks();
     });
 
@@ -246,6 +252,77 @@ describe('workflow-api (cocClient migration)', () => {
             ));
 
             await expect(runWorkflow('ws-1', 'missing')).rejects.toThrow('Workflow not found');
+        });
+    });
+
+    // Every workflow endpoint is workspace-scoped and 404s on the wrong server, so
+    // a registered remote clone must send all of them to that clone's baseUrl.
+    describe('remote clone routing', () => {
+        const REMOTE_WS = 'ws-remote';
+        const REMOTE_URL = 'http://127.0.0.1:4000';
+
+        beforeEach(() => {
+            registerCloneBaseUrls([{ workspaceId: REMOTE_WS, baseUrl: REMOTE_URL }]);
+        });
+
+        function lastUrl(): string {
+            return mockFetch.mock.calls[0][0] as string;
+        }
+
+        it('routes fetchWorkflows to the remote server', async () => {
+            mockFetch.mockResolvedValueOnce(jsonResponse({ workflows: [] }));
+            await fetchWorkflows(REMOTE_WS);
+            expect(lastUrl()).toBe(`${REMOTE_URL}/api/workspaces/ws-remote/summary`);
+        });
+
+        it('routes fetchWorkflowContent to the remote server', async () => {
+            mockFetch.mockResolvedValueOnce(jsonResponse({ content: '', path: '' }));
+            await fetchWorkflowContent(REMOTE_WS, 'wf-1');
+            expect(lastUrl()).toBe(`${REMOTE_URL}/api/workspaces/ws-remote/workflows/wf-1/content`);
+        });
+
+        it('routes saveWorkflowContent to the remote server', async () => {
+            mockFetch.mockResolvedValueOnce(jsonResponse({ path: '/p' }));
+            await saveWorkflowContent(REMOTE_WS, 'wf-1', 'name: updated');
+            expect(lastUrl()).toBe(`${REMOTE_URL}/api/workspaces/ws-remote/workflows/wf-1/content`);
+            expect(mockFetch.mock.calls[0][1].method).toBe('PATCH');
+        });
+
+        it('routes generateWorkflow to the remote server', async () => {
+            mockFetch.mockResolvedValueOnce(jsonResponse({ yaml: '', valid: true }));
+            await generateWorkflow(REMOTE_WS, undefined, 'do something');
+            expect(lastUrl()).toBe(`${REMOTE_URL}/api/workspaces/ws-remote/workflows/generate`);
+        });
+
+        it('routes refineWorkflow to the remote server', async () => {
+            mockFetch.mockResolvedValueOnce(jsonResponse({ yaml: '', valid: true }));
+            await refineWorkflow(REMOTE_WS, 'wf-1', 'Add logging', 'name: old');
+            expect(lastUrl()).toBe(`${REMOTE_URL}/api/workspaces/ws-remote/workflows/refine`);
+        });
+
+        it('routes createWorkflow to the remote server', async () => {
+            mockFetch.mockResolvedValueOnce(jsonResponse({ name: 'wf', path: '/p', template: '' }));
+            await createWorkflow(REMOTE_WS, 'wf');
+            expect(lastUrl()).toBe(`${REMOTE_URL}/api/workspaces/ws-remote/workflows`);
+        });
+
+        it('routes deleteWorkflow to the remote server', async () => {
+            mockFetch.mockResolvedValueOnce(jsonResponse({ deleted: 'wf-1' }));
+            await deleteWorkflow(REMOTE_WS, 'wf-1');
+            expect(lastUrl()).toBe(`${REMOTE_URL}/api/workspaces/ws-remote/workflows/wf-1`);
+            expect(mockFetch.mock.calls[0][1].method).toBe('DELETE');
+        });
+
+        it('routes runWorkflow to the remote server', async () => {
+            mockFetch.mockResolvedValueOnce(jsonResponse({ taskId: 't1', pipelineName: 'wf-1' }));
+            await runWorkflow(REMOTE_WS, 'wf-1');
+            expect(lastUrl()).toBe(`${REMOTE_URL}/api/workspaces/ws-remote/workflows/wf-1/run`);
+        });
+
+        it('leaves an unregistered (local) workspace on the page-origin client', async () => {
+            mockFetch.mockResolvedValueOnce(jsonResponse({ workflows: [] }));
+            await fetchWorkflows('ws-1');
+            expect(lastUrl()).toBe('/api/workspaces/ws-1/summary');
         });
     });
 });

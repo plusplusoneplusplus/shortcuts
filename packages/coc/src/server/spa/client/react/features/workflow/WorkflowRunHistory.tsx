@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Badge } from '../../ui';
-import { getSpaCocClient } from '../../api/cocClient';
+import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
 import { useQueue } from '../../contexts/QueueContext';
 import { formatDuration, statusIcon, formatRelativeTime } from '../../utils/format';
 import { toQueueProcessId } from '../../utils/queue-process-id';
@@ -26,7 +26,11 @@ export function WorkflowRunHistory({ workspaceId, pipelineName, refreshKey }: Wo
 
     const fetchHistory = useCallback(async () => {
         try {
-            const data = await getSpaCocClient().workflow.runHistory(workspaceId, pipelineName);
+            // Routed per clone: /queue/history answers 200 with an empty list for an
+            // unknown repoId, so an unrouted call would silently show "no runs" for a
+            // remote clone instead of failing. The active-task list below still comes
+            // from the LOCAL queue WebSocket.
+            const data = await getCocClientForWorkspace(workspaceId).workflow.runHistory(workspaceId, pipelineName);
             setHistory(data.history || []);
         } catch {
             setHistory([]);

@@ -880,7 +880,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                 {(wasVisited('cli-sessions') || wasVisited('copilot-sessions')) && <NativeCliSessionsPanel key={ws.id} workspaceId={ws.id} />}
                             </div>
                         )}
-                        {activeSubTab === 'workflow' && state.selectedWorkflowProcessId && <WorkflowDetailView key={state.selectedWorkflowProcessId} processId={state.selectedWorkflowProcessId} />}
+                        {activeSubTab === 'workflow' && state.selectedWorkflowProcessId && <WorkflowDetailView key={state.selectedWorkflowProcessId} processId={state.selectedWorkflowProcessId} workspaceId={ws.id} />}
                     </div>
                 )}
             </div>

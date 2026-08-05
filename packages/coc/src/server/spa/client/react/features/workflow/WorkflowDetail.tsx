@@ -263,7 +263,7 @@ export function WorkflowDetail({ workspaceId, pipeline, onClose, onDeleted, onRu
                                 />
                             )}
                             {effectiveTab === 'run' && selectedRunProcessId && (
-                                <WorkflowDetailView processId={selectedRunProcessId} />
+                                <WorkflowDetailView processId={selectedRunProcessId} workspaceId={workspaceId} />
                             )}
                         </>
                     ) : (
