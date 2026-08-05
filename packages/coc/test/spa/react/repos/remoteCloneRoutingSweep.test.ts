@@ -121,6 +121,21 @@ describe('remote-clone routing sweep', () => {
         expect(api).not.toContain('getSpaCocClient');
     });
 
+    it('DreamsPanel routes the dream store, repo preferences, and next-action fan-out to the clone', () => {
+        const panel = read('features/dreams/DreamsPanel.tsx');
+        expect(panel).toContain('getCocClientForWorkspace(workspaceId).dreams.');
+        expect(panel).toContain('getCocClientForWorkspace(workspaceId).preferences.getRepo(workspaceId)');
+        expect(panel).toContain('getCocClientForWorkspace(workspaceId).preferences.patchRepo(workspaceId');
+        // NextActionDialog's queue/notes/memory/work-item fan-out is workspace-scoped too.
+        expect(panel).toContain('const client = getCocClientForWorkspace(workspaceId);');
+        // Neither the dreams routes nor /workspaces/:id/preferences resolve the
+        // workspace, so the local singleton answered 200 with an EMPTY card list
+        // and wrote the "enable dreams" preference on the wrong server.
+        expect(panel).not.toContain('getSpaCocClient()');
+        // getSpaCocClientErrorMessage stays.
+        expect(panel).toContain('getSpaCocClientErrorMessage');
+    });
+
     it('useRalphSessionView routes the per-session journal read to the clone', () => {
         const ralphView = read('features/chat/useRalphSessionView.ts');
         expect(ralphView).toContain('getCocClientForWorkspace(workspaceId)');

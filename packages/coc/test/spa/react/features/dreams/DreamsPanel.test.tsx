@@ -24,8 +24,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isDreamsEnabled: mocks.isDreamsEnabled,
 }));
 
-vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({
+const makeClient = vi.hoisted(() => () => ({
         preferences: {
             getRepo: mocks.getRepo,
             patchRepo: mocks.patchRepo,
@@ -52,9 +51,18 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
             getForOrigin: mocks.getWorkItem,
             updateForOrigin: mocks.updateWorkItem,
         },
-    }),
+    }));
+
+vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => makeClient(),
     getSpaCocClientErrorMessage: (error: unknown, fallback: string) =>
         error instanceof Error ? error.message : fallback,
+}));
+
+// DreamsPanel routes every workspace-scoped call through the clone registry so a
+// remote clone hits its own server; locally this resolves to the same client.
+vi.mock('../../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    getCocClientForWorkspace: () => makeClient(),
 }));
 
 import { DreamsPanel } from '../../../../../src/server/spa/client/react/features/dreams/DreamsPanel';
