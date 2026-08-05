@@ -18,7 +18,7 @@ import type {
     NativeCliSessionProviderId,
     NativeCliSessionsUnavailableReason,
 } from '@plusplusoneplusplus/coc-client';
-import { getSpaCocClient } from '../../api/cocClient';
+import { useCocClient } from '../../repos/cloneRouting';
 import { Button, Spinner, cn } from '../../ui';
 import { useNativeCliSessionsEnabled } from '../../hooks/feature-flags/useNativeCliSessionsEnabled';
 import { buildNativeCliSessionHash, parseNativeCliSessionDeepLink } from '../../layout/Router';
@@ -131,6 +131,10 @@ function ExternalLabel({ provider, storePath }: { provider: NativeCliSessionProv
 
 export function NativeCliSessionsPanel({ workspaceId }: NativeCliSessionsPanelProps) {
     const enabled = useNativeCliSessionsEnabled();
+    // Native CLI session logs live on the disk of the machine hosting the repo,
+    // so both reads must go to the clone's own server (the default client for a
+    // local workspace).
+    const client = useCocClient(workspaceId);
     const [provider, setProvider] = useState<NativeCliSessionProviderId>('copilot');
 
     const [filterDraft, setFilterDraft] = useState<ListFilters>(EMPTY_FILTERS);
@@ -150,7 +154,7 @@ export function NativeCliSessionsPanel({ workspaceId }: NativeCliSessionsPanelPr
         setListLoading(true);
         setListError(null);
         try {
-            const response = await getSpaCocClient().nativeCliSessions.list(workspaceId, {
+            const response = await client.nativeCliSessions.list(workspaceId, {
                 provider,
                 q: filters.q || undefined,
                 sessionId: filters.sessionId || undefined,
@@ -166,7 +170,7 @@ export function NativeCliSessionsPanel({ workspaceId }: NativeCliSessionsPanelPr
         } finally {
             setListLoading(false);
         }
-    }, [enabled, workspaceId, provider, filters, offset]);
+    }, [enabled, client, workspaceId, provider, filters, offset]);
 
     useEffect(() => { void loadList(); }, [loadList]);
 
@@ -225,7 +229,7 @@ export function NativeCliSessionsPanel({ workspaceId }: NativeCliSessionsPanelPr
         let cancelled = false;
         setDetailLoading(true);
         setDetailError(null);
-        getSpaCocClient().nativeCliSessions.get(workspaceId, selectedSessionId, provider)
+        client.nativeCliSessions.get(workspaceId, selectedSessionId, provider)
             .then(response => {
                 if (cancelled) return;
                 if (!response.enabled || response.available === false || !response.session) {
@@ -245,7 +249,7 @@ export function NativeCliSessionsPanel({ workspaceId }: NativeCliSessionsPanelPr
             })
             .finally(() => { if (!cancelled) setDetailLoading(false); });
         return () => { cancelled = true; };
-    }, [enabled, workspaceId, provider, selectedSessionId]);
+    }, [enabled, client, workspaceId, provider, selectedSessionId]);
 
     if (!enabled) {
         return (

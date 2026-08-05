@@ -1462,8 +1462,10 @@ the input:
   list/pin), `ChatDetail` (every `processes`/`queue`/`notes`/`canvases`/`skills`
   call), `RepoSchedulesTab` (schedule CRUD + notes-git status),
   `WorkItemSection` + `WorkItemHierarchyTree` (list/tree/mutations),
-  `WorkItemExecuteDialog` (skill-list load), and
-  `PullRequestsTab` (list/suggestions/roster/classification).
+  `WorkItemExecuteDialog` (skill-list load),
+  `PullRequestsTab` (list/suggestions/roster/classification), and
+  `NativeCliSessionsPanel` (native CLI session list + detail, which read the
+  host machine's session store off `workspace.rootPath`).
 - Non-React services that take a `workspaceId` resolve via
   `getCocClientForWorkspace(workspaceId)`: `explorerApi.*`, `notesApi.*`, and the
   recent-skills hook `useRecentSkills` (per-workspace preferences get/patch).
@@ -1473,7 +1475,11 @@ the input:
   (`/summary` + `/skills/all` loads, the `queue.enqueue` mutation, and
   `recordSkillUsage`), `RepoSettingsTab` (mcp-config, instructions, processes,
   description PATCH, plus Agent Skills through its injected
-  `useWorkspaceSkillsController` resolver), `RepoDetail` (work-items badge preview),
+  `useWorkspaceSkillsController` resolver), `useMcpServerInspectorController`
+  (tool discovery, server detail, add/update/migrate/delete, the tools allow-list
+  PUT, and — via `cloneApiBase(workspaceId)` — the raw `mcp-oauth/start` fetch and
+  its status poller, so an OAuth token is stored on the host that owns the repo),
+  `RepoDetail` (work-items badge preview),
   `WorkItemsTab` (commit file list), and `BranchPickerModal` (branch list/switch).
   `EnqueueDialog`'s Workspace dropdown merges local `appState.workspaces` with the
   remote workspaces from `ReposContext.repos` (via `useReposOptional`, filtered by

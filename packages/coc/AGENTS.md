@@ -134,6 +134,14 @@ all have their own `references/*.md`.
   keep install requests typed through `useSkillInstallController`, and guard
   list/config/detail/file-preview/repo-probe/install responses so late work from
   an old workspace, source, card, or repo list cannot update the active view.
+- **Workspace MCP inspector state** lives in
+  `react/features/skills/useMcpServerInspectorController.ts`. Unlike the skills
+  controller it resolves its own transport from the `workspaceId` it already
+  receives — `getCocClientForWorkspace(workspaceId)` for the `mcp-config` REST
+  calls and `cloneApiBase(startedWs)` for the raw `mcp-oauth/start` fetch plus
+  its status poller — because those routes read the host machine's disk via
+  `ws.rootPath` and store credentials on the owning server. `McpServersPanel`
+  takes no client-resolver prop; do not add one.
 - **Adding an admin-exposed config setting** is ONE definition entry in
   `src/config/admin-setting-definitions.ts` (value spec, default, runtime,
   optional `runtimeFlag` + Features-card `ui` metadata) plus the
