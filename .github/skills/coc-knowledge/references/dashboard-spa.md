@@ -1585,6 +1585,14 @@ the input:
   `rewriteImageSrcToRelative` accepts an optional `scheme://host` prefix on every
   pattern so a remote clone's origin is never baked into the persisted `.md`.
 
+- Chat Quick Ask side-notes route the same way: `useQuickAskSidenotes` sends its
+  hydrate GET, lookup POST and DELETE through `requestForWorkspace(workspaceId,
+  path, opts)`. The `/api/processes/:id/sidenotes` routes only call
+  `isValidWorkspaceId` — no workspace resolution — so a local-origin call for a
+  remote clone answered 200 while the manager created a real
+  `{dataDir}/repos/<remote-id>/chat-sidenotes/<sha256(processId)>.json` tree on the
+  LOCAL disk (and the POST's local `processExists` check then failed anyway).
+
 No-local-fallthrough guarantee: a selected remote clone's clone key, or its bare
 workspace id when unique / active-disambiguated, resolves to its `baseUrl`, so
 its clone-scoped REST/WS never hit the default local client; an OFFLINE-selected

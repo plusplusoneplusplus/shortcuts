@@ -209,6 +209,17 @@ describe('remote-clone routing sweep', () => {
         }
     });
 
+    it('the chat quick-ask side-notes hook reads/writes on the workspace\'s own host', () => {
+        const hook = read('features/chat/quick-ask/useQuickAskSidenotes.ts');
+        expect(hook).toContain('requestForWorkspace<{ sidenotes?: ChatSideNote[] }>(workspaceId, basePath)');
+        expect(hook).toContain('requestForWorkspace<{ sidenote?: ChatSideNote }>(workspaceId, basePath, {');
+        expect(hook).toContain('requestForWorkspace(workspaceId, delPath, { method: \'DELETE\' })');
+        // The sidenotes routes only validate the id SHAPE, so a local-origin call
+        // for a remote clone answered 200 after creating
+        // `{dataDir}/repos/<remote-id>/chat-sidenotes/` on the WRONG host.
+        expect(hook).not.toContain('fetchApi');
+    });
+
     it('NoteEditorIO builds the PDF/image byte URLs against the clone', () => {
         const io = read('features/notes/editor/NoteEditorIO.ts');
         expect(io).toContain('cloneApiBase(workspaceId)');

@@ -336,7 +336,10 @@ all have their own `references/*.md`.
   is repo-scoped at `~/.coc/repos/<workspaceId>/chat-sidenotes/<sha256(processId)>.json`
   via `getRepoDataPath` (never a new top-level `~/.coc` dir). Model resolves
   `defaultModels.quickAsk` > `defaultModel` > CLI default. SPA components live in
-  `.../react/features/chat/quick-ask/`.
+  `.../react/features/chat/quick-ask/`; `useQuickAskSidenotes` issues all three
+  calls via `requestForWorkspace(workspaceId, …)` so a remote clone's side-notes
+  are stored on its own server — the routes only check the id shape, so a
+  local-origin call would write the file under the LOCAL data dir.
 - **Kusto query canvas** (`kusto.enabled`, default off) is a
   `type: 'kusto'` canvas branch on the generic canvas infrastructure. Its full
   state (KQL query, cluster/database, typed columns+rows capped at

@@ -1,13 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 
-const { fetchApiMock } = vi.hoisted(() => ({ fetchApiMock: vi.fn() }));
+const { requestMock } = vi.hoisted(() => ({ requestMock: vi.fn() }));
 
 vi.mock('../../../src/server/spa/client/react/hooks/feature-flags/useQuickAskSidenotesEnabled', () => ({
     useQuickAskSidenotesEnabled: () => true,
 }));
-vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
-    fetchApi: fetchApiMock,
+// The hook routes every call through the clone registry so a remote clone's
+// side-notes are written on ITS server, not the local data dir.
+vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    requestForWorkspace: requestMock,
 }));
 
 import { useQuickAskSidenotes } from '../../../src/server/spa/client/react/features/chat/quick-ask/useQuickAskSidenotes';
@@ -26,35 +28,35 @@ function selection(overrides: Partial<QuickAskSelection> = {}): QuickAskSelectio
 
 describe('useQuickAskSidenotes', () => {
     beforeEach(() => {
-        fetchApiMock.mockReset();
+        requestMock.mockReset();
     });
 
     it('is a no-op when process/workspace are unknown', async () => {
-        fetchApiMock.mockResolvedValue({ sidenotes: [] });
+        requestMock.mockResolvedValue({ sidenotes: [] });
         const { result } = renderHook(() => useQuickAskSidenotes(undefined, undefined));
         expect(result.current.enabled).toBe(false);
         act(() => result.current.createSidenote(selection()));
         expect(result.current.items).toEqual([]);
-        expect(fetchApiMock).not.toHaveBeenCalled();
+        expect(requestMock).not.toHaveBeenCalled();
     });
 
     it('hydrates persisted side-notes on mount', async () => {
-        fetchApiMock.mockResolvedValueOnce({
+        requestMock.mockResolvedValueOnce({
             sidenotes: [{ id: 's1', processId: 'p1', turnIndex: 0, anchor: { selectedText: 'x', contextBefore: '', contextAfter: '', fingerprint: 'f' }, answer: 'A', label: 'x', createdAt: 't' }],
         });
         const { result } = renderHook(() => useQuickAskSidenotes('p1', 'ws-1'));
         await waitFor(() => expect(result.current.items).toHaveLength(1));
         expect(result.current.items[0].status).toBe('ready');
-        expect(fetchApiMock).toHaveBeenCalledWith('/api/processes/p1/sidenotes?workspace=ws-1');
+        expect(requestMock).toHaveBeenCalledWith('ws-1', '/api/processes/p1/sidenotes?workspace=ws-1');
     });
 
     it('creates optimistically then resolves to a ready side-note', async () => {
-        fetchApiMock.mockResolvedValueOnce({ sidenotes: [] }); // hydrate
+        requestMock.mockResolvedValueOnce({ sidenotes: [] }); // hydrate
         const { result } = renderHook(() => useQuickAskSidenotes('p1', 'ws-1'));
-        await waitFor(() => expect(fetchApiMock).toHaveBeenCalledTimes(1));
+        await waitFor(() => expect(requestMock).toHaveBeenCalledTimes(1));
 
         let resolvePost: (v: any) => void = () => {};
-        fetchApiMock.mockImplementationOnce(() => new Promise(res => { resolvePost = res; }));
+        requestMock.mockImplementationOnce(() => new Promise(res => { resolvePost = res; }));
 
         act(() => result.current.createSidenote(selection()));
         expect(result.current.items).toHaveLength(1);
@@ -70,30 +72,30 @@ describe('useQuickAskSidenotes', () => {
     });
 
     it('marks the side-note as error when the lookup fails, then retries', async () => {
-        fetchApiMock.mockResolvedValueOnce({ sidenotes: [] }); // hydrate
+        requestMock.mockResolvedValueOnce({ sidenotes: [] }); // hydrate
         const { result } = renderHook(() => useQuickAskSidenotes('p1', 'ws-1'));
-        await waitFor(() => expect(fetchApiMock).toHaveBeenCalledTimes(1));
+        await waitFor(() => expect(requestMock).toHaveBeenCalledTimes(1));
 
-        fetchApiMock.mockRejectedValueOnce(new Error('502'));
+        requestMock.mockRejectedValueOnce(new Error('502'));
         await act(async () => { result.current.createSidenote(selection()); });
         await waitFor(() => expect(result.current.items[0].status).toBe('error'));
         const failedId = result.current.items[0].id;
 
-        fetchApiMock.mockResolvedValueOnce({ sidenote: { id: 'srv2', processId: 'p1', turnIndex: 1, anchor: { selectedText: 'Daly formula', contextBefore: '', contextAfter: '', fingerprint: 'f' }, answer: 'Recovered', label: 'Daly formula', createdAt: 't' } });
+        requestMock.mockResolvedValueOnce({ sidenote: { id: 'srv2', processId: 'p1', turnIndex: 1, anchor: { selectedText: 'Daly formula', contextBefore: '', contextAfter: '', fingerprint: 'f' }, answer: 'Recovered', label: 'Daly formula', createdAt: 't' } });
         await act(async () => { result.current.retrySidenote(failedId); });
         await waitFor(() => expect(result.current.items[0].status).toBe('ready'));
         expect(result.current.items[0].answer).toBe('Recovered');
     });
 
     it('passes a custom question through in the POST body (AC-02)', async () => {
-        fetchApiMock.mockResolvedValueOnce({ sidenotes: [] }); // hydrate
+        requestMock.mockResolvedValueOnce({ sidenotes: [] }); // hydrate
         const { result } = renderHook(() => useQuickAskSidenotes('p1', 'ws-1'));
-        await waitFor(() => expect(fetchApiMock).toHaveBeenCalledTimes(1));
+        await waitFor(() => expect(requestMock).toHaveBeenCalledTimes(1));
 
-        fetchApiMock.mockImplementationOnce(() => new Promise(() => {})); // never resolves
+        requestMock.mockImplementationOnce(() => new Promise(() => {})); // never resolves
         act(() => result.current.createSidenote(selection(), 'why does this matter?'));
 
-        const [, opts] = fetchApiMock.mock.calls[1];
+        const [, , opts] = requestMock.mock.calls[1];
         const body = JSON.parse(opts.body);
         expect(body.question).toBe('why does this matter?');
         // Optimistic item also carries the question locally.
@@ -101,43 +103,44 @@ describe('useQuickAskSidenotes', () => {
     });
 
     it('omits question for empty/whitespace-only input (default-explain fast path)', async () => {
-        fetchApiMock.mockResolvedValueOnce({ sidenotes: [] }); // hydrate
+        requestMock.mockResolvedValueOnce({ sidenotes: [] }); // hydrate
         const { result } = renderHook(() => useQuickAskSidenotes('p1', 'ws-1'));
-        await waitFor(() => expect(fetchApiMock).toHaveBeenCalledTimes(1));
+        await waitFor(() => expect(requestMock).toHaveBeenCalledTimes(1));
 
-        fetchApiMock.mockImplementationOnce(() => new Promise(() => {}));
+        requestMock.mockImplementationOnce(() => new Promise(() => {}));
         act(() => result.current.createSidenote(selection(), '   '));
 
-        const [, opts] = fetchApiMock.mock.calls[1];
+        const [, , opts] = requestMock.mock.calls[1];
         const body = JSON.parse(opts.body);
         expect('question' in body).toBe(false);
         expect(result.current.items[0].question).toBeUndefined();
     });
 
     it('omits question when none is provided at all', async () => {
-        fetchApiMock.mockResolvedValueOnce({ sidenotes: [] }); // hydrate
+        requestMock.mockResolvedValueOnce({ sidenotes: [] }); // hydrate
         const { result } = renderHook(() => useQuickAskSidenotes('p1', 'ws-1'));
-        await waitFor(() => expect(fetchApiMock).toHaveBeenCalledTimes(1));
+        await waitFor(() => expect(requestMock).toHaveBeenCalledTimes(1));
 
-        fetchApiMock.mockImplementationOnce(() => new Promise(() => {}));
+        requestMock.mockImplementationOnce(() => new Promise(() => {}));
         act(() => result.current.createSidenote(selection()));
 
-        const [, opts] = fetchApiMock.mock.calls[1];
+        const [, , opts] = requestMock.mock.calls[1];
         const body = JSON.parse(opts.body);
         expect('question' in body).toBe(false);
     });
 
     it('deletes a persisted side-note and calls the delete endpoint', async () => {
-        fetchApiMock.mockResolvedValueOnce({
+        requestMock.mockResolvedValueOnce({
             sidenotes: [{ id: 's1', processId: 'p1', turnIndex: 0, anchor: { selectedText: 'x', contextBefore: '', contextAfter: '', fingerprint: 'f' }, answer: 'A', label: 'x', createdAt: 't' }],
         });
         const { result } = renderHook(() => useQuickAskSidenotes('p1', 'ws-1'));
         await waitFor(() => expect(result.current.items).toHaveLength(1));
 
-        fetchApiMock.mockResolvedValueOnce(undefined); // DELETE
+        requestMock.mockResolvedValueOnce(undefined); // DELETE
         act(() => result.current.deleteSidenote('s1'));
         expect(result.current.items).toHaveLength(0);
-        expect(fetchApiMock).toHaveBeenLastCalledWith(
+        expect(requestMock).toHaveBeenLastCalledWith(
+            'ws-1',
             '/api/processes/p1/sidenotes/s1?workspace=ws-1',
             { method: 'DELETE' },
         );
