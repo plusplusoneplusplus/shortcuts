@@ -1534,6 +1534,11 @@ the input:
   threads the id from `FileDiffPanel`. Non-React `diffCommentApi`
   (`patchDiffComment`/`deleteDiffCommentById`) routes via
   `getCocClientForWorkspace(wsId)`.
+- The review-chat and preference surfaces of the Git tab route the same way:
+  `useCommitChatBinding` (binding read, queue enqueue, binding create, fresh-chat
+  reset), `usePrChatBinding` (queue enqueue), `useFilesViewMode` (repo
+  preferences get/update), and `CommitDetail`'s `git.commitDiffPath` builder all
+  resolve their client with `getCocClientForWorkspace(workspaceId)`.
 
 No-local-fallthrough guarantee: a selected remote clone's clone key, or its bare
 workspace id when unique / active-disambiguated, resolves to its `baseUrl`, so

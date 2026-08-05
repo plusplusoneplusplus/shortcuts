@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import type { AttachmentPayload } from '../../../types/attachments';
 
 export interface UseCommitChatBindingOptions {
@@ -64,7 +64,7 @@ export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseComm
         setTaskId(null);
         setStartingFresh(false);
 
-        getSpaCocClient().git.getCommitChatBinding(workspaceId, commitHash)
+        getCocClientForWorkspace(workspaceId).git.getCommitChatBinding(workspaceId, commitHash)
             .then(data => { if (!cancelled) setTaskId(data.taskId); })
             .catch(err => {
                 if (cancelled) return;
@@ -86,7 +86,7 @@ export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseComm
         }
         try {
             // Create queue task
-            const res = await getSpaCocClient().queue.enqueue({
+            const res = await getCocClientForWorkspace(workspaceId).queue.enqueue({
                 type: 'chat',
                 priority: 'normal',
                 payload: {
@@ -110,7 +110,7 @@ export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseComm
             if (!newTaskId) throw new Error('Failed to create commit chat task');
 
             // Save binding
-            await getSpaCocClient().git.createCommitChatBinding(workspaceId, commitHash, newTaskId);
+            await getCocClientForWorkspace(workspaceId).git.createCommitChatBinding(workspaceId, commitHash, newTaskId);
 
             if (isCurrentRequest(requestedWorkspaceId, requestedCommitHash)) {
                 setError(null);
@@ -134,7 +134,7 @@ export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseComm
             setError(null);
         }
         try {
-            await getSpaCocClient().git.startFreshCommitChat(workspaceId, commitHash);
+            await getCocClientForWorkspace(workspaceId).git.startFreshCommitChat(workspaceId, commitHash);
             if (isCurrentRequest(requestedWorkspaceId, requestedCommitHash)) {
                 setTaskId(null);
                 setError(null);

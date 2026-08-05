@@ -24,7 +24,7 @@ import { shouldSkipResolveDialog } from '../../../shared/ResolveContextDialog';
 import { useQueue } from '../../../contexts/QueueContext';
 import { useGitReviewPopOut, gitReviewPopOutKey } from '../../../contexts/GitReviewPopOutContext';
 import { buildGitReviewPopOutUrl } from '../../../layout/Router';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import { lookupCloneBaseUrl } from '../../../repos/cloneRegistry';
 import { useClassification } from '../diff/useClassification';
 import { useModalJobAiSelection } from '../../../shared/ModalJobAiControls';
@@ -82,7 +82,7 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
     const [headerCollapsed, setHeaderCollapsed] = useState(false);
 
     const diffUrl = hash
-        ? getSpaCocClient().git.commitDiffPath(workspaceId, hash)
+        ? getCocClientForWorkspace(workspaceId).git.commitDiffPath(workspaceId, hash)
         : null;
 
     const { diff, loading: diffLoading, error: diffError, retry: handleRetryDiff } = useCachedDiff(diffUrl, workspaceId, hash);

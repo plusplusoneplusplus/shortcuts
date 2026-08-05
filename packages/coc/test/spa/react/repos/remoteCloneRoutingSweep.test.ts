@@ -65,6 +65,35 @@ describe('remote-clone routing sweep', () => {
         expect(branchPicker).not.toContain('getSpaCocClient');
     });
 
+    it('useCommitChatBinding routes the whole commit-chat surface to the clone', () => {
+        const hook = read('features/git/hooks/useCommitChatBinding.ts');
+        expect(hook).toContain('getCocClientForWorkspace(workspaceId).git.getCommitChatBinding(workspaceId, commitHash)');
+        expect(hook).toContain('getCocClientForWorkspace(workspaceId).queue.enqueue(');
+        expect(hook).toContain('getCocClientForWorkspace(workspaceId).git.createCommitChatBinding(workspaceId, commitHash, newTaskId)');
+        expect(hook).toContain('getCocClientForWorkspace(workspaceId).git.startFreshCommitChat(workspaceId, commitHash)');
+        // The bare local singleton 404s a remote clone's commit ("Workspace not found").
+        expect(hook).not.toContain('getSpaCocClient');
+    });
+
+    it('usePrChatBinding routes the PR chat enqueue to the clone', () => {
+        const hook = read('features/git/hooks/usePrChatBinding.ts');
+        expect(hook).toContain('getCocClientForWorkspace(workspaceId).queue.enqueue(');
+        expect(hook).not.toContain('getSpaCocClient');
+    });
+
+    it('useFilesViewMode routes the repo preference read/write to the clone', () => {
+        const hook = read('features/git/hooks/useFilesViewMode.ts');
+        expect(hook).toContain('getCocClientForWorkspace(workspaceId).preferences.getRepo(workspaceId)');
+        expect(hook).toContain('getCocClientForWorkspace(workspaceId).preferences.updateRepo(workspaceId');
+        expect(hook).not.toContain('getSpaCocClient');
+    });
+
+    it('CommitDetail builds its diff path from the clone client', () => {
+        const detail = read('features/git/commits/CommitDetail.tsx');
+        expect(detail).toContain('getCocClientForWorkspace(workspaceId).git.commitDiffPath(workspaceId, hash)');
+        expect(detail).not.toContain('getSpaCocClient');
+    });
+
     it('useRalphSessionView routes the per-session journal read to the clone', () => {
         const ralphView = read('features/chat/useRalphSessionView.ts');
         expect(ralphView).toContain('getCocClientForWorkspace(workspaceId)');

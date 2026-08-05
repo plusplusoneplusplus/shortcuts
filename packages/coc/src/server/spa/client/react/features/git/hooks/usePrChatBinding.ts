@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import type { AttachmentPayload } from '../../../types/attachments';
 import { getReviewChatTargetStorageId } from '../commits/commitChatPlacement';
 
@@ -76,7 +76,7 @@ export function usePrChatBinding(opts: UsePrChatBindingOptions): UsePrChatBindin
         setLoading(true);
         setError(null);
         try {
-            const res = await getSpaCocClient().queue.enqueue({
+            const res = await getCocClientForWorkspace(workspaceId).queue.enqueue({
                 type: 'chat',
                 priority: 'normal',
                 payload: {
