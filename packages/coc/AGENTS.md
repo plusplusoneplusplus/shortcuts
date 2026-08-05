@@ -134,6 +134,13 @@ all have their own `references/*.md`.
   keep install requests typed through `useSkillInstallController`, and guard
   list/config/detail/file-preview/repo-probe/install responses so late work from
   an old workspace, source, card, or repo list cannot update the active view.
+- **Diff-comment REST** all lives in `react/utils/diffCommentApi.ts` and is
+  clone-routed through `getCocClientForWorkspace(wsId)` — reads
+  (`listDiffCommentsForRange`) as well as writes. The list route only validates
+  the id, so a local-origin read for a remote clone returns 200 with an EMPTY
+  list rather than 404: a missed route here shows "no comments" instead of
+  failing. Call the helper; do not call `getSpaCocClient().git.listDiffComments`
+  or `fetchApi('/diff-comments/...')` from components.
 - **Workspace MCP inspector state** lives in
   `react/features/skills/useMcpServerInspectorController.ts`. Unlike the skills
   controller it resolves its own transport from the `workspaceId` it already

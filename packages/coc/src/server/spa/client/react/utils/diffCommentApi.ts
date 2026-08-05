@@ -46,6 +46,23 @@ export function buildDiffCommentUrl(wsId: string, storageKey: string, commentId:
 // Fetch helpers
 // ============================================================================
 
+/**
+ * LIST the diff comments stored for a ref range (`oldRef`..`newRef`).
+ *
+ * Routed to the workspace's clone (AC-07) like the writes below. This one is
+ * load-bearing: the list route does not resolve the workspace, so a remote
+ * clone's id answers 200 with an EMPTY list on the local server instead of
+ * failing — the UI would silently show "no comments".
+ */
+export async function listDiffCommentsForRange(
+    wsId: string,
+    oldRef: string,
+    newRef: string,
+): Promise<DiffComment[]> {
+    const data = await getCocClientForWorkspace(wsId).git.listDiffComments(wsId, { oldRef, newRef });
+    return (data.comments ?? []) as DiffComment[];
+}
+
 /** PATCH a diff comment. Returns the updated DiffComment. */
 export async function patchDiffComment(
     wsId: string,

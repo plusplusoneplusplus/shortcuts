@@ -94,6 +94,33 @@ describe('remote-clone routing sweep', () => {
         expect(detail).not.toContain('getSpaCocClient');
     });
 
+    it('WorkItemDetail routes its diff-comment READ through the clone-aware helper', () => {
+        const detail = read('features/work-items/WorkItemDetail.tsx');
+        expect(detail).toContain('listDiffCommentsForRange(workspaceId, `${sha}^`, sha)');
+        // The list route does NOT resolve the workspace: a local-origin read for a
+        // remote clone answers 200 with an EMPTY list, so this silently reported
+        // "No open comments to resolve" instead of failing.
+        expect(detail).not.toContain('fetchApi');
+    });
+
+    it('the branch-range comment views read through the clone-aware helper', () => {
+        const overview = read('features/git/branches/BranchRangeOverview.tsx');
+        expect(overview).toContain('listDiffCommentsForRange(workspaceId, range.baseRef, range.headRef)');
+        expect(overview).not.toContain('getSpaCocClient');
+
+        const allComments = read('features/git/branches/BranchRangeAllComments.tsx');
+        expect(allComments).toContain('listDiffCommentsForRange(workspaceId, baseRef, headRef)');
+        expect(allComments).not.toContain('getSpaCocClient');
+    });
+
+    it('diffCommentApi keeps every diff-comment REST call clone-routed', () => {
+        const api = read('utils/diffCommentApi.ts');
+        expect(api).toContain('getCocClientForWorkspace(wsId).git.listDiffComments(wsId, { oldRef, newRef })');
+        expect(api).toContain('getCocClientForWorkspace(wsId).git.updateDiffComment(');
+        expect(api).toContain('getCocClientForWorkspace(wsId).git.deleteDiffComment(');
+        expect(api).not.toContain('getSpaCocClient');
+    });
+
     it('useRalphSessionView routes the per-session journal read to the clone', () => {
         const ralphView = read('features/chat/useRalphSessionView.ts');
         expect(ralphView).toContain('getCocClientForWorkspace(workspaceId)');

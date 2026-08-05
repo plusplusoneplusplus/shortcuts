@@ -9,9 +9,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
     computeStorageKey,
     buildDiffCommentUrl,
+    listDiffCommentsForRange,
     patchDiffComment,
     deleteDiffCommentById,
 } from '../../../../src/server/spa/client/react/utils/diffCommentApi';
+import {
+    registerCloneBaseUrls,
+    resetCloneRegistryForTests,
+} from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 import type { DiffCommentContext } from '../../../../src/server/spa/client/comments/diff-comment-types';
 
 // ============================================================================
@@ -53,9 +58,11 @@ beforeEach(() => {
 
     fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
+    resetCloneRegistryForTests();
 });
 
 afterEach(() => {
+    resetCloneRegistryForTests();
     vi.unstubAllGlobals();
     vi.clearAllMocks();
 });
@@ -119,6 +126,61 @@ describe('buildDiffCommentUrl', () => {
     it('URL-encodes commentId with special characters', () => {
         const url = buildDiffCommentUrl('ws', 'key', 'id with spaces');
         expect(url).toContain(encodeURIComponent('id with spaces'));
+    });
+});
+
+// ============================================================================
+// listDiffCommentsForRange
+// ============================================================================
+
+describe('listDiffCommentsForRange', () => {
+    it('GETs the range-filtered list and unwraps comments', async () => {
+        const comments = [{ id: 'c1', status: 'open' }];
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({ comments }) });
+
+        const result = await listDiffCommentsForRange('ws-1', 'abc^', 'abc');
+
+        expect(fetchMock).toHaveBeenCalledOnce();
+        const [url, init] = fetchMock.mock.calls[0];
+        expect(url).toContain('/diff-comments/ws-1');
+        expect(url).toContain('oldRef=abc%5E');
+        expect(url).toContain('newRef=abc');
+        expect(init?.method ?? 'GET').toBe('GET');
+        expect(result).toEqual(comments);
+    });
+
+    it('returns an empty array when the response omits comments', async () => {
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+
+        await expect(listDiffCommentsForRange('ws-1', 'a', 'b')).resolves.toEqual([]);
+    });
+
+    it('routes a REMOTE clone to its owning server', async () => {
+        registerCloneBaseUrls([{ workspaceId: 'ws-remote', baseUrl: 'http://127.0.0.1:4321' }]);
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({ comments: [] }) });
+
+        await listDiffCommentsForRange('ws-remote', 'a', 'b');
+
+        const [url] = fetchMock.mock.calls[0];
+        expect(String(url)).toContain('http://127.0.0.1:4321');
+        expect(String(url)).toContain('/diff-comments/ws-remote');
+    });
+
+    it('a LOCAL workspace still uses a relative, same-origin URL', async () => {
+        registerCloneBaseUrls([{ workspaceId: 'ws-remote', baseUrl: 'http://127.0.0.1:4321' }]);
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({ comments: [] }) });
+
+        await listDiffCommentsForRange('ws-local', 'a', 'b');
+
+        const [url] = fetchMock.mock.calls[0];
+        expect(String(url)).not.toContain('http://');
+        expect(String(url)).toContain('/diff-comments/ws-local');
+    });
+
+    it('throws when the response is not ok', async () => {
+        fetchMock.mockResolvedValue({ ok: false, status: 500 });
+
+        await expect(listDiffCommentsForRange('ws-1', 'a', 'b')).rejects.toThrow('CoC API request failed: 500');
     });
 });
 

@@ -6,7 +6,6 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Button, cn } from '../../ui';
-import { fetchApi } from '../../hooks/useApi';
 import { useCocClient } from '../../repos/cloneRouting';
 import { formatRelativeTime } from '../../utils/format';
 import { WorkItemPlanSection, PLAN_MODE_OPTIONS } from './WorkItemPlanSection';
@@ -18,7 +17,7 @@ import { WorkItemExecuteDialog } from './WorkItemExecuteDialog';
 import { useWorkItems } from '../../contexts/WorkItemContext';
 import { useCommitCommentTotals } from '../git/hooks/useCommitCommentTotals';
 import type { DiffComment } from '../../../comments/diff-comment-types';
-import { computeStorageKey, patchDiffComment } from '../../utils/diffCommentApi';
+import { computeStorageKey, listDiffCommentsForRange, patchDiffComment } from '../../utils/diffCommentApi';
 import { isWorkItemsAiAuthoringEnabled, isWorkItemsHierarchyEnabled, isWorkItemsWorkflowEnabled } from '../../utils/config';
 import { WorkItemParentPicker } from './WorkItemParentPicker';
 import {
@@ -610,9 +609,7 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
             // Fetch open diff comments for each commit
             const allComments: DiffComment[] = [];
             for (const sha of commitShas) {
-                const params = new URLSearchParams({ oldRef: `${sha}^`, newRef: sha });
-                const data = await fetchApi(`/diff-comments/${encodeURIComponent(workspaceId)}?${params}`);
-                const comments: DiffComment[] = data.comments ?? [];
+                const comments = await listDiffCommentsForRange(workspaceId, `${sha}^`, sha);
                 allComments.push(...comments.filter(c => c.status === 'open'));
             }
 

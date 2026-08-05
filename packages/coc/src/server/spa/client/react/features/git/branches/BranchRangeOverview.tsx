@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { listDiffCommentsForRange } from '../../../utils/diffCommentApi';
 import { BranchCommitStrip } from './BranchCommitStrip';
 import { BranchAllFilesDiff } from './BranchAllFilesDiff';
 import type { BranchRangeFile } from './BranchAllFilesDiff';
@@ -99,8 +99,8 @@ export function BranchRangeOverview({ workspaceId, range, commits: rangeCommits,
 
     // Fetch branch-range comment count
     useEffect(() => {
-        getSpaCocClient().git.listDiffComments(workspaceId, { oldRef: range.baseRef, newRef: range.headRef })
-            .then((data: { comments?: DiffComment[] }) => setBranchCommentCount((data.comments ?? []).length))
+        listDiffCommentsForRange(workspaceId, range.baseRef, range.headRef)
+            .then((comments: DiffComment[]) => setBranchCommentCount(comments.length))
             .catch(() => setBranchCommentCount(0));
     }, [workspaceId, range.baseRef, range.headRef]);
 
