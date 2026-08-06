@@ -140,6 +140,8 @@ export interface StreamingSessionRunOptions {
     /** Shared map; mutated in place so callers can read captured calls after run(). */
     toolCallsMap?: Map<string, ToolCall>;
     onToolEvent?: (event: ToolEvent) => void;
+    /** Mid-turn usage sink. See SendMessageOptions.onTokenUsage. */
+    onTokenUsage?: import('./mid-turn-usage').MidTurnTokenUsageCallback;
     /** Per-tool-name observational callbacks. See SendMessageOptions.toolResultInterceptors. */
     toolResultInterceptors?: Record<string, import('./types').ToolResultInterceptor>;
     /** Callback invoked whenever background task state changes (agents/shells start or stop). */
@@ -524,6 +526,16 @@ export class StreamingSession {
             { tokenLimit: usage?.tokenLimit, currentTokens: usage?.currentTokens },
             'Session usage info',
         );
+        // Copilot is the one provider that already streams context-window data
+        // mid-turn, so it needs no poll — just forward each event on. Telemetry
+        // recording above is untouched, keeping the turn-end result identical.
+        if (this.options.onTokenUsage) {
+            try {
+                this.options.onTokenUsage(this.telemetry.buildContextUsageSnapshot());
+            } catch (cbError) {
+                this.sessionLog.debug({ err: cbError }, 'onTokenUsage callback error');
+            }
+        }
     }
 
     private handleToolStart(event: ISessionEvent): void {

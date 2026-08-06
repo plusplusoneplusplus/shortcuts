@@ -6,6 +6,7 @@
  */
 
 import type { ToolCall } from './tool-call';
+import type { MidTurnTokenUsageCallback } from './mid-turn-usage';
 export interface AIInvocationResult { success: boolean; response?: string; error?: string; }
 
 // ============================================================================
@@ -582,6 +583,23 @@ export interface SendMessageOptions {
      * Receives events when tools start, complete, or fail.
      */
     onToolEvent?: (event: ToolEvent) => void;
+
+    /**
+     * Callback invoked with a partial usage snapshot *during* the turn, so a
+     * consumer can move a context-window meter before the turn resolves. This
+     * is the single route by which any provider reports usage early — the
+     * returned `tokenUsage` only exists once the turn has settled.
+     *
+     * Payload reuses {@link TokenUsage} field names: at minimum `tokenLimit`
+     * and `currentTokens`, plus the `systemTokens` / `toolDefinitionsTokens` /
+     * `conversationTokens` breakdown when the provider supplies it.
+     *
+     * Emissions are coalesced to at most one per
+     * `MID_TURN_TOKEN_USAGE_INTERVAL_MS`. Mid-turn collection is
+     * best-effort: it never delays streaming output and never fails a turn, and
+     * the turn-end value remains authoritative.
+     */
+    onTokenUsage?: MidTurnTokenUsageCallback;
 
     /**
      * Per-tool-name observational callbacks. Keyed by exact tool name

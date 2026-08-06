@@ -6,6 +6,7 @@
 
 import type { ToolCall } from './tool-call';
 import type { TokenUsage, ToolEvent } from './types';
+import type { MidTurnTokenUsage } from './mid-turn-usage';
 import { tryConvertImageFileToDataUrl } from './image-converter';
 
 // ============================================================================
@@ -81,6 +82,24 @@ export class SessionTelemetry {
         if (data.systemTokens           != null) { this.usageSystemTokens           = data.systemTokens; }
         if (data.toolDefinitionsTokens  != null) { this.usageToolDefinitionsTokens  = data.toolDefinitionsTokens; }
         if (data.conversationTokens     != null) { this.usageConversationTokens     = data.conversationTokens; }
+    }
+
+    /**
+     * The context-window fields alone, for mid-turn reporting.
+     *
+     * Unlike {@link buildTokenUsage} this does not require an `assistant.usage`
+     * event to have landed first: `session.usage_info` routinely arrives before
+     * the turn's first usage event, and that early snapshot is exactly the one
+     * that makes the meter move on the opening turn of a conversation.
+     */
+    buildContextUsageSnapshot(): MidTurnTokenUsage {
+        return {
+            ...(this.usageTokenLimit            != null ? { tokenLimit:            this.usageTokenLimit }            : {}),
+            ...(this.usageCurrentTokens         != null ? { currentTokens:         this.usageCurrentTokens }         : {}),
+            ...(this.usageSystemTokens          != null ? { systemTokens:          this.usageSystemTokens }          : {}),
+            ...(this.usageToolDefinitionsTokens != null ? { toolDefinitionsTokens: this.usageToolDefinitionsTokens } : {}),
+            ...(this.usageConversationTokens    != null ? { conversationTokens:    this.usageConversationTokens }    : {}),
+        };
     }
 
     buildTokenUsage(): TokenUsage | undefined {

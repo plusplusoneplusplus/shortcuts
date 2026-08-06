@@ -27,6 +27,7 @@ import {
     ToolEvent,
 } from './types';
 import { StreamingSession, StreamingResult } from './streaming-session';
+import { createMidTurnUsageThrottle } from './mid-turn-usage';
 import type { TransformOptions, TransformResult } from './sdk-service-interface';
 import { SessionManager } from './session-manager';
 import { isStreamDestroyedError } from './stream-error-guard';
@@ -366,7 +367,7 @@ export class RequestRunner {
 
             if ((options.streaming || options.onStreamingChunk || timeoutMs > 120000) && typeof session.on === 'function' && typeof session.send === 'function') {
                 const idleTimeoutMs = options.idleTimeoutMs ?? this.defaultIdleTimeoutMs;
-                const streamingResult = await this.sendWithStreaming(session, options.prompt, timeoutMs, options.onStreamingChunk, toolCallsMap, options.onToolEvent, idleTimeoutMs, preparedAttachments, options.deliveryMode, options.sessionId, options.onBackgroundTasksChanged, options.toolResultInterceptors);
+                const streamingResult = await this.sendWithStreaming(session, options.prompt, timeoutMs, options.onStreamingChunk, toolCallsMap, options.onToolEvent, idleTimeoutMs, preparedAttachments, options.deliveryMode, options.sessionId, options.onBackgroundTasksChanged, options.toolResultInterceptors, options.onTokenUsage);
                 throwIfAborted();
                 response = streamingResult.response;
                 tokenUsage = streamingResult.tokenUsage;
@@ -525,7 +526,13 @@ export class RequestRunner {
         callerSessionId?: string,
         onBackgroundTasksChanged?: SendMessageOptions['onBackgroundTasksChanged'],
         toolResultInterceptors?: SendMessageOptions['toolResultInterceptors'],
+        onTokenUsage?: SendMessageOptions['onTokenUsage'],
     ): Promise<StreamingResult> {
+        // Copilot emits session.usage_info far more often than the meter needs;
+        // coalesce here so StreamingSession stays a plain event forwarder. The
+        // throttle is created per turn and disposed with it, so no timer or
+        // buffered value survives into the next turn.
+        const usageThrottle = createMidTurnUsageThrottle(onTokenUsage);
         return new StreamingSession().run(session as Parameters<StreamingSession['run']>[0], {
             prompt,
             timeoutMs,
@@ -533,12 +540,13 @@ export class RequestRunner {
             toolCallsMap,
             onToolEvent: onToolEvent as Parameters<StreamingSession['run']>[1]['onToolEvent'],
             onBackgroundTasksChanged,
+            onTokenUsage: onTokenUsage ? (usage) => usageThrottle.report(usage) : undefined,
             idleTimeoutMs,
             attachments,
             deliveryMode,
             callerSessionId,
             toolResultInterceptors,
-        });
+        }).finally(() => usageThrottle.dispose());
     }
 
     /**
