@@ -22,6 +22,7 @@ component; do not grow `CanvasPanel.tsx` back.
 | `hooks/useCreateKustoCanvas.ts` | AC-07 blank Kusto canvas creation with best-effort cluster/database prefill. |
 | `components/` | `CanvasPanelHeader` (title switcher, badges, version stepper, export menu, chrome), `CanvasPanelBanners`, `CanvasBodyRenderer`, `CanvasSelectionToolbar`, `CanvasCommentsPanel`, `icons.tsx`. |
 | `ExtensionCanvasView.tsx`, `KustoView.tsx`, `KustoChart.tsx`, `SvgCanvasView.tsx` | Per-type interactive views mounted by `CanvasBodyRenderer`. |
+| `canvas-host-protocol.ts` | Single definition of the `window.CanvasHost` bridge contract: `CANVAS_HOST_VERSION` (2), `CANVAS_HOST_REQUEST_TIMEOUT_MS` (60s), and the `CanvasHostError` `{ code, message }` shape with codes `offline` / `timeout` / `revision-conflict` / `capability-error`. No React, no DOM, no imports — the offline export bootstrap must stay pure and Node-safe, and both bootstraps read the version from here so they cannot drift. |
 | `kustoCreate.ts`, `html-export/` | Kusto seed helpers; the self-contained HTML export pipeline (own AGENTS.md). |
 
 ## Rules that must not regress
@@ -42,6 +43,14 @@ component; do not grow `CanvasPanel.tsx` back.
   bumps only on a **successful** load; kernels skip fetching at `0`.
 - **History views are read-only.** With `viewingVersion` set, no edit branch is
   reachable and the selection toolbar is hidden.
+- **The CanvasHost bridge stays backwards compatible.** `invoke`/`setState`
+  return promises settled by a correlated `{ type: 'response', id, ok,
+  result | error }` reply, but a message that arrives with **no `id`** is a
+  pre-v2 sender and must still be serviced in full — the host just posts no reply
+  for it. Dropping id-less messages would silently break every extension already
+  on disk. Every unhandled request path answers (or times out at
+  `CANVAS_HOST_REQUEST_TIMEOUT_MS`) rather than leaving a promise pending, and a
+  failed capability both rejects the extension's promise and shows the banner.
 - **Canvas type owns the render branch.** Excalidraw and Kusto never reach the
   markdown pipeline (a Kusto result JSON can be 10k rows); extension canvases
   only do so to show raw JSON in a history view. SVG detection runs against the

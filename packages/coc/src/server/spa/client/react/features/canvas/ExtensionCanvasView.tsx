@@ -6,6 +6,7 @@
  * API directly). A bootstrap script injected ahead of the extension HTML
  * exposes `window.CanvasHost` to the extension:
  *
+ *   CanvasHost.version            — protocol version marker (2)
  *   CanvasHost.onState(cb)        — re-render callback: cb(state, { revision, title })
  *   CanvasHost.invoke(name, p)    — invoke a declared capability (server-side vm)
  *   CanvasHost.setState(state)    — escape hatch: replace the JSON state directly
@@ -14,11 +15,30 @@
  * `canvas-state` messages on load and on every live update, and services
  * `invoke-capability` / `set-state` requests through the canvases REST client
  * so human UI actions go through the same gate as AI capability calls.
+ *
+ * Protocol v2 — request/response. `invoke` and `setState` return promises: each
+ * extension→host message carries a monotonic `id`, and the host answers with
+ * `{ __canvasHost: true, type: 'response', id, ok, result | error }`, which the
+ * bootstrap uses to settle the matching entry in its pending map. A request that
+ * gets no reply inside REQUEST_TIMEOUT_MS rejects rather than leaking a pending
+ * promise. Every rejection carries one shape — an Error with a `code` field, one
+ * of 'offline' | 'timeout' | 'revision-conflict' | 'capability-error' — so
+ * extension authors branch on `code` instead of string-matching messages.
+ *
+ * Backwards compatible in both directions: an extension that ignores the
+ * returned promise behaves exactly as before, and a message that arrives with no
+ * `id` (a pre-v2 sender) is still serviced in full — the host simply posts no
+ * reply for it rather than dropping the request.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Canvas, CanvasExtension } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
+import {
+    CANVAS_HOST_VERSION,
+    CANVAS_HOST_REQUEST_TIMEOUT_MS,
+    type CanvasHostError,
+} from './canvas-host-protocol';
 
 export interface ExtensionCanvasViewProps {
     workspaceId: string;
@@ -30,6 +50,8 @@ export interface ExtensionCanvasViewProps {
 interface HostMessage {
     __canvasHost?: boolean;
     type?: string;
+    /** Correlation id (protocol v2). Absent on pre-v2 senders — service without replying. */
+    id?: number;
     name?: string;
     params?: Record<string, unknown>;
     state?: unknown;
@@ -39,21 +61,68 @@ const BOOTSTRAP_SCRIPT = `<script>
 (function () {
     var stateCallback = null;
     var latest = null;
+    var nextRequestId = 1;
+    var pending = {};
+    var TIMEOUT_MS = ${CANVAS_HOST_REQUEST_TIMEOUT_MS};
+
+    function hostError(code, message) {
+        var err = new Error(message || code);
+        err.code = code;
+        return err;
+    }
+
+    function settle(id) {
+        var entry = pending[id];
+        if (!entry) return null;
+        delete pending[id];
+        clearTimeout(entry.timer);
+        return entry;
+    }
+
+    function request(message) {
+        var id = nextRequestId++;
+        message.__canvasHost = true;
+        message.id = id;
+        return new Promise(function (resolve, reject) {
+            pending[id] = {
+                resolve: resolve,
+                reject: reject,
+                timer: setTimeout(function () {
+                    var entry = settle(id);
+                    if (entry) entry.reject(hostError('timeout', 'CanvasHost request timed out after ' + TIMEOUT_MS + 'ms'));
+                }, TIMEOUT_MS),
+            };
+            parent.postMessage(message, '*');
+        });
+    }
+
     window.CanvasHost = {
+        version: ${CANVAS_HOST_VERSION},
         onState: function (cb) {
             stateCallback = cb;
             if (latest) cb(latest.state, latest.meta);
         },
         invoke: function (name, params) {
-            parent.postMessage({ __canvasHost: true, type: 'invoke-capability', name: name, params: params || {} }, '*');
+            return request({ type: 'invoke-capability', name: name, params: params || {} });
         },
         setState: function (state) {
-            parent.postMessage({ __canvasHost: true, type: 'set-state', state: state }, '*');
+            return request({ type: 'set-state', state: state });
         },
     };
     window.addEventListener('message', function (event) {
         var data = event.data;
-        if (!data || data.__canvasHost !== true || data.type !== 'canvas-state') return;
+        if (!data || data.__canvasHost !== true) return;
+        if (data.type === 'response') {
+            var entry = settle(data.id);
+            if (!entry) return;
+            if (data.ok) entry.resolve(data.result);
+            else entry.reject(hostError(
+                (data.error && data.error.code) || 'capability-error',
+                (data.error && data.error.message) || 'CanvasHost request failed',
+            ));
+            return;
+        }
+        if (data.type !== 'canvas-state') return;
         latest = { state: data.state, meta: { revision: data.revision, title: data.title } };
         if (stateCallback) stateCallback(latest.state, latest.meta);
     });
@@ -135,8 +204,24 @@ export function ExtensionCanvasView({ workspaceId, canvas, onCanvasSaved }: Exte
             const data = event.data as HostMessage;
             if (!data || data.__canvasHost !== true) return;
 
+            // Pre-v2 senders carry no correlation id. They are serviced exactly as
+            // before — the reply is simply skipped, never the work.
+            const requestId = typeof data.id === 'number' ? data.id : null;
+            const respond = (payload: { ok: true; result: unknown } | { ok: false; error: CanvasHostError }) => {
+                if (requestId === null) return;
+                iframeRef.current?.contentWindow?.postMessage({
+                    __canvasHost: true,
+                    type: 'response',
+                    id: requestId,
+                    ...payload,
+                }, '*');
+            };
+            /** What a settled mutation hands back: the new revision plus the state it produced. */
+            const savedResult = (saved: Canvas) => ({ revision: saved.revision, state: parseState(saved.content) });
+
             if (data.type === 'ready') {
                 postState(canvasCurrentRef.current);
+                respond({ ok: true, result: null });
                 return;
             }
 
@@ -145,9 +230,14 @@ export function ExtensionCanvasView({ workspaceId, canvas, onCanvasSaved }: Exte
                     .then(saved => {
                         setActionError(null);
                         onCanvasSaved(saved);
+                        respond({ ok: true, result: savedResult(saved) });
                     })
                     .catch(err => {
-                        setActionError(err instanceof Error ? err.message : 'Capability failed');
+                        // The banner stays — a human still needs to see the failure —
+                        // AND the extension's promise rejects so it can react itself.
+                        const message = err instanceof Error ? err.message : 'Capability failed';
+                        setActionError(message);
+                        respond({ ok: false, error: { code: 'capability-error', message } });
                     });
                 return;
             }
@@ -161,11 +251,19 @@ export function ExtensionCanvasView({ workspaceId, canvas, onCanvasSaved }: Exte
                     .then(saved => {
                         setActionError(null);
                         onCanvasSaved({ ...saved, content });
+                        respond({ ok: true, result: savedResult({ ...saved, content }) });
                     })
                     .catch(() => {
-                        setActionError('State save failed — the canvas may have changed underneath the extension');
+                        const message = 'State save failed — the canvas may have changed underneath the extension';
+                        setActionError(message);
+                        respond({ ok: false, error: { code: 'revision-conflict', message } });
                     });
+                return;
             }
+
+            // Unknown/malformed request: answer it rather than letting the
+            // extension's promise sit until the timeout.
+            respond({ ok: false, error: { code: 'capability-error', message: `Unsupported CanvasHost request "${String(data.type)}"` } });
         };
 
         window.addEventListener('message', handleMessage);

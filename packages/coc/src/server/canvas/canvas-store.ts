@@ -128,6 +128,13 @@ export interface CanvasExtensionManifest {
     /** Human-readable description of what this extension canvas does. */
     description: string;
     capabilities: CanvasCapabilityMeta[];
+    /**
+     * Minimum `window.CanvasHost` protocol version this extension's `uiHtml`
+     * requires. Absent means "whatever the host offers" — every extension written
+     * before the versioned bridge. A host reads this to decide which bridge
+     * features an extension may be handed, without sniffing for method existence.
+     */
+    hostVersion?: number;
 }
 
 export interface CanvasExtension {

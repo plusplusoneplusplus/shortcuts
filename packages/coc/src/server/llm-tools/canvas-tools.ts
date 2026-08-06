@@ -330,7 +330,8 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
             + 'JSON shared state. BUILD: omit canvasId to create (give title) or pass canvasId to update; '
             + 'provide description, capabilities[] (declared actions), capabilitiesJs (assigns '
             + '`capabilities = { name(state, params) { return nextState } }` — pure, no imports/network, 1s budget), '
-            + 'and uiHtml (self-contained HTML+JS in a sandboxed iframe using window.CanvasHost.onState/invoke/setState). '
+            + 'and uiHtml (self-contained HTML+JS in a sandboxed iframe using window.CanvasHost.onState/invoke/setState — '
+            + 'invoke/setState return promises that reject with { code, message }, code being offline|timeout|revision-conflict|capability-error). '
             + 'RUN: pass canvasId + capability (+ params) to apply one action to the state; the panel re-renders live.',
         parameters: {
             type: 'object',
