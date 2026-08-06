@@ -135,14 +135,36 @@ export interface CanvasExtensionManifest {
      * features an extension may be handed, without sniffing for method existence.
      */
     hostVersion?: number;
+    /**
+     * Vendored libraries the compiled `ui.js` needs, already dependency-resolved
+     * and in load order (see `canvas-libraries.ts`). Absent on every `uiHtml`
+     * extension — the legacy path loads nothing.
+     */
+    libraries?: string[];
 }
 
 export interface CanvasExtension {
     manifest: CanvasExtensionManifest;
-    /** Self-contained HTML+JS rendered in the panel's sandboxed iframe. */
+    /**
+     * Self-contained HTML+JS rendered in the panel's sandboxed iframe. Empty
+     * for a JSX-authored extension, which renders from `uiJs` instead.
+     */
     uiHtml: string;
     /** Script assigning a top-level `capabilities` object of (state, params) => nextState functions. */
     capabilitiesJs: string;
+    /**
+     * Compiled UI for a JSX-authored extension: the esbuild-transformed `uiJsx`,
+     * which assigns `window.CanvasExtension = { mount(rootEl, host) {} }`.
+     * Absent for `uiHtml` extensions. When present it takes precedence over
+     * `uiHtml`.
+     */
+    uiJs?: string;
+    /**
+     * The JSX source `uiJs` was derived from. Stored so version history shows
+     * what the AI actually wrote rather than only the transform output; never
+     * executed.
+     */
+    uiJsx?: string;
 }
 
 export type CanvasCommentStatus = 'open' | 'sent' | 'resolved';
@@ -169,10 +191,18 @@ const COMMENTS_FILE = 'comments.json';
 const EXTENSION_DIR = 'extension';
 const EXTENSION_MANIFEST_FILE = 'manifest.json';
 const EXTENSION_UI_FILE = 'ui.html';
+const EXTENSION_UI_JS_FILE = 'ui.js';
+const EXTENSION_UI_JSX_FILE = 'ui.jsx';
 const EXTENSION_CAPABILITIES_FILE = 'capabilities.js';
 
 /** Size caps for extension documents. */
 export const MAX_EXTENSION_UI_BYTES = 512 * 1024;
+/**
+ * Cap on the compiled `ui.js`. Mirrors `MAX_EXTENSION_UI_BYTES` — a JSX
+ * transform is roughly source-sized (libraries are never inlined into the
+ * stored document), so the same ceiling applies to `uiJsx` and its output.
+ */
+export const MAX_EXTENSION_UI_JS_BYTES = 512 * 1024;
 export const MAX_EXTENSION_CAPABILITIES_BYTES = 256 * 1024;
 
 /** Number of most recent version snapshots kept per canvas. */
@@ -416,14 +446,40 @@ export class CanvasStore {
     // Extension documents (type 'extension' canvases)
     // ------------------------------------------------------------------
 
+    /**
+     * Read the extension documents, or null when the canvas has none.
+     *
+     * `manifest.json` and `capabilities.js` are required — an extension without
+     * them is unusable. The UI documents are OPTIONAL reads because there are
+     * two authoring paths: a legacy/HTML extension has `ui.html` and no `ui.js`,
+     * a JSX extension has `ui.js` (+ its `ui.jsx` source) and no `ui.html`. One
+     * of the two must exist; a directory with neither is as broken as a missing
+     * manifest and still returns null, exactly as before.
+     */
     getExtension(workspaceId: string, canvasId: string): CanvasExtension | null {
         if (!isValidCanvasId(canvasId)) return null;
         const dir = path.join(this.getCanvasDir(workspaceId, canvasId), EXTENSION_DIR);
+        const readOptional = (file: string): string | undefined => {
+            try {
+                return fs.readFileSync(path.join(dir, file), 'utf-8');
+            } catch {
+                return undefined;
+            }
+        };
         try {
             const manifest = JSON.parse(fs.readFileSync(path.join(dir, EXTENSION_MANIFEST_FILE), 'utf-8')) as CanvasExtensionManifest;
-            const uiHtml = fs.readFileSync(path.join(dir, EXTENSION_UI_FILE), 'utf-8');
             const capabilitiesJs = fs.readFileSync(path.join(dir, EXTENSION_CAPABILITIES_FILE), 'utf-8');
-            return { manifest, uiHtml, capabilitiesJs };
+            const uiHtml = readOptional(EXTENSION_UI_FILE);
+            const uiJs = readOptional(EXTENSION_UI_JS_FILE);
+            const uiJsx = readOptional(EXTENSION_UI_JSX_FILE);
+            if (uiHtml === undefined && uiJs === undefined) return null;
+            return {
+                manifest,
+                uiHtml: uiHtml ?? '',
+                capabilitiesJs,
+                ...(uiJs !== undefined ? { uiJs } : {}),
+                ...(uiJsx !== undefined ? { uiJsx } : {}),
+            };
         } catch {
             return null;
         }
@@ -433,6 +489,11 @@ export class CanvasStore {
      * Write the extension documents for an extension canvas and bump the
      * revision so open panels reload the UI. Returns the updated record,
      * or null when the canvas does not exist or is not an extension canvas.
+     *
+     * The UI documents written are exactly the ones present on `extension`, and
+     * the others are REMOVED. Rebuilding a JSX canvas as an `uiHtml` one would
+     * otherwise leave a stale `ui.js` behind — and `ui.js` wins over `ui.html`,
+     * so the old UI would keep rendering.
      */
     saveExtension(workspaceId: string, canvasId: string, extension: CanvasExtension, editor: CanvasEditor): CanvasRecord | null {
         const existing = this.getCanvas(workspaceId, canvasId);
@@ -441,8 +502,25 @@ export class CanvasStore {
         const dir = path.join(this.getCanvasDir(workspaceId, canvasId), EXTENSION_DIR);
         fs.mkdirSync(dir, { recursive: true });
         writeFileAtomic(path.join(dir, EXTENSION_MANIFEST_FILE), JSON.stringify(extension.manifest, null, 2));
-        writeFileAtomic(path.join(dir, EXTENSION_UI_FILE), extension.uiHtml);
         writeFileAtomic(path.join(dir, EXTENSION_CAPABILITIES_FILE), extension.capabilitiesJs);
+
+        const uiDocuments: [string, string | undefined][] = [
+            // A JSX extension carries uiHtml: '' — treat empty as absent so it
+            // does not shadow ui.js with a blank document.
+            [EXTENSION_UI_FILE, extension.uiHtml || undefined],
+            [EXTENSION_UI_JS_FILE, extension.uiJs],
+            [EXTENSION_UI_JSX_FILE, extension.uiJsx],
+        ];
+        for (const [file, contents] of uiDocuments) {
+            const filePath = path.join(dir, file);
+            if (contents !== undefined) {
+                writeFileAtomic(filePath, contents);
+            } else {
+                try {
+                    fs.unlinkSync(filePath);
+                } catch { /* absent already */ }
+            }
+        }
 
         const updated: CanvasRecord = {
             ...existing,

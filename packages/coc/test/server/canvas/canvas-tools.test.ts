@@ -352,6 +352,130 @@ describe('canvas LLM tools', () => {
             expect(noUi.success).toBe(false);
         });
 
+        // --- JSX authoring -------------------------------------------------
+
+        const JSX_BUILD_ARGS = {
+            title: 'Sales',
+            description: 'A sales chart',
+            capabilities: [{ name: 'refresh', description: 'Refresh the data' }],
+            capabilitiesJs: 'capabilities = { refresh: function (s) { return s; } };',
+            uiJsx: [
+                'function App({ state }) {',
+                '  return <div className="p-4"><h1>{state.title}</h1></div>;',
+                '}',
+                'window.CanvasExtension = {',
+                '  mount(rootEl, host) {',
+                '    const root = ReactDOM.createRoot(rootEl);',
+                '    host.onState(state => root.render(<App state={state} />));',
+                '  },',
+                '};',
+            ].join('\n'),
+            libraries: ['recharts', 'tailwind'],
+            initialState: { title: 'Q3' },
+        };
+
+        it('compiles uiJsx to ui.js, keeps the source, and records the resolved libraries', async () => {
+            const { extension } = buildTools();
+            const result = await extension.handler(JSX_BUILD_ARGS as any) as any;
+            expect(result.success).toBe(true);
+
+            const ext = store.getExtension(WS, result.canvasId)!;
+            // Transformed with the CLASSIC runtime: no module import survives,
+            // because the iframe resolves nothing — React is a global there.
+            expect(ext.uiJs).toContain('React.createElement');
+            expect(ext.uiJs).not.toContain('<div');
+            expect(ext.uiJs).not.toContain('jsx-runtime');
+            // The JSX source is kept verbatim so version history shows what the
+            // AI actually wrote.
+            expect(ext.uiJsx).toBe(JSX_BUILD_ARGS.uiJsx);
+            // No ui.html for a JSX extension.
+            expect(ext.uiHtml).toBe('');
+            // `react` is implied and ordered ahead of recharts; the stylesheet
+            // comes first so nothing paints unstyled.
+            expect(ext.manifest.libraries).toEqual(['tailwind', 'react', 'recharts']);
+        });
+
+        it('returns a tool error with a line number for a JSX syntax error and saves nothing', async () => {
+            const { extension } = buildTools();
+            const result = await extension.handler({
+                ...JSX_BUILD_ARGS,
+                uiJsx: 'window.CanvasExtension = { mount() { return <div>unclosed; } };',
+            } as any) as any;
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('uiJsx failed to compile');
+            expect(result.error).toMatch(/line \d+/);
+            // Nothing was created — a blank saved canvas is exactly the failure
+            // mode this guards.
+            expect(store.listCanvases(WS)).toHaveLength(0);
+        });
+
+        it('does not overwrite an existing canvas when the JSX fails to compile', async () => {
+            const { extension } = buildTools();
+            const created = await extension.handler(JSX_BUILD_ARGS as any) as any;
+            const before = store.getExtension(WS, created.canvasId)!;
+
+            const failed = await extension.handler({
+                ...JSX_BUILD_ARGS,
+                canvasId: created.canvasId,
+                uiJsx: 'window.CanvasExtension = { mount() { return <div>; } };',
+            } as any) as any;
+
+            expect(failed.success).toBe(false);
+            expect(store.getExtension(WS, created.canvasId)).toEqual(before);
+            // Revision untouched: create (1) + saveExtension (2), no third bump.
+            expect(store.getCanvas(WS, created.canvasId)!.revision).toBe(2);
+        });
+
+        it('rejects a library outside the allowlist', async () => {
+            const { extension } = buildTools();
+            const result = await extension.handler({ ...JSX_BUILD_ARGS, libraries: ['d3'] } as any) as any;
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Unknown canvas library "d3"');
+            expect(result.error).toContain('recharts');
+            expect(store.listCanvases(WS)).toHaveLength(0);
+        });
+
+        it('rejects uiHtml and uiJsx together, and libraries on a uiHtml build', async () => {
+            const { extension } = buildTools();
+            const both = await extension.handler({ ...JSX_BUILD_ARGS, uiHtml: '<div></div>' } as any) as any;
+            expect(both.success).toBe(false);
+            expect(both.error).toContain('not both');
+
+            const htmlWithLibs = await extension.handler({ ...BUILD_ARGS, libraries: ['recharts'] } as any) as any;
+            expect(htmlWithLibs.success).toBe(false);
+            expect(htmlWithLibs.error).toContain('libraries only applies to uiJsx');
+        });
+
+        it('enforces the 512 KB cap on uiJsx', async () => {
+            const { extension } = buildTools();
+            const huge = `// ${'x'.repeat(520 * 1024)}\nwindow.CanvasExtension = { mount() {} };`;
+            const result = await extension.handler({ ...JSX_BUILD_ARGS, uiJsx: huge } as any) as any;
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('512 KB');
+            expect(store.listCanvases(WS)).toHaveLength(0);
+        });
+
+        it('switching an existing canvas from uiHtml to uiJsx keeps its state', async () => {
+            const { extension } = buildTools();
+            const created = await extension.handler(BUILD_ARGS as any) as any;
+            await extension.handler({ canvasId: created.canvasId, capability: 'add_card', params: { id: 'c1', title: 'A' } } as any);
+
+            const updated = await extension.handler({
+                ...JSX_BUILD_ARGS,
+                canvasId: created.canvasId,
+                title: undefined,
+            } as any) as any;
+
+            expect(updated.success).toBe(true);
+            expect(JSON.parse(store.getCanvas(WS, created.canvasId)!.content).cards).toHaveLength(1);
+            const ext = store.getExtension(WS, created.canvasId)!;
+            expect(ext.uiJs).toContain('React.createElement');
+            expect(ext.uiHtml).toBe('');
+        });
+
         it('runs a capability and returns the new state', async () => {
             const { extension } = buildTools();
             const created = await extension.handler(BUILD_ARGS as any) as any;

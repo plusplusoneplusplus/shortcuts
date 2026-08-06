@@ -187,14 +187,35 @@ export interface CanvasCapabilityMeta {
 export interface CanvasExtensionManifest {
   description: string;
   capabilities: CanvasCapabilityMeta[];
+  /**
+   * Minimum `window.CanvasHost` protocol version the UI requires. Absent means
+   * "whatever the host offers".
+   */
+  hostVersion?: number;
+  /**
+   * Vendored libraries the compiled `uiJs` needs, dependency-resolved and in
+   * load order. Absent for a `uiHtml` extension, which loads none.
+   */
+  libraries?: string[];
 }
 
 export interface CanvasExtension {
   manifest: CanvasExtensionManifest;
-  /** Self-contained HTML+JS rendered in the panel's sandboxed iframe. */
+  /**
+   * Self-contained HTML+JS rendered in the panel's sandboxed iframe. Empty for a
+   * JSX-authored extension, which renders from `uiJs`.
+   */
   uiHtml: string;
   /** Script assigning a top-level `capabilities` object of (state, params) => nextState functions. */
   capabilitiesJs: string;
+  /**
+   * Compiled UI for a JSX-authored extension: assigns
+   * `window.CanvasExtension = { mount(rootEl, host) {} }`. Takes precedence over
+   * `uiHtml` when present.
+   */
+  uiJs?: string;
+  /** The JSX source `uiJs` was compiled from — kept for version history. */
+  uiJsx?: string;
 }
 
 export interface CanvasExtensionResponse {

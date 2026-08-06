@@ -404,6 +404,66 @@ describe('extension canvases', () => {
         expect(store.getExtension(WS, canvas.id)).toBeNull();
         expect(store.getExtension(WS, 'missing-000000')).toBeNull();
     });
+
+    // --- JSX-authored extensions (ui.js / ui.jsx) --------------------------
+
+    const JSX_EXTENSION = {
+        manifest: {
+            description: 'Chart',
+            capabilities: [{ name: 'refresh', description: 'Refresh' }],
+            libraries: ['react', 'recharts'],
+        },
+        uiHtml: '',
+        capabilitiesJs: 'capabilities = { refresh: function (s) { return s; } };',
+        uiJs: 'window.CanvasExtension = { mount: function () {} };',
+        uiJsx: 'window.CanvasExtension = { mount: () => <div /> };',
+    };
+
+    it('round-trips the ui.js / ui.jsx documents and the manifest libraries', () => {
+        const canvas = store.createCanvas({ workspaceId: WS, title: 'Chart', content: '{}', type: 'extension' });
+        expect(store.saveExtension(WS, canvas.id, JSX_EXTENSION, 'ai')).not.toBeNull();
+
+        const loaded = store.getExtension(WS, canvas.id);
+        expect(loaded).toEqual(JSX_EXTENSION);
+        expect(loaded!.manifest.libraries).toEqual(['react', 'recharts']);
+        // A JSX extension writes no ui.html at all — it must not shadow ui.js.
+        const extDir = path.join(dataDir, 'repos', WS, 'canvases', canvas.id, 'extension');
+        expect(fs.existsSync(path.join(extDir, 'ui.js'))).toBe(true);
+        expect(fs.existsSync(path.join(extDir, 'ui.jsx'))).toBe(true);
+        expect(fs.existsSync(path.join(extDir, 'ui.html'))).toBe(false);
+    });
+
+    it('loads a legacy ui.html-only extension unchanged, with no uiJs/uiJsx keys', () => {
+        const canvas = store.createCanvas({ workspaceId: WS, title: 'Board', content: '{}', type: 'extension' });
+        store.saveExtension(WS, canvas.id, EXTENSION, 'ai');
+
+        const loaded = store.getExtension(WS, canvas.id);
+        expect(loaded).toEqual(EXTENSION);
+        expect(loaded).not.toHaveProperty('uiJs');
+        expect(loaded).not.toHaveProperty('uiJsx');
+    });
+
+    it('removes the stale UI document when an extension switches authoring path', () => {
+        const canvas = store.createCanvas({ workspaceId: WS, title: 'Chart', content: '{}', type: 'extension' });
+        store.saveExtension(WS, canvas.id, JSX_EXTENSION, 'ai');
+
+        // JSX → HTML: a leftover ui.js would keep winning over the new ui.html.
+        store.saveExtension(WS, canvas.id, EXTENSION, 'ai');
+        const backToHtml = store.getExtension(WS, canvas.id);
+        expect(backToHtml).toEqual(EXTENSION);
+
+        // HTML → JSX: the old ui.html must not linger either.
+        store.saveExtension(WS, canvas.id, JSX_EXTENSION, 'ai');
+        expect(store.getExtension(WS, canvas.id)).toEqual(JSX_EXTENSION);
+    });
+
+    it('returns null when the manifest exists but no UI document does', () => {
+        const canvas = store.createCanvas({ workspaceId: WS, title: 'Board', content: '{}', type: 'extension' });
+        store.saveExtension(WS, canvas.id, EXTENSION, 'ai');
+        fs.unlinkSync(path.join(dataDir, 'repos', WS, 'canvases', canvas.id, 'extension', 'ui.html'));
+
+        expect(store.getExtension(WS, canvas.id)).toBeNull();
+    });
 });
 
 describe('excalidraw canvases inherit canvas features (AC-06)', () => {

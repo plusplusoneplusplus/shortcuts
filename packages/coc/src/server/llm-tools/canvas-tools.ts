@@ -21,8 +21,16 @@
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import { CanvasStore, MAX_EXTENSION_UI_BYTES, MAX_EXTENSION_CAPABILITIES_BYTES } from '../canvas/canvas-store';
+import {
+    CanvasStore,
+    MAX_EXTENSION_UI_BYTES,
+    MAX_EXTENSION_UI_JS_BYTES,
+    MAX_EXTENSION_CAPABILITIES_BYTES,
+} from '../canvas/canvas-store';
 import type { CanvasEdit, CanvasType, CanvasCapabilityMeta, CanvasExtensionManifest } from '../canvas/canvas-store';
+import { CANVAS_LIBRARY_IDS, resolveCanvasLibraries } from '../canvas/canvas-libraries';
+import type { CanvasLibraryId } from '../canvas/canvas-libraries';
+import { transformCanvasJsx } from '../canvas/canvas-jsx';
 import { runCanvasCapability, isValidCapabilityName } from '../canvas/canvas-capability-runner';
 import { normaliseExcalidrawScene } from '../canvas/excalidraw-scene';
 import { emitCanvasUpdated } from '../streaming/sse-handler';
@@ -66,6 +74,10 @@ export interface ExtensionCanvasArgs {
     capabilities?: CanvasCapabilityMeta[];
     capabilitiesJs?: string;
     uiHtml?: string;
+    /** JSX source, transformed to `ui.js` at BUILD time. Alternative to `uiHtml`. */
+    uiJsx?: string;
+    /** Vendored libraries `uiJsx` needs, from the fixed allowlist. */
+    libraries?: string[];
     initialState?: Record<string, unknown>;
     capability?: string;
     params?: Record<string, unknown>;
@@ -100,13 +112,37 @@ function validateExtensionAuthorInput(args: ExtensionCanvasArgs): string | null 
     if (Buffer.byteLength(args.capabilitiesJs, 'utf-8') > MAX_EXTENSION_CAPABILITIES_BYTES) {
         return 'capabilitiesJs exceeds the 256 KB limit';
     }
-    if (typeof args.uiHtml !== 'string' || !args.uiHtml.trim()) {
-        return 'uiHtml is required';
+    const hasUiHtml = typeof args.uiHtml === 'string' && args.uiHtml.trim().length > 0;
+    const hasUiJsx = typeof args.uiJsx === 'string' && args.uiJsx.trim().length > 0;
+    if (!hasUiHtml && !hasUiJsx) {
+        return 'Provide uiHtml (vanilla HTML+JS) or uiJsx (a React component) — one is required';
     }
-    if (Buffer.byteLength(args.uiHtml, 'utf-8') > MAX_EXTENSION_UI_BYTES) {
+    if (hasUiHtml && hasUiJsx) {
+        return 'Provide uiHtml or uiJsx, not both — they are two authoring paths for the same UI';
+    }
+    if (hasUiHtml && Buffer.byteLength(args.uiHtml!, 'utf-8') > MAX_EXTENSION_UI_BYTES) {
         return 'uiHtml exceeds the 512 KB limit';
     }
+    if (hasUiJsx && Buffer.byteLength(args.uiJsx!, 'utf-8') > MAX_EXTENSION_UI_JS_BYTES) {
+        return 'uiJsx exceeds the 512 KB limit';
+    }
+    if (!hasUiJsx && args.libraries !== undefined && (!Array.isArray(args.libraries) || args.libraries.length > 0)) {
+        return 'libraries only applies to uiJsx — a uiHtml extension loads no vendored libraries';
+    }
     return null;
+}
+
+/**
+ * Resolve the libraries a JSX extension loads. `react` is implied — the
+ * transform emits `React.createElement`, so the compiled UI cannot run without
+ * it, and making the AI remember to declare it would only produce blank
+ * artifacts.
+ */
+function resolveJsxLibraries(declared: string[] | undefined): { ok: true; libraries: CanvasLibraryId[] } | { ok: false; error: string } {
+    if (declared !== undefined && !Array.isArray(declared)) {
+        return { ok: false, error: 'libraries must be an array of library names' };
+    }
+    return resolveCanvasLibraries(['react', ...(declared ?? [])]);
 }
 
 // ============================================================================
@@ -355,7 +391,20 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                     },
                 },
                 capabilitiesJs: { type: 'string', description: 'BUILD: the capabilities script.' },
-                uiHtml: { type: 'string', description: 'BUILD: sandboxed-iframe HTML+JS using window.CanvasHost.' },
+                uiHtml: { type: 'string', description: 'BUILD: sandboxed-iframe HTML+JS using window.CanvasHost. Mutually exclusive with uiJsx.' },
+                uiJsx: {
+                    type: 'string',
+                    description:
+                        'BUILD: JSX source, compiled server-side to ui.js. Must assign '
+                        + 'window.CanvasExtension = { mount(rootEl, host) { … } }. Mutually exclusive with uiHtml.',
+                },
+                libraries: {
+                    type: 'array',
+                    items: { type: 'string', enum: [...CANVAS_LIBRARY_IDS] },
+                    description:
+                        'BUILD (uiJsx only): vendored libraries to load as globals. '
+                        + `${CANVAS_LIBRARY_IDS.map(id => `"${id}"`).join(', ')}. react is added automatically.`,
+                },
                 initialState: { type: 'object', description: 'BUILD (create only): initial JSON state. Default {}.' },
             },
             required: [],
@@ -397,6 +446,29 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
             if (validationError) {
                 return { success: false, error: validationError };
             }
+            // JSX path: resolve the library set, then transform. Both run BEFORE
+            // anything is written, so a bad library name or a syntax error comes
+            // back as a tool error rather than a saved canvas that renders blank.
+            const authoringJsx = typeof a.uiJsx === 'string' && a.uiJsx.trim().length > 0;
+            let uiJs: string | undefined;
+            let libraries: CanvasLibraryId[] | undefined;
+            if (authoringJsx) {
+                const resolved = resolveJsxLibraries(a.libraries);
+                if (!resolved.ok) {
+                    return { success: false, error: resolved.error };
+                }
+                libraries = resolved.libraries;
+
+                const transformed = await transformCanvasJsx(a.uiJsx!);
+                if (!transformed.ok) {
+                    return { success: false, error: `uiJsx failed to compile:\n${transformed.error}` };
+                }
+                if (Buffer.byteLength(transformed.code, 'utf-8') > MAX_EXTENSION_UI_JS_BYTES) {
+                    return { success: false, error: 'The compiled uiJsx exceeds the 512 KB limit' };
+                }
+                uiJs = transformed.code;
+            }
+
             const manifest: CanvasExtensionManifest = {
                 description: a.description!.trim(),
                 capabilities: a.capabilities!.map(c => ({
@@ -404,12 +476,16 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                     description: c.description,
                     ...(c.paramsDescription ? { paramsDescription: c.paramsDescription } : {}),
                 })),
+                ...(libraries ? { libraries } : {}),
             };
+            const uiDocuments = authoringJsx
+                ? { uiHtml: '', uiJs, uiJsx: a.uiJsx! }
+                : { uiHtml: a.uiHtml! };
             try {
                 if (a.canvasId) {
                     const updated = store.saveExtension(deps.workspaceId, a.canvasId, {
                         manifest,
-                        uiHtml: a.uiHtml!,
+                        ...uiDocuments,
                         capabilitiesJs: a.capabilitiesJs!,
                     }, 'ai');
                     if (!updated) {
@@ -432,7 +508,7 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                 });
                 const withExtension = store.saveExtension(deps.workspaceId, canvas.id, {
                     manifest,
-                    uiHtml: a.uiHtml!,
+                    ...uiDocuments,
                     capabilitiesJs: a.capabilitiesJs!,
                 }, 'ai');
                 const record = withExtension ?? canvas;
