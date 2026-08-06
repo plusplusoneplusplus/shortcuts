@@ -2060,6 +2060,7 @@ describe('ClaudeSDKService.sendMessage', () => {
         const allowedTools = queryFn.mock.calls[0][0].options.allowedTools ?? [];
         expect(allowedTools).not.toContain('Bash(gh:*)');
         expect(allowedTools).not.toContain('WebFetch');
+        expect(allowedTools).not.toContain('WebSearch');
     });
 
     it('uses acceptEdits permission mode for interactive mode', async () => {
@@ -2073,7 +2074,7 @@ describe('ClaudeSDKService.sendMessage', () => {
         expect(queryFn.mock.calls[0][0].options.allowDangerouslySkipPermissions).toBeUndefined();
     });
 
-    it('auto-allows full Bash and WebFetch in interactive (ask) mode', async () => {
+    it('auto-allows full Bash, WebFetch and WebSearch in interactive (ask) mode', async () => {
         queryFn.mockReturnValueOnce(makeMessages([
             { type: 'result', subtype: 'success' },
         ]));
@@ -2083,6 +2084,7 @@ describe('ClaudeSDKService.sendMessage', () => {
         const allowedTools = queryFn.mock.calls[0][0].options.allowedTools;
         expect(allowedTools).toContain('Bash');
         expect(allowedTools).toContain('WebFetch');
+        expect(allowedTools).toContain('WebSearch');
         expect(allowedTools).not.toContain('Bash(gh:*)');
     });
 
@@ -2097,7 +2099,7 @@ describe('ClaudeSDKService.sendMessage', () => {
         expect(queryFn.mock.calls[0][0].options.allowDangerouslySkipPermissions).toBeUndefined();
     });
 
-    it('auto-allows full Bash and WebFetch when mode is undefined', async () => {
+    it('auto-allows full Bash, WebFetch and WebSearch when mode is undefined', async () => {
         queryFn.mockReturnValueOnce(makeMessages([
             { type: 'result', subtype: 'success' },
         ]));
@@ -2107,6 +2109,7 @@ describe('ClaudeSDKService.sendMessage', () => {
         const allowedTools = queryFn.mock.calls[0][0].options.allowedTools;
         expect(allowedTools).toContain('Bash');
         expect(allowedTools).toContain('WebFetch');
+        expect(allowedTools).toContain('WebSearch');
         expect(allowedTools).not.toContain('Bash(gh:*)');
     });
 

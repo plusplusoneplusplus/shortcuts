@@ -317,12 +317,16 @@ type ClaudePermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'p
 
 /**
  * Tools auto-approved in ask/read-only mode. Under `acceptEdits` the SDK only
- * auto-accepts file edits, so Bash and WebFetch would otherwise be denied (no
- * canUseTool callback, headless — no human to answer the prompt). Full Bash is
- * allowed because the <coc-read-only-mode> system prompt already prevents
- * editing git-tracked files; shell execution (tests, grep, etc.) is safe.
+ * auto-accepts file edits, so Bash, WebFetch and WebSearch would otherwise be
+ * denied (no canUseTool callback, headless — no human to answer the prompt).
+ * Full Bash is allowed because the <coc-read-only-mode> system prompt already
+ * prevents editing git-tracked files; shell execution (tests, grep, etc.) is
+ * safe. WebFetch and WebSearch are read-only network access — they cannot touch
+ * the filesystem or mutate the repo, so read-only mode has no reason to block
+ * them. Entries are bare tool names: a rule without scope content matches every
+ * use of that tool.
  */
-const ASK_MODE_AUTO_APPROVED_TOOLS = ['Bash', 'WebFetch'] as const;
+const ASK_MODE_AUTO_APPROVED_TOOLS = ['Bash', 'WebFetch', 'WebSearch'] as const;
 
 /**
  * MCP server config accepted by Claude Code's `query({ options: { mcpServers } })`.
