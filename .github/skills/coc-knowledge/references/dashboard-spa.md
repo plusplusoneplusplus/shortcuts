@@ -412,7 +412,13 @@ host's `{ type: 'response', id, ok, result | error }` reply, or rejects after
 `file-error`; a failed capability both rejects the extension's promise and shows
 the host banner, while a failed `readFile`/`listFiles` only rejects — a missing
 data file is the artifact's business, not a panel-level error. A message with **no `id`** is a pre-v2 sender and is still serviced in
-full, just without a reply. In an exported HTML artifact the offline bootstrap
+full, just without a reply. While one or more `invoke` calls are outstanding the
+panel shows a `extension-canvas-pending` indicator, since a capability the
+manifest declares `async: true` runs server-side with a 30s budget; it clears
+when the LAST invoke settles. There is deliberately no `CanvasHost.complete()` —
+model access lives only inside an async capability's server-side `host`, so the
+"a capability returns the next state" contract stays intact and rate limiting
+and logging live in one place. In an exported HTML artifact the offline bootstrap
 rejects `invoke`/`setState` with `code: 'offline'` rather than no-oping, so a
 v2 extension's `await` fails fast instead of hanging (the canvas's files are not
 inlined into an export — unbounded size). `listFiles`/`readFile` are READ-ONLY

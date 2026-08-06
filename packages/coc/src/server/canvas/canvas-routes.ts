@@ -19,6 +19,12 @@
  * User saves broadcast a `canvas-updated` WebSocket event so other dashboard
  * tabs can refresh. Revision conflicts return 409 with the current record so
  * the client can offer a reload.
+ *
+ * Capability invocations are SERIALIZED PER CANVAS and re-read the canvas
+ * inside the critical section, so two concurrent invocations both land instead
+ * of one losing its revision check. A capability the manifest declares
+ * `async: true` additionally requires the `features.canvasHostApis` flag; with
+ * it off that capability 404s and sync capabilities are unaffected.
  */
 
 import { sendJSON, sendError, parseBody } from '../core/api-handler';
@@ -27,8 +33,11 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { emitCanvasUpdated } from '../streaming/sse-handler';
 import { CanvasStore, isValidCanvasId, isSafeCanvasFilePath, hasEncodedPathEscape } from './canvas-store';
-import type { CanvasEdit, CanvasCommentStatus, CanvasRecord } from './canvas-store';
+import type { CanvasEdit, CanvasCommentStatus, CanvasRecord, CanvasExtensionManifest } from './canvas-store';
 import { runCanvasCapability, isValidCapabilityName } from './canvas-capability-runner';
+import type { CapabilityCompleteFn } from './canvas-capability-runner';
+import { queueCanvasCapabilityRun } from './canvas-capability-queue';
+import { createCanvasCompleteFn } from './canvas-capability-completion';
 import { runKustoCanvas } from '../kusto/kusto-service';
 import type { KustoClientFactory } from '../kusto/kusto-exec';
 
@@ -47,6 +56,15 @@ const fileDetailPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/files
 
 const COMMENT_STATUSES: readonly CanvasCommentStatus[] = ['open', 'sent', 'resolved'];
 
+/**
+ * Whether the manifest declares this capability async. A manifest with no
+ * matching entry — or none at all, which every extension written before
+ * capability metadata was required looks like — is sync, the legacy path.
+ */
+function isAsyncCapability(manifest: CanvasExtensionManifest | undefined, capability: string): boolean {
+    return manifest?.capabilities?.some(meta => meta?.name === capability && meta.async === true) === true;
+}
+
 interface SaveCanvasBody {
     content?: string;
     edits?: CanvasEdit[];
@@ -63,8 +81,24 @@ export function registerCanvasRoutes(
     getKustoEnabled?: () => boolean,
     /** Injectable Kusto client factory; defaults to the real SDK. Overridden in tests. */
     kustoClientFactory?: KustoClientFactory,
+    /**
+     * Live gate for the canvas host APIs — async capabilities and the
+     * `host.complete` they get access to. When it returns false an invocation
+     * of a capability declared `async: true` 404s, exactly as if the feature had
+     * never been built. Sync capabilities are untouched by it.
+     */
+    getCanvasHostApisEnabled?: () => boolean,
+    /**
+     * Injectable `host.complete` implementation. Overridden in tests so a
+     * capability run never reaches a real model.
+     */
+    completeFactory?: (attribution: { workspaceId: string; canvasId: string; capability: string; processId?: string }) => CapabilityCompleteFn,
 ): void {
     const store = new CanvasStore(dataDir);
+
+    /** Real `host.complete`: the one-shot AI invoker, bound to who asked for it. */
+    const defaultCompleteFactory = (attribution: { workspaceId: string; canvasId: string; capability: string; processId?: string }): CapabilityCompleteFn =>
+        createCanvasCompleteFn(dataDir, attribution);
 
     const broadcastCanvasUpdated = (wsId: string, canvas: CanvasRecord, editor: 'ai' | 'user'): void => {
         getWsServer?.()?.broadcastProcessEvent({
@@ -458,24 +492,75 @@ export function registerCanvasRoutes(
             if (!extension) {
                 return sendError(res, 404, 'Canvas extension not found');
             }
-
-            const run = runCanvasCapability(extension.capabilitiesJs, capability, canvas.content, body.params);
-            if (!run.ok) {
-                return sendError(res, 422, run.error);
+            // Fail the flag check before queueing, so a request that can never
+            // succeed does not wait behind a 30 s run to be told so.
+            if (isAsyncCapability(extension.manifest, capability) && !getCanvasHostApisEnabled?.()) {
+                return sendError(res, 404, 'Not found');
             }
 
-            const result = store.updateCanvas(wsId, canvasId, {
-                content: run.state,
-                expectedRevision: canvas.revision,
-                editor: 'user',
+            // Serialize per canvas. The read-modify-write below races rarely at
+            // the sync path's 1 s budget and reliably at the async path's 30 s,
+            // and the re-read INSIDE the critical section is what makes run N+1
+            // start from run N's output instead of losing to its revision check.
+            const outcome = await queueCanvasCapabilityRun(wsId, canvasId, async () => {
+                const fresh = store.getCanvas(wsId, canvasId);
+                const freshExtension = store.getExtension(wsId, canvasId);
+                if (!fresh || fresh.type !== 'extension' || !freshExtension) {
+                    return { kind: 'gone' } as const;
+                }
+                const isAsync = isAsyncCapability(freshExtension.manifest, capability);
+                if (isAsync && !getCanvasHostApisEnabled?.()) {
+                    return { kind: 'disabled' } as const;
+                }
+
+                const run = await runCanvasCapability(
+                    freshExtension.capabilitiesJs,
+                    capability,
+                    fresh.content,
+                    body.params,
+                    isAsync
+                        ? {
+                            async: true,
+                            complete: (completeFactory ?? defaultCompleteFactory)({
+                                workspaceId: wsId,
+                                canvasId,
+                                capability,
+                                ...(fresh.processId ? { processId: fresh.processId } : {}),
+                            }),
+                        }
+                        : undefined,
+                );
+                if (!run.ok) {
+                    return { kind: 'run-error', error: run.error } as const;
+                }
+
+                const result = store.updateCanvas(wsId, canvasId, {
+                    content: run.state,
+                    expectedRevision: fresh.revision,
+                    editor: 'user',
+                });
+                if (!result.ok) {
+                    // A user save landed while the capability ran — caller retries with fresh state.
+                    return { kind: 'conflict' } as const;
+                }
+                return { kind: 'ok', canvas: result.canvas } as const;
             });
-            if (!result.ok) {
-                // Concurrent edit between read and write — caller retries with fresh state
+
+            if (outcome.kind === 'gone') {
+                return sendError(res, 404, 'Extension canvas not found');
+            }
+            if (outcome.kind === 'disabled') {
+                return sendError(res, 404, 'Not found');
+            }
+            if (outcome.kind === 'run-error') {
+                return sendError(res, 422, outcome.error);
+            }
+            if (outcome.kind === 'conflict') {
                 return sendJSON(res, 409, { error: 'revision-conflict', canvas: store.getCanvas(wsId, canvasId) });
             }
 
-            broadcastCanvasUpdated(wsId, result.canvas, 'user');
-            sendJSON(res, 200, { canvas: result.canvas });
+            broadcastCanvasUpdated(wsId, outcome.canvas, 'user');
+            sendJSON(res, 200, { canvas: outcome.canvas });
         },
     });
 

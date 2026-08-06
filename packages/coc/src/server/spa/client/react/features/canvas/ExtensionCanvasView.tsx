@@ -214,6 +214,13 @@ export function ExtensionCanvasView({ workspaceId, canvas, onCanvasSaved }: Exte
     const [extension, setExtension] = useState<CanvasExtension | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [actionError, setActionError] = useState<string | null>(null);
+    /**
+     * Capability invocations in flight. An async capability has a 30 s budget,
+     * so without this the panel would sit silent for half a minute after a
+     * click. Counted rather than boolean: an artifact may fire several actions,
+     * and the indicator should clear when the LAST one settles.
+     */
+    const [pendingInvokes, setPendingInvokes] = useState(0);
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const canvasIdRef = useRef(canvas.id);
     canvasIdRef.current = canvas.id;
@@ -306,6 +313,7 @@ export function ExtensionCanvasView({ workspaceId, canvas, onCanvasSaved }: Exte
             }
 
             if (data.type === 'invoke-capability' && typeof data.name === 'string') {
+                setPendingInvokes(n => n + 1);
                 client.canvases.invokeCapability(workspaceId, canvasIdRef.current, data.name, data.params)
                     .then(saved => {
                         setActionError(null);
@@ -318,7 +326,8 @@ export function ExtensionCanvasView({ workspaceId, canvas, onCanvasSaved }: Exte
                         const message = err instanceof Error ? err.message : 'Capability failed';
                         setActionError(message);
                         respond({ ok: false, error: { code: 'capability-error', message } });
-                    });
+                    })
+                    .finally(() => setPendingInvokes(n => Math.max(0, n - 1)));
                 return;
             }
 
@@ -389,6 +398,14 @@ export function ExtensionCanvasView({ workspaceId, canvas, onCanvasSaved }: Exte
 
     return (
         <div className="flex flex-col h-full min-h-0">
+            {pendingInvokes > 0 && (
+                <div
+                    className="px-3 py-1.5 text-[11px] text-[#848484] border-b border-[#e5e5e5] dark:border-[#333]"
+                    data-testid="extension-canvas-pending"
+                >
+                    Running capability…
+                </div>
+            )}
             {actionError && (
                 <div className="px-3 py-1.5 text-[11px] text-red-600 bg-red-50 dark:bg-red-950 border-b border-red-200 dark:border-red-800" data-testid="extension-canvas-action-error">
                     {actionError}

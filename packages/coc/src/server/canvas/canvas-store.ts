@@ -125,6 +125,15 @@ export interface CanvasCapabilityMeta {
     description: string;
     /** Free-form description of the params object the capability expects. */
     paramsDescription?: string;
+    /**
+     * Run this capability on the ASYNC path: a terminable worker thread with a
+     * 30 s budget and a `host` object (`host.complete`), instead of the default
+     * `node:vm` call with a 1000 ms budget and no host.
+     *
+     * Absent or false is the legacy shape and the default — every capability
+     * stored before this field existed keeps the sync path exactly.
+     */
+    async?: boolean;
 }
 
 export interface CanvasExtensionManifest {

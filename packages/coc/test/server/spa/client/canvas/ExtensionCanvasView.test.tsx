@@ -503,6 +503,72 @@ describe('ExtensionCanvasView', () => {
         });
     });
 
+    // An async capability has a 30 s budget, so "nothing visible happened" is a
+    // realistic half-minute without this indicator.
+    it('shows a pending indicator while a long capability runs, and clears it on success', async () => {
+        let settle: (canvas: unknown) => void = () => {};
+        mocks.invokeCapability.mockReturnValue(new Promise(resolve => { settle = resolve; }));
+
+        render(<ExtensionCanvasView workspaceId="ws-1" canvas={makeCanvas()} onCanvasSaved={vi.fn()} />);
+        const iframe = await screen.findByTestId('extension-canvas-iframe') as HTMLIFrameElement;
+        expect(screen.queryByTestId('extension-canvas-pending')).toBeNull();
+
+        postFromIframe(iframe, { __canvasHost: true, id: 1, type: 'invoke-capability', name: 'slow' });
+        await waitFor(() => expect(screen.getByTestId('extension-canvas-pending')).toBeTruthy());
+
+        await act(async () => {
+            settle(makeCanvas({ revision: 3 }));
+        });
+        await waitFor(() => expect(screen.queryByTestId('extension-canvas-pending')).toBeNull());
+    });
+
+    it('clears the pending indicator when a capability fails, leaving the error banner', async () => {
+        let fail: (err: Error) => void = () => {};
+        mocks.invokeCapability.mockReturnValue(new Promise((_resolve, reject) => { fail = reject; }));
+
+        render(<ExtensionCanvasView workspaceId="ws-1" canvas={makeCanvas()} onCanvasSaved={vi.fn()} />);
+        const iframe = await screen.findByTestId('extension-canvas-iframe') as HTMLIFrameElement;
+        const postMessage = vi.fn();
+        Object.defineProperty(iframe.contentWindow, 'postMessage', { value: postMessage, configurable: true });
+
+        postFromIframe(iframe, { __canvasHost: true, id: 5, type: 'invoke-capability', name: 'slow' });
+        await waitFor(() => expect(screen.getByTestId('extension-canvas-pending')).toBeTruthy());
+
+        await act(async () => {
+            fail(new Error('exceeded the 30000ms async budget and was terminated'));
+        });
+
+        // Pending clears, the banner shows the failure…
+        await waitFor(() => expect(screen.queryByTestId('extension-canvas-pending')).toBeNull());
+        expect(screen.getByTestId('extension-canvas-action-error').textContent).toContain('async budget');
+        // …and the extension's own promise rejects with the structured shape.
+        expect(postMessage).toHaveBeenCalledWith({
+            __canvasHost: true,
+            type: 'response',
+            id: 5,
+            ok: false,
+            error: { code: 'capability-error', message: 'exceeded the 30000ms async budget and was terminated' },
+        }, '*');
+    });
+
+    it('keeps the pending indicator up until the LAST of several invokes settles', async () => {
+        const settlers: Array<(canvas: unknown) => void> = [];
+        mocks.invokeCapability.mockImplementation(() => new Promise(resolve => { settlers.push(resolve); }));
+
+        render(<ExtensionCanvasView workspaceId="ws-1" canvas={makeCanvas()} onCanvasSaved={vi.fn()} />);
+        const iframe = await screen.findByTestId('extension-canvas-iframe') as HTMLIFrameElement;
+
+        postFromIframe(iframe, { __canvasHost: true, id: 1, type: 'invoke-capability', name: 'a' });
+        postFromIframe(iframe, { __canvasHost: true, id: 2, type: 'invoke-capability', name: 'b' });
+        await waitFor(() => expect(settlers).toHaveLength(2));
+
+        await act(async () => { settlers[0](makeCanvas({ revision: 3 })); });
+        expect(screen.getByTestId('extension-canvas-pending')).toBeTruthy();
+
+        await act(async () => { settlers[1](makeCanvas({ revision: 4 })); });
+        await waitFor(() => expect(screen.queryByTestId('extension-canvas-pending')).toBeNull());
+    });
+
     it('routes a set-state escape hatch through the revision-checked save', async () => {
         const onCanvasSaved = vi.fn();
         mocks.save.mockResolvedValue(makeCanvas({ revision: 3 }));

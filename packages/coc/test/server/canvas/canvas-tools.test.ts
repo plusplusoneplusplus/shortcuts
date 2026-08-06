@@ -344,6 +344,103 @@ describe('canvas LLM tools', () => {
             expect(store.getExtension(WS, created.canvasId)?.uiHtml).toBe('<div id="board2"></div>');
         });
 
+        // --- async capability declaration ----------------------------------
+
+        it('persists an async: true declaration into the manifest', async () => {
+            const { extension } = buildTools();
+            const result = await extension.handler({
+                ...BUILD_ARGS,
+                capabilities: [
+                    { name: 'add_card', description: 'Add a card' },
+                    { name: 'summarize', description: 'Ask the model', async: true },
+                ],
+                capabilitiesJs: 'capabilities = { add_card: function (s) { return s; }, summarize: async function (s) { return s; } };',
+            } as any) as any;
+
+            expect(result.success).toBe(true);
+            const capabilities = store.getExtension(WS, result.canvasId)!.manifest.capabilities;
+            expect(capabilities.find(c => c.name === 'add_card')?.async).toBeUndefined();
+            expect(capabilities.find(c => c.name === 'summarize')?.async).toBe(true);
+        });
+
+        it('omits async from the manifest when declared false', async () => {
+            const { extension } = buildTools();
+            const result = await extension.handler({
+                ...BUILD_ARGS,
+                capabilities: [{ name: 'add_card', description: 'Add a card', async: false }],
+            } as any) as any;
+            expect(result.success).toBe(true);
+            expect(store.getExtension(WS, result.canvasId)!.manifest.capabilities[0].async).toBeUndefined();
+        });
+
+        it('rejects a non-boolean async declaration', async () => {
+            const { extension } = buildTools();
+            const result = await extension.handler({
+                ...BUILD_ARGS,
+                capabilities: [{ name: 'add_card', description: 'Add a card', async: 'yes' }],
+            } as any) as any;
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('async must be true or false');
+        });
+
+        it('declares async in the tool schema so the model can set it', () => {
+            const { extension } = buildTools();
+            const items = (extension.parameters as any).properties.capabilities.items;
+            expect(items.properties.async.type).toBe('boolean');
+            expect(items.required).not.toContain('async');
+        });
+
+        it('refuses to RUN an async capability when the host APIs flag is off', async () => {
+            const { extension } = createCanvasTools({
+                dataDir,
+                workspaceId: WS,
+                processId: PROCESS_ID,
+                processStore,
+                canvasStore: store,
+                getCanvasHostApisEnabled: () => false,
+            });
+            const created = await extension.handler({
+                ...BUILD_ARGS,
+                capabilities: [{ name: 'slow', description: 'slow', async: true }],
+                capabilitiesJs: 'capabilities = { slow: async function (s) { return { ran: true }; } };',
+            } as any) as any;
+
+            const run = await extension.handler({ canvasId: created.canvasId, capability: 'slow' } as any) as any;
+            expect(run.success).toBe(false);
+            expect(run.error).toContain('async capabilities are disabled');
+            // Nothing ran, so the state is untouched.
+            expect(JSON.parse(store.getCanvas(WS, created.canvasId)!.content).ran).toBeUndefined();
+        });
+
+        it('runs an async capability, with host.complete, when the flag is on', async () => {
+            const complete = vi.fn(async () => ({ ok: true as const, text: 'a summary' }));
+            const completeFactory = vi.fn(() => complete);
+            const { extension } = createCanvasTools({
+                dataDir,
+                workspaceId: WS,
+                processId: PROCESS_ID,
+                processStore,
+                canvasStore: store,
+                getCanvasHostApisEnabled: () => true,
+                completeFactory,
+            });
+            const created = await extension.handler({
+                ...BUILD_ARGS,
+                capabilities: [{ name: 'summarize', description: 'summarize', async: true }],
+                capabilitiesJs: `capabilities = { summarize: async function (s, p, host) { return { summary: await host.complete('sum it up') }; } };`,
+            } as any) as any;
+
+            const run = await extension.handler({ canvasId: created.canvasId, capability: 'summarize' } as any) as any;
+            expect(run.success).toBe(true);
+            expect(JSON.parse(store.getCanvas(WS, created.canvasId)!.content).summary).toBe('a summary');
+            expect(completeFactory).toHaveBeenCalledWith({
+                workspaceId: WS,
+                canvasId: created.canvasId,
+                capability: 'summarize',
+                processId: PROCESS_ID,
+            });
+        });
+
         it('rejects malformed build input', async () => {
             const { extension } = buildTools();
             const noCapName = await extension.handler({ ...BUILD_ARGS, capabilities: [{ name: 'Bad Name', description: 'x' }] } as any) as any;

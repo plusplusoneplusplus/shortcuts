@@ -45,6 +45,9 @@ import { CANVAS_LIBRARIES, CANVAS_LIBRARY_IDS, resolveCanvasLibraries } from '..
 import type { CanvasLibraryId } from '../canvas/canvas-libraries';
 import { transformCanvasJsx } from '../canvas/canvas-jsx';
 import { runCanvasCapability, isValidCapabilityName } from '../canvas/canvas-capability-runner';
+import type { CapabilityCompleteFn } from '../canvas/canvas-capability-runner';
+import { queueCanvasCapabilityRun } from '../canvas/canvas-capability-queue';
+import { createCanvasCompleteFn } from '../canvas/canvas-capability-completion';
 import { normaliseExcalidrawScene } from '../canvas/excalidraw-scene';
 import { emitCanvasUpdated } from '../streaming/sse-handler';
 
@@ -61,6 +64,15 @@ export interface CanvasToolsDeps {
     processStore?: ProcessStore;
     /** Injectable store for tests. Defaults to a dataDir-backed `CanvasStore`. */
     canvasStore?: CanvasStore;
+    /**
+     * Live gate for the canvas host APIs — async capabilities and the
+     * `host.complete` they get. Absent or false means a capability declared
+     * `async: true` cannot be RUN; authoring one is still allowed, so a manifest
+     * survives the flag being toggled off and back on.
+     */
+    getCanvasHostApisEnabled?: () => boolean;
+    /** Injectable `host.complete` implementation. Overridden in tests. */
+    completeFactory?: (attribution: { workspaceId: string; canvasId: string; capability: string; processId?: string }) => CapabilityCompleteFn;
 }
 
 /** Create (omit canvasId) or update (with canvasId) a markdown/code canvas. */
@@ -140,6 +152,9 @@ function validateExtensionAuthorInput(args: ExtensionCanvasArgs): string | null 
         }
         if (typeof capability.description !== 'string' || !capability.description.trim()) {
             return `Capability "${capability.name}" needs a description`;
+        }
+        if (capability.async !== undefined && typeof capability.async !== 'boolean') {
+            return `Capability "${capability.name}": async must be true or false`;
         }
     }
     if (typeof args.capabilitiesJs !== 'string' || !args.capabilitiesJs.trim()) {
@@ -238,6 +253,10 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
     extension: Tool<unknown>;
 } {
     const store = deps.canvasStore ?? new CanvasStore(deps.dataDir);
+
+    /** Real `host.complete`: the one-shot AI invoker, bound to who asked for it. */
+    const defaultCompleteFactory = (attribution: { workspaceId: string; canvasId: string; capability: string; processId?: string }): CapabilityCompleteFn =>
+        createCanvasCompleteFn(deps.dataDir, attribution);
 
     const emitUpdate = (canvasId: string, title: string, revision: number): void => {
         if (deps.processStore && deps.processId) {
@@ -450,6 +469,10 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
             + 'provide description, capabilities[] (declared actions), capabilitiesJs (assigns '
             + '`capabilities = { name(state, params) { return nextState } }` — pure, no imports/network, 1s budget), '
             + 'and ONE of uiJsx or uiHtml.\n\n'
+            + 'ASYNC capabilities: mark a capability `async: true` to run it with a 30s budget and a third argument, '
+            + '`host`, whose only method is `await host.complete(prompt, { model? })` — a one-shot model call, max 3 per '
+            + 'run. Write it as `async name(state, params, host) { … return nextState }`. There is no network access of '
+            + 'any kind beyond that. Leave async off unless the capability genuinely awaits something.\n\n'
             + 'uiJsx (PREFERRED for anything with charts, tables or real interaction) — write a React component in JSX; '
             + 'the server compiles it. Declare what you need in `libraries`; they arrive as GLOBALS, so never write an '
             + 'import or a CDN <script> (module scripts and fetch are blocked in the sandboxed frame). '
@@ -504,6 +527,13 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                             name: { type: 'string', description: 'lowercase_snake_case' },
                             description: { type: 'string' },
                             paramsDescription: { type: 'string' },
+                            async: {
+                                type: 'boolean',
+                                description:
+                                    'Set true only if this capability needs to await something (e.g. host.complete). '
+                                    + 'It then runs with a 30s budget and receives a `host` argument. Default false: '
+                                    + 'a pure, synchronous 1s function with no host.',
+                            },
                         },
                         required: ['name', 'description'],
                     },
@@ -558,20 +588,71 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                 if (!ext) {
                     return { success: false, error: `Extension documents missing for canvas: ${a.canvasId}` };
                 }
-                const run = runCanvasCapability(ext.capabilitiesJs, a.capability, canvas.content, a.params);
-                if (!run.ok) {
-                    return { success: false, error: run.error };
-                }
-                const result = store.updateCanvas(deps.workspaceId, a.canvasId, {
-                    content: run.state,
-                    expectedRevision: canvas.revision,
-                    editor: 'ai',
+
+                // Same per-canvas queue the REST route uses. Without it an AI
+                // run and a user's click on the same canvas read the same
+                // revision and one of them loses the write.
+                const canvasId = a.canvasId;
+                const capabilityName = a.capability;
+                const params = a.params;
+                const outcome = await queueCanvasCapabilityRun(deps.workspaceId, canvasId, async () => {
+                    const fresh = store.getCanvas(deps.workspaceId, canvasId);
+                    const freshExt = store.getExtension(deps.workspaceId, canvasId);
+                    if (!fresh || fresh.type !== 'extension' || !freshExt) {
+                        return { kind: 'gone' } as const;
+                    }
+                    const isAsync = freshExt.manifest?.capabilities?.some(
+                        meta => meta?.name === capabilityName && meta.async === true,
+                    ) === true;
+                    if (isAsync && !deps.getCanvasHostApisEnabled?.()) {
+                        return { kind: 'disabled' } as const;
+                    }
+
+                    const run = await runCanvasCapability(
+                        freshExt.capabilitiesJs,
+                        capabilityName,
+                        fresh.content,
+                        params,
+                        isAsync
+                            ? {
+                                async: true,
+                                complete: (deps.completeFactory ?? defaultCompleteFactory)({
+                                    workspaceId: deps.workspaceId,
+                                    canvasId,
+                                    capability: capabilityName,
+                                    ...(fresh.processId ? { processId: fresh.processId } : {}),
+                                }),
+                            }
+                            : undefined,
+                    );
+                    if (!run.ok) {
+                        return { kind: 'run-error', error: run.error } as const;
+                    }
+                    const result = store.updateCanvas(deps.workspaceId, canvasId, {
+                        content: run.state,
+                        expectedRevision: fresh.revision,
+                        editor: 'ai',
+                    });
+                    if (!result.ok) {
+                        return { kind: 'conflict' } as const;
+                    }
+                    return { kind: 'ok', canvas: result.canvas } as const;
                 });
-                if (!result.ok) {
+
+                if (outcome.kind === 'gone') {
+                    return { success: false, error: `Extension canvas not found: ${canvasId}` };
+                }
+                if (outcome.kind === 'disabled') {
+                    return { success: false, error: `Capability "${capabilityName}" is declared async, and async capabilities are disabled on this server` };
+                }
+                if (outcome.kind === 'run-error') {
+                    return { success: false, error: outcome.error };
+                }
+                if (outcome.kind === 'conflict') {
                     return { success: false, error: 'The canvas state changed while the capability ran — call read_canvas and retry.' };
                 }
-                emitUpdate(result.canvas.id, result.canvas.title, result.canvas.revision);
-                return { success: true, canvasId: result.canvas.id, revision: result.canvas.revision, ...truncateState(result.canvas.content) };
+                emitUpdate(outcome.canvas.id, outcome.canvas.title, outcome.canvas.revision);
+                return { success: true, canvasId: outcome.canvas.id, revision: outcome.canvas.revision, ...truncateState(outcome.canvas.content) };
             }
 
             // FILES mode — attach data to an existing canvas without re-authoring
@@ -625,6 +706,7 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                     name: c.name,
                     description: c.description,
                     ...(c.paramsDescription ? { paramsDescription: c.paramsDescription } : {}),
+                    ...(c.async === true ? { async: true } : {}),
                 })),
                 ...(libraries ? { libraries } : {}),
             };
