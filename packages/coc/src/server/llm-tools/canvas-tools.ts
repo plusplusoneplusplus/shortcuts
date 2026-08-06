@@ -33,7 +33,14 @@ import {
     MAX_EXTENSION_UI_JS_BYTES,
     MAX_EXTENSION_CAPABILITIES_BYTES,
 } from '../canvas/canvas-store';
-import type { CanvasEdit, CanvasType, CanvasCapabilityMeta, CanvasExtensionManifest } from '../canvas/canvas-store';
+import type {
+    CanvasEdit,
+    CanvasType,
+    CanvasCapabilityMeta,
+    CanvasExtensionManifest,
+    CanvasFileEncoding,
+    CanvasFileEntry,
+} from '../canvas/canvas-store';
 import { CANVAS_LIBRARIES, CANVAS_LIBRARY_IDS, resolveCanvasLibraries } from '../canvas/canvas-libraries';
 import type { CanvasLibraryId } from '../canvas/canvas-libraries';
 import { transformCanvasJsx } from '../canvas/canvas-jsx';
@@ -87,6 +94,17 @@ export interface ExtensionCanvasArgs {
     initialState?: Record<string, unknown>;
     capability?: string;
     params?: Record<string, unknown>;
+    /** Data files to place in the canvas's read-only `files/` directory. */
+    files?: CanvasFileInput[];
+}
+
+/** One file the AI attaches to a canvas for its UI to read back. */
+export interface CanvasFileInput {
+    /** Canvas-relative path, e.g. `data.csv` or `raw/jan.json`. */
+    path: string;
+    content: string;
+    /** `base64` when `content` carries bytes; defaults to `utf-8`. */
+    encoding?: CanvasFileEncoding;
 }
 
 /**
@@ -148,6 +166,53 @@ function validateExtensionAuthorInput(args: ExtensionCanvasArgs): string | null 
         return 'libraries only applies to uiJsx — a uiHtml extension loads no vendored libraries';
     }
     return null;
+}
+
+/** Cap on files attached in one tool call — a bound on a single AI mistake. */
+const MAX_CANVAS_FILES_PER_CALL = 20;
+
+/**
+ * Write the attached data files into the canvas's read-only `files/` directory,
+ * where `CanvasHost.readFile` can reach them. All-or-nothing on validation: a
+ * bad entry aborts before anything is written, so the AI never has to reason
+ * about a half-applied batch.
+ */
+function writeCanvasFiles(
+    store: CanvasStore,
+    workspaceId: string,
+    canvasId: string,
+    files: CanvasFileInput[],
+): { ok: true; files: CanvasFileEntry[] } | { ok: false; error: string } {
+    if (!Array.isArray(files)) {
+        return { ok: false, error: 'files must be an array of { path, content }' };
+    }
+    if (files.length > MAX_CANVAS_FILES_PER_CALL) {
+        return { ok: false, error: `At most ${MAX_CANVAS_FILES_PER_CALL} files can be attached in one call` };
+    }
+    for (const file of files) {
+        if (!file || typeof file.path !== 'string' || typeof file.content !== 'string') {
+            return { ok: false, error: 'Each file needs a path and a content string' };
+        }
+        if (file.encoding !== undefined && file.encoding !== 'utf-8' && file.encoding !== 'base64') {
+            return { ok: false, error: `Invalid encoding for "${file.path}" — use "utf-8" or "base64"` };
+        }
+    }
+
+    const written: CanvasFileEntry[] = [];
+    for (const file of files) {
+        const result = store.writeCanvasFile(workspaceId, canvasId, file.path, file.content, file.encoding ?? 'utf-8');
+        if (!result.ok) {
+            if (result.reason === 'too-large') {
+                return { ok: false, error: `"${file.path}" is ${result.size} bytes, over the ${result.limit} byte limit` };
+            }
+            if (result.reason === 'not-found') {
+                return { ok: false, error: `Canvas not found: ${canvasId}` };
+            }
+            return { ok: false, error: `Invalid file path: ${file.path} (relative, no "..", no leading "/")` };
+        }
+        written.push(result.file);
+    }
+    return { ok: true, files: written };
 }
 
 /**
@@ -413,8 +478,14 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
             + 'no dark: variants; use a style={{…}} prop for anything outside it.\n\n'
             + 'uiHtml — self-contained HTML+JS for simple widgets. No libraries, no JSX.\n\n'
             + 'Either way the UI talks to window.CanvasHost: onState(cb) to render, invoke(name, params) to run a '
-            + 'capability, setState(state) to replace the state directly. invoke/setState return promises that reject '
-            + 'with { code, message }, code being offline|timeout|revision-conflict|capability-error.\n\n'
+            + 'capability, setState(state) to replace the state directly, listFiles() and readFile(path) to read the '
+            + 'data files you attached. All of them return promises that reject with { code, message }, code being '
+            + 'offline|timeout|revision-conflict|capability-error|file-error.\n\n'
+            + 'FILES: pass `files: [{ path, content }]` to attach data the UI reads back with '
+            + 'await host.readFile("data.csv") — which returns { path, size, encoding, content } (encoding is "utf-8" '
+            + 'for text, "base64" otherwise). Use this instead of pasting a large dataset into initialState. Files are '
+            + 'READ-ONLY to the artifact and live only in this canvas. To add data to an existing canvas, pass '
+            + 'canvasId + files with no UI fields.\n\n'
             + 'RUN: pass canvasId + capability (+ params) to apply one action to the state; the panel re-renders live.',
         parameters: {
             type: 'object',
@@ -453,6 +524,21 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                         + `${CANVAS_LIBRARY_IDS.map(id => `"${id}"`).join(', ')}. react is added automatically.`,
                 },
                 initialState: { type: 'object', description: 'BUILD (create only): initial JSON state. Default {}.' },
+                files: {
+                    type: 'array',
+                    description:
+                        'Data files the UI reads back with CanvasHost.readFile(path). Attach them while building, '
+                        + 'or pass canvasId + files alone to add data to an existing canvas. Read-only: nothing can write them back.',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            path: { type: 'string', description: 'Canvas-relative path, e.g. "data.csv" or "raw/jan.json". No leading "/" and no "..".' },
+                            content: { type: 'string' },
+                            encoding: { type: 'string', enum: ['utf-8', 'base64'], description: 'Default "utf-8". Use "base64" for binary content.' },
+                        },
+                        required: ['path', 'content'],
+                    },
+                },
             },
             required: [],
         },
@@ -486,6 +572,23 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                 }
                 emitUpdate(result.canvas.id, result.canvas.title, result.canvas.revision);
                 return { success: true, canvasId: result.canvas.id, revision: result.canvas.revision, ...truncateState(result.canvas.content) };
+            }
+
+            // FILES mode — attach data to an existing canvas without re-authoring
+            // it. Recognized by `files` on a canvasId with no UI/capabilities
+            // input, so adding a dataset does not force the AI to resend the
+            // whole extension.
+            const hasFiles = Array.isArray(a.files) && a.files.length > 0;
+            const authoringUi = typeof a.uiHtml === 'string' || typeof a.uiJsx === 'string' || a.capabilitiesJs !== undefined;
+            if (hasFiles && a.canvasId && !authoringUi) {
+                if (!store.getCanvas(deps.workspaceId, a.canvasId)) {
+                    return { success: false, error: `Canvas not found: ${a.canvasId}` };
+                }
+                const written = writeCanvasFiles(store, deps.workspaceId, a.canvasId, a.files!);
+                if (!written.ok) {
+                    return { success: false, error: written.error };
+                }
+                return { success: true, canvasId: a.canvasId, files: written.files };
             }
 
             // BUILD mode — author the extension documents
@@ -530,6 +633,17 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                 : { uiHtml: a.uiHtml! };
             try {
                 if (a.canvasId) {
+                    // Files first: a rejected path or an oversized file comes back
+                    // as a tool error instead of landing an extension whose UI
+                    // then reads data that was never written.
+                    let updatedFiles: CanvasFileEntry[] | undefined;
+                    if (hasFiles) {
+                        const written = writeCanvasFiles(store, deps.workspaceId, a.canvasId, a.files!);
+                        if (!written.ok) {
+                            return { success: false, error: written.error };
+                        }
+                        updatedFiles = written.files;
+                    }
                     const updated = store.saveExtension(deps.workspaceId, a.canvasId, {
                         manifest,
                         ...uiDocuments,
@@ -539,7 +653,13 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                         return { success: false, error: `Extension canvas not found: ${a.canvasId}` };
                     }
                     emitUpdate(updated.id, updated.title, updated.revision);
-                    return { success: true, canvasId: updated.id, revision: updated.revision, updated: true };
+                    return {
+                        success: true,
+                        canvasId: updated.id,
+                        revision: updated.revision,
+                        updated: true,
+                        ...(updatedFiles ? { files: updatedFiles } : {}),
+                    };
                 }
 
                 if (!a.title || !a.title.trim()) {
@@ -553,6 +673,14 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                     processId: deps.processId,
                     editor: 'ai',
                 });
+                let createdFiles: CanvasFileEntry[] | undefined;
+                if (hasFiles) {
+                    const written = writeCanvasFiles(store, deps.workspaceId, canvas.id, a.files!);
+                    if (!written.ok) {
+                        return { success: false, error: written.error };
+                    }
+                    createdFiles = written.files;
+                }
                 const withExtension = store.saveExtension(deps.workspaceId, canvas.id, {
                     manifest,
                     ...uiDocuments,
@@ -560,7 +688,14 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
                 }, 'ai');
                 const record = withExtension ?? canvas;
                 emitUpdate(record.id, record.title, record.revision);
-                return { success: true, canvasId: record.id, title: record.title, revision: record.revision, created: true };
+                return {
+                    success: true,
+                    canvasId: record.id,
+                    title: record.title,
+                    revision: record.revision,
+                    created: true,
+                    ...(createdFiles ? { files: createdFiles } : {}),
+                };
             } catch (err) {
                 return { success: false, error: err instanceof Error ? err.message : String(err) };
             }

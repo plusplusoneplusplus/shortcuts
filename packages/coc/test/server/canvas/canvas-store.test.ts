@@ -2,7 +2,15 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { CanvasStore, MAX_CANVAS_VERSIONS, generateCanvasId, isValidCanvasId } from '../../../src/server/canvas/canvas-store';
+import {
+    CanvasStore,
+    MAX_CANVAS_VERSIONS,
+    MAX_CANVAS_FILE_ENTRIES,
+    MAX_CANVAS_TEXT_FILE_BYTES,
+    generateCanvasId,
+    isValidCanvasId,
+    isSafeCanvasFilePath,
+} from '../../../src/server/canvas/canvas-store';
 
 const WS = 'test-workspace';
 
@@ -591,5 +599,336 @@ describe('canvas id helpers', () => {
         expect(isValidCanvasId('a\\b')).toBe(false);
         expect(isValidCanvasId('UPPER')).toBe(false);
         expect(isValidCanvasId('ok-id-123')).toBe(true);
+    });
+});
+
+// ============================================================================
+// Canvas files — the read-only scope an extension canvas is given
+// ============================================================================
+
+/**
+ * Path safety is the whole security story for this feature, so it is tested as
+ * a table rather than as a handful of examples: every row is a way out of the
+ * files root that has worked on some system, and each has to be refused by
+ * BOTH the pure shape check and the store method that uses it.
+ */
+const UNSAFE_PATHS: Array<[label: string, value: string]> = [
+    ['parent traversal', '../secret.txt'],
+    ['traversal mid-path', 'sub/../../secret.txt'],
+    ['traversal at the end', 'sub/..'],
+    ['traversal disguised by a valid prefix', 'data/../../../etc/passwd'],
+    ['bare ..', '..'],
+    ['percent-encoded dot-dot (lowercase)', '%2e%2e/secret.txt'],
+    ['percent-encoded dot-dot (uppercase)', '%2E%2E/secret.txt'],
+    ['double-encoded dot-dot', '%252e%252e/secret.txt'],
+    ['percent-encoded separator', 'data%2f..%2fsecret.txt'],
+    ['percent-encoded backslash', 'data%5c..%5csecret.txt'],
+    ['residual percent-escape of an ordinary character', 'data%20file.csv'],
+    ['percent-encoded NUL', 'data.csv%00.png'],
+    ['absolute posix path', '/etc/passwd'],
+    ['absolute path to the root itself', '/'],
+    ['windows drive letter', 'C:\\Windows\\win.ini'],
+    ['windows drive letter, forward slashes', 'C:/Windows/win.ini'],
+    ['UNC path', '\\\\server\\share\\file'],
+    ['backslash separator', 'sub\\..\\..\\secret.txt'],
+    ['lone backslash in a name', 'data\\file.csv'],
+    ['literal NUL byte', 'data.csv\u0000.png'],
+    ['control character', 'data\u0001.csv'],
+    ['empty path', ''],
+    ['current directory', '.'],
+    ['dot segment', 'sub/./data.csv'],
+    ['empty segment', 'sub//data.csv'],
+    ['trailing separator', 'sub/'],
+];
+
+const SAFE_PATHS = [
+    'data.csv',
+    'raw/january.json',
+    'a/b/c/deep.txt',
+    'name with spaces.csv',
+    'UPPER.CSV',
+    'no-extension',
+    'dots.in.the.name.json',
+];
+
+describe('isSafeCanvasFilePath', () => {
+    it.each(UNSAFE_PATHS)('rejects %s', (_label, value) => {
+        expect(isSafeCanvasFilePath(value)).toBe(false);
+    });
+
+    it.each(SAFE_PATHS)('accepts %s', (value) => {
+        expect(isSafeCanvasFilePath(value)).toBe(true);
+    });
+
+    it('rejects non-strings and absurdly long paths', () => {
+        expect(isSafeCanvasFilePath(undefined)).toBe(false);
+        expect(isSafeCanvasFilePath(null)).toBe(false);
+        expect(isSafeCanvasFilePath(42)).toBe(false);
+        expect(isSafeCanvasFilePath({ path: 'data.csv' })).toBe(false);
+        expect(isSafeCanvasFilePath('a'.repeat(1025))).toBe(false);
+    });
+});
+
+describe('CanvasStore — canvas files', () => {
+    let dataDir: string;
+    let store: CanvasStore;
+    let canvasId: string;
+    let filesRoot: string;
+
+    beforeEach(() => {
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-canvas-files-'));
+        store = new CanvasStore(dataDir);
+        canvasId = store.createCanvas({ workspaceId: WS, title: 'Sales', content: '{}', type: 'extension' }).id;
+        filesRoot = store.getCanvasFilesRoot(WS, canvasId);
+        fs.mkdirSync(filesRoot, { recursive: true });
+    });
+
+    afterEach(() => {
+        fs.rmSync(dataDir, { recursive: true, force: true });
+    });
+
+    /** Put a file on disk directly, bypassing the store's write path. */
+    function seed(relativePath: string, contents: string | Buffer): void {
+        const full = path.join(filesRoot, ...relativePath.split('/'));
+        fs.mkdirSync(path.dirname(full), { recursive: true });
+        fs.writeFileSync(full, contents);
+    }
+
+    describe('path safety (through the store)', () => {
+        it.each(UNSAFE_PATHS)('readCanvasFile refuses %s without touching disk', (_label, value) => {
+            seed('data.csv', 'a,b\n1,2\n');
+            const result = store.readCanvasFile(WS, canvasId, value);
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.reason).toBe('invalid-path');
+        });
+
+        it.each(UNSAFE_PATHS)('writeCanvasFile refuses %s', (_label, value) => {
+            const result = store.writeCanvasFile(WS, canvasId, value, 'pwned');
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.reason).toBe('invalid-path');
+        });
+
+        it('refuses a symlink inside the files dir that points OUTSIDE it', () => {
+            // The case shape checks and path.resolve both miss: a perfectly
+            // well-formed relative path whose target is elsewhere on disk.
+            const outside = path.join(dataDir, 'outside-secret.txt');
+            fs.writeFileSync(outside, 'TOP SECRET');
+            try {
+                fs.symlinkSync(outside, path.join(filesRoot, 'link.txt'));
+            } catch {
+                return; // Windows without developer mode — no symlink privilege
+            }
+
+            const result = store.readCanvasFile(WS, canvasId, 'link.txt');
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.reason).toBe('invalid-path');
+        });
+
+        it('refuses a file reached through a symlinked DIRECTORY pointing outside', () => {
+            const outsideDir = path.join(dataDir, 'outside-dir');
+            fs.mkdirSync(outsideDir, { recursive: true });
+            fs.writeFileSync(path.join(outsideDir, 'secret.txt'), 'TOP SECRET');
+            try {
+                fs.symlinkSync(outsideDir, path.join(filesRoot, 'escape'), 'dir');
+            } catch {
+                return;
+            }
+
+            const result = store.readCanvasFile(WS, canvasId, 'escape/secret.txt');
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.reason).toBe('invalid-path');
+        });
+
+        it('refuses a WRITE through a symlinked directory pointing outside', () => {
+            const outsideDir = path.join(dataDir, 'outside-write');
+            fs.mkdirSync(outsideDir, { recursive: true });
+            try {
+                fs.symlinkSync(outsideDir, path.join(filesRoot, 'escape'), 'dir');
+            } catch {
+                return;
+            }
+
+            const result = store.writeCanvasFile(WS, canvasId, 'escape/planted.txt', 'pwned');
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.reason).toBe('invalid-path');
+            expect(fs.existsSync(path.join(outsideDir, 'planted.txt'))).toBe(false);
+        });
+
+        it('allows a symlink that stays INSIDE the files root', () => {
+            seed('real.csv', 'a,b\n');
+            try {
+                fs.symlinkSync(path.join(filesRoot, 'real.csv'), path.join(filesRoot, 'alias.csv'));
+            } catch {
+                return;
+            }
+
+            const result = store.readCanvasFile(WS, canvasId, 'alias.csv');
+            expect(result.ok).toBe(true);
+            if (result.ok) expect(result.file.content).toBe('a,b\n');
+        });
+
+        it('rejects an invalid canvas id before resolving anything', () => {
+            const result = store.readCanvasFile(WS, '../other', 'data.csv');
+            expect(result.ok).toBe(false);
+            if (!result.ok) expect(result.reason).toBe('invalid-path');
+        });
+    });
+
+    describe('readCanvasFile', () => {
+        it('reads a text file as utf-8', () => {
+            seed('data.csv', 'month,revenue\njan,10\n');
+            const result = store.readCanvasFile(WS, canvasId, 'data.csv');
+            expect(result).toMatchObject({
+                ok: true,
+                file: { path: 'data.csv', encoding: 'utf-8', content: 'month,revenue\njan,10\n', size: 21 },
+            });
+        });
+
+        it('reads a nested file', () => {
+            seed('raw/january.json', '{"n":1}');
+            const result = store.readCanvasFile(WS, canvasId, 'raw/january.json');
+            expect(result.ok).toBe(true);
+            if (result.ok) expect(result.file.content).toBe('{"n":1}');
+        });
+
+        it('reads an unrecognized/binary file as base64', () => {
+            const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]);
+            seed('logo.png', bytes);
+            const result = store.readCanvasFile(WS, canvasId, 'logo.png');
+            expect(result.ok).toBe(true);
+            if (result.ok) {
+                expect(result.file.encoding).toBe('base64');
+                expect(Buffer.from(result.file.content, 'base64')).toEqual(bytes);
+            }
+        });
+
+        it('honours a base64 override on a text file, and never the reverse', () => {
+            seed('data.csv', 'a,b\n');
+            const forced = store.readCanvasFile(WS, canvasId, 'data.csv', { encoding: 'base64' });
+            expect(forced.ok).toBe(true);
+            if (forced.ok) {
+                expect(forced.file.encoding).toBe('base64');
+                expect(Buffer.from(forced.file.content, 'base64').toString('utf-8')).toBe('a,b\n');
+            }
+
+            // Asking for utf-8 on binary content is ignored — it would hand back
+            // silently corrupted bytes.
+            seed('blob.bin', Buffer.from([0xff, 0xfe]));
+            const notForced = store.readCanvasFile(WS, canvasId, 'blob.bin', { encoding: 'utf-8' });
+            expect(notForced.ok).toBe(true);
+            if (notForced.ok) expect(notForced.file.encoding).toBe('base64');
+        });
+
+        it('returns not-found for a missing file, a directory, and a canvas with no files dir', () => {
+            seed('sub/x.txt', 'x');
+            expect(store.readCanvasFile(WS, canvasId, 'nope.csv')).toMatchObject({ ok: false, reason: 'not-found' });
+            expect(store.readCanvasFile(WS, canvasId, 'sub')).toMatchObject({ ok: false, reason: 'not-found' });
+
+            const bare = store.createCanvas({ workspaceId: WS, title: 'Bare', content: '{}' });
+            expect(store.readCanvasFile(WS, bare.id, 'data.csv')).toMatchObject({ ok: false, reason: 'not-found' });
+        });
+
+        it('refuses a text file over the 1 MB cap', () => {
+            seed('big.csv', 'x'.repeat(MAX_CANVAS_TEXT_FILE_BYTES + 1));
+            const result = store.readCanvasFile(WS, canvasId, 'big.csv');
+            expect(result.ok).toBe(false);
+            if (!result.ok && result.reason === 'too-large') {
+                expect(result.limit).toBe(MAX_CANVAS_TEXT_FILE_BYTES);
+                expect(result.size).toBe(MAX_CANVAS_TEXT_FILE_BYTES + 1);
+            } else {
+                expect.unreachable('expected too-large');
+            }
+        });
+
+        it('allows a binary file above the text cap but under the binary cap', () => {
+            seed('mid.bin', Buffer.alloc(MAX_CANVAS_TEXT_FILE_BYTES + 1024));
+            const result = store.readCanvasFile(WS, canvasId, 'mid.bin');
+            expect(result.ok).toBe(true);
+            if (result.ok) expect(result.file.encoding).toBe('base64');
+        });
+
+        it('caps by the file\'s own type, so a base64 override cannot raise the ceiling', () => {
+            seed('big.csv', 'x'.repeat(MAX_CANVAS_TEXT_FILE_BYTES + 1));
+            const result = store.readCanvasFile(WS, canvasId, 'big.csv', { encoding: 'base64' });
+            expect(result).toMatchObject({ ok: false, reason: 'too-large', limit: MAX_CANVAS_TEXT_FILE_BYTES });
+        });
+    });
+
+    describe('listCanvasFiles', () => {
+        it('lists files recursively, sorted, with size and encoding', () => {
+            seed('data.csv', 'a,b\n');
+            seed('raw/january.json', '{}');
+            seed('logo.png', Buffer.from([0x00, 0x01]));
+
+            expect(store.listCanvasFiles(WS, canvasId)).toEqual([
+                { path: 'data.csv', size: 4, encoding: 'utf-8' },
+                { path: 'logo.png', size: 2, encoding: 'base64' },
+                { path: 'raw/january.json', size: 2, encoding: 'utf-8' },
+            ]);
+        });
+
+        it('returns an empty list for a canvas with no files, and for a bad id', () => {
+            expect(store.listCanvasFiles(WS, canvasId)).toEqual([]);
+            expect(store.listCanvasFiles(WS, '../other')).toEqual([]);
+        });
+
+        it('omits symlinks rather than advertising an entry readFile would refuse', () => {
+            seed('real.csv', 'a\n');
+            const outside = path.join(dataDir, 'outside.txt');
+            fs.writeFileSync(outside, 'secret');
+            try {
+                fs.symlinkSync(outside, path.join(filesRoot, 'link.txt'));
+            } catch {
+                return;
+            }
+
+            expect(store.listCanvasFiles(WS, canvasId).map(f => f.path)).toEqual(['real.csv']);
+        });
+
+        it('stops at the entry cap', () => {
+            for (let i = 0; i < MAX_CANVAS_FILE_ENTRIES + 5; i++) {
+                seed(`f${i}.txt`, 'x');
+            }
+            expect(store.listCanvasFiles(WS, canvasId)).toHaveLength(MAX_CANVAS_FILE_ENTRIES);
+        });
+    });
+
+    describe('writeCanvasFile', () => {
+        it('writes text and reads it straight back', () => {
+            const written = store.writeCanvasFile(WS, canvasId, 'data.csv', 'a,b\n1,2\n');
+            expect(written).toMatchObject({ ok: true, file: { path: 'data.csv', size: 8, encoding: 'utf-8' } });
+            expect(fs.readFileSync(path.join(filesRoot, 'data.csv'), 'utf-8')).toBe('a,b\n1,2\n');
+
+            const read = store.readCanvasFile(WS, canvasId, 'data.csv');
+            expect(read.ok).toBe(true);
+            if (read.ok) expect(read.file.content).toBe('a,b\n1,2\n');
+        });
+
+        it('creates intermediate directories', () => {
+            expect(store.writeCanvasFile(WS, canvasId, 'raw/2026/jan.json', '{}').ok).toBe(true);
+            expect(fs.existsSync(path.join(filesRoot, 'raw', '2026', 'jan.json'))).toBe(true);
+        });
+
+        it('decodes base64 content to real bytes', () => {
+            const bytes = Buffer.from([0x00, 0xff, 0x10]);
+            const written = store.writeCanvasFile(WS, canvasId, 'blob.bin', bytes.toString('base64'), 'base64');
+            expect(written.ok).toBe(true);
+            expect(fs.readFileSync(path.join(filesRoot, 'blob.bin'))).toEqual(bytes);
+        });
+
+        it('refuses to write for a canvas that does not exist', () => {
+            expect(store.writeCanvasFile(WS, 'no-such-canvas', 'data.csv', 'x'))
+                .toMatchObject({ ok: false, reason: 'not-found' });
+        });
+
+        it('refuses content over the cap', () => {
+            const result = store.writeCanvasFile(WS, canvasId, 'big.csv', 'x'.repeat(MAX_CANVAS_TEXT_FILE_BYTES + 1));
+            expect(result).toMatchObject({ ok: false, reason: 'too-large', limit: MAX_CANVAS_TEXT_FILE_BYTES });
+            expect(fs.existsSync(path.join(filesRoot, 'big.csv'))).toBe(false);
+        });
+    });
+
+    it('files live inside the canvas directory the store already owns', () => {
+        expect(filesRoot).toBe(path.join(dataDir, 'repos', WS, 'canvases', canvasId, 'files'));
     });
 });

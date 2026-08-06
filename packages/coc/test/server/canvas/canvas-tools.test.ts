@@ -543,6 +543,118 @@ describe('canvas LLM tools', () => {
         });
     });
 
+    /**
+     * How data gets INTO `canvases/<id>/files/` in v1: the AI attaches it, and
+     * the artifact reads it back with `CanvasHost.readFile`. There is no user
+     * upload route and no write path from the iframe.
+     */
+    describe('extension_canvas — attached files', () => {
+        const AUTHOR = {
+            title: 'Sales',
+            description: 'Revenue chart',
+            capabilities: [{ name: 'refresh', description: 'Refresh' }],
+            capabilitiesJs: 'capabilities = { refresh: function (s) { return s; } };',
+            uiHtml: '<div></div>',
+        };
+
+        it('writes files at BUILD time and reads them back through the store', async () => {
+            const { extension } = buildTools();
+            const result = await extension.handler({
+                ...AUTHOR,
+                files: [
+                    { path: 'data.csv', content: 'month,revenue\njan,10\n' },
+                    { path: 'raw/jan.json', content: '{"n":1}' },
+                ],
+            }) as any;
+
+            expect(result.success).toBe(true);
+            expect(result.files).toEqual([
+                { path: 'data.csv', size: 21, encoding: 'utf-8' },
+                { path: 'raw/jan.json', size: 7, encoding: 'utf-8' },
+            ]);
+            const read = store.readCanvasFile(WS, result.canvasId, 'data.csv');
+            expect(read.ok).toBe(true);
+            if (read.ok) expect(read.file.content).toBe('month,revenue\njan,10\n');
+        });
+
+        it('attaches files to an existing canvas without re-authoring the UI', async () => {
+            const { extension } = buildTools();
+            const created = await extension.handler(AUTHOR) as any;
+
+            const attached = await extension.handler({
+                canvasId: created.canvasId,
+                files: [{ path: 'data.csv', content: 'a,b\n' }],
+            }) as any;
+
+            expect(attached.success).toBe(true);
+            expect(attached.files).toEqual([{ path: 'data.csv', size: 4, encoding: 'utf-8' }]);
+            // The extension documents are untouched — this is not a rebuild.
+            expect(store.getExtension(WS, created.canvasId)?.uiHtml).toBe('<div></div>');
+        });
+
+        it('decodes base64 file content', async () => {
+            const { extension } = buildTools();
+            const bytes = Buffer.from([0x00, 0xff, 0x10]);
+            const result = await extension.handler({
+                ...AUTHOR,
+                files: [{ path: 'logo.png', content: bytes.toString('base64'), encoding: 'base64' }],
+            }) as any;
+
+            expect(result.success).toBe(true);
+            const read = store.readCanvasFile(WS, result.canvasId, 'logo.png');
+            expect(read.ok).toBe(true);
+            if (read.ok) expect(Buffer.from(read.file.content, 'base64')).toEqual(bytes);
+        });
+
+        it('refuses a traversing path and writes nothing', async () => {
+            const { extension } = buildTools();
+            const created = await extension.handler(AUTHOR) as any;
+
+            const result = await extension.handler({
+                canvasId: created.canvasId,
+                files: [{ path: '../canvas.json', content: 'pwned' }],
+            }) as any;
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Invalid file path');
+            // The descriptor one directory up is intact.
+            expect(store.getCanvas(WS, created.canvasId)?.type).toBe('extension');
+        });
+
+        it('rejects a malformed files array before writing any of it', async () => {
+            const { extension } = buildTools();
+            const created = await extension.handler(AUTHOR) as any;
+
+            const result = await extension.handler({
+                canvasId: created.canvasId,
+                files: [{ path: 'ok.csv', content: 'a\n' }, { path: 'bad.csv' }],
+            }) as any;
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('content string');
+            expect(store.listCanvasFiles(WS, created.canvasId)).toEqual([]);
+        });
+
+        it('rejects an unknown canvas and an invalid encoding', async () => {
+            const { extension } = buildTools();
+
+            const missing = await extension.handler({
+                canvasId: 'no-such-canvas',
+                files: [{ path: 'a.csv', content: 'x' }],
+            }) as any;
+            expect(missing.success).toBe(false);
+            expect(missing.error).toContain('Canvas not found');
+
+            const created = await extension.handler(AUTHOR) as any;
+            const bad = await extension.handler({
+                canvasId: created.canvasId,
+                files: [{ path: 'a.csv', content: 'x', encoding: 'hex' }],
+            }) as any;
+            expect(bad.success).toBe(false);
+            expect(bad.error).toContain('encoding');
+        });
+    });
+
     it('does not emit SSE events when process context is missing', async () => {
         const { write } = createCanvasTools({ dataDir, workspaceId: WS, canvasStore: store });
         const result = await write.handler({ title: 'Doc', content: 'x' }) as any;

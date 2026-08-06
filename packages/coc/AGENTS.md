@@ -333,7 +333,19 @@ all have their own `references/*.md`.
   `(state, params) => nextState` transforms in `canvas-capability-runner.ts`
   (`node:vm`, no require/process, 1s timeout, 1 MB cap) — never execute
   extension scripts outside that runner. Do not write canvas files directly
-  from other features.
+  from other features. An extension canvas may also be given READ-ONLY data
+  files under `canvases/<canvasId>/files/`, written only by the AI
+  (`extension_canvas` `files: [{ path, content, encoding? }]`) and served by
+  `GET /canvases/:id/files` + `GET /canvases/:id/files/<path>` for
+  `CanvasHost.listFiles()` / `CanvasHost.readFile(path, opts)` in the iframe.
+  Path safety is layered in `canvas-store.ts` and must stay that way — shape
+  (`isSafeCanvasFilePath`, plus `hasEncodedPathEscape` on the still-encoded URL
+  form) → `path.resolve` → forge `isWithinDirectory` → `fs.realpathSync` on
+  both target and root, re-verified, which is the only layer that catches a
+  symlink inside `files/` pointing elsewhere. Caps: 1 MB text / 10 MB binary,
+  2000 listed entries. There is deliberately NO write endpoint and no
+  workspace-repo scope — canvas state is the write channel because it is
+  revision-checked and snapshotted; do not add either.
 - **Quick Ask side-notes** (live admin flag `features.quickAskSidenotes`
   default on, gating both the server endpoints and the SPA UI via
   `isQuickAskSidenotesEnabled()` / `useQuickAskSidenotesEnabled`) let a user

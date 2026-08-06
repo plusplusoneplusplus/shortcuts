@@ -12,6 +12,8 @@
  *   PATCH  /api/workspaces/:wsId/canvases/:canvasId/comments/:cid — set comment status
  *   DELETE /api/workspaces/:wsId/canvases/:canvasId/comments/:cid — delete a comment
  *   GET    /api/workspaces/:wsId/canvases/:canvasId/extension     — extension documents (manifest + ui + capabilities)
+ *   GET    /api/workspaces/:wsId/canvases/:canvasId/files         — list the canvas's readable files
+ *   GET    /api/workspaces/:wsId/canvases/:canvasId/files/<path>  — read one file (?encoding=base64 to force bytes)
  *   POST   /api/workspaces/:wsId/canvases/:canvasId/capabilities/:name — invoke a capability against the shared state
  *
  * User saves broadcast a `canvas-updated` WebSocket event so other dashboard
@@ -24,7 +26,7 @@ import type { Route } from '../types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { emitCanvasUpdated } from '../streaming/sse-handler';
-import { CanvasStore, isValidCanvasId } from './canvas-store';
+import { CanvasStore, isValidCanvasId, isSafeCanvasFilePath, hasEncodedPathEscape } from './canvas-store';
 import type { CanvasEdit, CanvasCommentStatus, CanvasRecord } from './canvas-store';
 import { runCanvasCapability, isValidCapabilityName } from './canvas-capability-runner';
 import { runKustoCanvas } from '../kusto/kusto-service';
@@ -39,6 +41,9 @@ const commentDetailPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/co
 const extensionPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/extension$/;
 const capabilityPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/capabilities\/([^/]+)$/;
 const runPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/run$/;
+const filesPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/files$/;
+/** The trailing group is a whole relative path, so it deliberately spans `/`. */
+const fileDetailPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/files\/(.+)$/;
 
 const COMMENT_STATUSES: readonly CanvasCommentStatus[] = ['open', 'sent', 'resolved'];
 
@@ -343,6 +348,84 @@ export function registerCanvasRoutes(
                 return sendError(res, 404, 'Canvas extension not found');
             }
             sendJSON(res, 200, { extension });
+        },
+    });
+
+    // Read-only canvas files. The scope is the canvas's OWN `files/` directory —
+    // not the workspace repo, not the machine — which is what an artifact
+    // actually needs: the data it was given. There is deliberately no write
+    // route; the canvas state is the write channel, and it is revision-checked
+    // and version-snapshotted in a way a file write would not be.
+    routes.push({
+        method: 'GET',
+        pattern: filesPattern,
+        handler: async (_req, res, match) => {
+            const wsId = decodeURIComponent(match![1]);
+            const canvasId = decodeURIComponent(match![2]);
+            if (!isValidCanvasId(canvasId)) {
+                return sendError(res, 400, 'Invalid canvas ID');
+            }
+            if (!store.getCanvas(wsId, canvasId)) {
+                return sendError(res, 404, 'Canvas not found');
+            }
+            sendJSON(res, 200, { files: store.listCanvasFiles(wsId, canvasId) });
+        },
+    });
+
+    routes.push({
+        method: 'GET',
+        pattern: fileDetailPattern,
+        handler: async (req, res, match) => {
+            const wsId = decodeURIComponent(match![1]);
+            const canvasId = decodeURIComponent(match![2]);
+            if (!isValidCanvasId(canvasId)) {
+                return sendError(res, 400, 'Invalid canvas ID');
+            }
+
+            // The router matches on the RAW (still percent-encoded) pathname, so
+            // the check runs on both forms: the raw one refuses `%2e%2e` before
+            // it can decode into `..` (and `%252e%252e` before it decodes into
+            // `%2e%2e`), the decoded one refuses a literal `..` that was never
+            // encoded at all. A path that will not decode is malformed, not
+            // merely missing. The store repeats the decoded check — this is not
+            // the only caller, and it must not be the only guard.
+            const rawPath = match![3];
+            if (hasEncodedPathEscape(rawPath)) {
+                return sendError(res, 400, 'Invalid file path');
+            }
+            let filePath: string;
+            try {
+                filePath = decodeURIComponent(rawPath);
+            } catch {
+                return sendError(res, 400, 'Invalid file path');
+            }
+            if (!isSafeCanvasFilePath(filePath)) {
+                return sendError(res, 400, 'Invalid file path');
+            }
+
+            const encodingParam = new URL(req.url!, 'http://x').searchParams.get('encoding');
+            // Only base64 may be forced. Forcing utf-8 onto real bytes hands back
+            // silent mojibake, so it is rejected rather than honoured.
+            if (encodingParam !== null && encodingParam !== 'base64') {
+                return sendError(res, 400, 'encoding must be "base64" when provided');
+            }
+
+            const result = store.readCanvasFile(
+                wsId,
+                canvasId,
+                filePath,
+                encodingParam === 'base64' ? { encoding: 'base64' } : undefined,
+            );
+            if (!result.ok) {
+                if (result.reason === 'invalid-path') {
+                    return sendError(res, 400, 'Invalid file path');
+                }
+                if (result.reason === 'too-large') {
+                    return sendError(res, 413, `File is ${result.size} bytes, over the ${result.limit} byte limit`);
+                }
+                return sendError(res, 404, 'Canvas file not found');
+            }
+            sendJSON(res, 200, { file: result.file });
         },
     });
 

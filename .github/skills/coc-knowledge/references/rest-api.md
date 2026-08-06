@@ -61,6 +61,8 @@ Chat canvas side panel (gated by `canvas.enabled`, default on). Markdown or code
 | PATCH | `/api/workspaces/:id/canvases/:canvasId/comments/:cid` | Set comment status (`open`/`sent`/`resolved`) |
 | DELETE | `/api/workspaces/:id/canvases/:canvasId/comments/:cid` | Delete a comment |
 | GET | `/api/workspaces/:id/canvases/:canvasId/extension` | Extension documents (`manifest`, `uiHtml`, `capabilitiesJs`) for an `extension`-type canvas |
+| GET | `/api/workspaces/:id/canvases/:canvasId/files` | List the canvas's read-only data files: `{ files: [{ path, size, encoding }] }`, sorted, recursive, symlinks omitted, capped at 2000 entries. 404 when the canvas does not exist |
+| GET | `/api/workspaces/:id/canvases/:canvasId/files/<path>` | Read one file: `{ file: { path, size, encoding, content } }`. `encoding` is `utf-8` for text and `base64` otherwise; `?encoding=base64` forces bytes (any other value is 400). Layered path safety (encoded-escape screen on the raw pathname → shape → resolve → `isWithinDirectory` → `realpath` re-verify) returns 400 for traversal, absolute paths, backslashes, NUL and symlinks leaving the root; 404 for a missing file or directory; 413 over the cap (1 MB text / 10 MB binary) |
 | POST | `/api/workspaces/:id/canvases/:canvasId/capabilities/:name` | Invoke a declared capability against the canvas JSON state (vm-sandboxed pure transform); revision-checked write, `canvas-updated` broadcast. 422 on capability error, 409 on concurrent edit |
 
 ## Filesystem

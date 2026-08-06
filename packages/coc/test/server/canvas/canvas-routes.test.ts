@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { createRouter } from '../../../src/server/shared/router';
 import { registerCanvasRoutes } from '../../../src/server/canvas/canvas-routes';
-import { CanvasStore } from '../../../src/server/canvas/canvas-store';
+import { CanvasStore, MAX_CANVAS_TEXT_FILE_BYTES } from '../../../src/server/canvas/canvas-store';
 import type { Route } from '../../../src/server/types';
 import type { ProcessWebSocketServer } from '../../../src/server/streaming/websocket';
 
@@ -306,5 +306,190 @@ describe('canvas routes', () => {
             expect(listed.body.comments).toHaveLength(1);
             expect(listed.body.comments[0].body).toBe('tweak this box');
         });
+    });
+});
+
+/**
+ * Read-only canvas files. The route is the boundary an artifact's arbitrary,
+ * AI-authored JS reaches, so the traversal cases matter more here than the
+ * happy path — and the raw (percent-encoded) form is what the router matches,
+ * which is exactly where an encoded `..` would slip past a decoded-only check.
+ */
+describe('canvas file routes', () => {
+    let dataDir: string;
+    let store: CanvasStore;
+    let handler: ReturnType<typeof createRouter>;
+    let canvasId: string;
+    let filesRoot: string;
+
+    beforeEach(() => {
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-canvas-file-routes-'));
+        store = new CanvasStore(dataDir);
+        const routes: Route[] = [];
+        registerCanvasRoutes(routes, dataDir);
+        handler = createRouter({ routes, spaHtml: '' });
+
+        canvasId = store.createCanvas({ workspaceId: WS, title: 'Sales', content: '{}', type: 'extension' }).id;
+        filesRoot = store.getCanvasFilesRoot(WS, canvasId);
+        fs.mkdirSync(filesRoot, { recursive: true });
+    });
+
+    afterEach(() => {
+        fs.rmSync(dataDir, { recursive: true, force: true });
+    });
+
+    function seed(relativePath: string, contents: string | Buffer): void {
+        const full = path.join(filesRoot, ...relativePath.split('/'));
+        fs.mkdirSync(path.dirname(full), { recursive: true });
+        fs.writeFileSync(full, contents);
+    }
+
+    const filesUrl = (suffix = '') => `/api/workspaces/${WS}/canvases/${canvasId}/files${suffix}`;
+
+    it('lists the canvas files', async () => {
+        seed('data.csv', 'a,b\n');
+        seed('raw/jan.json', '{}');
+
+        const res = await request(handler, 'GET', filesUrl());
+        expect(res.status).toBe(200);
+        expect(res.body.files).toEqual([
+            { path: 'data.csv', size: 4, encoding: 'utf-8' },
+            { path: 'raw/jan.json', size: 2, encoding: 'utf-8' },
+        ]);
+    });
+
+    it('lists an empty array for a canvas with no files', async () => {
+        const res = await request(handler, 'GET', filesUrl());
+        expect(res.status).toBe(200);
+        expect(res.body.files).toEqual([]);
+    });
+
+    it('404s the listing for a canvas that does not exist', async () => {
+        const res = await request(handler, 'GET', `/api/workspaces/${WS}/canvases/no-such-canvas/files`);
+        expect(res.status).toBe(404);
+    });
+
+    it('400s the listing for an invalid canvas id', async () => {
+        const res = await request(handler, 'GET', `/api/workspaces/${WS}/canvases/BAD_ID/files`);
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe('Invalid canvas ID');
+    });
+
+    it('reads a text file as utf-8', async () => {
+        seed('data.csv', 'month,revenue\njan,10\n');
+
+        const res = await request(handler, 'GET', filesUrl('/data.csv'));
+        expect(res.status).toBe(200);
+        expect(res.body.file).toEqual({
+            path: 'data.csv',
+            size: 21,
+            encoding: 'utf-8',
+            content: 'month,revenue\njan,10\n',
+        });
+    });
+
+    it('reads a nested file and one whose name needs encoding', async () => {
+        seed('raw/jan.json', '{"n":1}');
+        seed('my report.csv', 'a\n');
+
+        const nested = await request(handler, 'GET', filesUrl('/raw/jan.json'));
+        expect(nested.status).toBe(200);
+        expect(nested.body.file.content).toBe('{"n":1}');
+
+        // %20 is an ordinary escape — it must survive the traversal screen.
+        const spaced = await request(handler, 'GET', filesUrl('/my%20report.csv'));
+        expect(spaced.status).toBe(200);
+        expect(spaced.body.file).toMatchObject({ path: 'my report.csv', content: 'a\n' });
+    });
+
+    it('returns binary content base64-encoded', async () => {
+        const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]);
+        seed('logo.png', bytes);
+
+        const res = await request(handler, 'GET', filesUrl('/logo.png'));
+        expect(res.status).toBe(200);
+        expect(res.body.file.encoding).toBe('base64');
+        expect(Buffer.from(res.body.file.content, 'base64')).toEqual(bytes);
+    });
+
+    it('honours ?encoding=base64 and rejects any other encoding', async () => {
+        seed('data.csv', 'a,b\n');
+
+        const forced = await request(handler, 'GET', filesUrl('/data.csv?encoding=base64'));
+        expect(forced.status).toBe(200);
+        expect(forced.body.file.encoding).toBe('base64');
+        expect(Buffer.from(forced.body.file.content, 'base64').toString('utf-8')).toBe('a,b\n');
+
+        const bogus = await request(handler, 'GET', filesUrl('/data.csv?encoding=utf-8'));
+        expect(bogus.status).toBe(400);
+    });
+
+    it('404s a missing file and a directory', async () => {
+        seed('sub/x.txt', 'x');
+        expect((await request(handler, 'GET', filesUrl('/nope.csv'))).status).toBe(404);
+        expect((await request(handler, 'GET', filesUrl('/sub'))).status).toBe(404);
+    });
+
+    it('413s a file over the size cap', async () => {
+        seed('big.csv', 'x'.repeat(MAX_CANVAS_TEXT_FILE_BYTES + 1));
+
+        const res = await request(handler, 'GET', filesUrl('/big.csv'));
+        expect(res.status).toBe(413);
+        expect(res.body.error).toContain('limit');
+    });
+
+    /**
+     * Every one of these must come back 400 — never 200, and never a 404 that
+     * would leak whether the target exists.
+     */
+    const TRAVERSAL_URLS: Array<[label: string, url: string]> = [
+        ['plain ..', '/../../canvas.json'],
+        ['encoded .. (lowercase)', '/%2e%2e/%2e%2e/canvas.json'],
+        ['encoded .. (uppercase)', '/%2E%2E/%2E%2E/canvas.json'],
+        ['double-encoded ..', '/%252e%252e/canvas.json'],
+        ['encoded separator', '/data%2f..%2fcanvas.json'],
+        ['encoded backslash', '/data%5c..%5ccanvas.json'],
+        ['encoded NUL', '/data.csv%00.png'],
+        ['mixed literal and encoded', '/sub/..%2f..%2fcanvas.json'],
+        ['drive letter', '/C:/Windows/win.ini'],
+        ['backslash', '/sub%5C..%5C..%5Ccanvas.json'],
+    ];
+
+    it.each(TRAVERSAL_URLS)('rejects %s with 400', async (_label, suffix) => {
+        seed('data.csv', 'a\n');
+        const res = await request(handler, 'GET', filesUrl(suffix));
+        // 400 from the file route, or 404 from the router when the encoded form
+        // never matched the pattern at all — never 200, and never file contents.
+        expect([400, 404]).toContain(res.status);
+        expect(res.body?.file).toBeUndefined();
+    });
+
+    it('cannot read the canvas descriptor one directory up', async () => {
+        const res = await request(handler, 'GET', filesUrl('/..%2fcanvas.json'));
+        expect(res.status).toBe(400);
+        expect(res.body.file).toBeUndefined();
+    });
+
+    it('refuses a symlink pointing outside the files root', async () => {
+        const outside = path.join(dataDir, 'outside.txt');
+        fs.writeFileSync(outside, 'TOP SECRET');
+        try {
+            fs.symlinkSync(outside, path.join(filesRoot, 'link.txt'));
+        } catch {
+            return; // no symlink privilege on this platform
+        }
+
+        const res = await request(handler, 'GET', filesUrl('/link.txt'));
+        expect(res.status).toBe(400);
+        expect(JSON.stringify(res.body)).not.toContain('TOP SECRET');
+    });
+
+    it('exposes no write route — PUT, POST and DELETE all fail', async () => {
+        seed('data.csv', 'a\n');
+        for (const method of ['PUT', 'POST', 'DELETE']) {
+            const res = await request(handler, method, filesUrl('/data.csv'), { content: 'pwned' });
+            expect(res.status).toBe(404);
+        }
+        expect(fs.readFileSync(path.join(filesRoot, 'data.csv'), 'utf-8')).toBe('a\n');
     });
 });
