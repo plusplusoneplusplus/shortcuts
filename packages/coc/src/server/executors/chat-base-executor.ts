@@ -878,6 +878,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                     this.checkThrottleAndFlush(processId);
                 },
                 onToolEvent: toolEventHandler,
+                onTokenUsage: this.buildMidTurnTokenUsageHandler(processId),
                 onBackgroundTasksChanged: this.buildBackgroundTaskHandler(processId),
                 onMcpOAuthRequired: (() => {
                     const manager = this.getMcpOauthManager?.();

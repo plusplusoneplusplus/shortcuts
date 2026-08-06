@@ -606,6 +606,25 @@ describe('FollowUpExecutor', () => {
         expect(updated?.status).toBe('failed');
     });
 
+    it('relays mid-turn usage as a token-usage event (AC-05, follow-up)', async () => {
+        sdkMocks.mockSendMessage.mockImplementation(async (opts: any) => {
+            opts.onTokenUsage({ tokenLimit: 200_000, currentTokens: 55_000, conversationTokens: 40_000 });
+            return { success: true, response: 'ok', sessionId: 's1', toolCalls: [] };
+        });
+        const proc = makeProcess({ id: 'proc-midturn-usage' });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store);
+        await executor.executeFollowUp('proc-midturn-usage', 'msg');
+
+        expect(store.emitProcessEvent).toHaveBeenCalledWith('proc-midturn-usage', {
+            type: 'token-usage',
+            sessionTokenLimit: 200_000,
+            sessionCurrentTokens: 55_000,
+            sessionConversationTokens: 40_000,
+        });
+    });
+
     it('appends error turn when sendMessage throws', async () => {
         sdkMocks.mockSendMessage.mockRejectedValue(new Error('Network error'));
         const proc = makeProcess({ id: 'proc-throw' });

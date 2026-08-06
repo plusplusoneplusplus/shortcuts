@@ -68,6 +68,9 @@ class TestExecutor extends BaseExecutor {
     public buildBackgroundTaskHandlerPublic(processId: string) {
         return this.buildBackgroundTaskHandler(processId);
     }
+    public buildMidTurnTokenUsageHandlerPublic(processId: string) {
+        return this.buildMidTurnTokenUsageHandler(processId);
+    }
 }
 
 // ============================================================================
@@ -507,6 +510,74 @@ describe('BaseExecutor', () => {
                 backgroundTotalActive: 0,
                 backgroundWaitingForDrain: false,
             })).not.toThrow();
+        });
+    });
+
+    // ========================================================================
+    // Mid-turn token usage handler (AC-05)
+    // ========================================================================
+
+    describe('buildMidTurnTokenUsageHandler', () => {
+        it('emits the existing token-usage event with the session-level fields', () => {
+            const handler = executor.buildMidTurnTokenUsageHandlerPublic('proc-tu');
+            handler({
+                tokenLimit: 200_000,
+                currentTokens: 41_000,
+                systemTokens: 3_000,
+                toolDefinitionsTokens: 8_000,
+                conversationTokens: 30_000,
+            });
+
+            expect(store.emitProcessEvent).toHaveBeenCalledWith('proc-tu', {
+                type: 'token-usage',
+                sessionTokenLimit: 200_000,
+                sessionCurrentTokens: 41_000,
+                sessionSystemTokens: 3_000,
+                sessionToolTokens: 8_000,
+                sessionConversationTokens: 30_000,
+            });
+        });
+
+        it('omits breakdown fields the provider did not supply', () => {
+            const handler = executor.buildMidTurnTokenUsageHandlerPublic('proc-tu2');
+            handler({ tokenLimit: 128_000, currentTokens: 5_000 });
+
+            expect(store.emitProcessEvent).toHaveBeenCalledWith('proc-tu2', {
+                type: 'token-usage',
+                sessionTokenLimit: 128_000,
+                sessionCurrentTokens: 5_000,
+            });
+        });
+
+        it('does not emit when neither tokenLimit nor currentTokens is present', () => {
+            const handler = executor.buildMidTurnTokenUsageHandlerPublic('proc-tu3');
+            handler({ inputTokens: 10, outputTokens: 20 } as any);
+            handler({} as any);
+
+            expect(store.emitProcessEvent).not.toHaveBeenCalled();
+        });
+
+        it('emits when only currentTokens is known', () => {
+            const handler = executor.buildMidTurnTokenUsageHandlerPublic('proc-tu4');
+            handler({ currentTokens: 777 });
+
+            expect(store.emitProcessEvent).toHaveBeenCalledWith('proc-tu4', {
+                type: 'token-usage',
+                sessionCurrentTokens: 777,
+            });
+        });
+
+        it('does not write mid-turn usage to the process store', () => {
+            const handler = executor.buildMidTurnTokenUsageHandlerPublic('proc-tu5');
+            handler({ tokenLimit: 200_000, currentTokens: 1_234 });
+
+            expect(store.updateProcess).not.toHaveBeenCalled();
+        });
+
+        it('does not throw when store.emitProcessEvent throws', () => {
+            store.emitProcessEvent = vi.fn(() => { throw new Error('store crash'); });
+            const handler = executor.buildMidTurnTokenUsageHandlerPublic('proc-tu6');
+            expect(() => handler({ tokenLimit: 1, currentTokens: 1 })).not.toThrow();
         });
     });
 });

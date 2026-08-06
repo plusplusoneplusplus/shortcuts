@@ -547,6 +547,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     processId,
                     () => process.conversationTurns?.length ?? 0,
                 ),
+                onTokenUsage: this.buildMidTurnTokenUsageHandler(processId),
                 onBackgroundTasksChanged: this.buildBackgroundTaskHandler(processId),
             };
 
