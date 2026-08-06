@@ -5,6 +5,7 @@ import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { createCanvasTools } from '../../../src/server/llm-tools/canvas-tools';
 import { CanvasStore } from '../../../src/server/canvas/canvas-store';
+import { CANVAS_LIBRARY_IDS } from '../../../src/server/canvas/canvas-libraries';
 
 const WS = 'tool-workspace';
 const PROCESS_ID = 'proc-42';
@@ -353,6 +354,27 @@ describe('canvas LLM tools', () => {
         });
 
         // --- JSX authoring -------------------------------------------------
+
+        it('tells the model that JSX authoring exists, with the real library list', () => {
+            const { extension } = buildTools();
+            const description = extension.description ?? '';
+
+            expect(description).toContain('uiJsx');
+            expect(description).toContain('window.CanvasExtension');
+            expect(description).toContain('mount(rootEl, host)');
+            // The list is generated from the registry, so it cannot drift from
+            // what the bootstrap will actually load.
+            for (const id of CANVAS_LIBRARY_IDS) {
+                expect(description).toContain(id);
+            }
+            expect(description).toContain('window.Recharts');
+            // The two footguns worth spending description budget on.
+            expect(description).toContain('never write an import');
+            expect(description).toContain('FIXED prebuilt subset');
+
+            const schema = extension.parameters as { properties: Record<string, { items?: { enum?: string[] } }> };
+            expect(schema.properties.libraries.items?.enum).toEqual([...CANVAS_LIBRARY_IDS]);
+        });
 
         const JSX_BUILD_ARGS = {
             title: 'Sales',

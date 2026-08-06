@@ -10,6 +10,12 @@
  *   - `read_canvas`      — read content/revision (+ manifest for extensions)
  *   - `extension_canvas` — build or run a custom interactive (extension) canvas
  *
+ * An extension canvas is authored one of two ways. `uiJsx` is a React component
+ * compiled server-side by esbuild into a stored `ui.js`, rendered against
+ * vendored library globals (React, Recharts, PapaParse, a prebuilt Tailwind
+ * sheet) that the panel loads as classic scripts. `uiHtml` is the original
+ * hand-written HTML+JS path and is unchanged.
+ *
  * Canvases persist via `CanvasStore` under `~/.coc/repos/<workspaceId>/canvases/`.
  * Every successful create/update emits a `canvas-updated` SSE event on the
  * process channel so the dashboard panel re-renders live.
@@ -28,7 +34,7 @@ import {
     MAX_EXTENSION_CAPABILITIES_BYTES,
 } from '../canvas/canvas-store';
 import type { CanvasEdit, CanvasType, CanvasCapabilityMeta, CanvasExtensionManifest } from '../canvas/canvas-store';
-import { CANVAS_LIBRARY_IDS, resolveCanvasLibraries } from '../canvas/canvas-libraries';
+import { CANVAS_LIBRARIES, CANVAS_LIBRARY_IDS, resolveCanvasLibraries } from '../canvas/canvas-libraries';
 import type { CanvasLibraryId } from '../canvas/canvas-libraries';
 import { transformCanvasJsx } from '../canvas/canvas-jsx';
 import { runCanvasCapability, isValidCapabilityName } from '../canvas/canvas-capability-runner';
@@ -82,6 +88,18 @@ export interface ExtensionCanvasArgs {
     capability?: string;
     params?: Record<string, unknown>;
 }
+
+/**
+ * The library allowlist rendered for the tool description — `id (global)` for
+ * each. Generated from the registry so the description cannot drift out of step
+ * with what the bootstrap will actually load.
+ */
+const LIBRARY_HELP = CANVAS_LIBRARY_IDS
+    .map(id => {
+        const lib = CANVAS_LIBRARIES[id];
+        return lib.global ? `${id} (window.${lib.global})` : `${id} (CSS)`;
+    })
+    .join(', ');
 
 /** Cap on the state JSON echoed back to the model after a capability call. */
 const MAX_RETURNED_STATE_CHARS = 20000;
@@ -366,8 +384,37 @@ export function createCanvasTools(deps: CanvasToolsDeps): {
             + 'JSON shared state. BUILD: omit canvasId to create (give title) or pass canvasId to update; '
             + 'provide description, capabilities[] (declared actions), capabilitiesJs (assigns '
             + '`capabilities = { name(state, params) { return nextState } }` — pure, no imports/network, 1s budget), '
-            + 'and uiHtml (self-contained HTML+JS in a sandboxed iframe using window.CanvasHost.onState/invoke/setState — '
-            + 'invoke/setState return promises that reject with { code, message }, code being offline|timeout|revision-conflict|capability-error). '
+            + 'and ONE of uiJsx or uiHtml.\n\n'
+            + 'uiJsx (PREFERRED for anything with charts, tables or real interaction) — write a React component in JSX; '
+            + 'the server compiles it. Declare what you need in `libraries`; they arrive as GLOBALS, so never write an '
+            + 'import or a CDN <script> (module scripts and fetch are blocked in the sandboxed frame). '
+            + `Available: ${LIBRARY_HELP}. react is added for you.\n`
+            + 'Your code must end by assigning window.CanvasExtension = { mount(rootEl, host) { … } }. Example:\n'
+            + '  const { LineChart, Line, XAxis, YAxis, Tooltip } = Recharts;\n'
+            + '  function App({ state, host }) {\n'
+            + '    return <div className="p-4">\n'
+            + '      <h2 className="text-lg font-semibold mb-3">{state.title}</h2>\n'
+            + '      <LineChart width={520} height={260} data={state.rows}>\n'
+            + '        <XAxis dataKey="month" /><YAxis /><Tooltip />\n'
+            + '        <Line dataKey="revenue" stroke="#3b82f6" />\n'
+            + '      </LineChart>\n'
+            + '      <button className="mt-3 px-3 py-1 rounded bg-blue-600 text-white"\n'
+            + '        onClick={() => host.invoke(\'refresh\')}>Refresh</button>\n'
+            + '    </div>;\n'
+            + '  }\n'
+            + '  window.CanvasExtension = {\n'
+            + '    mount(rootEl, host) {\n'
+            + '      const root = ReactDOM.createRoot(rootEl);\n'
+            + '      host.onState(state => root.render(<App state={state} host={host} />));\n'
+            + '    },\n'
+            + '  };\n'
+            + 'Tailwind ships a FIXED prebuilt subset (common spacing/flex/grid/text/border/shadow utilities, the standard '
+            + 'palette at shades 50-900, plus hover:/focus:/md: on the common ones) — no arbitrary values like p-[13px], '
+            + 'no dark: variants; use a style={{…}} prop for anything outside it.\n\n'
+            + 'uiHtml — self-contained HTML+JS for simple widgets. No libraries, no JSX.\n\n'
+            + 'Either way the UI talks to window.CanvasHost: onState(cb) to render, invoke(name, params) to run a '
+            + 'capability, setState(state) to replace the state directly. invoke/setState return promises that reject '
+            + 'with { code, message }, code being offline|timeout|revision-conflict|capability-error.\n\n'
             + 'RUN: pass canvasId + capability (+ params) to apply one action to the state; the panel re-renders live.',
         parameters: {
             type: 'object',

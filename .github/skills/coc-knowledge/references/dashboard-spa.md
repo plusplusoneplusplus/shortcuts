@@ -17,6 +17,7 @@ the original payload as a new conversation via `client.queue.retry`; a
 
 - `entry.tsx` — Mounts `App` (main shell) or `PopOut` (floating chat window)
 - `html-template.ts` — Server-side HTML generation with inline bundled assets from `client/dist/`
+- `client/dist/` is served at the **site root** (not `/static`). Alongside `bundle.js`/`bundle.css` it holds the separately-loaded assets: the Monaco workers, `pdf.worker.js`, and `canvas-vendor/` (`react.js`, `recharts.js`, `papaparse.js`, `tailwind.css`) — the library globals an extension canvas loads into its sandboxed iframe. All are built by `scripts/build-client.mjs`; `dist/` is gitignored.
 
 ## Module Layout
 
