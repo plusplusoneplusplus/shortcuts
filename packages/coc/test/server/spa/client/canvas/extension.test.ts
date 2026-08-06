@@ -273,3 +273,123 @@ describe('buildExtensionExportBody — determinism', () => {
         expect(buildExtensionExportBody(input).bodyHtml).toBe(buildExtensionExportBody(input).bodyHtml);
     });
 });
+
+/**
+ * The JSX authoring path. A `uiJs` extension ships no HTML of its own: the
+ * snapshot inlines the vendored bundles and mounts through the same runtime the
+ * live panel uses, so an artifact that renders in the panel renders here.
+ */
+describe('buildExtensionExportBody — JSX extensions', () => {
+    const UI_JS = 'window.CanvasExtension = { mount: function (el, host) { host.onState(function () {}); } };';
+
+    function buildJsx(overrides: Partial<ExtensionExportInput> = {}) {
+        return buildExtensionExportBody({
+            uiHtml: '',
+            uiJs: UI_JS,
+            libraries: ['react', 'recharts'],
+            libraryBundles: new Map([
+                ['react', 'window.React = { createElement: function () {} };'],
+                ['recharts', 'window.Recharts = {};'],
+            ] as [never, string][]),
+            missingLibraries: [],
+            stateContent: '{"rows":[{"v":1}]}',
+            title: 'Sales',
+            revision: 4,
+            ...overrides,
+        });
+    }
+
+    it('produces a self-contained document: bundles inlined, no external reference left', () => {
+        const { bodyHtml } = buildJsx();
+        const srcdoc = decodeSrcdoc(bodyHtml);
+
+        expect(srcdoc).toContain('window.React = {');
+        expect(srcdoc).toContain('window.Recharts = {};');
+        expect(srcdoc).toContain('CanvasExtension');
+        // Nothing is fetched at view time — that is the whole point.
+        expect(srcdoc).not.toContain('<script src');
+        expect(srcdoc).not.toContain('canvas-vendor');
+        expect(srcdoc).not.toMatch(/https?:\/\//);
+    });
+
+    it('inlines bundles in dependency order, ahead of the code that uses them', () => {
+        const { bodyHtml } = buildJsx();
+        const srcdoc = decodeSrcdoc(bodyHtml);
+        expect(srcdoc.indexOf('window.React = {')).toBeLessThan(srcdoc.indexOf('window.Recharts = {};'));
+        expect(srcdoc.indexOf('window.Recharts = {};')).toBeLessThan(srcdoc.indexOf('CanvasExtension'));
+    });
+
+    it('keeps the offline host contract: frozen state in, invoke/setState rejecting, no capabilities', () => {
+        const { bodyHtml, stateJson } = buildJsx();
+        const srcdoc = decodeSrcdoc(bodyHtml);
+
+        expect(srcdoc).toContain(`version: ${CANVAS_HOST_VERSION}`);
+        expect(srcdoc).toContain("err.code = 'offline'");
+        expect(srcdoc).toContain('"rows"');
+        expect(srcdoc).not.toContain('capabilities =');
+        expect(JSON.parse(stateJson)).toEqual({ rows: [{ v: 1 }] });
+    });
+
+    it('inlines a stylesheet library as <style>, not <link>', () => {
+        const { bodyHtml } = buildJsx({
+            libraries: ['tailwind', 'react'],
+            libraryBundles: new Map([
+                ['tailwind', '.p-4{padding:1rem}'],
+                ['react', 'window.React = {};'],
+            ] as [never, string][]),
+        });
+        const srcdoc = decodeSrcdoc(bodyHtml);
+        expect(srcdoc).toContain('<style>');
+        expect(srcdoc).toContain('.p-4{padding:1rem}');
+        expect(srcdoc).not.toContain('<link');
+    });
+
+    it('degrades a missing bundle to an explicit banner, never a blank frame', () => {
+        const { bodyHtml, warnings } = buildJsx({
+            libraryBundles: new Map([['react', 'window.React = {};']] as [never, string][]),
+            missingLibraries: ['recharts'],
+        });
+        const srcdoc = decodeSrcdoc(bodyHtml);
+
+        expect(srcdoc).toContain('Libraries unavailable: recharts');
+        expect(srcdoc).toContain('data-canvas-extension-error');
+        expect(warnings.some(w => w.includes('Could not inline 1 canvas library'))).toBe(true);
+        // The frame still has real content — the failure is visible, not silent.
+        expect(srcdoc.length).toBeGreaterThan(200);
+    });
+
+    it('warns about the export size once the inlined bundles get large', () => {
+        const { warnings } = buildJsx({
+            libraryBundles: new Map([
+                ['react', 'x'.repeat(140 * 1024)],
+                ['recharts', 'y'.repeat(560 * 1024)],
+            ] as [never, string][]),
+        });
+        expect(warnings.some(w => /bundles \d+ KB of libraries/.test(w))).toBe(true);
+        expect(warnings.find(w => /bundles/.test(w))).toContain('react, recharts');
+    });
+
+    it('does not warn about the size for a small library set', () => {
+        const { warnings } = buildJsx({
+            libraries: ['papaparse'],
+            libraryBundles: new Map([['papaparse', 'window.Papa = {};']] as [never, string][]),
+        });
+        expect(warnings.some(w => /bundles/.test(w))).toBe(false);
+    });
+
+    it('keeps the sandbox and cannot be broken out of by a </script> in a bundle', () => {
+        const { bodyHtml } = buildJsx({
+            libraryBundles: new Map([
+                ['react', 'window.React = { s: "</script><img src=x>" };'],
+                ['recharts', 'window.Recharts = {};'],
+            ] as [never, string][]),
+        });
+        expect(bodyHtml).toContain('sandbox="allow-scripts"');
+        expect(bodyHtml).not.toContain('allow-same-origin');
+        expect(decodeSrcdoc(bodyHtml)).not.toContain('</script><img src=x>');
+    });
+
+    it('is deterministic', () => {
+        expect(buildJsx().bodyHtml).toBe(buildJsx().bodyHtml);
+    });
+});

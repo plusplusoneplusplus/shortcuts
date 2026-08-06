@@ -23,8 +23,9 @@
  */
 
 import { buildCanvasHtmlDocument } from './buildCanvasHtmlDocument';
-import { collectImageRefs, resolveAssets } from './assets';
+import { collectImageRefs, resolveAssets, resolveLibraryBundles } from './assets';
 import type { AssetFetchFn, AssetFetchResponse } from './assets';
+import type { CanvasLibraryId } from '../../../../../../canvas/canvas-libraries';
 import { inlineMermaid } from './mermaid';
 import type { MermaidRenderApi } from './mermaid';
 import { excalidrawToInlineSvg } from './excalidraw';
@@ -44,6 +45,14 @@ export interface ExtensionExportSource {
      * `capabilitiesJs` — capability code stays server-only and is never shipped.
      */
     uiHtml: string;
+    /**
+     * The compiled UI of a JSX-authored extension (`CanvasExtension.uiJs`). When
+     * present, the export inlines `libraries` and mounts through the shared
+     * runtime instead of shipping `uiHtml`.
+     */
+    uiJs?: string;
+    /** Declared libraries, dependency-resolved and in load order. */
+    libraries?: readonly CanvasLibraryId[];
     /** Current canvas revision, surfaced to the extension via `onState` meta. */
     revision?: number;
 }
@@ -239,15 +248,36 @@ async function buildExcalidrawDocument(
  * missing (the caller could not retrieve it), this throws so the orchestrator's
  * catch returns `{ ok: false, error }` and NO partial/broken file is downloaded.
  */
-function buildExtensionDocument(canvas: ExportableCanvas, warnings: string[]): string {
+async function buildExtensionDocument(
+    canvas: ExportableCanvas,
+    deps: ExportCanvasAsHtmlDeps,
+    warnings: string[],
+): Promise<string> {
     const source = canvas.extension;
-    if (!source || typeof source.uiHtml !== 'string') {
+    if (!source || (typeof source.uiHtml !== 'string' && typeof source.uiJs !== 'string')) {
         throw new Error(
             'Extension UI is unavailable — cannot export this canvas as a view-only snapshot.',
         );
     }
+
+    // A JSX extension needs its vendored bundles inlined to run offline. The
+    // exporter runs on the dashboard page, which is same-origin with
+    // /canvas-vendor/*, so unlike the iframe it can simply fetch them.
+    const libraries = source.uiJs ? (source.libraries ?? []) : [];
+    let libraryBundles: Map<CanvasLibraryId, string> | undefined;
+    let missingLibraries: CanvasLibraryId[] | undefined;
+    if (libraries.length > 0) {
+        const resolved = await resolveLibraryBundles(libraries, (url) => deps.fetch(url));
+        libraryBundles = resolved.bundles;
+        missingLibraries = resolved.missing;
+    }
+
     const body = buildExtensionExportBody({
         uiHtml: source.uiHtml,
+        uiJs: source.uiJs,
+        libraries,
+        libraryBundles,
+        missingLibraries,
         stateContent: canvas.content,
         title: canvas.title,
         revision: source.revision,
@@ -288,7 +318,7 @@ export async function exportCanvasAsHtml(
                 html = await buildExcalidrawDocument(canvas, deps, warnings);
                 break;
             case 'extension':
-                html = buildExtensionDocument(canvas, warnings);
+                html = await buildExtensionDocument(canvas, deps, warnings);
                 break;
             default:
                 return { ok: false, warnings, error: `Unsupported canvas type "${String(canvas.type)}".` };

@@ -13,6 +13,7 @@ import { downloadFilenameFor, isSvgCodeCanvas, notesPathFor } from '../canvas-pa
 import { exportCanvasAsHtml } from '../html-export/exportCanvasAsHtml';
 import type { ExtensionExportSource } from '../html-export/exportCanvasAsHtml';
 import { createHtmlExportDeps } from '../html-export/htmlExportDeps';
+import { isCanvasLibraryId } from '../../../../../../canvas/canvas-libraries';
 
 const EXPORT_STATUS_MS = 2500;
 
@@ -130,7 +131,16 @@ export function useCanvasExport({ client, workspaceId, canvasRef, notify, deps }
             if (current.type === 'extension') {
                 try {
                     const doc = await client.canvases.getExtension(workspaceId, current.id);
-                    extension = { uiHtml: doc.uiHtml, revision: current.revision };
+                    extension = {
+                        uiHtml: doc.uiHtml,
+                        revision: current.revision,
+                        // A JSX extension exports its compiled UI plus the
+                        // libraries the exporter must inline to make it run.
+                        ...(doc.uiJs ? {
+                            uiJs: doc.uiJs,
+                            libraries: (doc.manifest?.libraries ?? []).filter(isCanvasLibraryId),
+                        } : {}),
+                    };
                 } catch {
                     notify('Could not load the extension to export as HTML', 'error');
                     flashExportStatus('Export failed');

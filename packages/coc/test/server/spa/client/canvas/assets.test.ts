@@ -15,6 +15,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
     collectImageRefs,
     resolveAssets,
+    resolveLibraryBundles,
     type AssetFetchResponse,
     type AssetFetchFn,
 } from '../../../../../src/server/spa/client/react/features/canvas/html-export/assets';
@@ -206,5 +207,57 @@ describe('resolveAssets — failures never throw', () => {
         expect(assets.size).toBe(0);
         expect(warnings).toEqual([]);
         expect(fetchFn).not.toHaveBeenCalled();
+    });
+});
+
+describe('resolveLibraryBundles', () => {
+    it('fetches each library from its /canvas-vendor path and returns its source', async () => {
+        const fetchFn = vi.fn(async (url: string) => ({
+            ok: true,
+            blob: async () => new Blob([`/* ${url} */`]),
+            text: async () => `/* ${url} */`,
+        }));
+
+        const { bundles, missing, warnings } = await resolveLibraryBundles(['react', 'papaparse'], fetchFn);
+
+        expect(fetchFn.mock.calls.map(c => c[0])).toEqual(['/canvas-vendor/react.js', '/canvas-vendor/papaparse.js']);
+        expect(bundles.get('react')).toContain('react.js');
+        expect(bundles.get('papaparse')).toContain('papaparse.js');
+        expect(missing).toEqual([]);
+        expect(warnings).toEqual([]);
+    });
+
+    it('falls back to blob().text() when the response has no text()', async () => {
+        const fetchFn = async () => ({ ok: true, blob: async () => new Blob(['window.Papa = {};']) });
+        const { bundles } = await resolveLibraryBundles(['papaparse'], fetchFn);
+        expect(bundles.get('papaparse')).toBe('window.Papa = {};');
+    });
+
+    it('reports a failed fetch as missing with a warning instead of throwing', async () => {
+        const fetchFn = async (url: string) => {
+            if (url.includes('recharts')) throw new Error('offline');
+            return { ok: true, blob: async () => new Blob(['ok']), text: async () => 'ok' };
+        };
+
+        const { bundles, missing, warnings } = await resolveLibraryBundles(['react', 'recharts'], fetchFn);
+
+        expect(bundles.has('react')).toBe(true);
+        expect(missing).toEqual(['recharts']);
+        expect(warnings[0]).toContain('Could not inline the "recharts" library');
+        expect(warnings[0]).toContain('offline');
+    });
+
+    it('treats a non-ok response and an empty body as missing', async () => {
+        const notOk = await resolveLibraryBundles(['react'], async () => ({ ok: false, blob: async () => new Blob([]) }));
+        expect(notOk.missing).toEqual(['react']);
+
+        const empty = await resolveLibraryBundles(['react'], async () => ({ ok: true, blob: async () => new Blob([]), text: async () => '' }));
+        expect(empty.missing).toEqual(['react']);
+    });
+
+    it('de-duplicates and keeps declared order in `missing`', async () => {
+        const fetchFn = async () => ({ ok: false, blob: async () => new Blob([]) });
+        const { missing } = await resolveLibraryBundles(['react', 'recharts', 'react'], fetchFn);
+        expect(missing).toEqual(['react', 'recharts']);
     });
 });
