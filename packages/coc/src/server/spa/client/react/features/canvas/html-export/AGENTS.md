@@ -2,7 +2,7 @@
 
 Exports any canvas to a **single, self-contained `.html` file** that opens in any
 browser with zero tooling and zero network — a one-way viewing snapshot (the raw
-`content` download in `CanvasPanel` stays for re-import). The exporter runs
+`content` download in `useCanvasExport` stays for re-import). The exporter runs
 **client-side** because all four renderers (`marked`, `highlight.js`, `mermaid`,
 `@excalidraw/excalidraw`) are browser-bound; the logic is split into a pure core
 plus thin, injected I/O adapters so every layer unit-tests in isolation.
@@ -18,7 +18,7 @@ plus thin, injected I/O adapters so every layer unit-tests in isolation.
 | **D-ext** | `extension.ts` | `buildExtensionExportBody({uiHtml, stateContent, title, revision?})` (pure) builds the offline VIEW-ONLY extension body: a view-only banner + a sandboxed `<iframe srcdoc>` (`allow-scripts` only) hosting `uiHtml` with an offline `CanvasHost` — `onState` delivers the frozen state synchronously, `invoke`/`setState` are inert no-ops, `capabilitiesJs` never shipped. Neutralizes external `<script src>`/`<link>` + warns on residual network URLs. Malformed state → `{}` + warning, never throws. |
 | **E** | `exportCanvasAsHtml.ts` | Orchestrator. Dispatches by type — markdown → B→C→bake→A, code → A, excalidraw → D→A, extension → D-ext→A (needs the separately-fetched `canvas.extension` UI; missing → `{ok:false}`, no download). Builds the Blob + triggers `<slug(title)>.html` download. Also exports `refToUrl`, `htmlExportFilename`, `browserDownload`, the `ExtensionExportSource` type. **Never throws.** |
 | E-helper | `codeHighlight.ts` | `highlightMarkdownCodeBlocks(html)` — pure/Node-safe. Pre-bakes hljs spans into `chatMarkdownToHtml`'s `language-X` blocks so the embedded theme CSS colours code offline. Skips unknown langs + `mermaid`. |
-| **F** | `htmlExportDeps.ts` + `../CanvasPanel.tsx` | `createHtmlExportDeps()` builds the production `ExportCanvasAsHtmlDeps` (browser-only). `CanvasPanel` adds an enabled "Export as HTML" menu item for **every** type. For `extension` it first fetches the separately-stored UI doc via the workspace-routed `useCocClient(ws).canvases.getExtension` (clone-aware; `capabilitiesJs` is dropped, never shipped) and passes `extension:{uiHtml, revision}` into the orchestrator; a fetch failure surfaces an error toast and aborts before any download. |
+| **F** | `htmlExportDeps.ts` + `../hooks/useCanvasExport.ts` | `createHtmlExportDeps()` builds the production `ExportCanvasAsHtmlDeps` (browser-only). `useCanvasExport` backs an enabled "Export as HTML" menu item for **every** type except `kusto` (interactive — no static snapshot). For `extension` it first fetches the separately-stored UI doc via the workspace-routed `useCocClient(ws).canvases.getExtension` (clone-aware; `capabilitiesJs` is dropped, never shipped) and passes `extension:{uiHtml, revision}` into the orchestrator; a fetch failure surfaces an error toast and aborts before any download. |
 | shared | `types.ts`, `styles.ts` | Layer-A input/result types + `CanvasHtmlExportType`; `BASE_CSS`, `HLJS_THEME_CSS` (github-light), `BROKEN_IMAGE_PLACEHOLDER` (URL-encoded SVG data URI). |
 
 ## Injected-deps contract (Layer E)
@@ -79,7 +79,8 @@ needed — B, D, E, F, and the Layer-G pipeline use it; A, C, code-highlight don
 
 - Per-layer: `buildCanvasHtmlDocument` (A), `assets` (B), `mermaid` (C),
   `excalidraw` (D), `extension` (D-ext), `exportCanvasAsHtml` (E),
-  `codeHighlight` (E-helper), `CanvasPanel.test.tsx` (F cases at the end).
+  `codeHighlight` (E-helper), `useCanvasExport.test.tsx` (F, injected browser
+  primitives) + `CanvasPanel.test.tsx` (F cases at the end, through the UI).
 - `htmlExportPipeline.test.ts` (**G**) — full-pipeline integration: real E over
   real A/B/C + `chatMarkdownToHtml`, only `fetch`/`mermaidApi`/`exportToSvg`
   stubbed. Asserts the full portability contract on a doc with an image +

@@ -320,7 +320,17 @@ is true and torn down once everything settles. Force-refresh threads through
 their subresource caches (the detail route already evicts sub-caches).
 
 `features/canvas/CanvasPanel.tsx` renders the chat canvas side panel, gated by
-the `canvas.enabled` runtime flag (`isCanvasEnabled()` in `utils/config.ts`,
+the `canvas.enabled` runtime flag. It is a composition root: it owns the public
+props, the workspace-routed `useCocClient(workspaceId)`, fullscreen chrome, and
+layout, and delegates everything else to kernels under `features/canvas/hooks/`
+(`useCanvasRecord` — load, live `canvas-updated` reconciliation, `reloadNonce`,
+debounced revision-checked autosave and 409 conflicts; `useCanvasVersions`;
+`useCanvasComments`; `useCanvasExport`; `useCreateKustoCanvas`), pure helpers in
+`canvas-panel-model.ts`, and presentational components under
+`features/canvas/components/` (header, banners, body renderer, selection
+toolbar, comments panel). The routed client is passed into every kernel
+explicitly, which is what keeps remote/clone workspaces hitting the
+workspace-owning server (`isCanvasEnabled()` in `utils/config.ts`,
 default on). When enabled, `ChatDetail` discovers canvases linked to the open
 process via `client.canvases.list(workspaceId, { processId })`, keeps those
 summaries in API order for the panel title switcher, and refreshes the list on
