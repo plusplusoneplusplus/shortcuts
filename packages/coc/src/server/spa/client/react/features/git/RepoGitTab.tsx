@@ -39,6 +39,7 @@ import { BranchPickerModal } from './branches/BranchPickerModal';
 import { AmendMessageModal } from './working-tree/AmendMessageModal';
 import { CrossCloneCherryPickModal } from './CrossCloneCherryPickModal';
 import { SkillContextDialog } from '../chat/SkillContextDialog';
+import { SkillBrowserDialog } from '../../queue/SkillBrowserDialog';
 import { clearCacheForHash } from './hooks/useCommitDiffCache';
 import { getBranchRangeCache, setBranchRangeCache, clearBranchRangeCache } from './hooks/useBranchRangeCache';
 import { useBranchRangeBaseMode } from './hooks/useBranchRangeBaseMode';
@@ -59,6 +60,13 @@ import { useGitOperationPoller } from './hooks/useGitOperationPoller';
 import { useAutoPullTimer } from './hooks/useAutoPullTimer';
 import { runAutoPullTick, buildAutoPullPollerCallbacks } from './autoPullTick';
 import { useScopedFindShortcut } from '../../hooks/useScopedFindShortcut';
+
+/** The commit-menu target a skill run applies to. Mirrors the contextMenu state shape. */
+type SkillMenuContext = {
+    type: 'commit' | 'branch-range' | 'multi-commit';
+    commit?: GitCommitItem;
+    commits?: GitCommitItem[];
+};
 
 /**
  * Best-effort rebind of commit-chat binding when a hash changes.
@@ -245,6 +253,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
     const [skills, setSkills] = useState<Array<{ name: string; description?: string }>>([]);
     const [commitSkillUsageMap, setCommitSkillUsageMap] = useState<Record<string, string>>({});
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: 'commit' | 'branch-range' | 'multi-commit'; commit?: GitCommitItem; commits?: GitCommitItem[] } | null>(null);
+    const [skillBrowserContext, setSkillBrowserContext] = useState<SkillMenuContext | null>(null);
     const [enqueueToast, setEnqueueToast] = useState<string | null>(null);
     const [pendingSkillRun, setPendingSkillRun] = useState<{ skillName: string; type: 'commit' | 'multi-commit' | 'branch-range'; commit?: GitCommitItem; commits?: GitCommitItem[] } | null>(null);
     const [branchPickerOpen, setBranchPickerOpen] = useState(false);
@@ -1214,9 +1223,12 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
         queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode, initialPrompt, launchMode: 'floating-chat' });
     }, [workspaceId, buildBranchReferencePrompt, queueDispatch]);
 
-    const handleEnqueueSkill = useCallback((skillName: string) => {
-        if (!contextMenu) return;
-        const snapshot = { ...contextMenu };
+    // The browse dialog outlives the context menu, so it passes back the menu
+    // state that was captured when it opened.
+    const handleEnqueueSkill = useCallback((skillName: string, capturedContext?: SkillMenuContext | null) => {
+        const source = capturedContext ?? contextMenu;
+        if (!source) return;
+        const snapshot = { ...source };
         closeContextMenu();
 
         setPendingSkillRun({
@@ -1226,6 +1238,17 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
             commits: snapshot.commits,
         });
     }, [contextMenu, closeContextMenu]);
+
+    // "Browse all skills…" — capture the menu target before the menu closes, so
+    // the modal can hand it back to handleEnqueueSkill when a skill is picked.
+    const handleOpenSkillBrowser = useCallback(() => {
+        if (!contextMenu) return;
+        setSkillBrowserContext({ type: contextMenu.type, commit: contextMenu.commit, commits: contextMenu.commits });
+    }, [contextMenu]);
+
+    const handleSkillBrowserSelect = useCallback((skillName: string) => {
+        handleEnqueueSkill(skillName, skillBrowserContext);
+    }, [handleEnqueueSkill, skillBrowserContext]);
 
     const pendingSkillTargetSummary = useMemo(() => {
         if (!pendingSkillRun) return '';
@@ -1683,8 +1706,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
                 });
             } else {
                 const top = ranked.slice(0, MRU_SKILL_LIMIT);
-                const rest = ranked.slice(MRU_SKILL_LIMIT)
-                    .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+                const restCount = ranked.length - MRU_SKILL_LIMIT;
                 items.push({
                     label: 'Use Skill',
                     icon: '⚡',
@@ -1696,12 +1718,12 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
                         })),
                         { label: '', separator: true, onClick: () => {} },
                         {
-                            label: 'More…',
-                            onClick: () => {},
-                            children: rest.map(skill => ({
-                                label: skill.name,
-                                onClick: () => handleEnqueueSkill(skill.name),
-                            })),
+                            // A flat third-tier hover submenu is unreachable near a
+                            // screen edge with this many skills — open a searchable
+                            // modal instead.
+                            label: `Browse all skills… (${restCount} more)`,
+                            icon: '🔍',
+                            onClick: handleOpenSkillBrowser,
                         },
                     ],
                 });
@@ -1709,7 +1731,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
         }
 
         return items;
-    }, [contextMenu, skills, commitSkillUsageMap, handleEnqueueSkill, handleSquashCommits, handleOpenCherryPickToBranch, handleBranchAskAI, handleSelect, handleOpenAsPopup, handleHardReset, handleCherryPick, handleOpenCrossCloneCherryPick, handleOpenCrossCloneCherryPickMulti, commits, closeContextMenu, queueDispatch, workspaceId, fixupGroupsForMenu, handleRebaseAutosquash, handlePushToCommit, unpushedCount, isMobileSelecting, mobileAnchorHash, handleMultiSelect, handleDropCommit]);
+    }, [contextMenu, skills, commitSkillUsageMap, handleEnqueueSkill, handleOpenSkillBrowser, handleSquashCommits, handleOpenCherryPickToBranch, handleBranchAskAI, handleSelect, handleOpenAsPopup, handleHardReset, handleCherryPick, handleOpenCrossCloneCherryPick, handleOpenCrossCloneCherryPickMulti, commits, closeContextMenu, queueDispatch, workspaceId, fixupGroupsForMenu, handleRebaseAutosquash, handlePushToCommit, unpushedCount, isMobileSelecting, mobileAnchorHash, handleMultiSelect, handleDropCommit]);
 
     // Reveal (if hidden) + focus the commit search box. Shared by the `/`
     // panel shortcut and the Ctrl+F find shortcut.
@@ -2266,6 +2288,12 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
                 </button>
             </div>
         )}
+        <SkillBrowserDialog
+            open={!!skillBrowserContext}
+            skills={skills}
+            onSelect={handleSkillBrowserSelect}
+            onClose={() => setSkillBrowserContext(null)}
+        />
         <SkillContextDialog
             open={!!pendingSkillRun}
             workspaceId={workspaceId}

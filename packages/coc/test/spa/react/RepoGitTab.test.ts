@@ -1487,6 +1487,72 @@ describe('RepoGitTab', () => {
             expect(source).toContain('Use Skill');
         });
 
+        // ── Skill browser modal (replaces the old flat "More…" submenu) ──
+
+        it('overflow skills open a browse modal instead of a third-tier submenu', () => {
+            expect(source).toContain('Browse all skills…');
+            expect(source).not.toContain("label: 'More…'");
+        });
+
+        it('the browse entry is a plain onClick item with no children', () => {
+            const block = source.match(/label: `Browse all skills…[\s\S]{0,200}/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('onClick: handleOpenSkillBrowser');
+            expect(block![0]).not.toContain('children:');
+        });
+
+        it('the browse entry shows how many extra skills there are', () => {
+            expect(source).toContain('Browse all skills… (${restCount} more)');
+            expect(source).toContain('const restCount = ranked.length - MRU_SKILL_LIMIT');
+        });
+
+        it('keeps the top MRU skills inline as the fast path', () => {
+            expect(source).toContain('const top = ranked.slice(0, MRU_SKILL_LIMIT)');
+        });
+
+        it('tracks skillBrowserContext state', () => {
+            expect(source).toContain('const [skillBrowserContext, setSkillBrowserContext]');
+        });
+
+        it('handleOpenSkillBrowser snapshots the context menu target', () => {
+            const block = source.match(/const handleOpenSkillBrowser = useCallback[\s\S]*?\}, \[/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('setSkillBrowserContext');
+            expect(block![0]).toContain('type: contextMenu.type');
+            expect(block![0]).toContain('commit: contextMenu.commit');
+            expect(block![0]).toContain('commits: contextMenu.commits');
+        });
+
+        it('handleEnqueueSkill accepts a captured context so the modal still works after the menu closes', () => {
+            const block = source.match(/const handleEnqueueSkill = useCallback[\s\S]*?\}, \[/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('capturedContext');
+            expect(block![0]).toContain('capturedContext ?? contextMenu');
+        });
+
+        it('modal selection routes through handleEnqueueSkill with the captured context', () => {
+            const block = source.match(/const handleSkillBrowserSelect = useCallback[\s\S]*?\}, \[/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('handleEnqueueSkill(skillName, skillBrowserContext)');
+        });
+
+        it('renders SkillBrowserDialog wired to the captured context', () => {
+            expect(source).toContain('<SkillBrowserDialog');
+            expect(source).toContain('open={!!skillBrowserContext}');
+            expect(source).toContain('onSelect={handleSkillBrowserSelect}');
+            expect(source).toContain('onClose={() => setSkillBrowserContext(null)}');
+        });
+
+        it('imports SkillBrowserDialog', () => {
+            expect(source).toContain("import { SkillBrowserDialog } from '../../queue/SkillBrowserDialog'");
+        });
+
+        it('contextMenuItems depends on handleOpenSkillBrowser', () => {
+            const depsMatch = source.match(/contextMenuItems = useMemo[\s\S]*?\}, \[([^\]]+)\]/);
+            expect(depsMatch).toBeTruthy();
+            expect(depsMatch![1]).toContain('handleOpenSkillBrowser');
+        });
+
         it('contextMenuItems includes Ask AI item for commit type', () => {
             expect(source).toContain("label: 'Ask AI'");
         });
