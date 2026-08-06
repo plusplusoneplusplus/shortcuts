@@ -39,6 +39,7 @@ import { buildCocLlmToolsMcpConfig, COC_LLM_TOOLS_MCP_SERVER_NAME } from './llm-
 import { isSupportedCodexImagePath } from './image-converter';
 import { getModelContextWindow } from './model-registry';
 import { readCodexRolloutContextUsage } from './codex-rollout-usage';
+import { createMidTurnUsagePoller, type MidTurnTokenUsage } from './mid-turn-usage';
 import { resolveCodexExecutablePath } from './codex-exec-path';
 import { spawn } from 'child_process';
 import { createRequire } from 'module';
@@ -1312,6 +1313,29 @@ export class CodexSDKService implements ISDKService {
         // Releases the per-invocation CoC LLM-tool MCP bridge (no-op when no tools).
         let mcpCleanup: () => void = () => {};
 
+        // Codex has no mid-turn usage event on the SDK stream, but codex core
+        // appends a `token_count` record to the thread's rollout JSONL after
+        // every model request. Poll that same file the turn-end enrichment
+        // reads, on the shared interval, so the meter moves during long turns.
+        // Timer-driven and fire-and-forget: nothing here touches the stream
+        // loop, and a missing/unreadable rollout is a silent no-op tick.
+        const midTurnUsagePoll = createMidTurnUsagePoller({
+            callback: options.onTokenUsage,
+            isActive: () => !abortController.signal.aborted,
+            read: async (): Promise<MidTurnTokenUsage | undefined> =>
+                threadId ? this.readMidTurnCodexContextUsage(threadId) : undefined,
+            onError: err => {
+                getSDKLogger().debug(
+                    {
+                        provider: CODEX_PROVIDER,
+                        threadId,
+                        error: err instanceof Error ? { name: err.name, message: err.message } : String(err),
+                    },
+                    'Codex mid-turn rollout context-usage read failed; ignored',
+                );
+            },
+        });
+
         try {
             // Resolve the client for this request. With CoC LLM tools present this
             // builds a fresh client carrying the bridge's mcp_servers config.
@@ -1384,6 +1408,9 @@ export class CodexSDKService implements ISDKService {
             // real numbers from the thread's rollout `token_count`. Done once,
             // after the loop settles, so multi-turn streams do a single read and
             // the read never delays streaming. Skipped for aborted turns.
+            // Stop polling before the authoritative read, so no mid-turn value
+            // can be published after the final one.
+            midTurnUsagePoll.dispose();
             if (tokenUsage && threadId && !abortController.signal.aborted) {
                 tokenUsage = await this.enrichCodexContextUsage(tokenUsage, threadId);
             }
@@ -1403,10 +1430,36 @@ export class CodexSDKService implements ISDKService {
             const message = err instanceof Error ? err.message : String(err);
             return { success: false, error: message, sessionId: options.sessionId ?? threadId, effectiveModel: this.normalizeCodexModel(options.model) };
         } finally {
+            // Idempotent; also covers the error path, so no timer outlives the turn.
+            midTurnUsagePoll.dispose();
             signalCleanup?.();
             mcpCleanup();
             if (threadId) this.sessions.delete(threadId);
         }
+    }
+
+    /**
+     * One mid-turn rollout read. Returns only the context-meter fields, shaped
+     * the same way {@link enrichCodexContextUsage} shapes them: occupancy always,
+     * the window only when codex core reports one (a null window leaves the
+     * client's existing limit — from the previous turn — in place, since the
+     * relay omits undefined fields). Rejections are left to the poller's
+     * best-effort handling.
+     */
+    private async readMidTurnCodexContextUsage(threadId: string): Promise<MidTurnTokenUsage | undefined> {
+        const ctx = await this.readRolloutContextUsage(threadId, {
+            sessionsRoot: this.codexSessionsRoot,
+            cachedPath: this.rolloutPathByThread.get(threadId),
+        });
+        if (!ctx) return undefined;
+
+        // Cache the resolved path so later reads (including the turn-end one)
+        // skip the directory walk.
+        this.rolloutPathByThread.set(threadId, ctx.rolloutPath);
+
+        return ctx.tokenLimit != null
+            ? { currentTokens: ctx.currentTokens, tokenLimit: ctx.tokenLimit }
+            : { currentTokens: ctx.currentTokens };
     }
 
     /**
