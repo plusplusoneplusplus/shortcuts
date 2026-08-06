@@ -115,3 +115,80 @@ export function createMidTurnUsageThrottle(
         },
     };
 }
+
+/** A running mid-turn usage poll. */
+export interface MidTurnUsagePoller {
+    /** Stop polling and drop any in-flight read's result. Idempotent. */
+    dispose(): void;
+}
+
+/** Poller that never runs — used when nobody is listening. */
+const NOOP_POLLER: MidTurnUsagePoller = { dispose: () => { /* never started */ } };
+
+export interface MidTurnUsagePollerOptions {
+    /** Consumer of each snapshot. When undefined the poller never reads. */
+    callback: MidTurnTokenUsageCallback | undefined;
+    /** Fetch the current usage. Resolving `undefined` is a silent no-op tick. */
+    read: () => Promise<MidTurnTokenUsage | undefined>;
+    /** Checked before every read; returning false stops the poll for good. */
+    isActive?: () => boolean;
+    intervalMs?: number;
+    onError?: (err: unknown) => void;
+}
+
+/**
+ * Poll a provider that has no natural mid-turn usage event (Claude, Codex).
+ *
+ * Ticks are *chained*, not periodic: the next tick is scheduled only after the
+ * previous read settles, so a slow read can never stack up concurrent provider
+ * calls, and the interval is a floor on cost rather than a fixed cadence.
+ *
+ * Every read is best-effort — a rejection is routed to `onError` and the poll
+ * carries on, because a mid-turn read must never fail the turn. Nothing here
+ * runs on the streaming hot path: it is all timer-driven.
+ *
+ * Returns a no-op poller when `callback` is undefined, so a provider pays no
+ * polling cost at all when the caller did not ask for mid-turn usage.
+ */
+export function createMidTurnUsagePoller(options: MidTurnUsagePollerOptions): MidTurnUsagePoller {
+    const { callback, read, isActive, onError } = options;
+    if (!callback) { return NOOP_POLLER; }
+    const intervalMs = options.intervalMs ?? MID_TURN_TOKEN_USAGE_INTERVAL_MS;
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let disposed = false;
+
+    const schedule = (): void => {
+        if (disposed) { return; }
+        timer = setTimeout(tick, intervalMs);
+        // Never hold the process open for a usage tick.
+        (timer as unknown as { unref?: () => void }).unref?.();
+    };
+
+    const tick = async (): Promise<void> => {
+        timer = undefined;
+        if (disposed || isActive?.() === false) { return; }
+        try {
+            const usage = await read();
+            // The turn may have ended while the read was in flight; a snapshot
+            // that lands after teardown must not follow the final value.
+            if (!disposed && usage && Object.keys(usage).length > 0) {
+                callback(usage);
+            }
+        } catch (err) {
+            onError?.(err);
+        }
+        schedule();
+    };
+
+    schedule();
+    return {
+        dispose(): void {
+            disposed = true;
+            if (timer) {
+                clearTimeout(timer);
+                timer = undefined;
+            }
+        },
+    };
+}

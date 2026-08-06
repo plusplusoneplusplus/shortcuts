@@ -31,8 +31,14 @@ export type {
     MidTurnTokenUsage,
     MidTurnTokenUsageCallback,
     MidTurnUsageThrottle,
+    MidTurnUsagePoller,
+    MidTurnUsagePollerOptions,
 } from './mid-turn-usage';
-export { MID_TURN_TOKEN_USAGE_INTERVAL_MS, createMidTurnUsageThrottle } from './mid-turn-usage';
+export {
+    MID_TURN_TOKEN_USAGE_INTERVAL_MS,
+    createMidTurnUsageThrottle,
+    createMidTurnUsagePoller,
+} from './mid-turn-usage';
 
 export type { CopilotContextTier } from './model-context-tier';
 export { getCopilotContextTierForModel, getCopilotLongContextPromptLimit } from './model-context-tier';
