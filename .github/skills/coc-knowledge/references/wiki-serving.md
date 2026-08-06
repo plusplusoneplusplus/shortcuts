@@ -87,7 +87,13 @@ flowchart TD
 | `wiki-routes.ts` | Route table registration; restores persisted wikis from `ProcessStore` |
 | `ask-handler.ts` | `POST /ask` + SSE utilities (`sendSSE`, `readBody`, `buildAskPrompt`) |
 | `explore-handler.ts` | `POST /explore/:id` + `buildExplorePrompt` |
-| `generate-handler.ts` | `POST /admin/generate` — streams deep-wiki phase execution |
+| `generate-handler.ts` | Thin HTTP/SSE adapters for `/admin/generate*` — validation, registry claim, event→SSE piping |
+| `generation/generation-registry.ts` | `WikiGenerationRegistry` — per-wiki state, cancellation tokens, `reset`/`dispose` |
+| `generation/deep-wiki-adapter.ts` | The only module that dynamically imports deep-wiki internals |
+| `generation/generation-runner.ts` | `runWikiGeneration` — five-phase state machine emitting typed events |
+| `generation/component-regeneration-runner.ts` | `runComponentRegeneration` — single-article path sharing registry/adapter/reload |
+| `generation/cache-status-service.ts` | `WikiCacheStatusService` — phase cache status + metadata counts |
+| `generation/events.ts` | Typed generation events + SSE / recording sinks |
 | `admin-handlers.ts` | `GET/PUT /admin/seeds`, `GET/PUT /admin/config`, `POST /admin/generate-seeds` |
 | `types.ts` | Shared type definitions (domain types copied from deep-wiki) |
 | `index.ts` | Barrel re-export |
@@ -119,7 +125,9 @@ unregister(wikiId)
 
 - **Map registry** — `WikiManager.wikis: Map<string, WikiRuntime>` mirrors the `TaskWatcher` and `ProcessStore` registry patterns used elsewhere in the CoC server.
 - **Lazy initialization** — `ContextBuilder` is created on the first `/ask` call and cached; invalidated on wiki reload so stale index data is never served.
-- **Dynamic import** — `generate-handler.ts` imports `@plusplusoneplusplus/deep-wiki` at runtime via a `Function`-constructor trick to avoid a hard compile-time dependency.
+- **Dynamic import behind one adapter** — `generation/deep-wiki-adapter.ts` is the only place `@plusplusoneplusplus/deep-wiki/dist/*` is imported, at runtime, to avoid a hard compile-time dependency. Runners take a `DeepWikiAdapter` so tests substitute a fake instead of mocking module paths.
+- **Injected generation registry** — `registerWikiRoutes` creates its own `WikiGenerationRegistry` (override via `options.generationRegistry`), so generation state and cancellation flags are never shared between servers or tests.
+- **Events, not response writes** — runners emit typed `GenerationEvent`s; `createSseEventSink(res)` maps them onto the wire format (undefined fields omitted). Non-HTTP callers use `createRecordingEventSink`.
 - **SSE streaming** — All long-running operations (`ask`, `explore`, `generate`) use `sendSSE(res, data)` so the browser receives incremental updates without polling.
 - **Graceful degradation** — `FileWatcher` failures at startup are silently ignored (non-fatal); `store.getWikis()` errors during restore are swallowed; generation SSE always terminates with a `done` or `error` event.
 
@@ -529,5 +537,6 @@ data: {"type":"done","fullResponse":"...","sessionId":"abc123xyz789"}
 - `packages/coc/src/server/wiki/ask-handler.ts`
 - `packages/coc/src/server/wiki/explore-handler.ts`
 - `packages/coc/src/server/wiki/generate-handler.ts`
+- `packages/coc/src/server/wiki/generation/` (registry, runners, deep-wiki adapter, cache status, events)
 - `packages/coc/src/server/wiki/admin-handlers.ts`
 - `packages/coc/src/server/wiki/index.ts`
