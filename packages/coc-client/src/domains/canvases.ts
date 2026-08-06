@@ -3,6 +3,10 @@ import type {
   Canvas,
   CanvasExtension,
   CanvasExtensionResponse,
+  CanvasFile,
+  CanvasFileEntry,
+  CanvasFileResponse,
+  ListCanvasFilesResponse,
   CanvasComment,
   CanvasCommentResponse,
   CanvasCommentStatus,
@@ -134,6 +138,43 @@ export class CanvasesClient {
       canvasesPath(workspaceId, `/${encodePathSegment(canvasId)}/extension`),
     );
     return response.extension;
+  }
+
+  /**
+   * List the read-only files this canvas was given. Backs
+   * `CanvasHost.listFiles()`.
+   */
+  async listFiles(workspaceId: string, canvasId: string): Promise<CanvasFileEntry[]> {
+    const response = await this.transport.request<ListCanvasFilesResponse>(
+      canvasesPath(workspaceId, `/${encodePathSegment(canvasId)}/files`),
+    );
+    return response.files ?? [];
+  }
+
+  /**
+   * Read one of the canvas's files. Backs `CanvasHost.readFile(path, opts)`.
+   *
+   * The server picks the encoding from the file's own name; pass
+   * `{ encoding: 'base64' }` to force bytes for a file that would otherwise
+   * come back as text. There is no write counterpart by design.
+   */
+  async readFile(
+    workspaceId: string,
+    canvasId: string,
+    filePath: string,
+    options?: { encoding?: 'base64' },
+  ): Promise<CanvasFile> {
+    // Each segment is encoded on its own so the separators survive — the route
+    // takes a whole relative path, not a single segment.
+    const encodedPath = String(filePath)
+      .split('/')
+      .map(encodePathSegment)
+      .join('/');
+    const query = options?.encoding === 'base64' ? '?encoding=base64' : '';
+    const response = await this.transport.request<CanvasFileResponse>(
+      canvasesPath(workspaceId, `/${encodePathSegment(canvasId)}/files/${encodedPath}${query}`),
+    );
+    return response.file;
   }
 
   async invokeCapability(workspaceId: string, canvasId: string, capability: string, params?: Record<string, unknown>): Promise<Canvas> {

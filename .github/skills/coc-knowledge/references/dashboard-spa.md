@@ -399,7 +399,7 @@ content and — for markdown canvases — Save to Notes, which writes the conten
 Extension canvases (`type: 'extension'`) render
 `ExtensionCanvasView` in preview mode: the extension's `ui.html` runs inside an
 `<iframe sandbox="allow-scripts">` whose injected `window.CanvasHost` bridge
-(`version`/`onState`/`invoke`/`setState`) talks to the host over `postMessage`.
+(`version`/`onState`/`invoke`/`setState`/`listFiles`/`readFile`) talks to the host over `postMessage`.
 The host posts `canvas-state` on ready and on every live update, services
 `invoke-capability` through `canvases.invokeCapability` and `set-state` through
 the revision-checked `canvases.save`, so human UI actions and AI capability
@@ -408,12 +408,20 @@ shape live in `features/canvas/canvas-host-protocol.ts`): `invoke`/`setState`
 tag each message with a monotonic `id` and return a promise that settles on the
 host's `{ type: 'response', id, ok, result | error }` reply, or rejects after
 60s with `code: 'timeout'`. Rejections all carry `{ code, message }` with
-`code` in `offline` / `timeout` / `revision-conflict` / `capability-error`; a
-failed capability both rejects the extension's promise and shows the host
-banner. A message with **no `id`** is a pre-v2 sender and is still serviced in
+`code` in `offline` / `timeout` / `revision-conflict` / `capability-error` /
+`file-error`; a failed capability both rejects the extension's promise and shows
+the host banner, while a failed `readFile`/`listFiles` only rejects — a missing
+data file is the artifact's business, not a panel-level error. A message with **no `id`** is a pre-v2 sender and is still serviced in
 full, just without a reply. In an exported HTML artifact the offline bootstrap
 rejects `invoke`/`setState` with `code: 'offline'` rather than no-oping, so a
-v2 extension's `await` fails fast instead of hanging. The extension load, `invoke-capability`, and `set-state`
+v2 extension's `await` fails fast instead of hanging (the canvas's files are not
+inlined into an export — unbounded size). `listFiles`/`readFile` are READ-ONLY
+and scoped to `canvases/<canvasId>/files/`, the canvas's own directory: they hit
+`canvases.listFiles` / `canvases.readFile`, which return
+`{ path, size, encoding, content }` (`utf-8` for text, `base64` otherwise, and
+`{ encoding: 'base64' }` forces bytes). Only the AI writes into that directory,
+via `extension_canvas`'s `files` argument. The extension load,
+`invoke-capability`, `set-state`, `list-files` and `read-file`
 calls all route through the workspace-scoped `useCocClient(workspaceId)` client
 (like `CanvasPanel`), so a remote workspace's extension is read from and written
 to its owning server rather than the local page origin. Edit mode shows the raw

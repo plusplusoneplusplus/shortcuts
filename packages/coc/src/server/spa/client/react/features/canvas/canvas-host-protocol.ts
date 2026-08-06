@@ -35,8 +35,13 @@ export const CANVAS_HOST_REQUEST_TIMEOUT_MS = 60_000;
  *  - `timeout`          — the host never answered within the timeout above.
  *  - `revision-conflict`— a `setState` lost the revision check.
  *  - `capability-error` — the capability itself failed, or the request was unsupported.
+ *  - `file-error`       — a `listFiles`/`readFile` failed: no such file, a path
+ *                         the server refused, or one over the size cap. Distinct
+ *                         from `capability-error` because a missing data file is
+ *                         something an artifact routinely handles itself
+ *                         (render an empty state) rather than a broken action.
  */
-export type CanvasHostErrorCode = 'offline' | 'timeout' | 'revision-conflict' | 'capability-error';
+export type CanvasHostErrorCode = 'offline' | 'timeout' | 'revision-conflict' | 'capability-error' | 'file-error';
 
 /** The single rejection shape every CanvasHost failure uses. */
 export interface CanvasHostError {

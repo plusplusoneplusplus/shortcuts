@@ -587,7 +587,7 @@ describe('ExtensionCanvasView', () => {
         const postMessage = vi.fn();
         Object.defineProperty(iframe.contentWindow, 'postMessage', { value: postMessage, configurable: true });
 
-        postFromIframe(iframe, { __canvasHost: true, id: 31, type: 'read-file', path: 'a.txt' });
+        postFromIframe(iframe, { __canvasHost: true, id: 31, type: 'no-such-request', path: 'a.txt' });
 
         expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
             type: 'response', id: 31, ok: false, error: expect.objectContaining({ code: 'capability-error' }),
@@ -700,5 +700,187 @@ describe('ExtensionCanvasView — remote-aware routing', () => {
 
         expect(mocks.useCocClient).toHaveBeenCalledWith(LOCAL_WS);
         expect(localClient.canvases.getExtension).toHaveBeenCalledWith(LOCAL_WS, 'board-abc123');
+    });
+});
+
+/**
+ * CanvasHost.readFile / listFiles — the read-only file bridge.
+ *
+ * Two things must hold: the frame gets a real promise back (so an artifact can
+ * `await CanvasHost.readFile('data.csv')` and parse it), and the REST call goes
+ * through the clone-aware client, so a remote-clone workspace reads from the
+ * server that actually owns the canvas rather than the page origin.
+ */
+describe('ExtensionCanvasView — canvas files', () => {
+    const listFiles = vi.fn();
+    const readFile = vi.fn();
+
+    beforeEach(() => {
+        mocks.getExtension.mockReset().mockResolvedValue(EXTENSION);
+        listFiles.mockReset();
+        readFile.mockReset();
+        mocks.useCocClient.mockReset().mockReturnValue({
+            canvases: {
+                getExtension: mocks.getExtension,
+                invokeCapability: mocks.invokeCapability,
+                save: mocks.save,
+                listFiles,
+                readFile,
+            },
+        });
+    });
+
+    /** Collect the host→frame replies posted at the iframe. */
+    function captureReplies(iframe: HTMLIFrameElement): unknown[] {
+        const replies: unknown[] = [];
+        Object.defineProperty(iframe, 'contentWindow', {
+            configurable: true,
+            value: { postMessage: (message: unknown) => { replies.push(message); } },
+        });
+        return replies;
+    }
+
+    it('exposes listFiles and readFile on the bootstrap bridge', () => {
+        const doc = buildExtensionSrcDoc({ uiHtml: '' });
+        expect(doc).toContain("type: 'list-files'");
+        expect(doc).toContain("type: 'read-file'");
+    });
+
+    it('answers read-file through the workspace client and replies with the file', async () => {
+        const file = { path: 'data.csv', size: 4, encoding: 'utf-8', content: 'a,b\n' };
+        readFile.mockResolvedValue(file);
+
+        render(<ExtensionCanvasView workspaceId="ws-1" canvas={makeCanvas()} onCanvasSaved={vi.fn()} />);
+        const iframe = await screen.findByTestId('extension-canvas-iframe') as HTMLIFrameElement;
+        const replies = captureReplies(iframe);
+
+        postFromIframe(iframe, { __canvasHost: true, id: 7, type: 'read-file', path: 'data.csv', options: {} });
+
+        await waitFor(() => expect(readFile).toHaveBeenCalledWith('ws-1', 'board-abc123', 'data.csv', undefined));
+        await waitFor(() => expect(replies).toContainEqual({
+            __canvasHost: true, type: 'response', id: 7, ok: true, result: file,
+        }));
+    });
+
+    it('forwards a base64 encoding option', async () => {
+        readFile.mockResolvedValue({ path: 'logo.png', size: 2, encoding: 'base64', content: 'AAE=' });
+
+        render(<ExtensionCanvasView workspaceId="ws-1" canvas={makeCanvas()} onCanvasSaved={vi.fn()} />);
+        const iframe = await screen.findByTestId('extension-canvas-iframe') as HTMLIFrameElement;
+        captureReplies(iframe);
+
+        postFromIframe(iframe, { __canvasHost: true, id: 1, type: 'read-file', path: 'logo.png', options: { encoding: 'base64' } });
+
+        await waitFor(() => expect(readFile).toHaveBeenCalledWith('ws-1', 'board-abc123', 'logo.png', { encoding: 'base64' }));
+    });
+
+    it('answers list-files with the entries', async () => {
+        const files = [{ path: 'data.csv', size: 4, encoding: 'utf-8' }];
+        listFiles.mockResolvedValue(files);
+
+        render(<ExtensionCanvasView workspaceId="ws-1" canvas={makeCanvas()} onCanvasSaved={vi.fn()} />);
+        const iframe = await screen.findByTestId('extension-canvas-iframe') as HTMLIFrameElement;
+        const replies = captureReplies(iframe);
+
+        postFromIframe(iframe, { __canvasHost: true, id: 3, type: 'list-files' });
+
+        await waitFor(() => expect(listFiles).toHaveBeenCalledWith('ws-1', 'board-abc123'));
+        await waitFor(() => expect(replies).toContainEqual({
+            __canvasHost: true, type: 'response', id: 3, ok: true, result: { files },
+        }));
+    });
+
+    it('rejects with code "file-error" and does NOT raise a panel banner', async () => {
+        readFile.mockRejectedValue(new Error('Canvas file not found'));
+
+        render(<ExtensionCanvasView workspaceId="ws-1" canvas={makeCanvas()} onCanvasSaved={vi.fn()} />);
+        const iframe = await screen.findByTestId('extension-canvas-iframe') as HTMLIFrameElement;
+        const replies = captureReplies(iframe);
+
+        postFromIframe(iframe, { __canvasHost: true, id: 2, type: 'read-file', path: 'missing.csv' });
+
+        await waitFor(() => expect(replies).toContainEqual({
+            __canvasHost: true,
+            type: 'response',
+            id: 2,
+            ok: false,
+            error: { code: 'file-error', message: 'Canvas file not found' },
+        }));
+        // A missing data file is the artifact's business, not a panel error.
+        expect(screen.queryByTestId('extension-canvas-action-error')).toBeNull();
+    });
+
+    it('rejects a read-file with no path instead of calling the client', async () => {
+        render(<ExtensionCanvasView workspaceId="ws-1" canvas={makeCanvas()} onCanvasSaved={vi.fn()} />);
+        const iframe = await screen.findByTestId('extension-canvas-iframe') as HTMLIFrameElement;
+        const replies = captureReplies(iframe);
+
+        postFromIframe(iframe, { __canvasHost: true, id: 4, type: 'read-file' });
+
+        await waitFor(() => expect(replies).toContainEqual({
+            __canvasHost: true, type: 'response', id: 4, ok: false,
+            error: { code: 'file-error', message: 'readFile needs a path' },
+        }));
+        expect(readFile).not.toHaveBeenCalled();
+    });
+
+    it('regression: a remote-clone workspace reads from the clone, never the page-origin client', async () => {
+        const REMOTE_WS = 'ws-remote-xyz';
+        const makeClient = () => ({
+            canvases: {
+                getExtension: vi.fn().mockResolvedValue(EXTENSION),
+                invokeCapability: vi.fn(),
+                save: vi.fn(),
+                listFiles: vi.fn().mockResolvedValue([]),
+                readFile: vi.fn().mockResolvedValue({ path: 'data.csv', size: 1, encoding: 'utf-8', content: 'x' }),
+            },
+        });
+        const remoteClient = makeClient();
+        const localClient = makeClient();
+        mocks.useCocClient.mockReset().mockImplementation(
+            (wsId: string) => (wsId === REMOTE_WS ? remoteClient : localClient),
+        );
+
+        render(<ExtensionCanvasView workspaceId={REMOTE_WS} canvas={makeCanvas({ workspaceId: REMOTE_WS })} onCanvasSaved={vi.fn()} />);
+        const iframe = await screen.findByTestId('extension-canvas-iframe') as HTMLIFrameElement;
+        captureReplies(iframe);
+
+        postFromIframe(iframe, { __canvasHost: true, id: 1, type: 'read-file', path: 'data.csv' });
+        postFromIframe(iframe, { __canvasHost: true, id: 2, type: 'list-files' });
+
+        await waitFor(() => expect(remoteClient.canvases.readFile)
+            .toHaveBeenCalledWith(REMOTE_WS, 'board-abc123', 'data.csv', undefined));
+        await waitFor(() => expect(remoteClient.canvases.listFiles).toHaveBeenCalledWith(REMOTE_WS, 'board-abc123'));
+        expect(localClient.canvases.readFile).not.toHaveBeenCalled();
+        expect(localClient.canvases.listFiles).not.toHaveBeenCalled();
+    });
+});
+
+describe('CanvasHost bootstrap — file methods', () => {
+    it('readFile and listFiles return promises that settle from the host reply', async () => {
+        const { host, posted, deliver } = loadBootstrap() as any;
+
+        const read = host.readFile('data.csv', { encoding: 'base64' });
+        const request = posted.find((m: any) => m.type === 'read-file');
+        expect(request).toMatchObject({
+            __canvasHost: true, type: 'read-file', path: 'data.csv', options: { encoding: 'base64' },
+        });
+
+        const file = { path: 'data.csv', size: 4, encoding: 'base64', content: 'YSxiCg==' };
+        deliver({ __canvasHost: true, type: 'response', id: request.id, ok: true, result: file });
+        await expect(read).resolves.toEqual(file);
+    });
+
+    it('a rejected file request surfaces its code to the extension', async () => {
+        const { host, posted, deliver } = loadBootstrap() as any;
+
+        const listed = host.listFiles();
+        const request = posted.find((m: any) => m.type === 'list-files');
+        deliver({
+            __canvasHost: true, type: 'response', id: request.id, ok: false,
+            error: { code: 'file-error', message: 'Canvas file not found' },
+        });
+
+        await expect(listed).rejects.toMatchObject({ code: 'file-error', message: 'Canvas file not found' });
     });
 });

@@ -221,3 +221,32 @@ export interface CanvasExtension {
 export interface CanvasExtensionResponse {
   extension: CanvasExtension;
 }
+
+/**
+ * Read-only files a canvas was given — the scope an extension canvas sees
+ * through `CanvasHost.listFiles()` / `CanvasHost.readFile()`. Rooted at the
+ * canvas's own directory; there is no write endpoint.
+ */
+export type CanvasFileEncoding = 'utf-8' | 'base64';
+
+export interface CanvasFileEntry {
+  /** Path relative to the canvas files root, always `/`-separated. */
+  path: string;
+  /** Size in bytes on disk (not the length of the encoded content). */
+  size: number;
+  /** The encoding `readFile` returns this file in. */
+  encoding: CanvasFileEncoding;
+}
+
+export interface CanvasFile extends CanvasFileEntry {
+  /** UTF-8 text, or standard base64 when `encoding` is `base64`. */
+  content: string;
+}
+
+export interface ListCanvasFilesResponse {
+  files: CanvasFileEntry[];
+}
+
+export interface CanvasFileResponse {
+  file: CanvasFile;
+}

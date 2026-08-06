@@ -14,12 +14,14 @@
  *     synchronously to `CanvasHost.onState`, instead of arriving via a postMessage
  *     round-trip from the parent. This is more robust for a static file: there is
  *     no parent host to answer messages, so the extension always sees its state.
- *   - `CanvasHost.invoke` and `CanvasHost.setState` return a REJECTED promise
- *     (`code: 'offline'`). There is no server to run a capability and no store to
- *     persist to, so any human action that would normally mutate state fails
- *     loudly to the extension (the banner says so too). Rejecting — rather than
- *     no-oping — is what keeps a protocol-v2 extension that `await`s these calls
- *     from hanging in an exported file.
+ *   - `CanvasHost.invoke`, `setState`, `listFiles` and `readFile` return a
+ *     REJECTED promise (`code: 'offline'`). There is no server to run a
+ *     capability, no store to persist to and no file endpoint to read, so any
+ *     action that would normally reach the host fails loudly to the extension
+ *     (the banner says so too). Rejecting — rather than no-oping — is what keeps
+ *     a protocol-v2 extension that `await`s these calls from hanging in an
+ *     exported file. The canvas's files are deliberately NOT inlined: it would
+ *     multiply the export size with no bound.
  *   - `capabilitiesJs` is NEVER shipped — capability code stays server-only.
  *
  * Portability & safety, enforced here by construction:
@@ -225,6 +227,11 @@ function buildOfflineBootstrap(frozenState: unknown, title: string, revision: nu
         '        },\n' +
         "        invoke: offline('invoke'),\n" +
         "        setState: offline('setState'),\n" +
+        // Files are NOT inlined into the export: it would multiply the file size
+        // with no bound and no story for what happens at 100 MB. The artifact is
+        // told so, loudly, rather than hanging on a promise that never settles.
+        "        listFiles: offline('listFiles'),\n" +
+        "        readFile: offline('readFile'),\n" +
         '    };\n' +
         '})();\n' +
         '</script>'

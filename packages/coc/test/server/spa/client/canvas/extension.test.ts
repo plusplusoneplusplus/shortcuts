@@ -77,6 +77,8 @@ describe('buildExtensionExportBody — offline CanvasHost', () => {
         // invoke/setState reject — no server, no persistence.
         expect(inner).toContain("invoke: offline('invoke')");
         expect(inner).toContain("setState: offline('setState')");
+        expect(inner).toContain("listFiles: offline('listFiles')");
+        expect(inner).toContain("readFile: offline('readFile')");
         expect(inner).toContain("err.code = 'offline'");
     });
 
@@ -129,6 +131,8 @@ describe('buildExtensionExportBody — offline calls reject rather than no-op', 
             onState: (cb: (state: unknown, meta: unknown) => void) => void;
             invoke: (name: string, params?: unknown) => Promise<unknown>;
             setState: (state: unknown) => Promise<unknown>;
+            listFiles: () => Promise<unknown>;
+            readFile: (path: string, options?: unknown) => Promise<unknown>;
         };
     }
 
@@ -137,6 +141,36 @@ describe('buildExtensionExportBody — offline calls reject rather than no-op', 
 
         await expect(host.invoke('bump', {})).rejects.toMatchObject({ code: 'offline' });
         await expect(host.setState({ count: 6 })).rejects.toMatchObject({ code: 'offline' });
+    });
+
+    /**
+     * The canvas's files are NOT inlined into an export — it would multiply the
+     * size with no bound. So the file bridge must fail loudly and immediately;
+     * a promise left pending would hang an artifact that awaits its data at
+     * mount, leaving a blank page with no explanation.
+     */
+    it('rejects listFiles and readFile with code "offline"', async () => {
+        const host = runOfflineBootstrap();
+
+        await expect(host.listFiles()).rejects.toMatchObject({ code: 'offline' });
+        await expect(host.readFile('data.csv')).rejects.toMatchObject({ code: 'offline' });
+    });
+
+    it('says why the file is unavailable rather than reading as a missing file', async () => {
+        const host = runOfflineBootstrap();
+        const error = await host.readFile('data.csv').catch((err: Error) => err);
+
+        expect(String((error as Error).message)).toContain('readFile');
+        expect(String((error as Error).message)).toContain('view-only snapshot');
+    });
+
+    it('rejects a file read promptly — it never hangs', async () => {
+        const host = runOfflineBootstrap();
+        const outcome = await Promise.race([
+            host.readFile('data.csv').then(() => 'resolved', (err: any) => err.code),
+            new Promise(resolve => setTimeout(() => resolve('hung'), 50)),
+        ]);
+        expect(outcome).toBe('offline');
     });
 
     it('rejects promptly — the promise settles, it never hangs', async () => {

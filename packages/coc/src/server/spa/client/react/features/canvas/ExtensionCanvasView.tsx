@@ -10,6 +10,14 @@
  *   CanvasHost.onState(cb)        — re-render callback: cb(state, { revision, title })
  *   CanvasHost.invoke(name, p)    — invoke a declared capability (server-side vm)
  *   CanvasHost.setState(state)    — escape hatch: replace the JSON state directly
+ *   CanvasHost.listFiles()        — list the read-only files this canvas was given
+ *   CanvasHost.readFile(p, opts)  — read one of them ({ path, size, encoding, content })
+ *
+ * The file methods are READ-ONLY and scoped to the canvas's own
+ * `canvases/<id>/files/` directory — the equivalent of Claude artifacts'
+ * `window.fs.readFile`: the data given to this artifact, not the machine. There
+ * is no write counterpart; canvas state is the write channel, and unlike a file
+ * write it is revision-checked, snapshotted and size-capped.
  *
  * The host side of the postMessage protocol lives here: it posts
  * `canvas-state` messages on load and on every live update, and services
@@ -71,6 +79,10 @@ interface HostMessage {
     name?: string;
     params?: Record<string, unknown>;
     state?: unknown;
+    /** `read-file`: the canvas-relative path to read. */
+    path?: unknown;
+    /** `read-file`: caller options, currently `{ encoding?: 'base64' }`. */
+    options?: unknown;
     /** `extension-error`: the frame could not load its libraries or mount. */
     message?: string;
 }
@@ -125,6 +137,12 @@ const BOOTSTRAP_SCRIPT = `<script>
         },
         setState: function (state) {
             return request({ type: 'set-state', state: state });
+        },
+        listFiles: function () {
+            return request({ type: 'list-files' });
+        },
+        readFile: function (path, options) {
+            return request({ type: 'read-file', path: path, options: options || {} });
         },
     };
     window.addEventListener('message', function (event) {
@@ -301,6 +319,36 @@ export function ExtensionCanvasView({ workspaceId, canvas, onCanvasSaved }: Exte
                         setActionError(message);
                         respond({ ok: false, error: { code: 'capability-error', message } });
                     });
+                return;
+            }
+
+            // Read-only file access, scoped to this canvas's own files
+            // directory. Deliberately does NOT set `actionError`: a missing data
+            // file is the extension's business (it can render an empty state),
+            // not a panel-level failure the user must be shown. The promise
+            // still rejects with `code: 'file-error'` so the artifact can react.
+            if (data.type === 'list-files') {
+                client.canvases.listFiles(workspaceId, canvasIdRef.current)
+                    .then(files => respond({ ok: true, result: { files } }))
+                    .catch(err => respond({
+                        ok: false,
+                        error: { code: 'file-error', message: err instanceof Error ? err.message : 'Failed to list canvas files' },
+                    }));
+                return;
+            }
+
+            if (data.type === 'read-file') {
+                if (typeof data.path !== 'string' || !data.path) {
+                    respond({ ok: false, error: { code: 'file-error', message: 'readFile needs a path' } });
+                    return;
+                }
+                const base64 = (data.options as { encoding?: string } | undefined)?.encoding === 'base64';
+                client.canvases.readFile(workspaceId, canvasIdRef.current, data.path, base64 ? { encoding: 'base64' } : undefined)
+                    .then(file => respond({ ok: true, result: file }))
+                    .catch(err => respond({
+                        ok: false,
+                        error: { code: 'file-error', message: err instanceof Error ? err.message : 'Failed to read canvas file' },
+                    }));
                 return;
             }
 
