@@ -14,9 +14,12 @@
  *     synchronously to `CanvasHost.onState`, instead of arriving via a postMessage
  *     round-trip from the parent. This is more robust for a static file: there is
  *     no parent host to answer messages, so the extension always sees its state.
- *   - `CanvasHost.invoke` and `CanvasHost.setState` are INERT no-ops. There is no
- *     server to run a capability and no store to persist to, so any human action
- *     that would normally mutate state simply does nothing (the banner says so).
+ *   - `CanvasHost.invoke` and `CanvasHost.setState` return a REJECTED promise
+ *     (`code: 'offline'`). There is no server to run a capability and no store to
+ *     persist to, so any human action that would normally mutate state fails
+ *     loudly to the extension (the banner says so too). Rejecting — rather than
+ *     no-oping — is what keeps a protocol-v2 extension that `await`s these calls
+ *     from hanging in an exported file.
  *   - `capabilitiesJs` is NEVER shipped — capability code stays server-only.
  *
  * Portability & safety, enforced here by construction:
@@ -35,6 +38,8 @@
  * unit-tests with plain strings. Layer A/E wrap the returned body into the final
  * document and embed the frozen state as the recoverable source.
  */
+
+import { CANVAS_HOST_VERSION } from '../canvas-host-protocol';
 
 /** Input for building the offline extension export body. */
 export interface ExtensionExportInput {
@@ -152,9 +157,18 @@ function neutralizeExternalReferences(html: string): { html: string; warnings: s
 
 /**
  * Build the offline `CanvasHost` bootstrap script injected ahead of the extension
- * `uiHtml` inside the iframe. It delivers the frozen state to `onState` and makes
- * `invoke`/`setState` inert — no server, no persistence — so nothing in the
- * exported file can call a CoC route, run a capability, or save state.
+ * `uiHtml` inside the iframe. It delivers the frozen state to `onState`; there is
+ * no server and no persistence, so `invoke`/`setState` reject rather than doing
+ * anything — nothing in the exported file can call a CoC route, run a capability,
+ * or save state.
+ *
+ * The rejection is what makes the degradation honest under protocol v2: a v2
+ * extension `await`s these calls, so an inert no-op returning `undefined` (or a
+ * promise that never settles) would hang the exported page instead of letting the
+ * extension show its own "unavailable" state. Each rejected promise gets a
+ * no-op `catch` attached before it is handed out, so an extension that fires and
+ * forgets does not raise an unhandled rejection in the exported page — while an
+ * extension that awaits still observes `code: 'offline'`.
  */
 function buildOfflineBootstrap(frozenState: unknown, title: string, revision: number): string {
     const stateLiteral = toEmbeddableJson(frozenState);
@@ -164,14 +178,23 @@ function buildOfflineBootstrap(frozenState: unknown, title: string, revision: nu
         '(function () {\n' +
         `    var STATE = ${stateLiteral};\n` +
         `    var META = ${metaLiteral};\n` +
-        '    function inert() { /* view-only snapshot — no server, no persistence */ }\n' +
+        '    function offline(method) {\n' +
+        '        return function () {\n' +
+        "            var err = new Error('CanvasHost.' + method + ' is unavailable in this view-only snapshot — there is no server and nothing is saved.');\n" +
+        "            err.code = 'offline';\n" +
+        '            var rejected = Promise.reject(err);\n' +
+        '            rejected.catch(function () { /* observed on await; silent when ignored */ });\n' +
+        '            return rejected;\n' +
+        '        };\n' +
+        '    }\n' +
         '    window.CanvasHost = {\n' +
+        `        version: ${CANVAS_HOST_VERSION},\n` +
         '        onState: function (cb) {\n' +
         "            if (typeof cb !== 'function') return;\n" +
         '            try { cb(STATE, META); } catch (e) { /* extension render error — leave as-is */ }\n' +
         '        },\n' +
-        '        invoke: inert,\n' +
-        '        setState: inert,\n' +
+        "        invoke: offline('invoke'),\n" +
+        "        setState: offline('setState'),\n" +
         '    };\n' +
         '})();\n' +
         '</script>'

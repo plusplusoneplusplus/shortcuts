@@ -4,8 +4,9 @@
  * `buildExtensionExportBody` is pure string assembly (no DOM / no `fetch`), so
  * these run in the plain vitest node project. They cover: the sandboxed iframe
  * surface (sandbox stays `allow-scripts`, never `allow-same-origin`); the offline
- * `CanvasHost` (frozen state delivered to `onState`, `invoke`/`setState` inert, no
- * postMessage/parent access, `capabilitiesJs` never present); frozen-state
+ * `CanvasHost` (frozen state delivered to `onState`, `invoke`/`setState` rejecting
+ * with `code: 'offline'` rather than hanging a v2 extension, no postMessage/parent
+ * access, `capabilitiesJs` never present); frozen-state
  * parsing (valid / empty / malformed → safe fallback + warning); script-breakout
  * and attribute-escaping safety; external-reference neutralization (`<script src>`,
  * `<link>`, residual network URLs); the view-only banner; and byte-determinism.
@@ -16,6 +17,7 @@ import {
     buildExtensionExportBody,
     type ExtensionExportInput,
 } from '../../../../../src/server/spa/client/react/features/canvas/html-export/extension';
+import { CANVAS_HOST_VERSION } from '../../../../../src/server/spa/client/react/features/canvas/canvas-host-protocol';
 
 const SIMPLE_UI = '<div id="app">Hello</div><script>CanvasHost.onState(function (s) { document.title = s.n; });</script>';
 
@@ -66,15 +68,21 @@ describe('buildExtensionExportBody — sandbox & surface', () => {
 });
 
 describe('buildExtensionExportBody — offline CanvasHost', () => {
-    it('delivers the frozen state to onState and makes invoke/setState inert', () => {
+    it('delivers the frozen state to onState and makes invoke/setState offline', () => {
         const inner = decodeSrcdoc(build({ stateContent: '{"count":5}' }).bodyHtml);
         // Frozen state embedded as a JS literal inside the bootstrap.
         expect(inner).toContain('var STATE = {"count":5};');
         // onState delivers the frozen snapshot synchronously.
         expect(inner).toContain('cb(STATE, META)');
-        // invoke/setState are inert no-ops — no server, no persistence.
-        expect(inner).toContain('invoke: inert');
-        expect(inner).toContain('setState: inert');
+        // invoke/setState reject — no server, no persistence.
+        expect(inner).toContain("invoke: offline('invoke')");
+        expect(inner).toContain("setState: offline('setState')");
+        expect(inner).toContain("err.code = 'offline'");
+    });
+
+    it('advertises the same protocol version as the live host', () => {
+        const inner = decodeSrcdoc(build().bodyHtml);
+        expect(inner).toContain(`version: ${CANVAS_HOST_VERSION}`);
     });
 
     it('never posts to a parent host or references postMessage', () => {
@@ -99,6 +107,71 @@ describe('buildExtensionExportBody — offline CanvasHost', () => {
         const { bodyHtml } = build();
         expect(bodyHtml).not.toContain('capabilitiesJs');
         expect(bodyHtml).not.toContain('capabilities =');
+    });
+});
+
+/**
+ * The offline bootstrap is executed for real here (it is plain ES5 needing only
+ * `window`), because the contract that matters is runtime behaviour: under
+ * protocol v2 an extension `await`s `invoke`/`setState`, so these must REJECT
+ * promptly. A no-op returning `undefined` — or a promise that never settles —
+ * would hang the exported page, which no string assertion would catch.
+ */
+describe('buildExtensionExportBody — offline calls reject rather than no-op', () => {
+    function runOfflineBootstrap() {
+        const inner = decodeSrcdoc(build({ stateContent: '{"count":5}', title: 'Widget', revision: 3 }).bodyHtml);
+        const body = inner.slice(inner.indexOf('<script>') + '<script>'.length, inner.indexOf('</script>'));
+        const frameWindow = { CanvasHost: undefined as any };
+        // eslint-disable-next-line no-new-func
+        new Function('window', body)(frameWindow);
+        return frameWindow.CanvasHost as {
+            version: number;
+            onState: (cb: (state: unknown, meta: unknown) => void) => void;
+            invoke: (name: string, params?: unknown) => Promise<unknown>;
+            setState: (state: unknown) => Promise<unknown>;
+        };
+    }
+
+    it('rejects invoke and setState with code "offline"', async () => {
+        const host = runOfflineBootstrap();
+
+        await expect(host.invoke('bump', {})).rejects.toMatchObject({ code: 'offline' });
+        await expect(host.setState({ count: 6 })).rejects.toMatchObject({ code: 'offline' });
+    });
+
+    it('rejects promptly — the promise settles, it never hangs', async () => {
+        const host = runOfflineBootstrap();
+        const outcome = await Promise.race([
+            host.invoke('bump').then(() => 'resolved', (err: any) => err.code),
+            new Promise(resolve => setTimeout(() => resolve('hung'), 50)),
+        ]);
+        expect(outcome).toBe('offline');
+    });
+
+    it('does not surface an unhandled rejection when the extension ignores the result', async () => {
+        const host = runOfflineBootstrap();
+        const unhandled: unknown[] = [];
+        const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+        process.on('unhandledRejection', onUnhandled);
+        try {
+            // A fire-and-forget v1-style call — the return value is discarded.
+            host.invoke('bump', {});
+            host.setState({ count: 6 });
+            // Let Node run its unhandled-rejection checkpoints.
+            await new Promise(resolve => setImmediate(resolve));
+            await new Promise(resolve => setImmediate(resolve));
+        } finally {
+            process.off('unhandledRejection', onUnhandled);
+        }
+        expect(unhandled).toEqual([]);
+    });
+
+    it('still delivers the frozen state synchronously to onState', () => {
+        const host = runOfflineBootstrap();
+        const seen: Array<[unknown, unknown]> = [];
+        host.onState((state, meta) => { seen.push([state, meta]); });
+        expect(seen).toEqual([[{ count: 5 }, { revision: 3, title: 'Widget' }]]);
+        expect(host.version).toBe(CANVAS_HOST_VERSION);
     });
 });
 
