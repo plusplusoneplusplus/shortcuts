@@ -27,7 +27,7 @@ function getCountForFilter(comments: UseCommentsReturn, name: CommentFilter): nu
     }
 }
 
-export function CommentsSidebar({ comments, selectedThreadId, onResolveWithAI }: CommentsSidebarProps) {
+export function CommentsSidebar({ comments, selectedThreadId, onThreadSelect, onResolveWithAI }: CommentsSidebarProps) {
     return (
         <div className="flex flex-col h-full" data-testid="comments-sidebar">
             {/* Header */}
@@ -128,7 +128,10 @@ export function CommentsSidebar({ comments, selectedThreadId, onResolveWithAI }:
                             key={thread.id}
                             thread={thread}
                             isSelected={thread.id === selectedThreadId}
-                            onSelect={() => comments.selectThread(thread.id)}
+                            onSelect={() => {
+                                comments.selectThread(thread.id);
+                                onThreadSelect(thread.id);
+                            }}
                             onResolve={() => comments.resolveThread(thread.id)}
                             onReopen={() => comments.reopenThread(thread.id)}
                             onDelete={() => comments.deleteThread(thread.id)}

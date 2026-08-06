@@ -563,6 +563,54 @@ describe('Notes Comments Handler', () => {
     });
 
     // ========================================================================
+    // 16b. Absolute paths inside the workspace repo (chat scratchpad files)
+    // ========================================================================
+    it('absolute path inside the workspace repo stores the sidecar in the managed area', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv, workspaceDir);
+
+        // A file the chat created inside the user's git repo, opened by the scratchpad.
+        const repoFileDir = path.join(workspaceDir, 'docs');
+        fs.mkdirSync(repoFileDir, { recursive: true });
+        const absNotePath = path.join(repoFileDir, 'design.md');
+        fs.writeFileSync(absNotePath, '# Design\nhello world', 'utf-8');
+
+        const thread = await createThread(srv, absNotePath);
+        expect(thread.id).toBeDefined();
+
+        // The repo must stay clean — no sidecar next to the commented file.
+        expect(fs.existsSync(absNotePath + '.comments.json')).toBe(false);
+        expect(fs.readdirSync(repoFileDir)).toEqual(['design.md']);
+
+        // The sidecar lives in the managed notes-comments area instead.
+        const managedDir = path.join(dataDir, 'repos', wsId, 'notes-comments');
+        const found: string[] = [];
+        const walk = (dir: string) => {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) walk(full);
+                else found.push(full);
+            }
+        };
+        walk(managedDir);
+        expect(found).toHaveLength(1);
+        expect(found[0].endsWith(path.join('docs', 'design.md.comments.json'))).toBe(true);
+
+        // And the thread reads back through the same path.
+        const getRes = await request(commentsUrl(srv, '', `path=${encodeURIComponent(absNotePath)}`));
+        expect(getRes.status).toBe(200);
+        expect(JSON.parse(getRes.body).threads[thread.id]).toBeDefined();
+
+        // Replies land in the same sidecar.
+        const addRes = await postJSON(commentsUrl(srv, `thread/${thread.id}/comment`), {
+            path: absNotePath,
+            content: 'Reply on a repo file',
+        });
+        expect(addRes.status).toBe(201);
+        expect(fs.existsSync(absNotePath + '.comments.json')).toBe(false);
+    });
+
+    // ========================================================================
     // 17. Relative paths still resolve under notesRoot
     // ========================================================================
     it('relative paths still resolve under notesRoot', async () => {

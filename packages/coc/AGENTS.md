@@ -66,6 +66,15 @@ all have their own `references/*.md`.
   task-derived rows out of Notes root removal selection, refresh discovery with
   the tree, clear the selected file when a root disappears or the workspace
   changes, and discard late root/tree responses from stale workspace scopes.
+- **Notes sidecars** (comments, paper annotations) get their path and their
+  access check from `notes/notes-sidecar-resolver.ts` — never from an ad-hoc
+  check in a handler. It allows a note under the workspace data dir,
+  `~/.copilot`, or the workspace git root, and co-locates the sidecar only for
+  the first two; everything else (repo-folder roots, and chat-scratchpad files
+  opened by absolute path inside the repo) lands under
+  `~/.coc/repos/<workspaceId>/notes-comments/<encoded-bucket>/` so the user's
+  repo stays clean. The `.` bucket is reserved for workspace-root files;
+  `validateNotesRootPath` rejects `.` as a user root, so it cannot collide.
 - **Notes attachments** upload and serve through the shared endpoint in
   `notes/notes-image-handler.ts` (`POST`/`GET /api/workspaces/:id/notes/image`).
   It accepts images plus `application/pdf` (images capped at 10 MB, PDFs at
