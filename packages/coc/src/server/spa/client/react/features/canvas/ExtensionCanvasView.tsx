@@ -29,6 +29,16 @@
  * returned promise behaves exactly as before, and a message that arrives with no
  * `id` (a pre-v2 sender) is still serviced in full — the host simply posts no
  * reply for it rather than dropping the request.
+ *
+ * Two authoring paths share this host:
+ *   - `ui.html` — the extension's own self-contained HTML+JS, injected after the
+ *     bootstrap and otherwise untouched. Loads nothing.
+ *   - `ui.js` — a compiled JSX component assigning
+ *     `window.CanvasExtension = { mount(rootEl, host) }`. The frame gets a root
+ *     element plus a runtime script (see `extension-runtime.ts`) that loads the
+ *     manifest's declared libraries from the PAGE origin as classic scripts, in
+ *     order, and then calls `mount()`. When that fails, the frame paints a
+ *     banner and posts `extension-error` here rather than rendering nothing.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -39,6 +49,12 @@ import {
     CANVAS_HOST_REQUEST_TIMEOUT_MS,
     type CanvasHostError,
 } from './canvas-host-protocol';
+import {
+    EXTENSION_ERROR_MESSAGE_TYPE,
+    buildExtensionRootHtml,
+    buildExtensionRuntimeScript,
+} from './extension-runtime';
+import { isCanvasLibraryId } from '../../../../../canvas/canvas-libraries';
 
 export interface ExtensionCanvasViewProps {
     workspaceId: string;
@@ -55,6 +71,8 @@ interface HostMessage {
     name?: string;
     params?: Record<string, unknown>;
     state?: unknown;
+    /** `extension-error`: the frame could not load its libraries or mount. */
+    message?: string;
 }
 
 const BOOTSTRAP_SCRIPT = `<script>
@@ -130,8 +148,40 @@ const BOOTSTRAP_SCRIPT = `<script>
 })();
 </script>`;
 
-export function buildExtensionSrcDoc(uiHtml: string): string {
-    return BOOTSTRAP_SCRIPT + '\n' + uiHtml;
+/** The extension documents the frame renders from. A subset of `CanvasExtension`. */
+export interface ExtensionSrcDocSource {
+    /** Legacy/vanilla authoring: self-contained HTML+JS. */
+    uiHtml?: string;
+    /** JSX authoring: compiled UI assigning `window.CanvasExtension`. Wins over `uiHtml`. */
+    uiJs?: string;
+    /** Vendored libraries to load first, dependency-resolved and in order. */
+    libraries?: readonly string[];
+}
+
+/**
+ * Build the iframe `srcdoc`.
+ *
+ * Two shapes, chosen by which document the extension has:
+ *   - `uiJs` — the JSX path: bootstrap, a root element, then the runtime script
+ *     that loads the declared libraries from `assetBase` and calls `mount()`.
+ *   - `uiHtml` — the legacy path, byte for byte what it always was: bootstrap
+ *     followed by the extension's own HTML. Nothing is loaded, nothing injected.
+ *
+ * `assetBase` is the PAGE origin, deliberately — vendored bundles are the one
+ * thing not routed through the workspace-owning server, because they are static
+ * assets of the dashboard itself and identical everywhere.
+ */
+export function buildExtensionSrcDoc(source: ExtensionSrcDocSource, assetBase?: string): string {
+    if (source.uiJs) {
+        const libraries = (source.libraries ?? []).filter(isCanvasLibraryId);
+        const runtime = buildExtensionRuntimeScript({
+            uiJs: source.uiJs,
+            libraries,
+            assetBase: assetBase ?? '',
+        });
+        return [BOOTSTRAP_SCRIPT, buildExtensionRootHtml(), runtime].join('\n');
+    }
+    return BOOTSTRAP_SCRIPT + '\n' + (source.uiHtml ?? '');
 }
 
 function parseState(content: string): unknown {
@@ -169,7 +219,8 @@ export function ExtensionCanvasView({ workspaceId, canvas, onCanvasSaved }: Exte
             .then(loaded => {
                 if (cancelled) return;
                 setExtension(prev =>
-                    prev && prev.uiHtml === loaded.uiHtml && prev.capabilitiesJs === loaded.capabilitiesJs
+                    prev && prev.uiHtml === loaded.uiHtml && prev.uiJs === loaded.uiJs
+                        && prev.capabilitiesJs === loaded.capabilitiesJs
                         && JSON.stringify(prev.manifest) === JSON.stringify(loaded.manifest)
                         ? prev
                         : loaded,
@@ -222,6 +273,17 @@ export function ExtensionCanvasView({ workspaceId, canvas, onCanvasSaved }: Exte
             if (data.type === 'ready') {
                 postState(canvasCurrentRef.current);
                 respond({ ok: true, result: null });
+                return;
+            }
+
+            // A JSX extension whose libraries failed to load, or whose mount()
+            // threw, reports it here. The frame paints its own banner too — this
+            // surfaces the same failure outside the sandbox, where a user who has
+            // scrolled past the frame can still see it. Not a request: no reply.
+            if (data.type === EXTENSION_ERROR_MESSAGE_TYPE) {
+                setActionError(typeof data.message === 'string' && data.message
+                    ? data.message
+                    : 'The canvas extension failed to load');
                 return;
             }
 
@@ -289,7 +351,14 @@ export function ExtensionCanvasView({ workspaceId, canvas, onCanvasSaved }: Exte
                 title={canvas.title}
                 sandbox="allow-scripts"
                 className="flex-1 w-full border-0 bg-white dark:bg-[#1e1e1e]"
-                srcDoc={buildExtensionSrcDoc(extension.uiHtml)}
+                srcDoc={buildExtensionSrcDoc(
+                    { uiHtml: extension.uiHtml, uiJs: extension.uiJs, libraries: extension.manifest?.libraries },
+                    // Page origin, not the workspace-owning server: the vendored
+                    // bundles are static dashboard assets, identical on every
+                    // clone. Absolute so the about:srcdoc frame never has to
+                    // resolve a relative URL against an inherited base.
+                    typeof window !== 'undefined' ? window.location.origin : '',
+                )}
                 data-testid="extension-canvas-iframe"
             />
         </div>

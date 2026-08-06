@@ -24,6 +24,7 @@ import {
     CANVAS_HOST_VERSION,
     CANVAS_HOST_REQUEST_TIMEOUT_MS,
 } from '../../../../../src/server/spa/client/react/features/canvas/canvas-host-protocol';
+import { EXTENSION_ROOT_ID } from '../../../../../src/server/spa/client/react/features/canvas/extension-runtime';
 
 function makeCanvas(overrides: Record<string, unknown> = {}) {
     return {
@@ -56,7 +57,7 @@ function postFromIframe(iframe: HTMLIFrameElement, data: unknown) {
 
 describe('buildExtensionSrcDoc', () => {
     it('prepends the CanvasHost bootstrap to the extension HTML', () => {
-        const doc = buildExtensionSrcDoc('<h1>hi</h1>');
+        const doc = buildExtensionSrcDoc({ uiHtml: '<h1>hi</h1>' });
         expect(doc).toContain('window.CanvasHost');
         expect(doc).toContain('onState');
         expect(doc).toContain('invoke-capability');
@@ -66,11 +67,221 @@ describe('buildExtensionSrcDoc', () => {
     });
 
     it('advertises the protocol version and the request/response plumbing', () => {
-        const doc = buildExtensionSrcDoc('<h1>hi</h1>');
+        const doc = buildExtensionSrcDoc({ uiHtml: '<h1>hi</h1>' });
         expect(doc).toContain(`version: ${CANVAS_HOST_VERSION}`);
         expect(doc).toContain(`var TIMEOUT_MS = ${CANVAS_HOST_REQUEST_TIMEOUT_MS}`);
         expect(doc).toContain("data.type === 'response'");
         expect(doc).toContain('new Promise');
+    });
+});
+
+describe('buildExtensionSrcDoc — JSX extensions', () => {
+    const UI_JS = 'window.CanvasExtension = { mount: function () {} };';
+
+    it('emits a root element and a runtime script instead of raw HTML', () => {
+        const doc = buildExtensionSrcDoc({ uiJs: UI_JS, libraries: ['react'] }, 'http://coc.test:4000');
+        expect(doc).toContain('window.CanvasHost');
+        expect(doc).toContain(`id="${EXTENSION_ROOT_ID}"`);
+        expect(doc).toContain('CanvasExtension');
+        // Bootstrap first: CanvasHost must exist before mount() is handed it.
+        expect(doc.indexOf('window.CanvasHost')).toBeLessThan(doc.indexOf(EXTENSION_ROOT_ID));
+    });
+
+    it('uses ABSOLUTE vendored asset URLs so the srcdoc frame resolves nothing', () => {
+        const doc = buildExtensionSrcDoc({ uiJs: UI_JS, libraries: ['tailwind', 'react', 'recharts'] }, 'http://coc.test:4000');
+        expect(doc).toContain('http://coc.test:4000/canvas-vendor/react.js');
+        expect(doc).toContain('http://coc.test:4000/canvas-vendor/recharts.js');
+        expect(doc).toContain('http://coc.test:4000/canvas-vendor/tailwind.css');
+    });
+
+    it('drops library names outside the allowlist rather than emitting a bogus URL', () => {
+        const doc = buildExtensionSrcDoc({ uiJs: UI_JS, libraries: ['react', 'd3'] }, 'http://coc.test:4000');
+        expect(doc).toContain('/canvas-vendor/react.js');
+        expect(doc).not.toContain('d3');
+    });
+
+    it('cannot be broken out of by a </script> inside the compiled UI', () => {
+        const doc = buildExtensionSrcDoc(
+            { uiJs: 'window.CanvasExtension = { mount() { document.title = "</script><img>"; } };', libraries: [] },
+            'http://coc.test:4000',
+        );
+        expect(doc).not.toContain('</script><img>');
+        expect(doc).toContain('\\u003c/script');
+    });
+
+    it('prefers uiJs over uiHtml when a canvas somehow carries both', () => {
+        const doc = buildExtensionSrcDoc({ uiHtml: '<h1>legacy</h1>', uiJs: UI_JS }, 'http://coc.test:4000');
+        expect(doc).not.toContain('<h1>legacy</h1>');
+        expect(doc).toContain(EXTENSION_ROOT_ID);
+    });
+
+    it('leaves a legacy uiHtml canvas byte for byte as before', () => {
+        const doc = buildExtensionSrcDoc({ uiHtml: '<h1>legacy</h1>' }, 'http://coc.test:4000');
+        expect(doc).not.toContain('canvas-vendor');
+        expect(doc).not.toContain(EXTENSION_ROOT_ID);
+        expect(doc.endsWith('<h1>legacy</h1>')).toBe(true);
+    });
+});
+
+/**
+ * Execute a generated runtime script against a fake DOM so the loader itself is
+ * exercised — the ordering, the global check, and the failure paths — rather
+ * than a re-implementation of it. jsdom will not run an `srcdoc` iframe, so the
+ * `<script>` body is extracted and evaluated with stand-ins bound in.
+ */
+function runRuntimeScript(
+    srcDoc: string,
+    options: { failingUrls?: string[]; skipGlobals?: string[] } = {},
+) {
+    const failingUrls = new Set(options.failingUrls ?? []);
+    const skipGlobals = new Set(options.skipGlobals ?? []);
+    // The runtime script is the LAST <script> in the document (the bootstrap is first).
+    const start = srcDoc.lastIndexOf('<script>') + '<script>'.length;
+    const body = srcDoc.slice(start, srcDoc.lastIndexOf('</script>'));
+
+    const loadOrder: string[] = [];
+    const errorBanners: string[] = [];
+    const posted: any[] = [];
+    const mountCalls: any[] = [];
+    const pending: Array<() => void> = [];
+
+    const frameWindow: any = {
+        addEventListener: () => { /* the error trap is not needed by these cases */ },
+        CanvasHost: { version: CANVAS_HOST_VERSION },
+        CanvasExtension: undefined,
+    };
+    const rootEl = { id: EXTENSION_ROOT_ID };
+
+    const fakeDocument: any = {
+        createElement: (tag: string) => ({ tagName: tag, style: {}, setAttribute: () => {} }),
+        getElementById: (id: string) => (id === EXTENSION_ROOT_ID ? rootEl : null),
+        head: {
+            appendChild: (el: any) => {
+                const url = el.src ?? el.href;
+                // Subresource loads are async — queue them so ordering is real.
+                pending.push(() => {
+                    if (failingUrls.has(url)) {
+                        el.onerror?.();
+                        return;
+                    }
+                    loadOrder.push(url);
+                    const globalName = { 'react.js': 'React', 'recharts.js': 'Recharts', 'papaparse.js': 'Papa' }[
+                        url.split('/').pop() as string
+                    ];
+                    if (globalName && !skipGlobals.has(globalName)) frameWindow[globalName] = {};
+                    el.onload?.();
+                });
+            },
+        },
+        body: {
+            appendChild: (el: any) => {
+                if (el.tagName === 'script' && typeof el.textContent === 'string') {
+                    // The compiled UI, executed with the frame's window bound in.
+                    // eslint-disable-next-line no-new-func
+                    new Function('window', 'document', el.textContent)(frameWindow, fakeDocument);
+                    return;
+                }
+                if (typeof el.textContent === 'string') errorBanners.push(el.textContent);
+            },
+        },
+    };
+    const parentWindow = { postMessage: (m: unknown) => { posted.push(m); } };
+
+    // eslint-disable-next-line no-new-func
+    new Function('window', 'document', 'parent', 'Promise', body)(
+        frameWindow, fakeDocument, parentWindow, Promise,
+    );
+
+    /** Drain queued subresource loads and let the promise chain settle. */
+    const settle = async () => {
+        for (let i = 0; i < 20; i++) {
+            const next = pending.shift();
+            if (next) next();
+            await Promise.resolve();
+            await Promise.resolve();
+        }
+        // mount() records here once the chain reaches it.
+        if (frameWindow.CanvasExtension?.mounted) mountCalls.push(...frameWindow.CanvasExtension.mounted);
+    };
+
+    return { loadOrder, errorBanners, posted, mountCalls, settle, frameWindow, rootEl };
+}
+
+describe('extension runtime loader (in-frame side)', () => {
+    /** A compiled UI that records what mount() was handed. */
+    const RECORDING_UI_JS = [
+        'window.CanvasExtension = {',
+        '  mounted: [],',
+        '  mount: function (rootEl, host) {',
+        '    window.CanvasExtension.mounted.push({ rootId: rootEl && rootEl.id, hostVersion: host && host.version, React: typeof window.React, Recharts: typeof window.Recharts });',
+        '  },',
+        '};',
+    ].join('\n');
+
+    it('loads libraries in declared order and only then calls mount()', async () => {
+        const doc = buildExtensionSrcDoc(
+            { uiJs: RECORDING_UI_JS, libraries: ['tailwind', 'react', 'recharts'] },
+            'http://coc.test:4000',
+        );
+        const run = runRuntimeScript(doc);
+        await run.settle();
+
+        expect(run.loadOrder).toEqual([
+            'http://coc.test:4000/canvas-vendor/tailwind.css',
+            'http://coc.test:4000/canvas-vendor/react.js',
+            'http://coc.test:4000/canvas-vendor/recharts.js',
+        ]);
+        // mount() saw the root element, the host bridge, and both globals.
+        expect(run.mountCalls).toEqual([
+            { rootId: EXTENSION_ROOT_ID, hostVersion: CANVAS_HOST_VERSION, React: 'object', Recharts: 'object' },
+        ]);
+        expect(run.errorBanners).toEqual([]);
+    });
+
+    it('surfaces an error banner — not a blank frame — when a library fails to load', async () => {
+        const doc = buildExtensionSrcDoc(
+            { uiJs: RECORDING_UI_JS, libraries: ['react', 'recharts'] },
+            'http://coc.test:4000',
+        );
+        const run = runRuntimeScript(doc, { failingUrls: ['http://coc.test:4000/canvas-vendor/recharts.js'] });
+        await run.settle();
+
+        expect(run.errorBanners).toHaveLength(1);
+        expect(run.errorBanners[0]).toContain('Canvas libraries failed to load');
+        expect(run.errorBanners[0]).toContain('recharts.js');
+        expect(run.mountCalls).toEqual([]);
+        // The panel outside the sandbox hears about it too.
+        expect(run.posted).toContainEqual(
+            expect.objectContaining({ __canvasHost: true, type: 'extension-error' }),
+        );
+    });
+
+    it('rejects a bundle that responds 200 but defines no global (the SPA HTML fallback)', async () => {
+        const doc = buildExtensionSrcDoc({ uiJs: RECORDING_UI_JS, libraries: ['react'] }, 'http://coc.test:4000');
+        const run = runRuntimeScript(doc, { skipGlobals: ['React'] });
+        await run.settle();
+
+        expect(run.errorBanners[0]).toContain('did not define window.React');
+        expect(run.mountCalls).toEqual([]);
+    });
+
+    it('reports a UI that never assigns window.CanvasExtension', async () => {
+        const doc = buildExtensionSrcDoc({ uiJs: 'var unused = 1;', libraries: ['react'] }, 'http://coc.test:4000');
+        const run = runRuntimeScript(doc);
+        await run.settle();
+
+        expect(run.errorBanners[0]).toContain('did not assign window.CanvasExtension');
+    });
+
+    it('reports a mount() that throws', async () => {
+        const doc = buildExtensionSrcDoc(
+            { uiJs: 'window.CanvasExtension = { mount: function () { throw new Error("boom"); } };', libraries: [] },
+            'http://coc.test:4000',
+        );
+        const run = runRuntimeScript(doc);
+        await run.settle();
+
+        expect(run.errorBanners[0]).toContain('Extension mount() failed: boom');
     });
 });
 
@@ -81,7 +292,7 @@ describe('buildExtensionSrcDoc', () => {
  * `buildExtensionSrcDoc` and evaluated with `window`/`parent` bound to stand-ins.
  */
 function loadBootstrap() {
-    const doc = buildExtensionSrcDoc('');
+    const doc = buildExtensionSrcDoc({ uiHtml: '' });
     const body = doc.slice(doc.indexOf('<script>') + '<script>'.length, doc.lastIndexOf('</script>'));
 
     const listeners: Array<(event: { data: unknown }) => void> = [];
@@ -215,6 +426,39 @@ describe('ExtensionCanvasView', () => {
         expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
         expect(iframe.getAttribute('srcdoc')).toContain('window.CanvasHost');
         expect(mocks.getExtension).toHaveBeenCalledWith('ws-1', 'board-abc123');
+    });
+
+    it('renders a JSX extension through the runtime loader with the PAGE origin as asset base', async () => {
+        mocks.getExtension.mockResolvedValue({
+            manifest: { ...EXTENSION.manifest, libraries: ['react', 'recharts'] },
+            uiHtml: '',
+            capabilitiesJs: EXTENSION.capabilitiesJs,
+            uiJs: 'window.CanvasExtension = { mount: function () {} };',
+        });
+
+        render(<ExtensionCanvasView workspaceId="ws-1" canvas={makeCanvas()} onCanvasSaved={vi.fn()} />);
+        const iframe = await screen.findByTestId('extension-canvas-iframe') as HTMLIFrameElement;
+        const srcDoc = iframe.getAttribute('srcdoc') ?? '';
+
+        expect(srcDoc).toContain(`id="${EXTENSION_ROOT_ID}"`);
+        // Vendored assets come from the page origin, absolute — the one
+        // deliberate exception to clone-aware routing.
+        expect(srcDoc).toContain(`${window.location.origin}/canvas-vendor/react.js`);
+        expect(srcDoc).toContain(`${window.location.origin}/canvas-vendor/recharts.js`);
+    });
+
+    it('shows the frame-reported extension error in the action banner', async () => {
+        render(<ExtensionCanvasView workspaceId="ws-1" canvas={makeCanvas()} onCanvasSaved={vi.fn()} />);
+        const iframe = await screen.findByTestId('extension-canvas-iframe') as HTMLIFrameElement;
+
+        postFromIframe(iframe, {
+            __canvasHost: true,
+            type: 'extension-error',
+            message: 'Canvas libraries failed to load — Could not load /canvas-vendor/recharts.js',
+        });
+
+        expect((await screen.findByTestId('extension-canvas-action-error')).textContent)
+            .toContain('Canvas libraries failed to load');
     });
 
     it('posts current state to the iframe when it signals ready', async () => {
