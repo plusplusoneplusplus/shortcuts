@@ -18,6 +18,7 @@ import { useMarkdownPopOut } from '../contexts/MarkdownPopOutContext';
 import { useGlobalToast } from '../contexts/ToastContext';
 import { mdPopOutKey } from '../layout/PopOutMarkdownShell';
 import { explorerApi } from '../features/repo-detail/explorer/explorerApi';
+import { popOutOpened } from '../utils/popOutWindow';
 
 function RevealInExplorerIcon() {
     return (
@@ -139,7 +140,7 @@ export function MarkdownReviewDialog({
         const url = `${window.location.origin}${window.location.pathname}?${params.toString()}#popout/markdown`;
         const windowName = `coc-md-popout-${mdPopOutKey(wsId, filePath).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
         const popup = window.open(url, windowName, 'width=900,height=700');
-        if (!popup) {
+        if (!popOutOpened(popup)) {
             addToast('Pop-out blocked. Allow popups for this site and try again.', 'error');
         } else {
             markPoppedOut(mdPopOutKey(wsId, filePath));

@@ -97,6 +97,7 @@ import { useRewindTurn } from './hooks/useRewindTurn';
 import type { ChatAttachment } from '../../types/attachments';
 import { useConversationRetrievalCapability } from './sessionContextDrop';
 import type { RalphGrillSetup } from '../../../../../ralph/grill-planning';
+import { popOutOpened } from '../../utils/popOutWindow';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -1422,16 +1423,22 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         const url = `${base}?workspace=${encodeURIComponent(workspaceId)}&canvasId=${encodeURIComponent(activeCanvasId)}#popout/canvas`;
         // Reusing the `coc-canvas-<id>` window name focuses an existing popout of
         // the same canvas instead of spawning a duplicate (AC-03). On Electron the
-        // same-origin open is intercepted into a native child BrowserWindow.
+        // same-origin open is intercepted into a native window with its own
+        // address bar, which denies the open — so a null handle there still means
+        // "a window opened" (see popOutOpened).
         const handle = window.open(url, `coc-canvas-${activeCanvasId}`, 'width=900,height=900');
-        if (!handle) return; // popup blocked — leave the panel expanded as-is
+        if (!popOutOpened(handle)) return; // popup blocked — leave the panel expanded as-is
         popOutWindowRef.current = handle;
         setPoppedOutCanvasId(activeCanvasId);
+        if (popOutPollRef.current !== null) clearInterval(popOutPollRef.current);
+        // Desktop gives us no handle to watch, so the panel stays on the
+        // popped-out rail until the user clicks it back — same accepted
+        // degradation as a main-window reload below.
+        if (!handle) return;
         // Poll the handle for close so the panel comes back when the window is
         // shut (AC-02). Best-effort: same-origin `handle.closed` is reliable in
-        // both the web page and Electron's intercepted child window. A main-window
-        // reload drops this handle, so restoration may not fire then (accepted).
-        if (popOutPollRef.current !== null) clearInterval(popOutPollRef.current);
+        // the web page. A main-window reload drops this handle, so restoration
+        // may not fire then (accepted).
         popOutPollRef.current = setInterval(() => {
             if (handle.closed) {
                 if (popOutPollRef.current !== null) {
@@ -1445,9 +1452,16 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     }, [activeCanvasId, workspaceId]);
 
     // Focus the existing popout window from the "popped out" rail (AC-03).
+    // Without a handle (the desktop shell denies the open and builds the window
+    // itself), re-issue the open: the shared `coc-canvas-<id>` window name makes
+    // that focus the window that is already there rather than spawn a second.
     const handleFocusPoppedOut = useCallback(() => {
-        popOutWindowRef.current?.focus();
-    }, []);
+        if (popOutWindowRef.current) {
+            popOutWindowRef.current.focus();
+        } else {
+            handleCanvasPopOut();
+        }
+    }, [handleCanvasPopOut]);
 
     // Stop the close-poll when this chat unmounts so it does not leak.
     useEffect(() => () => {

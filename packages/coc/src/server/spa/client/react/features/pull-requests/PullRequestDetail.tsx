@@ -54,6 +54,7 @@ import {
 import type { PullRequest, PullRequestCommit, CommentThread, PullRequestCheck } from './pr-utils';
 import { parseDiffFileList, type FileChange } from '../git/diff';
 import type { PrDetailTab } from '../../types/dashboard';
+import { popOutOpened } from '../../utils/popOutWindow';
 
 export interface PullRequestDetailProps {
     repoId: string;
@@ -148,7 +149,7 @@ export function PullRequestDetail({ repoId, workspaceId, remoteUrl, prId, onBack
     const handlePopOut = useCallback((_filePath: string) => {
         const url = buildGitPrPopOutUrl(workspaceId, String(repoId), String(prId), originId, lookupCloneBaseUrl(workspaceId));
         const win = window.open(url, `coc-git-review-pr-${prId}`, 'width=1200,height=800');
-        if (win) {
+        if (popOutOpened(win)) {
             markPoppedOut(gitReviewPrPopOutKey(workspaceId, String(prId)));
         }
     }, [workspaceId, originId, repoId, prId, markPoppedOut]);

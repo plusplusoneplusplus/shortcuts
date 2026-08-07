@@ -18,6 +18,7 @@ import {
     type WorkspaceLike,
 } from '../../../shared/markdown-review/resolveMarkdownReviewTarget';
 import type { SourceCanvasFileRef } from './types';
+import { popOutOpened } from '../../../utils/popOutWindow';
 
 function PopOutIcon() {
     return (
@@ -69,7 +70,7 @@ export function SourceCanvasNotePopOutButton({ fileRef, onClose, className }: So
         const url = `${window.location.origin}${window.location.pathname}?${params.toString()}#popout/markdown`;
         const windowName = `coc-md-popout-${mdPopOutKey(target.wsId, target.filePath).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
         const popup = window.open(url, windowName, 'width=900,height=700');
-        if (!popup) {
+        if (!popOutOpened(popup)) {
             addToast('Pop-out blocked. Allow popups for this site and try again.', 'error');
         } else {
             markPoppedOut(mdPopOutKey(target.wsId, target.filePath));

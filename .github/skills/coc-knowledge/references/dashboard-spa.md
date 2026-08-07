@@ -205,6 +205,20 @@ source of truth. Chat pop-out URLs include `cloneBaseUrl` for remote workspaces
 and `PopOutChatShell` seeds the clone registry before rendering `ChatDetail`, so
 standalone windows keep the same clone-aware row and turn actions.
 
+Every `#popout/*` opener must test its `window.open` result with
+`popOutOpened(handle)` (`react/utils/popOutWindow.ts`) rather than `if (handle)`.
+Inside the Electron desktop shell the main process intercepts pop-out-shaped
+opens with `{ action: 'deny' }` and rebuilds them as native windows carrying
+their own address bar (`packages/coc-desktop/src/popout-window-host.ts`), so
+`window.open` returns `null` on success there. A bare null check fires a false
+"Pop-out blocked" toast and skips the `markPoppedOut` bookkeeping that drives the
+popped-out rails. The desktop allow-list is narrow (same-origin `#popout/` hashes
+plus same-origin PDFs), so print preview and OAuth popups still get real handles.
+`window.open(url, name)` name reuse works in both hosts: a repeat open focuses
+the existing window. Desktop pop-outs have no handle to poll for close, so
+handle-dependent restore (the canvas panel's `handle.closed` watcher) degrades to
+"stays on the popped-out rail until clicked".
+
 `features/chat/RalphGrillSetupPanel.tsx` renders the disabled-by-default
 multi-agent Ralph grilling setup card when `features.ralphMultiAgentGrill` is
 enabled. New Chat Ralph grilling (`NewChatArea`) and promoted ask-mode chats

@@ -4,6 +4,7 @@ import { usePopOut } from '../../../contexts/PopOutContext';
 import { useFloatingChats } from '../../../contexts/FloatingChatsContext';
 import { lookupCloneBaseUrl } from '../../../repos/cloneRegistry';
 import type { ToastItem } from '../../../ui/Toast';
+import { popOutOpened } from '../../../utils/popOutWindow';
 
 export interface UseChatWindowActionsOptions {
     task: any;
@@ -36,7 +37,7 @@ export function openChatPopOut({ taskId, workspaceId, markPoppedOut, addToast }:
     const base = window.location.origin + window.location.pathname;
     const url = buildChatPopOutUrl(base, taskId, workspaceId, lookupCloneBaseUrl(workspaceId));
     const popup = window.open(url, `coc-popout-${taskId}`, 'width=800,height=900');
-    if (!popup) {
+    if (!popOutOpened(popup)) {
         addToast?.('Pop-out blocked. Allow popups for this site and try again.', 'error');
     } else {
         markPoppedOut(taskId);
