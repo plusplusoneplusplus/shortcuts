@@ -3,6 +3,7 @@ import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 import { CodexSDKService } from '../../src/codex-sdk-service';
+import { MID_TURN_TOKEN_USAGE_INTERVAL_MS } from '../../src/mid-turn-usage';
 
 function makeCodexMock(events: Array<Record<string, unknown>>) {
     const thread = {
@@ -379,6 +380,181 @@ describe('CodexSDKService rollout context enrichment', () => {
             expect(readSpy.mock.calls[1][1].cachedPath).toBe(rolloutPath);
         } finally {
             svc.dispose();
+        }
+    });
+});
+
+describe('CodexSDKService mid-turn context usage', () => {
+    // A stream that yields a message, then blocks until `held` resolves before
+    // finishing the turn — so poll ticks can fire while the turn is in flight.
+    function makeHeldCodexMock(held: Promise<void>) {
+        const thread = {
+            id: 'thread-1',
+            runStreamed: vi.fn(async () => ({
+                events: (async function* () {
+                    yield { type: 'thread.started', thread_id: 'thread-1' };
+                    yield { type: 'item.completed', item: { id: 'item-1', type: 'agent_message', text: 'ok' } };
+                    await held;
+                    yield { type: 'turn.completed', usage: { input_tokens: 1000, output_tokens: 250 } };
+                })(),
+            })),
+        };
+        return { startThread: vi.fn(() => thread), resumeThread: vi.fn(() => thread) };
+    }
+
+    function makeService(client: unknown, readSpy: unknown): CodexSDKService {
+        const svc = new CodexSDKService();
+        (svc as unknown as { sdk: unknown }).sdk = client;
+        (svc as unknown as { availabilityCache: unknown }).availabilityCache = { available: true };
+        (svc as unknown as { readRolloutContextUsage: unknown }).readRolloutContextUsage = readSpy;
+        return svc;
+    }
+
+    it('polls the rollout on the shared interval and reports each snapshot', async () => {
+        vi.useFakeTimers();
+        let release!: () => void;
+        const held = new Promise<void>(resolve => { release = resolve; });
+        let currentTokens = 10_000;
+        const readSpy = vi.fn(async () => ({
+            currentTokens: (currentTokens += 10_000),
+            tokenLimit: 258_400,
+            rolloutPath: '/tmp/rollout-thread-1.jsonl',
+        }));
+        const svc = makeService(makeHeldCodexMock(held), readSpy);
+        const onTokenUsage = vi.fn();
+        const chunks: string[] = [];
+
+        try {
+            const pending = svc.sendMessage({
+                prompt: 'test',
+                model: 'gpt-5.4',
+                onTokenUsage,
+                onStreamingChunk: (c: string) => { chunks.push(c); },
+            });
+
+            // Streaming is not gated on the poll: the chunk lands before any tick.
+            await vi.advanceTimersByTimeAsync(0);
+            expect(chunks).toContain('ok');
+            expect(readSpy).not.toHaveBeenCalled();
+
+            await vi.advanceTimersByTimeAsync(MID_TURN_TOKEN_USAGE_INTERVAL_MS);
+            expect(readSpy).toHaveBeenCalledTimes(1);
+            expect(onTokenUsage).toHaveBeenCalledTimes(1);
+            expect(onTokenUsage).toHaveBeenLastCalledWith({ currentTokens: 20_000, tokenLimit: 258_400 });
+
+            // A second read is suppressed until the interval has fully elapsed.
+            await vi.advanceTimersByTimeAsync(MID_TURN_TOKEN_USAGE_INTERVAL_MS - 1);
+            expect(readSpy).toHaveBeenCalledTimes(1);
+            await vi.advanceTimersByTimeAsync(1);
+            expect(readSpy).toHaveBeenCalledTimes(2);
+            expect(onTokenUsage).toHaveBeenLastCalledWith({ currentTokens: 30_000, tokenLimit: 258_400 });
+
+            // The mid-turn read caches the rollout path for later reads.
+            expect(readSpy.mock.calls[1][1].cachedPath).toBe('/tmp/rollout-thread-1.jsonl');
+
+            release();
+            const result = await pending;
+
+            // Turn end is unchanged: the post-loop read is still authoritative.
+            expect(result.success).toBe(true);
+            expect(result.tokenUsage).toMatchObject({
+                inputTokens: 1000,
+                outputTokens: 250,
+                currentTokens: 40_000,
+                tokenLimit: 258_400,
+            });
+
+            // Nothing polls after the turn settles.
+            const callsAtTurnEnd = readSpy.mock.calls.length;
+            await vi.advanceTimersByTimeAsync(MID_TURN_TOKEN_USAGE_INTERVAL_MS * 5);
+            expect(readSpy).toHaveBeenCalledTimes(callsAtTurnEnd);
+            expect(onTokenUsage).toHaveBeenCalledTimes(2);
+        } finally {
+            svc.dispose();
+            vi.useRealTimers();
+        }
+    });
+
+    it('swallows a mid-turn read failure and keeps polling', async () => {
+        vi.useFakeTimers();
+        let release!: () => void;
+        const held = new Promise<void>(resolve => { release = resolve; });
+        let attempt = 0;
+        const readSpy = vi.fn(async () => {
+            attempt += 1;
+            if (attempt === 1) throw new Error('rollout gone');
+            return { currentTokens: 55_000, tokenLimit: 258_400, rolloutPath: '/tmp/r.jsonl' };
+        });
+        const svc = makeService(makeHeldCodexMock(held), readSpy);
+        const onTokenUsage = vi.fn();
+
+        try {
+            const pending = svc.sendMessage({ prompt: 'test', model: 'gpt-5.4', onTokenUsage });
+
+            await vi.advanceTimersByTimeAsync(MID_TURN_TOKEN_USAGE_INTERVAL_MS);
+            expect(readSpy).toHaveBeenCalledTimes(1);
+            expect(onTokenUsage).not.toHaveBeenCalled();
+
+            await vi.advanceTimersByTimeAsync(MID_TURN_TOKEN_USAGE_INTERVAL_MS);
+            expect(onTokenUsage).toHaveBeenCalledTimes(1);
+
+            release();
+            const result = await pending;
+            expect(result.success).toBe(true);
+        } finally {
+            svc.dispose();
+            vi.useRealTimers();
+        }
+    });
+
+    it('treats a missing rollout file mid-turn as a silent no-op', async () => {
+        vi.useFakeTimers();
+        let release!: () => void;
+        const held = new Promise<void>(resolve => { release = resolve; });
+        const readSpy = vi.fn(async () => undefined);
+        const svc = makeService(makeHeldCodexMock(held), readSpy);
+        const onTokenUsage = vi.fn();
+
+        try {
+            const pending = svc.sendMessage({ prompt: 'test', model: 'gpt-5.4', onTokenUsage });
+
+            await vi.advanceTimersByTimeAsync(MID_TURN_TOKEN_USAGE_INTERVAL_MS * 3);
+            expect(readSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+            expect(onTokenUsage).not.toHaveBeenCalled();
+
+            release();
+            const result = await pending;
+            expect(result.success).toBe(true);
+            // Registry fallback, exactly as before this feature.
+            expect(result.tokenUsage?.tokenLimit).toBe(272_000);
+            expect(result.tokenUsage?.currentTokens).toBe(1250);
+        } finally {
+            svc.dispose();
+            vi.useRealTimers();
+        }
+    });
+
+    it('never polls when the caller supplied no onTokenUsage callback', async () => {
+        vi.useFakeTimers();
+        let release!: () => void;
+        const held = new Promise<void>(resolve => { release = resolve; });
+        const readSpy = vi.fn(async () => ({ currentTokens: 1, tokenLimit: 2, rolloutPath: '/tmp/r.jsonl' }));
+        const svc = makeService(makeHeldCodexMock(held), readSpy);
+
+        try {
+            const pending = svc.sendMessage({ prompt: 'test', model: 'gpt-5.4' });
+
+            await vi.advanceTimersByTimeAsync(MID_TURN_TOKEN_USAGE_INTERVAL_MS * 4);
+            expect(readSpy).not.toHaveBeenCalled();
+
+            release();
+            const result = await pending;
+            expect(result.success).toBe(true);
+            // Only the pre-existing turn-end read.
+            expect(readSpy).toHaveBeenCalledTimes(1);
+        } finally {
+            svc.dispose();
+            vi.useRealTimers();
         }
     });
 });

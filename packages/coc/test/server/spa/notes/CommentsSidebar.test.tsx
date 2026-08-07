@@ -260,6 +260,18 @@ describe('CommentsSidebar', () => {
             fireEvent.click(screen.getByTestId('comment-thread-thread-1'));
             expect(comments.selectThread).toHaveBeenCalledWith('thread-1');
         });
+
+        it('notifies the host view via onThreadSelect when a card is clicked', () => {
+            const comments = makeMockComments({
+                threads: [THREAD_OPEN],
+                totalCount: 1,
+                openCount: 1,
+            });
+            const { onThreadSelect } = renderSidebar(comments);
+
+            fireEvent.click(screen.getByTestId('comment-thread-thread-1'));
+            expect(onThreadSelect).toHaveBeenCalledWith('thread-1');
+        });
     });
 
     describe('thread actions', () => {

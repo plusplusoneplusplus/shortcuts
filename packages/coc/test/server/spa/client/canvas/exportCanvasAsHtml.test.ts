@@ -377,3 +377,89 @@ describe('browserDownload', () => {
         createSpy.mockRestore();
     });
 });
+
+/**
+ * A JSX extension export must fetch the vendored bundles from the PAGE origin
+ * (same-origin, so no CORS problem — unlike the iframe) and inline them, or say
+ * out loud that it could not.
+ */
+describe('exportCanvasAsHtml — JSX extension library inlining', () => {
+    const UI_JS = 'window.CanvasExtension = { mount: function () {} };';
+
+    function jsxCanvas(over: Partial<ExportableCanvas> = {}): ExportableCanvas {
+        return {
+            title: 'Sales',
+            type: 'extension',
+            content: '{"rows":[]}',
+            workspaceId: 'ws1',
+            extension: { uiHtml: '', uiJs: UI_JS, libraries: ['react', 'recharts'], revision: 3 },
+            ...over,
+        };
+    }
+
+    /** A fetch that serves the vendored bundles by path, and 404s anything else. */
+    function bundleFetch(bodies: Record<string, string>) {
+        return vi.fn(async (url: string): Promise<AssetFetchResponse> => {
+            const body = bodies[url];
+            if (body === undefined) return { ok: false, blob: async () => new Blob([]) };
+            return { ok: true, blob: async () => new Blob([body]), text: async () => body };
+        });
+    }
+
+    it('fetches each declared bundle from /canvas-vendor and inlines it', async () => {
+        const fetchFn = bundleFetch({
+            '/canvas-vendor/react.js': 'window.React = { tag: "react-bundle" };',
+            '/canvas-vendor/recharts.js': 'window.Recharts = { tag: "recharts-bundle" };',
+        });
+        const result = await exportCanvasAsHtml(jsxCanvas(), makeDeps({ fetch: fetchFn, triggerDownload: vi.fn() }));
+
+        expect(result.ok).toBe(true);
+        expect(fetchFn).toHaveBeenCalledWith('/canvas-vendor/react.js');
+        expect(fetchFn).toHaveBeenCalledWith('/canvas-vendor/recharts.js');
+        expect(result.html).toContain('react-bundle');
+        expect(result.html).toContain('recharts-bundle');
+        // Self-contained: the exported file references nothing external.
+        expect(result.html).not.toContain('<script src="/canvas-vendor');
+    });
+
+    it('degrades a bundle that cannot be fetched to a banner plus a warning, and still downloads', async () => {
+        const triggerDownload = vi.fn();
+        const fetchFn = bundleFetch({ '/canvas-vendor/react.js': 'window.React = {};' });
+        const result = await exportCanvasAsHtml(jsxCanvas(), makeDeps({ fetch: fetchFn, triggerDownload }));
+
+        expect(result.ok).toBe(true);
+        expect(result.html).toContain('Libraries unavailable: recharts');
+        expect(result.warnings.some(w => w.includes('recharts'))).toBe(true);
+        expect(triggerDownload).toHaveBeenCalledTimes(1);
+    });
+
+    it('surfaces the export size when the bundles are large', async () => {
+        const fetchFn = bundleFetch({
+            '/canvas-vendor/react.js': 'a'.repeat(140 * 1024),
+            '/canvas-vendor/recharts.js': 'b'.repeat(560 * 1024),
+        });
+        const result = await exportCanvasAsHtml(jsxCanvas(), makeDeps({ fetch: fetchFn, triggerDownload: vi.fn() }));
+
+        expect(result.warnings.some(w => /bundles \d+ KB of libraries/.test(w))).toBe(true);
+    });
+
+    it('fetches nothing for a legacy uiHtml extension', async () => {
+        const fetchFn = vi.fn(async () => ({ ok: true, blob: async () => new Blob(['x']) }));
+        const result = await exportCanvasAsHtml(extCanvas(), makeDeps({ fetch: fetchFn, triggerDownload: vi.fn() }));
+
+        expect(result.ok).toBe(true);
+        expect(fetchFn).not.toHaveBeenCalled();
+    });
+
+    it('exports a JSX extension that declares no libraries without fetching', async () => {
+        const fetchFn = vi.fn(async () => ({ ok: true, blob: async () => new Blob(['x']) }));
+        const result = await exportCanvasAsHtml(
+            jsxCanvas({ extension: { uiHtml: '', uiJs: UI_JS, libraries: [], revision: 1 } }),
+            makeDeps({ fetch: fetchFn, triggerDownload: vi.fn() }),
+        );
+
+        expect(result.ok).toBe(true);
+        expect(fetchFn).not.toHaveBeenCalled();
+        expect(result.html).toContain('CanvasExtension');
+    });
+});

@@ -29,6 +29,7 @@ import { augmentPathWithBundledAgents } from './agent-bin-path';
 import { shutdownServer, shouldOpenExternally, shouldSurfaceLoadFailure } from './lifecycle';
 import { resolveIconPath } from './app-icon';
 import { APP_NAME, buildAboutPanelOptions, readDesktopVersion } from './app-identity';
+import { detectElevation, elevationStatusLabel, type ElevationState } from './elevation';
 import {
     checkForUpdate,
     getSkippedVersion,
@@ -521,6 +522,20 @@ function buildDebugMenuHandlers(): DebugMenuHandlers {
  * Linux is intentionally left on Electron's default menu (the action stays
  * tray-only there), so we only override the menu on macOS and Windows.
  */
+/**
+ * Whether this launch is elevated (administrator on Windows, root elsewhere).
+ * The Windows probe spawns a short-lived process, so the answer is resolved once
+ * and cached — elevation cannot change over a process's lifetime anyway. Used by
+ * the About panel and the disabled menu status row.
+ */
+let cachedElevation: ElevationState | undefined;
+function getElevation(): ElevationState {
+    if (cachedElevation === undefined) {
+        cachedElevation = detectElevation(process.platform);
+    }
+    return cachedElevation;
+}
+
 function setupApplicationMenu(currentChannel?: UpdateChannel): void {
     if (process.platform !== 'darwin' && process.platform !== 'win32') {
         return;
@@ -539,6 +554,8 @@ function setupApplicationMenu(currentChannel?: UpdateChannel): void {
         // Fix 3: the top-level "Debug" menu — Open Logs Viewer / Reveal Log Files /
         // Toggle Developer Tools. Added on both macOS and Windows.
         debug: buildDebugMenuHandlers(),
+        // Disabled "Elevation: …" row under About, so an admin launch is visible.
+        elevation: getElevation(),
     });
     Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
@@ -853,8 +870,14 @@ async function bootstrap(): Promise<void> {
             version: readDesktopVersion(__dirname),
             iconPath: resolveIconPath(__dirname, process.resourcesPath),
             electronVersion: process.versions.electron,
+            platform: process.platform,
+            elevation: getElevation(),
         }),
     );
+
+    // Record the privilege level in the log too — elevation changes what the
+    // forked server and agent CLIs can touch on disk, so it matters for triage.
+    process.stdout.write(`[coc-desktop] ${elevationStatusLabel(process.platform, getElevation())}\n`);
 
     // AC-01: install the native application menu (with "Check for Updates…")
     // before any window paints, so the menu bar is correct from first show.

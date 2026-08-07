@@ -4,8 +4,9 @@
  * `buildExtensionExportBody` is pure string assembly (no DOM / no `fetch`), so
  * these run in the plain vitest node project. They cover: the sandboxed iframe
  * surface (sandbox stays `allow-scripts`, never `allow-same-origin`); the offline
- * `CanvasHost` (frozen state delivered to `onState`, `invoke`/`setState` inert, no
- * postMessage/parent access, `capabilitiesJs` never present); frozen-state
+ * `CanvasHost` (frozen state delivered to `onState`, `invoke`/`setState` rejecting
+ * with `code: 'offline'` rather than hanging a v2 extension, no postMessage/parent
+ * access, `capabilitiesJs` never present); frozen-state
  * parsing (valid / empty / malformed → safe fallback + warning); script-breakout
  * and attribute-escaping safety; external-reference neutralization (`<script src>`,
  * `<link>`, residual network URLs); the view-only banner; and byte-determinism.
@@ -16,6 +17,7 @@ import {
     buildExtensionExportBody,
     type ExtensionExportInput,
 } from '../../../../../src/server/spa/client/react/features/canvas/html-export/extension';
+import { CANVAS_HOST_VERSION } from '../../../../../src/server/spa/client/react/features/canvas/canvas-host-protocol';
 
 const SIMPLE_UI = '<div id="app">Hello</div><script>CanvasHost.onState(function (s) { document.title = s.n; });</script>';
 
@@ -66,15 +68,23 @@ describe('buildExtensionExportBody — sandbox & surface', () => {
 });
 
 describe('buildExtensionExportBody — offline CanvasHost', () => {
-    it('delivers the frozen state to onState and makes invoke/setState inert', () => {
+    it('delivers the frozen state to onState and makes invoke/setState offline', () => {
         const inner = decodeSrcdoc(build({ stateContent: '{"count":5}' }).bodyHtml);
         // Frozen state embedded as a JS literal inside the bootstrap.
         expect(inner).toContain('var STATE = {"count":5};');
         // onState delivers the frozen snapshot synchronously.
         expect(inner).toContain('cb(STATE, META)');
-        // invoke/setState are inert no-ops — no server, no persistence.
-        expect(inner).toContain('invoke: inert');
-        expect(inner).toContain('setState: inert');
+        // invoke/setState reject — no server, no persistence.
+        expect(inner).toContain("invoke: offline('invoke')");
+        expect(inner).toContain("setState: offline('setState')");
+        expect(inner).toContain("listFiles: offline('listFiles')");
+        expect(inner).toContain("readFile: offline('readFile')");
+        expect(inner).toContain("err.code = 'offline'");
+    });
+
+    it('advertises the same protocol version as the live host', () => {
+        const inner = decodeSrcdoc(build().bodyHtml);
+        expect(inner).toContain(`version: ${CANVAS_HOST_VERSION}`);
     });
 
     it('never posts to a parent host or references postMessage', () => {
@@ -99,6 +109,103 @@ describe('buildExtensionExportBody — offline CanvasHost', () => {
         const { bodyHtml } = build();
         expect(bodyHtml).not.toContain('capabilitiesJs');
         expect(bodyHtml).not.toContain('capabilities =');
+    });
+});
+
+/**
+ * The offline bootstrap is executed for real here (it is plain ES5 needing only
+ * `window`), because the contract that matters is runtime behaviour: under
+ * protocol v2 an extension `await`s `invoke`/`setState`, so these must REJECT
+ * promptly. A no-op returning `undefined` — or a promise that never settles —
+ * would hang the exported page, which no string assertion would catch.
+ */
+describe('buildExtensionExportBody — offline calls reject rather than no-op', () => {
+    function runOfflineBootstrap() {
+        const inner = decodeSrcdoc(build({ stateContent: '{"count":5}', title: 'Widget', revision: 3 }).bodyHtml);
+        const body = inner.slice(inner.indexOf('<script>') + '<script>'.length, inner.indexOf('</script>'));
+        const frameWindow = { CanvasHost: undefined as any };
+        // eslint-disable-next-line no-new-func
+        new Function('window', body)(frameWindow);
+        return frameWindow.CanvasHost as {
+            version: number;
+            onState: (cb: (state: unknown, meta: unknown) => void) => void;
+            invoke: (name: string, params?: unknown) => Promise<unknown>;
+            setState: (state: unknown) => Promise<unknown>;
+            listFiles: () => Promise<unknown>;
+            readFile: (path: string, options?: unknown) => Promise<unknown>;
+        };
+    }
+
+    it('rejects invoke and setState with code "offline"', async () => {
+        const host = runOfflineBootstrap();
+
+        await expect(host.invoke('bump', {})).rejects.toMatchObject({ code: 'offline' });
+        await expect(host.setState({ count: 6 })).rejects.toMatchObject({ code: 'offline' });
+    });
+
+    /**
+     * The canvas's files are NOT inlined into an export — it would multiply the
+     * size with no bound. So the file bridge must fail loudly and immediately;
+     * a promise left pending would hang an artifact that awaits its data at
+     * mount, leaving a blank page with no explanation.
+     */
+    it('rejects listFiles and readFile with code "offline"', async () => {
+        const host = runOfflineBootstrap();
+
+        await expect(host.listFiles()).rejects.toMatchObject({ code: 'offline' });
+        await expect(host.readFile('data.csv')).rejects.toMatchObject({ code: 'offline' });
+    });
+
+    it('says why the file is unavailable rather than reading as a missing file', async () => {
+        const host = runOfflineBootstrap();
+        const error = await host.readFile('data.csv').catch((err: Error) => err);
+
+        expect(String((error as Error).message)).toContain('readFile');
+        expect(String((error as Error).message)).toContain('view-only snapshot');
+    });
+
+    it('rejects a file read promptly — it never hangs', async () => {
+        const host = runOfflineBootstrap();
+        const outcome = await Promise.race([
+            host.readFile('data.csv').then(() => 'resolved', (err: any) => err.code),
+            new Promise(resolve => setTimeout(() => resolve('hung'), 50)),
+        ]);
+        expect(outcome).toBe('offline');
+    });
+
+    it('rejects promptly — the promise settles, it never hangs', async () => {
+        const host = runOfflineBootstrap();
+        const outcome = await Promise.race([
+            host.invoke('bump').then(() => 'resolved', (err: any) => err.code),
+            new Promise(resolve => setTimeout(() => resolve('hung'), 50)),
+        ]);
+        expect(outcome).toBe('offline');
+    });
+
+    it('does not surface an unhandled rejection when the extension ignores the result', async () => {
+        const host = runOfflineBootstrap();
+        const unhandled: unknown[] = [];
+        const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+        process.on('unhandledRejection', onUnhandled);
+        try {
+            // A fire-and-forget v1-style call — the return value is discarded.
+            host.invoke('bump', {});
+            host.setState({ count: 6 });
+            // Let Node run its unhandled-rejection checkpoints.
+            await new Promise(resolve => setImmediate(resolve));
+            await new Promise(resolve => setImmediate(resolve));
+        } finally {
+            process.off('unhandledRejection', onUnhandled);
+        }
+        expect(unhandled).toEqual([]);
+    });
+
+    it('still delivers the frozen state synchronously to onState', () => {
+        const host = runOfflineBootstrap();
+        const seen: Array<[unknown, unknown]> = [];
+        host.onState((state, meta) => { seen.push([state, meta]); });
+        expect(seen).toEqual([[{ count: 5 }, { revision: 3, title: 'Widget' }]]);
+        expect(host.version).toBe(CANVAS_HOST_VERSION);
     });
 });
 
@@ -198,5 +305,125 @@ describe('buildExtensionExportBody — determinism', () => {
             revision: 3,
         };
         expect(buildExtensionExportBody(input).bodyHtml).toBe(buildExtensionExportBody(input).bodyHtml);
+    });
+});
+
+/**
+ * The JSX authoring path. A `uiJs` extension ships no HTML of its own: the
+ * snapshot inlines the vendored bundles and mounts through the same runtime the
+ * live panel uses, so an artifact that renders in the panel renders here.
+ */
+describe('buildExtensionExportBody — JSX extensions', () => {
+    const UI_JS = 'window.CanvasExtension = { mount: function (el, host) { host.onState(function () {}); } };';
+
+    function buildJsx(overrides: Partial<ExtensionExportInput> = {}) {
+        return buildExtensionExportBody({
+            uiHtml: '',
+            uiJs: UI_JS,
+            libraries: ['react', 'recharts'],
+            libraryBundles: new Map([
+                ['react', 'window.React = { createElement: function () {} };'],
+                ['recharts', 'window.Recharts = {};'],
+            ] as [never, string][]),
+            missingLibraries: [],
+            stateContent: '{"rows":[{"v":1}]}',
+            title: 'Sales',
+            revision: 4,
+            ...overrides,
+        });
+    }
+
+    it('produces a self-contained document: bundles inlined, no external reference left', () => {
+        const { bodyHtml } = buildJsx();
+        const srcdoc = decodeSrcdoc(bodyHtml);
+
+        expect(srcdoc).toContain('window.React = {');
+        expect(srcdoc).toContain('window.Recharts = {};');
+        expect(srcdoc).toContain('CanvasExtension');
+        // Nothing is fetched at view time — that is the whole point.
+        expect(srcdoc).not.toContain('<script src');
+        expect(srcdoc).not.toContain('canvas-vendor');
+        expect(srcdoc).not.toMatch(/https?:\/\//);
+    });
+
+    it('inlines bundles in dependency order, ahead of the code that uses them', () => {
+        const { bodyHtml } = buildJsx();
+        const srcdoc = decodeSrcdoc(bodyHtml);
+        expect(srcdoc.indexOf('window.React = {')).toBeLessThan(srcdoc.indexOf('window.Recharts = {};'));
+        expect(srcdoc.indexOf('window.Recharts = {};')).toBeLessThan(srcdoc.indexOf('CanvasExtension'));
+    });
+
+    it('keeps the offline host contract: frozen state in, invoke/setState rejecting, no capabilities', () => {
+        const { bodyHtml, stateJson } = buildJsx();
+        const srcdoc = decodeSrcdoc(bodyHtml);
+
+        expect(srcdoc).toContain(`version: ${CANVAS_HOST_VERSION}`);
+        expect(srcdoc).toContain("err.code = 'offline'");
+        expect(srcdoc).toContain('"rows"');
+        expect(srcdoc).not.toContain('capabilities =');
+        expect(JSON.parse(stateJson)).toEqual({ rows: [{ v: 1 }] });
+    });
+
+    it('inlines a stylesheet library as <style>, not <link>', () => {
+        const { bodyHtml } = buildJsx({
+            libraries: ['tailwind', 'react'],
+            libraryBundles: new Map([
+                ['tailwind', '.p-4{padding:1rem}'],
+                ['react', 'window.React = {};'],
+            ] as [never, string][]),
+        });
+        const srcdoc = decodeSrcdoc(bodyHtml);
+        expect(srcdoc).toContain('<style>');
+        expect(srcdoc).toContain('.p-4{padding:1rem}');
+        expect(srcdoc).not.toContain('<link');
+    });
+
+    it('degrades a missing bundle to an explicit banner, never a blank frame', () => {
+        const { bodyHtml, warnings } = buildJsx({
+            libraryBundles: new Map([['react', 'window.React = {};']] as [never, string][]),
+            missingLibraries: ['recharts'],
+        });
+        const srcdoc = decodeSrcdoc(bodyHtml);
+
+        expect(srcdoc).toContain('Libraries unavailable: recharts');
+        expect(srcdoc).toContain('data-canvas-extension-error');
+        expect(warnings.some(w => w.includes('Could not inline 1 canvas library'))).toBe(true);
+        // The frame still has real content — the failure is visible, not silent.
+        expect(srcdoc.length).toBeGreaterThan(200);
+    });
+
+    it('warns about the export size once the inlined bundles get large', () => {
+        const { warnings } = buildJsx({
+            libraryBundles: new Map([
+                ['react', 'x'.repeat(140 * 1024)],
+                ['recharts', 'y'.repeat(560 * 1024)],
+            ] as [never, string][]),
+        });
+        expect(warnings.some(w => /bundles \d+ KB of libraries/.test(w))).toBe(true);
+        expect(warnings.find(w => /bundles/.test(w))).toContain('react, recharts');
+    });
+
+    it('does not warn about the size for a small library set', () => {
+        const { warnings } = buildJsx({
+            libraries: ['papaparse'],
+            libraryBundles: new Map([['papaparse', 'window.Papa = {};']] as [never, string][]),
+        });
+        expect(warnings.some(w => /bundles/.test(w))).toBe(false);
+    });
+
+    it('keeps the sandbox and cannot be broken out of by a </script> in a bundle', () => {
+        const { bodyHtml } = buildJsx({
+            libraryBundles: new Map([
+                ['react', 'window.React = { s: "</script><img src=x>" };'],
+                ['recharts', 'window.Recharts = {};'],
+            ] as [never, string][]),
+        });
+        expect(bodyHtml).toContain('sandbox="allow-scripts"');
+        expect(bodyHtml).not.toContain('allow-same-origin');
+        expect(decodeSrcdoc(bodyHtml)).not.toContain('</script><img src=x>');
+    });
+
+    it('is deterministic', () => {
+        expect(buildJsx().bodyHtml).toBe(buildJsx().bodyHtml);
     });
 });

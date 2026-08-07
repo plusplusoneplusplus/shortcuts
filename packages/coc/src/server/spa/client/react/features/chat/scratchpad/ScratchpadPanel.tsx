@@ -2,9 +2,11 @@ import React, { useState, useCallback, useRef } from 'react';
 import type { Editor } from '@tiptap/core';
 import { NoteEditor } from '../../notes/editor/NoteEditor';
 import { CommentsSidebar } from '../../notes/editor/CommentsSidebar';
+import { AddCommentDialog } from '../../notes/editor/NotesDialogs';
 import { useComments } from '../../notes/editor/useComments';
 import { notesApi } from '../../notes/notesApi';
 import { createTextAnchorFromSelection, findAnchorInDoc, applyCommentMark } from '../../notes/editor/commentAnchoring';
+import type { TextAnchor } from '../../notes/editor/textAnchor';
 import { ScratchpadDivider } from './ScratchpadDivider';
 import type { ScratchpadExpandMode } from './useScratchpadState';
 
@@ -48,6 +50,13 @@ export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound, onC
     const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
     const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
     const editorRef = useRef<Editor | null>(null);
+
+    // Pending state for the "Add Comment" dialog
+    const [pendingComment, setPendingComment] = useState<{
+        anchor: TextAnchor;
+        from: number;
+        to: number;
+    } | null>(null);
 
     const comments = useComments({
         workspaceId,
@@ -97,19 +106,30 @@ export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound, onC
         if (!anchor) return;
 
         const { from, to } = editor.state.selection;
-        comments.createThread(anchor, '').then((created) => {
-            const currentEditor = editorRef.current;
-            if (!currentEditor) return;
-            const saved = { from: currentEditor.state.selection.from, to: currentEditor.state.selection.to };
-            currentEditor.chain()
-                .setTextSelection({ from, to })
-                .setComment(created.id)
-                .setTextSelection(saved)
-                .run();
-        }).catch(() => { /* thread creation failed — sidebar shows error */ });
+        setPendingComment({ anchor, from, to });
+        // Panel opens only after the user confirms the dialog
+    }, [notePath]);
 
+    const handleCommentDialogConfirm = useCallback(async (text: string) => {
+        if (!pendingComment) return;
+        const { anchor, from, to } = pendingComment;
+        setPendingComment(null);
+
+        // Open the panel first so a failed create surfaces its error in the sidebar.
         setCommentsPanelOpen(true);
-    }, [notePath, comments]);
+
+        const created = await comments.createThread(anchor, text).catch(() => null);
+        if (!created) return;
+
+        const editor = editorRef.current;
+        if (!editor) return;
+        const saved = { from: editor.state.selection.from, to: editor.state.selection.to };
+        editor.chain()
+            .setTextSelection({ from, to })
+            .setComment(created.id)
+            .setTextSelection(saved)
+            .run();
+    }, [pendingComment, comments]);
 
     // ── Sidebar → editor thread select handler ──────────────────────────────
 
@@ -229,6 +249,14 @@ export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound, onC
                     </div>
                 )}
             </div>
+
+            {/* Add Comment dialog */}
+            <AddCommentDialog
+                open={pendingComment !== null}
+                quotedText={pendingComment?.anchor.quotedText ?? ''}
+                onConfirm={handleCommentDialogConfirm}
+                onClose={() => setPendingComment(null)}
+            />
         </div>
     );
 }

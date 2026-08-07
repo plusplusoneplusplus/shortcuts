@@ -53,6 +53,35 @@ export function clampMenuPosition(
     return { x, y };
 }
 
+/**
+ * Work out where a submenu panel should sit vertically and how tall it may be.
+ *
+ * The panel is anchored at the top of its parent row. When the content is
+ * taller than the room below that anchor, we compare the space below with the
+ * space above, keep whichever is larger, and cap the panel to it so the list
+ * scrolls instead of spilling off-screen.
+ */
+export function clampSubmenuVertical(
+    anchor: { top: number; bottom: number; height: number },
+    contentHeight: number,
+    vpHeight: number = window.innerHeight,
+    margin: number = VIEWPORT_MARGIN,
+): { topOffset: number; maxHeight: number | null } {
+    const spaceBelow = vpHeight - anchor.top - margin;
+    const spaceAbove = anchor.bottom - margin;
+
+    if (contentHeight <= spaceBelow) return { topOffset: 0, maxHeight: null };
+
+    if (spaceBelow >= spaceAbove) {
+        return { topOffset: 0, maxHeight: Math.max(spaceBelow, 0) };
+    }
+
+    // Grow upwards: bottom edge stays pinned to the row's bottom.
+    const usable = Math.max(spaceAbove, 0);
+    const height = Math.min(contentHeight, usable);
+    return { topOffset: -(height - anchor.height), maxHeight: usable };
+}
+
 function SubmenuItem({
     item,
     idx,
@@ -65,6 +94,7 @@ function SubmenuItem({
     const [open, setOpen] = useState(false);
     const [openLeft, setOpenLeft] = useState(false);
     const [topOffset, setTopOffset] = useState(0);
+    const [maxHeight, setMaxHeight] = useState<number | null>(null);
     const rowRef = useRef<HTMLDivElement>(null);
     const subRef = useRef<HTMLDivElement>(null);
 
@@ -77,15 +107,24 @@ function SubmenuItem({
         setOpen(true);
     }, []);
 
-    // Adjust vertical position after render to keep submenu within viewport
+    // Adjust vertical position and height after render to keep submenu within viewport
     useLayoutEffect(() => {
         if (!open || !subRef.current) {
             setTopOffset(0);
+            setMaxHeight(null);
             return;
         }
         const subRect = subRef.current.getBoundingClientRect();
-        const overflow = subRect.bottom + VIEWPORT_MARGIN - window.innerHeight;
-        setTopOffset(overflow > 0 ? -overflow : 0);
+        const rowRect = rowRef.current?.getBoundingClientRect();
+        // scrollHeight is the un-clamped content height, so re-measuring an
+        // already-capped panel does not shrink it further on every pass.
+        const contentHeight = Math.max(subRef.current.scrollHeight, subRect.height);
+        const anchor = rowRect
+            ? { top: rowRect.top, bottom: rowRect.bottom, height: rowRect.height }
+            : { top: subRect.top, bottom: subRect.top, height: 0 };
+        const next = clampSubmenuVertical(anchor, contentHeight);
+        setTopOffset(next.topOffset);
+        setMaxHeight(next.maxHeight);
     }, [open]);
 
     const handleLeave = useCallback((e: React.MouseEvent) => {
@@ -131,7 +170,10 @@ function SubmenuItem({
                 <div
                     ref={subRef}
                     className={`absolute ${openLeft ? 'right-full' : 'left-full'} top-0 z-[10005] min-w-[160px] max-w-[240px] bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c] shadow-xl rounded-md py-1`}
-                    style={topOffset !== 0 ? { top: topOffset } : undefined}
+                    style={{
+                        ...(topOffset !== 0 ? { top: topOffset } : {}),
+                        ...(maxHeight !== null ? { maxHeight, overflowY: 'auto' as const } : {}),
+                    }}
                     onMouseLeave={handleLeave}
                     data-testid={`context-submenu-${idx}`}
                     role="menu"

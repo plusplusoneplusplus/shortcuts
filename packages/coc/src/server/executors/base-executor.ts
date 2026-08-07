@@ -15,6 +15,7 @@
  */
 
 import type { ConversationTurn, GenericProcessMetadata, ProcessStore, TimelineItem, ToolEvent, BackgroundTasksInfo } from '@plusplusoneplusplus/forge';
+import type { MidTurnTokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
 import { getLogger, LogCategory, mergeConsecutiveContentItems } from '@plusplusoneplusplus/forge';
 import { OutputFileManager } from '../processes/output-file-manager';
 import {
@@ -349,6 +350,44 @@ export abstract class BaseExecutor {
                 });
             } catch {
                 // Non-fatal
+            }
+        };
+    }
+
+    /**
+     * Builds the onTokenUsage handler for a given process.
+     *
+     * Relays mid-turn usage over the *existing* `token-usage` process event, using
+     * the same `session*` payload fields the turn-end emission uses — the client
+     * already applies them idempotently, so the meter moves with no client change.
+     *
+     * Mid-turn values are streamed only: nothing is written to the process store
+     * here. The store keeps its one write per turn at turn end, so a crashed
+     * process can never leave a half-turn value for `conversation-snapshot` to
+     * replay as if it were final.
+     */
+    protected buildMidTurnTokenUsageHandler(
+        processId: string,
+    ): (usage: MidTurnTokenUsage) => void {
+        return (usage: MidTurnTokenUsage) => {
+            if (!usage) { return; }
+            // Nothing worth rendering — the meter needs at least one of the two.
+            if (usage.tokenLimit == null && usage.currentTokens == null) { return; }
+            try {
+                this.store.emitProcessEvent(processId, {
+                    type: 'token-usage',
+                    ...(usage.tokenLimit          != null ? { sessionTokenLimit:         usage.tokenLimit }          : {}),
+                    ...(usage.currentTokens       != null ? { sessionCurrentTokens:      usage.currentTokens }       : {}),
+                    ...(usage.systemTokens        != null ? { sessionSystemTokens:       usage.systemTokens }        : {}),
+                    ...(usage.toolDefinitionsTokens != null ? { sessionToolTokens:       usage.toolDefinitionsTokens } : {}),
+                    ...(usage.conversationTokens  != null ? { sessionConversationTokens: usage.conversationTokens }  : {}),
+                });
+            } catch (err) {
+                // Non-fatal by contract: mid-turn usage must never fail a turn.
+                getLogger().debug(
+                    LogCategory.AI,
+                    `[BaseExecutor] Failed to emit mid-turn token usage for ${processId}: ${err instanceof Error ? err.message : String(err)}`,
+                );
             }
         };
     }

@@ -437,6 +437,78 @@ describe('StreamingSession — token usage', () => {
         expect(result.tokenUsage!.conversationTokens).toBe(47200);
     });
 
+    it('forwards every mid-turn session.usage_info to onTokenUsage', async () => {
+        const { session, emit } = makeMockSession();
+        const onTokenUsage = vi.fn();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions({ onTokenUsage }));
+
+        emit({ type: 'session.usage_info', data: { tokenLimit: 200000, currentTokens: 10000 } });
+        emit({
+            type: 'session.usage_info',
+            data: {
+                tokenLimit: 200000,
+                currentTokens: 42000,
+                systemTokens: 1200,
+                toolDefinitionsTokens: 800,
+                conversationTokens: 40000,
+            },
+        });
+
+        // Both fired before the turn settled — that is the whole point.
+        expect(onTokenUsage).toHaveBeenCalledTimes(2);
+        expect(onTokenUsage.mock.calls[0][0]).toEqual({ tokenLimit: 200000, currentTokens: 10000 });
+        expect(onTokenUsage.mock.calls[1][0]).toEqual({
+            tokenLimit: 200000,
+            currentTokens: 42000,
+            systemTokens: 1200,
+            toolDefinitionsTokens: 800,
+            conversationTokens: 40000,
+        });
+
+        emit({ type: 'session.idle' });
+        await promise;
+    });
+
+    it('records usage_info into telemetry identically whether or not onTokenUsage is supplied', async () => {
+        const usageInfo = {
+            type: 'session.usage_info' as const,
+            data: {
+                tokenLimit: 200000,
+                currentTokens: 70000,
+                systemTokens: 12400,
+                toolDefinitionsTokens: 8100,
+                conversationTokens: 47200,
+            },
+        };
+
+        const runOnce = async (onTokenUsage?: (u: unknown) => void) => {
+            const { session, emit } = makeMockSession();
+            const promise = new StreamingSession().run(session, baseOptions({ onTokenUsage }));
+            emit({ type: 'assistant.usage', data: { inputTokens: 5, outputTokens: 7 } });
+            emit(usageInfo);
+            emit({ type: 'session.idle' });
+            return (await promise).tokenUsage;
+        };
+
+        expect(await runOnce(vi.fn())).toEqual(await runOnce(undefined));
+    });
+
+    it('does not throw when the onTokenUsage callback throws', async () => {
+        const { session, emit } = makeMockSession();
+        const ss = new StreamingSession();
+        const promise = ss.run(session, baseOptions({
+            onTokenUsage: () => { throw new Error('consumer blew up'); },
+        }));
+
+        emit({ type: 'assistant.usage', data: { inputTokens: 1, outputTokens: 1 } });
+        emit({ type: 'session.usage_info', data: { tokenLimit: 100, currentTokens: 10 } });
+        emit({ type: 'session.idle' });
+
+        const result = await promise;
+        expect(result.tokenUsage!.currentTokens).toBe(10);
+    });
+
     it('handles session.usage_info without breakdown fields', async () => {
         const { session, emit } = makeMockSession();
         const ss = new StreamingSession();

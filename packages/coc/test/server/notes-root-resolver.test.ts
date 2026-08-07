@@ -4,9 +4,8 @@ import * as os from 'os';
 import * as path from 'path';
 import {
     resolveNotesRoot, isRootResolveError, validateNotesRootPath, DEFAULT_ROOT_ID,
-    discoverTaskDerivedNotesRoots, encodeRootPath, resolveCommentsSidecarPath,
+    discoverTaskDerivedNotesRoots, encodeRootPath,
 } from '../../src/server/notes/notes-root-resolver';
-import type { ResolvedNotesRoot } from '../../src/server/notes/notes-root-resolver';
 import { getRepoDataPath } from '@plusplusoneplusplus/forge';
 
 describe('resolveNotesRoot', () => {
@@ -213,52 +212,4 @@ describe('encodeRootPath', () => {
     });
 });
 
-describe('resolveCommentsSidecarPath', () => {
-    const dataDir = '/mock/coc-data';
-    const workspaceId = 'ws-123';
-
-    it('returns co-located path for default root', () => {
-        const root: ResolvedNotesRoot = {
-            absolutePath: '/mock/coc-data/repos/ws-123/notes',
-            isDefault: true,
-            rootId: DEFAULT_ROOT_ID,
-        };
-        const result = resolveCommentsSidecarPath(dataDir, workspaceId, root, 'page.md');
-        expect(result).toBe(path.resolve('/mock/coc-data/repos/ws-123/notes', 'page.md.comments.json'));
-    });
-
-    it('returns managed area path for repo-folder root', () => {
-        const root: ResolvedNotesRoot = {
-            absolutePath: '/mock/workspace/docs/notes',
-            isDefault: false,
-            rootId: 'docs/notes',
-        };
-        const result = resolveCommentsSidecarPath(dataDir, workspaceId, root, 'page.md');
-        const encoded = encodeRootPath('docs/notes');
-        const expected = path.resolve(dataDir, 'repos', workspaceId, 'notes-comments', encoded, 'page.md.comments.json');
-        expect(result).toBe(expected);
-    });
-
-    it('handles absolute notePath for default root', () => {
-        const root: ResolvedNotesRoot = {
-            absolutePath: '/mock/coc-data/repos/ws-123/notes',
-            isDefault: true,
-            rootId: DEFAULT_ROOT_ID,
-        };
-        const absPath = '/some/absolute/file.md';
-        const result = resolveCommentsSidecarPath(dataDir, workspaceId, root, absPath);
-        expect(result).toBe(path.resolve(absPath + '.comments.json'));
-    });
-
-    it('handles nested note path for repo-folder root', () => {
-        const root: ResolvedNotesRoot = {
-            absolutePath: '/mock/workspace/docs/notes',
-            isDefault: false,
-            rootId: 'docs/notes',
-        };
-        const result = resolveCommentsSidecarPath(dataDir, workspaceId, root, 'sub/page.md');
-        expect(result).toContain('notes-comments');
-        expect(result).toContain('sub');
-        expect(result.endsWith('.comments.json')).toBe(true);
-    });
-});
+// Sidecar path placement is covered by notes-sidecar-resolver.test.ts.

@@ -2,7 +2,7 @@
 
 Exports any canvas to a **single, self-contained `.html` file** that opens in any
 browser with zero tooling and zero network — a one-way viewing snapshot (the raw
-`content` download in `CanvasPanel` stays for re-import). The exporter runs
+`content` download in `useCanvasExport` stays for re-import). The exporter runs
 **client-side** because all four renderers (`marked`, `highlight.js`, `mermaid`,
 `@excalidraw/excalidraw`) are browser-bound; the logic is split into a pure core
 plus thin, injected I/O adapters so every layer unit-tests in isolation.
@@ -12,13 +12,13 @@ plus thin, injected I/O adapters so every layer unit-tests in isolation.
 | Layer | File | Role |
 |-------|------|------|
 | **A** | `buildCanvasHtmlDocument.ts` | Pure, Node-safe, deterministic serializer. Assembles the standalone doc: doctype, inlined `<style>` (`styles.ts`), body with every `<img>` src rewritten to its data URI, and the source in a non-rendering `<script id="source">`. When the input carries `mathCss` (self-contained KaTeX CSS, only for markdown), it is embedded in `<style>` with `KATEX_EXPORT_OVERRIDES_CSS` so rendered `.katex` math styles offline and long display math scrolls on narrow pages. Highlights `code` canvases itself; ships the `extension` body **verbatim** (no image rewrite — its `<img>`s live inside the escaped iframe `srcdoc`). Never touches the DOM/network. |
-| **B** | `assets.ts` | `collectImageRefs(html)` (pure) finds local image refs (proxy URLs, `data-local-path`, `.attachments/…`); `resolveAssets(refs, fetchFn)` fetches each via the **injected** `fetchFn` → base64 `data:` URI. A failed fetch is omitted + warned, never thrown — Layer A supplies the placeholder. |
+| **B** | `assets.ts` | `collectImageRefs(html)` (pure) finds local image refs (proxy URLs, `data-local-path`, `.attachments/…`); `resolveAssets(refs, fetchFn)` fetches each via the **injected** `fetchFn` → base64 `data:` URI. A failed fetch is omitted + warned, never thrown — Layer A supplies the placeholder. `resolveLibraryBundles(ids, fetchFn)` does the same for the vendored `/canvas-vendor/*` bundles a JSX extension export must inline, returning `{bundles, missing, warnings}` — the exporter runs on the page origin, so unlike the iframe it can just fetch them. |
 | **C** | `mermaid.ts` | `inlineMermaid(html, api)` replaces mermaid blocks (both forge's `.mermaid-container` markup and plain `language-mermaid`) with the diagram rendered to inline `<svg>` via the **injected** `api.render`. Runtime is **not** shipped. Render failure → source code block + warning. |
 | **D** | `excalidraw.ts` | `excalidrawToInlineSvg(sceneJson, exportToSvg)` rasterizes a scene to inline `<svg>` (scene `files` inlined too). **Excalidraw-free by construction** (see constraint below); the real `exportToSvg` is injected. Empty/invalid scene → placeholder, no crash. |
-| **D-ext** | `extension.ts` | `buildExtensionExportBody({uiHtml, stateContent, title, revision?})` (pure) builds the offline VIEW-ONLY extension body: a view-only banner + a sandboxed `<iframe srcdoc>` (`allow-scripts` only) hosting `uiHtml` with an offline `CanvasHost` — `onState` delivers the frozen state synchronously, `invoke`/`setState` are inert no-ops, `capabilitiesJs` never shipped. Neutralizes external `<script src>`/`<link>` + warns on residual network URLs. Malformed state → `{}` + warning, never throws. |
-| **E** | `exportCanvasAsHtml.ts` | Orchestrator. Dispatches by type — markdown → B→C→bake→A, code → A, excalidraw → D→A, extension → D-ext→A (needs the separately-fetched `canvas.extension` UI; missing → `{ok:false}`, no download). Builds the Blob + triggers `<slug(title)>.html` download. Also exports `refToUrl`, `htmlExportFilename`, `browserDownload`, the `ExtensionExportSource` type. **Never throws.** |
+| **D-ext** | `extension.ts` | `buildExtensionExportBody({uiHtml, stateContent, title, revision?})` (pure) builds the offline VIEW-ONLY extension body: a view-only banner + a sandboxed `<iframe srcdoc>` (`allow-scripts` only) hosting `uiHtml` with an offline `CanvasHost` — `onState` delivers the frozen state synchronously, `invoke`/`setState` return a **rejected** promise (`code: 'offline'`, with a no-op `catch` pre-attached so a fire-and-forget call raises no unhandled rejection), `capabilitiesJs` never shipped. Rejecting matters: a protocol-v2 extension `await`s those calls, so an inert no-op would hang the exported page. The `version` marker is read from `../canvas-host-protocol`, which is why that module stays React-free. Neutralizes external `<script src>`/`<link>` + warns on residual network URLs. Malformed state → `{}` + warning, never throws. A **JSX** extension (`uiJs` + `libraries` + `libraryBundles`) takes a parallel path instead: the bundles are inlined as `<script>`/`<style>` ahead of the shared `../extension-runtime` runner (no `assetBase` — nothing to load), a bundle in `missingLibraries` produces an explicit "Libraries unavailable" banner in the frame, and >400 KB of inlined payload adds a size warning. |
+| **E** | `exportCanvasAsHtml.ts` | Orchestrator. Dispatches by type — markdown → B→C→bake→A, code → A, excalidraw → D→A, extension → D-ext→A (needs the separately-fetched `canvas.extension` UI; missing → `{ok:false}`, no download). Builds the Blob + triggers `<slug(title)>.html` download. For a JSX extension it first resolves the declared library bundles via B, then hands them to D-ext. Also exports `refToUrl`, `htmlExportFilename`, `browserDownload`, the `ExtensionExportSource` type. **Never throws.** |
 | E-helper | `codeHighlight.ts` | `highlightMarkdownCodeBlocks(html)` — pure/Node-safe. Pre-bakes hljs spans into `chatMarkdownToHtml`'s `language-X` blocks so the embedded theme CSS colours code offline. Skips unknown langs + `mermaid`. |
-| **F** | `htmlExportDeps.ts` + `../CanvasPanel.tsx` | `createHtmlExportDeps()` builds the production `ExportCanvasAsHtmlDeps` (browser-only). `CanvasPanel` adds an enabled "Export as HTML" menu item for **every** type. For `extension` it first fetches the separately-stored UI doc via the workspace-routed `useCocClient(ws).canvases.getExtension` (clone-aware; `capabilitiesJs` is dropped, never shipped) and passes `extension:{uiHtml, revision}` into the orchestrator; a fetch failure surfaces an error toast and aborts before any download. |
+| **F** | `htmlExportDeps.ts` + `../hooks/useCanvasExport.ts` | `createHtmlExportDeps()` builds the production `ExportCanvasAsHtmlDeps` (browser-only). `useCanvasExport` backs an enabled "Export as HTML" menu item for **every** type except `kusto` (interactive — no static snapshot). For `extension` it first fetches the separately-stored UI doc via the workspace-routed `useCocClient(ws).canvases.getExtension` (clone-aware; `capabilitiesJs` is dropped, never shipped) and passes `extension:{uiHtml, revision}` — plus `{uiJs, libraries}` when the canvas is JSX-authored — into the orchestrator; a fetch failure surfaces an error toast and aborts before any download. |
 | shared | `types.ts`, `styles.ts` | Layer-A input/result types + `CanvasHtmlExportType`; `BASE_CSS`, `HLJS_THEME_CSS` (github-light), `BROKEN_IMAGE_PLACEHOLDER` (URL-encoded SVG data URI). |
 
 ## Injected-deps contract (Layer E)
@@ -79,13 +79,14 @@ needed — B, D, E, F, and the Layer-G pipeline use it; A, C, code-highlight don
 
 - Per-layer: `buildCanvasHtmlDocument` (A), `assets` (B), `mermaid` (C),
   `excalidraw` (D), `extension` (D-ext), `exportCanvasAsHtml` (E),
-  `codeHighlight` (E-helper), `CanvasPanel.test.tsx` (F cases at the end).
+  `codeHighlight` (E-helper), `useCanvasExport.test.tsx` (F, injected browser
+  primitives) + `CanvasPanel.test.tsx` (F cases at the end, through the UI).
 - `htmlExportPipeline.test.ts` (**G**) — full-pipeline integration: real E over
   real A/B/C + `chatMarkdownToHtml`, only `fetch`/`mermaidApi`/`exportToSvg`
   stubbed. Asserts the full portability contract on a doc with an image +
   mermaid + code + table. A second suite drives the real E → D-ext → A extension
   path: a state-rendering UI in the offline sandboxed iframe, asserting
-  allow-scripts-only sandbox, inert offline `CanvasHost`, frozen state visible in
+  allow-scripts-only sandbox, offline `CanvasHost` (rejecting `invoke`/`setState`), frozen state visible in
   the `srcdoc`, no `capabilitiesJs`/network, byte-identical determinism, plus a
   dirty-UI case (external `<script src>`/`<link>` neutralized with warnings, still
   exports). Keep every string assertion path-separator agnostic.

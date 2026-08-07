@@ -9,6 +9,7 @@
  *   src/server/spa/client/dist/css.worker.js     (Monaco CSS worker)
  *   src/server/spa/client/dist/html.worker.js    (Monaco HTML worker)
  *   src/server/spa/client/dist/ts.worker.js      (Monaco TypeScript worker)
+ *   src/server/spa/client/dist/canvas-vendor/*   (extension-canvas library globals)
  */
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { dirname } from 'path';
@@ -123,3 +124,113 @@ await buildTailwindBundle(
     'src/server/spa/client/tailwind.css',
     'src/server/spa/client/dist/bundle.css'
 );
+
+// ---------------------------------------------------------------------------
+// Extension-canvas vendored libraries (dist/canvas-vendor/)
+//
+// Served at the SITE ROOT alongside the Monaco/pdf.js workers, and pulled into
+// the extension iframe with classic `<script src>` / `<link rel=stylesheet>`
+// tags. The iframe is `sandbox="allow-scripts"` with no `allow-same-origin`, so
+// it is an opaque origin sending `Origin: null`; CoC's CORS policy reflects only
+// loopback origins and never emits `*`, so CORS-mode subresources (module
+// scripts, import maps, `fetch`) get no `Access-Control-Allow-Origin` and are
+// blocked. Classic scripts and stylesheets are no-CORS subresource requests and
+// are unaffected — hence IIFE globals rather than ESM.
+//
+// The registry these outputs must stay in step with lives in
+// `src/server/canvas/canvas-libraries.ts` (ids, globals, filenames, ordering).
+// ---------------------------------------------------------------------------
+
+const CANVAS_VENDOR_DIR = 'src/server/spa/client/dist/canvas-vendor';
+
+/**
+ * Rewrite bare imports of a peer library to the global the already-loaded
+ * vendor bundle assigned, so Recharts does not ship its own copy of React.
+ * `react/jsx-runtime` has no global of its own, so it is shimmed onto
+ * `React.createElement` — which is exactly what `jsx(type, props, key)` means
+ * when all children arrive inside `props.children`.
+ */
+function globalExternals(mapping) {
+    const names = Object.keys(mapping).map(n => n.replace(/[/\\^$*+?.()|[\]{}]/g, '\\$&'));
+    const filter = new RegExp(`^(?:${names.join('|')})$`);
+    return {
+        name: 'canvas-vendor-global-externals',
+        setup(build) {
+            build.onResolve({ filter }, args => ({ path: args.path, namespace: 'canvas-global' }));
+            build.onLoad({ filter: /.*/, namespace: 'canvas-global' }, args => ({
+                contents: mapping[args.path],
+                loader: 'js',
+            }));
+        },
+    };
+}
+
+const JSX_RUNTIME_SHIM = `
+var R = window.React;
+function jsx(type, props, key) {
+    var config = Object.assign({}, props);
+    if (key !== undefined && key !== null) config.key = key;
+    // Only 2 args: React.createElement keeps props.children as-is (array
+    // children stay a single children prop, so no spurious key warnings).
+    return R.createElement(type, config);
+}
+module.exports = { jsx: jsx, jsxs: jsx, jsxDEV: jsx, Fragment: R.Fragment };
+`;
+
+const CANVAS_VENDOR_EXTERNALS = {
+    'react': 'module.exports = window.React;',
+    'react-dom': 'module.exports = window.ReactDOM;',
+    'react-dom/client': 'module.exports = window.ReactDOM;',
+    'react/jsx-runtime': JSX_RUNTIME_SHIM,
+    'react/jsx-dev-runtime': JSX_RUNTIME_SHIM,
+};
+
+const CANVAS_VENDOR_BUNDLES = [
+    // react.js bundles React itself, so it must NOT externalize react.
+    { entry: 'scripts/canvas-vendor/react.entry.js', out: 'react.js', externals: null },
+    { entry: 'scripts/canvas-vendor/recharts.entry.js', out: 'recharts.js', externals: CANVAS_VENDOR_EXTERNALS },
+    { entry: 'scripts/canvas-vendor/papaparse.entry.js', out: 'papaparse.js', externals: null },
+];
+
+await mkdir(CANVAS_VENDOR_DIR, { recursive: true });
+
+await Promise.all(CANVAS_VENDOR_BUNDLES.map(bundle =>
+    esbuild.build({
+        entryPoints: [bundle.entry],
+        outfile: `${CANVAS_VENDOR_DIR}/${bundle.out}`,
+        bundle: true,
+        format: 'iife',
+        platform: 'browser',
+        target: ['es2020'],
+        minify: true,
+        sourcemap: false,
+        logLevel: 'info',
+        // Vendored bundles are production builds; without this React ships its
+        // dev warnings path and Recharts pulls in dev-only invariants.
+        define: { 'process.env.NODE_ENV': '"production"' },
+        ...(bundle.externals ? { plugins: [globalExternals(bundle.externals)] } : {}),
+    })
+));
+
+// Static utility CSS for artifacts. NOT the Tailwind Play CDN — that is a
+// runtime JIT compiler fetched from a CDN, which breaks air-gapped installs and
+// the offline export. The covered utility subset comes from an explicit safelist
+// (there is no source tree to scan: artifact markup is authored at runtime).
+{
+    const inputPath = 'scripts/canvas-vendor/tailwind.canvas.css';
+    const outputPath = `${CANVAS_VENDOR_DIR}/tailwind.css`;
+    const source = await readFile(inputPath, 'utf-8');
+    const result = await postcss([
+        tailwindcss({ config: './scripts/canvas-vendor/tailwind.canvas.config.js' }),
+        autoprefixer(),
+    ]).process(source, { from: inputPath, to: outputPath });
+    // Minified — unlike bundle.css this sheet is inlined into every exported
+    // React artifact, so whitespace is real payload.
+    const minified = await esbuild.transform(result.css, { loader: 'css', minify: true });
+    await writeFile(outputPath, minified.code, 'utf-8');
+}
+
+for (const name of [...CANVAS_VENDOR_BUNDLES.map(b => b.out), 'tailwind.css']) {
+    const bytes = Buffer.byteLength(await readFile(`${CANVAS_VENDOR_DIR}/${name}`, 'utf-8'), 'utf-8');
+    console.log(`  ${CANVAS_VENDOR_DIR}/${name}  ${(bytes / 1024).toFixed(1)}kb`);
+}

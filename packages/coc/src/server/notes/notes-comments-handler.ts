@@ -4,12 +4,10 @@
  * HTTP API routes for CRUD operations on comment threads and individual
  * comments attached to notes for a given workspace.
  *
- * Sidecar storage:
- * - Default root: each note `<path>.md` gets a `<path>.md.comments.json`
- *   file co-located in the same directory under the managed notes root.
- * - Repo-folder roots: sidecar files are stored in the managed area at
- *   `~/.coc/repos/<workspaceId>/notes-comments/<encoded-root-path>/`
- *   to keep the workspace repo clean.
+ * Sidecar storage and access control are owned by
+ * {@link resolveNoteSidecarPath}: notes under the managed data dir keep a
+ * co-located `<path>.md.comments.json`, everything else stores its sidecar in
+ * the managed area so the workspace repo stays clean.
  *
  * Pure Node.js; uses only built-in modules.
  * Cross-platform compatible (Linux/Mac/Windows).
@@ -19,88 +17,42 @@ import * as crypto from 'crypto';
 import * as url from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as os from 'os';
 import type { ProcessStore, CreateTaskInput } from '@plusplusoneplusplus/forge';
-import { isWithinDirectory } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from '../core/api-handler';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
-import { getRepoDataPath } from '../paths';
 import { readRepoPreferences } from '../preferences-handler';
 import type { NoteSidecar, CommentThread, Comment } from './notes-comments-types';
 import { createEmptySidecar } from './notes-comments-types';
 import { buildNotesBatchResolvePrompt } from './notes-comments-ai';
-import {
-    encodeRootPath,
-    resolveNotesRoot,
-    isRootResolveError,
-    resolveCommentsSidecarPath,
-} from './notes-root-resolver';
+import { resolveNotesRoot, isRootResolveError } from './notes-root-resolver';
 import type { ResolvedNotesRoot } from './notes-root-resolver';
-import {
-    resolveSafeNotesPath,
-    isNotesPathSafetyError,
-    type NotesPathSafetyError,
-} from './notes-path-safety';
+import { resolveNoteSidecarPath, type SidecarResolveError } from './notes-sidecar-resolver';
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
-function getNotesRoot(dataDir: string, workspaceId: string): string {
-    return getRepoDataPath(dataDir, workspaceId, 'notes');
-}
-
-function getWorkspaceDataDir(dataDir: string, workspaceId: string): string {
-    return path.join(dataDir, 'repos', workspaceId);
-}
-
-function getCopilotDir(): string {
-    return path.join(os.homedir(), '.copilot');
-}
-
-function isAllowedPath(resolved: string, wsDataDir: string, wsRootPath?: string): boolean {
-    return isWithinDirectory(resolved, wsDataDir)
-        || isWithinDirectory(resolved, getCopilotDir())
-        || (!!wsRootPath && isWithinDirectory(resolved, wsRootPath));
-}
+const COMMENTS_SUFFIX = '.comments.json';
 
 /**
- * Resolve the sidecar file path for a note, taking the active root into account.
- * For non-default roots, the sidecar path already points into the managed area,
- * so the isAllowedPath check will pass naturally.
+ * Resolve the comments sidecar path for a note and check that this workspace is
+ * allowed to comment on it. Returns an error object when access is denied.
  */
-async function resolveSidecar(
+function resolveSidecar(
     dataDir: string,
-    workspaceId: string,
+    ws: { id: string; rootPath?: string },
     root: ResolvedNotesRoot,
     notePath: string,
-): Promise<string | NotesPathSafetyError> {
-    if (root.isDefault) {
-        return resolveCommentsSidecarPath(dataDir, workspaceId, root, notePath);
-    }
-
-    const safeNotePath = await resolveSafeNotesPath(root.absolutePath, notePath);
-    if (isNotesPathSafetyError(safeNotePath)) {
-        return safeNotePath;
-    }
-
-    const workspaceDataRoot = getWorkspaceDataDir(dataDir, workspaceId);
-    const sidecarRelativePath = path.join(
-        'notes-comments',
-        encodeRootPath(root.rootId),
-        `${safeNotePath.relativePath}.comments.json`,
-    );
-    const safeSidecarPath = await resolveSafeNotesPath(
-        workspaceDataRoot,
-        sidecarRelativePath,
-        { rejectSymlinks: true },
-    );
-    if (isNotesPathSafetyError(safeSidecarPath)) {
-        return safeSidecarPath;
-    }
-    return safeSidecarPath.absolutePath;
+): Promise<string | SidecarResolveError> {
+    return resolveNoteSidecarPath({
+        dataDir,
+        workspace: ws,
+        root,
+        notePath,
+        suffix: COMMENTS_SUFFIX,
+    });
 }
 
 /**
@@ -165,13 +117,9 @@ export function registerNotesCommentsRoutes(
                 return sendError(res, root.statusCode, root.error);
             }
 
-            const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
-            const resolved = await resolveSidecar(dataDir, ws.id, root, notePath);
+            const resolved = await resolveSidecar(dataDir, ws, root, notePath);
             if (typeof resolved !== 'string') {
                 return sendError(res, resolved.statusCode, resolved.error);
-            }
-            if (!isAllowedPath(resolved, wsDataDir)) {
-                return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
 
             const sidecar = await loadSidecar(resolved);
@@ -203,13 +151,9 @@ export function registerNotesCommentsRoutes(
                 return sendError(res, root.statusCode, root.error);
             }
 
-            const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
-            const resolved = await resolveSidecar(dataDir, ws.id, root, notePath);
+            const resolved = await resolveSidecar(dataDir, ws, root, notePath);
             if (typeof resolved !== 'string') {
                 return sendError(res, resolved.statusCode, resolved.error);
-            }
-            if (!isAllowedPath(resolved, wsDataDir)) {
-                return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
 
             const sidecar: NoteSidecar = { version: 1, threads: body.threads };
@@ -248,13 +192,9 @@ export function registerNotesCommentsRoutes(
                 return sendError(res, root.statusCode, root.error);
             }
 
-            const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
-            const resolved = await resolveSidecar(dataDir, ws.id, root, notePath);
+            const resolved = await resolveSidecar(dataDir, ws, root, notePath);
             if (typeof resolved !== 'string') {
                 return sendError(res, resolved.statusCode, resolved.error);
-            }
-            if (!isAllowedPath(resolved, wsDataDir)) {
-                return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
 
             const now = new Date().toISOString();
@@ -302,13 +242,9 @@ export function registerNotesCommentsRoutes(
                 return sendError(res, root.statusCode, root.error);
             }
 
-            const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
-            const resolved = await resolveSidecar(dataDir, ws.id, root, notePath);
+            const resolved = await resolveSidecar(dataDir, ws, root, notePath);
             if (typeof resolved !== 'string') {
                 return sendError(res, resolved.statusCode, resolved.error);
-            }
-            if (!isAllowedPath(resolved, wsDataDir)) {
-                return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
 
             const sidecar = await loadSidecar(resolved);
@@ -350,13 +286,9 @@ export function registerNotesCommentsRoutes(
                 return sendError(res, root.statusCode, root.error);
             }
 
-            const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
-            const resolved = await resolveSidecar(dataDir, ws.id, root, notePath);
+            const resolved = await resolveSidecar(dataDir, ws, root, notePath);
             if (typeof resolved !== 'string') {
                 return sendError(res, resolved.statusCode, resolved.error);
-            }
-            if (!isAllowedPath(resolved, wsDataDir)) {
-                return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
 
             const sidecar = await loadSidecar(resolved);
@@ -396,13 +328,9 @@ export function registerNotesCommentsRoutes(
                 return sendError(res, root.statusCode, root.error);
             }
 
-            const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
-            const resolved = await resolveSidecar(dataDir, ws.id, root, notePath);
+            const resolved = await resolveSidecar(dataDir, ws, root, notePath);
             if (typeof resolved !== 'string') {
                 return sendError(res, resolved.statusCode, resolved.error);
-            }
-            if (!isAllowedPath(resolved, wsDataDir)) {
-                return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
 
             const sidecar = await loadSidecar(resolved);
@@ -448,13 +376,9 @@ export function registerNotesCommentsRoutes(
                 return sendError(res, root.statusCode, root.error);
             }
 
-            const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
-            const resolved = await resolveSidecar(dataDir, ws.id, root, notePath);
+            const resolved = await resolveSidecar(dataDir, ws, root, notePath);
             if (typeof resolved !== 'string') {
                 return sendError(res, resolved.statusCode, resolved.error);
-            }
-            if (!isAllowedPath(resolved, wsDataDir)) {
-                return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
 
             const sidecar = await loadSidecar(resolved);
@@ -497,13 +421,9 @@ export function registerNotesCommentsRoutes(
                 return sendError(res, root.statusCode, root.error);
             }
 
-            const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
-            const resolved = await resolveSidecar(dataDir, ws.id, root, notePath);
+            const resolved = await resolveSidecar(dataDir, ws, root, notePath);
             if (typeof resolved !== 'string') {
                 return sendError(res, resolved.statusCode, resolved.error);
-            }
-            if (!isAllowedPath(resolved, wsDataDir)) {
-                return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
 
             const sidecar = await loadSidecar(resolved);
@@ -554,13 +474,9 @@ export function registerNotesCommentsRoutes(
                 return sendError(res, root.statusCode, root.error);
             }
 
-            const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
-            const resolved = await resolveSidecar(dataDir, ws.id, root, notePath);
+            const resolved = await resolveSidecar(dataDir, ws, root, notePath);
             if (typeof resolved !== 'string') {
                 return sendError(res, resolved.statusCode, resolved.error);
-            }
-            if (!isAllowedPath(resolved, wsDataDir)) {
-                return sendError(res, 403, 'Access denied: path is outside workspace data directory');
             }
 
             const sidecar = await loadSidecar(resolved);

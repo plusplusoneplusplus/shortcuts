@@ -417,6 +417,31 @@ for (const { label, expectedAgentMode, expectsSystemMessage, makeExecutor, makeT
             );
         });
 
+        it('relays mid-turn usage as a token-usage event (AC-05, initial run)', async () => {
+            sdkMocks.mockSendMessage.mockImplementation(async (opts: any) => {
+                opts.onTokenUsage({ tokenLimit: 200_000, currentTokens: 12_000 });
+                opts.onTokenUsage({ tokenLimit: 200_000, currentTokens: 34_000, systemTokens: 2_000 });
+                return { success: true, response: 'done', sessionId: 's1', toolCalls: [] };
+            });
+
+            const executor = makeExecutor(store);
+            const task = makeTask();
+
+            await executor.execute(task, 'Hello');
+
+            expect(store.emitProcessEvent).toHaveBeenCalledWith(`queue_${task.id}`, {
+                type: 'token-usage',
+                sessionTokenLimit: 200_000,
+                sessionCurrentTokens: 12_000,
+            });
+            expect(store.emitProcessEvent).toHaveBeenCalledWith(`queue_${task.id}`, {
+                type: 'token-usage',
+                sessionTokenLimit: 200_000,
+                sessionCurrentTokens: 34_000,
+                sessionSystemTokens: 2_000,
+            });
+        });
+
         it('stores sdkSessionId via onSessionCreated', async () => {
             // Make the mock call onSessionCreated (as the real SDK does when creating a session)
             sdkMocks.mockSendMessage.mockImplementation(async (opts: any) => {

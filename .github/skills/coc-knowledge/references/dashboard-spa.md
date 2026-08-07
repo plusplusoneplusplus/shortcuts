@@ -17,6 +17,7 @@ the original payload as a new conversation via `client.queue.retry`; a
 
 - `entry.tsx` — Mounts `App` (main shell) or `PopOut` (floating chat window)
 - `html-template.ts` — Server-side HTML generation with inline bundled assets from `client/dist/`
+- `client/dist/` is served at the **site root** (not `/static`). Alongside `bundle.js`/`bundle.css` it holds the separately-loaded assets: the Monaco workers, `pdf.worker.js`, and `canvas-vendor/` (`react.js`, `recharts.js`, `papaparse.js`, `tailwind.css`) — the library globals an extension canvas loads into its sandboxed iframe. All are built by `scripts/build-client.mjs`; `dist/` is gitignored.
 
 ## Module Layout
 
@@ -320,7 +321,17 @@ is true and torn down once everything settles. Force-refresh threads through
 their subresource caches (the detail route already evicts sub-caches).
 
 `features/canvas/CanvasPanel.tsx` renders the chat canvas side panel, gated by
-the `canvas.enabled` runtime flag (`isCanvasEnabled()` in `utils/config.ts`,
+the `canvas.enabled` runtime flag. It is a composition root: it owns the public
+props, the workspace-routed `useCocClient(workspaceId)`, fullscreen chrome, and
+layout, and delegates everything else to kernels under `features/canvas/hooks/`
+(`useCanvasRecord` — load, live `canvas-updated` reconciliation, `reloadNonce`,
+debounced revision-checked autosave and 409 conflicts; `useCanvasVersions`;
+`useCanvasComments`; `useCanvasExport`; `useCreateKustoCanvas`), pure helpers in
+`canvas-panel-model.ts`, and presentational components under
+`features/canvas/components/` (header, banners, body renderer, selection
+toolbar, comments panel). The routed client is passed into every kernel
+explicitly, which is what keeps remote/clone workspaces hitting the
+workspace-owning server (`isCanvasEnabled()` in `utils/config.ts`,
 default on). When enabled, `ChatDetail` discovers canvases linked to the open
 process via `client.canvases.list(workspaceId, { processId })`, keeps those
 summaries in API order for the panel title switcher, and refreshes the list on
@@ -388,11 +399,35 @@ content and — for markdown canvases — Save to Notes, which writes the conten
 Extension canvases (`type: 'extension'`) render
 `ExtensionCanvasView` in preview mode: the extension's `ui.html` runs inside an
 `<iframe sandbox="allow-scripts">` whose injected `window.CanvasHost` bridge
-(`onState`/`invoke`/`setState`) talks to the host over `postMessage`. The host
-posts `canvas-state` on ready and on every live update, services
+(`version`/`onState`/`invoke`/`setState`/`listFiles`/`readFile`) talks to the host over `postMessage`.
+The host posts `canvas-state` on ready and on every live update, services
 `invoke-capability` through `canvases.invokeCapability` and `set-state` through
 the revision-checked `canvases.save`, so human UI actions and AI capability
-calls share one gate. The extension load, `invoke-capability`, and `set-state`
+calls share one gate. The bridge is protocol **v2** (constants and the error
+shape live in `features/canvas/canvas-host-protocol.ts`): `invoke`/`setState`
+tag each message with a monotonic `id` and return a promise that settles on the
+host's `{ type: 'response', id, ok, result | error }` reply, or rejects after
+60s with `code: 'timeout'`. Rejections all carry `{ code, message }` with
+`code` in `offline` / `timeout` / `revision-conflict` / `capability-error` /
+`file-error`; a failed capability both rejects the extension's promise and shows
+the host banner, while a failed `readFile`/`listFiles` only rejects — a missing
+data file is the artifact's business, not a panel-level error. A message with **no `id`** is a pre-v2 sender and is still serviced in
+full, just without a reply. While one or more `invoke` calls are outstanding the
+panel shows a `extension-canvas-pending` indicator, since a capability the
+manifest declares `async: true` runs server-side with a 30s budget; it clears
+when the LAST invoke settles. There is deliberately no `CanvasHost.complete()` —
+model access lives only inside an async capability's server-side `host`, so the
+"a capability returns the next state" contract stays intact and rate limiting
+and logging live in one place. In an exported HTML artifact the offline bootstrap
+rejects `invoke`/`setState` with `code: 'offline'` rather than no-oping, so a
+v2 extension's `await` fails fast instead of hanging (the canvas's files are not
+inlined into an export — unbounded size). `listFiles`/`readFile` are READ-ONLY
+and scoped to `canvases/<canvasId>/files/`, the canvas's own directory: they hit
+`canvases.listFiles` / `canvases.readFile`, which return
+`{ path, size, encoding, content }` (`utf-8` for text, `base64` otherwise, and
+`{ encoding: 'base64' }` forces bytes). Only the AI writes into that directory,
+via `extension_canvas`'s `files` argument. The extension load,
+`invoke-capability`, `set-state`, `list-files` and `read-file`
 calls all route through the workspace-scoped `useCocClient(workspaceId)` client
 (like `CanvasPanel`), so a remote workspace's extension is read from and written
 to its owning server rather than the local page origin. Edit mode shows the raw
@@ -639,7 +674,15 @@ the pure `workItemInfo.ts` formatters, which reuse `getWorkItemChatIdentifier`,
 via `copyToClipboard` and reports through the optional `ToastContext` (success /
 error toast). Note: `ContextMenu` renders an item flagged `separator: true` as a
 divider only and drops its content, so menus add dedicated separator entries to
-group the Copy item rather than flagging it.
+group the Copy item rather than flagging it. Submenu panels are clamped to the
+viewport by `clampSubmenuVertical` (exported alongside `clampMenuPosition`): it
+picks the larger of the space below/above the anchoring row and applies
+`maxHeight` + `overflowY: auto`, so long lists scroll instead of running off
+screen. Left/right flipping is separate and unchanged. Submenu panels are clamped to the
+viewport by `clampSubmenuVertical` (exported alongside `clampMenuPosition`): it
+picks the larger of the space below/above the anchoring row and applies
+`maxHeight` + `overflowY: auto`, so long lists scroll instead of running off
+screen. Left/right flipping is separate and unchanged.
 
 `workItems.workflow.enabled` is the disabled-by-default durable workflow gate for
 turning local Work Items and Goals into the command-center planning/execution
@@ -1124,7 +1167,7 @@ New chats use `AgentSelectorChip` to choose a per-chat provider. When `features.
 
 `features/chat/MapReduceRunPane.tsx` renders the dedicated Map Reduce detail pane for `#repos/<workspaceId>/(activity|chats|tasks)/map-reduce/<runId>` links, approved generation chats, and Map Reduce group-row selection when `mapReduce.enabled` is true. It reads the parent run through `coc-client`'s `mapReduce` domain, shows the full original request, parent status, max parallelism, child mode, shared instructions, map item table, reduce-step status/instructions, a link back to the persisted generation chat when `generationProcessId` is present, map child process links, and an `Open final result` link to the completed reduce child process. It exposes explicit Start/Continue, Retry failed map item, Skip pending/failed map item, Retry reduce, Cancel remaining, and Refresh actions. Generation chats pass approval navigation through `ChatDetailPane`/`RepoChatTab`, which clears the selected chat and opens the run-pane hash after the reviewed plan is approved; Map Reduce group rows use the same parent routing, Map Reduce hashes restore the parent pane on desktop and mobile, and selecting a generation/map/reduce child chat clears the parent pane and opens the chat detail.
 
-Modal job-submission dialogs use `shared/ModalJobAiControls.tsx` when they need New Chat-compatible provider/model/reasoning controls. Its `useModalJobAiSelection()` hook centralizes workspace-scoped `lastChatProvider` restore/persist, provider-scoped model catalogs, effort-tier mode, legacy model picker + `EffortPillSelector` fallback, optional initial AI selections for Resume-style flows, a dirty bit, and resolved payload values for queue/chat submissions. Concrete selections resolve to `{ provider, model?, reasoningEffort? }`; Auto resolves to `{ effortTier, autoProviderRouting: true }` with no provider/model override, and submitters translate that flag to `context.autoProviderRouting.requested` or route-level `autoProviderRouting: true` so scheduling routes can pick a concrete provider first and then expand that tier through the selected provider's configuration. `queue/EnqueueDialog.tsx` uses these compact controls in its Advanced area for Ask AI, ad hoc autopilot tasks, skill/context-file runs, bulk context-file submissions, and floating-chat launches. `tasks/GenerateTaskDialog.tsx` uses these compact controls in its configuration area and forwards the resolved values to `/api/workspaces/:id/queue/generate`; `shared/UpdateDocumentDialog.tsx` uses them in the existing configuration area and enqueues custom chat tasks; `features/work-items/WorkItemExecuteDialog.tsx` renders the same controls through `RunSkillPanel` and forwards them to `/api/workspaces/:id/work-items/:wid/execute`; `features/chat/SkillContextDialog.tsx` uses them for git commit, multi-commit, and branch-range skill runs.
+Modal job-submission dialogs use `shared/ModalJobAiControls.tsx` when they need New Chat-compatible provider/model/reasoning controls. Its `useModalJobAiSelection()` hook centralizes workspace-scoped `lastChatProvider` restore/persist, provider-scoped model catalogs, effort-tier mode, legacy model picker + `EffortPillSelector` fallback, optional initial AI selections for Resume-style flows, a dirty bit, and resolved payload values for queue/chat submissions. Concrete selections resolve to `{ provider, model?, reasoningEffort? }`; Auto resolves to `{ effortTier, autoProviderRouting: true }` with no provider/model override, and submitters translate that flag to `context.autoProviderRouting.requested` or route-level `autoProviderRouting: true` so scheduling routes can pick a concrete provider first and then expand that tier through the selected provider's configuration. `queue/EnqueueDialog.tsx` uses these compact controls in its Advanced area for Ask AI, ad hoc autopilot tasks, skill/context-file runs, bulk context-file submissions, and floating-chat launches. `tasks/GenerateTaskDialog.tsx` uses these compact controls in its configuration area and forwards the resolved values to `/api/workspaces/:id/queue/generate`; `shared/UpdateDocumentDialog.tsx` uses them in the existing configuration area and enqueues custom chat tasks; `features/work-items/WorkItemExecuteDialog.tsx` renders the same controls through `RunSkillPanel` and forwards them to `/api/workspaces/:id/work-items/:wid/execute`; `features/chat/SkillContextDialog.tsx` uses them for git commit, multi-commit, and branch-range skill runs. `queue/SkillPicker.tsx` splits its search box + repo/global grouped, keyboard-navigable list into an exported `SkillPickerPanel`; `SkillPicker` wraps it in the multi-select trigger/chips popover, and `queue/SkillBrowserDialog.tsx` wraps it in a centered single-select-then-close modal. The Git tab's commit context menu lists the top `MRU_SKILL_LIMIT` skills (ranked by `rankSkillsByRecency` over the `commitSkillUsageMap` preference) inline under **Use Skill**; when more exist, a `Browse all skills… (N more)` entry opens `SkillBrowserDialog` instead of a third-tier hover submenu. `RepoGitTab` snapshots the context-menu target into `skillBrowserContext` when the modal opens and passes it back to `handleEnqueueSkill(name, capturedContext)`, so the confirm dialog and MRU recording work the same as the inline entries. `queue/SkillPicker.tsx` splits its search box + repo/global grouped, keyboard-navigable list into an exported `SkillPickerPanel`; `SkillPicker` wraps it in the multi-select trigger/chips popover, and `queue/SkillBrowserDialog.tsx` wraps it in a centered single-select-then-close modal. The Git tab's commit context menu lists the top `MRU_SKILL_LIMIT` skills (ranked by `rankSkillsByRecency` over the `commitSkillUsageMap` preference) inline under **Use Skill**; when more exist, a `Browse all skills… (N more)` entry opens `SkillBrowserDialog` instead of a third-tier hover submenu. `RepoGitTab` snapshots the context-menu target into `skillBrowserContext` when the modal opens and passes it back to `handleEnqueueSkill(name, capturedContext)`, so the confirm dialog and MRU recording work the same as the inline entries.
 
 Ralph start surfaces use `shared/RalphExecutionRepoSelector.tsx`. Launch callers
 pass a transient source reference with the physical `workspaceId`, the

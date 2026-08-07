@@ -297,6 +297,8 @@ export interface CLIConfig {
         schedulesInScheduledSlide?: boolean;
         /** Isolated Git worktree execution for Work Item / Ralph launches. Disabled by default. */
         gitWorktreeExecution?: boolean;
+        /** Async extension-canvas capabilities and the `host.complete` model call they get. Disabled by default. */
+        canvasHostApis?: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion?: {
@@ -634,6 +636,8 @@ export interface ResolvedCLIConfig {
         schedulesInScheduledSlide: boolean;
         /** Isolated Git worktree execution for Work Item / Ralph launches. Disabled by default. */
         gitWorktreeExecution: boolean;
+        /** Async extension-canvas capabilities and the `host.complete` model call they get. Disabled by default. */
+        canvasHostApis: boolean;
     };
     /** Memory promotion configuration */
     memoryPromotion: {
@@ -895,6 +899,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         splitWorkspacePanel: true,
         schedulesInScheduledSlide: true,
         gitWorktreeExecution: false,
+        canvasHostApis: false,
     },
     memoryPromotion: {
         batchSize: 50,

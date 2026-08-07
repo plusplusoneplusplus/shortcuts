@@ -296,11 +296,13 @@ describe('canvas HTML export — extension full pipeline (Layer G)', () => {
         expect(html).toContain('canvas-export__viewonly-banner');
         expect(html).toContain('View-only snapshot');
 
-        // Offline CanvasHost: onState delivers the frozen state; invoke/setState are
-        // inert, so nothing in the file can run a capability or persist state.
+        // Offline CanvasHost: onState delivers the frozen state; invoke/setState
+        // reject with code 'offline', so nothing in the file can run a capability
+        // or persist state — and a v2 extension awaiting one is not left hanging.
         expect(html).toContain('window.CanvasHost');
-        expect(html).toContain('invoke: inert');
-        expect(html).toContain('setState: inert');
+        expect(html).toContain("invoke: offline('invoke')");
+        expect(html).toContain("setState: offline('setState')");
+        expect(html).toContain("err.code = 'offline'");
         // Capability code is NEVER shipped.
         expect(html).not.toContain('capabilitiesJs');
 

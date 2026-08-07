@@ -23,7 +23,10 @@ import {
     handleCancelGenerate,
     handleGetGenerateStatus,
     handleComponentRegenerate,
+    type GenerateHandlerDeps,
 } from './generate-handler';
+import { WikiGenerationRegistry } from './generation';
+import type { WikiProvider } from './wiki-backend';
 
 // ============================================================================
 // Types
@@ -60,6 +63,8 @@ export interface WikiRouteOptions {
     onWikiError?: (wikiId: string, error: Error) => void;
     /** Injectable HTTP helper functions (defaults to coc-server router helpers). */
     helpers?: WikiRouteHelpers;
+    /** Generation state owner (defaults to a registry private to this registration). */
+    generationRegistry?: WikiGenerationRegistry;
 }
 
 // ============================================================================
@@ -89,6 +94,12 @@ export function registerWikiRoutes(
     });
 
     const store = options.store;
+
+    // Generation state is owned by this route registration, not a module
+    // singleton — two servers (or two tests) never share cancellation flags.
+    const generationDeps: GenerateHandlerDeps = {
+        registry: options.generationRegistry ?? new WikiGenerationRegistry(),
+    };
 
     // Register initial wikis from explicit options
     if (options.wikis) {
@@ -209,14 +220,25 @@ export function registerWikiRoutes(
         return pendingRuntime;
     }
 
-    async function withAdminManager(wikiId: string): Promise<WikiManager | null> {
+    /**
+     * Wiki lookup that also resolves wikis persisted but not yet loaded.
+     * `WikiProvider` is the narrow contract the generation handlers need, so
+     * the pending runtime satisfies it without being cast to a WikiManager.
+     */
+    async function withAdminProvider(wikiId: string): Promise<WikiProvider | null> {
         const runtime = await resolveAdminRuntime(wikiId);
         if (!runtime) {
             return null;
         }
         return {
             get: (id: string) => (id === wikiId ? runtime : wikiManager.get(id)),
-        } as unknown as WikiManager;
+        };
+    }
+
+    // Admin (seeds/config) handlers still take the full WikiManager surface.
+    async function withAdminManager(wikiId: string): Promise<WikiManager | null> {
+        const provider = await withAdminProvider(wikiId);
+        return provider ? (provider as unknown as WikiManager) : null;
     }
 
     // ========================================================================
@@ -712,12 +734,12 @@ export function registerWikiRoutes(
         pattern: /^\/api\/wikis\/([^/]+)\/admin\/generate$/,
         handler: async (req, res, match) => {
             const wikiId = decodeURIComponent(match![1]);
-            const manager = await withAdminManager(wikiId);
-            if (!manager) {
+            const provider = await withAdminProvider(wikiId);
+            if (!provider) {
                 send404(res, `Wiki not found: ${wikiId}`);
                 return;
             }
-            await handleStartGenerate(req, res, wikiId, manager);
+            await handleStartGenerate(req, res, wikiId, provider, generationDeps);
         },
     });
 
@@ -727,7 +749,7 @@ export function registerWikiRoutes(
         pattern: /^\/api\/wikis\/([^/]+)\/admin\/generate\/cancel$/,
         handler: async (_req, res, match) => {
             const wikiId = decodeURIComponent(match![1]);
-            handleCancelGenerate(res, wikiId);
+            handleCancelGenerate(res, wikiId, generationDeps);
         },
     });
 
@@ -737,12 +759,12 @@ export function registerWikiRoutes(
         pattern: /^\/api\/wikis\/([^/]+)\/admin\/generate\/status$/,
         handler: async (_req, res, match) => {
             const wikiId = decodeURIComponent(match![1]);
-            const manager = await withAdminManager(wikiId);
-            if (!manager) {
+            const provider = await withAdminProvider(wikiId);
+            if (!provider) {
                 send404(res, `Wiki not found: ${wikiId}`);
                 return;
             }
-            handleGetGenerateStatus(res, wikiId, manager);
+            handleGetGenerateStatus(res, wikiId, provider, generationDeps);
         },
     });
 
@@ -753,12 +775,12 @@ export function registerWikiRoutes(
         handler: async (req, res, match) => {
             const wikiId = decodeURIComponent(match![1]);
             const componentId = decodeURIComponent(match![2]);
-            const manager = await withAdminManager(wikiId);
-            if (!manager) {
+            const provider = await withAdminProvider(wikiId);
+            if (!provider) {
                 send404(res, `Wiki not found: ${wikiId}`);
                 return;
             }
-            await handleComponentRegenerate(req, res, wikiId, componentId, manager);
+            await handleComponentRegenerate(req, res, wikiId, componentId, provider, generationDeps);
         },
     });
 

@@ -5,8 +5,8 @@
  * dual-anchor Quick Ask Q&A pinned to passages inside a PDF rendered in a note.
  *
  * Storage mirrors the notes-comments sidecar exactly (see
- * {@link resolvePaperAnnotationsSidecarPath}): co-located `<path>.md.paper-annotations.json`
- * under the default managed root, or under the managed area for repo-folder roots.
+ * {@link resolveNoteSidecarPath}): co-located `<path>.md.paper-annotations.json`
+ * for notes under the managed data dir, or under the managed area otherwise.
  * Reusing that placement keeps the same path-safety and access-control guarantees.
  *
  * Endpoints (all guarded by the caller-supplied `features.quickAskSidenotes` flag):
@@ -23,9 +23,7 @@ import * as crypto from 'crypto';
 import * as url from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as os from 'os';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import { isWithinDirectory } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from '../core/api-handler';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
@@ -38,67 +36,29 @@ import {
     normalizeAnnotationTurns,
 } from './paper-annotations-types';
 import { formatPaperAnnotationsMarkdown } from './paper-annotations-export';
-import {
-    encodeRootPath,
-    resolveNotesRoot,
-    isRootResolveError,
-    resolvePaperAnnotationsSidecarPath,
-} from './notes-root-resolver';
+import { resolveNotesRoot, isRootResolveError } from './notes-root-resolver';
 import type { ResolvedNotesRoot } from './notes-root-resolver';
-import {
-    resolveSafeNotesPath,
-    isNotesPathSafetyError,
-    type NotesPathSafetyError,
-} from './notes-path-safety';
+import { resolveNoteSidecarPath, type SidecarResolveError } from './notes-sidecar-resolver';
 
 // ============================================================================
 // Helpers (mirrors notes-comments-handler)
 // ============================================================================
 
-function getWorkspaceDataDir(dataDir: string, workspaceId: string): string {
-    return path.join(dataDir, 'repos', workspaceId);
-}
+const PAPER_ANNOTATIONS_SUFFIX = '.paper-annotations.json';
 
-function getCopilotDir(): string {
-    return path.join(os.homedir(), '.copilot');
-}
-
-function isAllowedPath(resolved: string, wsDataDir: string, wsRootPath?: string): boolean {
-    return isWithinDirectory(resolved, wsDataDir)
-        || isWithinDirectory(resolved, getCopilotDir())
-        || (!!wsRootPath && isWithinDirectory(resolved, wsRootPath));
-}
-
-async function resolveSidecar(
+function resolveSidecar(
     dataDir: string,
-    workspaceId: string,
+    ws: { id: string; rootPath?: string },
     root: ResolvedNotesRoot,
     notePath: string,
-): Promise<string | NotesPathSafetyError> {
-    if (root.isDefault) {
-        return resolvePaperAnnotationsSidecarPath(dataDir, workspaceId, root, notePath);
-    }
-
-    const safeNotePath = await resolveSafeNotesPath(root.absolutePath, notePath);
-    if (isNotesPathSafetyError(safeNotePath)) {
-        return safeNotePath;
-    }
-
-    const workspaceDataRoot = getWorkspaceDataDir(dataDir, workspaceId);
-    const sidecarRelativePath = path.join(
-        'notes-comments',
-        encodeRootPath(root.rootId),
-        `${safeNotePath.relativePath}.paper-annotations.json`,
-    );
-    const safeSidecarPath = await resolveSafeNotesPath(
-        workspaceDataRoot,
-        sidecarRelativePath,
-        { rejectSymlinks: true },
-    );
-    if (isNotesPathSafetyError(safeSidecarPath)) {
-        return safeSidecarPath;
-    }
-    return safeSidecarPath.absolutePath;
+): Promise<string | SidecarResolveError> {
+    return resolveNoteSidecarPath({
+        dataDir,
+        workspace: ws,
+        root,
+        notePath,
+        suffix: PAPER_ANNOTATIONS_SUFFIX,
+    });
 }
 
 function resolveRoot(
@@ -169,14 +129,9 @@ export function registerPaperAnnotationsRoutes(opts: PaperAnnotationsRouteOption
             return null;
         }
 
-        const wsDataDir = getWorkspaceDataDir(dataDir, ws.id);
-        const resolved = await resolveSidecar(dataDir, ws.id, root, notePath);
+        const resolved = await resolveSidecar(dataDir, ws, root, notePath);
         if (typeof resolved !== 'string') {
             sendError(res, resolved.statusCode, resolved.error);
-            return null;
-        }
-        if (!isAllowedPath(resolved, wsDataDir, ws.rootPath)) {
-            sendError(res, 403, 'Access denied: path is outside workspace data directory');
             return null;
         }
         return resolved;

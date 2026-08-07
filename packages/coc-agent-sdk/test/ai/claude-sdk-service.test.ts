@@ -38,6 +38,7 @@ import {
 import { RewindUnsupportedError, isRewindUnsupportedError, CompactUnsupportedError, isCompactUnsupportedError } from '../../src/sdk-service-interface';
 import type { TokenUsage } from '../../src/types';
 import { initSDKLogger, resetSDKLogger } from '../../src/logger';
+import { MID_TURN_TOKEN_USAGE_INTERVAL_MS } from '../../src/mid-turn-usage';
 
 // ============================================================================
 // Module mock for @anthropic-ai/claude-agent-sdk
@@ -1060,6 +1061,180 @@ describe('ClaudeSDKService.sendMessage', () => {
         }
     });
 
+    // ------------------------------------------------------------------
+    // Mid-turn context usage (AC-03): the meter must move *during* a turn.
+    // ------------------------------------------------------------------
+
+    /**
+     * A turn that streams a chunk, then hangs until `release()` before emitting
+     * its `result` — long enough for the mid-turn poll to tick a few times.
+     */
+    function makeHeldTurnQuery(
+        held: Promise<void>,
+        getContextUsage: () => Promise<object>,
+        resultMsg: object,
+    ) {
+        return (queryOptions: { prompt: unknown }) => ({
+            async *[Symbol.asyncIterator]() {
+                yield { type: 'assistant', message: { content: [{ type: 'text', text: 'thinking' }] } };
+                await held;
+                yield resultMsg;
+                // Stay alive until the provider closes the input gate.
+                for await (const _ of queryOptions.prompt as AsyncIterable<unknown>) { void _; }
+            },
+            accountInfo: async () => ({}),
+            supportedModels: async () => [],
+            getContextUsage,
+            return: async (value?: unknown) => ({ done: true as const, value }),
+        });
+    }
+
+    const SUCCESS_RESULT = {
+        type: 'result',
+        subtype: 'success',
+        result: 'done',
+        usage: {
+            input_tokens: 5,
+            output_tokens: 7,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
+        },
+    };
+
+    it('polls getContextUsage mid-turn and reports each snapshot through onTokenUsage', async () => {
+        vi.useFakeTimers();
+        try {
+            let release!: () => void;
+            const held = new Promise<void>(resolve => { release = resolve; });
+            let totalTokens = 1000;
+            const getContextUsage = vi.fn(async () => ({
+                totalTokens: (totalTokens += 1000),
+                maxTokens: 200000,
+                systemPromptSections: [{ name: 'core', tokens: 100 }],
+            }));
+            queryFn.mockImplementationOnce(makeHeldTurnQuery(held, getContextUsage, SUCCESS_RESULT));
+
+            const onTokenUsage = vi.fn();
+            const chunks: string[] = [];
+            const pending = svc.sendMessage({
+                prompt: 'test',
+                onTokenUsage,
+                onStreamingChunk: (c: string) => { chunks.push(c); },
+            });
+
+            // Streaming is not gated on the poll: the chunk lands before any tick.
+            await vi.advanceTimersByTimeAsync(0);
+            expect(chunks).toContain('thinking');
+            expect(onTokenUsage).not.toHaveBeenCalled();
+
+            await vi.advanceTimersByTimeAsync(MID_TURN_TOKEN_USAGE_INTERVAL_MS);
+            expect(onTokenUsage).toHaveBeenCalledTimes(1);
+            expect(onTokenUsage).toHaveBeenLastCalledWith({
+                tokenLimit: 200000,
+                currentTokens: 2000,
+                systemTokens: 100,
+            });
+
+            await vi.advanceTimersByTimeAsync(MID_TURN_TOKEN_USAGE_INTERVAL_MS);
+            expect(onTokenUsage).toHaveBeenCalledTimes(2);
+            expect(onTokenUsage).toHaveBeenLastCalledWith({
+                tokenLimit: 200000,
+                currentTokens: 3000,
+                systemTokens: 100,
+            });
+
+            release();
+            const result = await pending;
+
+            // Turn end is unchanged: the final capture still wins and is what
+            // the returned tokenUsage carries.
+            expect(result.success).toBe(true);
+            expect(result.tokenUsage).toMatchObject({
+                inputTokens: 5,
+                outputTokens: 7,
+                tokenLimit: 200000,
+                currentTokens: 4000,
+                systemTokens: 100,
+            });
+
+            // No poll survives the closed gate.
+            const callsAtTurnEnd = getContextUsage.mock.calls.length;
+            await vi.advanceTimersByTimeAsync(MID_TURN_TOKEN_USAGE_INTERVAL_MS * 5);
+            expect(getContextUsage).toHaveBeenCalledTimes(callsAtTurnEnd);
+            expect(onTokenUsage).toHaveBeenCalledTimes(2);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('never polls when the caller supplied no onTokenUsage callback', async () => {
+        vi.useFakeTimers();
+        try {
+            let release!: () => void;
+            const held = new Promise<void>(resolve => { release = resolve; });
+            const getContextUsage = vi.fn(async () => ({ totalTokens: 10, maxTokens: 200000 }));
+            queryFn.mockImplementationOnce(makeHeldTurnQuery(held, getContextUsage, SUCCESS_RESULT));
+
+            const pending = svc.sendMessage({ prompt: 'test' });
+            await vi.advanceTimersByTimeAsync(MID_TURN_TOKEN_USAGE_INTERVAL_MS * 4);
+            expect(getContextUsage).not.toHaveBeenCalled();
+
+            release();
+            const result = await pending;
+            expect(result.success).toBe(true);
+            // Only the pre-existing turn-end capture.
+            expect(getContextUsage).toHaveBeenCalledTimes(1);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('does not fail the turn or delay streaming when mid-turn polls reject or hang', async () => {
+        const previousTimeout = process.env.COC_CLAUDE_CONTEXT_USAGE_TIMEOUT_MS;
+        process.env.COC_CLAUDE_CONTEXT_USAGE_TIMEOUT_MS = '40';
+        vi.useFakeTimers();
+        try {
+            let release!: () => void;
+            const held = new Promise<void>(resolve => { release = resolve; });
+            let attempt = 0;
+            const getContextUsage = vi.fn(async () => {
+                attempt += 1;
+                if (attempt === 1) throw new Error('control request failed');
+                if (attempt === 2) return new Promise<object>(() => { /* never resolves */ });
+                return { totalTokens: 1234, maxTokens: 200000 };
+            });
+            queryFn.mockImplementationOnce(makeHeldTurnQuery(held, getContextUsage, SUCCESS_RESULT));
+
+            const onTokenUsage = vi.fn();
+            const chunks: string[] = [];
+            const pending = svc.sendMessage({
+                prompt: 'test',
+                onTokenUsage,
+                onStreamingChunk: (c: string) => { chunks.push(c); },
+            });
+
+            await vi.advanceTimersByTimeAsync(0);
+            expect(chunks).toContain('thinking');
+
+            // Rejected poll, then a hung one that the timeout guard abandons —
+            // neither publishes a value, neither disturbs the turn.
+            await vi.advanceTimersByTimeAsync(MID_TURN_TOKEN_USAGE_INTERVAL_MS * 2 + 100);
+            expect(onTokenUsage).not.toHaveBeenCalled();
+
+            release();
+            const result = await pending;
+            expect(result.success).toBe(true);
+            expect(result.tokenUsage).toMatchObject({ tokenLimit: 200000, currentTokens: 1234 });
+        } finally {
+            vi.useRealTimers();
+            if (previousTimeout === undefined) {
+                delete process.env.COC_CLAUDE_CONTEXT_USAGE_TIMEOUT_MS;
+            } else {
+                process.env.COC_CLAUDE_CONTEXT_USAGE_TIMEOUT_MS = previousTimeout;
+            }
+        }
+    });
+
     it('emits tool-start for tool_use blocks without fabricating argument JSON as the result', async () => {
         queryFn.mockReturnValueOnce(makeMessages([
             {
@@ -2060,6 +2235,7 @@ describe('ClaudeSDKService.sendMessage', () => {
         const allowedTools = queryFn.mock.calls[0][0].options.allowedTools ?? [];
         expect(allowedTools).not.toContain('Bash(gh:*)');
         expect(allowedTools).not.toContain('WebFetch');
+        expect(allowedTools).not.toContain('WebSearch');
     });
 
     it('uses acceptEdits permission mode for interactive mode', async () => {
@@ -2073,7 +2249,7 @@ describe('ClaudeSDKService.sendMessage', () => {
         expect(queryFn.mock.calls[0][0].options.allowDangerouslySkipPermissions).toBeUndefined();
     });
 
-    it('auto-allows full Bash and WebFetch in interactive (ask) mode', async () => {
+    it('auto-allows full Bash, WebFetch and WebSearch in interactive (ask) mode', async () => {
         queryFn.mockReturnValueOnce(makeMessages([
             { type: 'result', subtype: 'success' },
         ]));
@@ -2083,6 +2259,7 @@ describe('ClaudeSDKService.sendMessage', () => {
         const allowedTools = queryFn.mock.calls[0][0].options.allowedTools;
         expect(allowedTools).toContain('Bash');
         expect(allowedTools).toContain('WebFetch');
+        expect(allowedTools).toContain('WebSearch');
         expect(allowedTools).not.toContain('Bash(gh:*)');
     });
 
@@ -2097,7 +2274,7 @@ describe('ClaudeSDKService.sendMessage', () => {
         expect(queryFn.mock.calls[0][0].options.allowDangerouslySkipPermissions).toBeUndefined();
     });
 
-    it('auto-allows full Bash and WebFetch when mode is undefined', async () => {
+    it('auto-allows full Bash, WebFetch and WebSearch when mode is undefined', async () => {
         queryFn.mockReturnValueOnce(makeMessages([
             { type: 'result', subtype: 'success' },
         ]));
@@ -2107,6 +2284,7 @@ describe('ClaudeSDKService.sendMessage', () => {
         const allowedTools = queryFn.mock.calls[0][0].options.allowedTools;
         expect(allowedTools).toContain('Bash');
         expect(allowedTools).toContain('WebFetch');
+        expect(allowedTools).toContain('WebSearch');
         expect(allowedTools).not.toContain('Bash(gh:*)');
     });
 

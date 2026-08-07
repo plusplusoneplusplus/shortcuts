@@ -106,7 +106,7 @@
     "@plusplusoneplusplus/coc-workflow": "*",
     "@plusplusoneplusplus/coc-agent-sdk": "*",
     "@plusplusoneplusplus/coc-memory": "*",
-    "@github/copilot-sdk": "^1.0.6",
+    "@github/copilot-sdk": "^1.0.9",
     "@octokit/rest": "^22.0.1",
     "azure-devops-node-api": "^14.1.0",
     "better-sqlite3": "^12.11.1",

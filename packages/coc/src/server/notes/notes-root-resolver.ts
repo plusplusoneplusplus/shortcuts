@@ -223,59 +223,8 @@ export function encodeRootPath(rootPath: string): string {
     return `${safe}__${hash}`;
 }
 
-/**
- * Resolve the filesystem path for a comment sidecar file.
- *
- * - Default root: sidecar is co-located next to the note file under the managed notes root.
- * - Repo-folder roots: sidecar is stored in the managed area at
- *   `~/.coc/repos/<workspaceId>/notes-comments/<encoded-root-path>/`.
- *   This keeps the workspace repo clean.
- *
- * @param dataDir - The CoC data directory (~/.coc)
- * @param workspaceId - The workspace identifier
- * @param resolvedRoot - The resolved notes root info
- * @param notePath - Relative path to the note within the root
- * @returns Absolute path to the sidecar JSON file
+/*
+ * Sidecar file placement (comments / paper annotations) lives in
+ * `notes-sidecar-resolver.ts`, which also owns the access check for the note
+ * path itself.
  */
-export function resolveCommentsSidecarPath(
-    dataDir: string,
-    workspaceId: string,
-    resolvedRoot: ResolvedNotesRoot,
-    notePath: string,
-): string {
-    if (resolvedRoot.isDefault) {
-        // Default root: co-located sidecar (existing behavior)
-        return path.isAbsolute(notePath)
-            ? path.resolve(notePath + '.comments.json')
-            : path.resolve(resolvedRoot.absolutePath, notePath + '.comments.json');
-    }
-
-    // Repo-folder root: store sidecar in managed area
-    const encoded = encodeRootPath(resolvedRoot.rootId);
-    const commentsDir = path.join(dataDir, 'repos', workspaceId, 'notes-comments', encoded);
-    return path.resolve(commentsDir, notePath + '.comments.json');
-}
-
-/**
- * Resolve the filesystem path for a paper-annotations sidecar file (Goal 2).
- *
- * Same placement rules as {@link resolveCommentsSidecarPath} — co-located next
- * to the note under the default managed root, or under the managed area for
- * repo-folder roots — only the file suffix differs (`.paper-annotations.json`).
- */
-export function resolvePaperAnnotationsSidecarPath(
-    dataDir: string,
-    workspaceId: string,
-    resolvedRoot: ResolvedNotesRoot,
-    notePath: string,
-): string {
-    if (resolvedRoot.isDefault) {
-        return path.isAbsolute(notePath)
-            ? path.resolve(notePath + '.paper-annotations.json')
-            : path.resolve(resolvedRoot.absolutePath, notePath + '.paper-annotations.json');
-    }
-
-    const encoded = encodeRootPath(resolvedRoot.rootId);
-    const annotationsDir = path.join(dataDir, 'repos', workspaceId, 'notes-comments', encoded);
-    return path.resolve(annotationsDir, notePath + '.paper-annotations.json');
-}

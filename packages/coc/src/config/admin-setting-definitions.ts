@@ -876,6 +876,19 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             testId: 'toggle-git-worktree-execution-enabled',
         },
     }),
+
+    // One flag covers BOTH async capabilities and host.complete: the LLM call
+    // only exists inside an async capability, so a server with async off has no
+    // way to reach it and a second flag would have no reachable state of its
+    // own. Split them if a use for async-without-the-model ever appears.
+    bool({
+        key: 'features.canvasHostApis', default: false, runtime: 'live',
+        ui: {
+            group: 'review', order: 63, label: 'Canvas host APIs', badge: 'experimental',
+            hint: 'Lets an extension canvas declare async capabilities, which run in a terminable worker with a 30s budget and can call the model via host.complete (max 3 calls per run). Disabled by default.',
+            testId: 'toggle-canvas-host-apis-enabled',
+        },
+    }),
 ];
 
 // ── derived views ─────────────────────────────────────────────────────────────

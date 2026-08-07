@@ -474,6 +474,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             kustoEnabled: opts.resolvedConfig?.kusto?.enabled ?? false,
         });
     const isKustoEnabled = (): boolean => getLiveFeatureFlags().kustoEnabled;
+    // Async extension-canvas capabilities + host.complete. Live (admin toggle
+    // takes effect without a restart) and off by default.
+    const isCanvasHostApisEnabled = (): boolean => (
+        opts.runtimeConfigService?.config ?? opts.resolvedConfig
+    )?.features?.canvasHostApis === true;
     const activeWorkspaceTracker = new ActiveWorkspaceTracker();
     registerApiRoutes(routes, store, bridge, dataDir, getWsServer, undefined, opts.resolvedConfig?.cron?.enabled ?? false, getLiveFeatureFlags, activeWorkspaceTracker);
     const repoTreeService = new RepoTreeService(dataDir, undefined, store);
@@ -592,7 +597,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerWorkspaceHistoryRoutes(routes, store, bridge);
     registerTaskCommentsRoutes(routes, dataDir, bridge, store, getWsServer);
     registerDiffCommentsRoutes(routes, dataDir, bridge, store, getWsServer);
-    registerCanvasRoutes(routes, dataDir, getWsServer, store, isKustoEnabled);
+    registerCanvasRoutes(routes, dataDir, getWsServer, store, isKustoEnabled, undefined, isCanvasHostApisEnabled);
     registerAdminRoutes(routes, {
         store,
         dataDir,

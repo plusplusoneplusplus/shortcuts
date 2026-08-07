@@ -10,6 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { Attachment } from '@plusplusoneplusplus/forge';
 import { parseDataUrl, isImageDataUrl, saveImagesToTempFiles, MAX_IMAGE_BYTES } from './image-utils';
+import { getFileCategory } from './file-category';
 
 /** Wire format for file attachments from the client */
 export interface AttachmentPayload {
@@ -27,39 +28,11 @@ export interface FileAttachmentMeta {
     category: 'image' | 'text' | 'binary';
 }
 
-// ── Category detection (mirrors client-side logic) ─────────────────────
+// ── Category detection ─────────────────────────────────────────────────
+// The extension/MIME table lives in `file-category.ts` — the canvas files
+// bridge classifies files off disk with the same one.
 
-const TEXT_MIME_PREFIXES = ['text/'];
-const TEXT_MIME_EXACT = new Set([
-    'application/json', 'application/xml', 'application/javascript',
-    'application/typescript', 'application/x-yaml', 'application/yaml',
-    'application/toml', 'application/x-sh', 'application/x-httpd-php',
-    'application/sql', 'application/graphql', 'application/xhtml+xml',
-    'application/x-python-code',
-]);
-const TEXT_EXTENSIONS = new Set([
-    'txt', 'md', 'markdown', 'json', 'yaml', 'yml', 'toml', 'xml', 'html', 'htm',
-    'css', 'js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs', 'py', 'rb', 'go', 'rs', 'java',
-    'kt', 'kts', 'scala', 'c', 'h', 'cpp', 'hpp', 'cc', 'cxx', 'cs', 'swift',
-    'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd', 'sql', 'graphql', 'gql',
-    'r', 'lua', 'php', 'pl', 'pm', 'ex', 'exs', 'erl', 'hrl', 'hs',
-    'clj', 'cljs', 'cljc', 'elm', 'vue', 'svelte', 'astro',
-    'tf', 'hcl', 'ini', 'cfg', 'conf', 'env', 'properties',
-    'csv', 'tsv', 'log', 'diff', 'patch',
-    'dockerfile', 'makefile', 'cmake', 'gradle', 'sbt',
-    'proto', 'thrift', 'avsc', 'prisma',
-]);
-
-function getCategory(mimeType: string, fileName: string): 'image' | 'text' | 'binary' {
-    if (mimeType.startsWith('image/')) return 'image';
-    if (TEXT_MIME_PREFIXES.some(p => mimeType.startsWith(p))) return 'text';
-    if (TEXT_MIME_EXACT.has(mimeType)) return 'text';
-    const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
-    if (TEXT_EXTENSIONS.has(ext)) return 'text';
-    const baseName = fileName.split(/[\\/]/).pop()?.toLowerCase() ?? '';
-    if (mimeType === 'application/octet-stream' && TEXT_EXTENSIONS.has(baseName)) return 'text';
-    return 'binary';
-}
+const getCategory = getFileCategory;
 
 /**
  * Parse a generic base64 data URL into its components.

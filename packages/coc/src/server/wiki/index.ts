@@ -73,7 +73,30 @@ export type { AskRequest, ConversationMessage, WikiAskHandlerOptions } from './a
 export { buildExplorePrompt, handleExploreCore } from './explore-handler';
 export type { ExploreRequest, WikiExploreHandlerOptions } from './explore-handler';
 export { getGenerationState, resetGenerationState, resetAllGenerationStates } from './generate-handler';
-export type { GenerateRequest } from './generate-handler';
+export type { GenerateRequest, GenerateHandlerDeps } from './generate-handler';
+
+// Wiki Generation domain layer (registry, runners, deep-wiki adapter, cache status)
+export {
+    WikiGenerationRegistry,
+    defaultGenerationRegistry,
+    WikiCacheStatusService,
+    defaultCacheStatusService,
+    defaultDeepWikiAdapter,
+    runWikiGeneration,
+    runComponentRegeneration,
+    collectCacheMetadata,
+    createSseEventSink,
+    createRecordingEventSink,
+} from './generation';
+export type {
+    GenerationEvent,
+    GenerationEventSink,
+    GenerationState,
+    GenerationHandle,
+    DeepWikiAdapter,
+    CacheMetadataStats,
+    PhaseCacheStatus,
+} from './generation';
 
 // Wiki Backend (shared types for handler deduplication)
 export type { ResolvedAskContext, ResolvedExploreContext, GenerateWiki, WikiProvider } from './wiki-backend';

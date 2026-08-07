@@ -1,6 +1,10 @@
 /**
  * SkillPicker — Searchable skill picker popover with repo/global grouping.
  * Replaces the flat pill grid with a compact trigger + floating popover pattern.
+ *
+ * The search box + grouped list is split out as `SkillPickerPanel` so other
+ * surfaces (e.g. the Git tab's "Browse all skills…" modal) can reuse it
+ * without the trigger button and selected-chip row.
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
@@ -17,21 +21,34 @@ interface SkillPickerProps {
     label?: string;
 }
 
+export interface SkillPickerPanelProps {
+    skills: SkillOption[];
+    /** Names rendered with a checkmark. Pass [] for single-select surfaces. */
+    selectedSkills: string[];
+    onSelect: (name: string) => void;
+    /** Called when the user presses Escape. */
+    onDismiss?: () => void;
+    /** Tailwind height cap for the scrollable list. Default: "max-h-64". */
+    listHeightClass?: string;
+}
+
 const ENDEV_XDPU_SKILL_NAME = 'EnDev-xDpu';
 
-export function SkillPicker({ skills, selectedSkills, onSkillChange, label }: SkillPickerProps) {
-    const [open, setOpen] = useState(false);
+/**
+ * Search box + repo/global grouped, keyboard-navigable skill list.
+ * Autofocuses its search input on mount.
+ */
+export function SkillPickerPanel({
+    skills,
+    selectedSkills,
+    onSelect,
+    onDismiss,
+    listHeightClass = 'max-h-64',
+}: SkillPickerPanelProps) {
     const [search, setSearch] = useState('');
     const [highlightIndex, setHighlightIndex] = useState(0);
-    const popoverRef = useRef<HTMLDivElement>(null);
-    const triggerRef = useRef<HTMLButtonElement>(null);
     const searchRef = useRef<HTMLInputElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
-    const skillByName = useMemo(() => new Map(skills.map(skill => [skill.name, skill])), [skills]);
-    const visibleSelectedSkills = useMemo(
-        () => selectedSkills.filter(name => name !== ENDEV_XDPU_SKILL_NAME || skillByName.has(name)),
-        [selectedSkills, skillByName],
-    );
 
     // Group skills by source (repo vs global)
     const { repoSkills, globalSkills } = useMemo(() => {
@@ -67,50 +84,22 @@ export function SkillPicker({ skills, selectedSkills, onSkillChange, label }: Sk
         setHighlightIndex(0);
     }, [search]);
 
-    // Close on outside click
+    // Focus search input on mount
     useEffect(() => {
-        if (!open) return;
-        const handler = (e: MouseEvent) => {
-            if (popoverRef.current && !popoverRef.current.contains(e.target as Node) &&
-                triggerRef.current && !triggerRef.current.contains(e.target as Node)) {
-                setOpen(false);
-                setSearch('');
-            }
-        };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, [open]);
-
-    // Focus search input when popover opens
-    useEffect(() => {
-        if (open) {
-            requestAnimationFrame(() => searchRef.current?.focus());
-        }
-    }, [open]);
+        requestAnimationFrame(() => searchRef.current?.focus());
+    }, []);
 
     // Scroll highlighted item into view
     useEffect(() => {
-        if (!open || !listRef.current) return;
+        if (!listRef.current) return;
         const items = listRef.current.querySelectorAll('[data-skill-item]');
         items[highlightIndex]?.scrollIntoView({ block: 'nearest' });
-    }, [highlightIndex, open]);
-
-    const handleToggleOpen = useCallback(() => {
-        setOpen(prev => !prev);
-        setSearch('');
-        setHighlightIndex(0);
-    }, []);
-
-    const handleSelect = useCallback((name: string) => {
-        onSkillChange(name);
-    }, [onSkillChange]);
+    }, [highlightIndex]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Escape') {
             e.preventDefault();
-            setOpen(false);
-            setSearch('');
-            triggerRef.current?.focus();
+            onDismiss?.();
             return;
         }
         if (e.key === 'ArrowDown') {
@@ -127,14 +116,9 @@ export function SkillPicker({ skills, selectedSkills, onSkillChange, label }: Sk
             if (e.key === ' ' && search.length > 0) return; // Allow space in search
             e.preventDefault();
             const skill = flatFiltered[highlightIndex];
-            if (skill) handleSelect(skill.name);
+            if (skill) onSelect(skill.name);
         }
-    }, [flatFiltered, highlightIndex, handleSelect, search]);
-
-    const handleRemoveSkill = useCallback((e: React.MouseEvent, name: string) => {
-        e.stopPropagation();
-        onSkillChange(name);
-    }, [onSkillChange]);
+    }, [flatFiltered, highlightIndex, onSelect, onDismiss, search]);
 
     const noResults = flatFiltered.length === 0 && search.trim().length > 0;
 
@@ -147,7 +131,7 @@ export function SkillPicker({ skills, selectedSkills, onSkillChange, label }: Sk
                 type="button"
                 data-skill-item
                 data-testid={`skill-picker-item-${skill.name}`}
-                onClick={() => handleSelect(skill.name)}
+                onClick={() => onSelect(skill.name)}
                 onMouseEnter={() => setHighlightIndex(index)}
                 className={`w-full text-left px-3 py-1.5 flex items-center gap-2 text-xs transition-colors cursor-pointer ${
                     isHighlighted
@@ -173,6 +157,89 @@ export function SkillPicker({ skills, selectedSkills, onSkillChange, label }: Sk
 
     // Compute the flat index offset for global skills
     const globalOffset = filteredRepo.length;
+
+    return (
+        <>
+            {/* Search input */}
+            <div className="p-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                <input
+                    ref={searchRef}
+                    type="text"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="🔍 Search skills…"
+                    className="w-full px-2 py-1 text-xs rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc] focus:outline-none focus:border-[#0078d4]"
+                    data-testid="skill-picker-search"
+                />
+            </div>
+
+            {/* Skill list */}
+            <div ref={listRef} className={`${listHeightClass} overflow-y-auto`} data-testid="skill-picker-list">
+                {noResults && (
+                    <div className="px-3 py-4 text-xs text-[#848484] text-center" data-testid="skill-picker-no-results">
+                        No skills match
+                    </div>
+                )}
+
+                {filteredRepo.length > 0 && (
+                    <>
+                        <div className="px-3 py-1 text-[10px] font-semibold text-[#848484] uppercase tracking-wider bg-[#f8f8f8] dark:bg-[#252525]" data-testid="skill-picker-section-repo">
+                            Repo
+                        </div>
+                        {filteredRepo.map((s, i) => renderSkillRow(s, i))}
+                    </>
+                )}
+
+                {filteredGlobal.length > 0 && (
+                    <>
+                        <div className="px-3 py-1 text-[10px] font-semibold text-[#848484] uppercase tracking-wider bg-[#f8f8f8] dark:bg-[#252525]" data-testid="skill-picker-section-global">
+                            Global
+                        </div>
+                        {filteredGlobal.map((s, i) => renderSkillRow(s, i + globalOffset))}
+                    </>
+                )}
+            </div>
+        </>
+    );
+}
+
+export function SkillPicker({ skills, selectedSkills, onSkillChange, label }: SkillPickerProps) {
+    const [open, setOpen] = useState(false);
+    const popoverRef = useRef<HTMLDivElement>(null);
+    const triggerRef = useRef<HTMLButtonElement>(null);
+    const skillByName = useMemo(() => new Map(skills.map(skill => [skill.name, skill])), [skills]);
+    const visibleSelectedSkills = useMemo(
+        () => selectedSkills.filter(name => name !== ENDEV_XDPU_SKILL_NAME || skillByName.has(name)),
+        [selectedSkills, skillByName],
+    );
+
+    // Close on outside click
+    useEffect(() => {
+        if (!open) return;
+        const handler = (e: MouseEvent) => {
+            if (popoverRef.current && !popoverRef.current.contains(e.target as Node) &&
+                triggerRef.current && !triggerRef.current.contains(e.target as Node)) {
+                setOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [open]);
+
+    const handleToggleOpen = useCallback(() => {
+        setOpen(prev => !prev);
+    }, []);
+
+    const handleDismiss = useCallback(() => {
+        setOpen(false);
+        triggerRef.current?.focus();
+    }, []);
+
+    const handleRemoveSkill = useCallback((e: React.MouseEvent, name: string) => {
+        e.stopPropagation();
+        onSkillChange(name);
+    }, [onSkillChange]);
 
     const resolvedLabel = label ?? 'Skills (optional)';
 
@@ -221,46 +288,12 @@ export function SkillPicker({ skills, selectedSkills, onSkillChange, label }: Sk
                             className="absolute left-0 top-full mt-1 w-72 bg-white dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#555] rounded-lg shadow-lg z-50 overflow-hidden"
                             data-testid="skill-picker-popover"
                         >
-                            {/* Search input */}
-                            <div className="p-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                                <input
-                                    ref={searchRef}
-                                    type="text"
-                                    value={search}
-                                    onChange={e => setSearch(e.target.value)}
-                                    onKeyDown={handleKeyDown}
-                                    placeholder="🔍 Search skills…"
-                                    className="w-full px-2 py-1 text-xs rounded border border-[#e0e0e0] bg-white dark:border-[#3c3c3c] dark:bg-[#3c3c3c] dark:text-[#cccccc] focus:outline-none focus:border-[#0078d4]"
-                                    data-testid="skill-picker-search"
-                                />
-                            </div>
-
-                            {/* Skill list */}
-                            <div ref={listRef} className="max-h-64 overflow-y-auto" data-testid="skill-picker-list">
-                                {noResults && (
-                                    <div className="px-3 py-4 text-xs text-[#848484] text-center" data-testid="skill-picker-no-results">
-                                        No skills match
-                                    </div>
-                                )}
-
-                                {filteredRepo.length > 0 && (
-                                    <>
-                                        <div className="px-3 py-1 text-[10px] font-semibold text-[#848484] uppercase tracking-wider bg-[#f8f8f8] dark:bg-[#252525]" data-testid="skill-picker-section-repo">
-                                            Repo
-                                        </div>
-                                        {filteredRepo.map((s, i) => renderSkillRow(s, i))}
-                                    </>
-                                )}
-
-                                {filteredGlobal.length > 0 && (
-                                    <>
-                                        <div className="px-3 py-1 text-[10px] font-semibold text-[#848484] uppercase tracking-wider bg-[#f8f8f8] dark:bg-[#252525]" data-testid="skill-picker-section-global">
-                                            Global
-                                        </div>
-                                        {filteredGlobal.map((s, i) => renderSkillRow(s, i + globalOffset))}
-                                    </>
-                                )}
-                            </div>
+                            <SkillPickerPanel
+                                skills={skills}
+                                selectedSkills={selectedSkills}
+                                onSelect={onSkillChange}
+                                onDismiss={handleDismiss}
+                            />
                         </div>
                     )}
                 </div>

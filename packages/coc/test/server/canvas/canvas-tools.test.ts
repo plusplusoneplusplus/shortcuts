@@ -5,6 +5,7 @@ import * as path from 'path';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { createCanvasTools } from '../../../src/server/llm-tools/canvas-tools';
 import { CanvasStore } from '../../../src/server/canvas/canvas-store';
+import { CANVAS_LIBRARY_IDS } from '../../../src/server/canvas/canvas-libraries';
 
 const WS = 'tool-workspace';
 const PROCESS_ID = 'proc-42';
@@ -343,6 +344,103 @@ describe('canvas LLM tools', () => {
             expect(store.getExtension(WS, created.canvasId)?.uiHtml).toBe('<div id="board2"></div>');
         });
 
+        // --- async capability declaration ----------------------------------
+
+        it('persists an async: true declaration into the manifest', async () => {
+            const { extension } = buildTools();
+            const result = await extension.handler({
+                ...BUILD_ARGS,
+                capabilities: [
+                    { name: 'add_card', description: 'Add a card' },
+                    { name: 'summarize', description: 'Ask the model', async: true },
+                ],
+                capabilitiesJs: 'capabilities = { add_card: function (s) { return s; }, summarize: async function (s) { return s; } };',
+            } as any) as any;
+
+            expect(result.success).toBe(true);
+            const capabilities = store.getExtension(WS, result.canvasId)!.manifest.capabilities;
+            expect(capabilities.find(c => c.name === 'add_card')?.async).toBeUndefined();
+            expect(capabilities.find(c => c.name === 'summarize')?.async).toBe(true);
+        });
+
+        it('omits async from the manifest when declared false', async () => {
+            const { extension } = buildTools();
+            const result = await extension.handler({
+                ...BUILD_ARGS,
+                capabilities: [{ name: 'add_card', description: 'Add a card', async: false }],
+            } as any) as any;
+            expect(result.success).toBe(true);
+            expect(store.getExtension(WS, result.canvasId)!.manifest.capabilities[0].async).toBeUndefined();
+        });
+
+        it('rejects a non-boolean async declaration', async () => {
+            const { extension } = buildTools();
+            const result = await extension.handler({
+                ...BUILD_ARGS,
+                capabilities: [{ name: 'add_card', description: 'Add a card', async: 'yes' }],
+            } as any) as any;
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('async must be true or false');
+        });
+
+        it('declares async in the tool schema so the model can set it', () => {
+            const { extension } = buildTools();
+            const items = (extension.parameters as any).properties.capabilities.items;
+            expect(items.properties.async.type).toBe('boolean');
+            expect(items.required).not.toContain('async');
+        });
+
+        it('refuses to RUN an async capability when the host APIs flag is off', async () => {
+            const { extension } = createCanvasTools({
+                dataDir,
+                workspaceId: WS,
+                processId: PROCESS_ID,
+                processStore,
+                canvasStore: store,
+                getCanvasHostApisEnabled: () => false,
+            });
+            const created = await extension.handler({
+                ...BUILD_ARGS,
+                capabilities: [{ name: 'slow', description: 'slow', async: true }],
+                capabilitiesJs: 'capabilities = { slow: async function (s) { return { ran: true }; } };',
+            } as any) as any;
+
+            const run = await extension.handler({ canvasId: created.canvasId, capability: 'slow' } as any) as any;
+            expect(run.success).toBe(false);
+            expect(run.error).toContain('async capabilities are disabled');
+            // Nothing ran, so the state is untouched.
+            expect(JSON.parse(store.getCanvas(WS, created.canvasId)!.content).ran).toBeUndefined();
+        });
+
+        it('runs an async capability, with host.complete, when the flag is on', async () => {
+            const complete = vi.fn(async () => ({ ok: true as const, text: 'a summary' }));
+            const completeFactory = vi.fn(() => complete);
+            const { extension } = createCanvasTools({
+                dataDir,
+                workspaceId: WS,
+                processId: PROCESS_ID,
+                processStore,
+                canvasStore: store,
+                getCanvasHostApisEnabled: () => true,
+                completeFactory,
+            });
+            const created = await extension.handler({
+                ...BUILD_ARGS,
+                capabilities: [{ name: 'summarize', description: 'summarize', async: true }],
+                capabilitiesJs: `capabilities = { summarize: async function (s, p, host) { return { summary: await host.complete('sum it up') }; } };`,
+            } as any) as any;
+
+            const run = await extension.handler({ canvasId: created.canvasId, capability: 'summarize' } as any) as any;
+            expect(run.success).toBe(true);
+            expect(JSON.parse(store.getCanvas(WS, created.canvasId)!.content).summary).toBe('a summary');
+            expect(completeFactory).toHaveBeenCalledWith({
+                workspaceId: WS,
+                canvasId: created.canvasId,
+                capability: 'summarize',
+                processId: PROCESS_ID,
+            });
+        });
+
         it('rejects malformed build input', async () => {
             const { extension } = buildTools();
             const noCapName = await extension.handler({ ...BUILD_ARGS, capabilities: [{ name: 'Bad Name', description: 'x' }] } as any) as any;
@@ -350,6 +448,151 @@ describe('canvas LLM tools', () => {
 
             const noUi = await extension.handler({ ...BUILD_ARGS, uiHtml: '' } as any) as any;
             expect(noUi.success).toBe(false);
+        });
+
+        // --- JSX authoring -------------------------------------------------
+
+        it('tells the model that JSX authoring exists, with the real library list', () => {
+            const { extension } = buildTools();
+            const description = extension.description ?? '';
+
+            expect(description).toContain('uiJsx');
+            expect(description).toContain('window.CanvasExtension');
+            expect(description).toContain('mount(rootEl, host)');
+            // The list is generated from the registry, so it cannot drift from
+            // what the bootstrap will actually load.
+            for (const id of CANVAS_LIBRARY_IDS) {
+                expect(description).toContain(id);
+            }
+            expect(description).toContain('window.Recharts');
+            // The two footguns worth spending description budget on.
+            expect(description).toContain('never write an import');
+            expect(description).toContain('FIXED prebuilt subset');
+
+            const schema = extension.parameters as { properties: Record<string, { items?: { enum?: string[] } }> };
+            expect(schema.properties.libraries.items?.enum).toEqual([...CANVAS_LIBRARY_IDS]);
+        });
+
+        const JSX_BUILD_ARGS = {
+            title: 'Sales',
+            description: 'A sales chart',
+            capabilities: [{ name: 'refresh', description: 'Refresh the data' }],
+            capabilitiesJs: 'capabilities = { refresh: function (s) { return s; } };',
+            uiJsx: [
+                'function App({ state }) {',
+                '  return <div className="p-4"><h1>{state.title}</h1></div>;',
+                '}',
+                'window.CanvasExtension = {',
+                '  mount(rootEl, host) {',
+                '    const root = ReactDOM.createRoot(rootEl);',
+                '    host.onState(state => root.render(<App state={state} />));',
+                '  },',
+                '};',
+            ].join('\n'),
+            libraries: ['recharts', 'tailwind'],
+            initialState: { title: 'Q3' },
+        };
+
+        it('compiles uiJsx to ui.js, keeps the source, and records the resolved libraries', async () => {
+            const { extension } = buildTools();
+            const result = await extension.handler(JSX_BUILD_ARGS as any) as any;
+            expect(result.success).toBe(true);
+
+            const ext = store.getExtension(WS, result.canvasId)!;
+            // Transformed with the CLASSIC runtime: no module import survives,
+            // because the iframe resolves nothing — React is a global there.
+            expect(ext.uiJs).toContain('React.createElement');
+            expect(ext.uiJs).not.toContain('<div');
+            expect(ext.uiJs).not.toContain('jsx-runtime');
+            // The JSX source is kept verbatim so version history shows what the
+            // AI actually wrote.
+            expect(ext.uiJsx).toBe(JSX_BUILD_ARGS.uiJsx);
+            // No ui.html for a JSX extension.
+            expect(ext.uiHtml).toBe('');
+            // `react` is implied and ordered ahead of recharts; the stylesheet
+            // comes first so nothing paints unstyled.
+            expect(ext.manifest.libraries).toEqual(['tailwind', 'react', 'recharts']);
+        });
+
+        it('returns a tool error with a line number for a JSX syntax error and saves nothing', async () => {
+            const { extension } = buildTools();
+            const result = await extension.handler({
+                ...JSX_BUILD_ARGS,
+                uiJsx: 'window.CanvasExtension = { mount() { return <div>unclosed; } };',
+            } as any) as any;
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('uiJsx failed to compile');
+            expect(result.error).toMatch(/line \d+/);
+            // Nothing was created — a blank saved canvas is exactly the failure
+            // mode this guards.
+            expect(store.listCanvases(WS)).toHaveLength(0);
+        });
+
+        it('does not overwrite an existing canvas when the JSX fails to compile', async () => {
+            const { extension } = buildTools();
+            const created = await extension.handler(JSX_BUILD_ARGS as any) as any;
+            const before = store.getExtension(WS, created.canvasId)!;
+
+            const failed = await extension.handler({
+                ...JSX_BUILD_ARGS,
+                canvasId: created.canvasId,
+                uiJsx: 'window.CanvasExtension = { mount() { return <div>; } };',
+            } as any) as any;
+
+            expect(failed.success).toBe(false);
+            expect(store.getExtension(WS, created.canvasId)).toEqual(before);
+            // Revision untouched: create (1) + saveExtension (2), no third bump.
+            expect(store.getCanvas(WS, created.canvasId)!.revision).toBe(2);
+        });
+
+        it('rejects a library outside the allowlist', async () => {
+            const { extension } = buildTools();
+            const result = await extension.handler({ ...JSX_BUILD_ARGS, libraries: ['d3'] } as any) as any;
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Unknown canvas library "d3"');
+            expect(result.error).toContain('recharts');
+            expect(store.listCanvases(WS)).toHaveLength(0);
+        });
+
+        it('rejects uiHtml and uiJsx together, and libraries on a uiHtml build', async () => {
+            const { extension } = buildTools();
+            const both = await extension.handler({ ...JSX_BUILD_ARGS, uiHtml: '<div></div>' } as any) as any;
+            expect(both.success).toBe(false);
+            expect(both.error).toContain('not both');
+
+            const htmlWithLibs = await extension.handler({ ...BUILD_ARGS, libraries: ['recharts'] } as any) as any;
+            expect(htmlWithLibs.success).toBe(false);
+            expect(htmlWithLibs.error).toContain('libraries only applies to uiJsx');
+        });
+
+        it('enforces the 512 KB cap on uiJsx', async () => {
+            const { extension } = buildTools();
+            const huge = `// ${'x'.repeat(520 * 1024)}\nwindow.CanvasExtension = { mount() {} };`;
+            const result = await extension.handler({ ...JSX_BUILD_ARGS, uiJsx: huge } as any) as any;
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('512 KB');
+            expect(store.listCanvases(WS)).toHaveLength(0);
+        });
+
+        it('switching an existing canvas from uiHtml to uiJsx keeps its state', async () => {
+            const { extension } = buildTools();
+            const created = await extension.handler(BUILD_ARGS as any) as any;
+            await extension.handler({ canvasId: created.canvasId, capability: 'add_card', params: { id: 'c1', title: 'A' } } as any);
+
+            const updated = await extension.handler({
+                ...JSX_BUILD_ARGS,
+                canvasId: created.canvasId,
+                title: undefined,
+            } as any) as any;
+
+            expect(updated.success).toBe(true);
+            expect(JSON.parse(store.getCanvas(WS, created.canvasId)!.content).cards).toHaveLength(1);
+            const ext = store.getExtension(WS, created.canvasId)!;
+            expect(ext.uiJs).toContain('React.createElement');
+            expect(ext.uiHtml).toBe('');
         });
 
         it('runs a capability and returns the new state', async () => {
@@ -394,6 +637,118 @@ describe('canvas LLM tools', () => {
             expect(result.success).toBe(true);
             expect(result.type).toBe('extension');
             expect(result.extensionManifest.capabilities[0].name).toBe('add_card');
+        });
+    });
+
+    /**
+     * How data gets INTO `canvases/<id>/files/` in v1: the AI attaches it, and
+     * the artifact reads it back with `CanvasHost.readFile`. There is no user
+     * upload route and no write path from the iframe.
+     */
+    describe('extension_canvas — attached files', () => {
+        const AUTHOR = {
+            title: 'Sales',
+            description: 'Revenue chart',
+            capabilities: [{ name: 'refresh', description: 'Refresh' }],
+            capabilitiesJs: 'capabilities = { refresh: function (s) { return s; } };',
+            uiHtml: '<div></div>',
+        };
+
+        it('writes files at BUILD time and reads them back through the store', async () => {
+            const { extension } = buildTools();
+            const result = await extension.handler({
+                ...AUTHOR,
+                files: [
+                    { path: 'data.csv', content: 'month,revenue\njan,10\n' },
+                    { path: 'raw/jan.json', content: '{"n":1}' },
+                ],
+            }) as any;
+
+            expect(result.success).toBe(true);
+            expect(result.files).toEqual([
+                { path: 'data.csv', size: 21, encoding: 'utf-8' },
+                { path: 'raw/jan.json', size: 7, encoding: 'utf-8' },
+            ]);
+            const read = store.readCanvasFile(WS, result.canvasId, 'data.csv');
+            expect(read.ok).toBe(true);
+            if (read.ok) expect(read.file.content).toBe('month,revenue\njan,10\n');
+        });
+
+        it('attaches files to an existing canvas without re-authoring the UI', async () => {
+            const { extension } = buildTools();
+            const created = await extension.handler(AUTHOR) as any;
+
+            const attached = await extension.handler({
+                canvasId: created.canvasId,
+                files: [{ path: 'data.csv', content: 'a,b\n' }],
+            }) as any;
+
+            expect(attached.success).toBe(true);
+            expect(attached.files).toEqual([{ path: 'data.csv', size: 4, encoding: 'utf-8' }]);
+            // The extension documents are untouched — this is not a rebuild.
+            expect(store.getExtension(WS, created.canvasId)?.uiHtml).toBe('<div></div>');
+        });
+
+        it('decodes base64 file content', async () => {
+            const { extension } = buildTools();
+            const bytes = Buffer.from([0x00, 0xff, 0x10]);
+            const result = await extension.handler({
+                ...AUTHOR,
+                files: [{ path: 'logo.png', content: bytes.toString('base64'), encoding: 'base64' }],
+            }) as any;
+
+            expect(result.success).toBe(true);
+            const read = store.readCanvasFile(WS, result.canvasId, 'logo.png');
+            expect(read.ok).toBe(true);
+            if (read.ok) expect(Buffer.from(read.file.content, 'base64')).toEqual(bytes);
+        });
+
+        it('refuses a traversing path and writes nothing', async () => {
+            const { extension } = buildTools();
+            const created = await extension.handler(AUTHOR) as any;
+
+            const result = await extension.handler({
+                canvasId: created.canvasId,
+                files: [{ path: '../canvas.json', content: 'pwned' }],
+            }) as any;
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Invalid file path');
+            // The descriptor one directory up is intact.
+            expect(store.getCanvas(WS, created.canvasId)?.type).toBe('extension');
+        });
+
+        it('rejects a malformed files array before writing any of it', async () => {
+            const { extension } = buildTools();
+            const created = await extension.handler(AUTHOR) as any;
+
+            const result = await extension.handler({
+                canvasId: created.canvasId,
+                files: [{ path: 'ok.csv', content: 'a\n' }, { path: 'bad.csv' }],
+            }) as any;
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('content string');
+            expect(store.listCanvasFiles(WS, created.canvasId)).toEqual([]);
+        });
+
+        it('rejects an unknown canvas and an invalid encoding', async () => {
+            const { extension } = buildTools();
+
+            const missing = await extension.handler({
+                canvasId: 'no-such-canvas',
+                files: [{ path: 'a.csv', content: 'x' }],
+            }) as any;
+            expect(missing.success).toBe(false);
+            expect(missing.error).toContain('Canvas not found');
+
+            const created = await extension.handler(AUTHOR) as any;
+            const bad = await extension.handler({
+                canvasId: created.canvasId,
+                files: [{ path: 'a.csv', content: 'x', encoding: 'hex' }],
+            }) as any;
+            expect(bad.success).toBe(false);
+            expect(bad.error).toContain('encoding');
         });
     });
 

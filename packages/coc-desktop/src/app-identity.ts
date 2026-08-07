@@ -7,6 +7,7 @@
  */
 
 import * as path from 'path';
+import { elevationAboutLine, type ElevationState } from './elevation';
 
 /** Product name shown in the menu bar, dock, window title, and About panel. */
 export const APP_NAME = 'CoC';
@@ -51,11 +52,18 @@ export interface AboutPanelOptions {
  * Builds the About-panel options: always the CoC name + copyright + the desktop
  * version, plus the brand icon and the underlying Electron build when available.
  * On macOS this renders as e.g. "CoC — Version 0.1.0 (Electron 35.7.5)".
+ *
+ * When an elevation state is supplied it is appended to that same free-form
+ * detail line — e.g. "Electron 35.7.5 — Running as administrator" — so the
+ * About panel answers whether the app was started with admin/root privileges.
+ * `elevationAboutLine` decides when the line is worth showing (see elevation.ts).
  */
 export function buildAboutPanelOptions(opts: {
     version: string;
     iconPath?: string | null;
     electronVersion?: string;
+    platform?: NodeJS.Platform;
+    elevation?: ElevationState;
 }): AboutPanelOptions {
     const about: AboutPanelOptions = {
         applicationName: APP_NAME,
@@ -65,8 +73,15 @@ export function buildAboutPanelOptions(opts: {
     if (opts.iconPath) {
         about.iconPath = opts.iconPath;
     }
-    if (opts.electronVersion) {
-        about.version = `Electron ${opts.electronVersion}`;
+    const elevationLine = opts.elevation
+        ? elevationAboutLine(opts.platform ?? process.platform, opts.elevation)
+        : undefined;
+    const details = [
+        opts.electronVersion ? `Electron ${opts.electronVersion}` : undefined,
+        elevationLine,
+    ].filter((part): part is string => Boolean(part));
+    if (details.length > 0) {
+        about.version = details.join(' — ');
     }
     return about;
 }

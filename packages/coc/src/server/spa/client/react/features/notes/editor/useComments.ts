@@ -149,12 +149,17 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
             createdAt: now,
         };
 
-        const result = await notesApi.createThread(wsId, path, newThread, rootRef.current);
-        const created = result.thread;
-        setAllThreads(prev => sortThreads([...prev, created]));
-        setSelectedThreadId(created.id);
-        onThreadSelectRef.current?.(created.id);
-        return created;
+        try {
+            const result = await notesApi.createThread(wsId, path, newThread, rootRef.current);
+            const created = result.thread;
+            setAllThreads(prev => sortThreads([...prev, created]));
+            setSelectedThreadId(created.id);
+            onThreadSelectRef.current?.(created.id);
+            return created;
+        } catch (e: any) {
+            setError(e?.message ?? 'Failed to create comment');
+            throw e;
+        }
     }, []);
 
     const resolveThread = useCallback(async (threadId: string) => {

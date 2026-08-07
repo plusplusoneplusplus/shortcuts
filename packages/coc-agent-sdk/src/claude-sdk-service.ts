@@ -40,6 +40,7 @@ import { sdkServiceRegistry, CLAUDE_PROVIDER } from './sdk-service-registry';
 import { dynamicImportModule } from './sdk-esm-loader';
 import { preferUnpackedPath } from './asar-path';
 import { getSDKLogger } from './logger';
+import { createMidTurnUsagePoller, type MidTurnTokenUsage, type MidTurnUsagePoller } from './mid-turn-usage';
 import { CocToolRuntime } from './llm-tools/coc-tool-runtime';
 import { cocToolBridgeServer } from './llm-tools/bridge-server';
 import { buildCocLlmToolsMcpConfig, COC_LLM_TOOLS_MCP_SERVER_NAME } from './llm-tools/mcp-config';
@@ -317,12 +318,16 @@ type ClaudePermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'p
 
 /**
  * Tools auto-approved in ask/read-only mode. Under `acceptEdits` the SDK only
- * auto-accepts file edits, so Bash and WebFetch would otherwise be denied (no
- * canUseTool callback, headless — no human to answer the prompt). Full Bash is
- * allowed because the <coc-read-only-mode> system prompt already prevents
- * editing git-tracked files; shell execution (tests, grep, etc.) is safe.
+ * auto-accepts file edits, so Bash, WebFetch and WebSearch would otherwise be
+ * denied (no canUseTool callback, headless — no human to answer the prompt).
+ * Full Bash is allowed because the <coc-read-only-mode> system prompt already
+ * prevents editing git-tracked files; shell execution (tests, grep, etc.) is
+ * safe. WebFetch and WebSearch are read-only network access — they cannot touch
+ * the filesystem or mutate the repo, so read-only mode has no reason to block
+ * them. Entries are bare tool names: a rule without scope content matches every
+ * use of that tool.
  */
-const ASK_MODE_AUTO_APPROVED_TOOLS = ['Bash', 'WebFetch'] as const;
+const ASK_MODE_AUTO_APPROVED_TOOLS = ['Bash', 'WebFetch', 'WebSearch'] as const;
 
 /**
  * MCP server config accepted by Claude Code's `query({ options: { mcpServers } })`.
@@ -949,6 +954,9 @@ export class ClaudeSDKService implements ISDKService {
         // first `result` while SDK-native background work is still pending. The
         // `finally` closes it so a thrown/aborted turn never leaks the generator.
         let inputGate: ClaudeInputGate | undefined;
+        // Mid-turn context-usage poll; replaced once the query handle exists and
+        // always disposed in the `finally`, so no timer outlives the turn.
+        let midTurnUsagePoll: MidTurnUsagePoller = { dispose: () => { /* not started yet */ } };
         const closeClaudeInput = () => inputGate?.close();
         abortController.signal.addEventListener('abort', closeClaudeInput);
 
@@ -1061,12 +1069,31 @@ export class ClaudeSDKService implements ISDKService {
             const captureContextUsageThenClose = async (): Promise<void> => {
                 const gate = inputGate;
                 if (!gate || gate.isClosed) return;
+                // Stop polling before the authoritative read, so no mid-turn
+                // value can land after the final one and no poll races teardown.
+                midTurnUsagePoll.dispose();
                 if (!contextUsageCaptured) {
                     contextUsageCaptured = true;
                     tokenUsage = addClaudeContextUsage(tokenUsage, await this.safeGetClaudeContextUsage(handle));
                 }
                 gate.close();
             };
+
+            // Claude has no mid-turn usage event, so the meter is fed by polling
+            // the same `getContextUsage()` control request the turn-end capture
+            // uses — timeout-guarded and failure-swallowed inside
+            // `safeGetClaudeContextUsage`. Only while the input gate is open:
+            // closing it tears the subprocess down and rejects control requests.
+            midTurnUsagePoll = createMidTurnUsagePoller({
+                callback: options.onTokenUsage,
+                isActive: () =>
+                    !abortController.signal.aborted &&
+                    !contextUsageCaptured &&
+                    !!inputGate &&
+                    !inputGate.isClosed,
+                read: async (): Promise<MidTurnTokenUsage | undefined> =>
+                    extractClaudeContextSnapshot(await this.safeGetClaudeContextUsage(handle)),
+            });
 
             // Settlement signal for a turn whose CLI writes its final assistant
             // message (`message.stop_reason: 'end_turn'`) and then blocks on
@@ -1214,6 +1241,7 @@ export class ClaudeSDKService implements ISDKService {
             return { success: false, error: message, sessionId: currentSessionId, effectiveModel: model };
         } finally {
             clearDrainCap();
+            midTurnUsagePoll.dispose();
             // Idempotent: unblocks the streaming-input generator if the turn
             // ended via abort/throw before a settle signal closed it.
             inputGate?.close();
@@ -2597,13 +2625,18 @@ function sumClaudeMessageBreakdown(breakdown: ClaudeMessageBreakdown | undefined
     ]);
 }
 
-export function addClaudeContextUsage(current: TokenUsage | undefined, context: ClaudeContextUsage | undefined): TokenUsage | undefined {
-    if (!context) return current;
-
-    let result = current;
-    if (!result && context.apiUsage) {
-        result = addClaudeUsage(undefined, { usage: context.apiUsage, num_turns: 1 });
-    }
+/**
+ * Map a `getContextUsage()` reply onto the context fields of {@link TokenUsage},
+ * keeping only the fields the reply actually carries.
+ *
+ * Shared by the turn-end merge ({@link addClaudeContextUsage}) and the mid-turn
+ * poll, so a mid-turn snapshot is computed exactly the way the final one is.
+ * Returns `undefined` when the reply carries no context numbers at all.
+ */
+export function extractClaudeContextSnapshot(
+    context: ClaudeContextUsage | undefined,
+): MidTurnTokenUsage | undefined {
+    if (!context) return undefined;
     const tokenLimit = positiveClaudeUsageNumber(context.maxTokens);
     const currentTokens = positiveClaudeUsageNumber(context.totalTokens);
     const systemTokens = sumClaudeTokenEntries(context.systemPromptSections);
@@ -2613,23 +2646,31 @@ export function addClaudeContextUsage(current: TokenUsage | undefined, context: 
         sumClaudeTokenEntries(context.deferredBuiltinTools),
     ]);
     const conversationTokens = sumClaudeMessageBreakdown(context.messageBreakdown);
-    const hasContextSnapshot = tokenLimit != null
-        || currentTokens != null
-        || systemTokens != null
-        || toolDefinitionsTokens != null
-        || conversationTokens != null;
+    const snapshot: MidTurnTokenUsage = {
+        ...(tokenLimit != null ? { tokenLimit } : {}),
+        ...(currentTokens != null ? { currentTokens } : {}),
+        ...(systemTokens != null ? { systemTokens } : {}),
+        ...(toolDefinitionsTokens != null ? { toolDefinitionsTokens } : {}),
+        ...(conversationTokens != null ? { conversationTokens } : {}),
+    };
+    return Object.keys(snapshot).length > 0 ? snapshot : undefined;
+}
 
-    if (!result && hasContextSnapshot) {
+export function addClaudeContextUsage(current: TokenUsage | undefined, context: ClaudeContextUsage | undefined): TokenUsage | undefined {
+    if (!context) return current;
+
+    let result = current;
+    if (!result && context.apiUsage) {
+        result = addClaudeUsage(undefined, { usage: context.apiUsage, num_turns: 1 });
+    }
+    const snapshot = extractClaudeContextSnapshot(context);
+
+    if (!result && snapshot) {
         result = emptyClaudeTokenUsage();
     }
     if (!result) return undefined;
 
-    if (tokenLimit != null) result.tokenLimit = tokenLimit;
-    if (currentTokens != null) result.currentTokens = currentTokens;
-    if (systemTokens != null) result.systemTokens = systemTokens;
-    if (toolDefinitionsTokens != null) result.toolDefinitionsTokens = toolDefinitionsTokens;
-    if (conversationTokens != null) result.conversationTokens = conversationTokens;
-    return result;
+    return snapshot ? Object.assign(result, snapshot) : result;
 }
 
 export function mapClaudeRateLimitInfoToQuota(info: ClaudeRateLimitInfo): IAccountQuotaResult {

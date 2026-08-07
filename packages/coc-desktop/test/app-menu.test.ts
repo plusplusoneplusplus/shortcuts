@@ -34,6 +34,7 @@ import {
     type DevTunnelMenuInput,
 } from '../src/app-menu';
 import type { DevTunnelHostState } from '../src/devtunnel-host';
+import type { ElevationState } from '../src/elevation';
 
 type Item = MenuItemConstructorOptions;
 
@@ -511,6 +512,55 @@ describe('buildAppMenuTemplate — Debug menu (Fix 3)', () => {
             expect(handlers.onOpenLogsViewer).toHaveBeenCalledTimes(1);
             expect(handlers.onRevealLogFiles).toHaveBeenCalledTimes(1);
             expect(handlers.onToggleDevTools).toHaveBeenCalledTimes(1);
+        }
+    });
+});
+
+describe('buildAppMenuTemplate — elevation status row', () => {
+    /** The submenu that hosts "About <app>": the app menu on macOS, Help elsewhere. */
+    const aboutHost = (platform: NodeJS.Platform, elevation?: ElevationState): Item[] => {
+        const template = buildAppMenuTemplate(platform, 'CoC', {
+            onCheckForUpdates: vi.fn(),
+            elevation,
+        });
+        return submenuOf(
+            platform === 'darwin' ? template[0] : template.find((i) => i.label === 'Help')!,
+        );
+    };
+
+    it('adds a disabled status row directly under "About CoC" on Windows', () => {
+        const items = aboutHost('win32', 'elevated');
+        const aboutIdx = labelIdx(items, 'About CoC');
+        expect(aboutIdx).toBeGreaterThanOrEqual(0);
+        expect(items[aboutIdx + 1].label).toBe('Elevation: Administrator');
+        expect(items[aboutIdx + 1].enabled).toBe(false);
+        // The separator + update items still follow, just shifted by one row.
+        expect(isSeparator(items[aboutIdx + 2])).toBe(true);
+        expect(items[aboutIdx + 3].label).toBe(CHECK_FOR_UPDATES_LABEL);
+        expect(items[aboutIdx + 4].label).toBe(UPDATE_CHANNEL_LABEL);
+    });
+
+    it('renders the standard and unknown states on Windows too', () => {
+        expect(labelIdx(aboutHost('win32', 'standard'), 'Elevation: Standard user')).toBeGreaterThan(
+            -1,
+        );
+        expect(labelIdx(aboutHost('win32', 'unknown'), 'Elevation: Unknown')).toBeGreaterThan(-1);
+    });
+
+    it('adds the row under About in the macOS app submenu, with root wording', () => {
+        const items = aboutHost('darwin', 'elevated');
+        const aboutIdx = labelIdx(items, 'About CoC');
+        expect(items[aboutIdx + 1].label).toBe('Elevation: Root');
+        expect(items[aboutIdx + 1].enabled).toBe(false);
+    });
+
+    it('leaves the menu unchanged when no elevation state is supplied', () => {
+        for (const platform of ['darwin', 'win32'] as const) {
+            const items = aboutHost(platform, undefined);
+            expect(items.some((i) => String(i.label ?? '').startsWith('Elevation:'))).toBe(false);
+            const aboutIdx = labelIdx(items, 'About CoC');
+            expect(isSeparator(items[aboutIdx + 1])).toBe(true);
+            expect(items[aboutIdx + 2].label).toBe(CHECK_FOR_UPDATES_LABEL);
         }
     });
 });

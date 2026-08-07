@@ -680,7 +680,7 @@ export function buildCanvasToolsAddon(
     store: ProcessStore | undefined,
     workspaceId: string | undefined,
     processId: string | undefined,
-    opts?: { enabled?: boolean },
+    opts?: { enabled?: boolean; hostApisEnabled?: boolean },
 ): { tools: Tool<any>[]; suffix: string } {
     if (!dataDir || !workspaceId) {
         return { tools: [], suffix: '' };
@@ -692,11 +692,18 @@ export function buildCanvasToolsAddon(
         return { tools: [], suffix: '' };
     }
 
+    // Read lazily, and only when an async capability is actually invoked: the
+    // gate has to reflect the admin toggle at RUN time, not at the moment the
+    // tools were built for this turn.
+    const getCanvasHostApisEnabled = (): boolean => opts?.hostApisEnabled
+        ?? resolveConfig(path.join(dataDir, CONFIG_FILE_NAME)).features.canvasHostApis === true;
+
     const { write, read, extension } = createCanvasTools({
         dataDir,
         workspaceId,
         processId,
         processStore: store,
+        getCanvasHostApisEnabled,
     });
 
     // No prose suffix — the canvas tool descriptions carry their own guidance.

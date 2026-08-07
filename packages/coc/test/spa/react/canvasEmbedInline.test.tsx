@@ -6,12 +6,13 @@
  */
 
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
     get: vi.fn(),
     getExtension: vi.fn(),
+    invokeCapability: vi.fn(),
     client: null as unknown,
 }));
 
@@ -33,11 +34,13 @@ vi.mock('@excalidraw/excalidraw', () => ({
 import { MarkdownView } from '../../../src/server/spa/client/react/shared/MarkdownView';
 import { KustoEmbedGroupProvider } from '../../../src/server/spa/client/react/shared/KustoEmbedGroup';
 import { chatMarkdownToHtml } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
+import { CANVAS_HOST_VERSION } from '../../../src/server/spa/client/react/features/canvas/canvas-host-protocol';
 
 mocks.client = {
     canvases: {
         get: mocks.get,
         getExtension: mocks.getExtension,
+        invokeCapability: mocks.invokeCapability,
     },
 };
 
@@ -121,6 +124,60 @@ describe('inline canvas:// embed', () => {
         expect(iframe.getAttribute('srcdoc')).toContain('window.CanvasHost');
         expect(iframe.getAttribute('srcdoc')).toContain('Notes Chat');
         expect(screen.queryByTestId('mock-excalidraw')).toBeNull();
+    });
+
+    /**
+     * The inline embed mounts the same ExtensionCanvasView as the side panel, so
+     * the CanvasHost request/response bridge must round-trip here too — an embed
+     * that got the v1 fire-and-forget bootstrap would hang every `await`.
+     */
+    it('round-trips a CanvasHost request through the inline embed', async () => {
+        mocks.get.mockResolvedValue({
+            id: 'notes-chat-header-redesign-d68498',
+            workspaceId: 'ws-1',
+            title: 'Notes Chat Header Redesign',
+            type: 'extension',
+            content: JSON.stringify({ pinned: false }),
+            revision: 11,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+            lastEditor: 'user',
+        });
+        mocks.getExtension.mockResolvedValue(EXTENSION);
+        mocks.invokeCapability.mockResolvedValue({
+            id: 'notes-chat-header-redesign-d68498',
+            workspaceId: 'ws-1',
+            title: 'Notes Chat Header Redesign',
+            type: 'extension',
+            content: JSON.stringify({ pinned: true }),
+            revision: 12,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+            lastEditor: 'user',
+        });
+
+        const html = chatMarkdownToHtml('canvas://notes-chat-header-redesign-d68498', 'ws-1', { canvasEmbedEnabled: true });
+        render(<MarkdownView html={html} />);
+
+        const iframe = await screen.findByTestId('extension-canvas-iframe') as HTMLIFrameElement;
+        expect(iframe.getAttribute('srcdoc')).toContain(`version: ${CANVAS_HOST_VERSION}`);
+
+        const postMessage = vi.fn();
+        Object.defineProperty(iframe.contentWindow, 'postMessage', { value: postMessage, configurable: true });
+
+        const event = new MessageEvent('message', {
+            data: { __canvasHost: true, id: 5, type: 'invoke-capability', name: 'toggle_pin', params: {} },
+        });
+        Object.defineProperty(event, 'source', { value: iframe.contentWindow, enumerable: true });
+        act(() => { window.dispatchEvent(event); });
+
+        await waitFor(() => expect(postMessage).toHaveBeenCalledWith({
+            __canvasHost: true,
+            type: 'response',
+            id: 5,
+            ok: true,
+            result: { revision: 12, state: { pinned: true } },
+        }, '*'));
     });
 
     it('renders a Kusto canvas through the interactive Kusto view', async () => {

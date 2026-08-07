@@ -65,4 +65,67 @@ describe('buildAboutPanelOptions', () => {
         );
         expect(buildAboutPanelOptions({ version: '0.1.0' }).version).toBeUndefined();
     });
+
+    it('appends the elevation status to the detail line on Windows', () => {
+        expect(
+            buildAboutPanelOptions({
+                version: '0.1.0',
+                electronVersion: '35.7.5',
+                platform: 'win32',
+                elevation: 'elevated',
+            }).version,
+        ).toBe('Electron 35.7.5 — Running as administrator');
+
+        expect(
+            buildAboutPanelOptions({
+                version: '0.1.0',
+                electronVersion: '35.7.5',
+                platform: 'win32',
+                elevation: 'standard',
+            }).version,
+        ).toBe('Electron 35.7.5 — Running as standard user');
+    });
+
+    it('shows the elevation line alone when there is no electron version', () => {
+        expect(
+            buildAboutPanelOptions({ version: '0.1.0', platform: 'win32', elevation: 'elevated' })
+                .version,
+        ).toBe('Running as administrator');
+    });
+
+    it('only mentions elevation off Windows when running as root', () => {
+        expect(
+            buildAboutPanelOptions({
+                version: '0.1.0',
+                electronVersion: '35.7.5',
+                platform: 'darwin',
+                elevation: 'elevated',
+            }).version,
+        ).toBe('Electron 35.7.5 — Running as root');
+
+        expect(
+            buildAboutPanelOptions({
+                version: '0.1.0',
+                electronVersion: '35.7.5',
+                platform: 'darwin',
+                elevation: 'standard',
+            }).version,
+        ).toBe('Electron 35.7.5');
+    });
+
+    it('omits the elevation line when the state is unknown or absent', () => {
+        expect(
+            buildAboutPanelOptions({
+                version: '0.1.0',
+                electronVersion: '35.7.5',
+                platform: 'win32',
+                elevation: 'unknown',
+            }).version,
+        ).toBe('Electron 35.7.5');
+
+        expect(
+            buildAboutPanelOptions({ version: '0.1.0', electronVersion: '35.7.5', platform: 'win32' })
+                .version,
+        ).toBe('Electron 35.7.5');
+    });
 });

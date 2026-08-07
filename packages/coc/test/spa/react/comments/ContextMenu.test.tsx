@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
-import { ContextMenu, clampMenuPosition } from '../../../../src/server/spa/client/react/tasks/comments/ContextMenu';
+import { ContextMenu, clampMenuPosition, clampSubmenuVertical } from '../../../../src/server/spa/client/react/tasks/comments/ContextMenu';
 
 afterEach(cleanup);
 
@@ -379,6 +379,122 @@ describe('ContextMenu', () => {
         const submenu = screen.getByTestId('context-submenu-0');
         expect(submenu.className).toContain('right-full');
         expect(submenu.className).not.toContain('left-full');
+    });
+
+    // ── Submenu vertical clamping ─────────────────────────────────
+
+    describe('clampSubmenuVertical', () => {
+        const anchor = (top: number, height = 20) => ({ top, bottom: top + height, height });
+
+        it('leaves a short submenu untouched', () => {
+            expect(clampSubmenuVertical(anchor(100), 200, 768)).toEqual({ topOffset: 0, maxHeight: null });
+        });
+
+        it('caps to the space below when below is the larger side', () => {
+            // top=100 → below = 768-100-8 = 660, above = 120-8 = 112
+            expect(clampSubmenuVertical(anchor(100), 2000, 768)).toEqual({ topOffset: 0, maxHeight: 660 });
+        });
+
+        it('grows upwards and caps to the space above when above is larger', () => {
+            // top=740 → below = 20, above = 760-8 = 752
+            expect(clampSubmenuVertical(anchor(740), 2000, 768)).toEqual({ topOffset: -(752 - 20), maxHeight: 752 });
+        });
+
+        it('keeps an upward-growing panel fully inside the viewport', () => {
+            const a = anchor(700);
+            const { topOffset, maxHeight } = clampSubmenuVertical(a, 5000, 768);
+            const panelTop = a.top + topOffset;
+            expect(panelTop).toBeGreaterThanOrEqual(8);
+            expect(panelTop + (maxHeight as number)).toBeLessThanOrEqual(768);
+        });
+
+        it('never returns a negative max height for an anchor above the viewport top', () => {
+            const { maxHeight } = clampSubmenuVertical({ top: -50, bottom: -30, height: 20 }, 2000, 768);
+            expect(maxHeight).toBeGreaterThanOrEqual(0);
+        });
+    });
+
+    it('applies maxHeight and scrolling when the submenu is taller than the space below', () => {
+        const scrollSpy = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(2000);
+        try {
+            render(
+                <ContextMenu
+                    position={{ x: 0, y: 0 }}
+                    items={[{
+                        label: 'Parent',
+                        onClick: vi.fn(),
+                        children: [{ label: 'Child', onClick: vi.fn() }],
+                    }]}
+                    onClose={vi.fn()}
+                />
+            );
+            const parent = screen.getByTestId('context-menu-item-0');
+            vi.spyOn(parent, 'getBoundingClientRect').mockReturnValue(
+                { right: 200, bottom: 120, top: 100, left: 0, width: 200, height: 20 } as DOMRect
+            );
+            fireEvent.mouseEnter(parent);
+
+            const submenu = screen.getByTestId('context-submenu-0');
+            expect(submenu.style.overflowY).toBe('auto');
+            expect(parseFloat(submenu.style.maxHeight)).toBe(window.innerHeight - 100 - 8);
+            expect(submenu.style.top).toBe('');
+        } finally {
+            scrollSpy.mockRestore();
+        }
+    });
+
+    it('grows the submenu upwards when the row sits near the bottom edge', () => {
+        const scrollSpy = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(2000);
+        try {
+            const vh = window.innerHeight;
+            render(
+                <ContextMenu
+                    position={{ x: 0, y: 0 }}
+                    items={[{
+                        label: 'Parent',
+                        onClick: vi.fn(),
+                        children: [{ label: 'Child', onClick: vi.fn() }],
+                    }]}
+                    onClose={vi.fn()}
+                />
+            );
+            const parent = screen.getByTestId('context-menu-item-0');
+            vi.spyOn(parent, 'getBoundingClientRect').mockReturnValue(
+                { right: 200, bottom: vh - 8, top: vh - 28, left: 0, width: 200, height: 20 } as DOMRect
+            );
+            fireEvent.mouseEnter(parent);
+
+            const submenu = screen.getByTestId('context-submenu-0');
+            const expectedMax = vh - 8 - 8;
+            expect(parseFloat(submenu.style.maxHeight)).toBe(expectedMax);
+            expect(parseFloat(submenu.style.top)).toBe(-(expectedMax - 20));
+            expect(submenu.style.overflowY).toBe('auto');
+        } finally {
+            scrollSpy.mockRestore();
+        }
+    });
+
+    it('leaves a submenu that fits unstyled by the clamp', () => {
+        render(
+            <ContextMenu
+                position={{ x: 0, y: 0 }}
+                items={[{
+                    label: 'Parent',
+                    onClick: vi.fn(),
+                    children: [{ label: 'Child', onClick: vi.fn() }],
+                }]}
+                onClose={vi.fn()}
+            />
+        );
+        const parent = screen.getByTestId('context-menu-item-0');
+        vi.spyOn(parent, 'getBoundingClientRect').mockReturnValue(
+            { right: 200, bottom: 50, top: 30, left: 0, width: 200, height: 20 } as DOMRect
+        );
+        fireEvent.mouseEnter(parent);
+
+        const submenu = screen.getByTestId('context-submenu-0');
+        expect(submenu.style.maxHeight).toBe('');
+        expect(submenu.style.overflowY).toBe('');
     });
 
     // ── Nested submenu (children within children) ──────────────────

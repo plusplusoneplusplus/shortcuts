@@ -18,6 +18,7 @@
 import type { MenuItemConstructorOptions } from 'electron';
 import type { UpdateChannel } from './update-check';
 import type { DevTunnelHostState, DevTunnelHostStatus } from './devtunnel-host';
+import { elevationStatusLabel, type ElevationState } from './elevation';
 
 /** Click handlers the application menu needs wired from `main.ts`. */
 export interface AppMenuHandlers {
@@ -43,6 +44,14 @@ export interface AppMenuHandlers {
      * and a "Toggle Developer Tools" item. Omit it to keep the menu unchanged.
      */
     debug?: DebugMenuHandlers;
+    /**
+     * Whether the app is running elevated (administrator on Windows, root
+     * elsewhere). When present, a disabled status row is added to the menu next
+     * to "About <app>" — the app submenu on macOS, the Help submenu elsewhere —
+     * so the privilege level is visible without opening the About panel. Omit it
+     * to keep the menu unchanged.
+     */
+    elevation?: ElevationState;
 }
 
 /** The "Check for Updates…" label — shared so tests and both platforms agree. */
@@ -218,6 +227,11 @@ export function buildAppMenuTemplate(
         label: `About ${appName}`,
         role: 'about',
     };
+    // Disabled status row showing the privilege level the app was started with,
+    // following the Dev Tunnel status-row pattern. Rendered right under About.
+    const elevationItems: MenuItemConstructorOptions[] = handlers.elevation
+        ? [{ label: elevationStatusLabel(platform, handlers.elevation), enabled: false }]
+        : [];
     const checkForUpdatesItem: MenuItemConstructorOptions = {
         label: CHECK_FOR_UPDATES_LABEL,
         click: handlers.onCheckForUpdates,
@@ -246,6 +260,7 @@ export function buildAppMenuTemplate(
                 label: appName,
                 submenu: [
                     aboutItem,
+                    ...elevationItems,
                     { type: 'separator' },
                     checkForUpdatesItem,
                     updateChannelItem,
@@ -293,7 +308,13 @@ export function buildAppMenuTemplate(
 
     template.push({
         label: 'Help',
-        submenu: [aboutItem, { type: 'separator' }, checkForUpdatesItem, updateChannelItem],
+        submenu: [
+            aboutItem,
+            ...elevationItems,
+            { type: 'separator' },
+            checkForUpdatesItem,
+            updateChannelItem,
+        ],
     });
     return template;
 }

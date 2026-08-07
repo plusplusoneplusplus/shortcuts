@@ -187,16 +187,66 @@ export interface CanvasCapabilityMeta {
 export interface CanvasExtensionManifest {
   description: string;
   capabilities: CanvasCapabilityMeta[];
+  /**
+   * Minimum `window.CanvasHost` protocol version the UI requires. Absent means
+   * "whatever the host offers".
+   */
+  hostVersion?: number;
+  /**
+   * Vendored libraries the compiled `uiJs` needs, dependency-resolved and in
+   * load order. Absent for a `uiHtml` extension, which loads none.
+   */
+  libraries?: string[];
 }
 
 export interface CanvasExtension {
   manifest: CanvasExtensionManifest;
-  /** Self-contained HTML+JS rendered in the panel's sandboxed iframe. */
+  /**
+   * Self-contained HTML+JS rendered in the panel's sandboxed iframe. Empty for a
+   * JSX-authored extension, which renders from `uiJs`.
+   */
   uiHtml: string;
   /** Script assigning a top-level `capabilities` object of (state, params) => nextState functions. */
   capabilitiesJs: string;
+  /**
+   * Compiled UI for a JSX-authored extension: assigns
+   * `window.CanvasExtension = { mount(rootEl, host) {} }`. Takes precedence over
+   * `uiHtml` when present.
+   */
+  uiJs?: string;
+  /** The JSX source `uiJs` was compiled from — kept for version history. */
+  uiJsx?: string;
 }
 
 export interface CanvasExtensionResponse {
   extension: CanvasExtension;
+}
+
+/**
+ * Read-only files a canvas was given — the scope an extension canvas sees
+ * through `CanvasHost.listFiles()` / `CanvasHost.readFile()`. Rooted at the
+ * canvas's own directory; there is no write endpoint.
+ */
+export type CanvasFileEncoding = 'utf-8' | 'base64';
+
+export interface CanvasFileEntry {
+  /** Path relative to the canvas files root, always `/`-separated. */
+  path: string;
+  /** Size in bytes on disk (not the length of the encoded content). */
+  size: number;
+  /** The encoding `readFile` returns this file in. */
+  encoding: CanvasFileEncoding;
+}
+
+export interface CanvasFile extends CanvasFileEntry {
+  /** UTF-8 text, or standard base64 when `encoding` is `base64`. */
+  content: string;
+}
+
+export interface ListCanvasFilesResponse {
+  files: CanvasFileEntry[];
+}
+
+export interface CanvasFileResponse {
+  file: CanvasFile;
 }
