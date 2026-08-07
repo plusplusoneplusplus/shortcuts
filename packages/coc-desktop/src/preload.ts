@@ -31,6 +31,11 @@ const SCREENSHOT_ANNOTATE_INIT_CHANNEL = 'coc-desktop:screenshot-annotate-init';
 const SCREENSHOT_ANNOTATE_DONE_CHANNEL = 'coc-desktop:screenshot-annotate-done';
 const SCREENSHOT_ANNOTATE_CANCEL_CHANNEL = 'coc-desktop:screenshot-annotate-cancel';
 const SCREENSHOT_ATTACH_CHANNEL = 'coc-desktop:screenshot-attach';
+const POPOUT_NAV_CHANNEL = 'coc-desktop:popout-nav';
+const POPOUT_NAVIGATE_CHANNEL = 'coc-desktop:popout-navigate';
+const POPOUT_OPEN_EXTERNAL_CHANNEL = 'coc-desktop:popout-open-external';
+const POPOUT_COPY_URL_CHANNEL = 'coc-desktop:popout-copy-url';
+const POPOUT_STATE_CHANNEL = 'coc-desktop:popout-state';
 
 /** Shape of an Electron `found-in-page` result, as relayed to the renderer. */
 interface FindResult {
@@ -58,6 +63,14 @@ interface AnnotateInitPayload {
     imageDataUrl: string;
     width: number;
     height: number;
+}
+
+/** Navigation snapshot the main process pushes to a pop-out's chrome bar. */
+interface PopOutState {
+    url: string;
+    canGoBack: boolean;
+    canGoForward: boolean;
+    loading: boolean;
 }
 
 const api = {
@@ -129,6 +142,24 @@ const api = {
             const listener = (_event: unknown, pngDataUrl: string) => callback(pngDataUrl);
             ipcRenderer.on(SCREENSHOT_ATTACH_CHANNEL, listener);
             return () => ipcRenderer.removeListener(SCREENSHOT_ATTACH_CHANNEL, listener);
+        },
+    },
+    /**
+     * Pop-out address-bar bridge (see popout-chrome.ts / popout-window-host.ts),
+     * used from two renderers inside the same pop-out window: the chrome strip
+     * drives `nav` / `navigate` / `openExternal` / `copyUrl` / `onState`, while
+     * the popped-out page only sends `nav` for its injected Alt+←/→, Ctrl+R and
+     * Ctrl+L shortcuts. The main process routes each request by sender.
+     */
+    popout: {
+        nav: (action: string) => ipcRenderer.send(POPOUT_NAV_CHANNEL, action),
+        navigate: (url: string) => ipcRenderer.send(POPOUT_NAVIGATE_CHANNEL, url),
+        openExternal: () => ipcRenderer.send(POPOUT_OPEN_EXTERNAL_CHANNEL),
+        copyUrl: () => ipcRenderer.send(POPOUT_COPY_URL_CHANNEL),
+        onState: (callback: (state: PopOutState) => void) => {
+            const listener = (_event: unknown, state: PopOutState) => callback(state);
+            ipcRenderer.on(POPOUT_STATE_CHANNEL, listener);
+            return () => ipcRenderer.removeListener(POPOUT_STATE_CHANNEL, listener);
         },
     },
 } as const;

@@ -3,10 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
     isSameOriginPdfChildUrl,
     PdfChildWindow,
-    PdfChildWindowParent,
     PreventUnloadEvent,
     wirePdfChildWindowClose,
-    wirePdfChildWindows,
 } from '../src/pdf-child-window';
 
 class FakeWebContents extends EventEmitter {
@@ -24,16 +22,6 @@ class FakeChildWindow extends EventEmitter implements PdfChildWindow {
 
     closeWindow(): void {
         this.emit('closed');
-    }
-}
-
-class FakeParentWebContents extends EventEmitter implements PdfChildWindowParent {
-    createWindow(window: FakeChildWindow, url: string): void {
-        this.emit('did-create-window', window, { url });
-    }
-
-    destroyContents(): void {
-        this.emit('destroyed');
     }
 }
 
@@ -140,37 +128,5 @@ describe('wirePdfChildWindowClose', () => {
 
         expect(confirmDiscard).not.toHaveBeenCalled();
         expect(event.preventDefault).not.toHaveBeenCalled();
-    });
-});
-
-describe('wirePdfChildWindows', () => {
-    const appUrl = 'http://127.0.0.1:51234';
-
-    it('wires PDF children and leaves unrelated child windows untouched', () => {
-        const parent = new FakeParentWebContents();
-        const pdfChild = new FakeChildWindow();
-        const unrelatedChild = new FakeChildWindow();
-
-        wirePdfChildWindows(parent, appUrl, { confirmDiscard: () => true });
-        parent.createWindow(pdfChild, `${appUrl}/files/report.pdf`);
-        parent.createWindow(unrelatedChild, `${appUrl}/popup?document=report.pdf`);
-
-        expect(pdfChild.webContents.listenerCount('will-prevent-unload')).toBe(1);
-        expect(unrelatedChild.webContents.listenerCount('will-prevent-unload')).toBe(0);
-    });
-
-    it('removes the child and parent listeners with their owning windows', () => {
-        const parent = new FakeParentWebContents();
-        const child = new FakeChildWindow();
-
-        wirePdfChildWindows(parent, appUrl, { confirmDiscard: () => true });
-        parent.createWindow(child, `${appUrl}/files/report.pdf`);
-        child.closeWindow();
-        parent.destroyContents();
-
-        expect(child.webContents.listenerCount('will-prevent-unload')).toBe(0);
-        expect(child.listenerCount('close')).toBe(0);
-        expect(parent.listenerCount('did-create-window')).toBe(0);
-        expect(parent.listenerCount('destroyed')).toBe(0);
     });
 });
