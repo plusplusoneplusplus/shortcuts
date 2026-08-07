@@ -24,6 +24,9 @@ import { getSpaCocClient } from '../../../api/cocClient';
 import { copyToClipboard, copyHtmlToClipboard, copyImageToClipboard, splitMarkdownSections } from '../../../utils/format';
 import { embedMathCssForCopy } from '../../../utils/snapshot-copy-utils';
 import { linkifyFilePaths } from '../../../shared/file-path-utils';
+import { getLinkHrefFromEventTarget } from '../../notes/editor/linkContextMenu';
+import { openLink } from '../../../utils/link-handler';
+import { getLinkHandlersConfig } from '../../../hooks/useLinkHandlers';
 import type { ToolGroupCategory, GroupContentItem, GroupOrderedItem } from './tool-calls/toolGroupUtils';
 import { groupConsecutiveToolChunks, filterWhisperChunks } from './tool-calls/toolGroupUtils';
 import type { WhisperGroupChunk } from './tool-calls/toolGroupUtils';
@@ -1162,7 +1165,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
     const [showRaw, setShowRaw] = useState(false);
     const [copied, setCopied] = useState(false);
     const [copiedHtml, setCopiedHtml] = useState(false);
-    const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; linkHref?: string } | null>(null);
 
     const handleContextMenu = useCallback((e: React.MouseEvent) => {
         // Shift+right-click bypasses the custom menu and falls through to the
@@ -1171,11 +1174,32 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
             return;
         }
         e.preventDefault();
-        setContextMenu({ x: e.clientX, y: e.clientY });
+        // DOM-based detection, so it works for both the assistant bubble
+        // (MarkdownView) and the user bubble (dangerouslySetInnerHTML).
+        const linkHref = getLinkHrefFromEventTarget(e.target);
+        setContextMenu({ x: e.clientX, y: e.clientY, linkHref: linkHref ?? undefined });
     }, []);
+
+    const linkHref = contextMenu?.linkHref;
 
     const contextMenuItems = useMemo((): ContextMenuItem[] => {
         const items: ContextMenuItem[] = [];
+        // Link actions come first when the right-click landed on an anchor.
+        if (linkHref) {
+            items.push({
+                label: 'Open link',
+                icon: '🔗',
+                onClick: () => { openLink(linkHref, getLinkHandlersConfig()); },
+            });
+            items.push({
+                label: 'Copy URL',
+                icon: '📋',
+                onClick: async () => {
+                    try { await copyToClipboard(linkHref); } catch {}
+                },
+            });
+            items.push({ label: '', separator: true, onClick: () => {} });
+        }
         if (onAttachContext && turnIndex != null) {
             items.push({
                 label: 'Attach as context',
@@ -1263,7 +1287,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
             }
         }
         return items;
-    }, [onAttachContext, turnIndex, turn, isUser, fetchedImages, showRaw, wsId, onPinTurn, onArchiveTurn, onDeleteTurn, onRewindTurn]);
+    }, [linkHref, onAttachContext, turnIndex, turn, isUser, fetchedImages, showRaw, wsId, onPinTurn, onArchiveTurn, onDeleteTurn, onRewindTurn]);
 
     // Detect pure-JSON assistant responses (only when stream is complete).
     const jsonDetected = useMemo(() => {
