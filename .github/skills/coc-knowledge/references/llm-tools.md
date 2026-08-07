@@ -84,5 +84,6 @@ needed — providers opt in based on `options.tools`.
 - **Per-invocation:** Each AI call gets fresh tool instances — no shared state
 - **Pre-binding:** Tools like `add_diff_comment` pre-bind context (workspace, commit) at creation
 - **Blocking tools:** `ask_user` returns a Promise resolved externally by the SPA. A needs-context response is not a skip: the result tells the AI to explain the missing context and re-ask if the question is still needed.
+- **Ask-user answer routing:** the resolvers live in each bridge's own `ExecutorRegistry`, but `pendingAskUser` is persisted in the single shared `ProcessStore` — so a foreign repo's bridge sees a matching batch and absent handles too. `MultiRepoQueueRouter` therefore addresses the owning bridge directly (root from `proc.workingDirectory`, else `metadata.workspaceId` → workspace `rootPath`; unresolvable → `false` → 404) instead of scanning, and `CLITaskExecutor.ownsProcess()` refuses a batch whose working directory is provably under a different root. Missing bridge root or missing `proc.workingDirectory` still claims; subdirectories of the bridge root count as owned.
 - **Progressive compaction:** `get_conversation` applies 5 compaction levels to fit token budgets
 - **WebSocket broadcasting:** Side-effect tools broadcast events for real-time SPA updates

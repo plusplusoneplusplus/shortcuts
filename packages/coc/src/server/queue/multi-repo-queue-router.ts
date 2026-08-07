@@ -310,31 +310,63 @@ export class MultiRepoQueueRouter extends EventEmitter {
         return handled?.value ?? false;
     }
 
-    /** Answer a pending ask-user question across all per-repo bridges. */
+    /**
+     * Resolve the repo root that owns a process, using the same priority
+     * `enqueue()` uses to route a task: the recorded `workingDirectory`, else the
+     * workspace `rootPath` behind `metadata.workspaceId`. Returns undefined when
+     * neither is available.
+     */
+    private async resolveRootPathForProcess(processId: string): Promise<string | undefined> {
+        const proc = await this.store.getProcess(processId);
+        if (!proc) return undefined;
+
+        const workingDirectory = (proc as any).workingDirectory as string | undefined;
+        if (workingDirectory) return path.resolve(workingDirectory);
+
+        const workspaceId = (proc as any).metadata?.workspaceId as string | undefined;
+        if (!workspaceId) return undefined;
+
+        const workspaces = await this.store.getWorkspaces();
+        const ws = workspaces.find((w: any) => w.id === workspaceId);
+        return ws?.rootPath ? path.resolve(ws.rootPath) : undefined;
+    }
+
+    /**
+     * Address the one bridge that owns `processId` instead of scanning.
+     *
+     * Ask-user answers must never be broadcast: the ProcessStore is shared, so a
+     * foreign bridge can match the persisted question and would run the answer
+     * under the wrong repo's queue. `getOrCreateBridge` (not a plain lookup) is
+     * right here — after a restart the owning bridge may not exist yet, and
+     * materializing it is what puts the resume task on the correct queue. An
+     * unresolvable root returns undefined → false → 404, which the client
+     * tolerates.
+     */
+    private async withOwnerBridge<T>(processId: string, action: (bridge: QueueExecutorBridge) => Promise<T>): Promise<T | undefined> {
+        const rootPath = await this.resolveRootPathForProcess(processId);
+        if (!rootPath) return undefined;
+        return action(this.getOrCreateBridge(rootPath));
+    }
+
+    /** Answer a pending ask-user question on the owning per-repo bridge. */
     async answerAskUserQuestion(processId: string, questionId: string, answer: AskUserAnswerValue): Promise<boolean> {
-        const handled = await this.dispatchToOwnerBridge(
-            async (bridge) => await bridge.answerAskUserQuestion?.(processId, questionId, answer) === true,
-            async () => true,
-        );
-        return handled?.value ?? false;
+        const handled = await this.withOwnerBridge(processId, async (bridge) =>
+            await bridge.answerAskUserQuestion?.(processId, questionId, answer) === true);
+        return handled ?? false;
     }
 
-    /** Skip a pending ask-user question across all per-repo bridges. */
+    /** Skip a pending ask-user question on the owning per-repo bridge. */
     async skipAskUserQuestion(processId: string, questionId: string): Promise<boolean> {
-        const handled = await this.dispatchToOwnerBridge(
-            async (bridge) => await bridge.skipAskUserQuestion?.(processId, questionId) === true,
-            async () => true,
-        );
-        return handled?.value ?? false;
+        const handled = await this.withOwnerBridge(processId, async (bridge) =>
+            await bridge.skipAskUserQuestion?.(processId, questionId) === true);
+        return handled ?? false;
     }
 
-    /** Resolve a pending ask-user question batch across all per-repo bridges. */
+    /** Resolve a pending ask-user question batch on the owning per-repo bridge. */
     async answerAskUserQuestions(processId: string, batchId: string, answers: AskUserAnswerInput[]): Promise<boolean> {
-        const handled = await this.dispatchToOwnerBridge(
-            async (bridge) => await bridge.answerAskUserQuestions?.(processId, batchId, answers) === true,
-            async () => true,
-        );
-        return handled?.value ?? false;
+        const handled = await this.withOwnerBridge(processId, async (bridge) =>
+            await bridge.answerAskUserQuestions?.(processId, batchId, answers) === true);
+        return handled ?? false;
     }
 
     /**
