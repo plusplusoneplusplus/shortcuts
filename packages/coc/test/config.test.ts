@@ -823,9 +823,8 @@ timeout: 300
             expect(result.resolved.output).toBe(DEFAULT_CONFIG.output);
             expect(result.resolved.approvePermissions).toBe(DEFAULT_CONFIG.approvePermissions);
             expect(result.resolved.persist).toBe(DEFAULT_CONFIG.persist);
-            for (const key of CONFIG_SOURCE_KEYS) {
-                expect(result.sources[key]).toBe('default');
-            }
+            const notDefault = CONFIG_SOURCE_KEYS.filter((key) => result.sources[key] !== 'default');
+            expect(notDefault).toEqual([]);
         });
 
         it('should mark overridden top-level fields as file', () => {
@@ -1089,6 +1088,7 @@ timeout: 300
                 '  scopeSwitcher: true',
                 '  splitWorkspacePanel: true',
                 '  schedulesInScheduledSlide: true',
+                '  canvasHostApis: true',
                 'memoryPromotion:',
                 '  batchSize: 25',
                 '  timeoutMs: 80000',
@@ -1113,9 +1113,12 @@ timeout: 300
             ].join('\n'));
             const result = getResolvedConfigWithSource(configPath);
 
-            for (const key of CONFIG_SOURCE_KEYS) {
-                expect(result.sources[key]).toBe('file');
-            }
+            // Report the offending keys by name. A bare per-key assertion says
+            // only "expected 'default' to be 'file'", which hides *which*
+            // setting drifted; the usual cause is a new config key added to
+            // CONFIG_SOURCE_KEYS without a matching line in the YAML above.
+            const notFromFile = CONFIG_SOURCE_KEYS.filter((key) => result.sources[key] !== 'file');
+            expect(notFromFile).toEqual([]);
         });
 
         it('snapshots comprehensive resolved config and sources', () => {
@@ -1304,6 +1307,7 @@ timeout: 300
                     "arxivPaperIngest": false,
                     "autoAgentProviderRouting": false,
                     "autoMemoryPromotion": true,
+                    "canvasHostApis": false,
                     "commitChatLens": true,
                     "commitChatLensDormantMode": "ghost",
                     "focusedDiff": true,
@@ -1489,6 +1493,7 @@ timeout: 300
                   "features.arxivPaperIngest": "default",
                   "features.autoAgentProviderRouting": "default",
                   "features.autoMemoryPromotion": "file",
+                  "features.canvasHostApis": "default",
                   "features.commitChatLens": "default",
                   "features.commitChatLensDormantMode": "default",
                   "features.focusedDiff": "file",

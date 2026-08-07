@@ -221,8 +221,13 @@ describe('Async git op routes', () => {
             const { jobId } = (await post()).json();
             await waitForTerminal(base(), WS_A, jobId);
 
-            expect(mockInvalidateMutable).toHaveBeenCalledWith(WS_A);
-            expect(broadcastGitChanged).toHaveBeenCalledWith(WS_A, op.name);
+            // `settle` writes the terminal status first and only then invalidates
+            // and broadcasts, so observing the terminal job does not mean the side
+            // effects have run yet. Wait for them instead of asserting immediately.
+            await vi.waitFor(() => {
+                expect(mockInvalidateMutable).toHaveBeenCalledWith(WS_A);
+                expect(broadcastGitChanged).toHaveBeenCalledWith(WS_A, op.name);
+            });
         });
 
         it('keeps jobs scoped to the requesting workspace', async () => {
@@ -231,7 +236,8 @@ describe('Async git op routes', () => {
             const job = await waitForTerminal(base(), WS_B, jobId);
 
             expect(job.workspaceId).toBe(WS_B);
-            expect(broadcastGitChanged).toHaveBeenCalledWith(WS_B, op.name);
+            // Broadcast happens after the terminal write — see the note above.
+            await vi.waitFor(() => expect(broadcastGitChanged).toHaveBeenCalledWith(WS_B, op.name));
             const crossLookup = await request(`${base()}/api/workspaces/${WS_A}/git/ops/${jobId}`);
             expect(crossLookup.status).toBe(404);
         });
