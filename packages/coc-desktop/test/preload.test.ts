@@ -36,6 +36,13 @@ import {
     SCREENSHOT_ANNOTATE_CANCEL_CHANNEL,
     SCREENSHOT_ATTACH_CHANNEL,
 } from '../src/screenshot-capture';
+import {
+    POPOUT_NAV_CHANNEL,
+    POPOUT_NAVIGATE_CHANNEL,
+    POPOUT_OPEN_EXTERNAL_CHANNEL,
+    POPOUT_COPY_URL_CHANNEL,
+    POPOUT_STATE_CHANNEL,
+} from '../src/popout-chrome';
 
 const exposeInMainWorld = vi.fn();
 const send = vi.fn();
@@ -163,5 +170,29 @@ describe('preload bridge', () => {
             SCREENSHOT_ATTACH_CHANNEL,
             expect.any(Function),
         );
+    });
+
+    it('popout nav / navigate / openExternal / copyUrl send on the real popout channels', () => {
+        const api = exposedApi();
+        api.popout.nav('back');
+        expect(send).toHaveBeenCalledWith(POPOUT_NAV_CHANNEL, 'back');
+        api.popout.navigate('https://example.com');
+        expect(send).toHaveBeenCalledWith(POPOUT_NAVIGATE_CHANNEL, 'https://example.com');
+        api.popout.openExternal();
+        expect(send).toHaveBeenCalledWith(POPOUT_OPEN_EXTERNAL_CHANNEL);
+        api.popout.copyUrl();
+        expect(send).toHaveBeenCalledWith(POPOUT_COPY_URL_CHANNEL);
+    });
+
+    it('popout.onState subscribes on the real state channel, relays the payload, and unsubscribes', () => {
+        const cb = vi.fn();
+        const unsubscribe = exposedApi().popout.onState(cb);
+        expect(on).toHaveBeenCalledWith(POPOUT_STATE_CHANNEL, expect.any(Function));
+        const listener = on.mock.calls.find((c) => c[0] === POPOUT_STATE_CHANNEL)![1];
+        const state = { url: 'http://127.0.0.1:1/#popout/canvas', canGoBack: true, canGoForward: false, loading: false };
+        listener({ sender: 'ignored' }, state);
+        expect(cb).toHaveBeenCalledWith(state);
+        unsubscribe();
+        expect(removeListener).toHaveBeenCalledWith(POPOUT_STATE_CHANNEL, expect.any(Function));
     });
 });

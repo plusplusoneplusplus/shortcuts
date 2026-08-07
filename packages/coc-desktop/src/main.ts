@@ -65,7 +65,8 @@ import {
     DEVTUNNEL_MODAL_CANCEL_CHANNEL,
     DEVTUNNEL_MODAL_SUBMIT_CHANNEL,
 } from './devtunnel-modal';
-import { wirePdfChildWindows } from './pdf-child-window';
+import { isPopOutChildUrl } from './popout-chrome';
+import { createPopOutWindow, registerPopOutIpc } from './popout-window-host';
 
 // Brand the app identity before anything builds the menu / dock / About panel.
 // In dev (electron launched against this package) this fixes the menu-bar name,
@@ -172,11 +173,30 @@ function closeSplash(): void {
  * same-origin navigation (the SPA and its sub-routes) inside the window. Covers
  * both `target=_blank`/`window.open` (window-open handler) and in-page
  * navigations (`will-navigate`).
+ *
+ * The window-open handler also intercepts pop-out-shaped opens (`#popout/*` and
+ * same-origin PDFs) and rebuilds them as chrome-bar windows — a plain Electron
+ * child window cannot be given an address bar, because a BrowserWindow's own
+ * webContents cannot be inset. Everything else still gets `{ action: 'allow' }`,
+ * so the SPA call sites that need a live handle (print preview writing into an
+ * `about:blank` child, the Teams auth popup awaiting a `postMessage`) are
+ * untouched.
  */
 function wireExternalLinkRouting(win: BrowserWindow, servedUrl: string): void {
-    win.webContents.setWindowOpenHandler(({ url }) => {
+    win.webContents.setWindowOpenHandler(({ url, frameName, features }) => {
         if (shouldOpenExternally(url, servedUrl)) {
             void shell.openExternal(url);
+            return { action: 'deny' };
+        }
+        if (isPopOutChildUrl(url, servedUrl)) {
+            createPopOutWindow({
+                url,
+                name: frameName,
+                features,
+                appUrl: servedUrl,
+                icon: loadCocIcon(),
+                confirmPdfDiscard: (pdfWindow) => confirmDiscardPdfAnnotations(pdfWindow),
+            });
             return { action: 'deny' };
         }
         return { action: 'allow' };
@@ -187,19 +207,24 @@ function wireExternalLinkRouting(win: BrowserWindow, servedUrl: string): void {
             void shell.openExternal(url);
         }
     });
-    wirePdfChildWindows(win.webContents, servedUrl, {
-        confirmDiscard: (pdfWindow) =>
-            dialog.showMessageBoxSync(pdfWindow as BrowserWindow, {
-                type: 'warning',
-                title: 'Unsaved PDF annotations',
-                message: 'This PDF has unsaved annotations.',
-                detail: 'Discard the changes and close this window?',
-                buttons: ['Discard changes and close', 'Keep open'],
-                defaultId: 1,
-                cancelId: 1,
-                noLink: true,
-            }) === 0,
-    });
+}
+
+/**
+ * Chromium's PDF viewer vetoes a close while annotations are unsaved, and
+ * Electron would otherwise leave the window open with no explanation. Ask first;
+ * only an explicit "discard" overrides the guard (see `pdf-child-window.ts`).
+ */
+function confirmDiscardPdfAnnotations(pdfWindow: BrowserWindow): boolean {
+    return dialog.showMessageBoxSync(pdfWindow, {
+        type: 'warning',
+        title: 'Unsaved PDF annotations',
+        message: 'This PDF has unsaved annotations.',
+        detail: 'Discard the changes and close this window?',
+        buttons: ['Discard changes and close', 'Keep open'],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+    }) === 0;
 }
 
 /**
@@ -886,6 +911,10 @@ async function bootstrap(): Promise<void> {
     // Register the find-in-page IPC handlers before any window loads, so the
     // injected find bar can talk to the main process as soon as it appears.
     registerFindBarIpc();
+
+    // Same for the pop-out address bar: its chrome strip talks to the main
+    // process the moment a pop-out window is built.
+    registerPopOutIpc();
 
     // AC-01: bind the global screenshot-capture accelerator on app ready, so the
     // hotkey works even before/without the main window being focused.

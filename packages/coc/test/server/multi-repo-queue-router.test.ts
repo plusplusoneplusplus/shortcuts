@@ -413,26 +413,42 @@ describe('MultiRepoQueueRouter', () => {
             bridge.dispose();
         });
 
-        it('ask-user helpers return true from the first bridge that resolves the request', async () => {
-            const { bridge } = createBridge();
+        // Ask-user requests are addressed to the process's owning bridge rather
+        // than scanned in insertion order: broadcasting an answer lands it in
+        // another repo's queue. See ask-user-answer-bridge-ownership.test.ts.
+        it('ask-user helpers dispatch only to the bridge that owns the process', async () => {
+            const { bridge, store } = createBridge();
+            await store.addProcess({
+                id: 'proc-ask',
+                type: 'chat',
+                status: 'running',
+                startTime: new Date(),
+                promptPreview: 'p',
+                fullPrompt: 'p',
+                workingDirectory: '/repo/ask-b',
+                metadata: { type: 'chat', provider: 'copilot' },
+            } as any);
             const repoA = bridge.getOrCreateBridge('/repo/ask-a');
             const repoB = bridge.getOrCreateBridge('/repo/ask-b');
             const answers = [{ questionId: 'q1', answer: 'yes' }];
 
-            vi.spyOn(repoA, 'answerAskUserQuestion').mockResolvedValue(false);
+            const answerA = vi.spyOn(repoA, 'answerAskUserQuestion').mockResolvedValue(true);
             const answerB = vi.spyOn(repoB, 'answerAskUserQuestion').mockResolvedValue(true);
             await expect(bridge.answerAskUserQuestion('proc-ask', 'q1', 'yes')).resolves.toBe(true);
             expect(answerB).toHaveBeenCalledWith('proc-ask', 'q1', 'yes');
+            expect(answerA).not.toHaveBeenCalled();
 
-            vi.spyOn(repoA, 'skipAskUserQuestion').mockResolvedValue(false);
+            const skipA = vi.spyOn(repoA, 'skipAskUserQuestion').mockResolvedValue(true);
             const skipB = vi.spyOn(repoB, 'skipAskUserQuestion').mockResolvedValue(true);
             await expect(bridge.skipAskUserQuestion('proc-ask', 'q1')).resolves.toBe(true);
             expect(skipB).toHaveBeenCalledWith('proc-ask', 'q1');
+            expect(skipA).not.toHaveBeenCalled();
 
-            vi.spyOn(repoA, 'answerAskUserQuestions').mockResolvedValue(false);
+            const batchA = vi.spyOn(repoA, 'answerAskUserQuestions').mockResolvedValue(true);
             const batchB = vi.spyOn(repoB, 'answerAskUserQuestions').mockResolvedValue(true);
             await expect(bridge.answerAskUserQuestions('proc-ask', 'batch-1', answers)).resolves.toBe(true);
             expect(batchB).toHaveBeenCalledWith('proc-ask', 'batch-1', answers);
+            expect(batchA).not.toHaveBeenCalled();
 
             bridge.dispose();
         });

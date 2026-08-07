@@ -37,6 +37,7 @@ import { HUNK_CATEGORIES, CATEGORY_LABELS } from '../../pull-requests/classifica
 import type { DiffComment } from '../../../../comments/diff-comment-types';
 import type { AnyComment } from '../../../../comments/shared-comment-types';
 import type { GitCommitItem } from './CommitList';
+import { popOutOpened } from '../../../utils/popOutWindow';
 
 export interface CommitDetailProps {
     workspaceId: string;
@@ -177,7 +178,7 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
         if (!hash) return;
         const url = buildGitReviewPopOutUrl(workspaceId, hash, lookupCloneBaseUrl(workspaceId));
         const win = window.open(url, `coc-git-review-${hash}`, 'width=1200,height=800');
-        if (win) {
+        if (popOutOpened(win)) {
             markPoppedOut(gitReviewPopOutKey(workspaceId, hash));
         }
     }, [workspaceId, hash, markPoppedOut]);

@@ -60,6 +60,7 @@ import { useGitOperationPoller } from './hooks/useGitOperationPoller';
 import { useAutoPullTimer } from './hooks/useAutoPullTimer';
 import { runAutoPullTick, buildAutoPullPollerCallbacks } from './autoPullTick';
 import { useScopedFindShortcut } from '../../hooks/useScopedFindShortcut';
+import { popOutOpened } from '../../utils/popOutWindow';
 
 /** The commit-menu target a skill run applies to. Mirrors the contextMenu state shape. */
 type SkillMenuContext = {
@@ -847,7 +848,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
         closeContextMenu();
         const url = buildGitReviewPopOutUrl(workspaceId, commit.hash, lookupCloneBaseUrl(workspaceId));
         const win = window.open(url, `coc-git-review-${commit.hash}`, 'width=1200,height=800');
-        if (win) {
+        if (popOutOpened(win)) {
             markPoppedOut(gitReviewPopOutKey(workspaceId, commit.hash));
         }
     }, [workspaceId, closeContextMenu, markPoppedOut]);

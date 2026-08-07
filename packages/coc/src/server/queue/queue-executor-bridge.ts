@@ -132,6 +132,18 @@ function pathsReferToSameWorkspace(leftPath: string, rightPath: string): boolean
     return normalizeExecutionPath(leftPath) === normalizeExecutionPath(rightPath);
 }
 
+/**
+ * True when `candidate` sits inside `root`. Both sides go through
+ * `normalizeExecutionPath`, which yields forward-slash (and WSL-aware) paths, so
+ * a prefix test is safe here. Equal paths are not "under" — callers test
+ * `pathsReferToSameWorkspace` first.
+ */
+function isUnder(root: string, candidate: string): boolean {
+    const normalizedRoot = normalizeExecutionPath(root);
+    const normalizedCandidate = normalizeExecutionPath(candidate);
+    return normalizedCandidate.startsWith(`${normalizedRoot}/`);
+}
+
 export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private readonly approvePermissions: boolean;
     private readonly defaultWorkingDirectory?: string;
@@ -236,6 +248,28 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             throw new Error(`${method} cannot run before the queue executor is wired`);
         }
         return this.queueExecutor;
+    }
+
+    /**
+     * True unless this bridge can prove the process belongs to a different repo.
+     *
+     * `getAskUserHandles(processId) === undefined` alone is ambiguous — it means
+     * either "the server restarted and my resolvers were torn down" or "I am not
+     * the bridge that owns this process" — and the ProcessStore is shared across
+     * bridges, so a foreign bridge sees the same persisted `pendingAskUser`.
+     * Ownership must therefore be confirmed separately.
+     *
+     * Deliberately permissive: a bridge with no configured root, or a process
+     * with no recorded working directory, still claims (preserves the
+     * single-bridge/CLI behavior). Only a positive mismatch disclaims.
+     */
+    private ownsProcess(proc: AIProcess): boolean {
+        const procDir = (proc as { workingDirectory?: string }).workingDirectory;
+        if (!this.defaultWorkingDirectory || !procDir) return true;
+        if (pathsReferToSameWorkspace(this.defaultWorkingDirectory, procDir)) return true;
+        // Nested-subdir tolerance: a process running in a subdirectory of this
+        // bridge's root is still ours.
+        return isUnder(this.defaultWorkingDirectory, procDir);
     }
 
     private async resolveWorkspaceIdForPath(rootPath: string): Promise<string> {
@@ -526,6 +560,8 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     async answerAskUserQuestion(processId: string, questionId: string, answer: AskUserAnswerValue): Promise<boolean> {
         const handles = this.executors.getAskUserHandles(processId);
         if (!handles) return false;
+        const proc = await this.store.getProcess(processId);
+        if (proc && !this.ownsProcess(proc)) return false;
         const resolved = handles.answerQuestion(questionId, answer);
         if (resolved) {
             await this.store.updateProcess(processId, { pendingAskUser: undefined });
@@ -536,6 +572,8 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     async skipAskUserQuestion(processId: string, questionId: string): Promise<boolean> {
         const handles = this.executors.getAskUserHandles(processId);
         if (!handles) return false;
+        const proc = await this.store.getProcess(processId);
+        if (proc && !this.ownsProcess(proc)) return false;
         const resolved = handles.skipQuestion(questionId);
         if (resolved) {
             await this.store.updateProcess(processId, { pendingAskUser: undefined });
@@ -564,7 +602,14 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         // torn down by a restart) but the persisted batch matches. Persist the
         // answer durably, clear the pending question (so the UI stops showing it
         // and it can't be double-submitted), and enqueue a resume task.
+        //
+        // `pendingAskUser` is persisted in the shared ProcessStore, so a bridge
+        // for a *different* repo sees a matching batch too. Without the
+        // ownership test it would claim the answer and enqueue the resume onto
+        // its own queue — the answer would surface under the wrong workspace
+        // while the genuinely waiting turn hung forever.
         if (!proc || pendingBatchId !== batchId) return false;
+        if (!this.ownsProcess(proc)) return false;
         return this.persistAndEnqueueAskUserResume(proc, batchId, answers);
     }
 
@@ -573,6 +618,11 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
      * `pendingAskUserAnswer` record, clear the live `pendingAskUser`, and
      * enqueue an ask_user-resume follow-up task. Returns false (→ 404) when the
      * submission does not validly answer the persisted batch.
+     *
+     * Precondition: the caller has confirmed this bridge owns `proc`
+     * (see `ownsProcess`). The resume task is enqueued onto *this* bridge's
+     * queue, so calling it from a foreign bridge runs the resumed turn under the
+     * wrong repo.
      */
     private async persistAndEnqueueAskUserResume(
         proc: AIProcess,

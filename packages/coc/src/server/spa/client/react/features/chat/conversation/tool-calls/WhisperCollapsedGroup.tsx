@@ -25,6 +25,7 @@ import type { WhisperDiffToolCall } from './buildWhisperFileDiff';
 import { clampPopoverPosition, useHoverPopover, HoverSummarySpan } from './hoverPopover';
 import { buildWhisperGroupModel, collectGroupToolCalls } from './whisperGroupModel';
 import { useWhisperSkillDetailDialog } from './WhisperSkillDetailDialog';
+import { popOutOpened } from '../../../../utils/popOutWindow';
 
 /**
  * Context emitted when a user opens the whisper diff panel from the files
@@ -555,7 +556,7 @@ function CommitHoverPopover({ commits, workspaceId, anchorRef, popoverRef, onMou
         const hash = commit.fullHash || commit.shortHash;
         const url = buildGitReviewPopOutUrl(workspaceId, hash, lookupCloneBaseUrl(workspaceId));
         const win = window.open(url, `coc-git-review-${hash}`, 'width=1200,height=800');
-        if (win) {
+        if (popOutOpened(win)) {
             markPoppedOut(gitReviewPopOutKey(workspaceId, hash));
         }
     };
