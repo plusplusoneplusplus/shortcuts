@@ -44,10 +44,13 @@ vi.mock('../../../../../../src/server/spa/client/react/features/notes/notesApi',
 
 const ANCHOR = { quotedText: 'selected words', prefix: 'before ', suffix: ' after' };
 
+const revealCommentThreadSpy = vi.fn();
+
 vi.mock('../../../../../../src/server/spa/client/react/features/notes/editor/commentAnchoring', () => ({
     createTextAnchorFromSelection: () => ANCHOR,
     findAnchorInDoc: () => null,
     applyCommentMark: vi.fn(),
+    revealCommentThread: (...args: any[]) => revealCommentThreadSpy(...args),
 }));
 
 // A minimal editor stub: non-empty selection plus the chainable command API
@@ -157,6 +160,34 @@ describe('ScratchpadPanel — comment creation', () => {
         await user.click(await screen.findByTestId('add-comment-dialog-cancel'));
         expect(mockCreateThread).not.toHaveBeenCalled();
         expect(screen.queryByTestId('add-comment-dialog-confirm')).toBeNull();
+    });
+
+    it('reveals the commented text when a comment card is clicked', async () => {
+        const user = userEvent.setup();
+        render(
+            <ScratchpadPanel
+                workspaceId="ws-1"
+                notePath="/home/user/repo/docs/design.md"
+                onClose={vi.fn()}
+                height="50%"
+            />,
+        );
+        await user.click(screen.getByTestId('mock-editor-ready'));
+        // Creating a thread is what opens the sidebar in this panel.
+        await user.click(screen.getByTestId('mock-add-comment'));
+        await user.type(await screen.findByRole('textbox'), 'Please clarify this');
+        await user.click(screen.getByTestId('add-comment-dialog-confirm'));
+
+        const card = await screen.findByTestId('comment-thread-thread-created');
+        revealCommentThreadSpy.mockClear();
+        await user.click(card);
+
+        await waitFor(() => expect(revealCommentThreadSpy).toHaveBeenCalledTimes(1));
+        const [editor, threadId, thread] = revealCommentThreadSpy.mock.calls[0];
+        expect(threadId).toBe('thread-created');
+        expect(editor).toBeTruthy();
+        // The thread is passed through so resolved cards can fall back to their anchor.
+        expect(thread?.id).toBe('thread-created');
     });
 
     it('surfaces a create failure in the comments sidebar', async () => {

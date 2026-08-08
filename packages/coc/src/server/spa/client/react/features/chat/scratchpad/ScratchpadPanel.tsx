@@ -5,7 +5,7 @@ import { CommentsSidebar } from '../../notes/editor/CommentsSidebar';
 import { AddCommentDialog } from '../../notes/editor/NotesDialogs';
 import { useComments } from '../../notes/editor/useComments';
 import { notesApi } from '../../notes/notesApi';
-import { createTextAnchorFromSelection, findAnchorInDoc, applyCommentMark } from '../../notes/editor/commentAnchoring';
+import { createTextAnchorFromSelection, findAnchorInDoc, applyCommentMark, revealCommentThread } from '../../notes/editor/commentAnchoring';
 import type { TextAnchor } from '../../notes/editor/textAnchor';
 import { ScratchpadDivider } from './ScratchpadDivider';
 import type { ScratchpadExpandMode } from './useScratchpadState';
@@ -139,26 +139,8 @@ export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound, onC
         const editor = editorRef.current;
         if (!editor || !threadId) return;
 
-        let markFrom: number | null = null;
-        let markTo: number | null = null;
-        editor.state.doc.descendants((node, pos) => {
-            if (!node.isText) return;
-            const commentMark = node.marks.find(
-                (m) => m.type.name === 'comment' && m.attrs.commentId === threadId,
-            );
-            if (commentMark) {
-                if (markFrom === null) markFrom = pos;
-                markTo = pos + node.nodeSize;
-            }
-        });
-
-        if (markFrom !== null && markTo !== null) {
-            editor.chain()
-                .setTextSelection({ from: markFrom, to: markTo })
-                .scrollIntoView()
-                .run();
-        }
-    }, []);
+        revealCommentThread(editor, threadId, comments.threads.find(t => t.id === threadId));
+    }, [comments.threads]);
 
     // ── Resolve with AI handler ─────────────────────────────────────────────
 

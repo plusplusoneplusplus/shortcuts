@@ -22,6 +22,7 @@ vi.mock('../../../../src/server/spa/client/react/layout/Router', () => ({
 
 // Mock NoteEditor to avoid pulling in the entire Tiptap dependency tree
 let capturedOnEditorReady: ((ed: any) => void) | undefined;
+let capturedOnThreadSelect: ((id: string | null) => void) | undefined;
 vi.mock('../../../../src/server/spa/client/react/features/notes/editor/NoteEditor', () => ({
     NoteEditor: (props: any) => {
         capturedOnEditorReady = props.onEditorReady;
@@ -77,6 +78,7 @@ let capturedComments: UseCommentsReturn | undefined;
 vi.mock('../../../../src/server/spa/client/react/features/notes/editor/CommentsSidebar', () => ({
     CommentsSidebar: (props: any) => {
         capturedComments = props.comments;
+        capturedOnThreadSelect = props.onThreadSelect;
         return (
             <div
                 data-testid="comments-sidebar"
@@ -119,10 +121,12 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/editor/useCommen
 // Mock commentAnchoring
 const mockFindAnchorInDoc = vi.fn(() => ({ from: 1, to: 5 }));
 const mockApplyCommentMark = vi.fn();
+const mockRevealCommentThread = vi.fn();
 vi.mock('../../../../src/server/spa/client/react/features/notes/editor/commentAnchoring', () => ({
     createTextAnchorFromSelection: vi.fn(() => ({ quotedText: 'test', prefix: '', suffix: '' })),
     findAnchorInDoc: (...args: any[]) => mockFindAnchorInDoc(...args),
     applyCommentMark: (...args: any[]) => mockApplyCommentMark(...args),
+    revealCommentThread: (...args: any[]) => mockRevealCommentThread(...args),
 }));
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -132,8 +136,10 @@ describe('NotesView — comments integration', () => {
         mockCommentsReturn = makeMockComments();
         capturedComments = undefined;
         capturedOnEditorReady = undefined;
+        capturedOnThreadSelect = undefined;
         mockFindAnchorInDoc.mockReturnValue({ from: 1, to: 5 });
         mockApplyCommentMark.mockClear();
+        mockRevealCommentThread.mockClear();
         mockUseBreakpoint.mockReturnValue({ isMobile: false, isTablet: false, isDesktop: true, breakpoint: 'desktop' as const });
         localStorage.clear();
     });
@@ -305,6 +311,35 @@ describe('NotesView — comments integration', () => {
 
         return { mockEditor, comments: capturedComments! };
     }
+
+    // ── sidebar card click → reveal in editor ───────────────────────────────
+
+    it('selecting a thread reveals the commented text in the editor', () => {
+        const thread = { id: 'thread-1', anchor: { quotedText: 'a', prefix: '', suffix: '' }, status: 'open', comments: [], createdAt: '' } as any;
+        mockCommentsReturn = makeMockComments({ threads: [thread] });
+
+        const { mockEditor } = renderWithEditor();
+        act(() => { capturedOnThreadSelect?.('thread-1'); });
+
+        expect(mockRevealCommentThread).toHaveBeenCalledWith(mockEditor, 'thread-1', thread);
+    });
+
+    it('does not reveal anything when the selection is cleared', () => {
+        renderWithEditor();
+        act(() => { capturedOnThreadSelect?.(null); });
+
+        expect(mockRevealCommentThread).not.toHaveBeenCalled();
+    });
+
+    it('does not reveal anything when no editor is ready', () => {
+        mockCommentsReturn = makeMockComments({ threads: [] });
+        localStorage.setItem('coc-notes-comments-panel-open', 'true');
+        render(<NotesView workspaceId="ws1" initialNotePath="Page1" />);
+
+        act(() => { capturedOnThreadSelect?.('thread-1'); });
+
+        expect(mockRevealCommentThread).not.toHaveBeenCalled();
+    });
 
     it('deleteThread calls unsetComment to remove the mark from the editor', async () => {
         mockCommentsReturn = makeMockComments({
