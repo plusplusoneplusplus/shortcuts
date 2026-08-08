@@ -51,6 +51,94 @@ function truncateLabel(label: string): string {
     return label.length > 12 ? `${label.slice(0, 11)}…` : label;
 }
 
+/**
+ * Tooltip values are printed unrounded — reading the exact number off a hover is
+ * the whole point of the interactive chart, so no compact/abbreviated formatting
+ * here (the y-axis ticks may still be terse).
+ */
+function exactValue(value: number): string {
+    return String(value);
+}
+
+interface TooltipEntry {
+    name: string;
+    color: string;
+    value: number;
+}
+
+/** The tooltip card itself, styled off the same tokens as the legend. */
+function TooltipCard({ label, entries }: { label: string; entries: TooltipEntry[] }) {
+    return (
+        <div
+            className="rounded-sm border border-[#8884] bg-white dark:bg-[#252526] px-2 py-1 text-[10px] text-[#616161] dark:text-[#cccccc] shadow-sm"
+            data-testid="kusto-chart-tooltip"
+        >
+            <div className="mb-0.5 font-medium">{label}</div>
+            {entries.map(entry => (
+                <div key={entry.name} className="flex items-center gap-1.5 whitespace-nowrap">
+                    <span
+                        className="inline-block w-2 h-2 rounded-sm shrink-0"
+                        style={{ backgroundColor: entry.color }}
+                    />
+                    <span>{entry.name}</span>
+                    <span className="ml-auto tabular-nums">{exactValue(entry.value)}</span>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+/** Recharts hands custom tooltip content an untyped payload bag. */
+interface TooltipContentProps {
+    active?: boolean;
+    label?: unknown;
+    payload?: { name?: string; value?: unknown; payload?: Record<string, unknown> }[];
+}
+
+/**
+ * A shared tooltip: it lists *every* visible series at the hovered x, not just
+ * the nearest mark. We read the values straight out of `ChartData` rather than
+ * off the recharts payload so the list is complete and in series order even for
+ * chart kinds whose payload only carries the hovered item.
+ */
+function makeSharedTooltip(data: ChartData, visible: number[]) {
+    return function SharedTooltip({ active, label, payload }: TooltipContentProps) {
+        if (!active) return null;
+        const raw = label ?? payload?.[0]?.payload?.__x;
+        if (raw === undefined || raw === null) return null;
+        const text = String(raw);
+        const li = data.labels.indexOf(text);
+        if (li < 0) return null;
+        const entries: TooltipEntry[] = [];
+        for (const si of visible) {
+            const value = data.series[si]?.values[li];
+            // Nulls are gaps in the series — omit them rather than showing 0.
+            if (typeof value === 'number') {
+                entries.push({ name: data.series[si].name, color: seriesColor(si), value });
+            }
+        }
+        if (entries.length === 0) return null;
+        return <TooltipCard label={text} entries={entries} />;
+    };
+}
+
+/** Pie slices get a plain per-slice tooltip; a shared one is meaningless there. */
+function makePieTooltip(data: ChartData) {
+    const valueName = data.series[0]?.name ?? 'value';
+    return function PieTooltip({ active, payload }: TooltipContentProps) {
+        const item = payload?.[0];
+        if (!active || !item || typeof item.value !== 'number') return null;
+        const name = String(item.name ?? item.payload?.name ?? '');
+        const index = Number(item.payload?.__i ?? 0);
+        return (
+            <TooltipCard
+                label={name}
+                entries={[{ name: valueName, color: seriesColor(index), value: item.value }]}
+            />
+        );
+    };
+}
+
 /** Per-label rows in the shape Recharts wants: `{ __x, s0, s1, … }`. */
 function toRechartsRows(data: ChartData): Record<string, string | number | null>[] {
     return data.labels.map((label, li) => {
@@ -75,25 +163,30 @@ function RechartsChart({ rc, data, type, compact }: RechartsChartProps) {
         ResponsiveContainer,
         LineChart, BarChart, ScatterChart, AreaChart, PieChart,
         Line, Bar, Scatter, Area, Pie, Cell,
-        XAxis, YAxis, CartesianGrid,
+        XAxis, YAxis, CartesianGrid, Tooltip,
     } = rc;
     const height = compact ? COMPACT_CHART_HEIGHT : CHART_HEIGHT;
     const rows = useMemo(() => toRechartsRows(data), [data]);
+    const visible = useMemo(() => data.series.map((_s, si) => si), [data]);
+    const SharedTooltip = useMemo(() => makeSharedTooltip(data, visible), [data, visible]);
+    const SlicedTooltip = useMemo(() => makePieTooltip(data), [data]);
 
     if (type === 'pie') {
-        // Pie uses the first series; each label is a slice.
+        // Pie uses the first series; each label is a slice. `__i` keeps the
+        // slice's palette index around for the tooltip swatch.
         const first = data.series[0];
         const slices = first
             ? data.labels
-                .map((label, i) => ({ name: label, value: Math.max(first.values[i] ?? 0, 0) }))
+                .map((label, i) => ({ name: label, value: Math.max(first.values[i] ?? 0, 0), __i: i }))
                 .filter(s => s.value > 0)
             : [];
         return (
             <ResponsiveContainer width="100%" height={height}>
                 <PieChart>
+                    <Tooltip content={<SlicedTooltip />} isAnimationActive={false} />
                     <Pie data={slices} dataKey="value" nameKey="name" isAnimationActive={false}>
-                        {slices.map((_slice: unknown, i: number) => (
-                            <Cell key={i} fill={seriesColor(i)} />
+                        {slices.map((slice: { __i: number }, i: number) => (
+                            <Cell key={i} fill={seriesColor(slice.__i)} />
                         ))}
                     </Pie>
                 </PieChart>
@@ -104,6 +197,12 @@ function RechartsChart({ rc, data, type, compact }: RechartsChartProps) {
     const axes = (
         <>
             <CartesianGrid stroke={GRID_COLOR} />
+            <Tooltip
+                content={<SharedTooltip />}
+                shared
+                isAnimationActive={false}
+                cursor={{ stroke: AXIS_COLOR, strokeDasharray: '3 3' }}
+            />
             <XAxis
                 dataKey="__x"
                 tick={{ fontSize: 10, fill: AXIS_COLOR }}

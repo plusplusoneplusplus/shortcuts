@@ -5,7 +5,7 @@
  * config → series mapping) and the config → render mapping for each chart type.
  */
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
 import type { KustoCellValue, KustoColumn } from '@plusplusoneplusplus/coc-client';
 import * as Recharts from 'recharts';
 import {
@@ -36,6 +36,16 @@ beforeAll(() => {
         Object.defineProperty(HTMLElement.prototype, prop, { configurable: true, value });
     define('offsetWidth', 640);
     define('offsetHeight', 360);
+    // Hover maths divide the bounding rect by offsetWidth to undo any CSS
+    // scale; jsdom's all-zero rect would make that 0 and push the pointer to
+    // Infinity, so report the same size here.
+    Object.defineProperty(HTMLElement.prototype, 'getBoundingClientRect', {
+        configurable: true,
+        value: () => ({
+            width: 640, height: 360, top: 0, left: 0, bottom: 360, right: 640, x: 0, y: 0,
+            toJSON() { return this; },
+        }),
+    });
     class SizedResizeObserver {
         constructor(private cb: ResizeObserverCallback) {}
         observe(target: Element) {
@@ -50,6 +60,17 @@ beforeAll(() => {
     }
     globalThis.ResizeObserver = SizedResizeObserver as unknown as typeof ResizeObserver;
 });
+
+/**
+ * Hover the plot at a horizontal offset. jsdom reports a zero-sized bounding
+ * rect, so recharts reads the pointer position straight off clientX/clientY —
+ * `x` is therefore the chart-space pixel we land on.
+ */
+function hoverPlot(wrapper: HTMLElement, x: number, y = 100) {
+    const init = { clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', bubbles: true };
+    fireEvent.mouseMove(wrapper, init);
+    fireEvent.pointerMove(wrapper, init);
+}
 
 afterEach(() => {
     cleanup();
@@ -179,5 +200,82 @@ describe('KustoChart render mapping', () => {
     it('shows an empty state when there is no data', () => {
         render(<KustoChart columns={columns} rows={[]} config={{ type: 'bar', x: 'State', y: ['Count'] }} />);
         expect(screen.getByTestId('kusto-chart-empty')).toBeInTheDocument();
+    });
+});
+
+describe('KustoChart hover tooltip', () => {
+    // Two services measured at two timestamps — a multi-series shape, with one
+    // deliberately long decimal so rounding is visible if it ever creeps in.
+    const latencyColumns: KustoColumn[] = [
+        { name: 'Bucket', type: 'string' },
+        { name: 'Service', type: 'string' },
+        { name: 'P95', type: 'real' },
+    ];
+    const latencyRows: KustoCellValue[][] = [
+        ['10:00', 'api-gateway', 9120.7043],
+        ['10:00', 'auth', 12.5],
+        ['10:05', 'api-gateway', 8000.25],
+        ['10:05', 'auth', 14],
+    ];
+    const config = { type: 'line' as const, x: 'Bucket', y: ['P95'], series: 'Service' };
+
+    async function renderAndHover() {
+        const { container } = render(<KustoChart columns={latencyColumns} rows={latencyRows} config={config} />);
+        const wrapper = await waitFor(() => {
+            const el = container.querySelector('.recharts-wrapper');
+            expect(el).not.toBeNull();
+            return el as HTMLElement;
+        });
+        hoverPlot(wrapper, 80);
+        return container;
+    }
+
+    it('lists every series at the hovered x, not just the nearest point', async () => {
+        await renderAndHover();
+        const tooltip = await screen.findByTestId('kusto-chart-tooltip');
+        expect(tooltip).toHaveTextContent('api-gateway');
+        expect(tooltip).toHaveTextContent('auth');
+        expect(tooltip).toHaveTextContent('10:00');
+    });
+
+    it('prints values at full precision', async () => {
+        await renderAndHover();
+        const tooltip = await screen.findByTestId('kusto-chart-tooltip');
+        expect(tooltip.textContent).toContain('9120.7043');
+        expect(tooltip.textContent).not.toContain('9120.704…');
+        expect(tooltip.textContent).not.toContain('9.1k');
+    });
+
+    it('omits a series that has no value at the hovered x', async () => {
+        const sparseRows: KustoCellValue[][] = [
+            ['10:00', 'api-gateway', 9120.7043],
+            ['10:05', 'auth', 14],
+        ];
+        const { container } = render(<KustoChart columns={latencyColumns} rows={sparseRows} config={config} />);
+        const wrapper = await waitFor(() => {
+            const el = container.querySelector('.recharts-wrapper');
+            expect(el).not.toBeNull();
+            return el as HTMLElement;
+        });
+        hoverPlot(wrapper, 80);
+        const tooltip = await screen.findByTestId('kusto-chart-tooltip');
+        expect(tooltip).toHaveTextContent('api-gateway');
+        expect(tooltip).not.toHaveTextContent('auth');
+    });
+
+    it('gives a pie slice its own tooltip instead of a shared one', async () => {
+        const { container } = render(
+            <KustoChart columns={columns} rows={rows} config={{ type: 'pie', x: 'State', y: ['Count'] }} />,
+        );
+        const sector = await waitFor(() => {
+            const el = container.querySelector('.recharts-sector');
+            expect(el).not.toBeNull();
+            return el as Element;
+        });
+        fireEvent.mouseEnter(sector, { clientX: 300, clientY: 180, bubbles: true });
+        fireEvent.mouseMove(sector, { clientX: 300, clientY: 180, bubbles: true });
+        const tooltip = await screen.findByTestId('kusto-chart-tooltip');
+        expect(tooltip).toHaveTextContent('Texas');
+        expect(tooltip.textContent).toContain('100');
     });
 });
