@@ -19,6 +19,7 @@ import {
     defaultTunnelId,
     parseDevTunnelConfig,
     readDevTunnelConfig,
+    setDevTunnelCluster,
     setDevTunnelEnabled,
     setDevTunnelId,
     writeDevTunnelConfig,
@@ -195,6 +196,65 @@ describe('writeDevTunnelConfig', () => {
     });
 });
 
+describe('setDevTunnelCluster — cached region of the last observed public URL', () => {
+    it('persists the cluster while preserving the tunnel ID and enabled flag', () => {
+        const { store } = memStore({
+            [CONFIG_PATH]: JSON.stringify({ tunnelId: 'box-coc', enabled: true, version: 1 }),
+        });
+        expect(setDevTunnelCluster(DATA_DIR, 'usw2', store)).toEqual({
+            tunnelId: 'box-coc',
+            enabled: true,
+            version: 1,
+            cluster: 'usw2',
+        });
+        expect(readDevTunnelConfig(DATA_DIR, store).cluster).toBe('usw2');
+    });
+
+    it('normalizes case and whitespace, and overwrites a stale cluster', () => {
+        const { store } = memStore({
+            [CONFIG_PATH]: JSON.stringify({
+                tunnelId: 'box-coc',
+                enabled: true,
+                version: 1,
+                cluster: 'usw2',
+            }),
+        });
+        expect(setDevTunnelCluster(DATA_DIR, '  EUW  ', store).cluster).toBe('euw');
+    });
+
+    it('rejects a malformed cluster without touching the file', () => {
+        const { store, files } = memStore({
+            [CONFIG_PATH]: JSON.stringify({ tunnelId: 'box-coc', enabled: true, version: 1 }),
+        });
+        const before = files.get(CONFIG_PATH);
+        for (const bad of ['', '   ', 'a.b', 'has space', '-lead']) {
+            expect(() => setDevTunnelCluster(DATA_DIR, bad, store)).toThrow(DevTunnelConfigError);
+        }
+        expect(files.get(CONFIG_PATH)).toBe(before);
+    });
+
+    it('drops a malformed persisted cluster on read instead of failing the config', () => {
+        const { store } = memStore({
+            [CONFIG_PATH]: JSON.stringify({
+                tunnelId: 'box-coc',
+                enabled: true,
+                version: 1,
+                cluster: 'not a cluster',
+            }),
+        });
+        const config = readDevTunnelConfig(DATA_DIR, store);
+        expect(config.cluster).toBeUndefined();
+        expect(config.tunnelId).toBe('box-coc');
+    });
+
+    it('treats a non-string cluster as absent (parse stays lenient)', () => {
+        expect(
+            parseDevTunnelConfig({ tunnelId: 'box-coc', enabled: false, version: 1, cluster: 7 })
+                .cluster,
+        ).toBeUndefined();
+    });
+});
+
 describe('setDevTunnelEnabled / setDevTunnelId — Start/Stop/Configure transitions', () => {
     it('Start persists enabled:true and a relaunch reads it back (auto-start on)', () => {
         const { store } = memStore();
@@ -237,6 +297,31 @@ describe('setDevTunnelEnabled / setDevTunnelId — Start/Stop/Configure transiti
     it('Configure Save rejects a blank tunnel ID', () => {
         const { store } = memStore();
         expect(() => setDevTunnelId(DATA_DIR, '   ', store)).toThrow(DevTunnelConfigError);
+    });
+
+    it('Configure Save drops a cached cluster when the tunnel ID changes', () => {
+        const { store } = memStore({
+            [CONFIG_PATH]: JSON.stringify({
+                tunnelId: 'old-id',
+                enabled: true,
+                version: 1,
+                cluster: 'usw2',
+            }),
+        });
+        expect(setDevTunnelId(DATA_DIR, 'new-id', store).cluster).toBeUndefined();
+        expect(readDevTunnelConfig(DATA_DIR, store).cluster).toBeUndefined();
+    });
+
+    it('Configure Save keeps the cached cluster when the ID is re-saved unchanged', () => {
+        const { store } = memStore({
+            [CONFIG_PATH]: JSON.stringify({
+                tunnelId: 'box-coc',
+                enabled: true,
+                version: 1,
+                cluster: 'usw2',
+            }),
+        });
+        expect(setDevTunnelId(DATA_DIR, '  box-coc  ', store).cluster).toBe('usw2');
     });
 
     it('recovers from a corrupt file by writing a fresh valid config on Start', () => {

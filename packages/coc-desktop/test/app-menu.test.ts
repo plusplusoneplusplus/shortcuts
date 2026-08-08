@@ -17,6 +17,7 @@ import {
     devTunnelStatusLabel,
     devTunnelPublicUrlLabel,
     DEV_TUNNEL_URL_LABEL_MAX,
+    DEV_TUNNEL_EXPECTED_URL_SUFFIX,
     CHECK_FOR_UPDATES_LABEL,
     UPDATE_CHANNEL_LABEL,
     DEV_TUNNEL_MENU_LABEL,
@@ -287,8 +288,9 @@ describe('buildDevTunnelMenu', () => {
         state: DevTunnelHostState,
         enabled: boolean,
         handlers: DevTunnelMenuHandlers = makeHandlers(),
+        expectedUrl?: string,
     ): { menu: Item; items: Item[]; handlers: DevTunnelMenuHandlers } => {
-        const input: DevTunnelMenuInput = { state, enabled, handlers };
+        const input: DevTunnelMenuInput = { state, enabled, expectedUrl, handlers };
         const menu = buildDevTunnelMenu(input);
         return { menu, items: submenuOf(menu), handlers };
     };
@@ -401,6 +403,43 @@ describe('buildDevTunnelMenu', () => {
             const { items } = build(state, state.status !== 'off');
             expect(items[1].type).toBe('separator');
             expect(labels(items).some((l) => l.includes('devtunnels.ms'))).toBe(false);
+        }
+    });
+
+    it('shows the derived URL marked "(expected)" while starting', () => {
+        const { items } = build(
+            { status: 'starting' },
+            true,
+            makeHandlers(),
+            'https://box-coc-4000.usw2.devtunnels.ms',
+        );
+        expect(items[1].enabled).toBe(false);
+        expect(items[1].label).toBe(
+            `box-coc-4000.usw2.devtunnels.ms${DEV_TUNNEL_EXPECTED_URL_SUFFIX}`,
+        );
+    });
+
+    it('prefers the reported URL over the expected one once online', () => {
+        const { items } = build(
+            { status: 'online', publicUrl: 'https://box-coc-4000.euw.devtunnels.ms/' },
+            true,
+            makeHandlers(),
+            'https://box-coc-4000.usw2.devtunnels.ms',
+        );
+        expect(items[1].label).toBe('box-coc-4000.euw.devtunnels.ms');
+    });
+
+    it('never shows an expected URL for a status other than starting', () => {
+        const expected = 'https://box-coc-4000.usw2.devtunnels.ms';
+        for (const state of [
+            { status: 'off' } as DevTunnelHostState,
+            {
+                status: 'failed',
+                error: { category: 'url-timeout', message: 'x' },
+            } as DevTunnelHostState,
+        ]) {
+            const { items } = build(state, state.status !== 'off', makeHandlers(), expected);
+            expect(items[1].type).toBe('separator');
         }
     });
 

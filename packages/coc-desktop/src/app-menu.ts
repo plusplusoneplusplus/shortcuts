@@ -130,8 +130,17 @@ export interface DevTunnelMenuInput {
     state: DevTunnelHostState;
     /** The persisted feature gate (drives Start vs Stop). */
     enabled: boolean;
+    /**
+     * The URL predicted from the configured tunnel ID, the active port, and the
+     * cached cluster. Shown (marked expected) while Starting, before the host has
+     * reported its real URL. Omitted when no cluster has been observed yet.
+     */
+    expectedUrl?: string;
     handlers: DevTunnelMenuHandlers;
 }
+
+/** Suffix marking a predicted — not yet confirmed — public URL row. */
+export const DEV_TUNNEL_EXPECTED_URL_SUFFIX = ' (expected)';
 
 /** Max characters of the public URL rendered in the menu row before eliding. */
 export const DEV_TUNNEL_URL_LABEL_MAX = 60;
@@ -172,7 +181,8 @@ export function devTunnelStatusLabel(status: DevTunnelHostStatus): string {
  *
  * Rows, in order:
  *   - a disabled status row (Off / Starting / Online / Failed);
- *   - a disabled public-URL row (only when Online with a resolved URL);
+ *   - a disabled public-URL row (the reported URL when Online, or the predicted
+ *     one marked "(expected)" while Starting);
  *   - Configure… (always available);
  *   - Start (while the feature is disabled) OR Stop (while enabled) — Start/Stop
  *     toggles the persisted `enabled` gate; Retry never touches it;
@@ -183,16 +193,23 @@ export function devTunnelStatusLabel(status: DevTunnelHostStatus): string {
 export function buildDevTunnelMenu(
     input: DevTunnelMenuInput,
 ): MenuItemConstructorOptions {
-    const { state, enabled, handlers } = input;
+    const { state, enabled, expectedUrl, handlers } = input;
     const items: MenuItemConstructorOptions[] = [
         // Disabled status row — reflects the runtime status, not the gate.
         { label: devTunnelStatusLabel(state.status), enabled: false },
     ];
 
     // Disabled public-URL row, right under the status row, so the address is
-    // visible without having to copy it first.
+    // visible without having to copy it first. Online shows the URL the host
+    // actually reported; Starting shows the predicted one (marked expected) when
+    // a cluster has been cached from an earlier run.
     if (state.status === 'online' && state.publicUrl) {
         items.push({ label: devTunnelPublicUrlLabel(state.publicUrl), enabled: false });
+    } else if (state.status === 'starting' && expectedUrl) {
+        items.push({
+            label: `${devTunnelPublicUrlLabel(expectedUrl)}${DEV_TUNNEL_EXPECTED_URL_SUFFIX}`,
+            enabled: false,
+        });
     }
 
     items.push(

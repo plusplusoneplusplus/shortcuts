@@ -3,9 +3,10 @@
  *
  * The machine-global, opt-in DevTunnel exposure preference. It is persisted in a
  * dedicated versioned `desktop-devtunnel.json` under the shared `~/.coc` data dir
- * (never workspace- or repository-scoped) with three fields — `tunnelId`,
- * `enabled`, and `version` — written atomically (temp file + rename) so a crash
- * mid-write can never leave a half-written config behind.
+ * (never workspace- or repository-scoped) with three required fields —
+ * `tunnelId`, `enabled`, and `version` — plus the optional `cluster` cache, all
+ * written atomically (temp file + rename) so a crash mid-write can never leave a
+ * half-written config behind.
  *
  * Semantics (AC-01):
  *   - Missing configuration means the feature is off (`enabled: false`).
@@ -40,7 +41,18 @@ export interface DevTunnelConfig {
     enabled: boolean;
     /** On-disk schema version, for future migrations. */
     version: number;
+    /**
+     * The service-assigned cluster (region) label of the last observed public
+     * URL, e.g. `usw2`. Cached because it is the only part of the URL that cannot
+     * be derived from the tunnel ID and port, so keeping it lets the menu show
+     * the expected address before a host reports one. Absent until the first
+     * successful Online transition; a stale value is overwritten by the next one.
+     */
+    cluster?: string;
 }
+
+/** A single DNS label — the shape a cached cluster id is allowed to take. */
+const CLUSTER_LABEL_RE = /^[a-z0-9]([a-z0-9-]{0,20}[a-z0-9])?$/;
 
 /**
  * A malformed or unreadable `desktop-devtunnel.json`. Distinct from a *missing*
@@ -113,7 +125,18 @@ export function parseDevTunnelConfig(raw: unknown): DevTunnelConfig {
     if (typeof obj.version !== 'number' || !Number.isInteger(obj.version) || obj.version < 1) {
         throw new DevTunnelConfigError(`${DESKTOP_DEVTUNNEL_FILENAME} has an invalid "version"`);
     }
-    return { tunnelId: obj.tunnelId.trim(), enabled: obj.enabled, version: obj.version };
+    const config: DevTunnelConfig = {
+        tunnelId: obj.tunnelId.trim(),
+        enabled: obj.enabled,
+        version: obj.version,
+    };
+    // The cluster is a derived cache, not user intent: a missing or malformed
+    // value is dropped rather than rejected, so it can never wedge the file.
+    const cluster = typeof obj.cluster === 'string' ? obj.cluster.trim().toLowerCase() : '';
+    if (cluster && CLUSTER_LABEL_RE.test(cluster)) {
+        config.cluster = cluster;
+    }
+    return config;
 }
 
 /**
@@ -215,9 +238,38 @@ export function setDevTunnelId(
     if (!trimmed) {
         throw new DevTunnelConfigError('Tunnel ID cannot be empty');
     }
+    const current = currentOrDefault(dataDir, store);
+    const next: DevTunnelConfig = {
+        ...current,
+        tunnelId: trimmed,
+        version: DESKTOP_DEVTUNNEL_VERSION,
+    };
+    // A different tunnel may land in a different region, so the cached cluster
+    // stops being trustworthy the moment the ID changes.
+    if (trimmed !== current.tunnelId) {
+        delete next.cluster;
+    }
+    writeDevTunnelConfig(dataDir, next, store);
+    return next;
+}
+
+/**
+ * Cache the cluster (region) label observed on a live public URL, preserving the
+ * tunnel ID and enabled flag. Returns the persisted config. A malformed cluster
+ * is rejected before anything is written, so a bad parse never corrupts the file.
+ */
+export function setDevTunnelCluster(
+    dataDir: string,
+    cluster: string,
+    store: DevTunnelConfigStore = {},
+): DevTunnelConfig {
+    const normalized = (cluster ?? '').trim().toLowerCase();
+    if (!CLUSTER_LABEL_RE.test(normalized)) {
+        throw new DevTunnelConfigError(`Invalid dev tunnel cluster "${cluster}"`);
+    }
     const next: DevTunnelConfig = {
         ...currentOrDefault(dataDir, store),
-        tunnelId: trimmed,
+        cluster: normalized,
         version: DESKTOP_DEVTUNNEL_VERSION,
     };
     writeDevTunnelConfig(dataDir, next, store);
