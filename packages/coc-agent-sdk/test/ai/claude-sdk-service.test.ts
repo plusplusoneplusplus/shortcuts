@@ -2490,6 +2490,104 @@ describe('ClaudeSDKService.sendMessage', () => {
             else process.env['CLAUDE_CREDENTIALS_FILE'] = priorCredEnv;
         }
     });
+
+    // ------------------------------------------------------------------
+    // permission_denied observability
+    // ------------------------------------------------------------------
+
+    /** The frame the SDK emits when a tool call is auto-denied headless. */
+    const permissionDeniedFrame = (toolName: string, overrides: Record<string, unknown> = {}) => ({
+        type: 'system',
+        subtype: 'permission_denied',
+        tool_name: toolName,
+        tool_use_id: `tu-${toolName}`,
+        decision_reason_type: 'mode',
+        decision_reason: 'Tool not in the allowed list for this permission mode',
+        message: 'SECRET_REJECTION_BODY',
+        uuid: 'uuid-1',
+        session_id: 'provider-session',
+        ...overrides,
+    });
+
+    const findDenialLog = (logs: { level: string; fields: Record<string, unknown> }[], level: string) =>
+        logs.find(log => log.level === level && log.fields['event'] === 'claude_tool_permission_denied');
+
+    it('warns with structured fields when a tool call is auto-denied, without failing the turn', async () => {
+        const capLogger = createCapturingLogger();
+        initSDKLogger(capLogger.logger as any);
+        queryFn.mockReturnValueOnce(makeMessages([
+            permissionDeniedFrame('WebSearch'),
+            { type: 'result', subtype: 'success', result: 'done anyway' },
+        ]));
+
+        const result = await svc.sendMessage({ prompt: 'search the web', mode: 'ask' });
+
+        // Purely observational: the denial must never short-circuit the turn.
+        expect(result.success).toBe(true);
+        expect(result.response).toBe('done anyway');
+
+        const warning = findDenialLog(capLogger.logs, 'warn');
+        expect(warning).toBeDefined();
+        expect(warning?.fields).toMatchObject({
+            provider: 'claude',
+            event: 'claude_tool_permission_denied',
+            toolName: 'WebSearch',
+            toolUseId: 'tu-WebSearch',
+            decisionReasonType: 'mode',
+            decisionReason: 'Tool not in the allowed list for this permission mode',
+        });
+        expect(warning?.fields['permissionMode']).toBeTruthy();
+    });
+
+    it('never logs the rejection body or tool input for a denied tool call', async () => {
+        const capLogger = createCapturingLogger();
+        initSDKLogger(capLogger.logger as any);
+        queryFn.mockReturnValueOnce(makeMessages([
+            permissionDeniedFrame('WebFetch', {
+                tool_input: { url: 'https://example.com/SECRET_TOOL_INPUT' },
+            }),
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        const result = await svc.sendMessage({ prompt: 'fetch a page' });
+        expect(result.success).toBe(true);
+
+        const warning = findDenialLog(capLogger.logs, 'warn');
+        expect(warning).toBeDefined();
+        expect(warning?.fields).not.toHaveProperty('tool_input');
+        expect(warning?.fields).not.toHaveProperty('toolInput');
+        expect(warning?.fields).not.toHaveProperty('message');
+        // Belt-and-braces: no sensitive value anywhere in the serialized payload.
+        const serialized = JSON.stringify(capLogger.logs);
+        expect(serialized).not.toContain('SECRET_REJECTION_BODY');
+        expect(serialized).not.toContain('SECRET_TOOL_INPUT');
+    });
+
+    it('logs the deliberate AskUserQuestion deny-rule denial at debug, not warn', async () => {
+        const capLogger = createCapturingLogger();
+        initSDKLogger(capLogger.logger as any);
+        queryFn.mockReturnValueOnce(makeMessages([
+            permissionDeniedFrame('AskUserQuestion', {
+                decision_reason_type: 'rule',
+                decision_reason: 'Blocked by disallowedTools',
+            }),
+            { type: 'result', subtype: 'success' },
+        ]));
+
+        // CoC disables the native AskUserQuestion whenever its own ask_user tool
+        // is present, so this denial is expected noise rather than a gap.
+        const result = await svc.sendMessage({
+            prompt: 'ask me something',
+            tools: [{ name: 'ask_user', description: 'ask the user', parameters: { type: 'object', properties: {} } }],
+        } as any);
+
+        expect(result.success).toBe(true);
+        expect(findDenialLog(capLogger.logs, 'warn')).toBeUndefined();
+        expect(findDenialLog(capLogger.logs, 'debug')?.fields).toMatchObject({
+            toolName: 'AskUserQuestion',
+            decisionReasonType: 'rule',
+        });
+    });
 });
 
 describe('addClaudeContextUsage', () => {
