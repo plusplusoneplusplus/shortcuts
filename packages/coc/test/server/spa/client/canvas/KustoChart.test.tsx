@@ -5,7 +5,7 @@
  * config → series mapping) and the config → render mapping for each chart type.
  */
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
-import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, fireEvent, act } from '@testing-library/react';
 import type { KustoCellValue, KustoColumn } from '@plusplusoneplusplus/coc-client';
 import * as Recharts from 'recharts';
 import {
@@ -388,5 +388,107 @@ describe('KustoChart legend toggle', () => {
         await waitFor(() => {
             expect(container.querySelectorAll('.recharts-sector')).toHaveLength(2);
         });
+    });
+});
+
+describe('KustoChart drag-to-zoom', () => {
+    // 12 buckets, so a drag across the middle leaves a clearly smaller x domain.
+    const seriesColumns: KustoColumn[] = [
+        { name: 'Bucket', type: 'string' },
+        { name: 'P95', type: 'real' },
+    ];
+    const seriesRows: KustoCellValue[][] = Array.from({ length: 12 }, (_, i) => [
+        `10:${String(i).padStart(2, '0')}`,
+        100 + i,
+    ]);
+    const config = { type: 'line' as const, x: 'Bucket', y: ['P95'] };
+
+    /** Number of plotted points, read off the line path — one per x in the domain. */
+    function pointCount(container: HTMLElement): number {
+        const d = container.querySelector('.recharts-line-curve')?.getAttribute('d') ?? '';
+        return Array.from(d.matchAll(/,(-?[\d.]+)/g)).length;
+    }
+
+    async function renderChart() {
+        const { container } = render(<KustoChart columns={seriesColumns} rows={seriesRows} config={config} />);
+        const wrapper = await waitFor(() => {
+            const el = container.querySelector('.recharts-wrapper');
+            expect(el).not.toBeNull();
+            return el as HTMLElement;
+        });
+        await waitFor(() => expect(pointCount(container)).toBe(12));
+        return { container, wrapper };
+    }
+
+    /**
+     * Recharts defers external mouse handlers to the next animation frame, and
+     * each step of a drag reads state the previous step set — so the events have
+     * to be flushed one at a time rather than fired back to back.
+     */
+    async function flush() {
+        await act(async () => {
+            await new Promise(resolve => requestAnimationFrame(() => resolve(null)));
+            await new Promise(resolve => setTimeout(resolve, 0));
+        });
+    }
+
+    async function drag(wrapper: HTMLElement, fromX: number, toX: number) {
+        const at = (clientX: number) => ({ clientX, clientY: 100, pointerId: 1, pointerType: 'mouse', bubbles: true });
+        fireEvent.mouseMove(wrapper, at(fromX));
+        await flush();
+        fireEvent.mouseDown(wrapper, at(fromX));
+        await flush();
+        fireEvent.mouseMove(wrapper, at(toX));
+        await flush();
+        fireEvent.mouseUp(wrapper, at(toX));
+        await flush();
+    }
+
+    it('narrows the x domain to the dragged range', async () => {
+        const { container, wrapper } = await renderChart();
+        await drag(wrapper, 120, 320);
+        await waitFor(() => {
+            const after = pointCount(container);
+            expect(after).toBeGreaterThan(1);
+            expect(after).toBeLessThan(12);
+        });
+    });
+
+    it('restores the full domain from the reset control', async () => {
+        const { container, wrapper } = await renderChart();
+        await drag(wrapper, 120, 320);
+        const reset = await screen.findByTestId('kusto-chart-reset-zoom');
+        fireEvent.click(reset);
+        await waitFor(() => expect(pointCount(container)).toBe(12));
+        expect(screen.queryByTestId('kusto-chart-reset-zoom')).toBeNull();
+    });
+
+    it('restores the full domain on a double click', async () => {
+        const { container, wrapper } = await renderChart();
+        await drag(wrapper, 120, 320);
+        await waitFor(() => expect(pointCount(container)).toBeLessThan(12));
+        fireEvent.doubleClick(wrapper, { clientX: 200, clientY: 100, bubbles: true });
+        await waitFor(() => expect(pointCount(container)).toBe(12));
+    });
+
+    it('treats a zero-width drag as a click, not a zoom', async () => {
+        const { container, wrapper } = await renderChart();
+        await drag(wrapper, 200, 200);
+        await waitFor(() => expect(pointCount(container)).toBe(12));
+        expect(screen.queryByTestId('kusto-chart-reset-zoom')).toBeNull();
+    });
+
+    it('leaves pie charts unzoomable', async () => {
+        const { container } = render(
+            <KustoChart columns={columns} rows={rows} config={{ type: 'pie', x: 'State', y: ['Count'] }} />,
+        );
+        const wrapper = await waitFor(() => {
+            const el = container.querySelector('.recharts-wrapper');
+            expect(el).not.toBeNull();
+            return el as HTMLElement;
+        });
+        await drag(wrapper, 120, 320);
+        expect(container.querySelectorAll('.recharts-sector')).toHaveLength(3);
+        expect(screen.queryByTestId('kusto-chart-reset-zoom')).toBeNull();
     });
 });

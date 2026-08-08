@@ -159,13 +159,18 @@ interface RechartsChartProps {
     hidden: ReadonlySet<number>;
 }
 
+/** Recharts hands the chart mouse handlers an untyped event bag. */
+interface ChartMouseEvent {
+    activeLabel?: unknown;
+}
+
 /** The Recharts render path — one component per chart kind, shared axes. */
 function RechartsChart({ rc, data, type, compact, hidden }: RechartsChartProps) {
     const {
         ResponsiveContainer,
         LineChart, BarChart, ScatterChart, AreaChart, PieChart,
         Line, Bar, Scatter, Area, Pie, Cell,
-        XAxis, YAxis, CartesianGrid, Tooltip,
+        XAxis, YAxis, CartesianGrid, Tooltip, ReferenceArea,
     } = rc;
     const height = compact ? COMPACT_CHART_HEIGHT : CHART_HEIGHT;
     const rows = useMemo(() => toRechartsRows(data), [data]);
@@ -177,6 +182,52 @@ function RechartsChart({ rc, data, type, compact, hidden }: RechartsChartProps) 
     );
     const SharedTooltip = useMemo(() => makeSharedTooltip(data, visible), [data, visible]);
     const SlicedTooltip = useMemo(() => makePieTooltip(data), [data]);
+
+    // Drag-to-zoom, over the label index domain. Like the legend toggles this is
+    // ephemeral view state — nothing is written back to the canvas.
+    const [zoom, setZoom] = useState<{ start: number; end: number } | null>(null);
+    const [dragFrom, setDragFrom] = useState<string | null>(null);
+    const [dragTo, setDragTo] = useState<string | null>(null);
+    // A new result or chart kind renumbers the labels, so drop a stale range.
+    useEffect(() => {
+        setZoom(null);
+        setDragFrom(null);
+        setDragTo(null);
+    }, [data, type]);
+
+    const start = zoom ? zoom.start : 0;
+    const end = zoom ? zoom.end : rows.length - 1;
+    const viewRows = useMemo(() => rows.slice(start, end + 1), [rows, start, end]);
+
+    const beginDrag = useCallback((e: ChartMouseEvent | null) => {
+        if (e?.activeLabel === undefined || e.activeLabel === null) return;
+        setDragFrom(String(e.activeLabel));
+        setDragTo(null);
+    }, []);
+    const extendDrag = useCallback((e: ChartMouseEvent | null) => {
+        if (dragFrom === null) return;
+        if (e?.activeLabel === undefined || e.activeLabel === null) return;
+        setDragTo(String(e.activeLabel));
+    }, [dragFrom]);
+    const endDrag = useCallback(() => {
+        if (dragFrom !== null && dragTo !== null && dragTo !== dragFrom) {
+            const labels = viewRows.map(row => String(row.__x));
+            let a = labels.indexOf(dragFrom);
+            let b = labels.indexOf(dragTo);
+            // A zero-width drag is a click, not a zoom.
+            if (a >= 0 && b >= 0 && a !== b) {
+                if (a > b) [a, b] = [b, a];
+                setZoom({ start: start + a, end: start + b });
+            }
+        }
+        setDragFrom(null);
+        setDragTo(null);
+    }, [dragFrom, dragTo, viewRows, start]);
+    const resetZoom = useCallback(() => {
+        setZoom(null);
+        setDragFrom(null);
+        setDragTo(null);
+    }, []);
 
     if (type === 'pie') {
         // Pie uses the first series; each label is a slice. `__i` keeps the
@@ -218,14 +269,26 @@ function RechartsChart({ rc, data, type, compact, hidden }: RechartsChartProps) 
                 interval="preserveStartEnd"
             />
             <YAxis tick={{ fontSize: 10, fill: AXIS_COLOR }} stroke={AXIS_COLOR} width={56} />
+            {dragFrom !== null && dragTo !== null && (
+                <ReferenceArea x1={dragFrom} x2={dragTo} stroke={AXIS_COLOR} strokeOpacity={0.4} fillOpacity={0.15} />
+            )}
         </>
     );
+
+    // Drag-select only: no wheel zoom, no pan — the chart lives inside a
+    // scrollable panel and must not hijack the wheel.
+    const chartEvents = {
+        onMouseDown: beginDrag,
+        onMouseMove: extendDrag,
+        onMouseUp: endDrag,
+        onDoubleClick: resetZoom,
+    };
 
     const body = (() => {
         switch (type) {
             case 'bar':
                 return (
-                    <BarChart data={rows}>
+                    <BarChart data={viewRows} {...chartEvents}>
                         {axes}
                         {visible.map(si => (
                             <Bar key={si} dataKey={`s${si}`} name={data.series[si].name} fill={seriesColor(si)} isAnimationActive={false} />
@@ -234,7 +297,7 @@ function RechartsChart({ rc, data, type, compact, hidden }: RechartsChartProps) 
                 );
             case 'scatter':
                 return (
-                    <ScatterChart data={rows}>
+                    <ScatterChart data={viewRows} {...chartEvents}>
                         {axes}
                         {visible.map(si => (
                             <Scatter key={si} dataKey={`s${si}`} name={data.series[si].name} fill={seriesColor(si)} isAnimationActive={false} />
@@ -243,7 +306,7 @@ function RechartsChart({ rc, data, type, compact, hidden }: RechartsChartProps) 
                 );
             case 'stackedArea':
                 return (
-                    <AreaChart data={rows}>
+                    <AreaChart data={viewRows} {...chartEvents}>
                         {axes}
                         {visible.map(si => (
                             <Area
@@ -263,7 +326,7 @@ function RechartsChart({ rc, data, type, compact, hidden }: RechartsChartProps) 
             case 'line':
             default:
                 return (
-                    <LineChart data={rows}>
+                    <LineChart data={viewRows} {...chartEvents}>
                         {axes}
                         {visible.map(si => (
                             <Line
@@ -284,9 +347,21 @@ function RechartsChart({ rc, data, type, compact, hidden }: RechartsChartProps) 
     })();
 
     return (
-        <ResponsiveContainer width="100%" height={height}>
-            {body}
-        </ResponsiveContainer>
+        <div className="relative select-none">
+            {zoom && (
+                <button
+                    type="button"
+                    onClick={resetZoom}
+                    className="absolute right-1 top-1 z-10 rounded-sm border border-[#8884] bg-white dark:bg-[#252526] px-1.5 py-0.5 text-[10px] text-[#616161] dark:text-[#cccccc]"
+                    data-testid="kusto-chart-reset-zoom"
+                >
+                    Reset zoom
+                </button>
+            )}
+            <ResponsiveContainer width="100%" height={height}>
+                {body}
+            </ResponsiveContainer>
+        </div>
     );
 }
 
