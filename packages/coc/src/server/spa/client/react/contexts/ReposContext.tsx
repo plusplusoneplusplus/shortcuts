@@ -51,9 +51,12 @@ import {
     rewriteRepoHashSelectionId,
 } from '../repos/cloneIdentity';
 import { setActiveCloneForRouting } from '../repos/cloneRegistry';
+import { getCocClientFor } from '../api/cocClient';
 
 import type { RepoData } from '../repos/repoGrouping';
 import type { AggregatedRemoteWorkspaces } from '../repos/remoteWorkspaceAggregation';
+
+type GitInfoBatchTrigger = 'initial-topology-load' | 'topology-change' | 'reconnect' | 'manual-refresh';
 
 // ── Context shape ──────────────────────────────────────────────────────
 
@@ -96,7 +99,7 @@ function buildRemoteRepoData(aggregate: AggregatedRemoteWorkspaces): RepoData[] 
 // ── Provider ──────────────────────────────────────────────────────────
 
 export function ReposProvider({ children }: { children: ReactNode }) {
-    const { dispatch } = useApp();
+    const { state: appState, dispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
 
     const [repos, setRepos] = useState<RepoData[]>([]);
@@ -106,10 +109,9 @@ export function ReposProvider({ children }: { children: ReactNode }) {
     const selectedRepoIdRef = useRef<string | null>(null);
 
     // Keep selectedRepoId in a ref so fetchRepos doesn't recreate on every selection change
-    const { state: appState } = useApp();
     selectedRepoIdRef.current = appState.selectedRepoId;
 
-    const processThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const hasConnectedOnceRef = useRef(false);
     const gitInfoAbortRef = useRef<AbortController | null>(null);
 
     // Per-repo unseen counts, fetched from the server.
@@ -154,7 +156,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
         } catch { /* fire-and-forget */ }
     }, []);
 
-    const fetchRepos = useCallback(async () => {
+    const fetchRepos = useCallback(async (trigger: GitInfoBatchTrigger = 'manual-refresh') => {
         try {
             // Fetch workspaces, process summaries, and (when features.remoteShell
             // is ON) remote-server workspaces in parallel. aggregateRemoteWorkspaces
@@ -317,7 +319,9 @@ export function ReposProvider({ children }: { children: ReactNode }) {
                         fetchAgentApi(agentId, '/git-info/batch', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ workspaceIds: ids }),
+                            body: JSON.stringify({ workspaceIds: ids, trigger }),
+                            // Kept in the body for older agents, which ignore unknown fields.
+                            // Newer agents include it in privacy-safe batch diagnostics.
                             signal: abortController.signal,
                         }).catch(() => ({ results: {} }))
                     )
@@ -339,7 +343,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
                     setRepos(prev => prev.map(r => ({ ...r, gitInfoLoading: false })));
                 });
             } else {
-            getWorkspaceGitInfoBatch(wsIds, abortController.signal).then((data: any) => {
+            getWorkspaceGitInfoBatch(wsIds, abortController.signal, trigger).then((data: any) => {
                 if (abortController.signal.aborted) return;
                 const results = data?.results || {};
                 setRepos(prev => prev.map(r => (
@@ -362,6 +366,26 @@ export function ReposProvider({ children }: { children: ReactNode }) {
         }
     }, [dispatch, refreshUnseenCounts, seedRepoQueueStats]);
 
+    // Process lifecycle events update AppContext directly. Derive card counts from
+    // that live index instead of re-running workspace discovery or Git-info batches.
+    useEffect(() => {
+        setRepos(prev => prev.map(repo => {
+            const processes = appState.processes.filter((process: any) => process.workspaceId === repo.workspace.id);
+            const stats = { success: 0, failed: 0, running: 0 };
+            for (const process of processes) {
+                if (process.status === 'completed') stats.success++;
+                else if (process.status === 'failed') stats.failed++;
+                else if (process.status === 'running') stats.running++;
+            }
+            if (
+                repo.stats.success === stats.success
+                && repo.stats.failed === stats.failed
+                && repo.stats.running === stats.running
+            ) return repo;
+            return { ...repo, stats };
+        }));
+    }, [appState.processes]);
+
     // Targeted workflow refresh for a single workspace
     const refreshPipelinesForWorkspace = useCallback(async (wsId: string) => {
         try {
@@ -374,19 +398,42 @@ export function ReposProvider({ children }: { children: ReactNode }) {
     }, []);
 
     // Targeted git-info refresh for a single workspace (triggered by WebSocket)
-    const refreshGitInfoForWorkspace = useCallback((wsId: string) => {
-        getWorkspaceGitInfo(wsId)
+    const refreshGitInfoForWorkspace = useCallback((wsId: string, baseUrl?: string) => {
+        const request = baseUrl
+            ? getCocClientFor(baseUrl).workspaces.gitInfo(wsId)
+            : getWorkspaceGitInfo(wsId);
+        request
             .catch(() => null)
             .then((gitInfo: any) => {
                 setRepos(prev => prev.map(r =>
                     r.workspace.id === wsId
+                        && (!baseUrl || (isRemoteWorkspace(r.workspace) && r.workspace.baseUrl === baseUrl))
                         ? { ...r, gitInfo: gitInfo || undefined, gitInfoLoading: false }
                         : r
                 ));
             });
     }, []);
 
-    // WebSocket: auto-refresh on mutation events (pipelines, processes, git)
+    // RemoteCloneEventBridge feeds remote server events to AppContext and emits
+    // this scoped browser event so repository metadata can preserve owner routing.
+    useEffect(() => {
+        const handleRemoteMessage = (event: Event) => {
+            const detail = (event as CustomEvent<{ message?: any; baseUrl?: string }>).detail;
+            const message = detail?.message;
+            const baseUrl = detail?.baseUrl;
+            if (!message || !baseUrl) return;
+            if (message.type === 'git-changed' && message.workspaceId) {
+                refreshGitInfoForWorkspace(message.workspaceId, baseUrl);
+            } else if (message.type === 'workspace-topology-changed') {
+                fetchRepos('topology-change');
+            }
+        };
+        window.addEventListener('coc-remote-ws-message', handleRemoteMessage);
+        return () => window.removeEventListener('coc-remote-ws-message', handleRemoteMessage);
+    }, [fetchRepos, refreshGitInfoForWorkspace]);
+
+    // WebSocket: update process state in memory; reserve repository discovery for
+    // topology changes and reconnect recovery. Git mutations refresh one workspace.
     const { connect, disconnect } = useWebSocket({
         onMessage: useCallback((msg: any) => {
             if (msg.type === 'workflows-changed' && msg.workspaceId) {
@@ -395,27 +442,30 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             if (msg.type === 'git-changed' && msg.workspaceId) {
                 refreshGitInfoForWorkspace(msg.workspaceId);
             }
-            // Throttle process events: at most one fetchRepos per 10 seconds
-            if (msg.type === 'process-added' || msg.type === 'process-updated' || msg.type === 'process-removed') {
-                if (!processThrottleRef.current) {
-                    processThrottleRef.current = setTimeout(() => {
-                        processThrottleRef.current = null;
-                        fetchRepos();
-                    }, 10_000);
-                }
+            if (msg.type === 'workspace-topology-changed' || msg.type === 'server-topology-changed') {
+                fetchRepos('topology-change');
+            } else if (msg.type === 'process-added' && msg.process) {
+                dispatch({ type: 'PROCESS_ADDED', process: msg.process });
+            } else if (msg.type === 'process-updated' && msg.process) {
+                dispatch({ type: 'PROCESS_UPDATED', process: msg.process });
+            } else if (msg.type === 'process-removed' && msg.processId) {
+                dispatch({ type: 'PROCESS_REMOVED', processId: msg.processId });
             }
-        }, [refreshPipelinesForWorkspace, refreshGitInfoForWorkspace, fetchRepos]),
+        }, [dispatch, refreshPipelinesForWorkspace, refreshGitInfoForWorkspace, fetchRepos]),
+        onConnect: useCallback(() => {
+            if (hasConnectedOnceRef.current) {
+                fetchRepos('reconnect');
+                return;
+            }
+            hasConnectedOnceRef.current = true;
+        }, [fetchRepos]),
     });
 
     useEffect(() => {
-        fetchRepos();
+        fetchRepos('initial-topology-load');
         connect();
         return () => {
             disconnect();
-            if (processThrottleRef.current) {
-                clearTimeout(processThrottleRef.current);
-                processThrottleRef.current = null;
-            }
         };
     }, []);
 

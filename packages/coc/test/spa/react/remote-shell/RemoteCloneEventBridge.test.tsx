@@ -108,6 +108,24 @@ describe('useRemoteCloneEvents', () => {
         expect(onMessage).toHaveBeenCalledWith(msg);
     });
 
+    it('emits the owner base URL with remote socket messages', () => {
+        const listener = vi.fn();
+        window.addEventListener('coc-remote-ws-message', listener);
+        mockUseRepos.mockReturnValue({ repos: [remoteRepo('w1', 'http://127.0.0.1:4000', 'online')] });
+        const { unmount } = renderHook(() => useRemoteCloneEvents(vi.fn()));
+
+        const msg = { type: 'git-changed', workspaceId: 'w1' };
+        sockets.get('http://127.0.0.1:4000')!.opts.onMessage(msg);
+
+        expect(listener).toHaveBeenCalledTimes(1);
+        expect((listener.mock.calls[0][0] as CustomEvent).detail).toEqual({
+            message: msg,
+            baseUrl: 'http://127.0.0.1:4000',
+        });
+        window.removeEventListener('coc-remote-ws-message', listener);
+        unmount();
+    });
+
     it('closes the socket when a clone goes offline', () => {
         mockUseRepos.mockReturnValue({ repos: [remoteRepo('w1', 'http://127.0.0.1:4000', 'online')] });
         const { rerender } = renderHook(() => useRemoteCloneEvents(vi.fn()));

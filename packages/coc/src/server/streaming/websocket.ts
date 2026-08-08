@@ -141,6 +141,8 @@ export type ServerMessage =
     | { type: 'schedule-triggered'; repoId: string; scheduleId: string; schedule?: unknown; run?: unknown }
     | { type: 'schedule-run-complete'; repoId: string; scheduleId: string; schedule?: unknown; run?: unknown }
     | { type: 'git-changed'; workspaceId: string; trigger: string; timestamp: number }
+    | { type: 'workspace-topology-changed'; workspaceId: string; action: 'added' | 'updated' | 'removed'; timestamp: number }
+    | { type: 'server-topology-changed'; serverId: string; action: 'added' | 'updated' | 'removed' | 'connection'; timestamp: number }
     | { type: 'diff-comment-updated'; workspaceId: string; action: 'added' | 'updated' | 'deleted'; storageKey: string; comment?: any; commentId?: string }
     | { type: 'canvas-updated'; workspaceId: string; canvasId: string; processId?: string; title?: string; revision: number; editor: 'ai' | 'user'; timestamp: number }
     | { type: 'work-item-added'; workspaceId: string; item: any }
@@ -480,6 +482,7 @@ export class ProcessWebSocketServer {
             message.type === 'templates-changed' ||
             message.type === 'notes-changed' ||
             message.type === 'git-changed' ||
+            message.type === 'workspace-topology-changed' ||
             message.type === 'diff-comment-updated' ||
             message.type === 'work-item-added' ||
             message.type === 'work-item-updated' ||

@@ -28,12 +28,38 @@ export interface GitInfoResult {
     behind?: number;
 }
 
+export type GitInfoCacheOutcome = 'hit' | 'miss' | 'stale' | 'invalidated' | 'inflight' | 'error-retry';
+
+export interface GitInfoFetchValue {
+    data: GitInfoResult;
+    gitProcessCount: number;
+    gitDurationMs: number;
+    /** A completed live read that should be served with retry backoff. */
+    error?: boolean;
+}
+
+export interface GitInfoCacheRead {
+    data: GitInfoResult;
+    outcome: GitInfoCacheOutcome;
+    gitProcessCount: number;
+    gitDurationMs: number;
+}
+
 interface GitInfoEntry {
     data: GitInfoResult;
     /** Epoch ms of the last successful fetch */
     lastFetchedAt: number;
     /** In-flight fetch promise, or null if idle */
     inflight: Promise<GitInfoResult> | null;
+    /** True between explicit invalidation and the next successful fetch. */
+    invalidated: boolean;
+    /** Consecutive fetch failures used to calculate bounded retry backoff. */
+    failureCount: number;
+    /** Epoch ms before which a failed fetch returns its cached fallback. */
+    retryAfter: number;
+    /** Metrics for the most recently completed live fetch. */
+    lastGitProcessCount: number;
+    lastGitDurationMs: number;
 }
 
 // ============================================================================
@@ -42,6 +68,8 @@ interface GitInfoEntry {
 
 export const REFRESH_PERIOD_MS = 300_000;
 export const STALE_THRESHOLD_MS = 600_000;
+export const ERROR_BACKOFF_BASE_MS = 30_000;
+export const ERROR_BACKOFF_MAX_MS = 300_000;
 
 const BACKGROUND_CONCURRENCY = 4;
 
@@ -61,7 +89,7 @@ const BACKGROUND_CONCURRENCY = 4;
 export class GitInfoCacheService {
     private entries = new Map<string, GitInfoEntry>();
     private timer: ReturnType<typeof setInterval> | null = null;
-    private fetchFn: ((workspaceId: string) => Promise<GitInfoResult>) | null = null;
+    private fetchFn: ((workspaceId: string) => Promise<GitInfoResult | GitInfoFetchValue>) | null = null;
     private getActiveWorkspaceIds: (() => string[]) | null = null;
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -77,7 +105,7 @@ export class GitInfoCacheService {
      *                              means the tick performs no git work.
      */
     start(
-        fetchFn: (workspaceId: string) => Promise<GitInfoResult>,
+        fetchFn: (workspaceId: string) => Promise<GitInfoResult | GitInfoFetchValue>,
         getActiveWorkspaceIds: () => string[],
     ): void {
         this.fetchFn = fetchFn;
@@ -113,8 +141,14 @@ export class GitInfoCacheService {
      */
     invalidate(workspaceId: string): void {
         const entry = this.entries.get(workspaceId);
-        if (entry && entry.lastFetchedAt > 0) {
-            this.entries.set(workspaceId, { ...entry, lastFetchedAt: 0 });
+        if (entry) {
+            this.entries.set(workspaceId, {
+                ...entry,
+                lastFetchedAt: 0,
+                invalidated: true,
+                retryAfter: 0,
+                failureCount: 0,
+            });
         }
         // Fire-and-forget — best effort re-warm; errors are swallowed
         this.triggerFetch(workspaceId).catch(() => { /* best-effort */ });
@@ -127,19 +161,36 @@ export class GitInfoCacheService {
      * - Stale / missing: await in-flight fetch (or start one) before returning.
      */
     async getOrFetch(workspaceId: string): Promise<GitInfoResult> {
+        return (await this.getOrFetchWithOutcome(workspaceId)).data;
+    }
+
+    /** Return git-info together with cache and subprocess observability metadata. */
+    async getOrFetchWithOutcome(workspaceId: string): Promise<GitInfoCacheRead> {
         const entry = this.entries.get(workspaceId);
 
         if (!entry) {
-            return this.triggerFetch(workspaceId);
+            const data = await this.triggerFetch(workspaceId);
+            const completed = this.entries.get(workspaceId);
+            return this.buildRead(data, completed?.failureCount ? 'error-retry' : 'miss', completed, true);
+        }
+
+        if (entry.inflight) {
+            const data = await entry.inflight;
+            return this.buildRead(data, entry.invalidated ? 'invalidated' : 'inflight', this.entries.get(workspaceId), false);
+        }
+
+        if (entry.retryAfter > Date.now()) {
+            return this.buildRead(entry.data, 'error-retry', entry, false);
         }
 
         const age = Date.now() - entry.lastFetchedAt;
         if (age <= STALE_THRESHOLD_MS) {
-            return entry.data;
+            return this.buildRead(entry.data, 'hit', entry, false);
         }
 
-        // Stale: await the existing in-flight fetch, or trigger a new one
-        return entry.inflight ?? this.triggerFetch(workspaceId);
+        const outcome: GitInfoCacheOutcome = entry.invalidated ? 'invalidated' : entry.failureCount > 0 ? 'error-retry' : 'stale';
+        const data = await this.triggerFetch(workspaceId);
+        return this.buildRead(data, outcome, this.entries.get(workspaceId), true);
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -174,25 +225,84 @@ export class GitInfoCacheService {
         if (existing?.inflight) return existing.inflight;
 
         const stub: GitInfoResult = { branch: null, dirty: false, isGitRepo: false, remoteUrl: null };
+        const startedAt = Date.now();
         const inflight = this.fetchFn(workspaceId)
-            .then(data => {
-                this.entries.set(workspaceId, { data, lastFetchedAt: Date.now(), inflight: null });
+            .then(value => {
+                const measuredDurationMs = Math.max(0, Date.now() - startedAt);
+                const wrapped = 'data' in value && 'gitProcessCount' in value;
+                const data = wrapped ? value.data : value;
+                if (wrapped && value.error) {
+                    const current = this.entries.get(workspaceId);
+                    const failureCount = (current?.failureCount ?? 0) + 1;
+                    const backoffMs = Math.min(ERROR_BACKOFF_MAX_MS, ERROR_BACKOFF_BASE_MS * (2 ** (failureCount - 1)));
+                    this.entries.set(workspaceId, {
+                        data,
+                        lastFetchedAt: 0,
+                        inflight: null,
+                        invalidated: false,
+                        failureCount,
+                        retryAfter: Date.now() + backoffMs,
+                        lastGitProcessCount: value.gitProcessCount,
+                        lastGitDurationMs: value.gitDurationMs,
+                    });
+                    return data;
+                }
+                this.entries.set(workspaceId, {
+                    data,
+                    lastFetchedAt: Date.now(),
+                    inflight: null,
+                    invalidated: false,
+                    failureCount: 0,
+                    retryAfter: 0,
+                    lastGitProcessCount: wrapped ? value.gitProcessCount : 0,
+                    lastGitDurationMs: wrapped ? value.gitDurationMs : measuredDurationMs,
+                });
                 return data;
             })
-            .catch(err => {
-                // Clear inflight so the next call retries instead of hanging
-                const e = this.entries.get(workspaceId);
-                if (e) this.entries.set(workspaceId, { ...e, inflight: null });
-                throw err;
+            .catch(() => {
+                const current = this.entries.get(workspaceId);
+                const failureCount = (current?.failureCount ?? 0) + 1;
+                const backoffMs = Math.min(ERROR_BACKOFF_MAX_MS, ERROR_BACKOFF_BASE_MS * (2 ** (failureCount - 1)));
+                const data = current?.data ?? stub;
+                this.entries.set(workspaceId, {
+                    data,
+                    lastFetchedAt: 0,
+                    inflight: null,
+                    invalidated: false,
+                    failureCount,
+                    retryAfter: Date.now() + backoffMs,
+                    lastGitProcessCount: 0,
+                    lastGitDurationMs: Math.max(0, Date.now() - startedAt),
+                });
+                return data;
             });
 
         this.entries.set(workspaceId, {
             data: existing?.data ?? stub,
             lastFetchedAt: existing?.lastFetchedAt ?? 0,
             inflight,
+            invalidated: existing?.invalidated ?? false,
+            failureCount: existing?.failureCount ?? 0,
+            retryAfter: existing?.retryAfter ?? 0,
+            lastGitProcessCount: 0,
+            lastGitDurationMs: 0,
         });
 
         return inflight;
+    }
+
+    private buildRead(
+        data: GitInfoResult,
+        outcome: GitInfoCacheOutcome,
+        entry: GitInfoEntry | undefined,
+        includeLiveMetrics: boolean,
+    ): GitInfoCacheRead {
+        return {
+            data,
+            outcome,
+            gitProcessCount: includeLiveMetrics ? entry?.lastGitProcessCount ?? 0 : 0,
+            gitDurationMs: includeLiveMetrics ? entry?.lastGitDurationMs ?? 0 : 0,
+        };
     }
 }
 

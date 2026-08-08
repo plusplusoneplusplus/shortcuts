@@ -544,8 +544,8 @@ describe('API Handler', () => {
 
         it('should return remoteUrl for a git repo with no commits (Azure DevOps grouping scenario)', async () => {
             // Simulates adding an Azure DevOps repo that has a remote configured but no
-            // commits yet. getBranchStatus returns null (no HEAD), but the remoteUrl must
-            // still be detected and returned so the sidebar group is created.
+            // commits yet. Porcelain-v2 reports an unborn branch, and the persisted
+            // remoteUrl must still be returned so the sidebar group is created.
             const srv = await startServer();
             const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'empty-git-'));
             try {
@@ -562,7 +562,7 @@ describe('API Handler', () => {
                 const res = await request(`${srv.url}/api/workspaces/ws-empty-git/git-info`);
                 expect(res.status).toBe(200);
                 const body = JSON.parse(res.body);
-                expect(body.isGitRepo).toBe(false);
+                expect(body.isGitRepo).toBe(true);
                 expect(body.remoteUrl).toBe('https://dev.azure.com/myorg/myproject/_git/myrepo');
             } finally {
                 safeRmSync(repoDir);

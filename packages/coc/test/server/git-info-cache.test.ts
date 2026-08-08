@@ -17,7 +17,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { GitInfoCacheService, REFRESH_PERIOD_MS, STALE_THRESHOLD_MS } from '../../src/server/git/git-info-cache';
+import { ERROR_BACKOFF_BASE_MS, GitInfoCacheService, REFRESH_PERIOD_MS, STALE_THRESHOLD_MS } from '../../src/server/git/git-info-cache';
 import type { GitInfoResult } from '../../src/server/git/git-info-cache';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -190,16 +190,70 @@ describe('GitInfoCacheService', () => {
 
     // ── fetchFn error handling ────────────────────────────────────────────────
 
-    it('clears inflight on fetchFn error so next call retries', async () => {
+    it('backs off after a fetch error instead of retrying every request', async () => {
         fetchFn.mockRejectedValueOnce(new Error('git error'));
         fetchFn.mockResolvedValue(RESULT_A);
         cache.start(fetchFn, activeIds(['ws-a']));
 
-        await expect(cache.getOrFetch('ws-a')).rejects.toThrow('git error');
+        const fallback = await cache.getOrFetch('ws-a');
+        expect(fallback).toEqual({ branch: null, dirty: false, isGitRepo: false, remoteUrl: null });
 
+        const backedOff = await cache.getOrFetchWithOutcome('ws-a');
+        expect(backedOff.outcome).toBe('error-retry');
+        expect(fetchFn).toHaveBeenCalledTimes(1);
+
+        vi.advanceTimersByTime(ERROR_BACKOFF_BASE_MS + 1);
         const result = await cache.getOrFetch('ws-a');
         expect(result).toEqual(RESULT_A);
         expect(fetchFn).toHaveBeenCalledTimes(2);
+    });
+
+    it('reports hit, miss, stale, invalidated, and inflight cache outcomes', async () => {
+        cache.start(fetchFn, activeIds([]));
+
+        expect((await cache.getOrFetchWithOutcome('ws-a')).outcome).toBe('miss');
+        expect((await cache.getOrFetchWithOutcome('ws-a')).outcome).toBe('hit');
+
+        vi.advanceTimersByTime(STALE_THRESHOLD_MS + 1);
+        expect((await cache.getOrFetchWithOutcome('ws-a')).outcome).toBe('stale');
+
+        let resolve!: (value: GitInfoResult) => void;
+        fetchFn.mockImplementationOnce(() => new Promise<GitInfoResult>(r => { resolve = r; }));
+        cache.invalidate('ws-a');
+        const invalidatedRead = cache.getOrFetchWithOutcome('ws-a');
+        resolve(RESULT_B);
+        expect((await invalidatedRead).outcome).toBe('invalidated');
+
+        let resolveCold!: (value: GitInfoResult) => void;
+        fetchFn.mockImplementationOnce(() => new Promise<GitInfoResult>(r => { resolveCold = r; }));
+        const firstColdRead = cache.getOrFetchWithOutcome('ws-b');
+        const inflightRead = cache.getOrFetchWithOutcome('ws-b');
+        resolveCold(RESULT_A);
+        await firstColdRead;
+        expect((await inflightRead).outcome).toBe('inflight');
+    });
+
+    it('reports live git metrics without charging deduplicated readers', async () => {
+        fetchFn.mockResolvedValueOnce({ data: RESULT_A, gitProcessCount: 1, gitDurationMs: 17 });
+        cache.start(fetchFn, activeIds([]));
+
+        const miss = await cache.getOrFetchWithOutcome('ws-a');
+        expect(miss).toMatchObject({ outcome: 'miss', gitProcessCount: 1, gitDurationMs: 17 });
+
+        const hit = await cache.getOrFetchWithOutcome('ws-a');
+        expect(hit).toMatchObject({ outcome: 'hit', gitProcessCount: 0, gitDurationMs: 0 });
+    });
+
+    it('backs off a completed live read marked as an error', async () => {
+        const failedResult: GitInfoResult = { branch: null, dirty: false, isGitRepo: false, remoteUrl: 'persisted' };
+        fetchFn.mockResolvedValueOnce({ data: failedResult, gitProcessCount: 1, gitDurationMs: 12, error: true });
+        cache.start(fetchFn, activeIds([]));
+
+        const first = await cache.getOrFetchWithOutcome('ws-a');
+        expect(first).toMatchObject({ data: failedResult, outcome: 'error-retry', gitProcessCount: 1 });
+        const backedOff = await cache.getOrFetchWithOutcome('ws-a');
+        expect(backedOff).toMatchObject({ data: failedResult, outcome: 'error-retry', gitProcessCount: 0 });
+        expect(fetchFn).toHaveBeenCalledTimes(1);
     });
 
     // ── Background refresh ────────────────────────────────────────────────────

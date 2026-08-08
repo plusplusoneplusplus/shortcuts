@@ -20,6 +20,7 @@ import {
     type WorkspaceSummaryResponse,
     type WorkspacesResponse,
 } from '@plusplusoneplusplus/coc-client';
+import { getCocClientForWorkspace } from './cloneRegistry';
 import { getSpaCocClient } from '../api/cocClient';
 import { isContainerMode, getRawApiBase } from '../utils/config';
 import { CocClient } from '@plusplusoneplusplus/coc-client';
@@ -98,11 +99,11 @@ export function getWorkspaceSummary(workspaceId: string): Promise<WorkspaceSumma
 }
 
 export function getWorkspaceGitInfo(workspaceId: string): Promise<GitInfoResponse> {
-    return getSpaCocClient().workspaces.gitInfo(workspaceId);
+    return getCocClientForWorkspace(workspaceId).workspaces.gitInfo(workspaceId);
 }
 
-export function getWorkspaceGitInfoBatch(workspaceIds: string[], signal?: AbortSignal): Promise<GitInfoBatchResponse> {
-    return getSpaCocClient().workspaces.gitInfoBatch(workspaceIds, { signal });
+export function getWorkspaceGitInfoBatch(workspaceIds: string[], signal?: AbortSignal, trigger = 'initial-topology-load'): Promise<GitInfoBatchResponse> {
+    return getSpaCocClient().workspaces.gitInfoBatch(workspaceIds, { signal, trigger });
 }
 
 export interface RemoteWorkspaceTargetSource {

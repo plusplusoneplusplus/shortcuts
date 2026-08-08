@@ -130,10 +130,13 @@ export class WorkspacesClient {
     return this.transport.request<GitInfoResponse>(`/workspaces/${encodePathSegment(workspaceId)}/git-info`);
   }
 
-  gitInfoBatch(workspaceIds: string[], options?: Pick<CocRequestOptions, 'signal'>): Promise<GitInfoBatchResponse> {
+  gitInfoBatch(
+    workspaceIds: string[],
+    options?: Pick<CocRequestOptions, 'signal'> & { trigger?: string },
+  ): Promise<GitInfoBatchResponse> {
     return this.transport.request<GitInfoBatchResponse>('/git-info/batch', {
       method: 'POST',
-      body: { workspaceIds: [...workspaceIds] },
+      body: { workspaceIds: [...workspaceIds], ...(options?.trigger ? { trigger: options.trigger } : {}) },
       signal: options?.signal,
     });
   }

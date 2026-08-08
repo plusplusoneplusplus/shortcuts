@@ -17,6 +17,10 @@ import type { Route } from '../../src/server/types';
 import { createMockProcessStore } from './helpers/mock-process-store';
 import type { MockProcessStore } from './helpers/mock-process-store';
 
+const gitServiceMocks = vi.hoisted(() => ({
+    detectRemoteUrl: vi.fn(),
+}));
+
 // ============================================================================
 // Test Constants
 // ============================================================================
@@ -26,6 +30,7 @@ const WORKSPACE_1 = {
     name: 'project-a',
     rootPath: process.platform === 'win32' ? 'C:\\projects\\a' : '/projects/a',
     remoteUrl: 'https://github.com/user/a',
+    isGitRepo: true,
 };
 
 const WORKSPACE_2 = {
@@ -33,6 +38,7 @@ const WORKSPACE_2 = {
     name: 'project-b',
     rootPath: process.platform === 'win32' ? 'C:\\projects\\b' : '/projects/b',
     remoteUrl: 'https://github.com/user/b',
+    isGitRepo: true,
 };
 
 // ============================================================================
@@ -80,9 +86,16 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal() as any;
     return {
         ...actual,
+        detectRemoteUrl: gitServiceMocks.detectRemoteUrl,
         BranchService: vi.fn().mockImplementation(function () { return ({
-            hasUncommittedChanges: vi.fn(async () => true),
-            getBranchStatus: vi.fn(async function () { return ({ name: 'main', isDetached: false, ahead: 1, behind: 0, hasUncommittedChanges: true }); }),
+            getRepositoryStatus: vi.fn(async function () { return ({
+                branch: 'main',
+                isDetached: false,
+                dirty: true,
+                ahead: 1,
+                behind: 0,
+                unborn: false,
+            }); }),
         }); }),
         GitRangeService: vi.fn().mockImplementation(function () { return ({
             getCurrentBranch: vi.fn(async () => 'main'),
@@ -142,7 +155,9 @@ describe('POST /api/git-info/batch', () => {
         expect(data.results['ws-1'].branch).toBe('main');
         expect(data.results['ws-1'].dirty).toBe(true);
         expect(data.results['ws-1'].isGitRepo).toBe(true);
+        expect(data.results['ws-1'].remoteUrl).toBe(WORKSPACE_1.remoteUrl);
         expect(data.results['ws-2']).toBeDefined();
+        expect(gitServiceMocks.detectRemoteUrl).not.toHaveBeenCalled();
     });
 
     it('returns null for unknown workspace IDs', async () => {

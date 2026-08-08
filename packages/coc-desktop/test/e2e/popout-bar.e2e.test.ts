@@ -30,7 +30,12 @@ const runnerPath = path.join(here, 'popout-bar-runner.cjs');
 const distHost = path.join(pkgRoot, 'dist', 'popout-window-host.js');
 
 // Under plain Node, require('electron') resolves to the binary's path string.
-const electronPath = createRequire(import.meta.url)('electron') as unknown as string;
+// Resolved lazily (inside runScenario) rather than at import time: on CI without
+// opt-in this suite is skipped, and a flaky/half-extracted Electron install (e.g.
+// a concurrent-extraction race on Windows) must never fail the file at import.
+function resolveElectronPath(): string {
+    return createRequire(import.meta.url)('electron') as unknown as string;
+}
 
 const onCiWithoutOptIn = !!process.env.CI && process.env.COC_DESKTOP_E2E !== '1';
 const headlessLinux = process.platform === 'linux' && !process.env.DISPLAY;
@@ -48,7 +53,7 @@ function runScenario(): Promise<{ steps: Map<string, StepRecord>; exitCode: numb
         const args = process.env.COC_DESKTOP_E2E_NO_SANDBOX === '1'
             ? ['--no-sandbox', runnerPath]
             : [runnerPath];
-        const child = spawn(electronPath, args, { env });
+        const child = spawn(resolveElectronPath(), args, { env });
         let out = '';
         let err = '';
         child.stdout.on('data', (d) => { out += String(d); });

@@ -265,7 +265,7 @@ async function loadOnlineSource(
         const rawWorkspaces = normalizeWorkspacesResponse(await remoteClient.workspaces.list());
         const visible = rawWorkspaces.filter(ws => !ws.virtual);
         const gitInfo: RemoteGitInfoMap = visible.length > 0
-            ? (await remoteClient.workspaces.gitInfoBatch(visible.map(ws => ws.id))).results ?? {}
+            ? (await remoteClient.workspaces.gitInfoBatch(visible.map(ws => ws.id), { trigger: 'remote-topology-load' })).results ?? {}
             : {};
 
         // Workflow lists come from each workspace's own `/summary`, mirroring what

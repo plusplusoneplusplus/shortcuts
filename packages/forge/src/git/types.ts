@@ -220,6 +220,24 @@ export interface BranchStatus {
     hasUncommittedChanges: boolean;
 }
 
+/** Repository metadata returned by one `git status --porcelain=v2 --branch` call. */
+export interface GitRepositoryStatus {
+    /** Current branch name, or `HEAD` when detached. */
+    branch: string;
+    /** Whether HEAD is detached. */
+    isDetached: boolean;
+    /** Whether the index or working tree contains changes. */
+    dirty: boolean;
+    /** Number of local commits not present upstream. */
+    ahead: number;
+    /** Number of upstream commits not present locally. */
+    behind: number;
+    /** Configured upstream branch, when present. */
+    trackingBranch?: string;
+    /** Whether the repository has no commits yet. */
+    unborn: boolean;
+}
+
 /**
  * Represents a git branch.
  */

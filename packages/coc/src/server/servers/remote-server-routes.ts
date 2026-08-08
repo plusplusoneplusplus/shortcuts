@@ -15,6 +15,7 @@ export interface RegisterRemoteServerRoutesOptions {
     sshConnector?: SshConnector;
     getLocalBaseUrl?: () => string | undefined;
     requestTimeoutMs?: number;
+    onTopologyChanged?: (serverId: string, action: 'added' | 'updated' | 'removed' | 'connection') => void;
 }
 
 function sendTransferFailure(res: http.ServerResponse, error: unknown): void {
@@ -67,7 +68,9 @@ export function registerRemoteServerRoutes(
         pattern: '/api/servers',
         handler: async (req, res) => {
             try {
-                sendJson(res, await runtime.create(await readJsonBody(req)), 201);
+                const created = await runtime.create(await readJsonBody(req));
+                options.onTopologyChanged?.(created.id, 'added');
+                sendJson(res, created, 201);
             } catch (error) {
                 send400(res, error instanceof Error ? error.message : String(error));
             }
@@ -89,6 +92,7 @@ export function registerRemoteServerRoutes(
                     send404(res, `Remote server not found: ${id}`);
                     return;
                 }
+                options.onTopologyChanged?.(id, 'updated');
                 sendJson(res, updated);
             } catch (error) {
                 send400(res, error instanceof Error ? error.message : String(error));
@@ -105,6 +109,7 @@ export function registerRemoteServerRoutes(
                 send404(res, `Remote server not found: ${id}`);
                 return;
             }
+            options.onTopologyChanged?.(id, 'removed');
             sendJson(res, { ok: true });
         },
     });
@@ -146,6 +151,7 @@ export function registerRemoteServerRoutes(
                     send404(res, `Remote server not found: ${id}`);
                     return;
                 }
+                options.onTopologyChanged?.(id, 'connection');
                 sendJson(res, runtimeState);
             } catch (error) {
                 sendRuntimeFailure(res, error);
@@ -164,6 +170,7 @@ export function registerRemoteServerRoutes(
                     send404(res, `Remote server not found: ${id}`);
                     return;
                 }
+                options.onTopologyChanged?.(id, 'connection');
                 sendJson(res, runtimeState);
             } catch (error) {
                 sendRuntimeFailure(res, error);
@@ -182,6 +189,7 @@ export function registerRemoteServerRoutes(
                     send404(res, `Remote server not found: ${id}`);
                     return;
                 }
+                options.onTopologyChanged?.(id, 'connection');
                 sendJson(res, runtimeState);
             } catch (error) {
                 sendRuntimeFailure(res, error);

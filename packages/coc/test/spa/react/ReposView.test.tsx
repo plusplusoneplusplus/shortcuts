@@ -907,7 +907,7 @@ describe('ReposView', () => {
 // ReposContext source-level tests: throttled process events & stable fetchRepos
 // ============================================================================
 
-describe('ReposContext — process event throttling', () => {
+describe('ReposContext — process events update in-memory (no throttled refetch)', () => {
     let source: string;
 
     beforeEach(() => {
@@ -919,25 +919,33 @@ describe('ReposContext — process event throttling', () => {
         );
     });
 
-    it('uses a ref to throttle process events instead of calling fetchRepos directly', () => {
-        expect(source).toContain('processThrottleRef');
-        // Should NOT call fetchRepos() directly in the process-event handler
+    it('dispatches process lifecycle events to AppContext instead of refetching repos', () => {
         const onMessageBlock = source.substring(
             source.indexOf('onMessage: useCallback'),
-            source.indexOf('], [refreshPipelinesForWorkspace, refreshGitInfoForWorkspace, fetchRepos])'),
+            source.indexOf('}, [dispatch, refreshPipelinesForWorkspace, refreshGitInfoForWorkspace, fetchRepos]),'),
         );
-        // The old pattern was a bare fetchRepos() call; now it should be inside setTimeout
+        // Process events feed the in-memory AppContext process index; they must
+        // NOT trigger a workspace rediscovery (fetchRepos) anymore.
         const processBlock = onMessageBlock.substring(onMessageBlock.indexOf('process-added'));
-        expect(processBlock).toContain('setTimeout');
-        expect(processBlock).toContain('processThrottleRef');
+        expect(processBlock).toContain("dispatch({ type: 'PROCESS_ADDED'");
+        expect(processBlock).toContain("dispatch({ type: 'PROCESS_UPDATED'");
+        expect(processBlock).toContain("dispatch({ type: 'PROCESS_REMOVED'");
+        expect(processBlock).not.toContain('fetchRepos(');
     });
 
-    it('throttles to 10 seconds between fetchRepos calls', () => {
-        expect(source).toContain('10_000');
+    it('derives per-repo card stats from appState.processes in a useEffect', () => {
+        expect(source).toContain('appState.processes.filter');
+        expect(source).toContain("process.status === 'completed'");
+        expect(source).toContain('}, [appState.processes]);');
     });
 
-    it('clears the throttle timer on unmount', () => {
-        expect(source).toContain('clearTimeout(processThrottleRef.current)');
+    it('reserves fetchRepos for topology changes and reconnect, not process events', () => {
+        expect(source).toContain("fetchRepos('topology-change')");
+        expect(source).toContain("fetchRepos('reconnect')");
+        expect(source).toContain("fetchRepos('initial-topology-load')");
+        // The removed 10s throttle mechanism must not reappear.
+        expect(source).not.toContain('processThrottleRef');
+        expect(source).not.toContain('10_000');
     });
 
     it('uses a ref for selectedRepoId to avoid recreating fetchRepos', () => {
@@ -1014,16 +1022,17 @@ describe('ReposContext — async git-info', () => {
     it('fetches git-info via batch endpoint in phase 2', () => {
         const phase2Idx = source.indexOf('Phase 2');
         expect(phase2Idx).toBeGreaterThan(-1);
-        // Window widened to 2500 so container-mode branching (added in
-        // a0bc2fb40) doesn't push the non-container batch call out of range.
-        const phase2Body = source.substring(phase2Idx, phase2Idx + 2500);
+        // Window widened so container-mode branching (added in a0bc2fb40) and the
+        // git-info batch `trigger` argument don't push the non-container batch call
+        // out of range.
+        const phase2Body = source.substring(phase2Idx, phase2Idx + 3000);
         expect(phase2Body).toContain('getWorkspaceGitInfoBatch');
     });
 
     it('uses AbortController for batch git-info requests', () => {
         expect(source).toContain('gitInfoAbortRef');
         expect(source).toContain('new AbortController()');
-        expect(source).toContain('getWorkspaceGitInfoBatch(wsIds, abortController.signal)');
+        expect(source).toContain('getWorkspaceGitInfoBatch(wsIds, abortController.signal, trigger)');
     });
 
     it('handles git-changed WebSocket events', () => {

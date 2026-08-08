@@ -44,23 +44,13 @@ import {
 import { testMcpConnection } from './mcp-connection-tester';
 import { discoverWorkspaceMcpTools } from './mcp-tools-discovery';
 import { readMcpServerAuthInfo, type McpServerAuthStatus } from '../mcp-oauth';
+import { getServerLogger } from '../logging/server-logger';
 
 // Lazy singleton service
 let _branchService: BranchService | undefined;
 function getBranchService(): BranchService {
     if (!_branchService) { _branchService = new BranchService(); }
     return _branchService;
-}
-
-/**
- * Detect and persist the remote URL for a workspace if it has changed.
- */
-async function syncRemoteUrl(ws: WorkspaceInfo, store: ProcessStore): Promise<string | undefined> {
-    const remoteUrl = await detectRemoteUrl(ws.rootPath);
-    if (remoteUrl && remoteUrl !== ws.remoteUrl) {
-        await store.updateWorkspace(ws.id, { remoteUrl });
-    }
-    return remoteUrl;
 }
 
 function hasGitDirectory(rootPath: string): boolean {
@@ -196,29 +186,46 @@ function buildMcpConfigResponse(ws: WorkspaceInfo, forceReload = false) {
  * Fetch git-info for a single workspace by ID.
  * Used by both the HTTP handler and the GitInfoCacheService background refresh.
  */
-async function fetchOneGitInfo(workspaceId: string, store: ProcessStore): Promise<GitInfoResult> {
+async function fetchOneGitInfo(workspaceId: string, store: ProcessStore) {
     const workspaces = await store.getWorkspaces();
     const ws = workspaces.find(w => w.id === workspaceId);
     if (!ws) {
         throw new Error(`Workspace ${workspaceId} not found`);
     }
 
-    const dirty = await getBranchService().hasUncommittedChanges(ws.rootPath);
-    const branchStatus = await getBranchService().getBranchStatus(ws.rootPath, dirty);
-
-    if (!branchStatus) {
-        const remoteUrl = await syncRemoteUrl(ws, store);
-        return { branch: null, dirty: false, isGitRepo: false, remoteUrl: remoteUrl || null };
+    const remoteUrl = ws.remoteUrl || null;
+    const recordedGitRepo = (ws as WorkspaceInfo & { isGitRepo?: boolean }).isGitRepo;
+    if (recordedGitRepo === false || (recordedGitRepo !== true && !hasGitDirectory(ws.rootPath))) {
+        return {
+            data: { branch: null, dirty: false, isGitRepo: false, remoteUrl } satisfies GitInfoResult,
+            gitProcessCount: 0,
+            gitDurationMs: 0,
+        };
     }
 
-    const remoteUrl = await syncRemoteUrl(ws, store);
+    const startedAt = Date.now();
+    const status = await getBranchService().getRepositoryStatus(ws.rootPath);
+    const gitDurationMs = Date.now() - startedAt;
+    if (!status) {
+        return {
+            data: { branch: null, dirty: false, isGitRepo: false, remoteUrl } satisfies GitInfoResult,
+            gitProcessCount: 1,
+            gitDurationMs,
+            error: true,
+        };
+    }
+
     return {
-        branch: branchStatus.name || 'HEAD',
-        dirty,
-        ahead: branchStatus.ahead,
-        behind: branchStatus.behind,
-        isGitRepo: true,
-        remoteUrl: remoteUrl || null,
+        data: {
+            branch: status.branch,
+            dirty: status.dirty,
+            ahead: status.ahead,
+            behind: status.behind,
+            isGitRepo: true,
+            remoteUrl,
+        } satisfies GitInfoResult,
+        gitProcessCount: 1,
+        gitDurationMs,
     };
 }
 
@@ -272,6 +279,12 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             };
 
             await store.registerWorkspace(workspace);
+            ctx.getWsServer?.()?.broadcastProcessEvent({
+                type: 'workspace-topology-changed',
+                action: 'added',
+                workspaceId: workspace.id,
+                timestamp: Date.now(),
+            });
             sendJSON(res, 201, workspace);
         },
     });
@@ -363,6 +376,12 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             if (!removed) {
                 return handleAPIError(res, notFound('Workspace'));
             }
+            ctx.getWsServer?.()?.broadcastProcessEvent({
+                type: 'workspace-topology-changed',
+                action: 'removed',
+                workspaceId: id,
+                timestamp: Date.now(),
+            });
             res.writeHead(204);
             res.end();
         },
@@ -388,6 +407,13 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             if (!updated) {
                 return handleAPIError(res, notFound('Workspace'));
             }
+            gitInfoCache.invalidate(id);
+            ctx.getWsServer?.()?.broadcastProcessEvent({
+                type: 'workspace-topology-changed',
+                action: 'updated',
+                workspaceId: id,
+                timestamp: Date.now(),
+            });
             sendJSON(res, 200, { workspace: updated });
         },
     });
@@ -427,16 +453,44 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
 
             const CONCURRENCY = 4;
             const results: Record<string, any> = {};
+            const outcomes: Record<string, number> = {};
+            let liveFetches = 0;
+            let cacheHits = 0;
+            let gitProcessCount = 0;
+            let gitDurationMs = 0;
             for (let i = 0; i < workspaceIds.length; i += CONCURRENCY) {
                 const batch = workspaceIds.slice(i, i + CONCURRENCY);
                 await Promise.all(batch.map(async (wsId: string) => {
                     if (!knownIds.has(wsId)) { results[wsId] = null; return; }
                     try {
-                        results[wsId] = await gitInfoCache.getOrFetch(wsId);
+                        const read = await gitInfoCache.getOrFetchWithOutcome(wsId);
+                        results[wsId] = read.data;
+                        outcomes[read.outcome] = (outcomes[read.outcome] ?? 0) + 1;
+                        if (read.outcome === 'hit' || read.outcome === 'inflight' || read.outcome === 'error-retry') cacheHits++;
+                        if (read.gitProcessCount > 0) liveFetches++;
+                        gitProcessCount += read.gitProcessCount;
+                        gitDurationMs += read.gitDurationMs;
                     } catch {
                         results[wsId] = null;
                     }
                 }));
+            }
+
+            const allowedTriggers = new Set(['initial-topology-load', 'remote-topology-load', 'topology-change', 'manual-refresh', 'reconnect']);
+            const trigger = typeof body.trigger === 'string' && allowedTriggers.has(body.trigger)
+                ? body.trigger
+                : 'unspecified';
+            if (liveFetches > 0 || (outcomes['error-retry'] ?? 0) > 0 || Math.random() < 0.1) {
+                getServerLogger().debug({
+                    requestedWorkspaces: workspaceIds.length,
+                    liveFetches,
+                    cacheHits,
+                    gitProcessCount,
+                    gitDurationMs,
+                    outcomes,
+                    trigger,
+                    scope: 'local-server',
+                }, 'Git-info batch summary');
             }
 
             sendJSON(res, 200, { results });
