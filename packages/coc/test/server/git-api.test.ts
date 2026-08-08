@@ -42,6 +42,7 @@ vi.mock('child_process', function () { return ({
 // ============================================================================
 
 const mockGetBranchStatus = vi.fn();
+const mockGetRepositoryStatus = vi.fn();
 const mockHasUncommittedChanges = vi.fn();
 const mockGetCurrentBranch = vi.fn();
 const mockExportCommitPatch = vi.fn();
@@ -56,6 +57,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
         ...actual,
         BranchService: vi.fn().mockImplementation(function () { return ({
             getBranchStatus: vi.fn(async (...args: any[]) => mockGetBranchStatus(...args)),
+            getRepositoryStatus: vi.fn(async (...args: any[]) => mockGetRepositoryStatus(...args)),
             hasUncommittedChanges: vi.fn(async (...args: any[]) => mockHasUncommittedChanges(...args)),
             exportCommitPatch: vi.fn(async (...args: any[]) => mockExportCommitPatch(...args)),
             exportCommitPatches: vi.fn(async (...args: any[]) => mockExportCommitPatches(...args)),
@@ -127,7 +129,7 @@ describe('Git API endpoints', () => {
         tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'git-api-test-'));
         store = createMockProcessStore();
         (store.getWorkspaces as any).mockResolvedValue([
-            { id: WORKSPACE_ID, name: 'Test Repo', rootPath: WORKSPACE_ROOT, remoteUrl: 'https://token@example.com/org/repo.git' },
+            { id: WORKSPACE_ID, name: 'Test Repo', rootPath: WORKSPACE_ROOT, remoteUrl: 'https://token@example.com/org/repo.git', isGitRepo: true },
         ]);
 
         const routes: Route[] = [];
@@ -147,6 +149,7 @@ describe('Git API endpoints', () => {
         mockExecSync.mockReset();
         mockExecFileSync.mockReset();
         mockGetBranchStatus.mockReset();
+        mockGetRepositoryStatus.mockReset();
         mockHasUncommittedChanges.mockReset();
         mockGetCurrentBranch.mockReset();
         mockExportCommitPatch.mockReset();
@@ -158,6 +161,7 @@ describe('Git API endpoints', () => {
         mockHasUncommittedChanges.mockReturnValue(false);
         mockGetCurrentBranch.mockReturnValue('main');
         mockGetBranchStatus.mockReturnValue({ name: 'main', isDetached: false, ahead: 0, behind: 0, hasUncommittedChanges: false });
+        mockGetRepositoryStatus.mockReturnValue({ branch: 'main', isDetached: false, dirty: false, ahead: 0, behind: 0, unborn: false });
         mockGetRepoState.mockReturnValue({ operation: 'none', conflictFiles: [] });
         gitCache.clear();
         gitInfoCache.clear();
@@ -783,9 +787,7 @@ describe('Git API endpoints', () => {
 
     describe('GET /api/workspaces/:id/git-info', () => {
         it('returns branch, dirty, ahead, behind for a valid git repo', async () => {
-            mockGetCurrentBranch.mockReturnValue('feature/my-branch');
-            mockHasUncommittedChanges.mockReturnValue(true);
-            mockGetBranchStatus.mockReturnValue({ name: 'feature/my-branch', isDetached: false, ahead: 2, behind: 1, hasUncommittedChanges: true });
+            mockGetRepositoryStatus.mockReturnValue({ branch: 'feature/my-branch', isDetached: false, dirty: true, ahead: 2, behind: 1, unborn: false });
             mockExecSync.mockReturnValue(''); // for detectRemoteUrl
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git-info`);
@@ -798,9 +800,8 @@ describe('Git API endpoints', () => {
             expect(data.behind).toBe(1);
         });
 
-        it('returns isGitRepo false when getBranchStatus returns null', async () => {
-            mockGetBranchStatus.mockReturnValue(null);
-            mockHasUncommittedChanges.mockReturnValue(false);
+        it('returns isGitRepo false when getRepositoryStatus returns null', async () => {
+            mockGetRepositoryStatus.mockReturnValue(null);
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git-info`);
             expect(res.status).toBe(200);
@@ -810,9 +811,7 @@ describe('Git API endpoints', () => {
         });
 
         it('returns ahead=0 behind=0 when no upstream tracking branch', async () => {
-            mockGetCurrentBranch.mockReturnValue('main');
-            mockHasUncommittedChanges.mockReturnValue(false);
-            mockGetBranchStatus.mockReturnValue({ name: 'main', isDetached: false, ahead: 0, behind: 0, hasUncommittedChanges: false });
+            mockGetRepositoryStatus.mockReturnValue({ branch: 'main', isDetached: false, dirty: false, ahead: 0, behind: 0, unborn: false });
             mockExecSync.mockReturnValue('');
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git-info`);
