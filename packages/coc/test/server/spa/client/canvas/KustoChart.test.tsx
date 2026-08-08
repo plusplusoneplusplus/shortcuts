@@ -492,3 +492,101 @@ describe('KustoChart drag-to-zoom', () => {
         expect(screen.queryByTestId('kusto-chart-reset-zoom')).toBeNull();
     });
 });
+
+/**
+ * AC-07 — the same component backs the side panel, inline chat embeds
+ * (`compact`) and the fullscreen view, and is never gated by read-only mode.
+ * Height is the only difference between the surfaces; all three interactions
+ * have to stay live in the compact embed too.
+ */
+describe('KustoChart host surfaces', () => {
+    const seriesColumns: KustoColumn[] = [
+        { name: 'Bucket', type: 'string' },
+        { name: 'Service', type: 'string' },
+        { name: 'P95', type: 'real' },
+    ];
+    const seriesRows: KustoCellValue[][] = Array.from({ length: 12 }, (_, i) => i).flatMap(i => [
+        [`10:${String(i).padStart(2, '0')}`, 'api-gateway', 9000 + i] as KustoCellValue[],
+        [`10:${String(i).padStart(2, '0')}`, 'auth', 12.5 + i] as KustoCellValue[],
+    ]);
+    const config = { type: 'line' as const, x: 'Bucket', y: ['P95'], series: 'Service' };
+
+    async function renderChart(compact: boolean) {
+        const { container } = render(
+            <KustoChart columns={seriesColumns} rows={seriesRows} config={config} compact={compact} />,
+        );
+        const wrapper = await waitFor(() => {
+            const el = container.querySelector('.recharts-wrapper');
+            expect(el).not.toBeNull();
+            return el as HTMLElement;
+        });
+        return { container, wrapper };
+    }
+
+    /** Number of plotted points on the first line — one per x in the domain. */
+    function pointCount(container: HTMLElement): number {
+        const d = container.querySelector('.recharts-line-curve')?.getAttribute('d') ?? '';
+        return Array.from(d.matchAll(/,(-?[\d.]+)/g)).length;
+    }
+
+    async function flush() {
+        await act(async () => {
+            await new Promise(resolve => requestAnimationFrame(() => resolve(null)));
+            await new Promise(resolve => setTimeout(resolve, 0));
+        });
+    }
+
+    async function drag(wrapper: HTMLElement, fromX: number, toX: number) {
+        const at = (clientX: number) => ({ clientX, clientY: 100, pointerId: 1, pointerType: 'mouse', bubbles: true });
+        fireEvent.mouseMove(wrapper, at(fromX));
+        await flush();
+        fireEvent.mouseDown(wrapper, at(fromX));
+        await flush();
+        fireEvent.mouseMove(wrapper, at(toX));
+        await flush();
+        fireEvent.mouseUp(wrapper, at(toX));
+        await flush();
+    }
+
+    it('gives the compact embed a shorter plot than the panel', async () => {
+        const { container: panel } = await renderChart(false);
+        expect(panel.querySelector('.recharts-responsive-container')).toHaveStyle({ height: '320px' });
+        cleanup();
+        const { container: embed } = await renderChart(true);
+        expect(embed.querySelector('.recharts-responsive-container')).toHaveStyle({ height: '220px' });
+    });
+
+    it('keeps hover, legend toggle and drag-zoom live in a compact embed', async () => {
+        const { container, wrapper } = await renderChart(true);
+        await waitFor(() => expect(pointCount(container)).toBe(12));
+
+        hoverPlot(wrapper, 80);
+        const tooltip = await screen.findByTestId('kusto-chart-tooltip');
+        expect(tooltip).toHaveTextContent('api-gateway');
+        expect(tooltip).toHaveTextContent('auth');
+
+        fireEvent.click(screen.getByRole('button', { name: /api-gateway/ }));
+        await waitFor(() => expect(container.querySelectorAll('.recharts-line')).toHaveLength(1));
+        fireEvent.click(screen.getByRole('button', { name: /api-gateway/ }));
+        await waitFor(() => expect(container.querySelectorAll('.recharts-line')).toHaveLength(2));
+
+        await drag(wrapper, 120, 320);
+        await waitFor(() => expect(pointCount(container)).toBeLessThan(12));
+        fireEvent.click(await screen.findByTestId('kusto-chart-reset-zoom'));
+        await waitFor(() => expect(pointCount(container)).toBe(12));
+    });
+
+    it('never issues a request while interacting, so read-only hosts need no gating', async () => {
+        const fetchSpy = vi.spyOn(globalThis, 'fetch' as never).mockResolvedValue({} as never);
+        const { container, wrapper } = await renderChart(false);
+        await waitFor(() => expect(pointCount(container)).toBe(12));
+
+        hoverPlot(wrapper, 80);
+        await screen.findByTestId('kusto-chart-tooltip');
+        fireEvent.click(screen.getByRole('button', { name: /auth/ }));
+        await drag(wrapper, 120, 320);
+
+        expect(fetchSpy).not.toHaveBeenCalled();
+        fetchSpy.mockRestore();
+    });
+});
