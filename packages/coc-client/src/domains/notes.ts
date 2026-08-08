@@ -31,7 +31,6 @@ import type {
   RestoreNoteVersionResponse,
   SaveNoteCheckpointResponse,
   SaveNoteContentResponse,
-  SendNoteCommentResolutionMessageRequest,
   UploadNoteImageResponse,
 } from '../contracts';
 import type { CocRequestOptions, QueryPrimitive, RequestAdapter } from '../types';
@@ -273,25 +272,6 @@ export class NotesClient {
         // Effort tier rides the top-level task config (like the shared composer),
         // so enqueue resolves it into the seeded model + reasoning effort.
         ...(request.effortTier ? { config: { effortTier: request.effortTier } } : {}),
-      },
-    });
-  }
-
-  sendCommentResolutionMessage(processId: string, request: SendNoteCommentResolutionMessageRequest): Promise<unknown> {
-    return this.transport.request(`/processes/${encodePathSegment(processId)}/message`, {
-      method: 'POST',
-      body: {
-        content: request.content,
-        ...(request.mode ? { mode: request.mode } : {}),
-        context: {
-          noteContent: request.noteContent,
-          resolveComments: {
-            documentUri: request.documentUri,
-            commentIds: [...request.commentIds],
-            documentContent: request.documentContent,
-            wsId: request.workspaceId,
-          },
-        },
       },
     });
   }

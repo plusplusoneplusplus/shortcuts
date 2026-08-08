@@ -323,4 +323,105 @@ describe('buildNotesBatchResolvePrompt', () => {
         expect(prompt).toContain('### Comment 2');
         expect(prompt).toContain('### Comment 3');
     });
+    // ── Empty comment bodies ───────────────────────────────────────────────
+    // Threads persisted before comment content was required carry an empty
+    // first comment; it must not render as a dangling `**Comment:**` line.
+
+    describe('empty first-comment bodies', () => {
+        it('omits the Comment line when the first comment is an empty string', () => {
+            const threads: CommentThread[] = [
+                createThread(
+                    'thread-1',
+                    'open',
+                    'Highlighted passage',
+                    [createComment('c1', '', '2024-01-01T10:00:00Z')],
+                    '2024-01-01T10:00:00Z',
+                ),
+            ];
+
+            const prompt = buildNotesBatchResolvePrompt(threads, 'test.md', 'Document content');
+
+            expect(prompt).toContain('Highlighted passage');
+            expect(prompt).not.toContain('**Comment:**');
+        });
+
+        it('omits the Comment line when the first comment is whitespace-only', () => {
+            const threads: CommentThread[] = [
+                createThread(
+                    'thread-1',
+                    'open',
+                    'Highlighted passage',
+                    [createComment('c1', '   \n  ', '2024-01-01T10:00:00Z')],
+                    '2024-01-01T10:00:00Z',
+                ),
+            ];
+
+            const prompt = buildNotesBatchResolvePrompt(threads, 'test.md', 'Document content');
+
+            expect(prompt).not.toContain('**Comment:**');
+        });
+
+        it('still includes non-empty replies when the first comment is empty', () => {
+            const threads: CommentThread[] = [
+                createThread(
+                    'thread-1',
+                    'open',
+                    'Highlighted passage',
+                    [
+                        createComment('c1', '', '2024-01-01T10:00:00Z'),
+                        createComment('c2', 'The real feedback', '2024-01-01T10:05:00Z'),
+                    ],
+                    '2024-01-01T10:00:00Z',
+                ),
+            ];
+
+            const prompt = buildNotesBatchResolvePrompt(threads, 'test.md', 'Document content');
+
+            expect(prompt).not.toContain('**Comment:**');
+            expect(prompt).toContain('**Replies:**');
+            expect(prompt).toContain('> The real feedback');
+        });
+
+        it('keeps a non-empty first comment', () => {
+            const threads: CommentThread[] = [
+                createThread(
+                    'thread-1',
+                    'open',
+                    'Highlighted passage',
+                    [createComment('c1', 'Please clarify this', '2024-01-01T10:00:00Z')],
+                    '2024-01-01T10:00:00Z',
+                ),
+            ];
+
+            const prompt = buildNotesBatchResolvePrompt(threads, 'test.md', 'Document content');
+
+            expect(prompt).toContain('**Comment:** Please clarify this');
+        });
+    });
+
+    // ── Resolve context the scratchpad follow-up used to drop ──────────────
+
+    it('carries thread IDs, anchor context, replies and resolve instructions', () => {
+        const threads: CommentThread[] = [
+            {
+                id: 'thread-42',
+                status: 'open',
+                createdAt: '2024-01-01T10:00:00Z',
+                anchor: createAnchor('the quoted span', 'text before ', ' text after'),
+                comments: [
+                    createComment('c1', 'Tighten this up', '2024-01-01T10:00:00Z'),
+                    createComment('c2', 'And add an example', '2024-01-01T10:05:00Z'),
+                ],
+            },
+        ];
+
+        const prompt = buildNotesBatchResolvePrompt(threads, 'Notebook/Page.md', '# Doc body');
+
+        expect(prompt).toContain('**Thread ID:** `thread-42`');
+        expect(prompt).toContain('**Context before:** …text before');
+        expect(prompt).toContain('**Context after:**  text after…');
+        expect(prompt).toContain('> And add an example');
+        expect(prompt).toContain('# Doc body');
+        expect(prompt).toContain('`resolve_comment`');
+    });
 });

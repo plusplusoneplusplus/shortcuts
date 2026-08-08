@@ -405,6 +405,84 @@ describe('Notes Comments Handler', () => {
     });
 
     // ========================================================================
+    // 11b. 400 on empty / whitespace-only comment content
+    //
+    // The non-empty rule used to live only in the Add Comment dialog's disabled
+    // button, so a stale client could persist a thread whose only comment was an
+    // empty string — which then rendered as an empty entry in the AI prompt.
+    // ========================================================================
+    it('400 when a new thread carries an empty comment body', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv, workspaceDir);
+
+        const res = await postJSON(commentsUrl(srv, 'thread'), {
+            path: 'page.md',
+            thread: { anchor: { quotedText: 'hello', prefix: '', suffix: '' }, comments: [{ content: '' }] },
+        });
+
+        expect(res.status).toBe(400);
+        expect(JSON.parse(res.body).error).toContain('non-empty');
+    });
+
+    it('400 when a new thread carries a whitespace-only comment body', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv, workspaceDir);
+
+        const res = await postJSON(commentsUrl(srv, 'thread'), {
+            path: 'page.md',
+            thread: { anchor: { quotedText: 'hello', prefix: '', suffix: '' }, comments: [{ content: '   \n\t ' }] },
+        });
+
+        expect(res.status).toBe(400);
+    });
+
+    it('400 when any comment in a new thread has an empty body', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv, workspaceDir);
+
+        const res = await postJSON(commentsUrl(srv, 'thread'), {
+            path: 'page.md',
+            thread: {
+                anchor: { quotedText: 'hello', prefix: '', suffix: '' },
+                comments: [{ content: 'real' }, { content: '  ' }],
+            },
+        });
+
+        expect(res.status).toBe(400);
+    });
+
+    it('400 when adding or editing a comment with a whitespace-only body', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv, workspaceDir);
+        const thread = await createThread(srv);
+
+        const addRes = await postJSON(commentsUrl(srv, `thread/${thread.id}/comment`), {
+            path: 'page.md',
+            content: '   ',
+        });
+        expect(addRes.status).toBe(400);
+
+        const editRes = await patchJSON(
+            commentsUrl(srv, `thread/${thread.id}/comment/${thread.comments[0].id}`),
+            { path: 'page.md', content: '\n ' },
+        );
+        expect(editRes.status).toBe(400);
+    });
+
+    it('still accepts a thread whose comment body has surrounding whitespace', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv, workspaceDir);
+
+        const res = await postJSON(commentsUrl(srv, 'thread'), {
+            path: 'page.md',
+            thread: { anchor: { quotedText: 'hello', prefix: '', suffix: '' }, comments: [{ content: '  real feedback  ' }] },
+        });
+
+        expect(res.status).toBe(201);
+        expect(JSON.parse(res.body).thread.comments[0].content).toBe('  real feedback  ');
+    });
+
+    // ========================================================================
     // 12. Verify sidecar file on disk
     // ========================================================================
     it('verify sidecar file on disk', async () => {

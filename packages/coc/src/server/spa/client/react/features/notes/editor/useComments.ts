@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useCocClient } from '../../../repos/cloneRouting';
 import { notesApi, type CommentThread, type Comment } from '../notesApi';
 import type { TextAnchor } from './textAnchor';
 
@@ -10,10 +9,6 @@ export interface UseCommentsOptions {
     notePath: string | null;
     /** Root identifier for multi-root notes. Scopes comment API calls. */
     root?: string;
-    /** When set, resolve-with-AI sends a follow-up to this chat instead of a new task. */
-    parentProcessId?: string;
-    /** Mode to use when sending a follow-up via resolve-with-AI (defaults to the process's stored mode). */
-    selectedMode?: 'ask' | 'autopilot';
     onThreadSelect?: (threadId: string | null) => void;
 }
 
@@ -40,7 +35,7 @@ export interface UseCommentsReturn {
     deleteComment: (threadId: string, commentId: string) => Promise<void>;
     reload: () => Promise<void>;
 
-    /** Enqueue or follow-up an AI batch-resolve for all open comment threads. */
+    /** Enqueue an AI batch-resolve task for all open comment threads. */
     resolveWithAI: (documentContent: string, userContext?: string) => Promise<{ taskId?: string } | void>;
     /** True while the resolveWithAI request is in flight. */
     resolveWithAILoading: boolean;
@@ -63,8 +58,7 @@ function filterThreads(threads: CommentThread[], filter: CommentFilter): Comment
 }
 
 export function useComments(options: UseCommentsOptions): UseCommentsReturn {
-    const { workspaceId, notePath, root, parentProcessId, selectedMode, onThreadSelect } = options;
-    const cloneClient = useCocClient(workspaceId); // AC-07: comment-resolution message routes to the clone's server.
+    const { workspaceId, notePath, root, onThreadSelect } = options;
 
     const [allThreads, setAllThreads] = useState<CommentThread[]>([]);
     const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
@@ -77,21 +71,15 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
     const workspaceIdRef = useRef(workspaceId);
     const notePathRef = useRef(notePath);
     const rootRef = useRef(root);
-    const parentProcessIdRef = useRef(parentProcessId);
-    const selectedModeRef = useRef(selectedMode);
     const onThreadSelectRef = useRef(onThreadSelect);
     const threadsRef = useRef(allThreads);
     const lastFetchedPathRef = useRef<string | null>(null);
-    const cloneClientRef = useRef(cloneClient);
 
     workspaceIdRef.current = workspaceId;
     notePathRef.current = notePath;
     rootRef.current = root;
-    parentProcessIdRef.current = parentProcessId;
-    selectedModeRef.current = selectedMode;
     onThreadSelectRef.current = onThreadSelect;
     threadsRef.current = allThreads;
-    cloneClientRef.current = cloneClient;
 
     const fetchThreads = useCallback(async (targetPath: string) => {
         setLoading(true);
@@ -263,39 +251,16 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
     const resolveWithAI = useCallback(async (documentContent: string, userContext?: string): Promise<{ taskId?: string } | void> => {
         const wsId = workspaceIdRef.current;
         const path = notePathRef.current;
-        const ppId = parentProcessIdRef.current;
         if (!path) throw new Error('No note path');
 
         setResolveWithAILoading(true);
         setError(null);
         try {
-            if (ppId) {
-                // Follow-up path: send a message to the existing chat
-                const openThreads = threadsRef.current.filter(t => t.status === 'open');
-                if (openThreads.length === 0) throw new Error('No open comments to resolve');
-
-                let message = `Please resolve the following open comments in ${path}:\n\n`;
-                openThreads.forEach((thread, i) => {
-                    message += `**Comment ${i + 1}:** "${thread.anchor.quotedText}"\n`;
-                    const first = thread.comments[0];
-                    if (first) message += `> ${first.content}\n`;
-                    message += '\n';
-                });
-                message += `\nThe current document content is provided. Please address each comment and make the necessary changes.`;
-
-                await cloneClientRef.current.notes.sendCommentResolutionMessage(ppId, {
-                    content: message,
-                    ...(selectedModeRef.current ? { mode: selectedModeRef.current } : {}),
-                    noteContent: documentContent,
-                    documentUri: path,
-                    commentIds: openThreads.map(t => t.id),
-                    documentContent,
-                    workspaceId: wsId,
-                });
-                return;
-            }
-
-            // New task path: enqueue via server endpoint
+            // Always enqueue through the server. A chat follow-up cannot carry the
+            // resolve-comments context or the `resolve_comment` tool (both are
+            // selected per queued task), and the prompt is built server-side from
+            // the persisted sidecar so it keeps thread IDs, anchor context, and
+            // replies instead of a thinner client-assembled copy.
             const result = await notesApi.batchResolve(wsId, path, documentContent, userContext, rootRef.current);
             return { taskId: result.taskId };
         } catch (e: any) {

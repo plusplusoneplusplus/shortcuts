@@ -2304,7 +2304,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const isVerticalScratchpad = scratchpadEnabled && scratchpad.isOpen && scratchpadLayout === 'vertical';
     /** On mobile, when the scratchpad is open, switch to full-screen tab mode. */
     const isMobileScratchpad = isMobile && scratchpadEnabled && scratchpad.isOpen;
-    const scratchpadSelectedMode = selectedMode === 'autopilot' ? 'autopilot' : 'ask';
     const scratchpadCandidates = useMemo(() => buildScratchpadCandidates({
         linkedNotePath: scratchpad.linkedNotePath,
         knownFiles: scratchpad.knownFiles,
@@ -2791,8 +2790,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                             onClose={scratchpad.close}
                             onNotFound={handleScratchpadNotFound}
                             height="auto"
-                            parentProcessId={processId ?? undefined}
-                            selectedMode={scratchpadSelectedMode}
                             headerBar={isVerticalScratchpad ? {
                                 expandMode: scratchpad.expandMode,
                                 isDragging: scratchpad.isDragging,

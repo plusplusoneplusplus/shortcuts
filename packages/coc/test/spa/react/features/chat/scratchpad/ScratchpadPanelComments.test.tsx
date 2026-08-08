@@ -17,7 +17,7 @@ vi.mock('../../../../../../src/server/spa/client/react/contexts/QueueContext', (
 }));
 
 vi.mock('../../../../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({ notes: { sendCommentResolutionMessage: vi.fn() } }),
+    getSpaCocClient: () => ({ notes: {} }),
 }));
 
 vi.mock('../../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
@@ -27,6 +27,7 @@ vi.mock('../../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', 
 const mockGetComments = vi.fn<any[], Promise<NoteSidecar>>();
 const mockCreateThread = vi.fn<any[], Promise<{ thread: CommentThread }>>();
 const mockGetContent = vi.fn<any[], Promise<{ content: string }>>();
+const mockBatchResolve = vi.fn<any[], Promise<{ taskId: string }>>();
 
 vi.mock('../../../../../../src/server/spa/client/react/features/notes/notesApi', () => ({
     notesApi: {
@@ -38,7 +39,7 @@ vi.mock('../../../../../../src/server/spa/client/react/features/notes/notesApi',
         addComment: vi.fn(),
         editComment: vi.fn(),
         deleteComment: vi.fn(),
-        batchResolve: vi.fn(),
+        batchResolve: (...args: any[]) => mockBatchResolve(...args),
     },
 }));
 
@@ -117,7 +118,8 @@ describe('ScratchpadPanel — comment creation', () => {
     beforeEach(() => {
         mockGetComments.mockResolvedValue({ version: 1, threads: {} } as unknown as NoteSidecar);
         mockCreateThread.mockResolvedValue({ thread: CREATED_THREAD });
-        mockGetContent.mockResolvedValue({ content: '' });
+        mockGetContent.mockResolvedValue({ content: '# Doc body' });
+        mockBatchResolve.mockResolvedValue({ taskId: 'task-1' });
         setCommentSpy.mockClear();
     });
 
@@ -188,6 +190,26 @@ describe('ScratchpadPanel — comment creation', () => {
         expect(editor).toBeTruthy();
         // The thread is passed through so resolved cards can fall back to their anchor.
         expect(thread?.id).toBe('thread-created');
+    });
+
+    it('resolves all comments through the server batch-resolve endpoint', async () => {
+        const user = userEvent.setup();
+        await openCommentDialog(user);
+
+        await user.type(await screen.findByRole('textbox'), 'Please clarify this');
+        await user.click(screen.getByTestId('add-comment-dialog-confirm'));
+        await screen.findByTestId('comment-thread-thread-created');
+
+        await user.click(await screen.findByTestId('resolve-with-ai-btn'));
+
+        // The in-chat scratchpad no longer hand-rolls a follow-up message; the
+        // prompt, the resolve context and the `resolve_comment` tool all come
+        // from the server-side batch-resolve task.
+        await waitFor(() => expect(mockBatchResolve).toHaveBeenCalledTimes(1));
+        const [wsId, notePath, documentContent] = mockBatchResolve.mock.calls[0];
+        expect(wsId).toBe('ws-1');
+        expect(notePath).toBe('/home/user/repo/docs/design.md');
+        expect(documentContent).toBe('# Doc body');
     });
 
     it('surfaces a create failure in the comments sidebar', async () => {

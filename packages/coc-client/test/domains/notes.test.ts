@@ -109,15 +109,6 @@ describe('NotesClient', () => {
       attachments: [{ name: 'note.txt', mimeType: 'text/plain', size: 12, dataUrl: 'data:text/plain;base64,AA==' }],
       lensChat: { inherited: true, source: 'features.commitChatLens' },
     });
-    await client.sendCommentResolutionMessage('process/1', {
-      content: 'Resolve comments',
-      mode: 'ask',
-      noteContent: '# Note',
-      documentUri: 'Notebook/Page.md',
-      commentIds: ['thread/1'],
-      documentContent: '# Note',
-      workspaceId: 'repo/a',
-    });
     await client.createWithAI('repo/a', 'Create a note', 'chat-task-1', { inherited: true, source: 'features.commitChatLens' });
     await client.listNoteEdits('process/1');
     await client.undoNoteEdit('process/1', 'edit/1', { force: true });
@@ -156,7 +147,6 @@ describe('NotesClient', () => {
           },
         },
       },
-      { path: '/processes/process%2F1/message', options: { method: 'POST' } },
       {
         path: '/workspaces/repo%2Fa/notes/ai-create',
         options: {

@@ -3,16 +3,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import type { CommentThread, NoteSidecar, Comment } from '../../../../src/server/spa/client/react/features/notes/notesApi';
 
-// ── Mock typed SPA client ──────────────────────────────────────────────────
-const mockSendCommentResolutionMessage = vi.fn<any[], Promise<any>>();
-vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({
-        notes: {
-            sendCommentResolutionMessage: (...args: any[]) => mockSendCommentResolutionMessage(...args),
-        },
-    }),
-}));
-
 // ── Mock notesApi ──────────────────────────────────────────────────────────
 
 const mockGetComments = vi.fn<any[], Promise<NoteSidecar>>();
@@ -22,6 +12,7 @@ const mockDeleteThread = vi.fn<any[], Promise<void>>();
 const mockAddComment = vi.fn<any[], Promise<{ comment: Comment }>>();
 const mockEditComment = vi.fn<any[], Promise<{ comment: Comment }>>();
 const mockDeleteComment = vi.fn<any[], Promise<void>>();
+const mockBatchResolve = vi.fn<any[], Promise<{ taskId: string }>>();
 
 vi.mock('../../../../src/server/spa/client/react/features/notes/notesApi', () => ({
     notesApi: {
@@ -32,6 +23,7 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/notesApi', () =>
         addComment: (...args: any[]) => mockAddComment(...args),
         editComment: (...args: any[]) => mockEditComment(...args),
         deleteComment: (...args: any[]) => mockDeleteComment(...args),
+        batchResolve: (...args: any[]) => mockBatchResolve(...args),
     },
 }));
 
@@ -89,7 +81,7 @@ function makeSidecar(threads: CommentThread[]): NoteSidecar {
 describe('useComments', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        mockSendCommentResolutionMessage.mockResolvedValue({});
+        mockBatchResolve.mockResolvedValue({ taskId: 'task-1' });
         mockGetComments.mockResolvedValue(SAMPLE_SIDECAR);
         mockCreateThread.mockImplementation(async (_wsId, _path, thread) => ({
             thread: { ...thread, id: 'thread-new' },
@@ -717,81 +709,83 @@ describe('useComments', () => {
         });
     });
 
-    // ── resolveWithAI (follow-up path) ─────────────────────────────────────
+    // ── resolveWithAI ──────────────────────────────────────────────────────
+    //
+    // Both the notes view and the in-chat scratchpad enqueue through the server
+    // endpoint. The scratchpad used to hand-roll a chat follow-up instead, which
+    // dropped the document, the thread IDs and the `resolve_comment` tool.
 
-    describe('resolveWithAI follow-up path', () => {
-        it('sends content (not message) key when posting to /processes/:id/message', async () => {
+    describe('resolveWithAI', () => {
+        it('enqueues via notesApi.batchResolve and returns the task id', async () => {
             mockGetComments.mockResolvedValue(makeSidecar([THREAD_OPEN]));
 
             const { result } = renderHook(() =>
-                useComments({ workspaceId: 'ws1', notePath: 'Notebook1/Page1', parentProcessId: 'proc-42' }),
+                useComments({ workspaceId: 'ws1', notePath: 'Notebook1/Page1' }),
             );
 
             await waitFor(() => expect(result.current.loading).toBe(false));
 
+            let returned: { taskId?: string } | void;
             await act(async () => {
-                await result.current.resolveWithAI('document body');
+                returned = await result.current.resolveWithAI('document body');
             });
 
-            expect(mockSendCommentResolutionMessage).toHaveBeenCalledOnce();
-            const [processId, body] = mockSendCommentResolutionMessage.mock.calls[0];
-            expect(processId).toBe('proc-42');
-            expect(body).toHaveProperty('content');
-            expect(body).not.toHaveProperty('message');
-            expect(typeof body.content).toBe('string');
-            expect(body.content.length).toBeGreaterThan(0);
+            expect(mockBatchResolve).toHaveBeenCalledOnce();
+            expect(mockBatchResolve).toHaveBeenCalledWith('ws1', 'Notebook1/Page1', 'document body', undefined, undefined);
+            expect(returned).toEqual({ taskId: 'task-1' });
         });
 
-        it('includes open thread quote and comment in the content', async () => {
+        it('forwards userContext and root to the endpoint', async () => {
             mockGetComments.mockResolvedValue(makeSidecar([THREAD_OPEN]));
 
             const { result } = renderHook(() =>
-                useComments({ workspaceId: 'ws1', notePath: 'Notebook1/Page1', parentProcessId: 'proc-42' }),
+                useComments({ workspaceId: 'ws1', notePath: 'Notebook1/Page1', root: 'root-2' }),
             );
 
             await waitFor(() => expect(result.current.loading).toBe(false));
 
             await act(async () => {
-                await result.current.resolveWithAI('document body');
+                await result.current.resolveWithAI('document body', 'extra context');
             });
 
-            const body = mockSendCommentResolutionMessage.mock.calls[0][1];
-            expect(body.content).toContain('highlighted text here');
-            expect(body.content).toContain('This needs review');
+            expect(mockBatchResolve).toHaveBeenCalledWith('ws1', 'Notebook1/Page1', 'document body', 'extra context', 'root-2');
         });
 
-        it('passes selectedMode in POST body when provided', async () => {
+        it('toggles resolveWithAILoading around the request', async () => {
             mockGetComments.mockResolvedValue(makeSidecar([THREAD_OPEN]));
+            let release!: (val: { taskId: string }) => void;
+            mockBatchResolve.mockImplementation(() => new Promise(r => { release = r; }));
 
             const { result } = renderHook(() =>
-                useComments({ workspaceId: 'ws1', notePath: 'Notebook1/Page1', parentProcessId: 'proc-42', selectedMode: 'ask' }),
+                useComments({ workspaceId: 'ws1', notePath: 'Notebook1/Page1' }),
             );
 
             await waitFor(() => expect(result.current.loading).toBe(false));
 
-            await act(async () => {
-                await result.current.resolveWithAI('document body');
-            });
+            let pending!: Promise<unknown>;
+            act(() => { pending = result.current.resolveWithAI('document body') as Promise<unknown>; });
+            await waitFor(() => expect(result.current.resolveWithAILoading).toBe(true));
 
-            const body = mockSendCommentResolutionMessage.mock.calls[0][1];
-            expect(body.mode).toBe('ask');
+            await act(async () => { release({ taskId: 'task-9' }); await pending; });
+            expect(result.current.resolveWithAILoading).toBe(false);
         });
 
-        it('omits mode from POST body when selectedMode is not provided', async () => {
+        it('surfaces the error and rethrows when the endpoint fails', async () => {
             mockGetComments.mockResolvedValue(makeSidecar([THREAD_OPEN]));
+            mockBatchResolve.mockRejectedValueOnce(new Error('No open comments to resolve'));
 
             const { result } = renderHook(() =>
-                useComments({ workspaceId: 'ws1', notePath: 'Notebook1/Page1', parentProcessId: 'proc-42' }),
+                useComments({ workspaceId: 'ws1', notePath: 'Notebook1/Page1' }),
             );
 
             await waitFor(() => expect(result.current.loading).toBe(false));
 
             await act(async () => {
-                await result.current.resolveWithAI('document body');
+                await expect(result.current.resolveWithAI('document body')).rejects.toThrow('No open comments to resolve');
             });
 
-            const body = mockSendCommentResolutionMessage.mock.calls[0][1];
-            expect(body).not.toHaveProperty('mode');
+            expect(result.current.error).toBe('No open comments to resolve');
+            expect(result.current.resolveWithAILoading).toBe(false);
         });
     });
 });

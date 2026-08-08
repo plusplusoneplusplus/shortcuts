@@ -307,16 +307,6 @@ export interface CreateNoteChatRequest {
 
 export type CreateNoteChatResponse = EnqueueTaskResponse;
 
-export interface SendNoteCommentResolutionMessageRequest {
-  content: string;
-  mode?: 'ask' | 'autopilot';
-  noteContent: string;
-  documentUri: string;
-  commentIds: string[];
-  documentContent: string;
-  workspaceId: string;
-}
-
 export interface NoteEditSnapshot {
   editId: string;
   notePath: string;
