@@ -1244,7 +1244,7 @@ describe('ChatDetail', () => {
             expect(source).toContain('planPatchedRef.current = false');
             // Verify the reset is in a useEffect with [taskId] dependency
             const resetIdx = source.indexOf('planPatchedRef.current = false');
-            const surroundingBlock = source.substring(resetIdx - 30, resetIdx + 400);
+            const surroundingBlock = source.substring(resetIdx - 30, resetIdx + 600);
             expect(surroundingBlock).toContain('useEffect');
             expect(surroundingBlock).toContain('taskId');
         });

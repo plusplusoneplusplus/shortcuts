@@ -57,8 +57,11 @@ export function buildNotesBatchResolvePrompt(
             prompt += `**Context after:** ${thread.anchor.suffix}…\n\n`;
         }
 
+        // Empty bodies exist in sidecars written before comment content was
+        // required, and would otherwise render as a meaningless `**Comment:**`
+        // line. Skip them, matching how replies are filtered below.
         const firstComment = thread.comments[0];
-        if (firstComment) {
+        if (firstComment?.content?.trim()) {
             prompt += `**Comment:** ${firstComment.content}\n\n`;
         }
 

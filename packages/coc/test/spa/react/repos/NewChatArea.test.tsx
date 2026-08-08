@@ -8,7 +8,7 @@ import React from 'react';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled, mockForEachEnabled, mockMapReduceEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig, mockAgentProvidersResponse, mockEffortLevelsEnabled, mockEffortTiers } = vi.hoisted(() => ({
+const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled, mockForEachEnabled, mockMapReduceEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig, mockAgentProvidersResponse, mockEffortLevelsEnabled, mockEffortTiers, mockChatStyleEnabled, mockRepoPrefs, mockPatchRepo } = vi.hoisted(() => ({
     mockQueueDispatch: vi.fn(),
     mockAppState: {
         workspaces: [{ id: 'ws-1', rootPath: '/home/user/repo' }],
@@ -56,6 +56,9 @@ const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCo
     mockMapReduceEnabled: { value: false },
     mockSessionContextAttachmentsEnabled: { value: false },
     mockEffortLevelsEnabled: { value: false },
+    mockChatStyleEnabled: { value: false },
+    mockPatchRepo: vi.fn(),
+    mockRepoPrefs: { value: {} as Record<string, unknown> },
     mockEffortTiers: { value: {} as Record<string, { model: string; reasoningEffort?: string | null }> },
     mockGetLlmToolsConfig: vi.fn(),
     mockAgentProvidersResponse: {
@@ -120,6 +123,8 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getConfiguredDefaultProvider: () => 'copilot' as const,
     isAutoAgentProviderRoutingEnabled: () => false,
     isEffortLevelsEnabled: () => mockEffortLevelsEnabled.value,
+    isChatStyleSelectorEnabled: () => mockChatStyleEnabled.value,
+    DASHBOARD_CONFIG_UPDATED_EVENT: 'dashboard-config-updated',
     isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled.value,
     isGitWorktreeExecutionEnabled: () => false,
 }));
@@ -129,8 +134,8 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
         queue: { enqueue: mockEnqueueTask },
         preferences: {
             patchGlobal: vi.fn().mockResolvedValue({}),
-            getRepo: vi.fn().mockResolvedValue({}),
-            patchRepo: vi.fn().mockResolvedValue({}),
+            getRepo: vi.fn().mockImplementation(() => Promise.resolve(mockRepoPrefs.value)),
+            patchRepo: mockPatchRepo,
             getLlmToolsConfig: mockGetLlmToolsConfig,
         },
         skills: { listAllWorkspace: vi.fn().mockResolvedValue({ merged: [] }) },
@@ -344,6 +349,10 @@ beforeEach(() => {
     mockMapReduceEnabled.value = false;
     mockSessionContextAttachmentsEnabled.value = false;
     mockEffortLevelsEnabled.value = false;
+    mockChatStyleEnabled.value = false;
+    mockRepoPrefs.value = {};
+    mockPatchRepo.mockReset();
+    mockPatchRepo.mockResolvedValue({});
     mockEffortTiers.value = {};
     mockAgentProvidersResponse.providers = [
         { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
@@ -2506,5 +2515,122 @@ describe('NewChatArea', () => {
 
             expect(interceptSubmit).not.toHaveBeenCalled();
         });
+    });
+});
+
+// ============================================================================
+// Chat style selector
+// ============================================================================
+
+describe('NewChatArea — chat style', () => {
+    async function send(prompt = 'Hello') {
+        const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: prompt } });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+        });
+        return mockEnqueueTask.mock.calls[0][0];
+    }
+
+    it('hides the Style chip when the owning server has the experiment off', async () => {
+        mockChatStyleEnabled.value = false;
+        render(<NewChatArea workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('new-chat-send-btn')).toBeTruthy());
+        expect(screen.queryByTestId('chat-style-selector')).toBeNull();
+    });
+
+    it('omits chatStyle from the payload when the experiment is off', async () => {
+        mockChatStyleEnabled.value = false;
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 't1' } });
+        render(<NewChatArea workspaceId="ws-1" />);
+
+        expect((await send()).payload.chatStyle).toBeUndefined();
+    });
+
+    it('shows the chip and defaults a fresh workspace to Human', async () => {
+        mockChatStyleEnabled.value = true;
+        render(<NewChatArea workspaceId="ws-1" />);
+
+        await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
+        expect(screen.getByTestId('chat-style-selector').getAttribute('data-style-value')).toBe('human');
+    });
+
+    it('restores the workspace saved style from repo preferences', async () => {
+        mockChatStyleEnabled.value = true;
+        mockRepoPrefs.value = { lastChatStyle: 'analytical' };
+        render(<NewChatArea workspaceId="ws-1" />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('chat-style-selector').getAttribute('data-style-value')).toBe('analytical');
+        });
+    });
+
+    it.each(['Human', 'friendly', '', 42, null])(
+        'falls back to Human for the invalid saved preference %j',
+        async (saved) => {
+            mockChatStyleEnabled.value = true;
+            mockRepoPrefs.value = { lastChatStyle: saved };
+            render(<NewChatArea workspaceId="ws-1" />);
+
+            await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
+            expect(screen.getByTestId('chat-style-selector').getAttribute('data-style-value')).toBe('human');
+        },
+    );
+
+    it('falls back to Human when the preferences request fails', async () => {
+        mockChatStyleEnabled.value = true;
+        mockRepoPrefs.value = {};
+        render(<NewChatArea workspaceId="ws-1" />);
+
+        await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
+        expect(screen.getByTestId('chat-style-selector').getAttribute('data-style-value')).toBe('human');
+    });
+
+    it('persists the pick to repo-scoped preferences on the owning server', async () => {
+        mockChatStyleEnabled.value = true;
+        render(<NewChatArea workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('chat-style-trigger-btn'));
+        fireEvent.click(screen.getByTestId('chat-style-option-structured'));
+
+        expect(mockPatchRepo).toHaveBeenCalledWith('ws-1', { lastChatStyle: 'structured' });
+    });
+
+    it('keeps the picked style for this send when the preference write fails', async () => {
+        mockChatStyleEnabled.value = true;
+        mockPatchRepo.mockRejectedValue(new Error('offline'));
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 't1' } });
+        render(<NewChatArea workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('chat-style-trigger-btn'));
+        fireEvent.click(screen.getByTestId('chat-style-option-direct'));
+
+        expect(screen.getByTestId('chat-style-selector').getAttribute('data-style-value')).toBe('direct');
+        expect((await send()).payload.chatStyle).toBe('direct');
+    });
+
+    it('sends the selected style on the new-chat payload', async () => {
+        mockChatStyleEnabled.value = true;
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 't1' } });
+        render(<NewChatArea workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('chat-style-trigger-btn'));
+        fireEvent.click(screen.getByTestId('chat-style-option-analytical'));
+
+        expect((await send()).payload.chatStyle).toBe('analytical');
+    });
+
+    it('hides the chip for out-of-scope modes like Ralph', async () => {
+        mockChatStyleEnabled.value = true;
+        mockRalphEnabled.value = true;
+        render(<NewChatArea workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
+        fireEvent.click(screen.getByTestId('workflow-mode-option-ralph'));
+        expect(screen.queryByTestId('chat-style-selector')).toBeNull();
     });
 });

@@ -49,14 +49,18 @@ import {
     defaultDevTunnelConfig,
     defaultTunnelId,
     readDevTunnelConfig,
+    setDevTunnelCluster,
     setDevTunnelEnabled,
     setDevTunnelId,
 } from './devtunnel-config';
 import {
     createDevTunnelHostManager,
     defaultDevTunnelHostSpawner,
+    deriveDevTunnelPublicUrl,
     DevTunnelHostErrorInfo,
     DevTunnelHostManager,
+    DevTunnelHostState,
+    parseDevTunnelCluster,
 } from './devtunnel-host';
 import { ensureDevTunnelHttpBinding, resolveDevTunnelCliPath } from './devtunnel-cli';
 import { autoStartDevTunnelOnLaunch } from './devtunnel-launch';
@@ -619,9 +623,17 @@ function buildDevTunnelMenuInput(): DevTunnelMenuInput | undefined {
     if (process.platform !== 'win32' || !devTunnelManager) {
         return undefined;
     }
+    const config = readDevTunnelConfigSafe();
     return {
         state: devTunnelManager.state,
-        enabled: readDevTunnelConfigSafe().enabled,
+        enabled: config.enabled,
+        // Predicted from the configured tunnel ID + active port + the cluster
+        // cached on the last Online transition; undefined until one is observed.
+        expectedUrl: deriveDevTunnelPublicUrl({
+            tunnelId: config.tunnelId,
+            port: serverHandle?.port,
+            cluster: config.cluster,
+        }),
         handlers: {
             onConfigure: () => openDevTunnelConfigModal(),
             onStart: () => void startDevTunnel(),
@@ -631,6 +643,31 @@ function buildDevTunnelMenuInput(): DevTunnelMenuInput | undefined {
             onCopyPublicUrl: () => copyDevTunnelPublicUrl(),
         },
     };
+}
+
+/**
+ * Persist the cluster (region) of a live public URL so a later launch can show
+ * the expected address while the host is still starting. Only writes when the
+ * value actually changed, and never throws into the state-change handler — a
+ * failed cache write just means the expected-URL row stays hidden.
+ */
+function cacheDevTunnelCluster(state: DevTunnelHostState): void {
+    if (state.status !== 'online' || !state.publicUrl) {
+        return;
+    }
+    const cluster = parseDevTunnelCluster(state.publicUrl);
+    if (!cluster) {
+        return;
+    }
+    try {
+        if (readDevTunnelConfigSafe().cluster === cluster) {
+            return;
+        }
+        setDevTunnelCluster(defaultDataDir(), cluster);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`[coc-desktop] failed to cache devtunnel cluster: ${message}\n`);
+    }
 }
 
 /**
@@ -646,8 +683,13 @@ function setupDevTunnel(port: number): void {
         resolveCliPath: () => resolveDevTunnelCliPath(),
         spawn: defaultDevTunnelHostSpawner,
         // Rebuild the native menu on every observable transition so the status
-        // row, Start/Stop, Retry, and Copy Public URL always match reality.
-        onStateChange: () => setupApplicationMenu(),
+        // row, Start/Stop, Retry, and Copy Public URL always match reality. Going
+        // Online also refreshes the cached cluster, so the next Starting can show
+        // the expected URL before the host reports one.
+        onStateChange: (state) => {
+            cacheDevTunnelCluster(state);
+            setupApplicationMenu();
+        },
         // AC-04: exactly one Windows notification per auto-failure episode. Only
         // the concise message crosses — never the bounded raw CLI detail.
         onFailureNotification: (error) => showDevTunnelNotification(error),

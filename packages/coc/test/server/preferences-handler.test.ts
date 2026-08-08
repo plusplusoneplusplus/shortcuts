@@ -690,6 +690,40 @@ describe('readPreferences / writePreferences', () => {
         expect(result.lastChatProvider).toBeUndefined();
     });
 
+    it('round-trips lastChatStyle through write and read', () => {
+        // Repo-scoped so a workspace's style choice never leaks across clones.
+        writeRepoPreferences(tmpDir, 'r', { lastChatStyle: 'analytical' });
+        expect(readRepoPreferences(tmpDir, 'r').lastChatStyle).toBe('analytical');
+    });
+
+    it('accepts each stable lastChatStyle wire value', () => {
+        for (const style of ['human', 'direct', 'analytical', 'structured'] as const) {
+            expect(validatePerRepoPreferences({ lastChatStyle: style }).lastChatStyle).toBe(style);
+        }
+    });
+
+    it.each(['Human', 'friendly', '', 42, null, {}])('strips the invalid lastChatStyle %j', (style) => {
+        expect(validatePerRepoPreferences({ lastChatStyle: style }).lastChatStyle).toBeUndefined();
+    });
+
+    it('preserves lastChatStyle through a patch merge that touches other fields', () => {
+        writeRepoPreferences(tmpDir, 'r', { lastChatStyle: 'direct' });
+        writeRepoPreferences(tmpDir, 'r', {
+            ...readRepoPreferences(tmpDir, 'r'),
+            lastChatProvider: 'claude',
+        });
+        const loaded = readRepoPreferences(tmpDir, 'r');
+        expect(loaded.lastChatStyle).toBe('direct');
+        expect(loaded.lastChatProvider).toBe('claude');
+    });
+
+    it('keeps each workspace\'s lastChatStyle isolated', () => {
+        writeRepoPreferences(tmpDir, 'repo-a', { lastChatStyle: 'structured' });
+        writeRepoPreferences(tmpDir, 'repo-b', { lastChatStyle: 'direct' });
+        expect(readRepoPreferences(tmpDir, 'repo-a').lastChatStyle).toBe('structured');
+        expect(readRepoPreferences(tmpDir, 'repo-b').lastChatStyle).toBe('direct');
+    });
+
     it('validates defaultModel max length', () => {
         const longModel = 'a'.repeat(101);
         const result = validatePerRepoPreferences({ defaultModel: longModel });

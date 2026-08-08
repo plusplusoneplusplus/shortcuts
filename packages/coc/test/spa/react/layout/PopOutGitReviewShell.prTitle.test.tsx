@@ -132,6 +132,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getConfiguredDefaultProvider: () => 'copilot',
     isAutoAgentProviderRoutingEnabled: () => false,
     isEffortLevelsEnabled: () => false,
+    isChatStyleSelectorEnabled: () => false,
     isCommitChatLensEnabled: () => false,
     getCommitChatLensDormantMode: () => 'ghost' as const,
 }));

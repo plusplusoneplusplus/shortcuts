@@ -4,6 +4,7 @@ import { applyFollowUpToTask } from '../shared/queue-utils';
 import { processToQueuedTask } from '../shared/process-history-mapper';
 import type { AIProcess, Attachment, ConversationTurn, ISDKService, ProcessStore, QueuedTask, QueueExecutor, StoredEffortTiersMap, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
 import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, sdkServiceRegistry, SDK_PROVIDER_COPILOT, getLogger, LogCategory, normalizeExecutionPath, resolveModelForProvider, resolveWorkspaceExecutionContext, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
+import { isChatStyle } from '@plusplusoneplusplus/coc-client';
 import { BaseExecutor } from '../executors/base-executor';
 import { resolveSkillConfig } from '../executors/skill-config-resolver';
 import { TitleGenerationService } from '../executors/title-generator';
@@ -47,6 +48,12 @@ export interface CLITaskExecutorOptions {
      * reference. Threaded to user-facing chat executors only.
      */
     getGlobalSystemPrompt?: () => string | undefined;
+    /**
+     * Live read of the `features.chatStyleSelector` experiment flag. Executors
+     * check it when each turn starts, so disabling the feature stops style
+     * injection even for an older client or an already-open composer.
+     */
+    getChatStyleSelectorEnabled?: () => boolean;
     /** Resolve Auto provider routing when a queued chat task starts execution. */
     resolveDefaultProvider?: ResolveDefaultProviderForExecution;
     /** Live read of admin-configured effort tiers, for execution-time tier resolution. */
@@ -78,7 +85,7 @@ export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
     initialDelayMs?: number;
 }
 export interface QueueExecutorBridge {
-    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', strictResumeSessionId?: string): Promise<void>;
+    executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', strictResumeSessionId?: string, chatStyle?: string): Promise<void>;
     isSessionAlive(processId: string): Promise<boolean>;
     cancelProcess?(processId: string): Promise<void>;
     steerProcess?(processId: string, message: string): Promise<boolean>;
@@ -210,6 +217,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             ralphMultiAgentGrillEnabled: options.ralphMultiAgentGrillEnabled,
             resolveAiServiceForProvider: options.resolveAiServiceForProvider,
             getGlobalSystemPrompt: options.getGlobalSystemPrompt,
+            getChatStyleSelectorEnabled: options.getChatStyleSelectorEnabled,
             resolveSkillConfig: skillCfg,
             resolveWorkspaceIdForPath: (p: string) => this.resolveWorkspaceIdForPath(p),
             onTitleNeeded: (pid: string, turns: ConversationTurn[]) => this.generateTitleIfNeeded(pid, turns),
@@ -467,7 +475,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         try {
             return await this.executors.runner.run(task, {
                 cancelledTasks: this.cancelledTasks,
-                executeFollowUpFn: (pid, msg, att, mode, dm, imgs, skills, mdl, ts, re, strictResumeSessionId) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs, skills, mdl, ts, re, strictResumeSessionId),
+                executeFollowUpFn: (pid, msg, att, mode, dm, imgs, skills, mdl, ts, re, strictResumeSessionId, chatStyle) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs, skills, mdl, ts, re, strictResumeSessionId, chatStyle),
                 resumePendingAskUserFn: (pid) => this.resumePendingAskUser(pid),
                 executeByTypeFn: (t, p) => this.executors.dispatch(t, p),
                 getWorkingDirectoryFn: (t) => this.executors.getWorkingDirectory(t),
@@ -707,8 +715,8 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         }
     }
 
-    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', strictResumeSessionId?: string): Promise<void> {
-        return this.executors.followUpExecutor.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model, turnSource, reasoningEffort, strictResumeSessionId);
+    async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', strictResumeSessionId?: string, chatStyle?: string): Promise<void> {
+        return this.executors.followUpExecutor.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model, turnSource, reasoningEffort, strictResumeSessionId, chatStyle);
     }
 
     /**
@@ -759,6 +767,10 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         // (captured when the message was buffered) is carried through to the
         // replayed task so the follow-up executor honours it.
         const pendingEffort = (nextMsg as { reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh' }).reasoningEffort;
+        // Style the user picked for this specific turn, captured when the message
+        // was buffered. Re-validated on the way out: PendingMessage.chatStyle is
+        // a product-neutral string on the forge side.
+        const pendingChatStyle = isChatStyle(nextMsg.chatStyle) ? nextMsg.chatStyle : undefined;
         // Merge any carried follow-up context (e.g. trigger turnSource) with the
         // skills context so an automated buffered message keeps its source tag.
         const drainedContext: Record<string, unknown> = {
@@ -781,6 +793,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 ...(nextMsg.images ? { images: nextMsg.images } : {}),
                 ...(nextMsg.fileAttachmentMeta ? { fileAttachmentMeta: nextMsg.fileAttachmentMeta } : {}),
                 ...(Object.keys(drainedContext).length > 0 ? { context: drainedContext } : {}),
+                ...(pendingChatStyle ? { chatStyle: pendingChatStyle } : {}),
             },
             config: pendingEffort ? { reasoningEffort: pendingEffort } : {},
             displayName: nextMsg.content.trim().substring(0, 57) + (nextMsg.content.trim().length > 57 ? '...' : ''),

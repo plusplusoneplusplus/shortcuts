@@ -160,6 +160,8 @@ vi.mock('../../../../../../src/server/spa/client/react/utils/config', () => ({
     getConfiguredDefaultProvider: () => 'copilot' as const,
     isAutoAgentProviderRoutingEnabled: () => false,
     isEffortLevelsEnabled: () => false,
+    isChatStyleSelectorEnabled: () => false,
+    DASHBOARD_CONFIG_UPDATED_EVENT: 'dashboard-config-updated',
     isSessionContextAttachmentsEnabled: () => false,
     isGitWorktreeExecutionEnabled: () => false,
 }));

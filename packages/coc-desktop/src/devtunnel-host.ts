@@ -125,6 +125,74 @@ export function selectDevTunnelUrl(text: string, port: number): string | undefin
     return urls.find((candidate) => devTunnelUrlMatchesPort(candidate, port)) ?? urls[0];
 }
 
+/**
+ * The DevTunnels host suffix every public URL ends with. The label before it is
+ * the service-assigned cluster (region), e.g. `usw2` in
+ * `abc-4000.usw2.devtunnels.ms`.
+ */
+const DEVTUNNELS_HOST_SUFFIX = '.devtunnels.ms';
+/** A single DNS label: the shape a cluster (region) id is allowed to take. */
+const CLUSTER_LABEL_RE = /^[a-z0-9]([a-z0-9-]{0,20}[a-z0-9])?$/;
+/** The tunnel ID label — same shape, but as long as a DNS label may be. */
+const TUNNEL_ID_LABEL_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+
+/**
+ * Extract the service-assigned cluster (region) label from a public tunnel URL —
+ * `https://abc-4000.usw2.devtunnels.ms/` → `usw2`. Returns `undefined` for a
+ * non-devtunnels URL, or for a clusterless host like `abc.devtunnels.ms` where
+ * there is no region label to cache.
+ *
+ * The cluster is the one part of the public URL that cannot be derived from the
+ * configured tunnel ID and port, so caching it (see `setDevTunnelCluster`) is
+ * what lets {@link deriveDevTunnelPublicUrl} predict the URL before a host comes
+ * online.
+ */
+export function parseDevTunnelCluster(url: string): string | undefined {
+    let hostname: string;
+    try {
+        hostname = new URL(url).hostname.toLowerCase();
+    } catch {
+        return undefined;
+    }
+    if (!hostname.endsWith(DEVTUNNELS_HOST_SUFFIX)) {
+        return undefined;
+    }
+    const labels = hostname.slice(0, -DEVTUNNELS_HOST_SUFFIX.length).split('.');
+    // Expect `<tunnel-label>.<cluster>`; anything else carries no cluster.
+    if (labels.length !== 2) {
+        return undefined;
+    }
+    const cluster = labels[1];
+    return CLUSTER_LABEL_RE.test(cluster) ? cluster : undefined;
+}
+
+/**
+ * Rebuild the public URL from the configured tunnel ID, the active HTTP port,
+ * and a previously cached cluster: `https://<id>-<port>.<cluster>.devtunnels.ms`.
+ * Returns `undefined` when any input is missing or malformed, so a caller never
+ * shows a half-formed address.
+ *
+ * This is the *expected* URL, not an observed one — the service could move the
+ * tunnel to another region, in which case the cached cluster is refreshed the
+ * next time a host actually reports its URL.
+ */
+export function deriveDevTunnelPublicUrl(params: {
+    tunnelId?: string;
+    port?: number;
+    cluster?: string;
+}): string | undefined {
+    const tunnelId = (params.tunnelId ?? '').trim().toLowerCase();
+    const cluster = (params.cluster ?? '').trim().toLowerCase();
+    const port = params.port;
+    if (!TUNNEL_ID_LABEL_RE.test(tunnelId) || !CLUSTER_LABEL_RE.test(cluster)) {
+        return undefined;
+    }
+    if (!Number.isInteger(port) || (port as number) <= 0 || (port as number) > 65535) {
+        return undefined;
+    }
+    return `https://${tunnelId}-${port}.${cluster}${DEVTUNNELS_HOST_SUFFIX}`;
+}
+
 function boundedDetail(text: string): string | undefined {
     const trimmed = (text ?? '').trim();
     if (!trimmed) {

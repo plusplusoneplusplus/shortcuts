@@ -399,6 +399,8 @@ describe('CLITaskExecutor executor dispatch', () => {
                 undefined,
                 // 11th arg = strict resume session id (none for this task)
                 undefined,
+                // 12th arg = explicit chat style for this turn (none for this task)
+                undefined,
             );
         });
 
@@ -458,6 +460,8 @@ describe('CLITaskExecutor executor dispatch', () => {
                 // 10th arg = per-turn reasoningEffort override
                 'xhigh',
                 // 11th arg = strict resume session id (none for this task)
+                undefined,
+                // 12th arg = explicit chat style for this turn (none for this task)
                 undefined,
             );
         });

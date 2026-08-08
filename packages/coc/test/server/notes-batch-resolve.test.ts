@@ -215,6 +215,91 @@ describe('Notes Batch Resolve Handler', () => {
     });
 
     // ========================================================================
+    // 4b. The enqueued task carries the full resolve payload
+    //
+    // The scratchpad's "Resolve all with AI" used to hand-roll a chat follow-up
+    // that dropped the document, the thread IDs and the `resolve_comment` tool.
+    // It now goes through this endpoint, so the enqueued task is what the model
+    // actually sees.
+    // ========================================================================
+    it('enqueues a task carrying the server-built prompt, resolve context and tool', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv, workspaceDir);
+
+        const thread = await createThread(srv, 'page.md', 'Tighten this paragraph', {
+            quotedText: 'the quoted span',
+            prefix: 'text before ',
+            suffix: ' text after',
+        });
+
+        const res = await postJSON(batchResolveUrl(srv, 'page.md'), {
+            documentContent: '# Document\nContent here',
+        });
+        expect(res.status).toBe(202);
+        const { taskId } = JSON.parse(res.body);
+
+        const taskRes = await request(`${srv.url}/api/queue/${encodeURIComponent(taskId)}`);
+        expect(taskRes.status).toBe(200);
+        const task = JSON.parse(taskRes.body);
+        const payload = task.payload ?? task.task?.payload;
+
+        expect(payload.tools).toContain('resolve-comments');
+        expect(payload.context.resolveComments).toMatchObject({
+            documentUri: 'page.md',
+            commentIds: [thread.id],
+            documentContent: '# Document\nContent here',
+            wsId,
+        });
+
+        // Prompt content: the pieces the client-side message used to drop.
+        expect(payload.prompt).toContain(`**Thread ID:** \`${thread.id}\``);
+        expect(payload.prompt).toContain('the quoted span');
+        expect(payload.prompt).toContain('**Context before:** …text before');
+        expect(payload.prompt).toContain('**Comment:** Tighten this paragraph');
+        expect(payload.prompt).toContain('# Document\nContent here');
+        expect(payload.prompt).toContain('`resolve_comment`');
+    });
+
+    it('omits the comment line for a legacy thread with an empty comment body', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv, workspaceDir);
+
+        // Simulate a thread persisted by the pre-fix client (empty first comment).
+        const good = await createThread(srv, 'page.md', 'Real feedback');
+        const putRes = await request(commentsUrl(srv), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                path: 'page.md',
+                threads: {
+                    [good.id]: good,
+                    'legacy-empty': {
+                        id: 'legacy-empty',
+                        status: 'open',
+                        createdAt: '2024-01-01T00:00:00Z',
+                        anchor: { quotedText: 'legacy span', prefix: '', suffix: '' },
+                        comments: [{ id: 'c0', content: '', createdAt: '2024-01-01T00:00:00Z' }],
+                    },
+                },
+            }),
+        } as any);
+        expect(putRes.status).toBe(200);
+
+        const res = await postJSON(batchResolveUrl(srv, 'page.md'), { documentContent: '# Doc' });
+        expect(res.status).toBe(202);
+        const { taskId } = JSON.parse(res.body);
+
+        const taskRes = await request(`${srv.url}/api/queue/${encodeURIComponent(taskId)}`);
+        const task = JSON.parse(taskRes.body);
+        const payload = task.payload ?? task.task?.payload;
+
+        expect(payload.prompt).toContain('legacy span');
+        expect(payload.prompt).toContain('**Comment:** Real feedback');
+        // Exactly one `**Comment:**` line — the empty legacy body is skipped.
+        expect(payload.prompt.match(/\*\*Comment:\*\*/g)).toHaveLength(1);
+    });
+
+    // ========================================================================
     // 5. Returns 400 for path traversal attempts
     // ========================================================================
     it('returns 403 for path traversal attempts', async () => {

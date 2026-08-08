@@ -32,6 +32,18 @@ import {
 
 export type { InteractiveAskUserHandles, StreamingTurnState };
 
+/** What a turn had produced at the moment it failed. */
+export interface PartialTurnSnapshot {
+    /** Streamed assistant text accumulated so far. */
+    content: string;
+    /** Merged timeline accumulated so far. */
+    timeline: TimelineItem[];
+    /** Follow-up suggestions captured before the failure, if any. */
+    suggestions?: string[];
+    /** Whether anything worth persisting was produced. */
+    hasPartial: boolean;
+}
+
 // ============================================================================
 // BaseExecutor
 // ============================================================================
@@ -257,6 +269,55 @@ export abstract class BaseExecutor {
             streaming.turnFinalized = true;
             return this.store.appendConversationTurn(processId, makeTurn, options);
         });
+    }
+
+    /**
+     * Builds the onStreamingChunk handler for a given process.
+     *
+     * Every chat turn treats a streamed chunk the same way: accumulate it into
+     * the output buffer, merge it into the timeline, relay it over SSE, and let
+     * the throttle decide whether to flush. `logLabel` only affects the debug
+     * line written when SSE relay fails.
+     */
+    protected buildStreamingChunkHandler(
+        processId: string,
+        logLabel: string,
+    ): (chunk: string) => void {
+        return (chunk: string) => {
+            this.appendOutputChunk(processId, chunk);
+            this.appendTimelineItem(processId, { type: 'content', timestamp: new Date(), content: chunk });
+            try {
+                this.store.emitProcessOutput(processId, chunk);
+            } catch (err) {
+                // Non-fatal: the store may be a stub, and SSE relay must never
+                // interrupt the turn.
+                getLogger().debug(
+                    LogCategory.AI,
+                    `${logLabel} emitProcessOutput failed for ${processId}: ${err instanceof Error ? err.message : String(err)}`,
+                );
+            }
+            this.checkThrottleAndFlush(processId);
+        };
+    }
+
+    /**
+     * Snapshot whatever the turn produced before it failed.
+     *
+     * Used by the error paths to persist an interrupted assistant turn instead
+     * of losing streamed work. `hasPartial` is false when the turn produced no
+     * content and no timeline, which is the signal to record an error-only turn.
+     */
+    protected capturePartialTurn(processId: string): PartialTurnSnapshot {
+        const content = this.getOutputBuffer(processId);
+        const timelineBuffer = this.getTimelineBuffer(processId);
+        const timeline = timelineBuffer ? mergeConsecutiveContentItems([...timelineBuffer]) : [];
+        const suggestions = this.getPendingSuggestions(processId);
+        return {
+            content,
+            timeline,
+            suggestions,
+            hasPartial: content.length > 0 || timeline.length > 0,
+        };
     }
 
     // ========================================================================

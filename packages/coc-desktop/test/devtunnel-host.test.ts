@@ -17,7 +17,9 @@ import {
     DevTunnelHostState,
     computeBackoffMs,
     createDevTunnelHostManager,
+    deriveDevTunnelPublicUrl,
     devTunnelUrlMatchesPort,
+    parseDevTunnelCluster,
     killProcessTree,
     resolveUrlTimeoutMs,
     selectDevTunnelUrl,
@@ -200,6 +202,75 @@ describe('devTunnelUrlMatchesPort', () => {
     it('does not match an unrelated port or a non-URL', () => {
         expect(devTunnelUrlMatchesPort('https://box-coc-8080.usw2.devtunnels.ms/', 4000)).toBe(false);
         expect(devTunnelUrlMatchesPort('not-a-url', 4000)).toBe(false);
+    });
+});
+
+describe('parseDevTunnelCluster', () => {
+    it('extracts the cluster label from a public URL', () => {
+        expect(parseDevTunnelCluster('https://box-coc-4000.usw2.devtunnels.ms/')).toBe('usw2');
+        expect(parseDevTunnelCluster('https://box-coc-4000.euw.devtunnels.ms')).toBe('euw');
+    });
+
+    it('lowercases the cluster and ignores a path or explicit port', () => {
+        expect(parseDevTunnelCluster('https://box-4000.USW2.devtunnels.ms:443/repos')).toBe('usw2');
+    });
+
+    it('returns undefined for a clusterless devtunnels host', () => {
+        expect(parseDevTunnelCluster('https://box-coc-4000.devtunnels.ms/')).toBeUndefined();
+    });
+
+    it('returns undefined for a non-devtunnels URL or unparseable input', () => {
+        expect(parseDevTunnelCluster('https://box-4000.usw2.example.com/')).toBeUndefined();
+        expect(parseDevTunnelCluster('not-a-url')).toBeUndefined();
+        expect(parseDevTunnelCluster('')).toBeUndefined();
+    });
+});
+
+describe('deriveDevTunnelPublicUrl', () => {
+    it('rebuilds the URL from the tunnel ID, port, and cached cluster', () => {
+        expect(deriveDevTunnelPublicUrl({ tunnelId: 'box-coc', port: 4000, cluster: 'usw2' })).toBe(
+            'https://box-coc-4000.usw2.devtunnels.ms',
+        );
+    });
+
+    it('round-trips the cluster parsed from a live URL', () => {
+        const live = urlFor(PORT);
+        const cluster = parseDevTunnelCluster(live);
+        expect(deriveDevTunnelPublicUrl({ tunnelId: TUNNEL, port: PORT, cluster })).toBe(
+            live.replace(/\/$/, ''),
+        );
+    });
+
+    it('normalizes case and surrounding whitespace', () => {
+        expect(deriveDevTunnelPublicUrl({ tunnelId: ' Box-COC ', port: 80, cluster: ' USW2 ' })).toBe(
+            'https://box-coc-80.usw2.devtunnels.ms',
+        );
+    });
+
+    it('returns undefined when the cluster has never been observed', () => {
+        expect(deriveDevTunnelPublicUrl({ tunnelId: 'box-coc', port: 4000 })).toBeUndefined();
+        expect(
+            deriveDevTunnelPublicUrl({ tunnelId: 'box-coc', port: 4000, cluster: '' }),
+        ).toBeUndefined();
+    });
+
+    it('returns undefined for a missing/out-of-range port or a malformed label', () => {
+        expect(deriveDevTunnelPublicUrl({ tunnelId: 'box-coc', cluster: 'usw2' })).toBeUndefined();
+        expect(
+            deriveDevTunnelPublicUrl({ tunnelId: 'box-coc', port: 0, cluster: 'usw2' }),
+        ).toBeUndefined();
+        expect(
+            deriveDevTunnelPublicUrl({ tunnelId: 'box-coc', port: 70000, cluster: 'usw2' }),
+        ).toBeUndefined();
+        expect(
+            deriveDevTunnelPublicUrl({ tunnelId: 'box-coc', port: 4000.5, cluster: 'usw2' }),
+        ).toBeUndefined();
+        expect(
+            deriveDevTunnelPublicUrl({ tunnelId: 'bad id', port: 4000, cluster: 'usw2' }),
+        ).toBeUndefined();
+        expect(
+            deriveDevTunnelPublicUrl({ tunnelId: 'box-coc', port: 4000, cluster: 'a.b' }),
+        ).toBeUndefined();
     });
 });
 

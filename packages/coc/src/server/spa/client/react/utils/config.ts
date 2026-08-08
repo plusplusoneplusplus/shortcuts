@@ -74,6 +74,11 @@ interface DashboardConfig {
      * as the target-server capability signal exposed via GET /api/config/runtime.
      */
     gitWorktreeExecutionEnabled?: boolean;
+    /**
+     * Whether the chat Style selector is enabled (feature flag). Doubles as the
+     * target-server capability signal exposed via GET /api/config/runtime.
+     */
+    chatStyleSelectorEnabled?: boolean;
     /** Whether the Effort Tiers selector (Very Low/Low/Medium/High) is enabled in the composer. Enabled by default. */
     effortLevelsEnabled?: boolean;
     /** Whether the read-only native CLI sessions tab is enabled (feature flag). */
@@ -531,6 +536,14 @@ export function isGitCrossCloneCherryPickEnabled(): boolean {
  */
 export function isGitWorktreeExecutionEnabled(): boolean {
     return getConfig().gitWorktreeExecutionEnabled === true;
+}
+
+/**
+ * Returns true when the chat Style selector is enabled on the active server.
+ * Reads the same runtime flag a target server advertises as its Style capability.
+ */
+export function isChatStyleSelectorEnabled(): boolean {
+    return getConfig().chatStyleSelectorEnabled === true;
 }
 
 /** Returns true when the Effort Tiers selector is enabled (replaces model picker + effort pill). */

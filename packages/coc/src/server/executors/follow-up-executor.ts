@@ -26,7 +26,7 @@ import type {
     TurnSource,
 } from '@plusplusoneplusplus/forge';
 import type { ReasoningEffort } from '@plusplusoneplusplus/coc-agent-sdk';
-import { getCopilotContextTierForModel } from '@plusplusoneplusplus/coc-agent-sdk';
+import { isChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { ChatMode, ChatProvider } from '../tasks/task-types';
 import {
     getForEachContext,
@@ -46,18 +46,20 @@ import {
     resolveReasoningSelection,
 } from '@plusplusoneplusplus/forge';
 import {
-    buildForEachGenerationSystemMessage,
-    buildMapReduceGenerationSystemMessage,
-    buildModeSystemMessage,
     buildConversationHistoryContext,
-    buildSourceLocationMarkdownLinkSystemMessage,
     prependSelectedSkillsDirective,
     resolveSelectedSkillReferences,
 } from './prompt-builder';
-import { systemMessageBuilder } from './system-message-builder';
-import { readNoteContent, appendNoteEditSnapshot, SNAPSHOT_SIZE_LIMIT } from './note-chat-executor';
+import { readNoteContent } from './note-chat-executor';
 import { emitMessageSteering } from '../streaming/sse-handler';
-import { buildLiveConversationCostEstimate } from '../processes/process-metadata-read-model';
+import { buildChatTurnSystemMessage } from './chat-turn-system-message';
+import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
+import {
+    buildCumulativeTokenUsage,
+    buildSessionTokenUpdates,
+    captureNoteEditSnapshot,
+    emitTurnTokenUsage,
+} from './chat-turn-settlement';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
@@ -69,6 +71,9 @@ import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduc
 // ============================================================================
 // Types
 // ============================================================================
+
+/** Log prefix for every line this executor writes. */
+const FOLLOW_UP_LOG_LABEL = '[FollowUp]';
 
 /** Map CoC ChatMode to SDK AgentMode for protocol-level enforcement. */
 const CHAT_MODE_TO_AGENT_MODE: Record<ChatMode, AgentMode> = {
@@ -131,7 +136,18 @@ function formatSupportedReasoningEfforts(model: ModelInfo | undefined): string {
     return supportedEfforts.length > 0 ? supportedEfforts.join(', ') : 'none';
 }
 
+/**
+ * Recover from an unsupported reasoning effort on a follow-up turn.
+ *
+ * A follow-up is the one path that can carry a per-turn effort override from
+ * the EffortPillSelector. When the resolved model rejects exactly that
+ * override, drop the effort and run the turn on the model anyway — the user
+ * asked for a model *and* an effort, and the model is the load-bearing half.
+ * Any other failure (e.g. a persisted preference the model rejects) is
+ * re-thrown so it surfaces instead of being silently downgraded.
+ */
 function resolveFollowUpReasoningSelection(options: {
+    err: unknown;
     processId: string;
     sessionProvider: ChatProvider;
     reasoningModel: string | undefined;
@@ -140,24 +156,16 @@ function resolveFollowUpReasoningSelection(options: {
     modelMetadata: ModelInfo | undefined;
     logger: ReturnType<typeof getLogger>;
 }): ReturnType<typeof resolveReasoningSelection> {
-    const { processId, sessionProvider, reasoningModel, requestedEffort, perTurnReasoningEffort, modelMetadata, logger } = options;
-    try {
-        return resolveReasoningSelection({
-            modelId: reasoningModel,
-            requestedEffort,
-            model: modelMetadata,
-        });
-    } catch (err) {
-        if (!perTurnReasoningEffort || requestedEffort !== perTurnReasoningEffort || !isReasoningEffort(perTurnReasoningEffort)) {
-            throw err;
-        }
-
-        logger.warn(
-            LogCategory.AI,
-            `[FollowUp] Omitting reasoning effort '${perTurnReasoningEffort}' for process ${processId} because provider '${sessionProvider}' model '${reasoningModel ?? 'provider-default'}' does not support it. Supported efforts: ${formatSupportedReasoningEfforts(modelMetadata)}.`,
-        );
-        return { modelId: reasoningModel };
+    const { err, processId, sessionProvider, reasoningModel, requestedEffort, perTurnReasoningEffort, modelMetadata, logger } = options;
+    if (!perTurnReasoningEffort || requestedEffort !== perTurnReasoningEffort || !isReasoningEffort(perTurnReasoningEffort)) {
+        throw err;
     }
+
+    logger.warn(
+        LogCategory.AI,
+        `[FollowUp] Omitting reasoning effort '${perTurnReasoningEffort}' for process ${processId} because provider '${sessionProvider}' model '${reasoningModel ?? 'provider-default'}' does not support it. Supported efforts: ${formatSupportedReasoningEfforts(modelMetadata)}.`,
+    );
+    return { modelId: reasoningModel };
 }
 
 export interface FollowUpExecutorOptions extends ChatModeExecutorOptions {
@@ -231,6 +239,12 @@ export class FollowUpExecutor extends ChatBaseExecutor {
          * treated as a failed follow-up.
          */
         strictResumeSessionId?: string,
+        /**
+         * Chat style explicitly carried by this turn. Wins over the style stored
+         * on the conversation and, when valid, becomes the conversation's style
+         * for later turns. Legacy callers omit it.
+         */
+        chatStyle?: string,
     ): Promise<void> {
         const logger = getLogger();
         const startTime = Date.now();
@@ -279,7 +293,22 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             );
         }
 
+        // Effective style for this turn, in precedence order:
+        //   1. a valid style explicitly carried by this turn,
+        //   2. the conversation's stored style,
+        //   3. nothing (legacy callers).
+        // Resolved once and reused for both persistence and prompt construction
+        // so the executed style and the saved conversation style always agree.
+        const turnChatStyle = isChatStyle(chatStyle) ? chatStyle : undefined;
+        const storedChatStyle = isChatStyle(process.metadata?.chatStyle) ? process.metadata.chatStyle : undefined;
+        const effectiveChatStyle = turnChatStyle ?? storedChatStyle;
+
         const metadataUpdates: Record<string, unknown> = {};
+        // Persist an explicit change BEFORE the system message is built, so a
+        // reload of this conversation shows the style the turn actually ran with.
+        if (turnChatStyle && turnChatStyle !== storedChatStyle) {
+            metadataUpdates.chatStyle = turnChatStyle;
+        }
         if (mode && mode !== previousMode) {
             metadataUpdates.previousMode = previousMode;
             metadataUpdates.mode = currentMode;
@@ -411,18 +440,20 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             // tool-guidance prose lives in `systemMessage` (sent once at
             // session creation) rather than being stapled to every user
             // turn.
-            const systemMessage = await systemMessageBuilder()
-                .append(buildModeSystemMessage(currentMode)?.content)
-                .appendGlobalSystemPrompt(this.resolveGlobalSystemPrompt())
-                .append(buildForEachGenerationSystemMessage(forEachGeneration)?.content)
-                .append(buildMapReduceGenerationSystemMessage(mapReduceGeneration)?.content)
-                .withRepoInstructions(workingDirectory, currentMode)
-                .append(buildSourceLocationMarkdownLinkSystemMessage(sessionProvider)?.content)
-                .appendMemoryV2(chatCtx.memoryV2)
-                .appendToolGuidance(chatCtx.toolGuidance)
-                .appendAutoFolder(currentMode === 'ask' ? autoFolderContextForFollowUp : undefined)
-                .appendNoteFile(notePath)
-                .build();
+            const systemMessage = await buildChatTurnSystemMessage({
+                mode: currentMode,
+                workingDirectory,
+                provider: sessionProvider,
+                globalSystemPrompt: this.resolveGlobalSystemPrompt(),
+                forEachGeneration,
+                mapReduceGeneration,
+                chatStyle: effectiveChatStyle,
+                chatStyleEnabled: this.isChatStyleSelectorEnabled(),
+                memoryV2: chatCtx.memoryV2,
+                toolGuidance: chatCtx.toolGuidance,
+                autoFolderContext: currentMode === 'ask' ? autoFolderContextForFollowUp : undefined,
+                notePath,
+            });
 
             this.persistSystemPromptAsync(processId, 'chat', systemMessage?.content);
 
@@ -438,54 +469,44 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 : systemMessage;
 
             const resolvedDeliveryMode = (deliveryMode === 'immediate' ? 'immediate' : 'enqueue') as DeliveryMode;
-            let reasoningModel = providerModel.model;
-            // Resolve per-repo default model when no explicit or process model is set.
-            if (!reasoningModel && this.dataDir && wsId) {
-                const { resolveDefaultModel } = await import('../preferences-handler');
-                const defaultModel = resolveDefaultModel(this.dataDir, wsId, 'followUp');
-                const resolvedDefaultModel = resolveModelForProvider(sessionProvider, defaultModel);
-                if (resolvedDefaultModel.coerced) {
+
+            // Model, reasoning effort, and Copilot long-context tier all resolve
+            // through the shared turn-policy resolver so follow-ups and first
+            // turns cannot drift apart. `providerModel.model` is already coerced
+            // above (its warning fires once, before the metadata write), so the
+            // resolver only reports a coercion for the per-repo default.
+            //
+            // Follow-ups are the one path that can carry a per-turn effort
+            // override from the EffortPillSelector; when the resolved model does
+            // not support it, drop the effort and continue rather than failing
+            // the turn.
+            const policy = await resolveChatTurnPolicy({
+                provider: sessionProvider,
+                requestedModel: providerModel.model,
+                dataDir: this.dataDir,
+                workspaceId: wsId,
+                defaultModelMode: 'followUp',
+                onCoerced: ({ requestedModel }) => {
                     logger.warn(
                         LogCategory.AI,
-                        `[FollowUp] Dropping default model '${resolvedDefaultModel.requestedModel}' for provider '${sessionProvider}'; using provider default.`,
+                        `[FollowUp] Dropping default model '${requestedModel}' for provider '${sessionProvider}'; using provider default.`,
                     );
-                }
-                reasoningModel = resolvedDefaultModel.model;
-            }
-            // Resolve reasoning effort:
-            //   per-turn override (from EffortPillSelector)
-            //   > provider-scoped persisted default (cfg.models.providers[provider].reasoningEfforts)
-            //   > global persisted default — Copilot legacy only (cfg.models.reasoningEfforts)
-            //   > SDK default (model catalog default, then FALLBACK_REASONING_EFFORT_ORDER)
-            type _RequestedEffort = Parameters<typeof resolveReasoningSelection>[0]['requestedEffort'];
-            let requestedEffort: _RequestedEffort = reasoningEffort;
-            if (!requestedEffort && reasoningModel) {
-                const { loadConfigFile } = await import('../../config');
-                const cfg = loadConfigFile();
-                const providerSettings = cfg?.models?.providers?.[sessionProvider];
-                const effortMap: Record<string, string> = providerSettings
-                    ? (providerSettings.reasoningEfforts ?? {})
-                    : (sessionProvider === 'copilot' ? (cfg?.models?.reasoningEfforts ?? {}) : {});
-                const persisted = effortMap[reasoningModel];
-                if (persisted) requestedEffort = persisted as _RequestedEffort;
-            }
-            const reasoningModelMetadata = await this.getModelMetadataForReasoning(reasoningModel, sessionProvider, followUpAiService);
-            const reasoningSelection = resolveFollowUpReasoningSelection({
-                processId,
-                sessionProvider,
-                reasoningModel,
-                requestedEffort,
-                perTurnReasoningEffort: reasoningEffort,
-                modelMetadata: reasoningModelMetadata,
-                logger,
+                },
+                requestedEffort: reasoningEffort,
+                getModelMetadata: (modelId) =>
+                    this.getModelMetadataForReasoning(modelId, sessionProvider, followUpAiService),
+                onReasoningSelectionError: (err, ctx) => resolveFollowUpReasoningSelection({
+                    err,
+                    processId,
+                    sessionProvider,
+                    reasoningModel: ctx.modelId,
+                    requestedEffort: ctx.requestedEffort,
+                    perTurnReasoningEffort: reasoningEffort,
+                    modelMetadata: ctx.modelMetadata,
+                    logger,
+                }),
             });
-
-            // Copilot long-context tier: request it only when the resolved
-            // Copilot model's catalog metadata advertises a long-context tier.
-            // Never sent for Codex/Claude or for models without the metadata.
-            const contextTier = sessionProvider === 'copilot'
-                ? getCopilotContextTierForModel(reasoningModelMetadata)
-                : undefined;
+            const contextTier = policy.contextTier;
 
             // AC-04 — Apply the per-repo MCP allow-lists (server-level
             // `enabledMcpServers` + per-tool `enabledMcpTools`) to the
@@ -504,11 +525,11 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 prompt: followUpMessage,
                 sessionId: sessionIdForSend,
                 ...(strictResumeSessionId ? { strictSessionResume: true as const } : {}),
-                ...(reasoningSelection.modelId ? { model: reasoningSelection.modelId } : {}),
+                ...(policy.modelId ? { model: policy.modelId } : {}),
                 mode: agentMode,
                 workingDirectory,
                 signal: turnAbort.signal,
-                ...(reasoningSelection.reasoningEffort ? { reasoningEffort: reasoningSelection.reasoningEffort } : {}),
+                ...(policy.reasoningEffort ? { reasoningEffort: policy.reasoningEffort } : {}),
                 ...(contextTier ? { contextTier } : {}),
                 infiniteSessions: { enabled: true } as const,
                 ...(this.keepClientWarm() ? { keepWarm: true as const, warmKey: processId } : {}),
@@ -533,16 +554,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                         logger.warn(LogCategory.AI, `[FollowUp] Failed to persist sdkSessionId for ${processId} — future resume may fail: ${err instanceof Error ? err.message : String(err)}`);
                     });
                 },
-                onStreamingChunk: (chunk: string) => {
-                    this.appendOutputChunk(processId, chunk);
-                    this.appendTimelineItem(processId, { type: 'content', timestamp: new Date(), content: chunk });
-                    try {
-                        this.store.emitProcessOutput(processId, chunk);
-                    } catch (err) {
-                        logger.debug(LogCategory.AI, `[FollowUp] emitProcessOutput failed for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
-                    }
-                    this.checkThrottleAndFlush(processId);
-                },
+                onStreamingChunk: this.buildStreamingChunkHandler(processId, FOLLOW_UP_LOG_LABEL),
                 onToolEvent: this.buildToolEventHandler(
                     processId,
                     () => process.conversationTurns?.length ?? 0,
@@ -596,34 +608,11 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 {
                     filterStreaming: true,
                     additionalUpdates: (current) => {
-                        const tokenLimit = result.tokenUsage?.tokenLimit ?? current.tokenLimit;
-                        const currentTokens = result.tokenUsage?.currentTokens ?? current.currentTokens;
-                        const systemTokens = result.tokenUsage?.systemTokens ?? current.systemTokens;
-                        const toolDefinitionsTokens = result.tokenUsage?.toolDefinitionsTokens ?? current.toolDefinitionsTokens;
-                        const conversationTokens = result.tokenUsage?.conversationTokens ?? current.conversationTokens;
-                        const prevCumulative = current.cumulativeTokenUsage;
-                        const cumulativeTokenUsage = result.tokenUsage ? {
-                            inputTokens: (prevCumulative?.inputTokens ?? 0) + result.tokenUsage.inputTokens,
-                            outputTokens: (prevCumulative?.outputTokens ?? 0) + result.tokenUsage.outputTokens,
-                            cacheReadTokens: (prevCumulative?.cacheReadTokens ?? 0) + result.tokenUsage.cacheReadTokens,
-                            cacheWriteTokens: (prevCumulative?.cacheWriteTokens ?? 0) + result.tokenUsage.cacheWriteTokens,
-                            totalTokens: (prevCumulative?.totalTokens ?? 0) + result.tokenUsage.totalTokens,
-                            turnCount: (prevCumulative?.turnCount ?? 0) + result.tokenUsage.turnCount,
-                            cost: result.tokenUsage.cost !== undefined
-                                ? (prevCumulative?.cost ?? 0) + result.tokenUsage.cost
-                                : prevCumulative?.cost,
-                            actualUsdCost: result.tokenUsage.actualUsdCost !== undefined
-                                ? (prevCumulative?.actualUsdCost ?? 0) + result.tokenUsage.actualUsdCost
-                                : prevCumulative?.actualUsdCost,
-                            duration: result.tokenUsage.duration !== undefined
-                                ? (prevCumulative?.duration ?? 0) + result.tokenUsage.duration
-                                : prevCumulative?.duration,
-                            tokenLimit: result.tokenUsage.tokenLimit ?? prevCumulative?.tokenLimit,
-                            currentTokens: result.tokenUsage.currentTokens ?? prevCumulative?.currentTokens,
-                            systemTokens: result.tokenUsage.systemTokens ?? prevCumulative?.systemTokens,
-                            toolDefinitionsTokens: result.tokenUsage.toolDefinitionsTokens ?? prevCumulative?.toolDefinitionsTokens,
-                            conversationTokens: result.tokenUsage.conversationTokens ?? prevCumulative?.conversationTokens,
-                        } : prevCumulative;
+                        const sessionTokenUpdates = buildSessionTokenUpdates(current, result.tokenUsage);
+                        const cumulativeTokenUsage = buildCumulativeTokenUsage(
+                            current.cumulativeTokenUsage,
+                            result.tokenUsage,
+                        );
                         const assistantContent = result.response || '(No text response)';
                         const baseMetadata = {
                             ...(current.metadata ?? {}),
@@ -645,11 +634,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                             endTime: new Date(),
                             result: result.response || undefined,
                             metadata,
-                            ...(tokenLimit !== undefined ? { tokenLimit } : {}),
-                            ...(currentTokens !== undefined ? { currentTokens } : {}),
-                            ...(systemTokens !== undefined ? { systemTokens } : {}),
-                            ...(toolDefinitionsTokens !== undefined ? { toolDefinitionsTokens } : {}),
-                            ...(conversationTokens !== undefined ? { conversationTokens } : {}),
+                            ...sessionTokenUpdates,
                             ...(cumulativeTokenUsage ? { cumulativeTokenUsage } : {}),
                         };
                     },
@@ -679,48 +664,27 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
             // Capture note edit snapshot for inline diff
             if (notePath && wsId && preEditContent !== undefined) {
-                try {
-                    const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
-                    const postEditContent = await readNoteContent(effectiveDataDir, wsId, notePath);
-                    if (postEditContent !== undefined && postEditContent !== preEditContent) {
-                        const turnIndex = assistantTurn.turnIndex;
-                        const tooLarge = preEditContent.length > SNAPSHOT_SIZE_LIMIT
-                            || postEditContent.length > SNAPSHOT_SIZE_LIMIT;
-                        await appendNoteEditSnapshot(this.store, processId, {
-                            editId: `${processId}-${turnIndex}`,
-                            notePath,
-                            preEditContent: tooLarge ? '' : preEditContent,
-                            postEditContent: tooLarge ? '' : postEditContent,
-                            timestamp: new Date().toISOString(),
-                            turnIndex,
-                            ...(tooLarge ? { tooLarge: true } : {}),
-                        });
-                    }
-                } catch (err) {
-                    logger.debug(LogCategory.AI, `[FollowUp] Failed to capture note edit snapshot for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
-                }
+                await captureNoteEditSnapshot({
+                    store: this.store,
+                    processId,
+                    dataDir: this.dataDir ?? path.join(os.homedir(), '.coc'),
+                    workspaceId: wsId,
+                    notePath,
+                    preEditContent,
+                    turnIndex: assistantTurn.turnIndex,
+                    logLabel: FOLLOW_UP_LOG_LABEL,
+                });
             }
 
-            if (result.tokenUsage) {
-                try {
-                    const currentProc = await this.store.getProcess(processId, wsId);
-                    const cumulativeTokenUsage = currentProc?.cumulativeTokenUsage;
-                    this.store.emitProcessEvent(processId, {
-                        type: 'token-usage',
-                        turnIndex: assistantTurn.turnIndex,
-                        tokenUsage: result.tokenUsage,
-                        ...(cumulativeTokenUsage ? { cumulativeTokenUsage } : {}),
-                        ...(currentProc ? { conversationCostEstimate: buildLiveConversationCostEstimate(currentProc, allTurns) } : {}),
-                        sessionTokenLimit: result.tokenUsage.tokenLimit,
-                        sessionCurrentTokens: result.tokenUsage.currentTokens,
-                        ...(result.tokenUsage.systemTokens          != null ? { sessionSystemTokens:       result.tokenUsage.systemTokens }          : {}),
-                        ...(result.tokenUsage.toolDefinitionsTokens != null ? { sessionToolTokens:         result.tokenUsage.toolDefinitionsTokens } : {}),
-                        ...(result.tokenUsage.conversationTokens    != null ? { sessionConversationTokens: result.tokenUsage.conversationTokens }    : {}),
-                    });
-                } catch (err) {
-                    logger.debug(LogCategory.AI, `[FollowUp] Failed to emit token usage event for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
-                }
-            }
+            await emitTurnTokenUsage({
+                store: this.store,
+                processId,
+                workspaceId: wsId,
+                turnIndex: assistantTurn.turnIndex,
+                tokenUsage: result.tokenUsage,
+                allTurns,
+                logLabel: FOLLOW_UP_LOG_LABEL,
+            });
 
             this.store.emitProcessComplete(processId, 'completed', `${duration}ms`);
 
@@ -732,24 +696,18 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             const failedAt = new Date();
             logger.error(LogCategory.AI, `[FollowUp] Failed for ${processId} in ${duration}ms: ${errorMsg}`);
 
-            const partialContent = this.getOutputBuffer(processId);
-            const timelineBuffer = this.getTimelineBuffer(processId);
-            const partialTimeline = timelineBuffer
-                ? mergeConsecutiveContentItems([...timelineBuffer])
-                : [];
-            const partialSuggestions = this.getPendingSuggestions(processId);
-            const hasPartial = partialContent.length > 0 || partialTimeline.length > 0;
+            const partial = this.capturePartialTurn(processId);
 
             await this.appendFinalConversationTurn(
                 processId,
                 (turnIndex) => ({
                     role: 'assistant' as const,
-                    content: hasPartial ? partialContent : `Error: ${errorMsg}`,
+                    content: partial.hasPartial ? partial.content : `Error: ${errorMsg}`,
                     timestamp: new Date(),
                     turnIndex,
-                    timeline: hasPartial ? partialTimeline : [],
-                    ...(hasPartial ? { interrupted: true, interruptionReason: errorMsg } : {}),
-                    ...(hasPartial && partialSuggestions ? { suggestions: partialSuggestions } : {}),
+                    timeline: partial.hasPartial ? partial.timeline : [],
+                    ...(partial.hasPartial ? { interrupted: true, interruptionReason: errorMsg } : {}),
+                    ...(partial.hasPartial && partial.suggestions ? { suggestions: partial.suggestions } : {}),
                     ...(turnSource ? { turnSource } : {}),
                 }),
                 {

@@ -76,6 +76,7 @@ export class AutopilotExecutor extends ChatBaseExecutor {
 
         const systemMessage = await systemMessageBuilder()
             .appendGlobalSystemPrompt(this.resolveGlobalSystemPrompt())
+            .appendChatStyle(payload.chatStyle, this.isChatStyleSelectorEnabled())
             .append(buildSourceLocationMarkdownLinkSystemMessage(payload.provider ?? this.provider)?.content)
             .appendToolGuidance(ctx.toolGuidance)
             .build();

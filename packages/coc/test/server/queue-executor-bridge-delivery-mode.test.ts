@@ -183,7 +183,7 @@ describe('execute() — deliveryMode forwarding via chat-followup', () => {
 
         // 10th arg = per-turn reasoningEffort override (undefined when payload has no override)
         // 11th arg = strictResumeSessionId (undefined when payload has no resumeSessionId)
-        expect(spy).toHaveBeenCalledWith('proc-1', 'forwarded', undefined, undefined, 'immediate', undefined, undefined, undefined, undefined, undefined, undefined);
+        expect(spy).toHaveBeenCalledWith('proc-1', 'forwarded', undefined, undefined, 'immediate', undefined, undefined, undefined, undefined, undefined, undefined, undefined);
         spy.mockRestore();
     });
 
@@ -197,7 +197,7 @@ describe('execute() — deliveryMode forwarding via chat-followup', () => {
         const task = followUpTask({ processId: 'proc-1', content: 'no mode' });
         await executor.execute(task);
 
-        expect(spy).toHaveBeenCalledWith('proc-1', 'no mode', undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined);
+        expect(spy).toHaveBeenCalledWith('proc-1', 'no mode', undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined);
         spy.mockRestore();
     });
 });

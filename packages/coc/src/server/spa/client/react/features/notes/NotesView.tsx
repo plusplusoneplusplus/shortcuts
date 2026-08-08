@@ -12,7 +12,7 @@ import type { NotesChatWindowMode } from './editor/NotesChatHeader';
 import type { ChatScope } from './hooks/useNotesChat';
 import { useComments } from './editor/useComments';
 import { notesApi } from './notesApi';
-import { createTextAnchorFromSelection, findAnchorInDoc, applyCommentMark } from './editor/commentAnchoring';
+import { createTextAnchorFromSelection, findAnchorInDoc, applyCommentMark, revealCommentThread } from './editor/commentAnchoring';
 import type { TextAnchor } from './editor/textAnchor';
 import { AddCommentDialog } from './editor/NotesDialogs';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
@@ -403,27 +403,8 @@ export function NotesView({ workspaceId, sourceSelectionId, initialNotePath, def
         const editor = editorRef.current;
         if (!editor || !threadId) return;
 
-        // Find the comment mark in the editor by scanning marks
-        let markFrom: number | null = null;
-        let markTo: number | null = null;
-        editor.state.doc.descendants((node, pos) => {
-            if (!node.isText) return;
-            const commentMark = node.marks.find(
-                (m) => m.type.name === 'comment' && m.attrs.commentId === threadId,
-            );
-            if (commentMark) {
-                if (markFrom === null) markFrom = pos;
-                markTo = pos + node.nodeSize;
-            }
-        });
-
-        if (markFrom !== null && markTo !== null) {
-            editor.chain()
-                .setTextSelection({ from: markFrom, to: markTo })
-                .scrollIntoView()
-                .run();
-        }
-    }, []);
+        revealCommentThread(editor, threadId, comments.threads.find(t => t.id === threadId));
+    }, [comments.threads]);
 
     // ── Resolve with AI handler (new task path — no parent chat) ────────────
 

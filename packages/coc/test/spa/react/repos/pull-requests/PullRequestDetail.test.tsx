@@ -24,6 +24,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isMapReduceEnabled: () => false,
     isCronEnabled: () => false,
     isEffortLevelsEnabled: () => false,
+    isChatStyleSelectorEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => false,
     isCommitChatLensEnabled: configMocks.isCommitChatLensEnabled,
     getCommitChatLensDormantMode: () => 'ghost' as const,

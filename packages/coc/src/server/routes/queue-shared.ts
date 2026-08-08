@@ -17,6 +17,7 @@ import type {
     StoredEffortTiersMap,
 } from '@plusplusoneplusplus/forge';
 import { getLogger, LogCategory, resolveModelForProvider } from '@plusplusoneplusplus/forge';
+import { CHAT_STYLES, isChatStyle } from '@plusplusoneplusplus/coc-client';
 import { truncateDisplayName } from '../shared/queue-utils';
 import { TaskDefs, VALID_ENQUEUE_TYPES, VISIBLE_TASK_TYPE_LABELS, VALID_CHAT_PROVIDERS, normalizeChatMode, type ChatProvider } from '../tasks/task-types';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
@@ -388,6 +389,15 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
             return {
                 valid: false,
                 error: `Invalid provider: '${payload.provider}'. Valid providers: ${[...VALID_CHAT_PROVIDERS].join(', ')}`,
+            };
+        }
+        // Reject an unknown chat style rather than silently dropping it — a
+        // client that sends garbage should hear about it. An omitted field keeps
+        // legacy behavior (no style block).
+        if (payload.chatStyle !== undefined && !isChatStyle(payload.chatStyle)) {
+            return {
+                valid: false,
+                error: `Invalid chatStyle: '${payload.chatStyle}'. Valid styles: ${CHAT_STYLES.join(', ')}`,
             };
         }
     }

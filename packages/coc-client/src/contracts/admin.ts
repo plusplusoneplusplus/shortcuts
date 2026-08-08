@@ -272,6 +272,11 @@ export interface RuntimeDashboardConfig {
      * Item / Ralph launches. Doubles as the remote-target capability signal.
      */
     gitWorktreeExecutionEnabled: boolean;
+    /**
+     * Whether this CoC server offers the chat Style selector. Doubles as the
+     * remote-target capability signal; an older server omits it entirely.
+     */
+    chatStyleSelectorEnabled: boolean;
     /** Typing-driven client prewarm debounce (ms), resolved from env on the server. */
     prewarmDebounceMs: number;
     /** Warm-client idle TTL (ms), resolved from env on the server. `0` means warming is disabled. */

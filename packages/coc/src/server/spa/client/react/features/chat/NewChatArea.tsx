@@ -38,6 +38,9 @@ import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isForEachEnabled, isMapR
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
 import type { EffortTierKey } from '../../hooks/useProviderEffortTiers';
 import { EffortTierSelector } from './EffortTierSelector';
+import { ChatStyleSelector } from './ChatStyleSelector';
+import { DEFAULT_CHAT_STYLE, isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
+import { useChatStyleSelectorEnabled } from '../../hooks/feature-flags/useChatStyleSelectorEnabled';
 import { resolveEffortTier, resolveEffectiveTier } from '../../utils/resolveEffortTier';
 import { getDraft, setDraft, clearDraft, newChatDraftKey } from './hooks/useDraftStore';
 import { saveAttachmentDraft, loadAttachmentDraft, clearAttachmentDraft } from './hooks/attachmentDraftStore';
@@ -95,6 +98,15 @@ export interface NewChatAreaProps {
     onBack?: () => void;
 }
 
+/**
+ * Modes the Style experiment covers in its first version: the ordinary
+ * conversational surfaces. Ralph, workflows, and other structured-output flows
+ * already have stronger output contracts, so they receive no style instruction.
+ */
+function isChatStyleSupportedMode(mode: string): boolean {
+    return mode === 'ask' || mode === 'autopilot';
+}
+
 export interface InitialChatComposerSubmission {
     mode: string;
     prompt: string;
@@ -106,6 +118,12 @@ export interface InitialChatComposerSubmission {
     model?: string;
     reasoningEffort?: EffortLevel;
     config?: { effortTier?: EffortTierKey };
+    /**
+     * How the response should be written. Only sent when the owning server
+     * enables the Style experiment and the mode is Ask or Autopilot; every
+     * adapter that rebuilds the enqueue payload must forward it.
+     */
+    chatStyle?: ChatStyle;
 }
 
 export type InitialChatComposerSettingsLayout = 'full' | 'compact' | 'responsive';
@@ -230,6 +248,7 @@ export function NewChatArea({ workspaceId, sourceSelectionId, onBack }: NewChatA
                 ...(submission.attachments && submission.attachments.length > 0 ? { attachments: submission.attachments } : {}),
                 ...(submission.model ? { model: submission.model } : {}),
                 ...(submission.reasoningEffort ? { reasoningEffort: submission.reasoningEffort } : {}),
+                ...(submission.chatStyle ? { chatStyle: submission.chatStyle } : {}),
                 ...(submission.provider ? { provider: submission.provider } : {}),
             } as any,
             ...(submission.config ? { config: submission.config } : {}),
@@ -300,6 +319,9 @@ export function InitialChatComposer({
     const [selectedProvider, setSelectedProvider] = useState<ChatProvider>(() => getSelectableComposerDefaultProvider([]));
     const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
     const [selectedEffortTier, setSelectedEffortTier] = useState<EffortTierKey>('medium');
+    // Style is repo-scoped, not global: it seeds from this workspace's
+    // `lastChatStyle` preference and falls back to Human.
+    const [selectedChatStyle, setSelectedChatStyle] = useState<ChatStyle>(DEFAULT_CHAT_STYLE);
     const [ralphDirectGoalDraft, setRalphDirectGoalDraft] = useState<string | null>(null);
     const [ralphGrillSetup, setRalphGrillSetup] = useState<RalphGrillSetup>({ enabled: true, depth: 'standard', agents: [] });
     const [settingsEditorOpen, setSettingsEditorOpen] = useState(false);
@@ -320,6 +342,10 @@ export function InitialChatComposer({
     // threaded into the provider/model/effort hooks so their reads AND their
     // server-scoped config-cache entries route to the clone, never the local origin.
     const cloneBaseUrl = useResolveCloneBaseUrl()(workspaceId);
+
+    // Resolve the Style flag against the server that owns the selected clone, so
+    // one server's experiment never leaks into a clone owned by another.
+    const chatStyleSelectorEnabled = useChatStyleSelectorEnabled(cloneBaseUrl);
 
     const { attachments, addFromPaste, addFromFileInput, addScreenshotDataUrl, removeAttachment, clearAttachments, restoreAttachments, error: attachmentError, toPayload } = useFileAttachments();
     // AC-04: receive desktop-shell screenshot pushes into this composer's draft.
@@ -570,12 +596,16 @@ export function InitialChatComposer({
         const fallbackProvider = getSelectableDefaultProvider();
         let cancelled = false;
         if (!workspaceId) {
+            setSelectedChatStyle(DEFAULT_CHAT_STYLE);
             setSelectedProvider(fallbackProvider);
             return;
         }
         cloneClient.preferences.getRepo(workspaceId)
             .then((prefs: any) => {
                 if (cancelled) return;
+                // Read the saved style from this same request rather than
+                // issuing a second preferences fetch. Missing or invalid → Human.
+                setSelectedChatStyle(isChatStyle(prefs?.lastChatStyle) ? prefs.lastChatStyle : DEFAULT_CHAT_STYLE);
                 const last = prefs?.lastChatProvider;
                 if (isChatProvider(last) && isSelectableProvider(last, agentProviders)) {
                     setSelectedProvider(last);
@@ -584,7 +614,9 @@ export function InitialChatComposer({
                 setSelectedProvider(fallbackProvider);
             })
             .catch(() => {
-                if (!cancelled) setSelectedProvider(fallbackProvider);
+                if (cancelled) return;
+                setSelectedChatStyle(DEFAULT_CHAT_STYLE);
+                setSelectedProvider(fallbackProvider);
             });
         return () => { cancelled = true; };
     }, [workspaceId, agentProviders, cloneClient]);
@@ -671,6 +703,16 @@ export function InitialChatComposer({
         if (workspaceId) {
             cloneClient.preferences.patchRepo(workspaceId, { lastChatProvider: provider })
                 .catch(() => { /* non-fatal */ });
+        }
+    }
+
+    function handleChatStyleChange(style: ChatStyle) {
+        // Update locally first: a failed preference write must not cost the user
+        // the style they just picked for this send.
+        setSelectedChatStyle(style);
+        if (workspaceId) {
+            cloneClient.preferences.patchRepo(workspaceId, { lastChatStyle: style })
+                .catch(() => { /* non-fatal — the selection still applies to this send */ });
         }
     }
 
@@ -903,6 +945,7 @@ export function InitialChatComposer({
                 ...(resolvedAi.reasoningEffort ? { reasoningEffort: resolvedAi.reasoningEffort } : {}),
                 ...(resolvedAi.provider ? { provider: resolvedAi.provider } : {}),
                 ...(config ? { config } : {}),
+                ...(chatStyleSelectorEnabled && isChatStyleSupportedMode(mode) ? { chatStyle: selectedChatStyle } : {}),
             });
             await onSubmitted?.(typeof submittedTaskId === 'string' ? submittedTaskId : null);
             setInput('');
@@ -1167,6 +1210,23 @@ export function InitialChatComposer({
         );
     }
 
+    /**
+     * Style chip, rendered beside Effort. Hidden when the owning server has the
+     * experiment off, and for modes that are out of scope for the first version
+     * (Ralph and other structured-output flows).
+     */
+    function renderChatStyleControl(className?: string) {
+        if (!chatStyleSelectorEnabled || !isChatStyleSupportedMode(selectedMode)) return null;
+        return (
+            <ChatStyleSelector
+                selectedStyle={selectedChatStyle}
+                onChange={handleChatStyleChange}
+                disabled={sending}
+                className={className}
+            />
+        );
+    }
+
     function renderEffortControl(className?: string) {
         if (useEffortTierMode) {
             return (
@@ -1249,6 +1309,12 @@ export function InitialChatComposer({
                             {renderEffortControl()}
                         </div>
                     </div>
+                    {chatStyleSelectorEnabled && isChatStyleSupportedMode(selectedMode) && (
+                        <div className="space-y-1" data-testid="compact-ai-settings-chat-style-control">
+                            <div className="text-[10px] font-medium uppercase tracking-wide text-[#6e7781] dark:text-[#9e9e9e]">Style</div>
+                            {renderChatStyleControl()}
+                        </div>
+                    )}
                     <div className="space-y-1" data-testid="compact-ai-settings-mode-control">
                         <div className="text-[10px] font-medium uppercase tracking-wide text-[#6e7781] dark:text-[#9e9e9e]">Mode / workflow</div>
                         <ModePillSelector
@@ -1612,6 +1678,7 @@ export function InitialChatComposer({
                                      at least one tier configured, the tier selector replaces both
                                      legacy controls. Falls back to legacy when flag is off or when
                                      the provider has zero tiers configured. */}
+                                {renderChatStyleControl('ml-0.5')}
                                 {useEffortTierMode ? renderEffortControl('ml-0.5') : (
                                     <>
                                         {renderModelPicker()}

@@ -71,6 +71,8 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     getConfiguredDefaultProvider: () => mockConfiguredDefaultProvider,
     getDefaultProvider: () => mockDefaultProvider,
     isEffortLevelsEnabled: () => mockEffortLevelsEnabled,
+    isChatStyleSelectorEnabled: () => false,
+    DASHBOARD_CONFIG_UPDATED_EVENT: 'dashboard-config-updated',
     isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled,
 }));
 

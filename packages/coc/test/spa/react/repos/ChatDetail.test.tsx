@@ -50,6 +50,9 @@ const { mockState } = vi.hoisted(() => ({
         // Default off / empty so existing tests keep the legacy model+effort UI.
         effortLevelsEnabled: false,
         effortTiers: {} as Record<string, { model: string; reasoningEffort: string }>,
+        // Per-test toggle for the follow-up Style chip. Off by default so existing
+        // tests keep the pre-experiment toolbar.
+        chatStyleSelectorEnabled: false,
     },
 }));
 
@@ -66,6 +69,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getDefaultProvider: () => 'copilot' as const,
     getActiveProvider: () => 'copilot' as const,
     isEffortLevelsEnabled: () => mockState.effortLevelsEnabled,
+    isChatStyleSelectorEnabled: () => mockState.chatStyleSelectorEnabled,
     isSessionContextAttachmentsEnabled: () => false,
     getPrewarmDebounceMs: () => 500,
     getWarmClientTtlMs: () => 300000,
@@ -2463,5 +2467,88 @@ describe('ChatDetail — per-conversation after effort tier', () => {
         // The workspace-global key is NOT written from ChatDetail anymore — the
         // change must not leak into other chats in the workspace.
         expect(localStorage.getItem('coc:effort-tier:ws-1')).toBeNull();
+    });
+});
+
+// ============================================================================
+// Chat style — per-conversation follow-up selection
+// ============================================================================
+
+describe('ChatDetail — per-conversation chat style', () => {
+    function selectorStyle(): string | null {
+        return screen.getByTestId('follow-up-chat-style-selector').getAttribute('data-style-value');
+    }
+
+    it('hides the Style chip when the owning server has the experiment off', async () => {
+        mockState.chatStyleSelectorEnabled = false;
+        setupStandardFetch(
+            makeTask({ status: 'completed', processId: 'proc-1' }),
+            makeProcess({ metadata: { sessionId: 'sess-1', chatStyle: 'direct' } }),
+        );
+
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+
+        await waitFor(() => expect(screen.getByTestId('follow-up-attach-btn')).toBeTruthy());
+        expect(screen.queryByTestId('follow-up-chat-style-selector')).toBeNull();
+    });
+
+    it.each(['human', 'direct', 'analytical', 'structured'])(
+        'restores %s from the conversation metadata',
+        async (style) => {
+            mockState.chatStyleSelectorEnabled = true;
+            setupStandardFetch(
+                makeTask({ status: 'completed', processId: 'proc-1' }),
+                makeProcess({ metadata: { sessionId: 'sess-1', chatStyle: style } }),
+            );
+
+            render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+
+            await waitFor(() => expect(selectorStyle()).toBe(style));
+        },
+    );
+
+    it('shows Human for a legacy conversation that has no stored style', async () => {
+        mockState.chatStyleSelectorEnabled = true;
+        setupStandardFetch(
+            makeTask({ status: 'completed', processId: 'proc-1' }),
+            makeProcess({ metadata: { sessionId: 'sess-1' } }),
+        );
+
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+
+        await waitFor(() => expect(screen.getByTestId('follow-up-chat-style-selector')).toBeTruthy());
+        expect(selectorStyle()).toBe('human');
+    });
+
+    it('shows Human when the stored style is not a stable wire value', async () => {
+        mockState.chatStyleSelectorEnabled = true;
+        setupStandardFetch(
+            makeTask({ status: 'completed', processId: 'proc-1' }),
+            makeProcess({ metadata: { sessionId: 'sess-1', chatStyle: 'friendly' } }),
+        );
+
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+
+        await waitFor(() => expect(screen.getByTestId('follow-up-chat-style-selector')).toBeTruthy());
+        expect(selectorStyle()).toBe('human');
+    });
+
+    it('applies a change immediately and does not revert it when the process record refreshes', async () => {
+        mockState.chatStyleSelectorEnabled = true;
+        setupStandardFetch(
+            makeTask({ status: 'completed', processId: 'proc-1' }),
+            makeProcess({ metadata: { sessionId: 'sess-1', chatStyle: 'human' } }),
+        );
+
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+        await waitFor(() => expect(selectorStyle()).toBe('human'));
+
+        fireEvent.click(screen.getByTestId('chat-style-trigger-btn'));
+        fireEvent.click(screen.getByTestId('chat-style-option-structured'));
+
+        await waitFor(() => expect(selectorStyle()).toBe('structured'));
+        // A later render pass driven by the same (stale) process record must not
+        // clobber the pick — the per-process init only runs once.
+        expect(selectorStyle()).toBe('structured');
     });
 });

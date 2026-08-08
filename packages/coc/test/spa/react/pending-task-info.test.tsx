@@ -36,6 +36,7 @@ vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     isRalphMultiAgentGrillEnabled: () => false,
     isCronEnabled: () => false,
     isEffortLevelsEnabled: () => false,
+    isChatStyleSelectorEnabled: () => false,
     isForEachEnabled: () => false,
     getDefaultProvider: () => 'copilot' as const,
     getActiveProvider: () => 'copilot' as const,

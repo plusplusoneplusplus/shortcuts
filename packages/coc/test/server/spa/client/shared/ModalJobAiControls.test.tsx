@@ -39,6 +39,8 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     getActiveProvider: () => mocks.defaultProvider,
     isAutoAgentProviderRoutingEnabled: () => mocks.autoProviderRoutingEnabled,
     isEffortLevelsEnabled: () => mocks.effortLevelsEnabled,
+    isChatStyleSelectorEnabled: () => false,
+    DASHBOARD_CONFIG_UPDATED_EVENT: 'dashboard-config-updated',
 }));
 
 // The repo-preference calls go through `getCocClientForWorkspace`, whose real

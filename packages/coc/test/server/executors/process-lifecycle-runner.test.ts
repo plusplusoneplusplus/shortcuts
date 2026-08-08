@@ -470,8 +470,54 @@ describe('ProcessLifecycleRunner — pending messages drain', () => {
             undefined,
             undefined,
             'sess-stopped-turn',
+            undefined,
         );
     });
+
+    it('passes a valid chat style from the follow-up payload as the explicit turn style', async () => {
+        const processId = 'existing-process';
+        await store.addProcess({
+            id: processId,
+            type: 'clarification',
+            promptPreview: 'test',
+            fullPrompt: 'test',
+            status: 'running',
+            startTime: new Date(),
+            conversationTurns: [],
+        } as any);
+
+        const executeFollowUpFn = vi.fn().mockResolvedValue(undefined);
+        await runner.run(makeTask({
+            id: 'followup-style',
+            payload: { kind: 'chat', prompt: 'continue', processId, chatStyle: 'structured' } as any,
+        }), makeOpts({ executeFollowUpFn }));
+
+        expect(executeFollowUpFn.mock.calls[0][11]).toBe('structured');
+    });
+
+    it.each(['nonsense', 'Human', 42, null, undefined])(
+        'drops the invalid follow-up chat style %j rather than passing it through',
+        async (chatStyle) => {
+            const processId = 'existing-process';
+            await store.addProcess({
+                id: processId,
+                type: 'clarification',
+                promptPreview: 'test',
+                fullPrompt: 'test',
+                status: 'running',
+                startTime: new Date(),
+                conversationTurns: [],
+            } as any);
+
+            const executeFollowUpFn = vi.fn().mockResolvedValue(undefined);
+            await runner.run(makeTask({
+                id: 'followup-style-invalid',
+                payload: { kind: 'chat', prompt: 'continue', processId, chatStyle } as any,
+            }), makeOpts({ executeFollowUpFn }));
+
+            expect(executeFollowUpFn.mock.calls[0][11]).toBeUndefined();
+        },
+    );
 
     it('does not call onDrainPendingMessages when task fails', async () => {
         const drainFn = vi.fn().mockResolvedValue(undefined);

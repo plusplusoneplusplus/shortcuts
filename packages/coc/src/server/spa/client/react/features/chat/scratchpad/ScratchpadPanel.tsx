@@ -5,7 +5,7 @@ import { CommentsSidebar } from '../../notes/editor/CommentsSidebar';
 import { AddCommentDialog } from '../../notes/editor/NotesDialogs';
 import { useComments } from '../../notes/editor/useComments';
 import { notesApi } from '../../notes/notesApi';
-import { createTextAnchorFromSelection, findAnchorInDoc, applyCommentMark } from '../../notes/editor/commentAnchoring';
+import { createTextAnchorFromSelection, findAnchorInDoc, applyCommentMark, revealCommentThread } from '../../notes/editor/commentAnchoring';
 import type { TextAnchor } from '../../notes/editor/textAnchor';
 import { ScratchpadDivider } from './ScratchpadDivider';
 import type { ScratchpadExpandMode } from './useScratchpadState';
@@ -32,10 +32,6 @@ export interface ScratchpadPanelProps {
     height: number | string;
     /** Called when the note file is not found (404); closes the panel silently. */
     onNotFound?: () => void;
-    /** processId of the parent chat — when set, resolve-with-AI sends a follow-up instead of a new task. */
-    parentProcessId?: string;
-    /** Current chat mode — passed through to resolve-with-AI follow-ups so they run in the user's selected mode. */
-    selectedMode?: 'ask' | 'autopilot';
     /**
      * When provided, renders a horizontal header bar at the top of the panel containing
      * file tabs and control icons. Used in vertical (side-by-side) layout where the divider
@@ -45,7 +41,7 @@ export interface ScratchpadPanelProps {
 }
 
 
-export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound, onClose, parentProcessId, selectedMode, headerBar }: ScratchpadPanelProps) {
+export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound, onClose, headerBar }: ScratchpadPanelProps) {
     // ── Comments state (ephemeral — not persisted) ──────────────────────────
     const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
     const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
@@ -61,8 +57,6 @@ export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound, onC
     const comments = useComments({
         workspaceId,
         notePath,
-        parentProcessId,
-        selectedMode,
     });
 
     // ── Wrapped delete/resolve/reopen that sync editor marks ────────────────
@@ -139,26 +133,8 @@ export function ScratchpadPanel({ workspaceId, notePath, height, onNotFound, onC
         const editor = editorRef.current;
         if (!editor || !threadId) return;
 
-        let markFrom: number | null = null;
-        let markTo: number | null = null;
-        editor.state.doc.descendants((node, pos) => {
-            if (!node.isText) return;
-            const commentMark = node.marks.find(
-                (m) => m.type.name === 'comment' && m.attrs.commentId === threadId,
-            );
-            if (commentMark) {
-                if (markFrom === null) markFrom = pos;
-                markTo = pos + node.nodeSize;
-            }
-        });
-
-        if (markFrom !== null && markTo !== null) {
-            editor.chain()
-                .setTextSelection({ from: markFrom, to: markTo })
-                .scrollIntoView()
-                .run();
-        }
-    }, []);
+        revealCommentThread(editor, threadId, comments.threads.find(t => t.id === threadId));
+    }, [comments.threads]);
 
     // ── Resolve with AI handler ─────────────────────────────────────────────
 

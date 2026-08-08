@@ -166,13 +166,14 @@ export function applyCommentMark(
 }
 
 /**
- * Re-create a fresh TextAnchor for a thread whose mark is still in the editor.
- * Returns null if the mark can't be found.
+ * Locate the range covered by a thread's comment mark in the editor doc.
+ * Returns null when the mark is absent (e.g. the thread was resolved, which
+ * strips the mark).
  */
-export function buildAnchorFromMark(
+export function findCommentMarkRange(
     editor: Editor,
     threadId: string,
-): TextAnchor | null {
+): { from: number; to: number } | null {
     let markFrom: number | null = null;
     let markTo: number | null = null;
 
@@ -188,6 +189,89 @@ export function buildAnchorFromMark(
     });
 
     if (markFrom === null || markTo === null) return null;
+    return { from: markFrom, to: markTo };
+}
+
+/** How long the clicked comment stays visibly highlighted, in ms. */
+export const COMMENT_ACTIVE_HIGHLIGHT_MS = 1500;
+
+/**
+ * Scroll the commented text for a thread into view and flash it.
+ *
+ * Selecting the range alone is not enough: when the click comes from the
+ * comments sidebar the editor is not focused, so ProseMirror paints no
+ * selection and its own scrollIntoView does not reliably move the editor's
+ * scroll container. So we focus first, then centre the mark's span in its
+ * scroll container ourselves and toggle `comment-active` on it.
+ *
+ * Falls back to the thread's text anchor when the mark is gone (resolved
+ * threads have their mark stripped), so those cards still navigate.
+ *
+ * Returns true when a target was found.
+ */
+export function revealCommentThread(
+    editor: Editor,
+    threadId: string,
+    thread?: { anchor?: TextAnchor } | null,
+): boolean {
+    const range =
+        findCommentMarkRange(editor, threadId)
+        ?? (thread?.anchor ? findAnchorInDoc(editor.state.doc, thread.anchor) : null);
+
+    if (!range) return false;
+
+    editor.chain()
+        .focus()
+        .setTextSelection(range)
+        .scrollIntoView()
+        .run();
+
+    scrollCommentSpanIntoView(editor, threadId);
+    return true;
+}
+
+/**
+ * Centre a thread's rendered span in the editor's scroll container and flash
+ * the `comment-active` class on it. No-op when the span is not rendered
+ * (resolved threads, or a non-DOM test environment).
+ */
+function scrollCommentSpanIntoView(editor: Editor, threadId: string): void {
+    const root = editor.view?.dom as HTMLElement | undefined;
+    if (!root || typeof root.querySelector !== 'function') return;
+
+    const span = root.querySelector<HTMLElement>(`span[data-comment-id="${threadId}"]`);
+    if (!span) return;
+
+    const scrollContainer = span.closest('.overflow-y-auto') ?? root.parentElement;
+    if (scrollContainer) {
+        const containerRect = scrollContainer.getBoundingClientRect();
+        const spanRect = span.getBoundingClientRect();
+        const scrollTop = scrollContainer.scrollTop
+            + (spanRect.top - containerRect.top)
+            - containerRect.height / 2
+            + spanRect.height / 2;
+        scrollContainer.scrollTo({ top: Math.max(0, scrollTop), behavior: 'smooth' });
+    }
+
+    // Clear any leftover highlight from a previous click before flashing this one.
+    root.querySelectorAll<HTMLElement>('span[data-comment-id].comment-active')
+        .forEach((el) => el.classList.remove('comment-active'));
+
+    span.classList.add('comment-active');
+    setTimeout(() => span.classList.remove('comment-active'), COMMENT_ACTIVE_HIGHLIGHT_MS);
+}
+
+/**
+ * Re-create a fresh TextAnchor for a thread whose mark is still in the editor.
+ * Returns null if the mark can't be found.
+ */
+export function buildAnchorFromMark(
+    editor: Editor,
+    threadId: string,
+): TextAnchor | null {
+    const range = findCommentMarkRange(editor, threadId);
+    if (!range) return null;
+    const { from: markFrom, to: markTo } = range;
 
     const doc = editor.state.doc;
     const quotedText = doc.textBetween(markFrom, markTo, '');

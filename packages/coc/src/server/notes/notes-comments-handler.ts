@@ -37,6 +37,15 @@ import { resolveNoteSidecarPath, type SidecarResolveError } from './notes-sideca
 const COMMENTS_SUFFIX = '.comments.json';
 
 /**
+ * A comment body must carry actual text. Enforced here rather than only in the
+ * dialog's disabled-button state, so a stale or scripted client cannot persist
+ * an empty thread that later renders as an empty entry in the AI resolve prompt.
+ */
+function isNonEmptyContent(value: unknown): value is string {
+    return typeof value === 'string' && value.trim().length > 0;
+}
+
+/**
  * Resolve the comments sidecar path for a note and check that this workspace is
  * allowed to comment on it. Returns an error object when access is denied.
  */
@@ -186,6 +195,9 @@ export function registerNotesCommentsRoutes(
             if (!Array.isArray(thread.comments)) {
                 return sendError(res, 400, 'Missing required field: thread.comments');
             }
+            if (thread.comments.some((c: unknown) => !isNonEmptyContent((c as { content?: unknown })?.content))) {
+                return sendError(res, 400, 'Invalid field: thread.comments[].content must be a non-empty string');
+            }
 
             const root = resolveRoot(dataDir, ws, rootParam);
             if (isRootResolveError(root)) {
@@ -319,8 +331,8 @@ export function registerNotesCommentsRoutes(
             if (!notePath || typeof notePath !== 'string') {
                 return sendError(res, 400, 'Missing required field: path');
             }
-            if (!content || typeof content !== 'string') {
-                return sendError(res, 400, 'Missing required field: content');
+            if (!isNonEmptyContent(content)) {
+                return sendError(res, 400, 'Missing or invalid field: content (must be a non-empty string)');
             }
 
             const root = resolveRoot(dataDir, ws, rootParam);
@@ -367,8 +379,8 @@ export function registerNotesCommentsRoutes(
             if (!notePath || typeof notePath !== 'string') {
                 return sendError(res, 400, 'Missing required field: path');
             }
-            if (!content || typeof content !== 'string') {
-                return sendError(res, 400, 'Missing required field: content');
+            if (!isNonEmptyContent(content)) {
+                return sendError(res, 400, 'Missing or invalid field: content (must be a non-empty string)');
             }
 
             const root = resolveRoot(dataDir, ws, rootParam);
