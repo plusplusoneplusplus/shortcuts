@@ -66,4 +66,29 @@ describe('electron-builder packaging config', () => {
             expect(winFiles).toContain('!**/@github/copilot/**/darwin-*/**');
         });
     });
+
+    describe('esbuild ships with the packaged server', () => {
+        // The v3.4.x-alpha.16 release refused to start on every platform:
+        // `canvas-jsx` → `canvas-tools` → `prompt-builder` is a static chain the
+        // server walks at boot, so requiring esbuild there while it sat in
+        // devDependencies meant electron-builder pruned it out of the asar and
+        // the forked server died with MODULE_NOT_FOUND.
+        function cocPackage(): { dependencies?: Record<string, string>; devDependencies?: Record<string, string> } {
+            const file = path.resolve(__dirname, '../../coc/package.json');
+            return JSON.parse(fs.readFileSync(file, 'utf8'));
+        }
+
+        it('declares esbuild as a production dependency of @plusplusoneplusplus/coc', () => {
+            const pkg = cocPackage();
+            expect(pkg.dependencies?.esbuild).toBeTruthy();
+            expect(pkg.devDependencies?.esbuild).toBeUndefined();
+        });
+
+        it('unpacks the @esbuild native binaries from the asar', () => {
+            // esbuild spawns its platform binary (`@esbuild/win32-x64/esbuild.exe`,
+            // `@esbuild/darwin-arm64/bin/esbuild`) as a child process, and you
+            // cannot exec a file that lives inside an asar archive.
+            expect(buildConfig().asarUnpack ?? []).toContain('**/@esbuild/**');
+        });
+    });
 });

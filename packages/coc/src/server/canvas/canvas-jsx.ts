@@ -12,10 +12,15 @@
  * the AI a real error with a line number. Nothing is stored on failure — a
  * saved canvas that renders blank is the outcome this exists to prevent.
  *
- * Node-only (imports esbuild). Never import this from browser/SPA code.
+ * Node-only (loads esbuild). Never import this from browser/SPA code.
+ *
+ * esbuild is loaded lazily, inside the transform, on purpose: this module sits
+ * on a static import chain that reaches `server/index.ts` at boot, so a
+ * top-level `import` makes a missing or broken esbuild a startup crash for the
+ * whole server. Deferred, the worst case is "JSX canvases don't build".
  */
 
-import * as esbuild from 'esbuild';
+import type * as esbuild from 'esbuild';
 
 export type CanvasJsxTransformResult =
     | { ok: true; code: string }
@@ -47,6 +52,7 @@ function formatFailure(err: unknown): string {
  */
 export async function transformCanvasJsx(source: string): Promise<CanvasJsxTransformResult> {
     try {
+        const esbuild = await import('esbuild');
         const result = await esbuild.transform(source, {
             loader: 'jsx',
             jsxFactory: 'React.createElement',
