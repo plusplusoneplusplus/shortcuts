@@ -293,6 +293,30 @@ interface ClaudeCompactBoundaryMessage {
     session_id?: string;
 }
 
+/**
+ * Emitted when the SDK auto-denies a tool call without an interactive prompt.
+ * CoC runs headless with no `canUseTool` callback, so an `ask` decision has no
+ * one to answer it and is terminal — this frame is the only signal that the
+ * denial happened at all (the call itself just renders as a generic failed tool
+ * call). Best-effort advisory: `permission_denials` on the result frame is the
+ * authoritative record. Mirrors the SDK's `SDKPermissionDeniedMessage`, but
+ * declares only the fields read here — `tool_input` is deliberately omitted so
+ * it cannot be logged.
+ */
+interface ClaudePermissionDeniedMessage {
+    type: 'system';
+    subtype: 'permission_denied';
+    tool_name: string;
+    tool_use_id: string;
+    /** Discriminator from PermissionDecisionReason ('classifier' | 'asyncAgent' | 'mode' | 'rule'). */
+    decision_reason_type?: string;
+    /** Human-readable reason from the deciding component, when available. */
+    decision_reason?: string;
+    /** Rejection text returned to the model. Never logged — may echo prompt content. */
+    message: string;
+    session_id?: string;
+}
+
 /** Maps an SDK `system` message `subtype` to its concrete message shape. */
 interface ClaudeSystemSubtypeMap {
     task_started: ClaudeTaskStartedMessage;
@@ -300,6 +324,7 @@ interface ClaudeSystemSubtypeMap {
     task_notification: ClaudeTaskNotificationMessage;
     session_state_changed: ClaudeSessionStateChangedMessage;
     compact_boundary: ClaudeCompactBoundaryMessage;
+    permission_denied: ClaudePermissionDeniedMessage;
 }
 
 /** Terminal task-update statuses that drain a tracked background task. */
@@ -313,7 +338,7 @@ interface ClaudeBackgroundTaskEntry {
     description?: string;
 }
 
-type ClaudeSDKMessage = ClaudeAssistantMessage | ClaudeUserMessage | ClaudeResultMessage | ClaudeSystemMessage | ClaudeRateLimitEvent | ClaudeSessionStateChangedMessage | ClaudeTaskStartedMessage | ClaudeTaskNotificationMessage | ClaudeTaskUpdatedMessage | ClaudeCompactBoundaryMessage | Record<string, unknown>;
+type ClaudeSDKMessage = ClaudeAssistantMessage | ClaudeUserMessage | ClaudeResultMessage | ClaudeSystemMessage | ClaudeRateLimitEvent | ClaudeSessionStateChangedMessage | ClaudeTaskStartedMessage | ClaudeTaskNotificationMessage | ClaudeTaskUpdatedMessage | ClaudeCompactBoundaryMessage | ClaudePermissionDeniedMessage | Record<string, unknown>;
 type ClaudePermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk' | 'auto';
 
 /**
@@ -1212,6 +1237,35 @@ export class ClaudeSDKService implements ISDKService {
                         clearDrainCap();
                         await captureContextUsageThenClose();
                     }
+                } else if (this.isClaudeSystemSubtype(msg, 'permission_denied')) {
+                    // Purely observational — never fails or short-circuits the
+                    // turn. Headless with no canUseTool callback, an `ask`
+                    // decision is terminal and otherwise surfaces only as a
+                    // generic failed tool call, so a gap in
+                    // ASK_MODE_AUTO_APPROVED_TOOLS fails silently until a user
+                    // reports it. This line makes the whole class greppable on
+                    // first occurrence.
+                    //
+                    // The native AskUserQuestion is denied on purpose by
+                    // resolveClaudeDisallowedTools whenever CoC's own `ask_user`
+                    // tool is present, so its deny-rule denial is expected noise
+                    // and logs at debug rather than warn.
+                    //
+                    // Neither `tool_input` nor the rejection `message` body is
+                    // logged: both can carry prompt content.
+                    const expectedDenial = msg.tool_name === NATIVE_ASK_USER_BUILT_IN_TOOL;
+                    const denialFields = {
+                        provider: CLAUDE_PROVIDER,
+                        event: 'claude_tool_permission_denied',
+                        toolName: msg.tool_name,
+                        toolUseId: msg.tool_use_id,
+                        permissionMode: permissionOptions.permissionMode,
+                        decisionReasonType: msg.decision_reason_type,
+                        decisionReason: msg.decision_reason,
+                    };
+                    const denialText = 'Claude auto-denied a tool call (headless, no canUseTool callback)';
+                    if (expectedDenial) getSDKLogger().debug(denialFields, denialText);
+                    else getSDKLogger().warn(denialFields, denialText);
                 }
             }
 
