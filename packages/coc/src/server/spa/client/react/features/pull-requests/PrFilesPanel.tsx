@@ -18,10 +18,14 @@
  *    dirname rendered above it in muted small text.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../ui';
 import type { FileChange } from '../git/diff/FileTree';
 import { SideBySideDiffViewer } from '../git/diff/SideBySideDiffViewer';
+import type { DiffLine, UnifiedDiffViewerHandle } from '../git/diff/UnifiedDiffViewer';
+import { DiffFindWidget } from '../git/diff/DiffFindWidget';
+import { useDiffFind } from '../git/diff/useDiffFind';
+import { useDiffFindShortcut } from '../git/diff/useDiffFindShortcut';
 import { extractFileDiffFromCombined } from '../git/diff/diffSource';
 import {
     buildFileTree,
@@ -440,6 +444,10 @@ export function PrFilesPanel({ files, diffText, isMobile = false, workspaceId, c
             </div>
 
             <PrInlineDiffPanel
+                // Remount on file switch so the in-diff find state (query, match
+                // set, highlights) resets cleanly instead of carrying over stale
+                // matches from the previously selected file.
+                key={activePath}
                 filePath={activePath}
                 diff={activeDiff}
                 hasFiles={files.length > 0}
@@ -467,6 +475,19 @@ interface PrInlineDiffPanelProps {
  * rendered, so large PRs never build every file's hunks up front.
  */
 function PrInlineDiffPanel({ filePath, diff, hasFiles, onPopOut }: PrInlineDiffPanelProps) {
+    const viewerRef = useRef<UnifiedDiffViewerHandle>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    // Search scope is exactly what the viewer rendered for the selected file —
+    // `onLinesReady` reports that model, so the "N of M" count always matches
+    // what the user can see.
+    const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
+
+    const scrollActiveMatchIntoView = useCallback((lineIndex: number) => {
+        viewerRef.current?.scrollLineIntoView(lineIndex);
+    }, []);
+    const find = useDiffFind(diffLines, scrollActiveMatchIntoView);
+    useDiffFindShortcut(scrollContainerRef, find.openFind);
+
     return (
         <div
             className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
@@ -492,27 +513,48 @@ function PrInlineDiffPanel({ filePath, diff, hasFiles, onPopOut }: PrInlineDiffP
                     </button>
                 )}
             </header>
-            <div
-                className="min-h-0 min-w-0 flex-1 overflow-auto p-1.5"
-                data-testid="pr-diff-panel-scroll"
-            >
-                {diff ? (
-                    <SideBySideDiffViewer
-                        diff={diff}
-                        fileName={filePath}
-                        showLineNumbers
-                        data-testid="pr-inline-diff"
+            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+                {/* ── In-diff find widget (Ctrl/Cmd+F) ── */}
+                {find.open && diff && (
+                    <DiffFindWidget
+                        query={find.query}
+                        caseSensitive={find.caseSensitive}
+                        matchCount={find.matchCount}
+                        activeIndex={find.activeIndex}
+                        onQueryChange={find.setQuery}
+                        onToggleCaseSensitive={find.toggleCaseSensitive}
+                        onNext={find.goToNext}
+                        onPrev={find.goToPrev}
+                        onClose={find.closeFind}
                     />
-                ) : (
-                    <div
-                        className="flex h-full items-center justify-center px-3 py-6 text-center text-[12px] text-gray-500 dark:text-gray-400"
-                        data-testid="pr-diff-panel-empty"
-                    >
-                        {hasFiles
-                            ? 'Select a file to view its diff.'
-                            : 'No file changes in this pull request.'}
-                    </div>
                 )}
+                <div
+                    ref={scrollContainerRef}
+                    className="min-h-0 min-w-0 flex-1 overflow-auto p-1.5 outline-none"
+                    data-testid="pr-diff-panel-scroll"
+                    tabIndex={-1}
+                >
+                    {diff ? (
+                        <SideBySideDiffViewer
+                            ref={viewerRef}
+                            diff={diff}
+                            fileName={filePath}
+                            showLineNumbers
+                            onLinesReady={setDiffLines}
+                            matchRangesByLine={find.matchRangesByLine}
+                            data-testid="pr-inline-diff"
+                        />
+                    ) : (
+                        <div
+                            className="flex h-full items-center justify-center px-3 py-6 text-center text-[12px] text-gray-500 dark:text-gray-400"
+                            data-testid="pr-diff-panel-empty"
+                        >
+                            {hasFiles
+                                ? 'Select a file to view its diff.'
+                                : 'No file changes in this pull request.'}
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );
