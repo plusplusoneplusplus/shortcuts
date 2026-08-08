@@ -318,7 +318,11 @@ function openAnnotationEditor(image: Electron.NativeImage, scaleFactor: number):
         minHeight: 240,
         resizable: true,
         title: 'Annotate Screenshot',
-        backgroundColor: '#0d1117',
+        // AC-01: no OS chrome — the editor's own floating toolbar pill is the
+        // title bar (it carries `-webkit-app-region: drag`). `frame: false` also
+        // removes the macOS traffic lights, so Cancel/ESC is the only close path.
+        frame: false,
+        backgroundColor: '#1e1e1e',
         show: false,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),

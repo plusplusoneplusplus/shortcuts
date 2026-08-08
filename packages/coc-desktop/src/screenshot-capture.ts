@@ -401,7 +401,15 @@ export const SCREENSHOT_ANNOTATE_DONE_CHANNEL = 'coc-desktop:screenshot-annotate
 /** IPC channel: annotation editor → main, "Cancel" — discard the annotation. */
 export const SCREENSHOT_ANNOTATE_CANCEL_CHANNEL = 'coc-desktop:screenshot-annotate-cancel';
 
-/** Height (CSS px) reserved for the editor toolbar above the drawing canvas. */
+/**
+ * Top inset (CSS px) reserved for the editor's floating toolbar pill.
+ *
+ * The toolbar no longer occupies a full-width bar the stage sits below — it is a
+ * rounded pill floating OVER the image (AC-01). The stage is full-height, so this
+ * constant survives purely as the reserved inset: `fitAnnotationWindowSize` adds
+ * it to the window height and the stage pads its top by it, which together keep
+ * the pill from ever covering the image.
+ */
 export const ANNOTATION_TOOLBAR_HEIGHT = 48;
 
 /** The drawing tools the editor offers. `pen`/`line`/`rect` are mandatory. */
@@ -630,7 +638,7 @@ export function buildAnnotationPageScript(): string {
 
   var canvas = document.getElementById('annotate-canvas');
   var ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
-  var toolbar = document.getElementById('annotate-toolbar');
+  var TOP_INSET = ${String(ANNOTATION_TOOLBAR_HEIGHT)};
 
   var baseImage = null;
   var size = { width: 0, height: 0 };
@@ -651,9 +659,8 @@ export function buildAnnotationPageScript(): string {
 
   function fitCanvasDisplay() {
     if (!canvas || !canvas.style || !size.width || !size.height) { return; }
-    var toolbarH = (toolbar && toolbar.offsetHeight) || ${String(ANNOTATION_TOOLBAR_HEIGHT)};
     var availW = window.innerWidth || size.width;
-    var availH = (window.innerHeight || size.height) - toolbarH;
+    var availH = (window.innerHeight || size.height) - TOP_INSET;
     var fit = Math.min(1, availW / size.width, availH / size.height);
     canvas.style.width = Math.max(1, Math.round(size.width * fit)) + 'px';
     canvas.style.height = Math.max(1, Math.round(size.height * fit)) + 'px';
@@ -775,12 +782,22 @@ export function buildAnnotationPageScript(): string {
 }
 
 /**
- * AC-03: the full HTML document for the annotation editor window, loaded as a
- * data: URL (self-contained inline styles — independent of the SPA). A top
- * toolbar exposes the tools (pen/line/rect mandatory; arrow + colour + width +
- * undo are the trimmable extras) plus Cancel/Done; below it a custom `<canvas>`
- * holds the cropped image and the drawing layer. Embeds
- * {@link buildAnnotationPageScript}. Deliberately contains NO Excalidraw.
+ * AC-03/AC-01: the full HTML document for the annotation editor window, loaded as
+ * a data: URL (self-contained inline styles — independent of the SPA, and it
+ * fetches nothing over the network).
+ *
+ * The window is frameless (see `openAnnotationEditor`), so the chrome is one
+ * rounded, translucent toolbar PILL floating over a full-height stage rather than
+ * a full-width bar with a bottom border. The pill itself is the window's drag
+ * region (`-webkit-app-region: drag`) and every control inside it opts back out
+ * with `no-drag`, so dragging the pill's empty padding moves the window while
+ * clicking a tool does not. The stage pads its top by
+ * {@link ANNOTATION_TOOLBAR_HEIGHT} so the pill never covers the image.
+ *
+ * Colours are sampled from the SPA's dark theme (`tailwind.css`): `#1e1e1e`
+ * canvas backdrop, `#252526` surface, `#3c3c3c` borders, `#cccccc` text and the
+ * `#0078d4` VS Code accent. Embeds {@link buildAnnotationPageScript}.
+ * Deliberately contains NO Excalidraw.
  */
 export function buildAnnotationHtml(): string {
     return `<!doctype html>
@@ -790,32 +807,59 @@ export function buildAnnotationHtml(): string {
 <style>
   html, body {
     margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
-    background: #0d1117; color: #e6edf3;
+    background: #1e1e1e; color: #cccccc;
     font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     user-select: none; -webkit-user-select: none;
   }
+  /* The floating pill: the whole window's title-bar drag handle. */
   #annotate-toolbar {
-    display: flex; align-items: center; gap: 6px; box-sizing: border-box;
-    height: ${String(ANNOTATION_TOOLBAR_HEIGHT)}px; padding: 0 10px;
-    background: #161b22; border-bottom: 1px solid #30363d;
+    position: fixed; z-index: 10; top: 8px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 4px; box-sizing: border-box;
+    max-width: calc(100vw - 16px); padding: 5px 8px; border-radius: 12px;
+    background: rgba(37, 38, 38, 0.86); border: 1px solid rgba(255, 255, 255, 0.09);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    backdrop-filter: blur(14px) saturate(160%);
+    -webkit-app-region: drag;
   }
+  #annotate-toolbar button,
+  #annotate-toolbar input,
+  #annotate-toolbar label { -webkit-app-region: no-drag; }
   #annotate-toolbar .tool, #annotate-toolbar button {
-    height: 30px; padding: 0 10px; border-radius: 6px; cursor: pointer;
-    color: #e6edf3; background: #21262d; border: 1px solid #30363d;
+    height: 28px; padding: 0 10px; border-radius: 7px; cursor: pointer;
+    color: #cccccc; background: transparent; border: 1px solid transparent;
   }
-  #annotate-toolbar .tool.active { background: #1f6feb; border-color: #1f6feb; }
-  #annotate-toolbar .spacer { flex: 1 1 auto; }
+  #annotate-toolbar .tool:hover, #annotate-toolbar button:hover {
+    background: rgba(255, 255, 255, 0.09);
+  }
+  #annotate-toolbar .tool.active {
+    background: #0078d4; border-color: #0078d4; color: #ffffff;
+  }
+  #annotate-toolbar .tool.active:hover { background: #005a9e; }
+  #annotate-toolbar .divider {
+    width: 1px; height: 18px; margin: 0 3px; background: rgba(255, 255, 255, 0.12);
+  }
   #annotate-toolbar input[type="color"] {
-    width: 30px; height: 30px; padding: 0; border: 1px solid #30363d;
-    border-radius: 6px; background: #21262d; cursor: pointer;
+    width: 28px; height: 28px; padding: 0; border: 1px solid #3c3c3c;
+    border-radius: 7px; background: #252526; cursor: pointer;
   }
-  #annotate-done { background: #238636 !important; border-color: #238636 !important; }
+  #annotate-toolbar input[type="range"] { width: 84px; accent-color: #0078d4; cursor: pointer; }
+  #annotate-cancel { border-color: #3c3c3c !important; }
+  #annotate-done {
+    background: #0078d4 !important; border-color: #0078d4 !important; color: #ffffff !important;
+  }
+  #annotate-done:hover { background: #005a9e !important; }
+  /* Full-height stage; the top pad is the pill's reserved inset. */
   #annotate-stage {
-    position: absolute; top: ${String(ANNOTATION_TOOLBAR_HEIGHT)}px; left: 0; right: 0; bottom: 0;
+    position: absolute; inset: 0; box-sizing: border-box;
+    padding: ${String(ANNOTATION_TOOLBAR_HEIGHT)}px 8px 8px;
     display: flex; align-items: center; justify-content: center; overflow: auto;
-    background: #010409;
+    background: #1e1e1e;
   }
-  #annotate-canvas { background: #ffffff; cursor: crosshair; box-shadow: 0 0 0 1px #30363d; }
+  #annotate-canvas {
+    background: #ffffff; cursor: crosshair;
+    box-shadow: 0 0 0 1px #3c3c3c, 0 10px 30px rgba(0, 0, 0, 0.5);
+  }
 </style>
 </head>
 <body>
@@ -824,11 +868,12 @@ export function buildAnnotationHtml(): string {
     <button id="annotate-tool-line" class="tool">Line</button>
     <button id="annotate-tool-rect" class="tool">Rect</button>
     <button id="annotate-tool-arrow" class="tool">Arrow</button>
+    <span class="divider"></span>
     <input id="annotate-color" type="color" value="#ff3b30" title="Colour">
     <input id="annotate-width" type="range" min="1" max="24" value="4" title="Stroke width">
     <button id="annotate-undo" title="Undo (Ctrl/Cmd+Z)">Undo</button>
-    <span class="spacer"></span>
-    <button id="annotate-cancel">Cancel</button>
+    <span class="divider"></span>
+    <button id="annotate-cancel" title="Cancel (Esc)">Cancel</button>
     <button id="annotate-done">Done</button>
   </div>
   <div id="annotate-stage">

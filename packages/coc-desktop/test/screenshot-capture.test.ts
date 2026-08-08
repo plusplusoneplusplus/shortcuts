@@ -992,6 +992,49 @@ describe('buildAnnotationHtml (AC-03 DoD #3 — custom canvas, no Excalidraw)', 
     });
 });
 
+describe('AC-01 frameless window + floating toolbar pill', () => {
+    const html = buildAnnotationHtml();
+
+    it('renders the toolbar as a floating, rounded, translucent pill', () => {
+        const pill = html.slice(html.indexOf('#annotate-toolbar {'), html.indexOf('#annotate-toolbar button,'));
+        expect(pill).toContain('position: fixed');
+        expect(pill).toMatch(/border-radius:\s*\d+px/);
+        expect(pill).toMatch(/background:\s*rgba\(/);
+        expect(pill).toContain('backdrop-filter: blur(');
+        expect(pill).toMatch(/box-shadow:.*rgba\(/);
+        // NOT the old full-width bar with a bottom border.
+        expect(pill).not.toContain('border-bottom');
+    });
+
+    it('makes the pill the window drag region and every control no-drag', () => {
+        const pill = html.slice(html.indexOf('#annotate-toolbar {'), html.indexOf('#annotate-toolbar .tool,'));
+        expect(pill).toContain('-webkit-app-region: drag');
+        // buttons / inputs / labels inside the pill opt back out.
+        expect(pill).toMatch(
+            /#annotate-toolbar button,\s*#annotate-toolbar input,\s*#annotate-toolbar label\s*\{\s*-webkit-app-region: no-drag;/,
+        );
+    });
+
+    it('gives the stage the full window and reserves the pill inset on top', () => {
+        const stage = html.slice(html.indexOf('#annotate-stage {'), html.indexOf('#annotate-canvas {'));
+        expect(stage).toContain('inset: 0');
+        expect(stage).toContain(`padding: ${ANNOTATION_TOOLBAR_HEIGHT}px`);
+    });
+
+    it('stays self-contained — the page fetches nothing over the network', () => {
+        expect(html).not.toMatch(/https?:\/\//);
+        expect(html).not.toMatch(/\bsrc\s*=\s*["'](?!data:)/);
+        expect(html).not.toMatch(/@import|url\(/);
+    });
+
+    it('the host opens the annotation editor with no OS frame', () => {
+        const host = readSrc('screenshot-capture-host.ts');
+        const opener = host.slice(host.indexOf('function openAnnotationEditor('));
+        const options = opener.slice(opener.indexOf('new BrowserWindow('), opener.indexOf('const editorId'));
+        expect(options).toContain('frame: false');
+    });
+});
+
 describe('AC-03 code-search (DoD #3 — no Excalidraw import)', () => {
     // The word "Excalidraw" appears in the source only inside comments that
     // DOCUMENT the decision not to use it; what the DoD forbids is a real import
