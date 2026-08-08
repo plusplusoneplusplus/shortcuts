@@ -41,6 +41,7 @@ import {
     resolveModelForProvider,
     toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
+import { isChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 import type { ChatPayload, ChatProvider, PrClassificationPayload } from '../tasks/task-types';
 import {
@@ -171,6 +172,8 @@ export interface LifecycleRunnerOptions {
         reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh',
         /** Require this exact SDK session ID to be resumed; no fresh-session fallback. */
         strictResumeSessionId?: string,
+        /** Chat style explicitly carried by this turn; overrides the conversation's stored style. */
+        chatStyle?: string,
     ) => Promise<void>;
     /**
      * Resume a process whose durable `pendingAskUserAnswer` was persisted after
@@ -482,6 +485,10 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                         turnSource,
                         followUpEffort,
                         strictResumeSessionId,
+                        // Validated here as well as at the API boundary: a
+                        // buffered or restarted task can reach this point
+                        // without passing through queue validation again.
+                        isChatStyle(followUpPayload.chatStyle) ? followUpPayload.chatStyle : undefined,
                     );
                 }
                 const duration = Date.now() - startTime;
@@ -622,6 +629,13 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                         : undefined,
                 lensChat: isChatPayload(task.payload)
                     ? task.payload.context?.lensChat
+                    : undefined,
+                // The conversation owns its style from here on: the follow-up
+                // composer restores it from metadata rather than from the
+                // workspace's latest new-chat choice. Re-validated here so a
+                // payload that bypassed the queue boundary cannot store garbage.
+                chatStyle: isChatPayload(task.payload) && isChatStyle(task.payload.chatStyle)
+                    ? task.payload.chatStyle
                     : undefined,
             },
         };

@@ -6,6 +6,7 @@ import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { BottomSheet } from '../../../ui/BottomSheet';
 import { Dialog } from '../../../ui/Dialog';
 import { getRalphContext } from '../../../../../../tasks/task-types';
+import { isChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { ClientTokenUsage } from '../../../types/dashboard';
 
 const RALPH_FIELD_TRUNCATE = 200;
@@ -76,6 +77,16 @@ function formatInteger(value: number): string {
 }
 
 const REASONING_EFFORT_DEFAULT = 'Default';
+
+/**
+ * Display label for the conversation's saved response style. Returns `null` for
+ * a legacy conversation with no stored style, so the row is omitted rather than
+ * claiming a style the conversation never ran with.
+ */
+function formatChatStyle(value: unknown): string | null {
+    if (!isChatStyle(value)) return null;
+    return value.charAt(0).toUpperCase() + value.slice(1);
+}
 
 function formatReasoningEffort(value: unknown): string {
     const raw = toStringValue(value);
@@ -274,6 +285,7 @@ export function buildRows(process: any, turnsCount?: number): MetaRow[] {
     push('Mode', process?.metadata?.mode || process?.mode);
     push('Agent Provider', getAgentNameFromProcess(process));
     push('Reasoning Effort', formatReasoningEffort(process?.config?.reasoningEffort || process?.metadata?.reasoningEffort));
+    push('Style', formatChatStyle(process?.metadata?.chatStyle));
     push('Session ID', sessionId, { breakAll: true, mono: true, link: sessionId ? `#logs?sessionId=${encodeURIComponent(sessionId)}` : undefined });
     push('Backend', process?.metadata?.backend);
     push('Started', formatTimestamp(startedAt));

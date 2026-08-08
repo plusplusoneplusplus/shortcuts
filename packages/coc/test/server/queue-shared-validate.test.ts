@@ -513,3 +513,51 @@ describe('validateAndParseTask – ChatPayload.provider validation', () => {
         expect(result.valid).toBe(true);
     });
 });
+
+// ============================================================================
+// chat style
+// ============================================================================
+
+describe('validateAndParseTask – chat style validation', () => {
+    it.each(['human', 'direct', 'analytical', 'structured'])('accepts the stable wire value %s', (style) => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello', chatStyle: style },
+        });
+        expect(result.valid).toBe(true);
+        expect((result.input!.payload as any).chatStyle).toBe(style);
+    });
+
+    it.each([
+        ['an unknown style', 'friendly'],
+        ['a label instead of a wire value', 'Human'],
+        ['an empty string', ''],
+        ['a non-string', 42],
+        ['an object', {}],
+    ])('rejects %s with a 400-style error listing the accepted values', (_label, style) => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello', chatStyle: style },
+        });
+        expect(result.valid).toBe(false);
+        expect(result.error).toMatch(/invalid chatStyle/i);
+        expect(result.error).toContain('human, direct, analytical, structured');
+    });
+
+    it('stays backward compatible when the field is omitted', () => {
+        const result = validateAndParseTask({
+            type: 'chat',
+            payload: { prompt: 'hello' },
+        });
+        expect(result.valid).toBe(true);
+        expect((result.input!.payload as any).chatStyle).toBeUndefined();
+    });
+
+    it('does not validate chatStyle for non-chat task types', () => {
+        const result = validateAndParseTask({
+            type: 'run-script',
+            payload: { script: 'echo hi', workingDirectory: '/ws', chatStyle: 'nonsense' },
+        });
+        expect(result.valid).toBe(true);
+    });
+});

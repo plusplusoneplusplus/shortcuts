@@ -118,6 +118,7 @@ describe('POST /api/processes/:id/message — deliveryMode', () => {
             undefined, // turnSource
             undefined, // reasoningEffort
             undefined, // strictResumeSessionId
+            undefined, // chatStyle
         );
     });
 
@@ -140,6 +141,7 @@ describe('POST /api/processes/:id/message — deliveryMode', () => {
             undefined, // turnSource
             undefined, // reasoningEffort
             undefined, // strictResumeSessionId
+            undefined, // chatStyle
         );
     });
 
@@ -162,6 +164,7 @@ describe('POST /api/processes/:id/message — deliveryMode', () => {
             undefined, // turnSource
             undefined, // reasoningEffort
             undefined, // strictResumeSessionId
+            undefined, // chatStyle
         );
     });
 

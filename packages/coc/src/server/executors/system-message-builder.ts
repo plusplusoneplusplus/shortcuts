@@ -25,6 +25,7 @@ import {
 import type { ChatMode } from '../tasks/task-types';
 import { resolveInstructionMode } from '../tasks/task-types';
 import type { MemoryV2Addon } from './memory-v2-addon';
+import { buildChatStyleSystemMessage } from './chat-style';
 
 // ============================================================================
 // Internal step types
@@ -112,6 +113,25 @@ class SystemMessageBuilder {
     appendMemoryV2(addon: MemoryV2Addon | undefined): this {
         if (addon?.systemMessageSuffix) {
             this.steps.push({ kind: 'eager', block: addon.systemMessageSuffix });
+        }
+        return this;
+    }
+
+    /**
+     * Append the response-style block for the selected chat style.
+     *
+     * Delegates to {@link buildChatStyleSystemMessage} so no executor copies the
+     * wording. No-op when the feature is disabled, no style was selected, or the
+     * value is not a stable wire value.
+     *
+     * Chain this after global and repository behavior instructions but before
+     * source-link formatting, memory, and tool guidance: permissions and task
+     * rules stay authoritative, and later output contracts still override Style.
+     */
+    appendChatStyle(style: string | undefined, enabled: boolean): this {
+        const block = buildChatStyleSystemMessage(style, enabled);
+        if (block) {
+            this.steps.push({ kind: 'eager', block });
         }
         return this;
     }

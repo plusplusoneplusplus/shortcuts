@@ -869,6 +869,15 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     }),
 
     bool({
+        key: 'features.chatStyleSelector', default: false, runtime: 'live', runtimeFlag: 'chatStyleSelectorEnabled',
+        ui: {
+            group: 'aiModes', order: 45, label: 'Chat style selector', badge: 'experimental',
+            hint: 'Adds a Style chip (Human / Direct / Analytical / Structured) beside Effort in chat composers. Style changes how the response is written — not the model, effort, tools, or permissions. Disabled by default.',
+            testId: 'toggle-chat-style-selector-enabled',
+        },
+    }),
+
+    bool({
         key: 'features.gitWorktreeExecution', default: false, runtime: 'live', runtimeFlag: 'gitWorktreeExecutionEnabled',
         ui: {
             group: 'aiModes', order: 50, label: 'Git Worktree Execution', badge: 'experimental',

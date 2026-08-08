@@ -55,6 +55,8 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     getConfiguredDefaultProvider: () => mockDefaultProvider,
     isAutoAgentProviderRoutingEnabled: () => false,
     isEffortLevelsEnabled: () => false,
+    isChatStyleSelectorEnabled: () => false,
+    DASHBOARD_CONFIG_UPDATED_EVENT: 'dashboard-config-updated',
     isSessionContextAttachmentsEnabled: () => false,
     getPrewarmDebounceMs: () => 500,
     getWarmClientTtlMs: () => 300000,

@@ -121,6 +121,7 @@ export class CommitChatExecutor extends ChatBaseExecutor {
             .append(buildModeSystemMessage('ask')?.content)
             .appendGlobalSystemPrompt(this.resolveGlobalSystemPrompt())
             .withRepoInstructions(workingDirectory, 'ask')
+            .appendChatStyle(payload.chatStyle, this.isChatStyleSelectorEnabled())
             .append(buildSourceLocationMarkdownLinkSystemMessage(payload.provider ?? this.provider)?.content)
             .appendToolGuidance(toolGuidance)
             .appendAutoFolder(autoFolderContext)

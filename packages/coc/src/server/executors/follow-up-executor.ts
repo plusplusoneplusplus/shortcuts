@@ -27,6 +27,7 @@ import type {
 } from '@plusplusoneplusplus/forge';
 import type { ReasoningEffort } from '@plusplusoneplusplus/coc-agent-sdk';
 import { getCopilotContextTierForModel } from '@plusplusoneplusplus/coc-agent-sdk';
+import { isChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { ChatMode, ChatProvider } from '../tasks/task-types';
 import {
     getForEachContext,
@@ -231,6 +232,12 @@ export class FollowUpExecutor extends ChatBaseExecutor {
          * treated as a failed follow-up.
          */
         strictResumeSessionId?: string,
+        /**
+         * Chat style explicitly carried by this turn. Wins over the style stored
+         * on the conversation and, when valid, becomes the conversation's style
+         * for later turns. Legacy callers omit it.
+         */
+        chatStyle?: string,
     ): Promise<void> {
         const logger = getLogger();
         const startTime = Date.now();
@@ -279,7 +286,22 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             );
         }
 
+        // Effective style for this turn, in precedence order:
+        //   1. a valid style explicitly carried by this turn,
+        //   2. the conversation's stored style,
+        //   3. nothing (legacy callers).
+        // Resolved once and reused for both persistence and prompt construction
+        // so the executed style and the saved conversation style always agree.
+        const turnChatStyle = isChatStyle(chatStyle) ? chatStyle : undefined;
+        const storedChatStyle = isChatStyle(process.metadata?.chatStyle) ? process.metadata.chatStyle : undefined;
+        const effectiveChatStyle = turnChatStyle ?? storedChatStyle;
+
         const metadataUpdates: Record<string, unknown> = {};
+        // Persist an explicit change BEFORE the system message is built, so a
+        // reload of this conversation shows the style the turn actually ran with.
+        if (turnChatStyle && turnChatStyle !== storedChatStyle) {
+            metadataUpdates.chatStyle = turnChatStyle;
+        }
         if (mode && mode !== previousMode) {
             metadataUpdates.previousMode = previousMode;
             metadataUpdates.mode = currentMode;
@@ -417,6 +439,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 .append(buildForEachGenerationSystemMessage(forEachGeneration)?.content)
                 .append(buildMapReduceGenerationSystemMessage(mapReduceGeneration)?.content)
                 .withRepoInstructions(workingDirectory, currentMode)
+                .appendChatStyle(effectiveChatStyle, this.isChatStyleSelectorEnabled())
                 .append(buildSourceLocationMarkdownLinkSystemMessage(sessionProvider)?.content)
                 .appendMemoryV2(chatCtx.memoryV2)
                 .appendToolGuidance(chatCtx.toolGuidance)

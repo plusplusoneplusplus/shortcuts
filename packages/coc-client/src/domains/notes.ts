@@ -265,6 +265,7 @@ export class NotesClient {
           ...(request.workingDirectory ? { workingDirectory: request.workingDirectory } : {}),
           ...(request.model ? { model: request.model } : {}),
           ...(request.reasoningEffort ? { reasoningEffort: request.reasoningEffort } : {}),
+          ...(request.chatStyle ? { chatStyle: request.chatStyle } : {}),
           ...(request.provider ? { provider: request.provider } : {}),
           ...(request.attachments && request.attachments.length > 0 ? { attachments: [...request.attachments] } : {}),
           context,

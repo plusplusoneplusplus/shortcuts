@@ -25,6 +25,8 @@ export interface ReviewChatComposerSendOptions {
     provider?: string;
     model?: string;
     reasoningEffort?: string;
+    /** Response style for this chat; validated server-side at the queue boundary. */
+    chatStyle?: string;
     config?: { effortTier?: string };
     workingDirectory?: string;
 }
@@ -110,6 +112,7 @@ export function usePullRequestChatBinding(opts: UsePullRequestChatBindingOptions
                     ...(options.provider ? { provider: options.provider } : {}),
                     ...(options.model ? { model: options.model } : {}),
                     ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
+                    ...(options.chatStyle ? { chatStyle: options.chatStyle } : {}),
                     context: {
                         ...(options.context ?? {}),
                         pullRequestChat: { prId, prNumber, prTitle, repoId, originId },

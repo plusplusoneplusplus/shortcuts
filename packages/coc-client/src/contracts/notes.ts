@@ -1,4 +1,5 @@
 import type { EffortTierKey, EnqueueTaskResponse } from './queue';
+import type { ChatStyle } from './common';
 import type { ChatProvider, ReasoningEffort } from './common';
 
 export type NoteNodeType = 'notebook' | 'section' | 'page';
@@ -281,6 +282,8 @@ export interface CreateNoteChatRequest {
   provider?: ChatProvider;
   /** Per-turn reasoning-effort override, matching the shared initial composer. */
   reasoningEffort?: ReasoningEffort;
+  /** Response style for the chat, matching the shared initial composer. */
+  chatStyle?: ChatStyle;
   /**
    * Effort-tier key. Carried on the top-level task `config` (not the payload),
    * exactly like the shared composer, so enqueue seeds the tier model + effort.

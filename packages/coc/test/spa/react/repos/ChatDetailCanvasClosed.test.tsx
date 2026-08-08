@@ -88,6 +88,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getDefaultProvider: () => 'copilot' as const,
     getActiveProvider: () => 'copilot' as const,
     isEffortLevelsEnabled: () => false,
+    isChatStyleSelectorEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => false,
     getPrewarmDebounceMs: () => 500,
     getWarmClientTtlMs: () => 300000,

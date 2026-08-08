@@ -3,6 +3,23 @@ export type JsonObject = Record<string, unknown>;
 export type ChatProvider = 'copilot' | 'codex' | 'claude' | 'opencode';
 export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 
+/**
+ * How a chat response is written. Style controls presentation only — never the
+ * provider, model, reasoning effort, tools, or permission mode.
+ */
+export type ChatStyle = 'human' | 'direct' | 'analytical' | 'structured';
+
+/** Stable wire values for {@link ChatStyle}, in display order. */
+export const CHAT_STYLES: readonly ChatStyle[] = ['human', 'direct', 'analytical', 'structured'];
+
+/** Style used when a workspace or conversation has no valid saved choice. */
+export const DEFAULT_CHAT_STYLE: ChatStyle = 'human';
+
+/** Runtime guard for the stable {@link ChatStyle} wire values. */
+export function isChatStyle(value: unknown): value is ChatStyle {
+  return typeof value === 'string' && (CHAT_STYLES as readonly string[]).includes(value);
+}
+
 export interface PaginatedResponse<T> {
   items: T[];
   total: number;

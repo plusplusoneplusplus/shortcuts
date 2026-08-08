@@ -48,6 +48,11 @@ export interface ExecutorRegistryOptions {
      * the operator-wide instruction reaches every provider via `systemMessage`.
      */
     getGlobalSystemPrompt?: () => string | undefined;
+    /**
+     * Live read of the `features.chatStyleSelector` experiment flag. Threaded to
+     * user-facing chat executors so the gate is enforced server-side per turn.
+     */
+    getChatStyleSelectorEnabled?: () => boolean;
     resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
     onTitleNeeded: (processId: string, turns: ConversationTurn[]) => void;
@@ -125,6 +130,7 @@ export class ExecutorRegistry {
             ralphMultiAgentGrillEnabled: options.ralphMultiAgentGrillEnabled,
             resolveAiServiceForProvider: options.resolveAiServiceForProvider,
             getGlobalSystemPrompt: options.getGlobalSystemPrompt,
+            getChatStyleSelectorEnabled: options.getChatStyleSelectorEnabled,
             processAbortControllers: options.processAbortControllers,
         };
 
