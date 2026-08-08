@@ -1035,6 +1035,70 @@ describe('AC-01 frameless window + floating toolbar pill', () => {
     });
 });
 
+describe('AC-02 icon toolbar in CoC visual language', () => {
+    const html = buildAnnotationHtml();
+    const toolButton = (tool: string): string => {
+        const start = html.indexOf(`<button id="annotate-tool-${tool}"`);
+        return html.slice(start, html.indexOf('</button>', start));
+    };
+
+    it('renders each tool as an inline-SVG icon button keeping its old text label as the tooltip', () => {
+        for (const [tool, label] of [
+            ['pen', 'Pen'],
+            ['line', 'Line'],
+            ['rect', 'Rect'],
+            ['arrow', 'Arrow'],
+        ]) {
+            const button = toolButton(tool);
+            expect(button).toContain(`title="${label}"`);
+            expect(button).toContain(`aria-label="${label}"`);
+            expect(button).toContain('<svg');
+            // Icon only — the visible text label is gone.
+            expect(button).not.toMatch(new RegExp(`>\\s*${label}\\s*$`));
+        }
+    });
+
+    it('turns Undo into an icon and keeps Cancel/Done readable text labels', () => {
+        const undo = html.slice(html.indexOf('<button id="annotate-undo"'), html.indexOf('</button>', html.indexOf('<button id="annotate-undo"')));
+        expect(undo).toContain('<svg');
+        expect(undo).toContain('title="Undo (Ctrl/Cmd+Z)"');
+        expect(html).toContain('>Cancel</button>');
+        expect(html).toContain('>Done</button>');
+    });
+
+    it('gives the colour and width inputs their own affordance icons', () => {
+        const color = html.slice(html.indexOf('<span class="hint"'), html.indexOf('id="annotate-width"'));
+        expect(color).toContain('<svg');
+        expect(color).toContain('aria-label="Colour"');
+        expect(html).toContain('aria-label="Stroke width"');
+        // Two hint glyphs: one in front of the colour swatch, one in front of the slider.
+        expect(html.match(/<span class="hint"/g)).toHaveLength(2);
+    });
+
+    it('styles explicit hover, active and focus-visible states from the SPA palette', () => {
+        expect(html).toContain('#annotate-toolbar button:focus-visible');
+        expect(html).toMatch(/outline:\s*2px solid #0078d4/);
+        expect(html).toContain('#annotate-toolbar .tool:hover');
+        expect(html).toContain('#annotate-toolbar .tool:active');
+        expect(html).toContain('#annotate-toolbar .tool.active {');
+        // Icons inherit the button colour, so the active tool styles its glyph too.
+        expect(html).toContain('stroke="currentColor"');
+    });
+
+    it('keeps the icons self-contained — no icon font, no sprite, no external image', () => {
+        expect(html).not.toMatch(/@font-face|font-family:\s*["']?(?:codicon|fontawesome|material)/i);
+        expect(html).not.toMatch(/<img|xlink:href|<use\b/);
+    });
+
+    it('keeps the className contract setTool() writes', () => {
+        // setTool assigns exactly 'tool active' / 'tool', so no extra class may
+        // live on the tool buttons or it would be wiped on the first click.
+        for (const tool of ['pen', 'line', 'rect', 'arrow']) {
+            expect(toolButton(tool)).toMatch(/class="tool(?: active)?"/);
+        }
+    });
+});
+
 describe('AC-03 code-search (DoD #3 — no Excalidraw import)', () => {
     // The word "Excalidraw" appears in the source only inside comments that
     // DOCUMENT the decision not to use it; what the DoD forbids is a real import

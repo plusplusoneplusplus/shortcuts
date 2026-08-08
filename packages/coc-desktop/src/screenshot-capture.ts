@@ -782,6 +782,26 @@ export function buildAnnotationPageScript(): string {
 }
 
 /**
+ * AC-02: the toolbar icons. Inline SVG (no icon font, no sprite, no network
+ * fetch) so the `data:` URL page stays self-contained. Every icon inherits the
+ * button's colour via `currentColor`, so the active-tool and hover states style
+ * the glyph for free.
+ */
+const svgIcon = (body: string): string =>
+    `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" ` +
+    `stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${body}</svg>`;
+
+const ICON_PEN = svgIcon('<path d="M11.4 2.2 13.8 4.6 5.4 13H3v-2.4z"/><path d="M9.9 3.7 12.3 6.1"/>');
+const ICON_LINE = svgIcon('<path d="M3 13 13 3"/>');
+const ICON_RECT = svgIcon('<rect x="2.5" y="4" width="11" height="8" rx="1.5"/>');
+const ICON_ARROW = svgIcon('<path d="M3 13 13 3"/><path d="M8.4 3H13v4.6"/>');
+const ICON_UNDO = svgIcon('<path d="M4 8h5.5a3 3 0 0 1 0 6H6"/><path d="M6.5 5.5 4 8l2.5 2.5"/>');
+const ICON_COLOR = svgIcon('<path d="M8 2.3 4.7 6.6a4.2 4.2 0 1 0 6.6 0z"/>');
+const ICON_WIDTH = svgIcon(
+    '<path d="M3 4.5h10" stroke-width="1"/><path d="M3 8h10" stroke-width="2"/><path d="M3 12h10" stroke-width="3"/>',
+);
+
+/**
  * AC-03/AC-01: the full HTML document for the annotation editor window, loaded as
  * a data: URL (self-contained inline styles — independent of the SPA, and it
  * fetches nothing over the network).
@@ -796,7 +816,9 @@ export function buildAnnotationPageScript(): string {
  *
  * Colours are sampled from the SPA's dark theme (`tailwind.css`): `#1e1e1e`
  * canvas backdrop, `#252526` surface, `#3c3c3c` borders, `#cccccc` text and the
- * `#0078d4` VS Code accent. Embeds {@link buildAnnotationPageScript}.
+ * `#0078d4` VS Code accent. The tools and Undo are inline-SVG icon buttons whose
+ * old text labels survive as `title`/`aria-label` tooltips; Cancel and Done keep
+ * readable text. Embeds {@link buildAnnotationPageScript}.
  * Deliberately contains NO Excalidraw.
  */
 export function buildAnnotationHtml(): string {
@@ -828,9 +850,22 @@ export function buildAnnotationHtml(): string {
   #annotate-toolbar .tool, #annotate-toolbar button {
     height: 28px; padding: 0 10px; border-radius: 7px; cursor: pointer;
     color: #cccccc; background: transparent; border: 1px solid transparent;
+    font: inherit; line-height: 1;
   }
+  /* Icon-only buttons: square, with the inline SVG centred. */
+  #annotate-toolbar .tool, #annotate-toolbar #annotate-undo {
+    width: 28px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  #annotate-toolbar svg { width: 16px; height: 16px; display: block; }
   #annotate-toolbar .tool:hover, #annotate-toolbar button:hover {
     background: rgba(255, 255, 255, 0.09);
+  }
+  #annotate-toolbar .tool:active, #annotate-toolbar button:active {
+    background: rgba(255, 255, 255, 0.15);
+  }
+  #annotate-toolbar button:focus-visible, #annotate-toolbar input:focus-visible {
+    outline: 2px solid #0078d4; outline-offset: 2px;
   }
   #annotate-toolbar .tool.active {
     background: #0078d4; border-color: #0078d4; color: #ffffff;
@@ -839,9 +874,17 @@ export function buildAnnotationHtml(): string {
   #annotate-toolbar .divider {
     width: 1px; height: 18px; margin: 0 3px; background: rgba(255, 255, 255, 0.12);
   }
+  /* Affordance icons sitting in front of the colour / width inputs. */
+  #annotate-toolbar .hint {
+    display: inline-flex; align-items: center; color: #8c8c8c; margin: 0 2px;
+  }
   #annotate-toolbar input[type="color"] {
-    width: 28px; height: 28px; padding: 0; border: 1px solid #3c3c3c;
+    width: 28px; height: 28px; padding: 2px; border: 1px solid #3c3c3c;
     border-radius: 7px; background: #252526; cursor: pointer;
+  }
+  #annotate-toolbar input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+  #annotate-toolbar input[type="color"]::-webkit-color-swatch {
+    border: none; border-radius: 5px;
   }
   #annotate-toolbar input[type="range"] { width: 84px; accent-color: #0078d4; cursor: pointer; }
   #annotate-cancel { border-color: #3c3c3c !important; }
@@ -864,14 +907,16 @@ export function buildAnnotationHtml(): string {
 </head>
 <body>
   <div id="annotate-toolbar">
-    <button id="annotate-tool-pen" class="tool active">Pen</button>
-    <button id="annotate-tool-line" class="tool">Line</button>
-    <button id="annotate-tool-rect" class="tool">Rect</button>
-    <button id="annotate-tool-arrow" class="tool">Arrow</button>
+    <button id="annotate-tool-pen" class="tool active" title="Pen" aria-label="Pen">${ICON_PEN}</button>
+    <button id="annotate-tool-line" class="tool" title="Line" aria-label="Line">${ICON_LINE}</button>
+    <button id="annotate-tool-rect" class="tool" title="Rect" aria-label="Rect">${ICON_RECT}</button>
+    <button id="annotate-tool-arrow" class="tool" title="Arrow" aria-label="Arrow">${ICON_ARROW}</button>
     <span class="divider"></span>
-    <input id="annotate-color" type="color" value="#ff3b30" title="Colour">
-    <input id="annotate-width" type="range" min="1" max="24" value="4" title="Stroke width">
-    <button id="annotate-undo" title="Undo (Ctrl/Cmd+Z)">Undo</button>
+    <span class="hint" aria-hidden="true">${ICON_COLOR}</span>
+    <input id="annotate-color" type="color" value="#ff3b30" title="Colour" aria-label="Colour">
+    <span class="hint" aria-hidden="true">${ICON_WIDTH}</span>
+    <input id="annotate-width" type="range" min="1" max="24" value="4" title="Stroke width" aria-label="Stroke width">
+    <button id="annotate-undo" title="Undo (Ctrl/Cmd+Z)" aria-label="Undo">${ICON_UNDO}</button>
     <span class="divider"></span>
     <button id="annotate-cancel" title="Cancel (Esc)">Cancel</button>
     <button id="annotate-done">Done</button>
