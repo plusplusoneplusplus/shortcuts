@@ -1678,7 +1678,6 @@ export function InitialChatComposer({
                                      at least one tier configured, the tier selector replaces both
                                      legacy controls. Falls back to legacy when flag is off or when
                                      the provider has zero tiers configured. */}
-                                {renderChatStyleControl('ml-0.5')}
                                 {useEffortTierMode ? renderEffortControl('ml-0.5') : (
                                     <>
                                         {renderModelPicker()}
@@ -1690,6 +1689,8 @@ export function InitialChatComposer({
                                         {renderEffortControl('ml-0.5')}
                                     </>
                                 )}
+                                {/* Style trails Effort, matching the compact settings editor. */}
+                                {renderChatStyleControl('ml-0.5')}
                             </>
                         )}
                         <div className="flex-1 min-w-0" />
