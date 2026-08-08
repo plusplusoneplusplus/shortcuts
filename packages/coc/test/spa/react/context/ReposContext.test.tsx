@@ -10,8 +10,16 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import { useRef, useLayoutEffect, type ReactNode } from 'react';
 
 // Mock heavy dependencies before importing the context
+const webSocketMock = vi.hoisted(() => ({
+    options: null as { onMessage: (message: any) => void; onConnect?: () => void } | null,
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+}));
 vi.mock('../../../../src/server/spa/client/react/hooks/useWebSocket', () => ({
-    useWebSocket: vi.fn(() => ({ connect: vi.fn(), disconnect: vi.fn() })),
+    useWebSocket: vi.fn((options: { onMessage: (message: any) => void; onConnect?: () => void }) => {
+        webSocketMock.options = options;
+        return { connect: webSocketMock.connect, disconnect: webSocketMock.disconnect };
+    }),
 }));
 vi.mock('../../../../src/server/spa/client/react/features/workflow/workflow-api', () => ({
     fetchWorkflows: vi.fn().mockResolvedValue([]),
@@ -126,6 +134,13 @@ function ReposConsumer() {
     );
 }
 
+function RepoStatsConsumer() {
+    const { repos, loading } = useRepos();
+    const repo = repos[0];
+    if (loading || !repo) return <div data-testid="loading">Loading</div>;
+    return <div data-testid="repo-stats">{repo.stats.running}/{repo.stats.success}/{repo.stats.failed}</div>;
+}
+
 function ProviderWithConsumer() {
     return (
         <Wrapper>
@@ -181,6 +196,7 @@ function SelectedRepoConsumer() {
 
 describe('ReposContext', () => {
     beforeEach(() => {
+        webSocketMock.options = null;
         repositoryServiceMocks.listWorkspaces.mockResolvedValue([]);
         repositoryServiceMocks.listProcessSummaries.mockResolvedValue({ summaries: [], total: 0, limit: 5000, offset: 0 });
         repositoryServiceMocks.getWorkspaceSummary.mockResolvedValue({ workflows: [], tasks: null });
@@ -239,6 +255,58 @@ describe('ReposContext', () => {
 
         expect(repositoryServiceMocks.listProcessSummaries).toHaveBeenCalledTimes(1);
         expect(repositoryServiceMocks.listProcessSummaries).toHaveBeenCalledWith(5000);
+    });
+
+    it('updates process-derived card counts without rediscovering repositories or fetching git info', async () => {
+        repositoryServiceMocks.listWorkspaces.mockResolvedValue([makeWorkspace('ws-1')]);
+        render(
+            <Wrapper>
+                <ReposProvider><RepoStatsConsumer /></ReposProvider>
+            </Wrapper>,
+        );
+        await waitFor(() => expect(screen.getByTestId('repo-stats').textContent).toBe('0/0/0'));
+        repositoryServiceMocks.listWorkspaces.mockClear();
+        repositoryServiceMocks.getWorkspaceGitInfoBatch.mockClear();
+
+        act(() => {
+            webSocketMock.options?.onMessage({
+                type: 'process-added',
+                process: { id: 'p-1', workspaceId: 'ws-1', status: 'running' },
+            });
+        });
+        await waitFor(() => expect(screen.getByTestId('repo-stats').textContent).toBe('1/0/0'));
+
+        act(() => {
+            for (let index = 0; index < 100; index++) {
+                webSocketMock.options?.onMessage({
+                    type: 'process-updated',
+                    process: { id: 'p-1', workspaceId: 'ws-1', status: index === 99 ? 'completed' : 'running' },
+                });
+            }
+        });
+        await waitFor(() => expect(screen.getByTestId('repo-stats').textContent).toBe('0/1/0'));
+        expect(repositoryServiceMocks.listWorkspaces).not.toHaveBeenCalled();
+        expect(repositoryServiceMocks.getWorkspaceGitInfoBatch).not.toHaveBeenCalled();
+    });
+
+    it('refreshes topology once for a topology event and once on reconnect', async () => {
+        repositoryServiceMocks.listWorkspaces.mockResolvedValue([makeWorkspace('ws-1')]);
+        render(<ProviderWithConsumer />);
+        await waitFor(() => expect(screen.getByTestId('repo-ws-1')).toBeTruthy());
+        expect(repositoryServiceMocks.listWorkspaces).toHaveBeenCalledTimes(1);
+
+        act(() => webSocketMock.options?.onConnect?.());
+        expect(repositoryServiceMocks.listWorkspaces).toHaveBeenCalledTimes(1);
+
+        act(() => webSocketMock.options?.onMessage({
+            type: 'workspace-topology-changed',
+            workspaceId: 'ws-2',
+            action: 'added',
+        }));
+        await waitFor(() => expect(repositoryServiceMocks.listWorkspaces).toHaveBeenCalledTimes(2));
+
+        act(() => webSocketMock.options?.onConnect?.());
+        await waitFor(() => expect(repositoryServiceMocks.listWorkspaces).toHaveBeenCalledTimes(3));
     });
 
     it('shows empty list when workspaces API returns empty array', async () => {

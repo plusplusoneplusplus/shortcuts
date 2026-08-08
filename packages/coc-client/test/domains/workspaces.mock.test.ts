@@ -59,13 +59,16 @@ describe('WorkspacesClient mock server contract', () => {
     await expect(client.workspaces.browseFolders('C:\\repos with spaces', { showHidden: true })).resolves.toEqual(browse);
     await expect(client.workspaces.summary('repo/a space%雪', { folder: 'flows', showArchived: true })).resolves.toEqual(summary);
     await expect(client.workspaces.gitInfo('repo/a space%雪')).resolves.toEqual(gitInfo);
-    await expect(client.workspaces.gitInfoBatch(['repo/a space%雪'])).resolves.toEqual({ results: { 'repo/a space%雪': gitInfo } });
+    await expect(client.workspaces.gitInfoBatch(['repo/a space%雪'], { trigger: 'initial-topology-load' })).resolves.toEqual({ results: { 'repo/a space%雪': gitInfo } });
 
     expectGetRequest(mock.requests[0], '/api/workspaces/discover', { path: 'C:\\repos with spaces' });
     expectGetRequest(mock.requests[1], '/api/fs/browse', { path: 'C:\\repos with spaces', showHidden: 'true' });
     expectGetRequest(mock.requests[2], '/api/workspaces/repo%2Fa%20space%25%E9%9B%AA/summary', { folder: 'flows', showArchived: 'true' });
     expectGetRequest(mock.requests[3], '/api/workspaces/repo%2Fa%20space%25%E9%9B%AA/git-info');
-    expectJsonRequest(mock.requests[4], 'POST', '/api/git-info/batch', { workspaceIds: ['repo/a space%雪'] });
+    expectJsonRequest(mock.requests[4], 'POST', '/api/git-info/batch', {
+      workspaceIds: ['repo/a space%雪'],
+      trigger: 'initial-topology-load',
+    });
   });
 
   it('reports the active dashboard workspace', async () => {

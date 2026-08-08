@@ -36,6 +36,9 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | GET | `/api/workspaces/active` | Inspect dashboard clients' recent active workspace reports; response includes `activeWorkspaceIds` and per-client `lastSeenAt` records |
 | POST | `/api/workspaces/active` | Report a dashboard client's currently selected workspace. Body `{ clientId, workspaceId }`, where `workspaceId: null` clears that client |
 | DELETE | `/api/workspaces/:id` | Unregister workspace |
+| PATCH | `/api/workspaces/:id` | Update workspace metadata. Register, update, and unregister broadcast `workspace-topology-changed` so dashboards reload topology without coupling it to process activity |
+| GET | `/api/workspaces/:id/git-info` | Cached branch, dirty, upstream divergence, repository, and persisted remote metadata. A live read uses one porcelain-v2 Git status command; failing reads use bounded cache backoff |
+| POST | `/api/git-info/batch` | Read cached Git metadata for multiple physical workspaces with bounded concurrency. Optional `trigger` is included only in privacy-safe batch diagnostics (counts, cache outcomes, Git process count, and duration) |
 | GET | `/api/workspaces/:id/preferences` | Per-repo preferences |
 | PATCH | `/api/workspaces/:id/preferences` | Update per-repo preferences |
 | GET | `/api/workspaces/:id/instructions` | List custom instruction files for active modes: base, Ask, and Autopilot |

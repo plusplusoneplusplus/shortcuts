@@ -78,9 +78,11 @@ describe('remote server routes', () => {
     let dataDir: string;
     let apiServer: http.Server | undefined;
     let remoteServer: http.Server | undefined;
+    const topologyChanged = vi.fn();
 
     beforeEach(() => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'remote-server-routes-'));
+        topologyChanged.mockReset();
     });
 
     afterEach(async () => {
@@ -99,6 +101,7 @@ describe('remote server routes', () => {
             sshConnector,
             getLocalBaseUrl: () => localBaseUrl,
             requestTimeoutMs: 2_000,
+            onTopologyChanged: topologyChanged,
         });
         apiServer = http.createServer(createRouter({ routes, spaHtml: '' }));
         localBaseUrl = (await start(apiServer)).baseUrl;
@@ -210,6 +213,12 @@ describe('remote server routes', () => {
         const deleted = await request(baseUrl, 'DELETE', `/api/servers/${urlCreate.body.id}`);
         expect(deleted.status).toBe(200);
         expect((await request(baseUrl, 'GET', '/api/servers')).body).toHaveLength(1);
+        expect(topologyChanged.mock.calls).toEqual([
+            [urlCreate.body.id, 'added'],
+            [tunnelCreate.body.id, 'added'],
+            [urlCreate.body.id, 'updated'],
+            [urlCreate.body.id, 'removed'],
+        ]);
     });
 
     it('tests URL entries and returns the common health shape without persisting', async () => {

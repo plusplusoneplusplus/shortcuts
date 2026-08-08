@@ -101,6 +101,13 @@ all have their own `references/*.md`.
   tag, and `invalidateWorkspaceForAll` clears one workspace across every
   namespace. Do NOT hand-roll a new `Map`-based TTL cache and do NOT add an
   npm cache dependency.
+- **Dashboard Git-info refreshes** are independent of process lifecycle events.
+  `ReposContext` derives card counts from the live `AppContext` process index;
+  only topology events/reconnect/manual refresh run full discovery, while
+  `git-changed` refreshes one clone-routed workspace. A live Git-info read uses
+  Forge's single porcelain-v2 status command and the persisted workspace remote
+  URL. Keep cache single-flight behavior, bounded error backoff, active-only
+  safety refresh, and privacy-safe batch metrics intact.
 - **Codex skill mirroring** runs once at server startup (when
   `resolvedConfig.codex?.enabled === true`), not per-install. The
   `syncInstalledSkillsToCodex` function copies all globally installed bundled

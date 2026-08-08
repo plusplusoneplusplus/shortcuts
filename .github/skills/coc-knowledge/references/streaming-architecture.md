@@ -97,6 +97,8 @@ Full catalog:
 | `templates-changed` | watcher-infrastructure, routes/index |
 | `notes-changed` | watcher-infrastructure |
 | `git-changed` | broadcastGitChanged() |
+| `workspace-topology-changed` | workspace register/update/delete routes |
+| `server-topology-changed` | remote-server registry and connection routes |
 | `work-item-added` | work-item-routes, work-item-execution-routes |
 | `work-item-updated` | work-item-routes, plan-routes, execution-routes |
 | `work-item-removed` | work-item-routes |

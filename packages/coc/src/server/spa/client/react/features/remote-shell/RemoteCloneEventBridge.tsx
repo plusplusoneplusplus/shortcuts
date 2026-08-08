@@ -69,7 +69,12 @@ export function useRemoteCloneEvents(onMessage: (msg: any) => void): void {
                 conns.set(
                     baseUrl,
                     getCocClientFor(baseUrl).events.connect({
-                        onMessage: (msg: any) => onMessageRef.current(msg),
+                        onMessage: (msg: any) => {
+                            onMessageRef.current(msg);
+                            window.dispatchEvent(new CustomEvent('coc-remote-ws-message', {
+                                detail: { message: msg, baseUrl },
+                            }));
+                        },
                     }),
                 );
             }

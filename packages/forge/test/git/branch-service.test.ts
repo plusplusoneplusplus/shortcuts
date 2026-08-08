@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { execFileSync, execSync } from 'child_process';
 import { execAsync, execFileAsync } from '../../src/utils/exec-utils';
-import { BranchService } from '../../src/git/branch-service';
+import { BranchService, parsePorcelainV2BranchStatus } from '../../src/git/branch-service';
 import { setLogger, nullLogger } from '../../src/logger';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -62,6 +62,85 @@ describe('BranchService', () => {
         vi.clearAllMocks();
         setLogger(nullLogger);
         service = new BranchService();
+    });
+
+    describe('getRepositoryStatus', () => {
+        it('reads clean branch metadata with one argv-based git command', async () => {
+            mockedExecFileAsync.mockResolvedValueOnce({
+                stdout: '# branch.oid abc123\n# branch.head main\n# branch.upstream origin/main\n# branch.ab +2 -3\n',
+                stderr: '',
+            });
+
+            await expect(service.getRepositoryStatus('/repo with spaces')).resolves.toEqual({
+                branch: 'main',
+                isDetached: false,
+                dirty: false,
+                ahead: 2,
+                behind: 3,
+                trackingBranch: 'origin/main',
+                unborn: false,
+            });
+            expect(mockedExecFileAsync).toHaveBeenCalledTimes(1);
+            expect(mockedExecFileAsync).toHaveBeenCalledWith(
+                'git',
+                ['status', '--porcelain=v2', '--branch', '--untracked-files=all'],
+                expect.objectContaining({ cwd: '/repo with spaces', timeout: 15_000 }),
+            );
+        });
+
+        it('returns null when git status fails', async () => {
+            mockedExecFileAsync.mockRejectedValueOnce(new Error('not a repository'));
+            await expect(service.getRepositoryStatus('/not-a-repo')).resolves.toBeNull();
+        });
+
+        it.runIf(process.platform === 'win32')('routes WSL status through one wsl.exe command', async () => {
+            mockedExecFileAsync.mockResolvedValueOnce({
+                stdout: '# branch.oid abc123\n# branch.head main\n',
+                stderr: '',
+            });
+
+            await service.getRepositoryStatus(String.raw`\\wsl$\Ubuntu\home\tester\repo`);
+
+            expect(mockedExecFileAsync).toHaveBeenCalledTimes(1);
+            expect(mockedExecFileAsync).toHaveBeenCalledWith(
+                expect.stringContaining('wsl.exe'),
+                ['-d', 'Ubuntu', '--cd', '/home/tester/repo', '--', 'git', 'status', '--porcelain=v2', '--branch', '--untracked-files=all'],
+                expect.objectContaining({ timeout: 15_000, windowsHide: true }),
+            );
+        });
+    });
+
+    describe('parsePorcelainV2BranchStatus', () => {
+        it.each([
+            ['staged', '1 M. N... 100644 100644 100644 a b file.ts'],
+            ['unstaged', '1 .M N... 100644 100644 100644 a b file.ts'],
+            ['untracked', '? new file.ts'],
+            ['conflicted', 'u UU N... 100644 100644 100644 100644 a b c file.ts'],
+        ])('marks %s records dirty', (_label, record) => {
+            expect(parsePorcelainV2BranchStatus(`# branch.oid abc\n# branch.head main\n${record}\n`).dirty).toBe(true);
+        });
+
+        it('parses an unborn branch without an upstream', () => {
+            expect(parsePorcelainV2BranchStatus('# branch.oid (initial)\n# branch.head trunk\n')).toEqual({
+                branch: 'trunk',
+                isDetached: false,
+                dirty: false,
+                ahead: 0,
+                behind: 0,
+                unborn: true,
+            });
+        });
+
+        it('parses detached HEAD and ignores malformed ahead/behind headers', () => {
+            expect(parsePorcelainV2BranchStatus('# branch.oid abc\n# branch.head (detached)\n# branch.ab unknown\n')).toEqual({
+                branch: 'HEAD',
+                isDetached: true,
+                dirty: false,
+                ahead: 0,
+                behind: 0,
+                unborn: false,
+            });
+        });
     });
 
     // ── getLocalBranches ─────────────────────────────────────────

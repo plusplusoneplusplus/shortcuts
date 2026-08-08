@@ -1464,6 +1464,17 @@ healthy local and remote repositories usable. When the flag is
 OFF, `aggregateRemoteWorkspaces()` returns empty and performs no remote fetch, so
 the classic flow is unchanged.
 
+`ReposContext` loads workspace topology, summaries, and the initial Git-info
+batch together, but process lifecycle traffic never repeats that path. Its
+WebSocket handler applies `process-added`, `process-updated`, and
+`process-removed` payloads to `AppContext`; repository-card counts are derived
+from that live process index in memory. Full discovery runs only for initial
+load, `workspace-topology-changed`, `server-topology-changed`, reconnect recovery
+after the first socket connection, or an explicit UI refresh. A `git-changed`
+event requests Git info
+for only that workspace through the clone-routing registry, so remote clones
+stay on their owning server.
+
 **Per-clone request routing**: a remote clone's REST + WS can be routed to its
 server's `baseUrl` via opt-in primitives; the default `getSpaCocClient()`
 singleton and the repos-list/git-info aggregation stay on the page origin.

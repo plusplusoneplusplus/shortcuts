@@ -21,6 +21,7 @@ import {
 } from '../utils/workspace-execution';
 import {
     BranchStatus,
+    GitRepositoryStatus,
     GitBranch,
     BranchListOptions,
     PaginatedBranchResult,
@@ -34,6 +35,54 @@ import {
     GitPatchMultiExportResult,
     RepoState,
 } from './types';
+
+/**
+ * Parse `git status --porcelain=v2 --branch` output without inspecting file names.
+ * Git emits branch metadata in `# branch.*` headers and one non-header record for
+ * every staged, unstaged, conflicted, or untracked path.
+ */
+export function parsePorcelainV2BranchStatus(output: string): GitRepositoryStatus {
+    let branch = 'HEAD';
+    let trackingBranch: string | undefined;
+    let ahead = 0;
+    let behind = 0;
+    let unborn = false;
+    let dirty = false;
+
+    for (const rawLine of output.split(/\r?\n/)) {
+        if (!rawLine) continue;
+        if (!rawLine.startsWith('# ')) {
+            dirty = true;
+            continue;
+        }
+
+        const line = rawLine.slice(2);
+        if (line.startsWith('branch.oid ')) {
+            unborn = line.slice('branch.oid '.length).trim() === '(initial)';
+        } else if (line.startsWith('branch.head ')) {
+            const head = line.slice('branch.head '.length).trim();
+            branch = head === '(detached)' ? 'HEAD' : head || 'HEAD';
+        } else if (line.startsWith('branch.upstream ')) {
+            trackingBranch = line.slice('branch.upstream '.length).trim() || undefined;
+        } else if (line.startsWith('branch.ab ')) {
+            const match = /^\+(\d+)\s+-(\d+)$/.exec(line.slice('branch.ab '.length).trim());
+            if (match) {
+                ahead = Number.parseInt(match[1], 10);
+                behind = Number.parseInt(match[2], 10);
+            }
+        }
+    }
+
+    return {
+        branch,
+        isDetached: branch === 'HEAD',
+        dirty,
+        ahead,
+        behind,
+        ...(trackingBranch ? { trackingBranch } : {}),
+        unborn,
+    };
+}
 
 /**
  * Options for git command execution (internal).
@@ -170,6 +219,22 @@ export class BranchService {
     private getResolvedGitDir(repoRoot: string): string {
         const gitDir = this.execGitSync('git rev-parse --git-dir', { cwd: repoRoot }).trim();
         return path.isAbsolute(gitDir) ? gitDir : path.join(repoRoot, gitDir);
+    }
+
+    /**
+     * Read branch, tracking, and working-tree metadata with one Git subprocess.
+     * Returns null when the path is not a Git repository or Git cannot read it.
+     */
+    async getRepositoryStatus(repoRoot: string): Promise<GitRepositoryStatus | null> {
+        try {
+            const output = await this.execGitFileAsync(
+                ['status', '--porcelain=v2', '--branch', '--untracked-files=all'],
+                { cwd: repoRoot, timeout: 15_000 },
+            );
+            return parsePorcelainV2BranchStatus(output);
+        } catch {
+            return null;
+        }
     }
 
     /**
