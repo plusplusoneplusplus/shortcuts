@@ -32,7 +32,6 @@ import type {
     TokenUsage,
 } from '@plusplusoneplusplus/forge';
 import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
-import { getCopilotContextTierForModel } from '@plusplusoneplusplus/coc-agent-sdk';
 import {
     approveAllPermissions,
     findClaudeCatalogModel,
@@ -41,7 +40,6 @@ import {
     mergeConsecutiveContentItems,
     modelMetadataStore,
     resolveModelForProvider,
-    resolveReasoningSelection,
     rewriteLargePrompt,
     toForwardSlashes,
     toQueueProcessId,
@@ -50,25 +48,24 @@ import type { ChatPayload, ChatProvider, PrClassificationPayload } from '../task
 import { getForEachContext, getMapReduceContext, isForEachGenerationContext, isMapReduceGenerationContext, normalizeChatModeOrDefault } from '../tasks/task-types';
 import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
 import { BaseExecutor } from './base-executor';
-import { resolveDefaultModel } from '../preferences-handler';
-import { loadConfigFile } from '../../config';
 import {
     assertNoAskUserConflict,
-    buildForEachGenerationSystemMessage,
-    buildMapReduceGenerationSystemMessage,
-    buildModeSystemMessage,
-    buildSourceLocationMarkdownLinkSystemMessage,
     prependSelectedSkillsDirective,
     resolveSelectedSkillReferences,
 } from './prompt-builder';
 import { buildMemoryV2Addon } from './memory-v2-addon';
 import type { MemoryV2Addon } from './memory-v2-addon';
 import { resolveAutoFolderContext } from './auto-folder-utils';
-import { systemMessageBuilder } from './system-message-builder';
 import { buildChatTurnContext } from './chat-turn-context-builder';
+import { buildChatTurnSystemMessage } from './chat-turn-system-message';
+import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
+import { buildMcpOAuthHandler } from './chat-turn-runner';
 import { resolveChatMcpServersForWorkspace } from './mcp-tool-enforcement';
 import { attachRalphGrillMetadataToAskUserPayloads, buildRalphGrillPlanningCompletedProgress, buildRalphGrillPlanningStartedProgress, buildRalphGrillProcessStateFromPlan, buildRalphMultiAgentGrillDirective, formatRalphGrillQuestionPlanForPrompt, planRalphGrillCandidateQuestions } from '../ralph/grill-planning';
 import type { RalphGrillPlanningProgress, RalphGrillQuestionPlanningResult, RalphGrillSetup } from '../ralph/grill-planning';
+/** Log prefix for every line this executor writes. */
+const CHAT_EXECUTOR_LOG_LABEL = '[ChatModeExecutor]';
+
 // ============================================================================
 // Ralph grilling-phase system message suffix
 // ============================================================================
@@ -588,19 +585,20 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         // (Notes goal file for general Ralph, Work Item versioning for Goal items).
         // Suppress the generic auto-folder system block so the model does not
         // receive a contradictory `.plan.md` save target.
-        const systemMessage = await systemMessageBuilder()
-            .append(buildModeSystemMessage(mode)?.content)
-            .appendGlobalSystemPrompt(this.resolveGlobalSystemPrompt())
-            .append(buildForEachGenerationSystemMessage(forEachGeneration)?.content)
-            .append(buildMapReduceGenerationSystemMessage(mapReduceGeneration)?.content)
-            .withRepoInstructions(workingDirectory, mode)
-            .appendChatStyle(payload.chatStyle, this.isChatStyleSelectorEnabled())
-            .append(buildSourceLocationMarkdownLinkSystemMessage(payload.provider ?? this.provider)?.content)
-            .appendMemoryV2(ctx.memoryV2)
-            .appendToolGuidance(ctx.toolGuidance)
-            .appendAutoFolder(isGrilling ? undefined : autoFolderContext)
-            .appendNoteFile(notePath)
-            .build();
+        const systemMessage = await buildChatTurnSystemMessage({
+            mode,
+            workingDirectory,
+            provider: payload.provider ?? this.provider,
+            globalSystemPrompt: this.resolveGlobalSystemPrompt(),
+            forEachGeneration,
+            mapReduceGeneration,
+            chatStyle: payload.chatStyle,
+            chatStyleEnabled: this.isChatStyleSelectorEnabled(),
+            memoryV2: ctx.memoryV2,
+            toolGuidance: ctx.toolGuidance,
+            autoFolderContext: isGrilling ? undefined : autoFolderContext,
+            notePath,
+        });
 
         // When this is a Ralph grilling session, prepend the grilling directive
         // (skill pointer, machine contract, and output destination) to the user
@@ -724,13 +722,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             // the server-level default provider when the task does not override it.
             const taskProvider: ChatProvider = payload.provider ?? this.provider;
             const effectiveAiService: ISDKService = this.getAiServiceForProvider(taskProvider);
-            const providerModel = resolveModelForProvider(taskProvider, task.config.model);
-            if (providerModel.coerced) {
-                getLogger().warn(
-                    LogCategory.AI,
-                    `[ChatModeExecutor] Dropping model '${providerModel.requestedModel}' for provider '${taskProvider}'; using provider default.`,
-                );
-            }
 
             const availability = await effectiveAiService.isAvailable();
             if (!availability.available) {
@@ -753,52 +744,31 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 () => 1,
             );
 
-            // Resolve per-repo default model when no explicit model is set on the task.
-            let effectiveModel = providerModel.model;
-            if (!effectiveModel && this.dataDir && payload.workspaceId) {
-                const chatMode = normalizeChatModeOrDefault(payload.mode);
-                const defaultModelMode = chatMode === 'autopilot' || chatMode === 'ralph'
-                    ? 'task' as const
-                    : 'ask' as const;
-                const defaultModel = resolveDefaultModel(this.dataDir, payload.workspaceId, defaultModelMode);
-                const resolvedDefaultModel = resolveModelForProvider(taskProvider, defaultModel);
-                if (resolvedDefaultModel.coerced) {
+            // Model, reasoning effort, and Copilot long-context tier all resolve
+            // through the shared turn-policy resolver so first turns and
+            // follow-ups cannot drift apart. A first turn fails loudly on an
+            // unsupported effort (no per-turn override to drop).
+            const chatMode = normalizeChatModeOrDefault(payload.mode);
+            const policy = await resolveChatTurnPolicy({
+                provider: taskProvider,
+                requestedModel: task.config.model,
+                dataDir: this.dataDir,
+                workspaceId: payload.workspaceId,
+                defaultModelMode: chatMode === 'autopilot' || chatMode === 'ralph' ? 'task' : 'ask',
+                onCoerced: ({ requestedModel, source }) => {
                     getLogger().warn(
                         LogCategory.AI,
-                        `[ChatModeExecutor] Dropping default model '${resolvedDefaultModel.requestedModel}' for provider '${taskProvider}'; using provider default.`,
+                        source === 'default'
+                            ? `[ChatModeExecutor] Dropping default model '${requestedModel}' for provider '${taskProvider}'; using provider default.`
+                            : `[ChatModeExecutor] Dropping model '${requestedModel}' for provider '${taskProvider}'; using provider default.`,
                     );
-                }
-                effectiveModel = resolvedDefaultModel.model;
-            }
-
-            // Resolve reasoning effort:
-            //   explicit task config
-            //   > provider-scoped persisted default (cfg.models.providers[provider].reasoningEfforts)
-            //   > global persisted default — Copilot legacy only (cfg.models.reasoningEfforts)
-            //   > SDK default (model catalog default, then FALLBACK_REASONING_EFFORT_ORDER)
-            let requestedEffort: Parameters<typeof resolveReasoningSelection>[0]['requestedEffort'] = task.config.reasoningEffort;
-            if (!requestedEffort && effectiveModel) {
-                const cfg = loadConfigFile();
-                const providerSettings = cfg?.models?.providers?.[taskProvider];
-                const effortMap: Record<string, string> = providerSettings
-                    ? (providerSettings.reasoningEfforts ?? {})
-                    : (taskProvider === 'copilot' ? (cfg?.models?.reasoningEfforts ?? {}) : {});
-                const persisted = effortMap[effectiveModel];
-                if (persisted) requestedEffort = persisted as NonNullable<typeof requestedEffort>;
-            }
-            const reasoningModelMetadata = await this.getModelMetadataForReasoning(effectiveModel, taskProvider, effectiveAiService);
-            const reasoningSelection = resolveReasoningSelection({
-                modelId: effectiveModel,
-                requestedEffort,
-                model: reasoningModelMetadata,
+                },
+                requestedEffort: task.config.reasoningEffort,
+                getModelMetadata: (modelId) =>
+                    this.getModelMetadataForReasoning(modelId, taskProvider, effectiveAiService),
             });
-
-            // Copilot long-context tier: request it only when the selected
-            // Copilot model's catalog metadata advertises a long-context tier.
-            // Never sent for Codex/Claude or for models without the metadata.
-            const contextTier = taskProvider === 'copilot'
-                ? getCopilotContextTierForModel(reasoningModelMetadata)
-                : undefined;
+            const effectiveModel = policy.resolvedModel;
+            const contextTier = policy.contextTier;
 
             if (ralphGrillPlanning?.setup.enabled === true) {
                 this.emitRalphGrillPlanningProgress(
@@ -819,7 +789,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                         prompt: ralphGrillPlanning.sourcePrompt,
                         defaultProvider: taskProvider,
                         ...(effectiveModel ? { defaultModel: effectiveModel } : {}),
-                        ...(reasoningSelection.reasoningEffort ? { reasoningEffort: reasoningSelection.reasoningEffort } : {}),
+                        ...(policy.reasoningEffort ? { reasoningEffort: policy.reasoningEffort } : {}),
                         workingDirectory,
                         timeoutMs,
                         skillDirectories,
@@ -866,8 +836,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             const sendOptions = {
                 prompt: effectivePrompt,
                 mode: agentMode,
-                ...(reasoningSelection.modelId ? { model: reasoningSelection.modelId } : {}),
-                ...(reasoningSelection.reasoningEffort ? { reasoningEffort: reasoningSelection.reasoningEffort } : {}),
+                ...(policy.modelId ? { model: policy.modelId } : {}),
+                ...(policy.reasoningEffort ? { reasoningEffort: policy.reasoningEffort } : {}),
                 ...(contextTier ? { contextTier } : {}),
                 infiniteSessions: { enabled: true } as const,
                 ...(this.keepClientWarm() ? { keepWarm: true as const, warmKey: processId } : {}),
@@ -887,67 +857,18 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                         // Non-fatal: store may be a stub
                     });
                 },
-                onStreamingChunk: (chunk: string) => {
-                    this.appendOutputChunk(processId, chunk);
-                    this.appendTimelineItem(processId, { type: 'content', timestamp: new Date(), content: chunk });
-                    try {
-                        this.store.emitProcessOutput(processId, chunk);
-                    } catch {
-                        // Non-fatal: store may be a stub
-                    }
-                    this.checkThrottleAndFlush(processId);
-                },
+                onStreamingChunk: this.buildStreamingChunkHandler(processId, CHAT_EXECUTOR_LOG_LABEL),
                 onToolEvent: toolEventHandler,
                 onTokenUsage: this.buildMidTurnTokenUsageHandler(processId),
                 onBackgroundTasksChanged: this.buildBackgroundTaskHandler(processId),
-                onMcpOAuthRequired: (() => {
-                    const manager = this.getMcpOauthManager?.();
-                    if (!manager) {
-                        getLogger().debug(LogCategory.AI, `[ChatModeExecutor] No McpOauthManager wired — MCP OAuth events will not be tracked for process ${processId}`);
-                        return undefined;
-                    }
-                    return (event: { serverName: string; serverUrl: string; authorizationUrl?: string; requestId: string }) => {
-                        getLogger().info(
-                            LogCategory.MCP,
-                            `[ChatModeExecutor] MCP OAuth event received: server=${event.serverName} url=${event.serverUrl} requestId=${event.requestId} hasAuthUrl=${!!event.authorizationUrl} processId=${processId} workspaceId=${payload.workspaceId ?? '(none)'}`,
-                        );
-                        try {
-                            const entry = manager.addPending({
-                                requestId: event.requestId,
-                                serverName: event.serverName,
-                                serverUrl: event.serverUrl,
-                                authorizationUrl: event.authorizationUrl,
-                                processId,
-                                workspaceId: payload.workspaceId,
-                                originalMessage: prompt,
-                            });
-                            getLogger().debug(
-                                LogCategory.MCP,
-                                `[ChatModeExecutor] MCP OAuth entry registered: id=${entry.id} server=${event.serverName} status=${entry.status}`,
-                            );
-                            // Emit SSE event so the dashboard can prompt the user
-                            try {
-                                this.store.emitProcessEvent(processId, {
-                                    type: 'mcp-oauth-required',
-                                    mcpOAuth: {
-                                        requestId: entry.id,
-                                        serverName: event.serverName,
-                                        serverUrl: event.serverUrl,
-                                        authorizationUrl: event.authorizationUrl,
-                                    },
-                                });
-                            } catch {
-                                // Non-fatal: SSE emission must not interrupt the session
-                            }
-                        } catch (oauthErr) {
-                            // Non-fatal: OAuth dispatch must not interrupt the session.
-                            getLogger().warn(
-                                LogCategory.MCP,
-                                `[ChatModeExecutor] Failed to register MCP OAuth entry for server=${event.serverName} requestId=${event.requestId}: ${oauthErr instanceof Error ? oauthErr.message : String(oauthErr)}`,
-                            );
-                        }
-                    };
-                })(),
+                onMcpOAuthRequired: buildMcpOAuthHandler({
+                    store: this.store,
+                    processId,
+                    workspaceId: payload.workspaceId,
+                    originalMessage: prompt,
+                    manager: this.getMcpOauthManager?.(),
+                    logLabel: CHAT_EXECUTOR_LOG_LABEL,
+                }),
             };
 
             let result: SDKInvocationResult;
@@ -971,38 +892,32 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 timeline: finalTimeline,
                 pendingSuggestions,
                 tokenUsage: result.tokenUsage,
-                effectiveModel: result.effectiveModel ?? reasoningSelection.modelId,
+                effectiveModel: result.effectiveModel ?? policy.modelId,
             };
         } catch (err) {
-            const partialContent = this.getOutputBuffer(processId);
-            const timelineBuffer = this.getTimelineBuffer(processId);
-            const partialTimeline = timelineBuffer
-                ? mergeConsecutiveContentItems([...timelineBuffer])
-                : [];
-            const partialSuggestions = this.getPendingSuggestions(processId);
-            const hasPartial = partialContent.length > 0 || partialTimeline.length > 0;
+            const partial = this.capturePartialTurn(processId);
 
-            if (hasPartial) {
+            if (partial.hasPartial) {
                 const errorMsg = err instanceof Error ? err.message : String(err);
                 try {
                     await this.appendFinalConversationTurn(
                         processId,
                         (turnIndex) => ({
                             role: 'assistant' as const,
-                            content: partialContent || `Error: ${errorMsg}`,
+                            content: partial.content || `Error: ${errorMsg}`,
                             timestamp: new Date(),
                             turnIndex,
-                            timeline: partialTimeline,
+                            timeline: partial.timeline,
                             interrupted: true,
                             interruptionReason: errorMsg,
-                            ...(partialSuggestions ? { suggestions: partialSuggestions } : {}),
+                            ...(partial.suggestions ? { suggestions: partial.suggestions } : {}),
                         }),
                         { filterStreaming: true },
                     );
                 } catch (appendErr) {
                     getLogger().warn(
                         LogCategory.AI,
-                        `[ChatModeExecutor] Failed to persist interrupted turn for ${processId}: ${appendErr instanceof Error ? appendErr.message : String(appendErr)}`,
+                        `${CHAT_EXECUTOR_LOG_LABEL} Failed to persist interrupted turn for ${processId}: ${appendErr instanceof Error ? appendErr.message : String(appendErr)}`,
                     );
                 }
             }
