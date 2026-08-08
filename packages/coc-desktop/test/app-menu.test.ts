@@ -15,6 +15,8 @@ import {
     buildTrayMenuTemplate,
     buildDevTunnelMenu,
     devTunnelStatusLabel,
+    devTunnelPublicUrlLabel,
+    DEV_TUNNEL_URL_LABEL_MAX,
     CHECK_FOR_UPDATES_LABEL,
     UPDATE_CHANNEL_LABEL,
     DEV_TUNNEL_MENU_LABEL,
@@ -244,6 +246,34 @@ describe('devTunnelStatusLabel', () => {
     });
 });
 
+describe('devTunnelPublicUrlLabel', () => {
+    it('drops the https:// scheme and any trailing slash', () => {
+        expect(devTunnelPublicUrlLabel('https://abc-4000.usw2.devtunnels.ms/')).toBe(
+            'abc-4000.usw2.devtunnels.ms',
+        );
+        expect(devTunnelPublicUrlLabel('  https://abc.devtunnels.ms  ')).toBe('abc.devtunnels.ms');
+    });
+
+    it('keeps a path segment that is not just a trailing slash', () => {
+        expect(devTunnelPublicUrlLabel('https://abc.devtunnels.ms/repos')).toBe(
+            'abc.devtunnels.ms/repos',
+        );
+    });
+
+    it('elides an over-long URL in the middle, keeping the id and the host', () => {
+        const long = `https://${'x'.repeat(80)}-4000.usw2.devtunnels.ms`;
+        const label = devTunnelPublicUrlLabel(long);
+        expect(label.length).toBe(DEV_TUNNEL_URL_LABEL_MAX);
+        expect(label).toContain('…');
+        expect(label.startsWith('xxxx')).toBe(true);
+        expect(label.endsWith('devtunnels.ms')).toBe(true);
+    });
+
+    it('returns an empty label for an empty URL rather than throwing', () => {
+        expect(devTunnelPublicUrlLabel('')).toBe('');
+    });
+});
+
 describe('buildDevTunnelMenu', () => {
     const makeHandlers = (): DevTunnelMenuHandlers => ({
         onConfigure: vi.fn(),
@@ -346,6 +376,32 @@ describe('buildDevTunnelMenu', () => {
         expect(show).toBeDefined();
         (show.click as () => void)();
         expect(handlers.onShowLastError).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows the public URL as a disabled row right under the status row when online', () => {
+        const { items } = build(
+            { status: 'online', publicUrl: 'https://abc-4000.usw2.devtunnels.ms/' },
+            true,
+        );
+        expect(items[1].enabled).toBe(false);
+        expect(items[1].label).toBe('abc-4000.usw2.devtunnels.ms');
+        expect(items[1].click).toBeUndefined();
+    });
+
+    it('omits the public-URL row unless online with a resolved URL', () => {
+        for (const state of [
+            { status: 'off' } as DevTunnelHostState,
+            { status: 'starting' } as DevTunnelHostState,
+            { status: 'online' } as DevTunnelHostState,
+            {
+                status: 'failed',
+                error: { category: 'cli-missing', message: 'x' },
+            } as DevTunnelHostState,
+        ]) {
+            const { items } = build(state, state.status !== 'off');
+            expect(items[1].type).toBe('separator');
+            expect(labels(items).some((l) => l.includes('devtunnels.ms'))).toBe(false);
+        }
     });
 
     it('shows Copy Public URL ONLY when online with a resolved URL, and wires it', () => {

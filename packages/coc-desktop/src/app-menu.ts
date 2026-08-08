@@ -133,6 +133,25 @@ export interface DevTunnelMenuInput {
     handlers: DevTunnelMenuHandlers;
 }
 
+/** Max characters of the public URL rendered in the menu row before eliding. */
+export const DEV_TUNNEL_URL_LABEL_MAX = 60;
+
+/**
+ * Display form of the public URL for the disabled menu row: the `https://`
+ * scheme and any trailing slash are dropped (a native menu row is narrow), and
+ * an over-long URL is elided in the middle so both the tunnel ID at the front
+ * and the `devtunnels.ms` host at the end stay readable.
+ */
+export function devTunnelPublicUrlLabel(url: string): string {
+    const compact = (url ?? '').trim().replace(/^https:\/\//i, '').replace(/\/+$/, '');
+    if (compact.length <= DEV_TUNNEL_URL_LABEL_MAX) {
+        return compact;
+    }
+    const head = Math.ceil((DEV_TUNNEL_URL_LABEL_MAX - 1) / 2);
+    const tail = DEV_TUNNEL_URL_LABEL_MAX - 1 - head;
+    return `${compact.slice(0, head)}…${compact.slice(compact.length - tail)}`;
+}
+
 /** Human-readable status-row label for the disabled first menu item (AC-01). */
 export function devTunnelStatusLabel(status: DevTunnelHostStatus): string {
     switch (status) {
@@ -153,6 +172,7 @@ export function devTunnelStatusLabel(status: DevTunnelHostStatus): string {
  *
  * Rows, in order:
  *   - a disabled status row (Off / Starting / Online / Failed);
+ *   - a disabled public-URL row (only when Online with a resolved URL);
  *   - Configure… (always available);
  *   - Start (while the feature is disabled) OR Stop (while enabled) — Start/Stop
  *     toggles the persisted `enabled` gate; Retry never touches it;
@@ -167,9 +187,18 @@ export function buildDevTunnelMenu(
     const items: MenuItemConstructorOptions[] = [
         // Disabled status row — reflects the runtime status, not the gate.
         { label: devTunnelStatusLabel(state.status), enabled: false },
+    ];
+
+    // Disabled public-URL row, right under the status row, so the address is
+    // visible without having to copy it first.
+    if (state.status === 'online' && state.publicUrl) {
+        items.push({ label: devTunnelPublicUrlLabel(state.publicUrl), enabled: false });
+    }
+
+    items.push(
         { type: 'separator' },
         { label: DEV_TUNNEL_CONFIGURE_LABEL, click: handlers.onConfigure },
-    ];
+    );
 
     // Start (feature off) or Stop (feature on) — mutually exclusive.
     items.push(
