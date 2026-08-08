@@ -13,7 +13,7 @@
  * unaffected.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
     KustoCellValue,
     KustoChartConfig,
@@ -155,10 +155,12 @@ interface RechartsChartProps {
     data: ChartData;
     type: KustoChartType;
     compact: boolean;
+    /** Series (or, for pie, slice) indices toggled off in the legend. */
+    hidden: ReadonlySet<number>;
 }
 
 /** The Recharts render path — one component per chart kind, shared axes. */
-function RechartsChart({ rc, data, type, compact }: RechartsChartProps) {
+function RechartsChart({ rc, data, type, compact, hidden }: RechartsChartProps) {
     const {
         ResponsiveContainer,
         LineChart, BarChart, ScatterChart, AreaChart, PieChart,
@@ -167,7 +169,12 @@ function RechartsChart({ rc, data, type, compact }: RechartsChartProps) {
     } = rc;
     const height = compact ? COMPACT_CHART_HEIGHT : CHART_HEIGHT;
     const rows = useMemo(() => toRechartsRows(data), [data]);
-    const visible = useMemo(() => data.series.map((_s, si) => si), [data]);
+    // Hidden series are simply not rendered, so recharts rescales the y-axis to
+    // what is left and the shared tooltip lists only visible series.
+    const visible = useMemo(
+        () => data.series.map((_s, si) => si).filter(si => !hidden.has(si)),
+        [data, hidden],
+    );
     const SharedTooltip = useMemo(() => makeSharedTooltip(data, visible), [data, visible]);
     const SlicedTooltip = useMemo(() => makePieTooltip(data), [data]);
 
@@ -178,7 +185,7 @@ function RechartsChart({ rc, data, type, compact }: RechartsChartProps) {
         const slices = first
             ? data.labels
                 .map((label, i) => ({ name: label, value: Math.max(first.values[i] ?? 0, 0), __i: i }))
-                .filter(s => s.value > 0)
+                .filter(s => s.value > 0 && !hidden.has(s.__i))
             : [];
         return (
             <ResponsiveContainer width="100%" height={height}>
@@ -220,8 +227,8 @@ function RechartsChart({ rc, data, type, compact }: RechartsChartProps) {
                 return (
                     <BarChart data={rows}>
                         {axes}
-                        {data.series.map((s, si) => (
-                            <Bar key={si} dataKey={`s${si}`} name={s.name} fill={seriesColor(si)} isAnimationActive={false} />
+                        {visible.map(si => (
+                            <Bar key={si} dataKey={`s${si}`} name={data.series[si].name} fill={seriesColor(si)} isAnimationActive={false} />
                         ))}
                     </BarChart>
                 );
@@ -229,8 +236,8 @@ function RechartsChart({ rc, data, type, compact }: RechartsChartProps) {
                 return (
                     <ScatterChart data={rows}>
                         {axes}
-                        {data.series.map((s, si) => (
-                            <Scatter key={si} dataKey={`s${si}`} name={s.name} fill={seriesColor(si)} isAnimationActive={false} />
+                        {visible.map(si => (
+                            <Scatter key={si} dataKey={`s${si}`} name={data.series[si].name} fill={seriesColor(si)} isAnimationActive={false} />
                         ))}
                     </ScatterChart>
                 );
@@ -238,12 +245,12 @@ function RechartsChart({ rc, data, type, compact }: RechartsChartProps) {
                 return (
                     <AreaChart data={rows}>
                         {axes}
-                        {data.series.map((s, si) => (
+                        {visible.map(si => (
                             <Area
                                 key={si}
                                 type="linear"
                                 dataKey={`s${si}`}
-                                name={s.name}
+                                name={data.series[si].name}
                                 stackId="kusto"
                                 stroke={seriesColor(si)}
                                 fill={seriesColor(si)}
@@ -258,12 +265,12 @@ function RechartsChart({ rc, data, type, compact }: RechartsChartProps) {
                 return (
                     <LineChart data={rows}>
                         {axes}
-                        {data.series.map((s, si) => (
+                        {visible.map(si => (
                             <Line
                                 key={si}
                                 type="linear"
                                 dataKey={`s${si}`}
-                                name={s.name}
+                                name={data.series[si].name}
                                 stroke={seriesColor(si)}
                                 strokeWidth={2}
                                 dot={false}
@@ -300,6 +307,20 @@ export interface KustoChartProps {
 export function KustoChart({ columns, rows, config, compact = false }: KustoChartProps) {
     const data = useMemo(() => buildChartSeries(columns, rows, config), [columns, rows, config]);
     const [loader, setLoader] = useState<LoaderState>({ status: 'loading' });
+    // Legend toggles are ephemeral view state: nothing is written back to the
+    // canvas, so the revision never bumps and reopening resets everything.
+    const [hidden, setHidden] = useState<ReadonlySet<number>>(() => new Set());
+    const toggleSeries = useCallback((index: number) => {
+        setHidden(prev => {
+            const next = new Set(prev);
+            if (!next.delete(index)) next.add(index);
+            return next;
+        });
+    }, []);
+
+    // A different chart type or query result renumbers the series, so drop the
+    // stale toggles rather than hiding an unrelated series.
+    useEffect(() => { setHidden(new Set()); }, [config.type, data]);
 
     useEffect(() => {
         let alive = true;
@@ -351,8 +372,8 @@ export function KustoChart({ columns, rows, config, compact = false }: KustoChar
 
     return (
         <div data-testid="kusto-chart">
-            <RechartsChart rc={loader.rc} data={data} type={config.type} compact={compact} />
-            <ChartLegend names={legendNames} />
+            <RechartsChart rc={loader.rc} data={data} type={config.type} compact={compact} hidden={hidden} />
+            <ChartLegend names={legendNames} hidden={hidden} onToggle={toggleSeries} />
         </div>
     );
 }

@@ -263,6 +263,15 @@ describe('KustoChart hover tooltip', () => {
         expect(tooltip).not.toHaveTextContent('auth');
     });
 
+    it('drops a legend-hidden series from the tooltip', async () => {
+        const container = await renderAndHover();
+        fireEvent.click(screen.getByRole('button', { name: /api-gateway/ }));
+        hoverPlot(container.querySelector('.recharts-wrapper') as HTMLElement, 80);
+        const tooltip = await screen.findByTestId('kusto-chart-tooltip');
+        expect(tooltip).toHaveTextContent('auth');
+        expect(tooltip).not.toHaveTextContent('api-gateway');
+    });
+
     it('gives a pie slice its own tooltip instead of a shared one', async () => {
         const { container } = render(
             <KustoChart columns={columns} rows={rows} config={{ type: 'pie', x: 'State', y: ['Count'] }} />,
@@ -277,5 +286,107 @@ describe('KustoChart hover tooltip', () => {
         const tooltip = await screen.findByTestId('kusto-chart-tooltip');
         expect(tooltip).toHaveTextContent('Texas');
         expect(tooltip.textContent).toContain('100');
+    });
+});
+
+describe('KustoChart legend toggle', () => {
+    const latencyColumns: KustoColumn[] = [
+        { name: 'Bucket', type: 'string' },
+        { name: 'Service', type: 'string' },
+        { name: 'P95', type: 'real' },
+    ];
+    const latencyRows: KustoCellValue[][] = [
+        ['10:00', 'api-gateway', 9120.7043],
+        ['10:00', 'auth', 12.5],
+        ['10:05', 'api-gateway', 8000.25],
+        ['10:05', 'auth', 14],
+    ];
+    const config = { type: 'line' as const, x: 'Bucket', y: ['P95'], series: 'Service' };
+
+    async function renderChart() {
+        const { container } = render(<KustoChart columns={latencyColumns} rows={latencyRows} config={config} />);
+        await waitFor(() => {
+            expect(container.querySelectorAll('.recharts-line')).toHaveLength(2);
+        });
+        return container;
+    }
+
+    /**
+     * Vertical spread of a plotted line in chart pixels. jsdom renders no axis
+     * tick text, so we read the rescale off the geometry instead: while
+     * api-gateway (~9000) is visible, auth (12.5 → 14) is squashed flat at the
+     * bottom; with it hidden, auth stretches over the whole plot.
+     */
+    function curveSpread(curve: Element): number {
+        const ys = Array.from((curve.getAttribute('d') ?? '').matchAll(/,(-?[\d.]+)/g)).map(m => Number(m[1]));
+        return Math.max(...ys) - Math.min(...ys);
+    }
+
+    it('hides a series on click and restores it on a second click', async () => {
+        const container = await renderChart();
+        const entry = screen.getByRole('button', { name: /api-gateway/ });
+
+        fireEvent.click(entry);
+        await waitFor(() => {
+            expect(container.querySelectorAll('.recharts-line')).toHaveLength(1);
+        });
+        expect(entry).toHaveAttribute('aria-pressed', 'false');
+
+        fireEvent.click(entry);
+        await waitFor(() => {
+            expect(container.querySelectorAll('.recharts-line')).toHaveLength(2);
+        });
+        expect(entry).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('rescales the y-axis to the visible series', async () => {
+        const container = await renderChart();
+        const squashed = curveSpread(container.querySelectorAll('.recharts-line-curve')[1]);
+
+        fireEvent.click(screen.getByRole('button', { name: /api-gateway/ }));
+        await waitFor(() => {
+            expect(container.querySelectorAll('.recharts-line-curve')).toHaveLength(1);
+        });
+        const rescaled = curveSpread(container.querySelector('.recharts-line-curve') as Element);
+        expect(rescaled).toBeGreaterThan(squashed * 5);
+    });
+
+    it('renders an empty plot rather than crashing when every series is hidden', async () => {
+        const container = await renderChart();
+        fireEvent.click(screen.getByRole('button', { name: /api-gateway/ }));
+        fireEvent.click(screen.getByRole('button', { name: /auth/ }));
+        await waitFor(() => {
+            expect(container.querySelectorAll('.recharts-line')).toHaveLength(0);
+        });
+        expect(container.querySelector('.recharts-wrapper')).not.toBeNull();
+    });
+
+    it('does not persist anything when a series is toggled', async () => {
+        const fetchSpy = vi.fn(() => Promise.reject(new Error('no network in this test')));
+        const previousFetch = globalThis.fetch;
+        globalThis.fetch = fetchSpy as unknown as typeof fetch;
+        try {
+            await renderChart();
+            fireEvent.click(screen.getByRole('button', { name: /api-gateway/ }));
+            await waitFor(() => {
+                expect(screen.getByRole('button', { name: /api-gateway/ })).toHaveAttribute('aria-pressed', 'false');
+            });
+            expect(fetchSpy).not.toHaveBeenCalled();
+        } finally {
+            globalThis.fetch = previousFetch;
+        }
+    });
+
+    it('hides a pie slice when its legend entry is clicked', async () => {
+        const { container } = render(
+            <KustoChart columns={columns} rows={rows} config={{ type: 'pie', x: 'State', y: ['Count'] }} />,
+        );
+        await waitFor(() => {
+            expect(container.querySelectorAll('.recharts-sector')).toHaveLength(3);
+        });
+        fireEvent.click(screen.getByRole('button', { name: /Texas/ }));
+        await waitFor(() => {
+            expect(container.querySelectorAll('.recharts-sector')).toHaveLength(2);
+        });
     });
 });
