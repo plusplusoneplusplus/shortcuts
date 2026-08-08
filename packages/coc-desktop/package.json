@@ -47,6 +47,7 @@
     "asar": true,
     "asarUnpack": [
       "**/*.node",
+      "**/@esbuild/**",
       "**/@anthropic-ai/claude-agent-sdk-*/**",
       "**/@openai/codex-*/**",
       "**/@github/copilot/**",
