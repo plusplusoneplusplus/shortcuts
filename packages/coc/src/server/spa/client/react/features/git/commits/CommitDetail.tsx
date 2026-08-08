@@ -14,6 +14,9 @@ import { SideBySideDiffViewer } from '../diff/SideBySideDiffViewer';
 import { useDiffViewMode } from '../hooks/useDiffViewMode';
 import { DiffViewToggle } from '../diff/DiffViewToggle';
 import { DiffMiniMap } from '../diff/DiffMiniMap';
+import { DiffFindWidget } from '../diff/DiffFindWidget';
+import { useDiffFind } from '../diff/useDiffFind';
+import { useDiffFindShortcut } from '../diff/useDiffFindShortcut';
 import { useAllCommitComments } from '../hooks/useAllCommitComments';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import { CommitChatPanel } from './CommitChatPanel';
@@ -87,6 +90,16 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
         : null;
 
     const { diff, loading: diffLoading, error: diffError, retry: handleRetryDiff } = useCachedDiff(diffUrl, workspaceId, hash);
+
+    // ── In-diff find (Ctrl/Cmd+F) ──
+    // Same wiring as FileDiffPanel: search the FULL commit diff model so matches
+    // in virtualized (>500-line) regions are still counted, and let the viewer's
+    // scrollLineIntoView handle drive the virtualizer to the active match.
+    const scrollActiveMatchIntoView = useCallback((lineIndex: number) => {
+        viewerRef.current?.scrollLineIntoView(lineIndex);
+    }, []);
+    const find = useDiffFind(diffLines, scrollActiveMatchIntoView);
+    useDiffFindShortcut(scrollContainerRef, find.openFind);
 
     // File list from diff for classification + priority navigation
     const fileList = useMemo(() => diff ? parseDiffFileList(diff) : [], [diff]);
@@ -468,7 +481,21 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
 
             {/* Diff view + sidebar */}
             <div className="relative flex flex-1 min-h-0">
-                <div ref={scrollContainerRef} className="flex-1 overflow-auto px-1 py-1" data-testid="diff-section">
+                {/* ── In-diff find widget (Ctrl/Cmd+F) ── */}
+                {find.open && diff && !diffLoading && !diffError && (
+                    <DiffFindWidget
+                        query={find.query}
+                        caseSensitive={find.caseSensitive}
+                        matchCount={find.matchCount}
+                        activeIndex={find.activeIndex}
+                        onQueryChange={find.setQuery}
+                        onToggleCaseSensitive={find.toggleCaseSensitive}
+                        onNext={find.goToNext}
+                        onPrev={find.goToPrev}
+                        onClose={find.closeFind}
+                    />
+                )}
+                <div ref={scrollContainerRef} className="flex-1 overflow-auto px-1 py-1 outline-none" data-testid="diff-section" tabIndex={-1}>
                     {diffLoading ? (
                         <div className="flex items-center gap-2 text-xs text-[#848484]" data-testid="diff-loading">
                             <Spinner size="sm" /> Loading diff...
@@ -484,6 +511,7 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
                                 ref={viewerRef}
                                 diff={diff}
                                 onLinesReady={setDiffLines}
+                                matchRangesByLine={find.matchRangesByLine}
                                 data-testid="diff-content"
                             />
                         ) : (
@@ -491,6 +519,7 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
                                 ref={viewerRef}
                                 diff={diff}
                                 onLinesReady={setDiffLines}
+                                matchRangesByLine={find.matchRangesByLine}
                                 data-testid="diff-content"
                             />
                         )
