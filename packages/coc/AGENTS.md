@@ -321,7 +321,17 @@ all have their own `references/*.md`.
   extension, excalidraw, or kusto artifacts (descriptor `type` + normalized
   `language`) under
   `~/.coc/repos/<wsId>/canvases/<canvasId>/` through
-  `src/server/canvas/canvas-store.ts` with revision-checked updates. AI edits
+  `src/server/canvas/canvas-store.ts` with revision-checked updates. That file
+  is a facade over one service per contract: `canvas-write-queue.ts` (one writer
+  per canvas — a `.locks/<canvasId>.lock` directory with bounded waiting and
+  stale-lock takeover, so a read-check-write is a real critical section across
+  processes), `canvas-record-repository.ts` (descriptor + artifact + snapshot
+  staged as `.tmp-*` files and published snapshot → artifact → descriptor, so a
+  torn commit never leaves a revision ahead of its content),
+  `canvas-extension-repository.ts`, `canvas-comment-repository.ts`,
+  `canvas-file-sandbox.ts`, and `canvas-diagnostics.ts`. Route new canvas
+  persistence through the matching service rather than back into the facade, and
+  keep every mutation inside `queue.runExclusive`. AI edits
   go through the `write_canvas`/`read_canvas`/`extension_canvas` LLM tools
   (which emit `canvas-updated` SSE events on the linked process); user saves
   go through the workspace canvases REST routes (409 + current record on a
@@ -345,14 +355,18 @@ all have their own `references/*.md`.
   (`extension_canvas` `files: [{ path, content, encoding? }]`) and served by
   `GET /canvases/:id/files` + `GET /canvases/:id/files/<path>` for
   `CanvasHost.listFiles()` / `CanvasHost.readFile(path, opts)` in the iframe.
-  Path safety is layered in `canvas-store.ts` and must stay that way — shape
+  Path safety is layered in `canvas-file-sandbox.ts` and must stay that way — shape
   (`isSafeCanvasFilePath`, plus `hasEncodedPathEscape` on the still-encoded URL
   form) → `path.resolve` → forge `isWithinDirectory` → `fs.realpathSync` on
   both target and root, re-verified, which is the only layer that catches a
   symlink inside `files/` pointing elsewhere. Caps: 1 MB text / 10 MB binary,
   2000 listed entries. There is deliberately NO write endpoint and no
   workspace-repo scope — canvas state is the write channel because it is
-  revision-checked and snapshotted; do not add either.
+  revision-checked and snapshotted; do not add either. A corrupt descriptor,
+  artifact, snapshot, extension document, or comments file is skipped AND
+  reported through `reportCanvasCorruption` (workspace/canvas id, file role,
+  bare name, error class/errno only — never canvas content or absolute paths);
+  do not go back to a bare `catch {}`.
 - **Chat style selector** (live admin flag `features.chatStyleSelector`, default
   off, runtime flag `chatStyleSelectorEnabled`) adds a `Style: Human|Direct|
   Analytical|Structured` chip beside Effort in the new-chat and follow-up
