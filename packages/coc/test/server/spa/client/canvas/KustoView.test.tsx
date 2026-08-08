@@ -283,7 +283,7 @@ describe('KustoView charts (AC-05)', () => {
         render(<KustoView workspaceId="ws-1" canvas={canvas} />);
         // Opens directly into the chart view because a config exists.
         expect(screen.getByTestId('kusto-chart-view')).toBeInTheDocument();
-        expect(screen.getByTestId('kusto-chart-svg')).toBeInTheDocument();
+        expect(screen.getByTestId('kusto-chart')).toBeInTheDocument();
         expect((screen.getByTestId('kusto-chart-type') as HTMLSelectElement).value).toBe('bar');
     });
 });

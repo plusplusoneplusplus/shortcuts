@@ -4,9 +4,10 @@
  * KustoChart (AC-05) — pure data helpers (numeric-column gating,
  * config → series mapping) and the config → render mapping for each chart type.
  */
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
+import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import type { KustoCellValue, KustoColumn } from '@plusplusoneplusplus/coc-client';
+import * as Recharts from 'recharts';
 import {
     KustoChart,
     buildChartSeries,
@@ -14,6 +15,46 @@ import {
     isNumericColumn,
     numericColumnNames,
 } from '../../../../../src/server/spa/client/react/features/canvas/KustoChart';
+
+// The vendored recharts bundle is fetched at runtime in the browser; in tests we
+// hand the component the npm copy directly. `loadResult` lets a single test flip
+// the loader into its failure mode to exercise the static-SVG fallback (AC-06).
+let loadResult: () => Promise<any> = () => Promise.resolve(Recharts);
+vi.mock('../../../../../src/server/spa/client/react/features/canvas/rechartsLoader', () => ({
+    loadRecharts: () => loadResult(),
+    RECHARTS_VENDOR_URL: '/canvas-vendor/recharts.js',
+    resetRechartsLoaderForTests: () => {},
+}));
+
+/**
+ * jsdom has no layout engine, so recharts' ResponsiveContainer would measure
+ * 0×0 and render nothing. Give every element a size (offsetWidth/offsetHeight,
+ * which is what recharts reads) and a ResizeObserver that reports it once.
+ */
+beforeAll(() => {
+    const define = (prop: 'offsetWidth' | 'offsetHeight', value: number) =>
+        Object.defineProperty(HTMLElement.prototype, prop, { configurable: true, value });
+    define('offsetWidth', 640);
+    define('offsetHeight', 360);
+    class SizedResizeObserver {
+        constructor(private cb: ResizeObserverCallback) {}
+        observe(target: Element) {
+            const entry = {
+                target,
+                contentRect: { width: 640, height: 360, top: 0, left: 0, bottom: 360, right: 640, x: 0, y: 0 },
+            } as unknown as ResizeObserverEntry;
+            this.cb([entry], this as unknown as ResizeObserver);
+        }
+        unobserve() {}
+        disconnect() {}
+    }
+    globalThis.ResizeObserver = SizedResizeObserver as unknown as typeof ResizeObserver;
+});
+
+afterEach(() => {
+    cleanup();
+    loadResult = () => Promise.resolve(Recharts);
+});
 
 const columns: KustoColumn[] = [
     { name: 'State', type: 'string' },
@@ -106,17 +147,28 @@ describe('buildChartSeries', () => {
 describe('KustoChart render mapping', () => {
     const base = { columns, rows };
 
-    it.each(['line', 'bar', 'scatter', 'stackedArea'] as const)('renders an SVG for %s charts', type => {
-        render(<KustoChart {...base} config={{ type, x: 'State', y: ['Count'] }} />);
-        const svg = screen.getByTestId('kusto-chart-svg');
-        expect(svg).toBeInTheDocument();
-        expect(svg.getAttribute('aria-label')).toContain(type);
+    it.each(['line', 'bar', 'scatter', 'stackedArea', 'pie'] as const)(
+        'renders a recharts plot for %s charts',
+        async type => {
+            const { container } = render(<KustoChart {...base} config={{ type, x: 'State', y: ['Count'] }} />);
+            await waitFor(() => {
+                expect(container.querySelector('.recharts-wrapper')).not.toBeNull();
+            });
+            expect(container.querySelector('.recharts-surface')?.innerHTML).toBeTruthy();
+        },
+    );
+
+    it('shows a placeholder while the recharts bundle is loading', () => {
+        loadResult = () => new Promise(() => {});
+        render(<KustoChart {...base} config={{ type: 'line', x: 'State', y: ['Count'] }} />);
+        expect(screen.getByTestId('kusto-chart-loading')).toBeInTheDocument();
     });
 
-    it('renders a pie chart with slices', () => {
-        render(<KustoChart {...base} config={{ type: 'pie', x: 'State', y: ['Count'] }} />);
-        const svg = screen.getByTestId('kusto-chart-svg');
-        expect(svg.getAttribute('aria-label')).toContain('pie');
+    it('falls back to the static SVG when the loader rejects', async () => {
+        loadResult = () => Promise.reject(new Error('no vendor bundle'));
+        render(<KustoChart {...base} config={{ type: 'line', x: 'State', y: ['Count'] }} />);
+        const svg = await screen.findByTestId('kusto-chart-svg');
+        expect(svg.getAttribute('aria-label')).toContain('line');
     });
 
     it('prompts to configure when no Y column is chosen', () => {
