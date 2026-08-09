@@ -43,6 +43,8 @@ import type { UseClassificationReturn } from '../git/diff/useClassification';
 import { useClassification } from '../git/diff/useClassification';
 import type { ClassificationKey, DiffSource } from '../git/diff/diffSource';
 import { FileDiffPanel } from '../git/diff/FileDiffPanel';
+import { usePrReviewProgress } from '../git/diff/usePrReviewProgress';
+import type { ReviewProgressClientKey } from '../git/diff/reviewProgressApi';
 import { useModalJobAiSelection } from '../../shared/ModalJobAiControls';
 import { ClassifyDiffAiControls } from '../git/diff/ClassifyDiffAiControls';
 
@@ -72,6 +74,15 @@ export interface PrFilesPanelProps {
      * from `diffText` is rendered instead.
      */
     diffSource?: DiffSource;
+    /** PR head SHA — scopes review progress; changing it resets reviewed/visited. */
+    headSha?: string;
+    /**
+     * Persistence key for review progress. Must be the SAME key the pop-out
+     * review window uses ({originId, workspaceId, repoId, prId}) so reviewed
+     * state is shared between the two surfaces by construction. Omit to keep
+     * progress in-memory only.
+     */
+    reviewPersistence?: ReviewProgressClientKey;
 }
 
 type ViewMode = 'tree' | 'flat';
@@ -300,7 +311,17 @@ function ClassificationFilterBar({ classification, aiSelection }: Classification
 
 // ── Main component ──────────────────────────────────────────────────
 
-export function PrFilesPanel({ files, diffText, isMobile = false, workspaceId, classificationKey, onPopOut, diffSource }: PrFilesPanelProps) {
+export function PrFilesPanel({
+    files,
+    diffText,
+    isMobile = false,
+    workspaceId,
+    classificationKey,
+    onPopOut,
+    diffSource,
+    headSha,
+    reviewPersistence,
+}: PrFilesPanelProps) {
     const [search, setSearch] = useState('');
     const [viewMode, setViewMode] = useState<ViewMode>('tree');
 
@@ -308,6 +329,31 @@ export function PrFilesPanel({ files, diffText, isMobile = false, workspaceId, c
     const classificationHook = useClassification(classificationKey, aiSelection.resolved, { workspaceId });
     const classification: UseClassificationReturn | undefined = SHOW_FOCUSED_DIFF && classificationKey ? classificationHook : undefined;
     const [activePath, setActivePath] = useState<string>(files[0]?.path ?? '');
+
+    // Review progress — same hook and same persistence key as the pop-out review
+    // window, so marking a file reviewed here shows up there and vice versa.
+    const reviewProgressOptions = useMemo(
+        () => (reviewPersistence ? { persistence: reviewPersistence } : undefined),
+        [reviewPersistence],
+    );
+    const reviewProgress = usePrReviewProgress(headSha, reviewProgressOptions);
+    const { markVisited, setLastSelectedFile, isReviewed, toggleReviewed } = reviewProgress;
+
+    // Whatever file the diff pane is showing counts as visited (the inline tab
+    // auto-selects the first file, so there is no "nothing selected" state to
+    // wait for like the pop-out has). Wait for hydration first — the fetched
+    // record replaces the sets wholesale, so marking before it lands would be
+    // silently overwritten.
+    const progressHydrated = reviewProgress.state.hydrated;
+    useEffect(() => {
+        if (!progressHydrated) return;
+        if (activePath) markVisited(activePath);
+        setLastSelectedFile(activePath || null);
+    }, [activePath, progressHydrated, markVisited, setLastSelectedFile]);
+
+    const handleToggleReviewed = useCallback(() => {
+        if (activePath) toggleReviewed(activePath);
+    }, [activePath, toggleReviewed]);
 
     useEffect(() => {
         if (files.length === 0) {
@@ -450,6 +496,8 @@ export function PrFilesPanel({ files, diffText, isMobile = false, workspaceId, c
                             onToggleFolder={toggleFolder}
                             depth={0}
                             classification={classification}
+                            reviewedFiles={reviewProgress.state.reviewedFiles}
+                            visitedFiles={reviewProgress.state.visitedFiles}
                         />
                     ) : (
                         <FlatFileList
@@ -457,6 +505,8 @@ export function PrFilesPanel({ files, diffText, isMobile = false, workspaceId, c
                             activePath={activePath}
                             onSelect={handleFileSelect}
                             classification={classification}
+                            reviewedFiles={reviewProgress.state.reviewedFiles}
+                            visitedFiles={reviewProgress.state.visitedFiles}
                         />
                     )}
                 </div>
@@ -477,6 +527,8 @@ export function PrFilesPanel({ files, diffText, isMobile = false, workspaceId, c
                         showSourceLabel={false}
                         onNavigateToFile={setActivePath}
                         headerActions={<PrPopOutButton filePath={activePath} onPopOut={onPopOut} />}
+                        isReviewed={isReviewed(activePath)}
+                        onToggleReviewed={handleToggleReviewed}
                         getHunkClassification={classificationReady ? classification!.getHunkClassification : undefined}
                         hunkActiveFilters={classificationReady ? classification!.state.activeFilters : undefined}
                     />
@@ -609,14 +661,50 @@ function PrInlineDiffPanel({ filePath, diff, hasFiles, onPopOut }: PrInlineDiffP
 
 // ── File list views ─────────────────────────────────────────────────
 
+/**
+ * Reviewed / visited mark for a file row — mirrors the pop-out file panel's
+ * indicator (✓ reviewed, • visited-but-not-reviewed, nothing otherwise).
+ */
+function PrReviewMark({ path, reviewedFiles, visitedFiles }: {
+    path: string;
+    reviewedFiles?: ReadonlySet<string>;
+    visitedFiles?: ReadonlySet<string>;
+}) {
+    if (reviewedFiles?.has(path)) {
+        return (
+            <span
+                className="shrink-0 text-[11px] text-emerald-600 dark:text-emerald-400"
+                title="Marked reviewed"
+                data-testid={`pr-file-reviewed-${path}`}
+            >
+                ✓
+            </span>
+        );
+    }
+    if (visitedFiles?.has(path)) {
+        return (
+            <span
+                className="shrink-0 text-[11px] text-gray-400 dark:text-gray-500"
+                title="Visited (not reviewed)"
+                data-testid={`pr-file-visited-${path}`}
+            >
+                •
+            </span>
+        );
+    }
+    return null;
+}
+
 interface FlatFileListProps {
     files: FileChange[];
     activePath: string;
     onSelect: (path: string) => void;
     classification?: UseClassificationReturn;
+    reviewedFiles?: ReadonlySet<string>;
+    visitedFiles?: ReadonlySet<string>;
 }
 
-function FlatFileList({ files, activePath, onSelect, classification }: FlatFileListProps) {
+function FlatFileList({ files, activePath, onSelect, classification, reviewedFiles, visitedFiles }: FlatFileListProps) {
     return (
         <div className="grid min-w-0 gap-px">
             {files.map(file => {
@@ -646,6 +734,7 @@ function FlatFileList({ files, activePath, onSelect, classification }: FlatFileL
                             </span>
                         )}
                         <span className="flex min-w-0 items-center justify-between gap-1.5">
+                            <PrReviewMark path={file.path} reviewedFiles={reviewedFiles} visitedFiles={visitedFiles} />
                             <span className="min-w-0 flex-1 truncate" data-testid="pr-file-basename">
                                 {basename}
                             </span>
@@ -684,6 +773,8 @@ interface FileTreeViewProps {
     onToggleFolder: (path: string) => void;
     depth: number;
     classification?: UseClassificationReturn;
+    reviewedFiles?: ReadonlySet<string>;
+    visitedFiles?: ReadonlySet<string>;
 }
 
 function FileTreeView({
@@ -694,6 +785,8 @@ function FileTreeView({
     onToggleFolder,
     depth,
     classification,
+    reviewedFiles,
+    visitedFiles,
 }: FileTreeViewProps) {
     return (
         <div className="grid min-w-0 gap-px">
@@ -736,6 +829,8 @@ function FileTreeView({
                                     onToggleFolder={onToggleFolder}
                                     depth={depth + 1}
                                     classification={classification}
+                                    reviewedFiles={reviewedFiles}
+                                    visitedFiles={visitedFiles}
                                 />
                             )}
                         </div>
@@ -761,6 +856,7 @@ function FileTreeView({
                         data-file-dimmed={isDimmed || undefined}
                         title={node.path}
                     >
+                        <PrReviewMark path={node.path} reviewedFiles={reviewedFiles} visitedFiles={visitedFiles} />
                         <span className="min-w-0 flex-1 truncate" data-testid="pr-file-basename">
                             {node.name}
                         </span>

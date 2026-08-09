@@ -71,6 +71,17 @@ vi.mock('../../../../../src/server/spa/client/react/features/git/diff/FileDiffPa
     },
 }));
 
+/**
+ * Review-progress transport is stubbed — the hook itself has its own suite, and
+ * this one only cares that the inline path wires it up with the pop-out's key.
+ */
+const fetchReviewProgressMock = vi.fn();
+const putReviewProgressMock = vi.fn();
+vi.mock('../../../../../src/server/spa/client/react/features/git/diff/reviewProgressApi', () => ({
+    fetchReviewProgress: (...args: any[]) => fetchReviewProgressMock(...args),
+    putReviewProgress: (...args: any[]) => putReviewProgressMock(...args),
+}));
+
 let currentClassification: UseClassificationReturn | undefined;
 vi.mock('../../../../../src/server/spa/client/react/features/git/diff/useClassification', () => ({
     useClassification: () => currentClassification,
@@ -130,6 +141,12 @@ function makeClassification(overrides: Partial<UseClassificationReturn> = {}): U
 beforeEach(() => {
     lastPanelProps = null;
     currentClassification = undefined;
+    fetchReviewProgressMock.mockReset();
+    putReviewProgressMock.mockReset();
+    fetchReviewProgressMock.mockResolvedValue({
+        headSha: 'head-sha', reviewedFiles: [], visitedFiles: [], lastSelectedFile: null,
+    });
+    putReviewProgressMock.mockResolvedValue(undefined);
 });
 afterEach(cleanup);
 
@@ -247,5 +264,92 @@ describe('PrFilesPanel — hunk classification reaches the shared panel', () => 
 
         expect(lastPanelProps.getHunkClassification).toBeUndefined();
         expect(lastPanelProps.hunkActiveFilters).toBeUndefined();
+    });
+});
+
+describe('PrFilesPanel — mark reviewed / review progress (AC-04)', () => {
+    const persistence = { originId: 'gh_octo_repo', workspaceId: 'ws-1', repoId: 'repo-1', prId: '7' };
+
+    function renderWithProgress() {
+        return render(
+            <PrFilesPanel
+                files={parsedFiles}
+                diffText={diffText}
+                workspaceId="ws-1"
+                diffSource={makeSource()}
+                headSha="head-sha"
+                reviewPersistence={persistence}
+            />,
+        );
+    }
+
+    it('hydrates from the same persistence key the pop-out uses', async () => {
+        renderWithProgress();
+        await act(async () => { await Promise.resolve(); });
+
+        expect(fetchReviewProgressMock).toHaveBeenCalledWith(persistence, 'head-sha');
+    });
+
+    it('marks the file the diff pane is showing as visited', async () => {
+        renderWithProgress();
+        await act(async () => { await Promise.resolve(); });
+
+        expect(screen.getByTestId('pr-file-visited-one.ts')).toBeInTheDocument();
+        expect(screen.queryByTestId('pr-file-visited-two.ts')).not.toBeInTheDocument();
+    });
+
+    it('marks a newly selected file visited too', async () => {
+        renderWithProgress();
+        await act(async () => { await Promise.resolve(); });
+
+        const twoRow = screen.getAllByTestId('pr-file-row')
+            .find(r => r.getAttribute('data-file-path') === 'two.ts');
+        fireEvent.click(twoRow as HTMLElement);
+
+        expect(screen.getByTestId('pr-file-visited-two.ts')).toBeInTheDocument();
+    });
+
+    it('toggles reviewed for the active file and shows the ✓ mark in the list', async () => {
+        renderWithProgress();
+        await act(async () => { await Promise.resolve(); });
+
+        expect(lastPanelProps.isReviewed).toBe(false);
+
+        act(() => { lastPanelProps.onToggleReviewed(); });
+
+        expect(lastPanelProps.isReviewed).toBe(true);
+        expect(screen.getByTestId('pr-file-reviewed-one.ts')).toBeInTheDocument();
+        // Reviewed supersedes the visited dot.
+        expect(screen.queryByTestId('pr-file-visited-one.ts')).not.toBeInTheDocument();
+
+        act(() => { lastPanelProps.onToggleReviewed(); });
+        expect(lastPanelProps.isReviewed).toBe(false);
+    });
+
+    it('renders reviewed state loaded from the shared server record', async () => {
+        fetchReviewProgressMock.mockResolvedValue({
+            headSha: 'head-sha', reviewedFiles: ['two.ts'], visitedFiles: ['two.ts'], lastSelectedFile: 'two.ts',
+        });
+        renderWithProgress();
+        await act(async () => { await Promise.resolve(); });
+
+        expect(screen.getByTestId('pr-file-reviewed-two.ts')).toBeInTheDocument();
+    });
+
+    it('keeps progress in-memory when no persistence key is supplied', async () => {
+        render(
+            <PrFilesPanel
+                files={parsedFiles}
+                diffText={diffText}
+                workspaceId="ws-1"
+                diffSource={makeSource()}
+                headSha="head-sha"
+            />,
+        );
+        await act(async () => { await Promise.resolve(); });
+
+        expect(fetchReviewProgressMock).not.toHaveBeenCalled();
+        act(() => { lastPanelProps.onToggleReviewed(); });
+        expect(screen.getByTestId('pr-file-reviewed-one.ts')).toBeInTheDocument();
     });
 });

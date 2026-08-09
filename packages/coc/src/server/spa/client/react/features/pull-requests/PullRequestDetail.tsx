@@ -277,6 +277,12 @@ export function PullRequestDetail({ repoId, workspaceId, remoteUrl, prId, onBack
         }),
         [workspaceId, repoId, prId, originId, headSha, diffFilePaths, pr?.title],
     );
+    // Same persistence key the pop-out review window uses, so reviewed/visited
+    // state is shared between the two surfaces rather than duplicated.
+    const reviewPersistence = useMemo(
+        () => ({ originId, workspaceId, repoId: String(repoId), prId: String(prId) }),
+        [originId, workspaceId, repoId, prId],
+    );
     const reviewSummary = useMemo(
         () => pr ? buildPrReviewSummary({
             pr,
@@ -627,6 +633,8 @@ export function PullRequestDetail({ repoId, workspaceId, remoteUrl, prId, onBack
                                 classificationKey={classificationKey}
                                 onPopOut={handlePopOut}
                                 diffSource={prDiffSource}
+                                headSha={headSha}
+                                reviewPersistence={reviewPersistence}
                             />
                         </div>
                     </div>
