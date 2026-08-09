@@ -280,6 +280,25 @@ associated, so the composer keeps no PR chrome otherwise. The stack's first row
 sits flush with the composer card via `rounded-t-lg overflow-hidden`, and each
 chip's bottom border doubles as the divider above the textarea.
 
+Settled PRs fold so the stack cannot out-grow the textarea it sits above. The
+pure `conversation/composerPrChipFold.ts` owns the split:
+`partitionComposerPrChips(items, { activeCap = 3 })` sorts newest-first
+(`sortNewestFirst`) and returns `{ head, folded }` under four rules — only
+`ready` + terminal chips fold (`isFoldableComposerPrChip`, keyed off the shared
+`conversation/prTerminalStatus.ts`, which `PrStatusCard` and `prStatusFreshness`
+also use); `loading`/`error` chips are pinned and never fold; when nothing else
+is expanded the newest settled chip stays expanded so the stack is never
+chip-less; a fold of fewer than two chips renders inline instead (the fold row
+costs a row of its own); and ready open/draft chips fold past `activeCap`.
+`summarizeFoldedPrChips` tallies the hidden chips into the count, a
+`4 merged · 1 closed` breakdown, the PR numbers, and up to `FOLD_DOT_LIMIT` (4)
+state dots that `ComposerPrFoldRow` renders as one compact `py-1` row — so you
+can tell whether anything folded needs attention without expanding it. Fold
+state is local to `ChatComposerPrChips`, defaults to closed, and is not
+persisted (it is derived from PR state, not a user preference). It is orthogonal
+to dismiss: folding hides, dismissing removes for the session, and ✕ still works
+on chips rendered inside an expanded fold.
+
 When the `triggers.enabled` flag is on, each chip also carries CI auto-fix
 controls (`usePrAutoFixTrigger`, gated on `isTriggersEnabled()` read in
 `ChatComposerPrChips`, which threads the conversation `processId` + `workspaceId`

@@ -23,6 +23,16 @@ export { ComposerPrChecksPopover } from './ComposerPrChecksPopover';
 export type { ComposerPrChecksPopoverProps, ComposerPrChecksAutoFix } from './ComposerPrChecksPopover';
 export { ChatComposerPrChips } from './ChatComposerPrChips';
 export type { ChatComposerPrChipsProps } from './ChatComposerPrChips';
+export { ComposerPrFoldRow } from './ComposerPrFoldRow';
+export type { ComposerPrFoldRowProps } from './ComposerPrFoldRow';
+export {
+    partitionComposerPrChips, summarizeFoldedPrChips, isFoldableComposerPrChip, sortNewestFirst,
+    DEFAULT_ACTIVE_CAP, FOLD_DOT_LIMIT,
+} from './composerPrChipFold';
+export type {
+    ComposerPrChipPartition, PartitionComposerPrChipsOptions, FoldedPrChipsSummary, FoldedPrStatusTally,
+} from './composerPrChipFold';
+export { TERMINAL_PR_STATES, isTerminalPrStatus } from './prTerminalStatus';
 export { usePrAutoFixTrigger } from './usePrAutoFixTrigger';
 export type { PrAutoFixTriggerContext, UsePrAutoFixTriggerResult } from './usePrAutoFixTrigger';
 export { buildCiFixPrompt } from './prAutoFixPrompt';

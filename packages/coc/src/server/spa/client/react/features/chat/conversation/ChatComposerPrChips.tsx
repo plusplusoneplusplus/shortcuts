@@ -9,12 +9,23 @@
  * Dismiss is session-scoped (a ✕'d chip stays hidden until the chat reloads); a
  * fresh detection or binding re-surfaces it.
  *
- * The rounded top + clipped corners let the first chip sit flush with the
- * composer card's `rounded-lg` border; each chip's bottom border doubles as the
- * divider above the textarea.
+ * Settled PRs fold into a single {@link ComposerPrFoldRow} so a chat that shipped
+ * five commits does not out-grow the textarea it sits above — see
+ * {@link partitionComposerPrChips} for the rules. Fold state is local, defaults to
+ * closed, and is deliberately not persisted: it is derived from PR state rather
+ * than a user preference, and a merged PR will not un-merge, so recomputing it on
+ * every load is always correct. It is also orthogonal to dismiss — folding hides,
+ * dismissing removes for the session, and dismiss keeps working on chips rendered
+ * inside an expanded fold.
+ *
+ * The rounded top + clipped corners let whichever row lands first (chip or fold
+ * row) sit flush with the composer card's `rounded-lg` border; each row's bottom
+ * border doubles as the divider above the textarea.
  */
 import React, { useCallback, useState } from 'react';
 import { ComposerPrChip } from './ComposerPrChip';
+import { ComposerPrFoldRow } from './ComposerPrFoldRow';
+import { partitionComposerPrChips, summarizeFoldedPrChips } from './composerPrChipFold';
 import { usePrChatStatusItems, type UsePrChatStatusItemsOptions } from './usePrChatStatusItems';
 import { isTriggersEnabled } from '../../../utils/config';
 import type { PrStatusCardItem } from './PrStatusCard';
@@ -27,27 +38,11 @@ export interface ChatComposerPrChipsProps extends UsePrChatStatusItemsOptions {
     processId?: string | null;
 }
 
-/** Stable newest-first ordering: descending `createdAt`, input order otherwise. */
-function sortNewestFirst(items: PrStatusCardItem[]): PrStatusCardItem[] {
-    const toMs = (v: string | number | undefined): number => {
-        if (v == null) return Number.NEGATIVE_INFINITY;
-        if (typeof v === 'number') return v;
-        const t = new Date(v).getTime();
-        return Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t;
-    };
-    return items
-        .map((item, idx) => ({ item, idx }))
-        .sort((a, b) => {
-            const diff = toMs(b.item.createdAt) - toMs(a.item.createdAt);
-            return diff !== 0 ? diff : a.idx - b.idx;
-        })
-        .map(({ item }) => item);
-}
-
 export function ChatComposerPrChips(options: ChatComposerPrChipsProps) {
     const { processId, ...statusOptions } = options;
     const { items, retry, refresh, refreshingKeys } = usePrChatStatusItems(statusOptions);
     const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set());
+    const [foldOpen, setFoldOpen] = useState(false);
 
     const dismiss = useCallback((key: string) => {
         setDismissed(prev => {
@@ -57,8 +52,9 @@ export function ChatComposerPrChips(options: ChatComposerPrChipsProps) {
         });
     }, []);
 
-    const visible = sortNewestFirst(items).filter(item => !dismissed.has(item.key));
-    if (visible.length === 0) return null;
+    const visible = items.filter(item => !dismissed.has(item.key));
+    const { head, folded } = partitionComposerPrChips(visible);
+    if (head.length === 0 && folded.length === 0) return null;
 
     const autoFix = {
         enabled: isTriggersEnabled(),
@@ -66,19 +62,31 @@ export function ChatComposerPrChips(options: ChatComposerPrChipsProps) {
         processId: processId ?? undefined,
     };
 
+    const renderChip = (item: PrStatusCardItem) => (
+        <ComposerPrChip
+            key={item.key}
+            item={item}
+            onDismiss={dismiss}
+            onRetry={retry}
+            onRefresh={refresh}
+            refreshing={refreshingKeys.has(item.key)}
+            autoFix={autoFix}
+        />
+    );
+
     return (
         <div className="overflow-hidden rounded-t-lg" data-testid="composer-pr-chips">
-            {visible.map(item => (
-                <ComposerPrChip
-                    key={item.key}
-                    item={item}
-                    onDismiss={dismiss}
-                    onRetry={retry}
-                    onRefresh={refresh}
-                    refreshing={refreshingKeys.has(item.key)}
-                    autoFix={autoFix}
-                />
-            ))}
+            {head.map(renderChip)}
+            {folded.length > 0 && (
+                <>
+                    <ComposerPrFoldRow
+                        summary={summarizeFoldedPrChips(folded)}
+                        open={foldOpen}
+                        onToggle={() => setFoldOpen(prev => !prev)}
+                    />
+                    {foldOpen && folded.map(renderChip)}
+                </>
+            )}
         </div>
     );
 }
