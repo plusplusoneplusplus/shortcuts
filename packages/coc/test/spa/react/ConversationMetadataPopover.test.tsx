@@ -1030,3 +1030,83 @@ describe('buildRows – reasoning effort', () => {
         expect(effortIdx).toBe(agentIdx + 1);
     });
 });
+
+describe('buildRows – commit chat rows', () => {
+    const FULL_HASH = '5fdf6cd18f978b84fb02b7ac82c740a4d2d7d5e3';
+    const SUBJECT = '[MoE] Single-launch moe_align for tiny batches with many experts (#32395)';
+
+    it('emits a monospace full-hash Commit row and a Commit message row', () => {
+        const rows = buildRows({
+            id: 'p-commit',
+            metadata: { commitChat: { commitHash: FULL_HASH, commitMessage: SUBJECT } },
+        });
+        const commit = rows.find(r => r.label === 'Commit')!;
+        expect(commit.value).toBe(FULL_HASH);
+        expect(commit.mono).toBe(true);
+        // Long hashes wrap instead of overflowing the popover / bottom sheet.
+        expect(commit.breakAll).toBe(true);
+
+        const message = rows.find(r => r.label === 'Commit message')!;
+        expect(message.value).toBe(SUBJECT);
+        expect(message.breakAll).toBeUndefined();
+    });
+
+    it('omits Commit message for a legacy backfill that has only the hash', () => {
+        const rows = buildRows({ id: 'p-commit', metadata: { commitChat: { commitHash: FULL_HASH } } });
+        expect(rows.find(r => r.label === 'Commit')!.value).toBe(FULL_HASH);
+        expect(rows.find(r => r.label === 'Commit message')).toBeUndefined();
+    });
+
+    it('emits no commit rows for an ordinary chat', () => {
+        const rows = buildRows({ id: 'p-plain', metadata: { model: 'gpt-4' } });
+        expect(rows.find(r => r.label === 'Commit')).toBeUndefined();
+        expect(rows.find(r => r.label === 'Commit message')).toBeUndefined();
+    });
+
+    it.each([
+        ['missing hash', { commitMessage: 'orphan message' }],
+        ['blank hash', { commitHash: '   ' }],
+        ['non-string hash', { commitHash: 12345 }],
+        ['array', ['5fdf6cd']],
+        ['string', FULL_HASH],
+    ])('emits no commit rows for malformed metadata (%s)', (_label, commitChat) => {
+        const rows = buildRows({ id: 'p-bad', metadata: { commitChat } });
+        expect(rows.find(r => r.label === 'Commit')).toBeUndefined();
+        expect(rows.find(r => r.label === 'Commit message')).toBeUndefined();
+    });
+
+    it('keeps the full hash and a long message in the compact rows without truncation', () => {
+        const longMessage = 'Refactor '.repeat(60).trim();
+        const rows = buildCompactRows(buildRows({
+            id: 'p-commit',
+            metadata: { commitChat: { commitHash: FULL_HASH, commitMessage: longMessage } },
+        }));
+        const commit = rows.find(r => r.label === 'Commit')!;
+        expect(commit.value).toBe(FULL_HASH);
+        expect(commit.breakAll).toBe(true);
+        expect(rows.find(r => r.label === 'Commit message')!.value).toBe(longMessage);
+    });
+
+    it('does not promote the commit rows into the categorical summary strip', () => {
+        const rows = buildRows({
+            id: 'p-commit',
+            type: 'chat',
+            metadata: { commitChat: { commitHash: FULL_HASH, commitMessage: SUBJECT } },
+        });
+        expect(buildSummaryItems(rows)).not.toContain(FULL_HASH);
+        expect(buildSummaryItems(rows)).not.toContain(SUBJECT);
+    });
+
+    it('renders the commit rows in the open popover', async () => {
+        renderPopover({
+            ...BASE_PROCESS,
+            metadata: { ...BASE_PROCESS.metadata, commitChat: { commitHash: FULL_HASH, commitMessage: SUBJECT } },
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: /conversation metadata/i }));
+        });
+        expect(screen.getByText('Commit')).toBeDefined();
+        expect(screen.getByText(FULL_HASH)).toBeDefined();
+        expect(screen.getByText(SUBJECT)).toBeDefined();
+    });
+});

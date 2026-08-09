@@ -64,6 +64,7 @@ import {
     normalizeChatMode,
     serializeForEachMetadata,
     serializeMapReduceMetadata,
+    serializeCommitChatMetadata,
     serializeRalphMetadata,
     serializeTaskGroupMetadata,
 } from '../tasks/task-types';
@@ -615,6 +616,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 mapReduce: serializeMapReduceMetadata(task.payload),
                 ralph: serializeRalphMetadata(task.payload),
                 taskGroup: serializeTaskGroupMetadata(task.payload),
+                // Denormalized so the conversation keeps naming its own commit
+                // after HEAD moves or the routing binding is archived.
+                commitChat: serializeCommitChatMetadata(task.payload),
                 dream: isDreamRunPayload(task.payload)
                     ? {
                         workspaceId: task.payload.workspaceId,

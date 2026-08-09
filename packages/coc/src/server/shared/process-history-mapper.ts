@@ -8,6 +8,7 @@
 
 import type { AIProcess, QueuedTask } from '@plusplusoneplusplus/forge';
 import { isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
+import { readCommitChatContext } from '../tasks/task-types';
 
 export interface HistorySummary {
     id: string;
@@ -145,17 +146,20 @@ function readObjectMetadata(proc: AIProcess, key: 'ralph' | 'taskGroup'): Record
 }
 
 /**
- * Rebuilds `payload.context` from the denormalized ralph/taskGroup metadata so a
- * retried task can rejoin its Ralph session (see processToTaskDetail). Returns
- * undefined for non-ralph processes so ordinary chat retries carry no context.
+ * Rebuilds `payload.context` from the denormalized ralph/taskGroup/commitChat
+ * metadata so a retried task can rejoin its Ralph session and a retried commit
+ * chat still routes to CommitChatExecutor (see processToTaskDetail). Returns
+ * undefined for plain processes so ordinary chat retries carry no context.
  */
 function buildReconstructedContext(proc: AIProcess): Record<string, unknown> | undefined {
     const ralph = readObjectMetadata(proc, 'ralph');
-    if (!ralph) return undefined;
-    const taskGroup = readObjectMetadata(proc, 'taskGroup');
+    const commitChat = readCommitChatContext(proc.metadata?.commitChat);
+    if (!ralph && !commitChat) return undefined;
+    const taskGroup = ralph ? readObjectMetadata(proc, 'taskGroup') : undefined;
     return {
-        ralph,
+        ...(ralph ? { ralph } : {}),
         ...(taskGroup ? { taskGroup } : {}),
+        ...(commitChat ? { commitChat } : {}),
     };
 }
 

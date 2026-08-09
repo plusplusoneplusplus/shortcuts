@@ -27,7 +27,7 @@ import { saveImagesToTempFiles, isImageDataUrl } from '../core/image-utils';
 import { processMessageAttachments } from '../core/attachment-utils';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import { prependSelectedSkillsDirective } from '../executors/prompt-builder';
-import { getStoppedChatResumeUnavailableMessage, normalizeChatMode } from '../tasks/task-types';
+import { getStoppedChatResumeUnavailableMessage, normalizeChatMode, serializeCommitChatMetadata } from '../tasks/task-types';
 import type { ChatProvider } from '../tasks/task-types';
 import {
     ProcessMessageDeliveryService,
@@ -141,6 +141,9 @@ function queuedTaskToProcess(task: QueuedTask): AIProcess {
             queueTaskId: task.id,
             mode: normalizeChatMode(payload?.mode),
             workspaceId: payload?.workspaceId,
+            // Carried here too so the i menu names the commit while the chat is
+            // still queued, instead of gaining the row only once it starts.
+            commitChat: serializeCommitChatMetadata(task.payload),
         },
     };
 }

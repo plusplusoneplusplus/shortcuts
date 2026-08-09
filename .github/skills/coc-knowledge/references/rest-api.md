@@ -91,6 +91,7 @@ Chat canvas side panel (gated by `canvas.enabled`, default on). Markdown or code
 | GET | `/api/workspaces/:id/git/ops/:jobId` | One git-op job by ID, scoped to the workspace; `404` for an unknown job |
 | GET/POST | `/api/workspaces/:id/commit-chat-bindings` | List or create workspace-scoped commit hash → chat task bindings |
 | GET/DELETE | `/api/workspaces/:id/commit-chat-bindings/:commitHash` | Read or remove one workspace-scoped commit chat binding |
+| POST | `/api/workspaces/:id/commit-chat-bindings/rebind` | Move a binding from `oldHash` to `newHash` after amend/rebase, and update the bound process's `metadata.commitChat.commitHash` (keeping any saved commit message). Resolves bare and `queue_`-prefixed task IDs; if the process update fails the binding is rolled back and an error is returned |
 | POST | `/api/workspaces/:id/commit-chat-bindings/:commitHash/fresh` | Archive the currently bound commit chat process and clear the binding so the same workspace/commit target starts from an empty chat on the next send; stale bindings whose process is already missing are cleared and return `archivedTaskId: null` |
 
 ## Git Worktrees

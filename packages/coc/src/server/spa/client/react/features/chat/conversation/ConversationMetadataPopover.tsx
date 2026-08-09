@@ -5,7 +5,7 @@ import { isQueueProcessId, toTaskId } from '../../../utils/queue-process-id';
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { BottomSheet } from '../../../ui/BottomSheet';
 import { Dialog } from '../../../ui/Dialog';
-import { getRalphContext } from '../../../../../../tasks/task-types';
+import { getRalphContext, readCommitChatContext } from '../../../../../../tasks/task-types';
 import { isChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { ClientTokenUsage } from '../../../types/dashboard';
 
@@ -297,6 +297,14 @@ export function buildRows(process: any, turnsCount?: number): MetaRow[] {
         push('Turns', turnsCount);
     }
     push('File Path', process.dataFilePath, { breakAll: true, mono: true });
+
+    // The commit this conversation was created for — not the checkout's current
+    // HEAD, which may have moved on since. Absent for ordinary chats.
+    const commitChat = readCommitChatContext(process?.metadata?.commitChat);
+    if (commitChat) {
+        push('Commit', commitChat.commitHash, { breakAll: true, mono: true });
+        push('Commit message', commitChat.commitMessage);
+    }
 
     const ralph = getRalphContext(process);
     if (ralph) {

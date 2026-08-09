@@ -356,6 +356,115 @@ describe('Commit-Chat Binding API endpoints', () => {
             });
             expect(res.status).toBe(404);
         });
+
+        it('updates the bound process metadata and keeps the saved message', async () => {
+            store.processes.set('proc-meta', {
+                id: 'proc-meta',
+                type: 'chat',
+                status: 'completed',
+                startTime: new Date(),
+                metadata: {
+                    type: 'chat',
+                    workspaceId: WORKSPACE_ID,
+                    commitChat: { commitHash: 'aaaa1111', commitMessage: 'Original subject' },
+                },
+            } as any);
+            await request(api('commit-chat-bindings'), {
+                method: 'POST',
+                body: JSON.stringify({ commitHash: 'aaaa1111', taskId: 'proc-meta' }),
+            });
+
+            const res = await request(api('commit-chat-bindings/rebind'), {
+                method: 'POST',
+                body: JSON.stringify({ oldHash: 'aaaa1111', newHash: 'bbbb2222' }),
+            });
+            expect(res.status).toBe(200);
+            expect(store.processes.get('proc-meta')!.metadata!.commitChat).toEqual({
+                commitHash: 'bbbb2222',
+                commitMessage: 'Original subject',
+            });
+        });
+
+        it('resolves a queue_-prefixed process for a bare bound task ID', async () => {
+            store.processes.set('queue_proc-q', {
+                id: 'queue_proc-q',
+                type: 'chat',
+                status: 'completed',
+                startTime: new Date(),
+                metadata: { type: 'chat', workspaceId: WORKSPACE_ID, commitChat: { commitHash: 'cccc1111' } },
+            } as any);
+            await request(api('commit-chat-bindings'), {
+                method: 'POST',
+                body: JSON.stringify({ commitHash: 'cccc1111', taskId: 'proc-q' }),
+            });
+
+            const res = await request(api('commit-chat-bindings/rebind'), {
+                method: 'POST',
+                body: JSON.stringify({ oldHash: 'cccc1111', newHash: 'dddd2222' }),
+            });
+            expect(res.status).toBe(200);
+            expect(store.processes.get('queue_proc-q')!.metadata!.commitChat).toEqual({ commitHash: 'dddd2222' });
+        });
+
+        it('rolls the binding back when the process metadata update fails', async () => {
+            store.processes.set('proc-fail', {
+                id: 'proc-fail',
+                type: 'chat',
+                status: 'completed',
+                startTime: new Date(),
+                metadata: { type: 'chat', workspaceId: WORKSPACE_ID, commitChat: { commitHash: 'eeee1111' } },
+            } as any);
+            await request(api('commit-chat-bindings'), {
+                method: 'POST',
+                body: JSON.stringify({ commitHash: 'eeee1111', taskId: 'proc-fail' }),
+            });
+            (store.updateProcess as any).mockRejectedValueOnce(new Error('store offline'));
+
+            const res = await request(api('commit-chat-bindings/rebind'), {
+                method: 'POST',
+                body: JSON.stringify({ oldHash: 'eeee1111', newHash: 'ffff2222' }),
+            });
+            expect(res.status).toBeGreaterThanOrEqual(400);
+
+            // The routing binding and the displayed commit must not disagree.
+            expect((await request(api('commit-chat-bindings/eeee1111'))).status).toBe(200);
+            expect((await request(api('commit-chat-bindings/ffff2222'))).status).toBe(404);
+            expect(store.processes.get('proc-fail')!.metadata!.commitChat).toEqual({ commitHash: 'eeee1111' });
+        });
+    });
+
+    // ========================================================================
+    // POST /api/workspaces/:id/commit-chat-bindings/:hash/fresh
+    // ========================================================================
+
+    describe('POST /commit-chat-bindings/:hash/fresh', () => {
+        it('clears the active binding but keeps the archived chat commit metadata', async () => {
+            store.processes.set('proc-fresh', {
+                id: 'proc-fresh',
+                type: 'chat',
+                status: 'completed',
+                startTime: new Date(),
+                metadata: {
+                    type: 'chat',
+                    workspaceId: WORKSPACE_ID,
+                    commitChat: { commitHash: 'abba1234', commitMessage: 'Keep me' },
+                },
+            } as any);
+            await request(api('commit-chat-bindings'), {
+                method: 'POST',
+                body: JSON.stringify({ commitHash: 'abba1234', taskId: 'proc-fresh' }),
+            });
+
+            const res = await request(api('commit-chat-bindings/abba1234/fresh'), { method: 'POST' });
+            expect(res.status).toBe(200);
+
+            // Binding is gone, but the archived conversation still names its commit.
+            expect((await request(api('commit-chat-bindings/abba1234'))).status).toBe(404);
+            expect(store.processes.get('proc-fresh')!.metadata!.commitChat).toEqual({
+                commitHash: 'abba1234',
+                commitMessage: 'Keep me',
+            });
+        });
     });
 
     // ========================================================================

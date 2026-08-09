@@ -455,6 +455,15 @@ all have their own `references/*.md`.
   -persist under the store write lock) — never read-modify-write `pendingMessages`
   via `updateProcess`, which loses concurrent updates. Buffered delivery must not
   append a conversation turn (it is deferred to `drainPendingMessages`).
+- **A commit chat's commit association** lives in two places on purpose:
+  `commit_chat_bindings` routes the active chat for a hash, and
+  `process.metadata.commitChat = { commitHash, commitMessage? }` is the durable
+  per-conversation record (written by `ProcessLifecycleRunner` via
+  `serializeCommitChatMetadata`, mirrored into the synthesized queued process and
+  `buildMetadataProcess`, rebuilt into `payload.context` by
+  `processToTaskDetail`, and rendered as the popover's Commit rows). Read it only
+  through `readCommitChatContext`. Never derive the commit from `git rev-parse
+  HEAD` or by parsing `fullPrompt`. A rebind must update both stores or roll back.
 - **Process metadata field updates** from dashboard/server callers should use
   `client.processes.patchMetadata(...)` or API `metadataPatch` unless a full
   metadata replacement is intentional; full `metadata` on

@@ -790,6 +790,8 @@ resolved and not pending), not in the `ChatHeaderOverflowMenu`.
 
 `QueuedFollowUps` renders pending messages as compact dashed-border cards with cancel buttons.
 
+For commit chats, `buildRows()` adds a monospace, break-all **Commit** row with the full hash and, when one was persisted, a wrapping **Commit message** row. Both come from the process's `metadata.commitChat` (validated by `readCommitChatContext`), never from `git rev-parse HEAD` or the prompt text, so the row keeps naming the commit the conversation was created for after HEAD moves. `buildMetadataProcess()` falls back to `task.payload.context.commitChat` until process details load. Malformed metadata and ordinary chats produce no rows, and the hash stays out of the categorical summary strip. Because the rows live in the shared popover, they appear in the commit lens, pinned/floating views, pop-outs, the mobile bottom sheet, and Activity detail without extra props.
+
 `ConversationMetadataPopover` keeps long identifiers as separate label/value rows
 for wrapping and log links, while short categorical fields render as a compact
 summary chip strip and related fields collapse into `Time`, `Workspace`,

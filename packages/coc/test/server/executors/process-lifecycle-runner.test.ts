@@ -2164,3 +2164,88 @@ describe('ProcessLifecycleRunner — token usage persistence', () => {
         expect(proc?.conversationTokens).toBe(sampleTokenUsage.conversationTokens);
     });
 });
+
+// ============================================================================
+// metadata.commitChat from context.commitChat
+// ============================================================================
+
+describe('ProcessLifecycleRunner — metadata.commitChat from commit-chat context', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+    let runner: ProcessLifecycleRunner;
+
+    const FULL_HASH = '5fdf6cd18f978b84fb02b7ac82c740a4d2d7d5e3';
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        store = createMockProcessStore();
+        runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn());
+    });
+
+    it('persists the exact full hash and message for a commit chat', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'What does this commit do?',
+                workspaceId: 'ws-abc',
+                context: {
+                    commitChat: {
+                        commitHash: FULL_HASH,
+                        commitMessage: '[MoE] Single-launch moe_align for tiny batches with many experts (#32395)',
+                    },
+                },
+            } as any,
+        });
+
+        await runner.run(task, makeOpts());
+
+        const proc = await store.getProcess(`queue_${task.id}`);
+        expect(proc?.metadata?.commitChat).toEqual({
+            commitHash: FULL_HASH,
+            commitMessage: '[MoE] Single-launch moe_align for tiny batches with many experts (#32395)',
+        });
+    });
+
+    it('persists the hash alone when no commit message was supplied', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Explain',
+                workspaceId: 'ws-abc',
+                context: { commitChat: { commitHash: FULL_HASH } },
+            } as any,
+        });
+
+        await runner.run(task, makeOpts());
+
+        expect((await store.getProcess(`queue_${task.id}`))?.metadata?.commitChat)
+            .toEqual({ commitHash: FULL_HASH });
+    });
+
+    it('omits commitChat for a normal chat', async () => {
+        const task = makeTask();
+        await runner.run(task, makeOpts());
+        expect((await store.getProcess(`queue_${task.id}`))?.metadata?.commitChat).toBeUndefined();
+    });
+
+    it('omits commitChat for non-chat tasks that carry a commit hash elsewhere', async () => {
+        const task = makeTask({
+            type: 'run-script',
+            payload: { kind: 'run-script', script: 'echo hi', context: { commitChat: { commitHash: FULL_HASH } } } as any,
+        });
+        await runner.run(task, makeOpts());
+        expect((await store.getProcess(`queue_${task.id}`))?.metadata?.commitChat).toBeUndefined();
+    });
+
+    it('omits commitChat when the context object has no usable hash', async () => {
+        const task = makeTask({
+            payload: {
+                kind: 'chat',
+                prompt: 'Explain',
+                workspaceId: 'ws-abc',
+                context: { commitChat: { commitMessage: 'no hash here' } },
+            } as any,
+        });
+        await runner.run(task, makeOpts());
+        expect((await store.getProcess(`queue_${task.id}`))?.metadata?.commitChat).toBeUndefined();
+    });
+});
