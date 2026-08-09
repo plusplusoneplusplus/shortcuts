@@ -26,6 +26,10 @@ function Harness() {
                 )}
             </div>
             <button data-testid="outside">outside</button>
+            {/* Stands in for a row-level ContextMenu, which portals to <body>. */}
+            <div data-testid="context-menu">
+                <button data-testid="context-menu-item">Remove from CoC</button>
+            </div>
         </div>
     );
 }
@@ -48,6 +52,13 @@ describe('useDropdownPopover', () => {
         expect(screen.getByTestId('popover')).toBeTruthy();
         fireEvent.mouseDown(screen.getByTestId('outside'));
         expect(screen.queryByTestId('popover')).toBeNull();
+    });
+
+    it('does not close on mousedown inside a portaled row context menu', () => {
+        render(<Harness />);
+        fireEvent.click(screen.getByTestId('trigger'));
+        fireEvent.mouseDown(screen.getByTestId('context-menu-item'));
+        expect(screen.getByTestId('popover')).toBeTruthy();
     });
 
     it('does not close on mousedown inside the popover root', () => {

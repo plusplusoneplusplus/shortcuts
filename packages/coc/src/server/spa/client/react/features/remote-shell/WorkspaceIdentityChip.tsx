@@ -15,12 +15,15 @@ import { AddRepoDialog } from '../../repos/AddRepoDialog';
 import { CloneRepoDialog } from '../../repos/CloneRepoDialog';
 import { getRepoSelectionId, isRepoSelected } from '../../repos/cloneIdentity';
 import { groupKey, groupReposByRemote, type RepoData, type RepoGroup } from '../../repos/repoGrouping';
-import { computeCloneStatusMap, summarizeRemote } from './shellModel';
+import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
+import { ToastContainer, useToast } from '../../ui/Toast';
+import { computeCloneStatusMap, describeRemoveBlock, summarizeRemote } from './shellModel';
 import { RemoteProviderBadge } from './RemoteProviderBadge';
 import { useDropdownPopover } from './useDropdownPopover';
 import { PickerEmpty, PickerRow, PickerSection, RepoPickerPopover } from './RepoPickerPopover';
 import { useRecentRemotes } from './useRecentRemotes';
 import { useShellNavigation } from './useShellNavigation';
+import { useWorkspaceRemoval } from './useWorkspaceRemoval';
 
 export interface WorkspaceIdentityChipProps {
     repo?: RepoData;
@@ -48,6 +51,16 @@ function PlusIcon() {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M12 5v14" />
             <path d="M5 12h14" />
+        </svg>
+    );
+}
+
+function KebabGlyph() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <circle cx="12" cy="5" r="1.6" />
+            <circle cx="12" cy="12" r="1.6" />
+            <circle cx="12" cy="19" r="1.6" />
         </svg>
     );
 }
@@ -80,12 +93,14 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
     const { state: queueState } = useQueue();
     const { fetchRepos, unseenCounts } = useRepos();
     const { selectClone } = useShellNavigation();
+    const { toasts, addToast, removeToast } = useToast();
 
     const [showAll, setShowAll] = useState(false);
     const [query, setQuery] = useState('');
     const [addFolderOpen, setAddFolderOpen] = useState(false);
     const [addRepoOpen, setAddRepoOpen] = useState(false);
     const [cloneOpen, setCloneOpen] = useState(false);
+    const [rowMenu, setRowMenu] = useState<{ repo: RepoData; x: number; y: number } | null>(null);
     const rootRef = useRef<HTMLDivElement>(null);
     const triggerRef = useRef<HTMLButtonElement>(null);
     const lastCloneByRemote = useRef<Record<string, string>>({});
@@ -124,6 +139,19 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
         setQuery('');
     }, [repos, recordUse, selectClone, close]);
 
+    const { requestRemove, removeDialog } = useWorkspaceRemoval({ repos, selectedRepo: repo, addToast });
+
+    const buildRowMenuItems = useCallback((rowRepo: RepoData): ContextMenuItem[] => {
+        const block = describeRemoveBlock(rowRepo, cloneStatus[String(rowRepo.workspace.id)]);
+        return [{
+            label: 'Remove from CoC',
+            icon: 'X',
+            disabled: !!block,
+            title: block ?? undefined,
+            onClick: () => { setRowMenu(null); close(); requestRemove(rowRepo); },
+        }];
+    }, [cloneStatus, close, requestRemove]);
+
     const filteredGroups = query.trim()
         ? groups.filter(group => groupMatchesSearch(group, query))
         : [...recentGroups, ...(showAll ? remainingGroups : [])];
@@ -137,6 +165,10 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
         const key = groupKey(group);
         const summary = summarizeRemote(group, cloneStatus, unseenCounts);
         const isActive = key === activeGroupKey;
+        // Removal is per clone, never per group: a group row only offers Remove
+        // when it *is* a single clone. Multi-clone groups drill into the clone
+        // list (the clone popover), which offers Remove per clone. (AC-01)
+        const soleClone = group.repos.length === 1 ? group.repos[0] : null;
         return (
             <PickerRow
                 key={key}
@@ -147,6 +179,22 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
                 name={summary.name}
                 sublabel={group.label}
                 onClick={() => chooseGroup(group)}
+                rowMenu={soleClone ? (
+                    <button
+                        data-testid="remote-dropdown-row-menu"
+                        data-remote-key={key}
+                        aria-label={`More actions for ${summary.name}`}
+                        title="More actions"
+                        onClick={e => {
+                            e.stopPropagation();
+                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                            setRowMenu({ repo: soleClone, x: rect.left, y: rect.bottom });
+                        }}
+                        className="flex-shrink-0 inline-flex items-center justify-center w-6 h-6 mr-1 rounded text-[#848484] dark:text-[#777] hover:bg-black/[0.06] dark:hover:bg-white/[0.10]"
+                    >
+                        <KebabGlyph />
+                    </button>
+                ) : undefined}
                 badges={
                     <>
                         {summary.cloneCount > 1 && (
@@ -316,6 +364,16 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
                 onClose={() => setCloneOpen(false)}
                 onSuccess={() => { setCloneOpen(false); fetchRepos(); }}
             />
+
+            {rowMenu && (
+                <ContextMenu
+                    position={{ x: rowMenu.x, y: rowMenu.y }}
+                    items={buildRowMenuItems(rowMenu.repo)}
+                    onClose={() => setRowMenu(null)}
+                />
+            )}
+            {removeDialog}
+            <ToastContainer toasts={toasts} removeToast={removeToast} />
         </div>
     );
 }

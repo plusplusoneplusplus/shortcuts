@@ -4,7 +4,7 @@
  * @vitest-environment jsdom
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const mockSelectClone = vi.fn();
 const mockSwitchSubTab = vi.fn();
@@ -42,8 +42,9 @@ vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useGitInfo',
 vi.mock('../../../../src/server/spa/client/react/features/remote-shell/useShellNavigation', () => ({
     useShellNavigation: () => ({ selectClone: mockSelectClone, switchSubTab: mockSwitchSubTab }),
 }));
+const mockRemoveWorkspace = vi.fn().mockResolvedValue(undefined);
 vi.mock('../../../../src/server/spa/client/react/repos/repositoryService', () => ({
-    removeWorkspace: vi.fn().mockResolvedValue(undefined),
+    removeWorkspace: (...args: unknown[]) => mockRemoveWorkspace(...args),
 }));
 
 import { WorkspaceTabsCluster } from '../../../../src/server/spa/client/react/features/remote-shell/WorkspaceTabsCluster';
@@ -58,6 +59,7 @@ beforeEach(() => {
     cleanup();
     mockSelectClone.mockReset();
     mockSwitchSubTab.mockReset();
+    mockRemoveWorkspace.mockReset().mockResolvedValue(undefined);
     mockAppState = { activeTab: 'repos', activeRepoSubTab: 'chats' };
     mockQueueState = { repoQueueMap: {} };
     mockQueueStats = { running: 0, queued: 0 };
@@ -188,5 +190,25 @@ describe('WorkspaceTabsCluster remove menu (AC-02)', () => {
         const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
         const item = openRemoveItem(repos, repos[0]);
         expect(item.hasAttribute('disabled')).toBe(false);
+    });
+
+    it('falls back to a sibling clone when the removed repo is the selected one', async () => {
+        const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
+        const item = openRemoveItem(repos, repos[0]);
+        fireEvent.click(item);
+        fireEvent.click(screen.getByTestId('clone-remove-confirm-btn'));
+
+        await waitFor(() => expect(mockRemoveWorkspace).toHaveBeenCalledWith('a'));
+        await waitFor(() => expect(mockSelectClone).toHaveBeenCalledWith('b'));
+    });
+
+    it('leaves selection alone when removing a non-selected clone', async () => {
+        const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
+        const item = openRemoveItem(repos, repos[1]);
+        fireEvent.click(item);
+        fireEvent.click(screen.getByTestId('clone-remove-confirm-btn'));
+
+        await waitFor(() => expect(mockRemoveWorkspace).toHaveBeenCalledWith('b'));
+        expect(mockSelectClone).not.toHaveBeenCalled();
     });
 });

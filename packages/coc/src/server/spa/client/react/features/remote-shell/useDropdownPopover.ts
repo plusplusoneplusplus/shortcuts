@@ -36,6 +36,11 @@ export function useDropdownPopover(
     useEffect(() => {
         if (!open) return;
         const onDown = (e: MouseEvent) => {
+            // A row-level context menu is portaled to <body>, so it is "outside"
+            // the popover root even though it belongs to it. Clicking it must not
+            // close the dropdown underneath.
+            const target = e.target as Element | null;
+            if (target?.closest?.('[data-testid="context-menu"]')) return;
             if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
         };
         const onKey = (e: KeyboardEvent) => {
