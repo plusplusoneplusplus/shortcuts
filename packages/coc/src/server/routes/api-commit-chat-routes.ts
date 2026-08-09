@@ -10,10 +10,44 @@ import { sendJSON } from '../core/api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { isQueueProcessId, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import { CommitChatBindingStore } from '../processes/commit-chat-binding-store';
 import { startFreshLensChat } from '../processes/fresh-lens-chat-binding';
+import { readCommitChatContext } from '../tasks/task-types';
 
 const COMMIT_HASH_RE = /^[a-f0-9]{4,40}$/;
+
+/**
+ * Point the bound process's stored commit association at `newHash` after an
+ * amend/rebase rebind, keeping any saved commit message. The binding stores a
+ * task ID, which may be persisted either bare or with the `queue_` prefix, so
+ * both forms are tried. A binding whose process no longer exists is left alone:
+ * there is no displayed association to fall out of sync.
+ */
+async function syncBoundProcessCommitHash(
+    store: ProcessStore,
+    workspaceId: string,
+    taskId: string,
+    newHash: string,
+): Promise<void> {
+    const bareId = isQueueProcessId(taskId) ? toTaskId(taskId) : taskId;
+    const proc = await store.getProcess(bareId, workspaceId)
+        ?? await store.getProcess(toQueueProcessId(bareId), workspaceId);
+    if (!proc) return;
+
+    const existing = readCommitChatContext(proc.metadata?.commitChat);
+    await store.updateProcess(proc.id, {
+        metadata: {
+            ...(proc.metadata ?? {}),
+            type: proc.metadata?.type ?? proc.type,
+            commitChat: {
+                commitHash: newHash,
+                ...(existing?.commitMessage ? { commitMessage: existing.commitMessage } : {}),
+            },
+        },
+    });
+}
 
 export function registerCommitChatRoutes(ctx: ApiRouteContext): void {
     const { routes, store, db } = ctx;
@@ -68,6 +102,14 @@ export function registerCommitChatRoutes(ctx: ApiRouteContext): void {
             }
 
             const binding = bindingStore.get(ws.id, newHash)!;
+            try {
+                await syncBoundProcessCommitHash(store, ws.id, binding.taskId, newHash);
+            } catch (error) {
+                // Roll the binding back so routing and the displayed commit can
+                // never disagree about which commit this chat belongs to.
+                bindingStore.rebind(ws.id, newHash, oldHash);
+                return handleAPIError(res, error);
+            }
             sendJSON(res, 200, { oldHash, newHash, taskId: binding.taskId });
         },
     });

@@ -166,6 +166,35 @@ export function resolveInstructionMode(mode: LegacyChatMode): InstructionMode {
 }
 
 // ============================================================================
+// Commit Chat
+// ============================================================================
+
+/**
+ * The commit a conversation is anchored to. Carried on `ChatPayload.context`
+ * when the chat is created and denormalized onto `AIProcess.metadata.commitChat`
+ * so the association survives HEAD moves, restarts, and archived bindings.
+ */
+export interface CommitChatContext {
+    commitHash: string;
+    commitMessage?: string;
+}
+
+/**
+ * Validate an arbitrary value as commit-chat context. Returns a fresh object
+ * carrying only the two known fields, or undefined when the hash is missing or
+ * not a non-empty string — malformed values never reach the popover.
+ */
+export function readCommitChatContext(value: unknown): CommitChatContext | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    const candidate = value as Record<string, unknown>;
+    const commitHash = typeof candidate.commitHash === 'string' ? candidate.commitHash.trim() : '';
+    if (!commitHash) return undefined;
+    const rawMessage = candidate.commitMessage;
+    const commitMessage = typeof rawMessage === 'string' && rawMessage.trim() ? rawMessage : undefined;
+    return commitMessage === undefined ? { commitHash } : { commitHash, commitMessage };
+}
+
+// ============================================================================
 // Chat Context
 // ============================================================================
 
@@ -212,10 +241,7 @@ export interface ChatContext {
         newRef: string;
     };
     /** Commit-chat preset (side-by-side chat anchored to a specific commit). */
-    commitChat?: {
-        commitHash: string;
-        commitMessage?: string;
-    };
+    commitChat?: CommitChatContext;
     /** Pull-request-chat preset (side-by-side chat anchored to a specific PR). */
     pullRequestChat?: {
         /** Stable per-provider PR identifier (numeric for GitHub/ADO). */
@@ -861,6 +887,17 @@ export function serializeMapReduceMetadata(payload: unknown): MapReduceContext |
     }
     const mapReduce = (payload as ChatPayload).context?.mapReduce;
     return mapReduce ?? undefined;
+}
+
+/**
+ * Computes `AIProcess.metadata.commitChat` from a queued task payload. Returns
+ * undefined for non-chat payloads and for chat payloads without commit context,
+ * so normal/PR/Work Item chats, workflows, and scripts store nothing.
+ */
+export function serializeCommitChatMetadata(payload: unknown): CommitChatContext | undefined {
+    if (!payload || typeof payload !== 'object') return undefined;
+    if (!isChatPayload(payload as Record<string, unknown>)) return undefined;
+    return readCommitChatContext((payload as ChatPayload).context?.commitChat);
 }
 
 export function serializeTaskGroupMetadata(payload: unknown): TaskGroupRef | undefined {

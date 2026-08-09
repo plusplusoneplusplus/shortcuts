@@ -23,6 +23,10 @@ export function buildMetadataProcess(task: any, processDetails: any, processId: 
             reasoningEffort,
             mode: (task as any)?.payload?.mode,
             provider,
+            // Commit association from the enqueue payload, so the i menu names
+            // the commit before the process record exists. Real process
+            // metadata below wins once it arrives.
+            commitChat: task.payload?.context?.commitChat,
             dream: task.payload?.kind === 'dream-run'
                 ? {
                     workspaceId: task.payload?.workspaceId,

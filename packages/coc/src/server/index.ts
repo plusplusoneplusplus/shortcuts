@@ -57,6 +57,7 @@ import { NotesGitTimerManager } from './notes/git/notes-git-timer-manager';
 import { migrateWorkspaceRegistryIfNeeded } from './storage/startup-workspace-migration';
 import { migrateProcessHistoryIfNeeded } from './storage/startup-process-migration';
 import { migrateWorkspaceIdsToV2IfNeeded } from './storage/startup-workspace-id-migration';
+import { backfillCommitChatMetadataIfNeeded } from './storage/startup-commit-chat-metadata-backfill';
 import { DevTunnelConnector } from './servers/devtunnel-connector';
 import { SshConnector } from './servers/ssh-connector';
 import { RemoteServerStore } from './servers/remote-server-store';
@@ -525,6 +526,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // (ws-v2-) scheme so colliding clones on different machines stay distinct.
     // Uses the RAW OS hostname as the machine identity.
     await migrateWorkspaceIdsToV2IfNeeded(dataDir, store, os.hostname());
+
+    // Give commit chats bound before metadata.commitChat existed their commit
+    // association back, so the i menu can name the commit they belong to.
+    backfillCommitChatMetadataIfNeeded(store);
 
     // Auto-update stale globally-installed bundled skills (non-blocking on errors)
     if (resolvedConfig.skills.autoUpdate) {

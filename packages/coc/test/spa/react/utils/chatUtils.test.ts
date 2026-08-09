@@ -60,3 +60,31 @@ describe('buildMetadataProcess', () => {
         expect(result.id).toBe('t1');
     });
 });
+
+describe('buildMetadataProcess — commit chat association', () => {
+    const FULL_HASH = '5fdf6cd18f978b84fb02b7ac82c740a4d2d7d5e3';
+
+    it('exposes the task payload commit context before process details load', () => {
+        const task = {
+            id: 'task-commit',
+            payload: { context: { commitChat: { commitHash: FULL_HASH, commitMessage: 'Fix the thing' } } },
+        };
+        const result = buildMetadataProcess(task, null, null);
+        expect(result.metadata.commitChat).toEqual({ commitHash: FULL_HASH, commitMessage: 'Fix the thing' });
+    });
+
+    it('lets persisted process metadata win once it arrives', () => {
+        const task = {
+            id: 'task-commit',
+            payload: { context: { commitChat: { commitHash: FULL_HASH } } },
+        };
+        const details = { metadata: { commitChat: { commitHash: 'bbbb2222', commitMessage: 'Rebased' } } };
+        const result = buildMetadataProcess(task, details, null);
+        expect(result.metadata.commitChat).toEqual({ commitHash: 'bbbb2222', commitMessage: 'Rebased' });
+    });
+
+    it('leaves commitChat undefined for an ordinary chat', () => {
+        const result = buildMetadataProcess({ id: 't1', payload: { prompt: 'hi' } }, null, null);
+        expect(result.metadata.commitChat).toBeUndefined();
+    });
+});

@@ -203,3 +203,20 @@ describe('SqliteProcessStore.forkProcess', () => {
         expect(forked.title).toBe('[Fork] my prompt');
     });
 });
+
+describe('SqliteProcessStore.forkProcess — commit-chat association', () => {
+    it('preserves metadata.commitChat on the fork', async () => {
+        const commitChat = {
+            commitHash: '5fdf6cd18f978b84fb02b7ac82c740a4d2d7d5e3',
+            commitMessage: '[MoE] Single-launch moe_align',
+        };
+        await store.addProcess(makeProcess('src-commit', {
+            metadata: { type: 'chat', workspaceId: 'ws-test', commitChat },
+        }));
+
+        const forked = await store.forkProcess('src-commit', 'fork-commit', 'sdk-session-fork');
+
+        expect(forked.metadata?.commitChat).toEqual(commitChat);
+        expect((await store.getProcess('fork-commit'))?.metadata?.commitChat).toEqual(commitChat);
+    });
+});

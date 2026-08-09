@@ -14,6 +14,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { processToHistorySummary, processToQueuedTask, processToTaskDetail } from '../../src/server/shared/process-history-mapper';
+import { hasCommitChatContext } from '../../src/server/tasks/task-types';
 import { createExecutionServer } from '../../src/server/index';
 import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import type { AIProcess } from '@plusplusoneplusplus/forge';
@@ -446,6 +447,40 @@ describe('processToTaskDetail', () => {
     it('should not add a context object for non-ralph processes', () => {
         const task = processToTaskDetail(baseProcess);
         expect((task.payload as any).context).toBeUndefined();
+    });
+
+    it('should reconstruct commit-chat context so a restart-time retry stays a commit chat', () => {
+        const proc: AIProcess = {
+            ...baseProcess,
+            type: 'chat',
+            status: 'failed' as const,
+            metadata: {
+                type: 'chat',
+                workspaceId: 'ws-detail',
+                commitChat: {
+                    commitHash: '5fdf6cd18f978b84fb02b7ac82c740a4d2d7d5e3',
+                    commitMessage: '[MoE] Single-launch moe_align',
+                },
+            },
+        } as AIProcess;
+
+        const task = processToTaskDetail(proc);
+        const payload = task.payload as any;
+        expect(payload.context?.commitChat).toEqual({
+            commitHash: '5fdf6cd18f978b84fb02b7ac82c740a4d2d7d5e3',
+            commitMessage: '[MoE] Single-launch moe_align',
+        });
+        // The retry re-enqueues this payload, where validateAndParseTask stamps
+        // kind='chat'; that is what routes it back to CommitChatExecutor.
+        expect(hasCommitChatContext({ ...payload, kind: 'chat' })).toBe(true);
+    });
+
+    it('should not reconstruct commit context from malformed metadata', () => {
+        const proc: AIProcess = {
+            ...baseProcess,
+            metadata: { type: 'chat', workspaceId: 'ws-detail', commitChat: { commitMessage: 'no hash' } },
+        } as AIProcess;
+        expect((processToTaskDetail(proc).payload as any).context).toBeUndefined();
     });
 });
 
