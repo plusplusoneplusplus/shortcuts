@@ -1152,6 +1152,13 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         try {
             const data = await client.processes.get(pid);
             setProcessDetails(data?.process || null);
+            // Re-seed the context-window meter from the refreshed record. This is
+            // the deterministic delivery channel for a post-`/compact` usage
+            // refresh: SSE only streams while the task is running, but the send
+            // path always refreshes here on settle. Idempotent elsewhere, and
+            // each setter is type-guarded so absent fields never clobber live
+            // SSE values.
+            seedSessionTokensFromProcess(data?.process);
             const refreshedTurns = getConversationTurns(data);
             // Preserve client-only costTimeMs across server refresh
             setTurnsAndRef(prev => {
@@ -1176,7 +1183,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                 ...(Array.isArray(m.images) && m.images.length > 0 ? { images: m.images } : {}),
             })));
         } catch { /* keep current turns */ }
-    }, [client, setTurnsAndRef]);
+    }, [client, setTurnsAndRef, seedSessionTokensFromProcess]);
 
     // When a task transitions out of `queued` (via WebSocket or polling), force
     // a one-shot conversation refresh. Without this hook, a fast `queued →

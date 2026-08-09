@@ -25,6 +25,7 @@ import {
     SDKAvailabilityResult,
     approveAllPermissions,
     denyAllPermissions,
+    type TokenUsage,
 } from './types';
 import { ModelInfo } from './model-info';
 import { fetchModelsFromClient } from './model-registry';
@@ -76,6 +77,34 @@ export interface IAccountQuotaSnapshot {
 
 export interface IAccountQuotaResult {
     quotaSnapshots: Record<string, IAccountQuotaSnapshot>;
+}
+
+/**
+ * Map the `@experimental` `HistoryCompactContextWindow` off a
+ * `HistoryCompactResult` onto {@link CompactResult.contextUsage}. The provider's
+ * field names line up one-for-one with the five context fields CoC persists, so
+ * this is a straight copy of whichever ones the reply actually carries.
+ *
+ * Returns `undefined` when the field is absent (older SDK builds) or carries no
+ * usable numbers, which routes the caller onto the subtraction fallback.
+ */
+function mapCopilotCompactContextWindow(contextWindow: unknown): Partial<TokenUsage> | undefined {
+    if (!contextWindow || typeof contextWindow !== 'object') return undefined;
+    const cw = contextWindow as Record<string, unknown>;
+    const num = (value: unknown): number | undefined =>
+        typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+    const usage: Partial<TokenUsage> = {};
+    const tokenLimit = num(cw.tokenLimit);
+    const currentTokens = num(cw.currentTokens);
+    const systemTokens = num(cw.systemTokens);
+    const toolDefinitionsTokens = num(cw.toolDefinitionsTokens);
+    const conversationTokens = num(cw.conversationTokens);
+    if (tokenLimit != null) usage.tokenLimit = tokenLimit;
+    if (currentTokens != null) usage.currentTokens = currentTokens;
+    if (systemTokens != null) usage.systemTokens = systemTokens;
+    if (toolDefinitionsTokens != null) usage.toolDefinitionsTokens = toolDefinitionsTokens;
+    if (conversationTokens != null) usage.conversationTokens = conversationTokens;
+    return Object.keys(usage).length > 0 ? usage : undefined;
 }
 
 export class CopilotSDKService implements ISDKService {
@@ -282,11 +311,13 @@ export class CopilotSDKService implements ISDKService {
     private async runHistoryCompact(session: unknown, customInstructions?: string): Promise<CompactResult> {
         const request = customInstructions ? { customInstructions } : {};
         const result = await (session as any).rpc.history.compact(request);
+        const contextUsage = mapCopilotCompactContextWindow(result?.contextWindow);
         return {
             success: result?.success ?? false,
             tokensRemoved: result?.tokensRemoved ?? 0,
             messagesRemoved: result?.messagesRemoved ?? 0,
             summaryContent: result?.summaryContent,
+            ...(contextUsage ? { contextUsage } : {}),
         };
     }
 

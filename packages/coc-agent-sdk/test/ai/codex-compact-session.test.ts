@@ -126,7 +126,13 @@ describe('CodexSDKService.compactSession — app-server stdio RPC', () => {
         child.writeStdoutLine({ method: 'thread/compacted', params: { threadId: THREAD_ID, turnId: 't1' } });
 
         const result = await promise;
-        expect(result).toEqual({ success: true, tokensRemoved: 700, messagesRemoved: 0 });
+        expect(result).toEqual({
+            success: true,
+            tokensRemoved: 700,
+            messagesRemoved: 0,
+            // The last observed total is the post-compaction usage snapshot.
+            contextUsage: { currentTokens: 300 },
+        });
 
         const messages = child.sentMessages();
         for (const msg of messages) expect(msg.jsonrpc).toBe('2.0');
@@ -173,7 +179,12 @@ describe('CodexSDKService.compactSession — app-server stdio RPC', () => {
         child.writeStdoutLine({ method: 'item/completed', params: { threadId: THREAD_ID, item: { type: 'context_compaction' } } });
 
         const result = await promise;
-        expect(result).toEqual({ success: true, tokensRemoved: 600, messagesRemoved: 0 });
+        expect(result).toEqual({
+            success: true,
+            tokensRemoved: 600,
+            messagesRemoved: 0,
+            contextUsage: { currentTokens: 200 },
+        });
     });
 
     // `settleSuccess` keeps both the first and the LAST observed total
@@ -203,10 +214,15 @@ describe('CodexSDKService.compactSession — app-server stdio RPC', () => {
         expect(result.tokensRemoved).toBe(8_600);
         // Frames for other threads are ignored entirely, so the totals above are
         // the only ones considered.
-        expect(result).toEqual({ success: true, tokensRemoved: 8_600, messagesRemoved: 0 });
-        // GAP the plan closes: the post-compaction total (3_400) is computed and
-        // discarded — nothing usage-shaped reaches the caller today.
-        expect('contextUsage' in result).toBe(false);
+        expect(result).toEqual({
+            success: true,
+            tokensRemoved: 8_600,
+            messagesRemoved: 0,
+            // The last frame's total — not an intermediate one — is surfaced as
+            // the post-compaction snapshot the compact route persists. Codex has
+            // no per-segment breakdown, so only the total travels.
+            contextUsage: { currentTokens: 3_400 },
+        });
     });
 
     it('ignores tokenUsage frames belonging to another thread', async () => {

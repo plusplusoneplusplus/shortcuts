@@ -3625,6 +3625,8 @@ function makeCompactQuery(config: {
     supportedCommandsError?: Error;
     postCompactSummary?: string;
     capture?: CompactCapture;
+    /** When set, the handle exposes `getContextUsage()` returning this reply. */
+    contextUsage?: object;
 }) {
     return (queryOptions: { prompt: unknown; options?: { hooks?: any; resume?: string } }) => {
         if (config.capture) config.capture.resume = queryOptions.options?.resume;
@@ -3661,6 +3663,9 @@ function makeCompactQuery(config: {
             accountInfo: async () => ({}),
             return: async (value?: unknown) => ({ done: true as const, value }),
         };
+        if (config.contextUsage) {
+            handle.getContextUsage = async () => config.contextUsage;
+        }
         if (config.supportedCommandsError) {
             handle.supportedCommands = async () => { throw config.supportedCommandsError; };
         } else if (!config.supportedCommandsMissing) {
@@ -3724,6 +3729,9 @@ describe('ClaudeSDKService.compactSession (native /compact)', () => {
             tokensRemoved: 20603, // pre - post
             messagesRemoved: 0, // best-effort fallback (not derivable from resume stream)
             summaryContent: 'A concise summary of the conversation so far.',
+            // No getContextUsage on this handle → the boundary's post_tokens is
+            // the post-compaction total.
+            contextUsage: { currentTokens: 2429 },
         });
     });
 
@@ -3901,8 +3909,65 @@ describe('ClaudeSDKService.compactSession (native /compact)', () => {
         // The gate was still open when the boundary was read, and closes only
         // once — after the stream loop.
         expect(log).toEqual(['boundary-yielded:gateClosed=false', 'gate-closed']);
-        // Today nothing probes: the mock's getContextUsage is never called.
-        expect(probe).not.toHaveBeenCalled();
+        // The probe is issued inside that live window: this mock throws
+        // "Query closed before response received" if it runs after teardown, so
+        // a usable snapshot proves the ordering.
+        expect(probe).toHaveBeenCalledTimes(1);
+        expect(result.contextUsage).toEqual({ currentTokens: 2429, tokenLimit: 200_000 });
+    });
+
+    // ── Post-compaction usage snapshot (probe + fallback) ──
+
+    it('returns the full getContextUsage breakdown as contextUsage when the handle exposes one', async () => {
+        queryFn.mockImplementation(
+            makeCompactQuery({
+                messages: compactSuccessMessages(23032, 2429),
+                postCompactSummary: 'summary',
+                contextUsage: {
+                    totalTokens: 2500,
+                    maxTokens: 200_000,
+                    systemPromptSections: [{ tokens: 900 }, { tokens: 100 }],
+                    systemTools: [{ tokens: 400 }],
+                    mcpTools: [{ tokens: 100 }],
+                    messageBreakdown: { userMessageTokens: 600, assistantMessageTokens: 400 },
+                },
+            }),
+        );
+
+        const result = await svc.compactSession('session-probe');
+
+        // The probe wins over the boundary's post_tokens (2429) because it is a
+        // real read of the rewritten transcript, and it carries the segments the
+        // boundary cannot.
+        expect(result.contextUsage).toEqual({
+            tokenLimit: 200_000,
+            currentTokens: 2500,
+            systemTokens: 1000,
+            toolDefinitionsTokens: 500,
+            conversationTokens: 1000,
+        });
+    });
+
+    it('falls back to the boundary post_tokens when the handle exposes no getContextUsage', async () => {
+        queryFn.mockImplementation(
+            makeCompactQuery({ messages: compactSuccessMessages(23032, 2429), postCompactSummary: 's' }),
+        );
+
+        const result = await svc.compactSession('session-fallback');
+
+        expect(result.contextUsage).toEqual({ currentTokens: 2429 });
+    });
+
+    it('omits contextUsage entirely when the probe is absent and post_tokens is 0', async () => {
+        // Nothing measured post-compaction: a 0 total here means "unknown", not
+        // "empty context", so no snapshot travels and the route subtracts.
+        queryFn.mockImplementation(
+            makeCompactQuery({ messages: compactSuccessMessages(23032, 0), postCompactSummary: 's' }),
+        );
+
+        const result = await svc.compactSession('session-zero');
+
+        expect(result.success).toBe(true);
         expect('contextUsage' in result).toBe(false);
     });
 

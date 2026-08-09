@@ -422,69 +422,197 @@ describe('POST /api/processes/:id/compact', () => {
         });
     });
 
-    // ── Characterization: post-compaction context usage is NOT refreshed ──
-    // Today the success branch (api-process-routes.ts:700-731) writes only the
-    // compaction lifecycle metadata and appends the display-only result turn. It
-    // never touches the stored context-window fields and never emits a
-    // 'token-usage' process event, so the SPA meter stays frozen at the
-    // pre-compaction number until the next turn ends. These two tests pin that
-    // behavior; a change here should be a deliberate one.
-    it('leaves the stored context-window fields untouched after a successful compaction', async () => {
+    // ── Post-compaction context usage IS refreshed ──
+    // Without this the meter stays frozen at the pre-compaction number until the
+    // next turn ends, contradicting the "freed ~N tokens" result turn the route
+    // appends in the same breath.
+
+    /** Seed a compactable process carrying a full pre-compaction breakdown. */
+    async function addUsageProcess(id: string, usage: Record<string, number> = {}) {
         await store.addProcess({
-            id: 'proc-usage-frozen',
+            id,
             type: 'chat',
             status: 'completed',
             startTime: new Date(),
             promptPreview: 'hello',
-            sdkSessionId: 'sdk-usage-frozen',
+            sdkSessionId: `sdk-${id}`,
             metadata: { type: 'chat', provider: 'copilot', workspaceId: 'ws-test' },
             tokenLimit: 200_000,
             currentTokens: 120_000,
             systemTokens: 12_000,
             toolDefinitionsTokens: 24_000,
             conversationTokens: 84_000,
+            ...usage,
         } as any);
+    }
 
-        // A provider result that carries a usage snapshot is still ignored: the
-        // route reads only messagesRemoved / tokensRemoved off the CompactResult.
+    it('persists a provider-supplied usage snapshot verbatim', async () => {
+        await addUsageProcess('proc-usage-snapshot');
+        mockCompactSession.mockResolvedValue({
+            success: true,
+            tokensRemoved: 20_603,
+            messagesRemoved: 7,
+            contextUsage: {
+                tokenLimit: 200_000,
+                currentTokens: 99_397,
+                systemTokens: 12_500,
+                toolDefinitionsTokens: 24_100,
+                conversationTokens: 62_797,
+            },
+        });
+
+        const res = await request(baseUrl, '/api/processes/proc-usage-snapshot/compact', {
+            method: 'POST',
+            body: '{}',
+        });
+        expect(res.status).toBe(200);
+
+        const after = store.processes.get('proc-usage-snapshot') as any;
+        expect(after.tokenLimit).toBe(200_000);
+        expect(after.currentTokens).toBe(99_397);
+        expect(after.systemTokens).toBe(12_500);
+        expect(after.toolDefinitionsTokens).toBe(24_100);
+        expect(after.conversationTokens).toBe(62_797);
+        // The compaction metadata is written by the same update, not clobbered.
+        expect(after.metadata.compaction).toMatchObject({ state: 'completed', tokensRemoved: 20_603 });
+    });
+
+    it('applies the subtraction rule to the total and the conversation segment only', async () => {
+        await addUsageProcess('proc-usage-derived');
+        // No snapshot: compaction summarizes conversation history and leaves the
+        // system prompt and tool definitions alone, so the whole reduction is
+        // charged to the conversation segment.
+        mockCompactSession.mockResolvedValue({ success: true, tokensRemoved: 20_603, messagesRemoved: 7 });
+
+        const res = await request(baseUrl, '/api/processes/proc-usage-derived/compact', {
+            method: 'POST',
+            body: '{}',
+        });
+        expect(res.status).toBe(200);
+
+        const after = store.processes.get('proc-usage-derived') as any;
+        expect(after.currentTokens).toBe(120_000 - 20_603);
+        expect(after.conversationTokens).toBe(84_000 - 20_603);
+        expect(after.systemTokens).toBe(12_000);
+        expect(after.toolDefinitionsTokens).toBe(24_000);
+        expect(after.tokenLimit).toBe(200_000);
+    });
+
+    it('derives the fields a partial snapshot omits (codex: total only)', async () => {
+        await addUsageProcess('proc-usage-partial');
+        mockCompactSession.mockResolvedValue({
+            success: true,
+            tokensRemoved: 20_603,
+            messagesRemoved: 0,
+            contextUsage: { currentTokens: 99_000 },
+        });
+
+        const res = await request(baseUrl, '/api/processes/proc-usage-partial/compact', {
+            method: 'POST',
+            body: '{}',
+        });
+        expect(res.status).toBe(200);
+
+        const after = store.processes.get('proc-usage-partial') as any;
+        // Snapshot wins for the total; the conversation segment is subtracted.
+        expect(after.currentTokens).toBe(99_000);
+        expect(after.conversationTokens).toBe(84_000 - 20_603);
+        expect(after.systemTokens).toBe(12_000);
+    });
+
+    it('clamps the subtraction at 0 rather than writing a negative usage', async () => {
+        await addUsageProcess('proc-usage-clamp', { currentTokens: 5_000, conversationTokens: 1_000 });
+        mockCompactSession.mockResolvedValue({ success: true, tokensRemoved: 20_603, messagesRemoved: 7 });
+
+        const res = await request(baseUrl, '/api/processes/proc-usage-clamp/compact', {
+            method: 'POST',
+            body: '{}',
+        });
+        expect(res.status).toBe(200);
+
+        const after = store.processes.get('proc-usage-clamp') as any;
+        expect(after.currentTokens).toBe(0);
+        expect(after.conversationTokens).toBe(0);
+    });
+
+    it('writes no usage when the compaction was a no-op or failed', async () => {
+        // success: false — compaction is supported but did nothing.
+        await addUsageProcess('proc-usage-noop');
+        mockCompactSession.mockResolvedValue({ success: false, tokensRemoved: 0, messagesRemoved: 0 });
+        expect((await request(baseUrl, '/api/processes/proc-usage-noop/compact', { method: 'POST', body: '{}' })).status).toBe(200);
+        expect((store.processes.get('proc-usage-noop') as any).currentTokens).toBe(120_000);
+
+        // success: true but nothing freed and no snapshot — no usage row either.
+        await addUsageProcess('proc-usage-zero');
+        mockCompactSession.mockResolvedValue({ success: true, tokensRemoved: 0, messagesRemoved: 0 });
+        expect((await request(baseUrl, '/api/processes/proc-usage-zero/compact', { method: 'POST', body: '{}' })).status).toBe(200);
+        const zero = store.processes.get('proc-usage-zero') as any;
+        expect(zero.currentTokens).toBe(120_000);
+        expect(zero.conversationTokens).toBe(84_000);
+        // The lifecycle metadata is still recorded.
+        expect(zero.metadata.compaction.state).toBe('completed');
+    });
+
+    it('writes no usage when there is no snapshot and no prior total to subtract from', async () => {
+        await store.addProcess({
+            id: 'proc-usage-unknown',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'hello',
+            sdkSessionId: 'sdk-usage-unknown',
+            metadata: { type: 'chat', provider: 'copilot', workspaceId: 'ws-test' },
+        } as any);
+        mockCompactSession.mockResolvedValue({ success: true, tokensRemoved: 20_603, messagesRemoved: 7 });
+
+        const res = await request(baseUrl, '/api/processes/proc-usage-unknown/compact', {
+            method: 'POST',
+            body: '{}',
+        });
+        expect(res.status).toBe(200);
+
+        const after = store.processes.get('proc-usage-unknown') as any;
+        expect(after.currentTokens).toBeUndefined();
+        expect(after.conversationTokens).toBeUndefined();
+    });
+
+    it('emits a session-only token-usage event before restoring the terminal status', async () => {
+        await addUsageProcess('proc-usage-event');
         mockCompactSession.mockResolvedValue({
             success: true,
             tokensRemoved: 20_603,
             messagesRemoved: 7,
             contextUsage: { currentTokens: 99_397, conversationTokens: 63_397 },
         });
+        (store.emitProcessEvent as any).mockClear();
 
-        const res = await request(baseUrl, '/api/processes/proc-usage-frozen/compact', {
+        const res = await request(baseUrl, '/api/processes/proc-usage-event/compact', {
             method: 'POST',
             body: '{}',
         });
         expect(res.status).toBe(200);
 
-        const after = store.processes.get('proc-usage-frozen') as any;
-        expect(after.tokenLimit).toBe(200_000);
-        expect(after.currentTokens).toBe(120_000);
-        expect(after.systemTokens).toBe(12_000);
-        expect(after.toolDefinitionsTokens).toBe(24_000);
-        expect(after.conversationTokens).toBe(84_000);
+        const usageEvents = (store.emitProcessEvent as any).mock.calls
+            .filter((c: any[]) => c[1]?.type === 'token-usage')
+            .map((c: any[]) => c[1]);
+        expect(usageEvents).toHaveLength(1);
+        // Session fields only: a turnIndex or tokenUsage here would let a
+        // conversation-level number get mis-attributed to a turn. Only the
+        // fields that actually changed travel — the untouched segments are
+        // already correct in the client's state.
+        expect(usageEvents[0]).toEqual({
+            type: 'token-usage',
+            sessionCurrentTokens: 99_397,
+            sessionConversationTokens: 63_397,
+        });
     });
 
-    it('emits no token-usage process event on a successful compaction', async () => {
-        await store.addProcess({
-            id: 'proc-no-usage-event',
-            type: 'chat',
-            status: 'completed',
-            startTime: new Date(),
-            promptPreview: 'hello',
-            sdkSessionId: 'sdk-no-usage-event',
-            metadata: { type: 'chat', provider: 'copilot', workspaceId: 'ws-test' },
-            tokenLimit: 200_000,
-            currentTokens: 120_000,
-        } as any);
-
-        mockCompactSession.mockResolvedValue({ success: true, tokensRemoved: 20_603, messagesRemoved: 7 });
+    it('emits no token-usage event when no usage was resolved', async () => {
+        await addUsageProcess('proc-usage-no-event');
+        mockCompactSession.mockResolvedValue({ success: false, tokensRemoved: 0, messagesRemoved: 0 });
         (store.emitProcessEvent as any).mockClear();
 
-        const res = await request(baseUrl, '/api/processes/proc-no-usage-event/compact', {
+        const res = await request(baseUrl, '/api/processes/proc-usage-no-event/compact', {
             method: 'POST',
             body: '{}',
         });

@@ -1462,10 +1462,39 @@ describe('ChatDetail', () => {
             expect(refreshBlock).toContain('setProcessDetails');
         });
 
+        // The deterministic delivery channel for a post-`/compact` context-usage
+        // refresh: SSE only streams while the task is running, but the send path
+        // always refreshes here on settle. Without this seed the meter stays
+        // frozen at the pre-compaction number until the next turn ends.
+        it('refreshConversation seeds session tokens from the refreshed process', () => {
+            const refreshBlock = source.substring(
+                source.indexOf('const refreshConversation'),
+                source.indexOf('const refreshConversation') + 900,
+            );
+            expect(refreshBlock).toContain('seedSessionTokensFromProcess(data?.process)');
+        });
+
+        it('seedSessionTokensFromProcess type-guards every setter so absent fields do not clobber', () => {
+            const seedStart = source.indexOf('const seedSessionTokensFromProcess');
+            const seedBlock = source.substring(seedStart, source.indexOf('}, []);', seedStart));
+            for (const [field, setter] of [
+                ['tokenLimit', 'setSessionTokenLimit'],
+                ['currentTokens', 'setSessionCurrentTokens'],
+                ['systemTokens', 'setSessionSystemTokens'],
+                ['toolDefinitionsTokens', 'setSessionToolTokens'],
+                ['conversationTokens', 'setSessionConversationTokens'],
+            ]) {
+                expect(seedBlock).toContain(`typeof loadedProcess.${field} === 'number') ${setter}(`);
+            }
+            // Declared above refreshConversation so the callback can reference it.
+            expect(seedStart).toBeGreaterThan(-1);
+            expect(seedStart).toBeLessThan(source.indexOf('const refreshConversation'));
+        });
+
         it('refreshConversation syncs pending queue from server state', () => {
             const refreshBlock = source.substring(
                 source.indexOf('const refreshConversation'),
-                source.indexOf('const refreshConversation') + 1500,
+                source.indexOf('const refreshConversation') + 2200,
             );
             expect(refreshBlock).toContain('setPendingQueue');
         });
