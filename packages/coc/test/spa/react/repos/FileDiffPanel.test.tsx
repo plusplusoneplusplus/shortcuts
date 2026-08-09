@@ -818,4 +818,41 @@ describe('FileDiffPanel', () => {
             'ws1',
         );
     });
+
+    // ── headerActions slot ──
+
+    describe('headerActions', () => {
+        it('renders the provided node inside the sticky header', () => {
+            render(
+                <FileDiffPanel
+                    workspaceId="ws1"
+                    filePath="src/foo.ts"
+                    source={makePrSource()}
+                    headerActions={<button data-testid="pr-diff-popout">⧉ Pop out</button>}
+                />,
+            );
+
+            const header = screen.getByTestId('file-diff-header');
+            const popout = screen.getByTestId('pr-diff-popout');
+            expect(header.contains(popout)).toBe(true);
+        });
+
+        it('renders header markup identical to today when omitted', () => {
+            const { container: withProp } = render(
+                <FileDiffPanel
+                    workspaceId="ws1"
+                    filePath="src/foo.ts"
+                    source={makeBranchSource()}
+                    headerActions={undefined}
+                />,
+            );
+            const { container: without } = render(
+                <FileDiffPanel workspaceId="ws1" filePath="src/foo.ts" source={makeBranchSource()} />,
+            );
+
+            const headerOf = (c: HTMLElement) =>
+                c.querySelector('[data-testid="file-diff-header"]')!.innerHTML;
+            expect(headerOf(withProp)).toBe(headerOf(without));
+        });
+    });
 });

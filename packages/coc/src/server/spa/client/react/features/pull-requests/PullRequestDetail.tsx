@@ -32,6 +32,7 @@ import { PrAiAssistantDrawer } from './PrAiAssistantDrawer';
 import { PullRequestChatPlacementFrame } from './PullRequestChatPlacementFrame';
 import { SHOW_FOCUSED_DIFF } from '../../featureFlags';
 import type { ClassificationKey } from '../git/diff/diffSource';
+import { createPrDiffSource } from '../git/diff/diffSource';
 import { buildGitPrPopOutUrl } from '../../layout/Router';
 import { resolveCanonicalOriginId } from '../../repos/originScope';
 import { useGitReviewPopOut, gitReviewPrPopOutKey } from '../../contexts/GitReviewPopOutContext';
@@ -262,6 +263,25 @@ export function PullRequestDetail({ repoId, workspaceId, remoteUrl, prId, onBack
     const diffStats = useMemo(
         () => buildPullRequestDiffStats(diff, pr?.diffStats),
         [diff, pr?.diffStats],
+    );
+    // Drives the inline Files tab's shared FileDiffPanel. `files` is the same
+    // order the changed-files list renders, so its ←/→ cross-file navigation
+    // matches what the reviewer sees.
+    const diffFilePaths = useMemo(() => diff.map(file => file.path), [diff]);
+    const prDiffSource = useMemo(
+        () => createPrDiffSource(workspaceId, String(repoId), String(prId), {
+            originId,
+            headSha,
+            files: diffFilePaths,
+            title: pr?.title,
+        }),
+        [workspaceId, repoId, prId, originId, headSha, diffFilePaths, pr?.title],
+    );
+    // Same persistence key the pop-out review window uses, so reviewed/visited
+    // state is shared between the two surfaces rather than duplicated.
+    const reviewPersistence = useMemo(
+        () => ({ originId, workspaceId, repoId: String(repoId), prId: String(prId) }),
+        [originId, workspaceId, repoId, prId],
     );
     const reviewSummary = useMemo(
         () => pr ? buildPrReviewSummary({
@@ -612,6 +632,9 @@ export function PullRequestDetail({ repoId, workspaceId, remoteUrl, prId, onBack
                                 workspaceId={workspaceId}
                                 classificationKey={classificationKey}
                                 onPopOut={handlePopOut}
+                                diffSource={prDiffSource}
+                                headSha={headSha}
+                                reviewPersistence={reviewPersistence}
                             />
                         </div>
                     </div>

@@ -3,11 +3,14 @@
  * inline side-by-side diff panel on the right.
  *
  * Clicking a file selects it and renders that file's diff inline in the
- * right panel (the new default path). The per-file diff is sliced lazily
- * from the already-fetched combined unified `diffText` for the selected
- * file only — no per-file fetch and no up-front rendering of every file's
- * hunks. The separate pop-out window (#popout/git-review/pr/<prId>) remains
- * reachable via an explicit "Pop out" button in the diff panel header.
+ * right panel. On desktop that panel is the shared `FileDiffPanel` driven by
+ * a `DiffSource` — the exact component the pop-out review window uses — so
+ * both surfaces have the same split/unified toggle, full-file context,
+ * minimap, hunk navigation, inline comments and mark-reviewed. On mobile the
+ * slim `SideBySideDiffViewer` panel is kept, sliced lazily from the already
+ * fetched combined `diffText` so the stacked layout needs no extra fetch.
+ * The separate pop-out window (#popout/git-review/pr/<prId>) stays reachable
+ * via an explicit "Pop out" button in the diff panel header.
  *
  * Display rules for the file list:
  *  - Tree mode (default): folders are collapsible and single-child
@@ -38,7 +41,10 @@ import type { HunkCategory } from './classification-types';
 import { HUNK_CATEGORIES, CATEGORY_LABELS } from './classification-types';
 import type { UseClassificationReturn } from '../git/diff/useClassification';
 import { useClassification } from '../git/diff/useClassification';
-import type { ClassificationKey } from '../git/diff/diffSource';
+import type { ClassificationKey, DiffSource } from '../git/diff/diffSource';
+import { FileDiffPanel } from '../git/diff/FileDiffPanel';
+import { usePrReviewProgress } from '../git/diff/usePrReviewProgress';
+import type { ReviewProgressClientKey } from '../git/diff/reviewProgressApi';
 import { useModalJobAiSelection } from '../../shared/ModalJobAiControls';
 import { ClassifyDiffAiControls } from '../git/diff/ClassifyDiffAiControls';
 
@@ -58,6 +64,25 @@ export interface PrFilesPanelProps {
     classificationKey?: ClassificationKey;
     /** Explicit pop-out action — opens the separate review window for the file. */
     onPopOut?: (filePath: string) => void;
+    /**
+     * PR diff source. When supplied (and not on mobile) the right pane renders
+     * the shared {@link FileDiffPanel} — the same component the pop-out review
+     * window uses — so the inline tab gets split/unified, full-file context,
+     * minimap, hunk navigation, inline comments and mark-reviewed.
+     *
+     * Without it (or on mobile) the slim `SideBySideDiffViewer` panel sliced
+     * from `diffText` is rendered instead.
+     */
+    diffSource?: DiffSource;
+    /** PR head SHA — scopes review progress; changing it resets reviewed/visited. */
+    headSha?: string;
+    /**
+     * Persistence key for review progress. Must be the SAME key the pop-out
+     * review window uses ({originId, workspaceId, repoId, prId}) so reviewed
+     * state is shared between the two surfaces by construction. Omit to keep
+     * progress in-memory only.
+     */
+    reviewPersistence?: ReviewProgressClientKey;
 }
 
 type ViewMode = 'tree' | 'flat';
@@ -286,7 +311,17 @@ function ClassificationFilterBar({ classification, aiSelection }: Classification
 
 // ── Main component ──────────────────────────────────────────────────
 
-export function PrFilesPanel({ files, diffText, isMobile = false, workspaceId, classificationKey, onPopOut }: PrFilesPanelProps) {
+export function PrFilesPanel({
+    files,
+    diffText,
+    isMobile = false,
+    workspaceId,
+    classificationKey,
+    onPopOut,
+    diffSource,
+    headSha,
+    reviewPersistence,
+}: PrFilesPanelProps) {
     const [search, setSearch] = useState('');
     const [viewMode, setViewMode] = useState<ViewMode>('tree');
 
@@ -294,6 +329,31 @@ export function PrFilesPanel({ files, diffText, isMobile = false, workspaceId, c
     const classificationHook = useClassification(classificationKey, aiSelection.resolved, { workspaceId });
     const classification: UseClassificationReturn | undefined = SHOW_FOCUSED_DIFF && classificationKey ? classificationHook : undefined;
     const [activePath, setActivePath] = useState<string>(files[0]?.path ?? '');
+
+    // Review progress — same hook and same persistence key as the pop-out review
+    // window, so marking a file reviewed here shows up there and vice versa.
+    const reviewProgressOptions = useMemo(
+        () => (reviewPersistence ? { persistence: reviewPersistence } : undefined),
+        [reviewPersistence],
+    );
+    const reviewProgress = usePrReviewProgress(headSha, reviewProgressOptions);
+    const { markVisited, setLastSelectedFile, isReviewed, toggleReviewed } = reviewProgress;
+
+    // Whatever file the diff pane is showing counts as visited (the inline tab
+    // auto-selects the first file, so there is no "nothing selected" state to
+    // wait for like the pop-out has). Wait for hydration first — the fetched
+    // record replaces the sets wholesale, so marking before it lands would be
+    // silently overwritten.
+    const progressHydrated = reviewProgress.state.hydrated;
+    useEffect(() => {
+        if (!progressHydrated) return;
+        if (activePath) markVisited(activePath);
+        setLastSelectedFile(activePath || null);
+    }, [activePath, progressHydrated, markVisited, setLastSelectedFile]);
+
+    const handleToggleReviewed = useCallback(() => {
+        if (activePath) toggleReviewed(activePath);
+    }, [activePath, toggleReviewed]);
 
     useEffect(() => {
         if (files.length === 0) {
@@ -335,12 +395,22 @@ export function PrFilesPanel({ files, diffText, isMobile = false, workspaceId, c
         setActivePath(path);
     }
 
-    // Lazy per-file slice: compute the diff for the SELECTED file only, from
-    // the already-fetched combined diff. No other file's hunks are rendered.
+    // Desktop renders the shared FileDiffPanel (full review chrome); mobile
+    // keeps the slim viewer so the stacked layout stays light.
+    const useSharedPanel = !isMobile && !!diffSource && !!workspaceId;
+
+    // Lazy per-file slice for the slim viewer only: compute the diff for the
+    // SELECTED file from the already-fetched combined diff. No other file's
+    // hunks are rendered. The shared panel fetches per-file itself, so the
+    // desktop path never pays for this slice.
     const activeDiff = useMemo(
-        () => (diffText && activePath ? extractFileDiffFromCombined(diffText, activePath) : null),
-        [diffText, activePath],
+        () =>
+            !useSharedPanel && diffText && activePath
+                ? extractFileDiffFromCombined(diffText, activePath)
+                : null,
+        [useSharedPanel, diffText, activePath],
     );
+    const classificationReady = classification?.state.status === 'ready';
 
     return (
         <div
@@ -431,6 +501,8 @@ export function PrFilesPanel({ files, diffText, isMobile = false, workspaceId, c
                             onToggleFolder={toggleFolder}
                             depth={0}
                             classification={classification}
+                            reviewedFiles={reviewProgress.state.reviewedFiles}
+                            visitedFiles={reviewProgress.state.visitedFiles}
                         />
                     ) : (
                         <FlatFileList
@@ -438,22 +510,63 @@ export function PrFilesPanel({ files, diffText, isMobile = false, workspaceId, c
                             activePath={activePath}
                             onSelect={handleFileSelect}
                             classification={classification}
+                            reviewedFiles={reviewProgress.state.reviewedFiles}
+                            visitedFiles={reviewProgress.state.visitedFiles}
                         />
                     )}
                 </div>
             </div>
 
-            <PrInlineDiffPanel
-                // Remount on file switch so the in-diff find state (query, match
-                // set, highlights) resets cleanly instead of carrying over stale
-                // matches from the previously selected file.
-                key={activePath}
-                filePath={activePath}
-                diff={activeDiff}
-                hasFiles={files.length > 0}
-                onPopOut={onPopOut}
-            />
+            {useSharedPanel && activePath ? (
+                <div
+                    className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+                    data-testid="pr-shared-diff-panel"
+                >
+                    <FileDiffPanel
+                        // Remount on file switch so per-file panel state (find,
+                        // full-context toggle, comment sidebar) resets cleanly.
+                        key={`pr-${diffSource!.cacheKey}-${activePath}`}
+                        workspaceId={workspaceId!}
+                        filePath={activePath}
+                        source={diffSource!}
+                        showSourceLabel={false}
+                        onNavigateToFile={setActivePath}
+                        headerActions={<PrPopOutButton filePath={activePath} onPopOut={onPopOut} />}
+                        isReviewed={isReviewed(activePath)}
+                        onToggleReviewed={handleToggleReviewed}
+                        getHunkClassification={classificationReady ? classification!.getHunkClassification : undefined}
+                        hunkActiveFilters={classificationReady ? classification!.state.activeFilters : undefined}
+                    />
+                </div>
+            ) : (
+                <PrInlineDiffPanel
+                    // Remount on file switch so the in-diff find state (query, match
+                    // set, highlights) resets cleanly instead of carrying over stale
+                    // matches from the previously selected file.
+                    key={activePath}
+                    filePath={activePath}
+                    diff={activeDiff}
+                    hasFiles={files.length > 0}
+                    onPopOut={onPopOut}
+                />
+            )}
         </div>
+    );
+}
+
+/** "Pop out" action — shared by the slim inline header and FileDiffPanel's header slot. */
+function PrPopOutButton({ filePath, onPopOut }: { filePath: string; onPopOut?: (filePath: string) => void }) {
+    if (!onPopOut || !filePath) return null;
+    return (
+        <button
+            type="button"
+            onClick={() => onPopOut(filePath)}
+            title="Open this file in the pop-out review window"
+            className="inline-flex h-5 shrink-0 items-center gap-1 rounded border border-gray-300 bg-white px-1.5 text-[10px] font-semibold uppercase leading-none text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            data-testid="pr-diff-popout"
+        >
+            ⧉ Pop out
+        </button>
     );
 }
 
@@ -470,9 +583,10 @@ interface PrInlineDiffPanelProps {
 }
 
 /**
- * Right-hand panel of the Files tab. Renders the selected file's diff with
- * the shared {@link SideBySideDiffViewer}. Only the selected file is ever
- * rendered, so large PRs never build every file's hunks up front.
+ * Slim right-hand panel — the mobile / no-source fallback. Renders the
+ * selected file's diff with the shared {@link SideBySideDiffViewer} sliced from
+ * the combined diff, so the stacked mobile layout stays light and needs no
+ * per-file fetch. Desktop uses {@link FileDiffPanel} instead.
  */
 function PrInlineDiffPanel({ filePath, diff, hasFiles, onPopOut }: PrInlineDiffPanelProps) {
     const viewerRef = useRef<UnifiedDiffViewerHandle>(null);
@@ -501,17 +615,7 @@ function PrInlineDiffPanel({ filePath, diff, hasFiles, onPopOut }: PrInlineDiffP
                 >
                     {filePath || 'Diff'}
                 </span>
-                {onPopOut && filePath && (
-                    <button
-                        type="button"
-                        onClick={() => onPopOut(filePath)}
-                        title="Open this file in the pop-out review window"
-                        className="inline-flex h-5 shrink-0 items-center gap-1 rounded border border-gray-300 bg-white px-1.5 text-[10px] font-semibold uppercase leading-none text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                        data-testid="pr-diff-popout"
-                    >
-                        ⧉ Pop out
-                    </button>
-                )}
+                <PrPopOutButton filePath={filePath} onPopOut={onPopOut} />
             </header>
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
                 {/* ── In-diff find widget (Ctrl/Cmd+F) ── */}
@@ -562,14 +666,50 @@ function PrInlineDiffPanel({ filePath, diff, hasFiles, onPopOut }: PrInlineDiffP
 
 // ── File list views ─────────────────────────────────────────────────
 
+/**
+ * Reviewed / visited mark for a file row — mirrors the pop-out file panel's
+ * indicator (✓ reviewed, • visited-but-not-reviewed, nothing otherwise).
+ */
+function PrReviewMark({ path, reviewedFiles, visitedFiles }: {
+    path: string;
+    reviewedFiles?: ReadonlySet<string>;
+    visitedFiles?: ReadonlySet<string>;
+}) {
+    if (reviewedFiles?.has(path)) {
+        return (
+            <span
+                className="shrink-0 text-[11px] text-emerald-600 dark:text-emerald-400"
+                title="Marked reviewed"
+                data-testid={`pr-file-reviewed-${path}`}
+            >
+                ✓
+            </span>
+        );
+    }
+    if (visitedFiles?.has(path)) {
+        return (
+            <span
+                className="shrink-0 text-[11px] text-gray-400 dark:text-gray-500"
+                title="Visited (not reviewed)"
+                data-testid={`pr-file-visited-${path}`}
+            >
+                •
+            </span>
+        );
+    }
+    return null;
+}
+
 interface FlatFileListProps {
     files: FileChange[];
     activePath: string;
     onSelect: (path: string) => void;
     classification?: UseClassificationReturn;
+    reviewedFiles?: ReadonlySet<string>;
+    visitedFiles?: ReadonlySet<string>;
 }
 
-function FlatFileList({ files, activePath, onSelect, classification }: FlatFileListProps) {
+function FlatFileList({ files, activePath, onSelect, classification, reviewedFiles, visitedFiles }: FlatFileListProps) {
     return (
         <div className="grid min-w-0 gap-px">
             {files.map(file => {
@@ -599,6 +739,7 @@ function FlatFileList({ files, activePath, onSelect, classification }: FlatFileL
                             </span>
                         )}
                         <span className="flex min-w-0 items-center justify-between gap-1.5">
+                            <PrReviewMark path={file.path} reviewedFiles={reviewedFiles} visitedFiles={visitedFiles} />
                             <span className="min-w-0 flex-1 truncate" data-testid="pr-file-basename">
                                 {basename}
                             </span>
@@ -637,6 +778,8 @@ interface FileTreeViewProps {
     onToggleFolder: (path: string) => void;
     depth: number;
     classification?: UseClassificationReturn;
+    reviewedFiles?: ReadonlySet<string>;
+    visitedFiles?: ReadonlySet<string>;
 }
 
 function FileTreeView({
@@ -647,6 +790,8 @@ function FileTreeView({
     onToggleFolder,
     depth,
     classification,
+    reviewedFiles,
+    visitedFiles,
 }: FileTreeViewProps) {
     return (
         <div className="grid min-w-0 gap-px">
@@ -689,6 +834,8 @@ function FileTreeView({
                                     onToggleFolder={onToggleFolder}
                                     depth={depth + 1}
                                     classification={classification}
+                                    reviewedFiles={reviewedFiles}
+                                    visitedFiles={visitedFiles}
                                 />
                             )}
                         </div>
@@ -714,6 +861,7 @@ function FileTreeView({
                         data-file-dimmed={isDimmed || undefined}
                         title={node.path}
                     >
+                        <PrReviewMark path={node.path} reviewedFiles={reviewedFiles} visitedFiles={visitedFiles} />
                         <span className="min-w-0 flex-1 truncate" data-testid="pr-file-basename">
                             {node.name}
                         </span>

@@ -15,17 +15,21 @@ import {
 // seam. The path-builder factories (createCommitDiffSource, …) resolve their
 // client through getCocClientForWorkspace, which with an empty registry returns
 // the default client whose path builders are pure — no mock needed for those.
+// getCocClientForWorkspace is wrapped (not replaced) so the real resolution still
+// runs while tests can assert WHEN the factories reach for a client.
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', async (importOriginal) => {
     const actual = await importOriginal<typeof import('../../../../src/server/spa/client/react/repos/cloneRegistry')>();
     return {
         ...actual,
         requestForWorkspace: vi.fn(),
+        getCocClientForWorkspace: vi.fn(actual.getCocClientForWorkspace),
     };
 });
 
-import { requestForWorkspace } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
+import { getCocClientForWorkspace, requestForWorkspace } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 const mockedRequestForWorkspace = vi.mocked(requestForWorkspace);
+const mockedGetCocClientForWorkspace = vi.mocked(getCocClientForWorkspace);
 
 describe('createCommitDiffSource', () => {
     const ws = 'ws1';
@@ -450,6 +454,29 @@ describe('createPrDiffSource', () => {
     it('encodes special characters in URL', () => {
         const source = createPrDiffSource(ws, 'repo with spaces', '99', { originId });
         expect(source.fullDiffUrl()).toBe('/api/origins/gh_owner_repo/pull-requests/99/diff?workspaceId=ws1&repoId=repo+with+spaces');
+    });
+
+    // Regression: constructing the source resolved a client eagerly, which both
+    // tripped PullRequestDetail's "no local SPA client on the remote PR path"
+    // guard at render time and froze the client before the clone registry filled in.
+    it('does not resolve a client at construction time', () => {
+        mockedGetCocClientForWorkspace.mockClear();
+
+        createPrDiffSource(ws, repoId, prId, { originId, headSha: 'abc123', files: ['a.ts'] });
+
+        expect(mockedGetCocClientForWorkspace).not.toHaveBeenCalled();
+    });
+
+    it('resolves a client on every path-building call', () => {
+        const source = createPrDiffSource(ws, repoId, prId, { originId });
+        mockedGetCocClientForWorkspace.mockClear();
+
+        source.fileDiffUrl('src/foo.ts');
+        source.fullContextFileDiffUrl?.('src/foo.ts');
+        source.fullDiffUrl();
+
+        expect(mockedGetCocClientForWorkspace).toHaveBeenCalledTimes(3);
+        expect(mockedGetCocClientForWorkspace).toHaveBeenCalledWith(ws);
     });
 });
 
