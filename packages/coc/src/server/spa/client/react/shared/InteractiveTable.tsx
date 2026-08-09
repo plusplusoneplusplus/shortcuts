@@ -460,6 +460,12 @@ export function InteractiveTable({
                     className={`md-table interactive-md-table${
                         hasSizedColumns ? ' interactive-md-table-resized' : ''
                     }`}
+                    // Once the columns carry explicit widths the table has to be
+                    // exactly as wide as their sum. Leaving it at `max-content`
+                    // lets Chrome re-measure the content and hand the slack to
+                    // the widest column, which makes the table jump the moment
+                    // the widths are seeded — before any drag has happened.
+                    style={hasSizedColumns ? { width: table.getTotalSize() } : undefined}
                 >
                     <thead>
                         {table.getHeaderGroups().map(headerGroup => (
@@ -562,7 +568,14 @@ export function InteractiveTable({
                                             }`}
                                             title={plain === '' ? undefined : plain}
                                         >
-                                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                            {/* The cap that keeps one long column from pushing the
+                                                rest off-screen has to live on an inner block: a
+                                                `max-width` on the <td> itself is ignored by the
+                                                auto table layout, which floors every column at its
+                                                nowrap min-content width. */}
+                                            <span className="interactive-table-cell-text">
+                                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                            </span>
                                         </td>
                                     );
                                 })}

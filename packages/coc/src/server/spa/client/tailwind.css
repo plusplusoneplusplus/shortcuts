@@ -1666,21 +1666,37 @@
     text-overflow: ellipsis;
 }
 
+/* The cap has to sit on an inner block. In auto table layout a column is never
+   narrower than its min-content width, and `white-space: nowrap` makes that the
+   full text width — a `max-width` on the <td> is simply ignored. A block child
+   clamps its own min-content contribution, so the column stops at 320px. */
+.md-table.interactive-md-table tbody td > .interactive-table-cell-text {
+    display: block;
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /*
  * Once a column has been dragged, every column carries an explicit width, so
  * the table switches to fixed layout and honours them instead of re-fitting to
- * content. `max-content` lets the table grow past the viewport (the scroll
- * container handles it) while still filling a narrow one.
+ * content. The total width is set inline from the sum of those widths, so the
+ * table can grow past the viewport (the scroll container handles it) while
+ * still filling a narrow one.
  */
 .interactive-md-table-resized {
     table-layout: fixed;
-    width: max-content;
     min-width: 100%;
 }
 
 /* Explicit widths win over the default cap. */
 .md-table.interactive-md-table-resized th,
 .md-table.interactive-md-table-resized td {
+    max-width: none;
+}
+
+.md-table.interactive-md-table-resized tbody td > .interactive-table-cell-text {
     max-width: none;
 }
 

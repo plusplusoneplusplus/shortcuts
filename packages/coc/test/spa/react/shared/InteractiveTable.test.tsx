@@ -377,6 +377,9 @@ describe('InteractiveTable', () => {
             expect(table?.classList.contains('interactive-md-table')).toBe(true);
             expect(table?.classList.contains('interactive-md-table-resized')).toBe(false);
             expect(container.querySelector('thead th')?.getAttribute('style')).toBeNull();
+            // No inline table width either — that is only set from the summed
+            // column widths once the columns have been seeded.
+            expect(table?.getAttribute('style')).toBeNull();
         });
     });
 
@@ -563,6 +566,17 @@ describe('InteractiveTable', () => {
             container.querySelectorAll('th').forEach(th => {
                 expect(th.classList.contains('interactive-table-cell')).toBe(true);
             });
+        });
+
+        it('wraps body cell content in the width-capped text block', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            const firstCell = container.querySelector('tbody td')!;
+            const inner = firstCell.querySelector('.interactive-table-cell-text');
+            // The 320px cap only works on a block child — a max-width on the <td>
+            // is ignored by the auto table layout, which floors each column at
+            // its nowrap min-content width.
+            expect(inner).toBeTruthy();
+            expect(inner!.textContent).toBe('Alice');
         });
 
         it('sets title to the plain-text cell value', () => {
