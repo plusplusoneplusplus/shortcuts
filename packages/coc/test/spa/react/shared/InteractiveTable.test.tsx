@@ -554,4 +554,26 @@ describe('InteractiveTable', () => {
         });
     });
 
+    describe('fill height', () => {
+        it('does not opt into fill height by default', () => {
+            render(<InteractiveTable {...defaultProps} />);
+            const root = screen.getByTestId('interactive-table-test-1');
+            expect(root.classList.contains('interactive-table-fill')).toBe(false);
+        });
+
+        it('adds the fill-height class when fillHeight is set', () => {
+            render(<InteractiveTable {...defaultProps} fillHeight />);
+            const root = screen.getByTestId('interactive-table-test-1');
+            expect(root.classList.contains('interactive-table-fill')).toBe(true);
+        });
+
+        it('keeps the scroll container as a direct child so it owns the scroll', () => {
+            render(<InteractiveTable {...defaultProps} fillHeight />);
+            const root = screen.getByTestId('interactive-table-test-1');
+            const scroll = root.querySelector(':scope > .interactive-table-scroll');
+            expect(scroll).not.toBeNull();
+            expect(scroll!.querySelector('table.interactive-md-table')).not.toBeNull();
+        });
+    });
+
 });

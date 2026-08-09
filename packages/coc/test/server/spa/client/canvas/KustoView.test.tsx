@@ -87,6 +87,18 @@ describe('KustoView render states', () => {
         expect(screen.getByTestId('kusto-csv')).toBeInTheDocument();
     });
 
+    it('success: the result table owns its own scroll so the header can stick', () => {
+        const { container } = render(<KustoView workspaceId="ws-1" canvas={makeCanvas(SUCCESS_STATE)} />);
+        const table = container.querySelector('.interactive-table')!;
+        expect(table).not.toBeNull();
+        expect(table.classList.contains('interactive-table-fill')).toBe(true);
+        // The wrapper around it must not scroll — otherwise the sticky header
+        // never engages because the outer div is the scroller.
+        const wrapper = table.parentElement!;
+        expect(wrapper.className).toContain('overflow-hidden');
+        expect(wrapper.className).not.toContain('overflow-auto');
+    });
+
     it('error: surfaces the stored run error and shows no table', () => {
         const canvas = makeCanvas({
             columns: [],

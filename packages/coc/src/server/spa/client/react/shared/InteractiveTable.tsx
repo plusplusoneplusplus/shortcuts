@@ -155,6 +155,12 @@ function effectiveAlign(align: ColumnAlignment, numeric: boolean): ColumnAlignme
 export interface InteractiveTableProps extends ExtractedTableData {
     /** Unique key for React reconciliation. */
     tableKey: string;
+    /**
+     * Fill the parent's height and own the vertical scroll, so the header
+     * sticks while the body scrolls. Opt-in: chat markdown tables leave this
+     * off and keep growing inline.
+     */
+    fillHeight?: boolean;
 }
 
 type RowData = Record<string, string>;
@@ -165,6 +171,7 @@ export function InteractiveTable({
     rows,
     originalMarkdown,
     tableKey,
+    fillHeight = false,
 }: InteractiveTableProps) {
     const [sorting, setSorting] = useState<SortingState>([]);
     const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -305,7 +312,12 @@ export function InteractiveTable({
     const visibleColumnCount = table.getVisibleLeafColumns().length;
 
     const tableContent = (
-        <div className={`interactive-table${isFullscreen ? ' interactive-table-fullscreen-inner' : ''}`} data-testid={`interactive-table-${tableKey}`}>
+        <div
+            className={`interactive-table${fillHeight ? ' interactive-table-fill' : ''}${
+                isFullscreen ? ' interactive-table-fullscreen-inner' : ''
+            }`}
+            data-testid={`interactive-table-${tableKey}`}
+        >
             {/* Toolbar — chrome, excluded from native text selection/copy */}
             <div className="interactive-table-toolbar select-none">
                 <span className="interactive-table-row-count">
