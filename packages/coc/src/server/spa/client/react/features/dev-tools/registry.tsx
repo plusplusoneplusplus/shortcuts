@@ -14,6 +14,9 @@ import { ByteSizeCard } from './ByteSizeCard';
 import { TokenGeneratorCard } from './TokenGeneratorCard';
 import { RegexTesterCard } from './RegexTesterCard';
 import { JsonFormatterCard } from './JsonFormatterCard';
+import { CronCard } from './CronCard';
+import { HashCard } from './HashCard';
+import { JwtDecoderCard } from './JwtDecoderCard';
 
 export const DEV_TOOLS: readonly DevTool[] = [
     {
@@ -71,6 +74,27 @@ export const DEV_TOOLS: readonly DevTool[] = [
         description: 'Pretty-print, minify and validate JSON with a located parse error',
         keywords: ['json', 'format', 'pretty', 'minify', 'validate', 'indent', 'parse'],
         component: JsonFormatterCard,
+    },
+    {
+        id: 'cron',
+        name: 'Cron explainer',
+        description: 'Read a 5-field cron expression in plain English and see its next 5 runs',
+        keywords: ['cron', 'crontab', 'schedule', 'time', 'job', 'timer', 'next run'],
+        component: CronCard,
+    },
+    {
+        id: 'hash',
+        name: 'Hash generator',
+        description: 'SHA-1, SHA-256 and SHA-512 hex digests of the input text',
+        keywords: ['hash', 'digest', 'sha', 'sha1', 'sha256', 'sha512', 'checksum', 'crypto'],
+        component: HashCard,
+    },
+    {
+        id: 'jwt',
+        name: 'JWT decoder',
+        description: 'Decode a JWT header and payload — the signature is never verified',
+        keywords: ['jwt', 'token', 'bearer', 'claims', 'auth', 'base64url', 'exp'],
+        component: JwtDecoderCard,
     },
 ];
 
