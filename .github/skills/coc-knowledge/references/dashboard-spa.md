@@ -1517,7 +1517,10 @@ The registry exposes `lookupCloneBaseUrl(workspaceIdOrCloneKey)`,
 falling back to `getSpaCocClient()` for a local/unknown id so local behavior is
 byte-for-byte unchanged), `cloneApiBase(workspaceIdOrCloneKey)` (absolute remote
 REST base for hand-built URLs like the `EventSource` process stream),
-`cloneWsUrlForWorkspace(path, workspaceIdOrCloneKey)`, and
+`cloneWsUrlForWorkspace(path, workspaceIdOrCloneKey)`,
+`remoteCloneApiBase(workspaceIdOrCloneKey)` (absolute remote REST base, or
+`undefined` for a local id, so call sites that hard-code a relative `/api/...`
+URL — e.g. the NoteEditor image URLs — keep that literal locally), and
 `requestForWorkspace(workspaceIdOrCloneKey, url, options?)` (clone-routed analog
 of `requestSpaApi` that fetches a RELATIVE api path against the clone — same
 `toSpaCocRequestOptions`/error-translation as `requestSpaApi`, used by the git
@@ -1526,6 +1529,21 @@ diff-viewing layer which builds a bare path and then fetches it). The routing ho
 bare workspace id through this registry (no `ReposContext` dependency, so they are
 safe in deep per-tab components and unit tests) and a workspace **object** from its
 own marker.
+
+**Path→workspace resolution must fold remote rows back in.** `ReposContext`
+dispatches only the LOCAL `listWorkspaces()` result into `AppContext`; remote
+workspaces are merged into the repos list only. Any surface that resolves a
+clicked file path (docked source canvas + its tree + note editor, the floating
+markdown-review dialog) therefore goes through
+`repos/workspacesWithRemote.ts`: `useWorkspacesWithRemote()` inside
+`<ReposProvider>`, or the non-hook `withRemoteWorkspaces(workspaces)` above it
+(App.tsx's `coc-open-markdown-review` handler), which reads the module-level
+snapshot `getRemoteWorkspacesSnapshot()` published by
+`aggregateRemoteWorkspaces`. Skipping this makes a remote `.md` link resolve to
+no workspace ("No matching workspace found"). Both NoteEditorIO adapters
+(`tasks/TasksNoteEditorIO.ts`, `tasks/WorkspaceFileNoteEditorIO.ts`) then route
+load/save/upload through `getCocClientForWorkspace(workspaceId)` and prefix
+image URLs with `remoteCloneApiBase(workspaceId)`.
 
 Wiring is at the per-feature HOOK/SERVICE seam where a `workspaceId` is already
 the input:

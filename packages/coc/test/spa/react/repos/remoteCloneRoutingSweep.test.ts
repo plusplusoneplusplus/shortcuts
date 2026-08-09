@@ -266,6 +266,19 @@ describe('remote-clone routing sweep', () => {
         expect(dialog).not.toContain('getSpaCocClient');
     });
 
+    it('the NoteEditor IO adapters route load/save/upload + image URLs to the clone', () => {
+        for (const rel of ['tasks/TasksNoteEditorIO.ts', 'tasks/WorkspaceFileNoteEditorIO.ts']) {
+            const io = read(rel);
+            // A markdown/note link clicked in a REMOTE conversation opens an editable
+            // NoteEditor; on the local singleton every call 404'd ("Workspace not found").
+            expect(io).toContain('getCocClientForWorkspace(workspaceId)');
+            expect(io).not.toContain('getSpaCocClient');
+            // Bare /api/... image URLs would load from the wrong server.
+            expect(io).toContain('${imageApiBase(workspaceId)}/workspaces/');
+            expect(io).not.toContain('return `/api/workspaces/');
+        }
+    });
+
     it('file-path hover previews use the link\'s own workspace id, routed to its clone', () => {
         const preview = read('shared/file-path/file-path-preview.ts');
         expect(preview).toContain('getCocClientForWorkspace(wsId).tasks.previewWorkspaceFile(wsId, path)');

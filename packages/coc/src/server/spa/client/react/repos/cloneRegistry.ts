@@ -183,6 +183,16 @@ export function cloneApiBase(workspaceId: string | null | undefined): string {
 }
 
 /**
+ * Absolute REST API base for a REMOTE clone, or `undefined` for a local/unknown
+ * workspace id. For call sites that today hard-code a relative `/api/...` URL:
+ * a local id keeps that literal (byte-for-byte unchanged), while a remote id
+ * gets its server's absolute base so the URL doesn't hit the local server.
+ */
+export function remoteCloneApiBase(workspaceId: string | null | undefined): string | undefined {
+    return lookupCloneBaseUrl(workspaceId) ? cloneApiBase(workspaceId) : undefined;
+}
+
+/**
  * Build a WebSocket URL for `path`, routed to a workspace's clone when remote and
  * to the page origin when local. Convenience wrapper over `cloneWsUrl` for
  * non-hook call sites that have only a `workspaceId`.

@@ -22,10 +22,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ExplorerTreeEntry } from '@plusplusoneplusplus/coc-client';
-import { useApp } from '../../../contexts/AppContext';
-import { useReposOptional } from '../../../contexts/ReposContext';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
-import { isRemoteWorkspace } from '../../../repos/remoteWorkspaceAggregation';
+import { useWorkspacesWithRemote } from '../../../repos/workspacesWithRemote';
 import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
 import {
     resolveSourceCanvasTarget,
@@ -86,20 +84,11 @@ const LOADING_ROOT: RootState = {
 export function useSourceCanvasTree(
     rootRef: SourceCanvasFileRef | null,
 ): SourceCanvasTreeState {
-    const { state } = useApp();
-    const repos = useReposOptional();
-
     // Remote-server workspaces live in the repos list (clone-routed), not the
     // global `state.workspaces`, so fold them in for resolution — a folder ref
     // in a remote conversation carries that remote workspace id, and without its
-    // `rootPath` a relative path can't be anchored. Mirrors `useSourceCanvasContent`.
-    const reposList = repos?.repos;
-    const workspaces = useMemo(() => {
-        const remote = (reposList ?? [])
-            .map((r) => r.workspace)
-            .filter(isRemoteWorkspace);
-        return remote.length > 0 ? [...state.workspaces, ...remote] : state.workspaces;
-    }, [state.workspaces, reposList]);
+    // `rootPath` a relative path can't be anchored.
+    const workspaces = useWorkspacesWithRemote();
 
     const [root, setRoot] = useState<RootState>(LOADING_ROOT);
     const [childrenMap, setChildrenMap] = useState<Map<string, ExplorerTreeEntry[]>>(new Map());

@@ -92,6 +92,7 @@ vi.mock('@plusplusoneplusplus/coc-client', async (importOriginal) => {
 // Import after mocks are registered.
 import {
     aggregateRemoteWorkspaces,
+    getRemoteWorkspacesSnapshot,
     isRemoteWorkspace,
     remoteQueueStatusFromRepo,
     tagRemoteWorkspaces,
@@ -602,5 +603,38 @@ describe('aggregateRemoteWorkspaces — clone lookup registry (AC-07)', () => {
         serversList.mockRejectedValue(new Error('registry down'));
         await aggregateRemoteWorkspaces();
         expect(lookupCloneBaseUrl('w1')).toBeUndefined();
+    });
+});
+
+describe('aggregateRemoteWorkspaces — remote workspace snapshot', () => {
+    it('publishes the aggregated remote workspaces for non-React path resolution', async () => {
+        serversList.mockResolvedValue([onlineServer('srv-1', 'S1', 'http://127.0.0.1:4000')]);
+        remoteResponses.set('http://127.0.0.1:4000', { workspaces: [ws('w1'), ws('w2')] });
+
+        await aggregateRemoteWorkspaces();
+
+        expect(getRemoteWorkspacesSnapshot().map(w => w.id)).toEqual(['w1', 'w2']);
+    });
+
+    it('clears the snapshot when the remote-shell flag is OFF', async () => {
+        serversList.mockResolvedValue([onlineServer('srv-1', 'S1', 'http://127.0.0.1:4000')]);
+        remoteResponses.set('http://127.0.0.1:4000', { workspaces: [ws('w1')] });
+        await aggregateRemoteWorkspaces();
+        expect(getRemoteWorkspacesSnapshot()).toHaveLength(1);
+
+        remoteShellEnabled = false;
+        await aggregateRemoteWorkspaces();
+        expect(getRemoteWorkspacesSnapshot()).toEqual([]);
+    });
+
+    it('clears the snapshot when the server registry is unavailable', async () => {
+        serversList.mockResolvedValue([onlineServer('srv-1', 'S1', 'http://127.0.0.1:4000')]);
+        remoteResponses.set('http://127.0.0.1:4000', { workspaces: [ws('w1')] });
+        await aggregateRemoteWorkspaces();
+        expect(getRemoteWorkspacesSnapshot()).toHaveLength(1);
+
+        serversList.mockRejectedValue(new Error('registry down'));
+        await aggregateRemoteWorkspaces();
+        expect(getRemoteWorkspacesSnapshot()).toEqual([]);
     });
 });
