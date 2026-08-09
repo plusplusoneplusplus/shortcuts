@@ -44,6 +44,8 @@ describe('StatusActions — topbar variant', () => {
         expect(within(host).getByTestId('ws-status-indicator')).toBeTruthy();
         const buttonLabels = within(host).getAllByRole('button').map(b => b.getAttribute('aria-label'));
         expect(buttonLabels).toEqual(['Notifications', 'Agent provider quota', 'Admin', 'Toggle theme']);
+        // Dev Tools is a sidebar-only entry point — the topbar cluster stays as it was.
+        expect(within(host).queryByTestId('sidebar-dev-tools-toggle')).toBeNull();
         // Keeps the legacy ids the rest of the app/tests key on.
         expect(document.getElementById('admin-toggle')).toBeTruthy();
         expect(document.getElementById('theme-toggle')).toBeTruthy();
@@ -96,13 +98,14 @@ describe('StatusActions — sidebar variant', () => {
         expect(screen.getByTestId('sidebar-theme-toggle')).toBeTruthy();
     });
 
-    it('lays the dock out left→right as admin, notifications, quota, theme, then the connection pill', () => {
+    it('lays the dock out left→right as admin, notifications, quota, dev tools, theme, then the connection pill', () => {
         render(<StatusActions variant="sidebar" />);
         const dock = screen.getByTestId('sidebar-status-actions');
         const expected = [
             'sidebar-admin-toggle',
             'notification-bell',
             'agent-provider-quota-indicator',
+            'sidebar-dev-tools-toggle',
             'sidebar-theme-toggle',
             'sidebar-ws-status-indicator',
         ];
@@ -124,6 +127,34 @@ describe('StatusActions — sidebar variant', () => {
         expect(location.hash).toBe('#admin');
         fireEvent.click(screen.getByTestId('sidebar-theme-toggle'));
         expect(mockToggleTheme).toHaveBeenCalledTimes(1);
+    });
+
+    it('opens and closes the Dev Tools dialog from the sidebar-only icon', () => {
+        render(<StatusActions variant="sidebar" />);
+        const toggle = screen.getByTestId('sidebar-dev-tools-toggle');
+        expect(toggle.getAttribute('aria-label')).toBe('Dev tools');
+        expect(document.getElementById('dev-tools-dialog')).toBeNull();
+
+        fireEvent.click(toggle);
+        expect(document.getElementById('dev-tools-dialog')).toBeTruthy();
+        expect(screen.getByTestId('dev-tools-panel')).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('dialog-close-btn'));
+        expect(document.getElementById('dev-tools-dialog')).toBeNull();
+    });
+
+    it('reopens the Dev Tools dialog in its default state', () => {
+        render(<StatusActions variant="sidebar" />);
+        fireEvent.click(screen.getByTestId('sidebar-dev-tools-toggle'));
+        fireEvent.change(screen.getByTestId('dev-tools-filter'), { target: { value: 'zzz' } });
+        expect(screen.getByTestId('dev-tools-empty')).toBeTruthy();
+
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(document.getElementById('dev-tools-dialog')).toBeNull();
+
+        fireEvent.click(screen.getByTestId('sidebar-dev-tools-toggle'));
+        expect((screen.getByTestId('dev-tools-filter') as HTMLInputElement).value).toBe('');
+        expect(screen.getByTestId('dev-tool-card-calculator').getAttribute('data-expanded')).toBe('true');
     });
 
     it('highlights admin while in the admin shell', () => {

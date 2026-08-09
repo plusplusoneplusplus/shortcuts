@@ -9,7 +9,7 @@
  *   - `variant="sidebar"` renders a docked footer bar for the bottom of the
  *     left sidebar (remote-first shell). It full-bleeds a top border and lays
  *     the icon buttons and connection label out as a single row, ordered
- *     left→right as [Admin] [NotificationBell] [Quota] [Theme] with the
+ *     left→right as [Admin] [NotificationBell] [Quota] [DevTools] [Theme] with the
  *     connection pill pushed to the right edge (`justify-between`). It uses the
  *     shell's neutral chrome background (matching the topbar/bottom-nav) with a
  *     top border, so the dock reads as part of the shell chrome and is set off
@@ -24,8 +24,10 @@
  * sub-tabs).
  */
 
+import { useState } from 'react';
 import { useTheme } from './ThemeProvider';
 import { useApp } from '../contexts/AppContext';
+import { DevToolsDialog } from '../features/dev-tools/DevToolsDialog';
 import { NotificationBell } from '../shared/NotificationBell';
 import { agentProviderQuotaIndicator as AgentProviderQuotaIndicator } from '../shared/AgentProviderQuotaIndicator';
 import { getBackendEndpointInfo } from '../utils/config';
@@ -67,6 +69,9 @@ export interface StatusActionsProps {
 export function StatusActions({ variant = 'topbar', onAdminOpen }: StatusActionsProps) {
     const { state } = useApp();
     const { theme, toggleTheme } = useTheme();
+    // Sidebar-only Dev Tools panel. Local state, so closing unmounts the dialog
+    // and resets every tool back to its default input/expansion.
+    const [devToolsOpen, setDevToolsOpen] = useState(false);
 
     const wsStatus: WsStatus = state.wsStatus ?? 'closed';
     const wsConfig = wsStatusConfig[wsStatus];
@@ -107,12 +112,22 @@ export function StatusActions({ variant = 'topbar', onAdminOpen }: StatusActions
                     <AgentProviderQuotaIndicator placement="up" />
                     <button
                         className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08] touch-target text-base leading-none"
+                        aria-label="Dev tools"
+                        title="Dev tools"
+                        data-testid="sidebar-dev-tools-toggle"
+                        onClick={() => setDevToolsOpen(true)}
+                    >
+                        &#128295;
+                    </button>
+                    <button
+                        className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08] touch-target text-base leading-none"
                         aria-label="Toggle theme"
                         data-testid="sidebar-theme-toggle"
                         onClick={toggleTheme}
                     >
                         {themeEmoji[theme] || '🌗'}
                     </button>
+                    <DevToolsDialog open={devToolsOpen} onClose={() => setDevToolsOpen(false)} />
                 </span>
                 <span
                     className="inline-flex items-center gap-1.5 h-6 px-2 rounded-full border border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[11px] font-medium text-[#656d76] dark:text-[#999] min-w-0"
