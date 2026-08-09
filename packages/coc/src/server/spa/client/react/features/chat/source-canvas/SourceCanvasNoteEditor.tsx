@@ -12,7 +12,7 @@
  * sync.
  */
 import { useMemo } from 'react';
-import { useApp } from '../../../contexts/AppContext';
+import { useWorkspacesWithRemote } from '../../../repos/workspacesWithRemote';
 import { NoteEditor } from '../../notes/editor/NoteEditor';
 import { noopCommentBackend } from '../../notes/editor/NoteEditorCommentBackend';
 import { createTasksNoteEditorIO } from '../../../tasks/TasksNoteEditorIO';
@@ -28,8 +28,10 @@ export interface SourceCanvasNoteEditorProps {
 }
 
 export function SourceCanvasNoteEditor({ fileRef }: SourceCanvasNoteEditorProps) {
-    const { state } = useApp();
-    const workspaces = state.workspaces as WorkspaceLike[] | undefined;
+    // Remote-server workspaces are never in `state.workspaces` (they live in the
+    // repos list and are clone-routed), so a `.md` link clicked in a remote
+    // conversation would resolve to no workspace at all without folding them in.
+    const workspaces = useWorkspacesWithRemote() as WorkspaceLike[];
 
     // Stateless adapters — create once per mount.
     const tasksIO = useMemo(() => createTasksNoteEditorIO(), []);
@@ -42,7 +44,7 @@ export function SourceCanvasNoteEditor({ fileRef }: SourceCanvasNoteEditorProps)
                 wsId: fileRef.wsId,
                 sourceFilePath: fileRef.sourceFilePath,
             },
-            workspaces || [],
+            workspaces,
         ),
         [fileRef.fullPath, fileRef.wsId, fileRef.sourceFilePath, workspaces],
     );

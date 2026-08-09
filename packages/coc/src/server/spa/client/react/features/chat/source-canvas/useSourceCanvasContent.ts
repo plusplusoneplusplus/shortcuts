@@ -12,11 +12,9 @@
  * Returns raw text + a server language hint; rendering (markdown vs
  * syntax-highlighted source, line jump/highlight) is layered on top in AC-04/05.
  */
-import { useEffect, useMemo, useState } from 'react';
-import { useApp } from '../../../contexts/AppContext';
-import { useReposOptional } from '../../../contexts/ReposContext';
+import { useEffect, useState } from 'react';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
-import { isRemoteWorkspace } from '../../../repos/remoteWorkspaceAggregation';
+import { useWorkspacesWithRemote } from '../../../repos/workspacesWithRemote';
 import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
 import { resolveSourceCanvasTarget, isSourceCanvasResolveError } from './resolve';
 import type { SourceCanvasFileRef } from './types';
@@ -59,8 +57,6 @@ const LOADING: SourceCanvasContentState = {
 export function useSourceCanvasContent(
     fileRef: SourceCanvasFileRef | null,
 ): SourceCanvasContentState {
-    const { state } = useApp();
-    const repos = useReposOptional();
     const [content, setContent] = useState<SourceCanvasContentState>(LOADING);
 
     // Remote-server workspaces are aggregated into the repos list, not into the
@@ -68,13 +64,7 @@ export function useSourceCanvasContent(
     // link clicked in a remote conversation carries that remote workspace id, so
     // fold the remote workspaces in for resolution — otherwise the workspace (and
     // its remote `rootPath`) is invisible and a relative path can't be anchored.
-    const reposList = repos?.repos;
-    const workspaces = useMemo(() => {
-        const remote = (reposList ?? [])
-            .map((r) => r.workspace)
-            .filter(isRemoteWorkspace);
-        return remote.length > 0 ? [...state.workspaces, ...remote] : state.workspaces;
-    }, [state.workspaces, reposList]);
+    const workspaces = useWorkspacesWithRemote();
 
     // Line/range changes (scroll target only) must NOT trigger a refetch, so
     // depend on the resolution-relevant fields rather than the ref identity.

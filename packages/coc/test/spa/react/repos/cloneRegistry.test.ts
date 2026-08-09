@@ -19,6 +19,7 @@ import {
     getCocClientForWorkspace,
     lookupCloneBaseUrl,
     registerCloneBaseUrls,
+    remoteCloneApiBase,
     resetCloneRegistryForTests,
     setActiveCloneForRouting,
 } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
@@ -142,6 +143,19 @@ describe('cloneApiBase', () => {
     it('strips a trailing slash on the remote baseUrl before appending /api', () => {
         registerCloneBaseUrls([{ workspaceId: 'remote-1', baseUrl: 'http://127.0.0.1:4000/' }]);
         expect(cloneApiBase('remote-1')).toBe('http://127.0.0.1:4000/api');
+    });
+});
+
+describe('remoteCloneApiBase', () => {
+    it('returns undefined for a local id so callers keep their relative /api URL', () => {
+        registerCloneBaseUrls([{ workspaceId: 'remote-1', baseUrl: 'http://127.0.0.1:4000' }]);
+        expect(remoteCloneApiBase('local-1')).toBeUndefined();
+        expect(remoteCloneApiBase(null)).toBeUndefined();
+    });
+
+    it('returns the absolute remote REST base for a remote id', () => {
+        registerCloneBaseUrls([{ workspaceId: 'remote-1', baseUrl: 'http://127.0.0.1:4000' }]);
+        expect(remoteCloneApiBase('remote-1')).toBe('http://127.0.0.1:4000/api');
     });
 });
 

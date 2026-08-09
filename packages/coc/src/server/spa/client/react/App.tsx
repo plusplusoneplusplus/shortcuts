@@ -37,6 +37,7 @@ import {
     resolveWorkspaceForPath,
     type WorkspaceLike,
 } from './shared/markdown-review/resolveMarkdownReviewTarget';
+import { withRemoteWorkspaces } from './repos/workspacesWithRemote';
 import { buildNotificationEntry } from './utils/build-notification-entry';
 import { WelcomeTour } from './welcome/WelcomeTour';
 import { SHOW_WELCOME_TUTORIAL } from './featureFlags';
@@ -353,7 +354,11 @@ function AppInner() {
                     sourceFilePath: typeof detail?.sourceFilePath === 'string' ? detail.sourceFilePath : undefined,
                     taskRootPath: typeof detail?.taskRootPath === 'string' ? detail.taskRootPath : undefined,
                 },
-                (appState.workspaces as WorkspaceLike[]) || [],
+                // This handler lives ABOVE <ReposProvider>, so remote-server
+                // workspaces come from the aggregation snapshot rather than the
+                // repos context. Without them a remote note link resolves to
+                // nothing and the dialog silently never opens.
+                withRemoteWorkspaces((appState.workspaces as WorkspaceLike[]) || []),
             );
             if (!target) return;
 

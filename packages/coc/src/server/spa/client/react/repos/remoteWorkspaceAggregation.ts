@@ -134,6 +134,22 @@ const EMPTY_AGGREGATE: AggregatedRemoteWorkspaces = {
     warnings: [],
 };
 
+/**
+ * Last aggregated remote workspace list, published on every aggregation run.
+ *
+ * ReposContext is the reactive source of these rows, but code that runs OUTSIDE
+ * the provider (App.tsx's `coc-open-markdown-review` handler, which lives above
+ * `<ReposProvider>`) still has to resolve a remote workspace id to its
+ * `rootPath`. This module-level snapshot is that non-React seam, mirroring what
+ * `registerCloneBaseUrls` does for routing.
+ */
+let remoteWorkspaceSnapshot: RemoteWorkspaceInfo[] = [];
+
+/** The most recently aggregated remote workspaces (empty when none/flag off). */
+export function getRemoteWorkspacesSnapshot(): RemoteWorkspaceInfo[] {
+    return remoteWorkspaceSnapshot;
+}
+
 /** True when a remote workspace (carries a `remote` marker / `baseUrl`). */
 export function isRemoteWorkspace(workspace: unknown): workspace is RemoteWorkspaceInfo {
     return (
@@ -330,6 +346,7 @@ export async function aggregateRemoteWorkspaces(): Promise<AggregatedRemoteWorks
         // Flag off: clear any stale lookup entries so per-clone routing reverts to
         // the local default for every id.
         registerCloneBaseUrls([]);
+        remoteWorkspaceSnapshot = [];
         return EMPTY_AGGREGATE;
     }
 
@@ -339,6 +356,7 @@ export async function aggregateRemoteWorkspaces(): Promise<AggregatedRemoteWorks
     } catch {
         // Registry unavailable: nothing to aggregate. Local flow is unaffected.
         registerCloneBaseUrls([]);
+        remoteWorkspaceSnapshot = [];
         return EMPTY_AGGREGATE;
     }
 
@@ -387,6 +405,9 @@ export async function aggregateRemoteWorkspaces(): Promise<AggregatedRemoteWorks
         cloneKey: ws.remote.cloneKey,
         baseUrl: ws.baseUrl,
     })));
+
+    // Publish the same list for non-React resolution (see the snapshot doc above).
+    remoteWorkspaceSnapshot = workspaces;
 
     return { sources, workspaces, gitInfo, workflows, warnings };
 }

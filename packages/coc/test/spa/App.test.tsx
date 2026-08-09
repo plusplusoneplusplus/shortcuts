@@ -86,7 +86,16 @@ vi.mock('../../src/server/spa/client/react/contexts/NotificationContext', () => 
 vi.mock('../../src/server/spa/client/react/contexts/ReposContext', () => ({
     ReposProvider: ({ children }: any) => children,
     useRepos: () => ({ repos: [], unseenCounts: {}, fetchRepos: vi.fn(), loading: false }),
+    useReposOptional: () => null,
 }));
+
+// Remote-server workspaces reach App's markdown-review handler (which renders
+// ABOVE ReposProvider) through the aggregation snapshot, not the repos context.
+const mockRemoteWorkspaces: { current: any[] } = { current: [] };
+vi.mock('../../src/server/spa/client/react/repos/remoteWorkspaceAggregation', async (importOriginal) => {
+    const actual = await importOriginal<Record<string, unknown>>();
+    return { ...actual, getRemoteWorkspacesSnapshot: () => mockRemoteWorkspaces.current };
+});
 
 vi.mock('../../src/server/spa/client/react/contexts/ToastContext', () => ({
     ToastProvider: ({ children }: any) => children,
@@ -514,6 +523,7 @@ describe('App review dialog lifecycle', () => {
         capturedReviewProps = null;
         mockWsStatus = 'open';
         mockAppState = makeAppState({ workspaces });
+        mockRemoteWorkspaces.current = [];
         mockAppDispatch.mockClear();
         mockFetchApi.mockResolvedValue(null);
         mockQueueList.mockReset();
@@ -602,6 +612,39 @@ describe('App review dialog lifecycle', () => {
         await act(async () => {});
 
         expect(capturedReviewProps?.open).toBe(false);
+    });
+
+    it('opens the dialog for a REMOTE workspace, which is absent from state.workspaces', async () => {
+        // Regression: remote workspaces live in the repos list / aggregation
+        // snapshot only, so resolving against state.workspaces alone silently
+        // dropped the event and nothing opened.
+        mockRemoteWorkspaces.current = [{
+            id: 'ws-remote-1',
+            rootPath: '/remote/proj',
+            baseUrl: 'http://127.0.0.1:4000',
+            remote: { baseUrl: 'http://127.0.0.1:4000', serverId: 's1', serverLabel: 's1', offline: false },
+        }];
+
+        render(<App />);
+
+        act(() => {
+            window.dispatchEvent(
+                new CustomEvent('coc-open-markdown-review', {
+                    detail: {
+                        wsId: 'ws-remote-1',
+                        filePath: '/home/u/.coc/repos/ws-remote-1/notes/Plans/work-radar.plan.md',
+                    },
+                }),
+            );
+        });
+
+        await waitFor(() => {
+            expect(capturedReviewProps?.open).toBe(true);
+            expect(capturedReviewProps?.wsId).toBe('ws-remote-1');
+            expect(capturedReviewProps?.filePath)
+                .toBe('/home/u/.coc/repos/ws-remote-1/notes/Plans/work-radar.plan.md');
+            expect(capturedReviewProps?.fetchMode).toBe('auto');
+        });
     });
 
     it('does not open dialog when no matching workspace is found for the path', async () => {
