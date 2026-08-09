@@ -30,6 +30,7 @@ const SCREENSHOT_CANCEL_CHANNEL = 'coc-desktop:screenshot-cancel';
 const SCREENSHOT_ANNOTATE_INIT_CHANNEL = 'coc-desktop:screenshot-annotate-init';
 const SCREENSHOT_ANNOTATE_DONE_CHANNEL = 'coc-desktop:screenshot-annotate-done';
 const SCREENSHOT_ANNOTATE_CANCEL_CHANNEL = 'coc-desktop:screenshot-annotate-cancel';
+const SCREENSHOT_ANNOTATE_SAVE_CHANNEL = 'coc-desktop:screenshot-annotate-save';
 const SCREENSHOT_ATTACH_CHANNEL = 'coc-desktop:screenshot-attach';
 const POPOUT_NAV_CHANNEL = 'coc-desktop:popout-nav';
 const POPOUT_NAVIGATE_CHANNEL = 'coc-desktop:popout-navigate';
@@ -117,7 +118,8 @@ const api = {
      * two renderers. The fullscreen capture overlay uses `onOverlayInit` to receive
      * the frozen shot, then `crop`/`cancel` to report the selected region or dismiss
      * the flow. The annotation editor window (AC-03) uses `onAnnotateInit` to receive
-     * the cropped image, then `done` (flattened PNG data URL) / `cancelAnnotate`.
+     * the cropped image, then `done` (flattened PNG data URL) / `cancelAnnotate`,
+     * plus `saveAnnotate` for an on-demand Save-As that leaves the editor open.
      * The SPA (main CoC window) uses `onScreenshotAttach` to receive a finished
      * screenshot pushed from the main process (AC-04 chat-attach sink) and add it
      * to the active chat draft. The main process routes each request by sender
@@ -138,6 +140,8 @@ const api = {
         },
         done: (pngDataUrl: string) => ipcRenderer.send(SCREENSHOT_ANNOTATE_DONE_CHANNEL, pngDataUrl),
         cancelAnnotate: () => ipcRenderer.send(SCREENSHOT_ANNOTATE_CANCEL_CHANNEL),
+        saveAnnotate: (pngDataUrl: string) =>
+            ipcRenderer.send(SCREENSHOT_ANNOTATE_SAVE_CHANNEL, pngDataUrl),
         onScreenshotAttach: (callback: (pngDataUrl: string) => void) => {
             const listener = (_event: unknown, pngDataUrl: string) => callback(pngDataUrl);
             ipcRenderer.on(SCREENSHOT_ATTACH_CHANNEL, listener);

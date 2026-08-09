@@ -400,9 +400,35 @@ export const SCREENSHOT_ANNOTATE_INIT_CHANNEL = 'coc-desktop:screenshot-annotate
 export const SCREENSHOT_ANNOTATE_DONE_CHANNEL = 'coc-desktop:screenshot-annotate-done';
 /** IPC channel: annotation editor → main, "Cancel" — discard the annotation. */
 export const SCREENSHOT_ANNOTATE_CANCEL_CHANNEL = 'coc-desktop:screenshot-annotate-cancel';
+/**
+ * IPC channel: annotation editor → main, "Save" — carries the flattened PNG data
+ * URL for an on-demand Save-As (AC-03). Deliberately separate from
+ * {@link SCREENSHOT_ANNOTATE_DONE_CHANNEL}: saving is no longer part of finishing,
+ * and it leaves the editor OPEN so the user can keep annotating (or save again).
+ */
+export const SCREENSHOT_ANNOTATE_SAVE_CHANNEL = 'coc-desktop:screenshot-annotate-save';
 
-/** Height (CSS px) reserved for the editor toolbar above the drawing canvas. */
+/**
+ * Top inset (CSS px) reserved for the editor's floating toolbar pill.
+ *
+ * The toolbar no longer occupies a full-width bar the stage sits below — it is a
+ * rounded pill floating OVER the image (AC-01). The stage is full-height, so this
+ * constant survives purely as the reserved inset: `fitAnnotationWindowSize` adds
+ * it to the window height and the stage pads its top by it, which together keep
+ * the pill from ever covering the image.
+ */
 export const ANNOTATION_TOOLBAR_HEIGHT = 48;
+
+/**
+ * Breathing room (CSS px) the stage keeps on its left, right and bottom edges so
+ * the image never runs into the window edge.
+ *
+ * Shared deliberately: the stage's CSS padding and the page script's
+ * `fitCanvasDisplay` fit math BOTH derive from this, because they have to agree.
+ * When they drifted apart the canvas was laid out against the unpadded window and
+ * overflowed its container — the image was clipped by this much on each side.
+ */
+export const ANNOTATION_STAGE_PADDING = 8;
 
 /** The drawing tools the editor offers. `pen`/`line`/`rect` are mandatory. */
 export type AnnotationTool = 'pen' | 'line' | 'rect' | 'arrow';
@@ -613,8 +639,11 @@ export function fitAnnotationWindowSize(
  * paint it onto the canvas, then let the user pick a tool (pen/line/rect/arrow),
  * colour and stroke width and draw strokes on top. Undo pops the last stroke.
  * "Done" flattens image+strokes and calls `done(pngDataUrl)`; "Cancel"/ESC calls
- * `cancelAnnotate()`. Shares the exact drawing/export code with the host via the
- * `.toString()` interpolations below.
+ * `cancelAnnotate()`. "Save" (AC-03) flattens the same PNG and calls
+ * `saveAnnotate(pngDataUrl)` for an on-demand Save-As WITHOUT finishing, so the
+ * editor stays open and the user can keep annotating (or save again). Shares the
+ * exact drawing/export code with the host via the `.toString()` interpolations
+ * below.
  */
 export function buildAnnotationPageScript(): string {
     // NOTE: this string runs in the editor page's context, NOT here. Keep it free
@@ -630,7 +659,8 @@ export function buildAnnotationPageScript(): string {
 
   var canvas = document.getElementById('annotate-canvas');
   var ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
-  var toolbar = document.getElementById('annotate-toolbar');
+  var TOP_INSET = ${String(ANNOTATION_TOOLBAR_HEIGHT)};
+  var STAGE_PAD = ${String(ANNOTATION_STAGE_PADDING)};
 
   var baseImage = null;
   var size = { width: 0, height: 0 };
@@ -651,9 +681,11 @@ export function buildAnnotationPageScript(): string {
 
   function fitCanvasDisplay() {
     if (!canvas || !canvas.style || !size.width || !size.height) { return; }
-    var toolbarH = (toolbar && toolbar.offsetHeight) || ${String(ANNOTATION_TOOLBAR_HEIGHT)};
-    var availW = window.innerWidth || size.width;
-    var availH = (window.innerHeight || size.height) - toolbarH;
+    // Fit against the stage's CONTENT box, not the raw window: the stage pads
+    // its top by TOP_INSET (the pill's reserved inset) and its other three edges
+    // by STAGE_PAD. Measuring the unpadded window overflows the container.
+    var availW = (window.innerWidth || size.width) - STAGE_PAD * 2;
+    var availH = (window.innerHeight || size.height) - TOP_INSET - STAGE_PAD;
     var fit = Math.min(1, availW / size.width, availH / size.height);
     canvas.style.width = Math.max(1, Math.round(size.width * fit)) + 'px';
     canvas.style.height = Math.max(1, Math.round(size.height * fit)) + 'px';
@@ -758,6 +790,14 @@ export function buildAnnotationPageScript(): string {
     api.cancelAnnotate();
   }
 
+  function saveNow() {
+    if (finished || !api.saveAnnotate) { return; }
+    api.saveAnnotate(exportAnnotatedPng(document, baseImage, strokes, size));
+  }
+
+  var saveBtn = document.getElementById('annotate-save');
+  if (saveBtn) { saveBtn.addEventListener('click', saveNow); }
+
   var doneBtn = document.getElementById('annotate-done');
   if (doneBtn) { doneBtn.addEventListener('click', finishDone); }
   var cancelBtn = document.getElementById('annotate-cancel');
@@ -775,12 +815,46 @@ export function buildAnnotationPageScript(): string {
 }
 
 /**
- * AC-03: the full HTML document for the annotation editor window, loaded as a
- * data: URL (self-contained inline styles — independent of the SPA). A top
- * toolbar exposes the tools (pen/line/rect mandatory; arrow + colour + width +
- * undo are the trimmable extras) plus Cancel/Done; below it a custom `<canvas>`
- * holds the cropped image and the drawing layer. Embeds
- * {@link buildAnnotationPageScript}. Deliberately contains NO Excalidraw.
+ * AC-02: the toolbar icons. Inline SVG (no icon font, no sprite, no network
+ * fetch) so the `data:` URL page stays self-contained. Every icon inherits the
+ * button's colour via `currentColor`, so the active-tool and hover states style
+ * the glyph for free.
+ */
+const svgIcon = (body: string): string =>
+    `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" ` +
+    `stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${body}</svg>`;
+
+const ICON_PEN = svgIcon('<path d="M11.4 2.2 13.8 4.6 5.4 13H3v-2.4z"/><path d="M9.9 3.7 12.3 6.1"/>');
+const ICON_LINE = svgIcon('<path d="M3 13 13 3"/>');
+const ICON_RECT = svgIcon('<rect x="2.5" y="4" width="11" height="8" rx="1.5"/>');
+const ICON_ARROW = svgIcon('<path d="M3 13 13 3"/><path d="M8.4 3H13v4.6"/>');
+const ICON_UNDO = svgIcon('<path d="M4 8h5.5a3 3 0 0 1 0 6H6"/><path d="M6.5 5.5 4 8l2.5 2.5"/>');
+const ICON_COLOR = svgIcon('<path d="M8 2.3 4.7 6.6a4.2 4.2 0 1 0 6.6 0z"/>');
+const ICON_SAVE = svgIcon('<path d="M8 2.5v7"/><path d="M5 7l3 2.5L11 7"/><path d="M3 11.5v1a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1"/>');
+const ICON_WIDTH = svgIcon(
+    '<path d="M3 4.5h10" stroke-width="1"/><path d="M3 8h10" stroke-width="2"/><path d="M3 12h10" stroke-width="3"/>',
+);
+
+/**
+ * AC-03/AC-01: the full HTML document for the annotation editor window, loaded as
+ * a data: URL (self-contained inline styles — independent of the SPA, and it
+ * fetches nothing over the network).
+ *
+ * The window is frameless (see `openAnnotationEditor`), so the chrome is one
+ * rounded, translucent toolbar PILL floating over a full-height stage rather than
+ * a full-width bar with a bottom border. The pill itself is the window's drag
+ * region (`-webkit-app-region: drag`) and every control inside it opts back out
+ * with `no-drag`, so dragging the pill's empty padding moves the window while
+ * clicking a tool does not. The stage pads its top by
+ * {@link ANNOTATION_TOOLBAR_HEIGHT} so the pill never covers the image.
+ *
+ * Colours are sampled from the SPA's dark theme (`tailwind.css`): `#1e1e1e`
+ * canvas backdrop, `#252526` surface, `#3c3c3c` borders, `#cccccc` text and the
+ * `#0078d4` VS Code accent. The tools, Undo and Save are inline-SVG icon buttons
+ * whose text labels survive as `title`/`aria-label` tooltips; Cancel and Done keep
+ * readable text. Save (AC-03) is an on-demand Save-As that leaves the editor open —
+ * Done no longer forces a file dialog. Embeds {@link buildAnnotationPageScript}.
+ * Deliberately contains NO Excalidraw.
  */
 export function buildAnnotationHtml(): string {
     return `<!doctype html>
@@ -790,45 +864,97 @@ export function buildAnnotationHtml(): string {
 <style>
   html, body {
     margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
-    background: #0d1117; color: #e6edf3;
+    background: #1e1e1e; color: #cccccc;
     font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     user-select: none; -webkit-user-select: none;
   }
+  /* The floating pill: the whole window's title-bar drag handle. */
   #annotate-toolbar {
-    display: flex; align-items: center; gap: 6px; box-sizing: border-box;
-    height: ${String(ANNOTATION_TOOLBAR_HEIGHT)}px; padding: 0 10px;
-    background: #161b22; border-bottom: 1px solid #30363d;
+    position: fixed; z-index: 10; top: 8px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 4px; box-sizing: border-box;
+    max-width: calc(100vw - 16px); padding: 5px 8px; border-radius: 12px;
+    background: rgba(37, 38, 38, 0.86); border: 1px solid rgba(255, 255, 255, 0.09);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    backdrop-filter: blur(14px) saturate(160%);
+    -webkit-app-region: drag;
   }
+  #annotate-toolbar button,
+  #annotate-toolbar input,
+  #annotate-toolbar label { -webkit-app-region: no-drag; }
   #annotate-toolbar .tool, #annotate-toolbar button {
-    height: 30px; padding: 0 10px; border-radius: 6px; cursor: pointer;
-    color: #e6edf3; background: #21262d; border: 1px solid #30363d;
+    height: 28px; padding: 0 10px; border-radius: 7px; cursor: pointer;
+    color: #cccccc; background: transparent; border: 1px solid transparent;
+    font: inherit; line-height: 1;
   }
-  #annotate-toolbar .tool.active { background: #1f6feb; border-color: #1f6feb; }
-  #annotate-toolbar .spacer { flex: 1 1 auto; }
+  /* Icon-only buttons: square, with the inline SVG centred. */
+  #annotate-toolbar .tool, #annotate-toolbar #annotate-undo, #annotate-toolbar #annotate-save {
+    width: 28px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  #annotate-toolbar svg { width: 16px; height: 16px; display: block; }
+  #annotate-toolbar .tool:hover, #annotate-toolbar button:hover {
+    background: rgba(255, 255, 255, 0.09);
+  }
+  #annotate-toolbar .tool:active, #annotate-toolbar button:active {
+    background: rgba(255, 255, 255, 0.15);
+  }
+  #annotate-toolbar button:focus-visible, #annotate-toolbar input:focus-visible {
+    outline: 2px solid #0078d4; outline-offset: 2px;
+  }
+  #annotate-toolbar .tool.active {
+    background: #0078d4; border-color: #0078d4; color: #ffffff;
+  }
+  #annotate-toolbar .tool.active:hover { background: #005a9e; }
+  #annotate-toolbar .divider {
+    width: 1px; height: 18px; margin: 0 3px; background: rgba(255, 255, 255, 0.12);
+  }
+  /* Affordance icons sitting in front of the colour / width inputs. */
+  #annotate-toolbar .hint {
+    display: inline-flex; align-items: center; color: #8c8c8c; margin: 0 2px;
+  }
   #annotate-toolbar input[type="color"] {
-    width: 30px; height: 30px; padding: 0; border: 1px solid #30363d;
-    border-radius: 6px; background: #21262d; cursor: pointer;
+    width: 28px; height: 28px; padding: 2px; border: 1px solid #3c3c3c;
+    border-radius: 7px; background: #252526; cursor: pointer;
   }
-  #annotate-done { background: #238636 !important; border-color: #238636 !important; }
+  #annotate-toolbar input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+  #annotate-toolbar input[type="color"]::-webkit-color-swatch {
+    border: none; border-radius: 5px;
+  }
+  #annotate-toolbar input[type="range"] { width: 84px; accent-color: #0078d4; cursor: pointer; }
+  #annotate-cancel { border-color: #3c3c3c !important; }
+  #annotate-done {
+    background: #0078d4 !important; border-color: #0078d4 !important; color: #ffffff !important;
+  }
+  #annotate-done:hover { background: #005a9e !important; }
+  /* Full-height stage; the top pad is the pill's reserved inset. */
   #annotate-stage {
-    position: absolute; top: ${String(ANNOTATION_TOOLBAR_HEIGHT)}px; left: 0; right: 0; bottom: 0;
+    position: absolute; inset: 0; box-sizing: border-box;
+    padding: ${String(ANNOTATION_TOOLBAR_HEIGHT)}px ${String(ANNOTATION_STAGE_PADDING)}px ${String(ANNOTATION_STAGE_PADDING)}px;
     display: flex; align-items: center; justify-content: center; overflow: auto;
-    background: #010409;
+    background: #1e1e1e;
   }
-  #annotate-canvas { background: #ffffff; cursor: crosshair; box-shadow: 0 0 0 1px #30363d; }
+  #annotate-canvas {
+    background: #ffffff; cursor: crosshair;
+    box-shadow: 0 0 0 1px #3c3c3c, 0 10px 30px rgba(0, 0, 0, 0.5);
+  }
 </style>
 </head>
 <body>
   <div id="annotate-toolbar">
-    <button id="annotate-tool-pen" class="tool active">Pen</button>
-    <button id="annotate-tool-line" class="tool">Line</button>
-    <button id="annotate-tool-rect" class="tool">Rect</button>
-    <button id="annotate-tool-arrow" class="tool">Arrow</button>
-    <input id="annotate-color" type="color" value="#ff3b30" title="Colour">
-    <input id="annotate-width" type="range" min="1" max="24" value="4" title="Stroke width">
-    <button id="annotate-undo" title="Undo (Ctrl/Cmd+Z)">Undo</button>
-    <span class="spacer"></span>
-    <button id="annotate-cancel">Cancel</button>
+    <button id="annotate-tool-pen" class="tool active" title="Pen" aria-label="Pen">${ICON_PEN}</button>
+    <button id="annotate-tool-line" class="tool" title="Line" aria-label="Line">${ICON_LINE}</button>
+    <button id="annotate-tool-rect" class="tool" title="Rect" aria-label="Rect">${ICON_RECT}</button>
+    <button id="annotate-tool-arrow" class="tool" title="Arrow" aria-label="Arrow">${ICON_ARROW}</button>
+    <span class="divider"></span>
+    <span class="hint" aria-hidden="true">${ICON_COLOR}</span>
+    <input id="annotate-color" type="color" value="#ff3b30" title="Colour" aria-label="Colour">
+    <span class="hint" aria-hidden="true">${ICON_WIDTH}</span>
+    <input id="annotate-width" type="range" min="1" max="24" value="4" title="Stroke width" aria-label="Stroke width">
+    <button id="annotate-undo" title="Undo (Ctrl/Cmd+Z)" aria-label="Undo">${ICON_UNDO}</button>
+    <span class="divider"></span>
+    <button id="annotate-save" title="Save as PNG…" aria-label="Save as PNG">${ICON_SAVE}</button>
+    <button id="annotate-cancel" title="Cancel (Esc)">Cancel</button>
     <button id="annotate-done">Done</button>
   </div>
   <div id="annotate-stage">
@@ -839,11 +965,13 @@ export function buildAnnotationHtml(): string {
 </html>`;
 }
 
-// ─── AC-04: finish → three sinks (clipboard + chat-attach + save-file) ───────
+// ─── AC-04: finish → two sinks (clipboard + chat-attach) ────────────────────
 //
 // "Done" flattens the annotation to a PNG data URL (see `exportAnnotatedPng`),
-// then fans it out to three required sinks IN ORDER: (a) the OS clipboard,
-// (b) the active chat draft in the main CoC window, (c) a Save-As file. The
+// then fans it out to two required sinks IN ORDER: (a) the OS clipboard and
+// (b) the active chat draft in the main CoC window. Saving to a file is NO
+// LONGER part of finishing (AC-03): it is its own toolbar button routed through
+// `SCREENSHOT_ANNOTATE_SAVE_CHANNEL`, so Done never forces a Save-As dialog. The
 // Electron wiring (`clipboard.writeImage`, `webContents.send`,
 // `dialog.showSaveDialog` + `fs`) lives in `screenshot-capture-host.ts`;
 // everything testable is here: the push-channel constant, the ordered dispatcher
@@ -858,44 +986,41 @@ export function buildAnnotationHtml(): string {
 export const SCREENSHOT_ATTACH_CHANNEL = 'coc-desktop:screenshot-attach';
 
 /**
- * The three sinks a finished annotation fans out to, injected so the ordered
- * dispatch is unit-testable without `electron`.
+ * The two sinks a finished annotation fans out to, injected so the ordered
+ * dispatch is unit-testable without `electron`. Saving to a file is NOT one of
+ * them (AC-03) — it is the toolbar's own explicit action.
  */
 export interface AnnotationSinks {
     /** (a) Copy the flattened PNG to the OS clipboard. */
     writeClipboard: (pngDataUrl: string) => void;
     /** (b) Push the PNG to the active chat draft in the main window. */
     attachToChat: (pngDataUrl: string) => void;
-    /** (c) Offer a Save-As dialog and write the file. May be async; a user cancel
-     *  resolves normally (does NOT reject). */
-    saveFile: (pngDataUrl: string) => void | Promise<void>;
 }
 
-/** Which sinks succeeded — a failed/cancelled sink is recorded, never thrown. */
+/** Which sinks succeeded — a failed sink is recorded, never thrown. */
 export interface AnnotationDispatchResult {
     clipboard: boolean;
     attached: boolean;
-    saved: boolean;
 }
 
-/** The three-sink labels, in dispatch order (for the {@link dispatchAnnotationSinks} error hook). */
-export type AnnotationSinkName = 'clipboard' | 'attach' | 'save';
+/** The sink labels, in dispatch order (for the {@link dispatchAnnotationSinks} error hook). */
+export type AnnotationSinkName = 'clipboard' | 'attach';
 
 /**
- * AC-04 (DoD #2): fan a finished annotation PNG out to the three sinks IN ORDER —
- * clipboard, then chat-attach, then save-file.
+ * AC-04 (DoD #2): fan a finished annotation PNG out to the two sinks IN ORDER —
+ * clipboard, then chat-attach. No Save-As runs here: per AC-03 "Done" never
+ * opens a file dialog.
  *
- * Each sink is isolated: a failure (or a Save-As cancel that throws) is caught
- * and reported through `onError`, NEVER rethrown and never undoing an earlier
- * sink. So the clipboard + chat-attach results always stand even when the user
- * cancels (or the save otherwise fails). Returns which sinks succeeded.
+ * Each sink is isolated: a failure is caught and reported through `onError`,
+ * NEVER rethrown and never undoing an earlier sink. Returns which sinks
+ * succeeded.
  */
 export async function dispatchAnnotationSinks(
     pngDataUrl: string,
     sinks: AnnotationSinks,
     onError?: (sink: AnnotationSinkName, err: unknown) => void,
 ): Promise<AnnotationDispatchResult> {
-    const result: AnnotationDispatchResult = { clipboard: false, attached: false, saved: false };
+    const result: AnnotationDispatchResult = { clipboard: false, attached: false };
     try {
         sinks.writeClipboard(pngDataUrl);
         result.clipboard = true;
@@ -907,12 +1032,6 @@ export async function dispatchAnnotationSinks(
         result.attached = true;
     } catch (err) {
         onError?.('attach', err);
-    }
-    try {
-        await sinks.saveFile(pngDataUrl);
-        result.saved = true;
-    } catch (err) {
-        onError?.('save', err);
     }
     return result;
 }

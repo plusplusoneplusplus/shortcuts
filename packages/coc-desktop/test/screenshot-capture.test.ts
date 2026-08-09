@@ -33,6 +33,7 @@ import {
     SCREENSHOT_ANNOTATE_DONE_CHANNEL,
     SCREENSHOT_ANNOTATE_CANCEL_CHANNEL,
     ANNOTATION_TOOLBAR_HEIGHT,
+    ANNOTATION_STAGE_PADDING,
     AnnotationStroke,
     drawAnnotationStroke,
     renderAnnotationScene,
@@ -732,16 +733,22 @@ interface EditorHarness {
     exportCtx: ReturnType<typeof makeRecordingCtx>;
     done: ReturnType<typeof vi.fn>;
     cancelAnnotate: ReturnType<typeof vi.fn>;
+    saveAnnotate: ReturnType<typeof vi.fn>;
     createdImgs: Array<{ onload: (() => void) | null; src: string }>;
     exportCanvas: () => { width: number; height: number } | null;
     init: (payload: unknown) => void;
+    /** Resize the fake window, so a following `resize` event re-fits the canvas. */
+    setViewport: (innerWidth: number, innerHeight: number) => void;
     fireWin: (type: string, e: unknown) => void;
     fireCanvas: (type: string, e: unknown) => void;
     click: (id: string) => void;
     input: (id: string, value: string) => void;
 }
 
-function runEditor(withApi = true): EditorHarness {
+function runEditor(
+    withApi = true,
+    viewport: { innerWidth: number; innerHeight: number } = { innerWidth: 1000, innerHeight: 800 },
+): EditorHarness {
     const els: Record<string, ReturnType<typeof makeEditorEl>> = {};
     const register = (id: string, extra: Record<string, unknown> = {}) => {
         els[id] = makeEditorEl(id, extra);
@@ -766,6 +773,7 @@ function runEditor(withApi = true): EditorHarness {
     register('annotate-color');
     register('annotate-width');
     register('annotate-undo');
+    register('annotate-save');
     register('annotate-done');
     register('annotate-cancel');
 
@@ -793,10 +801,11 @@ function runEditor(withApi = true): EditorHarness {
     const winListeners: Record<string, Array<(e: unknown) => void>> = {};
     const done = vi.fn();
     const cancelAnnotate = vi.fn();
+    const saveAnnotate = vi.fn();
     let initCb: ((payload: unknown) => void) | null = null;
     const win: Record<string, unknown> = {
-        innerWidth: 1000,
-        innerHeight: 800,
+        innerWidth: viewport.innerWidth,
+        innerHeight: viewport.innerHeight,
         addEventListener(type: string, cb: (e: unknown) => void) {
             (winListeners[type] ||= []).push(cb);
         },
@@ -810,6 +819,7 @@ function runEditor(withApi = true): EditorHarness {
                 },
                 done,
                 cancelAnnotate,
+                saveAnnotate,
             },
         };
     }
@@ -823,9 +833,14 @@ function runEditor(withApi = true): EditorHarness {
         exportCtx,
         done,
         cancelAnnotate,
+        saveAnnotate,
         createdImgs,
         exportCanvas: () => exportCanvas,
         init: (payload) => initCb && initCb(payload),
+        setViewport: (innerWidth, innerHeight) => {
+            win.innerWidth = innerWidth;
+            win.innerHeight = innerHeight;
+        },
         fireWin: (type, e) => (winListeners[type] || []).forEach((f) => f(e)),
         fireCanvas: (type, e) => els['annotate-canvas'].fire(type, e),
         click: (id) => els[id].fire('click', {}),
@@ -992,6 +1007,193 @@ describe('buildAnnotationHtml (AC-03 DoD #3 — custom canvas, no Excalidraw)', 
     });
 });
 
+describe('AC-01 frameless window + floating toolbar pill', () => {
+    const html = buildAnnotationHtml();
+
+    it('renders the toolbar as a floating, rounded, translucent pill', () => {
+        const pill = html.slice(html.indexOf('#annotate-toolbar {'), html.indexOf('#annotate-toolbar button,'));
+        expect(pill).toContain('position: fixed');
+        expect(pill).toMatch(/border-radius:\s*\d+px/);
+        expect(pill).toMatch(/background:\s*rgba\(/);
+        expect(pill).toContain('backdrop-filter: blur(');
+        expect(pill).toMatch(/box-shadow:.*rgba\(/);
+        // NOT the old full-width bar with a bottom border.
+        expect(pill).not.toContain('border-bottom');
+    });
+
+    it('makes the pill the window drag region and every control no-drag', () => {
+        const pill = html.slice(html.indexOf('#annotate-toolbar {'), html.indexOf('#annotate-toolbar .tool,'));
+        expect(pill).toContain('-webkit-app-region: drag');
+        // buttons / inputs / labels inside the pill opt back out.
+        expect(pill).toMatch(
+            /#annotate-toolbar button,\s*#annotate-toolbar input,\s*#annotate-toolbar label\s*\{\s*-webkit-app-region: no-drag;/,
+        );
+    });
+
+    it('gives the stage the full window and reserves the pill inset on top', () => {
+        const stage = html.slice(html.indexOf('#annotate-stage {'), html.indexOf('#annotate-canvas {'));
+        expect(stage).toContain('inset: 0');
+        expect(stage).toContain(`padding: ${ANNOTATION_TOOLBAR_HEIGHT}px`);
+    });
+
+    it('stays self-contained — the page fetches nothing over the network', () => {
+        expect(html).not.toMatch(/https?:\/\//);
+        expect(html).not.toMatch(/\bsrc\s*=\s*["'](?!data:)/);
+        expect(html).not.toMatch(/@import|url\(/);
+    });
+
+    it('the host opens the annotation editor with no OS frame', () => {
+        const host = readSrc('screenshot-capture-host.ts');
+        const opener = host.slice(host.indexOf('function openAnnotationEditor('));
+        const options = opener.slice(opener.indexOf('new BrowserWindow('), opener.indexOf('const editorId'));
+        expect(options).toContain('frame: false');
+    });
+});
+
+// Regression: the floating-pill layout gave the stage `padding: 48px 8px 8px`,
+// but `fitCanvasDisplay` kept measuring the raw window — so the canvas was laid
+// out 16px wider and 8px taller than its container and the image was clipped on
+// every edge. The CSS padding and the fit math must both come from
+// ANNOTATION_STAGE_PADDING.
+describe('AC-01 regression — the canvas fits INSIDE the padded stage', () => {
+    /** The stage's content box for a given window, per the CSS. */
+    const contentBox = (innerWidth: number, innerHeight: number) => ({
+        width: innerWidth - ANNOTATION_STAGE_PADDING * 2,
+        height: innerHeight - ANNOTATION_TOOLBAR_HEIGHT - ANNOTATION_STAGE_PADDING,
+    });
+
+    const displayed = (h: EditorHarness) => ({
+        width: parseFloat(String((h.els['annotate-canvas'].style as Record<string, string>).width)),
+        height: parseFloat(String((h.els['annotate-canvas'].style as Record<string, string>).height)),
+    });
+
+    it('never displays the canvas wider or taller than the stage content box', () => {
+        // The exact case `fitAnnotationWindowSize` produces: a window sized to
+        // the crop plus the pill inset, where the old math computed fit = 1.
+        const win = { innerWidth: 520, innerHeight: 360 + ANNOTATION_TOOLBAR_HEIGHT };
+        const h = runEditor(true, win);
+        initLoaded(h, 520, 360);
+
+        const box = contentBox(win.innerWidth, win.innerHeight);
+        const shown = displayed(h);
+        expect(shown.width).toBeLessThanOrEqual(box.width);
+        expect(shown.height).toBeLessThanOrEqual(box.height);
+        // Still as large as it can be — this is a fit, not an arbitrary shrink.
+        expect(shown.width).toBeGreaterThan(box.width - 2);
+        // …and the aspect ratio is preserved.
+        expect(shown.width / shown.height).toBeCloseTo(520 / 360, 1);
+    });
+
+    it('fits a portrait crop inside the stage too', () => {
+        const win = { innerWidth: 900, innerHeight: 500 };
+        const h = runEditor(true, win);
+        initLoaded(h, 400, 1200);
+
+        const box = contentBox(win.innerWidth, win.innerHeight);
+        const shown = displayed(h);
+        expect(shown.width).toBeLessThanOrEqual(box.width);
+        expect(shown.height).toBeLessThanOrEqual(box.height);
+        expect(shown.height).toBeGreaterThan(box.height - 2);
+    });
+
+    it('still shows a small crop at its native size', () => {
+        const h = runEditor(true, { innerWidth: 1000, innerHeight: 800 });
+        initLoaded(h, 200, 150);
+        expect(displayed(h)).toEqual({ width: 200, height: 150 });
+    });
+
+    it('re-fits inside the padded stage after a resize', () => {
+        const win: { innerWidth: number; innerHeight: number } = { innerWidth: 1000, innerHeight: 800 };
+        const h = runEditor(true, win);
+        initLoaded(h, 900, 600);
+        // The page reads window.innerWidth/Height live on resize.
+        h.setViewport(420, 360);
+        h.fireWin('resize', {});
+
+        const box = contentBox(420, 360);
+        const shown = displayed(h);
+        expect(shown.width).toBeLessThanOrEqual(box.width);
+        expect(shown.height).toBeLessThanOrEqual(box.height);
+    });
+
+    it('derives the stage padding and the fit math from one constant', () => {
+        const html = buildAnnotationHtml();
+        const stage = html.slice(html.indexOf('#annotate-stage {'), html.indexOf('#annotate-canvas {'));
+        expect(stage).toContain(
+            `padding: ${ANNOTATION_TOOLBAR_HEIGHT}px ${ANNOTATION_STAGE_PADDING}px ${ANNOTATION_STAGE_PADDING}px;`,
+        );
+        const script = buildAnnotationPageScript();
+        expect(script).toContain(`var STAGE_PAD = ${ANNOTATION_STAGE_PADDING};`);
+        // The fit math subtracts the padding on both axes, not just the inset.
+        expect(script).toContain('- STAGE_PAD * 2');
+        expect(script).toContain('- TOP_INSET - STAGE_PAD');
+    });
+});
+
+describe('AC-02 icon toolbar in CoC visual language', () => {
+    const html = buildAnnotationHtml();
+    const toolButton = (tool: string): string => {
+        const start = html.indexOf(`<button id="annotate-tool-${tool}"`);
+        return html.slice(start, html.indexOf('</button>', start));
+    };
+
+    it('renders each tool as an inline-SVG icon button keeping its old text label as the tooltip', () => {
+        for (const [tool, label] of [
+            ['pen', 'Pen'],
+            ['line', 'Line'],
+            ['rect', 'Rect'],
+            ['arrow', 'Arrow'],
+        ]) {
+            const button = toolButton(tool);
+            expect(button).toContain(`title="${label}"`);
+            expect(button).toContain(`aria-label="${label}"`);
+            expect(button).toContain('<svg');
+            // Icon only — the visible text label is gone.
+            expect(button).not.toMatch(new RegExp(`>\\s*${label}\\s*$`));
+        }
+    });
+
+    it('turns Undo into an icon and keeps Cancel/Done readable text labels', () => {
+        const undo = html.slice(html.indexOf('<button id="annotate-undo"'), html.indexOf('</button>', html.indexOf('<button id="annotate-undo"')));
+        expect(undo).toContain('<svg');
+        expect(undo).toContain('title="Undo (Ctrl/Cmd+Z)"');
+        expect(html).toContain('>Cancel</button>');
+        expect(html).toContain('>Done</button>');
+    });
+
+    it('gives the colour and width inputs their own affordance icons', () => {
+        const color = html.slice(html.indexOf('<span class="hint"'), html.indexOf('id="annotate-width"'));
+        expect(color).toContain('<svg');
+        expect(color).toContain('aria-label="Colour"');
+        expect(html).toContain('aria-label="Stroke width"');
+        // Two hint glyphs: one in front of the colour swatch, one in front of the slider.
+        expect(html.match(/<span class="hint"/g)).toHaveLength(2);
+    });
+
+    it('styles explicit hover, active and focus-visible states from the SPA palette', () => {
+        expect(html).toContain('#annotate-toolbar button:focus-visible');
+        expect(html).toMatch(/outline:\s*2px solid #0078d4/);
+        expect(html).toContain('#annotate-toolbar .tool:hover');
+        expect(html).toContain('#annotate-toolbar .tool:active');
+        expect(html).toContain('#annotate-toolbar .tool.active {');
+        // Icons inherit the button colour, so the active tool styles its glyph too.
+        expect(html).toContain('stroke="currentColor"');
+    });
+
+    it('keeps the icons self-contained — no icon font, no sprite, no external image', () => {
+        expect(html).not.toMatch(/@font-face|font-family:\s*["']?(?:codicon|fontawesome|material)/i);
+        expect(html).not.toMatch(/<img|xlink:href|<use\b/);
+    });
+
+    it('keeps the className contract setTool() writes', () => {
+        // setTool assigns exactly 'tool active' / 'tool', so no extra class may
+        // live on the tool buttons or it would be wiped on the first click.
+        for (const tool of ['pen', 'line', 'rect', 'arrow']) {
+            expect(toolButton(tool)).toMatch(/class="tool(?: active)?"/);
+        }
+    });
+});
+
 describe('AC-03 code-search (DoD #3 — no Excalidraw import)', () => {
     // The word "Excalidraw" appears in the source only inside comments that
     // DOCUMENT the decision not to use it; what the DoD forbids is a real import
@@ -1019,7 +1221,7 @@ describe('SCREENSHOT_ATTACH_CHANNEL', () => {
     });
 });
 
-describe('dispatchAnnotationSinks (AC-04 DoD #2 — the three-sink dispatcher)', () => {
+describe('dispatchAnnotationSinks (AC-04 DoD #2 — the finish dispatcher)', () => {
     const PNG = 'data:image/png;base64,AAAA';
 
     function recordingSinks(overrides: Partial<AnnotationSinks> = {}): {
@@ -1030,50 +1232,124 @@ describe('dispatchAnnotationSinks (AC-04 DoD #2 — the three-sink dispatcher)',
         const sinks: AnnotationSinks = {
             writeClipboard: vi.fn(() => { order.push('clipboard'); }),
             attachToChat: vi.fn(() => { order.push('attach'); }),
-            saveFile: vi.fn(() => { order.push('save'); }),
             ...overrides,
         };
         return { sinks, order };
     }
 
-    it('calls clipboard, chat-attach, then save — in that order — with the PNG', async () => {
+    it('calls clipboard then chat-attach — in that order — with the PNG', async () => {
         const { sinks, order } = recordingSinks();
         const result = await dispatchAnnotationSinks(PNG, sinks);
-        expect(order).toEqual(['clipboard', 'attach', 'save']);
+        expect(order).toEqual(['clipboard', 'attach']);
         expect(sinks.writeClipboard).toHaveBeenCalledWith(PNG);
         expect(sinks.attachToChat).toHaveBeenCalledWith(PNG);
-        expect(sinks.saveFile).toHaveBeenCalledWith(PNG);
-        expect(result).toEqual({ clipboard: true, attached: true, saved: true });
+        expect(result).toEqual({ clipboard: true, attached: true });
     });
 
-    it('a Save-As cancel/throw does not throw and does not undo clipboard/attach', async () => {
-        const onError = vi.fn();
-        const { sinks, order } = recordingSinks({
-            // Model a Save-As cancel that surfaces as a rejected promise.
-            saveFile: vi.fn(async () => {
-                order.push('save');
-                throw new Error('user cancelled the save dialog');
-            }),
-        });
-        const result = await dispatchAnnotationSinks(PNG, sinks, onError);
-        // clipboard + attach still ran (and in order before the failing save).
-        expect(order).toEqual(['clipboard', 'attach', 'save']);
-        expect(sinks.writeClipboard).toHaveBeenCalledWith(PNG);
-        expect(sinks.attachToChat).toHaveBeenCalledWith(PNG);
-        // The dispatcher resolved (did not reject) and kept a+b marked done.
-        expect(result).toEqual({ clipboard: true, attached: true, saved: false });
-        expect(onError).toHaveBeenCalledWith('save', expect.any(Error));
+    it('AC-03: has no save sink at all — finishing never triggers a Save-As', async () => {
+        const { sinks } = recordingSinks();
+        expect('saveFile' in sinks).toBe(false);
+        const result = await dispatchAnnotationSinks(PNG, sinks);
+        expect(Object.keys(result).sort()).toEqual(['attached', 'clipboard']);
     });
 
-    it('isolates each sink — a clipboard failure still lets attach + save run', async () => {
+    it('isolates each sink — a clipboard failure still lets attach run', async () => {
         const onError = vi.fn();
         const { sinks, order } = recordingSinks({
             writeClipboard: vi.fn(() => { order.push('clipboard'); throw new Error('no clipboard'); }),
         });
         const result = await dispatchAnnotationSinks(PNG, sinks, onError);
-        expect(order).toEqual(['clipboard', 'attach', 'save']);
-        expect(result).toEqual({ clipboard: false, attached: true, saved: true });
+        expect(order).toEqual(['clipboard', 'attach']);
+        expect(result).toEqual({ clipboard: false, attached: true });
         expect(onError).toHaveBeenCalledWith('clipboard', expect.any(Error));
+    });
+
+    it('an attach failure does not throw and does not undo the clipboard', async () => {
+        const onError = vi.fn();
+        const { sinks } = recordingSinks({
+            attachToChat: vi.fn(() => { throw new Error('no main window'); }),
+        });
+        const result = await dispatchAnnotationSinks(PNG, sinks, onError);
+        expect(result).toEqual({ clipboard: true, attached: false });
+        expect(onError).toHaveBeenCalledWith('attach', expect.any(Error));
+    });
+});
+
+describe('AC-03 explicit Save, no forced Save-As on Done', () => {
+    const html = buildAnnotationHtml();
+
+    it('renders a Save icon button in the toolbar with a tooltip', () => {
+        const start = html.indexOf('<button id="annotate-save"');
+        expect(start).toBeGreaterThan(-1);
+        const button = html.slice(start, html.indexOf('</button>', start));
+        expect(button).toContain('<svg');
+        expect(button).toMatch(/title="Save[^"]*"/);
+        expect(button).toContain('aria-label="Save as PNG"');
+        // It sits before Cancel/Done in the pill.
+        expect(start).toBeLessThan(html.indexOf('<button id="annotate-cancel"'));
+    });
+
+    it('Save flattens the same PNG through its own bridge call and does not finish', () => {
+        const h = runEditor();
+        initLoaded(h);
+        h.fireCanvas('mousedown', { button: 0, clientX: 10, clientY: 10 });
+        h.fireWin('mouseup', { button: 0, clientX: 40, clientY: 30 });
+        h.click('annotate-save');
+        expect(h.saveAnnotate).toHaveBeenCalledTimes(1);
+        expect(h.saveAnnotate.mock.calls[0][0]).toBe('data:image/png;base64,EDITED');
+        // Saving is not finishing: neither done nor cancel fired.
+        expect(h.done).not.toHaveBeenCalled();
+        expect(h.cancelAnnotate).not.toHaveBeenCalled();
+    });
+
+    it('the editor stays usable after a save — save again, then Done still fires', () => {
+        const h = runEditor();
+        initLoaded(h);
+        h.click('annotate-save');
+        h.click('annotate-save');
+        expect(h.saveAnnotate).toHaveBeenCalledTimes(2);
+        h.click('annotate-done');
+        expect(h.done).toHaveBeenCalledTimes(1);
+    });
+
+    it('Done no longer saves — it only reports the PNG back over the done channel', () => {
+        const h = runEditor();
+        initLoaded(h);
+        h.click('annotate-done');
+        expect(h.done).toHaveBeenCalledTimes(1);
+        expect(h.saveAnnotate).not.toHaveBeenCalled();
+    });
+
+    it('the host routes Save on its own channel and leaves the editor open', () => {
+        const host = readSrc('screenshot-capture-host.ts');
+        const handler = host.slice(
+            host.indexOf('ipcMain.on(SCREENSHOT_ANNOTATE_SAVE_CHANNEL'),
+            host.indexOf('function openOverlay('),
+        );
+        expect(handler).toContain('saveAnnotatedPng(');
+        // Unlike the done/cancel handlers, it never closes the window.
+        expect(handler).not.toContain('editor.close()');
+        // ...and the Done dispatch no longer runs a Save-As.
+        const dispatch = host.slice(
+            host.indexOf('function dispatchAnnotationResult('),
+            host.indexOf('async function saveAnnotatedPng('),
+        );
+        expect(dispatch).not.toContain('saveFile');
+        expect(dispatch).not.toContain('saveAnnotatedPng(');
+    });
+
+    it('a cancelled Save dialog writes no file', () => {
+        const src = readSrc('screenshot-capture-host.ts');
+        const save = src.slice(src.indexOf('async function saveAnnotatedPng('));
+        // Early return on cancel, before the only write.
+        expect(save.indexOf('result.canceled')).toBeLessThan(save.indexOf('writeFile'));
+    });
+
+    it('the preload bridge exposes saveAnnotate on the dedicated channel', () => {
+        const preload = readSrc('preload.ts');
+        expect(preload).toContain("'coc-desktop:screenshot-annotate-save'");
+        expect(preload).toContain('saveAnnotate:');
+        expect(preload).toContain('ipcRenderer.send(SCREENSHOT_ANNOTATE_SAVE_CHANNEL');
     });
 });
 
@@ -1091,14 +1367,14 @@ describe('buildScreenshotFileName (AC-04 — timestamped default Save-As name)',
 });
 
 describe('AC-04 host wiring (code-search)', () => {
-    it('the host fans a finished PNG out to the three sinks via the pure dispatcher', () => {
+    it('the host fans a finished PNG out to the clipboard + chat sinks via the pure dispatcher', () => {
         const host = readSrc('screenshot-capture-host.ts');
         // Clipboard sink.
         expect(host).toContain('clipboard.writeImage(nativeImage.createFromDataURL');
         // Chat-attach sink pushes to the MAIN window (not the editor).
         expect(host).toContain('mainWindowProvider()');
         expect(host).toContain('webContents.send(SCREENSHOT_ATTACH_CHANNEL');
-        // Save sink opens a Save-As dialog with a timestamped default name.
+        // The Save-As dialog still exists — on AC-03's own Save path, not on Done.
         expect(host).toContain('dialog.showSaveDialog(');
         expect(host).toContain('buildScreenshotFileName(');
         // Ordering delegated to the pure, tested dispatcher.
