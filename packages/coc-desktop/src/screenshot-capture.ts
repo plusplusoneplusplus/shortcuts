@@ -419,6 +419,17 @@ export const SCREENSHOT_ANNOTATE_SAVE_CHANNEL = 'coc-desktop:screenshot-annotate
  */
 export const ANNOTATION_TOOLBAR_HEIGHT = 48;
 
+/**
+ * Breathing room (CSS px) the stage keeps on its left, right and bottom edges so
+ * the image never runs into the window edge.
+ *
+ * Shared deliberately: the stage's CSS padding and the page script's
+ * `fitCanvasDisplay` fit math BOTH derive from this, because they have to agree.
+ * When they drifted apart the canvas was laid out against the unpadded window and
+ * overflowed its container — the image was clipped by this much on each side.
+ */
+export const ANNOTATION_STAGE_PADDING = 8;
+
 /** The drawing tools the editor offers. `pen`/`line`/`rect` are mandatory. */
 export type AnnotationTool = 'pen' | 'line' | 'rect' | 'arrow';
 
@@ -649,6 +660,7 @@ export function buildAnnotationPageScript(): string {
   var canvas = document.getElementById('annotate-canvas');
   var ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
   var TOP_INSET = ${String(ANNOTATION_TOOLBAR_HEIGHT)};
+  var STAGE_PAD = ${String(ANNOTATION_STAGE_PADDING)};
 
   var baseImage = null;
   var size = { width: 0, height: 0 };
@@ -669,8 +681,11 @@ export function buildAnnotationPageScript(): string {
 
   function fitCanvasDisplay() {
     if (!canvas || !canvas.style || !size.width || !size.height) { return; }
-    var availW = window.innerWidth || size.width;
-    var availH = (window.innerHeight || size.height) - TOP_INSET;
+    // Fit against the stage's CONTENT box, not the raw window: the stage pads
+    // its top by TOP_INSET (the pill's reserved inset) and its other three edges
+    // by STAGE_PAD. Measuring the unpadded window overflows the container.
+    var availW = (window.innerWidth || size.width) - STAGE_PAD * 2;
+    var availH = (window.innerHeight || size.height) - TOP_INSET - STAGE_PAD;
     var fit = Math.min(1, availW / size.width, availH / size.height);
     canvas.style.width = Math.max(1, Math.round(size.width * fit)) + 'px';
     canvas.style.height = Math.max(1, Math.round(size.height * fit)) + 'px';
@@ -915,7 +930,7 @@ export function buildAnnotationHtml(): string {
   /* Full-height stage; the top pad is the pill's reserved inset. */
   #annotate-stage {
     position: absolute; inset: 0; box-sizing: border-box;
-    padding: ${String(ANNOTATION_TOOLBAR_HEIGHT)}px 8px 8px;
+    padding: ${String(ANNOTATION_TOOLBAR_HEIGHT)}px ${String(ANNOTATION_STAGE_PADDING)}px ${String(ANNOTATION_STAGE_PADDING)}px;
     display: flex; align-items: center; justify-content: center; overflow: auto;
     background: #1e1e1e;
   }

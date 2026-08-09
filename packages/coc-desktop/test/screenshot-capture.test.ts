@@ -33,6 +33,7 @@ import {
     SCREENSHOT_ANNOTATE_DONE_CHANNEL,
     SCREENSHOT_ANNOTATE_CANCEL_CHANNEL,
     ANNOTATION_TOOLBAR_HEIGHT,
+    ANNOTATION_STAGE_PADDING,
     AnnotationStroke,
     drawAnnotationStroke,
     renderAnnotationScene,
@@ -736,13 +737,18 @@ interface EditorHarness {
     createdImgs: Array<{ onload: (() => void) | null; src: string }>;
     exportCanvas: () => { width: number; height: number } | null;
     init: (payload: unknown) => void;
+    /** Resize the fake window, so a following `resize` event re-fits the canvas. */
+    setViewport: (innerWidth: number, innerHeight: number) => void;
     fireWin: (type: string, e: unknown) => void;
     fireCanvas: (type: string, e: unknown) => void;
     click: (id: string) => void;
     input: (id: string, value: string) => void;
 }
 
-function runEditor(withApi = true): EditorHarness {
+function runEditor(
+    withApi = true,
+    viewport: { innerWidth: number; innerHeight: number } = { innerWidth: 1000, innerHeight: 800 },
+): EditorHarness {
     const els: Record<string, ReturnType<typeof makeEditorEl>> = {};
     const register = (id: string, extra: Record<string, unknown> = {}) => {
         els[id] = makeEditorEl(id, extra);
@@ -798,8 +804,8 @@ function runEditor(withApi = true): EditorHarness {
     const saveAnnotate = vi.fn();
     let initCb: ((payload: unknown) => void) | null = null;
     const win: Record<string, unknown> = {
-        innerWidth: 1000,
-        innerHeight: 800,
+        innerWidth: viewport.innerWidth,
+        innerHeight: viewport.innerHeight,
         addEventListener(type: string, cb: (e: unknown) => void) {
             (winListeners[type] ||= []).push(cb);
         },
@@ -831,6 +837,10 @@ function runEditor(withApi = true): EditorHarness {
         createdImgs,
         exportCanvas: () => exportCanvas,
         init: (payload) => initCb && initCb(payload),
+        setViewport: (innerWidth, innerHeight) => {
+            win.innerWidth = innerWidth;
+            win.innerHeight = innerHeight;
+        },
         fireWin: (type, e) => (winListeners[type] || []).forEach((f) => f(e)),
         fireCanvas: (type, e) => els['annotate-canvas'].fire(type, e),
         click: (id) => els[id].fire('click', {}),
@@ -1037,6 +1047,86 @@ describe('AC-01 frameless window + floating toolbar pill', () => {
         const opener = host.slice(host.indexOf('function openAnnotationEditor('));
         const options = opener.slice(opener.indexOf('new BrowserWindow('), opener.indexOf('const editorId'));
         expect(options).toContain('frame: false');
+    });
+});
+
+// Regression: the floating-pill layout gave the stage `padding: 48px 8px 8px`,
+// but `fitCanvasDisplay` kept measuring the raw window — so the canvas was laid
+// out 16px wider and 8px taller than its container and the image was clipped on
+// every edge. The CSS padding and the fit math must both come from
+// ANNOTATION_STAGE_PADDING.
+describe('AC-01 regression — the canvas fits INSIDE the padded stage', () => {
+    /** The stage's content box for a given window, per the CSS. */
+    const contentBox = (innerWidth: number, innerHeight: number) => ({
+        width: innerWidth - ANNOTATION_STAGE_PADDING * 2,
+        height: innerHeight - ANNOTATION_TOOLBAR_HEIGHT - ANNOTATION_STAGE_PADDING,
+    });
+
+    const displayed = (h: EditorHarness) => ({
+        width: parseFloat(String((h.els['annotate-canvas'].style as Record<string, string>).width)),
+        height: parseFloat(String((h.els['annotate-canvas'].style as Record<string, string>).height)),
+    });
+
+    it('never displays the canvas wider or taller than the stage content box', () => {
+        // The exact case `fitAnnotationWindowSize` produces: a window sized to
+        // the crop plus the pill inset, where the old math computed fit = 1.
+        const win = { innerWidth: 520, innerHeight: 360 + ANNOTATION_TOOLBAR_HEIGHT };
+        const h = runEditor(true, win);
+        initLoaded(h, 520, 360);
+
+        const box = contentBox(win.innerWidth, win.innerHeight);
+        const shown = displayed(h);
+        expect(shown.width).toBeLessThanOrEqual(box.width);
+        expect(shown.height).toBeLessThanOrEqual(box.height);
+        // Still as large as it can be — this is a fit, not an arbitrary shrink.
+        expect(shown.width).toBeGreaterThan(box.width - 2);
+        // …and the aspect ratio is preserved.
+        expect(shown.width / shown.height).toBeCloseTo(520 / 360, 1);
+    });
+
+    it('fits a portrait crop inside the stage too', () => {
+        const win = { innerWidth: 900, innerHeight: 500 };
+        const h = runEditor(true, win);
+        initLoaded(h, 400, 1200);
+
+        const box = contentBox(win.innerWidth, win.innerHeight);
+        const shown = displayed(h);
+        expect(shown.width).toBeLessThanOrEqual(box.width);
+        expect(shown.height).toBeLessThanOrEqual(box.height);
+        expect(shown.height).toBeGreaterThan(box.height - 2);
+    });
+
+    it('still shows a small crop at its native size', () => {
+        const h = runEditor(true, { innerWidth: 1000, innerHeight: 800 });
+        initLoaded(h, 200, 150);
+        expect(displayed(h)).toEqual({ width: 200, height: 150 });
+    });
+
+    it('re-fits inside the padded stage after a resize', () => {
+        const win: { innerWidth: number; innerHeight: number } = { innerWidth: 1000, innerHeight: 800 };
+        const h = runEditor(true, win);
+        initLoaded(h, 900, 600);
+        // The page reads window.innerWidth/Height live on resize.
+        h.setViewport(420, 360);
+        h.fireWin('resize', {});
+
+        const box = contentBox(420, 360);
+        const shown = displayed(h);
+        expect(shown.width).toBeLessThanOrEqual(box.width);
+        expect(shown.height).toBeLessThanOrEqual(box.height);
+    });
+
+    it('derives the stage padding and the fit math from one constant', () => {
+        const html = buildAnnotationHtml();
+        const stage = html.slice(html.indexOf('#annotate-stage {'), html.indexOf('#annotate-canvas {'));
+        expect(stage).toContain(
+            `padding: ${ANNOTATION_TOOLBAR_HEIGHT}px ${ANNOTATION_STAGE_PADDING}px ${ANNOTATION_STAGE_PADDING}px;`,
+        );
+        const script = buildAnnotationPageScript();
+        expect(script).toContain(`var STAGE_PAD = ${ANNOTATION_STAGE_PADDING};`);
+        // The fit math subtracts the padding on both axes, not just the inset.
+        expect(script).toContain('- STAGE_PAD * 2');
+        expect(script).toContain('- TOP_INSET - STAGE_PAD');
     });
 });
 
