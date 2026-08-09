@@ -1589,6 +1589,49 @@
     table-layout: auto;
 }
 
+/*
+ * Self-contained cell styling. The component is mounted both inside
+ * `.markdown-body` (chat markdown tables) and standalone (Kusto canvas), so
+ * every visual rule lives here rather than under `.markdown-body`. The
+ * `.md-table.interactive-md-table` prefix matches the specificity of
+ * `.markdown-body .md-table th` and wins by source order.
+ */
+.md-table.interactive-md-table th,
+.md-table.interactive-md-table td {
+    border: 1px solid #e0e0e0;
+    padding: 4px 8px;
+    font-size: 12px;
+    line-height: 1.4;
+    vertical-align: middle;
+    max-width: 320px;
+}
+
+.dark .md-table.interactive-md-table th,
+.dark .md-table.interactive-md-table td {
+    border-color: #3c3c3c;
+}
+
+/* Body cells stay on one line; overflow is clipped with an ellipsis and the
+   full value is available via the `title` attribute. */
+.md-table.interactive-md-table tbody td {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.interactive-table-numeric {
+    font-variant-numeric: tabular-nums;
+}
+
+/* The header content is a flex row, so text-align does not reach it. */
+.interactive-table-th.text-right .interactive-table-header-content {
+    justify-content: flex-end;
+}
+
+.interactive-table-th.text-center .interactive-table-header-content {
+    justify-content: center;
+}
+
 .interactive-table-th {
     position: sticky;
     top: 0;
@@ -1719,6 +1762,15 @@
 }
 .dark .interactive-md-table tbody tr:nth-child(even) {
     background: #1a1a1a;
+}
+
+/* Row hover tint — declared after the zebra stripe so it wins at equal
+   specificity. */
+.interactive-md-table tbody tr:hover {
+    background: #eaf1fb;
+}
+.dark .interactive-md-table tbody tr:hover {
+    background: #24303f;
 }
 
 /* Fullscreen backdrop + panel */

@@ -140,6 +140,14 @@ const ALIGN_CLASS: Record<ColumnAlignment, string> = {
     right: 'text-right',
 };
 
+/**
+ * Effective alignment for a column: numeric columns default to right so digits
+ * line up, but an explicit non-left `alignments` entry from the caller wins.
+ */
+function effectiveAlign(align: ColumnAlignment, numeric: boolean): ColumnAlignment {
+    return numeric && align === 'left' ? 'right' : align;
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -378,13 +386,16 @@ export function InteractiveTable({
                                     const meta = header.column.columnDef.meta as
                                         | { align: ColumnAlignment; numeric: boolean }
                                         | undefined;
-                                    const align = meta?.align ?? 'left';
+                                    const numeric = meta?.numeric ?? false;
+                                    const align = effectiveAlign(meta?.align ?? 'left', numeric);
                                     const sortDir = header.column.getIsSorted();
 
                                     return (
                                         <th
                                             key={header.id}
-                                            className={`table-cell interactive-table-th ${ALIGN_CLASS[align]} ${
+                                            className={`table-cell interactive-table-cell interactive-table-th ${
+                                                ALIGN_CLASS[align]
+                                            }${numeric ? ' interactive-table-numeric' : ''} ${
                                                 header.column.getCanSort() ? 'cursor-pointer' : ''
                                             }`}
                                             onClick={header.column.getToggleSortingHandler()}
@@ -420,11 +431,16 @@ export function InteractiveTable({
                                     const meta = cell.column.columnDef.meta as
                                         | { align: ColumnAlignment; numeric: boolean }
                                         | undefined;
-                                    const align = meta?.align ?? 'left';
+                                    const numeric = meta?.numeric ?? false;
+                                    const align = effectiveAlign(meta?.align ?? 'left', numeric);
+                                    const plain = stripHtml(cell.getValue<string>() ?? '');
                                     return (
                                         <td
                                             key={cell.id}
-                                            className={`table-cell ${ALIGN_CLASS[align]}`}
+                                            className={`table-cell interactive-table-cell ${ALIGN_CLASS[align]}${
+                                                numeric ? ' interactive-table-numeric' : ''
+                                            }`}
+                                            title={plain === '' ? undefined : plain}
                                         >
                                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
                                         </td>
@@ -441,10 +457,10 @@ export function InteractiveTable({
                                     if (col && !col.getIsVisible()) return null;
                                     const agg = aggregations.get(i);
                                     if (!agg) {
-                                        return <td key={id} className="table-cell interactive-table-agg-cell" />;
+                                        return <td key={id} className="table-cell interactive-table-cell interactive-table-agg-cell" />;
                                     }
                                     return (
-                                        <td key={id} className="table-cell interactive-table-agg-cell text-right">
+                                        <td key={id} className="table-cell interactive-table-cell interactive-table-agg-cell text-right">
                                             <span className="interactive-table-agg-label">Σ</span>{' '}
                                             {formatNumber(agg.sum)}
                                             <span className="interactive-table-agg-sep"> · </span>

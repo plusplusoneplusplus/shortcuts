@@ -472,4 +472,86 @@ describe('InteractiveTable', () => {
             expect(footerCells.length).toBe(1);
         });
     });
+
+    describe('self-contained styling and numeric alignment', () => {
+        it('carries the interactive-table cell class on body cells with no .markdown-body ancestor', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            expect(container.closest('.markdown-body')).toBeNull();
+            const tds = container.querySelectorAll('tbody td');
+            expect(tds.length).toBeGreaterThan(0);
+            tds.forEach(td => {
+                expect(td.classList.contains('interactive-table-cell')).toBe(true);
+            });
+            container.querySelectorAll('th').forEach(th => {
+                expect(th.classList.contains('interactive-table-cell')).toBe(true);
+            });
+        });
+
+        it('sets title to the plain-text cell value', () => {
+            const long = 'a-very-long-value-that-will-not-fit-in-the-column-at-all';
+            const props = {
+                ...defaultProps,
+                rows: [[long, '90'], ['Bob', '85']],
+            };
+            const { container } = render(<InteractiveTable {...props} />);
+            const firstCell = container.querySelector('tbody td')!;
+            expect(firstCell.getAttribute('title')).toBe(long);
+        });
+
+        it('strips HTML from the title attribute', () => {
+            const props = {
+                ...defaultProps,
+                rows: [['<strong>Alice</strong>', '90'], ['Bob', '85']],
+            };
+            const { container } = render(<InteractiveTable {...props} />);
+            const firstCell = container.querySelector('tbody td')!;
+            expect(firstCell.getAttribute('title')).toBe('Alice');
+        });
+
+        it('omits title on empty cells', () => {
+            const props = {
+                ...defaultProps,
+                rows: [['', '90'], ['Bob', '85']],
+            };
+            const { container } = render(<InteractiveTable {...props} />);
+            const firstCell = container.querySelector('tbody td')!;
+            expect(firstCell.getAttribute('title')).toBeNull();
+        });
+
+        it('right-aligns numeric columns even when alignments say left', () => {
+            const props = {
+                ...defaultProps,
+                alignments: ['left' as const, 'left' as const],
+            };
+            const { container } = render(<InteractiveTable {...props} />);
+            const ths = container.querySelectorAll('th');
+            expect(ths[0].classList.contains('text-left')).toBe(true);
+            expect(ths[1].classList.contains('text-right')).toBe(true);
+            expect(ths[1].classList.contains('interactive-table-numeric')).toBe(true);
+
+            const firstRowCells = container.querySelectorAll('tbody tr')[0].querySelectorAll('td');
+            expect(firstRowCells[0].classList.contains('text-left')).toBe(true);
+            expect(firstRowCells[1].classList.contains('text-right')).toBe(true);
+            expect(firstRowCells[1].classList.contains('interactive-table-numeric')).toBe(true);
+        });
+
+        it('lets an explicit non-left alignment win over the numeric default', () => {
+            const props = {
+                ...defaultProps,
+                alignments: ['left' as const, 'center' as const],
+            };
+            const { container } = render(<InteractiveTable {...props} />);
+            const ths = container.querySelectorAll('th');
+            expect(ths[1].classList.contains('text-center')).toBe(true);
+            expect(ths[1].classList.contains('text-right')).toBe(false);
+        });
+
+        it('keeps the aggregation footer cell right-aligned', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            const aggCell = container.querySelector('tfoot td.interactive-table-agg-cell.text-right');
+            expect(aggCell).not.toBeNull();
+            expect(aggCell!.classList.contains('interactive-table-cell')).toBe(true);
+        });
+    });
+
 });
