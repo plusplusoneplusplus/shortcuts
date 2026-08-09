@@ -439,8 +439,16 @@ export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false,
                 )}
             </div>
 
-            {/* Results — table or chart */}
-            <div className="flex-1 min-h-0 overflow-auto p-3">
+            {/* Results — table or chart. The table view owns its own vertical
+                scroll (so its header can stick), so the wrapper must not
+                scroll; chart and empty states keep the scrolling wrapper. */}
+            <div
+                className={
+                    columns.length > 0 && view !== 'chart'
+                        ? 'flex-1 min-h-0 overflow-hidden p-3 flex flex-col'
+                        : 'flex-1 min-h-0 overflow-auto p-3'
+                }
+            >
                 {columns.length === 0 ? (
                     <div className="text-[11px] italic text-[#848484] text-center py-6" data-testid="kusto-empty">
                         {status === 'error' ? 'Run failed — see the error above.' : 'Run a query to see results.'}
@@ -471,6 +479,7 @@ export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false,
                         alignments={columns.map(() => 'left')}
                         rows={stringRows}
                         originalMarkdown=""
+                        fillHeight
                     />
                 )}
             </div>

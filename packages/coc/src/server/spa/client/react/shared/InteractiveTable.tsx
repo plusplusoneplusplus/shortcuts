@@ -17,6 +17,7 @@ import {
     type ColumnDef,
     type SortingState,
     type ColumnFiltersState,
+    type ColumnSizingState,
     type VisibilityState,
 } from '@tanstack/react-table';
 import type { ColumnAlignment, ExtractedTableData } from './extractTablesFromHtml';
@@ -140,6 +141,14 @@ const ALIGN_CLASS: Record<ColumnAlignment, string> = {
     right: 'text-right',
 };
 
+/**
+ * Effective alignment for a column: numeric columns default to right so digits
+ * line up, but an explicit non-left `alignments` entry from the caller wins.
+ */
+function effectiveAlign(align: ColumnAlignment, numeric: boolean): ColumnAlignment {
+    return numeric && align === 'left' ? 'right' : align;
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -147,6 +156,12 @@ const ALIGN_CLASS: Record<ColumnAlignment, string> = {
 export interface InteractiveTableProps extends ExtractedTableData {
     /** Unique key for React reconciliation. */
     tableKey: string;
+    /**
+     * Fill the parent's height and own the vertical scroll, so the header
+     * sticks while the body scrolls. Opt-in: chat markdown tables leave this
+     * off and keep growing inline.
+     */
+    fillHeight?: boolean;
 }
 
 type RowData = Record<string, string>;
@@ -157,6 +172,7 @@ export function InteractiveTable({
     rows,
     originalMarkdown,
     tableKey,
+    fillHeight = false,
 }: InteractiveTableProps) {
     const [sorting, setSorting] = useState<SortingState>([]);
     const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -165,9 +181,56 @@ export function InteractiveTable({
     const [showColPicker, setShowColPicker] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+    const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
 
     const colPickerRef = useRef<HTMLDivElement>(null);
     const colPickerBtnRef = useRef<HTMLButtonElement>(null);
+    const tableElRef = useRef<HTMLTableElement>(null);
+    /** Widths measured the first time a resize starts — used to reset a column. */
+    const seededSizesRef = useRef<ColumnSizingState>({});
+    const columnSizingRef = useRef<ColumnSizingState>({});
+    columnSizingRef.current = columnSizing;
+
+    /**
+     * Before the first drag, capture every column's laid-out width so the table
+     * can switch to `table-layout: fixed` without the other columns jumping.
+     * A no-op once seeded, or when nothing has been laid out yet (e.g. jsdom,
+     * where every measured width is 0).
+     */
+    const seedColumnSizes = useCallback(() => {
+        if (Object.keys(columnSizingRef.current).length > 0) return;
+        const el = tableElRef.current;
+        if (!el) return;
+        const cells = Array.from(
+            el.querySelectorAll<HTMLTableCellElement>('thead th[data-col-id]')
+        );
+        const measured: ColumnSizingState = {};
+        let total = 0;
+        for (const cell of cells) {
+            const id = cell.dataset.colId;
+            if (!id) continue;
+            const width = Math.round(cell.getBoundingClientRect().width);
+            measured[id] = width;
+            total += width;
+        }
+        if (total <= 0) return;
+        seededSizesRef.current = measured;
+        columnSizingRef.current = measured;
+        setColumnSizing(measured);
+    }, []);
+
+    /** Double-click on the handle puts the column back to its measured width. */
+    const resetColumnSize = useCallback((columnId: string) => {
+        setColumnSizing(prev => {
+            const seeded = seededSizesRef.current[columnId];
+            if (seeded === undefined) {
+                const next = { ...prev };
+                delete next[columnId];
+                return next;
+            }
+            return { ...prev, [columnId]: seeded };
+        });
+    }, []);
 
     // Close column picker on outside click
     useEffect(() => {
@@ -258,10 +321,14 @@ export function InteractiveTable({
     const table = useReactTable({
         data,
         columns,
-        state: { sorting, columnFilters, columnVisibility },
+        state: { sorting, columnFilters, columnVisibility, columnSizing },
         onSortingChange: setSorting,
         onColumnFiltersChange: setColumnFilters,
         onColumnVisibilityChange: setColumnVisibility,
+        onColumnSizingChange: setColumnSizing,
+        enableColumnResizing: true,
+        columnResizeMode: 'onChange',
+        defaultColumn: { minSize: 56 },
         getCoreRowModel: getCoreRowModel(),
         getSortedRowModel: getSortedRowModel(),
         getFilteredRowModel: getFilteredRowModel(),
@@ -293,11 +360,20 @@ export function InteractiveTable({
 
     const filteredRowCount = table.getFilteredRowModel().rows.length;
 
+    // Explicit widths only kick in once the user has actually dragged a handle;
+    // until then the table keeps its auto layout.
+    const hasSizedColumns = Object.keys(columnSizing).length > 0;
+
     // Count visible columns for "prevent hiding all" logic
     const visibleColumnCount = table.getVisibleLeafColumns().length;
 
     const tableContent = (
-        <div className={`interactive-table${isFullscreen ? ' interactive-table-fullscreen-inner' : ''}`} data-testid={`interactive-table-${tableKey}`}>
+        <div
+            className={`interactive-table${fillHeight ? ' interactive-table-fill' : ''}${
+                isFullscreen ? ' interactive-table-fullscreen-inner' : ''
+            }`}
+            data-testid={`interactive-table-${tableKey}`}
+        >
             {/* Toolbar — chrome, excluded from native text selection/copy */}
             <div className="interactive-table-toolbar select-none">
                 <span className="interactive-table-row-count">
@@ -311,7 +387,7 @@ export function InteractiveTable({
                         onClick={() => setShowFilters(f => !f)}
                         title={showFilters ? 'Hide filters' : 'Show filters'}
                     >
-                        {showFilters ? '✕ Filter' : '⊞ Filter'}
+                        {showFilters ? '✕' : '⊞'} <span className="interactive-table-btn-label">Filter</span>
                     </button>
                     <div className="interactive-table-col-picker-wrapper">
                         <button
@@ -320,7 +396,7 @@ export function InteractiveTable({
                             onClick={() => setShowColPicker(v => !v)}
                             title="Toggle column visibility"
                         >
-                            ⊞ Columns
+                            ⊞ <span className="interactive-table-btn-label">Columns</span>
                         </button>
                         {showColPicker && (
                             <div ref={colPickerRef} className="interactive-table-col-picker select-none" data-testid="col-picker">
@@ -349,28 +425,48 @@ export function InteractiveTable({
                         onClick={handleCopyMarkdown}
                         title="Copy as Markdown"
                     >
-                        {copyFeedback === 'md' ? '✓ Copied' : '⧉ Markdown'}
+                        {copyFeedback === 'md' ? '✓' : '⧉'}{' '}
+                        <span className="interactive-table-btn-label">
+                            {copyFeedback === 'md' ? 'Copied' : 'Markdown'}
+                        </span>
                     </button>
                     <button
                         className="interactive-table-btn"
                         onClick={handleCopyCsv}
                         title="Copy as CSV"
                     >
-                        {copyFeedback === 'csv' ? '✓ Copied' : '⧉ CSV'}
+                        {copyFeedback === 'csv' ? '✓' : '⧉'}{' '}
+                        <span className="interactive-table-btn-label">
+                            {copyFeedback === 'csv' ? 'Copied' : 'CSV'}
+                        </span>
                     </button>
                     <button
                         className="interactive-table-btn"
                         onClick={() => setIsFullscreen(f => !f)}
                         title={isFullscreen ? 'Exit fullscreen' : 'Expand table'}
                     >
-                        {isFullscreen ? '⤡ Exit' : '⤢ Expand'}
+                        {isFullscreen ? '⤡' : '⤢'}{' '}
+                        <span className="interactive-table-btn-label">
+                            {isFullscreen ? 'Exit' : 'Expand'}
+                        </span>
                     </button>
                 </div>
             </div>
 
             {/* Table */}
             <div className="interactive-table-scroll">
-                <table className="md-table interactive-md-table">
+                <table
+                    ref={tableElRef}
+                    className={`md-table interactive-md-table${
+                        hasSizedColumns ? ' interactive-md-table-resized' : ''
+                    }`}
+                    // Once the columns carry explicit widths the table has to be
+                    // exactly as wide as their sum. Leaving it at `max-content`
+                    // lets Chrome re-measure the content and hand the slack to
+                    // the widest column, which makes the table jump the moment
+                    // the widths are seeded — before any drag has happened.
+                    style={hasSizedColumns ? { width: table.getTotalSize() } : undefined}
+                >
                     <thead>
                         {table.getHeaderGroups().map(headerGroup => (
                             <tr key={headerGroup.id}>
@@ -378,15 +474,24 @@ export function InteractiveTable({
                                     const meta = header.column.columnDef.meta as
                                         | { align: ColumnAlignment; numeric: boolean }
                                         | undefined;
-                                    const align = meta?.align ?? 'left';
+                                    const numeric = meta?.numeric ?? false;
+                                    const align = effectiveAlign(meta?.align ?? 'left', numeric);
                                     const sortDir = header.column.getIsSorted();
 
                                     return (
                                         <th
                                             key={header.id}
-                                            className={`table-cell interactive-table-th ${ALIGN_CLASS[align]} ${
+                                            data-col-id={header.column.id}
+                                            className={`table-cell interactive-table-cell interactive-table-th ${
+                                                ALIGN_CLASS[align]
+                                            }${numeric ? ' interactive-table-numeric' : ''} ${
                                                 header.column.getCanSort() ? 'cursor-pointer' : ''
                                             }`}
+                                            style={
+                                                hasSizedColumns
+                                                    ? { width: header.getSize() }
+                                                    : undefined
+                                            }
                                             onClick={header.column.getToggleSortingHandler()}
                                         >
                                             <span className="interactive-table-header-content">
@@ -407,6 +512,38 @@ export function InteractiveTable({
                                                     onClick={e => e.stopPropagation()}
                                                 />
                                             )}
+                                            {header.column.getCanResize() && (
+                                                <span
+                                                    className={`interactive-table-resizer select-none${
+                                                        header.column.getIsResizing()
+                                                            ? ' interactive-table-resizer-active'
+                                                            : ''
+                                                    }`}
+                                                    data-testid={`interactive-table-resizer-${header.column.id}`}
+                                                    role="separator"
+                                                    aria-orientation="vertical"
+                                                    // Hovering seeds the widths a tick before the drag
+                                                    // starts, so the first drag has a real start size.
+                                                    onPointerEnter={seedColumnSizes}
+                                                    onMouseDown={e => {
+                                                        e.stopPropagation();
+                                                        seedColumnSizes();
+                                                        header.getResizeHandler()(e);
+                                                    }}
+                                                    onTouchStart={e => {
+                                                        e.stopPropagation();
+                                                        seedColumnSizes();
+                                                        header.getResizeHandler()(e);
+                                                    }}
+                                                    // The handle lives inside the sortable header cell,
+                                                    // so it must swallow the click too.
+                                                    onClick={e => e.stopPropagation()}
+                                                    onDoubleClick={e => {
+                                                        e.stopPropagation();
+                                                        resetColumnSize(header.column.id);
+                                                    }}
+                                                />
+                                            )}
                                         </th>
                                     );
                                 })}
@@ -420,13 +557,25 @@ export function InteractiveTable({
                                     const meta = cell.column.columnDef.meta as
                                         | { align: ColumnAlignment; numeric: boolean }
                                         | undefined;
-                                    const align = meta?.align ?? 'left';
+                                    const numeric = meta?.numeric ?? false;
+                                    const align = effectiveAlign(meta?.align ?? 'left', numeric);
+                                    const plain = stripHtml(cell.getValue<string>() ?? '');
                                     return (
                                         <td
                                             key={cell.id}
-                                            className={`table-cell ${ALIGN_CLASS[align]}`}
+                                            className={`table-cell interactive-table-cell ${ALIGN_CLASS[align]}${
+                                                numeric ? ' interactive-table-numeric' : ''
+                                            }`}
+                                            title={plain === '' ? undefined : plain}
                                         >
-                                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                            {/* The cap that keeps one long column from pushing the
+                                                rest off-screen has to live on an inner block: a
+                                                `max-width` on the <td> itself is ignored by the
+                                                auto table layout, which floors every column at its
+                                                nowrap min-content width. */}
+                                            <span className="interactive-table-cell-text">
+                                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                            </span>
                                         </td>
                                     );
                                 })}
@@ -441,10 +590,10 @@ export function InteractiveTable({
                                     if (col && !col.getIsVisible()) return null;
                                     const agg = aggregations.get(i);
                                     if (!agg) {
-                                        return <td key={id} className="table-cell interactive-table-agg-cell" />;
+                                        return <td key={id} className="table-cell interactive-table-cell interactive-table-agg-cell" />;
                                     }
                                     return (
-                                        <td key={id} className="table-cell interactive-table-agg-cell text-right">
+                                        <td key={id} className="table-cell interactive-table-cell interactive-table-agg-cell text-right">
                                             <span className="interactive-table-agg-label">Σ</span>{' '}
                                             {formatNumber(agg.sum)}
                                             <span className="interactive-table-agg-sep"> · </span>

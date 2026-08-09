@@ -302,6 +302,87 @@ describe('InteractiveTable', () => {
         });
     });
 
+    describe('toolbar overflow (AC-05)', () => {
+        const TOOLBAR_TITLES = [
+            'Show filters',
+            'Toggle column visibility',
+            'Copy as Markdown',
+            'Copy as CSV',
+            'Expand table',
+        ];
+
+        it('renders all five toolbar buttons with their current titles', () => {
+            render(<InteractiveTable {...defaultProps} />);
+            for (const title of TOOLBAR_TITLES) {
+                expect(screen.getByTitle(title).tagName).toBe('BUTTON');
+            }
+        });
+
+        it('wraps each button label so it can be hidden when the toolbar is narrow', () => {
+            render(<InteractiveTable {...defaultProps} />);
+            for (const title of TOOLBAR_TITLES) {
+                const label = screen.getByTitle(title).querySelector('.interactive-table-btn-label');
+                expect(label, `${title} should have a collapsible label`).toBeTruthy();
+                expect(label?.textContent?.trim()).not.toBe('');
+            }
+        });
+
+        it('keeps the row count and the actions in a single toolbar row container', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            const toolbar = container.querySelector('.interactive-table-toolbar');
+            expect(toolbar).toBeTruthy();
+            expect(toolbar?.querySelector('.interactive-table-row-count')).toBeTruthy();
+            const actions = toolbar?.querySelector('.interactive-table-actions');
+            expect(actions).toBeTruthy();
+            expect(actions?.querySelectorAll('button.interactive-table-btn').length).toBe(5);
+        });
+    });
+
+    describe('column resizing (AC-06)', () => {
+        it('renders a resize handle for every header', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            const handles = container.querySelectorAll('.interactive-table-resizer');
+            expect(handles.length).toBe(defaultProps.headers.length);
+            expect(screen.getByTestId('interactive-table-resizer-col_0')).toBeTruthy();
+            expect(screen.getByTestId('interactive-table-resizer-col_1')).toBeTruthy();
+        });
+
+        it('puts the handle inside its own header cell', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            const ths = container.querySelectorAll('thead th');
+            expect(ths[0].querySelector('.interactive-table-resizer')).toBeTruthy();
+            expect(ths[0].getAttribute('data-col-id')).toBe('col_0');
+        });
+
+        it('does not toggle sorting when the handle is pressed', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            const nameCells = () =>
+                Array.from(container.querySelectorAll('tbody tr td:first-child')).map(
+                    td => td.textContent
+                );
+            const before = nameCells();
+
+            const handle = screen.getByTestId('interactive-table-resizer-col_0');
+            fireEvent.mouseDown(handle, { clientX: 100 });
+            fireEvent.click(handle);
+
+            // No sort indicator appeared and the row order is untouched.
+            expect(container.querySelector('.interactive-table-sort-indicator')).toBeNull();
+            expect(nameCells()).toEqual(before);
+        });
+
+        it('keeps auto table layout until a column is actually resized', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            const table = container.querySelector('table');
+            expect(table?.classList.contains('interactive-md-table')).toBe(true);
+            expect(table?.classList.contains('interactive-md-table-resized')).toBe(false);
+            expect(container.querySelector('thead th')?.getAttribute('style')).toBeNull();
+            // No inline table width either — that is only set from the summed
+            // column widths once the columns have been seeded.
+            expect(table?.getAttribute('style')).toBeNull();
+        });
+    });
+
     describe('data-testid', () => {
         it('includes tableKey in data-testid', () => {
             render(<InteractiveTable {...defaultProps} />);
@@ -472,4 +553,119 @@ describe('InteractiveTable', () => {
             expect(footerCells.length).toBe(1);
         });
     });
+
+    describe('self-contained styling and numeric alignment', () => {
+        it('carries the interactive-table cell class on body cells with no .markdown-body ancestor', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            expect(container.closest('.markdown-body')).toBeNull();
+            const tds = container.querySelectorAll('tbody td');
+            expect(tds.length).toBeGreaterThan(0);
+            tds.forEach(td => {
+                expect(td.classList.contains('interactive-table-cell')).toBe(true);
+            });
+            container.querySelectorAll('th').forEach(th => {
+                expect(th.classList.contains('interactive-table-cell')).toBe(true);
+            });
+        });
+
+        it('wraps body cell content in the width-capped text block', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            const firstCell = container.querySelector('tbody td')!;
+            const inner = firstCell.querySelector('.interactive-table-cell-text');
+            // The 320px cap only works on a block child — a max-width on the <td>
+            // is ignored by the auto table layout, which floors each column at
+            // its nowrap min-content width.
+            expect(inner).toBeTruthy();
+            expect(inner!.textContent).toBe('Alice');
+        });
+
+        it('sets title to the plain-text cell value', () => {
+            const long = 'a-very-long-value-that-will-not-fit-in-the-column-at-all';
+            const props = {
+                ...defaultProps,
+                rows: [[long, '90'], ['Bob', '85']],
+            };
+            const { container } = render(<InteractiveTable {...props} />);
+            const firstCell = container.querySelector('tbody td')!;
+            expect(firstCell.getAttribute('title')).toBe(long);
+        });
+
+        it('strips HTML from the title attribute', () => {
+            const props = {
+                ...defaultProps,
+                rows: [['<strong>Alice</strong>', '90'], ['Bob', '85']],
+            };
+            const { container } = render(<InteractiveTable {...props} />);
+            const firstCell = container.querySelector('tbody td')!;
+            expect(firstCell.getAttribute('title')).toBe('Alice');
+        });
+
+        it('omits title on empty cells', () => {
+            const props = {
+                ...defaultProps,
+                rows: [['', '90'], ['Bob', '85']],
+            };
+            const { container } = render(<InteractiveTable {...props} />);
+            const firstCell = container.querySelector('tbody td')!;
+            expect(firstCell.getAttribute('title')).toBeNull();
+        });
+
+        it('right-aligns numeric columns even when alignments say left', () => {
+            const props = {
+                ...defaultProps,
+                alignments: ['left' as const, 'left' as const],
+            };
+            const { container } = render(<InteractiveTable {...props} />);
+            const ths = container.querySelectorAll('th');
+            expect(ths[0].classList.contains('text-left')).toBe(true);
+            expect(ths[1].classList.contains('text-right')).toBe(true);
+            expect(ths[1].classList.contains('interactive-table-numeric')).toBe(true);
+
+            const firstRowCells = container.querySelectorAll('tbody tr')[0].querySelectorAll('td');
+            expect(firstRowCells[0].classList.contains('text-left')).toBe(true);
+            expect(firstRowCells[1].classList.contains('text-right')).toBe(true);
+            expect(firstRowCells[1].classList.contains('interactive-table-numeric')).toBe(true);
+        });
+
+        it('lets an explicit non-left alignment win over the numeric default', () => {
+            const props = {
+                ...defaultProps,
+                alignments: ['left' as const, 'center' as const],
+            };
+            const { container } = render(<InteractiveTable {...props} />);
+            const ths = container.querySelectorAll('th');
+            expect(ths[1].classList.contains('text-center')).toBe(true);
+            expect(ths[1].classList.contains('text-right')).toBe(false);
+        });
+
+        it('keeps the aggregation footer cell right-aligned', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            const aggCell = container.querySelector('tfoot td.interactive-table-agg-cell.text-right');
+            expect(aggCell).not.toBeNull();
+            expect(aggCell!.classList.contains('interactive-table-cell')).toBe(true);
+        });
+    });
+
+    describe('fill height', () => {
+        it('does not opt into fill height by default', () => {
+            render(<InteractiveTable {...defaultProps} />);
+            const root = screen.getByTestId('interactive-table-test-1');
+            expect(root.classList.contains('interactive-table-fill')).toBe(false);
+        });
+
+        it('adds the fill-height class when fillHeight is set', () => {
+            render(<InteractiveTable {...defaultProps} fillHeight />);
+            const root = screen.getByTestId('interactive-table-test-1');
+            expect(root.classList.contains('interactive-table-fill')).toBe(true);
+        });
+
+        it('keeps the scroll container as a direct child so it owns the scroll', () => {
+            render(<InteractiveTable {...defaultProps} fillHeight />);
+            const root = screen.getByTestId('interactive-table-test-1');
+            const scroll = root.querySelector(':scope > .interactive-table-scroll');
+            expect(scroll).not.toBeNull();
+            expect(scroll!.querySelector('table.interactive-md-table')).not.toBeNull();
+        });
+    });
+
 });

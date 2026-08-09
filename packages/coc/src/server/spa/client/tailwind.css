@@ -1523,11 +1523,15 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
     padding: 6px 10px;
     background: #f8f8f8;
     border-bottom: 1px solid #e0e0e0;
     font-size: 0.75rem;
     gap: 8px;
+    /* Lets the buttons condense to icon-only when the table itself is narrow,
+       rather than when the viewport is. */
+    container-type: inline-size;
 }
 
 .dark .interactive-table-toolbar {
@@ -1535,9 +1539,18 @@
     border-color: #3c3c3c;
 }
 
+/*
+ * The row count is the only part of the toolbar allowed to lose space: it
+ * shrinks and ellipsizes so the action buttons — including Expand, which used
+ * to get clipped off the right edge in the Kusto canvas — always stay whole.
+ */
 .interactive-table-row-count {
     color: #666;
     white-space: nowrap;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .dark .interactive-table-row-count {
@@ -1548,6 +1561,16 @@
     display: flex;
     gap: 4px;
     flex-wrap: wrap;
+    justify-content: flex-end;
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+/* Below this width the labels drop and each button is icon + tooltip only. */
+@container (max-width: 420px) {
+    .interactive-table-btn-label {
+        display: none;
+    }
 }
 
 .interactive-table-btn {
@@ -1582,11 +1605,134 @@
     overflow-x: auto;
 }
 
+/*
+ * Fill-height mode (opt-in via the `fillHeight` prop, used by the Kusto
+ * canvas): the component takes the parent's remaining height and the scroll
+ * container — not an outer wrapper — owns the vertical scroll, which is what
+ * makes the sticky header actually engage.
+ */
+.interactive-table-fill {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+.interactive-table-fill > .interactive-table-toolbar,
+.interactive-table-fill > .interactive-table-pagination {
+    flex: 0 0 auto;
+}
+
+.interactive-table-fill > .interactive-table-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+}
+
 .interactive-md-table {
     border-collapse: collapse;
     width: 100%;
     min-width: 380px;
     table-layout: auto;
+}
+
+/*
+ * Self-contained cell styling. The component is mounted both inside
+ * `.markdown-body` (chat markdown tables) and standalone (Kusto canvas), so
+ * every visual rule lives here rather than under `.markdown-body`. The
+ * `.md-table.interactive-md-table` prefix matches the specificity of
+ * `.markdown-body .md-table th` and wins by source order.
+ */
+.md-table.interactive-md-table th,
+.md-table.interactive-md-table td {
+    border: 1px solid #e0e0e0;
+    padding: 4px 8px;
+    font-size: 12px;
+    line-height: 1.4;
+    vertical-align: middle;
+    max-width: 320px;
+}
+
+.dark .md-table.interactive-md-table th,
+.dark .md-table.interactive-md-table td {
+    border-color: #3c3c3c;
+}
+
+/* Body cells stay on one line; overflow is clipped with an ellipsis and the
+   full value is available via the `title` attribute. */
+.md-table.interactive-md-table tbody td {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* The cap has to sit on an inner block. In auto table layout a column is never
+   narrower than its min-content width, and `white-space: nowrap` makes that the
+   full text width — a `max-width` on the <td> is simply ignored. A block child
+   clamps its own min-content contribution, so the column stops at 320px. */
+.md-table.interactive-md-table tbody td > .interactive-table-cell-text {
+    display: block;
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/*
+ * Once a column has been dragged, every column carries an explicit width, so
+ * the table switches to fixed layout and honours them instead of re-fitting to
+ * content. The total width is set inline from the sum of those widths, so the
+ * table can grow past the viewport (the scroll container handles it) while
+ * still filling a narrow one.
+ */
+.interactive-md-table-resized {
+    table-layout: fixed;
+    min-width: 100%;
+}
+
+/* Explicit widths win over the default cap. */
+.md-table.interactive-md-table-resized th,
+.md-table.interactive-md-table-resized td {
+    max-width: none;
+}
+
+.md-table.interactive-md-table-resized tbody td > .interactive-table-cell-text {
+    max-width: none;
+}
+
+.interactive-table-resizer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    height: 100%;
+    width: 6px;
+    cursor: col-resize;
+    touch-action: none;
+    background: transparent;
+    transition: background 0.12s;
+}
+
+.interactive-table-resizer:hover,
+.interactive-table-resizer-active {
+    background: #0078d4;
+}
+
+.dark .interactive-table-resizer:hover,
+.dark .interactive-table-resizer-active {
+    background: #4daafc;
+}
+
+.interactive-table-numeric {
+    font-variant-numeric: tabular-nums;
+}
+
+/* The header content is a flex row, so text-align does not reach it. */
+.interactive-table-th.text-right .interactive-table-header-content {
+    justify-content: flex-end;
+}
+
+.interactive-table-th.text-center .interactive-table-header-content {
+    justify-content: center;
 }
 
 .interactive-table-th {
@@ -1595,10 +1741,14 @@
     z-index: 1;
     background: #f3f3f3;
     font-weight: 600;
+    /* With border-collapse the sticky header's own borders scroll away, so
+       redraw them as an inset shadow. */
+    box-shadow: inset 0 -1px 0 #e0e0e0, inset -1px 0 0 #e0e0e0;
 }
 
 .dark .interactive-table-th {
     background: #252526;
+    box-shadow: inset 0 -1px 0 #3c3c3c, inset -1px 0 0 #3c3c3c;
 }
 
 .interactive-table-header-content {
@@ -1719,6 +1869,15 @@
 }
 .dark .interactive-md-table tbody tr:nth-child(even) {
     background: #1a1a1a;
+}
+
+/* Row hover tint — declared after the zebra stripe so it wins at equal
+   specificity. */
+.interactive-md-table tbody tr:hover {
+    background: #eaf1fb;
+}
+.dark .interactive-md-table tbody tr:hover {
+    background: #24303f;
 }
 
 /* Fullscreen backdrop + panel */
