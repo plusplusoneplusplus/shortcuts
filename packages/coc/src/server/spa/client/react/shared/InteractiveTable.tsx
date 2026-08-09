@@ -17,6 +17,7 @@ import {
     type ColumnDef,
     type SortingState,
     type ColumnFiltersState,
+    type ColumnSizingState,
     type VisibilityState,
 } from '@tanstack/react-table';
 import type { ColumnAlignment, ExtractedTableData } from './extractTablesFromHtml';
@@ -180,9 +181,56 @@ export function InteractiveTable({
     const [showColPicker, setShowColPicker] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+    const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
 
     const colPickerRef = useRef<HTMLDivElement>(null);
     const colPickerBtnRef = useRef<HTMLButtonElement>(null);
+    const tableElRef = useRef<HTMLTableElement>(null);
+    /** Widths measured the first time a resize starts — used to reset a column. */
+    const seededSizesRef = useRef<ColumnSizingState>({});
+    const columnSizingRef = useRef<ColumnSizingState>({});
+    columnSizingRef.current = columnSizing;
+
+    /**
+     * Before the first drag, capture every column's laid-out width so the table
+     * can switch to `table-layout: fixed` without the other columns jumping.
+     * A no-op once seeded, or when nothing has been laid out yet (e.g. jsdom,
+     * where every measured width is 0).
+     */
+    const seedColumnSizes = useCallback(() => {
+        if (Object.keys(columnSizingRef.current).length > 0) return;
+        const el = tableElRef.current;
+        if (!el) return;
+        const cells = Array.from(
+            el.querySelectorAll<HTMLTableCellElement>('thead th[data-col-id]')
+        );
+        const measured: ColumnSizingState = {};
+        let total = 0;
+        for (const cell of cells) {
+            const id = cell.dataset.colId;
+            if (!id) continue;
+            const width = Math.round(cell.getBoundingClientRect().width);
+            measured[id] = width;
+            total += width;
+        }
+        if (total <= 0) return;
+        seededSizesRef.current = measured;
+        columnSizingRef.current = measured;
+        setColumnSizing(measured);
+    }, []);
+
+    /** Double-click on the handle puts the column back to its measured width. */
+    const resetColumnSize = useCallback((columnId: string) => {
+        setColumnSizing(prev => {
+            const seeded = seededSizesRef.current[columnId];
+            if (seeded === undefined) {
+                const next = { ...prev };
+                delete next[columnId];
+                return next;
+            }
+            return { ...prev, [columnId]: seeded };
+        });
+    }, []);
 
     // Close column picker on outside click
     useEffect(() => {
@@ -273,10 +321,14 @@ export function InteractiveTable({
     const table = useReactTable({
         data,
         columns,
-        state: { sorting, columnFilters, columnVisibility },
+        state: { sorting, columnFilters, columnVisibility, columnSizing },
         onSortingChange: setSorting,
         onColumnFiltersChange: setColumnFilters,
         onColumnVisibilityChange: setColumnVisibility,
+        onColumnSizingChange: setColumnSizing,
+        enableColumnResizing: true,
+        columnResizeMode: 'onChange',
+        defaultColumn: { minSize: 56 },
         getCoreRowModel: getCoreRowModel(),
         getSortedRowModel: getSortedRowModel(),
         getFilteredRowModel: getFilteredRowModel(),
@@ -307,6 +359,10 @@ export function InteractiveTable({
     };
 
     const filteredRowCount = table.getFilteredRowModel().rows.length;
+
+    // Explicit widths only kick in once the user has actually dragged a handle;
+    // until then the table keeps its auto layout.
+    const hasSizedColumns = Object.keys(columnSizing).length > 0;
 
     // Count visible columns for "prevent hiding all" logic
     const visibleColumnCount = table.getVisibleLeafColumns().length;
@@ -399,7 +455,12 @@ export function InteractiveTable({
 
             {/* Table */}
             <div className="interactive-table-scroll">
-                <table className="md-table interactive-md-table">
+                <table
+                    ref={tableElRef}
+                    className={`md-table interactive-md-table${
+                        hasSizedColumns ? ' interactive-md-table-resized' : ''
+                    }`}
+                >
                     <thead>
                         {table.getHeaderGroups().map(headerGroup => (
                             <tr key={headerGroup.id}>
@@ -414,11 +475,17 @@ export function InteractiveTable({
                                     return (
                                         <th
                                             key={header.id}
+                                            data-col-id={header.column.id}
                                             className={`table-cell interactive-table-cell interactive-table-th ${
                                                 ALIGN_CLASS[align]
                                             }${numeric ? ' interactive-table-numeric' : ''} ${
                                                 header.column.getCanSort() ? 'cursor-pointer' : ''
                                             }`}
+                                            style={
+                                                hasSizedColumns
+                                                    ? { width: header.getSize() }
+                                                    : undefined
+                                            }
                                             onClick={header.column.getToggleSortingHandler()}
                                         >
                                             <span className="interactive-table-header-content">
@@ -437,6 +504,38 @@ export function InteractiveTable({
                                                     value={(header.column.getFilterValue() as string) ?? ''}
                                                     onChange={e => header.column.setFilterValue(e.target.value)}
                                                     onClick={e => e.stopPropagation()}
+                                                />
+                                            )}
+                                            {header.column.getCanResize() && (
+                                                <span
+                                                    className={`interactive-table-resizer select-none${
+                                                        header.column.getIsResizing()
+                                                            ? ' interactive-table-resizer-active'
+                                                            : ''
+                                                    }`}
+                                                    data-testid={`interactive-table-resizer-${header.column.id}`}
+                                                    role="separator"
+                                                    aria-orientation="vertical"
+                                                    // Hovering seeds the widths a tick before the drag
+                                                    // starts, so the first drag has a real start size.
+                                                    onPointerEnter={seedColumnSizes}
+                                                    onMouseDown={e => {
+                                                        e.stopPropagation();
+                                                        seedColumnSizes();
+                                                        header.getResizeHandler()(e);
+                                                    }}
+                                                    onTouchStart={e => {
+                                                        e.stopPropagation();
+                                                        seedColumnSizes();
+                                                        header.getResizeHandler()(e);
+                                                    }}
+                                                    // The handle lives inside the sortable header cell,
+                                                    // so it must swallow the click too.
+                                                    onClick={e => e.stopPropagation()}
+                                                    onDoubleClick={e => {
+                                                        e.stopPropagation();
+                                                        resetColumnSize(header.column.id);
+                                                    }}
                                                 />
                                             )}
                                         </th>

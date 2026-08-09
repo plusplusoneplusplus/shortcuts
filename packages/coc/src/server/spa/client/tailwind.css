@@ -1666,6 +1666,46 @@
     text-overflow: ellipsis;
 }
 
+/*
+ * Once a column has been dragged, every column carries an explicit width, so
+ * the table switches to fixed layout and honours them instead of re-fitting to
+ * content. `max-content` lets the table grow past the viewport (the scroll
+ * container handles it) while still filling a narrow one.
+ */
+.interactive-md-table-resized {
+    table-layout: fixed;
+    width: max-content;
+    min-width: 100%;
+}
+
+/* Explicit widths win over the default cap. */
+.md-table.interactive-md-table-resized th,
+.md-table.interactive-md-table-resized td {
+    max-width: none;
+}
+
+.interactive-table-resizer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    height: 100%;
+    width: 6px;
+    cursor: col-resize;
+    touch-action: none;
+    background: transparent;
+    transition: background 0.12s;
+}
+
+.interactive-table-resizer:hover,
+.interactive-table-resizer-active {
+    background: #0078d4;
+}
+
+.dark .interactive-table-resizer:hover,
+.dark .interactive-table-resizer-active {
+    background: #4daafc;
+}
+
 .interactive-table-numeric {
     font-variant-numeric: tabular-nums;
 }

@@ -338,6 +338,48 @@ describe('InteractiveTable', () => {
         });
     });
 
+    describe('column resizing (AC-06)', () => {
+        it('renders a resize handle for every header', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            const handles = container.querySelectorAll('.interactive-table-resizer');
+            expect(handles.length).toBe(defaultProps.headers.length);
+            expect(screen.getByTestId('interactive-table-resizer-col_0')).toBeTruthy();
+            expect(screen.getByTestId('interactive-table-resizer-col_1')).toBeTruthy();
+        });
+
+        it('puts the handle inside its own header cell', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            const ths = container.querySelectorAll('thead th');
+            expect(ths[0].querySelector('.interactive-table-resizer')).toBeTruthy();
+            expect(ths[0].getAttribute('data-col-id')).toBe('col_0');
+        });
+
+        it('does not toggle sorting when the handle is pressed', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            const nameCells = () =>
+                Array.from(container.querySelectorAll('tbody tr td:first-child')).map(
+                    td => td.textContent
+                );
+            const before = nameCells();
+
+            const handle = screen.getByTestId('interactive-table-resizer-col_0');
+            fireEvent.mouseDown(handle, { clientX: 100 });
+            fireEvent.click(handle);
+
+            // No sort indicator appeared and the row order is untouched.
+            expect(container.querySelector('.interactive-table-sort-indicator')).toBeNull();
+            expect(nameCells()).toEqual(before);
+        });
+
+        it('keeps auto table layout until a column is actually resized', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            const table = container.querySelector('table');
+            expect(table?.classList.contains('interactive-md-table')).toBe(true);
+            expect(table?.classList.contains('interactive-md-table-resized')).toBe(false);
+            expect(container.querySelector('thead th')?.getAttribute('style')).toBeNull();
+        });
+    });
+
     describe('data-testid', () => {
         it('includes tableKey in data-testid', () => {
             render(<InteractiveTable {...defaultProps} />);
