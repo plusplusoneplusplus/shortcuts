@@ -395,16 +395,21 @@ export function PrFilesPanel({
         setActivePath(path);
     }
 
-    // Lazy per-file slice: compute the diff for the SELECTED file only, from
-    // the already-fetched combined diff. No other file's hunks are rendered.
-    const activeDiff = useMemo(
-        () => (diffText && activePath ? extractFileDiffFromCombined(diffText, activePath) : null),
-        [diffText, activePath],
-    );
-
     // Desktop renders the shared FileDiffPanel (full review chrome); mobile
     // keeps the slim viewer so the stacked layout stays light.
     const useSharedPanel = !isMobile && !!diffSource && !!workspaceId;
+
+    // Lazy per-file slice for the slim viewer only: compute the diff for the
+    // SELECTED file from the already-fetched combined diff. No other file's
+    // hunks are rendered. The shared panel fetches per-file itself, so the
+    // desktop path never pays for this slice.
+    const activeDiff = useMemo(
+        () =>
+            !useSharedPanel && diffText && activePath
+                ? extractFileDiffFromCombined(diffText, activePath)
+                : null,
+        [useSharedPanel, diffText, activePath],
+    );
     const classificationReady = classification?.state.status === 'ready';
 
     return (
