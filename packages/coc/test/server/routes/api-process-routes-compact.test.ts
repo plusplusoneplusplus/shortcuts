@@ -422,6 +422,78 @@ describe('POST /api/processes/:id/compact', () => {
         });
     });
 
+    // ── Characterization: post-compaction context usage is NOT refreshed ──
+    // Today the success branch (api-process-routes.ts:700-731) writes only the
+    // compaction lifecycle metadata and appends the display-only result turn. It
+    // never touches the stored context-window fields and never emits a
+    // 'token-usage' process event, so the SPA meter stays frozen at the
+    // pre-compaction number until the next turn ends. These two tests pin that
+    // behavior; a change here should be a deliberate one.
+    it('leaves the stored context-window fields untouched after a successful compaction', async () => {
+        await store.addProcess({
+            id: 'proc-usage-frozen',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'hello',
+            sdkSessionId: 'sdk-usage-frozen',
+            metadata: { type: 'chat', provider: 'copilot', workspaceId: 'ws-test' },
+            tokenLimit: 200_000,
+            currentTokens: 120_000,
+            systemTokens: 12_000,
+            toolDefinitionsTokens: 24_000,
+            conversationTokens: 84_000,
+        } as any);
+
+        // A provider result that carries a usage snapshot is still ignored: the
+        // route reads only messagesRemoved / tokensRemoved off the CompactResult.
+        mockCompactSession.mockResolvedValue({
+            success: true,
+            tokensRemoved: 20_603,
+            messagesRemoved: 7,
+            contextUsage: { currentTokens: 99_397, conversationTokens: 63_397 },
+        });
+
+        const res = await request(baseUrl, '/api/processes/proc-usage-frozen/compact', {
+            method: 'POST',
+            body: '{}',
+        });
+        expect(res.status).toBe(200);
+
+        const after = store.processes.get('proc-usage-frozen') as any;
+        expect(after.tokenLimit).toBe(200_000);
+        expect(after.currentTokens).toBe(120_000);
+        expect(after.systemTokens).toBe(12_000);
+        expect(after.toolDefinitionsTokens).toBe(24_000);
+        expect(after.conversationTokens).toBe(84_000);
+    });
+
+    it('emits no token-usage process event on a successful compaction', async () => {
+        await store.addProcess({
+            id: 'proc-no-usage-event',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'hello',
+            sdkSessionId: 'sdk-no-usage-event',
+            metadata: { type: 'chat', provider: 'copilot', workspaceId: 'ws-test' },
+            tokenLimit: 200_000,
+            currentTokens: 120_000,
+        } as any);
+
+        mockCompactSession.mockResolvedValue({ success: true, tokensRemoved: 20_603, messagesRemoved: 7 });
+        (store.emitProcessEvent as any).mockClear();
+
+        const res = await request(baseUrl, '/api/processes/proc-no-usage-event/compact', {
+            method: 'POST',
+            body: '{}',
+        });
+        expect(res.status).toBe(200);
+
+        const emitted = (store.emitProcessEvent as any).mock.calls.map((c: any[]) => c[1]?.type);
+        expect(emitted).not.toContain('token-usage');
+    });
+
     it('does not mutate process state when the idle guard rejects (409)', async () => {
         await store.addProcess({
             id: 'proc-busy',

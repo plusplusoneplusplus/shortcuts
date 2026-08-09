@@ -3821,6 +3821,91 @@ describe('ClaudeSDKService.compactSession (native /compact)', () => {
         await expect(svc.compactSession('session-abc')).rejects.toBeInstanceOf(CompactUnsupportedError);
     });
 
+    // ── Characterization: no post-compaction usage probe exists yet ──
+    // The plan proposes probing `getContextUsage()` in the success branch of
+    // compactSession. These three tests pin the preconditions that make that
+    // safe today.
+
+    it('safeGetClaudeContextUsage returns undefined when the handle exposes no getContextUsage', async () => {
+        // claude-sdk-service.ts:1555-1556 — the early return means a probe is a
+        // no-op (no timer, no control request) on handles without the method.
+        await expect((svc as any).safeGetClaudeContextUsage({})).resolves.toBeUndefined();
+        // And it forwards the payload verbatim when the method IS present.
+        const payload = { totalTokens: 3400, maxTokens: 200_000 };
+        await expect(
+            (svc as any).safeGetClaudeContextUsage({ getContextUsage: async () => payload }),
+        ).resolves.toEqual(payload);
+    });
+
+    it('the compact-test mock handle exposes no getContextUsage (adding a probe touches no fixture)', () => {
+        const handle: Record<string, unknown> = makeCompactQuery({ messages: compactSuccessMessages(9000, 1000) })({
+            prompt: (async function* () { /* never yields */ })(),
+            options: {},
+        }) as Record<string, unknown>;
+        expect(handle.getContextUsage).toBeUndefined();
+        expect(typeof handle.supportedCommands).toBe('function');
+    });
+
+    it('closes the input gate only AFTER the compact stream is drained (probe window is live)', async () => {
+        // compactSession (claude-sdk-service.ts:2064-2112) reads the boundary and
+        // builds its CompactResult inside the `try`; only the `finally` calls
+        // inputGate.close(). A probe issued in the success branch therefore still
+        // reaches a live subprocess — unlike one issued after the close, which
+        // the send path documents as a teardown race (:1058-1063).
+        const log: string[] = [];
+        let gateClosedResolve!: () => void;
+        const gateClosed = new Promise<void>((r) => { gateClosedResolve = r; });
+        const probe = vi.fn();
+
+        queryFn.mockImplementation((queryOptions: { prompt: unknown }) => {
+            const input = (queryOptions.prompt as AsyncIterable<unknown>)[Symbol.asyncIterator]();
+            let tornDown = false;
+            return {
+                async *[Symbol.asyncIterator]() {
+                    // Consume the '/compact' message, then watch for gate close in
+                    // a detached task so it is observed even after the provider
+                    // breaks out of this generator on the `result` message.
+                    await input.next();
+                    void (async () => {
+                        for (;;) {
+                            const next = await input.next();
+                            if (next.done) break;
+                        }
+                        tornDown = true;
+                        log.push('gate-closed');
+                        gateClosedResolve();
+                    })();
+                    for (const msg of compactSuccessMessages(23032, 2429)) {
+                        if ((msg as { type?: string }).type === 'system'
+                            && (msg as { subtype?: string }).subtype === 'compact_boundary') {
+                            log.push(`boundary-yielded:gateClosed=${tornDown}`);
+                        }
+                        yield msg;
+                    }
+                },
+                supportedCommands: async () => [{ name: 'compact', aliases: [] }],
+                accountInfo: async () => ({}),
+                getContextUsage: async () => {
+                    probe();
+                    if (tornDown) throw new Error('Query closed before response received');
+                    return { totalTokens: 2429, maxTokens: 200_000 };
+                },
+                return: async (value?: unknown) => ({ done: true as const, value }),
+            };
+        });
+
+        const result = await svc.compactSession('session-gate');
+        expect(result).toMatchObject({ success: true, tokensRemoved: 20603 });
+
+        await gateClosed;
+        // The gate was still open when the boundary was read, and closes only
+        // once — after the stream loop.
+        expect(log).toEqual(['boundary-yielded:gateClosed=false', 'gate-closed']);
+        // Today nothing probes: the mock's getContextUsage is never called.
+        expect(probe).not.toHaveBeenCalled();
+        expect('contextUsage' in result).toBe(false);
+    });
+
     it('recognizes /compact advertised via an alias rather than the command name', async () => {
         queryFn.mockImplementation(
             makeCompactQuery({

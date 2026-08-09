@@ -176,6 +176,61 @@ describe('CodexSDKService.compactSession — app-server stdio RPC', () => {
         expect(result).toEqual({ success: true, tokensRemoved: 600, messagesRemoved: 0 });
     });
 
+    // `settleSuccess` keeps both the first and the LAST observed total
+    // (codex-sdk-service.ts:2148-2163). With more than two usage frames the last
+    // one is the true post-compaction total; today it is used only as the
+    // subtrahend for tokensRemoved and is not surfaced on the CompactResult.
+    it('tracks the LAST tokenUsage frame as the post-compaction total across many frames', async () => {
+        const child = new MockCodexAppServerChild();
+        mockSpawn.mockReturnValueOnce(child as never);
+
+        const svc = makeAvailableService();
+        const promise = svc.compactSession(THREAD_ID);
+        await flushMicrotasks();
+
+        child.writeStdoutLine(RESUME_ACK);
+        child.writeStdoutLine(usageFrame(12_000)); // baseline (first wins)
+        await flushMicrotasks();
+        // The summarization turn itself reports intermediate totals before the
+        // rollout settles; only the final one describes the compacted thread.
+        child.writeStdoutLine(usageFrame(9_500));
+        child.writeStdoutLine(usageFrame(4_200));
+        child.writeStdoutLine(usageFrame(3_400)); // post-compaction total (last wins)
+        child.writeStdoutLine({ method: 'thread/compacted', params: { threadId: THREAD_ID } });
+
+        const result = await promise;
+        // first - last, not first - any intermediate.
+        expect(result.tokensRemoved).toBe(8_600);
+        // Frames for other threads are ignored entirely, so the totals above are
+        // the only ones considered.
+        expect(result).toEqual({ success: true, tokensRemoved: 8_600, messagesRemoved: 0 });
+        // GAP the plan closes: the post-compaction total (3_400) is computed and
+        // discarded — nothing usage-shaped reaches the caller today.
+        expect('contextUsage' in result).toBe(false);
+    });
+
+    it('ignores tokenUsage frames belonging to another thread', async () => {
+        const child = new MockCodexAppServerChild();
+        mockSpawn.mockReturnValueOnce(child as never);
+
+        const svc = makeAvailableService();
+        const promise = svc.compactSession(THREAD_ID);
+        await flushMicrotasks();
+
+        child.writeStdoutLine(RESUME_ACK);
+        child.writeStdoutLine(usageFrame(1_000));
+        await flushMicrotasks();
+        child.writeStdoutLine({
+            method: 'thread/tokenUsage/updated',
+            params: { threadId: 'some-other-thread', tokenUsage: { total: { totalTokens: 999_999 } } },
+        });
+        child.writeStdoutLine(usageFrame(400));
+        child.writeStdoutLine({ method: 'thread/compacted', params: { threadId: THREAD_ID } });
+
+        const result = await promise;
+        expect(result.tokensRemoved).toBe(600);
+    });
+
     it('rejects with a thread-id-naming error when thread/resume fails (unknown thread)', async () => {
         const child = new MockCodexAppServerChild();
         mockSpawn.mockReturnValueOnce(child as never);

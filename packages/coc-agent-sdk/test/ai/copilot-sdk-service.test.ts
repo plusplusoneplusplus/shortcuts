@@ -455,6 +455,42 @@ describe('CopilotSDKService - compactSession', () => {
         });
     });
 
+    // ── Characterization: the provider's context-window breakdown is dropped ──
+    // `HistoryCompactResult` in the installed SDK carries an optional
+    // `contextWindow: HistoryCompactContextWindow` — "Post-compaction context
+    // window usage breakdown" with tokenLimit / currentTokens / systemTokens /
+    // toolDefinitionsTokens / conversationTokens / messagesLength
+    // (@github/copilot-sdk/dist/generated/rpc.d.ts). `runHistoryCompact`
+    // (copilot-sdk-service.ts:282-291) maps four fields by hand and silently
+    // discards it. This pins today's lossy mapping.
+    it('drops the provider-supplied contextWindow breakdown from the mapped CompactResult', async () => {
+        setupColdCompact({
+            success: true,
+            tokensRemoved: 20_603,
+            messagesRemoved: 7,
+            summaryContent: 'summary text',
+            contextWindow: {
+                tokenLimit: 200_000,
+                currentTokens: 99_397,
+                systemTokens: 12_000,
+                toolDefinitionsTokens: 24_000,
+                conversationTokens: 63_397,
+                messagesLength: 12,
+            },
+        });
+
+        const result = await service.compactSession('sess-ctx');
+
+        expect(result).toEqual({
+            success: true,
+            tokensRemoved: 20_603,
+            messagesRemoved: 7,
+            summaryContent: 'summary text',
+        });
+        expect('contextWindow' in result).toBe(false);
+        expect('contextUsage' in result).toBe(false);
+    });
+
     it('cold fallback: disconnects the session and stops the client even if compact fails', async () => {
         const disconnect = vi.fn().mockResolvedValue(undefined);
         const compact = vi.fn().mockRejectedValue(new Error('compact failed'));

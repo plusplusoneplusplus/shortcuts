@@ -194,6 +194,44 @@ describe('SqliteProcessStore — Process CRUD', () => {
         expect(result!.conversationTokens).toBe(333);
     });
 
+    // All five context-window fields are mapped by updateProcess
+    // (sqlite-process-store.ts:1012-1016), so a caller outside the turn-end path
+    // can persist a fresh usage snapshot in one write. Zero must round-trip as 0
+    // (mapField skips only `undefined`), which a clamped subtraction can produce.
+    it('updateProcess round-trips all five context-window fields, including 0', async () => {
+        await store.addProcess(makeProcess('p-usage-roundtrip', {
+            tokenLimit: 200_000,
+            currentTokens: 120_000,
+            systemTokens: 12_000,
+            toolDefinitionsTokens: 24_000,
+            conversationTokens: 84_000,
+        }));
+
+        await store.updateProcess('p-usage-roundtrip', {
+            tokenLimit: 200_000,
+            currentTokens: 99_397,
+            systemTokens: 12_000,
+            toolDefinitionsTokens: 24_000,
+            conversationTokens: 63_397,
+        });
+
+        const updated = await store.getProcess('p-usage-roundtrip');
+        expect(updated!.tokenLimit).toBe(200_000);
+        expect(updated!.currentTokens).toBe(99_397);
+        expect(updated!.systemTokens).toBe(12_000);
+        expect(updated!.toolDefinitionsTokens).toBe(24_000);
+        expect(updated!.conversationTokens).toBe(63_397);
+
+        await store.updateProcess('p-usage-roundtrip', { currentTokens: 0, conversationTokens: 0 });
+        const cleared = await store.getProcess('p-usage-roundtrip');
+        expect(cleared!.currentTokens).toBe(0);
+        expect(cleared!.conversationTokens).toBe(0);
+        // Fields left out of the patch are untouched.
+        expect(cleared!.systemTokens).toBe(12_000);
+        expect(cleared!.toolDefinitionsTokens).toBe(24_000);
+        expect(cleared!.tokenLimit).toBe(200_000);
+    });
+
     it('updateProcess rejects conversationTurns in update payload', async () => {
         await store.addProcess(makeProcess('p-reject'));
         await expect(
