@@ -331,7 +331,7 @@ export function InteractiveTable({
                         onClick={() => setShowFilters(f => !f)}
                         title={showFilters ? 'Hide filters' : 'Show filters'}
                     >
-                        {showFilters ? '✕ Filter' : '⊞ Filter'}
+                        {showFilters ? '✕' : '⊞'} <span className="interactive-table-btn-label">Filter</span>
                     </button>
                     <div className="interactive-table-col-picker-wrapper">
                         <button
@@ -340,7 +340,7 @@ export function InteractiveTable({
                             onClick={() => setShowColPicker(v => !v)}
                             title="Toggle column visibility"
                         >
-                            ⊞ Columns
+                            ⊞ <span className="interactive-table-btn-label">Columns</span>
                         </button>
                         {showColPicker && (
                             <div ref={colPickerRef} className="interactive-table-col-picker select-none" data-testid="col-picker">
@@ -369,21 +369,30 @@ export function InteractiveTable({
                         onClick={handleCopyMarkdown}
                         title="Copy as Markdown"
                     >
-                        {copyFeedback === 'md' ? '✓ Copied' : '⧉ Markdown'}
+                        {copyFeedback === 'md' ? '✓' : '⧉'}{' '}
+                        <span className="interactive-table-btn-label">
+                            {copyFeedback === 'md' ? 'Copied' : 'Markdown'}
+                        </span>
                     </button>
                     <button
                         className="interactive-table-btn"
                         onClick={handleCopyCsv}
                         title="Copy as CSV"
                     >
-                        {copyFeedback === 'csv' ? '✓ Copied' : '⧉ CSV'}
+                        {copyFeedback === 'csv' ? '✓' : '⧉'}{' '}
+                        <span className="interactive-table-btn-label">
+                            {copyFeedback === 'csv' ? 'Copied' : 'CSV'}
+                        </span>
                     </button>
                     <button
                         className="interactive-table-btn"
                         onClick={() => setIsFullscreen(f => !f)}
                         title={isFullscreen ? 'Exit fullscreen' : 'Expand table'}
                     >
-                        {isFullscreen ? '⤡ Exit' : '⤢ Expand'}
+                        {isFullscreen ? '⤡' : '⤢'}{' '}
+                        <span className="interactive-table-btn-label">
+                            {isFullscreen ? 'Exit' : 'Expand'}
+                        </span>
                     </button>
                 </div>
             </div>

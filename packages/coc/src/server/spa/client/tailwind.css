@@ -1523,11 +1523,15 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
     padding: 6px 10px;
     background: #f8f8f8;
     border-bottom: 1px solid #e0e0e0;
     font-size: 0.75rem;
     gap: 8px;
+    /* Lets the buttons condense to icon-only when the table itself is narrow,
+       rather than when the viewport is. */
+    container-type: inline-size;
 }
 
 .dark .interactive-table-toolbar {
@@ -1535,9 +1539,18 @@
     border-color: #3c3c3c;
 }
 
+/*
+ * The row count is the only part of the toolbar allowed to lose space: it
+ * shrinks and ellipsizes so the action buttons — including Expand, which used
+ * to get clipped off the right edge in the Kusto canvas — always stay whole.
+ */
 .interactive-table-row-count {
     color: #666;
     white-space: nowrap;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .dark .interactive-table-row-count {
@@ -1548,6 +1561,16 @@
     display: flex;
     gap: 4px;
     flex-wrap: wrap;
+    justify-content: flex-end;
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+/* Below this width the labels drop and each button is icon + tooltip only. */
+@container (max-width: 420px) {
+    .interactive-table-btn-label {
+        display: none;
+    }
 }
 
 .interactive-table-btn {

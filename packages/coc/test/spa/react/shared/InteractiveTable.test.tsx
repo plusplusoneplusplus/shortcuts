@@ -302,6 +302,42 @@ describe('InteractiveTable', () => {
         });
     });
 
+    describe('toolbar overflow (AC-05)', () => {
+        const TOOLBAR_TITLES = [
+            'Show filters',
+            'Toggle column visibility',
+            'Copy as Markdown',
+            'Copy as CSV',
+            'Expand table',
+        ];
+
+        it('renders all five toolbar buttons with their current titles', () => {
+            render(<InteractiveTable {...defaultProps} />);
+            for (const title of TOOLBAR_TITLES) {
+                expect(screen.getByTitle(title).tagName).toBe('BUTTON');
+            }
+        });
+
+        it('wraps each button label so it can be hidden when the toolbar is narrow', () => {
+            render(<InteractiveTable {...defaultProps} />);
+            for (const title of TOOLBAR_TITLES) {
+                const label = screen.getByTitle(title).querySelector('.interactive-table-btn-label');
+                expect(label, `${title} should have a collapsible label`).toBeTruthy();
+                expect(label?.textContent?.trim()).not.toBe('');
+            }
+        });
+
+        it('keeps the row count and the actions in a single toolbar row container', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            const toolbar = container.querySelector('.interactive-table-toolbar');
+            expect(toolbar).toBeTruthy();
+            expect(toolbar?.querySelector('.interactive-table-row-count')).toBeTruthy();
+            const actions = toolbar?.querySelector('.interactive-table-actions');
+            expect(actions).toBeTruthy();
+            expect(actions?.querySelectorAll('button.interactive-table-btn').length).toBe(5);
+        });
+    });
+
     describe('data-testid', () => {
         it('includes tableKey in data-testid', () => {
             render(<InteractiveTable {...defaultProps} />);
