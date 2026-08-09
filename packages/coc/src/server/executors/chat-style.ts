@@ -17,13 +17,9 @@ import { isChatStyle } from '@plusplusoneplusplus/coc-client';
 /** Tag wrapping the response-style block. Also identifies it in Conversation Metadata. */
 export const CHAT_STYLE_SYSTEM_TAG = 'chat-style';
 
-/** Shared baseline every style inherits. */
-const CHAT_STYLE_BASELINE = [
-    'Use plain, natural language. Be concise without dropping facts needed for accuracy or action.',
-    'Avoid robotic phrasing, canned openings, repeated conclusions, unnecessary jargon, and fake enthusiasm.',
-    'Use headings and lists only when they help. Expand when the user asks for detail or the task cannot be answered safely in a short form.',
-    'This guidance covers presentation only. Runtime rules, permissions, repository and skill instructions, safety rules, required output contracts, and an explicit request from the user for this turn all take priority.',
-].join('\n');
+/** Disclaimer every style inherits: style never outranks the rules around it. */
+const CHAT_STYLE_PRECEDENCE =
+    'This guidance covers presentation only. Runtime rules, permissions, repository and skill instructions, safety rules, required output contracts, and an explicit request from the user for this turn all take priority.';
 
 /** Human-readable label used in the block and in Conversation Metadata. */
 const CHAT_STYLE_LABELS: Record<ChatStyle, string> = {
@@ -33,7 +29,7 @@ const CHAT_STYLE_LABELS: Record<ChatStyle, string> = {
     structured: 'Structured',
 };
 
-/** One short focus instruction per style, appended after the shared baseline. */
+/** One short focus instruction per style, appended after the precedence line. */
 const CHAT_STYLE_FOCUS: Record<ChatStyle, string> = {
     human:
         'Write like a helpful coworker in a normal conversation. Keep the flow natural and let the wording carry the answer instead of structure.',
@@ -66,7 +62,7 @@ export function buildChatStyleSystemMessage(
 
     return [
         `<${CHAT_STYLE_SYSTEM_TAG}>`,
-        CHAT_STYLE_BASELINE,
+        CHAT_STYLE_PRECEDENCE,
         '',
         `Selected style: ${CHAT_STYLE_LABELS[style]}.`,
         CHAT_STYLE_FOCUS[style],
