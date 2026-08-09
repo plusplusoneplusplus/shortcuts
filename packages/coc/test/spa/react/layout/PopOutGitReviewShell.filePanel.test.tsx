@@ -144,3 +144,16 @@ describe('PopOutGitReviewShell: PR source label suppression', () => {
         expect(prSection).toContain('showSourceLabel={false}');
     });
 });
+
+describe('PopOutGitReviewShell: PR file list statuses', () => {
+    const prSection = SOURCE.slice(SOURCE.indexOf('function PrReviewContent'));
+
+    it('builds the PR file list with parseDiffFileList so real statuses survive', () => {
+        expect(prSection).toContain('setFileList(parseDiffFileList(diffText))');
+    });
+
+    it('no longer hardcodes every PR file to modified', () => {
+        expect(SOURCE).not.toContain("status: 'modified'");
+        expect(SOURCE).not.toContain('extractFileStatsFromDiff');
+    });
+});

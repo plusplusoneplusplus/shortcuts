@@ -40,7 +40,6 @@ import {
 } from '../contexts/GitReviewPopOutContext';
 import { getHostname } from '../utils/config';
 import { resolveCanonicalOriginId } from '../repos/originScope';
-import { extractFileStatsFromDiff } from '../features/git/diff/diffSource';
 import { useClassification } from '../features/git/diff/useClassification';
 import { useModalJobAiSelection } from '../shared/ModalJobAiControls';
 import { ClassifyDiffAiControls } from '../features/git/diff/ClassifyDiffAiControls';
@@ -702,8 +701,9 @@ function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLoaded }:
                 setPrTitle(prData.title);
                 if (prData.title) onTitleLoaded?.(prData.title);
                 setHeadSha(prData.headSha);
-                const stats = extractFileStatsFromDiff(diffText);
-                setFileList(stats.map(s => ({ path: s.path, status: 'modified' as const, additions: s.additions, deletions: s.deletions })));
+                // Parse with the same helper the inline Files tab uses so the
+                // pop-out list shows real Added/Deleted/Renamed statuses.
+                setFileList(parseDiffFileList(diffText));
             })
             .catch((err: Error) => setError(err.message))
             .finally(() => setLoading(false));

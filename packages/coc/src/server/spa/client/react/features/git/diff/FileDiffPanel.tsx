@@ -60,6 +60,12 @@ export interface FileDiffPanelProps {
      */
     getHunkClassification?: (filePath: string, hunkIndex: number) => import('../../pull-requests/classification-types').HunkClassification | undefined;
     hunkActiveFilters?: Set<import('../../pull-requests/classification-types').HunkCategory>;
+    /**
+     * Extra controls rendered in the right-hand button group of the sticky
+     * header (e.g. the inline PR Files tab's "Pop out" button). Omitting it
+     * leaves the header markup unchanged.
+     */
+    headerActions?: React.ReactNode;
 }
 
 type PopupState = {
@@ -82,6 +88,7 @@ export function FileDiffPanel({
     onToggleReviewed,
     getHunkClassification,
     hunkActiveFilters,
+    headerActions,
 }: FileDiffPanelProps) {
     const { dispatch: queueDispatch } = useQueue();
 
@@ -403,6 +410,7 @@ export function FileDiffPanel({
                             🤖
                         </button>
                     )}
+                    {headerActions}
                 </div>
             </div>
 
