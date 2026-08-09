@@ -20,6 +20,8 @@ import {
     ACTIVE_MATCH_HIGHLIGHT_CLASS,
     type LineMatchRange,
 } from './diffFindModel';
+import { FileBannerRow } from './FileBannerRow';
+import { parseFileBanners, buildBannerIndex, bannerForLineIndex, type FileBanner } from './fileBannerModel';
 
 export interface UnifiedDiffViewerProps {
     diff: string;
@@ -34,6 +36,14 @@ export interface UnifiedDiffViewerProps {
      * Hunk headers (`@@`) and change lines are unaffected.
      */
     hideFileHeaders?: boolean;
+    /**
+     * Continuous (whole-commit) diff view only. Replaces each file's raw git
+     * preamble — everything from `diff --git` up to the first `@@` — with a
+     * single sticky file-name banner carrying the path, status badge, and
+     * `+N −M` counts. Opt-in so whisper/tool-call diff surfaces, which show the
+     * file name in their own chrome, keep their current rendering.
+     */
+    showFileBanners?: boolean;
     onLinesReady?: (lines: DiffLine[]) => void;
     comments?: DiffComment[];
     onAddComment?: (
@@ -248,6 +258,13 @@ export interface SideBySideLine {
     filePath?: string;
     /** Original unified diff line index represented by a full-width split row. */
     originalIndex?: number;
+    /**
+     * Set on a full-width file-banner row, emitted in place of the git preamble
+     * when `computeSideBySideLines` is given the parsed banners. Split mode drops
+     * meta lines entirely, so without this a file section would have no visible
+     * boundary at all (and a binary file would render nothing).
+     */
+    fileBanner?: FileBanner;
 }
 
 const LINE_CLASSES: Record<LineType, string> = {
@@ -351,17 +368,51 @@ export function computeDiffLines(lines: string[]): DiffLine[] {
     });
 }
 
-export function computeSideBySideLines(lines: DiffLine[], skipIntraLineDiff = false): SideBySideLine[] {
+/**
+ * @param banners When provided (continuous diff view), a full-width banner row
+ *   is emitted at each file boundary in place of the suppressed git preamble.
+ *   The banner row carries `filePath`, so it — not the following `@@` header —
+ *   becomes the scroll target for that file.
+ */
+export function computeSideBySideLines(
+    lines: DiffLine[],
+    skipIntraLineDiff = false,
+    banners?: FileBanner[],
+): SideBySideLine[] {
     const result: SideBySideLine[] = [];
     let i = 0;
     let pendingFilePath: string | null = null;
+    const bannerIndex = banners ? buildBannerIndex(banners) : undefined;
+    const bannerByStart = bannerIndex?.bannerByStart;
 
     while (i < lines.length) {
         const line = lines[i];
 
+        // Preamble rows git does not prefix (`old mode`, `similarity index`,
+        // `Binary files … differ`) classify as `context`, so they would
+        // otherwise render as code. Drop the whole suppressed range.
+        if (bannerIndex?.suppressed.has(line.index)) {
+            i++;
+            continue;
+        }
+
         if (line.type === 'meta') {
+            const banner = bannerByStart?.get(line.index);
+            if (banner) {
+                result.push({
+                    left: { type: 'empty', content: '', lineNumber: null, originalIndex: null },
+                    right: { type: 'empty', content: '', lineNumber: null, originalIndex: null },
+                    fileBanner: banner,
+                    filePath: banner.path,
+                    originalIndex: line.index,
+                });
+                // The banner already anchors this file; don't re-tag the `@@` row.
+                pendingFilePath = null;
+                i++;
+                continue;
+            }
             const fp = extractFilePathFromDiffHeader(line.content);
-            if (fp) pendingFilePath = fp;
+            if (fp && !bannerByStart) pendingFilePath = fp;
             i++;
             continue;
         }
@@ -593,6 +644,18 @@ export interface UnifiedDiffViewerHandle {
      * line becomes visible; centers the row in the scroll viewport.
      */
     scrollLineIntoView: (lineIndex: number) => void;
+}
+
+/**
+ * `overflow-x: auto` alone computes `overflow-y` to `auto` as well, which makes
+ * the viewer its own scrollport. A sticky file banner would then anchor to that
+ * box — which never scrolls vertically — and never engage. `overflow-y: clip`
+ * keeps horizontal scrolling for long lines without creating a vertical
+ * scrollport, so banners stick to the host's scroll container as intended.
+ * Applied only on the banner path so other diff surfaces are untouched.
+ */
+export function stickyScrollportFix(showFileBanners: boolean | undefined): string {
+    return showFileBanners ? 'overflow-y-clip ' : '';
 }
 
 /** Reusable up/down buttons for navigating between diff hunks. */
@@ -852,7 +915,7 @@ function getScrollableAncestor(el: HTMLElement): HTMLElement {
     return document.documentElement as HTMLElement;
 }
 
-export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiffViewerProps>(function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enableComments, showLineNumbers, hideFileHeaders, onLinesReady, onAddComment, onAskAI, onCopyAsContext, comments, onCommentClick, filePath, getHunkClassification, activeFilters, matchRangesByLine }, ref) {
+export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiffViewerProps>(function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enableComments, showLineNumbers, hideFileHeaders, showFileBanners, onLinesReady, onAddComment, onAskAI, onCopyAsContext, comments, onCommentClick, filePath, getHunkClassification, activeFilters, matchRangesByLine }, ref) {
     const lines = useMemo(() => diff.split('\n'), [diff]);
     const languages = useMemo(() => getLanguagesForLines(lines, fileName), [lines, fileName]);
     const diffLines = useMemo(() => computeDiffLines(lines), [lines]);
@@ -869,6 +932,18 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
         [diffLines, languages, skipHighlight]
     );
     const editStarts = useMemo(() => computeEditStarts(diffLines), [diffLines]);
+    // ── File-name banners (continuous diff view) ────────────────────────
+    // Banners replace the `diff --git` row in place and suppress the rest of
+    // the preamble; no row is renumbered, so match ranges keyed by diff-line
+    // index (and comment anchors, hunk ranges) still line up exactly.
+    const fileBanners = useMemo(
+        () => (showFileBanners ? parseFileBanners(lines) : []),
+        [lines, showFileBanners],
+    );
+    const { bannerByStart, suppressed: suppressedPreamble } = useMemo(
+        () => buildBannerIndex(fileBanners),
+        [fileBanners],
+    );
     const lineCommentMap = useMemo(
         () => (comments ? buildLineCommentMap(comments) : new Map<number, DiffComment[]>()),
         [comments]
@@ -1132,6 +1207,13 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
         selectedText: string;
     }>({ visible: false, position: { x: 0, y: 0 }, selection: null, selectedText: '' });
 
+    // Banner for the file owning the topmost mounted row (windowed path only).
+    const firstVisibleIndex = virtualized ? rowVirtualizer.getVirtualItems()[0]?.index : undefined;
+    const pinnedBanner = useMemo(
+        () => (firstVisibleIndex === undefined ? undefined : bannerForLineIndex(fileBanners, firstVisibleIndex)),
+        [fileBanners, firstVisibleIndex],
+    );
+
     // Stores the last validated selection so handleContextMenu can use it without stale closures.
     const pendingSelectionRef = useRef<{ selection: DiffCommentSelection; selectedText: string } | null>(null);
 
@@ -1220,9 +1302,17 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             onMouseUp={enableComments ? handleMouseUp : undefined}
             onMouseDown={enableComments ? handleMouseDown : undefined}
             onContextMenu={enableComments ? handleContextMenu : undefined}
-            className="overflow-x-auto font-mono text-xs leading-tight text-[#1e1e1e] dark:text-[#cccccc] bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded"
+            className={`overflow-x-auto ${stickyScrollportFix(showFileBanners)}font-mono text-xs leading-tight text-[#1e1e1e] dark:text-[#cccccc] bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded`}
             data-testid={testId}
         >
+            {/* Windowed rows are absolutely positioned, so an in-flow sticky
+                banner cannot hold. Pin a single copy for the file covering the
+                topmost mounted row instead. */}
+            {showFileBanners && virtualized && pinnedBanner && (
+                <div className="sticky top-0 z-20">
+                    <FileBannerRow banner={pinnedBanner} sticky={false} data-testid="diff-file-banner-pinned" />
+                </div>
+            )}
             {virtualized ? (
                 <div style={{ height: rowVirtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
                     {rowVirtualizer.getVirtualItems().map(vi => (
@@ -1275,6 +1365,13 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                 const line = lines[i];
                 const { type, oldLine, newLine } = diffLines[i];
                 if (skipIndices.has(i)) return null;
+                if (showFileBanners) {
+                    const banner = bannerByStart.get(i);
+                    // The `diff --git` row becomes the banner; the rest of the
+                    // preamble (index / mode / ---/+++ / rename …) is dropped.
+                    if (banner) return <FileBannerRow key={i} banner={banner} sticky={!virtualized} />;
+                    if (suppressedPreamble.has(i)) return null;
+                }
                 if (hideFileHeaders && type === 'meta') return null;
                 const collapsedHunk = collapsedByStart.get(i);
                 if (collapsedHunk && collapsedHunk.classification) {

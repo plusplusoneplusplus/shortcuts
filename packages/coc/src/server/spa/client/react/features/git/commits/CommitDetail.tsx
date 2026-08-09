@@ -512,6 +512,7 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
                                 diff={diff}
                                 onLinesReady={setDiffLines}
                                 matchRangesByLine={find.matchRangesByLine}
+                                showFileBanners
                                 data-testid="diff-content"
                             />
                         ) : (
@@ -520,6 +521,7 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
                                 diff={diff}
                                 onLinesReady={setDiffLines}
                                 matchRangesByLine={find.matchRangesByLine}
+                                showFileBanners
                                 data-testid="diff-content"
                             />
                         )

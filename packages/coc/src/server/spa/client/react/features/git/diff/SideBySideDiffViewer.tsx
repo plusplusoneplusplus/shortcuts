@@ -16,6 +16,7 @@ import {
     getLanguagesForLines,
     buildLineCommentMap,
     getLineHighlightClass,
+    stickyScrollportFix,
     DIFF_LINE_ESTIMATE_PX,
     VIRTUALIZE_THRESHOLD,
     type UnifiedDiffViewerProps,
@@ -31,6 +32,8 @@ import {
     ACTIVE_MATCH_HIGHLIGHT_CLASS,
 } from './diffFindModel';
 import { DiffContextMenu } from '../../../tasks/comments/DiffContextMenu';
+import { FileBannerRow } from './FileBannerRow';
+import { parseFileBanners, bannerForLineIndex } from './fileBannerModel';
 import type { DiffComment, DiffCommentSelection } from '../../../../comments/diff-comment-types';
 
 /** Walk up the DOM tree to find the nearest ancestor that scrolls vertically. */
@@ -85,6 +88,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
             onCopyAsContext,
             onCommentClick,
             matchRangesByLine,
+            showFileBanners,
         },
         ref
     ) {
@@ -92,7 +96,17 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
         const diffLines = useMemo(() => computeDiffLines(lines), [lines]);
         // Generated/huge files skip highlight + word-level intra-line diff (fast path).
         const skipHighlight = useMemo(() => shouldSkipHighlight(fileName, lines.length), [fileName, lines.length]);
-        const sxsLines  = useMemo(() => computeSideBySideLines(diffLines, skipHighlight), [diffLines, skipHighlight]);
+        // File-name banners (continuous diff view) replace each git preamble with
+        // one full-width row. Code-cell `originalIndex` values are untouched, so
+        // find-match ranges keyed by diff-line index still line up.
+        const fileBanners = useMemo(
+            () => (showFileBanners ? parseFileBanners(lines) : undefined),
+            [lines, showFileBanners],
+        );
+        const sxsLines  = useMemo(
+            () => computeSideBySideLines(diffLines, skipHighlight, fileBanners),
+            [diffLines, skipHighlight, fileBanners],
+        );
         const editStarts = useMemo(() => computeEditStarts(diffLines), [diffLines]);
         const languages = useMemo(() => getLanguagesForLines(lines, fileName), [lines, fileName]);
         // Syntax highlighting computed ONCE (per-file block pass), keyed by diff-line index.
@@ -192,6 +206,19 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
             });
             return map;
         }, [sxsLines]);
+
+        // Banner owning the topmost mounted row (windowed path only). Rows are
+        // absolutely positioned there, so the in-flow sticky row cannot hold and
+        // a single pinned copy stands in for it.
+        const firstVisibleRow = virtualized ? rowVirtualizer.getVirtualItems()[0]?.index : undefined;
+        const pinnedBanner = useMemo(() => {
+            if (!fileBanners || firstVisibleRow === undefined) return undefined;
+            const row = sxsLines[firstVisibleRow];
+            if (!row) return undefined;
+            const lineIdx = row.left.originalIndex ?? row.right.originalIndex ?? row.originalIndex;
+            if (lineIdx === undefined || lineIdx === null) return undefined;
+            return bannerForLineIndex(fileBanners, lineIdx);
+        }, [fileBanners, firstVisibleRow, sxsLines]);
 
         useImperativeHandle(ref, () => {
             if (virtualized) {
@@ -404,6 +431,12 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
         }, [toolbar.visible]);
 
         function renderRow(row: SideBySideLine, rowIdx: number) {
+            // File-banner row: spans full width, replaces the git preamble and
+            // acts as this file's scroll anchor.
+            if (row.fileBanner) {
+                return <FileBannerRow key={rowIdx} banner={row.fileBanner} sticky={!virtualized} />;
+            }
+
             // Hunk-header row: spans full width, acts as nav anchor
             if (row.hunkHeader !== undefined) {
                 return (
@@ -583,8 +616,13 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                     onMouseUp={handleMouseUp}
                     onMouseDown={handleMouseDown}
                     onContextMenu={enableComments ? handleContextMenu : undefined}
-                    className="font-mono text-xs leading-tight overflow-x-auto text-[#1e1e1e] dark:text-[#cccccc] bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded"
+                    className={`font-mono text-xs leading-tight overflow-x-auto ${stickyScrollportFix(showFileBanners)}text-[#1e1e1e] dark:text-[#cccccc] bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded`}
                 >
+                    {showFileBanners && virtualized && pinnedBanner && (
+                        <div className="sticky top-0 z-20">
+                            <FileBannerRow banner={pinnedBanner} sticky={false} data-testid="diff-file-banner-pinned" />
+                        </div>
+                    )}
                     {virtualized ? (
                         <div style={{ height: rowVirtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
                             {rowVirtualizer.getVirtualItems().map(vi => (

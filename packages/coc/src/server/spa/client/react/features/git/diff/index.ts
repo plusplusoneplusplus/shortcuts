@@ -1,6 +1,9 @@
 export { UnifiedDiffViewer, computeDiffLines, parseHunkHeader, HunkNavButtons, parseDiffFileList } from './UnifiedDiffViewer';
 export type { UnifiedDiffViewerProps, UnifiedDiffViewerHandle, DiffLine } from './UnifiedDiffViewer';
 export { SideBySideDiffViewer } from './SideBySideDiffViewer';
+export { FileBannerRow } from './FileBannerRow';
+export { parseFileBanners, buildBannerIndex, bannerForLineIndex, bannerDetailsText, splitPath, BANNER_STATUS_LABELS, BANNER_STATUS_CLASSES } from './fileBannerModel';
+export type { FileBanner, FileBannerStatus } from './fileBannerModel';
 export { DiffMiniMap } from './DiffMiniMap';
 export { DiffViewToggle } from './DiffViewToggle';
 export { FileDiffPanel } from './FileDiffPanel';
