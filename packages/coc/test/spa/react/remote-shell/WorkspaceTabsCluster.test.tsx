@@ -211,4 +211,30 @@ describe('WorkspaceTabsCluster remove menu (AC-02)', () => {
         await waitFor(() => expect(mockRemoveWorkspace).toHaveBeenCalledWith('b'));
         expect(mockSelectClone).not.toHaveBeenCalled();
     });
+
+    /** AC-03 — the confirm dialog warns about active work but never blocks. */
+    it('warns about running/queued chats in the confirm dialog', async () => {
+        mockQueueState = {
+            repoQueueMap: { b: { running: [{ id: 't1' }, { id: 't2' }], queued: [{ id: 't3' }] } },
+        };
+        const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
+        const item = openRemoveItem(repos, repos[1]);
+        fireEvent.click(item);
+
+        expect(screen.getByTestId('clone-remove-active-work').textContent)
+            .toBe('2 running, 1 queued chats will keep running');
+
+        // warn, do not block
+        fireEvent.click(screen.getByTestId('clone-remove-confirm-btn'));
+        await waitFor(() => expect(mockRemoveWorkspace).toHaveBeenCalledWith('b'));
+    });
+
+    it('omits the warning line when the repo has no active work', () => {
+        const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
+        const item = openRemoveItem(repos, repos[1]);
+        fireEvent.click(item);
+
+        expect(screen.getByTestId('clone-remove-confirm-btn')).toBeTruthy();
+        expect(screen.queryByTestId('clone-remove-active-work')).toBeNull();
+    });
 });

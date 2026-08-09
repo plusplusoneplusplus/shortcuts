@@ -12,11 +12,14 @@
  * are left untouched.
  */
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useQueue } from '../../contexts/QueueContext';
 import { useRepos } from '../../contexts/ReposContext';
+import { isHidden as isHiddenTask } from '../../queue/hooks/useRepoQueueStats';
 import { getRepoSelectionId } from '../../repos/cloneIdentity';
 import { groupReposByRemote, type RepoData } from '../../repos/repoGrouping';
 import { removeWorkspace } from '../../repos/repositoryService';
 import { Dialog } from '../../ui/Dialog';
+import { describeActiveWork } from './shellModel';
 import { useShellNavigation } from './useShellNavigation';
 
 export interface UseWorkspaceRemovalOptions {
@@ -39,8 +42,15 @@ export interface WorkspaceRemoval {
 export function useWorkspaceRemoval({ repos, selectedRepo, addToast }: UseWorkspaceRemovalOptions): WorkspaceRemoval {
     const { fetchRepos } = useRepos();
     const { selectClone } = useShellNavigation();
+    const { state: queueState } = useQueue();
     const [target, setTarget] = useState<RepoData | null>(null);
     const [removing, setRemoving] = useState(false);
+
+    // AC-03: warn, never block. No queue entry (remote clone, offline, not yet
+    // loaded) simply means no warning line.
+    const activeWork = target
+        ? describeActiveWork(queueState?.repoQueueMap?.[String(target.workspace.id)], isHiddenTask)
+        : null;
 
     const groups = useMemo(() => groupReposByRemote(repos, {}), [repos]);
 
@@ -102,6 +112,11 @@ export function useWorkspaceRemoval({ repos, selectedRepo, addToast }: UseWorksp
             <p className="text-[12px] text-[#848484] dark:text-[#777] mt-1">
                 The folder on disk is left untouched - only the CoC registration is removed.
             </p>
+            {activeWork && (
+                <p data-testid="clone-remove-active-work" className="text-[12px] text-[#c98410] mt-1">
+                    {activeWork}
+                </p>
+            )}
         </Dialog>
     ) : null;
 

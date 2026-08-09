@@ -182,6 +182,29 @@ export function describeRemoveBlock(repo: RepoData, status: CloneStatus | undefi
     return `Cannot remove - ${label} is offline`;
 }
 
+/**
+ * Warn — do not block — when a clone still has running or queued chats (AC-03).
+ *
+ * Best-effort by design: the caller passes the clone's `repoQueueMap` entry, and
+ * a missing entry (remote clone, offline server, queue state not loaded yet)
+ * simply yields `null`, so the confirm dialog renders without the warning line
+ * instead of blocking removal. `isHiddenTask` is injected to keep this pure.
+ */
+export function describeActiveWork(
+    entry: { running?: any[]; queued?: any[] } | undefined,
+    isHiddenTask: (t: any) => boolean,
+): string | null {
+    if (!entry) return null;
+    const running = (entry.running ?? []).filter(t => !isHiddenTask(t)).length;
+    const queued = (entry.queued ?? []).filter(t => !isHiddenTask(t)).length;
+    if (running + queued === 0) return null;
+    const parts: string[] = [];
+    if (running > 0) parts.push(`${running} running`);
+    if (queued > 0) parts.push(`${queued} queued`);
+    const noun = running + queued === 1 ? 'chat' : 'chats';
+    return `${parts.join(', ')} ${noun} will keep running`;
+}
+
 // ── Remote summary ───────────────────────────────────────────────────────────
 
 export type RemoteStatus = 'idle' | 'running' | 'queued';
