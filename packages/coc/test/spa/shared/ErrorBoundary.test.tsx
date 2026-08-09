@@ -46,6 +46,37 @@ describe('ErrorBoundary', () => {
         expect(screen.queryByText(/something went wrong/i)).toBeNull();
     });
 
+    /* ---- custom fallback prop ---- */
+
+    it('renders a custom fallback node instead of the full-screen UI', () => {
+        render(
+            <ErrorBoundary fallback={<span>inline failure</span>}>
+                <ThrowingChild shouldThrow={true} />
+            </ErrorBoundary>,
+        );
+        expect(screen.getByText('inline failure')).toBeDefined();
+        expect(screen.queryByText(/something went wrong/i)).toBeNull();
+    });
+
+    it('passes the caught error to a function fallback', () => {
+        render(
+            <ErrorBoundary fallback={(error) => <span>failed: {error?.message}</span>}>
+                <ThrowingChild shouldThrow={true} />
+            </ErrorBoundary>,
+        );
+        expect(screen.getByText('failed: boom')).toBeDefined();
+    });
+
+    it('ignores the fallback prop while children render fine', () => {
+        render(
+            <ErrorBoundary fallback={<span>inline failure</span>}>
+                <ThrowingChild shouldThrow={false} />
+            </ErrorBoundary>,
+        );
+        expect(screen.getByText('ok')).toBeDefined();
+        expect(screen.queryByText('inline failure')).toBeNull();
+    });
+
     /* ---- getDerivedStateFromError → fallback UI ---- */
 
     it('renders fallback UI after a child throw', () => {

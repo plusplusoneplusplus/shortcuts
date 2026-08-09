@@ -10,6 +10,12 @@ import { Component, type ErrorInfo, type ReactNode } from 'react';
 
 interface Props {
     children: ReactNode;
+    /**
+     * Replaces the default full-screen recovery UI. Use it when the boundary
+     * guards a small region (a panel, a card) where a 100vh takeover would be
+     * wrong. Receives the caught error so the caller can surface its message.
+     */
+    fallback?: ReactNode | ((error: Error | null) => ReactNode);
 }
 
 interface State {
@@ -61,6 +67,11 @@ export class ErrorBoundary extends Component<Props, State> {
         }
 
         const { error } = this.state;
+        const { fallback } = this.props;
+
+        if (fallback !== undefined) {
+            return <>{typeof fallback === 'function' ? fallback(error) : fallback}</>;
+        }
 
         return (
             <div style={{
