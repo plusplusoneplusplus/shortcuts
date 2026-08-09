@@ -8,6 +8,7 @@ import {
     computeCloneStatusMap,
     cloneStatusColor,
     blendRemoteCloneStatus,
+    describeRemoveBlock,
     summarizeRemote,
     remoteProviderLabel,
     remoteProviderKind,
@@ -238,5 +239,29 @@ describe('remoteProviderKind', () => {
         expect(remoteProviderKind(null)).toBe('remote');
         expect(remoteProviderKind(undefined)).toBe('remote');
         expect(remoteProviderKind('')).toBe('remote');
+    });
+});
+
+describe('describeRemoveBlock', () => {
+    it('never blocks a local clone', () => {
+        expect(describeRemoveBlock(repo('a'), 'idle')).toBeNull();
+        expect(describeRemoveBlock(repo('a'), 'running')).toBeNull();
+    });
+
+    it('allows removing a remote clone whose server is online', () => {
+        expect(describeRemoveBlock(remoteRepo('r', 'online'), 'idle')).toBeNull();
+        expect(describeRemoveBlock(remoteRepo('r', 'online', 'running'), 'running')).toBeNull();
+    });
+
+    it('blocks a remote clone whose server is unreachable, naming the server', () => {
+        expect(describeRemoveBlock(remoteRepo('r', 'offline'), 'offline'))
+            .toBe('Cannot remove - devbox is offline');
+        expect(describeRemoveBlock(remoteRepo('r', 'connecting'), 'connecting'))
+            .toBe('Cannot remove - devbox is offline');
+    });
+
+    it('falls back to a generic name when the server has no label', () => {
+        const unlabelled = { workspace: { id: 'r', name: 'r', remote: { connection: 'offline' } } } as any;
+        expect(describeRemoveBlock(unlabelled, 'offline')).toBe('Cannot remove - the remote server is offline');
     });
 });

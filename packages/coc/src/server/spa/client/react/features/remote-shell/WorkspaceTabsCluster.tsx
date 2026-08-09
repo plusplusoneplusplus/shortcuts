@@ -17,7 +17,7 @@ import { useGitInfo } from '../git/hooks/useGitInfo';
 import { computeVisibleSubTabs, type SubTabDef } from '../repo-detail/repoSubTabs';
 import { getRepoHashColor, getServerHashColor, groupKey, groupReposByRemote, isRemoteRepo, truncatePath } from '../../repos/repoGrouping';
 import { getRepoSelectionId } from '../../repos/cloneIdentity';
-import { cloneStatusColor, computeCloneStatusMap, computeVisibleTabKeys, partitionShellTabs, summarizeRemote } from './shellModel';
+import { cloneStatusColor, computeCloneStatusMap, computeVisibleTabKeys, describeRemoveBlock, partitionShellTabs, summarizeRemote } from './shellModel';
 import { useShellNavigation } from './useShellNavigation';
 import { useRecentRemotes } from './useRecentRemotes';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
@@ -165,7 +165,10 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
     const overflowActive = hiddenCloneTabs.some(t => t.key === activeTab);
 
     const buildMenuItems = useCallback((menuRepo: RepoData): ContextMenuItem[] => {
-        const isRemote = isRemoteRepo(menuRepo);
+        // A remote repo is owned by the CoC server that contributed it, so removal
+        // is routed there. When that server is unreachable the DELETE cannot land —
+        // disable up front rather than failing after the confirm.
+        const removeBlock = describeRemoveBlock(menuRepo, cloneStatus[String(menuRepo.workspace.id)]);
         const close = () => {
             setCtxMenu(null);
             setCloneOpen(false);
@@ -188,11 +191,12 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
             {
                 label: 'Remove from CoC',
                 icon: 'X',
-                disabled: isRemote,
+                disabled: !!removeBlock,
+                title: removeBlock ?? undefined,
                 onClick: () => { close(); setRemoveRepo(menuRepo); },
             },
         ];
-    }, []);
+    }, [cloneStatus]);
 
     const doRemove = useCallback(async (menuRepo: RepoData) => {
         setRemoving(true);

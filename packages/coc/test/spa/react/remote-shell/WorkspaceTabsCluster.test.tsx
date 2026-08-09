@@ -147,3 +147,46 @@ describe('WorkspaceTabsCluster', () => {
         expect(chatTab?.textContent).toContain('Workspace');
     });
 });
+
+/**
+ * AC-02 — "Remove from CoC" works for remote (agent-hosted) repos, except when
+ * the owning server is unreachable (removal is routed there, so it would fail).
+ */
+describe('WorkspaceTabsCluster remove menu (AC-02)', () => {
+    const remoteRepo = (id: string, name: string, connection: string) => ({
+        workspace: {
+            id, name, remoteUrl: SHORTCUTS, rootPath: `/remote/${id}`,
+            remote: { baseUrl: 'http://127.0.0.1:4000', serverId: 'srv-1', serverLabel: 'devbox', connection, queue: 'idle' },
+        },
+        gitInfo: { isGitRepo: true, branch: 'main', dirty: false, remoteUrl: SHORTCUTS },
+    });
+
+    const openRemoveItem = (repos: any[], target: any) => {
+        render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        const row = screen.getAllByTestId('clone-popover-item')
+            .find(el => el.textContent?.includes(target.workspace.name))!;
+        fireEvent.contextMenu(row);
+        return screen.getAllByRole('menuitem').find(el => el.textContent?.includes('Remove from CoC'))!;
+    };
+
+    it('enables Remove for a remote repo whose server is online', () => {
+        const repos = [repo('a', 'shortcuts'), remoteRepo('r', 'shortcuts-remote', 'online')];
+        const item = openRemoveItem(repos, repos[1]);
+        expect(item).toBeTruthy();
+        expect(item.hasAttribute('disabled')).toBe(false);
+    });
+
+    it('disables Remove for an offline remote repo and names the server in the tooltip', () => {
+        const repos = [repo('a', 'shortcuts'), remoteRepo('r', 'shortcuts-remote', 'offline')];
+        const item = openRemoveItem(repos, repos[1]);
+        expect(item.hasAttribute('disabled')).toBe(true);
+        expect(item.closest('[title]')?.getAttribute('title')).toBe('Cannot remove - devbox is offline');
+    });
+
+    it('enables Remove for a local repo', () => {
+        const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
+        const item = openRemoveItem(repos, repos[0]);
+        expect(item.hasAttribute('disabled')).toBe(false);
+    });
+});

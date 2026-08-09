@@ -93,6 +93,7 @@ export type CloneStatus = 'idle' | 'running' | 'queued' | 'paused' | 'offline' |
 interface RemoteStatusMarker {
     connection?: RemoteConnectionStatus;
     queue?: RemoteQueueStatus;
+    serverLabel?: string;
 }
 
 /**
@@ -161,6 +162,24 @@ export function cloneStatusColor(status: CloneStatus | undefined, fallback: stri
     if (status === 'connecting') return '#3b82f6';
     if (status === 'offline') return '#8c959f';
     return fallback;
+}
+
+/**
+ * Why "Remove from CoC" is unavailable for a clone, or `null` when it can be removed.
+ *
+ * Removal unregisters the workspace on the server that owns it. A remote clone's
+ * owner is another CoC server, so an offline/unreachable one has to block the
+ * action up front — the DELETE would otherwise fail after the user confirmed.
+ * Local clones are always removable.
+ */
+export function describeRemoveBlock(repo: RepoData, status: CloneStatus | undefined): string | null {
+    const marker = remoteMarker(repo.workspace);
+    if (!marker) return null;
+    if (status !== 'offline' && status !== 'connecting') return null;
+    const label = typeof marker.serverLabel === 'string' && marker.serverLabel.trim()
+        ? marker.serverLabel
+        : 'the remote server';
+    return `Cannot remove - ${label} is offline`;
 }
 
 // ── Remote summary ───────────────────────────────────────────────────────────
