@@ -2633,4 +2633,43 @@ describe('NewChatArea — chat style', () => {
         fireEvent.click(screen.getByTestId('workflow-mode-option-ralph'));
         expect(screen.queryByTestId('chat-style-selector')).toBeNull();
     });
+
+    // The inline toolbar puts Effort before Style, matching the compact settings
+    // editor. Guards against the two layouts drifting apart again.
+    function expectPrecedes(first: HTMLElement, second: HTMLElement) {
+        expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+
+    it('orders the inline toolbar model · effort · style in legacy (non-tier) mode', async () => {
+        mockChatStyleEnabled.value = true;
+        render(<NewChatArea workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
+
+        const toolbar = screen.getByTestId('chat-input-toolbar');
+        const model = within(toolbar).getByTestId('model-picker-chip');
+        const effort = within(toolbar).getByTestId('effort-pill-selector');
+        const style = within(toolbar).getByTestId('chat-style-selector');
+
+        expectPrecedes(model, effort);
+        expectPrecedes(effort, style);
+    });
+
+    it('orders the inline toolbar effort · style in effort-tier mode', async () => {
+        mockChatStyleEnabled.value = true;
+        mockEffortLevelsEnabled.value = true;
+        mockEffortTiers.value = {
+            low: { model: 'gpt-5-mini', reasoningEffort: 'low' },
+            medium: { model: 'gpt-5.4', reasoningEffort: 'medium' },
+            high: { model: 'gpt-5.4', reasoningEffort: 'high' },
+        };
+        render(<NewChatArea workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('effort-tier-selector')).toBeTruthy());
+
+        const toolbar = screen.getByTestId('chat-input-toolbar');
+        const effort = within(toolbar).getByTestId('effort-tier-selector');
+        const style = within(toolbar).getByTestId('chat-style-selector');
+
+        expect(within(toolbar).queryByTestId('model-picker-chip')).toBeNull();
+        expectPrecedes(effort, style);
+    });
 });
