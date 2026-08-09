@@ -31,6 +31,7 @@ import {
     SCREENSHOT_ANNOTATE_INIT_CHANNEL,
     SCREENSHOT_ANNOTATE_DONE_CHANNEL,
     SCREENSHOT_ANNOTATE_CANCEL_CHANNEL,
+    SCREENSHOT_ANNOTATE_SAVE_CHANNEL,
     SCREENSHOT_ATTACH_CHANNEL,
     ANNOTATION_TOOLBAR_HEIGHT,
     buildOverlayHtml,
@@ -218,6 +219,18 @@ function registerScreenshotIpc(): void {
             editor.close();
         }
     });
+    // AC-03: the toolbar's explicit Save. Unlike "Done" this does NOT close the
+    // editor — the user can keep annotating, save again, and then press Done. A
+    // cancelled dialog writes nothing and logs nothing.
+    ipcMain.on(SCREENSHOT_ANNOTATE_SAVE_CHANNEL, (event, pngDataUrl: string) => {
+        if (!editorByWebContentsId.has(event.sender.id)) {
+            return;
+        }
+        void saveAnnotatedPng(pngDataUrl).catch((err: unknown) => {
+            const message = err instanceof Error ? err.message : String(err);
+            process.stderr.write(`[coc-desktop] screenshot save failed: ${message}\n`);
+        });
+    });
 }
 
 /**
@@ -356,13 +369,14 @@ function openAnnotationEditor(image: Electron.NativeImage, scaleFactor: number):
 }
 
 /**
- * AC-04: fan the finished annotation PNG out to the three required sinks, IN
- * order — the OS clipboard, the active chat draft in the main window, and a
- * Save-As file. The ordering + per-sink isolation live in the pure
- * {@link dispatchAnnotationSinks}: a Save-As cancel (or any sink failure) is
- * caught and logged, never rethrown and never undoing an earlier sink, so the
- * clipboard + chat-attach always stand. The editor window has already closed by
- * the time this runs.
+ * AC-04: fan the finished annotation PNG out to the two required sinks, IN
+ * order — the OS clipboard, then the active chat draft in the main window. No
+ * Save-As runs here: per AC-03 saving is the toolbar's own explicit action
+ * ({@link SCREENSHOT_ANNOTATE_SAVE_CHANNEL}), so "Done" never opens a file
+ * dialog. The ordering + per-sink isolation live in the pure
+ * {@link dispatchAnnotationSinks}: a sink failure is caught and logged, never
+ * rethrown and never undoing an earlier sink. The editor window has already
+ * closed by the time this runs.
  */
 function dispatchAnnotationResult(pngDataUrl: string): void {
     void dispatchAnnotationSinks(
@@ -373,15 +387,13 @@ function dispatchAnnotationResult(pngDataUrl: string): void {
                 clipboard.writeImage(nativeImage.createFromDataURL(url));
             },
             // (b) Active chat draft in the main SPA window (never the editor). A
-            //     missing/destroyed window simply skips — clipboard + save stay.
+            //     missing/destroyed window simply skips — the clipboard stays.
             attachToChat: (url) => {
                 const win = mainWindowProvider();
                 if (win && !win.isDestroyed()) {
                     win.webContents.send(SCREENSHOT_ATTACH_CHANNEL, url);
                 }
             },
-            // (c) Save-As file (timestamped PNG). A cancel resolves without writing.
-            saveFile: (url) => saveAnnotatedPng(url),
         },
         (sink, err) => {
             const message = err instanceof Error ? err.message : String(err);
@@ -391,10 +403,11 @@ function dispatchAnnotationResult(pngDataUrl: string): void {
 }
 
 /**
- * AC-04 (sink c): open a Save-As dialog defaulting to a timestamped PNG name and,
- * if the user confirms, decode the PNG data URL and write the bytes. A cancel
- * resolves without writing (and, per {@link dispatchAnnotationSinks}, without
- * disturbing the clipboard/attach sinks).
+ * AC-03: open a Save-As dialog defaulting to a timestamped PNG name and, if the
+ * user confirms, decode the PNG data URL and write the bytes. A cancel resolves
+ * without writing (and without logging an error). Driven by the toolbar's Save
+ * button through {@link SCREENSHOT_ANNOTATE_SAVE_CHANNEL}; the editor stays open
+ * either way.
  */
 async function saveAnnotatedPng(pngDataUrl: string): Promise<void> {
     const result = await dialog.showSaveDialog({

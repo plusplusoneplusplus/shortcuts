@@ -400,6 +400,13 @@ export const SCREENSHOT_ANNOTATE_INIT_CHANNEL = 'coc-desktop:screenshot-annotate
 export const SCREENSHOT_ANNOTATE_DONE_CHANNEL = 'coc-desktop:screenshot-annotate-done';
 /** IPC channel: annotation editor → main, "Cancel" — discard the annotation. */
 export const SCREENSHOT_ANNOTATE_CANCEL_CHANNEL = 'coc-desktop:screenshot-annotate-cancel';
+/**
+ * IPC channel: annotation editor → main, "Save" — carries the flattened PNG data
+ * URL for an on-demand Save-As (AC-03). Deliberately separate from
+ * {@link SCREENSHOT_ANNOTATE_DONE_CHANNEL}: saving is no longer part of finishing,
+ * and it leaves the editor OPEN so the user can keep annotating (or save again).
+ */
+export const SCREENSHOT_ANNOTATE_SAVE_CHANNEL = 'coc-desktop:screenshot-annotate-save';
 
 /**
  * Top inset (CSS px) reserved for the editor's floating toolbar pill.
@@ -621,8 +628,11 @@ export function fitAnnotationWindowSize(
  * paint it onto the canvas, then let the user pick a tool (pen/line/rect/arrow),
  * colour and stroke width and draw strokes on top. Undo pops the last stroke.
  * "Done" flattens image+strokes and calls `done(pngDataUrl)`; "Cancel"/ESC calls
- * `cancelAnnotate()`. Shares the exact drawing/export code with the host via the
- * `.toString()` interpolations below.
+ * `cancelAnnotate()`. "Save" (AC-03) flattens the same PNG and calls
+ * `saveAnnotate(pngDataUrl)` for an on-demand Save-As WITHOUT finishing, so the
+ * editor stays open and the user can keep annotating (or save again). Shares the
+ * exact drawing/export code with the host via the `.toString()` interpolations
+ * below.
  */
 export function buildAnnotationPageScript(): string {
     // NOTE: this string runs in the editor page's context, NOT here. Keep it free
@@ -765,6 +775,14 @@ export function buildAnnotationPageScript(): string {
     api.cancelAnnotate();
   }
 
+  function saveNow() {
+    if (finished || !api.saveAnnotate) { return; }
+    api.saveAnnotate(exportAnnotatedPng(document, baseImage, strokes, size));
+  }
+
+  var saveBtn = document.getElementById('annotate-save');
+  if (saveBtn) { saveBtn.addEventListener('click', saveNow); }
+
   var doneBtn = document.getElementById('annotate-done');
   if (doneBtn) { doneBtn.addEventListener('click', finishDone); }
   var cancelBtn = document.getElementById('annotate-cancel');
@@ -797,6 +815,7 @@ const ICON_RECT = svgIcon('<rect x="2.5" y="4" width="11" height="8" rx="1.5"/>'
 const ICON_ARROW = svgIcon('<path d="M3 13 13 3"/><path d="M8.4 3H13v4.6"/>');
 const ICON_UNDO = svgIcon('<path d="M4 8h5.5a3 3 0 0 1 0 6H6"/><path d="M6.5 5.5 4 8l2.5 2.5"/>');
 const ICON_COLOR = svgIcon('<path d="M8 2.3 4.7 6.6a4.2 4.2 0 1 0 6.6 0z"/>');
+const ICON_SAVE = svgIcon('<path d="M8 2.5v7"/><path d="M5 7l3 2.5L11 7"/><path d="M3 11.5v1a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1"/>');
 const ICON_WIDTH = svgIcon(
     '<path d="M3 4.5h10" stroke-width="1"/><path d="M3 8h10" stroke-width="2"/><path d="M3 12h10" stroke-width="3"/>',
 );
@@ -816,9 +835,10 @@ const ICON_WIDTH = svgIcon(
  *
  * Colours are sampled from the SPA's dark theme (`tailwind.css`): `#1e1e1e`
  * canvas backdrop, `#252526` surface, `#3c3c3c` borders, `#cccccc` text and the
- * `#0078d4` VS Code accent. The tools and Undo are inline-SVG icon buttons whose
- * old text labels survive as `title`/`aria-label` tooltips; Cancel and Done keep
- * readable text. Embeds {@link buildAnnotationPageScript}.
+ * `#0078d4` VS Code accent. The tools, Undo and Save are inline-SVG icon buttons
+ * whose text labels survive as `title`/`aria-label` tooltips; Cancel and Done keep
+ * readable text. Save (AC-03) is an on-demand Save-As that leaves the editor open —
+ * Done no longer forces a file dialog. Embeds {@link buildAnnotationPageScript}.
  * Deliberately contains NO Excalidraw.
  */
 export function buildAnnotationHtml(): string {
@@ -853,7 +873,7 @@ export function buildAnnotationHtml(): string {
     font: inherit; line-height: 1;
   }
   /* Icon-only buttons: square, with the inline SVG centred. */
-  #annotate-toolbar .tool, #annotate-toolbar #annotate-undo {
+  #annotate-toolbar .tool, #annotate-toolbar #annotate-undo, #annotate-toolbar #annotate-save {
     width: 28px; padding: 0;
     display: inline-flex; align-items: center; justify-content: center;
   }
@@ -918,6 +938,7 @@ export function buildAnnotationHtml(): string {
     <input id="annotate-width" type="range" min="1" max="24" value="4" title="Stroke width" aria-label="Stroke width">
     <button id="annotate-undo" title="Undo (Ctrl/Cmd+Z)" aria-label="Undo">${ICON_UNDO}</button>
     <span class="divider"></span>
+    <button id="annotate-save" title="Save as PNG…" aria-label="Save as PNG">${ICON_SAVE}</button>
     <button id="annotate-cancel" title="Cancel (Esc)">Cancel</button>
     <button id="annotate-done">Done</button>
   </div>
@@ -929,11 +950,13 @@ export function buildAnnotationHtml(): string {
 </html>`;
 }
 
-// ─── AC-04: finish → three sinks (clipboard + chat-attach + save-file) ───────
+// ─── AC-04: finish → two sinks (clipboard + chat-attach) ────────────────────
 //
 // "Done" flattens the annotation to a PNG data URL (see `exportAnnotatedPng`),
-// then fans it out to three required sinks IN ORDER: (a) the OS clipboard,
-// (b) the active chat draft in the main CoC window, (c) a Save-As file. The
+// then fans it out to two required sinks IN ORDER: (a) the OS clipboard and
+// (b) the active chat draft in the main CoC window. Saving to a file is NO
+// LONGER part of finishing (AC-03): it is its own toolbar button routed through
+// `SCREENSHOT_ANNOTATE_SAVE_CHANNEL`, so Done never forces a Save-As dialog. The
 // Electron wiring (`clipboard.writeImage`, `webContents.send`,
 // `dialog.showSaveDialog` + `fs`) lives in `screenshot-capture-host.ts`;
 // everything testable is here: the push-channel constant, the ordered dispatcher
@@ -948,44 +971,41 @@ export function buildAnnotationHtml(): string {
 export const SCREENSHOT_ATTACH_CHANNEL = 'coc-desktop:screenshot-attach';
 
 /**
- * The three sinks a finished annotation fans out to, injected so the ordered
- * dispatch is unit-testable without `electron`.
+ * The two sinks a finished annotation fans out to, injected so the ordered
+ * dispatch is unit-testable without `electron`. Saving to a file is NOT one of
+ * them (AC-03) — it is the toolbar's own explicit action.
  */
 export interface AnnotationSinks {
     /** (a) Copy the flattened PNG to the OS clipboard. */
     writeClipboard: (pngDataUrl: string) => void;
     /** (b) Push the PNG to the active chat draft in the main window. */
     attachToChat: (pngDataUrl: string) => void;
-    /** (c) Offer a Save-As dialog and write the file. May be async; a user cancel
-     *  resolves normally (does NOT reject). */
-    saveFile: (pngDataUrl: string) => void | Promise<void>;
 }
 
-/** Which sinks succeeded — a failed/cancelled sink is recorded, never thrown. */
+/** Which sinks succeeded — a failed sink is recorded, never thrown. */
 export interface AnnotationDispatchResult {
     clipboard: boolean;
     attached: boolean;
-    saved: boolean;
 }
 
-/** The three-sink labels, in dispatch order (for the {@link dispatchAnnotationSinks} error hook). */
-export type AnnotationSinkName = 'clipboard' | 'attach' | 'save';
+/** The sink labels, in dispatch order (for the {@link dispatchAnnotationSinks} error hook). */
+export type AnnotationSinkName = 'clipboard' | 'attach';
 
 /**
- * AC-04 (DoD #2): fan a finished annotation PNG out to the three sinks IN ORDER —
- * clipboard, then chat-attach, then save-file.
+ * AC-04 (DoD #2): fan a finished annotation PNG out to the two sinks IN ORDER —
+ * clipboard, then chat-attach. No Save-As runs here: per AC-03 "Done" never
+ * opens a file dialog.
  *
- * Each sink is isolated: a failure (or a Save-As cancel that throws) is caught
- * and reported through `onError`, NEVER rethrown and never undoing an earlier
- * sink. So the clipboard + chat-attach results always stand even when the user
- * cancels (or the save otherwise fails). Returns which sinks succeeded.
+ * Each sink is isolated: a failure is caught and reported through `onError`,
+ * NEVER rethrown and never undoing an earlier sink. Returns which sinks
+ * succeeded.
  */
 export async function dispatchAnnotationSinks(
     pngDataUrl: string,
     sinks: AnnotationSinks,
     onError?: (sink: AnnotationSinkName, err: unknown) => void,
 ): Promise<AnnotationDispatchResult> {
-    const result: AnnotationDispatchResult = { clipboard: false, attached: false, saved: false };
+    const result: AnnotationDispatchResult = { clipboard: false, attached: false };
     try {
         sinks.writeClipboard(pngDataUrl);
         result.clipboard = true;
@@ -997,12 +1017,6 @@ export async function dispatchAnnotationSinks(
         result.attached = true;
     } catch (err) {
         onError?.('attach', err);
-    }
-    try {
-        await sinks.saveFile(pngDataUrl);
-        result.saved = true;
-    } catch (err) {
-        onError?.('save', err);
     }
     return result;
 }

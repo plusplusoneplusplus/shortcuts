@@ -732,6 +732,7 @@ interface EditorHarness {
     exportCtx: ReturnType<typeof makeRecordingCtx>;
     done: ReturnType<typeof vi.fn>;
     cancelAnnotate: ReturnType<typeof vi.fn>;
+    saveAnnotate: ReturnType<typeof vi.fn>;
     createdImgs: Array<{ onload: (() => void) | null; src: string }>;
     exportCanvas: () => { width: number; height: number } | null;
     init: (payload: unknown) => void;
@@ -766,6 +767,7 @@ function runEditor(withApi = true): EditorHarness {
     register('annotate-color');
     register('annotate-width');
     register('annotate-undo');
+    register('annotate-save');
     register('annotate-done');
     register('annotate-cancel');
 
@@ -793,6 +795,7 @@ function runEditor(withApi = true): EditorHarness {
     const winListeners: Record<string, Array<(e: unknown) => void>> = {};
     const done = vi.fn();
     const cancelAnnotate = vi.fn();
+    const saveAnnotate = vi.fn();
     let initCb: ((payload: unknown) => void) | null = null;
     const win: Record<string, unknown> = {
         innerWidth: 1000,
@@ -810,6 +813,7 @@ function runEditor(withApi = true): EditorHarness {
                 },
                 done,
                 cancelAnnotate,
+                saveAnnotate,
             },
         };
     }
@@ -823,6 +827,7 @@ function runEditor(withApi = true): EditorHarness {
         exportCtx,
         done,
         cancelAnnotate,
+        saveAnnotate,
         createdImgs,
         exportCanvas: () => exportCanvas,
         init: (payload) => initCb && initCb(payload),
@@ -1126,7 +1131,7 @@ describe('SCREENSHOT_ATTACH_CHANNEL', () => {
     });
 });
 
-describe('dispatchAnnotationSinks (AC-04 DoD #2 — the three-sink dispatcher)', () => {
+describe('dispatchAnnotationSinks (AC-04 DoD #2 — the finish dispatcher)', () => {
     const PNG = 'data:image/png;base64,AAAA';
 
     function recordingSinks(overrides: Partial<AnnotationSinks> = {}): {
@@ -1137,50 +1142,124 @@ describe('dispatchAnnotationSinks (AC-04 DoD #2 — the three-sink dispatcher)',
         const sinks: AnnotationSinks = {
             writeClipboard: vi.fn(() => { order.push('clipboard'); }),
             attachToChat: vi.fn(() => { order.push('attach'); }),
-            saveFile: vi.fn(() => { order.push('save'); }),
             ...overrides,
         };
         return { sinks, order };
     }
 
-    it('calls clipboard, chat-attach, then save — in that order — with the PNG', async () => {
+    it('calls clipboard then chat-attach — in that order — with the PNG', async () => {
         const { sinks, order } = recordingSinks();
         const result = await dispatchAnnotationSinks(PNG, sinks);
-        expect(order).toEqual(['clipboard', 'attach', 'save']);
+        expect(order).toEqual(['clipboard', 'attach']);
         expect(sinks.writeClipboard).toHaveBeenCalledWith(PNG);
         expect(sinks.attachToChat).toHaveBeenCalledWith(PNG);
-        expect(sinks.saveFile).toHaveBeenCalledWith(PNG);
-        expect(result).toEqual({ clipboard: true, attached: true, saved: true });
+        expect(result).toEqual({ clipboard: true, attached: true });
     });
 
-    it('a Save-As cancel/throw does not throw and does not undo clipboard/attach', async () => {
-        const onError = vi.fn();
-        const { sinks, order } = recordingSinks({
-            // Model a Save-As cancel that surfaces as a rejected promise.
-            saveFile: vi.fn(async () => {
-                order.push('save');
-                throw new Error('user cancelled the save dialog');
-            }),
-        });
-        const result = await dispatchAnnotationSinks(PNG, sinks, onError);
-        // clipboard + attach still ran (and in order before the failing save).
-        expect(order).toEqual(['clipboard', 'attach', 'save']);
-        expect(sinks.writeClipboard).toHaveBeenCalledWith(PNG);
-        expect(sinks.attachToChat).toHaveBeenCalledWith(PNG);
-        // The dispatcher resolved (did not reject) and kept a+b marked done.
-        expect(result).toEqual({ clipboard: true, attached: true, saved: false });
-        expect(onError).toHaveBeenCalledWith('save', expect.any(Error));
+    it('AC-03: has no save sink at all — finishing never triggers a Save-As', async () => {
+        const { sinks } = recordingSinks();
+        expect('saveFile' in sinks).toBe(false);
+        const result = await dispatchAnnotationSinks(PNG, sinks);
+        expect(Object.keys(result).sort()).toEqual(['attached', 'clipboard']);
     });
 
-    it('isolates each sink — a clipboard failure still lets attach + save run', async () => {
+    it('isolates each sink — a clipboard failure still lets attach run', async () => {
         const onError = vi.fn();
         const { sinks, order } = recordingSinks({
             writeClipboard: vi.fn(() => { order.push('clipboard'); throw new Error('no clipboard'); }),
         });
         const result = await dispatchAnnotationSinks(PNG, sinks, onError);
-        expect(order).toEqual(['clipboard', 'attach', 'save']);
-        expect(result).toEqual({ clipboard: false, attached: true, saved: true });
+        expect(order).toEqual(['clipboard', 'attach']);
+        expect(result).toEqual({ clipboard: false, attached: true });
         expect(onError).toHaveBeenCalledWith('clipboard', expect.any(Error));
+    });
+
+    it('an attach failure does not throw and does not undo the clipboard', async () => {
+        const onError = vi.fn();
+        const { sinks } = recordingSinks({
+            attachToChat: vi.fn(() => { throw new Error('no main window'); }),
+        });
+        const result = await dispatchAnnotationSinks(PNG, sinks, onError);
+        expect(result).toEqual({ clipboard: true, attached: false });
+        expect(onError).toHaveBeenCalledWith('attach', expect.any(Error));
+    });
+});
+
+describe('AC-03 explicit Save, no forced Save-As on Done', () => {
+    const html = buildAnnotationHtml();
+
+    it('renders a Save icon button in the toolbar with a tooltip', () => {
+        const start = html.indexOf('<button id="annotate-save"');
+        expect(start).toBeGreaterThan(-1);
+        const button = html.slice(start, html.indexOf('</button>', start));
+        expect(button).toContain('<svg');
+        expect(button).toMatch(/title="Save[^"]*"/);
+        expect(button).toContain('aria-label="Save as PNG"');
+        // It sits before Cancel/Done in the pill.
+        expect(start).toBeLessThan(html.indexOf('<button id="annotate-cancel"'));
+    });
+
+    it('Save flattens the same PNG through its own bridge call and does not finish', () => {
+        const h = runEditor();
+        initLoaded(h);
+        h.fireCanvas('mousedown', { button: 0, clientX: 10, clientY: 10 });
+        h.fireWin('mouseup', { button: 0, clientX: 40, clientY: 30 });
+        h.click('annotate-save');
+        expect(h.saveAnnotate).toHaveBeenCalledTimes(1);
+        expect(h.saveAnnotate.mock.calls[0][0]).toBe('data:image/png;base64,EDITED');
+        // Saving is not finishing: neither done nor cancel fired.
+        expect(h.done).not.toHaveBeenCalled();
+        expect(h.cancelAnnotate).not.toHaveBeenCalled();
+    });
+
+    it('the editor stays usable after a save — save again, then Done still fires', () => {
+        const h = runEditor();
+        initLoaded(h);
+        h.click('annotate-save');
+        h.click('annotate-save');
+        expect(h.saveAnnotate).toHaveBeenCalledTimes(2);
+        h.click('annotate-done');
+        expect(h.done).toHaveBeenCalledTimes(1);
+    });
+
+    it('Done no longer saves — it only reports the PNG back over the done channel', () => {
+        const h = runEditor();
+        initLoaded(h);
+        h.click('annotate-done');
+        expect(h.done).toHaveBeenCalledTimes(1);
+        expect(h.saveAnnotate).not.toHaveBeenCalled();
+    });
+
+    it('the host routes Save on its own channel and leaves the editor open', () => {
+        const host = readSrc('screenshot-capture-host.ts');
+        const handler = host.slice(
+            host.indexOf('ipcMain.on(SCREENSHOT_ANNOTATE_SAVE_CHANNEL'),
+            host.indexOf('function openOverlay('),
+        );
+        expect(handler).toContain('saveAnnotatedPng(');
+        // Unlike the done/cancel handlers, it never closes the window.
+        expect(handler).not.toContain('editor.close()');
+        // ...and the Done dispatch no longer runs a Save-As.
+        const dispatch = host.slice(
+            host.indexOf('function dispatchAnnotationResult('),
+            host.indexOf('async function saveAnnotatedPng('),
+        );
+        expect(dispatch).not.toContain('saveFile');
+        expect(dispatch).not.toContain('saveAnnotatedPng(');
+    });
+
+    it('a cancelled Save dialog writes no file', () => {
+        const src = readSrc('screenshot-capture-host.ts');
+        const save = src.slice(src.indexOf('async function saveAnnotatedPng('));
+        // Early return on cancel, before the only write.
+        expect(save.indexOf('result.canceled')).toBeLessThan(save.indexOf('writeFile'));
+    });
+
+    it('the preload bridge exposes saveAnnotate on the dedicated channel', () => {
+        const preload = readSrc('preload.ts');
+        expect(preload).toContain("'coc-desktop:screenshot-annotate-save'");
+        expect(preload).toContain('saveAnnotate:');
+        expect(preload).toContain('ipcRenderer.send(SCREENSHOT_ANNOTATE_SAVE_CHANNEL');
     });
 });
 
@@ -1198,14 +1277,14 @@ describe('buildScreenshotFileName (AC-04 — timestamped default Save-As name)',
 });
 
 describe('AC-04 host wiring (code-search)', () => {
-    it('the host fans a finished PNG out to the three sinks via the pure dispatcher', () => {
+    it('the host fans a finished PNG out to the clipboard + chat sinks via the pure dispatcher', () => {
         const host = readSrc('screenshot-capture-host.ts');
         // Clipboard sink.
         expect(host).toContain('clipboard.writeImage(nativeImage.createFromDataURL');
         // Chat-attach sink pushes to the MAIN window (not the editor).
         expect(host).toContain('mainWindowProvider()');
         expect(host).toContain('webContents.send(SCREENSHOT_ATTACH_CHANNEL');
-        // Save sink opens a Save-As dialog with a timestamped default name.
+        // The Save-As dialog still exists — on AC-03's own Save path, not on Done.
         expect(host).toContain('dialog.showSaveDialog(');
         expect(host).toContain('buildScreenshotFileName(');
         // Ordering delegated to the pure, tested dispatcher.
