@@ -3,11 +3,14 @@
  * inline side-by-side diff panel on the right.
  *
  * Clicking a file selects it and renders that file's diff inline in the
- * right panel (the new default path). The per-file diff is sliced lazily
- * from the already-fetched combined unified `diffText` for the selected
- * file only — no per-file fetch and no up-front rendering of every file's
- * hunks. The separate pop-out window (#popout/git-review/pr/<prId>) remains
- * reachable via an explicit "Pop out" button in the diff panel header.
+ * right panel. On desktop that panel is the shared `FileDiffPanel` driven by
+ * a `DiffSource` — the exact component the pop-out review window uses — so
+ * both surfaces have the same split/unified toggle, full-file context,
+ * minimap, hunk navigation, inline comments and mark-reviewed. On mobile the
+ * slim `SideBySideDiffViewer` panel is kept, sliced lazily from the already
+ * fetched combined `diffText` so the stacked layout needs no extra fetch.
+ * The separate pop-out window (#popout/git-review/pr/<prId>) stays reachable
+ * via an explicit "Pop out" button in the diff panel header.
  *
  * Display rules for the file list:
  *  - Tree mode (default): folders are collapsible and single-child
@@ -38,7 +41,8 @@ import type { HunkCategory } from './classification-types';
 import { HUNK_CATEGORIES, CATEGORY_LABELS } from './classification-types';
 import type { UseClassificationReturn } from '../git/diff/useClassification';
 import { useClassification } from '../git/diff/useClassification';
-import type { ClassificationKey } from '../git/diff/diffSource';
+import type { ClassificationKey, DiffSource } from '../git/diff/diffSource';
+import { FileDiffPanel } from '../git/diff/FileDiffPanel';
 import { useModalJobAiSelection } from '../../shared/ModalJobAiControls';
 import { ClassifyDiffAiControls } from '../git/diff/ClassifyDiffAiControls';
 
@@ -58,6 +62,16 @@ export interface PrFilesPanelProps {
     classificationKey?: ClassificationKey;
     /** Explicit pop-out action — opens the separate review window for the file. */
     onPopOut?: (filePath: string) => void;
+    /**
+     * PR diff source. When supplied (and not on mobile) the right pane renders
+     * the shared {@link FileDiffPanel} — the same component the pop-out review
+     * window uses — so the inline tab gets split/unified, full-file context,
+     * minimap, hunk navigation, inline comments and mark-reviewed.
+     *
+     * Without it (or on mobile) the slim `SideBySideDiffViewer` panel sliced
+     * from `diffText` is rendered instead.
+     */
+    diffSource?: DiffSource;
 }
 
 type ViewMode = 'tree' | 'flat';
@@ -286,7 +300,7 @@ function ClassificationFilterBar({ classification, aiSelection }: Classification
 
 // ── Main component ──────────────────────────────────────────────────
 
-export function PrFilesPanel({ files, diffText, isMobile = false, workspaceId, classificationKey, onPopOut }: PrFilesPanelProps) {
+export function PrFilesPanel({ files, diffText, isMobile = false, workspaceId, classificationKey, onPopOut, diffSource }: PrFilesPanelProps) {
     const [search, setSearch] = useState('');
     const [viewMode, setViewMode] = useState<ViewMode>('tree');
 
@@ -341,6 +355,11 @@ export function PrFilesPanel({ files, diffText, isMobile = false, workspaceId, c
         () => (diffText && activePath ? extractFileDiffFromCombined(diffText, activePath) : null),
         [diffText, activePath],
     );
+
+    // Desktop renders the shared FileDiffPanel (full review chrome); mobile
+    // keeps the slim viewer so the stacked layout stays light.
+    const useSharedPanel = !isMobile && !!diffSource && !!workspaceId;
+    const classificationReady = classification?.state.status === 'ready';
 
     return (
         <div
@@ -443,17 +462,54 @@ export function PrFilesPanel({ files, diffText, isMobile = false, workspaceId, c
                 </div>
             </div>
 
-            <PrInlineDiffPanel
-                // Remount on file switch so the in-diff find state (query, match
-                // set, highlights) resets cleanly instead of carrying over stale
-                // matches from the previously selected file.
-                key={activePath}
-                filePath={activePath}
-                diff={activeDiff}
-                hasFiles={files.length > 0}
-                onPopOut={onPopOut}
-            />
+            {useSharedPanel && activePath ? (
+                <div
+                    className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[5px] border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+                    data-testid="pr-shared-diff-panel"
+                >
+                    <FileDiffPanel
+                        // Remount on file switch so per-file panel state (find,
+                        // full-context toggle, comment sidebar) resets cleanly.
+                        key={`pr-${diffSource!.cacheKey}-${activePath}`}
+                        workspaceId={workspaceId!}
+                        filePath={activePath}
+                        source={diffSource!}
+                        showSourceLabel={false}
+                        onNavigateToFile={setActivePath}
+                        headerActions={<PrPopOutButton filePath={activePath} onPopOut={onPopOut} />}
+                        getHunkClassification={classificationReady ? classification!.getHunkClassification : undefined}
+                        hunkActiveFilters={classificationReady ? classification!.state.activeFilters : undefined}
+                    />
+                </div>
+            ) : (
+                <PrInlineDiffPanel
+                    // Remount on file switch so the in-diff find state (query, match
+                    // set, highlights) resets cleanly instead of carrying over stale
+                    // matches from the previously selected file.
+                    key={activePath}
+                    filePath={activePath}
+                    diff={activeDiff}
+                    hasFiles={files.length > 0}
+                    onPopOut={onPopOut}
+                />
+            )}
         </div>
+    );
+}
+
+/** "Pop out" action — shared by the slim inline header and FileDiffPanel's header slot. */
+function PrPopOutButton({ filePath, onPopOut }: { filePath: string; onPopOut?: (filePath: string) => void }) {
+    if (!onPopOut || !filePath) return null;
+    return (
+        <button
+            type="button"
+            onClick={() => onPopOut(filePath)}
+            title="Open this file in the pop-out review window"
+            className="inline-flex h-5 shrink-0 items-center gap-1 rounded border border-gray-300 bg-white px-1.5 text-[10px] font-semibold uppercase leading-none text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            data-testid="pr-diff-popout"
+        >
+            ⧉ Pop out
+        </button>
     );
 }
 
@@ -470,9 +526,10 @@ interface PrInlineDiffPanelProps {
 }
 
 /**
- * Right-hand panel of the Files tab. Renders the selected file's diff with
- * the shared {@link SideBySideDiffViewer}. Only the selected file is ever
- * rendered, so large PRs never build every file's hunks up front.
+ * Slim right-hand panel — the mobile / no-source fallback. Renders the
+ * selected file's diff with the shared {@link SideBySideDiffViewer} sliced from
+ * the combined diff, so the stacked mobile layout stays light and needs no
+ * per-file fetch. Desktop uses {@link FileDiffPanel} instead.
  */
 function PrInlineDiffPanel({ filePath, diff, hasFiles, onPopOut }: PrInlineDiffPanelProps) {
     const viewerRef = useRef<UnifiedDiffViewerHandle>(null);
@@ -501,17 +558,7 @@ function PrInlineDiffPanel({ filePath, diff, hasFiles, onPopOut }: PrInlineDiffP
                 >
                     {filePath || 'Diff'}
                 </span>
-                {onPopOut && filePath && (
-                    <button
-                        type="button"
-                        onClick={() => onPopOut(filePath)}
-                        title="Open this file in the pop-out review window"
-                        className="inline-flex h-5 shrink-0 items-center gap-1 rounded border border-gray-300 bg-white px-1.5 text-[10px] font-semibold uppercase leading-none text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                        data-testid="pr-diff-popout"
-                    >
-                        ⧉ Pop out
-                    </button>
-                )}
+                <PrPopOutButton filePath={filePath} onPopOut={onPopOut} />
             </header>
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
                 {/* ── In-diff find widget (Ctrl/Cmd+F) ── */}

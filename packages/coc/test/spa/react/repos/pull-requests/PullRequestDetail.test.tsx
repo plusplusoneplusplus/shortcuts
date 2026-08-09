@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import { mockViewport } from '../../../helpers/viewport-mock';
 import { getReviewChatPlacementStorageKey } from '../../../../../src/server/spa/client/react/features/git/commits/commitChatPlacement';
+import { extractFileDiffFromCombined } from '../../../../../src/server/spa/client/react/features/git/diff/diffSource';
 
 const configMocks = vi.hoisted(() => ({
     isCommitChatLensEnabled: vi.fn(() => false),
@@ -15,6 +16,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
     isContainerMode: () => false,
     getApiBase: () => '',
+    getWsPath: () => '/ws',
     isRalphEnabled: () => false,
     getActiveProvider: () => 'copilot',
     getDefaultProvider: () => 'copilot',
@@ -122,6 +124,21 @@ function textResponse(body: string) {
     } as unknown as Response;
 }
 
+/**
+ * Catch-all for the requests the inline FileDiffPanel makes after the initial
+ * detail quintet: the per-file diff, comments, and review progress. The
+ * per-file diff is sliced out of the same combined diff the server caches, so
+ * the inline panel shows exactly one file's hunks.
+ */
+function detailFallbackResponse(diffText: string, url: string): Response {
+    if (url.includes('/diff/files/')) {
+        const path = decodeURIComponent(url.split('/diff/files/')[1].split('?')[0]);
+        return jsonResponse({ diff: extractFileDiffFromCombined(diffText, path) ?? '' });
+    }
+    if (url.includes('/review-progress')) return jsonResponse({ progress: null });
+    return jsonResponse({ comments: [] });
+}
+
 /** Mock the full PR detail fetch quintet (pr, threads, diff, commits, checks). */
 function mockFetchDetail(
     pr: any,
@@ -135,7 +152,8 @@ function mockFetchDetail(
         .mockResolvedValueOnce(jsonResponse({ threads }))
         .mockResolvedValueOnce(textResponse(diffText))
         .mockResolvedValueOnce(jsonResponse({ commits }))
-        .mockResolvedValueOnce(jsonResponse({ checks }));
+        .mockResolvedValueOnce(jsonResponse({ checks }))
+        .mockImplementation((url: any) => Promise.resolve(detailFallbackResponse(diffText, String(url))));
 }
 
 function mockFetchPrError(status = 500, message = 'Server error') {
@@ -168,16 +186,25 @@ async function renderDetail(props: Partial<any> = {}) {
     const { PullRequestDetail } = await import(
         '../../../../../src/server/spa/client/react/features/pull-requests/PullRequestDetail'
     );
+    // Imported dynamically alongside the component: `vi.resetModules()` gives
+    // every test a fresh module graph, so a statically imported provider would
+    // create a *different* React context object than the one the component
+    // tree consumes.
+    const { QueueProvider } = await import(
+        '../../../../../src/server/spa/client/react/contexts/QueueContext'
+    );
     const onBack = props.onBack ?? vi.fn();
     return render(
-        <PullRequestDetail
-            repoId="repo-1"
-            workspaceId="repo-1"
-            remoteUrl="https://github.com/octo/repo.git"
-            prId={142}
-            onBack={onBack}
-            {...props}
-        />
+        <QueueProvider>
+            <PullRequestDetail
+                repoId="repo-1"
+                workspaceId="repo-1"
+                remoteUrl="https://github.com/octo/repo.git"
+                prId={142}
+                onBack={onBack}
+                {...props}
+            />
+        </QueueProvider>
     );
 }
 
@@ -471,11 +498,17 @@ describe('tabs', () => {
         await waitFor(() => expect(screen.getByTestId('tab-files')).toBeInTheDocument());
         fireEvent.click(screen.getByTestId('tab-files'));
 
-        // Left rail: changed-files list. Right rail: inline diff panel.
+        // Left rail: changed-files list. Right rail: the shared FileDiffPanel —
+        // the same component the pop-out review window renders — not the slim
+        // mobile-only viewer.
         expect(screen.getAllByTestId('pr-file-row').length).toBeGreaterThan(0);
-        expect(screen.getByTestId('pr-diff-panel')).toBeInTheDocument();
+        expect(screen.getByTestId('pr-shared-diff-panel')).toBeInTheDocument();
+        expect(screen.queryByTestId('pr-diff-panel')).not.toBeInTheDocument();
         // The first file (src/foo.ts) is selected by default and its diff renders inline.
-        expect(screen.getByTestId('pr-inline-diff')).toBeInTheDocument();
+        await waitFor(() => expect(screen.getByTestId('file-diff-content')).toBeInTheDocument());
+        // Pop-out stays reachable from the shared header's actions slot.
+        expect(screen.getByTestId('file-diff-header').querySelector('[data-testid="pr-diff-popout"]'))
+            .not.toBeNull();
         // Legacy inline-comment / diff-card surfaces are not part of this panel.
         expect(screen.queryByTestId('pr-file-inline-comments')).not.toBeInTheDocument();
         expect(screen.queryByTestId('pr-file-diff-card')).not.toBeInTheDocument();
@@ -488,9 +521,12 @@ describe('tabs', () => {
         fireEvent.click(screen.getByTestId('tab-files'));
 
         // Default selection is the first file (src/foo.ts): its added lines show,
-        // and the OTHER file's removed line is not rendered (lazy per-file slice).
-        const fooDiff = screen.getByTestId('pr-inline-diff');
-        expect(fooDiff.textContent).toContain('added one');
+        // and the OTHER file's removed line is not rendered (per-file fetch).
+        await waitFor(() => {
+            const fooDiff = screen.getByTestId('file-diff-content');
+            expect(fooDiff.textContent).toContain('added one');
+        });
+        const fooDiff = screen.getByTestId('file-diff-content');
         expect(fooDiff.textContent).toContain('added two');
         expect(fooDiff.textContent).not.toContain('removed one');
 
@@ -498,11 +534,13 @@ describe('tabs', () => {
         const barRow = screen.getAllByTestId('pr-file-row')
             .find(r => r.getAttribute('data-file-path') === 'src/bar.ts');
         expect(barRow).toBeDefined();
-        fireEvent.click(barRow!);
+        await act(async () => { fireEvent.click(barRow!); });
 
-        const barDiff = screen.getByTestId('pr-inline-diff');
-        expect(barDiff.textContent).toContain('removed one');
-        expect(barDiff.textContent).not.toContain('added one');
+        await waitFor(() => {
+            const barDiff = screen.getByTestId('file-diff-content');
+            expect(barDiff.textContent).toContain('removed one');
+        });
+        expect(screen.getByTestId('file-diff-content').textContent).not.toContain('added one');
     });
 
     it('switches to the Commits tab and renders real commits from the /commits endpoint', async () => {
