@@ -8,7 +8,7 @@
  */
 
 import { useState } from 'react';
-import { copyToClipboard } from '../../utils/format';
+import { CopyButton } from './CopyButton';
 import {
     CALC_WIDTHS,
     bitsOf,
@@ -31,34 +31,6 @@ const READOUTS: readonly { base: CalcBase; label: string }[] = [
     { base: 'oct', label: 'OCT' },
     { base: 'bin', label: 'BIN' },
 ];
-
-function CopyButton({ text, label, testId }: { text: string; label: string; testId: string }) {
-    const [copied, setCopied] = useState(false);
-    const onClick = () => {
-        // Never let a clipboard-less environment (or a denied permission) break
-        // the card — the readout stays selectable either way. copyToClipboard
-        // can throw synchronously when neither the async API nor execCommand
-        // exists, so the try/catch has to wrap the call, not just the promise.
-        try {
-            void copyToClipboard(text).catch(() => undefined);
-        } catch {
-            /* ignore */
-        }
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1200);
-    };
-    return (
-        <button
-            type="button"
-            onClick={onClick}
-            aria-label={label}
-            data-testid={testId}
-            className="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] border border-[#e0e0e0] dark:border-[#3c3c3c] text-[#656d76] dark:text-[#999] hover:text-[#0078d4] hover:border-[#0078d4]"
-        >
-            {copied ? 'Copied' : 'Copy'}
-        </button>
-    );
-}
 
 export function ProgrammerCalculatorCard() {
     const [expression, setExpression] = useState(INITIAL_EXPRESSION);
