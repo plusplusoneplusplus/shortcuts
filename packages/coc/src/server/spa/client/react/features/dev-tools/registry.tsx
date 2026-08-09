@@ -11,6 +11,9 @@ import { BaseConverterCard } from './BaseConverterCard';
 import { EncodersCard } from './EncodersCard';
 import { TimestampCard } from './TimestampCard';
 import { ByteSizeCard } from './ByteSizeCard';
+import { TokenGeneratorCard } from './TokenGeneratorCard';
+import { RegexTesterCard } from './RegexTesterCard';
+import { JsonFormatterCard } from './JsonFormatterCard';
 
 export const DEV_TOOLS: readonly DevTool[] = [
     {
@@ -47,6 +50,27 @@ export const DEV_TOOLS: readonly DevTool[] = [
         description: 'Bytes in decimal (KB/MB/GB) and binary (KiB/MiB/GiB) units side by side',
         keywords: ['byte', 'size', 'kb', 'mb', 'gb', 'kib', 'mib', 'gib', 'storage'],
         component: ByteSizeCard,
+    },
+    {
+        id: 'tokens',
+        name: 'UUID / token generator',
+        description: 'UUID v4 plus random hex and base64 tokens, one or many at a time',
+        keywords: ['uuid', 'guid', 'token', 'random', 'secret', 'key', 'nonce', 'id'],
+        component: TokenGeneratorCard,
+    },
+    {
+        id: 'regex',
+        name: 'Regex tester',
+        description: 'Test a pattern against a string with highlighted matches and capture groups',
+        keywords: ['regex', 'regexp', 'pattern', 'match', 'capture', 'group', 'search'],
+        component: RegexTesterCard,
+    },
+    {
+        id: 'json',
+        name: 'JSON formatter',
+        description: 'Pretty-print, minify and validate JSON with a located parse error',
+        keywords: ['json', 'format', 'pretty', 'minify', 'validate', 'indent', 'parse'],
+        component: JsonFormatterCard,
     },
 ];
 
