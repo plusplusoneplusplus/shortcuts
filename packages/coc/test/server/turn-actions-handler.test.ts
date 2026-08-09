@@ -1,7 +1,7 @@
 /**
  * Turn Actions Handler Tests
  *
- * Tests the REST API endpoints for per-message delete, pin, and archive on conversation turns.
+ * Tests the REST API endpoints for per-message pin and archive on conversation turns.
  * Uses a real SqliteProcessStore for integration testing.
  */
 
@@ -120,49 +120,26 @@ describe('Turn Actions REST API', () => {
         }
     }
 
-    // ── Delete tests ───────────────────────────────────────────────────
+    // ── Removed delete/restore routes ──────────────────────────────────
 
-    describe('DELETE /api/processes/:id/turns/:turnIndex', () => {
-        it('soft-deletes a turn and returns deletedAt', async () => {
+    describe('removed per-turn delete routes', () => {
+        it('no longer exposes DELETE /api/processes/:id/turns/:turnIndex', async () => {
             await addProcessWithTurns('p1');
 
             const res = await deleteReq(`${baseUrl}/api/processes/p1/turns/0`);
-            expect(res.status).toBe(200);
-
-            const body = JSON.parse(res.body);
-            expect(body.id).toBe('p1');
-            expect(body.turnIndex).toBe(0);
-            expect(body.deletedAt).toBeTruthy();
-
-            // Verify in store
-            const proc = await store.getProcess('p1');
-            const turn0 = proc!.conversationTurns!.find(t => t.turnIndex === 0);
-            expect(turn0?.deletedAt).toBeInstanceOf(Date);
-        });
-
-        it('returns 404 for non-existent process', async () => {
-            const res = await deleteReq(`${baseUrl}/api/processes/nonexistent/turns/0`);
             expect(res.status).toBe(404);
-        });
-    });
 
-    // ── Restore tests ──────────────────────────────────────────────────
-
-    describe('PATCH /api/processes/:id/turns/:turnIndex/restore', () => {
-        it('restores a soft-deleted turn', async () => {
-            await addProcessWithTurns('p1');
-            store.softDeleteTurn('p1', 0);
-
-            const res = await patchJSON(`${baseUrl}/api/processes/p1/turns/0/restore`, {});
-            expect(res.status).toBe(200);
-
-            const body = JSON.parse(res.body);
-            expect(body.deletedAt).toBeNull();
-
-            // Verify in store
+            // The turn is untouched in the store.
             const proc = await store.getProcess('p1');
             const turn0 = proc!.conversationTurns!.find(t => t.turnIndex === 0);
             expect(turn0?.deletedAt).toBeUndefined();
+        });
+
+        it('no longer exposes PATCH /api/processes/:id/turns/:turnIndex/restore', async () => {
+            await addProcessWithTurns('p1');
+
+            const res = await patchJSON(`${baseUrl}/api/processes/p1/turns/0/restore`, {});
+            expect(res.status).toBe(404);
         });
     });
 

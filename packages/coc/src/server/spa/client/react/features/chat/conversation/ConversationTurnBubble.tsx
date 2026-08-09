@@ -94,8 +94,6 @@ interface ConversationTurnBubbleProps {
     turnIndex?: number;
     /** Called when user selects "Attach as context" from the right-click menu. */
     onAttachContext?: (turnIndex: number, role: 'user' | 'assistant', snippet: string) => void;
-    /** Called when user deletes a turn (soft-delete). */
-    onDeleteTurn?: (turnIndex: number) => void;
     /** Called when user pins/unpins a turn. */
     onPinTurn?: (turnIndex: number, pinned: boolean) => void;
     /** Called when user archives/unarchives a turn. */
@@ -1094,7 +1092,7 @@ function InterruptedTurnBanner({ reason, onContinue }: { reason?: string; onCont
     );
 }
 
-export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onDeleteTurn, onPinTurn, onArchiveTurn, onRewindTurn, noteEdits, processId, openNotePath, provider, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, noteEdits, processId, openNotePath, provider, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const sidenoteContentRef = useRef<HTMLDivElement>(null);
     const quickAskSidenotesEnabled = useQuickAskSidenotesEnabled();
@@ -1252,7 +1250,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                 })),
             });
         }
-        // Per-message actions: Pin, Archive, Delete
+        // Per-message actions: Pin, Archive
         if (turnIndex != null) {
             items.push({ label: '', separator: true, onClick: () => {} });
             if (onPinTurn) {
@@ -1269,13 +1267,6 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                     onClick: () => onArchiveTurn(turnIndex, !turn.archived),
                 });
             }
-            if (onDeleteTurn) {
-                items.push({
-                    label: 'Delete',
-                    icon: '🗑️',
-                    onClick: () => onDeleteTurn(turnIndex),
-                });
-            }
             // Rewind is offered only on user turns; the backend gates provider /
             // idle / eligibility and surfaces an error toast on rejection.
             if (onRewindTurn && isUser) {
@@ -1287,7 +1278,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
             }
         }
         return items;
-    }, [linkHref, onAttachContext, turnIndex, turn, isUser, fetchedImages, showRaw, wsId, onPinTurn, onArchiveTurn, onDeleteTurn, onRewindTurn]);
+    }, [linkHref, onAttachContext, turnIndex, turn, isUser, fetchedImages, showRaw, wsId, onPinTurn, onArchiveTurn, onRewindTurn]);
 
     // Detect pure-JSON assistant responses (only when stream is complete).
     const jsonDetected = useMemo(() => {
@@ -1424,7 +1415,6 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
             turn.isError && 'error',
             turn.interrupted && 'interrupted',
             turn.archived && 'opacity-50',
-            turn.deletedAt && 'opacity-30 line-through',
             'py-1.5'
         )}
             {...(wsId ? { 'data-ws-id': wsId } : {})}

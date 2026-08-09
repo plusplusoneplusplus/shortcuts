@@ -27,7 +27,6 @@ import type {
   ProcessSummariesResponse,
   PromoteToRalphResult,
   TurnArchiveResponse,
-  TurnDeleteResponse,
   TurnPinResponse,
   TurnRewindResponse,
 } from '../contracts';
@@ -137,19 +136,6 @@ export class ProcessesClient {
       `/processes/${encodePathSegment(processId)}/pending-messages/${encodePathSegment(messageId)}`,
       { method: 'DELETE', query },
     );
-  }
-
-  deleteTurn(processId: string, turnIndex: number): Promise<TurnDeleteResponse> {
-    return this.transport.request<TurnDeleteResponse>(`/processes/${encodePathSegment(processId)}/turns/${turnIndex}`, {
-      method: 'DELETE',
-    });
-  }
-
-  restoreTurn(processId: string, turnIndex: number): Promise<TurnDeleteResponse> {
-    return this.transport.request<TurnDeleteResponse>(`/processes/${encodePathSegment(processId)}/turns/${turnIndex}/restore`, {
-      method: 'PATCH',
-      body: {},
-    });
   }
 
   pinTurn(processId: string, turnIndex: number, pinned: boolean): Promise<TurnPinResponse> {

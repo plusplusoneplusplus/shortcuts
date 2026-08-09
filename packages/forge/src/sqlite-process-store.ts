@@ -1151,6 +1151,12 @@ export class SqliteProcessStore implements ProcessStore {
 
     // ========================================================================
     // Conversation Turn Actions (per-message delete, pin, archive)
+    //
+    // The delete methods below (`softDeleteTurn` / `restoreTurn` / `hardDeleteTurn`)
+    // and the `deleted_at` column are retained for backward compatibility with
+    // older records and clients. The UI no longer offers a per-message delete
+    // action, but read paths still filter out turns that already have
+    // `deleted_at` set.
     // ========================================================================
 
     /**

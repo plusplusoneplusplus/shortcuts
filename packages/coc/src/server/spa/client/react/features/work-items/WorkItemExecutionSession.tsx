@@ -199,32 +199,7 @@ export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkIt
         onSendComplete: () => {},
     });
 
-    // ── Per-turn actions: delete, pin, archive ──
-    const [undoDelete, setUndoDelete] = useState<{ turnIndex: number; timer: ReturnType<typeof setTimeout> } | null>(null);
-
-    const handleDeleteTurn = useCallback((turnIndex: number) => {
-        if (!processId) return;
-        setTurns(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: new Date().toISOString() } : t));
-        cloneClient.request(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}`, { method: 'DELETE' }).catch(() => {
-            setTurns(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: undefined } : t));
-        });
-        if (undoDelete) clearTimeout(undoDelete.timer);
-        const timer = setTimeout(() => setUndoDelete(null), 5000);
-        setUndoDelete({ turnIndex, timer });
-    }, [processId, undoDelete, cloneClient]);
-
-    const handleUndoDelete = useCallback(() => {
-        if (!undoDelete || !processId) return;
-        clearTimeout(undoDelete.timer);
-        const { turnIndex } = undoDelete;
-        setUndoDelete(null);
-        setTurns(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: undefined } : t));
-        cloneClient.request(`/processes/${encodeURIComponent(processId)}/turns/${turnIndex}/restore`, {
-            method: 'PATCH',
-            body: {},
-        }).catch(() => {});
-    }, [undoDelete, processId, cloneClient]);
-
+    // ── Per-turn actions: pin, archive ──
     const handlePinTurn = useCallback((turnIndex: number, pinned: boolean) => {
         if (!processId) return;
         setTurns(prev => prev.map(t =>
@@ -401,11 +376,8 @@ export function WorkItemExecutionSession({ taskId, workspaceId, onBack }: WorkIt
                         taskId={taskId}
                         processId={processId ?? undefined}
                         wsId={workspaceId}
-                        onDeleteTurn={handleDeleteTurn}
                         onPinTurn={handlePinTurn}
                         onArchiveTurn={handleArchiveTurn}
-                        undoDeleteTurnIndex={undoDelete?.turnIndex ?? null}
-                        onUndoDelete={handleUndoDelete}
                         provider={(() => {
                             const raw = processDetails?.metadata?.provider ?? task?.metadata?.provider;
                             return raw === 'codex' || raw === 'claude' || raw === 'copilot'

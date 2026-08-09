@@ -96,11 +96,11 @@ Per-process read/unread tracking:
 ## Turn Actions
 
 Per-message operations:
-- `DELETE /api/processes/:id/turns/:turnIndex` (soft-delete via `deleted_at`)
-- `PATCH .../restore`
 - `PATCH .../pin`
 - `PATCH .../archive`
 - `GET /api/processes/:id/turns/pinned`
+
+There is no per-message delete route. `SqliteProcessStore.softDeleteTurn` / `restoreTurn` / `hardDeleteTurn` and the `deleted_at` column are kept for backward compatibility; read paths still hide turns with `deleted_at` set.
 
 ## Storage Migration
 

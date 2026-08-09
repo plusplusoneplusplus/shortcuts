@@ -2113,29 +2113,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         } catch { /* best-effort: SSE will reflect the actual state */ }
     }, [client, processId]);
 
-    // ── Per-turn actions: delete, pin, archive ──
-    const [undoDelete, setUndoDelete] = useState<{ turnIndex: number; timer: ReturnType<typeof setTimeout> } | null>(null);
-
-    const handleDeleteTurn = useCallback((turnIndex: number) => {
-        if (!processId) return;
-        setTurnsAndRef(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: new Date().toISOString() } : t));
-        client.processes.deleteTurn(processId, turnIndex).catch(() => {
-            setTurnsAndRef(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: undefined } : t));
-        });
-        if (undoDelete) clearTimeout(undoDelete.timer);
-        const timer = setTimeout(() => setUndoDelete(null), 5000);
-        setUndoDelete({ turnIndex, timer });
-    }, [client, processId, setTurnsAndRef, undoDelete]);
-
-    const handleUndoDelete = useCallback(() => {
-        if (!undoDelete || !processId) return;
-        clearTimeout(undoDelete.timer);
-        const { turnIndex } = undoDelete;
-        setUndoDelete(null);
-        setTurnsAndRef(prev => prev.map(t => t.turnIndex === turnIndex ? { ...t, deletedAt: undefined } : t));
-        client.processes.restoreTurn(processId, turnIndex).catch(() => {});
-    }, [client, processId, setTurnsAndRef, undoDelete]);
-
+    // ── Per-turn actions: pin, archive ──
     const handlePinTurn = useCallback((turnIndex: number, pinned: boolean) => {
         if (!processId) return;
         const previousTurn = turnsRef.current.find(t => t.turnIndex === turnIndex);
@@ -2544,12 +2522,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         onCopySelected={handleCopySelected}
                         onCancelSelection={selection.stopSelecting}
                         onAttachContext={attachedContext.add}
-                        onDeleteTurn={handleDeleteTurn}
                         onPinTurn={handlePinTurn}
                         onArchiveTurn={handleArchiveTurn}
                         onRewindTurn={rewindAction}
-                        undoDeleteTurnIndex={undoDelete?.turnIndex ?? null}
-                        onUndoDelete={handleUndoDelete}
                         noteEdits={noteEdits}
                         processId={processId ?? bareTaskId}
                         openNotePath={openNotePath}

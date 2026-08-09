@@ -1,7 +1,7 @@
 /**
  * Turn Actions REST API Handler
  *
- * HTTP API routes for per-message delete, pin, and archive on conversation turns.
+ * HTTP API routes for per-message pin and archive on conversation turns.
  * Follows the same narrow-interface pattern as `pin-archive-handler.ts`.
  */
 
@@ -18,9 +18,6 @@ import type { ProcessWebSocketServer } from '../streaming/websocket';
 
 /** Narrow interface for the turn-action store methods. */
 export interface TurnActionStore {
-    softDeleteTurn(processId: string, turnIndex: number): void;
-    restoreTurn(processId: string, turnIndex: number): void;
-    hardDeleteTurn(processId: string, turnIndex: number): void;
     pinTurn(processId: string, turnIndex: number, pinnedAt: string): void;
     unpinTurn(processId: string, turnIndex: number): void;
     archiveTurn(processId: string, turnIndex: number): void;
@@ -34,41 +31,6 @@ export interface TurnActionStore {
 // ============================================================================
 
 export function registerTurnActionRoutes(routes: Route[], store: TurnActionStore, getWsServer?: () => ProcessWebSocketServer): void {
-    // DELETE /api/processes/:id/turns/:turnIndex — soft-delete a turn
-    routes.push({
-        method: 'DELETE',
-        pattern: /^\/api\/processes\/([^/]+)\/turns\/(\d+)$/,
-        handler: async (_req, res, match) => {
-            const processId = decodeURIComponent(match![1]);
-            const turnIndex = parseInt(match![2], 10);
-
-            const proc = await store.getProcess(processId);
-            if (!proc) return handleAPIError(res, notFound('Process'));
-
-            store.softDeleteTurn(processId, turnIndex);
-            const deletedAt = new Date().toISOString();
-            sendJSON(res, 200, { id: processId, turnIndex, deletedAt });
-            getWsServer?.()?.broadcastProcessEvent({ type: 'turn-deleted', processId, turnIndex, deletedAt });
-        },
-    });
-
-    // PATCH /api/processes/:id/turns/:turnIndex/restore — restore a soft-deleted turn
-    routes.push({
-        method: 'PATCH',
-        pattern: /^\/api\/processes\/([^/]+)\/turns\/(\d+)\/restore$/,
-        handler: async (_req, res, match) => {
-            const processId = decodeURIComponent(match![1]);
-            const turnIndex = parseInt(match![2], 10);
-
-            const proc = await store.getProcess(processId);
-            if (!proc) return handleAPIError(res, notFound('Process'));
-
-            store.restoreTurn(processId, turnIndex);
-            sendJSON(res, 200, { id: processId, turnIndex, deletedAt: null });
-            getWsServer?.()?.broadcastProcessEvent({ type: 'turn-deleted', processId, turnIndex, deletedAt: null });
-        },
-    });
-
     // PATCH /api/processes/:id/turns/:turnIndex/pin — toggle pin state
     routes.push({
         method: 'PATCH',
