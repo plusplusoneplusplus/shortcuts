@@ -77,8 +77,26 @@ export type McpAuthFlowState =
  * for cached OAuth tokens. The legacy fallback (treat any HTTP/SSE server as
  * "auth") is kept for older responses that pre-date authStatus.
  */
-export function getServerStatus(server: McpServerEntry, isEnabled: boolean): ServerStatus {
+export function isAuthenticationError(result: McpServerToolsResult | undefined): boolean {
+    if (result?.status !== 'error') return false;
+    const message = result.error?.toLowerCase() ?? '';
+    return message.includes('oauth')
+        || message.includes('authentication')
+        || message.includes('unauthorized')
+        || message.includes('credential')
+        || message.includes('token')
+        || /\b401\b/.test(message);
+}
+
+export function getServerStatus(
+    server: McpServerEntry,
+    isEnabled: boolean,
+    discoveryResult?: McpServerToolsResult,
+): ServerStatus {
     if (!isEnabled) return 'off';
+    if (discoveryResult?.status === 'error') {
+        return isRemote(server) && isAuthenticationError(discoveryResult) ? 'auth' : 'err';
+    }
     if (server.status) return server.status;
     if (server.type === 'http' || server.type === 'sse') return 'auth';
     return 'ok';
@@ -122,7 +140,7 @@ export function shouldShowAuthButton(
     isEnabled: boolean,
     flow: McpAuthFlowState | undefined,
 ): boolean {
-    return isRemote(server) && isEnabled && (needsAuth(server) || (!!flow && flow.phase !== 'completed'));
+    return isRemote(server) && isEnabled && (!flow || flow.phase !== 'completed');
 }
 
 /**
@@ -166,9 +184,16 @@ export interface McpServerCounts {
 export function computeServerCounts(
     servers: McpServerEntry[],
     isEnabled: (name: string) => boolean,
+    discovery: Record<string, McpServerToolsResult> = {},
 ): McpServerCounts {
-    const active = servers.filter(s => isEnabled(s.name) && s.effective !== false && getServerStatus(s, true) === 'ok').length;
-    const auth = servers.filter(s => getServerStatus(s, isEnabled(s.name)) === 'auth').length;
+    const active = servers.filter(s =>
+        isEnabled(s.name)
+        && s.effective !== false
+        && getServerStatus(s, true, discovery[s.name]) === 'ok'
+    ).length;
+    const auth = servers.filter(s =>
+        getServerStatus(s, isEnabled(s.name), discovery[s.name]) === 'auth'
+    ).length;
     const disabled = servers.filter(s => !isEnabled(s.name) || s.effective === false).length;
     return { all: servers.length, active, auth, disabled };
 }
@@ -176,15 +201,26 @@ export function computeServerCounts(
 /** Apply the active filter tab + search query to the server list. */
 export function filterServers(
     servers: McpServerEntry[],
-    opts: { filterTab: FilterTab; searchQuery: string; isEnabled: (name: string) => boolean },
+    opts: {
+        filterTab: FilterTab;
+        searchQuery: string;
+        isEnabled: (name: string) => boolean;
+        discovery?: Record<string, McpServerToolsResult>;
+    },
 ): McpServerEntry[] {
-    const { filterTab, searchQuery, isEnabled } = opts;
+    const { filterTab, searchQuery, isEnabled, discovery = {} } = opts;
     let list = servers;
 
     if (filterTab === 'active') {
-        list = list.filter(s => isEnabled(s.name) && s.effective !== false && getServerStatus(s, true) === 'ok');
+        list = list.filter(s =>
+            isEnabled(s.name)
+            && s.effective !== false
+            && getServerStatus(s, true, discovery[s.name]) === 'ok'
+        );
     } else if (filterTab === 'auth') {
-        list = list.filter(s => getServerStatus(s, isEnabled(s.name)) === 'auth');
+        list = list.filter(s =>
+            getServerStatus(s, isEnabled(s.name), discovery[s.name]) === 'auth'
+        );
     } else if (filterTab === 'disabled') {
         list = list.filter(s => !isEnabled(s.name) || s.effective === false);
     }
@@ -237,8 +273,8 @@ export interface McpServerListModel {
 export function buildMcpServerListModel(input: McpServerListModelInput): McpServerListModel {
     const { servers, isEnabled, filterTab, searchQuery, discovery, discoveryState, toolsAllowList, authFlow } = input;
 
-    const counts = computeServerCounts(servers, isEnabled);
-    const filtered = filterServers(servers, { filterTab, searchQuery, isEnabled });
+    const counts = computeServerCounts(servers, isEnabled, discovery);
+    const filtered = filterServers(servers, { filterTab, searchQuery, isEnabled, discovery });
 
     const rows: McpServerRowModel[] = filtered.map(server => {
         const enabled = isEnabled(server.name);
@@ -248,7 +284,7 @@ export function buildMcpServerListModel(input: McpServerListModelInput): McpServ
             server,
             enabled,
             isOverridden,
-            status: getServerStatus(server, enabled),
+            status: getServerStatus(server, enabled, discovery[server.name]),
             description: getServerDescription(server, enabled),
             transportCls: getTransportPillClass(server.type),
             sourcePill: getSourcePillInfo(server),

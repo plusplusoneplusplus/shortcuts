@@ -76,6 +76,7 @@ function findMetadataFile(cacheDir: string, serverUrl: string): { hash: string; 
     } catch {
         return null;
     }
+
     for (const file of files) {
         if (!file.endsWith('.json') || file.includes('.tokens.')) continue;
         try {
@@ -89,6 +90,30 @@ function findMetadataFile(cacheDir: string, serverUrl: string): { hash: string; 
         }
     }
     return null;
+}
+
+function findMetadataFiles(cacheDir: string, serverUrl: string): string[] {
+    if (!fs.existsSync(cacheDir)) return [];
+    let files: string[];
+    try {
+        files = fs.readdirSync(cacheDir);
+    } catch {
+        return [];
+    }
+    const matches: string[] = [];
+    for (const file of files) {
+        if (!file.endsWith('.json') || file.includes('.tokens.')) continue;
+        try {
+            const raw = fs.readFileSync(path.join(cacheDir, file), 'utf-8');
+            const metadata = JSON.parse(raw) as MetadataFile;
+            if (metadata.serverUrl === serverUrl) {
+                matches.push(file.replace(/\.json$/, ''));
+            }
+        } catch {
+            // Skip unreadable / malformed entries
+        }
+    }
+    return matches;
 }
 
 /**
@@ -153,12 +178,13 @@ export function readMcpServerAuthInfo(
  */
 export function clearMcpServerAuth(serverUrl: string, homeDir?: string): boolean {
     const cacheDir = getMcpOauthCacheDir(homeDir);
-    const found = findMetadataFile(cacheDir, serverUrl);
-    if (!found) return false;
-    const metaPath = path.join(cacheDir, `${found.hash}.json`);
-    const tokensPath = path.join(cacheDir, `${found.hash}.tokens.json`);
+    const matches = findMetadataFiles(cacheDir, serverUrl);
     let removed = false;
-    try { fs.unlinkSync(metaPath); removed = true; } catch { /* ignore */ }
-    try { fs.unlinkSync(tokensPath); removed = true; } catch { /* ignore */ }
+    for (const hash of matches) {
+        const metaPath = path.join(cacheDir, `${hash}.json`);
+        const tokensPath = path.join(cacheDir, `${hash}.tokens.json`);
+        try { fs.unlinkSync(metaPath); removed = true; } catch { /* ignore */ }
+        try { fs.unlinkSync(tokensPath); removed = true; } catch { /* ignore */ }
+    }
     return removed;
 }

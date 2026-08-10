@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest';
 import type { McpServerToolsResult } from '@plusplusoneplusplus/coc-client';
 import {
     getServerStatus,
+    isAuthenticationError,
     needsAuth,
     isRemote,
     getServerDescription,
@@ -34,9 +35,33 @@ describe('getServerStatus', () => {
         expect(getServerStatus({ ...http, status: 'err' }, true)).toBe('err');
     });
 
+    it('overrides stale ok status with live discovery failures', () => {
+        expect(getServerStatus(
+            { ...http, status: 'ok', authStatus: 'authenticated' },
+            true,
+            { status: 'error', tools: [], error: 'OAuth cache miss' },
+        )).toBe('auth');
+        expect(getServerStatus(
+            { ...stdio, status: 'ok' },
+            true,
+            { status: 'error', tools: [], error: 'Invalid working directory' },
+        )).toBe('err');
+    });
+
     it('falls back to auth for remote servers without a status', () => {
         expect(getServerStatus(http, true)).toBe('auth');
         expect(getServerStatus({ name: 's', type: 'sse' }, true)).toBe('auth');
+    });
+
+    describe('isAuthenticationError', () => {
+        it('recognizes OAuth and HTTP authentication failures', () => {
+            expect(isAuthenticationError({ status: 'error', tools: [], error: 'OAuth cache miss' })).toBe(true);
+            expect(isAuthenticationError({ status: 'error', tools: [], error: 'HTTP 401 Unauthorized' })).toBe(true);
+        });
+
+        it('does not classify configuration failures as authentication failures', () => {
+            expect(isAuthenticationError({ status: 'error', tools: [], error: 'Invalid agency config' })).toBe(false);
+        });
     });
 
     it('falls back to ok for stdio servers without a status', () => {
@@ -121,9 +146,9 @@ describe('shouldShowAuthButton', () => {
         expect(shouldShowAuthButton(stdio, true, undefined)).toBe(false);
     });
 
-    it('keeps showing while a non-completed flow is in progress', () => {
+    it('allows explicit re-authentication for an authenticated remote server', () => {
         const authed: McpServerEntry = { ...http, authStatus: 'authenticated' };
-        expect(shouldShowAuthButton(authed, true, undefined)).toBe(false);
+        expect(shouldShowAuthButton(authed, true, undefined)).toBe(true);
         expect(shouldShowAuthButton(authed, true, { phase: 'authorizing', requestId: 'r' })).toBe(true);
         expect(shouldShowAuthButton(authed, true, { phase: 'completed', requestId: 'r' })).toBe(false);
     });
@@ -229,6 +254,32 @@ describe('buildMcpServerListModel', () => {
         expect(row.transportCls).toBe('accent');
         expect(row.toolCount.text).toBe('1/3');
         expect(row.showAuthBtn).toBe(false);
+    });
+
+    it('uses discovery failures for row status, counts, and auth filtering', () => {
+        const configuredOk: McpServerEntry[] = [
+            { ...http, status: 'ok', authStatus: 'authenticated' },
+            { ...stdio, status: 'ok' },
+        ];
+        const model = buildMcpServerListModel({
+            servers: configuredOk,
+            isEnabled: () => true,
+            filterTab: 'auth',
+            searchQuery: '',
+            discovery: {
+                remote: { status: 'error', tools: [], error: 'OAuth cache miss' },
+                local: { status: 'error', tools: [], error: 'Invalid working directory' },
+            },
+            discoveryState: 'loaded',
+            toolsAllowList: {},
+            authFlow: {},
+        });
+
+        expect(model.counts).toEqual({ all: 2, active: 0, auth: 1, disabled: 0 });
+        expect(model.rows).toHaveLength(1);
+        expect(model.rows[0].server.name).toBe('remote');
+        expect(model.rows[0].status).toBe('auth');
+        expect(model.rows[0].showAuthBtn).toBe(true);
     });
 
     it('flags the auth button and carries the flow for a remote server', () => {
