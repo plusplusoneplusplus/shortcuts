@@ -37,7 +37,7 @@ describe('getDefaultEffortTiers', () => {
         expect(defaults).toEqual({
             'very-low': { model: 'gpt-5.6-luna',      reasoningEffort: 'xhigh' },
             low:    { model: 'gpt-5.6-terra',     reasoningEffort: 'xhigh' },
-            medium: { model: 'claude-opus-4.8',   reasoningEffort: 'xhigh' },
+            medium: { model: 'claude-opus-5',     reasoningEffort: 'xhigh' },
             high:   { model: 'gpt-5.6-sol',       reasoningEffort: 'xhigh' },
         });
     });
@@ -96,7 +96,7 @@ describe('mergeEffortTiersWithDefaults', () => {
         expect(merged).toEqual({
             'very-low': { model: 'gpt-5.6-luna',      reasoningEffort: 'xhigh', source: 'default' },
             low:    { model: 'gpt-5.6-terra',     reasoningEffort: 'xhigh', source: 'default' },
-            medium: { model: 'claude-opus-4.8',   reasoningEffort: 'xhigh', source: 'default' },
+            medium: { model: 'claude-opus-5',     reasoningEffort: 'xhigh', source: 'default' },
             high:   { model: 'gpt-5.6-sol',       reasoningEffort: 'xhigh', source: 'default' },
         });
     });

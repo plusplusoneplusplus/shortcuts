@@ -1820,7 +1820,7 @@ describe('ProcessLifecycleRunner — effort tier resolved against the Auto-selec
     // provider Auto lands on must get that provider's tier model — not the
     // default provider's model coerced away to a fallback.
     const MEDIUM_TIER_BY_PROVIDER: Array<[string, string, string | undefined]> = [
-        ['copilot', 'claude-opus-4.8', 'xhigh'],
+        ['copilot', 'claude-opus-5', 'xhigh'],
         ['codex', 'gpt-5.6-sol', 'medium'],
         ['claude', 'opus', 'medium'],
         ['opencode', 'anthropic/claude-sonnet', 'high'],
