@@ -329,6 +329,16 @@ describe('pickDownloadUrl', () => {
         expect(pickDownloadUrl(r, 'win32')).toBe('https://e/setup.exe');
     });
 
+    it('does not select the CoCContainer installer for CoC updates', () => {
+        const r = release({
+            assets: [
+                { name: 'CoCContainer.Setup.3.4.6.exe', url: 'https://e/container.exe' },
+                { name: 'CoC.Setup.3.4.6.exe', url: 'https://e/coc.exe' },
+            ],
+        });
+        expect(pickDownloadUrl(r, 'win32')).toBe('https://e/coc.exe');
+    });
+
     it('falls back to the release page when no matching asset exists', () => {
         const r = release({ htmlUrl: 'https://e/page', assets: [] });
         expect(pickDownloadUrl(r, 'darwin')).toBe('https://e/page');

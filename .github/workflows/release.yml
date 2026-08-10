@@ -141,9 +141,13 @@ jobs:
       - name: Build packages
         run: npm run build
 
-      # dist:win runs prebuild:sqlite:win internally before electron-builder.
-      - name: Build Windows distributables
+      # Both scripts run prebuild:sqlite:win before electron-builder.
+      - name: Build CoC Windows distributable
         run: npm run dist:win
+        working-directory: packages/coc-desktop
+
+      - name: Build CoCContainer Windows distributable
+        run: npm run dist:win:container
         working-directory: packages/coc-desktop
 
       - name: Upload Windows artifacts
@@ -215,8 +219,11 @@ jobs:
              \`\`\`
              (Adjust the path if you installed CoC elsewhere.)
 
-          ### Windows
+          ### Windows — CoC
           Run \`CoC.Setup.${VERSION}.exe\`. SmartScreen may warn about an unknown publisher — choose **More info → Run anyway**. This installer is also unsigned for now.
+
+          ### Windows — CoCContainer
+          Run \`CoCContainer.Setup.${VERSION}.exe\` to install the multi-agent aggregation dashboard. SmartScreen may show the same unsigned-publisher warning.
           EOF
           } > "$notes_file"
 

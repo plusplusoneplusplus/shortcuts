@@ -243,7 +243,7 @@ export function pickDownloadUrl(release: ReleaseInfo, platform: NodeJS.Platform)
             return dmg.url;
         }
     } else if (platform === 'win32') {
-        const exe = byName((n) => n.endsWith('.exe'));
+        const exe = byName((n) => n.startsWith('coc.setup.') && n.endsWith('.exe'));
         if (exe) {
             return exe.url;
         }

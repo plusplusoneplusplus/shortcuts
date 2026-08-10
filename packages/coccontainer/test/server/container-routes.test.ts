@@ -60,27 +60,31 @@ function createMockAgent(workspaces: any[]): Promise<{ server: http.Server; url:
 describe('Container routes (characterization + regression)', () => {
     let tmpDir: string;
     let containerUrl: string;
-    let closeContainer: () => void;
+    let closeContainer: () => Promise<void>;
     let mockAgent: { server: http.Server; url: string };
 
     beforeAll(async () => {
         mockAgent = await createMockAgent([]); // agent reports no workspaces
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coccontainer-routes-'));
         const { createContainerServer } = await import('../../src/server');
-        const port = 17000 + Math.floor(Math.random() * 3000);
         const server = await createContainerServer({
-            serve: { port, host: '127.0.0.1', dataDir: tmpDir },
+            serve: { port: 0, host: '127.0.0.1', dataDir: tmpDir },
             healthCheckIntervalMs: 600_000,
         });
-        containerUrl = `http://127.0.0.1:${port}`;
+        containerUrl = server.url;
         closeContainer = () => server.close();
-        await new Promise(r => setTimeout(r, 150));
     }, 15000);
 
-    afterAll(() => {
-        closeContainer?.();
+    afterAll(async () => {
+        await closeContainer?.();
         mockAgent?.server.close();
         fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('reports healthy after createContainerServer resolves', async () => {
+        const { status, body } = await httpRequest(`${containerUrl}/api/health`);
+        expect(status).toBe(200);
+        expect(body).toEqual({ status: 'ok' });
     });
 
     it('queue stub returns empty tasks with zeroed stats', async () => {

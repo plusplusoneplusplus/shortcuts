@@ -29,9 +29,9 @@ function escapeHtml(value: string): string {
  * Build the full HTML document for the splash window in a given state.
  * `loading` shows an animated spinner; `error` shows the failure message.
  */
-export function renderSplashHtml(state: SplashState): string {
+export function renderSplashHtml(state: SplashState, appName = 'CoC'): string {
     const isError = state.phase === 'error';
-    const heading = isError ? 'CoC failed to start' : 'CoC';
+    const heading = isError ? `${appName} failed to start` : appName;
     const detail =
         state.phase === 'error'
             ? escapeHtml(state.message)
@@ -43,7 +43,7 @@ export function renderSplashHtml(state: SplashState): string {
 <head>
 <meta charset="utf-8" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';" />
-<title>CoC</title>
+<title>${escapeHtml(appName)}</title>
 <style>
   :root { color-scheme: dark; }
   html, body { height: 100%; margin: 0; }
@@ -80,6 +80,6 @@ export function renderSplashHtml(state: SplashState): string {
 }
 
 /** Build a `data:` URL for the splash document, ready for `BrowserWindow.loadURL`. */
-export function splashDataUrl(state: SplashState): string {
-    return `data:text/html;charset=utf-8,${encodeURIComponent(renderSplashHtml(state))}`;
+export function splashDataUrl(state: SplashState, appName = 'CoC'): string {
+    return `data:text/html;charset=utf-8,${encodeURIComponent(renderSplashHtml(state, appName))}`;
 }

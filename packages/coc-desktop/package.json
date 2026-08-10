@@ -17,13 +17,15 @@
     "pack": "electron-builder --dir",
     "dist:mac": "electron-builder --mac",
     "dist:win": "npm run prebuild:sqlite:win && electron-builder --win nsis --x64 -c.npmRebuild=false",
+    "dist:win:container": "npm run prebuild:sqlite:win && electron-builder --config electron-builder.container.cjs --win nsis --x64 -c.npmRebuild=false",
     "dist": "npm run dist:mac && npm run dist:win",
     "lint": "eslint src --ext .ts",
     "test": "vitest",
     "test:run": "vitest run"
   },
   "dependencies": {
-    "@plusplusoneplusplus/coc": "^1.2.0"
+    "@plusplusoneplusplus/coc": "^1.2.0",
+    "@plusplusoneplusplus/coccontainer": "^0.1.0"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.6",
