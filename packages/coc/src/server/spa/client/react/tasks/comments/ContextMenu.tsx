@@ -16,6 +16,8 @@ export interface ContextMenuItem {
     label: string;
     icon?: string;
     disabled?: boolean;
+    /** Hover tooltip. Rendered on a wrapper so it still shows for disabled items. */
+    title?: string;
     separator?: boolean;
     children?: ContextMenuItem[];
     onClick: () => void;
@@ -347,7 +349,7 @@ export function ContextMenu({ position, items, onClose }: ContextMenuProps) {
                         />
                     );
                 }
-                return (
+                const button = (
                     <button
                         key={i}
                         className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
@@ -365,12 +367,18 @@ export function ContextMenu({ position, items, onClose }: ContextMenuProps) {
                         onMouseDown={(e) => e.preventDefault()}
                         disabled={item.disabled}
                         role="menuitem"
+                        title={item.title}
                         data-testid={`context-menu-item-${idx}`}
                     >
                         {item.icon && <span className="mr-1.5">{item.icon}</span>}
                         {item.label}
                     </button>
                 );
+                // A disabled <button> swallows hover events, so its own `title`
+                // never surfaces. Wrap it so the tooltip still shows.
+                return item.title
+                    ? <span key={i} className="block" title={item.title}>{button}</span>
+                    : button;
             })}
         </div>,
         document.body

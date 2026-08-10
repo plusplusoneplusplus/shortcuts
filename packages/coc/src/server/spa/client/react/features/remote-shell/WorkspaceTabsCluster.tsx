@@ -17,13 +17,13 @@ import { useGitInfo } from '../git/hooks/useGitInfo';
 import { computeVisibleSubTabs, type SubTabDef } from '../repo-detail/repoSubTabs';
 import { getRepoHashColor, getServerHashColor, groupKey, groupReposByRemote, isRemoteRepo, truncatePath } from '../../repos/repoGrouping';
 import { getRepoSelectionId } from '../../repos/cloneIdentity';
-import { cloneStatusColor, computeCloneStatusMap, computeVisibleTabKeys, partitionShellTabs, summarizeRemote } from './shellModel';
+import { cloneStatusColor, computeCloneStatusMap, computeVisibleTabKeys, describeRemoveBlock, partitionShellTabs, summarizeRemote } from './shellModel';
 import { useShellNavigation } from './useShellNavigation';
 import { useRecentRemotes } from './useRecentRemotes';
+import { useWorkspaceRemoval } from './useWorkspaceRemoval';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import { Dialog } from '../../ui/Dialog';
 import { ToastContainer, useToast } from '../../ui/Toast';
-import { removeWorkspace } from '../../repos/repositoryService';
 import { getHostname } from '../../utils/config';
 import type { RepoData } from '../../repos/repoGrouping';
 import type { RepoSubTab } from '../../types/dashboard';
@@ -53,7 +53,7 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
     const { state } = useApp();
     const { state: queueState } = useQueue();
     const { selectClone, switchSubTab } = useShellNavigation();
-    const { fetchRepos, unseenCounts } = useRepos();
+    const { unseenCounts } = useRepos();
     const { toasts, addToast, removeToast } = useToast();
 
     const terminalEnabled = useTerminalEnabled();
@@ -104,8 +104,7 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
     const [ovOpen, setOvOpen] = useState(false);
     const [ctxMenu, setCtxMenu] = useState<{ repo: RepoData; x: number; y: number } | null>(null);
     const [infoRepo, setInfoRepo] = useState<RepoData | null>(null);
-    const [removeRepo, setRemoveRepo] = useState<RepoData | null>(null);
-    const [removing, setRemoving] = useState(false);
+    const { requestRemove, removeDialog } = useWorkspaceRemoval({ repos, selectedRepo: repo, addToast });
     const [visibleKeys, setVisibleKeys] = useState<Set<string> | null>(null);
     const cloneRef = useRef<HTMLDivElement>(null);
     const ovRef = useRef<HTMLDivElement>(null);
@@ -165,7 +164,10 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
     const overflowActive = hiddenCloneTabs.some(t => t.key === activeTab);
 
     const buildMenuItems = useCallback((menuRepo: RepoData): ContextMenuItem[] => {
-        const isRemote = isRemoteRepo(menuRepo);
+        // A remote repo is owned by the CoC server that contributed it, so removal
+        // is routed there. When that server is unreachable the DELETE cannot land —
+        // disable up front rather than failing after the confirm.
+        const removeBlock = describeRemoveBlock(menuRepo, cloneStatus[String(menuRepo.workspace.id)]);
         const close = () => {
             setCtxMenu(null);
             setCloneOpen(false);
@@ -188,32 +190,12 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
             {
                 label: 'Remove from CoC',
                 icon: 'X',
-                disabled: isRemote,
-                onClick: () => { close(); setRemoveRepo(menuRepo); },
+                disabled: !!removeBlock,
+                title: removeBlock ?? undefined,
+                onClick: () => { close(); requestRemove(menuRepo); },
             },
         ];
-    }, []);
-
-    const doRemove = useCallback(async (menuRepo: RepoData) => {
-        setRemoving(true);
-        try {
-            const removingSelected = getRepoSelectionId(menuRepo) === getRepoSelectionId(repo);
-            await removeWorkspace(String(menuRepo.workspace.id));
-            if (removingSelected) {
-                const sibling = clones.find(c => getRepoSelectionId(c) !== getRepoSelectionId(menuRepo));
-                if (sibling) {
-                    selectClone(getRepoSelectionId(sibling));
-                }
-            }
-            setRemoveRepo(null);
-            await fetchRepos();
-            addToast(`Removed ${menuRepo.workspace.name}`, 'success');
-        } catch {
-            addToast(`Failed to remove ${menuRepo.workspace.name}`, 'error');
-        } finally {
-            setRemoving(false);
-        }
-    }, [repo, clones, selectClone, fetchRepos, addToast]);
+    }, [cloneStatus, requestRemove]);
 
     const onTab = (key: RepoSubTab) => {
         switchSubTab(key);
@@ -517,40 +499,7 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
                 </Dialog>
             )}
 
-            {removeRepo && (
-                <Dialog
-                    open={true}
-                    onClose={() => !removing && setRemoveRepo(null)}
-                    title="Remove from CoC?"
-                    data-testid="clone-remove-dialog"
-                    footer={
-                        <>
-                            <button
-                                onClick={() => setRemoveRepo(null)}
-                                disabled={removing}
-                                className="px-3 py-1.5 rounded-md text-[12px] font-semibold bg-[#f6f8fa] dark:bg-[#2a2a2a] border border-[#d0d7de] dark:border-[#3c3c3c] text-[#1f2328] dark:text-[#cccccc] hover:bg-[#eaeef2] dark:hover:bg-[#3c3c3c] transition-colors disabled:opacity-50"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                data-testid="clone-remove-confirm-btn"
-                                onClick={() => doRemove(removeRepo)}
-                                disabled={removing}
-                                className="px-3 py-1.5 rounded-md text-[12px] font-semibold bg-[#cf222e] hover:bg-[#a40e26] text-white transition-colors disabled:opacity-50"
-                            >
-                                {removing ? 'Removing...' : 'Remove'}
-                            </button>
-                        </>
-                    }
-                >
-                    <p className="text-[13px]">
-                        Remove <strong>{removeRepo.workspace.name}</strong> from CoC?
-                    </p>
-                    <p className="text-[12px] text-[#848484] dark:text-[#777] mt-1">
-                        The folder on disk is left untouched - only the CoC registration is removed.
-                    </p>
-                </Dialog>
-            )}
+            {removeDialog}
 
             <ToastContainer toasts={toasts} removeToast={removeToast} />
         </div>

@@ -110,6 +110,12 @@ export interface PickerRowProps {
     /** Optional `data-remote-key` used by the group picker. */
     remoteKey?: string;
     onClick?: () => void;
+    /**
+     * Optional trailing row-level menu affordance (e.g. the `⋯` button that opens
+     * "Remove from CoC"). Rendered as a sibling of the row button — a button may
+     * not nest inside another button — so it needs its own click handling.
+     */
+    rowMenu?: ReactNode;
 }
 
 /**
@@ -128,13 +134,14 @@ export function PickerRow({
     active,
     remoteKey,
     onClick,
+    rowMenu,
 }: PickerRowProps) {
     const stateClass = offline
         ? 'opacity-50 cursor-not-allowed text-[#848484] dark:text-[#666]'
         : active
             ? 'bg-[#ddf4ff] dark:bg-[#3794ff]/15 text-[#0969da] dark:text-[#79c0ff]'
             : 'text-[#1f2328] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.06]';
-    return (
+    const row = (
         <button
             data-testid={testId}
             data-remote-key={remoteKey}
@@ -156,5 +163,12 @@ export function PickerRow({
             </span>
             {badges}
         </button>
+    );
+    if (!rowMenu) return row;
+    return (
+        <div className="group/row relative flex items-center">
+            {row}
+            {rowMenu}
+        </div>
     );
 }

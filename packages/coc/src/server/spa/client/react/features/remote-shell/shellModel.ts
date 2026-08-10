@@ -93,6 +93,7 @@ export type CloneStatus = 'idle' | 'running' | 'queued' | 'paused' | 'offline' |
 interface RemoteStatusMarker {
     connection?: RemoteConnectionStatus;
     queue?: RemoteQueueStatus;
+    serverLabel?: string;
 }
 
 /**
@@ -161,6 +162,47 @@ export function cloneStatusColor(status: CloneStatus | undefined, fallback: stri
     if (status === 'connecting') return '#3b82f6';
     if (status === 'offline') return '#8c959f';
     return fallback;
+}
+
+/**
+ * Why "Remove from CoC" is unavailable for a clone, or `null` when it can be removed.
+ *
+ * Removal unregisters the workspace on the server that owns it. A remote clone's
+ * owner is another CoC server, so an offline/unreachable one has to block the
+ * action up front — the DELETE would otherwise fail after the user confirmed.
+ * Local clones are always removable.
+ */
+export function describeRemoveBlock(repo: RepoData, status: CloneStatus | undefined): string | null {
+    const marker = remoteMarker(repo.workspace);
+    if (!marker) return null;
+    if (status !== 'offline' && status !== 'connecting') return null;
+    const label = typeof marker.serverLabel === 'string' && marker.serverLabel.trim()
+        ? marker.serverLabel
+        : 'the remote server';
+    return `Cannot remove - ${label} is offline`;
+}
+
+/**
+ * Warn — do not block — when a clone still has running or queued chats (AC-03).
+ *
+ * Best-effort by design: the caller passes the clone's `repoQueueMap` entry, and
+ * a missing entry (remote clone, offline server, queue state not loaded yet)
+ * simply yields `null`, so the confirm dialog renders without the warning line
+ * instead of blocking removal. `isHiddenTask` is injected to keep this pure.
+ */
+export function describeActiveWork(
+    entry: { running?: any[]; queued?: any[] } | undefined,
+    isHiddenTask: (t: any) => boolean,
+): string | null {
+    if (!entry) return null;
+    const running = (entry.running ?? []).filter(t => !isHiddenTask(t)).length;
+    const queued = (entry.queued ?? []).filter(t => !isHiddenTask(t)).length;
+    if (running + queued === 0) return null;
+    const parts: string[] = [];
+    if (running > 0) parts.push(`${running} running`);
+    if (queued > 0) parts.push(`${queued} queued`);
+    const noun = running + queued === 1 ? 'chat' : 'chats';
+    return `${parts.join(', ')} ${noun} will keep running`;
 }
 
 // ── Remote summary ───────────────────────────────────────────────────────────

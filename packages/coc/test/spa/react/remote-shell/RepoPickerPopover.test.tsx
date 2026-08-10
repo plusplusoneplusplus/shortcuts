@@ -118,6 +118,25 @@ describe('PickerRow', () => {
         expect(onClick).not.toHaveBeenCalled();
     });
 
+    it('renders a row menu outside the row button so it can be clicked on its own', () => {
+        const onClick = vi.fn();
+        const onMenu = vi.fn();
+        render(
+            <PickerRow
+                testId="row"
+                name="repo"
+                onClick={onClick}
+                rowMenu={<button data-testid="row-menu" onClick={e => { e.stopPropagation(); onMenu(); }}>...</button>}
+            />,
+        );
+        const menu = screen.getByTestId('row-menu');
+        // A <button> may not nest inside another button.
+        expect(screen.getByTestId('row').contains(menu)).toBe(false);
+        fireEvent.click(menu);
+        expect(onMenu).toHaveBeenCalledTimes(1);
+        expect(onClick).not.toHaveBeenCalled();
+    });
+
     it('renders trailing badges', () => {
         render(<PickerRow testId="row" name="repo" badges={<span data-testid="row-badge">2</span>} />);
         expect(screen.getByTestId('row-badge')).toBeTruthy();

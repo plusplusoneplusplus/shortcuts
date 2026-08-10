@@ -8,6 +8,8 @@ import {
     computeCloneStatusMap,
     cloneStatusColor,
     blendRemoteCloneStatus,
+    describeRemoveBlock,
+    describeActiveWork,
     summarizeRemote,
     remoteProviderLabel,
     remoteProviderKind,
@@ -238,5 +240,58 @@ describe('remoteProviderKind', () => {
         expect(remoteProviderKind(null)).toBe('remote');
         expect(remoteProviderKind(undefined)).toBe('remote');
         expect(remoteProviderKind('')).toBe('remote');
+    });
+});
+
+describe('describeRemoveBlock', () => {
+    it('never blocks a local clone', () => {
+        expect(describeRemoveBlock(repo('a'), 'idle')).toBeNull();
+        expect(describeRemoveBlock(repo('a'), 'running')).toBeNull();
+    });
+
+    it('allows removing a remote clone whose server is online', () => {
+        expect(describeRemoveBlock(remoteRepo('r', 'online'), 'idle')).toBeNull();
+        expect(describeRemoveBlock(remoteRepo('r', 'online', 'running'), 'running')).toBeNull();
+    });
+
+    it('blocks a remote clone whose server is unreachable, naming the server', () => {
+        expect(describeRemoveBlock(remoteRepo('r', 'offline'), 'offline'))
+            .toBe('Cannot remove - devbox is offline');
+        expect(describeRemoveBlock(remoteRepo('r', 'connecting'), 'connecting'))
+            .toBe('Cannot remove - devbox is offline');
+    });
+
+    it('falls back to a generic name when the server has no label', () => {
+        const unlabelled = { workspace: { id: 'r', name: 'r', remote: { connection: 'offline' } } } as any;
+        expect(describeRemoveBlock(unlabelled, 'offline')).toBe('Cannot remove - the remote server is offline');
+    });
+});
+
+/** AC-03 — best-effort "active work" warning line for the confirm dialog. */
+describe('describeActiveWork', () => {
+    const notHidden = () => false;
+
+    it('returns null when the queue entry is missing (remote/offline/not loaded)', () => {
+        expect(describeActiveWork(undefined, notHidden)).toBeNull();
+    });
+
+    it('returns null when nothing is running or queued', () => {
+        expect(describeActiveWork({ running: [], queued: [] }, notHidden)).toBeNull();
+        expect(describeActiveWork({}, notHidden)).toBeNull();
+    });
+
+    it('counts running and queued chats', () => {
+        expect(describeActiveWork({ running: [{}, {}], queued: [{}] }, notHidden))
+            .toBe('2 running, 1 queued chats will keep running');
+    });
+
+    it('omits the empty half and uses the singular noun', () => {
+        expect(describeActiveWork({ running: [{}] }, notHidden)).toBe('1 running chat will keep running');
+        expect(describeActiveWork({ queued: [{}] }, notHidden)).toBe('1 queued chat will keep running');
+    });
+
+    it('excludes hidden tasks', () => {
+        const entry = { running: [{ hidden: true }, {}], queued: [{ hidden: true }] };
+        expect(describeActiveWork(entry, (t: any) => !!t.hidden)).toBe('1 running chat will keep running');
     });
 });

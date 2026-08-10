@@ -51,8 +51,16 @@ export function updateWorkspace(workspaceId: string, updates: Partial<Omit<Works
     return getSpaCocClient().workspaces.update(workspaceId, updates);
 }
 
+/**
+ * Unregister a workspace from the CoC server that owns it.
+ *
+ * A remote (agent-hosted) workspace lives on another CoC server, so the DELETE
+ * has to go to that server's `<baseUrl>/api/workspaces/<id>` — the clone registry
+ * resolves it. A local workspace is absent from the registry and falls through to
+ * the default page-origin client, unchanged.
+ */
 export function removeWorkspace(workspaceId: string): Promise<void> {
-    return getSpaCocClient().workspaces.delete(workspaceId);
+    return getCocClientForWorkspace(workspaceId).workspaces.delete(workspaceId);
 }
 
 export function discoverWorkspaces(path: string): Promise<DiscoverWorkspacesResponse> {

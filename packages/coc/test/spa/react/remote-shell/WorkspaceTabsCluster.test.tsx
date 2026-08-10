@@ -4,7 +4,7 @@
  * @vitest-environment jsdom
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const mockSelectClone = vi.fn();
 const mockSwitchSubTab = vi.fn();
@@ -42,8 +42,9 @@ vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useGitInfo',
 vi.mock('../../../../src/server/spa/client/react/features/remote-shell/useShellNavigation', () => ({
     useShellNavigation: () => ({ selectClone: mockSelectClone, switchSubTab: mockSwitchSubTab }),
 }));
+const mockRemoveWorkspace = vi.fn().mockResolvedValue(undefined);
 vi.mock('../../../../src/server/spa/client/react/repos/repositoryService', () => ({
-    removeWorkspace: vi.fn().mockResolvedValue(undefined),
+    removeWorkspace: (...args: unknown[]) => mockRemoveWorkspace(...args),
 }));
 
 import { WorkspaceTabsCluster } from '../../../../src/server/spa/client/react/features/remote-shell/WorkspaceTabsCluster';
@@ -58,6 +59,7 @@ beforeEach(() => {
     cleanup();
     mockSelectClone.mockReset();
     mockSwitchSubTab.mockReset();
+    mockRemoveWorkspace.mockReset().mockResolvedValue(undefined);
     mockAppState = { activeTab: 'repos', activeRepoSubTab: 'chats' };
     mockQueueState = { repoQueueMap: {} };
     mockQueueStats = { running: 0, queued: 0 };
@@ -145,5 +147,94 @@ describe('WorkspaceTabsCluster', () => {
         expect(cloneTabs.map(el => el.getAttribute('data-subtab'))).not.toContain('git');
         const chatTab = cloneTabs.find(el => el.getAttribute('data-subtab') === 'chats');
         expect(chatTab?.textContent).toContain('Workspace');
+    });
+});
+
+/**
+ * AC-02 — "Remove from CoC" works for remote (agent-hosted) repos, except when
+ * the owning server is unreachable (removal is routed there, so it would fail).
+ */
+describe('WorkspaceTabsCluster remove menu (AC-02)', () => {
+    const remoteRepo = (id: string, name: string, connection: string) => ({
+        workspace: {
+            id, name, remoteUrl: SHORTCUTS, rootPath: `/remote/${id}`,
+            remote: { baseUrl: 'http://127.0.0.1:4000', serverId: 'srv-1', serverLabel: 'devbox', connection, queue: 'idle' },
+        },
+        gitInfo: { isGitRepo: true, branch: 'main', dirty: false, remoteUrl: SHORTCUTS },
+    });
+
+    const openRemoveItem = (repos: any[], target: any) => {
+        render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
+        fireEvent.click(screen.getByTestId('clone-switch'));
+        const row = screen.getAllByTestId('clone-popover-item')
+            .find(el => el.textContent?.includes(target.workspace.name))!;
+        fireEvent.contextMenu(row);
+        return screen.getAllByRole('menuitem').find(el => el.textContent?.includes('Remove from CoC'))!;
+    };
+
+    it('enables Remove for a remote repo whose server is online', () => {
+        const repos = [repo('a', 'shortcuts'), remoteRepo('r', 'shortcuts-remote', 'online')];
+        const item = openRemoveItem(repos, repos[1]);
+        expect(item).toBeTruthy();
+        expect(item.hasAttribute('disabled')).toBe(false);
+    });
+
+    it('disables Remove for an offline remote repo and names the server in the tooltip', () => {
+        const repos = [repo('a', 'shortcuts'), remoteRepo('r', 'shortcuts-remote', 'offline')];
+        const item = openRemoveItem(repos, repos[1]);
+        expect(item.hasAttribute('disabled')).toBe(true);
+        expect(item.closest('[title]')?.getAttribute('title')).toBe('Cannot remove - devbox is offline');
+    });
+
+    it('enables Remove for a local repo', () => {
+        const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
+        const item = openRemoveItem(repos, repos[0]);
+        expect(item.hasAttribute('disabled')).toBe(false);
+    });
+
+    it('falls back to a sibling clone when the removed repo is the selected one', async () => {
+        const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
+        const item = openRemoveItem(repos, repos[0]);
+        fireEvent.click(item);
+        fireEvent.click(screen.getByTestId('clone-remove-confirm-btn'));
+
+        await waitFor(() => expect(mockRemoveWorkspace).toHaveBeenCalledWith('a'));
+        await waitFor(() => expect(mockSelectClone).toHaveBeenCalledWith('b'));
+    });
+
+    it('leaves selection alone when removing a non-selected clone', async () => {
+        const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
+        const item = openRemoveItem(repos, repos[1]);
+        fireEvent.click(item);
+        fireEvent.click(screen.getByTestId('clone-remove-confirm-btn'));
+
+        await waitFor(() => expect(mockRemoveWorkspace).toHaveBeenCalledWith('b'));
+        expect(mockSelectClone).not.toHaveBeenCalled();
+    });
+
+    /** AC-03 — the confirm dialog warns about active work but never blocks. */
+    it('warns about running/queued chats in the confirm dialog', async () => {
+        mockQueueState = {
+            repoQueueMap: { b: { running: [{ id: 't1' }, { id: 't2' }], queued: [{ id: 't3' }] } },
+        };
+        const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
+        const item = openRemoveItem(repos, repos[1]);
+        fireEvent.click(item);
+
+        expect(screen.getByTestId('clone-remove-active-work').textContent)
+            .toBe('2 running, 1 queued chats will keep running');
+
+        // warn, do not block
+        fireEvent.click(screen.getByTestId('clone-remove-confirm-btn'));
+        await waitFor(() => expect(mockRemoveWorkspace).toHaveBeenCalledWith('b'));
+    });
+
+    it('omits the warning line when the repo has no active work', () => {
+        const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
+        const item = openRemoveItem(repos, repos[1]);
+        fireEvent.click(item);
+
+        expect(screen.getByTestId('clone-remove-confirm-btn')).toBeTruthy();
+        expect(screen.queryByTestId('clone-remove-active-work')).toBeNull();
     });
 });
