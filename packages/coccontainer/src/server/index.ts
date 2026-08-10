@@ -28,7 +28,10 @@ import { installEventRoutes } from './routes/event-routes';
 import { installSpaRoutes } from './routes/spa-routes';
 
 export interface ContainerServer {
-    close(): void;
+    host: string;
+    port: number;
+    url: string;
+    close(): Promise<void>;
 }
 
 export async function createContainerServer(config: ResolvedContainerConfig): Promise<ContainerServer> {
@@ -42,6 +45,10 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
     // (exact vs prefix agent routes, the agent-proxy regex, and the SPA/404
     // fallbacks) — first match wins.
     const routes = new RouteTable();
+    routes.when((method, url) => method === 'GET' && url.pathname === '/api/health', ({ res }) => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'ok' }));
+    });
     installAgentRoutes(routes, runtime);
     installWorkspaceAggregationRoutes(routes, runtime);
     installStubRoutes(routes, config);
@@ -86,13 +93,53 @@ export async function createContainerServer(config: ResolvedContainerConfig): Pr
     wsRouter.register('/ws/agent-link', (ws) => runtime.agentManager.handleConnection(ws));
     wsRouter.attach(server);
 
-    server.listen(config.serve.port, config.serve.host);
+    try {
+        await new Promise<void>((resolve, reject) => {
+            const onError = (error: Error) => {
+                server.removeListener('listening', onListening);
+                reject(error);
+            };
+            const onListening = () => {
+                server.removeListener('error', onError);
+                resolve();
+            };
+            server.once('error', onError);
+            server.once('listening', onListening);
+            server.listen(config.serve.port, config.serve.host);
+        });
+    } catch (error) {
+        runtime.cleanup();
+        wsRouter.close();
+        throw error;
+    }
 
+    const address = server.address();
+    if (!address || typeof address === 'string') {
+        runtime.cleanup();
+        wsRouter.close();
+        server.close();
+        throw new Error('CoCContainer server did not bind to a TCP port');
+    }
+    const host = config.serve.host;
+    const displayHost = host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host;
+    let closePromise: Promise<void> | undefined;
     return {
-        close() {
-            runtime.cleanup();
-            wsRouter.close();
-            server.close();
+        host,
+        port: address.port,
+        url: `http://${displayHost.includes(':') ? `[${displayHost}]` : displayHost}:${address.port}`,
+        close(): Promise<void> {
+            closePromise ??= new Promise<void>((resolve, reject) => {
+                runtime.cleanup();
+                wsRouter.close();
+                server.close((error) => {
+                    if (error) {
+                        reject(error);
+                    } else {
+                        resolve();
+                    }
+                });
+            });
+            return closePromise;
         },
     };
 }

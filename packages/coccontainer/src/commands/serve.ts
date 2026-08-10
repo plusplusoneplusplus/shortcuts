@@ -24,8 +24,7 @@ export async function executeServe(opts: {
 
     const server = await createContainerServer(config);
 
-    const displayHost = config.serve.host === '0.0.0.0' || config.serve.host === '::' ? '127.0.0.1' : config.serve.host;
-    const url = `http://${displayHost}:${config.serve.port}`;
+    const url = server.url;
     console.log(`CoCContainer dashboard running at ${url}`);
 
     if (opts.open !== false) {
@@ -38,8 +37,10 @@ export async function executeServe(opts: {
     await new Promise<void>((resolve) => {
         const onSignal = () => {
             console.log('\nShutting down...');
-            server.close();
-            resolve();
+            void server.close().then(resolve, (error: unknown) => {
+                console.error(`Failed to close CoCContainer cleanly: ${error instanceof Error ? error.message : String(error)}`);
+                resolve();
+            });
         };
 
         process.on('SIGINT', onSignal);
@@ -54,6 +55,5 @@ export async function executeServe(opts: {
         }
     });
 
-    // Force exit — open SSE/WS connections may keep the event loop alive
     process.exit(0);
 }

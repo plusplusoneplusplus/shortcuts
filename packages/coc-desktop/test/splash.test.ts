@@ -21,6 +21,13 @@ describe('renderSplashHtml', () => {
         expect(html).toContain('Waking up');
     });
 
+    it('supports the CoCContainer product name', () => {
+        const loading = renderSplashHtml({ phase: 'loading' }, 'CoCContainer');
+        const error = renderSplashHtml({ phase: 'error', message: 'port in use' }, 'CoCContainer');
+        expect(loading).toContain('<title>CoCContainer</title>');
+        expect(error).toContain('CoCContainer failed to start');
+    });
+
     it('drops the spinner and shows the failure message on error', () => {
         const html = renderSplashHtml({ phase: 'error', message: 'port in use' });
         expect(html).not.toContain('class="spinner"');

@@ -19,15 +19,26 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 type Build = {
+    appId?: string;
+    productName?: string;
+    artifactName?: string;
+    extraMetadata?: { main?: string };
     files?: string[];
     asarUnpack?: string[];
     mac?: { target?: string[]; files?: string[] };
     win?: { files?: string[] };
+    nsis?: { shortcutName?: string };
 };
 
 function buildConfig(): Build {
     const file = path.resolve(__dirname, '../package.json');
     return (JSON.parse(fs.readFileSync(file, 'utf8')).build ?? {}) as Build;
+}
+
+function containerBuildConfig(): Build {
+    const file = path.resolve(__dirname, '../electron-builder.container.cjs');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require(file) as Build;
 }
 
 describe('electron-builder packaging config', () => {
@@ -89,6 +100,34 @@ describe('electron-builder packaging config', () => {
             // `@esbuild/darwin-arm64/bin/esbuild`) as a child process, and you
             // cannot exec a file that lives inside an asar archive.
             expect(buildConfig().asarUnpack ?? []).toContain('**/@esbuild/**');
+        });
+
+        describe('CoCContainer Windows product', () => {
+            it('has a distinct application identity and installer name', () => {
+                const config = containerBuildConfig();
+                expect(config.appId).toBe('com.plusplusoneplusplus.coccontainer');
+                expect(config.productName).toBe('CoCContainer');
+                expect(config.artifactName).toBe('CoCContainer.Setup.${version}.${ext}');
+                expect(config.nsis?.shortcutName).toBe('CoCContainer');
+            });
+
+            it('boots the container entry and bundles the container server', () => {
+                const config = containerBuildConfig();
+                expect(config.extraMetadata?.main).toBe('dist/container-main.js');
+                expect(config.files).toContain('node_modules/@plusplusoneplusplus/coccontainer/dist/**/*');
+                // CoCContainer resolves CoC's generated dashboard HTML and SPA bundle
+                // at runtime, so the inherited CoC dist entries are required too.
+                expect(config.files).toContain('node_modules/@plusplusoneplusplus/coc/dist/**/*');
+                expect(config.files).toContain('!release/**');
+                expect(config.asarUnpack).toContain('**/*.node');
+            });
+
+            it('declares the container server as a production dependency', () => {
+                const pkg = JSON.parse(
+                    fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf8'),
+                ) as { dependencies?: Record<string, string> };
+                expect(pkg.dependencies?.['@plusplusoneplusplus/coccontainer']).toBeTruthy();
+            });
         });
     });
 });

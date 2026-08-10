@@ -41,6 +41,13 @@ describe('desktop launch scripts', () => {
         expect(pkg.productName).toBe('CoC');
     });
 
+    it('exposes a Windows CoCContainer installer build', () => {
+        const desktop = scripts(readJson('../package.json'));
+        expect(desktop['dist:win:container']).toMatch(/electron-builder/);
+        expect(desktop['dist:win:container']).toContain('electron-builder.container.cjs');
+        expect(desktop['dist:win:container']).toContain('--win nsis --x64');
+    });
+
     it('roots dev:desktop through the workspace start script, never a bare electron', () => {
         const root = scripts(readJson('../../../package.json'));
         expect(root['dev:desktop']).toBeDefined();
@@ -56,5 +63,12 @@ describe('desktop launch scripts', () => {
         // Regression: must NOT shell out to a bare `electron <path>` from root,
         // where the binary is not on PATH.
         expect(root['dev:desktop']).not.toMatch(/&&\s*electron\s/);
+    });
+
+    it('builds coccontainer before coc-desktop for release packaging', () => {
+        const root = scripts(readJson('../../../package.json'));
+        const build = root['build:packages'];
+        expect(build).toContain('npm run build -w packages/coccontainer');
+        expect(build.indexOf('packages/coccontainer')).toBeLessThan(build.indexOf('packages/coc-desktop'));
     });
 });
