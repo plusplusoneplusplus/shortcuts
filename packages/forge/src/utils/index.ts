@@ -117,6 +117,7 @@ export {
     isWindowsDrivePath,
     isLinuxAbsolutePath,
     isWslUncPath,
+    getWslUncRoot,
     parseWslUncPath,
     trimTrailingPathSeparators,
     windowsPathToWslPath,

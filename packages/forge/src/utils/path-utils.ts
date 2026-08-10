@@ -33,6 +33,18 @@ export function isWslUncPath(p: string): boolean {
 }
 
 /**
+ * Return the WSL UNC root of a path (`//wsl$/<distro>`, forward-slash form),
+ * accepting either slash style, or `null` when the path is not a WSL UNC path.
+ *
+ * Unlike `isWslUncPath`/`parseWslUncPath` this tolerates the forward-slash form
+ * that UI code produces after `toForwardSlashes`.
+ */
+export function getWslUncRoot(p: string): string | null {
+    const match = toForwardSlashes(p).match(/^\/\/(wsl\$|wsl\.localhost)\/([^/]+)/i);
+    return match ? `//${match[1]}/${match[2]}` : null;
+}
+
+/**
  * Parse a WSL UNC path into its distro and Linux path components.
  */
 export function parseWslUncPath(p: string): { distro: string; linuxPath: string } | null {

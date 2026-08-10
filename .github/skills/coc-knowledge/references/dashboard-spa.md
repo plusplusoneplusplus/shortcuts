@@ -537,7 +537,13 @@ keep their normal renderer behavior. The
 source-canvas resolver chooses the explicit workspace hint when
 present, otherwise the longest matching workspace root, and resolves relative
 paths against `sourceFilePath` when available or the selected workspace root
-before calling the workspace file preview API. `useSourceCanvasContent` folds the
+before calling the workspace file preview API. WSL workspaces on a Windows host
+have a `\\wsl$\<distro>\...` root: the shared helpers in
+`react/utils/path-resolution.ts` keep that UNC prefix through relative
+resolution and tilde expansion, and the resolver re-roots plain Linux paths
+(`/home/u/repo/...`, what WSL agents emit) onto a workspace share when the
+result lands inside that root. The preview endpoint applies the same re-rooting
+server-side via `resolveRequestedFilePath` (`server/tasks/tasks-handler-utils.ts`). `useSourceCanvasContent` folds the
 remote-server workspaces (which live in the repos list, not `state.workspaces`)
 into the resolver's workspace set, so a link clicked in a remote conversation
 resolves against that workspace's remote `rootPath`, and it routes the preview

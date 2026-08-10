@@ -5,11 +5,24 @@
  * (e.g. `./other-file.md`, `../sibling.md`) against the currently viewed file.
  */
 
-/** Check whether a path is absolute (Unix `/...` or Windows `C:/...` / `C:\...`). */
+/**
+ * Check whether a path is absolute: Unix `/...`, Windows `C:/...` / `C:\...`,
+ * or a UNC share (`//wsl$/Ubuntu/...`, `\\wsl$\Ubuntu\...`).
+ */
 export function isAbsolutePath(p: string): boolean {
-    if (p.startsWith('/')) return true;
+    if (p.startsWith('/') || p.startsWith('\\\\')) return true;
     return /^[a-zA-Z]:[\\/]/.test(p);
 }
+
+/**
+ * Leading UNC prefix of a `/`-normalized path (`//server`), which must survive
+ * segment-based resolution — collapsing it to a single `/` turns a WSL path
+ * like `//wsl$/Ubuntu/home/u/repo` into the nonexistent `/wsl$/Ubuntu/...`.
+ */
+const UNC_PREFIX_RE = /^\/\/[^/]+/;
+
+/** Full UNC share prefix (`//wsl$/Ubuntu-24.04`), which precedes the path proper. */
+const UNC_SHARE_PREFIX_RE = /^\/\/[^/]+\/[^/]+/;
 
 /**
  * Match an absolute home-directory prefix (`/Users/<u>`, `/home/<u>`, or
@@ -27,8 +40,12 @@ const HOME_DIR_PREFIX_RE = /^([A-Za-z]:\/Users\/[^/]+|\/Users\/[^/]+|\/home\/[^/
  */
 export function deriveHomeDir(absolutePath: string | null | undefined): string | null {
     if (!absolutePath) return null;
-    const m = absolutePath.replace(/\\/g, '/').match(HOME_DIR_PREFIX_RE);
-    return m ? m[1] : null;
+    const normalized = absolutePath.replace(/\\/g, '/');
+    // A WSL/UNC workspace root carries the home dir behind its share prefix
+    // (`//wsl$/Ubuntu-24.04` + `/home/u`); match the remainder and put it back.
+    const unc = normalized.match(UNC_SHARE_PREFIX_RE)?.[0] ?? '';
+    const m = normalized.slice(unc.length).match(HOME_DIR_PREFIX_RE);
+    return m ? `${unc}${m[1]}` : null;
 }
 
 /**
@@ -77,7 +94,8 @@ export function resolveRelativePath(dir: string, rel: string): string {
             resolved.push(segment);
         }
     }
-    // Preserve leading slash for absolute Unix paths
-    const prefix = dir.startsWith('/') ? '/' : '';
+    // Preserve the leading slash for absolute Unix paths, and both slashes for
+    // UNC roots (`//wsl$/Ubuntu/...`).
+    const prefix = UNC_PREFIX_RE.test(dir) ? '//' : dir.startsWith('/') ? '/' : '';
     return prefix + resolved.join('/');
 }

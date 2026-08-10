@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as path from 'path';
 import {
+    getWslUncRoot,
     isWslUncPath,
     parseWslUncPath,
     toForwardSlashes,
@@ -97,6 +98,23 @@ describe('WSL path helpers', () => {
             distro: 'Ubuntu',
             linuxPath: '/home/user/repo',
         });
+    });
+
+    it('returns the WSL UNC root in either slash style', () => {
+        expect(getWslUncRoot(String.raw`\\wsl$\Ubuntu-24.04\home\user\repo`)).toBe('//wsl$/Ubuntu-24.04');
+        expect(getWslUncRoot('//wsl$/Ubuntu-24.04/home/user/repo')).toBe('//wsl$/Ubuntu-24.04');
+        expect(getWslUncRoot(String.raw`\\WSL.LOCALHOST\Debian\srv`)).toBe('//WSL.LOCALHOST/Debian');
+    });
+
+    it('returns the root for a bare WSL share with no trailing path', () => {
+        expect(getWslUncRoot(String.raw`\\wsl$\Ubuntu`)).toBe('//wsl$/Ubuntu');
+    });
+
+    it('returns null for non-WSL paths', () => {
+        expect(getWslUncRoot('/home/user/repo')).toBeNull();
+        expect(getWslUncRoot('C:\\repo')).toBeNull();
+        expect(getWslUncRoot(String.raw`\\fileserver\share\repo`)).toBeNull();
+        expect(getWslUncRoot(String.raw`\\wsl$`)).toBeNull();
     });
 
     it('converts Windows drive paths to WSL mount paths', () => {

@@ -5,7 +5,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { scanDocumentsRecursively, scanFoldersRecursively, groupTaskDocuments, isWithinDirectory } from '@plusplusoneplusplus/forge';
+import { scanDocumentsRecursively, scanFoldersRecursively, groupTaskDocuments, isWithinDirectory, getWslUncRoot } from '@plusplusoneplusplus/forge';
 import type { TasksViewerSettings, TaskFolder } from '@plusplusoneplusplus/forge';
 import { getRepoDataPath } from '../paths';
 
@@ -26,6 +26,36 @@ export function isWithinTrustedReadOnlyDir(target: string, dataDir?: string): bo
         TRUSTED_READ_ONLY_DIRS.some(dir => isWithinDirectory(target, dir)) ||
         !!(dataDir && isWithinDirectory(target, dataDir))
     );
+}
+
+/**
+ * Resolve a requested file path against a workspace root for read access.
+ *
+ * Relative paths anchor at the workspace root. Absolute paths resolve as-is,
+ * except on Windows: a WSL workspace (root `\\wsl$\<distro>\...`) is also
+ * addressed by the plain Linux paths its agents emit (`/home/u/repo/foo.ts`),
+ * which `path.resolve` would otherwise turn into a bogus drive-relative path.
+ * Those are re-rooted at the workspace's UNC share so they point at the file
+ * the user clicked.
+ *
+ * `isWindows` is injected so the behavior is testable on any host.
+ */
+export function resolveRequestedFilePath(
+    filePath: string,
+    wsRoot: string,
+    isWindows: boolean = process.platform === 'win32',
+): string {
+    const p = isWindows ? path.win32 : path.posix;
+    if (!p.isAbsolute(filePath)) {
+        return p.resolve(wsRoot, filePath);
+    }
+    if (isWindows && filePath.startsWith('/') && !filePath.startsWith('//')) {
+        const wslRoot = getWslUncRoot(wsRoot);
+        if (wslRoot) {
+            return p.resolve(`${wslRoot}${filePath}`);
+        }
+    }
+    return p.resolve(filePath);
 }
 
 // ============================================================================

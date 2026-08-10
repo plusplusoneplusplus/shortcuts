@@ -20,6 +20,7 @@ import {
     resolveRelativePath,
 } from '../../../utils/path-resolution';
 import {
+    getWslUncRoot,
     toForwardSlashes,
     trimTrailingPathSeparators,
 } from '@plusplusoneplusplus/forge/utils/path-utils';
@@ -108,6 +109,32 @@ function getRelativePathInsideWorkspace(
     return normalizedFile.slice(normalizedRoot.length).replace(/^\/+/, '');
 }
 
+/**
+ * Map a Linux absolute path (what a WSL-hosted agent writes into chat, e.g.
+ * `/home/u/repo/src/foo.ts`) onto the WSL UNC root of a workspace that contains
+ * it (`//wsl$/Ubuntu-24.04/home/u/repo/src/foo.ts`), so prefix matching finds
+ * the workspace and the preview API gets a path the Windows host can open.
+ *
+ * Returns `null` unless the rewritten path actually lands inside a WSL
+ * workspace root, so plain Linux hosts are untouched.
+ */
+function toWslUncPathForWorkspaces(
+    linuxPath: string,
+    workspaces: ReadonlyArray<SourceCanvasWorkspace>,
+    preferred?: SourceCanvasWorkspace,
+): string | null {
+    if (!linuxPath.startsWith('/') || linuxPath.startsWith('//')) return null;
+    const ordered = preferred ? [preferred, ...workspaces] : workspaces;
+    for (const ws of ordered) {
+        const root = ws.rootPath ? trimTrailingSlashes(ws.rootPath) : '';
+        const wslRoot = root ? getWslUncRoot(root) : null;
+        if (!wslRoot) continue;
+        const candidate = `${wslRoot}${linuxPath}`;
+        if (isSameOrWithinRoot(candidate, root)) return candidate;
+    }
+    return null;
+}
+
 function findBestWorkspaceForPath(
     filePath: string,
     workspaces: ReadonlyArray<SourceCanvasWorkspace>,
@@ -151,8 +178,15 @@ export function resolveSourceCanvasTarget(
         path = resolveRelativePath(dirOf(fileRef.sourceFilePath), path);
     }
 
-    // 2. Pick a workspace: explicit hint → longest rootPath prefix → first.
     const hintedWorkspace = findWorkspaceById(fileRef.wsId, workspaces);
+
+    // 1b. A Linux absolute path names the same file as a WSL workspace's
+    // `//wsl$/<distro>/...` root — rewrite it so it matches and stays openable.
+    if (isAbsolutePath(path)) {
+        path = toWslUncPathForWorkspaces(path, workspaces, hintedWorkspace) ?? path;
+    }
+
+    // 2. Pick a workspace: explicit hint → longest rootPath prefix → first.
     const matchedWorkspace = isAbsolutePath(path)
         ? findBestWorkspaceForPath(path, workspaces)
         : undefined;

@@ -20,6 +20,11 @@ describe('isAbsolutePath', () => {
         expect(isAbsolutePath('C:/Users/file.md')).toBe(true);
     });
 
+    it('returns true for a WSL UNC path in either slash style', () => {
+        expect(isAbsolutePath('//wsl$/Ubuntu-24.04/home/u/repo/file.md')).toBe(true);
+        expect(isAbsolutePath('\\\\wsl$\\Ubuntu-24.04\\home\\u\\repo\\file.md')).toBe(true);
+    });
+
     it('returns false for relative path', () => {
         expect(isAbsolutePath('./relative/path.md')).toBe(false);
     });
@@ -62,6 +67,16 @@ describe('resolveRelativePath', () => {
         expect(resolveRelativePath('base/dir', 'file.md')).toBe('base/dir/file.md');
     });
 
+    it('preserves the UNC prefix of a WSL workspace root', () => {
+        expect(resolveRelativePath('//wsl$/Ubuntu-24.04/home/u/repo', 'src/foo.py'))
+            .toBe('//wsl$/Ubuntu-24.04/home/u/repo/src/foo.py');
+    });
+
+    it('preserves the UNC prefix while walking up with ../', () => {
+        expect(resolveRelativePath('//wsl$/Ubuntu-24.04/home/u/repo/src', '../README.md'))
+            .toBe('//wsl$/Ubuntu-24.04/home/u/repo/README.md');
+    });
+
     it('handles empty rel segment gracefully', () => {
         const result = resolveRelativePath('base/dir', './sub/../file.md');
         expect(result).toBe('base/dir/file.md');
@@ -79,6 +94,11 @@ describe('deriveHomeDir', () => {
 
     it('derives a Windows home prefix (backslashes normalized)', () => {
         expect(deriveHomeDir('C:\\Users\\dev\\.coc\\repos\\ws-3')).toBe('C:/Users/dev');
+    });
+
+    it('derives a home prefix behind a WSL UNC share', () => {
+        expect(deriveHomeDir('\\\\wsl$\\Ubuntu-24.04\\home\\yihengtao\\.coc\\repos\\ws-4'))
+            .toBe('//wsl$/Ubuntu-24.04/home/yihengtao');
     });
 
     it('returns null for a non-home-rooted path', () => {

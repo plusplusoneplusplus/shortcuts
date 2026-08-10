@@ -182,6 +182,41 @@ describe('resolveMarkdownReviewTarget', () => {
     });
 });
 
+describe('resolveMarkdownReviewTarget — WSL workspaces', () => {
+    // A Windows host serving a WSL clone has a `\\wsl$\<distro>\...` rootPath;
+    // its UNC prefix must survive relative-path resolution or the note loads
+    // from the nonexistent single-slash `/wsl$/...` path.
+    const WSL_WS: WorkspaceLike[] = [
+        { id: 'ws-wsl', rootPath: '\\\\wsl$\\Ubuntu-24.04\\home\\u\\proj' },
+    ];
+
+    it('keeps the UNC prefix when anchoring a workspace-relative note at the root', () => {
+        const target = resolveMarkdownReviewTarget(
+            { filePath: 'docs/plan.md', wsId: 'ws-wsl' },
+            WSL_WS,
+        );
+        expect(target).toEqual({
+            wsId: 'ws-wsl',
+            filePath: '//wsl$/Ubuntu-24.04/home/u/proj/docs/plan.md',
+            displayPath: '//wsl$/Ubuntu-24.04/home/u/proj/docs/plan.md',
+            fetchMode: 'auto',
+            taskRootPath: undefined,
+        });
+    });
+
+    it('keeps the UNC prefix when resolving a note against the source file directory', () => {
+        const target = resolveMarkdownReviewTarget(
+            {
+                filePath: '../README.md',
+                sourceFilePath: '//wsl$/Ubuntu-24.04/home/u/proj/docs/plan.md',
+            },
+            WSL_WS,
+        );
+        expect(target?.filePath).toBe('//wsl$/Ubuntu-24.04/home/u/proj/README.md');
+        expect(target?.wsId).toBe('ws-wsl');
+    });
+});
+
 describe('resolveMarkdownReviewTarget — tilde-prefixed CoC note hrefs', () => {
     // The screenshot link points at a CoC note under the workspace clone storage.
     // Assistant markdown links can carry the literal `~/.coc/repos/<wsId>/...`
