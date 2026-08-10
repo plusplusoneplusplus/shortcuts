@@ -45,8 +45,16 @@ export function TreeNode({
     const isDir = entry.type === 'dir';
     const isExpanded = expandedPaths.has(entry.path);
     const children = childrenMap.get(entry.path);
-    const [loading, setLoading] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const rowRef = useRef<HTMLDivElement>(null);
+
+    // "Loading" is exactly "expanded, and children not yet known" — derive it from
+    // the shared cache rather than tracking a separate flag. A tracked flag has to
+    // be cleared by the same effect whose success invalidates it, which loses a race
+    // against React's sync lane (`childrenMap` lives in `useSyncExternalStore`, so
+    // the cleanup runs before `.finally` and the spinner never clears). Deriving it
+    // also keeps two mounted Explorer panels in agreement.
+    const loading = isDir && isExpanded && children === undefined && !loadError;
 
     // Scroll focused node into view
     useEffect(() => {
@@ -55,19 +63,28 @@ export function TreeNode({
         }
     }, [isFocused]);
 
-    // Lazy-load children when expanded and not yet cached
+    // Drop a stale failure when the node is collapsed, so re-expanding retries.
     useEffect(() => {
-        if (!isDir || !isExpanded || children !== undefined) return;
+        if (!isExpanded) setLoadError(null);
+    }, [isExpanded]);
+
+    // Lazy-load children when expanded and not yet cached. `cancelled` guards stale
+    // writes only. While a request is in flight none of the deps change
+    // (`onChildrenLoaded` is a stable `useCallback`), so the effect does not re-fire
+    // and needs no in-flight guard. A failure leaves `children` undefined and sets
+    // `loadError`, which the guard below honours until it is cleared by a retry.
+    useEffect(() => {
+        if (!isDir || !isExpanded || children !== undefined || loadError) return;
         let cancelled = false;
-        setLoading(true);
         explorerApi.tree(workspaceId, { path: entry.path })
             .then((data: { entries: TreeEntry[] }) => {
                 if (!cancelled) onChildrenLoaded(entry.path, data.entries);
             })
-            .catch(() => {})
-            .finally(() => { if (!cancelled) setLoading(false); });
+            .catch((err: unknown) => {
+                if (!cancelled) setLoadError(err instanceof Error ? err.message : String(err));
+            });
         return () => { cancelled = true; };
-    }, [isDir, isExpanded, children, workspaceId, entry.path, onChildrenLoaded]);
+    }, [isDir, isExpanded, children, loadError, workspaceId, entry.path, onChildrenLoaded]);
 
     const handleClick = () => {
         if (isDir) {
@@ -113,6 +130,19 @@ export function TreeNode({
                 <span className="flex-shrink-0">{getFileIcon(entry)}</span>
                 <span className="truncate">{filterQuery ? highlightMatch(entry.name, filterQuery) : entry.name}</span>
                 {loading && <Spinner size="sm" className="ml-auto" />}
+                {loadError && (
+                    <span
+                        role="button"
+                        tabIndex={0}
+                        title={`${loadError} — click to retry`}
+                        aria-label={`Failed to load ${entry.name} — click to retry`}
+                        data-testid={`tree-node-error-${entry.path}`}
+                        className="ml-auto text-[11px] text-red-600 dark:text-red-400"
+                        onClick={e => { e.stopPropagation(); setLoadError(null); }}
+                    >
+                        ⚠
+                    </span>
+                )}
             </div>
             {isDir && isExpanded && children && filterEntries(children, filterQuery || '', childrenMap).map(child => (
                 <TreeNode

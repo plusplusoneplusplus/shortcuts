@@ -2090,6 +2090,13 @@ export class ClaudeSDKService implements ISDKService {
                 const pre = boundary.pre_tokens ?? 0;
                 const post = boundary.post_tokens ?? 0;
                 const summaryContent = compactSummary ?? fallbackSummary;
+                // Post-compaction usage snapshot. The probe must be issued while
+                // the input gate is still open — `finally` closes it, which tears
+                // the subprocess down and rejects in-flight control requests. The
+                // boundary's own `post_tokens` is the fallback for handles that
+                // expose no `getContextUsage` (or when the probe times out).
+                const contextUsage = extractClaudeContextSnapshot(await this.safeGetClaudeContextUsage(handle))
+                    ?? (post > 0 ? { currentTokens: post } : undefined);
                 return {
                     success: true,
                     tokensRemoved: Math.max(0, pre - post),
@@ -2099,6 +2106,7 @@ export class ClaudeSDKService implements ISDKService {
                     // tokensRemoved accurate (AC-02 [assumption]).
                     messagesRemoved: 0,
                     ...(summaryContent ? { summaryContent } : {}),
+                    ...(contextUsage ? { contextUsage } : {}),
                 };
             }
 

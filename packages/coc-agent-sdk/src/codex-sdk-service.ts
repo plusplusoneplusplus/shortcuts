@@ -2160,7 +2160,16 @@ export class CodexSDKService implements ISDKService {
                     // (same convention as Claude, which also reports 0); the
                     // summary text lives in the rewritten rollout and the display
                     // turn only consumes the two counters, so omit summaryContent.
-                    resolve({ success: true, tokensRemoved, messagesRemoved: 0 });
+                    // The last observed total IS the post-compaction usage, so
+                    // report it as the snapshot. Codex has no per-segment
+                    // breakdown, so only the total travels; the caller derives
+                    // the conversation segment by subtraction.
+                    resolve({
+                        success: true,
+                        tokensRemoved,
+                        messagesRemoved: 0,
+                        ...(latestTotal != null ? { contextUsage: { currentTokens: latestTotal } } : {}),
+                    });
                 };
 
                 onLine((msg) => {

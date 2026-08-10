@@ -455,6 +455,90 @@ describe('CopilotSDKService - compactSession', () => {
         });
     });
 
+    // ── The provider's context-window breakdown is the highest-fidelity source ──
+    // `HistoryCompactResult` in the installed SDK carries an optional
+    // `contextWindow: HistoryCompactContextWindow` — "Post-compaction context
+    // window usage breakdown" with tokenLimit / currentTokens / systemTokens /
+    // toolDefinitionsTokens / conversationTokens / messagesLength
+    // (@github/copilot-sdk/dist/generated/rpc.d.ts). Its five token fields line
+    // up one-for-one with the ones CoC persists, so they map straight across;
+    // `messagesLength` is deliberately not consumed (messagesRemoved stays on
+    // the provider's own count).
+    it('maps the provider-supplied contextWindow onto contextUsage field-for-field', async () => {
+        setupColdCompact({
+            success: true,
+            tokensRemoved: 20_603,
+            messagesRemoved: 7,
+            summaryContent: 'summary text',
+            contextWindow: {
+                tokenLimit: 200_000,
+                currentTokens: 99_397,
+                systemTokens: 12_000,
+                toolDefinitionsTokens: 24_000,
+                conversationTokens: 63_397,
+                messagesLength: 12,
+            },
+        });
+
+        const result = await service.compactSession('sess-ctx');
+
+        expect(result).toEqual({
+            success: true,
+            tokensRemoved: 20_603,
+            messagesRemoved: 7,
+            summaryContent: 'summary text',
+            contextUsage: {
+                tokenLimit: 200_000,
+                currentTokens: 99_397,
+                systemTokens: 12_000,
+                toolDefinitionsTokens: 24_000,
+                conversationTokens: 63_397,
+            },
+        });
+        // The raw provider field is not passed through, and messagesLength is
+        // not folded into the usage snapshot.
+        expect('contextWindow' in result).toBe(false);
+        expect('messagesLength' in (result.contextUsage as object)).toBe(false);
+    });
+
+    // Older SDK builds omit the `@experimental` field entirely; the result must
+    // then carry no snapshot so the compact route falls back to subtraction.
+    it('omits contextUsage when the provider supplies no contextWindow', async () => {
+        setupColdCompact({ success: true, tokensRemoved: 500, messagesRemoved: 2 });
+
+        const result = await service.compactSession('sess-no-ctx');
+
+        expect('contextUsage' in result).toBe(false);
+    });
+
+    // A present-but-empty (or non-numeric) breakdown is equivalent to absent.
+    it('omits contextUsage when the contextWindow carries no usable numbers', async () => {
+        setupColdCompact({
+            success: true,
+            tokensRemoved: 500,
+            messagesRemoved: 2,
+            contextWindow: { currentTokens: null, tokenLimit: 'lots' },
+        });
+
+        const result = await service.compactSession('sess-junk-ctx');
+
+        expect('contextUsage' in result).toBe(false);
+    });
+
+    // A partial breakdown travels partially: only the fields actually present.
+    it('maps only the contextWindow fields the provider actually supplies', async () => {
+        setupColdCompact({
+            success: true,
+            tokensRemoved: 500,
+            messagesRemoved: 2,
+            contextWindow: { tokenLimit: 200_000, currentTokens: 40_000, messagesLength: 9 },
+        });
+
+        const result = await service.compactSession('sess-partial-ctx');
+
+        expect(result.contextUsage).toEqual({ tokenLimit: 200_000, currentTokens: 40_000 });
+    });
+
     it('cold fallback: disconnects the session and stops the client even if compact fails', async () => {
         const disconnect = vi.fn().mockResolvedValue(undefined);
         const compact = vi.fn().mockRejectedValue(new Error('compact failed'));

@@ -191,12 +191,6 @@ export interface CreatePendingProcessMessageResponse {
   message: PendingProcessMessage;
 }
 
-export interface TurnDeleteResponse {
-  id: string;
-  turnIndex: number;
-  deletedAt: string | null;
-}
-
 export interface TurnPinResponse {
   id: string;
   turnIndex: number;

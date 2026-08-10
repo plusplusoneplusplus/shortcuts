@@ -178,6 +178,24 @@ describe('TreeNode', () => {
         it('handles cancellation on unmount', () => {
             expect(source).toContain('cancelled = true');
         });
+
+        it('derives the spinner from the shared cache rather than tracking a flag', () => {
+            // Regression: a tracked `loading` flag was cleared in `.finally`, which
+            // loses the race against the effect cleanup that the store update
+            // triggers — the spinner stuck forever. See TreeNode.lazyload.test.tsx.
+            expect(source).toContain('const loading = isDir && isExpanded && children === undefined && !loadError');
+            expect(source).not.toContain('setLoading');
+        });
+
+        it('surfaces a failed listing instead of swallowing it', () => {
+            expect(source).toContain('setLoadError(err instanceof Error ? err.message : String(err))');
+            expect(source).not.toContain('.catch(() => {})');
+        });
+
+        it('renders a clickable retry affordance for a failed listing', () => {
+            expect(source).toContain('data-testid={`tree-node-error-${entry.path}`}');
+            expect(source).toContain('setLoadError(null)');
+        });
     });
 
     describe('recursive rendering', () => {

@@ -149,6 +149,12 @@ export interface CompactResult {
     messagesRemoved: number;
     /** Summary text produced by compaction; omitted when none was produced. */
     summaryContent?: string;
+    /**
+     * Context usage measured AFTER compaction rewrote the transcript. Omitted
+     * when the provider exposes no post-compaction read; the caller then derives
+     * the new total by subtracting `tokensRemoved`.
+     */
+    contextUsage?: Partial<TokenUsage>;
 }
 
 /**

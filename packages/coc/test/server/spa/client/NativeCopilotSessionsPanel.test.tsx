@@ -51,14 +51,13 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/ChatHeader', () =
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/ConversationArea', () => ({
-    ConversationArea: ({ turns, provider, wsId, onAttachContext, onPinTurn, onArchiveTurn, onDeleteTurn }: any) => (
+    ConversationArea: ({ turns, provider, wsId, onAttachContext, onPinTurn, onArchiveTurn }: any) => (
         <div
             data-testid="conversation-area"
             data-provider={provider}
             data-attach-context={onAttachContext ? 'on' : 'off'}
             data-pin={onPinTurn ? 'on' : 'off'}
             data-archive={onArchiveTurn ? 'on' : 'off'}
-            data-delete={onDeleteTurn ? 'on' : 'off'}
         >
             {turns.length === 0 ? (
                 <div data-testid="native-session-no-turns" />
@@ -302,12 +301,11 @@ describe('NativeCopilotSessionsPanel', () => {
         expect(screen.getByTestId('follow-up-input-area').getAttribute('data-input-disabled')).toBe('true');
 
         // AC-06: per-turn mutations are inert (no CoC processId) — attach-context
-        // stays, pin/archive/delete are not wired.
+        // stays, pin/archive are not wired.
         const conversationArea = screen.getByTestId('conversation-area');
         expect(conversationArea.getAttribute('data-attach-context')).toBe('on');
         expect(conversationArea.getAttribute('data-pin')).toBe('off');
         expect(conversationArea.getAttribute('data-archive')).toBe('off');
-        expect(conversationArea.getAttribute('data-delete')).toBe('off');
 
         // Transcript renders one reused chat bubble per conversation turn, in order.
         const bubbles = screen.getAllByTestId('conversation-turn-bubble');

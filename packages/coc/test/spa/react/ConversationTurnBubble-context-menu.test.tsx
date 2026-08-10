@@ -99,6 +99,21 @@ describe('ConversationTurnBubble — context menu', () => {
         expect(screen.getByText('Copy as HTML')).toBeTruthy();
     });
 
+    it('never offers a per-message Delete action, but keeps Pin and Archive', () => {
+        const { container } = render(
+            <ConversationTurnBubble
+                turn={makeTurn()}
+                turnIndex={0}
+                onPinTurn={vi.fn()}
+                onArchiveTurn={vi.fn()}
+            />,
+        );
+        fireEvent.contextMenu(container.querySelector('.chat-message')!);
+        expect(screen.getByText('Pin')).toBeTruthy();
+        expect(screen.getByText('Archive')).toBeTruthy();
+        expect(screen.queryByText('Delete')).toBeNull();
+    });
+
     it('attaches selected text instead of full content when text is selected', () => {
         const onAttach = vi.fn();
         // Mock window.getSelection to return selected text

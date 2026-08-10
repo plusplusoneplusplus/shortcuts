@@ -349,8 +349,6 @@ describe('ProcessesClient mock server contract', () => {
   it('serializes turn actions, pinned turn reads, resume launches, and forks', async () => {
     mock = await startMockServer();
     const forked = mockProcess({ id: 'forked-process' });
-    mock.on('DELETE', '/api/processes/proc%2F1/turns/2', { body: { id: 'proc/1', turnIndex: 2, deletedAt: '2026-05-02T00:00:00.000Z' } });
-    mock.on('PATCH', '/api/processes/proc%2F1/turns/2/restore', { body: { id: 'proc/1', turnIndex: 2, deletedAt: null } });
     mock.on('PATCH', '/api/processes/proc%2F1/turns/2/pin', { body: { id: 'proc/1', turnIndex: 2, pinnedAt: '2026-05-02T00:00:00.000Z', archived: false } });
     mock.on('PATCH', '/api/processes/proc%2F1/turns/2/archive', { body: { id: 'proc/1', turnIndex: 2, archived: true } });
     mock.on('GET', '/api/processes/proc%2F1/turns/pinned', { body: { turns: [{ role: 'assistant', content: 'keep', timestamp: '2026-05-02T00:00:00.000Z', turnIndex: 2 }] } });
@@ -358,8 +356,6 @@ describe('ProcessesClient mock server contract', () => {
     mock.on('POST', '/api/processes/proc%2F1/fork', { status: 201, body: { process: forked } });
     const client = createClient(mock);
 
-    await expect(client.processes.deleteTurn('proc/1', 2)).resolves.toMatchObject({ turnIndex: 2 });
-    await expect(client.processes.restoreTurn('proc/1', 2)).resolves.toMatchObject({ deletedAt: null });
     await expect(client.processes.pinTurn('proc/1', 2, true)).resolves.toMatchObject({ archived: false });
     await expect(client.processes.archiveTurn('proc/1', 2, true)).resolves.toMatchObject({ archived: true });
     await expect(client.processes.pinnedTurns('proc/1')).resolves.toMatchObject({ turns: [expect.objectContaining({ turnIndex: 2 })] });
@@ -367,18 +363,15 @@ describe('ProcessesClient mock server contract', () => {
     await expect(client.processes.fork('proc/1', { workspace: 'repo/a' })).resolves.toEqual({ process: forked });
 
     expect(mock.requests.map(request => request.path)).toEqual([
-      '/api/processes/proc%2F1/turns/2',
-      '/api/processes/proc%2F1/turns/2/restore',
       '/api/processes/proc%2F1/turns/2/pin',
       '/api/processes/proc%2F1/turns/2/archive',
       '/api/processes/proc%2F1/turns/pinned',
       '/api/processes/proc%2F1/resume-cli',
       '/api/processes/proc%2F1/fork',
     ]);
-    expectJsonRequest(mock.requests[1], 'PATCH', '/api/processes/proc%2F1/turns/2/restore', {});
-    expectJsonRequest(mock.requests[2], 'PATCH', '/api/processes/proc%2F1/turns/2/pin', { pinned: true });
-    expectJsonRequest(mock.requests[3], 'PATCH', '/api/processes/proc%2F1/turns/2/archive', { archived: true });
-    expectJsonRequest(mock.requests[6], 'POST', '/api/processes/proc%2F1/fork', {}, { workspace: 'repo/a' });
+    expectJsonRequest(mock.requests[0], 'PATCH', '/api/processes/proc%2F1/turns/2/pin', { pinned: true });
+    expectJsonRequest(mock.requests[1], 'PATCH', '/api/processes/proc%2F1/turns/2/archive', { archived: true });
+    expectJsonRequest(mock.requests[4], 'POST', '/api/processes/proc%2F1/fork', {}, { workspace: 'repo/a' });
   });
 
   it('compacts a conversation: forwards trimmed customInstructions, omits an empty body, and parses CompactResult', async () => {

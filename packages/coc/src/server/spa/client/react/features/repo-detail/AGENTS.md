@@ -49,7 +49,22 @@ own server. `/chat/launch-terminal` deliberately stays on the local-origin
 store is still fed by the LOCAL websocket only, so remote-sourced rows can be
 overwritten by a local `REPO_QUEUE_UPDATED`; per-clone queue WS fan-in is the fix.
 
+## Explorer lazy-load state
+
+`explorer/TreeNode.tsx` derives its spinner — `isDir && isExpanded && children ===
+undefined && !loadError` — instead of tracking a `loading` flag. `childrenMap`
+lives in `useSyncExternalStore` (`explorerTreeCache`), so a successful fetch
+re-renders and runs the effect cleanup in the same microtask, before the promise
+settles a tracked flag; deriving it also keeps the two mounted Explorer panels
+(RepoDetail tab + right dock) in agreement. A failed listing sets `loadError` and
+renders a `⚠` retry affordance; clicking it clears the error and re-fires the
+effect. Do not reintroduce a tracked flag or swallow the fetch rejection.
+
 ## Tests
+
+`test/spa/react/repos/explorer/TreeNode.lazyload.test.tsx` covers that behaviour
+end to end against the real tree cache (`--environment jsdom`);
+`TreeNode.test.ts` is a source-mirror test and must be updated alongside edits.
 
 `test/spa/react/repos/RepoTabStrip*.test.tsx` cover the component (tabs, overflow,
 agent highlight, queue indicators). `repoTabModel.test.ts`,

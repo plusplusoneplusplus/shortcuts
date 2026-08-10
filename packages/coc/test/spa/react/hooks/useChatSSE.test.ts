@@ -569,6 +569,60 @@ describe('useChatSSE', () => {
         expect(result.conversationCostEstimate).toMatchObject({ estimatedUsdCost: 0.024, pricingUnavailable: false });
     });
 
+    // A session-level correction (e.g. after /compact) carries only the session
+    // fields — no turnIndex, no tokenUsage. The per-turn branch is guarded by
+    // `data.tokenUsage && typeof data.turnIndex === 'number'` (useChatSSE.ts:390),
+    // so such an event must update session state and leave `turns` alone.
+    it('token-usage with only session fields updates session state and never touches turns', () => {
+        const setters = {
+            setSessionTokenLimit: vi.fn(),
+            setSessionCurrentTokens: vi.fn(),
+            setSessionSystemTokens: vi.fn(),
+            setSessionToolTokens: vi.fn(),
+            setSessionConversationTokens: vi.fn(),
+            setTurnsAndRef: vi.fn(),
+            setProcessDetails: vi.fn(),
+        };
+        renderHook(() => useChatSSE(makeOptions(setters)));
+
+        act(() => {
+            MockEventSource.last._emit('token-usage', {
+                sessionTokenLimit: 200_000,
+                sessionCurrentTokens: 99_397,
+                sessionSystemTokens: 12_000,
+                sessionToolTokens: 24_000,
+                sessionConversationTokens: 63_397,
+            });
+        });
+
+        expect(setters.setSessionTokenLimit).toHaveBeenCalledWith(200_000);
+        expect(setters.setSessionCurrentTokens).toHaveBeenCalledWith(99_397);
+        expect(setters.setSessionSystemTokens).toHaveBeenCalledWith(12_000);
+        expect(setters.setSessionToolTokens).toHaveBeenCalledWith(24_000);
+        expect(setters.setSessionConversationTokens).toHaveBeenCalledWith(63_397);
+        // No turn was named, so no turn is rewritten — and with neither
+        // cumulativeTokenUsage nor conversationCostEstimate present, the
+        // processDetails mirror is left alone too.
+        expect(setters.setTurnsAndRef).not.toHaveBeenCalled();
+        expect(setters.setProcessDetails).not.toHaveBeenCalled();
+    });
+
+    // The inverse guard: a turnIndex with no tokenUsage must also not rewrite a
+    // turn (both halves of the `&&` are load-bearing).
+    it('token-usage with a turnIndex but no tokenUsage does not rewrite a turn', () => {
+        const setTurnsAndRef = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setTurnsAndRef })));
+
+        act(() => {
+            MockEventSource.last._emit('token-usage', {
+                turnIndex: 1,
+                sessionCurrentTokens: 99_397,
+            });
+        });
+
+        expect(setTurnsAndRef).not.toHaveBeenCalled();
+    });
+
     // ── Group 4: SSE event handling ──
 
     describe('SSE queue events', () => {

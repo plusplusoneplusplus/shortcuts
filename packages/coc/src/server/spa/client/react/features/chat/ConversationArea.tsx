@@ -71,18 +71,12 @@ export interface ConversationAreaProps {
     onCancelSelection?: () => void;
     /** Called when user selects "Attach as context" from a bubble's context menu. */
     onAttachContext?: (turnIndex: number, role: 'user' | 'assistant', snippet: string) => void;
-    /** Called when user deletes a turn via context menu. */
-    onDeleteTurn?: (turnIndex: number) => void;
     /** Called when user pins/unpins a turn via context menu. */
     onPinTurn?: (turnIndex: number, pinned: boolean) => void;
     /** Called when user archives/unarchives a turn via context menu. */
     onArchiveTurn?: (turnIndex: number, archived: boolean) => void;
     /** Called when user rewinds the conversation to a user turn via context menu. */
     onRewindTurn?: (turnIndex: number) => void;
-    /** Undo-delete state: turnIndex of the recently deleted turn (for undo toast). */
-    undoDeleteTurnIndex?: number | null;
-    /** Called when user clicks "Undo" on the delete toast. */
-    onUndoDelete?: () => void;
     /** Note edit snapshots from process.metadata.noteEdits — passed to ConversationTurnBubble for NoteEditCard. */
     noteEdits?: Array<{
         editId: string;
@@ -197,12 +191,9 @@ export function ConversationArea({
     onCopySelected,
     onCancelSelection,
     onAttachContext,
-    onDeleteTurn,
     onPinTurn,
     onArchiveTurn,
     onRewindTurn,
-    undoDeleteTurnIndex,
-    onUndoDelete,
     noteEdits,
     processId,
     openNotePath,
@@ -318,7 +309,6 @@ export function ConversationArea({
                                                 turnIndex={turn.turnIndex}
                                                 onPinTurn={onPinTurn}
                                                 onArchiveTurn={onArchiveTurn}
-                                                onDeleteTurn={onDeleteTurn}
                                                 onRewindTurn={onRewindTurn}
                                                 onContinueInterrupted={() => continueInterruptedTurn(turn.interruptionReason)}
                                                 noteEdits={noteEdits}
@@ -457,7 +447,6 @@ export function ConversationArea({
                                                     wsId={wsId}
                                                     turnIndex={idx}
                                                     onAttachContext={onAttachContext}
-                                                    onDeleteTurn={onDeleteTurn}
                                                     onPinTurn={onPinTurn}
                                                     onArchiveTurn={onArchiveTurn}
                                                     onRewindTurn={onRewindTurn}
@@ -526,18 +515,6 @@ export function ConversationArea({
                 )}
                 {postConversationContent}
             </div>
-            {/* Undo delete toast */}
-            {undoDeleteTurnIndex != null && onUndoDelete && (
-                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#333] dark:bg-[#555] text-white text-sm px-4 py-2 rounded-lg shadow-lg flex items-center gap-3 animate-fade-in">
-                    <span>Message deleted</span>
-                    <button
-                        onClick={onUndoDelete}
-                        className="font-semibold text-amber-300 hover:text-amber-200 transition-colors"
-                    >
-                        Undo
-                    </button>
-                </div>
-            )}
             {/* Nav-mode hint pill (vim-style j/k navigation). */}
             {navHintVisible && (
                 <div

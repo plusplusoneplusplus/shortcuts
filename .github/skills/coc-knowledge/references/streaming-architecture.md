@@ -102,7 +102,6 @@ Full catalog:
 | `work-item-added` | work-item-routes, work-item-execution-routes |
 | `work-item-updated` | work-item-routes, plan-routes, execution-routes |
 | `work-item-removed` | work-item-routes |
-| `turn-deleted` | turn-actions-handler |
 | `turn-pinned` | turn-actions-handler |
 | `turn-archived` | turn-actions-handler |
 | `memory-promoted` | auto-promote, memory-promote-executor |
