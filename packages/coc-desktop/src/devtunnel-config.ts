@@ -72,6 +72,13 @@ export interface DevTunnelConfigStore {
     writeText?: (filePath: string, data: string) => void;
     rename?: (from: string, to: string) => void;
     ensureDir?: (dir: string) => void;
+    /**
+     * The tunnel-ID suffix to use when generating a first-run (ENOENT) or
+     * corrupt-file fallback config. Defaults to `'coc'`. Pass `'coccontainer'`
+     * from the CoCContainer desktop so the two products never claim the same
+     * default tunnel identity on the same machine.
+     */
+    defaultSuffix?: string;
 }
 
 function configPath(dataDir: string): string {
@@ -79,27 +86,42 @@ function configPath(dataDir: string): string {
 }
 
 /**
- * Derive the default tunnel ID `<computer-name>-coc` from a machine name.
+ * Derive the default tunnel ID `<computer-name>-<suffix>` from a machine name.
  *
  * The name is reduced to the leading host label (dropping any DNS domain),
  * lowercased, and stripped down to the `[a-z0-9-]` characters a DevTunnel ID
  * allows. This mirrors `config-devtunnel.ps1`'s `$env:COMPUTERNAME.ToLower()-coc`
  * while staying safe for the arbitrary values `os.hostname()` can return.
+ *
+ * The `suffix` parameter defaults to `'coc'` for the main CoC desktop and should
+ * be `'coccontainer'` for CoCContainer so the two products never contend for the
+ * same default tunnel identity on the same machine.
  */
-export function defaultTunnelId(computerName: string = os.hostname()): string {
+export function defaultTunnelId(
+    computerName: string = os.hostname(),
+    suffix: string = 'coc',
+): string {
     const base = (computerName || '')
         .split('.')[0]
         .trim()
         .toLowerCase()
         .replace(/[^a-z0-9-]+/g, '-')
         .replace(/^-+|-+$/g, '');
-    return `${base || 'desktop'}-coc`;
+    const safeSuffix = (suffix || 'coc')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9-]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'coc';
+    return `${base || 'desktop'}-${safeSuffix}`;
 }
 
 /** The default, feature-off config for a machine with no saved preference. */
-export function defaultDevTunnelConfig(computerName?: string): DevTunnelConfig {
+export function defaultDevTunnelConfig(
+    computerName?: string,
+    suffix?: string,
+): DevTunnelConfig {
     return {
-        tunnelId: defaultTunnelId(computerName),
+        tunnelId: defaultTunnelId(computerName, suffix),
         enabled: false,
         version: DESKTOP_DEVTUNNEL_VERSION,
     };
@@ -157,7 +179,7 @@ export function readDevTunnelConfig(
         text = readText(configPath(dataDir));
     } catch (err) {
         if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-            return defaultDevTunnelConfig();
+            return defaultDevTunnelConfig(undefined, store.defaultSuffix);
         }
         throw new DevTunnelConfigError(
             `Failed to read ${DESKTOP_DEVTUNNEL_FILENAME}: ${(err as Error).message}`,
@@ -181,7 +203,7 @@ function currentOrDefault(dataDir: string, store: DevTunnelConfigStore): DevTunn
     try {
         return readDevTunnelConfig(dataDir, store);
     } catch {
-        return defaultDevTunnelConfig();
+        return defaultDevTunnelConfig(undefined, store.defaultSuffix);
     }
 }
 
