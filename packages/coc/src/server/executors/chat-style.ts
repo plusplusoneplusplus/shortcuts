@@ -8,6 +8,12 @@
  * The emitted text is a versioned product contract: `chat-style.test.ts`
  * asserts it verbatim, so treat wording changes as product changes.
  *
+ * The block carries no shared preamble — only the selected label and one focus
+ * line. General tone guidance and the rule that style never outranks runtime
+ * rules, permissions, repo/skill instructions, safety rules, or output contracts
+ * already reach the model from the admin global system prompt and the agent
+ * harness, so a baseline here would be a third copy.
+ *
  * Pure Node.js; no I/O. Cross-platform compatible (Linux/Mac/Windows).
  */
 
@@ -17,14 +23,6 @@ import { isChatStyle } from '@plusplusoneplusplus/coc-client';
 /** Tag wrapping the response-style block. Also identifies it in Conversation Metadata. */
 export const CHAT_STYLE_SYSTEM_TAG = 'chat-style';
 
-/** Shared baseline every style inherits. */
-const CHAT_STYLE_BASELINE = [
-    'Use plain, natural language. Be concise without dropping facts needed for accuracy or action.',
-    'Avoid robotic phrasing, canned openings, repeated conclusions, unnecessary jargon, and fake enthusiasm.',
-    'Use headings and lists only when they help. Expand when the user asks for detail or the task cannot be answered safely in a short form.',
-    'This guidance covers presentation only. Runtime rules, permissions, repository and skill instructions, safety rules, required output contracts, and an explicit request from the user for this turn all take priority.',
-].join('\n');
-
 /** Human-readable label used in the block and in Conversation Metadata. */
 const CHAT_STYLE_LABELS: Record<ChatStyle, string> = {
     human: 'Human',
@@ -33,7 +31,7 @@ const CHAT_STYLE_LABELS: Record<ChatStyle, string> = {
     structured: 'Structured',
 };
 
-/** One short focus instruction per style, appended after the shared baseline. */
+/** One short focus instruction per style, the whole body of the block. */
 const CHAT_STYLE_FOCUS: Record<ChatStyle, string> = {
     human:
         'Write like a helpful coworker in a normal conversation. Keep the flow natural and let the wording carry the answer instead of structure.',
@@ -66,8 +64,6 @@ export function buildChatStyleSystemMessage(
 
     return [
         `<${CHAT_STYLE_SYSTEM_TAG}>`,
-        CHAT_STYLE_BASELINE,
-        '',
         `Selected style: ${CHAT_STYLE_LABELS[style]}.`,
         CHAT_STYLE_FOCUS[style],
         `</${CHAT_STYLE_SYSTEM_TAG}>`,

@@ -376,7 +376,10 @@ all have their own `references/*.md`.
   `@plusplusoneplusplus/coc-client`; reuse them instead of re-listing the four
   values. Prompt text lives ONLY in `src/server/executors/chat-style.ts` and is
   asserted verbatim in `chat-style.test.ts` — treat wording edits as product
-  changes. Executors reach it through `SystemMessageBuilder.appendChatStyle()`,
+  changes. The block is exactly four lines — open tag, `Selected style: X.`, one
+  focus line, close tag. There is no shared preamble; general tone and precedence
+  guidance comes from the admin global system prompt and the agent harness, so do
+  not reintroduce a baseline here. Executors reach it through `SystemMessageBuilder.appendChatStyle()`,
   chained after global/repo behavior instructions and before source-link,
   memory, and tool guidance; never concatenate the wording yourself. It applies
   only to `chat-base` (Ask), `autopilot`, `note-chat`, `commit-chat`, and
