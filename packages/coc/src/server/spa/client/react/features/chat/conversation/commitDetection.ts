@@ -273,7 +273,39 @@ export function detectCommitsInToolGroup(toolCalls: ToolCallLike[]): DetectedCom
         }
     }
 
-    return results;
+    return linkAmendsToPrecedingCommits(results);
+}
+
+/**
+ * Collapses each amend into the commit it rewrote.
+ *
+ * The link is positional — an amend replaces the most recently detected commit
+ * before it — because an amend can change the subject, so subject matching is
+ * unreliable. When both entries carry a branch, the branches must match. An
+ * amend with nothing to replace stands alone. Consecutive amends collapse into
+ * one entry carrying the final hash and the original pre-amend hash.
+ */
+function linkAmendsToPrecedingCommits(commits: DetectedCommit[]): DetectedCommit[] {
+    const linked: DetectedCommit[] = [];
+
+    for (const commit of commits) {
+        const previous = linked[linked.length - 1];
+        if (commit.isAmend && previous && branchesCanLink(previous, commit)) {
+            linked[linked.length - 1] = {
+                ...commit,
+                replacedHash: previous.replacedHash ?? previous.shortHash,
+            };
+            continue;
+        }
+        linked.push(commit);
+    }
+
+    return linked;
+}
+
+function branchesCanLink(previous: DetectedCommit, amend: DetectedCommit): boolean {
+    if (!previous.branch || !amend.branch) return true;
+    return previous.branch === amend.branch;
 }
 
 export function detectCommitsByToolCallId(toolCalls: ToolCallLike[]): Map<string, DetectedCommit[]> {

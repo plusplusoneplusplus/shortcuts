@@ -638,6 +638,75 @@ describe('detectCommitsInToolGroup', () => {
         });
     });
 
+    describe('amend replaces the commit it rewrote', () => {
+        it('collapses commit-then-amend into one amended entry with the new hash', () => {
+            const toolCalls = [
+                makeShellCall('t1', 'git commit -m "feat: add auth"', '[main abc1111] feat: add auth\n 5 files changed, 42 insertions(+)'),
+                makeShellCall('t2', 'git commit --amend -m "feat: add auth flow"', '[main abc2222] feat: add auth flow'),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(1);
+            expect(commits[0].shortHash).toBe('abc2222');
+            expect(commits[0].subject).toBe('feat: add auth flow');
+            expect(commits[0].isAmend).toBe(true);
+            expect(commits[0].replacedHash).toBe('abc1111');
+        });
+
+        it('collapses two consecutive amends into one entry with the final hash', () => {
+            const toolCalls = [
+                makeShellCall('t1', 'git commit -m "feat: add auth"', '[main abc1111] feat: add auth'),
+                makeShellCall('t2', 'git commit --amend --no-edit', '[main abc2222] feat: add auth'),
+                makeShellCall('t3', 'git commit --amend -m "feat: auth"', '[main abc3333] feat: auth'),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(1);
+            expect(commits[0].shortHash).toBe('abc3333');
+            expect(commits[0].isAmend).toBe(true);
+            expect(commits[0].replacedHash).toBe('abc1111');
+        });
+
+        it('keeps an amend with no preceding commit as a standalone amended entry', () => {
+            const toolCalls = [
+                makeShellCall('t1', 'git commit --amend --no-edit', '[main abc2222] feat: add auth'),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(1);
+            expect(commits[0].isAmend).toBe(true);
+            expect(commits[0].replacedHash).toBeUndefined();
+        });
+
+        it('replaces only the most recent commit when several precede the amend', () => {
+            const toolCalls = [
+                makeShellCall('t1', 'git commit -m "feat: add auth"', '[main abc1111] feat: add auth'),
+                makeShellCall('t2', 'git commit -m "docs: readme"', '[main abc2222] docs: readme'),
+                makeShellCall('t3', 'git commit --amend -m "docs: update readme"', '[main abc3333] docs: update readme'),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(2);
+            expect(commits[0].shortHash).toBe('abc1111');
+            expect(commits[0].isAmend).toBe(false);
+            expect(commits[1].shortHash).toBe('abc3333');
+            expect(commits[1].isAmend).toBe(true);
+            expect(commits[1].replacedHash).toBe('abc2222');
+        });
+
+        it('does not link an amend to a preceding commit on a different branch', () => {
+            const toolCalls = [
+                makeShellCall('t1', 'git commit -m "feat: add auth"', '[main abc1111] feat: add auth'),
+                makeShellCall('t2', 'git commit --amend --no-edit', '[feature abc2222] chore: tidy'),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(2);
+            expect(commits[1].isAmend).toBe(true);
+            expect(commits[1].replacedHash).toBeUndefined();
+        });
+    });
+
     describe('fixup / squash / amend commit detection', () => {
         it('marks fixup! commits with isFixup = true', () => {
             const toolCalls = [
