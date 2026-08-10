@@ -13,7 +13,7 @@ import type { WhisperSummary } from './toolGroupUtils';
 import type { WhisperDiffToolCall } from './buildWhisperFileDiff';
 
 export type WhisperHeaderPartKind =
-    | 'commit' | 'fixup' | 'pr' | 'push' | 'file' | 'removed-file' | 'skill' | 'memory';
+    | 'commit' | 'amend' | 'fixup' | 'pr' | 'push' | 'file' | 'removed-file' | 'skill' | 'memory';
 
 export interface WhisperHeaderPart {
     text: string;
@@ -45,7 +45,7 @@ export function formatWhisperDuration(startTime?: number, endTime?: number): str
  * Builds the ordered header parts for a collapsed group. Order is significant —
  * it is the reading order of the collapsed header — and mirrors the historical
  * inline construction exactly (tool calls · messages · files · removed ·
- * commits · fixups · PRs · pushed · skills · memories).
+ * commits · amended · fixups · PRs · pushed · skills · memories).
  */
 export function buildWhisperHeaderParts(summary: WhisperSummary): WhisperHeaderPart[] {
     const parts: WhisperHeaderPart[] = [];
@@ -66,6 +66,9 @@ export function buildWhisperHeaderParts(summary: WhisperSummary): WhisperHeaderP
     }
     if (summary.commitCount && summary.commitCount > 0) {
         parts.push({ text: `${summary.commitCount} commit${summary.commitCount !== 1 ? 's' : ''}`, kind: 'commit' });
+    }
+    if (summary.amendCount && summary.amendCount > 0) {
+        parts.push({ text: `${summary.amendCount} amended`, kind: 'amend' });
     }
     if (summary.fixupCommitCount && summary.fixupCommitCount > 0) {
         parts.push({ text: `${summary.fixupCommitCount} fixup${summary.fixupCommitCount !== 1 ? 's' : ''}`, kind: 'fixup' });
