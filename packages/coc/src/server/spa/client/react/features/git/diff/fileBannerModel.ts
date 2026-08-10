@@ -212,6 +212,32 @@ export function bannerForLineIndex(banners: FileBanner[], lineIndex: number): Fi
     return found;
 }
 
+/**
+ * The banner to dock at the top edge of the scrollport for a given topmost row,
+ * plus whether an overlay copy is needed to show it.
+ *
+ * In the windowed row list the `diff --git` row still renders a banner in flow,
+ * so an overlay must be rendered *iff* that in-flow row has already scrolled
+ * above the top edge — otherwise the same file gets two banners (the bug this
+ * exists to prevent) and at scroll top the first file shows a duplicate.
+ *
+ * `entries` must be ascending by `rowIndex`. The index space is viewer-specific
+ * — unified passes diff-line indices, split passes `sxsLines` row indices —
+ * hence the generic index rather than reusing {@link bannerForLineIndex}.
+ */
+export function pinnedBannerForTopRow<T>(
+    entries: { rowIndex: number; banner: T }[],
+    topRowIndex: number,
+): { banner: T; overlay: boolean } | undefined {
+    let found: { rowIndex: number; banner: T } | undefined;
+    for (const e of entries) {
+        if (e.rowIndex > topRowIndex) break;
+        found = e;
+    }
+    if (!found) return undefined;
+    return { banner: found.banner, overlay: found.rowIndex < topRowIndex };
+}
+
 /** Tooltip text carrying the blob hashes / mode / similarity dropped from the row. */
 export function bannerDetailsText(banner: FileBanner): string {
     const parts: string[] = [];

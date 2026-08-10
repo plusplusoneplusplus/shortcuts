@@ -21,7 +21,7 @@ import {
     type LineMatchRange,
 } from './diffFindModel';
 import { FileBannerRow } from './FileBannerRow';
-import { parseFileBanners, buildBannerIndex, bannerForLineIndex, type FileBanner } from './fileBannerModel';
+import { parseFileBanners, buildBannerIndex, pinnedBannerForTopRow, type FileBanner } from './fileBannerModel';
 
 export interface UnifiedDiffViewerProps {
     diff: string;
@@ -1207,11 +1207,17 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
         selectedText: string;
     }>({ visible: false, position: { x: 0, y: 0 }, selection: null, selectedText: '' });
 
-    // Banner for the file owning the topmost mounted row (windowed path only).
-    const firstVisibleIndex = virtualized ? rowVirtualizer.getVirtualItems()[0]?.index : undefined;
-    const pinnedBanner = useMemo(
-        () => (firstVisibleIndex === undefined ? undefined : bannerForLineIndex(fileBanners, firstVisibleIndex)),
-        [fileBanners, firstVisibleIndex],
+    // Banner docked at the top edge (windowed path only). The row is derived from
+    // scroll geometry rather than getVirtualItems()[0], which includes `overscan`
+    // rows above the viewport and so lags the true top edge by up to 24 rows.
+    const topRowIndex = virtualized
+        ? rowVirtualizer.getVirtualItemForOffset(rowVirtualizer.scrollOffset ?? 0)?.index
+        : undefined;
+    const pinned = useMemo(
+        () => (topRowIndex === undefined
+            ? undefined
+            : pinnedBannerForTopRow(fileBanners.map(b => ({ rowIndex: b.startIdx, banner: b })), topRowIndex)),
+        [fileBanners, topRowIndex],
     );
 
     // Stores the last validated selection so handleContextMenu can use it without stale closures.
@@ -1306,11 +1312,15 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             data-testid={testId}
         >
             {/* Windowed rows are absolutely positioned, so an in-flow sticky
-                banner cannot hold. Pin a single copy for the file covering the
-                topmost mounted row instead. */}
-            {showFileBanners && virtualized && pinnedBanner && (
-                <div className="sticky top-0 z-20">
-                    <FileBannerRow banner={pinnedBanner} sticky={false} data-testid="diff-file-banner-pinned" />
+                banner cannot hold. Overlay a copy for the current file — but
+                only once its own in-flow banner row has scrolled above the top
+                edge, else the same file shows two banners. The wrapper is
+                zero-height so mounting it never shifts the row list. */}
+            {showFileBanners && virtualized && pinned?.overlay && (
+                <div className="sticky top-0 z-20 h-0" data-testid="diff-file-banner-pinned-wrapper">
+                    <div className="absolute inset-x-0 top-0">
+                        <FileBannerRow banner={pinned.banner} sticky={false} data-testid="diff-file-banner-pinned" />
+                    </div>
                 </div>
             )}
             {virtualized ? (

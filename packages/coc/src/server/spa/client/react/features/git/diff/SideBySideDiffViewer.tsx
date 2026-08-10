@@ -33,7 +33,7 @@ import {
 } from './diffFindModel';
 import { DiffContextMenu } from '../../../tasks/comments/DiffContextMenu';
 import { FileBannerRow } from './FileBannerRow';
-import { parseFileBanners, bannerForLineIndex } from './fileBannerModel';
+import { parseFileBanners, pinnedBannerForTopRow, type FileBanner } from './fileBannerModel';
 import type { DiffComment, DiffCommentSelection } from '../../../../comments/diff-comment-types';
 
 /** Walk up the DOM tree to find the nearest ancestor that scrolls vertically. */
@@ -207,18 +207,27 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
             return map;
         }, [sxsLines]);
 
-        // Banner owning the topmost mounted row (windowed path only). Rows are
-        // absolutely positioned there, so the in-flow sticky row cannot hold and
-        // a single pinned copy stands in for it.
-        const firstVisibleRow = virtualized ? rowVirtualizer.getVirtualItems()[0]?.index : undefined;
-        const pinnedBanner = useMemo(() => {
-            if (!fileBanners || firstVisibleRow === undefined) return undefined;
-            const row = sxsLines[firstVisibleRow];
-            if (!row) return undefined;
-            const lineIdx = row.left.originalIndex ?? row.right.originalIndex ?? row.originalIndex;
-            if (lineIdx === undefined || lineIdx === null) return undefined;
-            return bannerForLineIndex(fileBanners, lineIdx);
-        }, [fileBanners, firstVisibleRow, sxsLines]);
+        // Banner docked at the top edge (windowed path only). Rows are absolutely
+        // positioned there, so the in-flow sticky row cannot hold and an overlay
+        // copy stands in for it once the in-flow row scrolls above the top edge.
+        // Entries are in `sxsLines` row-index space — the same space the top row
+        // is reported in — so no mapping back to diff-line indices is needed.
+        const bannerRowEntries = useMemo(() => {
+            const entries: { rowIndex: number; banner: FileBanner }[] = [];
+            sxsLines.forEach((row, rowIdx) => {
+                if (row.fileBanner) entries.push({ rowIndex: rowIdx, banner: row.fileBanner });
+            });
+            return entries;
+        }, [sxsLines]);
+        // Derived from scroll geometry, not getVirtualItems()[0], which includes
+        // `overscan` rows above the viewport and so lags the true top edge.
+        const topRowIndex = virtualized
+            ? rowVirtualizer.getVirtualItemForOffset(rowVirtualizer.scrollOffset ?? 0)?.index
+            : undefined;
+        const pinned = useMemo(
+            () => (topRowIndex === undefined ? undefined : pinnedBannerForTopRow(bannerRowEntries, topRowIndex)),
+            [bannerRowEntries, topRowIndex],
+        );
 
         useImperativeHandle(ref, () => {
             if (virtualized) {
@@ -618,9 +627,11 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                     onContextMenu={enableComments ? handleContextMenu : undefined}
                     className={`font-mono text-xs leading-tight overflow-x-auto ${stickyScrollportFix(showFileBanners)}text-[#1e1e1e] dark:text-[#cccccc] bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded`}
                 >
-                    {showFileBanners && virtualized && pinnedBanner && (
-                        <div className="sticky top-0 z-20">
-                            <FileBannerRow banner={pinnedBanner} sticky={false} data-testid="diff-file-banner-pinned" />
+                    {showFileBanners && virtualized && pinned?.overlay && (
+                        <div className="sticky top-0 z-20 h-0" data-testid="diff-file-banner-pinned-wrapper">
+                            <div className="absolute inset-x-0 top-0">
+                                <FileBannerRow banner={pinned.banner} sticky={false} data-testid="diff-file-banner-pinned" />
+                            </div>
                         </div>
                     )}
                     {virtualized ? (

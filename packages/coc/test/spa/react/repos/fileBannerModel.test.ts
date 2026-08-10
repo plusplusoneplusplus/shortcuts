@@ -11,6 +11,7 @@ import {
     parseFileBanners,
     buildBannerIndex,
     bannerForLineIndex,
+    pinnedBannerForTopRow,
     bannerDetailsText,
     splitPath,
 } from '../../../../src/server/spa/client/react/features/git/diff/fileBannerModel';
@@ -263,6 +264,39 @@ index 333..444 100644
 
     it('returns undefined before the first file section', () => {
         expect(bannerForLineIndex([], 3)).toBeUndefined();
+    });
+});
+
+describe('pinnedBannerForTopRow', () => {
+    const ENTRIES = [
+        { rowIndex: 0, banner: 'A' },
+        { rowIndex: 600, banner: 'B' },
+    ];
+
+    it('returns nothing for an empty entry list', () => {
+        expect(pinnedBannerForTopRow([], 42)).toBeUndefined();
+    });
+
+    it('returns nothing when the top row is above the first banner', () => {
+        expect(pinnedBannerForTopRow([{ rowIndex: 5, banner: 'A' }], 3)).toBeUndefined();
+    });
+
+    it('needs no overlay when the top row IS the banner row — the in-flow row already docks it', () => {
+        expect(pinnedBannerForTopRow(ENTRIES, 0)).toEqual({ banner: 'A', overlay: false });
+        expect(pinnedBannerForTopRow(ENTRIES, 600)).toEqual({ banner: 'B', overlay: false });
+    });
+
+    it('overlays the owning banner once its row is above the fold', () => {
+        expect(pinnedBannerForTopRow(ENTRIES, 1)).toEqual({ banner: 'A', overlay: true });
+        expect(pinnedBannerForTopRow(ENTRIES, 599)).toEqual({ banner: 'A', overlay: true });
+    });
+
+    it('swaps to the next file as soon as its row crosses the top edge', () => {
+        expect(pinnedBannerForTopRow(ENTRIES, 620)).toEqual({ banner: 'B', overlay: true });
+    });
+
+    it('keeps the last banner docked past the end of the diff', () => {
+        expect(pinnedBannerForTopRow(ENTRIES, 100000)).toEqual({ banner: 'B', overlay: true });
     });
 });
 
