@@ -59,6 +59,8 @@ const APP_NAME = 'CoCContainer';
 const DEFAULT_PORT = 5000;
 /** The product suffix used for the default tunnel identity (avoids contention with CoC's `hostname-coc`). */
 const CONTAINER_TUNNEL_SUFFIX = 'coccontainer';
+/** Store seam that threads the container suffix into all first-run / fallback config paths. */
+const CONTAINER_DEVTUNNEL_STORE = { defaultSuffix: CONTAINER_TUNNEL_SUFFIX } as const;
 const TRAY_ICON_FALLBACK_DATA_URL =
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAANklEQVR4nGNgoBH4jwNTpJkoQwhpxmsIsZqxGkKqZgxDRg2gggHkGIIVUKSZWEOIAhRpJgkAANCAm2UMZlD6AAAAAElFTkSuQmCC';
 
@@ -225,7 +227,7 @@ function createTray(): void {
  */
 function readContainerDevTunnelConfigSafe(): DevTunnelConfig {
     try {
-        return readDevTunnelConfig(dataDir());
+        return readDevTunnelConfig(dataDir(), CONTAINER_DEVTUNNEL_STORE);
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         process.stderr.write(`[coccontainer-desktop] devtunnel config unreadable: ${message}\n`);
@@ -284,7 +286,7 @@ function cacheContainerDevTunnelCluster(state: DevTunnelHostState): void {
         if (readContainerDevTunnelConfigSafe().cluster === cluster) {
             return;
         }
-        setDevTunnelCluster(dataDir(), cluster);
+        setDevTunnelCluster(dataDir(), cluster, CONTAINER_DEVTUNNEL_STORE);
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         process.stderr.write(`[coccontainer-desktop] failed to cache devtunnel cluster: ${message}\n`);
@@ -399,7 +401,7 @@ function closeContainerDevTunnelModal(): void {
 
 async function saveContainerDevTunnelConfig(tunnelId: string): Promise<void> {
     try {
-        setDevTunnelId(dataDir(), tunnelId);
+        setDevTunnelId(dataDir(), tunnelId, CONTAINER_DEVTUNNEL_STORE);
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         process.stderr.write(`[coccontainer-desktop] failed to save devtunnel id: ${message}\n`);
@@ -422,7 +424,7 @@ async function startContainerDevTunnel(): Promise<void> {
     if (!devTunnelManager || port === undefined) {
         return;
     }
-    const config = setDevTunnelEnabled(dataDir(), true);
+    const config = setDevTunnelEnabled(dataDir(), true, CONTAINER_DEVTUNNEL_STORE);
     setupContainerApplicationMenu();
     const state = await devTunnelManager.start(
         { tunnelId: config.tunnelId, port },
@@ -434,7 +436,7 @@ async function startContainerDevTunnel(): Promise<void> {
 }
 
 async function stopContainerDevTunnel(): Promise<void> {
-    setDevTunnelEnabled(dataDir(), false);
+    setDevTunnelEnabled(dataDir(), false, CONTAINER_DEVTUNNEL_STORE);
     setupContainerApplicationMenu();
     await devTunnelManager?.stop();
 }
@@ -460,7 +462,7 @@ function setupContainerDevTunnel(port: number): void {
     setupContainerApplicationMenu();
     autoStartDevTunnelOnLaunch({
         port,
-        readConfig: () => readDevTunnelConfig(dataDir()),
+        readConfig: () => readDevTunnelConfig(dataDir(), CONTAINER_DEVTUNNEL_STORE),
         manager: devTunnelManager,
     });
 }

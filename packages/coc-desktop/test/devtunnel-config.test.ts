@@ -163,6 +163,13 @@ describe('readDevTunnelConfig', () => {
         expect(cfg.tunnelId).toMatch(/-coc$/);
     });
 
+    it('honours store.defaultSuffix on ENOENT', () => {
+        const { store } = memStore();
+        const cfg = readDevTunnelConfig(DATA_DIR, { ...store, defaultSuffix: 'coccontainer' });
+        expect(cfg.enabled).toBe(false);
+        expect(cfg.tunnelId).toMatch(/-coccontainer$/);
+    });
+
     it('reads and validates a well-formed file', () => {
         const { store } = memStore({
             [CONFIG_PATH]: JSON.stringify({ tunnelId: 'box-coc', enabled: true, version: 1 }),
@@ -360,6 +367,16 @@ describe('setDevTunnelEnabled / setDevTunnelId — Start/Stop/Configure transiti
         expect(started.tunnelId).toMatch(/-coc$/);
         // The corrupt content has been replaced with a readable config.
         expect(readDevTunnelConfig(DATA_DIR, store)).toEqual(started);
+        expect(files.has(`${CONFIG_PATH}.tmp`)).toBe(false);
+    });
+
+    it('recovers from corrupt file with defaultSuffix and produces correct tunnel ID', () => {
+        const { store, files } = memStore({ [CONFIG_PATH]: 'garbage' });
+        const storeWithSuffix = { ...store, defaultSuffix: 'coccontainer' };
+        const started = setDevTunnelEnabled(DATA_DIR, true, storeWithSuffix);
+        expect(started.enabled).toBe(true);
+        expect(started.tunnelId).toMatch(/-coccontainer$/);
+        expect(readDevTunnelConfig(DATA_DIR, storeWithSuffix)).toEqual(started);
         expect(files.has(`${CONFIG_PATH}.tmp`)).toBe(false);
     });
 });

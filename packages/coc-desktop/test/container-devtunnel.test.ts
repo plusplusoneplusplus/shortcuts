@@ -86,10 +86,23 @@ function memStore(seed: Record<string, string> = {}): {
 describe('CoCContainer config store persists under container data dir', () => {
     it('reads a missing file as feature-off with container tunnel ID', () => {
         const { store } = memStore();
-        const config = readDevTunnelConfig(CONTAINER_DATA_DIR, store);
-        // Default when no file: enabled:false, tunnelId derived from real hostname
+        const config = readDevTunnelConfig(CONTAINER_DATA_DIR, { ...store, defaultSuffix: CONTAINER_TUNNEL_SUFFIX });
         expect(config.enabled).toBe(false);
-        expect(config.tunnelId).toMatch(/-coc$/); // defaultTunnelId() uses suffix='coc'
+        expect(config.tunnelId).toMatch(/-coccontainer$/);
+    });
+
+    it('first setDevTunnelEnabled (no existing file) produces a coccontainer tunnel ID', () => {
+        const { store } = memStore();
+        const result = setDevTunnelEnabled(CONTAINER_DATA_DIR, true, { ...store, defaultSuffix: CONTAINER_TUNNEL_SUFFIX });
+        expect(result.enabled).toBe(true);
+        expect(result.tunnelId).toMatch(/-coccontainer$/);
+    });
+
+    it('regular CoC default (no suffix) still produces -coc', () => {
+        const { store } = memStore();
+        const config = readDevTunnelConfig('/home/user/.coc', store);
+        expect(config.tunnelId).toMatch(/-coc$/);
+        expect(config.tunnelId).not.toMatch(/-coccontainer$/);
     });
 
     it('round-trips a container-specific tunnel ID', () => {

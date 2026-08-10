@@ -72,6 +72,13 @@ export interface DevTunnelConfigStore {
     writeText?: (filePath: string, data: string) => void;
     rename?: (from: string, to: string) => void;
     ensureDir?: (dir: string) => void;
+    /**
+     * The tunnel-ID suffix to use when generating a first-run (ENOENT) or
+     * corrupt-file fallback config. Defaults to `'coc'`. Pass `'coccontainer'`
+     * from the CoCContainer desktop so the two products never claim the same
+     * default tunnel identity on the same machine.
+     */
+    defaultSuffix?: string;
 }
 
 function configPath(dataDir: string): string {
@@ -172,7 +179,7 @@ export function readDevTunnelConfig(
         text = readText(configPath(dataDir));
     } catch (err) {
         if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-            return defaultDevTunnelConfig();
+            return defaultDevTunnelConfig(undefined, store.defaultSuffix);
         }
         throw new DevTunnelConfigError(
             `Failed to read ${DESKTOP_DEVTUNNEL_FILENAME}: ${(err as Error).message}`,
@@ -196,7 +203,7 @@ function currentOrDefault(dataDir: string, store: DevTunnelConfigStore): DevTunn
     try {
         return readDevTunnelConfig(dataDir, store);
     } catch {
-        return defaultDevTunnelConfig();
+        return defaultDevTunnelConfig(undefined, store.defaultSuffix);
     }
 }
 
