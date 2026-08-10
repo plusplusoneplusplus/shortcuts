@@ -86,6 +86,21 @@ describe('McpServersPanel — server list', () => {
         expect(enabledToggle.checked).toBe(true);
         expect(disabledToggle.checked).toBe(false);
     });
+
+    it('offers re-authentication even when cached status is authenticated', () => {
+        renderPanel({
+            availableServers: [{
+                name: 'remote',
+                type: 'http',
+                url: 'https://mcp.example.com',
+                status: 'ok',
+                authStatus: 'authenticated',
+            }],
+            isEnabled: () => true,
+        });
+
+        expect(screen.getByRole('button', { name: 'Re-authenticate' })).toBeTruthy();
+    });
 });
 
 describe('McpServersPanel — configuration sources', () => {

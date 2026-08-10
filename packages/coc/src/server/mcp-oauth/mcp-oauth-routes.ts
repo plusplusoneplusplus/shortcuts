@@ -27,7 +27,7 @@ import {
     loadWorkspaceMcpConfig,
 } from '@plusplusoneplusplus/forge';
 import { initiateMcpOAuth, type McpOauthSdkService } from './mcp-oauth-initiator';
-import { readMcpServerAuthInfo } from './mcp-oauth-token-cache';
+import { clearMcpServerAuth, readMcpServerAuthInfo } from './mcp-oauth-token-cache';
 
 export interface McpOauthRouteContext {
     manager: McpOauthManager;
@@ -184,6 +184,7 @@ export function registerMcpOauthRoutes(routes: Route[], ctx: McpOauthRouteContex
                 const params = body as Record<string, unknown>;
                 const serverName = typeof params.serverName === 'string' ? params.serverName : undefined;
                 const workspaceId = typeof params.workspaceId === 'string' ? params.workspaceId : undefined;
+                const force = params.force === true;
                 if (!serverName) {
                     sendError(res, 400, 'Body must include `serverName: string`');
                     return;
@@ -214,6 +215,10 @@ export function registerMcpOauthRoutes(routes: Route[], ctx: McpOauthRouteContex
                 if (!serverUrl) {
                     sendError(res, 400, `MCP server "${serverName}" has no URL configured`);
                     return;
+                }
+
+                if (force) {
+                    clearMcpServerAuth(serverUrl);
                 }
 
                 // Short-circuit: if we already have a valid token, no flow needed.

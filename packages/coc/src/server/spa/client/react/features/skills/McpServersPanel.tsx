@@ -1038,7 +1038,11 @@ function AuthenticateButton({
     onClick: () => void;
 }) {
     const label = (() => {
-        if (!flow) return authStatus === 'expired' ? 'Re-authenticate' : 'Authenticate';
+        if (!flow) {
+            return authStatus === 'required' || authStatus === 'expired'
+                ? 'Authenticate'
+                : 'Re-authenticate';
+        }
         switch (flow.phase) {
             case 'starting': return 'Starting…';
             case 'authorizing': return 'Authorizing…';
@@ -1260,7 +1264,7 @@ export function McpServersPanel({
                                                 serverName={server.name}
                                                 flow={flow}
                                                 authStatus={server.authStatus}
-                                                onClick={() => controller.authenticate(server.name)}
+                                                onClick={() => controller.authenticate(server.name, true)}
                                             />
                                         )}
                                     </div>

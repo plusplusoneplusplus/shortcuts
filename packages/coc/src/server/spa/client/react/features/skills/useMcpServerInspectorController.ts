@@ -78,7 +78,7 @@ export interface McpInspectorController {
 
     // OAuth flow
     authFlow: Record<string, McpAuthFlowState>;
-    authenticate: (serverName: string) => void;
+    authenticate: (serverName: string, force?: boolean) => void;
 
     // Config mutations (preserve the existing REST payloads)
     updateServer: (serverName: string, request: McpServerUpdateRequest) => Promise<void>;
@@ -258,7 +258,7 @@ export function useMcpServerInspectorController(
         });
     }, []);
 
-    const authenticate = useCallback(async (serverName: string) => {
+    const authenticate = useCallback(async (serverName: string, force = false) => {
         const gen = genRef.current;
         const startedWs = workspaceId;
         setFlow(serverName, { phase: 'starting' });
@@ -269,7 +269,7 @@ export function useMcpServerInspectorController(
             const r = await fetch(`${cloneApiBase(startedWs)}/mcp-oauth/start`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ serverName, workspaceId: startedWs || undefined }),
+                body: JSON.stringify({ serverName, workspaceId: startedWs || undefined, force }),
             });
             if (!r.ok) {
                 const text = await r.text().catch(() => '');
@@ -369,7 +369,7 @@ export function useMcpServerInspectorController(
         enableAllTools,
         disableAllTools,
         authFlow,
-        authenticate: (serverName: string) => { void authenticate(serverName); },
+        authenticate: (serverName: string, force = false) => { void authenticate(serverName, force); },
         updateServer,
         migrateServer,
         deleteServer,

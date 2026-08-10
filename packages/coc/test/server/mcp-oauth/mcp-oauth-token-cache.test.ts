@@ -23,10 +23,11 @@ function writeTokenPair(
     homeDir: string,
     serverUrl: string,
     tokens: { accessToken?: string; expiresAt?: number; refreshToken?: string; scope?: string },
+    suffix = '',
 ): string {
     const cacheDir = path.join(homeDir, '.copilot', 'mcp-oauth-config');
     fs.mkdirSync(cacheDir, { recursive: true });
-    const hash = `hash-${serverUrl.replace(/[^a-z0-9]/gi, '_')}`;
+    const hash = `hash-${serverUrl.replace(/[^a-z0-9]/gi, '_')}${suffix}`;
     fs.writeFileSync(
         path.join(cacheDir, `${hash}.json`),
         JSON.stringify({
@@ -144,6 +145,16 @@ describe('clearMcpServerAuth', () => {
 
     it('returns false when no metadata matches', () => {
         expect(clearMcpServerAuth(TEST_SERVER_URL, tmpHome)).toBe(false);
+    });
+
+    it('removes every duplicate cache entry for a server URL', () => {
+        writeTokenPair(tmpHome, TEST_SERVER_URL, { accessToken: 'first' }, '-first');
+        writeTokenPair(tmpHome, TEST_SERVER_URL, { accessToken: 'second' }, '-second');
+        writeTokenPair(tmpHome, OTHER_SERVER_URL, { accessToken: 'other' });
+
+        expect(clearMcpServerAuth(TEST_SERVER_URL, tmpHome)).toBe(true);
+        expect(readMcpServerAuthInfo(TEST_SERVER_URL, 'http', tmpHome).status).toBe('required');
+        expect(readMcpServerAuthInfo(OTHER_SERVER_URL, 'http', tmpHome).status).toBe('authenticated');
     });
 });
 

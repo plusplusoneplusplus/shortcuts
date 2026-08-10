@@ -158,7 +158,25 @@ describe('useMcpServerInspectorController — OAuth', () => {
         expect(window.open).toHaveBeenCalledWith('https://auth.example', '_blank', 'noopener,noreferrer');
         const startCall = fetchMock.mock.calls.find(c => String(c[0]).includes('/mcp-oauth/start'));
         expect(startCall).toBeTruthy();
-        expect(JSON.parse((startCall![1] as { body: string }).body)).toEqual({ serverName: 'srv', workspaceId: 'ws-1' });
+        expect(JSON.parse((startCall![1] as { body: string }).body)).toEqual({
+            serverName: 'srv',
+            workspaceId: 'ws-1',
+            force: false,
+        });
+    });
+
+    it('requests a forced flow when the user explicitly re-authenticates', async () => {
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({ requestId: 'r1', authorizationUrl: 'https://auth.example' }) });
+        const { result } = renderHook(() => useMcpServerInspectorController('ws-1', {}));
+
+        await act(async () => { result.current.authenticate('srv', true); await new Promise(r => setTimeout(r, 0)); });
+
+        const startCall = fetchMock.mock.calls.find(c => String(c[0]).includes('/mcp-oauth/start'));
+        expect(JSON.parse((startCall![1] as { body: string }).body)).toEqual({
+            serverName: 'srv',
+            workspaceId: 'ws-1',
+            force: true,
+        });
     });
 
     it('marks the flow completed immediately when already authenticated', async () => {

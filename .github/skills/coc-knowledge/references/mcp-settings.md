@@ -19,7 +19,7 @@ Returns both the effective `availableServers` list and source-separated `sources
 - Workspace servers come from `<repo>/.vscode/mcp.json` via Forge MCP loader helpers.
 - Workspace entries override global entries with the same name.
 - Each entry in `availableServers` includes:
-  - `status`: `"ok"` | `"auth"` | `"off"` | `"err"` (derived server-side from type + enabled state)
+  - `status`: `"ok"` | `"auth"` | `"off"` | `"err"` (initial state derived server-side from type + enabled state; the panel overrides it with live discovery failures)
   - `description`: from config file, or empty string
 - The endpoint only exposes safe row metadata (`name`, `type`, optional `url`/`command`, source/effective flags) and must **not** return secrets such as `env`, headers, or full argument arrays.
 - `?forceReload=true` bypasses the path-keyed MCP config cache for manual dashboard refreshes; no file watcher is used.
@@ -74,6 +74,8 @@ Moves a server between global and workspace config. Body: `{ targetScope: "globa
 ## OAuth Routes
 
 `POST /api/mcp-oauth/start` is registered only when the active AI SDK service exposes SDK client creation (`createClient`). It starts an OAuth flow for configured HTTP/SSE MCP servers by resolving workspace config first, then global config. Pending OAuth lifecycle endpoints (`/api/mcp-oauth/pending...`) are always registered when the MCP OAuth manager is present.
+
+The MCP server panel combines configured status with live tool discovery. A live failure overrides a configured `ok`; OAuth/401/token failures render as `auth`, while other initialization failures render as `err`. Every enabled HTTP/SSE server exposes an Authenticate/Re-authenticate action. Explicit re-authentication sends `force: true`, removes every matching cache entry for the exact server URL, and starts a fresh SDK OAuth flow.
 
 ## OAuth Auto-Refresh (Background)
 
