@@ -88,12 +88,41 @@ describe('defaultTunnelId', () => {
     it('derives a non-empty default from the real hostname when none is given', () => {
         expect(defaultTunnelId()).toMatch(/-coc$/);
     });
+
+    it('uses the provided suffix instead of coc', () => {
+        expect(defaultTunnelId('MYBOX', 'coccontainer')).toBe('mybox-coccontainer');
+    });
+
+    it('falls back to "coc" suffix when suffix reduces to nothing', () => {
+        expect(defaultTunnelId('MYBOX', '')).toBe('mybox-coc');
+        expect(defaultTunnelId('MYBOX', '---')).toBe('mybox-coc');
+    });
+
+    it('sanitizes the suffix the same way it sanitizes the computer name', () => {
+        expect(defaultTunnelId('box', 'My_Suffix 01')).toBe('box-my-suffix-01');
+    });
+
+    it('produces distinct defaults for coc and coccontainer on the same machine', () => {
+        const cocId = defaultTunnelId('MYBOX', 'coc');
+        const containerId = defaultTunnelId('MYBOX', 'coccontainer');
+        expect(cocId).toBe('mybox-coc');
+        expect(containerId).toBe('mybox-coccontainer');
+        expect(cocId).not.toBe(containerId);
+    });
 });
 
 describe('defaultDevTunnelConfig', () => {
     it('is feature-off with the default tunnel ID and current version', () => {
         expect(defaultDevTunnelConfig('MyBox')).toEqual({
             tunnelId: 'mybox-coc',
+            enabled: false,
+            version: DESKTOP_DEVTUNNEL_VERSION,
+        });
+    });
+
+    it('uses the provided suffix for the default tunnel ID', () => {
+        expect(defaultDevTunnelConfig('MyBox', 'coccontainer')).toEqual({
+            tunnelId: 'mybox-coccontainer',
             enabled: false,
             version: DESKTOP_DEVTUNNEL_VERSION,
         });
