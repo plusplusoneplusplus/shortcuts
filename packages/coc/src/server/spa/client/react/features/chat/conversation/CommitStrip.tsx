@@ -52,7 +52,7 @@ export function CommitStrip({ commits, workspaceId }: CommitStripProps) {
                     className={
                         'flex items-center gap-2 px-2.5 py-1 text-xs ' +
                         'bg-[#f0f7ff] dark:bg-[#1a2332] ' +
-                        (commit.isFixup ? 'opacity-70 ' : '') +
+                        (commit.isFixup || commit.isAmend ? 'opacity-70 ' : '') +
                         (workspaceId
                             ? 'cursor-pointer hover:bg-[#e1effe] dark:hover:bg-[#1f2d42]'
                             : '')
@@ -61,7 +61,7 @@ export function CommitStrip({ commits, workspaceId }: CommitStripProps) {
                     onClick={workspaceId ? (e) => handleClick(e, commit) : undefined}
                     role={workspaceId ? 'link' : undefined}
                 >
-                    <span className="shrink-0">{commit.isFixup ? '🔧' : '🔀'}</span>
+                    <span className="shrink-0">{commit.isAmend ? '✏️' : commit.isFixup ? '🔧' : '🔀'}</span>
 
                     <span className="font-mono shrink-0 text-[#f57c00] dark:text-[#ffb74d]">
                         {commit.shortHash}
