@@ -27,6 +27,7 @@ import { buildPrDetailHash } from '../../pull-requests/pr-open-utils';
 import { PrChecksCompact, PrChecksSummaryChips, type PrChecksCompactState } from '../../pull-requests/PrChecksSummary';
 import type { PrCheckRow } from '../../pull-requests/pr-derived-data';
 import { formatUpdatedAgo } from './prStatusFreshness';
+import { isTerminalPrStatus } from './prTerminalStatus';
 import { summarizeLifecycleStatus, summarizeMergeStatus, type LifecycleStatusSummary, type MergeStatusSummary } from './prMergeStatusSummary';
 
 /** Per-PR fetch lifecycle for a card row. */
@@ -123,12 +124,6 @@ export interface PrStatusCardProps {
     refreshing?: boolean;
     /** Epoch ms of the last successful fetch — drives the "updated Xs ago" label (AC-05). */
     lastUpdatedAt?: number;
-}
-
-const TERMINAL_STATES = new Set<string>(['merged', 'closed']);
-
-function isTerminal(status: string | undefined): boolean {
-    return !!status && TERMINAL_STATES.has(status);
 }
 
 function terminalTimestamp(pr: PrStatusCardPr): string {
@@ -505,7 +500,7 @@ function PrStatusCardRow({
 }) {
     const number = item.pr?.number ?? item.number;
     const detailHash = buildPrDetailHash(item.repoId, number);
-    const terminal = item.state === 'ready' && isTerminal(item.pr?.status);
+    const terminal = item.state === 'ready' && isTerminalPrStatus(item.pr?.status);
     const autoMerge =
         item.state === 'ready' && item.pr
             ? describeAutoMerge(item.pr.autoMerge, prProviderFromUrl(item.pr.url))

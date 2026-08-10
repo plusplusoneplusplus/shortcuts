@@ -15,15 +15,13 @@
 import type { PrCheckRow } from '../../pull-requests/pr-derived-data';
 import { hasUnresolvedReviewerApproval } from '../../pull-requests/pr-utils';
 import type { PrStatusCardItem } from './PrStatusCard';
+import { isTerminalPrStatus } from './prTerminalStatus';
 
 /**
  * Smart-poll cadence while a PR is still settling (AC-05 [assumption ~45s]).
  * Exported so the hook and tests share one source of truth.
  */
 export const PR_STATUS_POLL_INTERVAL_MS = 45_000;
-
-/** PR lifecycle states that are settled — no further polling needed. */
-const TERMINAL_PR_STATES = new Set<string>(['merged', 'closed']);
 
 /** A check that has not settled yet — its PR's state can still change. */
 function isCheckInProgress(row: PrCheckRow): boolean {
@@ -44,7 +42,7 @@ function isAutoMergePending(item: PrStatusCardItem): boolean {
  */
 export function isPrItemActive(item: PrStatusCardItem): boolean {
     if (item.state !== 'ready' || !item.pr) return false;
-    if (TERMINAL_PR_STATES.has(item.pr.status)) return false;
+    if (isTerminalPrStatus(item.pr.status)) return false;
     if (isAutoMergePending(item)) return true;
     if (item.checksState === 'ready' && (item.checks ?? []).some(isCheckInProgress)) return true;
     if (item.reviewersState === 'ready' && hasUnresolvedReviewerApproval(item.reviewers ?? [])) return true;
