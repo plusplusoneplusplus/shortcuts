@@ -62,7 +62,11 @@ import {
     DevTunnelHostState,
     parseDevTunnelCluster,
 } from './devtunnel-host';
-import { ensureDevTunnelHttpBinding, resolveDevTunnelCliPath } from './devtunnel-cli';
+import {
+    ensureDevTunnelHttpBinding,
+    readDevTunnelHttpPort,
+    resolveDevTunnelCliPath,
+} from './devtunnel-cli';
 import { autoStartDevTunnelOnLaunch } from './devtunnel-launch';
 import {
     devTunnelConfigDataUrl,
@@ -985,10 +989,17 @@ async function bootstrap(): Promise<void> {
     splashWindow = createSplashWindow();
 
     try {
+        const devTunnelConfig = process.platform === 'win32'
+            ? readDevTunnelConfigSafe()
+            : undefined;
+        const devTunnelPort = devTunnelConfig?.enabled
+            ? await readDevTunnelHttpPort({ tunnelId: devTunnelConfig.tunnelId })
+            : undefined;
         // AC-02: attach to an already-running CoC server, or fork our own
         // against the shared ~/.coc data dir. Fix 2: when we start our own server,
         // tee its stdout/stderr into the desktop log (packaged/no-TTY only).
         serverHandle = await attachOrStart({
+            attachPort: devTunnelPort,
             onServerOutput: desktopLogger
                 ? (chunk) => desktopLogger?.write(chunk)
                 : undefined,

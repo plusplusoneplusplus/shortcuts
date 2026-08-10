@@ -164,19 +164,21 @@ describe('attachOrStart', () => {
         let forkedPath = '';
         let forkedEnv: NodeJS.ProcessEnv = {};
         let requestedPreferredPort: number | undefined;
+        const preferredPort = 56358;
         const handle = await attachOrStart({
             dataDir: '/tmp/shared-coc',
             serverEntryPath: '/abs/dist/server-entry.js',
+            attachPort: preferredPort,
             deps: {
                 probeHealth: async () => false,
-                findFreePort: async (_host, preferredPort) => {
-                    requestedPreferredPort = preferredPort;
-                    return preferredPort!;
+                findFreePort: async (_host, requestedPort) => {
+                    requestedPreferredPort = requestedPort;
+                    return requestedPort!;
                 },
                 fork: (modulePath, env) => {
                     forkedPath = modulePath;
                     forkedEnv = env;
-                    child.emitListening(CLI_DEFAULT_PORT);
+                    child.emitListening(preferredPort);
                     return child as unknown as ChildProcess;
                 },
             },
@@ -185,13 +187,13 @@ describe('attachOrStart', () => {
         expect(forkedPath).toBe('/abs/dist/server-entry.js');
         expect(forkedEnv.ELECTRON_RUN_AS_NODE).toBe('1');
         expect(forkedEnv.COC_DESKTOP_HOST).toBe(DEFAULT_HOST);
-        expect(forkedEnv.COC_DESKTOP_PORT).toBe(String(CLI_DEFAULT_PORT));
+        expect(forkedEnv.COC_DESKTOP_PORT).toBe(String(preferredPort));
         expect(forkedEnv.COC_DESKTOP_DATA_DIR).toBe('/tmp/shared-coc');
-        expect(requestedPreferredPort).toBe(CLI_DEFAULT_PORT);
+        expect(requestedPreferredPort).toBe(preferredPort);
 
         expect(handle.started).toBe(true);
-        expect(handle.port).toBe(CLI_DEFAULT_PORT);
-        expect(handle.url).toBe(formatUrl(DEFAULT_HOST, CLI_DEFAULT_PORT));
+        expect(handle.port).toBe(preferredPort);
+        expect(handle.url).toBe(formatUrl(DEFAULT_HOST, preferredPort));
         expect(handle.child).toBe(child as unknown as ChildProcess);
     });
 

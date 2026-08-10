@@ -386,6 +386,37 @@ export interface EnsureDevTunnelOptions {
     runner?: DevTunnelCliRunner;
 }
 
+export interface ReadDevTunnelHttpPortOptions {
+    tunnelId: string;
+    /** Pre-resolved CLI path; when omitted the path is resolved via {@link resolveDevTunnelCliPath}. */
+    cliPath?: string;
+    resolve?: ResolveDevTunnelCliDeps;
+    runner?: DevTunnelCliRunner;
+}
+
+/**
+ * Read the tunnel's single configured HTTP port without creating or changing
+ * anything. Returns `undefined` when the CLI is unavailable, the lookup fails,
+ * or the tunnel does not have exactly one HTTP binding.
+ */
+export async function readDevTunnelHttpPort(
+    options: ReadDevTunnelHttpPortOptions,
+): Promise<number | undefined> {
+    const cliPath = options.cliPath ?? resolveDevTunnelCliPath(options.resolve);
+    if (!cliPath) {
+        return undefined;
+    }
+    const listed = await (options.runner ?? defaultDevTunnelCliRunner)(
+        cliPath,
+        ['port', 'list', options.tunnelId],
+    );
+    if (listed.exitCode !== 0 || listed.spawnError) {
+        return undefined;
+    }
+    const ports = parseDevTunnelHttpPorts(combinedOutput(listed));
+    return ports.length === 1 ? ports[0] : undefined;
+}
+
 /**
  * Resolve the CLI then reconcile the HTTP binding, folding a missing CLI into the
  * same result contract. This is the single entry point AC-03 gates on: it must
