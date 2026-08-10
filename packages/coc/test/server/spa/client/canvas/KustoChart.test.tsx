@@ -4,9 +4,10 @@
  * KustoChart (AC-05) — pure data helpers (numeric-column gating,
  * config → series mapping) and the config → render mapping for each chart type.
  */
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
+import { render, screen, waitFor, cleanup, fireEvent, act } from '@testing-library/react';
 import type { KustoCellValue, KustoColumn } from '@plusplusoneplusplus/coc-client';
+import * as Recharts from 'recharts';
 import {
     KustoChart,
     buildChartSeries,
@@ -14,6 +15,67 @@ import {
     isNumericColumn,
     numericColumnNames,
 } from '../../../../../src/server/spa/client/react/features/canvas/KustoChart';
+
+// The vendored recharts bundle is fetched at runtime in the browser; in tests we
+// hand the component the npm copy directly. `loadResult` lets a single test flip
+// the loader into its failure mode to exercise the static-SVG fallback (AC-06).
+let loadResult: () => Promise<any> = () => Promise.resolve(Recharts);
+vi.mock('../../../../../src/server/spa/client/react/features/canvas/rechartsLoader', () => ({
+    loadRecharts: () => loadResult(),
+    RECHARTS_VENDOR_URL: '/canvas-vendor/recharts.js',
+    resetRechartsLoaderForTests: () => {},
+}));
+
+/**
+ * jsdom has no layout engine, so recharts' ResponsiveContainer would measure
+ * 0×0 and render nothing. Give every element a size (offsetWidth/offsetHeight,
+ * which is what recharts reads) and a ResizeObserver that reports it once.
+ */
+beforeAll(() => {
+    const define = (prop: 'offsetWidth' | 'offsetHeight', value: number) =>
+        Object.defineProperty(HTMLElement.prototype, prop, { configurable: true, value });
+    define('offsetWidth', 640);
+    define('offsetHeight', 360);
+    // Hover maths divide the bounding rect by offsetWidth to undo any CSS
+    // scale; jsdom's all-zero rect would make that 0 and push the pointer to
+    // Infinity, so report the same size here.
+    Object.defineProperty(HTMLElement.prototype, 'getBoundingClientRect', {
+        configurable: true,
+        value: () => ({
+            width: 640, height: 360, top: 0, left: 0, bottom: 360, right: 640, x: 0, y: 0,
+            toJSON() { return this; },
+        }),
+    });
+    class SizedResizeObserver {
+        constructor(private cb: ResizeObserverCallback) {}
+        observe(target: Element) {
+            const entry = {
+                target,
+                contentRect: { width: 640, height: 360, top: 0, left: 0, bottom: 360, right: 640, x: 0, y: 0 },
+            } as unknown as ResizeObserverEntry;
+            this.cb([entry], this as unknown as ResizeObserver);
+        }
+        unobserve() {}
+        disconnect() {}
+    }
+    globalThis.ResizeObserver = SizedResizeObserver as unknown as typeof ResizeObserver;
+});
+
+/**
+ * Hover the plot at a horizontal offset. jsdom reports a zero-sized bounding
+ * rect, so recharts reads the pointer position straight off clientX/clientY —
+ * `x` is therefore the chart-space pixel we land on.
+ */
+function hoverPlot(wrapper: HTMLElement, x: number, y = 100) {
+    const init = { clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', bubbles: true };
+    fireEvent.mouseMove(wrapper, init);
+    fireEvent.pointerMove(wrapper, init);
+}
+
+afterEach(() => {
+    cleanup();
+    loadResult = () => Promise.resolve(Recharts);
+});
 
 const columns: KustoColumn[] = [
     { name: 'State', type: 'string' },
@@ -106,17 +168,28 @@ describe('buildChartSeries', () => {
 describe('KustoChart render mapping', () => {
     const base = { columns, rows };
 
-    it.each(['line', 'bar', 'scatter', 'stackedArea'] as const)('renders an SVG for %s charts', type => {
-        render(<KustoChart {...base} config={{ type, x: 'State', y: ['Count'] }} />);
-        const svg = screen.getByTestId('kusto-chart-svg');
-        expect(svg).toBeInTheDocument();
-        expect(svg.getAttribute('aria-label')).toContain(type);
+    it.each(['line', 'bar', 'scatter', 'stackedArea', 'pie'] as const)(
+        'renders a recharts plot for %s charts',
+        async type => {
+            const { container } = render(<KustoChart {...base} config={{ type, x: 'State', y: ['Count'] }} />);
+            await waitFor(() => {
+                expect(container.querySelector('.recharts-wrapper')).not.toBeNull();
+            });
+            expect(container.querySelector('.recharts-surface')?.innerHTML).toBeTruthy();
+        },
+    );
+
+    it('shows a placeholder while the recharts bundle is loading', () => {
+        loadResult = () => new Promise(() => {});
+        render(<KustoChart {...base} config={{ type: 'line', x: 'State', y: ['Count'] }} />);
+        expect(screen.getByTestId('kusto-chart-loading')).toBeInTheDocument();
     });
 
-    it('renders a pie chart with slices', () => {
-        render(<KustoChart {...base} config={{ type: 'pie', x: 'State', y: ['Count'] }} />);
-        const svg = screen.getByTestId('kusto-chart-svg');
-        expect(svg.getAttribute('aria-label')).toContain('pie');
+    it('falls back to the static SVG when the loader rejects', async () => {
+        loadResult = () => Promise.reject(new Error('no vendor bundle'));
+        render(<KustoChart {...base} config={{ type: 'line', x: 'State', y: ['Count'] }} />);
+        const svg = await screen.findByTestId('kusto-chart-svg');
+        expect(svg.getAttribute('aria-label')).toContain('line');
     });
 
     it('prompts to configure when no Y column is chosen', () => {
@@ -127,5 +200,393 @@ describe('KustoChart render mapping', () => {
     it('shows an empty state when there is no data', () => {
         render(<KustoChart columns={columns} rows={[]} config={{ type: 'bar', x: 'State', y: ['Count'] }} />);
         expect(screen.getByTestId('kusto-chart-empty')).toBeInTheDocument();
+    });
+});
+
+describe('KustoChart hover tooltip', () => {
+    // Two services measured at two timestamps — a multi-series shape, with one
+    // deliberately long decimal so rounding is visible if it ever creeps in.
+    const latencyColumns: KustoColumn[] = [
+        { name: 'Bucket', type: 'string' },
+        { name: 'Service', type: 'string' },
+        { name: 'P95', type: 'real' },
+    ];
+    const latencyRows: KustoCellValue[][] = [
+        ['10:00', 'api-gateway', 9120.7043],
+        ['10:00', 'auth', 12.5],
+        ['10:05', 'api-gateway', 8000.25],
+        ['10:05', 'auth', 14],
+    ];
+    const config = { type: 'line' as const, x: 'Bucket', y: ['P95'], series: 'Service' };
+
+    async function renderAndHover() {
+        const { container } = render(<KustoChart columns={latencyColumns} rows={latencyRows} config={config} />);
+        const wrapper = await waitFor(() => {
+            const el = container.querySelector('.recharts-wrapper');
+            expect(el).not.toBeNull();
+            return el as HTMLElement;
+        });
+        hoverPlot(wrapper, 80);
+        return container;
+    }
+
+    it('lists every series at the hovered x, not just the nearest point', async () => {
+        await renderAndHover();
+        const tooltip = await screen.findByTestId('kusto-chart-tooltip');
+        expect(tooltip).toHaveTextContent('api-gateway');
+        expect(tooltip).toHaveTextContent('auth');
+        expect(tooltip).toHaveTextContent('10:00');
+    });
+
+    it('prints values at full precision', async () => {
+        await renderAndHover();
+        const tooltip = await screen.findByTestId('kusto-chart-tooltip');
+        expect(tooltip.textContent).toContain('9120.7043');
+        expect(tooltip.textContent).not.toContain('9120.704…');
+        expect(tooltip.textContent).not.toContain('9.1k');
+    });
+
+    it('omits a series that has no value at the hovered x', async () => {
+        const sparseRows: KustoCellValue[][] = [
+            ['10:00', 'api-gateway', 9120.7043],
+            ['10:05', 'auth', 14],
+        ];
+        const { container } = render(<KustoChart columns={latencyColumns} rows={sparseRows} config={config} />);
+        const wrapper = await waitFor(() => {
+            const el = container.querySelector('.recharts-wrapper');
+            expect(el).not.toBeNull();
+            return el as HTMLElement;
+        });
+        hoverPlot(wrapper, 80);
+        const tooltip = await screen.findByTestId('kusto-chart-tooltip');
+        expect(tooltip).toHaveTextContent('api-gateway');
+        expect(tooltip).not.toHaveTextContent('auth');
+    });
+
+    it('drops a legend-hidden series from the tooltip', async () => {
+        const container = await renderAndHover();
+        fireEvent.click(screen.getByRole('button', { name: /api-gateway/ }));
+        hoverPlot(container.querySelector('.recharts-wrapper') as HTMLElement, 80);
+        const tooltip = await screen.findByTestId('kusto-chart-tooltip');
+        expect(tooltip).toHaveTextContent('auth');
+        expect(tooltip).not.toHaveTextContent('api-gateway');
+    });
+
+    it('gives a pie slice its own tooltip instead of a shared one', async () => {
+        const { container } = render(
+            <KustoChart columns={columns} rows={rows} config={{ type: 'pie', x: 'State', y: ['Count'] }} />,
+        );
+        const sector = await waitFor(() => {
+            const el = container.querySelector('.recharts-sector');
+            expect(el).not.toBeNull();
+            return el as Element;
+        });
+        fireEvent.mouseEnter(sector, { clientX: 300, clientY: 180, bubbles: true });
+        fireEvent.mouseMove(sector, { clientX: 300, clientY: 180, bubbles: true });
+        const tooltip = await screen.findByTestId('kusto-chart-tooltip');
+        expect(tooltip).toHaveTextContent('Texas');
+        expect(tooltip.textContent).toContain('100');
+    });
+});
+
+describe('KustoChart legend toggle', () => {
+    const latencyColumns: KustoColumn[] = [
+        { name: 'Bucket', type: 'string' },
+        { name: 'Service', type: 'string' },
+        { name: 'P95', type: 'real' },
+    ];
+    const latencyRows: KustoCellValue[][] = [
+        ['10:00', 'api-gateway', 9120.7043],
+        ['10:00', 'auth', 12.5],
+        ['10:05', 'api-gateway', 8000.25],
+        ['10:05', 'auth', 14],
+    ];
+    const config = { type: 'line' as const, x: 'Bucket', y: ['P95'], series: 'Service' };
+
+    async function renderChart() {
+        const { container } = render(<KustoChart columns={latencyColumns} rows={latencyRows} config={config} />);
+        await waitFor(() => {
+            expect(container.querySelectorAll('.recharts-line')).toHaveLength(2);
+        });
+        return container;
+    }
+
+    /**
+     * Vertical spread of a plotted line in chart pixels. jsdom renders no axis
+     * tick text, so we read the rescale off the geometry instead: while
+     * api-gateway (~9000) is visible, auth (12.5 → 14) is squashed flat at the
+     * bottom; with it hidden, auth stretches over the whole plot.
+     */
+    function curveSpread(curve: Element): number {
+        const ys = Array.from((curve.getAttribute('d') ?? '').matchAll(/,(-?[\d.]+)/g)).map(m => Number(m[1]));
+        return Math.max(...ys) - Math.min(...ys);
+    }
+
+    it('hides a series on click and restores it on a second click', async () => {
+        const container = await renderChart();
+        const entry = screen.getByRole('button', { name: /api-gateway/ });
+
+        fireEvent.click(entry);
+        await waitFor(() => {
+            expect(container.querySelectorAll('.recharts-line')).toHaveLength(1);
+        });
+        expect(entry).toHaveAttribute('aria-pressed', 'false');
+
+        fireEvent.click(entry);
+        await waitFor(() => {
+            expect(container.querySelectorAll('.recharts-line')).toHaveLength(2);
+        });
+        expect(entry).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('rescales the y-axis to the visible series', async () => {
+        const container = await renderChart();
+        const squashed = curveSpread(container.querySelectorAll('.recharts-line-curve')[1]);
+
+        fireEvent.click(screen.getByRole('button', { name: /api-gateway/ }));
+        await waitFor(() => {
+            expect(container.querySelectorAll('.recharts-line-curve')).toHaveLength(1);
+        });
+        const rescaled = curveSpread(container.querySelector('.recharts-line-curve') as Element);
+        expect(rescaled).toBeGreaterThan(squashed * 5);
+    });
+
+    it('renders an empty plot rather than crashing when every series is hidden', async () => {
+        const container = await renderChart();
+        fireEvent.click(screen.getByRole('button', { name: /api-gateway/ }));
+        fireEvent.click(screen.getByRole('button', { name: /auth/ }));
+        await waitFor(() => {
+            expect(container.querySelectorAll('.recharts-line')).toHaveLength(0);
+        });
+        expect(container.querySelector('.recharts-wrapper')).not.toBeNull();
+    });
+
+    it('does not persist anything when a series is toggled', async () => {
+        const fetchSpy = vi.fn(() => Promise.reject(new Error('no network in this test')));
+        const previousFetch = globalThis.fetch;
+        globalThis.fetch = fetchSpy as unknown as typeof fetch;
+        try {
+            await renderChart();
+            fireEvent.click(screen.getByRole('button', { name: /api-gateway/ }));
+            await waitFor(() => {
+                expect(screen.getByRole('button', { name: /api-gateway/ })).toHaveAttribute('aria-pressed', 'false');
+            });
+            expect(fetchSpy).not.toHaveBeenCalled();
+        } finally {
+            globalThis.fetch = previousFetch;
+        }
+    });
+
+    it('hides a pie slice when its legend entry is clicked', async () => {
+        const { container } = render(
+            <KustoChart columns={columns} rows={rows} config={{ type: 'pie', x: 'State', y: ['Count'] }} />,
+        );
+        await waitFor(() => {
+            expect(container.querySelectorAll('.recharts-sector')).toHaveLength(3);
+        });
+        fireEvent.click(screen.getByRole('button', { name: /Texas/ }));
+        await waitFor(() => {
+            expect(container.querySelectorAll('.recharts-sector')).toHaveLength(2);
+        });
+    });
+});
+
+describe('KustoChart drag-to-zoom', () => {
+    // 12 buckets, so a drag across the middle leaves a clearly smaller x domain.
+    const seriesColumns: KustoColumn[] = [
+        { name: 'Bucket', type: 'string' },
+        { name: 'P95', type: 'real' },
+    ];
+    const seriesRows: KustoCellValue[][] = Array.from({ length: 12 }, (_, i) => [
+        `10:${String(i).padStart(2, '0')}`,
+        100 + i,
+    ]);
+    const config = { type: 'line' as const, x: 'Bucket', y: ['P95'] };
+
+    /** Number of plotted points, read off the line path — one per x in the domain. */
+    function pointCount(container: HTMLElement): number {
+        const d = container.querySelector('.recharts-line-curve')?.getAttribute('d') ?? '';
+        return Array.from(d.matchAll(/,(-?[\d.]+)/g)).length;
+    }
+
+    async function renderChart() {
+        const { container } = render(<KustoChart columns={seriesColumns} rows={seriesRows} config={config} />);
+        const wrapper = await waitFor(() => {
+            const el = container.querySelector('.recharts-wrapper');
+            expect(el).not.toBeNull();
+            return el as HTMLElement;
+        });
+        await waitFor(() => expect(pointCount(container)).toBe(12));
+        return { container, wrapper };
+    }
+
+    /**
+     * Recharts defers external mouse handlers to the next animation frame, and
+     * each step of a drag reads state the previous step set — so the events have
+     * to be flushed one at a time rather than fired back to back.
+     */
+    async function flush() {
+        await act(async () => {
+            await new Promise(resolve => requestAnimationFrame(() => resolve(null)));
+            await new Promise(resolve => setTimeout(resolve, 0));
+        });
+    }
+
+    async function drag(wrapper: HTMLElement, fromX: number, toX: number) {
+        const at = (clientX: number) => ({ clientX, clientY: 100, pointerId: 1, pointerType: 'mouse', bubbles: true });
+        fireEvent.mouseMove(wrapper, at(fromX));
+        await flush();
+        fireEvent.mouseDown(wrapper, at(fromX));
+        await flush();
+        fireEvent.mouseMove(wrapper, at(toX));
+        await flush();
+        fireEvent.mouseUp(wrapper, at(toX));
+        await flush();
+    }
+
+    it('narrows the x domain to the dragged range', async () => {
+        const { container, wrapper } = await renderChart();
+        await drag(wrapper, 120, 320);
+        await waitFor(() => {
+            const after = pointCount(container);
+            expect(after).toBeGreaterThan(1);
+            expect(after).toBeLessThan(12);
+        });
+    });
+
+    it('restores the full domain from the reset control', async () => {
+        const { container, wrapper } = await renderChart();
+        await drag(wrapper, 120, 320);
+        const reset = await screen.findByTestId('kusto-chart-reset-zoom');
+        fireEvent.click(reset);
+        await waitFor(() => expect(pointCount(container)).toBe(12));
+        expect(screen.queryByTestId('kusto-chart-reset-zoom')).toBeNull();
+    });
+
+    it('restores the full domain on a double click', async () => {
+        const { container, wrapper } = await renderChart();
+        await drag(wrapper, 120, 320);
+        await waitFor(() => expect(pointCount(container)).toBeLessThan(12));
+        fireEvent.doubleClick(wrapper, { clientX: 200, clientY: 100, bubbles: true });
+        await waitFor(() => expect(pointCount(container)).toBe(12));
+    });
+
+    it('treats a zero-width drag as a click, not a zoom', async () => {
+        const { container, wrapper } = await renderChart();
+        await drag(wrapper, 200, 200);
+        await waitFor(() => expect(pointCount(container)).toBe(12));
+        expect(screen.queryByTestId('kusto-chart-reset-zoom')).toBeNull();
+    });
+
+    it('leaves pie charts unzoomable', async () => {
+        const { container } = render(
+            <KustoChart columns={columns} rows={rows} config={{ type: 'pie', x: 'State', y: ['Count'] }} />,
+        );
+        const wrapper = await waitFor(() => {
+            const el = container.querySelector('.recharts-wrapper');
+            expect(el).not.toBeNull();
+            return el as HTMLElement;
+        });
+        await drag(wrapper, 120, 320);
+        expect(container.querySelectorAll('.recharts-sector')).toHaveLength(3);
+        expect(screen.queryByTestId('kusto-chart-reset-zoom')).toBeNull();
+    });
+});
+
+/**
+ * AC-07 — the same component backs the side panel, inline chat embeds
+ * (`compact`) and the fullscreen view, and is never gated by read-only mode.
+ * Height is the only difference between the surfaces; all three interactions
+ * have to stay live in the compact embed too.
+ */
+describe('KustoChart host surfaces', () => {
+    const seriesColumns: KustoColumn[] = [
+        { name: 'Bucket', type: 'string' },
+        { name: 'Service', type: 'string' },
+        { name: 'P95', type: 'real' },
+    ];
+    const seriesRows: KustoCellValue[][] = Array.from({ length: 12 }, (_, i) => i).flatMap(i => [
+        [`10:${String(i).padStart(2, '0')}`, 'api-gateway', 9000 + i] as KustoCellValue[],
+        [`10:${String(i).padStart(2, '0')}`, 'auth', 12.5 + i] as KustoCellValue[],
+    ]);
+    const config = { type: 'line' as const, x: 'Bucket', y: ['P95'], series: 'Service' };
+
+    async function renderChart(compact: boolean) {
+        const { container } = render(
+            <KustoChart columns={seriesColumns} rows={seriesRows} config={config} compact={compact} />,
+        );
+        const wrapper = await waitFor(() => {
+            const el = container.querySelector('.recharts-wrapper');
+            expect(el).not.toBeNull();
+            return el as HTMLElement;
+        });
+        return { container, wrapper };
+    }
+
+    /** Number of plotted points on the first line — one per x in the domain. */
+    function pointCount(container: HTMLElement): number {
+        const d = container.querySelector('.recharts-line-curve')?.getAttribute('d') ?? '';
+        return Array.from(d.matchAll(/,(-?[\d.]+)/g)).length;
+    }
+
+    async function flush() {
+        await act(async () => {
+            await new Promise(resolve => requestAnimationFrame(() => resolve(null)));
+            await new Promise(resolve => setTimeout(resolve, 0));
+        });
+    }
+
+    async function drag(wrapper: HTMLElement, fromX: number, toX: number) {
+        const at = (clientX: number) => ({ clientX, clientY: 100, pointerId: 1, pointerType: 'mouse', bubbles: true });
+        fireEvent.mouseMove(wrapper, at(fromX));
+        await flush();
+        fireEvent.mouseDown(wrapper, at(fromX));
+        await flush();
+        fireEvent.mouseMove(wrapper, at(toX));
+        await flush();
+        fireEvent.mouseUp(wrapper, at(toX));
+        await flush();
+    }
+
+    it('gives the compact embed a shorter plot than the panel', async () => {
+        const { container: panel } = await renderChart(false);
+        expect(panel.querySelector('.recharts-responsive-container')).toHaveStyle({ height: '320px' });
+        cleanup();
+        const { container: embed } = await renderChart(true);
+        expect(embed.querySelector('.recharts-responsive-container')).toHaveStyle({ height: '220px' });
+    });
+
+    it('keeps hover, legend toggle and drag-zoom live in a compact embed', async () => {
+        const { container, wrapper } = await renderChart(true);
+        await waitFor(() => expect(pointCount(container)).toBe(12));
+
+        hoverPlot(wrapper, 80);
+        const tooltip = await screen.findByTestId('kusto-chart-tooltip');
+        expect(tooltip).toHaveTextContent('api-gateway');
+        expect(tooltip).toHaveTextContent('auth');
+
+        fireEvent.click(screen.getByRole('button', { name: /api-gateway/ }));
+        await waitFor(() => expect(container.querySelectorAll('.recharts-line')).toHaveLength(1));
+        fireEvent.click(screen.getByRole('button', { name: /api-gateway/ }));
+        await waitFor(() => expect(container.querySelectorAll('.recharts-line')).toHaveLength(2));
+
+        await drag(wrapper, 120, 320);
+        await waitFor(() => expect(pointCount(container)).toBeLessThan(12));
+        fireEvent.click(await screen.findByTestId('kusto-chart-reset-zoom'));
+        await waitFor(() => expect(pointCount(container)).toBe(12));
+    });
+
+    it('never issues a request while interacting, so read-only hosts need no gating', async () => {
+        const fetchSpy = vi.spyOn(globalThis, 'fetch' as never).mockResolvedValue({} as never);
+        const { container, wrapper } = await renderChart(false);
+        await waitFor(() => expect(pointCount(container)).toBe(12));
+
+        hoverPlot(wrapper, 80);
+        await screen.findByTestId('kusto-chart-tooltip');
+        fireEvent.click(screen.getByRole('button', { name: /auth/ }));
+        await drag(wrapper, 120, 320);
+
+        expect(fetchSpy).not.toHaveBeenCalled();
+        fetchSpy.mockRestore();
     });
 });

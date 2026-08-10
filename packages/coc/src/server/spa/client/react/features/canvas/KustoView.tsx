@@ -465,7 +465,7 @@ export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false,
                             onSeries={s => updateConfig({ series: s || undefined })}
                         />
                         {chartConfig ? (
-                            <KustoChart columns={columns} rows={rows} config={chartConfig} />
+                            <KustoChart columns={columns} rows={rows} config={chartConfig} compact={compact} />
                         ) : (
                             <div className="text-[11px] italic text-[#848484] text-center py-6" data-testid="kusto-chart-unconfigured">
                                 Pick a chart type and a Y column to draw a chart.

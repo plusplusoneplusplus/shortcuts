@@ -1,440 +1,410 @@
 /**
- * KustoChart — native in-browser charts for a Kusto canvas (AC-05).
+ * KustoChart — interactive in-browser charts for a Kusto canvas.
  *
- * Renders the stored result rows as one of five chart kinds (line, bar,
- * scatter, pie, stacked area) using hand-drawn inline SVG — no chart-library
- * dependency, so it always bundles cleanly with the SPA. The pure data helpers
- * (`isNumericColumn`, `buildChartSeries`) are exported for unit testing the
- * config → render mapping and the numeric-column gating independently of the
- * DOM.
+ * The chart is drawn with Recharts, which is NOT part of the SPA bundle: it is
+ * fetched at runtime from the vendored `/canvas-vendor/recharts.js` bundle (see
+ * `rechartsLoader.ts`). While that load is in flight we show a small
+ * placeholder, and if it fails we fall back to the hand-drawn SVG renderer in
+ * `KustoChartStaticSvg.tsx` — the chart always draws, only interactivity is
+ * lost.
+ *
+ * The pure data helpers (`isNumericColumn`, `buildChartSeries`, …) live in
+ * `chartSeries.ts` and are re-exported here so existing importers and tests are
+ * unaffected.
  */
 
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
     KustoCellValue,
     KustoChartConfig,
+    KustoChartType,
     KustoColumn,
 } from '@plusplusoneplusplus/coc-client';
+import {
+    buildChartSeries,
+    seriesColor,
+    type ChartData,
+} from './chartSeries';
+import { ChartLegend } from './ChartLegend';
+import { KustoChartStaticSvg } from './KustoChartStaticSvg';
+import { loadRecharts, type RechartsNamespace } from './rechartsLoader';
 
-/** Kusto scalar types that count as numeric (case-insensitive). */
-const NUMERIC_KUSTO_TYPES = new Set([
-    'long', 'int', 'integer', 'real', 'double', 'decimal', 'float', 'number',
-]);
+export {
+    CHART_PALETTE,
+    buildChartSeries,
+    cellToNumber,
+    isNumericColumn,
+    numericColumnNames,
+    seriesColor,
+} from './chartSeries';
+export type { ChartData, ChartSeries } from './chartSeries';
 
-/** Coerce a cell to a finite number, or null when it is not numeric. */
-export function cellToNumber(value: KustoCellValue): number | null {
-    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-    if (typeof value === 'string' && value.trim() !== '') {
-        const n = Number(value);
-        return Number.isFinite(n) ? n : null;
-    }
-    return null;
+/** Chart height in the panel, and in a compact inline embed. */
+const CHART_HEIGHT = 320;
+const COMPACT_CHART_HEIGHT = 220;
+
+const AXIS_COLOR = '#888';
+const GRID_COLOR = '#8884';
+
+/** X tick labels stay short, same as the static renderer. */
+function truncateLabel(label: string): string {
+    return label.length > 12 ? `${label.slice(0, 11)}…` : label;
 }
 
 /**
- * Whether a column holds numeric data. Trusts the Kusto column `type` first,
- * then falls back to sampling up to 20 non-null cells (so string-typed columns
- * that actually carry numbers still qualify, and text columns are rejected).
+ * Tooltip values are printed unrounded — reading the exact number off a hover is
+ * the whole point of the interactive chart, so no compact/abbreviated formatting
+ * here (the y-axis ticks may still be terse).
  */
-export function isNumericColumn(
-    column: KustoColumn,
-    rows: KustoCellValue[][],
-    columnIndex: number,
-): boolean {
-    if (NUMERIC_KUSTO_TYPES.has((column.type ?? '').toLowerCase())) return true;
-    let seen = 0;
-    for (const row of rows) {
-        const value = row[columnIndex];
-        if (value === null || value === undefined) continue;
-        seen += 1;
-        if (cellToNumber(value) === null) return false;
-        if (seen >= 20) break;
-    }
-    return seen > 0;
-}
-
-/** Names of the numeric columns, in column order. */
-export function numericColumnNames(
-    columns: KustoColumn[],
-    rows: KustoCellValue[][],
-): string[] {
-    return columns.filter((c, i) => isNumericColumn(c, rows, i)).map(c => c.name);
-}
-
-export interface ChartSeries {
-    name: string;
-    /** Values aligned to `labels`; null where a category has no datum. */
-    values: (number | null)[];
-}
-
-export interface ChartData {
-    /** X-axis / category labels, one per plotted position. */
-    labels: string[];
-    series: ChartSeries[];
-}
-
-function cellLabel(value: KustoCellValue): string {
-    if (value === null || value === undefined) return '';
+function exactValue(value: number): string {
     return String(value);
 }
 
-/**
- * Reduce columns+rows into labelled series per the chart config. Two modes:
- *  - `series` column set → one series per distinct series value, valued by the
- *    first y column.
- *  - otherwise → one series per selected y column.
- * Labels come from the x column (or the row index when x is unset).
- */
-export function buildChartSeries(
-    columns: KustoColumn[],
-    rows: KustoCellValue[][],
-    config: KustoChartConfig,
-): ChartData {
-    const indexOf = (name: string | undefined): number =>
-        name ? columns.findIndex(c => c.name === name) : -1;
-    const xIndex = indexOf(config.x);
-    const yNames = (config.y ?? []).filter(Boolean);
-    const yIndexes = yNames.map(indexOf).filter(i => i >= 0);
-    if (yIndexes.length === 0) return { labels: [], series: [] };
-
-    const labels: string[] = [];
-    const labelPos = new Map<string, number>();
-    const labelFor = (rowIndex: number, row: KustoCellValue[]): string =>
-        xIndex >= 0 ? cellLabel(row[xIndex]) : String(rowIndex + 1);
-    const ensureLabel = (label: string): number => {
-        let pos = labelPos.get(label);
-        if (pos === undefined) {
-            pos = labels.length;
-            labelPos.set(label, pos);
-            labels.push(label);
-        }
-        return pos;
-    };
-
-    const seriesIndex = indexOf(config.series);
-    if (seriesIndex >= 0) {
-        // Grouped by the series column; value = first y column.
-        const yIdx = yIndexes[0];
-        const seriesNames: string[] = [];
-        const seriesPos = new Map<string, number>();
-        const grid: (number | null)[][] = [];
-        rows.forEach((row, rowIndex) => {
-            const label = labelFor(rowIndex, row);
-            const lp = ensureLabel(label);
-            const sName = cellLabel(row[seriesIndex]);
-            let sp = seriesPos.get(sName);
-            if (sp === undefined) {
-                sp = seriesNames.length;
-                seriesPos.set(sName, sp);
-                seriesNames.push(sName);
-                grid.push([]);
-            }
-            grid[sp][lp] = cellToNumber(row[yIdx]);
-        });
-        const series = seriesNames.map((name, sp) => ({
-            name,
-            values: labels.map((_, lp) => grid[sp][lp] ?? null),
-        }));
-        return { labels, series };
-    }
-
-    // One series per y column.
-    const grid: (number | null)[][] = yIndexes.map(() => []);
-    rows.forEach((row, rowIndex) => {
-        const lp = ensureLabel(labelFor(rowIndex, row));
-        yIndexes.forEach((yIdx, s) => {
-            grid[s][lp] = cellToNumber(row[yIdx]);
-        });
-    });
-    const series = yIndexes.map((_, s) => ({
-        name: yNames[s],
-        values: labels.map((_, lp) => grid[s][lp] ?? null),
-    }));
-    return { labels, series };
+interface TooltipEntry {
+    name: string;
+    color: string;
+    value: number;
 }
 
-/** Colorblind-safe categorical palette (Tableau 10). */
-export const CHART_PALETTE = [
-    '#4e79a7', '#f28e2b', '#59a14f', '#e15759', '#b07aa1',
-    '#76b7b2', '#ff9da7', '#9c755f', '#edc948', '#bab0ac',
-];
-
-const W = 640;
-const H = 360;
-const M = { top: 16, right: 16, bottom: 52, left: 56 };
-const PLOT_W = W - M.left - M.right;
-const PLOT_H = H - M.top - M.bottom;
-
-function niceExtent(data: ChartData, includeZero: boolean): [number, number] {
-    let min = Infinity;
-    let max = -Infinity;
-    for (const s of data.series) {
-        for (const v of s.values) {
-            if (v === null) continue;
-            if (v < min) min = v;
-            if (v > max) max = v;
-        }
-    }
-    if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1];
-    if (includeZero) {
-        min = Math.min(0, min);
-        max = Math.max(0, max);
-    }
-    if (min === max) {
-        // Flat series — pad so it renders.
-        const pad = Math.abs(min) || 1;
-        return [min - pad, max + pad];
-    }
-    return [min, max];
-}
-
-interface AxisChartProps {
-    data: ChartData;
-    kind: 'line' | 'bar' | 'scatter' | 'stackedArea';
-}
-
-function AxisChart({ data, kind }: AxisChartProps) {
-    const includeZero = kind === 'bar' || kind === 'stackedArea';
-    const stacked = kind === 'stackedArea';
-    const [yMin, yMax] = useMemo(() => {
-        if (!stacked) return niceExtent(data, includeZero);
-        // For stacked areas the axis must span the cumulative totals.
-        let max = 0;
-        data.labels.forEach((_, li) => {
-            let sum = 0;
-            for (const s of data.series) sum += s.values[li] ?? 0;
-            if (sum > max) max = sum;
-        });
-        return [0, max || 1] as [number, number];
-    }, [data, includeZero, stacked]);
-
-    const n = Math.max(data.labels.length, 1);
-    const band = PLOT_W / n;
-    const xCenter = (i: number) => M.left + band * i + band / 2;
-    const yScale = (v: number) => M.top + PLOT_H - ((v - yMin) / (yMax - yMin || 1)) * PLOT_H;
-
-    // Show at most ~12 x labels to avoid overlap.
-    const labelStep = Math.ceil(data.labels.length / 12) || 1;
-
-    const ticks = 4;
-    const yTicks = Array.from({ length: ticks + 1 }, (_, i) => yMin + ((yMax - yMin) * i) / ticks);
-
+/** The tooltip card itself, styled off the same tokens as the legend. */
+function TooltipCard({ label, entries }: { label: string; entries: TooltipEntry[] }) {
     return (
-        <svg
-            viewBox={`0 0 ${W} ${H}`}
-            width="100%"
-            preserveAspectRatio="xMidYMid meet"
-            role="img"
-            aria-label={`${kind} chart`}
-            data-testid="kusto-chart-svg"
+        <div
+            className="rounded-sm border border-[#8884] bg-white dark:bg-[#252526] px-2 py-1 text-[10px] text-[#616161] dark:text-[#cccccc] shadow-sm"
+            data-testid="kusto-chart-tooltip"
         >
-            {/* Y grid + labels */}
-            {yTicks.map((t, i) => (
-                <g key={`y${i}`}>
-                    <line
-                        x1={M.left}
-                        x2={W - M.right}
-                        y1={yScale(t)}
-                        y2={yScale(t)}
-                        stroke="#8884"
-                        strokeWidth={1}
+            <div className="mb-0.5 font-medium">{label}</div>
+            {entries.map(entry => (
+                <div key={entry.name} className="flex items-center gap-1.5 whitespace-nowrap">
+                    <span
+                        className="inline-block w-2 h-2 rounded-sm shrink-0"
+                        style={{ backgroundColor: entry.color }}
                     />
-                    <text x={M.left - 6} y={yScale(t) + 3} textAnchor="end" fontSize={10} fill="#888">
-                        {Number.isInteger(t) ? t : t.toFixed(2)}
-                    </text>
-                </g>
-            ))}
-            {/* X labels */}
-            {data.labels.map((label, i) =>
-                i % labelStep === 0 ? (
-                    <text
-                        key={`x${i}`}
-                        x={xCenter(i)}
-                        y={H - M.bottom + 16}
-                        textAnchor="middle"
-                        fontSize={10}
-                        fill="#888"
-                    >
-                        {label.length > 12 ? `${label.slice(0, 11)}…` : label}
-                    </text>
-                ) : null,
-            )}
-
-            {kind === 'bar' && <BarMarks data={data} band={band} yScale={yScale} yZero={yScale(Math.max(0, yMin))} />}
-            {kind === 'line' && <LineMarks data={data} xCenter={xCenter} yScale={yScale} />}
-            {kind === 'scatter' && <ScatterMarks data={data} xCenter={xCenter} yScale={yScale} />}
-            {kind === 'stackedArea' && <StackedAreaMarks data={data} xCenter={xCenter} yScale={yScale} yBase={yScale(0)} />}
-        </svg>
-    );
-}
-
-function BarMarks({ data, band, yScale, yZero }: { data: ChartData; band: number; yScale: (v: number) => number; yZero: number }) {
-    const groups = data.series.length || 1;
-    const barW = (band * 0.7) / groups;
-    return (
-        <g>
-            {data.labels.map((_, li) => (
-                <g key={li}>
-                    {data.series.map((s, si) => {
-                        const v = s.values[li];
-                        if (v === null) return null;
-                        const x = M.left + band * li + band * 0.15 + barW * si;
-                        const y = yScale(v);
-                        const h = Math.abs(y - yZero);
-                        return (
-                            <rect
-                                key={si}
-                                x={x}
-                                y={Math.min(y, yZero)}
-                                width={Math.max(barW - 1, 1)}
-                                height={Math.max(h, 0)}
-                                fill={CHART_PALETTE[si % CHART_PALETTE.length]}
-                            />
-                        );
-                    })}
-                </g>
-            ))}
-        </g>
-    );
-}
-
-function seriesPath(values: (number | null)[], xCenter: (i: number) => number, yScale: (v: number) => number): string {
-    let d = '';
-    let penDown = false;
-    values.forEach((v, i) => {
-        if (v === null) {
-            penDown = false;
-            return;
-        }
-        const cmd = penDown ? 'L' : 'M';
-        d += `${cmd}${xCenter(i).toFixed(1)},${yScale(v).toFixed(1)} `;
-        penDown = true;
-    });
-    return d.trim();
-}
-
-function LineMarks({ data, xCenter, yScale }: { data: ChartData; xCenter: (i: number) => number; yScale: (v: number) => number }) {
-    return (
-        <g fill="none">
-            {data.series.map((s, si) => (
-                <path
-                    key={si}
-                    d={seriesPath(s.values, xCenter, yScale)}
-                    stroke={CHART_PALETTE[si % CHART_PALETTE.length]}
-                    strokeWidth={2}
-                />
-            ))}
-        </g>
-    );
-}
-
-function ScatterMarks({ data, xCenter, yScale }: { data: ChartData; xCenter: (i: number) => number; yScale: (v: number) => number }) {
-    return (
-        <g>
-            {data.series.map((s, si) =>
-                s.values.map((v, i) =>
-                    v === null ? null : (
-                        <circle
-                            key={`${si}-${i}`}
-                            cx={xCenter(i)}
-                            cy={yScale(v)}
-                            r={3}
-                            fill={CHART_PALETTE[si % CHART_PALETTE.length]}
-                            fillOpacity={0.8}
-                        />
-                    ),
-                ),
-            )}
-        </g>
-    );
-}
-
-function StackedAreaMarks({ data, xCenter, yScale, yBase }: { data: ChartData; xCenter: (i: number) => number; yScale: (v: number) => number; yBase: number }) {
-    const cumulative = data.labels.map(() => 0);
-    return (
-        <g>
-            {data.series.map((s, si) => {
-                const lower = cumulative.slice();
-                const upper = data.labels.map((_, li) => {
-                    cumulative[li] += s.values[li] ?? 0;
-                    return cumulative[li];
-                });
-                const top = upper.map((v, i) => `${xCenter(i).toFixed(1)},${yScale(v).toFixed(1)}`);
-                const bottom = lower
-                    .map((v, i) => `${xCenter(i).toFixed(1)},${yScale(v).toFixed(1)}`)
-                    .reverse();
-                const points = [...top, ...bottom].join(' ');
-                return (
-                    <polygon
-                        key={si}
-                        points={points || `${M.left},${yBase}`}
-                        fill={CHART_PALETTE[si % CHART_PALETTE.length]}
-                        fillOpacity={0.6}
-                        stroke={CHART_PALETTE[si % CHART_PALETTE.length]}
-                        strokeWidth={1}
-                    />
-                );
-            })}
-        </g>
-    );
-}
-
-function PieChart({ data }: { data: ChartData }) {
-    // Pie uses the first series; each label is a slice.
-    const series = data.series[0];
-    const slices = series
-        ? data.labels.map((label, i) => ({ label, value: Math.max(series.values[i] ?? 0, 0) }))
-        : [];
-    const total = slices.reduce((sum, s) => sum + s.value, 0);
-    const cx = W / 2;
-    const cy = H / 2;
-    const r = Math.min(PLOT_W, PLOT_H) / 2 - 8;
-    let angle = -Math.PI / 2;
-    return (
-        <svg viewBox={`0 0 ${W} ${H}`} width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="pie chart" data-testid="kusto-chart-svg">
-            {total <= 0 ? (
-                <text x={cx} y={cy} textAnchor="middle" fontSize={12} fill="#888">No positive values to chart</text>
-            ) : (
-                slices.map((slice, i) => {
-                    const frac = slice.value / total;
-                    const end = angle + frac * 2 * Math.PI;
-                    const large = frac > 0.5 ? 1 : 0;
-                    const x1 = cx + r * Math.cos(angle);
-                    const y1 = cy + r * Math.sin(angle);
-                    const x2 = cx + r * Math.cos(end);
-                    const y2 = cy + r * Math.sin(end);
-                    const d = `M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${large} 1 ${x2.toFixed(1)},${y2.toFixed(1)} Z`;
-                    angle = end;
-                    return <path key={i} d={d} fill={CHART_PALETTE[i % CHART_PALETTE.length]} />;
-                })
-            )}
-        </svg>
-    );
-}
-
-function Legend({ names }: { names: string[] }) {
-    if (names.length <= 1) return null;
-    return (
-        <div className="flex flex-wrap gap-x-3 gap-y-1 justify-center mt-1" data-testid="kusto-chart-legend">
-            {names.map((name, i) => (
-                <span key={name} className="inline-flex items-center gap-1 text-[10px] text-[#616161] dark:text-[#cccccc]">
-                    <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: CHART_PALETTE[i % CHART_PALETTE.length] }} />
-                    {name}
-                </span>
+                    <span>{entry.name}</span>
+                    <span className="ml-auto tabular-nums">{exactValue(entry.value)}</span>
+                </div>
             ))}
         </div>
     );
 }
 
+/** Recharts hands custom tooltip content an untyped payload bag. */
+interface TooltipContentProps {
+    active?: boolean;
+    label?: unknown;
+    payload?: { name?: string; value?: unknown; payload?: Record<string, unknown> }[];
+}
+
+/**
+ * A shared tooltip: it lists *every* visible series at the hovered x, not just
+ * the nearest mark. We read the values straight out of `ChartData` rather than
+ * off the recharts payload so the list is complete and in series order even for
+ * chart kinds whose payload only carries the hovered item.
+ */
+function makeSharedTooltip(data: ChartData, visible: number[]) {
+    return function SharedTooltip({ active, label, payload }: TooltipContentProps) {
+        if (!active) return null;
+        const raw = label ?? payload?.[0]?.payload?.__x;
+        if (raw === undefined || raw === null) return null;
+        const text = String(raw);
+        const li = data.labels.indexOf(text);
+        if (li < 0) return null;
+        const entries: TooltipEntry[] = [];
+        for (const si of visible) {
+            const value = data.series[si]?.values[li];
+            // Nulls are gaps in the series — omit them rather than showing 0.
+            if (typeof value === 'number') {
+                entries.push({ name: data.series[si].name, color: seriesColor(si), value });
+            }
+        }
+        if (entries.length === 0) return null;
+        return <TooltipCard label={text} entries={entries} />;
+    };
+}
+
+/** Pie slices get a plain per-slice tooltip; a shared one is meaningless there. */
+function makePieTooltip(data: ChartData) {
+    const valueName = data.series[0]?.name ?? 'value';
+    return function PieTooltip({ active, payload }: TooltipContentProps) {
+        const item = payload?.[0];
+        if (!active || !item || typeof item.value !== 'number') return null;
+        const name = String(item.name ?? item.payload?.name ?? '');
+        const index = Number(item.payload?.__i ?? 0);
+        return (
+            <TooltipCard
+                label={name}
+                entries={[{ name: valueName, color: seriesColor(index), value: item.value }]}
+            />
+        );
+    };
+}
+
+/** Per-label rows in the shape Recharts wants: `{ __x, s0, s1, … }`. */
+function toRechartsRows(data: ChartData): Record<string, string | number | null>[] {
+    return data.labels.map((label, li) => {
+        const row: Record<string, string | number | null> = { __x: label };
+        data.series.forEach((s, si) => {
+            row[`s${si}`] = s.values[li] ?? null;
+        });
+        return row;
+    });
+}
+
+interface RechartsChartProps {
+    rc: RechartsNamespace;
+    data: ChartData;
+    type: KustoChartType;
+    compact: boolean;
+    /** Series (or, for pie, slice) indices toggled off in the legend. */
+    hidden: ReadonlySet<number>;
+}
+
+/** Recharts hands the chart mouse handlers an untyped event bag. */
+interface ChartMouseEvent {
+    activeLabel?: unknown;
+}
+
+/** The Recharts render path — one component per chart kind, shared axes. */
+function RechartsChart({ rc, data, type, compact, hidden }: RechartsChartProps) {
+    const {
+        ResponsiveContainer,
+        LineChart, BarChart, ScatterChart, AreaChart, PieChart,
+        Line, Bar, Scatter, Area, Pie, Cell,
+        XAxis, YAxis, CartesianGrid, Tooltip, ReferenceArea,
+    } = rc;
+    const height = compact ? COMPACT_CHART_HEIGHT : CHART_HEIGHT;
+    const rows = useMemo(() => toRechartsRows(data), [data]);
+    // Hidden series are simply not rendered, so recharts rescales the y-axis to
+    // what is left and the shared tooltip lists only visible series.
+    const visible = useMemo(
+        () => data.series.map((_s, si) => si).filter(si => !hidden.has(si)),
+        [data, hidden],
+    );
+    const SharedTooltip = useMemo(() => makeSharedTooltip(data, visible), [data, visible]);
+    const SlicedTooltip = useMemo(() => makePieTooltip(data), [data]);
+
+    // Drag-to-zoom, over the label index domain. Like the legend toggles this is
+    // ephemeral view state — nothing is written back to the canvas.
+    const [zoom, setZoom] = useState<{ start: number; end: number } | null>(null);
+    const [dragFrom, setDragFrom] = useState<string | null>(null);
+    const [dragTo, setDragTo] = useState<string | null>(null);
+    // A new result or chart kind renumbers the labels, so drop a stale range.
+    useEffect(() => {
+        setZoom(null);
+        setDragFrom(null);
+        setDragTo(null);
+    }, [data, type]);
+
+    const start = zoom ? zoom.start : 0;
+    const end = zoom ? zoom.end : rows.length - 1;
+    const viewRows = useMemo(() => rows.slice(start, end + 1), [rows, start, end]);
+
+    const beginDrag = useCallback((e: ChartMouseEvent | null) => {
+        if (e?.activeLabel === undefined || e.activeLabel === null) return;
+        setDragFrom(String(e.activeLabel));
+        setDragTo(null);
+    }, []);
+    const extendDrag = useCallback((e: ChartMouseEvent | null) => {
+        if (dragFrom === null) return;
+        if (e?.activeLabel === undefined || e.activeLabel === null) return;
+        setDragTo(String(e.activeLabel));
+    }, [dragFrom]);
+    const endDrag = useCallback(() => {
+        if (dragFrom !== null && dragTo !== null && dragTo !== dragFrom) {
+            const labels = viewRows.map(row => String(row.__x));
+            let a = labels.indexOf(dragFrom);
+            let b = labels.indexOf(dragTo);
+            // A zero-width drag is a click, not a zoom.
+            if (a >= 0 && b >= 0 && a !== b) {
+                if (a > b) [a, b] = [b, a];
+                setZoom({ start: start + a, end: start + b });
+            }
+        }
+        setDragFrom(null);
+        setDragTo(null);
+    }, [dragFrom, dragTo, viewRows, start]);
+    const resetZoom = useCallback(() => {
+        setZoom(null);
+        setDragFrom(null);
+        setDragTo(null);
+    }, []);
+
+    if (type === 'pie') {
+        // Pie uses the first series; each label is a slice. `__i` keeps the
+        // slice's palette index around for the tooltip swatch.
+        const first = data.series[0];
+        const slices = first
+            ? data.labels
+                .map((label, i) => ({ name: label, value: Math.max(first.values[i] ?? 0, 0), __i: i }))
+                .filter(s => s.value > 0 && !hidden.has(s.__i))
+            : [];
+        return (
+            <ResponsiveContainer width="100%" height={height}>
+                <PieChart>
+                    <Tooltip content={<SlicedTooltip />} isAnimationActive={false} />
+                    <Pie data={slices} dataKey="value" nameKey="name" isAnimationActive={false}>
+                        {slices.map((slice: { __i: number }, i: number) => (
+                            <Cell key={i} fill={seriesColor(slice.__i)} />
+                        ))}
+                    </Pie>
+                </PieChart>
+            </ResponsiveContainer>
+        );
+    }
+
+    const axes = (
+        <>
+            <CartesianGrid stroke={GRID_COLOR} />
+            <Tooltip
+                content={<SharedTooltip />}
+                shared
+                isAnimationActive={false}
+                cursor={{ stroke: AXIS_COLOR, strokeDasharray: '3 3' }}
+            />
+            <XAxis
+                dataKey="__x"
+                tick={{ fontSize: 10, fill: AXIS_COLOR }}
+                stroke={AXIS_COLOR}
+                tickFormatter={truncateLabel}
+                interval="preserveStartEnd"
+            />
+            <YAxis tick={{ fontSize: 10, fill: AXIS_COLOR }} stroke={AXIS_COLOR} width={56} />
+            {dragFrom !== null && dragTo !== null && (
+                <ReferenceArea x1={dragFrom} x2={dragTo} stroke={AXIS_COLOR} strokeOpacity={0.4} fillOpacity={0.15} />
+            )}
+        </>
+    );
+
+    // Drag-select only: no wheel zoom, no pan — the chart lives inside a
+    // scrollable panel and must not hijack the wheel.
+    const chartEvents = {
+        onMouseDown: beginDrag,
+        onMouseMove: extendDrag,
+        onMouseUp: endDrag,
+        onDoubleClick: resetZoom,
+    };
+
+    const body = (() => {
+        switch (type) {
+            case 'bar':
+                return (
+                    <BarChart data={viewRows} {...chartEvents}>
+                        {axes}
+                        {visible.map(si => (
+                            <Bar key={si} dataKey={`s${si}`} name={data.series[si].name} fill={seriesColor(si)} isAnimationActive={false} />
+                        ))}
+                    </BarChart>
+                );
+            case 'scatter':
+                return (
+                    <ScatterChart data={viewRows} {...chartEvents}>
+                        {axes}
+                        {visible.map(si => (
+                            <Scatter key={si} dataKey={`s${si}`} name={data.series[si].name} fill={seriesColor(si)} isAnimationActive={false} />
+                        ))}
+                    </ScatterChart>
+                );
+            case 'stackedArea':
+                return (
+                    <AreaChart data={viewRows} {...chartEvents}>
+                        {axes}
+                        {visible.map(si => (
+                            <Area
+                                key={si}
+                                type="linear"
+                                dataKey={`s${si}`}
+                                name={data.series[si].name}
+                                stackId="kusto"
+                                stroke={seriesColor(si)}
+                                fill={seriesColor(si)}
+                                fillOpacity={0.6}
+                                isAnimationActive={false}
+                            />
+                        ))}
+                    </AreaChart>
+                );
+            case 'line':
+            default:
+                return (
+                    <LineChart data={viewRows} {...chartEvents}>
+                        {axes}
+                        {visible.map(si => (
+                            <Line
+                                key={si}
+                                type="linear"
+                                dataKey={`s${si}`}
+                                name={data.series[si].name}
+                                stroke={seriesColor(si)}
+                                strokeWidth={2}
+                                dot={false}
+                                connectNulls={false}
+                                isAnimationActive={false}
+                            />
+                        ))}
+                    </LineChart>
+                );
+        }
+    })();
+
+    return (
+        <div className="relative select-none">
+            {zoom && (
+                <button
+                    type="button"
+                    onClick={resetZoom}
+                    className="absolute right-1 top-1 z-10 rounded-sm border border-[#8884] bg-white dark:bg-[#252526] px-1.5 py-0.5 text-[10px] text-[#616161] dark:text-[#cccccc]"
+                    data-testid="kusto-chart-reset-zoom"
+                >
+                    Reset zoom
+                </button>
+            )}
+            <ResponsiveContainer width="100%" height={height}>
+                {body}
+            </ResponsiveContainer>
+        </div>
+    );
+}
+
+type LoaderState =
+    | { status: 'loading' }
+    | { status: 'ready'; rc: RechartsNamespace }
+    | { status: 'failed' };
+
 export interface KustoChartProps {
     columns: KustoColumn[];
     rows: KustoCellValue[][];
     config: KustoChartConfig;
+    /** Inline chat embeds render a shorter chart. */
+    compact?: boolean;
 }
 
-/** Full chart surface: an SVG plot plus a legend, driven by the config. */
-export function KustoChart({ columns, rows, config }: KustoChartProps) {
+/** Full chart surface: the plot plus a legend, driven by the config. */
+export function KustoChart({ columns, rows, config, compact = false }: KustoChartProps) {
     const data = useMemo(() => buildChartSeries(columns, rows, config), [columns, rows, config]);
+    const [loader, setLoader] = useState<LoaderState>({ status: 'loading' });
+    // Legend toggles are ephemeral view state: nothing is written back to the
+    // canvas, so the revision never bumps and reopening resets everything.
+    const [hidden, setHidden] = useState<ReadonlySet<number>>(() => new Set());
+    const toggleSeries = useCallback((index: number) => {
+        setHidden(prev => {
+            const next = new Set(prev);
+            if (!next.delete(index)) next.add(index);
+            return next;
+        });
+    }, []);
+
+    // A different chart type or query result renumbers the series, so drop the
+    // stale toggles rather than hiding an unrelated series.
+    useEffect(() => { setHidden(new Set()); }, [config.type, data]);
+
+    useEffect(() => {
+        let alive = true;
+        loadRecharts().then(
+            rc => { if (alive) setLoader({ status: 'ready', rc }); },
+            () => { if (alive) setLoader({ status: 'failed' }); },
+        );
+        return () => { alive = false; };
+    }, []);
 
     if (!config.y || config.y.length === 0) {
         return (
@@ -451,19 +421,34 @@ export function KustoChart({ columns, rows, config }: KustoChartProps) {
         );
     }
 
-    if (config.type === 'pie') {
+    const legendNames = config.type === 'pie' ? data.labels : data.series.map(s => s.name);
+
+    if (loader.status === 'loading') {
         return (
             <div data-testid="kusto-chart">
-                <PieChart data={data} />
-                <Legend names={data.labels} />
+                <div
+                    className="flex items-center justify-center text-[11px] italic text-[#848484]"
+                    style={{ height: compact ? COMPACT_CHART_HEIGHT : CHART_HEIGHT }}
+                    data-testid="kusto-chart-loading"
+                >
+                    Loading chart…
+                </div>
+            </div>
+        );
+    }
+
+    if (loader.status === 'failed') {
+        return (
+            <div data-testid="kusto-chart">
+                <KustoChartStaticSvg data={data} kind={config.type} />
             </div>
         );
     }
 
     return (
         <div data-testid="kusto-chart">
-            <AxisChart data={data} kind={config.type} />
-            <Legend names={data.series.map(s => s.name)} />
+            <RechartsChart rc={loader.rc} data={data} type={config.type} compact={compact} hidden={hidden} />
+            <ChartLegend names={legendNames} hidden={hidden} onToggle={toggleSeries} />
         </div>
     );
 }
