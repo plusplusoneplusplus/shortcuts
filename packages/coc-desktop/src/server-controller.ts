@@ -6,7 +6,8 @@
  *   1. Probe `GET /api/health` on the well-known CLI port (4000). If a healthy
  *      server is already running (e.g. a `coc serve` launched from a terminal),
  *      ATTACH to it — record that we did not start it so we never shut it down.
- *   2. Otherwise pick a free ephemeral port (never the hardcoded 4000) and
+ *   2. Otherwise reuse that well-known port when it is free, falling back to a
+ *      free ephemeral port only when another process already occupies it, then
  *      `fork()` `server-entry.js`, which runs as Electron's Node via
  *      `ELECTRON_RUN_AS_NODE` and boots `createExecutionServer()` against the
  *      shared `~/.coc` data dir. Wait for its `{ type: 'listening', port }`
@@ -49,7 +50,7 @@ export interface ServerHandle {
 /** Injectable seams (overridden in tests). */
 export interface AttachOrStartDeps {
     probeHealth?: (host: string, port: number, timeoutMs?: number) => Promise<boolean>;
-    findFreePort?: (host: string) => Promise<number>;
+    findFreePort?: (host: string, preferredPort?: number) => Promise<number>;
     fork?: (modulePath: string, env: NodeJS.ProcessEnv) => ChildProcess;
 }
 
@@ -110,13 +111,21 @@ export function probeHealth(host: string, port: number, timeoutMs = 1000): Promi
     });
 }
 
-/** Acquire a free ephemeral port by binding to port 0 and reading it back. */
-export function findFreePort(host: string = DEFAULT_HOST): Promise<number> {
+/** Acquire `preferredPort` when available, otherwise return a free ephemeral port. */
+export function findFreePort(host: string = DEFAULT_HOST, preferredPort = 0): Promise<number> {
     return new Promise((resolve, reject) => {
         const srv = net.createServer();
         srv.unref();
-        srv.on('error', reject);
-        srv.listen(0, host, () => {
+        let fellBack = preferredPort === 0;
+        srv.on('error', (err: NodeJS.ErrnoException) => {
+            if (!fellBack) {
+                fellBack = true;
+                srv.listen(0, host);
+                return;
+            }
+            reject(err);
+        });
+        srv.listen(preferredPort, host, () => {
             const addr = srv.address();
             if (addr && typeof addr === 'object' && typeof addr.port === 'number') {
                 const acquired = addr.port;
@@ -244,8 +253,10 @@ export async function attachOrStart(options: AttachOrStartOptions = {}): Promise
         return { host, port: attachPort, url: formatUrl(host, attachPort), started: false };
     }
 
-    // 2) Otherwise pick a free ephemeral port and fork our own server.
-    const requestedPort = await findPort(host);
+    // 2) Otherwise start on the well-known port when it is free. If another
+    // process occupies it but is not a healthy CoC server, fall back to an
+    // ephemeral port so Desktop still starts.
+    const requestedPort = await findPort(host, attachPort);
     const child = forkFn(serverEntryPath, {
         ELECTRON_RUN_AS_NODE: '1',
         COC_DESKTOP_HOST: host,
