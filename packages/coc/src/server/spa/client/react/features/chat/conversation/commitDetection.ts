@@ -12,8 +12,16 @@ export interface DetectedCommit {
     insertions?: number;
     deletions?: number;
     toolCallId: string;
-    /** True when the commit subject starts with fixup!, squash!, or amend!. */
+    /** True when the commit subject starts with fixup! or squash!. */
     isFixup: boolean;
+    /**
+     * True when the commit rewrote an existing commit — either the command was
+     * a `git commit --amend`, or the subject starts with `amend! `.
+     * Mutually exclusive with isFixup.
+     */
+    isAmend: boolean;
+    /** Short hash of the commit this amend replaced, when known. */
+    replacedHash?: string;
 }
 
 export interface ToolCallLike {
@@ -81,6 +89,17 @@ function hasGitSubcommand(command: string, subcommand: string): boolean {
 
 function isCommitCreatingCommand(command: string): boolean {
     return COMMIT_CREATING_SUBCOMMANDS.some(cmd => hasGitSubcommand(command, cmd));
+}
+
+/**
+ * True when the command contains a `git ... commit ... --amend` invocation.
+ * The tail is bounded by shell chaining operators so that an unrelated commit
+ * earlier in a `&&` chain is not mistaken for the amend.
+ */
+function isAmendCommand(command: string): boolean {
+    return new RegExp(
+        String.raw`\bgit(?:\s+${GIT_GLOBAL_OPTION})*\s+commit\b[^&|;\n]*\s--amend\b`,
+    ).test(command);
 }
 
 function isReadOnlyGitCommand(command: string): boolean {
@@ -159,8 +178,10 @@ export function detectCommitsInToolGroup(toolCalls: ToolCallLike[]): DetectedCom
 
         let allowCompactOneline = false;
         let allowVerificationOutput = false;
+        let commandIsAmend = false;
         if (isShell) {
             const command = getCommandString(tc.args);
+            commandIsAmend = isAmendCommand(command);
             const createsCommit = isCommitCreatingCommand(command);
             const successfulResult = commandResultSucceeded(tc.result);
 
@@ -224,13 +245,15 @@ export function detectCommitsInToolGroup(toolCalls: ToolCallLike[]): DetectedCom
             rememberCommitHash(seenHashes, shortHash, fullHash);
 
             const trimmedSubject = normalizeSubject(subject);
-            const isFixup = /^(?:fixup|squash|amend)! /.test(trimmedSubject);
+            const isAmend = commandIsAmend || /^amend! /.test(trimmedSubject);
+            const isFixup = !isAmend && /^(?:fixup|squash)! /.test(trimmedSubject);
 
             const commit: DetectedCommit = {
                 shortHash,
                 subject: trimmedSubject,
                 toolCallId: tc.id,
                 isFixup,
+                isAmend,
             };
             if (branch) commit.branch = branch;
             if (fullHash) commit.fullHash = fullHash;
@@ -250,7 +273,39 @@ export function detectCommitsInToolGroup(toolCalls: ToolCallLike[]): DetectedCom
         }
     }
 
-    return results;
+    return linkAmendsToPrecedingCommits(results);
+}
+
+/**
+ * Collapses each amend into the commit it rewrote.
+ *
+ * The link is positional — an amend replaces the most recently detected commit
+ * before it — because an amend can change the subject, so subject matching is
+ * unreliable. When both entries carry a branch, the branches must match. An
+ * amend with nothing to replace stands alone. Consecutive amends collapse into
+ * one entry carrying the final hash and the original pre-amend hash.
+ */
+function linkAmendsToPrecedingCommits(commits: DetectedCommit[]): DetectedCommit[] {
+    const linked: DetectedCommit[] = [];
+
+    for (const commit of commits) {
+        const previous = linked[linked.length - 1];
+        if (commit.isAmend && previous && branchesCanLink(previous, commit)) {
+            linked[linked.length - 1] = {
+                ...commit,
+                replacedHash: previous.replacedHash ?? previous.shortHash,
+            };
+            continue;
+        }
+        linked.push(commit);
+    }
+
+    return linked;
+}
+
+function branchesCanLink(previous: DetectedCommit, amend: DetectedCommit): boolean {
+    if (!previous.branch || !amend.branch) return true;
+    return previous.branch === amend.branch;
 }
 
 export function detectCommitsByToolCallId(toolCalls: ToolCallLike[]): Map<string, DetectedCommit[]> {

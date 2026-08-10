@@ -575,7 +575,7 @@ function CommitHoverPopover({ commits, workspaceId, anchorRef, popoverRef, onMou
                     key={commit.shortHash}
                     className={
                         'flex items-center gap-2 px-2.5 py-1 text-xs ' +
-                        (commit.isFixup ? 'opacity-70 ' : '') +
+                        (commit.isFixup || commit.isAmend ? 'opacity-70 ' : '') +
                         (workspaceId
                             ? 'cursor-pointer hover:bg-[#e1effe] dark:hover:bg-[#1f2d42]'
                             : '')
@@ -588,7 +588,7 @@ function CommitHoverPopover({ commits, workspaceId, anchorRef, popoverRef, onMou
                     } : undefined}
                     role={workspaceId ? 'link' : undefined}
                 >
-                    <span className="shrink-0">{commit.isFixup ? '🔧' : '🔀'}</span>
+                    <span className="shrink-0">{commit.isAmend ? '✏️' : commit.isFixup ? '🔧' : '🔀'}</span>
                     <span className="font-mono shrink-0 text-[#f57c00] dark:text-[#ffb74d]">
                         {commit.shortHash}
                     </span>
@@ -1082,6 +1082,10 @@ export function WhisperCollapsedGroup({
         if (part.kind === 'commit' && summary.commits && summary.commits.length > 0) {
             headerElements.push(
                 <CommitHoverSpan key={`part-${idx}`} text={part.text} commits={summary.commits} workspaceId={workspaceId} testId="whisper-commit-hover" />,
+            );
+        } else if (part.kind === 'amend' && summary.amendCommits && summary.amendCommits.length > 0) {
+            headerElements.push(
+                <CommitHoverSpan key={`part-${idx}`} text={part.text} commits={summary.amendCommits} workspaceId={workspaceId} testId="whisper-amend-hover" />,
             );
         } else if (part.kind === 'fixup' && summary.fixupCommits && summary.fixupCommits.length > 0) {
             headerElements.push(

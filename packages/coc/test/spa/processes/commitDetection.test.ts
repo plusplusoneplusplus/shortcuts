@@ -26,6 +26,7 @@ describe('detectCommitsInToolGroup', () => {
                 deletions: 17,
                 toolCallId: 't1',
                 isFixup: false,
+                isAmend: false,
             });
         });
 
@@ -327,6 +328,7 @@ describe('detectCommitsInToolGroup', () => {
                 subject: 'feat(work-items): shared typed per-field stale-save conflict (AC-02 server)',
                 toolCallId: 't1',
                 isFixup: false,
+                isAmend: false,
             });
         });
 
@@ -362,6 +364,7 @@ describe('detectCommitsInToolGroup', () => {
                 subject: 'Stabilize synthetic fixture tests',
                 toolCallId: 'verify',
                 isFixup: false,
+                isAmend: false,
             });
         });
 
@@ -426,6 +429,7 @@ describe('detectCommitsInToolGroup', () => {
                     subject: 'Stabilize synthetic fixture tests',
                     toolCallId: 'verify',
                     isFixup: false,
+                    isAmend: false,
                 },
             ]);
         });
@@ -504,6 +508,7 @@ describe('detectCommitsInToolGroup', () => {
                 deletions: 5,
                 toolCallId: 'a1',
                 isFixup: false,
+                isAmend: false,
             });
         });
 
@@ -580,6 +585,128 @@ describe('detectCommitsInToolGroup', () => {
         });
     });
 
+    describe('amend command detection', () => {
+        it('detects git commit --amend --no-edit', () => {
+            const toolCalls = [
+                makeShellCall('t1', 'git commit --amend --no-edit', '[main ccc3333] feat: add auth\n 1 file changed, 2 insertions(+)'),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(1);
+            expect(commits[0].isAmend).toBe(true);
+            expect(commits[0].isFixup).toBe(false);
+        });
+
+        it('detects an amend behind a git -C global option', () => {
+            const toolCalls = [
+                makeShellCall('t1', 'git -C /tmp/repo commit --amend -m "reworded"', '[main ddd4444] reworded'),
+            ];
+
+            expect(detectCommitsInToolGroup(toolCalls)[0].isAmend).toBe(true);
+        });
+
+        it('detects git commit -a --amend', () => {
+            const toolCalls = [
+                makeShellCall('t1', 'git commit -a --amend --no-edit', '[main eee5555] feat: add auth'),
+            ];
+
+            expect(detectCommitsInToolGroup(toolCalls)[0].isAmend).toBe(true);
+        });
+
+        it('detects an amend chained behind &&', () => {
+            const toolCalls = [
+                makeShellCall('t1', 'git add -A && git commit --amend --no-edit', '[main fff6666] feat: add auth'),
+            ];
+
+            expect(detectCommitsInToolGroup(toolCalls)[0].isAmend).toBe(true);
+        });
+
+        it('does not mark a plain commit chained before an unrelated command as an amend', () => {
+            const toolCalls = [
+                makeShellCall('t1', 'git commit -m "feat: add auth" && echo --amend', '[main 1112222] feat: add auth'),
+            ];
+
+            expect(detectCommitsInToolGroup(toolCalls)[0].isAmend).toBe(false);
+        });
+
+        it('ignores a failed amend command', () => {
+            const toolCalls = [
+                makeShellCall('t1', 'git commit --amend --no-edit', 'error: could not amend\n<exited with exit code 1>'),
+            ];
+
+            expect(detectCommitsInToolGroup(toolCalls)).toHaveLength(0);
+        });
+    });
+
+    describe('amend replaces the commit it rewrote', () => {
+        it('collapses commit-then-amend into one amended entry with the new hash', () => {
+            const toolCalls = [
+                makeShellCall('t1', 'git commit -m "feat: add auth"', '[main abc1111] feat: add auth\n 5 files changed, 42 insertions(+)'),
+                makeShellCall('t2', 'git commit --amend -m "feat: add auth flow"', '[main abc2222] feat: add auth flow'),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(1);
+            expect(commits[0].shortHash).toBe('abc2222');
+            expect(commits[0].subject).toBe('feat: add auth flow');
+            expect(commits[0].isAmend).toBe(true);
+            expect(commits[0].replacedHash).toBe('abc1111');
+        });
+
+        it('collapses two consecutive amends into one entry with the final hash', () => {
+            const toolCalls = [
+                makeShellCall('t1', 'git commit -m "feat: add auth"', '[main abc1111] feat: add auth'),
+                makeShellCall('t2', 'git commit --amend --no-edit', '[main abc2222] feat: add auth'),
+                makeShellCall('t3', 'git commit --amend -m "feat: auth"', '[main abc3333] feat: auth'),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(1);
+            expect(commits[0].shortHash).toBe('abc3333');
+            expect(commits[0].isAmend).toBe(true);
+            expect(commits[0].replacedHash).toBe('abc1111');
+        });
+
+        it('keeps an amend with no preceding commit as a standalone amended entry', () => {
+            const toolCalls = [
+                makeShellCall('t1', 'git commit --amend --no-edit', '[main abc2222] feat: add auth'),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(1);
+            expect(commits[0].isAmend).toBe(true);
+            expect(commits[0].replacedHash).toBeUndefined();
+        });
+
+        it('replaces only the most recent commit when several precede the amend', () => {
+            const toolCalls = [
+                makeShellCall('t1', 'git commit -m "feat: add auth"', '[main abc1111] feat: add auth'),
+                makeShellCall('t2', 'git commit -m "docs: readme"', '[main abc2222] docs: readme'),
+                makeShellCall('t3', 'git commit --amend -m "docs: update readme"', '[main abc3333] docs: update readme'),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(2);
+            expect(commits[0].shortHash).toBe('abc1111');
+            expect(commits[0].isAmend).toBe(false);
+            expect(commits[1].shortHash).toBe('abc3333');
+            expect(commits[1].isAmend).toBe(true);
+            expect(commits[1].replacedHash).toBe('abc2222');
+        });
+
+        it('does not link an amend to a preceding commit on a different branch', () => {
+            const toolCalls = [
+                makeShellCall('t1', 'git commit -m "feat: add auth"', '[main abc1111] feat: add auth'),
+                makeShellCall('t2', 'git commit --amend --no-edit', '[feature abc2222] chore: tidy'),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits).toHaveLength(2);
+            expect(commits[1].isAmend).toBe(true);
+            expect(commits[1].replacedHash).toBeUndefined();
+        });
+    });
+
     describe('fixup / squash / amend commit detection', () => {
         it('marks fixup! commits with isFixup = true', () => {
             const toolCalls = [
@@ -602,14 +729,15 @@ describe('detectCommitsInToolGroup', () => {
             expect(commits[0].isFixup).toBe(true);
         });
 
-        it('marks amend! commits with isFixup = true', () => {
+        it('marks amend! commits as amends, not fixups', () => {
             const toolCalls = [
                 makeShellCall('t1', 'git commit --fixup=amend:abc1234', '[main ccc3333] amend! Improve error handling'),
             ];
 
             const commits = detectCommitsInToolGroup(toolCalls);
             expect(commits).toHaveLength(1);
-            expect(commits[0].isFixup).toBe(true);
+            expect(commits[0].isAmend).toBe(true);
+            expect(commits[0].isFixup).toBe(false);
         });
 
         it('regular commits have isFixup = false', () => {
@@ -634,6 +762,16 @@ describe('detectCommitsInToolGroup', () => {
             expect(commits[0].isFixup).toBe(false);
             expect(commits[1].isFixup).toBe(true);
             expect(commits[2].isFixup).toBe(false);
+        });
+
+        it('keeps fixup! subjects as fixups, not amends', () => {
+            const toolCalls = [
+                makeShellCall('t1', 'git commit --fixup abc1234', '[main aaa1111] fixup! Add user authentication'),
+            ];
+
+            const commits = detectCommitsInToolGroup(toolCalls);
+            expect(commits[0].isFixup).toBe(true);
+            expect(commits[0].isAmend).toBe(false);
         });
 
         it('subject starting with "fixup" but not "fixup! " is not treated as fixup', () => {

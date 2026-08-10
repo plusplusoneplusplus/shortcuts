@@ -49,6 +49,32 @@ describe('CommitStrip', () => {
         expect(container.querySelector('[data-testid="commit-strip-row-abc2222"]')).toBeTruthy();
     });
 
+    it('renders the pencil icon and keeps the dim treatment for an amend', () => {
+        const commit = makeCommit({ isAmend: true, replacedHash: 'old1234' });
+        const { container } = render(<CommitStrip commits={[commit]} />);
+
+        const row = container.querySelector('[data-testid="commit-strip-row-a1b2c3d"]')!;
+        expect(row.textContent).toContain('✏️');
+        expect(row.textContent).not.toContain('🔀');
+        expect(row.textContent).not.toContain('🔧');
+        expect(row.className).toContain('opacity-70');
+    });
+
+    it('renders the wrench icon for a fixup and the merge icon for a plain commit', () => {
+        const { container } = render(<CommitStrip commits={[
+            makeCommit({ shortHash: 'fix1234', isFixup: true }),
+            makeCommit({ shortHash: 'plain12' }),
+        ]} />);
+
+        const fixupRow = container.querySelector('[data-testid="commit-strip-row-fix1234"]')!;
+        expect(fixupRow.textContent).toContain('🔧');
+        expect(fixupRow.className).toContain('opacity-70');
+
+        const plainRow = container.querySelector('[data-testid="commit-strip-row-plain12"]')!;
+        expect(plainRow.textContent).toContain('🔀');
+        expect(plainRow.className).not.toContain('opacity-70');
+    });
+
     it('shows diff stats when available', () => {
         const commit = makeCommit({
             insertions: 42,

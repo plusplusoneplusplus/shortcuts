@@ -221,6 +221,84 @@ describe('WhisperCollapsedGroup', () => {
         expect(screen.getByTestId('whisper-fixup-hover').textContent).toBe('1 fixup');
     });
 
+    it('renders the amend chip as its own hover span between commits and fixups', () => {
+        render(
+            <WhisperCollapsedGroup
+                {...defaultProps}
+                summary={makeSummary({
+                    commitCount: 1,
+                    commits: [makeCommit({ shortHash: 'aaa1111' })],
+                    amendCount: 1,
+                    amendCommits: [makeCommit({ shortHash: 'ccc3333', isAmend: true })],
+                    fixupCommitCount: 1,
+                    fixupCommits: [makeCommit({ shortHash: 'bbb2222', isFixup: true })],
+                })}
+            />,
+        );
+        expect(screen.getByTestId('whisper-amend-hover').textContent).toBe('1 amended');
+        expect(screen.getByTestId('whisper-amend-hover').className).toContain('underline');
+
+        const header = screen.getByTestId('whisper-header-text').textContent ?? '';
+        expect(header.indexOf('1 commit')).toBeLessThan(header.indexOf('1 amended'));
+        expect(header.indexOf('1 amended')).toBeLessThan(header.indexOf('1 fixup'));
+    });
+
+    it('amend popover row shows the pencil icon, post-amend hash and stays dimmed', () => {
+        render(
+            <WhisperCollapsedGroup
+                {...defaultProps}
+                summary={makeSummary({
+                    amendCount: 1,
+                    amendCommits: [makeCommit({
+                        shortHash: 'def5678',
+                        subject: 'feat: reworded',
+                        isAmend: true,
+                        replacedHash: 'abc1234',
+                    })],
+                })}
+            />,
+        );
+        fireEvent.mouseEnter(screen.getByTestId('whisper-amend-hover'));
+
+        const row = screen.getByTestId('commit-popover-row-def5678');
+        expect(row.textContent).toContain('✏️');
+        expect(row.textContent).toContain('def5678');
+        expect(row.textContent).toContain('feat: reworded');
+        expect(row.textContent).not.toContain('abc1234');
+        expect(row.className).toContain('opacity-70');
+    });
+
+    it('amend popover row navigates to the post-amend hash', () => {
+        render(
+            <WhisperCollapsedGroup
+                {...defaultProps}
+                workspaceId="my-workspace"
+                summary={makeSummary({
+                    amendCount: 1,
+                    amendCommits: [makeCommit({
+                        shortHash: 'def5678',
+                        fullHash: 'def5678901234',
+                        isAmend: true,
+                        replacedHash: 'abc1234',
+                    })],
+                })}
+            />,
+        );
+        fireEvent.mouseEnter(screen.getByTestId('whisper-amend-hover'));
+        fireEvent.click(screen.getByTestId('commit-popover-row-def5678'));
+        expect(location.hash).toBe('#repos/my-workspace/git/def5678901234');
+    });
+
+    it('no amend hover span when amendCount is zero or absent', () => {
+        render(
+            <WhisperCollapsedGroup
+                {...defaultProps}
+                summary={makeSummary({ commitCount: 1, commits: [makeCommit()] })}
+            />,
+        );
+        expect(screen.queryByTestId('whisper-amend-hover')).toBeNull();
+    });
+
     it('no hover span when commitCount is zero or absent', () => {
         render(
             <WhisperCollapsedGroup

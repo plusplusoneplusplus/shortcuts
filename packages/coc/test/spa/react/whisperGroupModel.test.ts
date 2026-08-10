@@ -24,6 +24,7 @@ describe('buildWhisperHeaderParts', () => {
             fileEditCount: 5,
             deletedFileCount: 1,
             commitCount: 2,
+            amendCount: 1,
             fixupCommitCount: 1,
             prCount: 1,
             pushCount: 1,
@@ -36,6 +37,7 @@ describe('buildWhisperHeaderParts', () => {
             '4 files',
             '1 removed',
             '2 commits',
+            '1 amended',
             '1 fixup',
             '1 PR',
             '1 pushed',
@@ -43,8 +45,40 @@ describe('buildWhisperHeaderParts', () => {
             '1 memory',
         ]);
         expect(parts.map(p => p.kind)).toEqual([
-            undefined, undefined, 'file', 'removed-file', 'commit', 'fixup', 'pr', 'push', 'skill', 'memory',
+            undefined, undefined, 'file', 'removed-file', 'commit', 'amend', 'fixup', 'pr', 'push', 'skill', 'memory',
         ]);
+    });
+
+    it('emits the amended chip between commits and fixups', () => {
+        const parts = buildWhisperHeaderParts(summary({
+            commitCount: 1,
+            amendCount: 2,
+            fixupCommitCount: 1,
+        }));
+        expect(parts).toEqual([
+            { text: '1 commit', kind: 'commit' },
+            { text: '2 amended', kind: 'amend' },
+            { text: '1 fixup', kind: 'fixup' },
+        ]);
+    });
+
+    it('uses the invariant "amended" wording for a single amend', () => {
+        expect(buildWhisperHeaderParts(summary({ amendCount: 1 })).map(p => p.text)).toEqual(['1 amended']);
+    });
+
+    it('omits the amended chip when no amends were detected', () => {
+        const parts = buildWhisperHeaderParts(summary({ commitCount: 1, amendCount: 0 }));
+        expect(parts.map(p => p.kind)).toEqual(['commit']);
+    });
+
+    it('includes the amended chip in headerTextPlain in header order', () => {
+        const model = buildWhisperGroupModel(summary({
+            toolCallCount: 2,
+            commitCount: 1,
+            amendCount: 1,
+            fixupCommitCount: 1,
+        }));
+        expect(model.headerTextPlain).toBe('2 tool calls · 1 commit · 1 amended · 1 fixup');
     });
 
     it('uses singular forms for counts of one', () => {

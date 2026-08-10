@@ -554,12 +554,16 @@ export interface WhisperSummary {
     messageCount: number;
     /** Number of non-fixup commits detected across all collapsed tool calls. */
     commitCount?: number;
-    /** Number of fixup/squash/amend commits detected. */
+    /** Number of fixup/squash commits detected. */
     fixupCommitCount?: number;
-    /** Non-fixup commits detected across all collapsed tool calls. */
+    /** Number of `git commit --amend` / `amend!` commits detected. */
+    amendCount?: number;
+    /** Non-fixup, non-amend commits detected across all collapsed tool calls. */
     commits?: DetectedCommit[];
-    /** Fixup/squash/amend commits detected across all collapsed tool calls. */
+    /** Fixup/squash commits detected across all collapsed tool calls. */
     fixupCommits?: DetectedCommit[];
+    /** Amend commits detected across all collapsed tool calls. */
+    amendCommits?: DetectedCommit[];
     /** Number of pull requests detected across all collapsed tool calls. */
     prCount?: number;
     /** Pull requests detected across all collapsed tool calls. */
@@ -729,10 +733,12 @@ export function filterWhisperChunks(
         }
     }
     const detectedCommits = detectCommitsInToolGroup(allToolCalls);
-    const regularCommits = detectedCommits.filter(c => !c.isFixup);
-    const fixupCommits = detectedCommits.filter(c => c.isFixup);
+    const regularCommits = detectedCommits.filter(c => !c.isFixup && !c.isAmend);
+    const fixupCommits = detectedCommits.filter(c => c.isFixup && !c.isAmend);
+    const amendCommits = detectedCommits.filter(c => c.isAmend);
     const commitCount = regularCommits.length;
     const fixupCommitCount = fixupCommits.length;
+    const amendCount = amendCommits.length;
     const pullRequests = detectPullRequestsInToolGroup(allToolCalls);
     const prCount = pullRequests.length;
     const pushes = detectPushesInToolGroup(allToolCalls);
@@ -864,6 +870,7 @@ export function filterWhisperChunks(
         toolCallCount,
         messageCount,
         ...(commitCount > 0 ? { commitCount, commits: regularCommits } : {}),
+        ...(amendCount > 0 ? { amendCount, amendCommits } : {}),
         ...(fixupCommitCount > 0 ? { fixupCommitCount, fixupCommits } : {}),
         ...(prCount > 0 ? { prCount, pullRequests } : {}),
         ...(pushCount > 0 ? { pushCount, pushes } : {}),

@@ -1264,6 +1264,84 @@ describe('filterWhisperChunks', () => {
         expect(wg.summary.fixupCommitCount).toBe(1);
     });
 
+    it('amendCount buckets an amend separately and drops it from commitCount', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'tool', key: 'k-t2', toolId: 't2' },
+            { kind: 'tool', key: 'k-t3', toolId: 't3' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', {
+                toolName: 'powershell',
+                status: 'completed',
+                args: { command: 'git commit -m "feat: add auth"' },
+                result: '[main abc1111] feat: add auth\n 5 files changed, 42 insertions(+)',
+            }],
+            ['t2', {
+                toolName: 'powershell',
+                status: 'completed',
+                args: { command: 'git commit --amend --no-edit' },
+                result: '[main abc2222] feat: add auth\n 5 files changed, 43 insertions(+)',
+            }],
+            ['t3', {
+                toolName: 'powershell',
+                status: 'completed',
+                args: { command: 'git commit -m "docs: readme"' },
+                result: '[main abc3333] docs: readme\n 1 file changed, 3 insertions(+)',
+            }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        // t1 was rewritten by the amend, so only docs: readme stays a plain commit.
+        expect(wg.summary.commitCount).toBe(1);
+        expect(wg.summary.amendCount).toBe(1);
+        expect(wg.summary.amendCommits![0].shortHash).toBe('abc2222');
+        expect(wg.summary.fixupCommitCount).toBeUndefined();
+    });
+
+    it('amend! commits are counted as amends, not fixups', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', {
+                toolName: 'powershell',
+                status: 'completed',
+                args: { command: 'git commit -m "amend! feat: add auth"' },
+                result: '[main ddd4444] amend! feat: add auth\n 1 file changed, 1 insertion(+)',
+            }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.amendCount).toBe(1);
+        expect(wg.summary.fixupCommitCount).toBeUndefined();
+        expect(wg.summary.commitCount).toBeUndefined();
+    });
+
+    it('amendCount and amendCommits are omitted when no amends detected', () => {
+        const chunks = [
+            { kind: 'tool', key: 'k-t1', toolId: 't1' },
+            { kind: 'content', key: 'c1', html: '<p>Done.</p>' },
+        ];
+        const toolById = makeMap([
+            ['t1', {
+                toolName: 'powershell',
+                status: 'completed',
+                args: { command: 'git commit -m "feat: stuff"' },
+                result: '[main abc1234] feat: stuff\n 1 file changed, 5 insertions(+)',
+            }],
+        ]);
+
+        const result = filterWhisperChunks(chunks, toolById);
+        const wg = result[0] as WhisperGroupChunk;
+        expect(wg.summary.amendCount).toBeUndefined();
+        expect(wg.summary.amendCommits).toBeUndefined();
+    });
+
     it('skillCount counts unique skill invocations', () => {
         const chunks = [
             { kind: 'tool', key: 'k-t1', toolId: 't1' },
