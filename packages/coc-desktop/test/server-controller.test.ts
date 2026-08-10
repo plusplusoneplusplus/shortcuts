@@ -3,8 +3,9 @@
  *
  * These exercise the pure orchestration + helpers without Electron: the fork,
  * health probe, and free-port lookup are injected so we can assert the
- * attach-vs-start decision, the child env (`ELECTRON_RUN_AS_NODE`, shared
- * `~/.coc` dataDir, non-4000 port), and the `listening` handshake.
+ * attach-vs-start decision, preferred-port fallback, the child env
+ * (`ELECTRON_RUN_AS_NODE`, shared `~/.coc` dataDir), and the `listening`
+ * handshake.
  */
 
 import { EventEmitter } from 'events';
@@ -113,6 +114,18 @@ describe('probeHealth', () => {
 });
 
 describe('findFreePort', () => {
+    it('returns the preferred port when it is available', async () => {
+        const preferred = await findFreePort();
+        await expect(findFreePort(DEFAULT_HOST, preferred)).resolves.toBe(preferred);
+    });
+
+    it('falls back to an ephemeral port when the preferred port is occupied', async () => {
+        const occupied = await startHealthServer((_req, res) => res.end());
+        const port = await findFreePort(DEFAULT_HOST, occupied);
+        expect(port).toBeGreaterThan(0);
+        expect(port).not.toBe(occupied);
+    });
+
     it('returns a bindable ephemeral port', async () => {
         const port = await findFreePort();
         expect(port).toBeGreaterThan(0);
@@ -146,20 +159,26 @@ describe('attachOrStart', () => {
         expect(handle.child).toBeUndefined();
     });
 
-    it('STARTS a forked server on a free non-4000 port with the right child env', async () => {
+    it('STARTS a forked server on the preferred port with the right child env', async () => {
         const child = new FakeChild();
         let forkedPath = '';
         let forkedEnv: NodeJS.ProcessEnv = {};
+        let requestedPreferredPort: number | undefined;
+        const preferredPort = 56358;
         const handle = await attachOrStart({
             dataDir: '/tmp/shared-coc',
             serverEntryPath: '/abs/dist/server-entry.js',
+            attachPort: preferredPort,
             deps: {
                 probeHealth: async () => false,
-                findFreePort: async () => 49222,
+                findFreePort: async (_host, requestedPort) => {
+                    requestedPreferredPort = requestedPort;
+                    return requestedPort!;
+                },
                 fork: (modulePath, env) => {
                     forkedPath = modulePath;
                     forkedEnv = env;
-                    child.emitListening(49222);
+                    child.emitListening(preferredPort);
                     return child as unknown as ChildProcess;
                 },
             },
@@ -168,14 +187,36 @@ describe('attachOrStart', () => {
         expect(forkedPath).toBe('/abs/dist/server-entry.js');
         expect(forkedEnv.ELECTRON_RUN_AS_NODE).toBe('1');
         expect(forkedEnv.COC_DESKTOP_HOST).toBe(DEFAULT_HOST);
-        expect(forkedEnv.COC_DESKTOP_PORT).toBe('49222');
+        expect(forkedEnv.COC_DESKTOP_PORT).toBe(String(preferredPort));
         expect(forkedEnv.COC_DESKTOP_DATA_DIR).toBe('/tmp/shared-coc');
-        expect(Number(forkedEnv.COC_DESKTOP_PORT)).not.toBe(4000);
+        expect(requestedPreferredPort).toBe(preferredPort);
+
+        expect(handle.started).toBe(true);
+        expect(handle.port).toBe(preferredPort);
+        expect(handle.url).toBe(formatUrl(DEFAULT_HOST, preferredPort));
+        expect(handle.child).toBe(child as unknown as ChildProcess);
+    });
+
+    it('uses the fallback port when the preferred port is occupied by another process', async () => {
+        const child = new FakeChild();
+        const handle = await attachOrStart({
+            attachPort: 41000,
+            deps: {
+                probeHealth: async () => false,
+                findFreePort: async (_host, preferredPort) => {
+                    expect(preferredPort).toBe(41000);
+                    return 49222;
+                },
+                fork: (_modulePath, env) => {
+                    expect(env.COC_DESKTOP_PORT).toBe('49222');
+                    child.emitListening(49222);
+                    return child as unknown as ChildProcess;
+                },
+            },
+        });
 
         expect(handle.started).toBe(true);
         expect(handle.port).toBe(49222);
-        expect(handle.url).toBe(formatUrl(DEFAULT_HOST, 49222));
-        expect(handle.child).toBe(child as unknown as ChildProcess);
     });
 
     it('trusts the port the child actually bound, even if it differs', async () => {

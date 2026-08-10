@@ -18,6 +18,7 @@ import {
     defaultDevTunnelMessage,
     ensureDevTunnelHttpBinding,
     parseDevTunnelHttpPorts,
+    readDevTunnelHttpPort,
     resolveDevTunnelCliPath,
 } from '../src/devtunnel-cli';
 
@@ -149,6 +150,58 @@ describe('parseDevTunnelHttpPorts', () => {
     it('returns an empty list for empty or non-HTTP output', () => {
         expect(parseDevTunnelHttpPorts('')).toEqual([]);
         expect(parseDevTunnelHttpPorts(JSON.stringify([{ port: 22, protocol: 'ssh' }]))).toEqual([]);
+    });
+});
+
+describe('readDevTunnelHttpPort', () => {
+    it('returns the existing single HTTP port without mutating the tunnel', async () => {
+        const { runner, calls } = makeRunner({
+            list: res({ stdout: JSON.stringify([{ port: 56358, protocol: 'http' }]) }),
+        });
+
+        await expect(readDevTunnelHttpPort({
+            tunnelId: TUNNEL,
+            cliPath: CLI,
+            runner,
+        })).resolves.toBe(56358);
+        expect(calls).toEqual([['port', 'list', TUNNEL]]);
+    });
+
+    it('returns undefined when there is not exactly one HTTP port', async () => {
+        const none = makeRunner({ list: res({ stdout: '[]' }) });
+        await expect(readDevTunnelHttpPort({
+            tunnelId: TUNNEL,
+            cliPath: CLI,
+            runner: none.runner,
+        })).resolves.toBeUndefined();
+
+        const many = makeRunner({
+            list: res({
+                stdout: JSON.stringify([
+                    { port: 4000, protocol: 'http' },
+                    { port: 56358, protocol: 'http' },
+                ]),
+            }),
+        });
+        await expect(readDevTunnelHttpPort({
+            tunnelId: TUNNEL,
+            cliPath: CLI,
+            runner: many.runner,
+        })).resolves.toBeUndefined();
+    });
+
+    it('returns undefined when the CLI is missing or the lookup fails', async () => {
+        await expect(readDevTunnelHttpPort({
+            tunnelId: TUNNEL,
+            resolve: { fileExists: () => false },
+        })).resolves.toBeUndefined();
+
+        const { runner } = makeRunner({ list: res({ exitCode: 1, stderr: 'not logged in' }) });
+        await expect(readDevTunnelHttpPort({
+            tunnelId: TUNNEL,
+            cliPath: CLI,
+            runner,
+        })).resolves.toBeUndefined();
     });
 });
 
