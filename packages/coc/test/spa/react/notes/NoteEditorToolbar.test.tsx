@@ -418,3 +418,264 @@ describe('NoteEditorToolbar — styled text-mark buttons', () => {
         expect(h2Btn.className).toContain('font-semibold');
     });
 });
+
+// ── Find & replace ──────────────────────────────────────────────────────────
+
+/**
+ * The base mock editor has no find-and-replace storage or commands — the panel
+ * tolerates that (it renders empty state), but asserting on wiring needs both.
+ */
+function makeFindMockEditor(overrides: Partial<Record<string, unknown>> = {}) {
+    const base = makeMockEditor();
+    const commands = {
+        setSearchTerm: vi.fn(),
+        setReplaceTerm: vi.fn(),
+        setCaseSensitive: vi.fn(),
+        setWholeWord: vi.fn(),
+        setUseRegex: vi.fn(),
+        replace: vi.fn(),
+        replaceAll: vi.fn(),
+        goToNextResult: vi.fn(),
+        goToPreviousResult: vi.fn(),
+        clearSearch: vi.fn(),
+    };
+    return {
+        ...base,
+        commands,
+        on: vi.fn(),
+        off: vi.fn(),
+        state: { selection: { empty: true } },
+        storage: {
+            findAndReplace: {
+                searchTerm: '',
+                replaceTerm: '',
+                caseSensitive: false,
+                useRegex: false,
+                wholeWord: false,
+                results: [],
+                currentIndex: null,
+                ...(overrides.findAndReplace as object ?? {}),
+            },
+        },
+        _commands: commands,
+    };
+}
+
+describe('NoteEditorToolbar — find & replace', () => {
+    it('renders the find button in the formatting group', () => {
+        const editor = makeFindMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        expect(screen.getByLabelText('Find and replace')).toBeDefined();
+    });
+
+    it('the panel is closed until the find button is pressed', () => {
+        const editor = makeFindMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        expect(screen.queryByTestId('find-replace-panel')).toBeNull();
+
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        expect(screen.getByTestId('find-replace-panel')).toBeDefined();
+        expect(screen.getByTestId('find-input')).toBeDefined();
+        expect(screen.getByTestId('replace-input')).toBeDefined();
+    });
+
+    it('the find button toggles the panel back closed and clears the search', () => {
+        const editor = makeFindMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        const btn = screen.getByLabelText('Find and replace');
+
+        fireEvent.mouseDown(btn);
+        fireEvent.mouseDown(btn);
+
+        expect(screen.queryByTestId('find-replace-panel')).toBeNull();
+        // Stale match outlines must not survive the panel closing.
+        expect(editor._commands.clearSearch).toHaveBeenCalled();
+    });
+
+    it('the close button clears the search and hides the panel', () => {
+        const editor = makeFindMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        fireEvent.mouseDown(screen.getByTestId('find-close-btn'));
+
+        expect(screen.queryByTestId('find-replace-panel')).toBeNull();
+        expect(editor._commands.clearSearch).toHaveBeenCalled();
+    });
+
+    it('typing in the find input pushes the term to the editor', () => {
+        const editor = makeFindMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        fireEvent.change(screen.getByTestId('find-input'), { target: { value: 'alpha' } });
+
+        expect(editor._commands.setSearchTerm).toHaveBeenCalledWith('alpha');
+    });
+
+    it('typing in the replace input pushes the replacement to the editor', () => {
+        const editor = makeFindMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        fireEvent.change(screen.getByTestId('replace-input'), { target: { value: 'omega' } });
+
+        expect(editor._commands.setReplaceTerm).toHaveBeenCalledWith('omega');
+    });
+
+    it('shows the 1-based match position out of the total', () => {
+        const editor = makeFindMockEditor({
+            findAndReplace: {
+                searchTerm: 'alpha',
+                results: [{ from: 1, to: 6 }, { from: 10, to: 15 }, { from: 20, to: 25 }],
+                currentIndex: 1,
+            },
+        });
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        expect(screen.getByTestId('find-match-count').textContent).toBe('2 / 3');
+    });
+
+    it('reports no results for a term that matches nothing', () => {
+        const editor = makeFindMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+        fireEvent.change(screen.getByTestId('find-input'), { target: { value: 'zzz' } });
+
+        expect(screen.getByTestId('find-match-count').textContent).toBe('No results');
+    });
+
+    it('navigation and replace buttons are disabled while there are no matches', () => {
+        const editor = makeFindMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        for (const id of ['find-prev-btn', 'find-next-btn', 'replace-btn', 'replace-all-btn']) {
+            expect((screen.getByTestId(id) as HTMLButtonElement).disabled).toBe(true);
+        }
+    });
+
+    it('next / previous drive the editor when matches exist', () => {
+        const editor = makeFindMockEditor({
+            findAndReplace: { searchTerm: 'a', results: [{ from: 1, to: 2 }], currentIndex: 0 },
+        });
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        fireEvent.mouseDown(screen.getByTestId('find-next-btn'));
+        fireEvent.mouseDown(screen.getByTestId('find-prev-btn'));
+
+        expect(editor._commands.goToNextResult).toHaveBeenCalled();
+        expect(editor._commands.goToPreviousResult).toHaveBeenCalled();
+    });
+
+    it('Enter jumps to the next match and Shift+Enter to the previous one', () => {
+        const editor = makeFindMockEditor({
+            findAndReplace: { searchTerm: 'a', results: [{ from: 1, to: 2 }], currentIndex: 0 },
+        });
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+        const input = screen.getByTestId('find-input');
+
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(editor._commands.goToNextResult).toHaveBeenCalled();
+
+        fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
+        expect(editor._commands.goToPreviousResult).toHaveBeenCalled();
+    });
+
+    it('Escape in the find input closes the panel', () => {
+        const editor = makeFindMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        fireEvent.keyDown(screen.getByTestId('find-input'), { key: 'Escape' });
+
+        expect(screen.queryByTestId('find-replace-panel')).toBeNull();
+        expect(editor._commands.clearSearch).toHaveBeenCalled();
+    });
+
+    it('replace and replace-all drive the editor when matches exist', () => {
+        const editor = makeFindMockEditor({
+            findAndReplace: { searchTerm: 'a', results: [{ from: 1, to: 2 }], currentIndex: 0 },
+        });
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        fireEvent.mouseDown(screen.getByTestId('replace-btn'));
+        fireEvent.mouseDown(screen.getByTestId('replace-all-btn'));
+
+        expect(editor._commands.replace).toHaveBeenCalled();
+        expect(editor._commands.replaceAll).toHaveBeenCalled();
+    });
+
+    it('the modifier toggles drive case, whole-word and regex', () => {
+        const editor = makeFindMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        fireEvent.mouseDown(screen.getByTestId('find-case-toggle'));
+        fireEvent.mouseDown(screen.getByTestId('find-whole-word-toggle'));
+        fireEvent.mouseDown(screen.getByTestId('find-regex-toggle'));
+
+        expect(editor._commands.setCaseSensitive).toHaveBeenCalledWith(true);
+        expect(editor._commands.setWholeWord).toHaveBeenCalledWith(true);
+        expect(editor._commands.setUseRegex).toHaveBeenCalledWith(true);
+    });
+
+    it('whole-word is disabled in regex mode, where the extension ignores it', () => {
+        const editor = makeFindMockEditor({ findAndReplace: { useRegex: true } });
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        const wholeWord = screen.getByTestId('find-whole-word-toggle') as HTMLButtonElement;
+        expect(wholeWord.disabled).toBe(true);
+
+        fireEvent.mouseDown(wholeWord);
+        expect(editor._commands.setWholeWord).not.toHaveBeenCalled();
+    });
+
+    it('seeds the find input from a non-empty selection', () => {
+        const editor = makeFindMockEditor();
+        editor.state = {
+            selection: { empty: false, from: 1, to: 6 },
+            doc: { textBetween: () => 'alpha' },
+        } as never;
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        expect((screen.getByTestId('find-input') as HTMLInputElement).value).toBe('alpha');
+        expect(editor._commands.setSearchTerm).toHaveBeenCalledWith('alpha');
+    });
+
+    it('hides the find button and the panel in source mode', () => {
+        // Source mode mounts a separate raw-markdown editor the extension does
+        // not reach, so the control must not read as available-but-broken.
+        const editor = makeFindMockEditor();
+        const { rerender } = render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+        expect(screen.getByTestId('find-replace-panel')).toBeDefined();
+
+        rerender(<NoteEditorToolbar editor={editor as never} hidden />);
+
+        expect(screen.queryByLabelText('Find and replace')).toBeNull();
+        expect(screen.queryByTestId('find-replace-panel')).toBeNull();
+        // Switching modes must also drop the highlights from the rich editor.
+        expect(editor._commands.clearSearch).toHaveBeenCalled();
+    });
+
+    it('renders without crashing on an editor that lacks the extension', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        expect(screen.getByTestId('find-replace-panel')).toBeDefined();
+        expect(screen.getByTestId('find-match-count').textContent).toBe('');
+    });
+});

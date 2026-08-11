@@ -1431,3 +1431,30 @@
     border-color: rgba(55, 148, 255, 0.45);
     background: rgba(55, 148, 255, 0.18);
 }
+
+/* ── Find & replace match highlights ─────────────────────────────────────────
+   The extension's bundled styles are disabled (injectCSS: false in
+   RichEditorCore) because their yellow/orange fills are indistinguishable from
+   the first Highlight mark color (#fff3b0) and from comment highlights. Matches
+   are outlined instead, so a match sitting inside a user highlight or a
+   commented run still reads as a match. The current match additionally gets a
+   faint fill and a stronger outline so it stands out from its siblings. */
+.note-editor .ProseMirror .find-and-replace-result {
+    border-radius: 2px;
+    outline: 1.5px solid rgba(0, 120, 212, 0.75);
+    outline-offset: 0;
+}
+
+.note-editor .ProseMirror .find-and-replace-result-current {
+    outline: 2px solid #0078d4;
+    background: rgba(0, 120, 212, 0.18);
+}
+
+.dark .note-editor .ProseMirror .find-and-replace-result {
+    outline-color: rgba(55, 148, 255, 0.8);
+}
+
+.dark .note-editor .ProseMirror .find-and-replace-result-current {
+    outline-color: #3794ff;
+    background: rgba(55, 148, 255, 0.28);
+}

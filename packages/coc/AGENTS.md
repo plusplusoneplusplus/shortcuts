@@ -89,6 +89,22 @@ all have their own `references/*.md`.
   exact Notes `image`/`local-image` routes whose decoded `path` is a PDF;
   other HTTP(S) PDF URLs are link-only and unsafe values expose no active URL.
   `router.ts` maps `.pdf` to `application/pdf` for the browser-native viewer.
+- **Tiptap** is pinned to one exact version across every `@tiptap/*` dep
+  (currently `3.30.0`). Several of them declare exact peer deps on
+  `@tiptap/core`/`@tiptap/pm`, so bumping a subset — or loosening one to a
+  caret range — produces two resolved copies of `@tiptap/core`. ProseMirror
+  plugins from different core instances do not share a schema, which fails at
+  runtime, not at typecheck. Bump the whole set together and confirm with
+  `npm ls @tiptap/core`.
+- **Notes find & replace** is `@tiptap/extension-find-and-replace`, registered
+  last in `RichEditorCore` so its match decorations paint above the comment and
+  AI-edit ones, and driven from the panel behind the toolbar's 🔍 button. It
+  binds no keyboard shortcut, so `Ctrl+F` stays native browser find over the
+  whole page (sidebar, TOC, chat panel). It is rich-mode only — source mode is a
+  separate raw-markdown editor — and the button and panel are part of the
+  formatting group hidden by `hidden`. The bundled highlight styles are off
+  (`injectCSS: false`) because their yellow fill collides with the Highlight
+  mark colors; `noteEditor.css` outlines matches instead.
 - **Notes links** show the destination URL plus the platform-specific
   modifier-click instruction in the native hover hint. The hint is attached to
   the live editor DOM and must not be serialized into note Markdown.
