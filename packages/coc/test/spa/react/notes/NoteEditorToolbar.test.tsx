@@ -83,17 +83,6 @@ describe('NoteEditorToolbar — table controls', () => {
         expect(screen.getByLabelText('Delete table')).toBeDefined();
     });
 
-    it('"Insert table" calls insertTable with correct args', () => {
-        const editor = makeMockEditor();
-        render(<NoteEditorToolbar editor={editor as never} />);
-
-        fireEvent.mouseDown(screen.getByLabelText('Insert table'));
-        expect(editor._focusResult.insertTable).toHaveBeenCalledWith({
-            rows: 3,
-            cols: 3,
-            withHeaderRow: true,
-        });
-    });
 
     it('"Add column before" calls addColumnBefore', () => {
         const editor = makeMockEditor((name) => name === 'table');
@@ -149,6 +138,126 @@ describe('NoteEditorToolbar — table controls', () => {
 
         fireEvent.mouseDown(screen.getByLabelText('Delete table'));
         expect(editor._focusResult.deleteTable).toHaveBeenCalled();
+    });
+});
+
+describe('NoteEditorToolbar — table size picker', () => {
+    it('picker is hidden by default', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.queryByTestId('table-size-picker')).toBeNull();
+    });
+
+    it('clicking ⊞ opens the picker and does not insert a table', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        fireEvent.mouseDown(screen.getByLabelText('Insert table'));
+
+        expect(screen.getByTestId('table-size-picker')).toBeDefined();
+        expect(editor._focusResult.insertTable).not.toHaveBeenCalled();
+    });
+
+    it('renders a fixed 10 × 8 grid of cells', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Insert table'));
+
+        const picker = screen.getByTestId('table-size-picker');
+        expect(picker.querySelectorAll('button').length).toBe(80);
+        expect(screen.getByLabelText('10 × 8 table')).toBeDefined();
+        expect(screen.queryByLabelText('11 × 8 table')).toBeNull();
+        expect(screen.queryByLabelText('10 × 9 table')).toBeNull();
+    });
+
+    it('shows a neutral label until a cell is hovered', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Insert table'));
+
+        expect(screen.getByTestId('table-size-label').textContent).toBe('Insert table');
+    });
+
+    it('hovering a cell shows the live size and highlights the rectangle', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Insert table'));
+
+        fireEvent.mouseEnter(screen.getByLabelText('4 × 2 table'));
+
+        expect(screen.getByTestId('table-size-label').textContent).toBe('4 × 2');
+        // inside the rectangle
+        expect(screen.getByTestId('table-size-cell-1-1').getAttribute('data-selected')).toBe('true');
+        expect(screen.getByTestId('table-size-cell-4-2').getAttribute('data-selected')).toBe('true');
+        // outside it
+        expect(screen.getByTestId('table-size-cell-5-2').getAttribute('data-selected')).toBe('false');
+        expect(screen.getByTestId('table-size-cell-4-3').getAttribute('data-selected')).toBe('false');
+    });
+
+    it('clicking the hovered cell inserts that size and closes the picker', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Insert table'));
+
+        fireEvent.mouseEnter(screen.getByLabelText('4 × 2 table'));
+        fireEvent.mouseDown(screen.getByLabelText('4 × 2 table'));
+
+        expect(editor._focusResult.insertTable).toHaveBeenCalledWith({
+            rows: 2,
+            cols: 4,
+            withHeaderRow: true,
+        });
+        expect(screen.queryByTestId('table-size-picker')).toBeNull();
+    });
+
+    it('always passes withHeaderRow for a 1 × 1 pick', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Insert table'));
+
+        fireEvent.mouseDown(screen.getByLabelText('1 × 1 table'));
+
+        expect(editor._focusResult.insertTable).toHaveBeenCalledWith({
+            rows: 1,
+            cols: 1,
+            withHeaderRow: true,
+        });
+    });
+
+    it('Escape closes the picker without inserting', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Insert table'));
+
+        fireEvent.keyDown(document, { key: 'Escape' });
+
+        expect(screen.queryByTestId('table-size-picker')).toBeNull();
+        expect(editor._focusResult.insertTable).not.toHaveBeenCalled();
+    });
+
+    it('an outside click closes the picker without inserting', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Insert table'));
+
+        fireEvent.mouseDown(document.body);
+
+        expect(screen.queryByTestId('table-size-picker')).toBeNull();
+        expect(editor._focusResult.insertTable).not.toHaveBeenCalled();
+    });
+
+    it('reopening the picker resets the hover label', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        const trigger = screen.getByLabelText('Insert table');
+
+        fireEvent.mouseDown(trigger);
+        fireEvent.mouseEnter(screen.getByLabelText('3 × 3 table'));
+        expect(screen.getByTestId('table-size-label').textContent).toBe('3 × 3');
+
+        fireEvent.mouseDown(trigger); // close
+        fireEvent.mouseDown(trigger); // reopen
+        expect(screen.getByTestId('table-size-label').textContent).toBe('Insert table');
     });
 });
 

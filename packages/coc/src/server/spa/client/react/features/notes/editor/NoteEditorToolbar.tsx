@@ -220,6 +220,111 @@ function HighlightButton({ editor }: HighlightButtonProps) {
     );
 }
 
+// ── Table insert button with hover size picker ──────────────────────────────
+
+/** Fixed picker size — hovering never grows the grid past this. */
+export const TABLE_PICKER_COLS = 10;
+export const TABLE_PICKER_ROWS = 8;
+
+interface TableInsertButtonProps {
+    editor: Editor;
+}
+
+function TableInsertButton({ editor }: TableInsertButtonProps) {
+    const [open, setOpen] = useState(false);
+    const [hover, setHover] = useState<{ col: number; row: number } | null>(null);
+    const ref = useRef<HTMLDivElement>(null);
+
+    // Close on outside click or Escape — same mechanism as HighlightButton
+    useEffect(() => {
+        if (!open) {
+            setHover(null);
+            return;
+        }
+        function handleClick(e: MouseEvent) {
+            if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+        }
+        function handleKey(e: KeyboardEvent) {
+            if (e.key === 'Escape') setOpen(false);
+        }
+        document.addEventListener('mousedown', handleClick);
+        document.addEventListener('keydown', handleKey);
+        return () => {
+            document.removeEventListener('mousedown', handleClick);
+            document.removeEventListener('keydown', handleKey);
+        };
+    }, [open]);
+
+    function insert(cols: number, rows: number) {
+        editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
+        setOpen(false);
+    }
+
+    return (
+        <div className="relative" ref={ref}>
+            <button
+                type="button"
+                title="Insert table"
+                aria-label="Insert table"
+                className={
+                    'h-7 w-7 rounded flex items-center justify-center text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050] ' +
+                    (open ? 'bg-[#e8e8e8] dark:bg-[#3c3c3c]' : '')
+                }
+                onMouseDown={(e) => {
+                    e.preventDefault(); // keep editor focus
+                    setOpen((v) => !v);
+                }}
+            >
+                ⊞
+            </button>
+
+            {open && (
+                <div
+                    className="absolute top-full left-0 mt-1 z-50 p-1.5 rounded shadow-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e]"
+                    data-testid="table-size-picker"
+                    onMouseLeave={() => setHover(null)}
+                >
+                    <div className="flex flex-col gap-0.5">
+                        {Array.from({ length: TABLE_PICKER_ROWS }, (_, ri) => ri + 1).map((row) => (
+                            <div key={row} className="flex gap-0.5">
+                                {Array.from({ length: TABLE_PICKER_COLS }, (_, ci) => ci + 1).map((col) => {
+                                    const selected = hover !== null && col <= hover.col && row <= hover.row;
+                                    return (
+                                        <button
+                                            key={col}
+                                            type="button"
+                                            aria-label={`${col} × ${row} table`}
+                                            data-testid={`table-size-cell-${col}-${row}`}
+                                            data-selected={selected ? 'true' : 'false'}
+                                            className={
+                                                'w-4 h-4 rounded-sm border ' +
+                                                (selected
+                                                    ? 'border-[#0078d4] bg-[#cce4f7] dark:bg-[#0e639c]'
+                                                    : 'border-[#ccc] dark:border-[#555]')
+                                            }
+                                            onMouseEnter={() => setHover({ col, row })}
+                                            onMouseDown={(e) => {
+                                                e.preventDefault(); // keep editor focus
+                                                insert(col, row);
+                                            }}
+                                        />
+                                    );
+                                })}
+                            </div>
+                        ))}
+                    </div>
+                    <div
+                        className="mt-1 text-center text-[10px] text-[#666] dark:text-[#999]"
+                        data-testid="table-size-label"
+                    >
+                        {hover ? `${hover.col} × ${hover.row}` : 'Insert table'}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
 // ── Table contextual controls ───────────────────────────────────────────────
 
 interface TableControlsProps {
@@ -352,12 +457,7 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
 
                     {/* Table — insert */}
                     <Sep />
-                    <TB
-                        editor={editor}
-                        label="Insert table"
-                        icon="⊞"
-                        command={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
-                    />
+                    <TableInsertButton editor={editor} />
                     {onInsertPdf && (
                         <button
                             type="button"
