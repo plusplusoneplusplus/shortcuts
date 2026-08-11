@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CSSProperties, KeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
+import type { CSSProperties, DragEvent as ReactDragEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import type { ReviewChatPresentation } from '../commits/commitChatPlacement';
 import { getCommitChatLensDormantMode } from '../../../utils/config';
+import { SESSION_CONTEXT_DRAG_MIME } from '../../chat/sessionContextDrag';
+import {
+    dataTransferHasSessionContext,
+    readSessionContextDragPayload,
+} from '../../chat/sessionContextDrop';
 
 export type LensDormantMode = 'ghost' | 'pill' | 'ghost-then-pill';
 
@@ -26,6 +31,14 @@ export interface ReviewChatPlacementFrameProps {
      * unchanged.
      */
     hideHeader?: boolean;
+    /**
+     * Called when a single same-workspace chat is dropped on the frame, with the
+     * dropped conversation's process ID. Omit to disable the drop target
+     * entirely — no overlay, no `preventDefault`, drops keep bubbling.
+     */
+    onDropExistingChat?: (processId: string) => void | Promise<void>;
+    /** Workspace the drop must match; drops from anywhere else are refused. */
+    dropWorkspaceId?: string;
 }
 
 const LENS_MARGIN_PX = 16;
@@ -112,6 +125,13 @@ function distanceToRect(cx: number, cy: number, rect: DOMRect): number {
  * (ghost mode) or when the hit-target changes shape (pill collapse).
  * Instead, we continuously check cursor distance to the active hit-rect
  * (card when focused, pill when dormant in pill mode) on every mousemove.
+ *
+ * `dragover` feeds the same hit test: during an HTML5 drag no `mousemove`
+ * fires, so without it a lens that ghosted while the user grabbed a row in the
+ * far-left chat list would still be `pointer-events: none` when the drop lands,
+ * and the drop would fall through to whatever is underneath. The hit test is
+ * geometric rather than pointer-based, so it wakes the lens even while the card
+ * is not accepting pointer events.
  */
 function useLensDormantState(
     cardRef: React.RefObject<HTMLElement | null>,
@@ -127,6 +147,11 @@ function useLensDormantState(
     const collapsedRef = useRef(false);
     const dormantTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const ghostToPillTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // True between the first session-context `dragover` and the matching
+    // `dragend`/`drop`. While set, the card stays the hit target and the
+    // ghost→pill collapse is suppressed: a small pill is hard to hit mid-drag,
+    // and expanding it under the cursor moves the drop target while aiming.
+    const dragInFlightRef = useRef(false);
     const dormantMode = isLens ? getCommitChatLensDormantMode() : 'ghost';
 
     const setFocusedSync = useCallback((v: boolean) => {
@@ -168,8 +193,9 @@ function useLensDormantState(
             // The active hit target is the compact pill only once the lens is
             // actually collapsed to it: always in 'pill' dormant, or in
             // 'ghost-then-pill' after the 15s ghost timer has fired.
-            const isPill = (dormantMode === 'pill' && !focusedRef.current)
-                || (dormantMode === 'ghost-then-pill' && collapsedRef.current);
+            const isPill = !dragInFlightRef.current
+                && ((dormantMode === 'pill' && !focusedRef.current)
+                    || (dormantMode === 'ghost-then-pill' && collapsedRef.current));
             const hitEl = isPill ? pillRef.current : cardRef.current;
             if (!hitEl) return;
 
@@ -192,6 +218,7 @@ function useLensDormantState(
                     if (dormantMode === 'ghost-then-pill' && !ghostToPillTimerRef.current) {
                         ghostToPillTimerRef.current = setTimeout(() => {
                             ghostToPillTimerRef.current = null;
+                            if (dragInFlightRef.current) return;
                             setCollapsedSync(true);
                         }, GHOST_TO_PILL_DELAY_MS);
                     }
@@ -200,17 +227,36 @@ function useLensDormantState(
         };
 
         let lastTick = 0;
-        const onMove = (e: MouseEvent) => {
+        const throttledTick = (cx: number, cy: number) => {
             const now = Date.now();
             if (now - lastTick < 24) return;
             lastTick = now;
-            tick(e.clientX, e.clientY);
+            tick(cx, cy);
         };
 
+        const onMove = (e: MouseEvent) => throttledTick(e.clientX, e.clientY);
+
+        const onDragOver = (e: DragEvent) => {
+            // Breadth is deliberate: waking the lens for a Ralph or pointer drag
+            // costs nothing, missing a wake loses the drop.
+            if (!dataTransferHasSessionContext(e.dataTransfer)) return;
+            dragInFlightRef.current = true;
+            throttledTick(e.clientX, e.clientY);
+        };
+
+        const onDragEnd = () => { dragInFlightRef.current = false; };
+
         window.addEventListener('mousemove', onMove);
+        window.addEventListener('dragover', onDragOver);
+        window.addEventListener('dragend', onDragEnd);
+        window.addEventListener('drop', onDragEnd);
 
         return () => {
             window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('dragover', onDragOver);
+            window.removeEventListener('dragend', onDragEnd);
+            window.removeEventListener('drop', onDragEnd);
+            dragInFlightRef.current = false;
             clearDormantTimer();
             clearGhostToPillTimer();
         };
@@ -232,18 +278,31 @@ export function ReviewChatPlacementFrame({
     testIdPrefix = 'review-chat',
     children,
     hideHeader = false,
+    onDropExistingChat,
+    dropWorkspaceId,
 }: ReviewChatPlacementFrameProps) {
     const cardRef = useRef<HTMLDivElement | null>(null);
     const pillRef = useRef<HTMLDivElement | null>(null);
     const [lensSize, setLensSize] = useState<{ width: number; height: number } | null>(() =>
         readPersistedLensSize(),
     );
+    const [dragActive, setDragActive] = useState(false);
+    const [dropRejection, setDropRejection] = useState<string | null>(null);
     const isLens = presentation === 'lens';
     const placementTestId = isLens ? 'lens' : 'side-panel';
     const explicitlyMinimized = isLens && isMinimized && !!onRestore;
 
     const { focused, dormantMode, collapsed } =
         useLensDormantState(cardRef, pillRef, isLens, explicitlyMinimized);
+
+    // A drag cancelled over the frame (Escape, or a drop the browser refuses)
+    // fires no dragleave, so the overlay would otherwise stay up.
+    useEffect(() => {
+        if (!onDropExistingChat) return;
+        const clear = () => setDragActive(false);
+        window.addEventListener('dragend', clear);
+        return () => window.removeEventListener('dragend', clear);
+    }, [onDropExistingChat]);
 
     // When the lens re-expands from a dormant (hover-collapsed) pill back to its
     // focused card — e.g. the user hovers the collapsed pill — move keyboard
@@ -277,7 +336,7 @@ export function ReviewChatPlacementFrame({
 
     const rootClassName = isLens
         ? 'absolute bottom-4 right-4 z-30 flex flex-col overflow-visible'
-        : 'flex h-full w-full flex-col overflow-hidden bg-[#f8f8f8] dark:bg-[#1e1e1e]';
+        : `${onDropExistingChat ? 'relative ' : ''}flex h-full w-full flex-col overflow-hidden bg-[#f8f8f8] dark:bg-[#1e1e1e]`;
 
     const cardTransition = `opacity ${DORMANT_TRANSITION_MS}ms cubic-bezier(0.22, 1, 0.36, 1), transform ${DORMANT_TRANSITION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`;
 
@@ -337,6 +396,39 @@ export function ReviewChatPlacementFrame({
             pointerEvents: 'none',
             transition: cardTransition,
         };
+
+    const handleDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
+        if (!onDropExistingChat) return;
+        // Only `types` is readable during dragover — getData() returns '' here.
+        if (!Array.from(event.dataTransfer.types).includes(SESSION_CONTEXT_DRAG_MIME)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+        setDragActive(true);
+    };
+
+    const handleDragLeave = (event: ReactDragEvent<HTMLDivElement>) => {
+        // Ignore the leave fired while crossing between the frame's own children.
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+        setDragActive(false);
+    };
+
+    const handleDrop = async (event: ReactDragEvent<HTMLDivElement>) => {
+        if (!onDropExistingChat) return;
+        const payload = readSessionContextDragPayload(event.dataTransfer);
+        if (!payload) return;   // not a single chat — let it bubble untouched
+        event.preventDefault();
+        // The composer underneath treats the same payload as "attach as
+        // context"; loading the chat must not also attach it.
+        event.stopPropagation();
+        setDragActive(false);
+
+        if (dropWorkspaceId && payload.sourceWorkspaceId !== dropWorkspaceId) {
+            setDropRejection('That chat belongs to a different workspace.');
+            return;
+        }
+        setDropRejection(null);
+        await onDropExistingChat(payload.sourceProcessId);
+    };
 
     const handleRestoreKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
         if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -431,7 +523,22 @@ export function ReviewChatPlacementFrame({
             data-dormant-mode={isLens ? dormantMode : undefined}
             data-focused={isLens ? String(focused) : undefined}
             style={lensOuterStyle}
+            onDragOver={onDropExistingChat ? handleDragOver : undefined}
+            onDragLeave={onDropExistingChat ? handleDragLeave : undefined}
+            onDrop={onDropExistingChat ? handleDrop : undefined}
         >
+            {dragActive && (
+                <div
+                    className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-[#0078d4] bg-[#0078d4]/10"
+                    data-testid={`${testIdPrefix}-drop-overlay`}
+                >
+                    <span className="text-xs font-semibold text-[#0078d4] dark:text-[#4d9fd6]">
+                        Load this chat into {title}
+                    </span>
+                    <span className="text-[10px] text-[#0078d4]/80">replaces the current chat</span>
+                </div>
+            )}
+
             {/* Dormant pill — positioned at the bottom-right of the outer container */}
             {isLens && pillEnabled && (
                 <div
@@ -544,6 +651,23 @@ export function ReviewChatPlacementFrame({
                                 ✕
                             </button>
                         </div>
+                    </div>
+                )}
+                {dropRejection && (
+                    <div
+                        className="flex items-start justify-between gap-2 border-b border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-snug text-amber-800 dark:border-amber-900/70 dark:bg-amber-900/20 dark:text-amber-200"
+                        data-testid={`${testIdPrefix}-drop-rejection`}
+                    >
+                        <span>{dropRejection}</span>
+                        <button
+                            type="button"
+                            onClick={() => setDropRejection(null)}
+                            className="shrink-0 rounded px-1 text-[11px] hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                            data-testid={`${testIdPrefix}-drop-rejection-dismiss`}
+                            aria-label="Dismiss drop message"
+                        >
+                            ✕
+                        </button>
                     </div>
                 )}
                 <div className="min-h-0 flex-1">

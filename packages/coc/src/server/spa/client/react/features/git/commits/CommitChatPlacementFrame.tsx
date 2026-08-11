@@ -1,5 +1,7 @@
-import { CommitChatPanel } from './CommitChatPanel';
+import { useCallback, useRef } from 'react';
+import { CommitChatPanel, type BindExistingChatFn } from './CommitChatPanel';
 import { ReviewChatPlacementFrame } from '../reviewChat/ReviewChatPlacementFrame';
+import { isSessionContextAttachmentsEnabled } from '../../../utils/config';
 import type { CommitChatPresentation } from './commitChatPlacement';
 
 export interface CommitChatPlacementFrameProps {
@@ -27,6 +29,15 @@ export function CommitChatPlacementFrame({
     onPin,
     onUnpin,
 }: CommitChatPlacementFrameProps) {
+    const bindExistingChatRef = useRef<BindExistingChatFn | null>(null);
+    // Same flag that gates the drag sources; without it there is nothing to drag
+    // and advertising a drop target would be a dead end.
+    const dropEnabled = isSessionContextAttachmentsEnabled();
+
+    const handleDropExistingChat = useCallback(async (processId: string) => {
+        await bindExistingChatRef.current?.(processId);
+    }, []);
+
     return (
         <ReviewChatPlacementFrame
             title="Commit Chat"
@@ -39,6 +50,8 @@ export function CommitChatPlacementFrame({
             onPin={onPin}
             onUnpin={onUnpin}
             testIdPrefix="commit-chat"
+            onDropExistingChat={dropEnabled ? handleDropExistingChat : undefined}
+            dropWorkspaceId={dropEnabled ? workspaceId : undefined}
         >
             <CommitChatPanel
                 workspaceId={workspaceId}
@@ -46,6 +59,7 @@ export function CommitChatPlacementFrame({
                 commitMessage={commitMessage}
                 onClose={onClose}
                 hideEmptyHeader
+                bindExistingChatRef={dropEnabled ? bindExistingChatRef : undefined}
             />
         </ReviewChatPlacementFrame>
     );

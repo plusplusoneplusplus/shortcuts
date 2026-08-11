@@ -5,6 +5,9 @@ const dormantModeState = { value: 'ghost' as 'ghost' | 'pill' | 'ghost-then-pill
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getCommitChatLensDormantMode: () => dormantModeState.value,
+    // The frame gates its chat drop target on this flag; keep it on so these
+    // dormancy/resize cases run against the same wiring as production.
+    isSessionContextAttachmentsEnabled: () => true,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitChatPanel', () => ({
