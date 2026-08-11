@@ -2,7 +2,7 @@
  * CoC Desktop — pop-out window chrome (address bar) — pure logic.
  *
  * A pop-out window (`#popout/markdown`, `#popout/activity`, `#popout/git-review`,
- * `#popout/canvas`, and same-origin PDF children) is built by the main process
+ * `#popout/canvas`, `#popout/dev-tools`, and same-origin PDF children) is built by the main process
  * out of TWO `WebContentsView`s stacked inside one BrowserWindow: a fixed-height
  * chrome strip on top and the popped-out page below. See `popout-window-host.ts`
  * for the Electron half; everything decidable without Electron lives here so it

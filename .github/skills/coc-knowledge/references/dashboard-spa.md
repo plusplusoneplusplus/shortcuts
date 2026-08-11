@@ -219,6 +219,14 @@ the existing window. Desktop pop-outs have no handle to poll for close, so
 handle-dependent restore (the canvas panel's `handle.closed` watcher) degrades to
 "stays on the popped-out rail until clicked".
 
+The sidebar Dev Tools button opens `features/dev-tools/DevToolsDialog`, whose
+header carries a pop-out button. It opens `#popout/dev-tools` under the window
+name `coc-dev-tools` and closes the dialog once `popOutOpened` confirms a window
+appeared. `entry.tsx` routes that hash to `layout/PopOutDevToolsShell`, which
+renders the same `DevToolsPanel` full-window under `ThemeProvider` only — the
+tool cards are pure client-side widgets with no API or app-state dependencies,
+so the pop-out URL needs no query parameters.
+
 `features/chat/RalphGrillSetupPanel.tsx` renders the disabled-by-default
 multi-agent Ralph grilling setup card when `features.ralphMultiAgentGrill` is
 enabled. New Chat Ralph grilling (`NewChatArea`) and promoted ask-mode chats

@@ -4,11 +4,44 @@
  *
  * @vitest-environment jsdom
  */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 
 import { DevToolsDialog } from '../../../../../src/server/spa/client/react/features/dev-tools/DevToolsDialog';
 import { DEV_TOOLS, DEFAULT_EXPANDED_TOOL_ID } from '../../../../../src/server/spa/client/react/features/dev-tools/registry';
+
+describe('DevToolsDialog pop-out', () => {
+    function stubOpen(handle: Window | null) {
+        const open = vi.fn().mockReturnValue(handle);
+        vi.stubGlobal('open', open);
+        return open;
+    }
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('opens the dev-tools pop-out window and closes the dialog', () => {
+        const open = stubOpen({} as Window);
+        const onClose = vi.fn();
+        render(<DevToolsDialog open onClose={onClose} />);
+        fireEvent.click(screen.getByTestId('dev-tools-popout-btn'));
+        expect(open).toHaveBeenCalledTimes(1);
+        const [url, name] = open.mock.calls[0];
+        expect(url.endsWith('#popout/dev-tools')).toBe(true);
+        expect(name).toBe('coc-dev-tools');
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the dialog open when the pop-out is blocked in the browser', () => {
+        stubOpen(null);
+        const onClose = vi.fn();
+        render(<DevToolsDialog open onClose={onClose} />);
+        fireEvent.click(screen.getByTestId('dev-tools-popout-btn'));
+        expect(onClose).not.toHaveBeenCalled();
+        expect(screen.getByTestId('dev-tools-panel')).toBeTruthy();
+    });
+});
 
 describe('DevToolsDialog', () => {
     it('renders nothing while closed', () => {
