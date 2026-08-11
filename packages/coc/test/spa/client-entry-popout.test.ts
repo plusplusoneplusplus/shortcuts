@@ -40,4 +40,11 @@ describe('client entry point: pop-out routes', () => {
         expect(source).toContain('#popout/markdown');
         expect(source).toContain('#popout/git-review');
     });
+
+    it('renders PopOutDevToolsShell for the dev-tools route before falling back to App', () => {
+        expect(source).toContain("import { PopOutDevToolsShell }");
+        expect(source).toContain('#popout/dev-tools');
+        expect(source).toContain('<PopOutDevToolsShell />');
+        expect(source.indexOf('#popout/dev-tools')).toBeLessThan(source.indexOf('root.render(<App />)'));
+    });
 });
