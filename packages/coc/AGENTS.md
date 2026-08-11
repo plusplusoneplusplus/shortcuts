@@ -444,7 +444,14 @@ all have their own `references/*.md`.
   turn to run a cheap one-shot AI lookup, attached as a clickable 💡 bubble that
   never enters the conversation thread. Backend lives in
   `src/server/processes/chat-sidenotes/` (manager + prompt + one-shot invoker +
-  `POST`/`GET`/`DELETE /api/processes/:processId/sidenotes` routes); persistence
+  `POST`/`GET`/`DELETE /api/processes/:processId/sidenotes` routes). The invoker
+  is a thin adapter over `src/server/core/one-shot-ai.ts` — the shared helper for
+  any stateless, tool-free, permissions-denied lookup. It routes text-only asks
+  through the SDK `transform` primitive and falls back to `createCLIAIInvoker`
+  with `loadMcpConfig: false` only when the ask carries attachments (the vision
+  region-crop path), so neither branch starts ambient MCP servers. Use it for new
+  one-shot call sites instead of wrapping `createCLIAIInvoker` directly, whose
+  MCP default is tuned for agentic callers. Persistence
   is repo-scoped at `~/.coc/repos/<workspaceId>/chat-sidenotes/<sha256(processId)>.json`
   via `getRepoDataPath` (never a new top-level `~/.coc` dir). Model resolves
   `defaultModels.quickAsk` > `defaultModel` > CLI default. SPA components live in
