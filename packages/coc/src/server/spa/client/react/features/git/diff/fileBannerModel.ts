@@ -199,6 +199,22 @@ export function buildBannerIndex(banners: FileBanner[]): {
 }
 
 /**
+ * Every preamble row index, *including* the `diff --git` line.
+ *
+ * Used by surfaces whose own chrome already shows the file name (the
+ * single-file diff panel): the whole block is dropped rather than replaced by a
+ * banner row. Unlike a per-line-prefix filter this also covers `old mode`,
+ * `similarity index`, and `Binary files … differ`, which git does not prefix.
+ */
+export function buildPreambleIndex(banners: FileBanner[]): Set<number> {
+    const hidden = new Set<number>();
+    for (const b of banners) {
+        for (let i = b.startIdx; i < b.preambleEndIdx; i++) hidden.add(i);
+    }
+    return hidden;
+}
+
+/**
  * The banner owning a given diff-line index — i.e. the last file section that
  * starts at or before it. Drives the pinned banner in the windowed row list,
  * where the in-flow sticky row is not in the DOM.

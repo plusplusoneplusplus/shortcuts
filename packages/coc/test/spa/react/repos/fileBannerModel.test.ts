@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest';
 import {
     parseFileBanners,
     buildBannerIndex,
+    buildPreambleIndex,
     bannerForLineIndex,
     pinnedBannerForTopRow,
     bannerDetailsText,
@@ -236,6 +237,52 @@ describe('buildBannerIndex', () => {
         expect([...suppressed].sort((a, b) => a - b)).toEqual([1, 2, 3]);
         expect(suppressed.has(0)).toBe(false);
         expect(suppressed.has(4)).toBe(false);
+    });
+});
+
+describe('buildPreambleIndex', () => {
+    it('hides the `diff --git` row too, since nothing replaces it', () => {
+        const hidden = buildPreambleIndex(parse(MODIFIED));
+        expect([...hidden].sort((a, b) => a - b)).toEqual([0, 1, 2, 3]);
+        // The `@@` header and every change line stay visible.
+        expect(hidden.has(4)).toBe(false);
+        expect(hidden.has(5)).toBe(false);
+    });
+
+    it('covers unprefixed preamble lines (similarity index / rename) as well', () => {
+        const hidden = buildPreambleIndex(parse(`diff --git a/src/old.ts b/src/new.ts
+similarity index 95%
+rename from src/old.ts
+rename to src/new.ts
+index 2793a9a..8cd4f10 100644
+--- a/src/old.ts
++++ b/src/new.ts
+@@ -1 +1 @@
+-was
++now`));
+        expect([...hidden].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    });
+
+    it('hides every file section of a multi-file diff', () => {
+        const hidden = buildPreambleIndex(parse(`diff --git a/a.ts b/a.ts
+index 111..222 100644
+--- a/a.ts
++++ b/a.ts
+@@ -1 +1 @@
+-old
++new
+diff --git a/b.ts b/b.ts
+index 333..444 100644
+--- a/b.ts
++++ b/b.ts
+@@ -1 +1 @@
+-old
++new`));
+        expect([...hidden].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 7, 8, 9, 10]);
+    });
+
+    it('is empty for a diff with no file sections', () => {
+        expect(buildPreambleIndex(parse('@@ -1 +1 @@\n-old\n+new')).size).toBe(0);
     });
 });
 

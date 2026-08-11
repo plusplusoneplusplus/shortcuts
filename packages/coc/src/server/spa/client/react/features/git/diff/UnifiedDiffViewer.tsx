@@ -21,7 +21,7 @@ import {
     type LineMatchRange,
 } from './diffFindModel';
 import { FileBannerRow } from './FileBannerRow';
-import { parseFileBanners, buildBannerIndex, pinnedBannerForTopRow, type FileBanner } from './fileBannerModel';
+import { parseFileBanners, buildBannerIndex, buildPreambleIndex, pinnedBannerForTopRow, type FileBanner } from './fileBannerModel';
 
 export interface UnifiedDiffViewerProps {
     diff: string;
@@ -30,10 +30,11 @@ export interface UnifiedDiffViewerProps {
     enableComments?: boolean;
     showLineNumbers?: boolean;
     /**
-     * Hide git file-header metadata lines (`diff --git`, `index`, `--- `,
-     * `+++ `, `new file`, `deleted file`, `rename`). The file path is shown by
-     * the host chrome in these surfaces, so the raw headers are pure noise.
-     * Hunk headers (`@@`) and change lines are unaffected.
+     * Drop each file's raw git preamble — everything from `diff --git` up to
+     * the first `@@` — without putting anything in its place. The file path is
+     * shown by the host chrome in these surfaces (the single-file diff panel),
+     * so the preamble is pure noise. Hunk headers (`@@`) and change lines are
+     * unaffected, and no row is renumbered.
      */
     hideFileHeaders?: boolean;
     /**
@@ -937,12 +938,18 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
     // the preamble; no row is renumbered, so match ranges keyed by diff-line
     // index (and comment anchors, hunk ranges) still line up exactly.
     const fileBanners = useMemo(
-        () => (showFileBanners ? parseFileBanners(lines) : []),
-        [lines, showFileBanners],
+        () => (showFileBanners || hideFileHeaders ? parseFileBanners(lines) : []),
+        [lines, showFileBanners, hideFileHeaders],
     );
     const { bannerByStart, suppressed: suppressedPreamble } = useMemo(
         () => buildBannerIndex(fileBanners),
         [fileBanners],
+    );
+    // `hideFileHeaders` drops the preamble outright (the `diff --git` row too),
+    // for surfaces that name the file in their own chrome.
+    const hiddenPreamble = useMemo(
+        () => (hideFileHeaders ? buildPreambleIndex(fileBanners) : new Set<number>()),
+        [hideFileHeaders, fileBanners],
     );
     const lineCommentMap = useMemo(
         () => (comments ? buildLineCommentMap(comments) : new Map<number, DiffComment[]>()),
@@ -1382,7 +1389,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                     if (banner) return <FileBannerRow key={i} banner={banner} sticky={!virtualized} />;
                     if (suppressedPreamble.has(i)) return null;
                 }
-                if (hideFileHeaders && type === 'meta') return null;
+                if (hiddenPreamble.has(i)) return null;
                 const collapsedHunk = collapsedByStart.get(i);
                 if (collapsedHunk && collapsedHunk.classification) {
                     return <CollapsedHunkSummary key={i} hunk={collapsedHunk} onExpand={expandHunk} />;
