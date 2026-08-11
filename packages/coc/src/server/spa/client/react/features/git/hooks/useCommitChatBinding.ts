@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
+import { isQueueProcessId, toTaskId } from '../../../utils/queue-process-id';
 import type { AttachmentPayload } from '../../../types/attachments';
 
 export interface UseCommitChatBindingOptions {
@@ -32,6 +33,11 @@ export interface UseCommitChatBindingReturn {
     createChat: (prompt: string, options?: ReviewChatComposerSendOptions) => Promise<string | null>;
     /** Archive the currently bound chat and return this commit to an empty chat state. */
     startFreshChat: () => Promise<boolean>;
+    /**
+     * Point this commit at an existing conversation (drag-and-drop rebind).
+     * Accepts either a queue process ID (`queue_abc`) or a bare task ID.
+     */
+    bindExistingChat: (processIdOrTaskId: string) => Promise<boolean>;
     /** True while the fresh-chat binding reset is in progress. */
     startingFresh: boolean;
 }
@@ -45,6 +51,10 @@ export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseComm
     const mountedRef = useRef(false);
     const currentRequestRef = useRef({ workspaceId, commitHash });
     currentRequestRef.current = { workspaceId, commitHash };
+    // Mirrors `taskId` so a rebind can roll back to the value that was live when
+    // it started without putting `taskId` in any callback's dependency array.
+    const taskIdRef = useRef<string | null>(null);
+    taskIdRef.current = taskId;
 
     useEffect(() => {
         mountedRef.current = true;
@@ -155,5 +165,41 @@ export function useCommitChatBinding(opts: UseCommitChatBindingOptions): UseComm
         }
     }, [workspaceId, commitHash, isCurrentRequest]);
 
-    return { taskId, loading, error, createChat, startFreshChat, startingFresh };
+    /**
+     * Rebind this commit to an existing conversation. The swap is optimistic —
+     * `ChatDetail` remounts on the new taskId and loads it immediately — and
+     * rolls back to the previously bound chat if the server rejects the write.
+     */
+    const bindExistingChat = useCallback(async (processIdOrTaskId: string): Promise<boolean> => {
+        if (!commitHash) return false;
+        const requestedWorkspaceId = workspaceId;
+        const requestedCommitHash = commitHash;
+        const nextTaskId = isQueueProcessId(processIdOrTaskId)
+            ? toTaskId(processIdOrTaskId)
+            : processIdOrTaskId;
+
+        const previousTaskId = taskIdRef.current;
+        // Dropping the chat that is already bound is a no-op, not a rewrite.
+        if (previousTaskId === nextTaskId) return true;
+
+        if (isCurrentRequest(requestedWorkspaceId, requestedCommitHash)) {
+            setTaskId(nextTaskId);
+            taskIdRef.current = nextTaskId;
+            setError(null);
+        }
+        try {
+            await getCocClientForWorkspace(requestedWorkspaceId)
+                .git.createCommitChatBinding(requestedWorkspaceId, requestedCommitHash, nextTaskId);
+            return true;
+        } catch (err: any) {
+            if (isCurrentRequest(requestedWorkspaceId, requestedCommitHash)) {
+                setTaskId(previousTaskId);
+                taskIdRef.current = previousTaskId;
+                setError(err?.message ?? 'Failed to attach chat to this commit');
+            }
+            return false;
+        }
+    }, [workspaceId, commitHash, isCurrentRequest]);
+
+    return { taskId, loading, error, createChat, startFreshChat, startingFresh, bindExistingChat };
 }

@@ -478,6 +478,10 @@ export function FileDiffPanel({
                                     fileName={filePath}
                                     enableComments
                                     showLineNumbers
+                                    /* The header already names the file, so the
+                                       raw git preamble is dropped (split mode
+                                       drops it too). */
+                                    hideFileHeaders
                                     comments={comments}
                                     onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
                                     onAddComment={handleAddComment}

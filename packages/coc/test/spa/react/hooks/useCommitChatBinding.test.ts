@@ -312,8 +312,144 @@ describe('useCommitChatBinding', () => {
         });
     });
 
+    describe('bindExistingChat rebinds the commit to an existing conversation', () => {
+        function deferred<T>() {
+            let resolve!: (value: T) => void;
+            let reject!: (reason?: unknown) => void;
+            const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+            return { promise, resolve, reject };
+        }
+
+        async function renderBound(taskId: string | null = null) {
+            mockGit.getCommitChatBinding.mockResolvedValueOnce({ commitHash: 'abc123', taskId });
+            const view = renderHook(() => useCommitChatBinding({ workspaceId: 'ws-1', commitHash: 'abc123' }));
+            await act(async () => { await Promise.resolve(); });
+            expect(view.result.current.taskId).toBe(taskId);
+            return view;
+        }
+
+        it('accepts a queue process ID and binds the bare task ID', async () => {
+            const { result } = await renderBound();
+
+            let ok = false;
+            await act(async () => { ok = await result.current.bindExistingChat('queue_abc'); });
+
+            expect(ok).toBe(true);
+            expect(mockGit.createCommitChatBinding).toHaveBeenCalledWith('ws-1', 'abc123', 'abc');
+            expect(result.current.taskId).toBe('abc');
+        });
+
+        it('accepts a bare task ID unchanged', async () => {
+            const { result } = await renderBound();
+
+            await act(async () => { await result.current.bindExistingChat('abc'); });
+
+            expect(mockGit.createCommitChatBinding).toHaveBeenCalledWith('ws-1', 'abc123', 'abc');
+        });
+
+        it('swaps the lens optimistically before the binding write settles', async () => {
+            const pending = deferred<unknown>();
+            mockGit.createCommitChatBinding.mockReturnValueOnce(pending.promise);
+            const { result } = await renderBound('task-old');
+
+            let bindPromise!: Promise<boolean>;
+            await act(async () => {
+                bindPromise = result.current.bindExistingChat('queue_task-new');
+                await Promise.resolve();
+            });
+
+            expect(result.current.taskId).toBe('task-new');
+
+            await act(async () => { pending.resolve({}); await bindPromise; });
+            expect(result.current.taskId).toBe('task-new');
+        });
+
+        it('rolls back to the previously bound chat and surfaces the error on failure', async () => {
+            mockGit.createCommitChatBinding.mockRejectedValueOnce(new Error('binding write failed'));
+            const { result } = await renderBound('task-old');
+
+            let ok = true;
+            await act(async () => { ok = await result.current.bindExistingChat('queue_task-new'); });
+
+            expect(ok).toBe(false);
+            expect(result.current.taskId).toBe('task-old');
+            expect(result.current.error).toBe('binding write failed');
+        });
+
+        it('rolls back to the empty state when the commit had no chat', async () => {
+            mockGit.createCommitChatBinding.mockRejectedValueOnce(new Error('nope'));
+            const { result } = await renderBound(null);
+
+            await act(async () => { await result.current.bindExistingChat('queue_task-new'); });
+
+            expect(result.current.taskId).toBeNull();
+            expect(result.current.error).toBe('nope');
+        });
+
+        it('does not call the API when the dropped chat is already bound', async () => {
+            const { result } = await renderBound('task-old');
+
+            let ok = false;
+            await act(async () => { ok = await result.current.bindExistingChat('queue_task-old'); });
+
+            expect(ok).toBe(true);
+            expect(mockGit.createCommitChatBinding).not.toHaveBeenCalled();
+            expect(result.current.taskId).toBe('task-old');
+        });
+
+        it('writes nothing when the rebind resolves after the commit changed', async () => {
+            const pending = deferred<unknown>();
+            mockGit.createCommitChatBinding.mockReturnValueOnce(pending.promise);
+            mockGit.getCommitChatBinding.mockResolvedValue({ taskId: null });
+
+            const { result, rerender } = renderHook(
+                (props: { workspaceId: string; commitHash: string }) => useCommitChatBinding(props),
+                { initialProps: { workspaceId: 'ws-1', commitHash: 'abc123' } },
+            );
+            await act(async () => { await Promise.resolve(); });
+
+            let bindPromise!: Promise<boolean>;
+            await act(async () => {
+                bindPromise = result.current.bindExistingChat('queue_task-new');
+                await Promise.resolve();
+            });
+            expect(result.current.taskId).toBe('task-new');
+
+            rerender({ workspaceId: 'ws-1', commitHash: 'def456' });
+            await act(async () => { await Promise.resolve(); });
+
+            await act(async () => {
+                pending.reject(new Error('too late'));
+                await bindPromise;
+            });
+
+            expect(result.current.taskId).toBeNull();
+            expect(result.current.error).toBeNull();
+        });
+
+        it('rolls a failed second rebind back to the first dropped chat, not the pre-drag state', async () => {
+            const first = deferred<unknown>();
+            const second = deferred<unknown>();
+            mockGit.createCommitChatBinding
+                .mockReturnValueOnce(first.promise)
+                .mockReturnValueOnce(second.promise);
+            const { result } = await renderBound(null);
+
+            await act(async () => {
+                const a = result.current.bindExistingChat('queue_task-a');
+                const b = result.current.bindExistingChat('queue_task-b');
+                first.resolve({});
+                second.reject(new Error('second failed'));
+                await Promise.all([a, b]);
+            });
+
+            expect(result.current.taskId).toBe('task-a');
+            expect(result.current.error).toBe('second failed');
+        });
+    });
+
     it('returns taskId, loading, error, createChat, and startFreshChat state', () => {
-        expect(source).toContain('return { taskId, loading, error, createChat, startFreshChat, startingFresh }');
+        expect(source).toContain('return { taskId, loading, error, createChat, startFreshChat, startingFresh, bindExistingChat }');
     });
 
     it('does not return early when commitHash is empty', () => {

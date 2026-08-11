@@ -2,13 +2,15 @@
  * File-name banner under windowing (diffs over VIRTUALIZE_THRESHOLD lines).
  *
  * Windowed rows are absolutely positioned, so the in-flow sticky banner cannot
- * hold. Both viewers instead pin a single banner for the file that owns the
- * topmost mounted row. The virtualization block mocks offsetHeight/offsetWidth
- * (what @tanstack/react-virtual measures), matching UnifiedDiffViewer.find.test.tsx.
+ * hold. Both viewers instead overlay a copy of the current file's banner — but
+ * only once that file's own in-flow banner row has scrolled above the top edge,
+ * so the top edge always carries exactly one banner and never two for the same
+ * file. The virtualization block mocks offsetHeight/offsetWidth (what
+ * @tanstack/react-virtual measures), matching UnifiedDiffViewer.find.test.tsx.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, act } from '@testing-library/react';
 import React from 'react';
 import { UnifiedDiffViewer, VIRTUALIZE_THRESHOLD } from '../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
 import { SideBySideDiffViewer } from '../../../src/server/spa/client/react/features/git/diff/SideBySideDiffViewer';
@@ -33,6 +35,16 @@ function largeTwoFileDiff(bodyLines: number): string {
         '@@ -0,0 +1,1 @@',
         '+second file line',
     ].join('\n');
+}
+
+/**
+ * Drive the scroll element the virtualizer subscribes to. Both viewers resolve
+ * it via getScrollableAncestor, which lands on the `scroller` wrapper below.
+ */
+function scrollWindowedList(container: HTMLElement, top: number) {
+    const scroller = container.querySelector<HTMLElement>('[data-testid="scroller"]')!;
+    scroller.scrollTop = top;
+    scroller.dispatchEvent(new Event('scroll'));
 }
 
 const VIEWERS = [
@@ -71,27 +83,55 @@ describe.each(VIEWERS)('file-name banner under windowing — $name mode', ({ Vie
 
     const DIFF = largeTwoFileDiff(VIRTUALIZE_THRESHOLD + 50);
 
-    it('pins a banner for the file owning the topmost mounted row', () => {
+    it('shows exactly one banner for the first file at scroll top — the in-flow row, no overlay', () => {
         const { container } = renderWindowed(
             <Viewer diff={DIFF} showFileBanners data-testid="diff" />
         );
-        const pinned = container.querySelector<HTMLElement>('[data-testid="diff-file-banner-pinned"]');
-        expect(pinned).toBeTruthy();
-        // Scroll position is 0, so the first file owns the topmost row.
-        expect(pinned!.getAttribute('data-file-path')).toBe('src/big.ts');
-        expect(pinned!.querySelector('[data-testid="diff-file-banner-status"]')!.textContent).toBe('modified');
+        // The regression: an overlay was rendered unconditionally, so at scroll 0
+        // it duplicated the first file's own in-flow banner row.
+        const forBigTs = container.querySelectorAll(
+            '[data-testid^="diff-file-banner"][data-file-path="src/big.ts"]'
+        );
+        expect(forBigTs.length).toBe(1);
+        expect(container.querySelector('[data-testid="diff-file-banner-pinned"]')).toBeNull();
+        const inFlow = forBigTs[0] as HTMLElement;
+        expect(inFlow.getAttribute('data-testid')).toBe('diff-file-banner');
+        expect(inFlow.querySelector('[data-testid="diff-file-banner-status"]')!.textContent).toBe('modified');
     });
 
-    it('wraps the pinned banner in a sticky container', () => {
+    it('overlays the current file once its banner row is above the fold', () => {
         const { container } = renderWindowed(
             <Viewer diff={DIFF} showFileBanners data-testid="diff" />
         );
+        act(() => { scrollWindowedList(container, 24000); });
+
+        const pinned = container.querySelector<HTMLElement>('[data-testid="diff-file-banner-pinned"]');
+        expect(pinned).toBeTruthy();
+        expect(pinned!.getAttribute('data-file-path')).toBe('src/big.ts');
+        // Still exactly one banner for the file: its in-flow row is off-screen.
+        expect(
+            container.querySelectorAll('[data-testid^="diff-file-banner"][data-file-path="src/big.ts"]').length
+        ).toBe(1);
+    });
+
+    it('wraps the overlay in a zero-height sticky container so it never shifts the rows', () => {
+        const { container } = renderWindowed(
+            <Viewer diff={DIFF} showFileBanners data-testid="diff" />
+        );
+        act(() => { scrollWindowedList(container, 24000); });
+
         const pinned = container.querySelector<HTMLElement>('[data-testid="diff-file-banner-pinned"]')!;
         // The row itself is not sticky — its wrapper is, since windowed rows are
         // absolutely positioned and cannot participate in sticky flow.
         expect(pinned.className).not.toContain('sticky');
-        expect(pinned.parentElement!.className).toContain('sticky');
-        expect(pinned.parentElement!.className).toContain('top-0');
+        const inner = pinned.parentElement!;
+        expect(inner.className).toContain('absolute');
+        const wrapper = inner.parentElement!;
+        expect(wrapper.className).toContain('sticky');
+        expect(wrapper.className).toContain('top-0');
+        // Zero-height: the overlay is out of flow, so mounting it cannot push
+        // the virtualized row list down.
+        expect(wrapper.className).toContain('h-0');
     });
 
     it('still suppresses the raw preamble in the mounted rows', () => {

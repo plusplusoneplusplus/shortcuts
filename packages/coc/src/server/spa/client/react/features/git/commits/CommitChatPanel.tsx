@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+import type { MutableRefObject } from 'react';
 import { useCommitChatBinding } from '../hooks/useCommitChatBinding';
 import { ChatDetail } from '../../chat/ChatDetail';
 import { ChatPreferencesProvider } from '../../../contexts/ChatPreferencesContext';
@@ -5,16 +7,31 @@ import { InitialChatComposer } from '../../chat/NewChatArea';
 import type { InitialChatComposerSubmission } from '../../chat/NewChatArea';
 import { getReviewChatTargetStorageId } from './commitChatPlacement';
 
+/** Rebinds this commit to an existing conversation. Resolves false on failure. */
+export type BindExistingChatFn = (processIdOrTaskId: string) => Promise<boolean>;
+
 export interface CommitChatPanelProps {
     workspaceId: string;
     commitHash: string;
     commitMessage?: string;
     onClose: () => void;
     hideEmptyHeader?: boolean;
+    /**
+     * Filled with this panel's rebind action while mounted, so the surrounding
+     * lens frame can own the drop target without a second binding hook (which
+     * would fetch twice and swap only its own copy of the state).
+     */
+    bindExistingChatRef?: MutableRefObject<BindExistingChatFn | null>;
 }
 
-export function CommitChatPanel({ workspaceId, commitHash, commitMessage, onClose, hideEmptyHeader = false }: CommitChatPanelProps) {
-    const { taskId, loading, error, createChat, startFreshChat, startingFresh } = useCommitChatBinding({ workspaceId, commitHash, commitMessage });
+export function CommitChatPanel({ workspaceId, commitHash, commitMessage, onClose, hideEmptyHeader = false, bindExistingChatRef }: CommitChatPanelProps) {
+    const { taskId, loading, error, createChat, startFreshChat, startingFresh, bindExistingChat } = useCommitChatBinding({ workspaceId, commitHash, commitMessage });
+
+    useEffect(() => {
+        if (!bindExistingChatRef) return;
+        bindExistingChatRef.current = bindExistingChat;
+        return () => { bindExistingChatRef.current = null; };
+    }, [bindExistingChatRef, bindExistingChat]);
 
     const draftKey = `review-chat:${getReviewChatTargetStorageId({ type: 'commit', workspaceId, commitHash })}`;
     const commitLabel = commitHash.slice(0, 7);

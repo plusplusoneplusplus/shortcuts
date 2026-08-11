@@ -153,6 +153,75 @@ describe('resolveSourceCanvasTarget', () => {
         expect(r).toEqual({ wsId: 'ws-win', path: 'C:/work/proj/src/foo.ts' });
     });
 
+    // ── WSL workspaces (Windows host, `\\wsl$\<distro>\...` root) ────────────
+    const WSL_WS = [
+        { id: 'ws-wsl', rootPath: '\\\\wsl$\\Ubuntu-24.04\\home\\yihengtao\\projects\\mini-sglang' },
+    ];
+
+    it('keeps the UNC prefix when anchoring a workspace-relative path at a WSL root', () => {
+        const r = resolveSourceCanvasTarget(
+            { fullPath: 'python/minisgl/models/qwen3_moe.py', wsId: 'ws-wsl' },
+            WSL_WS,
+        );
+        expect(r).toEqual({
+            wsId: 'ws-wsl',
+            path: '//wsl$/Ubuntu-24.04/home/yihengtao/projects/mini-sglang/python/minisgl/models/qwen3_moe.py',
+        });
+    });
+
+    it('keeps the UNC prefix when resolving a `../` ref inside a WSL workspace', () => {
+        const r = resolveSourceCanvasTarget(
+            {
+                fullPath: '../README.md',
+                sourceFilePath: '//wsl$/Ubuntu-24.04/home/yihengtao/projects/mini-sglang/python/main.py',
+            },
+            WSL_WS,
+        );
+        expect(r).toEqual({
+            wsId: 'ws-wsl',
+            path: '//wsl$/Ubuntu-24.04/home/yihengtao/projects/mini-sglang/README.md',
+        });
+    });
+
+    it('re-roots a Linux absolute path onto the matching WSL workspace share', () => {
+        const r = resolveSourceCanvasTarget(
+            { fullPath: '/home/yihengtao/projects/mini-sglang/python/main.py' },
+            WSL_WS,
+        );
+        expect(r).toEqual({
+            wsId: 'ws-wsl',
+            path: '//wsl$/Ubuntu-24.04/home/yihengtao/projects/mini-sglang/python/main.py',
+        });
+    });
+
+    it('re-roots a Linux absolute path through the hinted WSL workspace', () => {
+        const r = resolveSourceCanvasTarget(
+            { fullPath: '/home/yihengtao/projects/mini-sglang/python/main.py', wsId: 'ws-wsl' },
+            [{ id: 'ws-other', rootPath: '\\\\wsl$\\Debian\\home\\yihengtao\\projects\\mini-sglang' }, ...WSL_WS],
+        );
+        expect(r).toEqual({
+            wsId: 'ws-wsl',
+            path: '//wsl$/Ubuntu-24.04/home/yihengtao/projects/mini-sglang/python/main.py',
+        });
+    });
+
+    it('leaves a Linux absolute path alone when it is outside every WSL root', () => {
+        const r = resolveSourceCanvasTarget({ fullPath: '/etc/hosts' }, WSL_WS);
+        expect(r).toEqual({ wsId: 'ws-wsl', path: '/etc/hosts' });
+    });
+
+    it('leaves Linux paths alone on a plain Linux host', () => {
+        const r = resolveSourceCanvasTarget({ fullPath: '/home/u/proj/src/foo.ts' }, WS);
+        expect(r).toEqual({ wsId: 'ws-root', path: '/home/u/proj/src/foo.ts' });
+    });
+
+    it('shows a WSL file as workspace-relative in the canvas header', () => {
+        expect(getSourceCanvasDisplayPath(
+            '//wsl$/Ubuntu-24.04/home/yihengtao/projects/mini-sglang/python/main.py',
+            WSL_WS[0].rootPath,
+        )).toBe('python/main.py');
+    });
+
     // ── Tilde-prefixed CoC note hrefs ────────────────────────────────────────
     const HOME_WS = [
         { id: 'ws-hcv3mg', rootPath: '/Users/yihengtao/.coc/repos/ws-hcv3mg' },

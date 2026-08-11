@@ -12,6 +12,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 
 const mockCreateChat = vi.fn();
 const mockStartFreshChat = vi.fn();
+const mockBindExistingChat = vi.fn();
 const mockUseCommitChatBinding = vi.fn();
 
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useCommitChatBinding', () => ({
@@ -75,13 +76,23 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useFileAtta
 }));
 
 import { CommitChatPanel } from '../../../../src/server/spa/client/react/features/git/commits/CommitChatPanel';
+import { CommitChatPlacementFrame } from '../../../../src/server/spa/client/react/features/git/commits/CommitChatPlacementFrame';
+import { _resetRuntimeConfig } from '../../../../src/server/spa/client/react/utils/config';
 
 describe('CommitChatPanel', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockCreateChat.mockResolvedValue('new-task-id');
         mockStartFreshChat.mockResolvedValue(true);
+        mockBindExistingChat.mockResolvedValue(true);
         mockCommitToPayload.mockReturnValue([]);
+        _resetRuntimeConfig();
+        (window as any).__DASHBOARD_CONFIG__ = {
+            apiBasePath: '/api',
+            wsPath: '/ws',
+            commitChatLensEnabled: true,
+            sessionContextAttachmentsEnabled: true,
+        };
     });
 
     const defaultProps = {
@@ -98,6 +109,7 @@ describe('CommitChatPanel', () => {
             createChat: mockCreateChat,
             startFreshChat: mockStartFreshChat,
             startingFresh: false,
+            bindExistingChat: mockBindExistingChat,
             ...overrides,
         });
     }
@@ -358,5 +370,126 @@ describe('CommitChatPanel', () => {
             attachments: undefined,
             provider: 'copilot',
         }));
+    });
+
+    // ========================================================================
+    // Drag a chat into the lens
+    // ========================================================================
+
+    it('publishes its rebind action to the lens frame while mounted', async () => {
+        setupHook();
+        const bindExistingChatRef = { current: null } as { current: ((id: string) => Promise<boolean>) | null };
+
+        let view!: ReturnType<typeof render>;
+        await act(async () => {
+            view = render(<CommitChatPanel {...defaultProps} bindExistingChatRef={bindExistingChatRef} />);
+        });
+
+        expect(bindExistingChatRef.current).toBe(mockBindExistingChat);
+
+        await act(async () => { view.unmount(); });
+        expect(bindExistingChatRef.current).toBeNull();
+    });
+});
+
+describe('CommitChatPlacementFrame chat drop wiring', () => {
+    const SESSION_MIME = 'application/vnd.coc.session-context+json';
+
+    function sessionDataTransfer(sourceWorkspaceId = 'ws1') {
+        const payload = JSON.stringify({
+            kind: 'coc.session-context',
+            version: 1,
+            sourceWorkspaceId,
+            sourceProcessId: 'queue_dropped-task',
+            title: 'An earlier conversation',
+            status: 'completed',
+            lastActivityAt: '2026-03-07T12:00:00.000Z',
+        });
+        return {
+            types: [SESSION_MIME],
+            getData: (type: string) => (type === SESSION_MIME ? payload : ''),
+            dropEffect: 'none',
+        };
+    }
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockBindExistingChat.mockResolvedValue(true);
+        mockUseCommitChatBinding.mockReturnValue({
+            taskId: null,
+            loading: false,
+            error: null,
+            createChat: mockCreateChat,
+            startFreshChat: mockStartFreshChat,
+            startingFresh: false,
+            bindExistingChat: mockBindExistingChat,
+        });
+    });
+
+    function setFlag(sessionContextAttachmentsEnabled: boolean) {
+        _resetRuntimeConfig();
+        (window as any).__DASHBOARD_CONFIG__ = {
+            apiBasePath: '/api',
+            wsPath: '/ws',
+            commitChatLensEnabled: true,
+            sessionContextAttachmentsEnabled,
+        };
+    }
+
+    async function renderFrame() {
+        await act(async () => {
+            render(
+                <CommitChatPlacementFrame
+                    workspaceId="ws1"
+                    commitHash="abc123def456"
+                    presentation="lens"
+                    onClose={vi.fn()}
+                />,
+            );
+        });
+        return screen.getByTestId('commit-chat-lens');
+    }
+
+    it('rebinds the commit to the dropped chat', async () => {
+        setFlag(true);
+        const lens = await renderFrame();
+
+        await act(async () => {
+            fireEvent.dragOver(lens, { dataTransfer: sessionDataTransfer() });
+        });
+        expect(screen.getByTestId('commit-chat-drop-overlay')).toBeTruthy();
+
+        await act(async () => {
+            fireEvent.drop(lens, { dataTransfer: sessionDataTransfer() });
+        });
+
+        expect(mockBindExistingChat).toHaveBeenCalledWith('queue_dropped-task');
+    });
+
+    it('refuses a chat from another workspace', async () => {
+        setFlag(true);
+        const lens = await renderFrame();
+
+        await act(async () => {
+            fireEvent.drop(lens, { dataTransfer: sessionDataTransfer('ws-other') });
+        });
+
+        expect(mockBindExistingChat).not.toHaveBeenCalled();
+        expect(screen.getByTestId('commit-chat-drop-rejection')).toBeTruthy();
+    });
+
+    it('offers no drop target when session-context drag is disabled', async () => {
+        setFlag(false);
+        const lens = await renderFrame();
+
+        await act(async () => {
+            fireEvent.dragOver(lens, { dataTransfer: sessionDataTransfer() });
+        });
+        expect(screen.queryByTestId('commit-chat-drop-overlay')).toBeNull();
+
+        await act(async () => {
+            fireEvent.drop(lens, { dataTransfer: sessionDataTransfer() });
+        });
+        expect(mockBindExistingChat).not.toHaveBeenCalled();
     });
 });

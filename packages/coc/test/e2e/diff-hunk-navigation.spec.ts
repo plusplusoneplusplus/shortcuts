@@ -11,6 +11,13 @@
  * wrong (non-scrollable) parent element inside CommitDetail.  The fix is
  * getScrollableAncestor() walking up the DOM to find the nearest element
  * with overflow:auto/scroll.
+ *
+ * Both tests navigate to the *second* hunk to assert movement.  Hunk nav aims
+ * a hunk one third down the scrollport, and the single-file panel hides the
+ * raw git preamble (the sticky header already names the file), so the first
+ * hunk starts ~37 px below the top edge — above that one-third mark, giving
+ * scrollTo() a negative target that clamps to 0.  Landing on hunk 1 is a
+ * legitimate no-op; only hunk 2 (50+ lines down) is a scroll.
  */
 
 import * as fs from 'fs';
@@ -179,9 +186,17 @@ test.describe('Per-file diff view — hunk navigation (prev/next)', () => {
         }));
         expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
 
+        // The single-file panel drops the raw git preamble, so the first hunk
+        // is flush with the top of the scrollport. Asserting it here pins down
+        // why one ▼ click cannot move the container.
+        await expect(page.getByTestId('file-diff-content')).not.toContainText('diff --git');
+
         const scrollBefore = await scrollContainer.evaluate((el: HTMLElement) => el.scrollTop);
 
-        // Click ▼ next hunk
+        // Click ▼ next hunk twice: hunk 1 is already at the top edge, hunk 2 is
+        // ~50 lines below the fold
+        await page.getByTestId('next-hunk-btn').click();
+        await page.waitForTimeout(400);
         await page.getByTestId('next-hunk-btn').click();
         // Wait for smooth-scroll animation to settle
         await page.waitForTimeout(700);

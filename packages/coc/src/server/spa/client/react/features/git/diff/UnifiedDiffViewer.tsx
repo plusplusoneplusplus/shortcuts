@@ -21,7 +21,7 @@ import {
     type LineMatchRange,
 } from './diffFindModel';
 import { FileBannerRow } from './FileBannerRow';
-import { parseFileBanners, buildBannerIndex, bannerForLineIndex, type FileBanner } from './fileBannerModel';
+import { parseFileBanners, buildBannerIndex, buildPreambleIndex, pinnedBannerForTopRow, type FileBanner } from './fileBannerModel';
 
 export interface UnifiedDiffViewerProps {
     diff: string;
@@ -30,10 +30,11 @@ export interface UnifiedDiffViewerProps {
     enableComments?: boolean;
     showLineNumbers?: boolean;
     /**
-     * Hide git file-header metadata lines (`diff --git`, `index`, `--- `,
-     * `+++ `, `new file`, `deleted file`, `rename`). The file path is shown by
-     * the host chrome in these surfaces, so the raw headers are pure noise.
-     * Hunk headers (`@@`) and change lines are unaffected.
+     * Drop each file's raw git preamble — everything from `diff --git` up to
+     * the first `@@` — without putting anything in its place. The file path is
+     * shown by the host chrome in these surfaces (the single-file diff panel),
+     * so the preamble is pure noise. Hunk headers (`@@`) and change lines are
+     * unaffected, and no row is renumbered.
      */
     hideFileHeaders?: boolean;
     /**
@@ -937,12 +938,18 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
     // the preamble; no row is renumbered, so match ranges keyed by diff-line
     // index (and comment anchors, hunk ranges) still line up exactly.
     const fileBanners = useMemo(
-        () => (showFileBanners ? parseFileBanners(lines) : []),
-        [lines, showFileBanners],
+        () => (showFileBanners || hideFileHeaders ? parseFileBanners(lines) : []),
+        [lines, showFileBanners, hideFileHeaders],
     );
     const { bannerByStart, suppressed: suppressedPreamble } = useMemo(
         () => buildBannerIndex(fileBanners),
         [fileBanners],
+    );
+    // `hideFileHeaders` drops the preamble outright (the `diff --git` row too),
+    // for surfaces that name the file in their own chrome.
+    const hiddenPreamble = useMemo(
+        () => (hideFileHeaders ? buildPreambleIndex(fileBanners) : new Set<number>()),
+        [hideFileHeaders, fileBanners],
     );
     const lineCommentMap = useMemo(
         () => (comments ? buildLineCommentMap(comments) : new Map<number, DiffComment[]>()),
@@ -1207,11 +1214,17 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
         selectedText: string;
     }>({ visible: false, position: { x: 0, y: 0 }, selection: null, selectedText: '' });
 
-    // Banner for the file owning the topmost mounted row (windowed path only).
-    const firstVisibleIndex = virtualized ? rowVirtualizer.getVirtualItems()[0]?.index : undefined;
-    const pinnedBanner = useMemo(
-        () => (firstVisibleIndex === undefined ? undefined : bannerForLineIndex(fileBanners, firstVisibleIndex)),
-        [fileBanners, firstVisibleIndex],
+    // Banner docked at the top edge (windowed path only). The row is derived from
+    // scroll geometry rather than getVirtualItems()[0], which includes `overscan`
+    // rows above the viewport and so lags the true top edge by up to 24 rows.
+    const topRowIndex = virtualized
+        ? rowVirtualizer.getVirtualItemForOffset(rowVirtualizer.scrollOffset ?? 0)?.index
+        : undefined;
+    const pinned = useMemo(
+        () => (topRowIndex === undefined
+            ? undefined
+            : pinnedBannerForTopRow(fileBanners.map(b => ({ rowIndex: b.startIdx, banner: b })), topRowIndex)),
+        [fileBanners, topRowIndex],
     );
 
     // Stores the last validated selection so handleContextMenu can use it without stale closures.
@@ -1306,11 +1319,15 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             data-testid={testId}
         >
             {/* Windowed rows are absolutely positioned, so an in-flow sticky
-                banner cannot hold. Pin a single copy for the file covering the
-                topmost mounted row instead. */}
-            {showFileBanners && virtualized && pinnedBanner && (
-                <div className="sticky top-0 z-20">
-                    <FileBannerRow banner={pinnedBanner} sticky={false} data-testid="diff-file-banner-pinned" />
+                banner cannot hold. Overlay a copy for the current file — but
+                only once its own in-flow banner row has scrolled above the top
+                edge, else the same file shows two banners. The wrapper is
+                zero-height so mounting it never shifts the row list. */}
+            {showFileBanners && virtualized && pinned?.overlay && (
+                <div className="sticky top-0 z-20 h-0" data-testid="diff-file-banner-pinned-wrapper">
+                    <div className="absolute inset-x-0 top-0">
+                        <FileBannerRow banner={pinned.banner} sticky={false} data-testid="diff-file-banner-pinned" />
+                    </div>
                 </div>
             )}
             {virtualized ? (
@@ -1372,7 +1389,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                     if (banner) return <FileBannerRow key={i} banner={banner} sticky={!virtualized} />;
                     if (suppressedPreamble.has(i)) return null;
                 }
-                if (hideFileHeaders && type === 'meta') return null;
+                if (hiddenPreamble.has(i)) return null;
                 const collapsedHunk = collapsedByStart.get(i);
                 if (collapsedHunk && collapsedHunk.classification) {
                     return <CollapsedHunkSummary key={i} hunk={collapsedHunk} onExpand={expandHunk} />;

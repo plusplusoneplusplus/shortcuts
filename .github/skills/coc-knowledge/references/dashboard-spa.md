@@ -98,7 +98,7 @@ Notes Chat renders one compact 32px header (`NotesChatHeader.tsx`, next to `Note
 
 The displayed note reference is paired with the active chat task in `useNotesChat`. `createChat` seeds the pair from the returned task ID while the process is still queued, and `ChatDetail` reports every accepted `processDetails` snapshot from its existing clone-routed load and refresh paths through `onProcessLoaded`. `useNotesChat` reads the persisted `metadata.queueTaskId`, `metadata.notePath`, and `metadata.noteTitle` from that snapshot and ignores any task ID that is no longer active. Context from another task therefore renders as `null` during note or scope changes instead of producing another chat's attachment label or warning, including when an older load finishes late. Note context is not read from or written to a workspace-wide localStorage value, and resolving it adds no process request beyond the normal `ChatDetail` flow.
 
-`ReviewChatPlacementFrame` accepts an opt-in `hideHeader` prop; Notes passes it while commits, PRs, and Work Items keep the shared generic Lens/side-panel header. `ChatDetail` also accepts an opt-in `hideHeader` prop, which Notes uses to suppress the nested `ChatHeader` without affecting other consumers. The ask/autopilot `NoteModeToggle` stays out of the header and renders beside the empty-state composer input, matching the placement of `ChatDetail`'s `compactModeSelector` once a chat is active.
+`ReviewChatPlacementFrame` accepts an opt-in `hideHeader` prop; Notes passes it while commits, PRs, and Work Items keep the shared generic Lens/side-panel header. It also accepts opt-in `onDropExistingChat` + `dropWorkspaceId` props that turn the frame into a drop target for a chat row dragged out of the chat list: a `coc.session-context` payload lights a dashed overlay on dragover, and dropping it calls back with the dragged `sourceProcessId` after `stopPropagation()` so the composer's attach-as-context path underneath does not also fire. Cross-workspace drops render a dismissible rejection strip instead. Commit Chat is the only wired surface: `CommitChatPlacementFrame` gates the props on `isSessionContextAttachmentsEnabled()` and forwards the drop to `useCommitChatBinding.bindExistingChat`, which optimistically swaps `taskId` (rolling back on failure) and persists the rebind through `POST /commit-chat-bindings`. The lens dormancy hit test feeds on `dragover` as well as `mousemove` — no `mousemove` fires during an HTML5 drag, so without it a ghosted lens stays `pointer-events: none` and the drop falls through; while a drag is in flight the card, not the compact pill, is the hit target and the ghost→pill collapse is suppressed. `ChatDetail` also accepts an opt-in `hideHeader` prop, which Notes uses to suppress the nested `ChatHeader` without affecting other consumers. The ask/autopilot `NoteModeToggle` stays out of the header and renders beside the empty-state composer input, matching the placement of `ChatDetail`'s `compactModeSelector` once a chat is active.
 
 Chat-list hierarchy grouping is consolidated behind a shared engine:
 `features/chat/task-group-grouping.ts` owns the generic matching/aggregation
@@ -537,7 +537,13 @@ keep their normal renderer behavior. The
 source-canvas resolver chooses the explicit workspace hint when
 present, otherwise the longest matching workspace root, and resolves relative
 paths against `sourceFilePath` when available or the selected workspace root
-before calling the workspace file preview API. `useSourceCanvasContent` folds the
+before calling the workspace file preview API. WSL workspaces on a Windows host
+have a `\\wsl$\<distro>\...` root: the shared helpers in
+`react/utils/path-resolution.ts` keep that UNC prefix through relative
+resolution and tilde expansion, and the resolver re-roots plain Linux paths
+(`/home/u/repo/...`, what WSL agents emit) onto a workspace share when the
+result lands inside that root. The preview endpoint applies the same re-rooting
+server-side via `resolveRequestedFilePath` (`server/tasks/tasks-handler-utils.ts`). `useSourceCanvasContent` folds the
 remote-server workspaces (which live in the repos list, not `state.workspaces`)
 into the resolver's workspace set, so a link clicked in a remote conversation
 resolves against that workspace's remote `rootPath`, and it routes the preview

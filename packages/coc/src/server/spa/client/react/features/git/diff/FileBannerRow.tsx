@@ -6,7 +6,9 @@
  * a status badge, the previous path for renames, and the file's `+N −M` counts.
  * The row is sticky to the top of the scroll container while the file's hunks
  * are on screen — the raw preamble scrolls away and leaves you unsure which file
- * you are reading, which is the whole point of the banner.
+ * you are reading, which is the whole point of the banner. Under windowing rows
+ * are absolutely positioned and cannot be sticky, so the viewers render this row
+ * non-sticky and dock the current file with a separate overlay copy instead.
  *
  * The blob hashes and file mode dropped from the row are not lost: they are
  * exposed on the details control's tooltip.

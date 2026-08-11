@@ -1,4 +1,4 @@
-import { act, fireEvent, render, renderHook, screen } from '@testing-library/react';
+import { act, createEvent, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     clearReviewChatMinimized,
@@ -380,6 +380,336 @@ describe('ReviewChatPlacementFrame', () => {
 
         expect(screen.getByTestId('work-item-chat-lens').style.width).toBe('');
         expect(localStorage.length).toBe(0);
+    });
+});
+
+describe('ReviewChatPlacementFrame chat drop target', () => {
+    const SESSION_MIME = 'application/vnd.coc.session-context+json';
+    const POINTER_MIME = 'application/vnd.coc.pointer-context+json';
+
+    function sessionPayload(overrides: Record<string, unknown> = {}) {
+        return {
+            kind: 'coc.session-context',
+            version: 1,
+            sourceWorkspaceId: 'ws-a',
+            sourceProcessId: 'queue_task-dropped',
+            title: 'An earlier conversation',
+            status: 'completed',
+            lastActivityAt: '2026-03-07T12:00:00.000Z',
+            ...overrides,
+        };
+    }
+
+    /** Minimal DataTransfer stand-in: `types` for dragover, `getData` for drop. */
+    function dataTransferFor(entries: Record<string, string>) {
+        return {
+            types: Object.keys(entries),
+            getData: (type: string) => entries[type] ?? '',
+            dropEffect: 'none',
+        };
+    }
+
+    function sessionDataTransfer(overrides: Record<string, unknown> = {}) {
+        return dataTransferFor({ [SESSION_MIME]: JSON.stringify(sessionPayload(overrides)) });
+    }
+
+    function renderFrame(props: Record<string, unknown> = {}) {
+        const onParentDrop = vi.fn();
+        const view = render(
+            <div onDrop={onParentDrop} data-testid="drop-parent">
+                <ReviewChatPlacementFrame
+                    title="Commit Chat"
+                    identifier="abc1234"
+                    presentation="lens"
+                    onClose={vi.fn()}
+                    testIdPrefix="commit-chat"
+                    {...props}
+                >
+                    <div data-testid="chat-body">Body</div>
+                </ReviewChatPlacementFrame>
+            </div>,
+        );
+        return { ...view, onParentDrop, frame: screen.getByTestId('commit-chat-lens') };
+    }
+
+    it('loads a dropped same-workspace chat and stops the drop from also attaching it as context', async () => {
+        const onDropExistingChat = vi.fn();
+        const { frame, onParentDrop } = renderFrame({ onDropExistingChat, dropWorkspaceId: 'ws-a' });
+
+        await act(async () => {
+            fireEvent.drop(frame, { dataTransfer: sessionDataTransfer() });
+        });
+
+        expect(onDropExistingChat).toHaveBeenCalledWith('queue_task-dropped');
+        expect(onParentDrop).not.toHaveBeenCalled();
+        expect(screen.queryByTestId('commit-chat-drop-rejection')).not.toBeInTheDocument();
+    });
+
+    it('refuses a chat dragged in from another workspace', async () => {
+        const onDropExistingChat = vi.fn();
+        const { frame } = renderFrame({ onDropExistingChat, dropWorkspaceId: 'ws-a' });
+
+        await act(async () => {
+            fireEvent.drop(frame, { dataTransfer: sessionDataTransfer({ sourceWorkspaceId: 'ws-b' }) });
+        });
+
+        expect(onDropExistingChat).not.toHaveBeenCalled();
+        expect(screen.getByTestId('commit-chat-drop-rejection'))
+            .toHaveTextContent('That chat belongs to a different workspace.');
+
+        fireEvent.click(screen.getByTestId('commit-chat-drop-rejection-dismiss'));
+        expect(screen.queryByTestId('commit-chat-drop-rejection')).not.toBeInTheDocument();
+    });
+
+    it('lets a non-session payload bubble through untouched', async () => {
+        const onDropExistingChat = vi.fn();
+        const { frame, onParentDrop } = renderFrame({ onDropExistingChat, dropWorkspaceId: 'ws-a' });
+
+        await act(async () => {
+            fireEvent.drop(frame, { dataTransfer: dataTransferFor({ [POINTER_MIME]: '{"kind":"other"}' }) });
+        });
+
+        expect(onDropExistingChat).not.toHaveBeenCalled();
+        expect(onParentDrop).toHaveBeenCalledTimes(1);
+        expect(screen.queryByTestId('commit-chat-drop-rejection')).not.toBeInTheDocument();
+    });
+
+    it('shows the drop overlay and claims the drag only for a single-chat payload', () => {
+        const { frame } = renderFrame({ onDropExistingChat: vi.fn(), dropWorkspaceId: 'ws-a' });
+
+        const sessionDrag = createEvent.dragOver(frame, { dataTransfer: sessionDataTransfer() });
+        fireEvent(frame, sessionDrag);
+
+        expect(sessionDrag.defaultPrevented).toBe(true);
+        expect((sessionDrag as unknown as { dataTransfer: { dropEffect: string } }).dataTransfer.dropEffect).toBe('copy');
+        expect(screen.getByTestId('commit-chat-drop-overlay')).toHaveTextContent('Load this chat into Commit Chat');
+
+        const leave = createEvent.dragLeave(frame);
+        Object.defineProperty(leave, 'relatedTarget', { value: document.body });
+        fireEvent(frame, leave);
+        expect(screen.queryByTestId('commit-chat-drop-overlay')).not.toBeInTheDocument();
+
+        const otherDrag = createEvent.dragOver(frame, { dataTransfer: dataTransferFor({ [POINTER_MIME]: '{}' }) });
+        fireEvent(frame, otherDrag);
+
+        expect(otherDrag.defaultPrevented).toBe(false);
+        expect(screen.queryByTestId('commit-chat-drop-overlay')).not.toBeInTheDocument();
+    });
+
+    it('keeps the overlay while the drag crosses the frame\'s own children', () => {
+        const { frame } = renderFrame({ onDropExistingChat: vi.fn(), dropWorkspaceId: 'ws-a' });
+
+        fireEvent.dragOver(frame, { dataTransfer: sessionDataTransfer() });
+        expect(screen.getByTestId('commit-chat-drop-overlay')).toBeInTheDocument();
+
+        // jsdom has no DragEvent, so relatedTarget has to be attached by hand.
+        const leave = createEvent.dragLeave(frame);
+        Object.defineProperty(leave, 'relatedTarget', { value: screen.getByTestId('chat-body') });
+        fireEvent(frame, leave);
+
+        expect(screen.getByTestId('commit-chat-drop-overlay')).toBeInTheDocument();
+    });
+
+    it('drops the overlay when the drag is cancelled over the frame', () => {
+        const { frame } = renderFrame({ onDropExistingChat: vi.fn(), dropWorkspaceId: 'ws-a' });
+
+        fireEvent.dragOver(frame, { dataTransfer: sessionDataTransfer() });
+        expect(screen.getByTestId('commit-chat-drop-overlay')).toBeInTheDocument();
+
+        fireEvent.dragEnd(window);
+        expect(screen.queryByTestId('commit-chat-drop-overlay')).not.toBeInTheDocument();
+    });
+
+    it('is inert for consumers that do not opt in', async () => {
+        const { frame, onParentDrop } = renderFrame();
+
+        const dragOver = createEvent.dragOver(frame, { dataTransfer: sessionDataTransfer() });
+        fireEvent(frame, dragOver);
+
+        expect(dragOver.defaultPrevented).toBe(false);
+        expect(screen.queryByTestId('commit-chat-drop-overlay')).not.toBeInTheDocument();
+
+        await act(async () => {
+            fireEvent.drop(frame, { dataTransfer: sessionDataTransfer() });
+        });
+
+        expect(onParentDrop).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('ReviewChatPlacementFrame dormancy during a drag', () => {
+    const SESSION_MIME = 'application/vnd.coc.session-context+json';
+    const CARD_RECT = { left: 500, top: 400, right: 900, bottom: 800 };
+    const PILL_RECT = { left: 860, top: 760, right: 900, bottom: 800 };
+    let originalGetBoundingClientRect: typeof Element.prototype.getBoundingClientRect;
+
+    function stubRects(rects: Record<string, { left: number; top: number; right: number; bottom: number }>) {
+        Element.prototype.getBoundingClientRect = function (this: HTMLElement) {
+            const testId = this.dataset?.testid;
+            const rect = (testId && rects[testId]) || { left: 0, top: 0, right: 0, bottom: 0 };
+            return {
+                ...rect,
+                width: rect.right - rect.left,
+                height: rect.bottom - rect.top,
+                x: rect.left,
+                y: rect.top,
+                toJSON: () => ({}),
+            } as DOMRect;
+        };
+    }
+
+    /**
+     * jsdom implements neither DragEvent nor DataTransfer, and RTL only plumbs
+     * `dataTransfer` through — a plain `fireEvent.dragOver` would drop the
+     * coordinates the dormant hit test reads. Build the event by hand instead.
+     */
+    function dispatchDrag(type: 'dragover' | 'dragend', init: { clientX?: number; clientY?: number; types?: string[] } = {}) {
+        const event = new MouseEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            clientX: init.clientX ?? 0,
+            clientY: init.clientY ?? 0,
+        });
+        Object.defineProperty(event, 'dataTransfer', {
+            value: { types: init.types ?? [], getData: () => '', dropEffect: 'none' },
+        });
+        act(() => { window.dispatchEvent(event); });
+    }
+
+    function renderLens() {
+        render(
+            <ReviewChatPlacementFrame
+                title="Commit Chat"
+                identifier="abc1234"
+                presentation="lens"
+                onClose={vi.fn()}
+                testIdPrefix="commit-chat"
+                onDropExistingChat={vi.fn()}
+                dropWorkspaceId="ws-a"
+            >
+                <div data-testid="chat-body">Body</div>
+            </ReviewChatPlacementFrame>,
+        );
+        return {
+            lens: screen.getByTestId('commit-chat-lens'),
+            card: screen.getByTestId('commit-chat-lens-card'),
+        };
+    }
+
+    /** Park the cursor far from the lens and let the dormant delay elapse. */
+    function goDormant() {
+        act(() => {
+            // Clear the 24ms hit-test throttle so this move is not swallowed.
+            vi.advanceTimersByTime(50);
+            fireEvent.mouseMove(window, { clientX: 5, clientY: 5 });
+            vi.advanceTimersByTime(700);
+        });
+    }
+
+    beforeEach(() => {
+        originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+        Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    });
+
+    it('wakes a ghosted lens from drag coordinates so the drop lands on it', () => {
+        stubRects({ 'commit-chat-lens-card': CARD_RECT });
+        const { lens, card } = renderLens();
+
+        goDormant();
+        expect(lens).toHaveAttribute('data-focused', 'false');
+        expect(card.style.pointerEvents).toBe('none');
+
+        vi.advanceTimersByTime(50);
+        dispatchDrag('dragover', { clientX: 600, clientY: 500, types: [SESSION_MIME] });
+
+        expect(lens).toHaveAttribute('data-focused', 'true');
+        expect(card.style.pointerEvents).toBe('auto');
+    });
+
+    it('ignores a drag that carries no CoC payload', () => {
+        stubRects({ 'commit-chat-lens-card': CARD_RECT });
+        const { lens } = renderLens();
+
+        goDormant();
+
+        vi.advanceTimersByTime(50);
+        dispatchDrag('dragover', { clientX: 600, clientY: 500, types: ['text/plain'] });
+
+        expect(lens).toHaveAttribute('data-focused', 'false');
+    });
+
+    it('returns to the dormant countdown when the drag ends without a drop', () => {
+        stubRects({ 'commit-chat-lens-card': CARD_RECT });
+        const { lens } = renderLens();
+
+        goDormant();
+        vi.advanceTimersByTime(50);
+        dispatchDrag('dragover', { clientX: 600, clientY: 500, types: [SESSION_MIME] });
+        expect(lens).toHaveAttribute('data-focused', 'true');
+
+        dispatchDrag('dragend');
+        goDormant();
+
+        expect(lens).toHaveAttribute('data-focused', 'false');
+    });
+
+    it('aims at the full card instead of the compact pill while a drag is in flight', () => {
+        (window as any).__DASHBOARD_CONFIG__ = {
+            apiBasePath: '/api',
+            wsPath: '/ws',
+            commitChatLensEnabled: true,
+            commitChatLensDormantMode: 'pill',
+        };
+        _resetRuntimeConfig();
+        stubRects({ 'commit-chat-lens-card': CARD_RECT, 'commit-chat-lens-dormant-pill': PILL_RECT });
+        const { lens } = renderLens();
+
+        goDormant();
+        expect(lens).toHaveAttribute('data-focused', 'false');
+
+        // Inside the card but nowhere near the pill: the mouse hit test misses.
+        act(() => {
+            vi.advanceTimersByTime(50);
+            fireEvent.mouseMove(window, { clientX: 520, clientY: 420 });
+        });
+        expect(lens).toHaveAttribute('data-focused', 'false');
+
+        // The same coordinates during a drag wake it, because the drag forces
+        // the card to be the hit target.
+        vi.advanceTimersByTime(50);
+        dispatchDrag('dragover', { clientX: 520, clientY: 420, types: [SESSION_MIME] });
+        expect(lens).toHaveAttribute('data-focused', 'true');
+    });
+
+    it('does not collapse a ghost to the pill mid-drag', () => {
+        (window as any).__DASHBOARD_CONFIG__ = {
+            apiBasePath: '/api',
+            wsPath: '/ws',
+            commitChatLensEnabled: true,
+            commitChatLensDormantMode: 'ghost-then-pill',
+        };
+        _resetRuntimeConfig();
+        stubRects({ 'commit-chat-lens-card': CARD_RECT, 'commit-chat-lens-dormant-pill': PILL_RECT });
+        const { lens } = renderLens();
+
+        goDormant();
+        expect(lens).toHaveAttribute('data-focused', 'false');
+
+        // Drag starts far from the lens, then the 15s ghost→pill timer fires.
+        vi.advanceTimersByTime(50);
+        dispatchDrag('dragover', { clientX: 5, clientY: 5, types: [SESSION_MIME] });
+        act(() => { vi.advanceTimersByTime(16000); });
+
+        expect(screen.getByTestId('commit-chat-lens-dormant-pill').style.opacity).toBe('0');
+
+        vi.advanceTimersByTime(50);
+        dispatchDrag('dragover', { clientX: 600, clientY: 500, types: [SESSION_MIME] });
+        expect(lens).toHaveAttribute('data-focused', 'true');
     });
 });
 

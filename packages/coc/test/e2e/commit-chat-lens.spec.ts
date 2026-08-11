@@ -1,6 +1,6 @@
 import { expect, test } from './fixtures/server-fixture';
 import { createMultiCommitRepo } from './fixtures/git-fixtures';
-import { request, seedWorkspace } from './fixtures/seed';
+import { request, seedProcess, seedWorkspace } from './fixtures/seed';
 import { execFileSync } from 'child_process';
 import { resolveCanonicalOriginId } from '@plusplusoneplusplus/forge';
 
@@ -160,6 +160,37 @@ async function verifyPinCloseUnpinCycle(page: import('@playwright/test').Page, s
     await expect.poll(() => page.evaluate(key => localStorage.getItem(key), storageKey)).toBeNull();
 }
 
+async function enableSessionContextAttachments(serverUrl: string): Promise<void> {
+    const res = await request(`${serverUrl}/api/admin/config`, {
+        method: 'PUT',
+        body: JSON.stringify({ 'features.sessionContextAttachments': true }),
+    });
+    if (res.status !== 200) {
+        throw new Error(`Failed to enable session context attachments: ${res.status} ${res.body}`);
+    }
+}
+
+/**
+ * Playwright cannot start a real HTML5 drag from a synthetic mouse gesture, so
+ * the drag payload is handed to the lens the same way the browser would.
+ */
+async function dropChatOnLens(page: import('@playwright/test').Page, processId: string, sourceWorkspaceId: string): Promise<void> {
+    await page.getByTestId('commit-chat-lens').evaluate((node, payload) => {
+        const transfer = new DataTransfer();
+        transfer.setData('application/vnd.coc.session-context+json', payload);
+        node.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+        node.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+    }, JSON.stringify({
+        kind: 'coc.session-context',
+        version: 1,
+        sourceWorkspaceId,
+        sourceProcessId: processId,
+        title: 'Dropped conversation',
+        status: 'completed',
+        lastActivityAt: new Date('2026-03-07T12:00:00Z').toISOString(),
+    }));
+}
+
 async function gotoFresh(page: import('@playwright/test').Page, url: string): Promise<void> {
     await page.goto('about:blank');
     await page.goto(url);
@@ -224,6 +255,46 @@ test.describe('feature-flagged commit chat lens', () => {
         await expect(lens).toHaveAttribute('data-focused', 'true');
         await expect(lens).toHaveCSS('pointer-events', 'auto');
         await expect(page.getByTestId('commit-chat-lens-card')).toHaveCSS('pointer-events', 'auto');
+    });
+
+    test('loads a chat dropped on the lens and still shows it after a reload', async ({ page, serverUrl, dataDir }) => {
+        const repoDir = createMultiCommitRepo(dataDir);
+        const commit = latestCommit(repoDir);
+        const droppedTaskId = 'dropped-chat-task';
+
+        await seedWorkspace(serverUrl, WORKSPACE_ID, 'Commit Chat Lens', repoDir);
+        await enableCommitChatLensFeature(serverUrl);
+        await enableSessionContextAttachments(serverUrl);
+        await seedProcess(serverUrl, `queue_${droppedTaskId}`, {
+            workspaceId: WORKSPACE_ID,
+            type: 'chat',
+            status: 'completed',
+            promptPreview: 'Dropped conversation',
+        });
+
+        const url = `${serverUrl}/?workspace=${encodeURIComponent(WORKSPACE_ID)}#repos/${encodeURIComponent(WORKSPACE_ID)}/git/${encodeURIComponent(commit.hash)}`;
+        await page.goto(url);
+        await expect(page.getByTestId('diff-section')).toBeVisible();
+        await page.getByTestId('toggle-chat-btn').click();
+
+        const lens = page.getByTestId('commit-chat-lens');
+        await expect(lens).toBeVisible();
+        await expect(lens.getByTestId('commit-chat-send-btn')).toBeVisible();
+
+        await dropChatOnLens(page, `queue_${droppedTaskId}`, WORKSPACE_ID);
+
+        await expect(lens.getByTestId('activity-chat-detail')).toBeVisible();
+        await expect(lens.getByTestId('commit-chat-send-btn')).toHaveCount(0);
+
+        const bindingUrl = `${serverUrl}/api/workspaces/${encodeURIComponent(WORKSPACE_ID)}/commit-chat-bindings/${encodeURIComponent(commit.hash)}`;
+        await expect.poll(async () => JSON.parse((await request(bindingUrl)).body).taskId).toBe(droppedTaskId);
+
+        await gotoFresh(page, url);
+        await expect(page.getByTestId('diff-section')).toBeVisible();
+        if (await page.getByTestId('commit-chat-lens').count() === 0) {
+            await page.getByTestId('toggle-chat-btn').click();
+        }
+        await expect(page.getByTestId('commit-chat-lens').getByTestId('activity-chat-detail')).toBeVisible();
     });
 
     test('opens as a bottom-right lens across commit review surfaces and persists pinning by workspace and commit', async ({ page, serverUrl, dataDir }) => {

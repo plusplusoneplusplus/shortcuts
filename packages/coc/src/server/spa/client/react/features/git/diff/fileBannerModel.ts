@@ -199,6 +199,22 @@ export function buildBannerIndex(banners: FileBanner[]): {
 }
 
 /**
+ * Every preamble row index, *including* the `diff --git` line.
+ *
+ * Used by surfaces whose own chrome already shows the file name (the
+ * single-file diff panel): the whole block is dropped rather than replaced by a
+ * banner row. Unlike a per-line-prefix filter this also covers `old mode`,
+ * `similarity index`, and `Binary files … differ`, which git does not prefix.
+ */
+export function buildPreambleIndex(banners: FileBanner[]): Set<number> {
+    const hidden = new Set<number>();
+    for (const b of banners) {
+        for (let i = b.startIdx; i < b.preambleEndIdx; i++) hidden.add(i);
+    }
+    return hidden;
+}
+
+/**
  * The banner owning a given diff-line index — i.e. the last file section that
  * starts at or before it. Drives the pinned banner in the windowed row list,
  * where the in-flow sticky row is not in the DOM.
@@ -210,6 +226,32 @@ export function bannerForLineIndex(banners: FileBanner[], lineIndex: number): Fi
         found = b;
     }
     return found;
+}
+
+/**
+ * The banner to dock at the top edge of the scrollport for a given topmost row,
+ * plus whether an overlay copy is needed to show it.
+ *
+ * In the windowed row list the `diff --git` row still renders a banner in flow,
+ * so an overlay must be rendered *iff* that in-flow row has already scrolled
+ * above the top edge — otherwise the same file gets two banners (the bug this
+ * exists to prevent) and at scroll top the first file shows a duplicate.
+ *
+ * `entries` must be ascending by `rowIndex`. The index space is viewer-specific
+ * — unified passes diff-line indices, split passes `sxsLines` row indices —
+ * hence the generic index rather than reusing {@link bannerForLineIndex}.
+ */
+export function pinnedBannerForTopRow<T>(
+    entries: { rowIndex: number; banner: T }[],
+    topRowIndex: number,
+): { banner: T; overlay: boolean } | undefined {
+    let found: { rowIndex: number; banner: T } | undefined;
+    for (const e of entries) {
+        if (e.rowIndex > topRowIndex) break;
+        found = e;
+    }
+    if (!found) return undefined;
+    return { banner: found.banner, overlay: found.rowIndex < topRowIndex };
 }
 
 /** Tooltip text carrying the blob hashes / mode / similarity dropped from the row. */

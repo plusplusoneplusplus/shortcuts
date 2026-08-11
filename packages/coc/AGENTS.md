@@ -178,6 +178,15 @@ all have their own `references/*.md`.
   for links without one and sees the LOCAL server only — on its own it resolves a
   remote clone to `workspaces[0]`, an arbitrary unrelated repo. The preview cache
   key is workspace-scoped for the same reason.
+- **WSL file links.** On a Windows host a WSL workspace has a
+  `\\wsl$\<distro>\...` `rootPath`. `react/utils/path-resolution.ts` keeps that
+  UNC prefix intact (`isAbsolutePath`, `resolveRelativePath`, `deriveHomeDir`),
+  and `source-canvas/resolve.ts` re-roots the plain Linux paths WSL agents emit
+  (`/home/u/repo/...`) onto the workspace's share, but only when the result
+  lands inside that root. Server-side, `resolveRequestedFilePath` in
+  `server/tasks/tasks-handler-utils.ts` does the same for
+  `GET /workspaces/:id/files/preview`. Collapsing `//wsl$/...` to `/wsl$/...`
+  is what makes previews fail with "path is outside workspace".
 - **Workspace MCP inspector state** lives in
   `react/features/skills/useMcpServerInspectorController.ts`. Unlike the skills
   controller it resolves its own transport from the `workspaceId` it already

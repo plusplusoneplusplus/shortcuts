@@ -10,7 +10,9 @@ import { describe, it, expect } from 'vitest';
 import {
     parseFileBanners,
     buildBannerIndex,
+    buildPreambleIndex,
     bannerForLineIndex,
+    pinnedBannerForTopRow,
     bannerDetailsText,
     splitPath,
 } from '../../../../src/server/spa/client/react/features/git/diff/fileBannerModel';
@@ -238,6 +240,52 @@ describe('buildBannerIndex', () => {
     });
 });
 
+describe('buildPreambleIndex', () => {
+    it('hides the `diff --git` row too, since nothing replaces it', () => {
+        const hidden = buildPreambleIndex(parse(MODIFIED));
+        expect([...hidden].sort((a, b) => a - b)).toEqual([0, 1, 2, 3]);
+        // The `@@` header and every change line stay visible.
+        expect(hidden.has(4)).toBe(false);
+        expect(hidden.has(5)).toBe(false);
+    });
+
+    it('covers unprefixed preamble lines (similarity index / rename) as well', () => {
+        const hidden = buildPreambleIndex(parse(`diff --git a/src/old.ts b/src/new.ts
+similarity index 95%
+rename from src/old.ts
+rename to src/new.ts
+index 2793a9a..8cd4f10 100644
+--- a/src/old.ts
++++ b/src/new.ts
+@@ -1 +1 @@
+-was
++now`));
+        expect([...hidden].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    });
+
+    it('hides every file section of a multi-file diff', () => {
+        const hidden = buildPreambleIndex(parse(`diff --git a/a.ts b/a.ts
+index 111..222 100644
+--- a/a.ts
++++ b/a.ts
+@@ -1 +1 @@
+-old
++new
+diff --git a/b.ts b/b.ts
+index 333..444 100644
+--- a/b.ts
++++ b/b.ts
+@@ -1 +1 @@
+-old
++new`));
+        expect([...hidden].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 7, 8, 9, 10]);
+    });
+
+    it('is empty for a diff with no file sections', () => {
+        expect(buildPreambleIndex(parse('@@ -1 +1 @@\n-old\n+new')).size).toBe(0);
+    });
+});
+
 describe('bannerForLineIndex', () => {
     const banners = parse(`diff --git a/a.ts b/a.ts
 index 111..222 100644
@@ -263,6 +311,39 @@ index 333..444 100644
 
     it('returns undefined before the first file section', () => {
         expect(bannerForLineIndex([], 3)).toBeUndefined();
+    });
+});
+
+describe('pinnedBannerForTopRow', () => {
+    const ENTRIES = [
+        { rowIndex: 0, banner: 'A' },
+        { rowIndex: 600, banner: 'B' },
+    ];
+
+    it('returns nothing for an empty entry list', () => {
+        expect(pinnedBannerForTopRow([], 42)).toBeUndefined();
+    });
+
+    it('returns nothing when the top row is above the first banner', () => {
+        expect(pinnedBannerForTopRow([{ rowIndex: 5, banner: 'A' }], 3)).toBeUndefined();
+    });
+
+    it('needs no overlay when the top row IS the banner row — the in-flow row already docks it', () => {
+        expect(pinnedBannerForTopRow(ENTRIES, 0)).toEqual({ banner: 'A', overlay: false });
+        expect(pinnedBannerForTopRow(ENTRIES, 600)).toEqual({ banner: 'B', overlay: false });
+    });
+
+    it('overlays the owning banner once its row is above the fold', () => {
+        expect(pinnedBannerForTopRow(ENTRIES, 1)).toEqual({ banner: 'A', overlay: true });
+        expect(pinnedBannerForTopRow(ENTRIES, 599)).toEqual({ banner: 'A', overlay: true });
+    });
+
+    it('swaps to the next file as soon as its row crosses the top edge', () => {
+        expect(pinnedBannerForTopRow(ENTRIES, 620)).toEqual({ banner: 'B', overlay: true });
+    });
+
+    it('keeps the last banner docked past the end of the diff', () => {
+        expect(pinnedBannerForTopRow(ENTRIES, 100000)).toEqual({ banner: 'B', overlay: true });
     });
 });
 

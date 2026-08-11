@@ -310,3 +310,51 @@ describe('file-name banner — model/render agreement', () => {
         expect(rendered).toEqual(parsed.map(b => b.status));
     });
 });
+
+// ============================================================================
+// hideFileHeaders — single-file panel drops the preamble outright
+// ============================================================================
+
+describe('hideFileHeaders — single-file diff surfaces', () => {
+    it('drops the whole git preamble with nothing in its place', () => {
+        const { container } = render(
+            <UnifiedDiffViewer diff={MODIFIED_DIFF} hideFileHeaders data-testid="diff" />
+        );
+
+        expect(container.textContent).not.toContain('diff --git');
+        expect(container.textContent).not.toContain('index 2793a9ad6..8cd4f108a');
+        expect(container.textContent).not.toContain('--- a/packages');
+        expect(container.textContent).not.toContain('+++ b/packages');
+        // No banner row either — the panel header already names the file.
+        expect(container.querySelector('[data-testid="diff-file-banner"]')).toBeNull();
+
+        expect(container.textContent).toContain('@@ -1,3 +1,3 @@');
+        expect(container.textContent).toContain('old menu line');
+        expect(container.textContent).toContain('new menu line');
+    });
+
+    it('also drops preamble lines git leaves unprefixed (similarity/rename)', () => {
+        const { container } = render(
+            <UnifiedDiffViewer diff={RENAMED_DIFF} hideFileHeaders data-testid="diff" />
+        );
+        expect(container.textContent).not.toContain('similarity index');
+        expect(container.textContent).not.toContain('rename from');
+        expect(container.textContent).not.toContain('rename to');
+        expect(container.textContent).toContain('keep');
+    });
+
+    it('keeps diff-line indices intact so comment anchors still line up', () => {
+        const { container } = render(
+            <UnifiedDiffViewer diff={MODIFIED_DIFF} hideFileHeaders data-testid="diff" />
+        );
+        // Row 7 is `+new menu line` in the raw diff; hiding rows 0-3 must not renumber it.
+        const row = container.querySelector<HTMLElement>('[data-diff-line-index="7"]')!;
+        expect(row.textContent).toContain('new menu line');
+        expect(container.querySelector('[data-diff-line-index="0"]')).toBeNull();
+    });
+
+    it('leaves the preamble visible when the prop is off', () => {
+        const { container } = render(<UnifiedDiffViewer diff={MODIFIED_DIFF} data-testid="diff" />);
+        expect(container.textContent).toContain('diff --git');
+    });
+});
