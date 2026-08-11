@@ -201,7 +201,7 @@ export function RichEditorCore({
             MathInline,
             MathDisplay,
             StarterKit.configure({
-                heading: { levels: [1, 2, 3] },
+                heading: { levels: [1, 2, 3, 4, 5, 6] },
                 link: false,
                 // Disable StarterKit's plain CodeBlock so CodeBlockLowlight is the
                 // single `codeBlock` node type — its lowlight decorations color

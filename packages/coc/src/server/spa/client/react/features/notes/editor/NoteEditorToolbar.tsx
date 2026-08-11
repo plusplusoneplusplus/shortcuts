@@ -635,6 +635,213 @@ function HighlightButton({ editor }: HighlightButtonProps) {
     );
 }
 
+// ── Dropdown menu items ─────────────────────────────────────────────────────
+
+interface MenuItemProps {
+    /** Marks the item as the current block type — also where focus lands on open. */
+    checked: boolean;
+    onSelect: () => void;
+    testId: string;
+    /** Extra classes for the label span (heading items mimic their own weight/size). */
+    labelClassName?: string;
+    /** Leading glyph column; heading items leave it empty. */
+    icon?: string;
+    children: ReactNode;
+}
+
+/**
+ * One row of a toolbar dropdown menu.
+ *
+ * Activation is `onMouseDown` (with `preventDefault`, so the editor selection
+ * survives the click) plus Enter/Space on `keydown`. Deliberately no `onClick`:
+ * suppressing the mousedown default does not suppress the following click, so
+ * an `onClick` here would run the command a second time.
+ */
+function MenuItem({ checked, onSelect, testId, labelClassName, icon, children }: MenuItemProps) {
+    return (
+        <button
+            type="button"
+            role="menuitem"
+            aria-checked={checked}
+            tabIndex={-1}
+            data-testid={testId}
+            className={
+                'w-full flex items-center gap-2 px-2 py-1 rounded text-left whitespace-nowrap ' +
+                'hover:bg-[#e0e0e0] dark:hover:bg-[#505050] ' +
+                (checked ? 'bg-[#e8e8e8] dark:bg-[#3c3c3c]' : '')
+            }
+            onMouseDown={(e) => {
+                e.preventDefault(); // keep editor focus
+                onSelect();
+            }}
+            onKeyDown={(e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
+                onSelect();
+            }}
+        >
+            <span className="w-3 text-[10px] text-[#0078d4] dark:text-[#4daafc]">{checked ? '✓' : ''}</span>
+            {icon !== undefined && <span className="w-4 text-center text-xs">{icon}</span>}
+            <span className={labelClassName}>{children}</span>
+        </button>
+    );
+}
+
+// ── Heading dropdown ────────────────────────────────────────────────────────
+
+export const HEADING_LEVELS = [1, 2, 3, 4, 5, 6] as const;
+
+/** Menu labels are styled roughly at the weight/size of the heading they set. */
+const HEADING_ITEM_CLS: Record<number, string> = {
+    1: 'text-base font-bold',
+    2: 'text-sm font-bold',
+    3: 'text-sm font-semibold',
+    4: 'text-xs font-semibold',
+    5: 'text-xs',
+    6: 'text-[11px] font-semibold text-[#666] dark:text-[#999]',
+};
+
+interface HeadingDropdownProps {
+    editor: Editor;
+}
+
+function HeadingDropdown({ editor }: HeadingDropdownProps) {
+    const activeLevel = HEADING_LEVELS.find((level) => editor.isActive('heading', { level })) ?? null;
+
+    return (
+        <ToolbarDropdown
+            menu
+            menuLabel="Heading level"
+            panelTestId="heading-dropdown-menu"
+            panelClassName="p-1 min-w-[9rem]"
+            renderTrigger={({ open, toggle, triggerRef }) => (
+                <button
+                    ref={triggerRef}
+                    type="button"
+                    title="Heading level"
+                    aria-label="Heading level"
+                    aria-haspopup="menu"
+                    aria-expanded={open}
+                    data-testid="heading-dropdown"
+                    className={
+                        'h-7 px-1 rounded flex items-center gap-0.5 text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050] ' +
+                        (activeLevel || open ? 'bg-[#e8e8e8] dark:bg-[#3c3c3c] ' : '') +
+                        (activeLevel ? 'font-bold' : '')
+                    }
+                    onMouseDown={(e) => {
+                        e.preventDefault(); // keep editor selection
+                        toggle();
+                    }}
+                >
+                    <span data-testid="heading-dropdown-label">{activeLevel ? `H${activeLevel}` : 'H'}</span>
+                    <span className="text-[10px]">▾</span>
+                </button>
+            )}
+            renderPanel={({ close }) => (
+                <>
+                    <MenuItem
+                        checked={activeLevel === null}
+                        testId="heading-item-paragraph"
+                        onSelect={() => {
+                            editor.chain().focus().setParagraph().run();
+                            close();
+                        }}
+                    >
+                        Paragraph
+                    </MenuItem>
+                    {HEADING_LEVELS.map((level) => (
+                        <MenuItem
+                            key={level}
+                            checked={activeLevel === level}
+                            testId={`heading-item-${level}`}
+                            labelClassName={HEADING_ITEM_CLS[level]}
+                            onSelect={() => {
+                                editor.chain().focus().toggleHeading({ level }).run();
+                                close();
+                            }}
+                        >
+                            {`Heading ${level}`}
+                        </MenuItem>
+                    ))}
+                </>
+            )}
+        />
+    );
+}
+
+// ── List dropdown ───────────────────────────────────────────────────────────
+
+const LIST_TYPES = [
+    { name: 'bulletList', label: 'Bullet List', icon: '•', testId: 'list-item-bullet' },
+    { name: 'orderedList', label: 'Ordered List', icon: '1.', testId: 'list-item-ordered' },
+    { name: 'taskList', label: 'Task List', icon: '☑', testId: 'list-item-task' },
+] as const;
+
+interface ListDropdownProps {
+    editor: Editor;
+}
+
+function ListDropdown({ editor }: ListDropdownProps) {
+    const active = LIST_TYPES.find((t) => editor.isActive(t.name)) ?? null;
+
+    function runToggle(name: (typeof LIST_TYPES)[number]['name']) {
+        const chain = editor.chain().focus();
+        if (name === 'bulletList') chain.toggleBulletList().run();
+        else if (name === 'orderedList') chain.toggleOrderedList().run();
+        else chain.toggleTaskList().run();
+    }
+
+    return (
+        <ToolbarDropdown
+            menu
+            menuLabel="List type"
+            panelTestId="list-dropdown-menu"
+            panelClassName="p-1 min-w-[9rem]"
+            renderTrigger={({ open, toggle, triggerRef }) => (
+                <button
+                    ref={triggerRef}
+                    type="button"
+                    title="Lists"
+                    aria-label="Lists"
+                    aria-haspopup="menu"
+                    aria-expanded={open}
+                    data-testid="list-dropdown"
+                    className={
+                        'h-7 px-1 rounded flex items-center gap-0.5 text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050] ' +
+                        (active || open ? 'bg-[#e8e8e8] dark:bg-[#3c3c3c] ' : '') +
+                        (active ? 'font-bold' : '')
+                    }
+                    onMouseDown={(e) => {
+                        e.preventDefault(); // keep editor selection
+                        toggle();
+                    }}
+                >
+                    <span data-testid="list-dropdown-label">{active ? active.icon : '•'}</span>
+                    <span className="text-[10px]">▾</span>
+                </button>
+            )}
+            renderPanel={({ close }) => (
+                <>
+                    {LIST_TYPES.map(({ name, label, icon, testId }) => (
+                        <MenuItem
+                            key={name}
+                            checked={active?.name === name}
+                            testId={testId}
+                            icon={icon}
+                            onSelect={() => {
+                                runToggle(name);
+                                close();
+                            }}
+                        >
+                            {label}
+                        </MenuItem>
+                    ))}
+                </>
+            )}
+        />
+    );
+}
+
 // ── Table insert button with hover size picker ──────────────────────────────
 
 /** Fixed picker size — hovering never grows the grid past this. */
@@ -845,15 +1052,11 @@ export function NoteEditorToolbar({ editor, hidden, commentsPanelOpen, onToggleC
                     <Sep />
 
                     {/* Headings */}
-                    <TB editor={editor} label="Heading 1" icon="H1" command={() => c().toggleHeading({ level: 1 }).run()} activeName="heading" activeAttrs={{ level: 1 }} className="w-8 text-sm" />
-                    <TB editor={editor} label="Heading 2" icon="H2" command={() => c().toggleHeading({ level: 2 }).run()} activeName="heading" activeAttrs={{ level: 2 }} className="w-8 text-xs font-semibold" />
-                    <TB editor={editor} label="Heading 3" icon="H3" command={() => c().toggleHeading({ level: 3 }).run()} activeName="heading" activeAttrs={{ level: 3 }} className="w-8 text-xs" />
+                    <HeadingDropdown editor={editor} />
                     <Sep />
 
                     {/* Lists */}
-                    <TB editor={editor} label="Bullet list" icon="•" command={() => c().toggleBulletList().run()} activeName="bulletList" />
-                    <TB editor={editor} label="Ordered list" icon="1." command={() => c().toggleOrderedList().run()} activeName="orderedList" />
-                    <TB editor={editor} label="Task list" icon="☑" command={() => c().toggleTaskList().run()} activeName="taskList" />
+                    <ListDropdown editor={editor} />
                     <Sep />
 
                     {/* Block elements */}

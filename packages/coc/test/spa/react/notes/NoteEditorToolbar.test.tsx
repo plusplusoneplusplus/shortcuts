@@ -4,7 +4,9 @@ import { NoteEditorToolbar } from '../../../../src/server/spa/client/react/featu
 
 // ── Mock editor factory ─────────────────────────────────────────────────────
 
-function makeMockEditor(isActiveOverride?: (name: string) => boolean) {
+function makeMockEditor(
+    isActiveOverride?: (name: string, attrs?: Record<string, unknown>) => boolean,
+) {
     const insertTable = vi.fn(() => ({ run: vi.fn() }));
     const addColumnBefore = vi.fn(() => ({ run: vi.fn() }));
     const addColumnAfter = vi.fn(() => ({ run: vi.fn() }));
@@ -20,10 +22,11 @@ function makeMockEditor(isActiveOverride?: (name: string) => boolean) {
         toggleStrike: () => ({ run: vi.fn() }),
         toggleHighlight: vi.fn(() => ({ run: vi.fn() })),
         unsetHighlight: vi.fn(() => ({ run: vi.fn() })),
-        toggleHeading: () => ({ run: vi.fn() }),
-        toggleBulletList: () => ({ run: vi.fn() }),
-        toggleOrderedList: () => ({ run: vi.fn() }),
-        toggleTaskList: () => ({ run: vi.fn() }),
+        toggleHeading: vi.fn(() => ({ run: vi.fn() })),
+        setParagraph: vi.fn(() => ({ run: vi.fn() })),
+        toggleBulletList: vi.fn(() => ({ run: vi.fn() })),
+        toggleOrderedList: vi.fn(() => ({ run: vi.fn() })),
+        toggleTaskList: vi.fn(() => ({ run: vi.fn() })),
         toggleBlockquote: () => ({ run: vi.fn() }),
         toggleCode: () => ({ run: vi.fn() }),
         toggleCodeBlock: () => ({ run: vi.fn() }),
@@ -41,7 +44,8 @@ function makeMockEditor(isActiveOverride?: (name: string) => boolean) {
     };
 
     return {
-        isActive: vi.fn((name: string) => isActiveOverride ? isActiveOverride(name) : false),
+        isActive: vi.fn((name: string, attrs?: Record<string, unknown>) =>
+            isActiveOverride ? isActiveOverride(name, attrs) : false),
         getAttributes: vi.fn(() => ({})),
         chain: () => ({ focus: () => focusResult }),
         _focusResult: focusResult,
@@ -403,19 +407,186 @@ describe('NoteEditorToolbar — styled text-mark buttons', () => {
         expect(strikeBtn.querySelector('s')).not.toBeNull();
     });
 
-    it('Heading 1 button is wider (w-8) than standard buttons', () => {
+});
+
+// ── Heading & list dropdowns ────────────────────────────────────────────────
+
+/** Marks one heading level active, the way TipTap's isActive('heading', {level}) does. */
+function headingEditor(level: number) {
+    return makeMockEditor((name, attrs) => name === 'heading' && (attrs?.level === level || attrs === undefined));
+}
+
+describe('NoteEditorToolbar — heading dropdown', () => {
+    it('replaces the flat H1/H2/H3 buttons with a single trigger', () => {
         const editor = makeMockEditor();
         render(<NoteEditorToolbar editor={editor as never} />);
-        const h1Btn = screen.getByLabelText('Heading 1');
-        expect(h1Btn.className).toContain('w-8');
-        expect(h1Btn.className).toContain('text-sm');
+        expect(screen.getByTestId('heading-dropdown')).toBeDefined();
+        expect(screen.queryByLabelText('Heading 1')).toBeNull();
+        expect(screen.queryByLabelText('Heading 2')).toBeNull();
+        expect(screen.queryByLabelText('Heading 3')).toBeNull();
     });
 
-    it('Heading 2 button has semibold weight', () => {
+    it('trigger reads "H" in a paragraph and opens the menu on click', () => {
         const editor = makeMockEditor();
         render(<NoteEditorToolbar editor={editor as never} />);
-        const h2Btn = screen.getByLabelText('Heading 2');
-        expect(h2Btn.className).toContain('font-semibold');
+        const trigger = screen.getByTestId('heading-dropdown');
+        expect(screen.getByTestId('heading-dropdown-label').textContent).toBe('H');
+        expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+        expect(trigger.getAttribute('aria-expanded')).toBe('false');
+
+        fireEvent.mouseDown(trigger);
+        const menu = screen.getByTestId('heading-dropdown-menu');
+        expect(menu.getAttribute('role')).toBe('menu');
+        expect(trigger.getAttribute('aria-expanded')).toBe('true');
+        expect(screen.getByTestId('heading-item-paragraph')).toBeDefined();
+        for (const level of [1, 2, 3, 4, 5, 6]) {
+            const item = screen.getByTestId(`heading-item-${level}`);
+            expect(item.getAttribute('role')).toBe('menuitem');
+            expect(item.textContent).toContain(`Heading ${level}`);
+        }
+    });
+
+    it('trigger reads the active heading level and marks it in the menu', () => {
+        const editor = headingEditor(2);
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('heading-dropdown-label').textContent).toBe('H2');
+
+        fireEvent.mouseDown(screen.getByTestId('heading-dropdown'));
+        expect(screen.getByTestId('heading-item-2').getAttribute('aria-checked')).toBe('true');
+        expect(screen.getByTestId('heading-item-1').getAttribute('aria-checked')).toBe('false');
+        expect(screen.getByTestId('heading-item-paragraph').getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('marks Paragraph active when no heading is active', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByTestId('heading-dropdown'));
+        expect(screen.getByTestId('heading-item-paragraph').getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('selecting a level runs toggleHeading with that level and closes the menu', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByTestId('heading-dropdown'));
+        fireEvent.mouseDown(screen.getByTestId('heading-item-4'));
+
+        expect(editor._focusResult.toggleHeading).toHaveBeenCalledWith({ level: 4 });
+        expect(editor._focusResult.toggleHeading).toHaveBeenCalledTimes(1);
+        expect(screen.queryByTestId('heading-dropdown-menu')).toBeNull();
+    });
+
+    it('selecting Paragraph runs setParagraph', () => {
+        const editor = headingEditor(3);
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByTestId('heading-dropdown'));
+        fireEvent.mouseDown(screen.getByTestId('heading-item-paragraph'));
+
+        expect(editor._focusResult.setParagraph).toHaveBeenCalledTimes(1);
+        expect(screen.queryByTestId('heading-dropdown-menu')).toBeNull();
+    });
+
+    it('activates an item with Enter and with Space', () => {
+        for (const key of ['Enter', ' ']) {
+            const editor = makeMockEditor();
+            const { unmount } = render(<NoteEditorToolbar editor={editor as never} />);
+            fireEvent.mouseDown(screen.getByTestId('heading-dropdown'));
+            fireEvent.keyDown(screen.getByTestId('heading-item-1'), { key });
+            expect(editor._focusResult.toggleHeading).toHaveBeenCalledWith({ level: 1 });
+            unmount();
+        }
+    });
+
+    it('ArrowDown / ArrowUp move focus between menu items', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByTestId('heading-dropdown'));
+        // Focus opens on the checked item — Paragraph.
+        expect(document.activeElement).toBe(screen.getByTestId('heading-item-paragraph'));
+
+        const menu = screen.getByTestId('heading-dropdown-menu');
+        fireEvent.keyDown(menu, { key: 'ArrowDown' });
+        expect(document.activeElement).toBe(screen.getByTestId('heading-item-1'));
+        fireEvent.keyDown(menu, { key: 'ArrowUp' });
+        expect(document.activeElement).toBe(screen.getByTestId('heading-item-paragraph'));
+    });
+
+    it('Escape closes the menu and returns focus to the trigger', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByTestId('heading-dropdown'));
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByTestId('heading-dropdown-menu')).toBeNull();
+        expect(document.activeElement).toBe(screen.getByTestId('heading-dropdown'));
+    });
+
+    it('an outside click closes the menu', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByTestId('heading-dropdown'));
+        fireEvent.mouseDown(document.body);
+        expect(screen.queryByTestId('heading-dropdown-menu')).toBeNull();
+    });
+});
+
+describe('NoteEditorToolbar — list dropdown', () => {
+    it('replaces the flat list buttons with a single trigger', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('list-dropdown')).toBeDefined();
+        expect(screen.queryByLabelText('Bullet list')).toBeNull();
+        expect(screen.queryByLabelText('Ordered list')).toBeNull();
+        expect(screen.queryByLabelText('Task list')).toBeNull();
+    });
+
+    it('opens a menu with the three list types', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        const trigger = screen.getByTestId('list-dropdown');
+        expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+
+        fireEvent.mouseDown(trigger);
+        expect(screen.getByTestId('list-dropdown-menu').getAttribute('role')).toBe('menu');
+        expect(screen.getByTestId('list-item-bullet').textContent).toContain('Bullet List');
+        expect(screen.getByTestId('list-item-ordered').textContent).toContain('Ordered List');
+        expect(screen.getByTestId('list-item-task').textContent).toContain('Task List');
+    });
+
+    it.each([
+        ['list-item-bullet', 'toggleBulletList'],
+        ['list-item-ordered', 'toggleOrderedList'],
+        ['list-item-task', 'toggleTaskList'],
+    ])('%s runs %s and closes the menu', (testId, command) => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByTestId('list-dropdown'));
+        fireEvent.mouseDown(screen.getByTestId(testId));
+
+        expect((editor._focusResult as Record<string, ReturnType<typeof vi.fn>>)[command])
+            .toHaveBeenCalledTimes(1);
+        expect(screen.queryByTestId('list-dropdown-menu')).toBeNull();
+    });
+
+    it('shows the trigger active and marks the active list type', () => {
+        const editor = makeMockEditor((name) => name === 'taskList');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('list-dropdown').className).toContain('bg-[#e8e8e8]');
+
+        fireEvent.mouseDown(screen.getByTestId('list-dropdown'));
+        expect(screen.getByTestId('list-item-task').getAttribute('aria-checked')).toBe('true');
+        expect(screen.getByTestId('list-item-bullet').getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('Escape closes the menu and an outside click closes it too', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByTestId('list-dropdown'));
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByTestId('list-dropdown-menu')).toBeNull();
+        expect(document.activeElement).toBe(screen.getByTestId('list-dropdown'));
+
+        fireEvent.mouseDown(screen.getByTestId('list-dropdown'));
+        fireEvent.mouseDown(document.body);
+        expect(screen.queryByTestId('list-dropdown-menu')).toBeNull();
     });
 });
 

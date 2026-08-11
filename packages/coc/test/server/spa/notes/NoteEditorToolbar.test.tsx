@@ -195,7 +195,8 @@ describe('NoteEditorToolbar — hidden prop (source mode)', () => {
         // but formatting buttons are gone
         expect(screen.queryByLabelText('Bold')).not.toBeInTheDocument();
         expect(screen.queryByLabelText('Italic')).not.toBeInTheDocument();
-        expect(screen.queryByLabelText('Heading 1')).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('Heading level')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('list-dropdown')).not.toBeInTheDocument();
     });
 
     it('shows formatting buttons when hidden is false', () => {

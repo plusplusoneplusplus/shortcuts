@@ -603,8 +603,8 @@ describe('NoteEditor', () => {
         expect(screen.getByTestId('note-editor-toolbar')).toBeDefined();
         expect(screen.getByLabelText('Bold')).toBeDefined();
         expect(screen.getByLabelText('Italic')).toBeDefined();
-        expect(screen.getByLabelText('Heading 1')).toBeDefined();
-        expect(screen.getByLabelText('Bullet list')).toBeDefined();
+        expect(screen.getByLabelText('Heading level')).toBeDefined();
+        expect(screen.getByLabelText('Lists')).toBeDefined();
         expect(screen.getByLabelText('Code block')).toBeDefined();
         expect(screen.getByLabelText('Link')).toBeDefined();
     });
