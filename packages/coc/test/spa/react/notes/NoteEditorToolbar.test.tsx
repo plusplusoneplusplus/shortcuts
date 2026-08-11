@@ -679,3 +679,91 @@ describe('NoteEditorToolbar — find & replace', () => {
         expect(screen.getByTestId('find-match-count').textContent).toBe('');
     });
 });
+
+// ── Shared dropdown primitive ───────────────────────────────────────────────
+
+/**
+ * Every toolbar dropdown routes through one `ToolbarDropdown` primitive, so
+ * dismissal behaviour is asserted once per consumer rather than per panel
+ * feature. Regression guard for the refactor that removed the hand-rolled
+ * outside-click/Escape listeners from HighlightButton and TableInsertButton.
+ */
+describe('NoteEditorToolbar — shared dropdown behaviour', () => {
+    const dropdowns = [
+        { trigger: 'Highlight colors', panel: 'highlight-color-picker' },
+        { trigger: 'Insert table', panel: 'table-size-picker' },
+    ];
+
+    for (const { trigger, panel } of dropdowns) {
+        describe(trigger, () => {
+            it('reflects open state in aria-expanded', () => {
+                const editor = makeMockEditor();
+                render(<NoteEditorToolbar editor={editor as never} />);
+                const btn = screen.getByLabelText(trigger);
+
+                expect(btn.getAttribute('aria-haspopup')).toBe('true');
+                expect(btn.getAttribute('aria-expanded')).toBe('false');
+
+                fireEvent.mouseDown(btn);
+                expect(btn.getAttribute('aria-expanded')).toBe('true');
+            });
+
+            it('closes when the trigger is clicked again', () => {
+                const editor = makeMockEditor();
+                render(<NoteEditorToolbar editor={editor as never} />);
+
+                fireEvent.mouseDown(screen.getByLabelText(trigger));
+                expect(screen.getByTestId(panel)).toBeDefined();
+
+                fireEvent.mouseDown(screen.getByLabelText(trigger));
+                expect(screen.queryByTestId(panel)).toBeNull();
+            });
+
+            it('closes on Escape', () => {
+                const editor = makeMockEditor();
+                render(<NoteEditorToolbar editor={editor as never} />);
+
+                fireEvent.mouseDown(screen.getByLabelText(trigger));
+                expect(screen.getByTestId(panel)).toBeDefined();
+
+                fireEvent.keyDown(document, { key: 'Escape' });
+                expect(screen.queryByTestId(panel)).toBeNull();
+            });
+
+            it('closes on an outside mousedown', () => {
+                const editor = makeMockEditor();
+                render(<NoteEditorToolbar editor={editor as never} />);
+
+                fireEvent.mouseDown(screen.getByLabelText(trigger));
+                expect(screen.getByTestId(panel)).toBeDefined();
+
+                fireEvent.mouseDown(document.body);
+                expect(screen.queryByTestId(panel)).toBeNull();
+            });
+
+            it('stays open when the mousedown lands inside the panel', () => {
+                const editor = makeMockEditor();
+                render(<NoteEditorToolbar editor={editor as never} />);
+
+                fireEvent.mouseDown(screen.getByLabelText(trigger));
+                fireEvent.mouseDown(screen.getByTestId(panel));
+
+                expect(screen.getByTestId(panel)).toBeDefined();
+            });
+        });
+    }
+
+    it('clears the table hover extent when the picker is reopened', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        fireEvent.mouseDown(screen.getByLabelText('Insert table'));
+        fireEvent.mouseEnter(screen.getByTestId('table-size-cell-3-2'));
+        expect(screen.getByTestId('table-size-label').textContent).toBe('3 × 2');
+
+        fireEvent.keyDown(document, { key: 'Escape' });
+        fireEvent.mouseDown(screen.getByLabelText('Insert table'));
+
+        expect(screen.getByTestId('table-size-label').textContent).toBe('Insert table');
+    });
+});

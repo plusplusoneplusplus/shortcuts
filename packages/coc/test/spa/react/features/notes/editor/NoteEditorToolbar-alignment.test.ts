@@ -43,9 +43,12 @@ describe('NoteEditorToolbar — alignment and indent buttons', () => {
         });
 
         it('alignment buttons are inside the formatting section (not hidden in source mode)', () => {
-            // The formatting section begins with the Bold button and is gated by !hidden
+            // The formatting section begins with the Bold button and is gated by !hidden.
+            // Anchor the table group on its JSX usage, not on the "Insert table"
+            // label — that string also appears in the TableInsertButton definition
+            // higher up the file.
             const formattingStart = source.indexOf('"Bold"');
-            const tableEnd = source.indexOf('"Insert table"');
+            const tableEnd = source.indexOf('<TableInsertButton editor');
             const alignLeft = source.indexOf('"Align left"');
             expect(formattingStart).toBeGreaterThan(0);
             expect(tableEnd).toBeGreaterThan(formattingStart);

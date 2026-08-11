@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import type { ReactNode, KeyboardEvent as ReactKeyboardEvent } from 'react';
+import type { ReactNode, RefObject, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { Editor } from '@tiptap/react';
 import type { TocEntry } from './noteTocUtils';
 import { NoteTocPanel } from './NoteTocPanel';
@@ -412,24 +412,76 @@ function getSelectedText(editor: Editor): string {
     return text.includes('\n') ? '' : text;
 }
 
-// ── Highlight button with color picker ───────────────────────────────────────
+// ── Shared toolbar dropdown primitive ───────────────────────────────────────
 
-interface HighlightButtonProps {
-    editor: Editor;
+interface ToolbarDropdownTriggerArgs {
+    open: boolean;
+    /** Open the panel when closed, close it when open. */
+    toggle: () => void;
+    /**
+     * Attach to the button that owns the panel. Escape returns focus here, and
+     * the primitive does not set `aria-haspopup`/`aria-expanded` for you — the
+     * trigger markup differs too much between dropdowns (plain button vs. the
+     * highlight split button) for that to live here.
+     */
+    triggerRef: RefObject<HTMLButtonElement>;
 }
 
-function HighlightButton({ editor }: HighlightButtonProps) {
-    const [open, setOpen] = useState(false);
-    const ref = useRef<HTMLDivElement>(null);
+interface ToolbarDropdownProps {
+    renderTrigger: (args: ToolbarDropdownTriggerArgs) => ReactNode;
+    renderPanel: (args: { close: () => void }) => ReactNode;
+    panelTestId: string;
+    /** Layout classes for the floating panel; the chrome (border/shadow) is fixed. */
+    panelClassName?: string;
+    /** Render the panel as an ARIA menu with arrow-key roving focus. */
+    menu?: boolean;
+    menuLabel?: string;
+    /** Runs whenever the panel closes — used to reset transient panel state. */
+    onClose?: () => void;
+}
 
-    // Close on outside click or Escape
+const DROPDOWN_PANEL_CLS =
+    'absolute top-full left-0 mt-1 z-50 rounded shadow-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e]';
+
+/**
+ * The one dropdown implementation in this toolbar: it owns open/close state,
+ * outside-click and Escape dismissal, and (in `menu` mode) roving arrow-key
+ * focus over `role="menuitem"` children. Every toolbar dropdown renders through
+ * this so there is a single set of document listeners to reason about.
+ */
+function ToolbarDropdown({
+    renderTrigger,
+    renderPanel,
+    panelTestId,
+    panelClassName,
+    menu,
+    menuLabel,
+    onClose,
+}: ToolbarDropdownProps) {
+    const [open, setOpen] = useState(false);
+    const rootRef = useRef<HTMLDivElement>(null);
+    const panelRef = useRef<HTMLDivElement>(null);
+    const triggerRef = useRef<HTMLButtonElement>(null);
+
+    // Kept in a ref so `close` stays stable across renders even when callers
+    // pass an inline callback.
+    const onCloseRef = useRef(onClose);
+    onCloseRef.current = onClose;
+
+    const close = useCallback(() => {
+        setOpen(false);
+        onCloseRef.current?.();
+    }, []);
+
     useEffect(() => {
         if (!open) return;
         function handleClick(e: MouseEvent) {
-            if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+            if (rootRef.current && !rootRef.current.contains(e.target as Node)) close();
         }
         function handleKey(e: KeyboardEvent) {
-            if (e.key === 'Escape') setOpen(false);
+            if (e.key !== 'Escape') return;
+            close();
+            triggerRef.current?.focus();
         }
         document.addEventListener('mousedown', handleClick);
         document.addEventListener('keydown', handleKey);
@@ -437,55 +489,117 @@ function HighlightButton({ editor }: HighlightButtonProps) {
             document.removeEventListener('mousedown', handleClick);
             document.removeEventListener('keydown', handleKey);
         };
-    }, [open]);
+    }, [open, close]);
 
+    function menuItems(): HTMLElement[] {
+        if (!panelRef.current) return [];
+        return Array.from(panelRef.current.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+    }
+
+    // Opening a menu moves focus into it (starting at the active item) so the
+    // arrow keys have somewhere to rove from. Selection survives because the
+    // trigger suppressed the mousedown default and the commands re-focus the
+    // editor.
+    useEffect(() => {
+        if (!open || !menu) return;
+        const items = menuItems();
+        const active = items.find((el) => el.getAttribute('aria-checked') === 'true');
+        (active ?? items[0])?.focus();
+    }, [open, menu]);
+
+    function handleMenuKeyDown(e: ReactKeyboardEvent<HTMLDivElement>) {
+        if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') return;
+        const items = menuItems();
+        if (items.length === 0) return;
+        e.preventDefault();
+        const current = items.indexOf(document.activeElement as HTMLElement);
+        let next: number;
+        if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = items.length - 1;
+        else if (e.key === 'ArrowDown') next = current < 0 ? 0 : (current + 1) % items.length;
+        else next = current <= 0 ? items.length - 1 : current - 1;
+        items[next]?.focus();
+    }
+
+    return (
+        <div className="relative" ref={rootRef}>
+            {renderTrigger({
+                open,
+                toggle: () => (open ? close() : setOpen(true)),
+                triggerRef,
+            })}
+            {open && (
+                <div
+                    ref={panelRef}
+                    className={DROPDOWN_PANEL_CLS + ' ' + (panelClassName ?? 'p-1.5')}
+                    data-testid={panelTestId}
+                    role={menu ? 'menu' : undefined}
+                    aria-label={menu ? menuLabel : undefined}
+                    onKeyDown={menu ? handleMenuKeyDown : undefined}
+                >
+                    {renderPanel({ close })}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ── Highlight button with color picker ───────────────────────────────────────
+
+interface HighlightButtonProps {
+    editor: Editor;
+}
+
+function HighlightButton({ editor }: HighlightButtonProps) {
     const isActive = editor.isActive('highlight');
 
     return (
-        <div className="relative" ref={ref}>
-            <div className="flex items-center">
-                {/* Main highlight toggle */}
-                <button
-                    type="button"
-                    title="Highlight"
-                    aria-label="Highlight"
-                    className={
-                        'h-7 px-1 rounded-l flex items-center justify-center text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050] ' +
-                        (isActive ? 'bg-[#e8e8e8] dark:bg-[#3c3c3c] font-bold' : '')
-                    }
-                    onMouseDown={(e) => {
-                        e.preventDefault();
-                        editor.chain().focus().toggleHighlight({ color: DEFAULT_HIGHLIGHT_COLOR }).run();
-                    }}
-                >
-                    <span
-                        className="inline-block w-4 h-4 leading-4 text-center rounded-sm text-[10px] font-bold text-[#1e1e1e]"
-                        style={{ backgroundColor: isActive ? (editor.getAttributes('highlight').color ?? DEFAULT_HIGHLIGHT_COLOR) : DEFAULT_HIGHLIGHT_COLOR }}
+        <ToolbarDropdown
+            panelTestId="highlight-color-picker"
+            panelClassName="flex gap-1 p-1.5"
+            renderTrigger={({ open, toggle, triggerRef }) => (
+                <div className="flex items-center">
+                    {/* Main highlight toggle */}
+                    <button
+                        type="button"
+                        title="Highlight"
+                        aria-label="Highlight"
+                        className={
+                            'h-7 px-1 rounded-l flex items-center justify-center text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050] ' +
+                            (isActive ? 'bg-[#e8e8e8] dark:bg-[#3c3c3c] font-bold' : '')
+                        }
+                        onMouseDown={(e) => {
+                            e.preventDefault();
+                            editor.chain().focus().toggleHighlight({ color: DEFAULT_HIGHLIGHT_COLOR }).run();
+                        }}
                     >
-                        HL
-                    </span>
-                </button>
-                {/* Dropdown arrow */}
-                <button
-                    type="button"
-                    title="Highlight colors"
-                    aria-label="Highlight colors"
-                    className="h-7 w-4 rounded-r flex items-center justify-center text-[10px] hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
-                    onMouseDown={(e) => {
-                        e.preventDefault();
-                        setOpen((v) => !v);
-                    }}
-                >
-                    ▾
-                </button>
-            </div>
-
-            {/* Color picker dropdown */}
-            {open && (
-                <div
-                    className="absolute top-full left-0 mt-1 z-50 flex gap-1 p-1.5 rounded shadow-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e]"
-                    data-testid="highlight-color-picker"
-                >
+                        <span
+                            className="inline-block w-4 h-4 leading-4 text-center rounded-sm text-[10px] font-bold text-[#1e1e1e]"
+                            style={{ backgroundColor: isActive ? (editor.getAttributes('highlight').color ?? DEFAULT_HIGHLIGHT_COLOR) : DEFAULT_HIGHLIGHT_COLOR }}
+                        >
+                            HL
+                        </span>
+                    </button>
+                    {/* Dropdown arrow */}
+                    <button
+                        ref={triggerRef}
+                        type="button"
+                        title="Highlight colors"
+                        aria-label="Highlight colors"
+                        aria-haspopup="true"
+                        aria-expanded={open}
+                        className="h-7 w-4 rounded-r flex items-center justify-center text-[10px] hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
+                        onMouseDown={(e) => {
+                            e.preventDefault();
+                            toggle();
+                        }}
+                    >
+                        ▾
+                    </button>
+                </div>
+            )}
+            renderPanel={({ close }) => (
+                <>
                     {HIGHLIGHT_COLORS.map(({ name, color }) => (
                         <button
                             key={color}
@@ -497,7 +611,7 @@ function HighlightButton({ editor }: HighlightButtonProps) {
                             onMouseDown={(e) => {
                                 e.preventDefault();
                                 editor.chain().focus().toggleHighlight({ color }).run();
-                                setOpen(false);
+                                close();
                             }}
                         />
                     ))}
@@ -510,14 +624,14 @@ function HighlightButton({ editor }: HighlightButtonProps) {
                         onMouseDown={(e) => {
                             e.preventDefault();
                             editor.chain().focus().unsetHighlight().run();
-                            setOpen(false);
+                            close();
                         }}
                     >
                         ✕
                     </button>
-                </div>
+                </>
             )}
-        </div>
+        />
     );
 }
 
@@ -532,59 +646,35 @@ interface TableInsertButtonProps {
 }
 
 function TableInsertButton({ editor }: TableInsertButtonProps) {
-    const [open, setOpen] = useState(false);
     const [hover, setHover] = useState<{ col: number; row: number } | null>(null);
-    const ref = useRef<HTMLDivElement>(null);
-
-    // Close on outside click or Escape — same mechanism as HighlightButton
-    useEffect(() => {
-        if (!open) {
-            setHover(null);
-            return;
-        }
-        function handleClick(e: MouseEvent) {
-            if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-        }
-        function handleKey(e: KeyboardEvent) {
-            if (e.key === 'Escape') setOpen(false);
-        }
-        document.addEventListener('mousedown', handleClick);
-        document.addEventListener('keydown', handleKey);
-        return () => {
-            document.removeEventListener('mousedown', handleClick);
-            document.removeEventListener('keydown', handleKey);
-        };
-    }, [open]);
-
-    function insert(cols: number, rows: number) {
-        editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
-        setOpen(false);
-    }
 
     return (
-        <div className="relative" ref={ref}>
-            <button
-                type="button"
-                title="Insert table"
-                aria-label="Insert table"
-                className={
-                    'h-7 w-7 rounded flex items-center justify-center text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050] ' +
-                    (open ? 'bg-[#e8e8e8] dark:bg-[#3c3c3c]' : '')
-                }
-                onMouseDown={(e) => {
-                    e.preventDefault(); // keep editor focus
-                    setOpen((v) => !v);
-                }}
-            >
-                ⊞
-            </button>
-
-            {open && (
-                <div
-                    className="absolute top-full left-0 mt-1 z-50 p-1.5 rounded shadow-md border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e]"
-                    data-testid="table-size-picker"
-                    onMouseLeave={() => setHover(null)}
+        <ToolbarDropdown
+            panelTestId="table-size-picker"
+            // A reopened picker must not still show the previous hover extent.
+            onClose={() => setHover(null)}
+            renderTrigger={({ open, toggle, triggerRef }) => (
+                <button
+                    ref={triggerRef}
+                    type="button"
+                    title="Insert table"
+                    aria-label="Insert table"
+                    aria-haspopup="true"
+                    aria-expanded={open}
+                    className={
+                        'h-7 w-7 rounded flex items-center justify-center text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050] ' +
+                        (open ? 'bg-[#e8e8e8] dark:bg-[#3c3c3c]' : '')
+                    }
+                    onMouseDown={(e) => {
+                        e.preventDefault(); // keep editor focus
+                        toggle();
+                    }}
                 >
+                    ⊞
+                </button>
+            )}
+            renderPanel={({ close }) => (
+                <div onMouseLeave={() => setHover(null)}>
                     <div className="flex flex-col gap-0.5">
                         {Array.from({ length: TABLE_PICKER_ROWS }, (_, ri) => ri + 1).map((row) => (
                             <div key={row} className="flex gap-0.5">
@@ -606,7 +696,10 @@ function TableInsertButton({ editor }: TableInsertButtonProps) {
                                             onMouseEnter={() => setHover({ col, row })}
                                             onMouseDown={(e) => {
                                                 e.preventDefault(); // keep editor focus
-                                                insert(col, row);
+                                                editor.chain().focus()
+                                                    .insertTable({ rows: row, cols: col, withHeaderRow: true })
+                                                    .run();
+                                                close();
                                             }}
                                         />
                                     );
@@ -622,7 +715,7 @@ function TableInsertButton({ editor }: TableInsertButtonProps) {
                     </div>
                 </div>
             )}
-        </div>
+        />
     );
 }
 
