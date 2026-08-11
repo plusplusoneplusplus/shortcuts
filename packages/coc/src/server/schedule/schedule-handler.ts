@@ -14,10 +14,13 @@ import { sendJSON, sendError } from '../core/api-handler';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import { getErrorMessage } from '../shared/fs-utils';
 import type { Route } from '../types';
-import { ScheduleManager, describeCron, nextCronTime, parseCron } from './schedule-manager';
-import type { ScheduleEntry, ScheduleOnFailure, ScheduleStatus } from './schedule-manager';
-import type { TargetType, ChatMode, ChatProvider } from '../tasks/task-types';
-import { normalizeChatMode, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
+import { ScheduleManager, describeCron, nextCronTime } from './schedule-manager';
+import type { ScheduleEntry } from './schedule-manager';
+import {
+    normalizeScheduleMode,
+    parseScheduleCreateBody,
+    parseScheduleUpdateBody,
+} from './schedule-request-parser';
 
 // ============================================================================
 // AI instruction refinement
@@ -42,60 +45,20 @@ function extractRefinedInstructions(response: string): string {
 }
 
 // ============================================================================
-// Validation
+// Serialization
 // ============================================================================
 
-const VALID_STATUSES: Set<string> = new Set(['active', 'paused', 'stopped']);
-const VALID_ON_FAILURE: Set<string> = new Set(['notify', 'stop']);
-const VALID_TARGET_TYPES: Set<string> = new Set(['prompt', 'script']);
-function normalizeScheduleMode(mode: unknown): ChatMode | undefined {
-    const normalized = normalizeChatMode(mode);
-    if (normalized === 'ask' || normalized === 'autopilot') return normalized;
-    return undefined;
-}
-
-/** Coerce a raw provider value to a supported ChatProvider, else undefined. */
-function normalizeScheduleProvider(provider: unknown): ChatProvider | undefined {
-    if (typeof provider === 'string' && VALID_CHAT_PROVIDERS.has(provider as ChatProvider)) {
-        return provider as ChatProvider;
-    }
-    return undefined;
-}
-
-function validateScheduleInput(body: any): { valid: boolean; error?: string } {
-    if (!body.name || typeof body.name !== 'string' || !body.name.trim()) {
-        return { valid: false, error: 'Missing required field: name' };
-    }
-    if (!body.target || typeof body.target !== 'string' || !body.target.trim()) {
-        return { valid: false, error: 'Missing required field: target' };
-    }
-    if (!body.cron || typeof body.cron !== 'string' || !body.cron.trim()) {
-        return { valid: false, error: 'Missing required field: cron' };
-    }
-    try {
-        parseCron(body.cron);
-    } catch {
-        return { valid: false, error: `Invalid cron expression: ${body.cron}` };
-    }
-    if (body.onFailure && !VALID_ON_FAILURE.has(body.onFailure)) {
-        return { valid: false, error: `Invalid onFailure: ${body.onFailure}. Valid values: notify, stop` };
-    }
-    if (body.status && !VALID_STATUSES.has(body.status)) {
-        return { valid: false, error: `Invalid status: ${body.status}. Valid values: active, paused, stopped` };
-    }
-    if (body.targetType !== undefined && !VALID_TARGET_TYPES.has(body.targetType)) {
-        return { valid: false, error: `Invalid targetType: ${body.targetType}. Valid values: prompt, script` };
-    }
-    if (body.mode !== undefined && !normalizeScheduleMode(body.mode)) {
-        return { valid: false, error: `Invalid mode: ${body.mode}. Valid values: ask, autopilot` };
-    }
-    if (body.provider !== undefined && !normalizeScheduleProvider(body.provider)) {
-        return { valid: false, error: `Invalid provider: ${body.provider}. Valid values: copilot, codex, claude, opencode` };
-    }
-    return { valid: true };
-}
-
-function serializeSchedule(entry: ScheduleEntry, manager: ScheduleManager): Record<string, unknown> {
+/**
+ * Serialize a schedule for the REST API.
+ *
+ * `repoId` is required: `isRunning` must be answered for *this* workspace, or
+ * a repo schedule running in another clone would be reported as running here.
+ */
+function serializeSchedule(
+    entry: ScheduleEntry,
+    manager: ScheduleManager,
+    repoId: string,
+): Record<string, unknown> {
     const next = entry.status === 'active' ? nextCronTime(entry.cron) : null;
     return {
         id: entry.id,
@@ -107,7 +70,7 @@ function serializeSchedule(entry: ScheduleEntry, manager: ScheduleManager): Reco
         params: entry.params,
         onFailure: entry.onFailure,
         status: entry.status,
-        isRunning: manager.isRunning(entry.id),
+        isRunning: manager.isRunning(entry.id, repoId),
         nextRun: next ? next.toISOString() : null,
         createdAt: entry.createdAt,
         outputFolder: entry.outputFolder,
@@ -153,7 +116,7 @@ export function registerScheduleRoutes(
         handler: async (_req, res, match) => {
             const repoId = decodeURIComponent(match![1]);
             await ensureWorkspaceLoaded(repoId);
-            const schedules = manager.getSchedules(repoId).map(s => serializeSchedule(s, manager));
+            const schedules = manager.getSchedules(repoId).map(s => serializeSchedule(s, manager, repoId));
             sendJSON(res, 200, { schedules });
         },
     });
@@ -169,26 +132,14 @@ export function registerScheduleRoutes(
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
-            const validation = validateScheduleInput(body);
-            if (!validation.valid) {
-                return sendError(res, 400, validation.error!);
+            const parsed = parseScheduleCreateBody(body);
+            if (!parsed.ok) {
+                return sendError(res, 400, parsed.error);
             }
 
             try {
-                const schedule = await manager.addSchedule(repoId, {
-                    name: body.name.trim(),
-                    target: body.target.trim(),
-                    cron: body.cron.trim(),
-                    params: body.params || {},
-                    onFailure: (body.onFailure as ScheduleOnFailure) || 'notify',
-                    status: (body.status as ScheduleStatus) || 'active',
-                    targetType: (body.targetType as TargetType) || 'prompt',
-                    outputFolder: body.outputFolder ? String(body.outputFolder).trim() : undefined,
-                    model: body.model ? String(body.model).trim() : undefined,
-                    mode: normalizeScheduleMode(body.mode) || 'autopilot',
-                    provider: normalizeScheduleProvider(body.provider),
-                });
-                sendJSON(res, 201, { schedule: serializeSchedule(schedule, manager) });
+                const schedule = await manager.addSchedule(repoId, parsed.value);
+                sendJSON(res, 201, { schedule: serializeSchedule(schedule, manager, repoId) });
             } catch (err) {
                 return sendError(res, 400, getErrorMessage(err, 'Failed to create schedule'));
             }
@@ -279,48 +230,18 @@ export function registerScheduleRoutes(
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
-            if (body.cron) {
-                try {
-                    parseCron(body.cron);
-                } catch {
-                    return sendError(res, 400, `Invalid cron expression: ${body.cron}`);
-                }
+            const parsed = parseScheduleUpdateBody(body);
+            if (!parsed.ok) {
+                return sendError(res, 400, parsed.error);
             }
-            if (body.onFailure && !VALID_ON_FAILURE.has(body.onFailure)) {
-                return sendError(res, 400, `Invalid onFailure: ${body.onFailure}`);
-            }
-            if (body.status && !VALID_STATUSES.has(body.status)) {
-                return sendError(res, 400, `Invalid status: ${body.status}`);
-            }
-            if (body.targetType !== undefined && !VALID_TARGET_TYPES.has(body.targetType)) {
-                return sendError(res, 400, `Invalid targetType: ${body.targetType}. Valid values: prompt, script`);
-            }
-            if (body.mode !== undefined && !normalizeScheduleMode(body.mode)) {
-                return sendError(res, 400, `Invalid mode: ${body.mode}. Valid values: ask, autopilot`);
-            }
-            if (body.provider !== undefined && body.provider !== null && body.provider !== '' && !normalizeScheduleProvider(body.provider)) {
-                return sendError(res, 400, `Invalid provider: ${body.provider}. Valid values: copilot, codex, claude, opencode`);
-            }
-
-            const updates: any = {};
-            if (body.name) updates.name = body.name.trim();
-            if (body.target) updates.target = body.target.trim();
-            if (body.cron) updates.cron = body.cron.trim();
-            if (body.params !== undefined) updates.params = body.params;
-            if (body.onFailure) updates.onFailure = body.onFailure;
-            if (body.status) updates.status = body.status;
-            if (body.targetType !== undefined) updates.targetType = body.targetType;
-            if (body.outputFolder !== undefined) updates.outputFolder = body.outputFolder ? String(body.outputFolder).trim() : undefined;
-            if (body.model !== undefined) updates.model = body.model ? String(body.model).trim() : undefined;
-            if (body.mode !== undefined) updates.mode = normalizeScheduleMode(body.mode);
-            if (body.provider !== undefined) updates.provider = normalizeScheduleProvider(body.provider);
+            const updates = parsed.value;
 
             const schedule = await manager.updateSchedule(repoId, scheduleId, updates);
             if (!schedule) {
                 return sendError(res, 404, 'Schedule not found');
             }
 
-            sendJSON(res, 200, { schedule: serializeSchedule(schedule, manager) });
+            sendJSON(res, 200, { schedule: serializeSchedule(schedule, manager, repoId) });
         },
     });
 
@@ -380,7 +301,7 @@ export function registerScheduleRoutes(
 
             try {
                 const schedule = await manager.moveSchedule(repoId, scheduleId, destination);
-                sendJSON(res, 200, { schedule: serializeSchedule(schedule, manager) });
+                sendJSON(res, 200, { schedule: serializeSchedule(schedule, manager, repoId) });
             } catch (err) {
                 return sendError(res, 400, getErrorMessage(err, 'Failed to move schedule'));
             }
@@ -414,10 +335,10 @@ export function registerScheduleRoutes(
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/schedules\/([^/]+)\/history$/,
         handler: async (_req, res, match) => {
-            const _repoId = decodeURIComponent(match![1]);
+            const repoId = decodeURIComponent(match![1]);
             const scheduleId = decodeURIComponent(match![2]);
 
-            const history = manager.getRunHistory(scheduleId);
+            const history = manager.getRunHistory(repoId, scheduleId);
             sendJSON(res, 200, { history });
         },
     });

@@ -236,7 +236,7 @@ describe('ScheduleManager — repo schedules', () => {
             await vi.advanceTimersByTimeAsync(61_000);
 
             // A run was recorded — proves the timer fired without a prior HTTP request
-            expect(manager.getRunHistory('repo:every-min').length).toBeGreaterThan(0);
+            expect(manager.getRunHistory(REPO_ID, 'repo:every-min').length).toBeGreaterThan(0);
         } finally {
             vi.useRealTimers();
         }

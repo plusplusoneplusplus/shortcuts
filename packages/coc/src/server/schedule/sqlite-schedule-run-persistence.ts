@@ -14,6 +14,7 @@
 
 import type Database from 'better-sqlite3';
 import type { ScheduleRunRecord } from './schedule-manager';
+import { scheduleRuntimeKey, type ScheduleRuntimeKey } from './schedule-runtime-key';
 
 // ============================================================================
 // Constants
@@ -140,19 +141,22 @@ export class SqliteScheduleRunPersistence {
     }
 
     /**
-     * Load all run history, grouped by scheduleId.
-     * Returns Map<scheduleId, ScheduleRunRecord[]>.
+     * Load all run history, grouped by `(repo_id, schedule_id)` runtime key.
+     *
+     * Grouping includes the repo so two workspaces that both define the same
+     * deterministic repo schedule ID (`repo:<stem>`) restore separate history.
      */
-    loadAll(): Map<string, ScheduleRunRecord[]> {
-        const result = new Map<string, ScheduleRunRecord[]>();
+    loadAll(): Map<ScheduleRuntimeKey, ScheduleRunRecord[]> {
+        const result = new Map<ScheduleRuntimeKey, ScheduleRunRecord[]>();
         const rows = this.stmtLoadAll.all() as ScheduleRunRow[];
         for (const row of rows) {
             const scheduleId = row.schedule_id;
             if (!scheduleId) continue;
-            if (!result.has(scheduleId)) {
-                result.set(scheduleId, []);
+            const key = scheduleRuntimeKey(row.repo_id, scheduleId);
+            if (!result.has(key)) {
+                result.set(key, []);
             }
-            result.get(scheduleId)!.push(rowToRecord(row));
+            result.get(key)!.push(rowToRecord(row));
         }
         return result;
     }

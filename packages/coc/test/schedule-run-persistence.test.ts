@@ -8,6 +8,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { initializeDatabase } from '@plusplusoneplusplus/forge';
 import { SqliteScheduleRunPersistence } from '../src/server/schedule/sqlite-schedule-run-persistence';
+import { scheduleRuntimeKey } from '../src/server/schedule/schedule-runtime-key';
 import type { ScheduleRunRecord } from '../src/server/schedule/schedule-manager';
 
 // ============================================================================
@@ -53,7 +54,7 @@ describe('SqliteScheduleRunPersistence', () => {
     // ========================================================================
 
     describe('save and load round-trip', () => {
-        it('saves runs and loads them back via loadAll grouped by scheduleId', () => {
+        it('saves runs and loads them back via loadAll grouped by (repoId, scheduleId)', () => {
             const persistence = new SqliteScheduleRunPersistence(db);
             const run1 = createRun({ id: 'run_1', scheduleId: 'sch_a' });
             const run2 = createRun({ id: 'run_2', scheduleId: 'sch_b' });
@@ -61,10 +62,23 @@ describe('SqliteScheduleRunPersistence', () => {
             persistence.save('repo_abc', [run1, run2]);
 
             const loaded = persistence.loadAll();
-            expect(loaded.has('sch_a')).toBe(true);
-            expect(loaded.has('sch_b')).toBe(true);
-            expect(loaded.get('sch_a')![0].id).toBe('run_1');
-            expect(loaded.get('sch_b')![0].id).toBe('run_2');
+            const keyA = scheduleRuntimeKey('repo_abc', 'sch_a');
+            const keyB = scheduleRuntimeKey('repo_abc', 'sch_b');
+            expect(loaded.has(keyA)).toBe(true);
+            expect(loaded.has(keyB)).toBe(true);
+            expect(loaded.get(keyA)![0].id).toBe('run_1');
+            expect(loaded.get(keyB)![0].id).toBe('run_2');
+        });
+
+        it('keeps the same schedule ID in two repos in separate groups', () => {
+            const persistence = new SqliteScheduleRunPersistence(db);
+            persistence.save('repo_a', [createRun({ id: 'run_a', repoId: 'repo_a', scheduleId: 'repo:daily' })]);
+            persistence.save('repo_b', [createRun({ id: 'run_b', repoId: 'repo_b', scheduleId: 'repo:daily' })]);
+
+            const loaded = persistence.loadAll();
+            expect(loaded.size).toBe(2);
+            expect(loaded.get(scheduleRuntimeKey('repo_a', 'repo:daily'))!.map(r => r.id)).toEqual(['run_a']);
+            expect(loaded.get(scheduleRuntimeKey('repo_b', 'repo:daily'))!.map(r => r.id)).toEqual(['run_b']);
         });
 
         it('preserves all fields on round-trip', () => {
@@ -79,7 +93,7 @@ describe('SqliteScheduleRunPersistence', () => {
             persistence.save('repo_abc', [run]);
 
             const loaded = persistence.loadAll();
-            const restored = loaded.get('sch_test123')![0];
+            const restored = loaded.get(scheduleRuntimeKey('repo_abc', 'sch_test123'))![0];
             expect(restored.processId).toBe('queue_task123');
             expect(restored.taskId).toBe('task123');
             expect(restored.error).toBe('some error');
@@ -116,8 +130,8 @@ describe('SqliteScheduleRunPersistence', () => {
             persistence.save('repo_b', [runB]);
 
             const loaded = persistence.loadAll();
-            expect(loaded.get('sch_1')![0].id).toBe('run_a');
-            expect(loaded.get('sch_2')![0].id).toBe('run_b');
+            expect(loaded.get(scheduleRuntimeKey('repo_a', 'sch_1'))![0].id).toBe('run_a');
+            expect(loaded.get(scheduleRuntimeKey('repo_b', 'sch_2'))![0].id).toBe('run_b');
         });
     });
 

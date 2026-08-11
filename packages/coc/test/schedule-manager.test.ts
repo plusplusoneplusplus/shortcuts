@@ -425,7 +425,7 @@ describe('ScheduleManager', () => {
             });
 
             await manager.triggerRun(REPO_ID, schedule.id);
-            const history = manager.getRunHistory(schedule.id);
+            const history = manager.getRunHistory(REPO_ID, schedule.id);
             expect(history.length).toBeGreaterThan(0);
         });
 
@@ -471,7 +471,7 @@ describe('ScheduleManager', () => {
 
             const taskId = queue.taskIds()[0];
             expect(taskId).toBeDefined();
-            expect(mgr.getRunHistory(schedule.id)[0].status).toBe('running');
+            expect(mgr.getRunHistory(REPO_ID, schedule.id)[0].status).toBe('running');
             expect(mgr.isRunning(schedule.id, REPO_ID)).toBe(true);
             expect(events.some(e => e.type === 'schedule-triggered' && e.run?.status === 'running')).toBe(true);
             expect(events.some(e => e.type === 'schedule-run-complete')).toBe(false);
@@ -551,14 +551,14 @@ describe('ScheduleManager', () => {
             const scheduleRunId = task.payload.context.scheduleRunId;
 
             expect(sessionId).toMatch(/^ralph-/);
-            expect(scheduleRunId).toBe(mgr.getRunHistory(schedule.id)[0].id);
+            expect(scheduleRunId).toBe(mgr.getRunHistory(REPO_ID, schedule.id)[0].id);
             expect(task.payload.context.scheduleId).toBe(schedule.id);
             expect(task.payload.context.scheduleParams).toEqual({ flavor: 'regression' });
 
             queue.complete(taskId);
             await Promise.resolve();
 
-            expect(mgr.getRunHistory(schedule.id)[0].status).toBe('running');
+            expect(mgr.getRunHistory(REPO_ID, schedule.id)[0].status).toBe('running');
             expect(mgr.isRunning(schedule.id, REPO_ID)).toBe(true);
             expect(events.some(e => e.type === 'schedule-run-complete')).toBe(false);
 
@@ -677,7 +677,7 @@ describe('ScheduleManager', () => {
 
                 await vi.advanceTimersByTimeAsync(30_000);
 
-                const historyAfterMiss = mgr.getRunHistory(schedule.id);
+                const historyAfterMiss = mgr.getRunHistory(REPO_ID, schedule.id);
                 expect(queue.enqueue).toHaveBeenCalledTimes(1);
                 expect(historyAfterMiss[0].status).toBe('missed');
                 expect(historyAfterMiss[0].completedAt).toBeDefined();
@@ -686,7 +686,7 @@ describe('ScheduleManager', () => {
 
                 await vi.advanceTimersByTimeAsync(60_000);
                 expect(queue.enqueue).toHaveBeenCalledTimes(1);
-                expect(mgr.getRunHistory(schedule.id).filter(run => run.status === 'missed')).toHaveLength(1);
+                expect(mgr.getRunHistory(REPO_ID, schedule.id).filter(run => run.status === 'missed')).toHaveLength(1);
 
                 queue.complete(activeTaskId);
                 await activeRunPromise;
@@ -767,7 +767,7 @@ describe('ScheduleManager', () => {
                 await manager.triggerRun(REPO_ID, schedule.id);
             }
 
-            const history = manager.getRunHistory(schedule.id);
+            const history = manager.getRunHistory(REPO_ID, schedule.id);
             expect(history.length).toBeLessThanOrEqual(100);
         });
     });
@@ -1548,7 +1548,7 @@ describe('ScheduleManager', () => {
             await newManager.restore();
             newManager.restoreRunHistory(runPersistence);
 
-            const history = newManager.getRunHistory(schedule.id);
+            const history = newManager.getRunHistory(REPO_ID, schedule.id);
             expect(history.length).toBeGreaterThan(0);
             expect(history[0].scheduleId).toBe(schedule.id);
 
@@ -1582,7 +1582,7 @@ describe('ScheduleManager', () => {
             await newManager.restore();
             newManager.restoreRunHistory(runPersistence);
 
-            const history = newManager.getRunHistory(schedule.id);
+            const history = newManager.getRunHistory(REPO_ID, schedule.id);
             expect(history).toHaveLength(0);
 
             newManager.dispose();

@@ -160,7 +160,7 @@ describe('Schedule AI Failure (unit — direct ScheduleManager)', () => {
         const schedule = await manager.addSchedule(REPO_ID, makeScheduleInput());
         await manager.triggerRun(REPO_ID, schedule.id);
 
-        const history = manager.getRunHistory(schedule.id);
+        const history = manager.getRunHistory(REPO_ID, schedule.id);
         expect(history).toHaveLength(1);
         expect(history[0].status).toBe('failed');
     });
@@ -219,7 +219,7 @@ describe('Schedule AI Failure (unit — direct ScheduleManager)', () => {
         await manager.triggerRun(REPO_ID, schedule.id);
         await manager.triggerRun(REPO_ID, schedule.id);
 
-        const history = manager.getRunHistory(schedule.id);
+        const history = manager.getRunHistory(REPO_ID, schedule.id);
         expect(history).toHaveLength(3);
         expect(history.every(r => r.status === 'failed')).toBe(true);
     });

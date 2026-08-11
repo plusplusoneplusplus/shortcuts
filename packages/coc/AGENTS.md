@@ -319,6 +319,20 @@ all have their own `references/*.md`.
   startup, route handlers, and tests. User schedule writes/deletes serialize per
   repo, and repo schedule scan failures preserve the previous loaded repo
   schedules rather than replacing them with an empty set.
+- **Schedule runtime state is keyed by `(repoId, scheduleId)`**, never by a bare
+  schedule ID. Repo schedules derive deterministic IDs from their filename
+  (`repo:<stem>`), so two clones shipping the same `.github/schedules/*.yaml`
+  share an ID. Timers, in-flight runs, and run history all key through
+  `scheduleRuntimeKey()` in `src/server/schedule/schedule-runtime-key.ts`, and
+  `ScheduleManager.getRunHistory`/`isRunning` and the REST `serializeSchedule`
+  all require `repoId`. `isAnyRepoRunning(scheduleId)` is the only cross-repo
+  lookup and must not be used from workspace-scoped paths.
+- **Schedule REST bodies and queue payloads have one home each.** POST/PATCH
+  body validation and coercion live in
+  `src/server/schedule/schedule-request-parser.ts` (error strings are the API
+  contract); prompt/Ralph/script queue payload construction lives in
+  `schedule-task-builder.ts` as pure functions. `ScheduleExecutor` only performs
+  the side effects around them.
 - **Dreams analyzer/critic AI work** must run through
   `DreamInternalProcessExecutor`/`ProcessLifecycleRunner` so analyzer and critic
   prompts/responses are persisted as read-only internal processes. Do not add
