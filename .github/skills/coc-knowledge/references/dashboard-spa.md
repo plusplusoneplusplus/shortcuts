@@ -1868,6 +1868,70 @@ The top-level `#memory` route is embedded in the Admin shell's Knowledge group a
 
 `MemoryV2Panel` lists the global scope plus registered workspace scopes, lets users enable/disable the active scope from the Settings tab, exports JSON, and wipes the active scope after confirmation. The tab content is split into `MemoryV2FactsTab`, `MemoryV2ReviewTab`, `MemoryV2EpisodesTab`, and `MemoryV2SettingsTab`.
 
+## Notes rich editor find & replace
+
+In-document find and replace lives behind the 🔍 button in the Notes toolbar
+(`features/notes/editor/NoteEditorToolbar.tsx`), backed by
+`@tiptap/extension-find-and-replace`. The extension is registered last in
+`RichEditorCore` so its match decorations paint above the comment and AI-edit
+decorations. State lives on the editor instance
+(`editor.storage.findAndReplace`: term, modifiers, `results`, `currentIndex`);
+the toolbar is not the component that calls `useEditor`, so the panel subscribes
+to `transaction` events to keep the `n / total` counter live.
+
+The panel offers find/replace inputs, prev/next (Enter and Shift+Enter in the
+find input), Aa / `ab|` / `.*` modifier toggles, and Replace / Replace all. Regex
+mode is RE2-backed, so lookarounds and backreferences are unsupported and an
+invalid pattern yields zero matches rather than throwing; whole-word is disabled
+in regex mode because the extension ignores it there. Opening the panel seeds the
+term from a single-line selection.
+
+Constraints worth knowing: no keyboard shortcut is bound, so `Ctrl+F` remains
+native browser find across the whole page (sidebar, TOC, comments, chat panel).
+It is rich-mode only — source mode mounts a separate raw-markdown editor — so the
+button sits inside the `hidden`-gated formatting group and the panel force-closes
+on a switch to source. Closing the panel clears the search term so no orphan
+highlights survive. Content inside NodeViews (`mermaidBlock`, `mathNode`,
+`pdfBlock`, `mapBlock`) is outside the searchable text flow and will not match;
+fenced code blocks are real ProseMirror text and do match. `replaceAll` is one
+transaction, so a single undo reverts it, and it preserves surrounding marks —
+including comment marks spanning the replaced text.
+Default match styles are disabled (`injectCSS: false`) because the bundled yellow
+fill is indistinguishable from the first `HIGHLIGHT_COLORS` shade; `noteEditor.css`
+outlines matches instead so one sitting inside a user highlight still reads.
+
+## Notes rich editor find & replace
+
+In-document find and replace lives behind the 🔍 button in the Notes toolbar
+(`features/notes/editor/NoteEditorToolbar.tsx`), backed by
+`@tiptap/extension-find-and-replace`. The extension is registered last in
+`RichEditorCore` so its match decorations paint above the comment and AI-edit
+decorations. State lives on the editor instance
+(`editor.storage.findAndReplace`: term, modifiers, `results`, `currentIndex`);
+the toolbar is not the component that calls `useEditor`, so the panel subscribes
+to `transaction` events to keep the `n / total` counter live.
+
+The panel offers find/replace inputs, prev/next (Enter and Shift+Enter in the
+find input), Aa / `ab|` / `.*` modifier toggles, and Replace / Replace all. Regex
+mode is RE2-backed, so lookarounds and backreferences are unsupported and an
+invalid pattern yields zero matches rather than throwing; whole-word is disabled
+in regex mode because the extension ignores it there. Opening the panel seeds the
+term from a single-line selection.
+
+Constraints worth knowing: no keyboard shortcut is bound, so `Ctrl+F` remains
+native browser find across the whole page (sidebar, TOC, comments, chat panel).
+It is rich-mode only — source mode mounts a separate raw-markdown editor — so the
+button sits inside the `hidden`-gated formatting group and the panel force-closes
+on a switch to source. Closing the panel clears the search term so no orphan
+highlights survive. Content inside NodeViews (`mermaidBlock`, `mathNode`,
+`pdfBlock`, `mapBlock`) is outside the searchable text flow and will not match;
+fenced code blocks are real ProseMirror text and do match. `replaceAll` is one
+transaction, so a single undo reverts it, and it preserves surrounding marks —
+including comment marks spanning the replaced text.
+Default match styles are disabled (`injectCSS: false`) because the bundled yellow
+fill is indistinguishable from the first `HIGHLIGHT_COLORS` shade; `noteEditor.css`
+outlines matches instead so one sitting inside a user highlight still reads.
+
 ## Feature Flags
 
 `featureFlags.ts` defines compile-time flags (e.g., `SHOW_WELCOME_TUTORIAL`). Runtime feature flags are exposed through `GET /api/config/runtime` and SPA helpers in `utils/config.ts`; `workItems.sync.enabled` only reports usable sync UI when both it and `workItems.hierarchy.enabled` are true. Most features gated by flags are disabled by default. Pull Requests Team auto-classification is gated by `pullRequests.autoClassifyTeam` / `pullRequestsAutoClassifyTeamEnabled` and is disabled by default. The Git tab's cross-clone cherry-pick UI is gated by `features.gitCrossCloneCherryPick` / `gitCrossCloneCherryPickEnabled` and is enabled by default. Isolated Git worktree execution for Work Item and Ralph launches is gated by `features.gitWorktreeExecution` / `gitWorktreeExecutionEnabled` (disabled by default); the SPA reads it through the typed `isGitWorktreeExecutionEnabled()` accessor in `utils/config.ts`, and remote-target dialogs additionally fetch the selected server's `/config/runtime` `gitWorktreeExecutionEnabled` as a per-target capability signal. Chat composer drag/drop session-context attachments are gated by `features.sessionContextAttachments` / `sessionContextAttachmentsEnabled`; when enabled, same-workspace chat rows, process cards, queue/history process rows, process search result cards, Ralph session group rows, Work Item rows/cards, Git commit rows, Git branch-range headers, and Pull Request rows become copy-drag sources using custom pointer-only MIME payloads, and desktop repo-header Ask/Queue Task buttons become copy drop targets that seed queue-dialog chips. Single-session payloads contain workspace ID, process ID, title/preview, status, and last-activity metadata; Ralph group payloads contain workspace ID, Ralph session ID, phase/status, title/display label, last activity, and ordered child process IDs. Work Item, commit, range, and PR payloads contain stable IDs/references plus safe display metadata only.

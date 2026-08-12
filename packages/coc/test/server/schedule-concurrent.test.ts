@@ -209,8 +209,8 @@ describe('Two Schedules With Same Cron (Section 4)', () => {
         await manager.triggerRun(REPO_ID, s1.id);
         await manager.triggerRun(REPO_ID, s2.id);
 
-        expect(manager.getRunHistory(s1.id)).toHaveLength(2);
-        expect(manager.getRunHistory(s2.id)).toHaveLength(1);
+        expect(manager.getRunHistory(REPO_ID, s1.id)).toHaveLength(2);
+        expect(manager.getRunHistory(REPO_ID, s2.id)).toHaveLength(1);
     });
 
     it('pausing one schedule does not affect the other', async () => {

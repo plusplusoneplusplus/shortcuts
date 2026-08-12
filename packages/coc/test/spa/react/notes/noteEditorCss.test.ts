@@ -220,4 +220,20 @@ describe('noteEditor.css indentation scale (data-indent)', () => {
         expect(containerImg).not.toBeNull();
         expect(containerImg![0]).toContain('max-width: 100%');
     });
+    it('styles find & replace matches, which the extension no longer injects styles for', () => {
+        // RichEditorCore sets injectCSS: false because the bundled yellow fill is
+        // indistinguishable from the first Highlight mark color. If these rules
+        // go away, matches become invisible rather than merely ugly.
+        const result = css.match(/\.note-editor\s+\.ProseMirror\s+\.find-and-replace-result\s*\{[^}]+\}/);
+        expect(result).not.toBeNull();
+        // An outline, not a fill, so a match inside a user highlight still reads.
+        expect(result![0]).toContain('outline');
+
+        const current = css.match(/\.note-editor\s+\.ProseMirror\s+\.find-and-replace-result-current\s*\{[^}]+\}/);
+        expect(current).not.toBeNull();
+    });
+
+    it('gives find & replace matches a dark-mode treatment via the .dark class', () => {
+        expect(css).toMatch(/\.dark\s+\.note-editor\s+\.ProseMirror\s+\.find-and-replace-result\s*\{/);
+    });
 });

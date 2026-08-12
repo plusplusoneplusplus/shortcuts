@@ -4,7 +4,9 @@ import { NoteEditorToolbar } from '../../../../src/server/spa/client/react/featu
 
 // ── Mock editor factory ─────────────────────────────────────────────────────
 
-function makeMockEditor(isActiveOverride?: (name: string) => boolean) {
+function makeMockEditor(
+    isActiveOverride?: (name: string, attrs?: Record<string, unknown>) => boolean,
+) {
     const insertTable = vi.fn(() => ({ run: vi.fn() }));
     const addColumnBefore = vi.fn(() => ({ run: vi.fn() }));
     const addColumnAfter = vi.fn(() => ({ run: vi.fn() }));
@@ -20,10 +22,11 @@ function makeMockEditor(isActiveOverride?: (name: string) => boolean) {
         toggleStrike: () => ({ run: vi.fn() }),
         toggleHighlight: vi.fn(() => ({ run: vi.fn() })),
         unsetHighlight: vi.fn(() => ({ run: vi.fn() })),
-        toggleHeading: () => ({ run: vi.fn() }),
-        toggleBulletList: () => ({ run: vi.fn() }),
-        toggleOrderedList: () => ({ run: vi.fn() }),
-        toggleTaskList: () => ({ run: vi.fn() }),
+        toggleHeading: vi.fn(() => ({ run: vi.fn() })),
+        setParagraph: vi.fn(() => ({ run: vi.fn() })),
+        toggleBulletList: vi.fn(() => ({ run: vi.fn() })),
+        toggleOrderedList: vi.fn(() => ({ run: vi.fn() })),
+        toggleTaskList: vi.fn(() => ({ run: vi.fn() })),
         toggleBlockquote: () => ({ run: vi.fn() }),
         toggleCode: () => ({ run: vi.fn() }),
         toggleCodeBlock: () => ({ run: vi.fn() }),
@@ -41,7 +44,8 @@ function makeMockEditor(isActiveOverride?: (name: string) => boolean) {
     };
 
     return {
-        isActive: vi.fn((name: string) => isActiveOverride ? isActiveOverride(name) : false),
+        isActive: vi.fn((name: string, attrs?: Record<string, unknown>) =>
+            isActiveOverride ? isActiveOverride(name, attrs) : false),
         getAttributes: vi.fn(() => ({})),
         chain: () => ({ focus: () => focusResult }),
         _focusResult: focusResult,
@@ -83,17 +87,6 @@ describe('NoteEditorToolbar — table controls', () => {
         expect(screen.getByLabelText('Delete table')).toBeDefined();
     });
 
-    it('"Insert table" calls insertTable with correct args', () => {
-        const editor = makeMockEditor();
-        render(<NoteEditorToolbar editor={editor as never} />);
-
-        fireEvent.mouseDown(screen.getByLabelText('Insert table'));
-        expect(editor._focusResult.insertTable).toHaveBeenCalledWith({
-            rows: 3,
-            cols: 3,
-            withHeaderRow: true,
-        });
-    });
 
     it('"Add column before" calls addColumnBefore', () => {
         const editor = makeMockEditor((name) => name === 'table');
@@ -149,6 +142,126 @@ describe('NoteEditorToolbar — table controls', () => {
 
         fireEvent.mouseDown(screen.getByLabelText('Delete table'));
         expect(editor._focusResult.deleteTable).toHaveBeenCalled();
+    });
+});
+
+describe('NoteEditorToolbar — table size picker', () => {
+    it('picker is hidden by default', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.queryByTestId('table-size-picker')).toBeNull();
+    });
+
+    it('clicking ⊞ opens the picker and does not insert a table', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        fireEvent.mouseDown(screen.getByLabelText('Insert table'));
+
+        expect(screen.getByTestId('table-size-picker')).toBeDefined();
+        expect(editor._focusResult.insertTable).not.toHaveBeenCalled();
+    });
+
+    it('renders a fixed 10 × 8 grid of cells', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Insert table'));
+
+        const picker = screen.getByTestId('table-size-picker');
+        expect(picker.querySelectorAll('button').length).toBe(80);
+        expect(screen.getByLabelText('10 × 8 table')).toBeDefined();
+        expect(screen.queryByLabelText('11 × 8 table')).toBeNull();
+        expect(screen.queryByLabelText('10 × 9 table')).toBeNull();
+    });
+
+    it('shows a neutral label until a cell is hovered', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Insert table'));
+
+        expect(screen.getByTestId('table-size-label').textContent).toBe('Insert table');
+    });
+
+    it('hovering a cell shows the live size and highlights the rectangle', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Insert table'));
+
+        fireEvent.mouseEnter(screen.getByLabelText('4 × 2 table'));
+
+        expect(screen.getByTestId('table-size-label').textContent).toBe('4 × 2');
+        // inside the rectangle
+        expect(screen.getByTestId('table-size-cell-1-1').getAttribute('data-selected')).toBe('true');
+        expect(screen.getByTestId('table-size-cell-4-2').getAttribute('data-selected')).toBe('true');
+        // outside it
+        expect(screen.getByTestId('table-size-cell-5-2').getAttribute('data-selected')).toBe('false');
+        expect(screen.getByTestId('table-size-cell-4-3').getAttribute('data-selected')).toBe('false');
+    });
+
+    it('clicking the hovered cell inserts that size and closes the picker', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Insert table'));
+
+        fireEvent.mouseEnter(screen.getByLabelText('4 × 2 table'));
+        fireEvent.mouseDown(screen.getByLabelText('4 × 2 table'));
+
+        expect(editor._focusResult.insertTable).toHaveBeenCalledWith({
+            rows: 2,
+            cols: 4,
+            withHeaderRow: true,
+        });
+        expect(screen.queryByTestId('table-size-picker')).toBeNull();
+    });
+
+    it('always passes withHeaderRow for a 1 × 1 pick', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Insert table'));
+
+        fireEvent.mouseDown(screen.getByLabelText('1 × 1 table'));
+
+        expect(editor._focusResult.insertTable).toHaveBeenCalledWith({
+            rows: 1,
+            cols: 1,
+            withHeaderRow: true,
+        });
+    });
+
+    it('Escape closes the picker without inserting', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Insert table'));
+
+        fireEvent.keyDown(document, { key: 'Escape' });
+
+        expect(screen.queryByTestId('table-size-picker')).toBeNull();
+        expect(editor._focusResult.insertTable).not.toHaveBeenCalled();
+    });
+
+    it('an outside click closes the picker without inserting', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Insert table'));
+
+        fireEvent.mouseDown(document.body);
+
+        expect(screen.queryByTestId('table-size-picker')).toBeNull();
+        expect(editor._focusResult.insertTable).not.toHaveBeenCalled();
+    });
+
+    it('reopening the picker resets the hover label', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        const trigger = screen.getByLabelText('Insert table');
+
+        fireEvent.mouseDown(trigger);
+        fireEvent.mouseEnter(screen.getByLabelText('3 × 3 table'));
+        expect(screen.getByTestId('table-size-label').textContent).toBe('3 × 3');
+
+        fireEvent.mouseDown(trigger); // close
+        fireEvent.mouseDown(trigger); // reopen
+        expect(screen.getByTestId('table-size-label').textContent).toBe('Insert table');
     });
 });
 
@@ -294,18 +407,534 @@ describe('NoteEditorToolbar — styled text-mark buttons', () => {
         expect(strikeBtn.querySelector('s')).not.toBeNull();
     });
 
-    it('Heading 1 button is wider (w-8) than standard buttons', () => {
+});
+
+// ── Heading & list dropdowns ────────────────────────────────────────────────
+
+/** Marks one heading level active, the way TipTap's isActive('heading', {level}) does. */
+function headingEditor(level: number) {
+    return makeMockEditor((name, attrs) => name === 'heading' && (attrs?.level === level || attrs === undefined));
+}
+
+describe('NoteEditorToolbar — heading dropdown', () => {
+    it('replaces the flat H1/H2/H3 buttons with a single trigger', () => {
         const editor = makeMockEditor();
         render(<NoteEditorToolbar editor={editor as never} />);
-        const h1Btn = screen.getByLabelText('Heading 1');
-        expect(h1Btn.className).toContain('w-8');
-        expect(h1Btn.className).toContain('text-sm');
+        expect(screen.getByTestId('heading-dropdown')).toBeDefined();
+        expect(screen.queryByLabelText('Heading 1')).toBeNull();
+        expect(screen.queryByLabelText('Heading 2')).toBeNull();
+        expect(screen.queryByLabelText('Heading 3')).toBeNull();
     });
 
-    it('Heading 2 button has semibold weight', () => {
+    it('trigger reads "H" in a paragraph and opens the menu on click', () => {
         const editor = makeMockEditor();
         render(<NoteEditorToolbar editor={editor as never} />);
-        const h2Btn = screen.getByLabelText('Heading 2');
-        expect(h2Btn.className).toContain('font-semibold');
+        const trigger = screen.getByTestId('heading-dropdown');
+        expect(screen.getByTestId('heading-dropdown-label').textContent).toBe('H');
+        expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+        expect(trigger.getAttribute('aria-expanded')).toBe('false');
+
+        fireEvent.mouseDown(trigger);
+        const menu = screen.getByTestId('heading-dropdown-menu');
+        expect(menu.getAttribute('role')).toBe('menu');
+        expect(trigger.getAttribute('aria-expanded')).toBe('true');
+        expect(screen.getByTestId('heading-item-paragraph')).toBeDefined();
+        for (const level of [1, 2, 3, 4, 5, 6]) {
+            const item = screen.getByTestId(`heading-item-${level}`);
+            expect(item.getAttribute('role')).toBe('menuitem');
+            expect(item.textContent).toContain(`Heading ${level}`);
+        }
+    });
+
+    it('trigger reads the active heading level and marks it in the menu', () => {
+        const editor = headingEditor(2);
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('heading-dropdown-label').textContent).toBe('H2');
+
+        fireEvent.mouseDown(screen.getByTestId('heading-dropdown'));
+        expect(screen.getByTestId('heading-item-2').getAttribute('aria-checked')).toBe('true');
+        expect(screen.getByTestId('heading-item-1').getAttribute('aria-checked')).toBe('false');
+        expect(screen.getByTestId('heading-item-paragraph').getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('marks Paragraph active when no heading is active', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByTestId('heading-dropdown'));
+        expect(screen.getByTestId('heading-item-paragraph').getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('selecting a level runs toggleHeading with that level and closes the menu', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByTestId('heading-dropdown'));
+        fireEvent.mouseDown(screen.getByTestId('heading-item-4'));
+
+        expect(editor._focusResult.toggleHeading).toHaveBeenCalledWith({ level: 4 });
+        expect(editor._focusResult.toggleHeading).toHaveBeenCalledTimes(1);
+        expect(screen.queryByTestId('heading-dropdown-menu')).toBeNull();
+    });
+
+    it('selecting Paragraph runs setParagraph', () => {
+        const editor = headingEditor(3);
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByTestId('heading-dropdown'));
+        fireEvent.mouseDown(screen.getByTestId('heading-item-paragraph'));
+
+        expect(editor._focusResult.setParagraph).toHaveBeenCalledTimes(1);
+        expect(screen.queryByTestId('heading-dropdown-menu')).toBeNull();
+    });
+
+    it('activates an item with Enter and with Space', () => {
+        for (const key of ['Enter', ' ']) {
+            const editor = makeMockEditor();
+            const { unmount } = render(<NoteEditorToolbar editor={editor as never} />);
+            fireEvent.mouseDown(screen.getByTestId('heading-dropdown'));
+            fireEvent.keyDown(screen.getByTestId('heading-item-1'), { key });
+            expect(editor._focusResult.toggleHeading).toHaveBeenCalledWith({ level: 1 });
+            unmount();
+        }
+    });
+
+    it('ArrowDown / ArrowUp move focus between menu items', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByTestId('heading-dropdown'));
+        // Focus opens on the checked item — Paragraph.
+        expect(document.activeElement).toBe(screen.getByTestId('heading-item-paragraph'));
+
+        const menu = screen.getByTestId('heading-dropdown-menu');
+        fireEvent.keyDown(menu, { key: 'ArrowDown' });
+        expect(document.activeElement).toBe(screen.getByTestId('heading-item-1'));
+        fireEvent.keyDown(menu, { key: 'ArrowUp' });
+        expect(document.activeElement).toBe(screen.getByTestId('heading-item-paragraph'));
+    });
+
+    it('Escape closes the menu and returns focus to the trigger', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByTestId('heading-dropdown'));
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByTestId('heading-dropdown-menu')).toBeNull();
+        expect(document.activeElement).toBe(screen.getByTestId('heading-dropdown'));
+    });
+
+    it('an outside click closes the menu', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByTestId('heading-dropdown'));
+        fireEvent.mouseDown(document.body);
+        expect(screen.queryByTestId('heading-dropdown-menu')).toBeNull();
+    });
+});
+
+describe('NoteEditorToolbar — list dropdown', () => {
+    it('replaces the flat list buttons with a single trigger', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('list-dropdown')).toBeDefined();
+        expect(screen.queryByLabelText('Bullet list')).toBeNull();
+        expect(screen.queryByLabelText('Ordered list')).toBeNull();
+        expect(screen.queryByLabelText('Task list')).toBeNull();
+    });
+
+    it('opens a menu with the three list types', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        const trigger = screen.getByTestId('list-dropdown');
+        expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+
+        fireEvent.mouseDown(trigger);
+        expect(screen.getByTestId('list-dropdown-menu').getAttribute('role')).toBe('menu');
+        expect(screen.getByTestId('list-item-bullet').textContent).toContain('Bullet List');
+        expect(screen.getByTestId('list-item-ordered').textContent).toContain('Ordered List');
+        expect(screen.getByTestId('list-item-task').textContent).toContain('Task List');
+    });
+
+    it.each([
+        ['list-item-bullet', 'toggleBulletList'],
+        ['list-item-ordered', 'toggleOrderedList'],
+        ['list-item-task', 'toggleTaskList'],
+    ])('%s runs %s and closes the menu', (testId, command) => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByTestId('list-dropdown'));
+        fireEvent.mouseDown(screen.getByTestId(testId));
+
+        expect((editor._focusResult as Record<string, ReturnType<typeof vi.fn>>)[command])
+            .toHaveBeenCalledTimes(1);
+        expect(screen.queryByTestId('list-dropdown-menu')).toBeNull();
+    });
+
+    it('shows the trigger active and marks the active list type', () => {
+        const editor = makeMockEditor((name) => name === 'taskList');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('list-dropdown').className).toContain('bg-[#e8e8e8]');
+
+        fireEvent.mouseDown(screen.getByTestId('list-dropdown'));
+        expect(screen.getByTestId('list-item-task').getAttribute('aria-checked')).toBe('true');
+        expect(screen.getByTestId('list-item-bullet').getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('Escape closes the menu and an outside click closes it too', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByTestId('list-dropdown'));
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByTestId('list-dropdown-menu')).toBeNull();
+        expect(document.activeElement).toBe(screen.getByTestId('list-dropdown'));
+
+        fireEvent.mouseDown(screen.getByTestId('list-dropdown'));
+        fireEvent.mouseDown(document.body);
+        expect(screen.queryByTestId('list-dropdown-menu')).toBeNull();
+    });
+});
+
+// ── Find & replace ──────────────────────────────────────────────────────────
+
+/**
+ * The base mock editor has no find-and-replace storage or commands — the panel
+ * tolerates that (it renders empty state), but asserting on wiring needs both.
+ */
+function makeFindMockEditor(overrides: Partial<Record<string, unknown>> = {}) {
+    const base = makeMockEditor();
+    const commands = {
+        setSearchTerm: vi.fn(),
+        setReplaceTerm: vi.fn(),
+        setCaseSensitive: vi.fn(),
+        setWholeWord: vi.fn(),
+        setUseRegex: vi.fn(),
+        replace: vi.fn(),
+        replaceAll: vi.fn(),
+        goToNextResult: vi.fn(),
+        goToPreviousResult: vi.fn(),
+        clearSearch: vi.fn(),
+    };
+    return {
+        ...base,
+        commands,
+        on: vi.fn(),
+        off: vi.fn(),
+        state: { selection: { empty: true } },
+        storage: {
+            findAndReplace: {
+                searchTerm: '',
+                replaceTerm: '',
+                caseSensitive: false,
+                useRegex: false,
+                wholeWord: false,
+                results: [],
+                currentIndex: null,
+                ...(overrides.findAndReplace as object ?? {}),
+            },
+        },
+        _commands: commands,
+    };
+}
+
+describe('NoteEditorToolbar — find & replace', () => {
+    it('renders the find button in the formatting group', () => {
+        const editor = makeFindMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        expect(screen.getByLabelText('Find and replace')).toBeDefined();
+    });
+
+    it('the panel is closed until the find button is pressed', () => {
+        const editor = makeFindMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        expect(screen.queryByTestId('find-replace-panel')).toBeNull();
+
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        expect(screen.getByTestId('find-replace-panel')).toBeDefined();
+        expect(screen.getByTestId('find-input')).toBeDefined();
+        expect(screen.getByTestId('replace-input')).toBeDefined();
+    });
+
+    it('the find button toggles the panel back closed and clears the search', () => {
+        const editor = makeFindMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        const btn = screen.getByLabelText('Find and replace');
+
+        fireEvent.mouseDown(btn);
+        fireEvent.mouseDown(btn);
+
+        expect(screen.queryByTestId('find-replace-panel')).toBeNull();
+        // Stale match outlines must not survive the panel closing.
+        expect(editor._commands.clearSearch).toHaveBeenCalled();
+    });
+
+    it('the close button clears the search and hides the panel', () => {
+        const editor = makeFindMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        fireEvent.mouseDown(screen.getByTestId('find-close-btn'));
+
+        expect(screen.queryByTestId('find-replace-panel')).toBeNull();
+        expect(editor._commands.clearSearch).toHaveBeenCalled();
+    });
+
+    it('typing in the find input pushes the term to the editor', () => {
+        const editor = makeFindMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        fireEvent.change(screen.getByTestId('find-input'), { target: { value: 'alpha' } });
+
+        expect(editor._commands.setSearchTerm).toHaveBeenCalledWith('alpha');
+    });
+
+    it('typing in the replace input pushes the replacement to the editor', () => {
+        const editor = makeFindMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        fireEvent.change(screen.getByTestId('replace-input'), { target: { value: 'omega' } });
+
+        expect(editor._commands.setReplaceTerm).toHaveBeenCalledWith('omega');
+    });
+
+    it('shows the 1-based match position out of the total', () => {
+        const editor = makeFindMockEditor({
+            findAndReplace: {
+                searchTerm: 'alpha',
+                results: [{ from: 1, to: 6 }, { from: 10, to: 15 }, { from: 20, to: 25 }],
+                currentIndex: 1,
+            },
+        });
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        expect(screen.getByTestId('find-match-count').textContent).toBe('2 / 3');
+    });
+
+    it('reports no results for a term that matches nothing', () => {
+        const editor = makeFindMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+        fireEvent.change(screen.getByTestId('find-input'), { target: { value: 'zzz' } });
+
+        expect(screen.getByTestId('find-match-count').textContent).toBe('No results');
+    });
+
+    it('navigation and replace buttons are disabled while there are no matches', () => {
+        const editor = makeFindMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        for (const id of ['find-prev-btn', 'find-next-btn', 'replace-btn', 'replace-all-btn']) {
+            expect((screen.getByTestId(id) as HTMLButtonElement).disabled).toBe(true);
+        }
+    });
+
+    it('next / previous drive the editor when matches exist', () => {
+        const editor = makeFindMockEditor({
+            findAndReplace: { searchTerm: 'a', results: [{ from: 1, to: 2 }], currentIndex: 0 },
+        });
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        fireEvent.mouseDown(screen.getByTestId('find-next-btn'));
+        fireEvent.mouseDown(screen.getByTestId('find-prev-btn'));
+
+        expect(editor._commands.goToNextResult).toHaveBeenCalled();
+        expect(editor._commands.goToPreviousResult).toHaveBeenCalled();
+    });
+
+    it('Enter jumps to the next match and Shift+Enter to the previous one', () => {
+        const editor = makeFindMockEditor({
+            findAndReplace: { searchTerm: 'a', results: [{ from: 1, to: 2 }], currentIndex: 0 },
+        });
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+        const input = screen.getByTestId('find-input');
+
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(editor._commands.goToNextResult).toHaveBeenCalled();
+
+        fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
+        expect(editor._commands.goToPreviousResult).toHaveBeenCalled();
+    });
+
+    it('Escape in the find input closes the panel', () => {
+        const editor = makeFindMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        fireEvent.keyDown(screen.getByTestId('find-input'), { key: 'Escape' });
+
+        expect(screen.queryByTestId('find-replace-panel')).toBeNull();
+        expect(editor._commands.clearSearch).toHaveBeenCalled();
+    });
+
+    it('replace and replace-all drive the editor when matches exist', () => {
+        const editor = makeFindMockEditor({
+            findAndReplace: { searchTerm: 'a', results: [{ from: 1, to: 2 }], currentIndex: 0 },
+        });
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        fireEvent.mouseDown(screen.getByTestId('replace-btn'));
+        fireEvent.mouseDown(screen.getByTestId('replace-all-btn'));
+
+        expect(editor._commands.replace).toHaveBeenCalled();
+        expect(editor._commands.replaceAll).toHaveBeenCalled();
+    });
+
+    it('the modifier toggles drive case, whole-word and regex', () => {
+        const editor = makeFindMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        fireEvent.mouseDown(screen.getByTestId('find-case-toggle'));
+        fireEvent.mouseDown(screen.getByTestId('find-whole-word-toggle'));
+        fireEvent.mouseDown(screen.getByTestId('find-regex-toggle'));
+
+        expect(editor._commands.setCaseSensitive).toHaveBeenCalledWith(true);
+        expect(editor._commands.setWholeWord).toHaveBeenCalledWith(true);
+        expect(editor._commands.setUseRegex).toHaveBeenCalledWith(true);
+    });
+
+    it('whole-word is disabled in regex mode, where the extension ignores it', () => {
+        const editor = makeFindMockEditor({ findAndReplace: { useRegex: true } });
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        const wholeWord = screen.getByTestId('find-whole-word-toggle') as HTMLButtonElement;
+        expect(wholeWord.disabled).toBe(true);
+
+        fireEvent.mouseDown(wholeWord);
+        expect(editor._commands.setWholeWord).not.toHaveBeenCalled();
+    });
+
+    it('seeds the find input from a non-empty selection', () => {
+        const editor = makeFindMockEditor();
+        editor.state = {
+            selection: { empty: false, from: 1, to: 6 },
+            doc: { textBetween: () => 'alpha' },
+        } as never;
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        expect((screen.getByTestId('find-input') as HTMLInputElement).value).toBe('alpha');
+        expect(editor._commands.setSearchTerm).toHaveBeenCalledWith('alpha');
+    });
+
+    it('hides the find button and the panel in source mode', () => {
+        // Source mode mounts a separate raw-markdown editor the extension does
+        // not reach, so the control must not read as available-but-broken.
+        const editor = makeFindMockEditor();
+        const { rerender } = render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+        expect(screen.getByTestId('find-replace-panel')).toBeDefined();
+
+        rerender(<NoteEditorToolbar editor={editor as never} hidden />);
+
+        expect(screen.queryByLabelText('Find and replace')).toBeNull();
+        expect(screen.queryByTestId('find-replace-panel')).toBeNull();
+        // Switching modes must also drop the highlights from the rich editor.
+        expect(editor._commands.clearSearch).toHaveBeenCalled();
+    });
+
+    it('renders without crashing on an editor that lacks the extension', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        fireEvent.mouseDown(screen.getByLabelText('Find and replace'));
+
+        expect(screen.getByTestId('find-replace-panel')).toBeDefined();
+        expect(screen.getByTestId('find-match-count').textContent).toBe('');
+    });
+});
+
+// ── Shared dropdown primitive ───────────────────────────────────────────────
+
+/**
+ * Every toolbar dropdown routes through one `ToolbarDropdown` primitive, so
+ * dismissal behaviour is asserted once per consumer rather than per panel
+ * feature. Regression guard for the refactor that removed the hand-rolled
+ * outside-click/Escape listeners from HighlightButton and TableInsertButton.
+ */
+describe('NoteEditorToolbar — shared dropdown behaviour', () => {
+    const dropdowns = [
+        { trigger: 'Highlight colors', panel: 'highlight-color-picker' },
+        { trigger: 'Insert table', panel: 'table-size-picker' },
+    ];
+
+    for (const { trigger, panel } of dropdowns) {
+        describe(trigger, () => {
+            it('reflects open state in aria-expanded', () => {
+                const editor = makeMockEditor();
+                render(<NoteEditorToolbar editor={editor as never} />);
+                const btn = screen.getByLabelText(trigger);
+
+                expect(btn.getAttribute('aria-haspopup')).toBe('true');
+                expect(btn.getAttribute('aria-expanded')).toBe('false');
+
+                fireEvent.mouseDown(btn);
+                expect(btn.getAttribute('aria-expanded')).toBe('true');
+            });
+
+            it('closes when the trigger is clicked again', () => {
+                const editor = makeMockEditor();
+                render(<NoteEditorToolbar editor={editor as never} />);
+
+                fireEvent.mouseDown(screen.getByLabelText(trigger));
+                expect(screen.getByTestId(panel)).toBeDefined();
+
+                fireEvent.mouseDown(screen.getByLabelText(trigger));
+                expect(screen.queryByTestId(panel)).toBeNull();
+            });
+
+            it('closes on Escape', () => {
+                const editor = makeMockEditor();
+                render(<NoteEditorToolbar editor={editor as never} />);
+
+                fireEvent.mouseDown(screen.getByLabelText(trigger));
+                expect(screen.getByTestId(panel)).toBeDefined();
+
+                fireEvent.keyDown(document, { key: 'Escape' });
+                expect(screen.queryByTestId(panel)).toBeNull();
+            });
+
+            it('closes on an outside mousedown', () => {
+                const editor = makeMockEditor();
+                render(<NoteEditorToolbar editor={editor as never} />);
+
+                fireEvent.mouseDown(screen.getByLabelText(trigger));
+                expect(screen.getByTestId(panel)).toBeDefined();
+
+                fireEvent.mouseDown(document.body);
+                expect(screen.queryByTestId(panel)).toBeNull();
+            });
+
+            it('stays open when the mousedown lands inside the panel', () => {
+                const editor = makeMockEditor();
+                render(<NoteEditorToolbar editor={editor as never} />);
+
+                fireEvent.mouseDown(screen.getByLabelText(trigger));
+                fireEvent.mouseDown(screen.getByTestId(panel));
+
+                expect(screen.getByTestId(panel)).toBeDefined();
+            });
+        });
+    }
+
+    it('clears the table hover extent when the picker is reopened', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        fireEvent.mouseDown(screen.getByLabelText('Insert table'));
+        fireEvent.mouseEnter(screen.getByTestId('table-size-cell-3-2'));
+        expect(screen.getByTestId('table-size-label').textContent).toBe('3 × 2');
+
+        fireEvent.keyDown(document, { key: 'Escape' });
+        fireEvent.mouseDown(screen.getByLabelText('Insert table'));
+
+        expect(screen.getByTestId('table-size-label').textContent).toBe('Insert table');
     });
 });

@@ -288,6 +288,14 @@ describe('noteMarkdown', () => {
             expect(norm(roundTrip('### H3'))).toBe('### H3');
         });
 
+        // H4–H6 became reachable from the toolbar's heading dropdown, so the
+        // deeper levels have to survive the markdown round trip too.
+        it('headings H4–H6', () => {
+            expect(norm(roundTrip('#### four'))).toBe('#### four');
+            expect(norm(roundTrip('##### five'))).toBe('##### five');
+            expect(norm(roundTrip('###### six'))).toBe('###### six');
+        });
+
         it('bold text', () => {
             expect(norm(roundTrip('**bold**'))).toBe('**bold**');
         });

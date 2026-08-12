@@ -276,6 +276,38 @@ describe('RichEditorCore', () => {
         expect(capturedLowlightOptions.lowlight).toBe(mockLowlightRegistry);
     });
 
+    // ── Find & replace ──────────────────────────────────────────────────
+
+    it('registers find & replace last so its match decorations paint on top', () => {
+        render(<RichEditorCore commentsEnabled />);
+
+        const index = capturedExtensions.findIndex(
+            (e: any) => e?.name === 'findAndReplace',
+        );
+        expect(index).toBe(capturedExtensions.length - 1);
+    });
+
+    it('opts out of the bundled find highlight styles, which clash with the Highlight mark', () => {
+        render(<RichEditorCore />);
+
+        const findExt = capturedExtensions.find(
+            (e: any) => e?.name === 'findAndReplace',
+        ) as any;
+        expect(findExt).toBeDefined();
+        expect(findExt.options.injectCSS).toBe(false);
+    });
+
+    it('binds no keyboard shortcut, leaving Ctrl+F as native browser find', () => {
+        render(<RichEditorCore />);
+
+        const findExt = capturedExtensions.find(
+            (e: any) => e?.name === 'findAndReplace',
+        ) as any;
+        // Taking Mod+F would confine search to the editor body and break
+        // searching the sidebar, TOC and chat panel.
+        expect(findExt.config.addKeyboardShortcuts).toBeUndefined();
+    });
+
     // ── AC-03: ⛶ Popup wiring (extension → React Dialog) ────────────────
 
     it('opens the popup player Dialog when the YouTube extension requests a popup', () => {

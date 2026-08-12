@@ -310,7 +310,7 @@ When `cron.enabled = false`:
 
 ## Relationship to Schedules
 
-Crons are **separate** from the schedule subsystem. They share `ScheduleTimerRegistry` for timing, but have their own:
+Crons are **separate** from the schedule subsystem. They share `ScheduleTimerRegistry` for timing — it is generic over its key type, so crons, wakeups, and triggers key by their own globally unique IDs (`string`) while `ScheduleManager` keys by a branded `(repoId, scheduleId)` runtime key. Crons have their own:
 - Type (`CronEntry` vs schedule run entries)
 - Persistence (`crons` table vs schedule tables)
 - Executor (`CronExecutor` vs schedule executor)

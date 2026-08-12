@@ -7185,7 +7185,7 @@ describe('createQueueExecutorBridge scheduled Ralph session completion', () => {
             const runPromise = manager.triggerRun(workspaceId, schedule.id);
 
             await waitForCondition(() => mockSendMessage.mock.calls.length === 2, 5000);
-            const run = manager.getRunHistory(schedule.id)[0];
+            const run = manager.getRunHistory(workspaceId, schedule.id)[0];
             const completionEvents = () => events.filter(event => event.type === 'schedule-run-complete');
 
             expect(run.status).toBe('running');
@@ -7203,7 +7203,7 @@ describe('createQueueExecutorBridge scheduled Ralph session completion', () => {
             });
             await waitForCondition(() => mockSendMessage.mock.calls.length === 3, 5000);
 
-            expect(manager.getRunHistory(schedule.id)[0].status).toBe('running');
+            expect(manager.getRunHistory(workspaceId, schedule.id)[0].status).toBe('running');
             expect(manager.isRunning(schedule.id, workspaceId)).toBe(true);
             expect(completionEvents()).toHaveLength(0);
 
@@ -7218,7 +7218,7 @@ describe('createQueueExecutorBridge scheduled Ralph session completion', () => {
             });
             await waitForCondition(() => mockSendMessage.mock.calls.length === 4, 5000);
 
-            expect(manager.getRunHistory(schedule.id)[0].status).toBe('running');
+            expect(manager.getRunHistory(workspaceId, schedule.id)[0].status).toBe('running');
             expect(manager.isRunning(schedule.id, workspaceId)).toBe(true);
             expect(completionEvents()).toHaveLength(0);
 

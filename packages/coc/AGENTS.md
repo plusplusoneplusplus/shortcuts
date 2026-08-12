@@ -89,6 +89,22 @@ all have their own `references/*.md`.
   exact Notes `image`/`local-image` routes whose decoded `path` is a PDF;
   other HTTP(S) PDF URLs are link-only and unsafe values expose no active URL.
   `router.ts` maps `.pdf` to `application/pdf` for the browser-native viewer.
+- **Tiptap** is pinned to one exact version across every `@tiptap/*` dep
+  (currently `3.30.0`). Several of them declare exact peer deps on
+  `@tiptap/core`/`@tiptap/pm`, so bumping a subset — or loosening one to a
+  caret range — produces two resolved copies of `@tiptap/core`. ProseMirror
+  plugins from different core instances do not share a schema, which fails at
+  runtime, not at typecheck. Bump the whole set together and confirm with
+  `npm ls @tiptap/core`.
+- **Notes find & replace** is `@tiptap/extension-find-and-replace`, registered
+  last in `RichEditorCore` so its match decorations paint above the comment and
+  AI-edit ones, and driven from the panel behind the toolbar's 🔍 button. It
+  binds no keyboard shortcut, so `Ctrl+F` stays native browser find over the
+  whole page (sidebar, TOC, chat panel). It is rich-mode only — source mode is a
+  separate raw-markdown editor — and the button and panel are part of the
+  formatting group hidden by `hidden`. The bundled highlight styles are off
+  (`injectCSS: false`) because their yellow fill collides with the Highlight
+  mark colors; `noteEditor.css` outlines matches instead.
 - **Notes links** show the destination URL plus the platform-specific
   modifier-click instruction in the native hover hint. The hint is attached to
   the live editor DOM and must not be serialized into note Markdown.
@@ -303,6 +319,20 @@ all have their own `references/*.md`.
   startup, route handlers, and tests. User schedule writes/deletes serialize per
   repo, and repo schedule scan failures preserve the previous loaded repo
   schedules rather than replacing them with an empty set.
+- **Schedule runtime state is keyed by `(repoId, scheduleId)`**, never by a bare
+  schedule ID. Repo schedules derive deterministic IDs from their filename
+  (`repo:<stem>`), so two clones shipping the same `.github/schedules/*.yaml`
+  share an ID. Timers, in-flight runs, and run history all key through
+  `scheduleRuntimeKey()` in `src/server/schedule/schedule-runtime-key.ts`, and
+  `ScheduleManager.getRunHistory`/`isRunning` and the REST `serializeSchedule`
+  all require `repoId`. `isAnyRepoRunning(scheduleId)` is the only cross-repo
+  lookup and must not be used from workspace-scoped paths.
+- **Schedule REST bodies and queue payloads have one home each.** POST/PATCH
+  body validation and coercion live in
+  `src/server/schedule/schedule-request-parser.ts` (error strings are the API
+  contract); prompt/Ralph/script queue payload construction lives in
+  `schedule-task-builder.ts` as pure functions. `ScheduleExecutor` only performs
+  the side effects around them.
 - **Dreams analyzer/critic AI work** must run through
   `DreamInternalProcessExecutor`/`ProcessLifecycleRunner` so analyzer and critic
   prompts/responses are persisted as read-only internal processes. Do not add
@@ -414,7 +444,14 @@ all have their own `references/*.md`.
   turn to run a cheap one-shot AI lookup, attached as a clickable 💡 bubble that
   never enters the conversation thread. Backend lives in
   `src/server/processes/chat-sidenotes/` (manager + prompt + one-shot invoker +
-  `POST`/`GET`/`DELETE /api/processes/:processId/sidenotes` routes); persistence
+  `POST`/`GET`/`DELETE /api/processes/:processId/sidenotes` routes). The invoker
+  is a thin adapter over `src/server/core/one-shot-ai.ts` — the shared helper for
+  any stateless, tool-free, permissions-denied lookup. It routes text-only asks
+  through the SDK `transform` primitive and falls back to `createCLIAIInvoker`
+  with `loadMcpConfig: false` only when the ask carries attachments (the vision
+  region-crop path), so neither branch starts ambient MCP servers. Use it for new
+  one-shot call sites instead of wrapping `createCLIAIInvoker` directly, whose
+  MCP default is tuned for agentic callers. Persistence
   is repo-scoped at `~/.coc/repos/<workspaceId>/chat-sidenotes/<sha256(processId)>.json`
   via `getRepoDataPath` (never a new top-level `~/.coc` dir). Model resolves
   `defaultModels.quickAsk` > `defaultModel` > CLI default. SPA components live in

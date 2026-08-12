@@ -22,6 +22,7 @@ import { TableRow } from '@tiptap/extension-table-row';
 import { TableCell } from '@tiptap/extension-table-cell';
 import { TableHeader } from '@tiptap/extension-table-header';
 import { Highlight } from '@tiptap/extension-highlight';
+import { FindAndReplace } from '@tiptap/extension-find-and-replace';
 import { TextAlign } from '@tiptap/extension-text-align';
 import { IndentExtension } from './extensions/indentExtension';
 import { ResizableImage } from './extensions/resizableImage';
@@ -200,7 +201,7 @@ export function RichEditorCore({
             MathInline,
             MathDisplay,
             StarterKit.configure({
-                heading: { levels: [1, 2, 3] },
+                heading: { levels: [1, 2, 3, 4, 5, 6] },
                 link: false,
                 // Disable StarterKit's plain CodeBlock so CodeBlockLowlight is the
                 // single `codeBlock` node type — its lowlight decorations color
@@ -271,6 +272,18 @@ export function RichEditorCore({
                     }),
                 ]
                 : []),
+            // Registered last so its match decorations paint above the comment
+            // and AI-edit decorations rather than under them. The extension binds
+            // no keyboard shortcut of its own, so Ctrl+F stays native browser find
+            // (which still reaches the sidebar, TOC and chat panel); search is
+            // driven entirely from the toolbar's find/replace panel.
+            FindAndReplace.configure({
+                // The bundled styles fill matches with yellow, which is
+                // indistinguishable from the first Highlight mark color (#fff3b0)
+                // and from comment highlights. noteEditor.css outlines matches
+                // instead, so they read on top of a user highlight.
+                injectCSS: false,
+            }),
         ],
         editorProps: {
             handleClick: (view, pos, event) => {

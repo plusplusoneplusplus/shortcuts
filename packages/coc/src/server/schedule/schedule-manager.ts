@@ -3,7 +3,7 @@
  *
  * Thin orchestrator over four focused collaborators:
  *
- *   - ScheduleTimerRegistry  — owns scheduleId → setTimeout handle map
+ *   - ScheduleTimerRegistry  — owns (repoId, scheduleId) → setTimeout handle map
  *   - ScheduleRunHistory     — owns runHistory map + SQLite persistence
  *   - RepoScheduleWatcher    — owns fs.FSWatcher + debounce timers
  *   - ScheduleExecutor       — owns executeRun, runningSchedules
@@ -29,6 +29,7 @@ import { loadRepoSchedulesAsync, getRepoScheduleDir } from './repo-schedule-load
 import type { RepoScheduleOverrideStore } from './repo-schedule-overrides';
 import { parseCron, nextCronTime, slugifyName } from './cron-utils';
 import { ScheduleTimerRegistry } from './schedule-timer-registry';
+import { scheduleRuntimeKey, type ScheduleRuntimeKey } from './schedule-runtime-key';
 import { ScheduleRunHistory } from './schedule-run-history';
 import { RepoScheduleWatcher } from './repo-schedule-watcher';
 import { ScheduleExecutor } from './schedule-executor';
@@ -79,7 +80,7 @@ export class ScheduleManager extends EventEmitter {
     // repoId → workspace rootPath
     private readonly workspacePaths = new Map<string, string>();
     // Collaborators
-    private readonly timers = new ScheduleTimerRegistry();
+    private readonly timers = new ScheduleTimerRegistry<ScheduleRuntimeKey>();
     private readonly history = new ScheduleRunHistory();
     private readonly watcher = new RepoScheduleWatcher();
     private readonly executor: ScheduleExecutor;
@@ -215,7 +216,7 @@ export class ScheduleManager extends EventEmitter {
         }
         this.schedules.get(repoId)!.set(schedule.id, schedule);
 
-        this.timers.cancel(schedule.id);
+        this.timers.cancel(scheduleRuntimeKey(repoId, schedule.id));
         await this.persist(repoId);
         if (schedule.status === 'active') {
             this.scheduleNextRun(repoId, schedule);
@@ -259,7 +260,7 @@ export class ScheduleManager extends EventEmitter {
             }
 
             // Reschedule timer
-            this.timers.cancel(scheduleId);
+            this.timers.cancel(scheduleRuntimeKey(repoId, scheduleId));
             if (repoSchedule.status === 'active') {
                 this.scheduleNextRun(repoId, repoSchedule);
             }
@@ -284,7 +285,7 @@ export class ScheduleManager extends EventEmitter {
         Object.assign(schedule, normalizedUpdates);
 
         // Reschedule timer if needed
-        this.timers.cancel(scheduleId);
+        this.timers.cancel(scheduleRuntimeKey(repoId, scheduleId));
         if (schedule.status === 'active') {
             this.scheduleNextRun(repoId, schedule);
         }
@@ -312,9 +313,9 @@ export class ScheduleManager extends EventEmitter {
         const map = this.schedules.get(repoId);
         if (!map || !map.has(scheduleId)) return false;
 
-        this.timers.cancel(scheduleId);
+        this.timers.cancel(scheduleRuntimeKey(repoId, scheduleId));
         map.delete(scheduleId);
-        this.history.delete(scheduleId);
+        this.history.delete(repoId, scheduleId);
 
         if (map.size === 0) {
             this.schedules.delete(repoId);
@@ -371,8 +372,8 @@ export class ScheduleManager extends EventEmitter {
         }
 
         // Unregister from in-memory map and cancel timer
-        this.timers.cancel(scheduleId);
-        this.history.delete(scheduleId);
+        this.timers.cancel(scheduleRuntimeKey(repoId, scheduleId));
+        this.history.delete(repoId, scheduleId);
         await this.reloadRepoSchedules(repoId);
 
         this.emit('change', {
@@ -395,17 +396,28 @@ export class ScheduleManager extends EventEmitter {
     }
 
     /**
-     * Get run history for a schedule.
+     * Get run history for a schedule in a workspace.
      */
-    getRunHistory(scheduleId: string): ScheduleRunRecord[] {
-        return this.history.get(scheduleId);
+    getRunHistory(repoId: string, scheduleId: string): ScheduleRunRecord[] {
+        return this.history.get(repoId, scheduleId);
     }
 
     /**
-     * Check if a schedule is currently running.
+     * Check if a schedule is currently running in this workspace.
      */
-    isRunning(scheduleId: string, repoId?: string): boolean {
+    isRunning(scheduleId: string, repoId: string): boolean {
         return this.executor.isRunning(scheduleId, repoId);
+    }
+
+    /**
+     * Check if a schedule ID is running in *any* workspace.
+     *
+     * Only for global inspection (diagnostics, shutdown drains).  Workspace
+     * -scoped callers must use `isRunning(scheduleId, repoId)` so a repo
+     * schedule running in one clone is not reported as running in another.
+     */
+    isAnyRepoRunning(scheduleId: string): boolean {
+        return this.executor.isAnyRepoRunning(scheduleId);
     }
 
     /**
@@ -497,7 +509,7 @@ export class ScheduleManager extends EventEmitter {
         await this.writeRepoScheduleYaml(rootPath, finalSlug, entry, repoId);
 
         // Remove from user schedules
-        this.timers.cancel(entry.id);
+        this.timers.cancel(scheduleRuntimeKey(repoId, entry.id));
         const map = this.schedules.get(repoId);
         if (map) {
             map.delete(entry.id);
@@ -562,7 +574,7 @@ export class ScheduleManager extends EventEmitter {
         }
 
         // Cancel timer for old repo schedule and reload
-        this.timers.cancel(entry.id);
+        this.timers.cancel(scheduleRuntimeKey(repoId, entry.id));
         await this.reloadRepoSchedules(repoId);
 
         return newEntry;
@@ -581,7 +593,7 @@ export class ScheduleManager extends EventEmitter {
         const delayMs = next.getTime() - Date.now();
         if (delayMs < 0) return;
 
-        const { wasCapped } = this.timers.set(schedule.id, () => {
+        const { wasCapped } = this.timers.set(scheduleRuntimeKey(repoId, schedule.id), () => {
             if (this.disposed) return;
             const current = this.getSchedule(repoId, schedule.id);
             if (!current || current.status !== 'active') return;
@@ -630,7 +642,7 @@ export class ScheduleManager extends EventEmitter {
         const schedule = this.schedules.get(repoId)?.get(scheduleId);
         if (!schedule) return;
         schedule.status = 'stopped';
-        this.timers.cancel(scheduleId);
+        this.timers.cancel(scheduleRuntimeKey(repoId, scheduleId));
         this.persist(repoId).catch(err => {
             getServerLogger().warn(
                 { err, repoId, scheduleId },
@@ -713,10 +725,10 @@ export class ScheduleManager extends EventEmitter {
             for (const [id, old] of oldMap) {
                 const updated = newMap.get(id);
                 if (!updated || updated.status !== 'active') {
-                    this.timers.cancel(id);
+                    this.timers.cancel(scheduleRuntimeKey(repoId, id));
                 } else if (updated.cron !== old.cron) {
                     // Cron changed — reschedule
-                    this.timers.cancel(id);
+                    this.timers.cancel(scheduleRuntimeKey(repoId, id));
                 }
             }
         }
@@ -729,7 +741,7 @@ export class ScheduleManager extends EventEmitter {
 
         // Start timers for active repo schedules
         for (const entry of newMap.values()) {
-            if (entry.status === 'active' && !this.timers.has(entry.id)) {
+            if (entry.status === 'active' && !this.timers.has(scheduleRuntimeKey(repoId, entry.id))) {
                 this.scheduleNextRun(repoId, entry);
             }
         }
