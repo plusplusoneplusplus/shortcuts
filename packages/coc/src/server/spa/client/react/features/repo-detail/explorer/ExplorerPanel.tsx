@@ -85,6 +85,42 @@ export async function mergeServerResultsIntoChildrenMap(
     return [...allAncestors];
 }
 
+/**
+ * True when a tree request failed because the directory no longer exists.
+ * The tree route answers a missing path with HTTP 404 ("Path not found: … does
+ * not exist"), which the CoC client surfaces as a `CocApiError` carrying
+ * `status`. Anything not recognisable as not-found is treated as a transient
+ * failure by the caller, so this check stays deliberately narrow.
+ */
+export function isMissingDirError(err: unknown): boolean {
+    if (!err || typeof err !== 'object') return false;
+    if ((err as { status?: unknown }).status === 404) return true;
+    if ((err as { code?: unknown }).code === 'ENOENT') return true;
+    const message = (err as { message?: unknown }).message;
+    return typeof message === 'string'
+        && /not found|does not exist|no such file or directory|ENOENT/i.test(message);
+}
+
+/** Best-effort human message for a rejected tree request. */
+function errorMessage(reason: unknown): string {
+    const message = reason instanceof Error ? reason.message : '';
+    return message || 'Failed to load directory';
+}
+
+/** True when `path` is `root` itself or nested below it. */
+function isAtOrUnder(path: string, root: string): boolean {
+    return path === root || path.startsWith(`${root}/`);
+}
+
+/** Returns `paths` without any entry at or under one of `removedRoots`. */
+export function prunePaths(paths: Iterable<string>, removedRoots: string[]): Set<string> {
+    const next = new Set<string>();
+    for (const p of paths) {
+        if (!removedRoots.some(root => isAtOrUnder(p, root))) next.add(p);
+    }
+    return next;
+}
+
 export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
     const { isMobile } = useBreakpoint();
     const { width: sidebarWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
@@ -106,6 +142,10 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
     // earlier visit to this workspace, so a switch-back renders instantly.
     const [loading, setLoading] = useState(!rootLoaded);
     const [error, setError] = useState<string | null>(null);
+    // Refresh runs alongside the rendered tree: it only spins its own button, and
+    // a run-id guard keeps a superseded refresh from overwriting fresher data.
+    const [refreshing, setRefreshing] = useState(false);
+    const refreshRunIdRef = useRef(0);
 
     // Per-workspace persisted UI state (localStorage). Because ExplorerPanel is
     // remounted with `key={ws.id}` on every workspace switch, these must survive
@@ -317,20 +357,68 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
         return items;
     }, [expandedPaths, handleToggle]);
 
+    /**
+     * Refresh re-fetches the root listing plus every currently expanded directory
+     * in parallel and swaps the results in atomically, so the open hierarchy,
+     * selection and preview survive (AC-01). Nothing is blanked up-front: the tree
+     * keeps rendering the previous data until fresh data for all of it has arrived,
+     * which also means no open folder falls back to a loading spinner.
+     */
     const handleRefresh = useCallback(() => {
-        setChildrenMap(new Map());
-        setExpandedPaths(new Set());
-        setLoading(true);
+        const runId = ++refreshRunIdRef.current;
+        setRefreshing(true);
         setError(null);
-        explorerApi.tree(workspaceId, { path: '/' })
-            .then((data: { entries: TreeEntry[] }) => {
-                setRootEntries(data.entries);
-            })
-            .catch((err: Error) => {
-                setError(err.message || 'Failed to load directory');
-            })
-            .finally(() => setLoading(false));
-    }, [workspaceId]);
+        const targets = [...expandedPaths];
+        Promise.allSettled([
+            explorerApi.tree(workspaceId, { path: '/', depth: 2 }),
+            ...targets.map(dir => explorerApi.tree(workspaceId, { path: dir })),
+        ]).then(results => {
+            // A newer refresh started while this one was in flight — its results win.
+            if (runId !== refreshRunIdRef.current) return;
+
+            const [rootResult, ...childResults] = results;
+            if (rootResult.status === 'rejected') {
+                setError(errorMessage(rootResult.reason));
+                return;
+            }
+
+            // A directory that vanished from disk is pruned silently (AC-02); any
+            // other failure aborts the whole swap so a transient error can never
+            // collapse the tree (AC-03).
+            const vanished: string[] = [];
+            for (const [i, result] of childResults.entries()) {
+                if (result.status !== 'rejected') continue;
+                if (isMissingDirError(result.reason)) {
+                    vanished.push(targets[i]);
+                    continue;
+                }
+                setError(errorMessage(result.reason));
+                return;
+            }
+
+            const nextMap = new Map<string, TreeEntry[]>();
+            seedFromEntries(rootResult.value.entries, nextMap);
+            for (const [i, result] of childResults.entries()) {
+                if (result.status === 'fulfilled') nextMap.set(targets[i], result.value.entries);
+            }
+            for (const dir of nextMap.keys()) {
+                if (vanished.some(root => isAtOrUnder(dir, root))) nextMap.delete(dir);
+            }
+
+            setRootEntries(rootResult.value.entries);
+            setChildrenMap(nextMap);
+            if (vanished.length > 0) {
+                setExpandedPaths(prev => prunePaths(prev, vanished));
+                // Keep the pre-filter snapshot in sync so clearing an active filter
+                // cannot restore expansion for a directory that no longer exists.
+                if (preFilterExpandedRef.current) {
+                    preFilterExpandedRef.current = prunePaths(preFilterExpandedRef.current, vanished);
+                }
+            }
+        }).finally(() => {
+            if (runId === refreshRunIdRef.current) setRefreshing(false);
+        });
+    }, [workspaceId, expandedPaths]);
 
     // Search handlers
     const onSearchChange = useCallback((value: string) => {
@@ -469,7 +557,10 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
         );
     }
 
-    if (error) {
+    // A failed mount fetch has nothing to show but the error. Once the root has
+    // loaded, an error (from Refresh) is shown as a banner above the tree instead,
+    // so a failed refresh never blanks the hierarchy (AC-03).
+    if (error && !rootLoaded) {
         return (
             <div className="p-4 text-sm text-[#d32f2f]" data-testid="explorer-error">
                 {error}
@@ -492,14 +583,24 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                 <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                     <span className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">Files</span>
                     <button
-                        className="text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors"
+                        className="text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors disabled:opacity-50"
                         onClick={handleRefresh}
                         title="Refresh"
+                        disabled={refreshing}
+                        aria-busy={refreshing}
                         data-testid="explorer-refresh-btn"
                     >
                         ↻
                     </button>
                 </div>
+                {error && (
+                    <div
+                        className="px-3 py-1 text-xs text-[#d32f2f] border-b border-[#e0e0e0] dark:border-[#3c3c3c]"
+                        data-testid="explorer-error"
+                    >
+                        {error}
+                    </div>
+                )}
                 <Breadcrumbs
                     segments={breadcrumbSegments}
                     onNavigate={handleBreadcrumbNavigate}
