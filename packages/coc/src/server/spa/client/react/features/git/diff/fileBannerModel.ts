@@ -254,6 +254,32 @@ export function pinnedBannerForTopRow<T>(
     return { banner: found.banner, overlay: found.rowIndex < topRowIndex };
 }
 
+/** Sub-pixel slack, so a row parked exactly on the edge does not count as past it. */
+const EDGE_EPSILON_PX = 0.5;
+
+/**
+ * The banner to dock for a measured (non-windowed) row list: the last file whose
+ * own banner row has scrolled strictly above the top edge of the scrollport.
+ *
+ * Every row is mounted on this path, so geometry is read from the DOM instead of
+ * the virtualizer. Returning nothing while the first file's row is still on
+ * screen keeps the rule the windowed path follows — the top edge carries exactly
+ * one banner, never zero and never two for the same file.
+ *
+ * `entries` must be in document order, with `top` in viewport coordinates.
+ */
+export function pinnedBannerFromRowTops<T>(
+    entries: { top: number; banner: T }[],
+    portTop: number,
+): T | undefined {
+    let found: T | undefined;
+    for (const e of entries) {
+        if (e.top > portTop - EDGE_EPSILON_PX) break;
+        found = e.banner;
+    }
+    return found;
+}
+
 /** Tooltip text carrying the blob hashes / mode / similarity dropped from the row. */
 export function bannerDetailsText(banner: FileBanner): string {
     const parts: string[] = [];

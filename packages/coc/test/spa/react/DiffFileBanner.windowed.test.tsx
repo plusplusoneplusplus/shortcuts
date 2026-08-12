@@ -132,6 +132,10 @@ describe.each(VIEWERS)('file-name banner under windowing — $name mode', ({ Vie
         // Zero-height: the overlay is out of flow, so mounting it cannot push
         // the virtualized row list down.
         expect(wrapper.className).toContain('h-0');
+        // And outside the horizontal scroller, or it would anchor to a box that
+        // never scrolls vertically and never engage.
+        expect(pinned.closest('.overflow-x-auto')).toBeNull();
+        expect(wrapper.parentElement).toBe(container.querySelector('[data-testid="diff"]'));
     });
 
     it('still suppresses the raw preamble in the mounted rows', () => {

@@ -4,11 +4,11 @@
  *
  * Shows the full path (directory dimmed, basename bold, so it stays greppable),
  * a status badge, the previous path for renames, and the file's `+N −M` counts.
- * The row is sticky to the top of the scroll container while the file's hunks
- * are on screen — the raw preamble scrolls away and leaves you unsure which file
- * you are reading, which is the whole point of the banner. Under windowing rows
- * are absolutely positioned and cannot be sticky, so the viewers render this row
- * non-sticky and dock the current file with a separate overlay copy instead.
+ *
+ * The row always renders in normal flow. Keeping the current file visible while
+ * its hunks scroll past — the whole point of the banner — is the job of the
+ * docked overlay copy the viewers render outside the horizontal scroller; see
+ * {@link useDockedFileBanner} for why `position: sticky` cannot do it here.
  *
  * The blob hashes and file mode dropped from the row are not lost: they are
  * exposed on the details control's tooltip.
@@ -24,22 +24,16 @@ import {
 
 export interface FileBannerRowProps {
     banner: FileBanner;
-    /**
-     * When false the row renders in normal flow without `position: sticky` —
-     * used for the pinned copy in the windowed row list, which is already
-     * positioned by its own sticky wrapper.
-     */
-    sticky?: boolean;
     'data-testid'?: string;
 }
 
-export function FileBannerRow({ banner, sticky = true, 'data-testid': testId = 'diff-file-banner' }: FileBannerRowProps) {
+export function FileBannerRow({ banner, 'data-testid': testId = 'diff-file-banner' }: FileBannerRowProps) {
     const { dir, base } = splitPath(banner.path);
     const details = bannerDetailsText(banner);
 
     return (
         <div
-            className={`${sticky ? 'sticky top-0 z-20 ' : ''}flex w-full items-center gap-2 border-y border-[#e0e0e0] bg-[#eef2f7] px-2 py-1 font-sans text-[11px] text-[#24292f] dark:border-[#3c3c3c] dark:bg-[#22272e] dark:text-[#c9d1d9]`}
+            className={`flex w-full items-center gap-2 border-y border-[#e0e0e0] bg-[#eef2f7] px-2 py-1 font-sans text-[11px] text-[#24292f] dark:border-[#3c3c3c] dark:bg-[#22272e] dark:text-[#c9d1d9]`}
             data-testid={testId}
             data-file-path={banner.path}
             data-file-banner-status={banner.status}
