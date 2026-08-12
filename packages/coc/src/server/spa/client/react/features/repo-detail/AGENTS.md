@@ -60,11 +60,28 @@ settles a tracked flag; deriving it also keeps the two mounted Explorer panels
 renders a `⚠` retry affordance; clicking it clears the error and re-fires the
 effect. Do not reintroduce a tracked flag or swallow the fetch rejection.
 
+## Quick Open file search
+
+`explorer/QuickOpen.tsx` fetches the repo path list once per dialog open
+(`explorerApi.listFiles`) and fuzzy-matches in the browser, so keystrokes cost no
+round-trip and need no debounce. Scoring lives in `server/shared/fuzzy-file-score.ts`,
+shared with the `/api/repos/:repoId/search` endpoint so both rank identically —
+edit the shared module, not a local copy. Results stay rendered while the query
+changes; only the first load shows `Loading files…`.
+
+`ExactOpen.tsx` and `ExplorerPanel.tsx` still call `/search` per query. That endpoint
+is backed by a cached repo listing (`RepoTreeService.invalidateFileListCache`), so
+its cost is a fuzzy scan, not a repo walk.
+
 ## Tests
 
 `test/spa/react/repos/explorer/TreeNode.lazyload.test.tsx` covers that behaviour
 end to end against the real tree cache (`--environment jsdom`);
 `TreeNode.test.ts` is a source-mirror test and must be updated alongside edits.
+
+`QuickOpen.behavior.test.tsx` asserts the one-fetch-per-open contract against a
+mocked `explorerApi` (`--environment jsdom`; stub `Element.prototype.scrollIntoView`,
+which jsdom does not implement). `QuickOpen.test.ts` is a source-mirror test.
 
 `test/spa/react/repos/RepoTabStrip*.test.tsx` cover the component (tabs, overflow,
 agent highlight, queue indicators). `repoTabModel.test.ts`,
