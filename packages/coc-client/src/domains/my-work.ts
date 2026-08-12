@@ -4,12 +4,14 @@ import type { RequestAdapter } from '../types';
  * A single checkbox-backed task parsed from the My Work markdown files.
  *
  * Mirrors the server's `Task` in `my-work-tasks.ts`. The `id` is a
- * within-snapshot addressing token (a hash of the item's text + list), not a
- * durable primary key: editing an item's text changes its id, so the client
- * refetches the list after any mutation that reflows lines.
+ * within-snapshot addressing token (a hash of the item's raw line + list), not
+ * a durable primary key: editing an item's text or its inline metadata changes
+ * its id, so the client refetches the list after any mutation that reflows
+ * lines.
  */
 export interface MyWorkTask {
     id: string;
+    /** Display text — the inline `@due(…)` / `#tag` / `[↗](…)` syntax is stripped. */
     text: string;
     checked: boolean;
     /** Follow-ups only: the person heading the item is grouped under. */
@@ -19,6 +21,12 @@ export interface MyWorkTask {
      * appended under — its age. Absent for hand-added items.
      */
     addedAt?: string;
+    /** ISO date (`YYYY-MM-DD`) parsed from an inline `@due(…)`. */
+    due?: string;
+    /** Inline `#tag` labels, without the leading `#`. */
+    tags?: string[];
+    /** URL parsed from an inline `[↗](url)` link back to the item's source. */
+    sourceUrl?: string;
 }
 
 /** Both task lists parsed from `Action Items.md` and `Follow Ups.md`. */

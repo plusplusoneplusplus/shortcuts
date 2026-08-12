@@ -22,12 +22,69 @@ import {
     addActionItem,
     addFollowUp,
     archiveCheckedActionItems,
+    formatTaskLine,
     type TaskPatch,
 } from './my-work-tasks';
 
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/**
+ * A synced item is either a bare string or an object carrying the text plus
+ * the metadata that makes it actionable. Strings stay the whole contract for
+ * callers that have nothing but a sentence.
+ */
+type SyncItem = string | {
+    text?: unknown;
+    sourceUrl?: unknown;
+    due?: unknown;
+    tags?: unknown;
+};
+
+function asString(value: unknown): string | undefined {
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+/** ISO `YYYY-MM-DD` only — anything else is dropped rather than written through. */
+function asDue(value: unknown): string | undefined {
+    const s = asString(value);
+    return s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : undefined;
+}
+
+function asTags(value: unknown): string[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const tags = value
+        .map((t) => asString(t)?.replace(/^#+/, '').replace(/\s+/g, '-'))
+        .filter((t): t is string => Boolean(t));
+    return tags.length > 0 ? tags : undefined;
+}
+
+/**
+ * Render one sync item as a markdown checkbox line. Returns null for an item
+ * with no usable text, so a malformed entry is skipped rather than writing a
+ * blank checkbox into the note.
+ */
+function syncItemToLine(item: SyncItem): string | null {
+    if (typeof item === 'string') {
+        const text = asString(item);
+        return text ? formatTaskLine(text) : null;
+    }
+    if (!item || typeof item !== 'object') return null;
+    const text = asString(item.text);
+    if (!text) return null;
+    return formatTaskLine(text, {
+        due: asDue(item.due),
+        tags: asTags(item.tags),
+        sourceUrl: asString(item.sourceUrl),
+    });
+}
+
+/** Serialize a batch, dropping unusable entries. */
+function syncItemsToLines(items: unknown): string[] {
+    if (!Array.isArray(items)) return [];
+    return items.map((item) => syncItemToLine(item as SyncItem)).filter((l): l is string => l !== null);
+}
 
 function getNotesRoot(dataDir: string): string {
     return getRepoDataPath(dataDir, MY_WORK_WORKSPACE_ID, 'notes');
@@ -120,21 +177,22 @@ export function registerMyWorkRoutes(
 
                 // Append action items
                 const actionItemsPath = path.join(notesRoot, 'Action Items.md');
-                if (body.actionItems && Array.isArray(body.actionItems) && body.actionItems.length > 0) {
-                    const items = body.actionItems.map((item: string) => `- [ ] ${item}`).join('\n');
-                    const section = `${syncHeader}${items}\n`;
+                const actionLines = syncItemsToLines(body.actionItems);
+                if (actionLines.length > 0) {
+                    const section = `${syncHeader}${actionLines.join('\n')}\n`;
                     await fs.promises.appendFile(actionItemsPath, section, 'utf-8');
                 }
 
                 // Append follow-ups (grouped by person)
                 const followUpsPath = path.join(notesRoot, 'Follow Ups.md');
+                let followUpCount = 0;
                 if (body.followUps && typeof body.followUps === 'object' && Object.keys(body.followUps).length > 0) {
                     let section = syncHeader;
                     for (const [person, items] of Object.entries(body.followUps)) {
                         section += `### ${person}\n`;
-                        if (Array.isArray(items)) {
-                            section += items.map((item: string) => `- [ ] ${item}`).join('\n') + '\n';
-                        }
+                        const lines = syncItemsToLines(items);
+                        followUpCount += lines.length;
+                        if (lines.length > 0) section += lines.join('\n') + '\n';
                     }
                     await fs.promises.appendFile(followUpsPath, section, 'utf-8');
                 }
@@ -142,8 +200,10 @@ export function registerMyWorkRoutes(
                 sendJSON(res, 200, {
                     synced: true,
                     date: dateLabel,
-                    actionItemCount: body.actionItems?.length ?? 0,
-                    followUpCount: body.followUps ? Object.values(body.followUps).flat().length : 0,
+                    // Counts report what was actually written, so an entry that
+                    // was skipped as unusable does not read as synced.
+                    actionItemCount: actionLines.length,
+                    followUpCount,
                 });
             } catch (err: any) {
                 sendError(res, 500, `Sync failed: ${err.message}`);

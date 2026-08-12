@@ -502,6 +502,27 @@ describe('MyWorkTodayTab', () => {
             expect(screen.getByTestId('my-work-today-open-followups')).toBeTruthy();
         });
 
+        it('due dates decide urgency on their own, overriding age', async () => {
+            getTasks.mockResolvedValue({
+                actionItems: [
+                    // Overdue, and young enough that age alone would hide it.
+                    { id: 'late', text: 'Overdue item', checked: false, addedAt: daysAgo(0), due: isoIn(-2) },
+                    { id: 'today', text: 'Due today', checked: false, addedAt: daysAgo(0), due: isoIn(0) },
+                    // Old enough to be urgent by age, but explicitly due later.
+                    { id: 'later', text: 'Due next month', checked: false, addedAt: daysAgo(30), due: isoIn(30) },
+                ],
+                followUps: [],
+            });
+            renderTab();
+
+            const needsYou = await screen.findByTestId('my-work-today-needs-you');
+            expect(rowIds(needsYou)).toEqual([
+                'my-work-today-action-late',
+                'my-work-today-action-today',
+            ]);
+            expect(screen.queryByText('Due next month')).toBeNull();
+        });
+
         it('toggling still works on a row inside the collapsed bucket', async () => {
             getTasks.mockResolvedValue({
                 actionItems: [{ id: 'a1', text: 'Fresh item', checked: false, addedAt: daysAgo(1) }],
@@ -514,6 +535,130 @@ describe('MyWorkTodayTab', () => {
 
             expect(patchTask).toHaveBeenCalledWith('a1', { checked: true });
             await waitFor(() => expect(getTasks).toHaveBeenCalledTimes(2));
+        });
+    });
+    /** ISO date `days` from today (negative for the past). */
+    function isoIn(days: number): string {
+        const d = new Date();
+        d.setDate(d.getDate() + days);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    // ── Inline metadata ──────────────────────────────────────────────────────
+
+    describe('inline metadata', () => {
+        const WITH_META = {
+            actionItems: [
+                {
+                    id: 'a1',
+                    text: 'Send revised cutover plan',
+                    checked: false,
+                    due: isoIn(0),
+                    tags: ['contoso', 'urgent'],
+                    sourceUrl: 'https://teams.microsoft.com/l/message/19:abc',
+                },
+            ],
+            followUps: [],
+        };
+
+        it('renders a due chip, tag pills and a source link', async () => {
+            getTasks.mockResolvedValue(WITH_META);
+            renderTab();
+
+            await screen.findByText('Send revised cutover plan');
+            expect(screen.getByTestId('my-work-today-due-a1')).toBeTruthy();
+            expect(screen.getByTestId('my-work-today-tag-a1-contoso').textContent).toBe('#contoso');
+            expect(screen.getByTestId('my-work-today-tag-a1-urgent').textContent).toBe('#urgent');
+
+            const link = screen.getByTestId('my-work-today-source-a1') as HTMLAnchorElement;
+            expect(link.getAttribute('href')).toBe('https://teams.microsoft.com/l/message/19:abc');
+            expect(link.getAttribute('target')).toBe('_blank');
+            // No opener handle back into the dashboard.
+            expect(link.getAttribute('rel')).toContain('noopener');
+            expect(link.getAttribute('aria-label')).toBe('Open source');
+        });
+
+        it('keeps the raw @due / #tag syntax out of the rendered text', async () => {
+            getTasks.mockResolvedValue(WITH_META);
+            renderTab();
+
+            const row = await screen.findByTestId('my-work-today-action-a1');
+            expect(row.textContent).not.toContain('@due(');
+            expect(row.textContent).not.toContain('](http');
+        });
+
+        it('clicking the source link does not toggle the checkbox', async () => {
+            getTasks.mockResolvedValue(WITH_META);
+            renderTab();
+
+            const link = await screen.findByTestId('my-work-today-source-a1');
+            fireEvent.click(link);
+
+            // The link sits outside the row's <label>, so no toggle is fired.
+            expect(patchTask).not.toHaveBeenCalled();
+            expect((screen.getByTestId('my-work-today-check-a1') as HTMLInputElement).checked).toBe(false);
+        });
+
+        it('gives the link a real hit area rather than the bare glyph', async () => {
+            getTasks.mockResolvedValue(WITH_META);
+            renderTab();
+
+            const link = await screen.findByTestId('my-work-today-source-a1');
+            // Horizontal and vertical padding so the target is comfortably
+            // clickable — this is the affordance the whole feature hangs on.
+            expect(link.className).toMatch(/\bpx-2\b/);
+            expect(link.className).toMatch(/\bpy-/);
+        });
+
+        it('labels overdue, today and later due dates distinctly', async () => {
+            getTasks.mockResolvedValue({
+                actionItems: [
+                    { id: 'late', text: 'Late', checked: false, due: isoIn(-3) },
+                    { id: 'today', text: 'Today', checked: false, due: isoIn(0) },
+                    { id: 'tmrw', text: 'Tomorrow', checked: false, due: isoIn(1) },
+                ],
+                followUps: [],
+            });
+            renderTab();
+
+            await screen.findByText('Late');
+            // Tomorrow is not urgent, so that row sits in the collapsed bucket.
+            await expandEverythingElse();
+            const late = screen.getByTestId('my-work-today-due-late');
+            expect(late.textContent).toBe('3d late');
+            expect(late.getAttribute('data-tone')).toBe('overdue');
+            expect(screen.getByTestId('my-work-today-due-today').textContent).toBe('Today');
+            expect(screen.getByTestId('my-work-today-due-today').getAttribute('data-tone')).toBe('today');
+            expect(screen.getByTestId('my-work-today-due-tmrw').textContent).toBe('Tomorrow');
+        });
+
+        it('renders metadata on follow-up rows too', async () => {
+            getTasks.mockResolvedValue({
+                actionItems: [],
+                followUps: [
+                    {
+                        id: 'f1',
+                        text: 'Cutover sign-off',
+                        checked: false,
+                        person: 'Priya',
+                        sourceUrl: 'https://x.test/p',
+                        tags: ['contoso'],
+                    },
+                ],
+            });
+            renderTab();
+
+            await screen.findByText('Cutover sign-off');
+            expect(screen.getByTestId('my-work-today-source-f1')).toBeTruthy();
+            expect(screen.getByTestId('my-work-today-tag-f1-contoso')).toBeTruthy();
+        });
+
+        it('renders no chips at all when the server sends no metadata (unchanged view)', async () => {
+            renderTab(); // SAMPLE carries none
+            await screen.findByText('Ship the parser');
+            expect(document.querySelectorAll('[data-testid^="my-work-today-due-"]').length).toBe(0);
+            expect(document.querySelectorAll('[data-testid^="my-work-today-tag-"]').length).toBe(0);
+            expect(document.querySelectorAll('[data-testid^="my-work-today-source-"]').length).toBe(0);
         });
     });
 });

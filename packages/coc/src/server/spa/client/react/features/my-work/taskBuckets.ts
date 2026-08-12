@@ -41,17 +41,62 @@ export function formatAge(days: number | null): string | null {
 }
 
 /**
+ * Days until a task's `@due(...)` date — negative when overdue, 0 for today,
+ * null when the task carries no due date or an unparseable one.
+ */
+export function daysUntilDue(due: string | undefined, now: Date): number | null {
+    if (!due) return null;
+    const m = due.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return null;
+    const target = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.round((target - today) / 86400000);
+}
+
+const MONTH_NAMES = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+/** Urgency of a due date, for the chip's colour. */
+export type DueTone = 'overdue' | 'today' | 'soon' | 'later';
+
+export interface DueLabel {
+    text: string;
+    tone: DueTone;
+}
+
+/**
+ * Label a due date for the chip: relative wording near today (where it drives
+ * a decision) and a plain `Aug 14` further out (where the exact date is what
+ * you want). Returns null when there is nothing to show.
+ *
+ * The ISO string is split by hand rather than fed to `new Date()`, which would
+ * read `2026-08-14` as UTC midnight and render the day before west of GMT.
+ */
+export function formatDue(due: string | undefined, now: Date): DueLabel | null {
+    const days = daysUntilDue(due, now);
+    if (days === null) return null;
+    if (days < 0) return { text: days === -1 ? 'Yesterday' : `${-days}d late`, tone: 'overdue' };
+    if (days === 0) return { text: 'Today', tone: 'today' };
+    if (days === 1) return { text: 'Tomorrow', tone: 'soon' };
+    const [y, m, d] = due!.split('-').map(Number);
+    return { text: `${MONTH_NAMES[m - 1]} ${d}`, tone: days <= 7 ? 'soon' : 'later' };
+}
+
+/**
  * Whether a task belongs in "Needs you today".
  *
- * SEAM — due dates. `MyWorkTask` has no `due` field yet; a later change adds
- * `@due(...)` parsing and owns that format decision. When it lands, an
- * "overdue or due today" check ORs into the result below and nothing else in
- * this module has to move. Until then age is the only urgency signal there is.
+ * A due date is an explicit statement about when the item matters, so it
+ * settles the question on its own — overdue or due today is urgent, and a
+ * future date keeps the item out of the bucket no matter how long it has been
+ * sitting there. Age only decides for items with no due date.
  */
 export function needsAttention(task: MyWorkTask, now: Date): boolean {
     // A checked item is done — it is never what you need to look at today.
     if (task.checked) return false;
-    // Future: `if (isOverdueOrDueToday(task.due, now)) return true;`
+    const dueIn = daysUntilDue(task.due, now);
+    if (dueIn !== null) return dueIn <= 0;
     const age = ageInDays(task.addedAt, now);
     // Undated items were hand-added (quick-add, or typed straight into the
     // note) rather than synced, so they are the user's own picks. Surfacing

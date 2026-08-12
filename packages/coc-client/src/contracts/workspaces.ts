@@ -308,9 +308,29 @@ export interface WorkspaceSummaryResponse {
   tasks: unknown;
 }
 
+/**
+ * One item in a My Work sync payload.
+ *
+ * A bare string is still the whole contract for a plain item — the object form
+ * only exists to carry the metadata that makes an item actionable: a link back
+ * to the mail/Teams thread it came from, a due date, and topic tags. Both
+ * forms serialize to a single markdown checkbox line.
+ */
+export type MyWorkSyncItem =
+  | string
+  | {
+      text: string;
+      /** Link back to the source thread/document — rendered as a `↗` affordance. */
+      sourceUrl?: string;
+      /** ISO date (`YYYY-MM-DD`). */
+      due?: string;
+      /** Topic tags, with or without a leading `#`. */
+      tags?: string[];
+    };
+
 export interface MyWorkSyncRequest {
-  actionItems?: string[];
-  followUps?: Record<string, string[]>;
+  actionItems?: MyWorkSyncItem[];
+  followUps?: Record<string, MyWorkSyncItem[]>;
 }
 
 export interface MyWorkSyncResponse {

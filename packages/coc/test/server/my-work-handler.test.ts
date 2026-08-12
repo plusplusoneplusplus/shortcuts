@@ -115,6 +115,12 @@ describe('My Work Handler', () => {
         fs.rmSync(dataDir, { recursive: true, force: true });
     });
 
+    /** Read one of the My Work notes back off disk. */
+    function readNote(name: string): string {
+        const notesDir = getRepoDataPath(dataDir, MY_WORK_WORKSPACE_ID, 'notes');
+        return fs.readFileSync(path.join(notesDir, name), 'utf-8');
+    }
+
     // ── GET /api/my-work/status ──────────────────────────────────────────
 
     describe('GET /api/my-work/status', () => {
@@ -220,6 +226,105 @@ describe('My Work Handler', () => {
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             expect(body.synced).toBe(true);
+        });
+
+        // ── Object items: text plus source link / due / tags ──────────────
+
+        it('serializes an object item with a source link, due date and tags', async () => {
+            const res = await postJSON(`${baseUrl}/api/my-work/sync`, {
+                actionItems: [
+                    {
+                        text: 'Send revised cutover plan',
+                        due: '2026-08-14',
+                        tags: ['contoso'],
+                        sourceUrl: 'https://teams.microsoft.com/l/message/19:abc',
+                    },
+                ],
+            });
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.body).actionItemCount).toBe(1);
+
+            expect(readNote('Action Items.md')).toContain(
+                '- [ ] Send revised cutover plan @due(2026-08-14) #contoso [\u2197](https://teams.microsoft.com/l/message/19:abc)',
+            );
+        });
+
+        it('accepts strings and objects in the same batch', async () => {
+            await postJSON(`${baseUrl}/api/my-work/sync`, {
+                actionItems: [
+                    'Plain string item',
+                    { text: 'Object item', sourceUrl: 'https://x.test/a' },
+                ],
+            });
+            const content = readNote('Action Items.md');
+            // The plain string keeps writing exactly the line it always did.
+            expect(content).toContain('- [ ] Plain string item\n');
+            expect(content).toContain('- [ ] Object item [\u2197](https://x.test/a)');
+        });
+
+        it('carries source links through follow-ups too', async () => {
+            const res = await postJSON(`${baseUrl}/api/my-work/sync`, {
+                followUps: {
+                    Priya: [
+                        { text: 'Cutover sign-off', sourceUrl: 'https://x.test/p', tags: ['#contoso'] },
+                        'Plain waiting item',
+                    ],
+                },
+            });
+            expect(JSON.parse(res.body).followUpCount).toBe(2);
+            const content = readNote('Follow Ups.md');
+            expect(content).toContain('### Priya');
+            expect(content).toContain('- [ ] Cutover sign-off #contoso [\u2197](https://x.test/p)');
+            expect(content).toContain('- [ ] Plain waiting item');
+        });
+
+        it('drops an unusable entry instead of writing a blank checkbox', async () => {
+            const res = await postJSON(`${baseUrl}/api/my-work/sync`, {
+                actionItems: ['', '   ', { sourceUrl: 'https://x.test/a' }, { text: 'Real one' }],
+            });
+            expect(JSON.parse(res.body).actionItemCount).toBe(1);
+            const content = readNote('Action Items.md');
+            expect(content).toContain('- [ ] Real one');
+            expect(content).not.toContain('- [ ] \n');
+        });
+
+        it('ignores a due date that is not an ISO day', async () => {
+            await postJSON(`${baseUrl}/api/my-work/sync`, {
+                actionItems: [{ text: 'Ship it', due: 'next tuesday' }],
+            });
+            const content = readNote('Action Items.md');
+            expect(content).toContain('- [ ] Ship it\n');
+            expect(content).not.toContain('@due');
+        });
+
+        it('keeps a multi-line item on one checkbox line', async () => {
+            await postJSON(`${baseUrl}/api/my-work/sync`, {
+                actionItems: [{ text: 'first line\n## Archive\n- [x] forged' }],
+            });
+            const content = readNote('Action Items.md');
+            expect(content).toContain('- [ ] first line ## Archive - [x] forged');
+            expect(content).not.toContain('\n## Archive');
+        });
+
+        it('round-trips a synced source link back out through GET', async () => {
+            await postJSON(`${baseUrl}/api/my-work/sync`, {
+                actionItems: [
+                    {
+                        text: 'Send revised cutover plan',
+                        due: '2026-08-14',
+                        tags: ['contoso'],
+                        sourceUrl: 'https://x.test/thread',
+                    },
+                ],
+            });
+            const res = await request(`${baseUrl}/api/my-work/tasks`);
+            const item = JSON.parse(res.body).actionItems.find(
+                (i: any) => i.text === 'Send revised cutover plan',
+            );
+            expect(item).toBeTruthy();
+            expect(item.due).toBe('2026-08-14');
+            expect(item.tags).toEqual(['contoso']);
+            expect(item.sourceUrl).toBe('https://x.test/thread');
         });
     });
 
