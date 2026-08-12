@@ -14,6 +14,11 @@ export interface MyWorkTask {
     checked: boolean;
     /** Follow-ups only: the person heading the item is grouped under. */
     person?: string;
+    /**
+     * ISO date (`YYYY-MM-DD`) of the `## Synced <date>` heading the item was
+     * appended under — its age. Absent for hand-added items.
+     */
+    addedAt?: string;
 }
 
 /** Both task lists parsed from `Action Items.md` and `Follow Ups.md`. */

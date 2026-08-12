@@ -39,6 +39,47 @@ function groupByPerson(followUps: MyWorkTask[]): { person: string; items: MyWork
     return order.map(person => ({ person, items: byPerson.get(person)! }));
 }
 
+/** Items younger than this stay unlabelled — a badge on everything is noise. */
+const AGE_BADGE_MIN_DAYS = 2;
+
+/**
+ * Whole days between a task's `addedAt` sync date and today, or null when the
+ * item carries no date (hand-added, or written above any `## Synced` heading).
+ */
+function ageInDays(addedAt: string | undefined, now: Date): number | null {
+    if (!addedAt) return null;
+    const m = addedAt.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return null;
+    const added = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    const days = Math.floor((today - added) / 86400000);
+    return days < 0 ? 0 : days;
+}
+
+/** `3d` under two weeks, `2w` beyond — null when too young to be worth a badge. */
+function formatAge(days: number | null): string | null {
+    if (days === null || days < AGE_BADGE_MIN_DAYS) return null;
+    return days < 14 ? `${days}d` : `${Math.floor(days / 7)}w`;
+}
+
+/**
+ * Age badge for a synced item. Renders nothing for undated or recent items, so
+ * it can be dropped beside any task line unconditionally.
+ */
+function AgeBadge({ task }: { task: MyWorkTask }) {
+    const label = formatAge(ageInDays(task.addedAt, new Date()));
+    if (!label) return null;
+    return (
+        <span
+            className="shrink-0 text-[10px] leading-4 px-1 rounded text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700/60"
+            title={`Synced ${task.addedAt}`}
+            data-testid={`my-work-today-age-${task.id}`}
+        >
+            {label}
+        </span>
+    );
+}
+
 export function MyWorkTodayTab({ workspaceId, active = true }: MyWorkTodayTabProps) {
     const [tasks, setTasks] = useState<MyWorkTasks | null>(null);
     const [loading, setLoading] = useState(true);
@@ -231,6 +272,7 @@ export function MyWorkTodayTab({ workspaceId, active = true }: MyWorkTodayTabPro
                                         <span className={task.checked ? 'line-through text-gray-400' : ''}>
                                             {task.text}
                                         </span>
+                                        <AgeBadge task={task} />
                                     </label>
                                 </li>
                             ))}
@@ -269,6 +311,7 @@ export function MyWorkTodayTab({ workspaceId, active = true }: MyWorkTodayTabPro
                                                 <span className={task.checked ? 'line-through text-gray-400' : ''}>
                                                     {task.text}
                                                 </span>
+                                                <AgeBadge task={task} />
                                             </label>
                                         </li>
                                     ))}

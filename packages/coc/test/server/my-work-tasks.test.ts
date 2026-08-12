@@ -115,6 +115,88 @@ describe('parseFollowUps', () => {
     });
 });
 
+describe('addedAt from ## Synced headings', () => {
+    // Fixed "today" so the year inference for the year-less `Mon D` format is
+    // deterministic regardless of when the suite runs.
+    const NOW = new Date(2026, 7, 12); // Aug 12, 2026 (local)
+
+    it('stamps action items with the most recent sync date above them', () => {
+        const content =
+            '# Action Items\n- [ ] hand added\n\n## Synced Aug 3\n- [ ] older\n\n## Synced Aug 11\n- [ ] newer\n';
+        const items = parseActionItems(content, NOW);
+        expect(items.map((i) => [i.text, i.addedAt])).toEqual([
+            ['hand added', undefined],
+            ['older', '2026-08-03'],
+            ['newer', '2026-08-11'],
+        ]);
+    });
+
+    it('rolls a future-looking bare Mon D back to the previous year', () => {
+        // Dec 20 read on Aug 12 can only mean last December.
+        const items = parseActionItems('## Synced Dec 20\n- [ ] a\n', NOW);
+        expect(items[0].addedAt).toBe('2025-12-20');
+    });
+
+    it('accepts an explicit year and an ISO date', () => {
+        expect(parseActionItems('## Synced Aug 3, 2024\n- [ ] a\n', NOW)[0].addedAt).toBe(
+            '2024-08-03',
+        );
+        expect(parseActionItems('## Synced 2023-01-09\n- [ ] a\n', NOW)[0].addedAt).toBe(
+            '2023-01-09',
+        );
+    });
+
+    it('leaves items undated when no sync heading precedes them', () => {
+        const items = parseActionItems(DEFAULT_ACTION_ITEMS, NOW);
+        expect(items[0].addedAt).toBeUndefined();
+    });
+
+    it('stamps follow-ups written as ### person under a ## Synced batch', () => {
+        const content =
+            '# Follow Ups\n## Synced Aug 5\n### Alice\n- [ ] a1\n### Bob\n- [ ] b1\n## Synced Aug 11\n### Alice\n- [ ] a2\n';
+        const items = parseFollowUps(content, NOW);
+        expect(items.map((i) => [i.person, i.text, i.addedAt])).toEqual([
+            ['Alice', 'a1', '2026-08-05'],
+            ['Bob', 'b1', '2026-08-05'],
+            ['Alice', 'a2', '2026-08-11'],
+        ]);
+    });
+
+    it('never treats a Synced heading as a person', () => {
+        const content = '# Follow Ups\n## Synced Aug 9\n- [ ] no person heading\n';
+        const items = parseFollowUps(content, NOW);
+        expect(items[0].person).toBeUndefined();
+        expect(items[0].addedAt).toBe('2026-08-09');
+    });
+
+    it('keeps an unparseable "Synced …" heading as a person', () => {
+        // A real person could be headed `## Synced Systems Team`; only readable
+        // dates are treated as batch boundaries.
+        const content = '# Follow Ups\n## Synced Systems Team\n- [ ] a\n';
+        const items = parseFollowUps(content, NOW);
+        expect(items[0].person).toBe('Synced Systems Team');
+        expect(items[0].addedAt).toBeUndefined();
+    });
+
+    it('does not stamp follow-ups that precede the first sync heading', () => {
+        const items = parseFollowUps(DEFAULT_FOLLOW_UPS, NOW);
+        expect(items[0].addedAt).toBeUndefined();
+        expect(items[0].person).toBe('Example Person');
+    });
+
+    it('reads the sync date off a CRLF heading', () => {
+        const items = parseActionItems('## Synced Aug 9\r\n- [ ] a\r\n', NOW);
+        expect(items[0].addedAt).toBe('2026-08-09');
+    });
+
+    it('does not change the bytes written back by a patch under a sync heading', () => {
+        const content = '# Action Items\n\n## Synced Aug 9\n- [ ] a\n- [ ] b\n';
+        const id = parseActionItems(content, NOW)[0].id;
+        const next = patchActionItem(content, id, { checked: true })!;
+        expect(next).toBe('# Action Items\n\n## Synced Aug 9\n- [x] a\n- [ ] b\n');
+    });
+});
+
 describe('parse (combined)', () => {
     it('returns both action items and follow-ups', () => {
         const result = parse(DEFAULT_ACTION_ITEMS, DEFAULT_FOLLOW_UPS);

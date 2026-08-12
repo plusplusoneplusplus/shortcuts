@@ -258,6 +258,55 @@ describe('MyWorkTodayTab', () => {
         expect(root.classList.contains('dark:text-gray-100')).toBe(true);
     });
 
+    // ── Age badge ────────────────────────────────────────────────────────────
+
+    /** ISO date `days` before today, matching the server's `addedAt` format. */
+    function daysAgo(days: number): string {
+        const d = new Date();
+        d.setDate(d.getDate() - days);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    function withAges() {
+        return {
+            actionItems: [
+                { id: 'a1', text: 'Ship the parser', checked: false, addedAt: daysAgo(3) },
+                { id: 'a2', text: 'Write the docs', checked: false, addedAt: daysAgo(1) },
+                { id: 'a3', text: 'Hand added', checked: false },
+            ],
+            followUps: [
+                { id: 'f1', text: 'Design sign-off', checked: false, person: 'Alice', addedAt: daysAgo(21) },
+                { id: 'f2', text: 'Budget approval', checked: false, person: 'Bob', addedAt: daysAgo(0) },
+            ],
+        };
+    }
+
+    it('badges items older than two days on both lists, in days then weeks', async () => {
+        getTasks.mockResolvedValue(withAges());
+        renderTab();
+        await screen.findByText('Ship the parser');
+
+        expect(screen.getByTestId('my-work-today-age-a1').textContent).toBe('3d');
+        // Waiting On is where age is the whole signal — 21 days reads as weeks.
+        expect(screen.getByTestId('my-work-today-age-f1').textContent).toBe('3w');
+    });
+
+    it('omits the badge for fresh and undated items', async () => {
+        getTasks.mockResolvedValue(withAges());
+        renderTab();
+        await screen.findByText('Ship the parser');
+
+        expect(screen.queryByTestId('my-work-today-age-a2')).toBeNull(); // 1 day old
+        expect(screen.queryByTestId('my-work-today-age-a3')).toBeNull(); // no addedAt
+        expect(screen.queryByTestId('my-work-today-age-f2')).toBeNull(); // synced today
+    });
+
+    it('renders no badges at all when the server sends no addedAt (unchanged view)', async () => {
+        renderTab(); // SAMPLE carries no addedAt
+        await screen.findByText('Ship the parser');
+        expect(document.querySelectorAll('[data-testid^="my-work-today-age-"]').length).toBe(0);
+    });
+
     it('styles "Clear completed" to match the sibling "Open note" link', async () => {
         renderTab();
         await screen.findByText('Ship the parser');

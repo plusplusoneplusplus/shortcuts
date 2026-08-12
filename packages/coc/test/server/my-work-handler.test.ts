@@ -353,6 +353,36 @@ describe('My Work Handler', () => {
             expect(typeof body.actionItems[0].id).toBe('string');
         });
 
+        it('GET stamps synced items with the sync date the handler wrote', async () => {
+            // Round-trip: `formatSyncDate()` writes `## Synced Mon D`, the
+            // parser must read that back as today's ISO date on every item of
+            // the batch — and must not turn the heading into a person.
+            const now = new Date();
+            const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+            await postJSON(`${baseUrl}/api/my-work/sync`, {
+                actionItems: ['Send API spec to Sarah'],
+                followUps: { Sarah: ['Waiting on design review'] },
+            });
+
+            const body = JSON.parse((await request(`${baseUrl}/api/my-work/tasks`)).body);
+            expect(body.actionItems[0]).toMatchObject({
+                text: 'Send API spec to Sarah',
+                addedAt: today,
+            });
+            expect(body.followUps[0]).toMatchObject({
+                text: 'Waiting on design review',
+                person: 'Sarah',
+                addedAt: today,
+            });
+        });
+
+        it('GET leaves hand-added items undated', async () => {
+            writeActionItems('# Action Items\n- [ ] Ship the slice\n');
+            const body = JSON.parse((await request(`${baseUrl}/api/my-work/tasks`)).body);
+            expect(body.actionItems[0].addedAt).toBeUndefined();
+        });
+
         it('GET treats missing files as empty', async () => {
             fs.unlinkSync(path.join(notesDir(), 'Action Items.md'));
             fs.unlinkSync(path.join(notesDir(), 'Follow Ups.md'));
