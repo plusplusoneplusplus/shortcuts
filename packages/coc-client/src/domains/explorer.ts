@@ -51,9 +51,10 @@ export class ExplorerClient {
     });
   }
 
-  listFiles(repoId: string, options?: ExplorerFilesOptions): Promise<ExplorerFilesResponse> {
+  listFiles(repoId: string, options?: ExplorerFilesOptions & Pick<CocRequestOptions, 'signal'>): Promise<ExplorerFilesResponse> {
     return this.transport.request<ExplorerFilesResponse>(repoPath(repoId, '/files'), {
       query: serializeFilesOptions(options),
+      signal: options?.signal,
     });
   }
 

@@ -1,6 +1,8 @@
 import type {
     CocRequestOptions,
     ExplorerBlobResponse,
+    ExplorerFilesOptions,
+    ExplorerFilesResponse,
     ExplorerSearchOptions,
     ExplorerSearchResponse,
     ExplorerTreeOptions,
@@ -12,6 +14,10 @@ import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 export const explorerApi = {
     tree(workspaceId: string, options?: ExplorerTreeOptions): Promise<ExplorerTreeResponse> {
         return getCocClientForWorkspace(workspaceId).explorer.tree(workspaceId, options);
+    },
+
+    listFiles(workspaceId: string, options?: ExplorerFilesOptions & Pick<CocRequestOptions, 'signal'>): Promise<ExplorerFilesResponse> {
+        return getCocClientForWorkspace(workspaceId).explorer.listFiles(workspaceId, options);
     },
 
     searchFiles(workspaceId: string, query: string, options?: ExplorerSearchOptions & Pick<CocRequestOptions, 'signal'>): Promise<ExplorerSearchResponse> {
