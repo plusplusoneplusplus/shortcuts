@@ -227,6 +227,12 @@ renders the same `DevToolsPanel` full-window under `ThemeProvider` only — the
 tool cards are pure client-side widgets with no API or app-state dependencies,
 so the pop-out URL needs no query parameters.
 
+Pop-out buttons draw the SVG `PopOutIcon` (`features/canvas/components/icons.tsx`),
+never a text glyph: U+29C9 `⧉` and friends are missing from the UI font stack on
+common Linux desktops, so a glyph-only button renders as an invisible click
+target. `DevToolsDialog` imports the canvas icon; `MarkdownReviewDialog` and
+`SourceCanvasNotePopOutButton` keep local copies of the same path data.
+
 `features/chat/RalphGrillSetupPanel.tsx` renders the disabled-by-default
 multi-agent Ralph grilling setup card when `features.ralphMultiAgentGrill` is
 enabled. New Chat Ralph grilling (`NewChatArea`) and promoted ask-mode chats

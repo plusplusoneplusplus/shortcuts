@@ -33,6 +33,18 @@ describe('DevToolsDialog pop-out', () => {
         expect(onClose).toHaveBeenCalledTimes(1);
     });
 
+    // Regression: the button used to render the bare glyph ⧉ (U+29C9), which has
+    // no coverage in the dashboard's UI font stack, so it shipped invisible.
+    // Every pop-out affordance must draw an SVG icon, never a text glyph.
+    it('draws the pop-out affordance as an SVG icon, not a text glyph', () => {
+        render(<DevToolsDialog open onClose={vi.fn()} />);
+        const btn = screen.getByTestId('dev-tools-popout-btn');
+        expect(btn.querySelector('svg')).toBeTruthy();
+        expect(btn.textContent ?? '').not.toContain('⧉');
+        // Nothing renders as bare text — no glyph can silently go missing again.
+        expect((btn.textContent ?? '').trim()).toBe('');
+    });
+
     it('keeps the dialog open when the pop-out is blocked in the browser', () => {
         stubOpen(null);
         const onClose = vi.fn();
