@@ -10,13 +10,18 @@ const getTasks = vi.fn();
 const patchTask = vi.fn();
 const addTask = vi.fn();
 const archiveTasks = vi.fn();
+const syncMyWork = vi.fn();
 
 vi.mock('../../../../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({ myWork: { getTasks, patchTask, addTask, archiveTasks } }),
+    getSpaCocClient: () => ({
+        myWork: { getTasks, patchTask, addTask, archiveTasks },
+        repos: { syncMyWork },
+    }),
     getSpaCocClientErrorMessage: (_e: unknown, fallback: string) => fallback,
 }));
 
 import { MyWorkTodayTab } from '../../../../../../src/server/spa/client/react/features/my-work/MyWorkTodayTab';
+import { QueueProvider, useQueueOptional } from '../../../../../../src/server/spa/client/react/contexts/QueueContext';
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -45,6 +50,15 @@ async function expandEverythingElse() {
     fireEvent.click(await screen.findByTestId('my-work-today-everything-else-toggle'));
 }
 
+/**
+ * Expand a person's roll-up in "Waiting on others". Groups collapse to a
+ * summary line by default, so any assertion about individual follow-up rows has
+ * to open the group first.
+ */
+async function expandPerson(person = 'Alice') {
+    fireEvent.click(await screen.findByTestId(`my-work-today-person-toggle-${person}`));
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('MyWorkTodayTab', () => {
@@ -53,6 +67,7 @@ describe('MyWorkTodayTab', () => {
         getTasks.mockResolvedValue(SAMPLE);
         patchTask.mockResolvedValue({ ok: true });
         addTask.mockResolvedValue({ id: 'new-id' });
+        syncMyWork.mockResolvedValue({ actionItemCount: 2, followUpCount: 0 });
         location.hash = '';
     });
 
@@ -84,7 +99,10 @@ describe('MyWorkTodayTab', () => {
         // Follow-ups grouped by person (Alice appears once as a group).
         expect(screen.getByTestId('my-work-today-person-Alice')).toBeTruthy();
         expect(screen.getByTestId('my-work-today-person-Bob')).toBeTruthy();
+        // Collapsed by default — the rows appear once the group is opened.
         const alice = screen.getByTestId('my-work-today-person-Alice');
+        expect(alice.querySelectorAll('li').length).toBe(0);
+        await expandPerson('Alice');
         expect(alice.querySelectorAll('li').length).toBe(2); // f1 + f3
     });
 
@@ -301,6 +319,7 @@ describe('MyWorkTodayTab', () => {
 
         expect(screen.getByTestId('my-work-today-age-a1').textContent).toBe('3d');
         // Waiting On is where age is the whole signal — 21 days reads as weeks.
+        await expandPerson('Alice');
         expect(screen.getByTestId('my-work-today-age-f1').textContent).toBe('3w');
     });
 
@@ -397,7 +416,9 @@ describe('MyWorkTodayTab', () => {
 
             const section = await screen.findByTestId('my-work-today-followups');
             // Groups rank by their oldest item; the undated group sorts last.
-            const groups = [...section.querySelectorAll('[data-testid^="my-work-today-person-"]')]
+            // `div` scopes this to the group containers — the roll-up's toggle
+            // buttons share the `my-work-today-person-` testid stem.
+            const groups = [...section.querySelectorAll('div[data-testid^="my-work-today-person-"]')]
                 .map(el => el.getAttribute('data-testid'));
             expect(groups).toEqual([
                 'my-work-today-person-Alice', // 20d
@@ -405,6 +426,7 @@ describe('MyWorkTodayTab', () => {
                 'my-work-today-person-Cara',  // undated
             ]);
             // And within Alice, the 20d item precedes the 3d one.
+            await expandPerson('Alice');
             expect(rowIds(screen.getByTestId('my-work-today-person-Alice'))).toEqual([
                 'my-work-today-followup-f3',
                 'my-work-today-followup-f1',
@@ -423,6 +445,7 @@ describe('MyWorkTodayTab', () => {
             renderTab();
 
             const alice = await screen.findByTestId('my-work-today-person-Alice');
+            await expandPerson('Alice');
             expect(rowIds(alice)).toEqual([
                 'my-work-today-followup-d1', // dated items outrank undated ones
                 'my-work-today-followup-u1', // ties keep the order the note lists
@@ -648,7 +671,7 @@ describe('MyWorkTodayTab', () => {
             });
             renderTab();
 
-            await screen.findByText('Cutover sign-off');
+            await expandPerson('Priya');
             expect(screen.getByTestId('my-work-today-source-f1')).toBeTruthy();
             expect(screen.getByTestId('my-work-today-tag-f1-contoso')).toBeTruthy();
         });
@@ -812,6 +835,7 @@ describe('MyWorkTodayTab', () => {
                 followUps: [{ id: 'f1', text: 'Cutover sign-off', checked: false, person: 'Priya' }],
             });
             renderTab();
+            await expandPerson('Priya');
             await openSnoozeMenu('f1');
 
             fireEvent.click(screen.getByTestId('my-work-today-snooze-f1-tomorrow'));
@@ -964,6 +988,7 @@ describe('MyWorkTodayTab', () => {
                 followUps: [{ id: 'f1', text: 'Cutover sign-off', checked: false, person: 'Priya' }],
             });
             renderTab();
+            await expandPerson('Priya');
             const input = await startEditing('f1');
 
             fireEvent.change(input, { target: { value: 'Nudge Priya on cutover' } });
@@ -996,6 +1021,625 @@ describe('MyWorkTodayTab', () => {
             expect(screen.getByTestId('my-work-today-edit-input-a1')).toBeTruthy();
             // The double-click must not have toggled the checkbox on its way in.
             expect(patchTask).not.toHaveBeenCalled();
+        });
+    });
+
+    // ── Keyboard triage ──────────────────────────────────────────────────────
+
+    describe('keyboard triage', () => {
+        const TWO_ITEMS = {
+            actionItems: [
+                { id: 'a1', text: 'Ship the parser', checked: false },
+                { id: 'a2', text: 'Write the docs', checked: false },
+            ],
+            followUps: [],
+        };
+
+        /**
+         * jsdom runs no layout, so `offsetParent` is null on every element and
+         * the hook's "am I a hidden keep-alive pane" guard would bail before any
+         * shortcut ran. Force a truthy one so the real dispatch path is what the
+         * tests exercise. (Same trick as the Ctrl+F find-scope tests.)
+         */
+        async function renderVisibleTab(props: Partial<{ active: boolean }> = {}) {
+            const result = renderTab(props);
+            const tab = await screen.findByTestId('my-work-today-tab');
+            Object.defineProperty(tab, 'offsetParent', { get: () => document.body, configurable: true });
+            return result;
+        }
+
+        const press = (key: string, target: Element | Document = document.body) =>
+            fireEvent.keyDown(target, { key });
+
+        const selectedIds = () =>
+            [...document.querySelectorAll('[data-selected]')].map(el => el.getAttribute('data-task-id'));
+
+        it('j and k move the selection, and the selected row is visibly marked', async () => {
+            getTasks.mockResolvedValue(TWO_ITEMS);
+            await renderVisibleTab();
+            await screen.findByText('Ship the parser');
+
+            expect(selectedIds()).toEqual([]); // nothing selected until you ask
+
+            press('j');
+            expect(selectedIds()).toEqual(['a1']);
+            // The marker is a real visual treatment, not just an attribute.
+            expect(screen.getByTestId('my-work-today-action-a1').className).toContain('ring-2');
+
+            press('j');
+            expect(selectedIds()).toEqual(['a2']);
+            press('k');
+            expect(selectedIds()).toEqual(['a1']);
+        });
+
+        it('j wraps at the end of the list and k enters from the bottom', async () => {
+            getTasks.mockResolvedValue(TWO_ITEMS);
+            await renderVisibleTab();
+            await screen.findByText('Ship the parser');
+
+            press('k'); // no selection yet → enter from the near end
+            expect(selectedIds()).toEqual(['a2']);
+            press('j');
+            expect(selectedIds()).toEqual(['a1']);
+        });
+
+        it('only steps through rows that are actually on screen', async () => {
+            // a2 is checked, so it sits inside the collapsed "Everything else".
+            // Stepping onto a row nobody can see is how a selection ring gets lost.
+            getTasks.mockResolvedValue({
+                actionItems: [
+                    { id: 'a1', text: 'Ship the parser', checked: false },
+                    { id: 'a2', text: 'Write the docs', checked: true },
+                ],
+                followUps: [],
+            });
+            await renderVisibleTab();
+            await screen.findByText('Ship the parser');
+
+            press('j');
+            press('j'); // wraps back to a1 rather than entering the collapsed bucket
+            expect(selectedIds()).toEqual(['a1']);
+
+            await expandEverythingElse();
+            press('j');
+            expect(selectedIds()).toEqual(['a2']);
+        });
+
+        it('x toggles the selected row through the same handler the checkbox uses', async () => {
+            getTasks.mockResolvedValue(TWO_ITEMS);
+            await renderVisibleTab();
+            await screen.findByText('Ship the parser');
+
+            press('j');
+            press('x');
+            expect(patchTask).toHaveBeenCalledWith('a1', { checked: true });
+        });
+
+        it('x does nothing when no row is selected', async () => {
+            getTasks.mockResolvedValue(TWO_ITEMS);
+            await renderVisibleTab();
+            await screen.findByText('Ship the parser');
+
+            press('x');
+            expect(patchTask).not.toHaveBeenCalled();
+        });
+
+        it('e opens the inline editor on the selected row', async () => {
+            getTasks.mockResolvedValue(TWO_ITEMS);
+            await renderVisibleTab();
+            await screen.findByText('Ship the parser');
+
+            press('j');
+            press('e');
+            const input = screen.getByTestId('my-work-today-edit-input-a1') as HTMLInputElement;
+            expect(input.value).toBe('Ship the parser');
+        });
+
+        it('d opens the due-date menu on the selected row', async () => {
+            getTasks.mockResolvedValue(TWO_ITEMS);
+            await renderVisibleTab();
+            await screen.findByText('Ship the parser');
+
+            press('j');
+            press('d');
+            expect(screen.getByTestId('my-work-today-snooze-menu-a1')).toBeTruthy();
+            // A picked date goes through the same write as the mouse path.
+            fireEvent.click(screen.getByTestId('my-work-today-snooze-a1-next-week'));
+            expect(patchTask).toHaveBeenCalledWith('a1', { due: isoIn(7) });
+        });
+
+        it('s defers the selected row by a day without opening anything', async () => {
+            getTasks.mockResolvedValue(TWO_ITEMS);
+            await renderVisibleTab();
+            await screen.findByText('Ship the parser');
+
+            press('j');
+            press('s');
+            expect(patchTask).toHaveBeenCalledWith('a1', { due: isoIn(1) });
+            expect(screen.queryByTestId('my-work-today-snooze-menu-a1')).toBeNull();
+        });
+
+        it('an open due menu owns the keyboard — s does not also snooze behind it', async () => {
+            getTasks.mockResolvedValue(TWO_ITEMS);
+            await renderVisibleTab();
+            await screen.findByText('Ship the parser');
+
+            press('j');
+            press('d');
+            press('s');
+            expect(patchTask).not.toHaveBeenCalled();
+            // Escape closes it and hands the keyboard back.
+            press('Escape');
+            expect(screen.queryByTestId('my-work-today-snooze-menu-a1')).toBeNull();
+            press('s');
+            expect(patchTask).toHaveBeenCalledWith('a1', { due: isoIn(1) });
+        });
+
+        it('/ focuses the filter box', async () => {
+            getTasks.mockResolvedValue(TWO_ITEMS);
+            await renderVisibleTab();
+            await screen.findByText('Ship the parser');
+
+            press('/');
+            expect(document.activeElement).toBe(screen.getByTestId('my-work-today-filter'));
+        });
+
+        it('Escape drops the selection', async () => {
+            getTasks.mockResolvedValue(TWO_ITEMS);
+            await renderVisibleTab();
+            await screen.findByText('Ship the parser');
+
+            press('j');
+            expect(selectedIds()).toEqual(['a1']);
+            press('Escape');
+            expect(selectedIds()).toEqual([]);
+        });
+
+        it('does not fire while the quick-add input has focus', async () => {
+            // Typing "extra" in the box must not toggle, edit and snooze things.
+            getTasks.mockResolvedValue(TWO_ITEMS);
+            await renderVisibleTab();
+            await screen.findByText('Ship the parser');
+
+            press('j'); // select a row so the action keys would have a target
+            const quickAdd = screen.getByTestId('my-work-today-quickadd-input');
+            for (const key of ['e', 'x', 't', 'r', 'a', 'j', 's', 'd', '/']) press(key, quickAdd);
+
+            expect(patchTask).not.toHaveBeenCalled();
+            expect(screen.queryByTestId('my-work-today-edit-input-a1')).toBeNull();
+            expect(screen.queryByTestId('my-work-today-snooze-menu-a1')).toBeNull();
+            expect(selectedIds()).toEqual(['a1']); // j did not move it either
+        });
+
+        it('does not fire while an inline editor has focus', async () => {
+            getTasks.mockResolvedValue(TWO_ITEMS);
+            await renderVisibleTab();
+            await screen.findByText('Ship the parser');
+
+            press('j');
+            press('e');
+            const editor = screen.getByTestId('my-work-today-edit-input-a1');
+            for (const key of ['x', 'j', 's']) press(key, editor);
+
+            expect(patchTask).not.toHaveBeenCalled();
+            expect(selectedIds()).toEqual(['a1']);
+            // Still editing — none of those keys escaped the field.
+            expect(screen.getByTestId('my-work-today-edit-input-a1')).toBeTruthy();
+        });
+
+        it('does not fire while the filter box has focus', async () => {
+            getTasks.mockResolvedValue(TWO_ITEMS);
+            await renderVisibleTab();
+            await screen.findByText('Ship the parser');
+
+            press('j');
+            const filter = screen.getByTestId('my-work-today-filter');
+            press('x', filter);
+            expect(patchTask).not.toHaveBeenCalled();
+        });
+
+        it('ignores chorded keys so app and browser shortcuts still work', async () => {
+            getTasks.mockResolvedValue(TWO_ITEMS);
+            await renderVisibleTab();
+            await screen.findByText('Ship the parser');
+
+            press('j');
+            fireEvent.keyDown(document.body, { key: 'x', ctrlKey: true });
+            fireEvent.keyDown(document.body, { key: 'j', metaKey: true });
+            fireEvent.keyDown(document.body, { key: 's', altKey: true });
+            expect(patchTask).not.toHaveBeenCalled();
+            expect(selectedIds()).toEqual(['a1']);
+        });
+
+        it('stays inert while the tab is not the active sub-tab', async () => {
+            // The tab is a keep-alive pane: it stays mounted under display:none
+            // while the user is on Notes or Activity, and must not eat their keys.
+            getTasks.mockResolvedValue(TWO_ITEMS);
+            const { rerender } = await renderVisibleTab();
+            await screen.findByText('Ship the parser');
+
+            rerender(<MyWorkTodayTab workspaceId="my_work" active={false} />);
+            press('j');
+            press('x');
+            expect(selectedIds()).toEqual([]);
+            expect(patchTask).not.toHaveBeenCalled();
+        });
+
+        it('stays inert when the pane is hidden even if it is nominally active', async () => {
+            getTasks.mockResolvedValue(TWO_ITEMS);
+            renderTab(); // no offsetParent override → hidden as far as the guard knows
+            await screen.findByText('Ship the parser');
+
+            press('j');
+            expect(selectedIds()).toEqual([]);
+        });
+
+        it('tears the listener down on unmount rather than leaking a global handler', async () => {
+            const addSpy = vi.spyOn(document, 'addEventListener');
+            const removeSpy = vi.spyOn(document, 'removeEventListener');
+            getTasks.mockResolvedValue(TWO_ITEMS);
+            const { unmount } = await renderVisibleTab();
+            await screen.findByText('Ship the parser');
+
+            const added = addSpy.mock.calls.filter(c => c[0] === 'keydown').map(c => c[1]);
+            expect(added.length).toBeGreaterThan(0);
+
+            unmount();
+
+            const removed = removeSpy.mock.calls.filter(c => c[0] === 'keydown').map(c => c[1]);
+            expect(added.every(handler => removed.includes(handler))).toBe(true);
+
+            // And nothing responds to the keys any more.
+            press('j');
+            press('x');
+            expect(patchTask).not.toHaveBeenCalled();
+            addSpy.mockRestore();
+            removeSpy.mockRestore();
+        });
+
+        it('a mouse click on a row moves the selection there', async () => {
+            // The keyboard layer is an accelerator, not a separate mode — the
+            // two input paths share one notion of "the current row".
+            getTasks.mockResolvedValue(TWO_ITEMS);
+            await renderVisibleTab();
+            await screen.findByText('Ship the parser');
+
+            fireEvent.mouseDown(screen.getByTestId('my-work-today-action-a2'));
+            expect(selectedIds()).toEqual(['a2']);
+            press('k');
+            expect(selectedIds()).toEqual(['a1']);
+        });
+    });
+
+    // ── Filter ───────────────────────────────────────────────────────────────
+
+    describe('filter', () => {
+        const MIXED = {
+            actionItems: [
+                { id: 'a1', text: 'Ship the parser', checked: false, tags: ['infra'] },
+                { id: 'a2', text: 'Write the docs', checked: false },
+            ],
+            followUps: [{ id: 'f1', text: 'Budget approval', checked: false, person: 'Priya' }],
+        };
+
+        const type = (value: string) =>
+            fireEvent.change(screen.getByTestId('my-work-today-filter'), { target: { value } });
+
+        it('narrows the list by item text', async () => {
+            getTasks.mockResolvedValue(MIXED);
+            renderTab();
+            await screen.findByText('Ship the parser');
+
+            type('docs');
+            expect(screen.queryByText('Ship the parser')).toBeNull();
+            expect(screen.getByText('Write the docs')).toBeTruthy();
+        });
+
+        it('matches on tag and on person too, and expands the roll-ups so hits are visible', async () => {
+            getTasks.mockResolvedValue(MIXED);
+            renderTab();
+            await screen.findByText('Ship the parser');
+
+            type('#infra');
+            expect(screen.getByText('Ship the parser')).toBeTruthy();
+            expect(screen.queryByText('Write the docs')).toBeNull();
+
+            type('priya');
+            // The person group is open without a click — filtering is an
+            // explicit act of looking for something.
+            expect(screen.getByText('Budget approval')).toBeTruthy();
+        });
+
+        it('reports no matches distinctly from an empty list, and clears', async () => {
+            getTasks.mockResolvedValue(MIXED);
+            renderTab();
+            await screen.findByText('Ship the parser');
+
+            type('nothing matches this');
+            expect(screen.getByTestId('my-work-today-no-matches')).toBeTruthy();
+            // Not the empty state — offering Sync here would answer a question
+            // nobody asked.
+            expect(screen.queryByTestId('my-work-today-empty')).toBeNull();
+
+            fireEvent.click(screen.getByTestId('my-work-today-filter-clear'));
+            expect(screen.getByText('Ship the parser')).toBeTruthy();
+        });
+
+        it('leaves the triage chip reporting the whole snapshot, not the filtered view', async () => {
+            getTasks.mockResolvedValue({
+                actionItems: [
+                    { id: 'a1', text: 'Ship the parser', checked: false, due: isoIn(-1) },
+                    { id: 'a2', text: 'Write the docs', checked: false, due: isoIn(-3) },
+                ],
+                followUps: [],
+            });
+            renderTab();
+            await screen.findByText('Ship the parser');
+            expect(screen.getByTestId('my-work-today-stat').textContent).toContain('2 overdue');
+
+            type('parser');
+            expect(screen.getByTestId('my-work-today-stat').textContent).toContain('2 overdue');
+        });
+    });
+
+    // ── Person roll-up ───────────────────────────────────────────────────────
+
+    describe('person roll-up', () => {
+        const PRIYA = {
+            actionItems: [],
+            followUps: [
+                { id: 'f1', text: 'Cutover sign-off', checked: false, person: 'Priya', addedAt: daysAgo(9), sourceUrl: 'https://x.test/p' },
+                { id: 'f2', text: 'Budget approval', checked: false, person: 'Priya', addedAt: daysAgo(2) },
+                { id: 'f3', text: 'Headcount', checked: false, person: 'Priya', addedAt: daysAgo(4) },
+            ],
+        };
+
+        it('collapses a person to a count and the age of their oldest item', async () => {
+            getTasks.mockResolvedValue(PRIYA);
+            renderTab();
+
+            const toggle = await screen.findByTestId('my-work-today-person-toggle-Priya');
+            expect(toggle.textContent).toContain('Priya · 3 items · oldest 9d');
+            // Collapsed: the individual asks are not on screen yet.
+            expect(screen.queryByText('Cutover sign-off')).toBeNull();
+        });
+
+        it('expands to the items and collapses again', async () => {
+            getTasks.mockResolvedValue(PRIYA);
+            renderTab();
+            await expandPerson('Priya');
+
+            expect(screen.getByText('Cutover sign-off')).toBeTruthy();
+            expect(screen.getByTestId('my-work-today-person-toggle-Priya').getAttribute('aria-expanded')).toBe('true');
+
+            await expandPerson('Priya');
+            expect(screen.queryByText('Cutover sign-off')).toBeNull();
+        });
+
+        it('says "1 item" for a single ask and drops the age when nothing is dated', async () => {
+            getTasks.mockResolvedValue({
+                actionItems: [],
+                followUps: [{ id: 'f1', text: 'One thing', checked: false, person: 'Sam' }],
+            });
+            renderTab();
+
+            const toggle = await screen.findByTestId('my-work-today-person-toggle-Sam');
+            expect(toggle.textContent).toContain('Sam · 1 item');
+            // `oldest 0d` would read as a fact about the items; it is an absence.
+            expect(toggle.textContent).not.toContain('oldest');
+        });
+
+        it('labels an unheaded group rather than showing a bare count', async () => {
+            getTasks.mockResolvedValue({
+                actionItems: [],
+                followUps: [{ id: 'f1', text: 'Orphan ask', checked: false }],
+            });
+            renderTab();
+
+            const toggle = await screen.findByTestId('my-work-today-person-toggle-unassigned');
+            expect(toggle.textContent).toContain('Unassigned · 1 item');
+        });
+
+        describe('nudge', () => {
+            it('drafts a follow-up carrying every item, its age and its source link', async () => {
+                const writeText = vi.fn();
+                Object.defineProperty(navigator, 'clipboard', {
+                    value: { writeText }, configurable: true,
+                });
+                getTasks.mockResolvedValue(PRIYA);
+                renderTab();
+
+                fireEvent.click(await screen.findByTestId('my-work-today-nudge-Priya'));
+
+                expect(writeText).toHaveBeenCalledTimes(1);
+                const draft = writeText.mock.calls[0][0] as string;
+                expect(draft).toContain('Draft a short, friendly follow-up message to Priya.');
+                expect(draft).toContain('I am waiting on Priya for the following 3 items:');
+                // Oldest first, with the age that makes the ask land.
+                expect(draft).toContain('- Cutover sign-off (waiting 9d) — https://x.test/p');
+                expect(draft).toContain('- Headcount (waiting 4d)');
+                expect(draft).toContain('- Budget approval (waiting 2d)');
+                expect(draft.indexOf('Cutover sign-off')).toBeLessThan(draft.indexOf('Budget approval'));
+                // An item with no link contributes no dangling separator.
+                expect(draft).not.toContain('Headcount (waiting 4d) —');
+            });
+
+            it('nudges without expanding the group first', async () => {
+                const writeText = vi.fn();
+                Object.defineProperty(navigator, 'clipboard', {
+                    value: { writeText }, configurable: true,
+                });
+                getTasks.mockResolvedValue(PRIYA);
+                renderTab();
+
+                // The whole point of the roll-up: one click on a collapsed line.
+                fireEvent.click(await screen.findByTestId('my-work-today-nudge-Priya'));
+                expect(writeText).toHaveBeenCalled();
+                expect(screen.queryByText('Cutover sign-off')).toBeNull();
+            });
+
+            it('opens a floating chat prefilled with the draft when a queue is available', async () => {
+                // The CoC-native path: compose into a chat. Nothing is sent —
+                // the user still reads and sends the message themselves.
+                let seen: { showDialog: boolean; prompt: string | null; mode: string; launch: string } | null = null;
+                function Probe() {
+                    const queue = useQueueOptional();
+                    seen = {
+                        showDialog: queue!.state.showDialog,
+                        prompt: queue!.state.dialogInitialPrompt,
+                        mode: queue!.state.dialogMode,
+                        launch: queue!.state.dialogLaunchMode,
+                    };
+                    return null;
+                }
+                getTasks.mockResolvedValue(PRIYA);
+                render(
+                    <QueueProvider>
+                        <MyWorkTodayTab workspaceId="my_work" active />
+                        <Probe />
+                    </QueueProvider>,
+                );
+
+                fireEvent.click(await screen.findByTestId('my-work-today-nudge-Priya'));
+
+                await waitFor(() => expect(seen!.showDialog).toBe(true));
+                expect(seen!.mode).toBe('ask');
+                expect(seen!.launch).toBe('floating-chat');
+                expect(seen!.prompt).toContain('follow-up message to Priya');
+                expect(seen!.prompt).toContain('https://x.test/p');
+            });
+        });
+    });
+
+    // ── Loading and empty states ─────────────────────────────────────────────
+
+    describe('loading and empty states', () => {
+        it('shows skeleton rows rather than a line of text while the first fetch runs', async () => {
+            let resolve!: (v: unknown) => void;
+            getTasks.mockReturnValueOnce(new Promise(r => { resolve = r; }));
+            renderTab();
+
+            expect(screen.getAllByTestId('my-work-today-skeleton-row').length).toBeGreaterThan(0);
+            expect(screen.getByTestId('my-work-today-loading').getAttribute('role')).toBe('status');
+
+            resolve(SAMPLE);
+            await waitFor(() => expect(screen.queryByTestId('my-work-today-loading')).toBeNull());
+            expect(screen.queryByTestId('my-work-today-skeleton-row')).toBeNull();
+        });
+
+        it('does not show skeletons on a refetch, so the list never blinks', async () => {
+            renderTab();
+            await screen.findByText('Ship the parser');
+
+            fireEvent.click(screen.getByTestId('my-work-today-check-a1'));
+            await waitFor(() => expect(getTasks).toHaveBeenCalledTimes(2));
+            expect(screen.queryByTestId('my-work-today-skeleton-row')).toBeNull();
+        });
+
+        it('offers Sync and the notes before the manual-add path when the list is empty', async () => {
+            getTasks.mockResolvedValue({ actionItems: [], followUps: [] });
+            renderTab();
+
+            await screen.findByTestId('my-work-today-empty');
+            expect(screen.getByTestId('my-work-today-empty-sync')).toBeTruthy();
+            expect(screen.getByTestId('my-work-today-empty-open-actions')).toBeTruthy();
+            expect(screen.getByTestId('my-work-today-empty-open-followups')).toBeTruthy();
+        });
+
+        it('Sync pulls from Work IQ and reloads the snapshot', async () => {
+            getTasks.mockResolvedValue({ actionItems: [], followUps: [] });
+            renderTab();
+            await screen.findByTestId('my-work-today-empty');
+
+            getTasks.mockResolvedValue(SAMPLE);
+            fireEvent.click(screen.getByTestId('my-work-today-empty-sync'));
+
+            expect(syncMyWork).toHaveBeenCalledTimes(1);
+            await waitFor(() => expect(getTasks).toHaveBeenCalledTimes(2));
+            expect(await screen.findByText('Ship the parser')).toBeTruthy();
+        });
+
+        it('reports a failed sync inline and leaves the empty state usable', async () => {
+            getTasks.mockResolvedValue({ actionItems: [], followUps: [] });
+            syncMyWork.mockRejectedValueOnce(new Error('nope'));
+            renderTab();
+            await screen.findByTestId('my-work-today-empty');
+
+            fireEvent.click(screen.getByTestId('my-work-today-empty-sync'));
+
+            expect(await screen.findByTestId('my-work-today-error')).toBeTruthy();
+            expect(screen.getByTestId('my-work-today-empty-sync')).toBeTruthy();
+            expect(getTasks).toHaveBeenCalledTimes(1); // no refetch after a failed sync
+        });
+
+        it('the empty-state notes links use the workspace-scoped hash route', async () => {
+            getTasks.mockResolvedValue({ actionItems: [], followUps: [] });
+            renderTab();
+            await screen.findByTestId('my-work-today-empty');
+
+            fireEvent.click(screen.getByTestId('my-work-today-empty-open-followups'));
+            expect(location.hash).toBe('#repos/my_work/notes/Follow%20Ups.md');
+        });
+    });
+
+    // ── Refetch on reactivate ────────────────────────────────────────────────
+
+    describe('refetch on reactivate', () => {
+        const tab = (active: boolean) => <MyWorkTodayTab workspaceId="my_work" active={active} />;
+
+        it('refetches when the tab becomes active again', async () => {
+            // Without this the tab keeps its first snapshot forever: a background
+            // sync or a scheduled write leaves it stale until a page reload.
+            const { rerender } = render(tab(true));
+            await screen.findByText('Ship the parser');
+            expect(getTasks).toHaveBeenCalledTimes(1);
+
+            rerender(tab(false));
+            rerender(tab(true));
+
+            await waitFor(() => expect(getTasks).toHaveBeenCalledTimes(2));
+        });
+
+        it('picks up a snapshot written while the tab was away', async () => {
+            const { rerender } = render(tab(true));
+            await screen.findByText('Ship the parser');
+
+            getTasks.mockResolvedValue({
+                actionItems: [{ id: 'b1', text: 'Arrived while away', checked: false }],
+                followUps: [],
+            });
+            rerender(tab(false));
+            rerender(tab(true));
+
+            expect(await screen.findByText('Arrived while away')).toBeTruthy();
+        });
+
+        it('settles instead of looping — staying active does not refetch', async () => {
+            // An effect with an unstable dep here spins forever, and it shows up
+            // as a hang rather than a failure, so this asserts the count is
+            // stable across re-renders and a drained macrotask queue.
+            const { rerender } = render(tab(true));
+            await screen.findByText('Ship the parser');
+            expect(getTasks).toHaveBeenCalledTimes(1);
+
+            for (let i = 0; i < 5; i++) rerender(tab(true));
+            await new Promise(r => setTimeout(r, 20));
+            expect(getTasks).toHaveBeenCalledTimes(1);
+
+            // And one full deactivate/reactivate cycle costs exactly one fetch.
+            rerender(tab(false));
+            rerender(tab(true));
+            await waitFor(() => expect(getTasks).toHaveBeenCalledTimes(2));
+            for (let i = 0; i < 5; i++) rerender(tab(true));
+            await new Promise(r => setTimeout(r, 20));
+            expect(getTasks).toHaveBeenCalledTimes(2);
+        });
+
+        it('still does not fetch while it has never been active', async () => {
+            const { rerender } = render(tab(false));
+            rerender(tab(false));
+            await new Promise(r => setTimeout(r, 20));
+            expect(getTasks).not.toHaveBeenCalled();
         });
     });
 });

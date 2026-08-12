@@ -6,25 +6,28 @@
  * belongs behind a triangle with a count on it.
  *
  * Renders nothing when the bucket is empty — no stray header, no empty toggle.
+ *
+ * Expansion state lives in the parent so the keyboard layer's nav order can
+ * match what is actually on screen.
  */
-import { useState } from 'react';
 import type { MyWorkTask } from '@plusplusoneplusplus/coc-client';
 import { TaskRow, type TaskRowActions } from './TaskRow';
 
 export interface EverythingElseSectionProps {
     items: MyWorkTask[];
     actions: TaskRowActions;
+    expanded: boolean;
+    onToggleExpanded: () => void;
 }
 
-export function EverythingElseSection({ items, actions }: EverythingElseSectionProps) {
-    const [expanded, setExpanded] = useState(false);
+export function EverythingElseSection({ items, actions, expanded, onToggleExpanded }: EverythingElseSectionProps) {
     if (items.length === 0) return null;
     return (
         <section data-testid="my-work-today-everything-else">
             <button
                 type="button"
                 className="flex items-center gap-1 mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-                onClick={() => setExpanded(v => !v)}
+                onClick={onToggleExpanded}
                 aria-expanded={expanded}
                 data-testid="my-work-today-everything-else-toggle"
             >

@@ -1748,6 +1748,45 @@ Workspace while Git remains available inside `SplitWorkspacePanel`.
 - `FeatureTip`: Contextual dismissible tips
 - State in `GlobalPreferences` (hasSeenWelcome, onboardingProgress, dismissedTips)
 
+## My Work — Today tab
+
+`react/features/my-work/`, prepended to My Work as the landing sub-tab when the
+default-off `myWork.todayView` flag is on. Flag off, the tab shape is unchanged.
+
+- **Data** — `useMyWorkTasks(active)` over `/api/my-work/tasks*` (`getTasks`,
+  `patchTask`, `addTask`, `archiveTasks`) plus `repos.syncMyWork` for the empty
+  state's Sync. `Action Items.md` and `Follow Ups.md` stay the source of truth.
+  Writes are optimistic → PATCH → refetch (ids are content-derived, so any write
+  reflows them); a failure rolls back and shows an inline banner over a list that
+  never blanks. A `busy` guard keeps one mutation in flight at a time. The fetch
+  re-runs each time `active` goes false → true, so a background sync or a
+  scheduled write is picked up without a page reload.
+- **Bucketing** — `taskBuckets.ts` is pure, React-free view logic: three urgency
+  buckets (Needs you today / Waiting on others / Everything else), age from the
+  `## Synced <date>` heading, `@due(…)` tone, the header triage chip
+  (`2 overdue · 5 due today · 3 waiting >7d`, zero segments dropped), snooze
+  targets, the person roll-up summary, and the nudge draft.
+- **Rows** — one `TaskRow` for every bucket: checkbox, due chip, `#tag` pills,
+  age badge, source link, pencil and ⏰. Selection, which editor is open and
+  which due menu is open are held by `MyWorkTodayTab`, not by each row, because
+  the keyboard layer drives all three from outside.
+- **Keyboard triage** — `useTaskKeyboardTriage`: `j`/`k` move, `x` toggles, `e`
+  edits, `d` opens the due menu, `s` defers a day, `/` focuses the filter,
+  Escape closes/deselects. Every key calls the handler its click calls. One
+  document listener, all changing inputs read through a ref so it attaches once;
+  suppressed on any text-entry target, when the pane is hidden
+  (`offsetParent === null` — it is a mounted keep-alive tab), when inactive, on
+  chords, and inside a dialog or the detail pane. `j`/`k` step only rows that are
+  actually on screen, so section expansion state lives in the tab too.
+- **Waiting on others** — collapsed per person to `Priya · 3 items · oldest 9d`
+  with a **Nudge** that builds a draft from the items, their ages and their
+  `sourceUrl`s and opens it in a floating chat (`QueueContext` `OPEN_DIALOG`,
+  mode `ask`); it falls back to the clipboard outside a `QueueProvider`. No send
+  mechanism of its own.
+- **Placeholders** — `TodayPlaceholders.tsx`: skeleton rows on the first fetch
+  only, an empty state leading with Sync and the two notes links (manual add
+  secondary), and a distinct no-matches state when a filter is on.
+
 ## Activity Tab
 
 - Action bar: New chat + refresh + ALL/AP split pause pill

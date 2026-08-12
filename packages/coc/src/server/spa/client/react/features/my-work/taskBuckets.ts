@@ -169,6 +169,100 @@ function oldest(items: MyWorkTask[], now: Date): number {
 }
 
 // ============================================================================
+// Person roll-up
+//
+// A person's group collapses to one line — `Priya · 3 items · oldest 9d` — so
+// "waiting on others" reads as a short list of people to chase rather than a
+// wall of individual asks. The age is the whole signal: it is what decides
+// whether the answer is "leave it" or "nudge her today".
+// ============================================================================
+
+export interface PersonGroupStats {
+    count: number;
+    /** Age of the group's oldest item in days, or null when nothing is dated. */
+    oldestDays: number | null;
+}
+
+/** Item count and oldest age for a person's group. */
+export function personGroupStats(group: PersonGroup, now: Date): PersonGroupStats {
+    let oldestDays: number | null = null;
+    for (const item of group.items) {
+        const age = ageInDays(item.addedAt, now);
+        if (age !== null && (oldestDays === null || age > oldestDays)) oldestDays = age;
+    }
+    return { count: group.items.length, oldestDays };
+}
+
+/**
+ * The collapsed summary line for a person's group. The age segment is dropped
+ * when nothing in the group carries a sync date — `oldest 0d` would read as a
+ * fact about the items when it is really an absence of one.
+ */
+export function formatPersonSummary(group: PersonGroup, now: Date): string {
+    const { count, oldestDays } = personGroupStats(group, now);
+    const segments = [
+        group.person || 'Unassigned',
+        `${count} item${count === 1 ? '' : 's'}`,
+    ];
+    if (oldestDays !== null) segments.push(`oldest ${oldestDays}d`);
+    return segments.join(' · ');
+}
+
+/**
+ * The follow-up message prompt behind a group's **Nudge**.
+ *
+ * "Waiting on" lists rot because acting on one means composing a message from
+ * scratch, so this hands the chat everything that composition needs — who, what
+ * was asked, how long ago, and the link back to where it was asked — and lets
+ * the model write the actual note. Items are listed oldest first (they already
+ * arrive that way), because the oldest ask is the one the message should lead
+ * with.
+ */
+export function buildNudgeDraft(group: PersonGroup, now: Date): string {
+    const person = group.person || 'them';
+    const lines = group.items.map(item => {
+        const age = ageInDays(item.addedAt, now);
+        const waited = age === null ? '' : ` (waiting ${age}d)`;
+        const source = item.sourceUrl ? ` — ${item.sourceUrl}` : '';
+        return `- ${item.text}${waited}${source}`;
+    });
+    return [
+        `Draft a short, friendly follow-up message to ${person}.`,
+        '',
+        `I am waiting on ${person} for the following ${group.items.length === 1 ? 'item' : `${group.items.length} items`}:`,
+        ...lines,
+        '',
+        'Ask for a status update on each, keep it to a few sentences, and reference the ' +
+        'linked source where one is given. Return just the message.',
+    ].join('\n');
+}
+
+// ============================================================================
+// Filter
+// ============================================================================
+
+/**
+ * Whether a task matches a free-text filter. Text, `#tag` labels and the
+ * follow-up's person are all searched, so `priya`, `budget` and `#billing` each
+ * narrow the list the way you would expect them to. An empty query matches
+ * everything.
+ */
+export function matchesFilter(task: MyWorkTask, query: string): boolean {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    const needle = q.startsWith('#') ? q.slice(1) : q;
+    if (task.text.toLowerCase().includes(needle)) return true;
+    if (task.person?.toLowerCase().includes(needle)) return true;
+    return (task.tags ?? []).some(tag => tag.toLowerCase().includes(needle));
+}
+
+/** `matchesFilter` over a list. Returns the input untouched for an empty query. */
+export function filterTasks(tasks: MyWorkTask[], query: string): MyWorkTask[] {
+    if (!query.trim()) return tasks;
+    return tasks.filter(task => matchesFilter(task, query));
+}
+
+// ============================================================================
 // Snooze
 //
 // Deferring an item is a `@due(...)` bump: the date moves out, `needsAttention`

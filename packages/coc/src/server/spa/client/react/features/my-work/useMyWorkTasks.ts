@@ -37,6 +37,8 @@ export interface UseMyWorkTasksResult {
     /** Adds an action item; resolves true when the write succeeded. */
     addActionItem: (text: string) => Promise<boolean>;
     clearCompleted: () => Promise<void>;
+    /** Pulls a fresh batch from Work IQ, then reloads the snapshot. */
+    sync: () => Promise<void>;
 }
 
 /**
@@ -67,15 +69,29 @@ export function useMyWorkTasks(active: boolean): UseMyWorkTasksResult {
         }
     }, []);
 
-    // Fetch once the tab becomes active. `active` defaults true at the call
-    // site so the tab also works when rendered standalone (tests, future
-    // embeddings).
-    const hasLoaded = useRef(false);
+    // Refetch every time the tab becomes active, not just the first time.
+    // The notes behind this view are written by other things — a background
+    // sync, a scheduled sweep, the user editing the markdown on the Notes tab —
+    // so a snapshot taken on first activation is stale by the time you come
+    // back to it, and there is no signal that would tell you so.
+    //
+    // The guard is a "did we already load for *this* activation" latch rather
+    // than a once-ever one: it arms on deactivation and disarms on the fetch.
+    // The effect's deps are `active` (a boolean) and `load` (a `useCallback`
+    // with an empty dep list, so a stable identity), and the effect sets no
+    // state that either depends on — nothing here can re-trigger itself.
+    //
+    // `active` defaults true at the call site so the tab also works when
+    // rendered standalone (tests, future embeddings).
+    const loadedForActivation = useRef(false);
     useEffect(() => {
-        if (active && !hasLoaded.current) {
-            hasLoaded.current = true;
-            void load();
+        if (!active) {
+            loadedForActivation.current = false;
+            return;
         }
+        if (loadedForActivation.current) return;
+        loadedForActivation.current = true;
+        void load();
     }, [active, load]);
 
     /** Apply a partial update to whichever list holds `id` — the optimistic step. */
@@ -160,6 +176,23 @@ export function useMyWorkTasks(active: boolean): UseMyWorkTasksResult {
         }
     }, [busy, load]);
 
+    // Ingestion, offered from the empty state: an empty Today is far more
+    // likely to mean "nothing has been pulled in yet" than "add something by
+    // hand". Shares the `busy` guard and the refetch with the other writes.
+    const sync = useCallback(async () => {
+        if (busy) return;
+        setBusy(true);
+        setError(null);
+        try {
+            await getSpaCocClient().repos.syncMyWork({});
+            await load();
+        } catch (err) {
+            if (mounted.current) setError(getSpaCocClientErrorMessage(err, 'Failed to sync from Work IQ'));
+        } finally {
+            if (mounted.current) setBusy(false);
+        }
+    }, [busy, load]);
+
     const actionItems = tasks?.actionItems ?? [];
     const followUps = tasks?.followUps ?? [];
     const doneCount = actionItems.filter(t => t.checked).length;
@@ -203,5 +236,6 @@ export function useMyWorkTasks(active: boolean): UseMyWorkTasksResult {
         snooze,
         addActionItem,
         clearCompleted,
+        sync,
     };
 }

@@ -11,55 +11,138 @@
  * Bucketing is purely a view concern (`taskBuckets.ts`): the notes keep their
  * on-disk order and users go on editing them by hand.
  *
- * The list-level controls (`Clear completed`, both `Open note` links) sit in
- * the header rather than on a section, because any single bucket can be empty
- * — and an empty bucket renders nothing at all. Beside them the header carries
- * the triage chip: how much is overdue, due today, or stalled, rather than a
- * done-count that can only ever trend downward on a list that never empties.
+ * The list-level controls (the filter, `Clear completed`, both `Open note`
+ * links) sit in the header rather than on a section, because any single bucket
+ * can be empty — and an empty bucket renders nothing at all. Beside them the
+ * header carries the triage chip: how much is overdue, due today, or stalled,
+ * rather than a done-count that can only ever trend downward on a list that
+ * never empties.
  *
  * Rows can be edited in place and snoozed (a `@due(...)` bump), so an item can
  * leave the list without being marked done — the notes are also what the
  * weekly summary is generated from, and a box ticked for something you did not
  * do writes a false "Completed" line into it.
+ *
+ * This component owns the state the keyboard layer drives (selection, which
+ * editor and which menu is open, which sections are expanded) so that `j`/`k`
+ * step through exactly the rows that are on screen and every shortcut lands on
+ * the same handler its click does. See `useTaskKeyboardTriage`.
  */
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import type { MyWorkTask } from '@plusplusoneplusplus/coc-client';
 import { useMyWorkTasks } from './useMyWorkTasks';
-import { bucketActionItems, formatTriageSummary, groupFollowUpsByAge, triageSummary } from './taskBuckets';
+import {
+    bucketActionItems, filterTasks, formatTriageSummary, groupFollowUpsByAge,
+    isoDaysFromNow, triageSummary,
+} from './taskBuckets';
 import type { TaskRowActions } from './TaskRow';
 import { NeedsYouTodaySection } from './NeedsYouTodaySection';
 import { WaitingOnSection } from './WaitingOnSection';
 import { EverythingElseSection } from './EverythingElseSection';
+import { TodayEmptyState, TodayNoMatches, TodaySkeleton } from './TodayPlaceholders';
+import { useTaskKeyboardTriage } from './useTaskKeyboardTriage';
 
 export interface MyWorkTodayTabProps {
     /** Virtual workspace whose notes back the Today view (e.g. `my_work`). */
     workspaceId: string;
-    /** True while this tab is the visible sub-tab; drives the initial fetch. */
+    /** True while this tab is the visible sub-tab; drives fetch and shortcuts. */
     active?: boolean;
 }
 
 export function MyWorkTodayTab({ workspaceId, active = true }: MyWorkTodayTabProps) {
     const {
         tasks, actionItems, followUps, firstLoad, isEmpty, error, busy,
-        doneCount, load, toggle, editText, snooze, addActionItem, clearCompleted,
+        doneCount, load, toggle, editText, snooze, addActionItem, clearCompleted, sync,
     } = useMyWorkTasks(active);
     const [quickAdd, setQuickAdd] = useState('');
+    const [filter, setFilter] = useState('');
+    const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [snoozeMenuId, setSnoozeMenuId] = useState<string | null>(null);
+    const [everythingElseExpanded, setEverythingElseExpanded] = useState(false);
+    const [expandedPeople, setExpandedPeople] = useState<ReadonlySet<string>>(() => new Set());
+    const containerRef = useRef<HTMLDivElement>(null);
+    const filterRef = useRef<HTMLInputElement>(null);
+
+    const filterActive = filter.trim().length > 0;
+    const visibleActionItems = useMemo(() => filterTasks(actionItems, filter), [actionItems, filter]);
+    const visibleFollowUps = useMemo(() => filterTasks(followUps, filter), [followUps, filter]);
 
     const { needsYou, everythingElse } = useMemo(
-        () => bucketActionItems(actionItems, new Date()),
-        [actionItems],
+        () => bucketActionItems(visibleActionItems, new Date()),
+        [visibleActionItems],
     );
-    const followUpGroups = useMemo(() => groupFollowUpsByAge(followUps, new Date()), [followUps]);
+    const followUpGroups = useMemo(() => groupFollowUpsByAge(visibleFollowUps, new Date()), [visibleFollowUps]);
+    // The chip reports the whole snapshot, not the filtered view: "2 overdue"
+    // is a fact about your day, and having it change as you type in the filter
+    // box would make it useless as a standing signal.
     const triage = useMemo(
         () => formatTriageSummary(triageSummary(actionItems, followUps, new Date())),
         [actionItems, followUps],
     );
+
+    // Filtering is an explicit act of looking for something, so it expands the
+    // disclosures rather than hiding matches behind them.
+    const peopleExpanded = useMemo<ReadonlySet<string>>(
+        () => (filterActive ? new Set(followUpGroups.map(g => g.person ?? '')) : expandedPeople),
+        [filterActive, followUpGroups, expandedPeople],
+    );
+    const elseExpanded = filterActive || everythingElseExpanded;
+
+    // Nav order for `j`/`k`: exactly the rows on screen, top to bottom. Rows
+    // inside a collapsed disclosure are deliberately absent — stepping onto a
+    // row nobody can see is the classic way a selection ring gets lost.
+    const visibleRows = useMemo<MyWorkTask[]>(() => [
+        ...needsYou,
+        ...followUpGroups.flatMap(g => (peopleExpanded.has(g.person ?? '') ? g.items : [])),
+        ...(elseExpanded ? everythingElse : []),
+    ], [needsYou, followUpGroups, peopleExpanded, elseExpanded, everythingElse]);
+    const order = useMemo(() => visibleRows.map(t => t.id), [visibleRows]);
+    const findTask = useCallback((id: string) => visibleRows.find(t => t.id === id), [visibleRows]);
+
+    useTaskKeyboardTriage({
+        containerRef,
+        enabled: active,
+        order,
+        selectedId,
+        menuOpen: snoozeMenuId !== null,
+        onSelect: setSelectedId,
+        onToggle: id => { const t = findTask(id); if (t && !busy) toggle(t); },
+        onEdit: id => { if (!busy) setEditingId(id); },
+        onSetDue: setSnoozeMenuId,
+        // `s` is the one-keystroke defer — "not today". Anything more specific
+        // is what `d` and its picker are for.
+        onSnooze: id => {
+            const t = findTask(id);
+            if (t && !busy) void snooze(t, isoDaysFromNow(new Date(), 1));
+        },
+        onFocusFilter: () => filterRef.current?.focus(),
+        onEscape: () => {
+            if (snoozeMenuId) setSnoozeMenuId(null);
+            else setSelectedId(null);
+        },
+    });
 
     const rowActions: TaskRowActions = useMemo(() => ({
         onToggle: toggle,
         onEdit: (task, text) => { void editText(task, text); },
         onSnooze: (task, due) => { void snooze(task, due); },
         busy,
-    }), [toggle, editText, snooze, busy]);
+        selectedId,
+        editingId,
+        setEditingId,
+        snoozeMenuId,
+        setSnoozeMenuId,
+        onSelect: setSelectedId,
+    }), [toggle, editText, snooze, busy, selectedId, editingId, snoozeMenuId]);
+
+    const togglePerson = useCallback((person: string) => {
+        setExpandedPeople(prev => {
+            const next = new Set(prev);
+            if (!next.delete(person)) next.add(person);
+            return next;
+        });
+    }, []);
 
     const submitQuickAdd = async () => {
         const text = quickAdd.trim();
@@ -67,17 +150,43 @@ export function MyWorkTodayTab({ workspaceId, active = true }: MyWorkTodayTabPro
         if (await addActionItem(text)) setQuickAdd('');
     };
 
-    const openNote = (path: string) => {
+    const openNote = useCallback((path: string) => {
         location.hash = `#repos/${workspaceId}/notes/${encodeURIComponent(path)}`;
-    };
+    }, [workspaceId]);
 
     const linkClass = 'text-xs text-blue-600 dark:text-blue-400 hover:underline';
+    // A filter that matches nothing is not the same thing as an empty list, and
+    // offering Sync for it would be answering a question nobody asked.
+    const noMatches = !!tasks && filterActive
+        && needsYou.length === 0 && followUpGroups.length === 0 && everythingElse.length === 0;
 
     return (
-        <div className="flex flex-col h-full min-h-0 overflow-auto p-4 gap-4 text-gray-900 dark:text-gray-100" data-testid="my-work-today-tab">
+        <div
+            ref={containerRef}
+            className="flex flex-col h-full min-h-0 overflow-auto p-4 gap-4 text-gray-900 dark:text-gray-100"
+            data-testid="my-work-today-tab"
+        >
             <div className="flex items-center justify-between gap-3">
                 <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Today</h2>
                 <div className="flex items-center gap-3">
+                    {tasks && (
+                        <input
+                            ref={filterRef}
+                            type="text"
+                            className="text-xs w-32 border border-gray-300 dark:border-gray-600 rounded px-2 py-0.5 bg-transparent"
+                            placeholder="Filter… (/)"
+                            aria-label="Filter items"
+                            value={filter}
+                            onChange={e => setFilter(e.target.value)}
+                            onKeyDown={e => {
+                                // Escape leaves the box rather than clearing it:
+                                // the shortcuts are suppressed while it has focus,
+                                // so getting out is what you need first.
+                                if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); }
+                            }}
+                            data-testid="my-work-today-filter"
+                        />
+                    )}
                     {/* Triage state, not progress: how much is actually on fire
                         right now. An all-clear snapshot renders no chip. */}
                     {triage.length > 0 && (
@@ -123,11 +232,7 @@ export function MyWorkTodayTab({ workspaceId, active = true }: MyWorkTodayTabPro
                 </div>
             </div>
 
-            {firstLoad && (
-                <div className="text-sm text-gray-500 dark:text-gray-400" data-testid="my-work-today-loading">
-                    Loading tasks…
-                </div>
-            )}
+            {firstLoad && <TodaySkeleton />}
 
             {error && (
                 <div
@@ -147,16 +252,27 @@ export function MyWorkTodayTab({ workspaceId, active = true }: MyWorkTodayTabPro
             )}
 
             {isEmpty && (
-                <div className="text-sm text-gray-500 dark:text-gray-400" data-testid="my-work-today-empty">
-                    Nothing for today. Add an action item below to get started.
-                </div>
+                <TodayEmptyState onSync={() => void sync()} onOpenNote={openNote} busy={busy} />
             )}
+
+            {noMatches && <TodayNoMatches onClear={() => setFilter('')} />}
 
             {tasks && (
                 <>
                     <NeedsYouTodaySection items={needsYou} actions={rowActions} />
-                    <WaitingOnSection groups={followUpGroups} actions={rowActions} />
-                    <EverythingElseSection items={everythingElse} actions={rowActions} />
+                    <WaitingOnSection
+                        groups={followUpGroups}
+                        actions={rowActions}
+                        expanded={peopleExpanded}
+                        onToggleExpanded={togglePerson}
+                        workspaceId={workspaceId}
+                    />
+                    <EverythingElseSection
+                        items={everythingElse}
+                        actions={rowActions}
+                        expanded={elseExpanded}
+                        onToggleExpanded={() => setEverythingElseExpanded(v => !v)}
+                    />
                 </>
             )}
 

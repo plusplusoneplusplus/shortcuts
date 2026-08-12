@@ -99,7 +99,16 @@ export function SourceLink({ task }: { task: MyWorkTask }) {
     );
 }
 
-/** The row-level callbacks, bundled so each section forwards one prop. */
+/**
+ * The row-level callbacks and shared row state, bundled so each section
+ * forwards one prop.
+ *
+ * Which row is selected, which one is being edited and which one has its due
+ * menu open are held by the tab rather than by each row, because the keyboard
+ * layer drives all three from outside: `e` has to be able to open an editor on
+ * a row the mouse never touched. Clicks and keys then go through the same
+ * setters, so the two input paths cannot disagree about what is open.
+ */
 export interface TaskRowActions {
     onToggle: (task: MyWorkTask) => void;
     /** Rewrite the item's display text. */
@@ -108,6 +117,16 @@ export interface TaskRowActions {
     onSnooze: (task: MyWorkTask, due: string) => void;
     /** True while a mutation is in flight — disables both row actions. */
     busy?: boolean;
+    /** Id of the keyboard-selected row; drives the selection ring. */
+    selectedId?: string | null;
+    /** Id of the row whose inline editor is open, if any. */
+    editingId?: string | null;
+    setEditingId: (id: string | null) => void;
+    /** Id of the row whose due menu is open, if any. */
+    snoozeMenuId?: string | null;
+    setSnoozeMenuId: (id: string | null) => void;
+    /** Moves the keyboard selection — a click on a row also selects it. */
+    onSelect?: (id: string) => void;
 }
 
 const ACTION_BTN_CLASS =
@@ -122,13 +141,21 @@ const ACTION_BTN_CLASS =
  * clutter or ticking a box you did not earn, and the second one lies to the
  * weekly summary built from these same files.
  */
-function SnoozeMenu({ task, onSnooze, busy }: {
+function SnoozeMenu({ task, onSnooze, busy, open, setOpen }: {
     task: MyWorkTask;
     onSnooze: (task: MyWorkTask, due: string) => void;
     busy?: boolean;
+    open: boolean;
+    setOpen: (open: boolean) => void;
 }) {
-    const [open, setOpen] = useState(false);
     const options = snoozeOptions(new Date());
+    const firstOptionRef = useRef<HTMLButtonElement>(null);
+
+    // Opened by `d` there is nothing focused inside the menu, so neither the
+    // arrow keys nor the blur-to-close below would have anything to work with.
+    // Focusing the first option on open fixes both, and is harmless when the
+    // menu was opened by a click.
+    useEffect(() => { if (open) firstOptionRef.current?.focus(); }, [open]);
 
     const pick = (due: string) => {
         setOpen(false);
@@ -140,7 +167,7 @@ function SnoozeMenu({ task, onSnooze, busy }: {
             <button
                 type="button"
                 className={ACTION_BTN_CLASS}
-                onClick={() => setOpen(v => !v)}
+                onClick={() => setOpen(!open)}
                 disabled={busy}
                 aria-expanded={open}
                 aria-label="Snooze"
@@ -157,9 +184,10 @@ function SnoozeMenu({ task, onSnooze, busy }: {
                     onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOpen(false); }}
                     data-testid={`my-work-today-snooze-menu-${task.id}`}
                 >
-                    {options.map(option => (
+                    {options.map((option, i) => (
                         <button
                             key={option.key}
+                            ref={i === 0 ? firstOptionRef : undefined}
                             type="button"
                             className="text-xs text-left whitespace-nowrap px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
                             onClick={() => pick(option.due)}
@@ -234,19 +262,43 @@ export interface TaskRowProps {
 
 /** One checkbox-backed task line, as an `<li>` for a caller-owned `<ul>`. */
 export function TaskRow({ task, testIdPrefix, actions }: TaskRowProps) {
-    const { onToggle, onEdit, onSnooze, busy } = actions;
-    const [editing, setEditing] = useState(false);
+    const {
+        onToggle, onEdit, onSnooze, busy,
+        selectedId, editingId, setEditingId, snoozeMenuId, setSnoozeMenuId, onSelect,
+    } = actions;
+    const editing = editingId === task.id;
+    const selected = selectedId === task.id;
 
     if (editing) {
         return (
-            <li className="flex items-start gap-1" data-testid={`${testIdPrefix}-${task.id}`}>
-                <TaskTextEditor task={task} onEdit={onEdit} onCancel={() => setEditing(false)} />
+            <li
+                className="flex items-start gap-1"
+                data-task-id={task.id}
+                // The editor's own focus ring is the visible treatment here, but
+                // the row is still the selected one and says so.
+                data-selected={selected || undefined}
+                data-testid={`${testIdPrefix}-${task.id}`}
+            >
+                <TaskTextEditor task={task} onEdit={onEdit} onCancel={() => setEditingId(null)} />
             </li>
         );
     }
 
+    // The selection has to be visible to be usable — keyboard nav with no ring
+    // is just invisible state. A ring rather than a background so it reads as
+    // "focused" and does not collide with the checked/line-through styling.
+    const selectionClass = selected
+        ? 'ring-2 ring-blue-500 dark:ring-blue-400 rounded bg-blue-50/50 dark:bg-blue-900/20'
+        : '';
+
     return (
-        <li className="flex items-start gap-1 group" data-testid={`${testIdPrefix}-${task.id}`}>
+        <li
+            className={`flex items-start gap-1 group px-1 -mx-1 ${selectionClass}`}
+            data-task-id={task.id}
+            data-selected={selected || undefined}
+            onMouseDown={() => onSelect?.(task.id)}
+            data-testid={`${testIdPrefix}-${task.id}`}
+        >
             <label className="flex-1 flex items-start gap-2 text-sm cursor-pointer">
                 <input
                     type="checkbox"
@@ -259,7 +311,7 @@ export function TaskRow({ task, testIdPrefix, actions }: TaskRowProps) {
                     the checkbox via the label, hence the preventDefault. */}
                 <span
                     className={task.checked ? 'line-through text-gray-400' : ''}
-                    onDoubleClick={e => { e.preventDefault(); if (!busy) setEditing(true); }}
+                    onDoubleClick={e => { e.preventDefault(); if (!busy) setEditingId(task.id); }}
                 >
                     {task.text}
                 </span>
@@ -272,7 +324,7 @@ export function TaskRow({ task, testIdPrefix, actions }: TaskRowProps) {
             <button
                 type="button"
                 className={ACTION_BTN_CLASS}
-                onClick={() => setEditing(true)}
+                onClick={() => setEditingId(task.id)}
                 disabled={busy}
                 aria-label="Edit item"
                 title="Edit"
@@ -280,7 +332,13 @@ export function TaskRow({ task, testIdPrefix, actions }: TaskRowProps) {
             >
                 ✎
             </button>
-            <SnoozeMenu task={task} onSnooze={onSnooze} busy={busy} />
+            <SnoozeMenu
+                task={task}
+                onSnooze={onSnooze}
+                busy={busy}
+                open={snoozeMenuId === task.id}
+                setOpen={open => setSnoozeMenuId(open ? task.id : null)}
+            />
             <SourceLink task={task} />
         </li>
     );
