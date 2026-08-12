@@ -241,6 +241,95 @@ describe('RepoTreeService.resolveRepo', () => {
     });
 });
 
+describe('RepoTreeService.resolveRepoRoot', () => {
+    it('returns the root path for a known repoId', async () => {
+        seedDefaultRepo();
+        expect(await service.resolveRepoRoot(REPO_ID)).toBe(repoDir);
+    });
+
+    it('returns undefined for an unknown repoId', async () => {
+        seedDefaultRepo();
+        expect(await service.resolveRepoRoot('nonexistent')).toBeUndefined();
+    });
+
+    it('returns undefined when no workspaces are registered', async () => {
+        expect(await service.resolveRepoRoot(REPO_ID)).toBeUndefined();
+    });
+
+    it('resolves from the ProcessStore when workspaces.json is absent', async () => {
+        fs.mkdirSync(repoDir, { recursive: true });
+        const store = {
+            getWorkspaces: async () => [{ id: REPO_ID, name: REPO_NAME, rootPath: repoDir }],
+        };
+        const svc = new RepoTreeService(dataDir, undefined, store as never);
+        expect(await svc.resolveRepoRoot(REPO_ID)).toBe(repoDir);
+    });
+
+    it('agrees with resolveRepo().localPath', async () => {
+        seedDefaultRepo();
+        const repo = await service.resolveRepo(REPO_ID);
+        expect(await service.resolveRepoRoot(REPO_ID)).toBe(repo!.localPath);
+    });
+});
+
+describe('file-tree operations avoid the git-spawning resolver', () => {
+    // resolveRepo runs `git rev-parse` + `git remote get-url` (two subprocesses,
+    // 5s timeout each). None of the file-tree paths need that metadata, so a
+    // regression here would put subprocess spawns back on every keystroke.
+    function spyOnResolveRepo(svc: RepoTreeService): () => number {
+        let calls = 0;
+        const original = svc.resolveRepo.bind(svc);
+        svc.resolveRepo = async (repoId: string) => {
+            calls++;
+            return original(repoId);
+        };
+        return () => calls;
+    }
+
+    it('searchFiles never calls resolveRepo', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'index.ts'), 'x');
+        const calls = spyOnResolveRepo(service);
+
+        await service.searchFiles(REPO_ID, 'index');
+        expect(calls()).toBe(0);
+    });
+
+    it('listFilesRecursive never calls resolveRepo', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'a.ts'), 'x');
+        const calls = spyOnResolveRepo(service);
+
+        await service.listFilesRecursive(REPO_ID, '.');
+        expect(calls()).toBe(0);
+    });
+
+    it('listDirectory never calls resolveRepo', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'a.ts'), 'x');
+        const calls = spyOnResolveRepo(service);
+
+        await service.listDirectory(REPO_ID, '.');
+        expect(calls()).toBe(0);
+    });
+
+    it('readBlob and writeBlob never call resolveRepo', async () => {
+        seedDefaultRepo();
+        const calls = spyOnResolveRepo(service);
+
+        await service.writeBlob(REPO_ID, 'written.txt', 'hi');
+        await service.readBlob(REPO_ID, 'written.txt');
+        expect(calls()).toBe(0);
+    });
+
+    it('still reports unknown repos through the cheap resolver', async () => {
+        seedDefaultRepo();
+        await expect(service.listDirectory('nope', '.')).rejects.toThrow(/repo not found/i);
+        await expect(service.readBlob('nope', 'a.txt')).rejects.toThrow(/repo not found/i);
+        await expect(service.writeBlob('nope', 'a.txt', 'x')).rejects.toThrow(/repo not found/i);
+    });
+});
+
 describe('RepoTreeService.readBlob', () => {
     it('reads text file as utf-8', async () => {
         seedDefaultRepo();

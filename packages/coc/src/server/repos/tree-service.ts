@@ -329,11 +329,26 @@ export class RepoTreeService {
 
     /**
      * Resolve a repo by ID. Returns undefined if not found.
+     *
+     * Populates git metadata (headSha, remoteUrl) via subprocesses. Callers that
+     * only need the on-disk location must use {@link resolveRepoRoot} instead.
      */
     async resolveRepo(repoId: string): Promise<RepoInfo | undefined> {
         const workspaces = await this.readWorkspaces();
         const ws = workspaces.find(w => w.id === repoId);
         return ws ? RepoTreeService.toRepoInfo(ws) : undefined;
+    }
+
+    /**
+     * Resolve just the on-disk root path for a repo, without spawning git.
+     *
+     * `resolveRepo` runs `git rev-parse` and `git remote get-url` to build a full
+     * RepoInfo; file-tree operations need none of that, so they use this instead.
+     * Returns undefined if the repo is not registered.
+     */
+    async resolveRepoRoot(repoId: string): Promise<string | undefined> {
+        const workspaces = await this.readWorkspaces();
+        return workspaces.find(w => w.id === repoId)?.rootPath;
     }
 
     /**
@@ -350,12 +365,11 @@ export class RepoTreeService {
         relativePath: string,
         options?: { showIgnored?: boolean },
     ): Promise<TreeListResult> {
-        const repo = await this.resolveRepo(repoId);
-        if (!repo) {
+        const repoRoot = await this.resolveRepoRoot(repoId);
+        if (!repoRoot) {
             throw new Error(`Repo not found: ${repoId}`);
         }
 
-        const repoRoot = repo.localPath;
         const normalizedRel = stripLeadingSeparators(relativePath === '' || relativePath === '.' ? '.' : relativePath);
         const absPath = path.resolve(repoRoot, normalizedRel);
         assertInsideRepo(repoRoot, absPath);
@@ -470,12 +484,11 @@ export class RepoTreeService {
         relativePath: string,
         options?: { showIgnored?: boolean },
     ): Promise<{ files: string[]; truncated: boolean }> {
-        const repo = await this.resolveRepo(repoId);
-        if (!repo) {
+        const repoRoot = await this.resolveRepoRoot(repoId);
+        if (!repoRoot) {
             throw new Error(`Repo not found: ${repoId}`);
         }
 
-        const repoRoot = repo.localPath;
         const normalizedRel = stripLeadingSeparators(relativePath === '' || relativePath === '.' ? '.' : relativePath);
         const absRoot = path.resolve(repoRoot, normalizedRel);
         assertInsideRepo(repoRoot, absRoot);
@@ -558,12 +571,11 @@ export class RepoTreeService {
         repoId: string,
         relativePath: string,
     ): Promise<{ content: string; encoding: 'utf-8' | 'base64'; mimeType: string }> {
-        const repo = await this.resolveRepo(repoId);
-        if (!repo) {
+        const repoRoot = await this.resolveRepoRoot(repoId);
+        if (!repoRoot) {
             throw new Error(`Repo not found: ${repoId}`);
         }
 
-        const repoRoot = repo.localPath;
         const absPath = path.resolve(repoRoot, stripLeadingSeparators(relativePath));
         assertInsideRepo(repoRoot, absPath);
 
@@ -605,12 +617,11 @@ export class RepoTreeService {
      * @throws if repo not found, path traversal detected, or path is a directory.
      */
     async writeBlob(repoId: string, relativePath: string, content: string): Promise<void> {
-        const repo = await this.resolveRepo(repoId);
-        if (!repo) {
+        const repoRoot = await this.resolveRepoRoot(repoId);
+        if (!repoRoot) {
             throw new Error(`Repo not found: ${repoId}`);
         }
 
-        const repoRoot = repo.localPath;
         const absPath = path.resolve(repoRoot, stripLeadingSeparators(relativePath));
         assertInsideRepo(repoRoot, absPath);
 
