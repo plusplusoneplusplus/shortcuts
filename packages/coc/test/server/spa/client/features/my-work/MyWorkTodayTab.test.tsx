@@ -11,10 +11,11 @@ const patchTask = vi.fn();
 const addTask = vi.fn();
 const archiveTasks = vi.fn();
 const syncMyWork = vi.fn();
+const getTimeline = vi.fn();
 
 vi.mock('../../../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
-        myWork: { getTasks, patchTask, addTask, archiveTasks },
+        myWork: { getTasks, patchTask, addTask, archiveTasks, getTimeline },
         repos: { syncMyWork },
     }),
     getSpaCocClientErrorMessage: (_e: unknown, fallback: string) => fallback,
@@ -68,6 +69,10 @@ describe('MyWorkTodayTab', () => {
         patchTask.mockResolvedValue({ ok: true });
         addTask.mockResolvedValue({ id: 'new-id' });
         syncMyWork.mockResolvedValue({ actionItemCount: 2, followUpCount: 0 });
+        // Nothing writes the timeline note yet, so "no entries" is the default
+        // every other test in this file runs against.
+        getTimeline.mockResolvedValue({ entries: [], total: 0, notePath: 'Work/timeline.md' });
+        sessionStorage.clear(); // the strip's dismissal is session-scoped
         location.hash = '';
     });
 
@@ -1640,6 +1645,154 @@ describe('MyWorkTodayTab', () => {
             rerender(tab(false));
             await new Promise(r => setTimeout(r, 20));
             expect(getTasks).not.toHaveBeenCalled();
+        });
+    });
+
+    // ── "What changed" strip ────────────────────────────────────────────────
+
+    describe('what changed strip', () => {
+        const ENTRIES = [
+            {
+                id: 'tl-1', date: '2026-08-09', time: '06:00', thread: 'contoso-migration',
+                text: 'cutover slipped to the 14th',
+                link: { kind: 'note' as const, path: 'Work/threads/contoso-migration.md' },
+            },
+            {
+                id: 'tl-2', date: '2026-08-09', time: '07:30', thread: 'q3-budget',
+                text: 'Dana approved; no action',
+                link: { kind: 'note' as const, path: 'Work/threads/q3-budget.md' },
+            },
+        ];
+
+        /** Wait for the task list, which lands after the strip's own fetch. */
+        async function renderAndSettle() {
+            renderTab();
+            await screen.findByText('Ship the parser');
+            await waitFor(() => expect(getTimeline).toHaveBeenCalled());
+        }
+
+        it('renders nothing at all when the note is absent', async () => {
+            // The endpoint answers 200 with an empty list for a missing note.
+            // "Nothing" here means no node — not an empty box — so the strip
+            // costs zero vertical pixels in what is currently the normal state.
+            await renderAndSettle();
+            expect(screen.queryByTestId('my-work-today-timeline')).toBeNull();
+            // And the tab's own content is unaffected.
+            expect(screen.getByTestId('my-work-today-action-a1')).toBeTruthy();
+        });
+
+        it('renders nothing when the endpoint errors, and leaves the list up', async () => {
+            const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+            getTimeline.mockRejectedValue(new Error('boom'));
+
+            await renderAndSettle();
+
+            expect(screen.queryByTestId('my-work-today-timeline')).toBeNull();
+            expect(screen.queryByTestId('my-work-today-error')).toBeNull(); // not the task list's error
+            expect(screen.getByTestId('my-work-today-action-a1')).toBeTruthy();
+            expect(warn).toHaveBeenCalled();
+            warn.mockRestore();
+        });
+
+        it('renders nothing when the endpoint answers with junk', async () => {
+            getTimeline.mockResolvedValue({} as never);
+            await renderAndSettle();
+            expect(screen.queryByTestId('my-work-today-timeline')).toBeNull();
+        });
+
+        it('renders one line per entry, with time, thread and text', async () => {
+            getTimeline.mockResolvedValue({ entries: ENTRIES, total: 2, notePath: 'Work/timeline.md' });
+            await renderAndSettle();
+
+            const strip = await screen.findByTestId('my-work-today-timeline');
+            expect(strip.querySelectorAll('li')).toHaveLength(2);
+            expect(screen.getByText('cutover slipped to the 14th')).toBeTruthy();
+            expect(screen.getByText('06:00')).toBeTruthy();
+            expect(screen.getByTestId('my-work-today-timeline-thread-tl-1').textContent).toBe('contoso-migration');
+        });
+
+        it('sits above the urgency buckets', async () => {
+            getTimeline.mockResolvedValue({ entries: ENTRIES, total: 2, notePath: 'Work/timeline.md' });
+            await renderAndSettle();
+
+            const strip = await screen.findByTestId('my-work-today-timeline');
+            const needsYou = screen.getByTestId('my-work-today-action-a1');
+            // DOCUMENT_POSITION_FOLLOWING — the strip comes first in the tab.
+            expect(strip.compareDocumentPosition(needsYou) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        });
+
+        it('opens the thread note when the label is clicked', async () => {
+            getTimeline.mockResolvedValue({ entries: ENTRIES, total: 2, notePath: 'Work/timeline.md' });
+            await renderAndSettle();
+
+            fireEvent.click(await screen.findByTestId('my-work-today-timeline-thread-tl-1'));
+            expect(location.hash).toBe(
+                `#repos/my_work/notes/${encodeURIComponent('Work/threads/contoso-migration.md')}`,
+            );
+        });
+
+        it('renders an external link as an anchor, not a note link', async () => {
+            getTimeline.mockResolvedValue({
+                entries: [{ ...ENTRIES[0], link: { kind: 'external', url: 'https://teams.example/x' } }],
+                total: 1,
+                notePath: 'Work/timeline.md',
+            });
+            await renderAndSettle();
+
+            const label = await screen.findByTestId('my-work-today-timeline-thread-tl-1');
+            expect(label.tagName).toBe('A');
+            expect(label.getAttribute('href')).toBe('https://teams.example/x');
+            expect(label.getAttribute('rel')).toContain('noopener');
+        });
+
+        it('still shows the thread label when the bullet carried no usable link', async () => {
+            getTimeline.mockResolvedValue({
+                entries: [{ id: 'tl-1', thread: 'orphan', text: 'no link here' }],
+                total: 1,
+                notePath: 'Work/timeline.md',
+            });
+            await renderAndSettle();
+
+            const label = await screen.findByTestId('my-work-today-timeline-thread-tl-1');
+            expect(label.tagName).toBe('SPAN');
+            expect(label.textContent).toBe('orphan');
+        });
+
+        it('offers "View all" only when the note holds more than it shows', async () => {
+            getTimeline.mockResolvedValue({ entries: ENTRIES, total: 2, notePath: 'Work/timeline.md' });
+            await renderAndSettle();
+            await screen.findByTestId('my-work-today-timeline');
+            expect(screen.queryByTestId('my-work-today-timeline-view-all')).toBeNull();
+        });
+
+        it('links "View all" to the timeline note when there are more entries', async () => {
+            getTimeline.mockResolvedValue({ entries: ENTRIES, total: 17, notePath: 'Work/timeline.md' });
+            await renderAndSettle();
+
+            const viewAll = await screen.findByTestId('my-work-today-timeline-view-all');
+            expect(viewAll.textContent).toContain('17');
+            fireEvent.click(viewAll);
+            expect(location.hash).toBe(`#repos/my_work/notes/${encodeURIComponent('Work/timeline.md')}`);
+        });
+
+        it('dismisses for the session and stays dismissed on remount', async () => {
+            getTimeline.mockResolvedValue({ entries: ENTRIES, total: 2, notePath: 'Work/timeline.md' });
+            const { unmount } = renderTab();
+            await screen.findByTestId('my-work-today-timeline');
+
+            fireEvent.click(screen.getByTestId('my-work-today-timeline-dismiss'));
+            expect(screen.queryByTestId('my-work-today-timeline')).toBeNull();
+
+            unmount();
+            renderTab();
+            await screen.findByText('Ship the parser');
+            await waitFor(() => expect(getTimeline).toHaveBeenCalledTimes(2));
+            expect(screen.queryByTestId('my-work-today-timeline')).toBeNull();
+        });
+
+        it('does not fetch the timeline until the tab is active', () => {
+            renderTab({ active: false });
+            expect(getTimeline).not.toHaveBeenCalled();
         });
     });
 });

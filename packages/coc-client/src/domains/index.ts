@@ -34,6 +34,9 @@ export { CronsClient } from './cron';
 export { TriggersClient } from './triggers';
 export { MapReduceClient } from './map-reduce';
 export { MyWorkClient } from './my-work';
-export type { MyWorkTask, MyWorkTasks, MyWorkTaskPatch, AddMyWorkTaskInput } from './my-work';
+export type {
+    MyWorkTask, MyWorkTasks, MyWorkTaskPatch, AddMyWorkTaskInput,
+    MyWorkTimeline, MyWorkTimelineEntry, MyWorkTimelineLink,
+} from './my-work';
 export { SyncClient } from './sync';
 export type { FlaggedBinary, MergeOutcome, ReconcileReport, ResolutionStrategy, ResolvedFile, SyncResolutionReport, SyncStatus } from './sync';

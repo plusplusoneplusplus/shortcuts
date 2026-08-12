@@ -47,6 +47,45 @@ export interface MyWorkTaskPatch {
     due?: string | null;
 }
 
+/**
+ * One "what changed" line from the Work Radar timeline note.
+ *
+ * Mirrors the server's `TimelineEntry` in `my-work-timeline.ts`. Every field
+ * but `id` and `text` is optional: the note is written by a sweep and
+ * hand-edited, so the parser keeps whatever it can read off a line.
+ */
+export interface MyWorkTimelineEntry {
+    id: string;
+    /** ISO `YYYY-MM-DD` from the enclosing `## <date>` heading. */
+    date?: string;
+    /** `HH:MM` prefix on the bullet. */
+    time?: string;
+    /** Thread label from a leading `**[slug]**`. */
+    thread?: string;
+    /** The line's prose, with the time/thread/link syntax stripped. */
+    text: string;
+    /** Where the bullet points, already classified and safety-checked server-side. */
+    link?: MyWorkTimelineLink;
+}
+
+/**
+ * A timeline bullet's link target. Relative links resolve to a note inside the
+ * My Work notes tree; anything that would escape the tree, or use a scheme
+ * other than http(s), is dropped by the server and never reaches the client.
+ */
+export type MyWorkTimelineLink =
+    | { kind: 'external'; url: string }
+    | { kind: 'note'; path: string };
+
+/** The timeline strip's payload: the newest few entries plus the full count. */
+export interface MyWorkTimeline {
+    entries: MyWorkTimelineEntry[];
+    /** Total valid entries in the note — more than `entries.length` means "View all". */
+    total: number;
+    /** Notes-root-relative path of the note, for the "View all" link. */
+    notePath: string;
+}
+
 /** Body for quick-adding a task to one of the lists. */
 export interface AddMyWorkTaskInput {
     list: 'action' | 'followup';
@@ -67,6 +106,16 @@ export class MyWorkClient {
     /** GET /api/my-work/tasks — parsed action items + follow-ups. */
     getTasks(): Promise<MyWorkTasks> {
         return this.transport.request<MyWorkTasks>('/my-work/tasks');
+    }
+
+    /**
+     * GET /api/my-work/timeline — the newest "what changed" entries.
+     *
+     * Answers with an empty list when the note does not exist yet, which is
+     * currently the normal case.
+     */
+    getTimeline(): Promise<MyWorkTimeline> {
+        return this.transport.request<MyWorkTimeline>('/my-work/timeline');
     }
 
     /** PATCH /api/my-work/tasks/:id — toggle/edit a single checkbox line. */

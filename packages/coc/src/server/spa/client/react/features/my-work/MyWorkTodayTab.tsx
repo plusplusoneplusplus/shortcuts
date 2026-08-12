@@ -18,6 +18,11 @@
  * rather than a done-count that can only ever trend downward on a list that
  * never empties.
  *
+ * Above the buckets sits the "What changed" strip, which reads a different
+ * file (`notes/Work/timeline.md`) through its own endpoint and renders zero
+ * pixels when that file is absent, empty or unreadable — see
+ * `WhatChangedStrip`.
+ *
  * Rows can be edited in place and snoozed (a `@due(...)` bump), so an item can
  * leave the list without being marked done — the notes are also what the
  * weekly summary is generated from, and a box ticked for something you did not
@@ -41,6 +46,7 @@ import { WaitingOnSection } from './WaitingOnSection';
 import { EverythingElseSection } from './EverythingElseSection';
 import { TodayEmptyState, TodayNoMatches, TodaySkeleton } from './TodayPlaceholders';
 import { useTaskKeyboardTriage } from './useTaskKeyboardTriage';
+import { WhatChangedStrip } from './WhatChangedStrip';
 
 export interface MyWorkTodayTabProps {
     /** Virtual workspace whose notes back the Today view (e.g. `my_work`). */
@@ -231,6 +237,11 @@ export function MyWorkTodayTab({ workspaceId, active = true }: MyWorkTodayTabPro
                     )}
                 </div>
             </div>
+
+            {/* Pinned above the buckets: what changed overnight, before what you
+                have to do about it. Renders nothing at all — not an empty box —
+                when there is no timeline note, which is currently the norm. */}
+            <WhatChangedStrip workspaceId={workspaceId} active={active} />
 
             {firstLoad && <TodaySkeleton />}
 

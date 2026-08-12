@@ -424,6 +424,96 @@ describe('My Work Handler', () => {
 
     // ── Task routes (Today view) ─────────────────────────────────────────
 
+    // ── GET /api/my-work/timeline ────────────────────────────────────────
+
+    describe('GET /api/my-work/timeline', () => {
+        function writeTimeline(content: string) {
+            const dir = path.join(getRepoDataPath(dataDir, MY_WORK_WORKSPACE_ID, 'notes'), 'Work');
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(path.join(dir, 'timeline.md'), content, 'utf-8');
+        }
+
+        async function getTimeline() {
+            const res = await request(`${baseUrl}/api/my-work/timeline`);
+            return { status: res.status, body: JSON.parse(res.body) };
+        }
+
+        it('returns an empty list when the note does not exist', async () => {
+            // Nothing writes this note yet, so "missing" is the normal state and
+            // must not read as an error.
+            const { status, body } = await getTimeline();
+            expect(status).toBe(200);
+            expect(body.entries).toEqual([]);
+            expect(body.total).toBe(0);
+        });
+
+        it('returns an empty list for an empty note', async () => {
+            writeTimeline('');
+            const { status, body } = await getTimeline();
+            expect(status).toBe(200);
+            expect(body.entries).toEqual([]);
+            expect(body.total).toBe(0);
+        });
+
+        it('returns parsed entries with resolved thread links', async () => {
+            writeTimeline([
+                '## 2026-08-09',
+                '- 06:00 **[contoso-migration]** cutover slipped → [thread](threads/contoso-migration.md)',
+                '- 07:30 **[q3-budget]** Dana approved → [thread](threads/q3-budget.md)',
+            ].join('\n'));
+
+            const { status, body } = await getTimeline();
+            expect(status).toBe(200);
+            expect(body.total).toBe(2);
+            expect(body.entries).toHaveLength(2);
+            expect(body.entries[0]).toMatchObject({
+                date: '2026-08-09',
+                time: '06:00',
+                thread: 'contoso-migration',
+                text: 'cutover slipped',
+                link: { kind: 'note', path: 'Work/threads/contoso-migration.md' },
+            });
+        });
+
+        it('caps at five entries and reports the true total', async () => {
+            writeTimeline(['## 2026-08-09', ...Array.from({ length: 9 }, (_, i) => `- 0${i}:00 **[t${i}]** entry ${i}`)].join('\n'));
+            const { body } = await getTimeline();
+            expect(body.entries).toHaveLength(5);
+            expect(body.total).toBe(9);
+        });
+
+        it('skips malformed lines instead of failing the request', async () => {
+            writeTimeline([
+                'not a bullet at all',
+                '## nonsense heading',
+                '- ',
+                '- 06:00 **[real]** the one good line',
+            ].join('\n'));
+            const { status, body } = await getTimeline();
+            expect(status).toBe(200);
+            expect(body.entries).toHaveLength(1);
+            expect(body.entries[0].thread).toBe('real');
+        });
+
+        it('reports the note path so the client can link to it', async () => {
+            const { body } = await getTimeline();
+            expect(body.notePath).toBe('Work/timeline.md');
+        });
+
+        it('is read-only — it never creates the note or its directory', async () => {
+            await getTimeline();
+            const workDir = path.join(getRepoDataPath(dataDir, MY_WORK_WORKSPACE_ID, 'notes'), 'Work');
+            expect(fs.existsSync(workDir)).toBe(false);
+        });
+
+        it('takes no path input — a traversal attempt is simply not a route', async () => {
+            // The note path is a constant; there is no parameter to poison. A
+            // suffixed URL falls through to the SPA rather than reading a file.
+            const res = await request(`${baseUrl}/api/my-work/timeline/../../../etc/passwd`);
+            expect(res.body).not.toContain('root:');
+        });
+    });
+
     describe('Task routes', () => {
         function notesDir() {
             return getRepoDataPath(dataDir, MY_WORK_WORKSPACE_ID, 'notes');

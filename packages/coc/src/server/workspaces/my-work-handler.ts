@@ -25,6 +25,7 @@ import {
     formatTaskLine,
     type TaskPatch,
 } from './my-work-tasks';
+import { parseTimeline, TIMELINE_NOTE_PATH } from './my-work-timeline';
 
 // ============================================================================
 // Helpers
@@ -96,6 +97,15 @@ function actionItemsPath(dataDir: string): string {
 
 function followUpsPath(dataDir: string): string {
     return path.join(getNotesRoot(dataDir), 'Follow Ups.md');
+}
+
+/**
+ * The Work Radar timeline note. The path is a constant joined onto the notes
+ * root — nothing from the request reaches it, so this stays a read of one known
+ * file rather than a general file-read endpoint.
+ */
+function timelinePath(dataDir: string): string {
+    return path.join(getNotesRoot(dataDir), ...TIMELINE_NOTE_PATH.split('/'));
 }
 
 /** Read a notes file, treating a missing file as empty content. */
@@ -328,6 +338,28 @@ export function registerMyWorkRoutes(
                 sendJSON(res, 200, parse(actionContent, followContent));
             } catch (err: any) {
                 sendError(res, 500, `Failed to read tasks: ${err.message}`);
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // GET /api/my-work/timeline — "What changed" strip for the Today tab
+    //
+    // Read-only, and read-only of exactly one file. A missing note is the
+    // normal state right now (nothing writes it yet), so it answers 200 with
+    // an empty list rather than 404 — the strip draws nothing for it either
+    // way, and an error would be a lie about the file being broken.
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/my-work\/timeline$/,
+        handler: async (_req, res) => {
+            try {
+                const content = await readFileOrEmpty(timelinePath(dataDir));
+                const { entries, total } = parseTimeline(content);
+                sendJSON(res, 200, { entries, total, notePath: TIMELINE_NOTE_PATH });
+            } catch (err: any) {
+                sendError(res, 500, `Failed to read timeline: ${err.message}`);
             }
         },
     });

@@ -19,6 +19,28 @@ describe('MyWorkClient', () => {
     expect(result.followUps[0].person).toBe('Bob');
   });
 
+  it('getTimeline calls GET /my-work/timeline', async () => {
+    const adapter = createMockAdapter({
+      entries: [{
+        id: 'tl-1', date: '2026-08-09', time: '06:00', thread: 'contoso-migration',
+        text: 'cutover slipped', link: { kind: 'note', path: 'Work/threads/contoso-migration.md' },
+      }],
+      total: 9,
+      notePath: 'Work/timeline.md',
+    });
+    const client = new MyWorkClient(adapter);
+
+    const result = await client.getTimeline();
+
+    expect(adapter.calls).toHaveLength(1);
+    expect(adapter.calls[0].path).toBe('/my-work/timeline');
+    expect(adapter.calls[0].options).toBeUndefined();
+    expect(result.entries[0].thread).toBe('contoso-migration');
+    expect(result.entries[0].link).toEqual({ kind: 'note', path: 'Work/threads/contoso-migration.md' });
+    expect(result.total).toBe(9);
+    expect(result.notePath).toBe('Work/timeline.md');
+  });
+
   it('patchTask calls PATCH /my-work/tasks/:id with body', async () => {
     const adapter = createMockAdapter({ ok: true });
     const client = new MyWorkClient(adapter);

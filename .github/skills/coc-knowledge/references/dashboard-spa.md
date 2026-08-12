@@ -1786,6 +1786,16 @@ default-off `myWork.todayView` flag is on. Flag off, the tab shape is unchanged.
 - **Placeholders** — `TodayPlaceholders.tsx`: skeleton rows on the first fetch
   only, an empty state leading with Sync and the two notes links (manual add
   secondary), and a distinct no-matches state when a filter is on.
+- **What changed strip** — `WhatChangedStrip.tsx`, pinned above the buckets:
+  up to five entries from `GET /api/my-work/timeline` (the Work Radar note
+  `notes/Work/timeline.md`), each showing time · thread label · one line, the
+  label linking to its thread note. `View all <n>` appears only when the note
+  holds more than is shown. Dismissible for the browser session
+  (`sessionStorage`, key `myWork.whatChanged.dismissed`). It renders `null` —
+  no placeholder, zero vertical pixels — when the note is absent, empty, junk,
+  dismissed, or the fetch failed; a failure is `console.warn`ed and swallowed so
+  the task list below always comes up. Refetches per activation like the tasks.
+  Nothing writes that note yet, so empty is the normal state.
 
 ## Activity Tab
 
