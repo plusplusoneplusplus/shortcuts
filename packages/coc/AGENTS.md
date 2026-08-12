@@ -702,4 +702,6 @@ all have their own `references/*.md`.
   `@plusplusoneplusplus/coc-memory`, `@plusplusoneplusplus/forge`,
   `@plusplusoneplusplus/coc-client`, and `@plusplusoneplusplus/coc-connector`
   before `tsc`, clean `dist` before emitting, and generate
-  `src/server/core/build-info.ts`; keep this script cross-platform.
+  `src/server/core/build-info.ts` (commit hash plus the workspace **root**
+  `package.json` version, which is what `GET /api/admin/version` and the admin
+  page show); keep this script cross-platform.
