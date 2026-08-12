@@ -137,7 +137,13 @@ describe('SKILL.md metadata', () => {
                 version: '0.0.1',
             },
         });
-        expect(fmMatch![2].trim()).toBe('# Delegate\n\nBased on this conversation, delegate the requested job to a new conversation with the relevant context, constraints, and expected outcome.');
+        expect(fmMatch![2].trim()).toBe([
+            '# Delegate',
+            '',
+            'Based on this conversation, delegate the requested job to a new conversation with the relevant context, constraints, and expected outcome.',
+            '',
+            'Note: `autopilot` conversations share one execution queue, so delegated autopilot jobs run sequentially, not in parallel. Use `ask` mode if the job must run right away or the current chat is waiting on its result.',
+        ].join('\n'));
 
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegate-resolve-'));
         try {
