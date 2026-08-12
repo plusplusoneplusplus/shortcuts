@@ -9,14 +9,14 @@
  */
 import { useState } from 'react';
 import type { MyWorkTask } from '@plusplusoneplusplus/coc-client';
-import { TaskRow } from './TaskRow';
+import { TaskRow, type TaskRowActions } from './TaskRow';
 
 export interface EverythingElseSectionProps {
     items: MyWorkTask[];
-    onToggle: (task: MyWorkTask) => void;
+    actions: TaskRowActions;
 }
 
-export function EverythingElseSection({ items, onToggle }: EverythingElseSectionProps) {
+export function EverythingElseSection({ items, actions }: EverythingElseSectionProps) {
     const [expanded, setExpanded] = useState(false);
     if (items.length === 0) return null;
     return (
@@ -38,7 +38,7 @@ export function EverythingElseSection({ items, onToggle }: EverythingElseSection
                             key={task.id}
                             task={task}
                             testIdPrefix="my-work-today-action"
-                            onToggle={onToggle}
+                            actions={actions}
                         />
                     ))}
                 </ul>

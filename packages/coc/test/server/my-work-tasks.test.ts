@@ -446,14 +446,27 @@ describe('metadata round-trip through patch', () => {
         expect(after.sourceUrl).toBe('https://x.test/t');
     });
 
-    it('metadata typed into the replacement text wins over the old metadata', () => {
+    it('metadata typed into the replacement text wins field by field', () => {
         const [item] = parseActionItems(CONTENT);
         const next = patchActionItem(CONTENT, item.id, { text: 'cutover plan @due(2026-09-01)' })!;
         const [after] = parseActionItems(next);
+        // The typed due date replaces the old one...
         expect(after.due).toBe('2026-09-01');
-        // The whole metadata block is replaced, so the stale link does not linger.
-        expect(after.sourceUrl).toBeUndefined();
-        expect(after.tags).toBeUndefined();
+        // ...but the fields it said nothing about survive. Merging per field
+        // rather than wholesale is what keeps inline edit from silently
+        // throwing away the source link — the one thing on the line that makes
+        // the item actionable without going to hunt for its thread.
+        expect(after.sourceUrl).toBe('https://x.test/t');
+        expect(after.tags).toEqual(['contoso']);
+    });
+
+    it('lets an edit add a tag to an item without disturbing its due date', () => {
+        const [item] = parseActionItems(CONTENT);
+        const next = patchActionItem(CONTENT, item.id, { text: 'cutover plan #urgent' })!;
+        const [after] = parseActionItems(next);
+        expect(after.due).toBe('2026-08-14');
+        expect(after.tags).toEqual(['urgent']);
+        expect(after.sourceUrl).toBe('https://x.test/t');
     });
 
     it('editing a plain item is unchanged — no metadata appears from nowhere', () => {
@@ -469,6 +482,100 @@ describe('metadata round-trip through patch', () => {
         );
         const archiveSection = next.slice(next.indexOf('## Archive'));
         expect(archiveSection).toContain('- [x] done thing @due(2026-08-01) #ops [↗](https://x.test/d)');
+    });
+});
+
+describe('snooze — the `due` patch', () => {
+    // Snooze is a `@due()` bump and nothing else: the text, the tags and the
+    // link are the user's, so a deferral must not touch them. It exists so an
+    // item can leave the list without being ticked — the same files are what
+    // the weekly summary reads `- [x]` lines out of, and a box ticked for
+    // something undone writes a false "Completed" into that report.
+
+    it('adds a due date to a line that has none', () => {
+        const content = '# Action Items\n- [ ] chase the cutover sign-off\n';
+        const [item] = parseActionItems(content);
+        const next = patchActionItem(content, item.id, { due: '2026-08-13' })!;
+        expect(next).toBe('# Action Items\n- [ ] chase the cutover sign-off @due(2026-08-13)\n');
+        expect(changedLineCount(content, next)).toBe(1);
+        expect(parseActionItems(next)[0].due).toBe('2026-08-13');
+    });
+
+    it('moves an existing due date without duplicating the token', () => {
+        const content = '- [ ] ship @due(2026-08-12)\n';
+        const [item] = parseActionItems(content);
+        const next = patchActionItem(content, item.id, { due: '2026-08-19' })!;
+        expect(next).toBe('- [ ] ship @due(2026-08-19)\n');
+        expect(next.match(/@due\(/g)).toHaveLength(1);
+    });
+
+    it('keeps the text, tags and source link intact across a bump', () => {
+        const content = '- [ ] cutover plan @due(2026-08-14) #contoso [↗](https://x.test/t)\n';
+        const [item] = parseActionItems(content);
+        const next = patchActionItem(content, item.id, { due: '2026-08-21' })!;
+        const [after] = parseActionItems(next);
+        expect(after.text).toBe('cutover plan');
+        expect(after.due).toBe('2026-08-21');
+        expect(after.tags).toEqual(['contoso']);
+        expect(after.sourceUrl).toBe('https://x.test/t');
+    });
+
+    it('clears the due date with null', () => {
+        const content = '- [ ] ship @due(2026-08-12) #ops\n';
+        const [item] = parseActionItems(content);
+        const next = patchActionItem(content, item.id, { due: null })!;
+        expect(next).toBe('- [ ] ship #ops\n');
+        expect(parseActionItems(next)[0].due).toBeUndefined();
+    });
+
+    it('drops the item out of the urgent bucket — the whole point', () => {
+        // Bucketing lives in the client, but the server side of it is that the
+        // date on disk is the one the client will read back.
+        const content = '- [ ] nudge Priya @due(2026-08-10)\n';
+        const [item] = parseActionItems(content);
+        const next = patchActionItem(content, item.id, { due: '2026-08-19' })!;
+        expect(parseActionItems(next)[0].due).toBe('2026-08-19');
+    });
+
+    it('changes the id, and the pre-bump id no longer resolves', () => {
+        const content = '- [ ] ship @due(2026-08-12)\n';
+        const [item] = parseActionItems(content);
+        const next = patchActionItem(content, item.id, { due: '2026-08-19' })!;
+        const [after] = parseActionItems(next);
+        expect(after.id).not.toBe(item.id);
+        // Stale id → null, not a silent write to the wrong line. The client
+        // refetches after every mutation, which is what keeps this safe.
+        expect(patchActionItem(next, item.id, { due: '2026-09-01' })).toBeNull();
+    });
+
+    it('snoozes a follow-up the same way', () => {
+        const content = '# Follow Ups\n## Priya\n- [ ] cutover sign-off\n';
+        const [item] = parseFollowUps(content);
+        const next = patchFollowUp(content, item.id, { due: '2026-08-19' })!;
+        expect(next).toBe('# Follow Ups\n## Priya\n- [ ] cutover sign-off @due(2026-08-19)\n');
+        expect(parseFollowUps(next)[0].person).toBe('Priya');
+    });
+
+    it('preserves CRLF and every other line byte-for-byte', () => {
+        const content = '# Action Items\r\n- [ ] first\r\n- [ ] second @due(2026-08-12)\r\n- [x] third\r\n';
+        const target = parseActionItems(content)[1];
+        const next = patchActionItem(content, target.id, { due: '2026-08-20' })!;
+        expect(next).toBe('# Action Items\r\n- [ ] first\r\n- [ ] second @due(2026-08-20)\r\n- [x] third\r\n');
+        expect(changedLineCount(content, next)).toBe(1);
+    });
+
+    it('preserves indentation on a nested item', () => {
+        const content = '- [ ] parent\n    - [ ] nested item\n';
+        const target = parseActionItems(content)[1];
+        const next = patchActionItem(content, target.id, { due: '2026-08-20' })!;
+        expect(next).toBe('- [ ] parent\n    - [ ] nested item @due(2026-08-20)\n');
+    });
+
+    it('combines with a check in one write', () => {
+        const content = '- [ ] ship\n';
+        const [item] = parseActionItems(content);
+        const next = patchActionItem(content, item.id, { checked: true, due: '2026-08-20' })!;
+        expect(next).toBe('- [x] ship @due(2026-08-20)\n');
     });
 });
 

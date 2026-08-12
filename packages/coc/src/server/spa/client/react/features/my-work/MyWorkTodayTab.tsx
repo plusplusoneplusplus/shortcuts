@@ -13,11 +13,19 @@
  *
  * The list-level controls (`Clear completed`, both `Open note` links) sit in
  * the header rather than on a section, because any single bucket can be empty
- * — and an empty bucket renders nothing at all.
+ * — and an empty bucket renders nothing at all. Beside them the header carries
+ * the triage chip: how much is overdue, due today, or stalled, rather than a
+ * done-count that can only ever trend downward on a list that never empties.
+ *
+ * Rows can be edited in place and snoozed (a `@due(...)` bump), so an item can
+ * leave the list without being marked done — the notes are also what the
+ * weekly summary is generated from, and a box ticked for something you did not
+ * do writes a false "Completed" line into it.
  */
 import { useMemo, useState } from 'react';
 import { useMyWorkTasks } from './useMyWorkTasks';
-import { bucketActionItems, groupFollowUpsByAge } from './taskBuckets';
+import { bucketActionItems, formatTriageSummary, groupFollowUpsByAge, triageSummary } from './taskBuckets';
+import type { TaskRowActions } from './TaskRow';
 import { NeedsYouTodaySection } from './NeedsYouTodaySection';
 import { WaitingOnSection } from './WaitingOnSection';
 import { EverythingElseSection } from './EverythingElseSection';
@@ -32,7 +40,7 @@ export interface MyWorkTodayTabProps {
 export function MyWorkTodayTab({ workspaceId, active = true }: MyWorkTodayTabProps) {
     const {
         tasks, actionItems, followUps, firstLoad, isEmpty, error, busy,
-        doneCount, totalCount, load, toggle, addActionItem, clearCompleted,
+        doneCount, load, toggle, editText, snooze, addActionItem, clearCompleted,
     } = useMyWorkTasks(active);
     const [quickAdd, setQuickAdd] = useState('');
 
@@ -41,6 +49,17 @@ export function MyWorkTodayTab({ workspaceId, active = true }: MyWorkTodayTabPro
         [actionItems],
     );
     const followUpGroups = useMemo(() => groupFollowUpsByAge(followUps, new Date()), [followUps]);
+    const triage = useMemo(
+        () => formatTriageSummary(triageSummary(actionItems, followUps, new Date())),
+        [actionItems, followUps],
+    );
+
+    const rowActions: TaskRowActions = useMemo(() => ({
+        onToggle: toggle,
+        onEdit: (task, text) => { void editText(task, text); },
+        onSnooze: (task, due) => { void snooze(task, due); },
+        busy,
+    }), [toggle, editText, snooze, busy]);
 
     const submitQuickAdd = async () => {
         const text = quickAdd.trim();
@@ -59,12 +78,14 @@ export function MyWorkTodayTab({ workspaceId, active = true }: MyWorkTodayTabPro
             <div className="flex items-center justify-between gap-3">
                 <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Today</h2>
                 <div className="flex items-center gap-3">
-                    {totalCount > 0 && (
+                    {/* Triage state, not progress: how much is actually on fire
+                        right now. An all-clear snapshot renders no chip. */}
+                    {triage.length > 0 && (
                         <span
                             className="text-xs text-gray-500 dark:text-gray-400"
                             data-testid="my-work-today-stat"
                         >
-                            {doneCount}/{totalCount} done
+                            {triage.join(' · ')}
                         </span>
                     )}
                     {tasks && doneCount >= 1 && (
@@ -133,9 +154,9 @@ export function MyWorkTodayTab({ workspaceId, active = true }: MyWorkTodayTabPro
 
             {tasks && (
                 <>
-                    <NeedsYouTodaySection items={needsYou} onToggle={toggle} />
-                    <WaitingOnSection groups={followUpGroups} onToggle={toggle} />
-                    <EverythingElseSection items={everythingElse} onToggle={toggle} />
+                    <NeedsYouTodaySection items={needsYou} actions={rowActions} />
+                    <WaitingOnSection groups={followUpGroups} actions={rowActions} />
+                    <EverythingElseSection items={everythingElse} actions={rowActions} />
                 </>
             )}
 

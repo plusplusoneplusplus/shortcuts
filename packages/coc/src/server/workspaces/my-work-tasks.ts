@@ -61,6 +61,13 @@ export interface ParsedTasks {
 export interface TaskPatch {
     checked?: boolean;
     text?: string;
+    /**
+     * Set (`YYYY-MM-DD`) or clear (`null`) the line's `@due(...)`, leaving the
+     * rest of the line alone. This is how snooze/defer works: pushing the due
+     * date out drops the item from the urgent bucket until the date arrives,
+     * so the user never has to tick a box they did not actually do.
+     */
+    due?: string | null;
 }
 
 // ============================================================================
@@ -469,9 +476,16 @@ export function parse(
  * A toggle leaves the text byte-for-byte alone, so inline metadata survives on
  * its own. A text patch carries only the display text (that is what the caller
  * was handed), so the line's metadata is re-attached after it — otherwise
- * renaming an item would silently drop its due date and source link. Metadata
- * written in the replacement text wins, which is how a `@due()` bump edits a
- * due date rather than duplicating it.
+ * renaming an item would silently drop its due date and source link.
+ *
+ * The merge is per field, not all-or-nothing: metadata written into the
+ * replacement text wins for the fields it mentions, and everything it stays
+ * silent about is carried over from the line. So retyping the text of an item
+ * that has a tag and a source link keeps both, and adding a `@due(...)` while
+ * editing changes only the due date.
+ *
+ * `patch.due` is the explicit form of that bump — set an ISO date or `null` to
+ * clear — and it beats both, since it is the whole point of the call.
  */
 function rewriteLine(line: string, patch: TaskPatch): string {
     const m = line.match(CHECKBOX_RE);
@@ -479,9 +493,21 @@ function rewriteLine(line: string, patch: TaskPatch): string {
     const [, indent, state, text, cr] = m;
     const nextState = patch.checked === undefined ? state : patch.checked ? 'x' : ' ';
     let nextText = text;
-    if (patch.text !== undefined) {
-        const incoming = splitMetadata(patch.text);
-        nextText = `${incoming.text}${incoming.suffix || splitMetadata(text).suffix}`;
+    if (patch.text !== undefined || patch.due !== undefined) {
+        const current = splitMetadata(text);
+        const incoming = patch.text === undefined ? undefined : splitMetadata(patch.text);
+        const meta: LineMetadata = {
+            due: incoming?.due ?? current.due,
+            tags: incoming?.tags ?? current.tags,
+            sourceUrl: incoming?.sourceUrl ?? current.sourceUrl,
+        };
+        if (patch.due !== undefined) meta.due = patch.due ?? undefined;
+        const suffix = formatMetadata(meta);
+        // `current.text` keeps its original spacing when the line carried no
+        // metadata, so trim before appending or a due-only bump would leave the
+        // token dangling behind whatever trailing spaces the line had.
+        const body = incoming?.text ?? (suffix ? current.text.replace(/\s+$/, '') : current.text);
+        nextText = `${body}${suffix}`;
     }
     return `${indent}- [${nextState}] ${nextText}${cr}`;
 }

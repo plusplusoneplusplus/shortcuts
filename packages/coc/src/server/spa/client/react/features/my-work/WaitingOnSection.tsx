@@ -7,16 +7,15 @@
  *
  * Renders nothing when there are no follow-ups.
  */
-import type { MyWorkTask } from '@plusplusoneplusplus/coc-client';
 import type { PersonGroup } from './taskBuckets';
-import { SectionHeading, TaskRow } from './TaskRow';
+import { SectionHeading, TaskRow, type TaskRowActions } from './TaskRow';
 
 export interface WaitingOnSectionProps {
     groups: PersonGroup[];
-    onToggle: (task: MyWorkTask) => void;
+    actions: TaskRowActions;
 }
 
-export function WaitingOnSection({ groups, onToggle }: WaitingOnSectionProps) {
+export function WaitingOnSection({ groups, actions }: WaitingOnSectionProps) {
     if (groups.length === 0) return null;
     return (
         <section data-testid="my-work-today-followups">
@@ -38,7 +37,7 @@ export function WaitingOnSection({ groups, onToggle }: WaitingOnSectionProps) {
                                 key={task.id}
                                 task={task}
                                 testIdPrefix="my-work-today-followup"
-                                onToggle={onToggle}
+                                actions={actions}
                             />
                         ))}
                     </ul>

@@ -167,3 +167,107 @@ export function groupFollowUpsByAge(followUps: MyWorkTask[], now: Date): PersonG
 function oldest(items: MyWorkTask[], now: Date): number {
     return items.reduce((max, item) => Math.max(max, ageRank(item, now)), -1);
 }
+
+// ============================================================================
+// Snooze
+//
+// Deferring an item is a `@due(...)` bump: the date moves out, `needsAttention`
+// stops matching, and the item drops out of the top bucket until the day it is
+// actually due. That matters beyond tidiness — without it the only way to clear
+// something from the list is ticking its box, and a box ticked for an item you
+// did not do writes a false "Completed" line into the weekly summary generated
+// from these files.
+// ============================================================================
+
+/** ISO `YYYY-MM-DD` for a date's local calendar day. */
+export function toISODate(date: Date): string {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/** `now` shifted by whole days, as an ISO date. */
+export function isoDaysFromNow(now: Date, days: number): string {
+    const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + days);
+    return toISODate(target);
+}
+
+export interface SnoozeOption {
+    /** Stable key for testids and React keys. */
+    key: string;
+    label: string;
+    /** The ISO date the item's `@due(...)` becomes. */
+    due: string;
+}
+
+/**
+ * The one-click snooze targets. Two are enough: "not today" and "not this
+ * week" cover nearly every deferral, and anything more specific is what the
+ * date picker is for.
+ */
+export function snoozeOptions(now: Date): SnoozeOption[] {
+    return [
+        { key: 'tomorrow', label: 'Tomorrow', due: isoDaysFromNow(now, 1) },
+        { key: 'next-week', label: 'Next week', due: isoDaysFromNow(now, 7) },
+    ];
+}
+
+// ============================================================================
+// Triage summary
+//
+// The header chip reports triage state, not progress. `2/7 done` is a progress
+// bar for a list that never empties: it measures the wrong thing and, since new
+// items arrive faster than old ones close, only ever trends discouraging.
+// `2 overdue · 5 due today · 3 waiting >7d` is three numbers you can act on.
+// ============================================================================
+
+/** How long a follow-up must sit before it counts as stalled. */
+export const WAITING_LONG_DAYS = 7;
+
+export interface TriageSummary {
+    overdue: number;
+    dueToday: number;
+    /** Unchecked follow-ups older than `WAITING_LONG_DAYS`. */
+    waitingLong: number;
+}
+
+/**
+ * Count the three triage states across the whole snapshot. Checked items are
+ * ignored everywhere — a done item is not a state you need to act on.
+ *
+ * Overdue and due-today span both lists (a dated follow-up is just as overdue
+ * as a dated action item); "waiting" is follow-ups only, because waiting on
+ * yourself is not a thing.
+ */
+export function triageSummary(
+    actionItems: MyWorkTask[],
+    followUps: MyWorkTask[],
+    now: Date,
+): TriageSummary {
+    let overdue = 0;
+    let dueToday = 0;
+    for (const task of [...actionItems, ...followUps]) {
+        if (task.checked) continue;
+        const dueIn = daysUntilDue(task.due, now);
+        if (dueIn === null) continue;
+        if (dueIn < 0) overdue++;
+        else if (dueIn === 0) dueToday++;
+    }
+    const waitingLong = followUps.filter(
+        task => !task.checked && (ageInDays(task.addedAt, now) ?? 0) >= WAITING_LONG_DAYS,
+    ).length;
+    return { overdue, dueToday, waitingLong };
+}
+
+/**
+ * Render the summary as chip segments. Zero-valued segments are dropped rather
+ * than shown as `0 overdue`, so the chip reads as a list of things that are
+ * true — an all-clear snapshot produces no segments at all and the chip is
+ * simply not rendered.
+ */
+export function formatTriageSummary(summary: TriageSummary): string[] {
+    const segments: string[] = [];
+    if (summary.overdue > 0) segments.push(`${summary.overdue} overdue`);
+    if (summary.dueToday > 0) segments.push(`${summary.dueToday} due today`);
+    if (summary.waitingLong > 0) segments.push(`${summary.waitingLong} waiting >${WAITING_LONG_DAYS}d`);
+    return segments;
+}

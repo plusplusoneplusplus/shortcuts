@@ -39,6 +39,12 @@ export interface MyWorkTasks {
 export interface MyWorkTaskPatch {
     checked?: boolean;
     text?: string;
+    /**
+     * Set (`YYYY-MM-DD`) or clear (`null`) the item's due date — the snooze
+     * path. Only the `@due(…)` token on the line changes; text, tags and the
+     * source link are left as they are.
+     */
+    due?: string | null;
 }
 
 /** Body for quick-adding a task to one of the lists. */

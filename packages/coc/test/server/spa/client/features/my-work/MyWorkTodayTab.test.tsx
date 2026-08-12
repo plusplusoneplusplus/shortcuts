@@ -88,10 +88,12 @@ describe('MyWorkTodayTab', () => {
         expect(alice.querySelectorAll('li').length).toBe(2); // f1 + f3
     });
 
-    it('shows a done/total stat computed from action items', async () => {
+    it('shows no stat chip when nothing is overdue, due or stalled', async () => {
+        // SAMPLE carries no dates at all, so there is no triage state to report
+        // — and the chip stays away rather than reporting a done-count.
         renderTab();
         await screen.findByText('Ship the parser');
-        expect(screen.getByTestId('my-work-today-stat').textContent).toBe('1/2 done');
+        expect(screen.queryByTestId('my-work-today-stat')).toBeNull();
     });
 
     it('shows an empty state when there are no tasks', async () => {
@@ -198,7 +200,7 @@ describe('MyWorkTodayTab', () => {
         expect(screen.getByTestId('my-work-today-clear-completed')).toBeTruthy();
     });
 
-    it('archives completed items, refetches, and updates the stat', async () => {
+    it('archives completed items and refetches', async () => {
         const AFTER = {
             actionItems: [{ id: 'a1', text: 'Ship the parser', checked: false }],
             followUps: SAMPLE.followUps,
@@ -207,15 +209,13 @@ describe('MyWorkTodayTab', () => {
         archiveTasks.mockResolvedValueOnce({ archived: 1 });
         renderTab();
         await screen.findByText('Ship the parser');
-        expect(screen.getByTestId('my-work-today-stat').textContent).toBe('1/2 done');
 
         fireEvent.click(screen.getByTestId('my-work-today-clear-completed'));
 
         expect(archiveTasks).toHaveBeenCalledTimes(1);
-        // Refetch drops the archived item and refreshes the stat.
+        // Refetch drops the archived item.
         await waitFor(() => expect(getTasks).toHaveBeenCalledTimes(2));
         await waitFor(() => expect(screen.queryByText('Write the docs')).toBeNull());
-        expect(screen.getByTestId('my-work-today-stat').textContent).toBe('0/1 done');
         // Last checked item gone → the button disappears after the refresh.
         expect(screen.queryByTestId('my-work-today-clear-completed')).toBeNull();
     });
@@ -659,6 +659,343 @@ describe('MyWorkTodayTab', () => {
             expect(document.querySelectorAll('[data-testid^="my-work-today-due-"]').length).toBe(0);
             expect(document.querySelectorAll('[data-testid^="my-work-today-tag-"]').length).toBe(0);
             expect(document.querySelectorAll('[data-testid^="my-work-today-source-"]').length).toBe(0);
+        });
+    });
+
+    // ── Triage stat chip ─────────────────────────────────────────────────────
+
+    describe('triage stat chip', () => {
+        it('reports overdue, due-today and long-waiting counts across both lists', async () => {
+            getTasks.mockResolvedValue({
+                actionItems: [
+                    { id: 'o1', text: 'Late one', checked: false, due: isoIn(-3) },
+                    { id: 'o2', text: 'Late two', checked: false, due: isoIn(-1) },
+                    { id: 't1', text: 'Due now', checked: false, due: isoIn(0) },
+                ],
+                followUps: [
+                    // A dated follow-up counts as overdue just like an action item.
+                    { id: 'f1', text: 'Priya sign-off', checked: false, person: 'Priya', due: isoIn(-5), addedAt: daysAgo(9) },
+                    { id: 'f2', text: 'Bob budget', checked: false, person: 'Bob', addedAt: daysAgo(8) },
+                    { id: 'f3', text: 'Cara fresh', checked: false, person: 'Cara', addedAt: daysAgo(2) },
+                ],
+            });
+            renderTab();
+
+            await screen.findByText('Late one');
+            expect(screen.getByTestId('my-work-today-stat').textContent)
+                .toBe('3 overdue · 1 due today · 2 waiting >7d');
+        });
+
+        it('omits zero-valued segments rather than rendering "0 overdue"', async () => {
+            getTasks.mockResolvedValue({
+                actionItems: [{ id: 't1', text: 'Due now', checked: false, due: isoIn(0) }],
+                followUps: [],
+            });
+            renderTab();
+
+            await screen.findByText('Due now');
+            expect(screen.getByTestId('my-work-today-stat').textContent).toBe('1 due today');
+        });
+
+        it('ignores checked items in every segment', async () => {
+            getTasks.mockResolvedValue({
+                actionItems: [{ id: 'o1', text: 'Done but late', checked: true, due: isoIn(-3) }],
+                followUps: [
+                    { id: 'f1', text: 'Done wait', checked: true, person: 'Priya', addedAt: daysAgo(30) },
+                ],
+            });
+            renderTab();
+
+            // Both items are checked, so both sit behind the disclosure.
+            await screen.findByTestId('my-work-today-everything-else-toggle');
+            expect(screen.queryByTestId('my-work-today-stat')).toBeNull();
+        });
+
+        it('never shows a done-count progress stat', async () => {
+            getTasks.mockResolvedValue({
+                actionItems: [
+                    { id: 'a1', text: 'Open', checked: false, due: isoIn(-1) },
+                    { id: 'a2', text: 'Closed', checked: true },
+                ],
+                followUps: [],
+            });
+            renderTab();
+
+            await screen.findByText('Open');
+            expect(screen.getByTestId('my-work-today-stat').textContent).not.toMatch(/done/);
+        });
+    });
+
+    // ── Snooze ───────────────────────────────────────────────────────────────
+
+    describe('snooze', () => {
+        /** The only unchecked, undated item — so it starts in "Needs you today". */
+        const ONE_ITEM = {
+            actionItems: [{ id: 'a1', text: 'Ship the parser', checked: false }],
+            followUps: [],
+        };
+
+        async function openSnoozeMenu(id = 'a1') {
+            fireEvent.click(await screen.findByTestId(`my-work-today-snooze-${id}`));
+            return screen.getByTestId(`my-work-today-snooze-menu-${id}`);
+        }
+
+        it('keeps the menu closed until the snooze button is clicked', async () => {
+            getTasks.mockResolvedValue(ONE_ITEM);
+            renderTab();
+            await screen.findByText('Ship the parser');
+
+            expect(screen.queryByTestId('my-work-today-snooze-menu-a1')).toBeNull();
+            await openSnoozeMenu();
+            expect(screen.getByTestId('my-work-today-snooze-menu-a1')).toBeTruthy();
+        });
+
+        it('bumps the due date to tomorrow and refetches', async () => {
+            getTasks.mockResolvedValue(ONE_ITEM);
+            renderTab();
+            await openSnoozeMenu();
+
+            fireEvent.click(screen.getByTestId('my-work-today-snooze-a1-tomorrow'));
+
+            expect(patchTask).toHaveBeenCalledWith('a1', { due: isoIn(1) });
+            // The bump rewrites the line, so the id map has to be refreshed.
+            await waitFor(() => expect(getTasks).toHaveBeenCalledTimes(2));
+            // The menu closes behind the choice.
+            expect(screen.queryByTestId('my-work-today-snooze-menu-a1')).toBeNull();
+        });
+
+        it('offers next week as the second one-click target', async () => {
+            getTasks.mockResolvedValue(ONE_ITEM);
+            renderTab();
+            await openSnoozeMenu();
+
+            fireEvent.click(screen.getByTestId('my-work-today-snooze-a1-next-week'));
+            expect(patchTask).toHaveBeenCalledWith('a1', { due: isoIn(7) });
+        });
+
+        it('takes an arbitrary date from the picker', async () => {
+            getTasks.mockResolvedValue(ONE_ITEM);
+            renderTab();
+            await openSnoozeMenu();
+
+            fireEvent.change(screen.getByTestId('my-work-today-snooze-a1-date'), {
+                target: { value: '2026-12-24' },
+            });
+            expect(patchTask).toHaveBeenCalledWith('a1', { due: '2026-12-24' });
+        });
+
+        it('drops the snoozed item out of "Needs you today" once the refetch lands', async () => {
+            // The refetch is the real assertion here: the server rewrote the
+            // line, so the item comes back with a new id and a future due date,
+            // which is what moves it out of the urgent bucket.
+            getTasks
+                .mockResolvedValueOnce(ONE_ITEM)
+                .mockResolvedValueOnce({
+                    actionItems: [{ id: 'a1-new', text: 'Ship the parser', checked: false, due: isoIn(1) }],
+                    followUps: [],
+                });
+            renderTab();
+            await openSnoozeMenu();
+
+            fireEvent.click(screen.getByTestId('my-work-today-snooze-a1-tomorrow'));
+
+            await waitFor(() => expect(getTasks).toHaveBeenCalledTimes(2));
+            await waitFor(() => expect(screen.queryByTestId('my-work-today-needs-you')).toBeNull());
+            // Not gone — collapsed. It comes back on its own when it is due.
+            expect(screen.getByTestId('my-work-today-everything-else-toggle').textContent)
+                .toContain('Everything else (1)');
+        });
+
+        it('snoozes a follow-up too', async () => {
+            getTasks.mockResolvedValue({
+                actionItems: [],
+                followUps: [{ id: 'f1', text: 'Cutover sign-off', checked: false, person: 'Priya' }],
+            });
+            renderTab();
+            await openSnoozeMenu('f1');
+
+            fireEvent.click(screen.getByTestId('my-work-today-snooze-f1-tomorrow'));
+            expect(patchTask).toHaveBeenCalledWith('f1', { due: isoIn(1) });
+        });
+
+        it('rolls back and shows an inline error when the snooze PATCH fails', async () => {
+            patchTask.mockRejectedValueOnce(new Error('nope'));
+            getTasks.mockResolvedValue({
+                actionItems: [{ id: 'a1', text: 'Ship the parser', checked: false, due: isoIn(-2) }],
+                followUps: [],
+            });
+            renderTab();
+            await openSnoozeMenu();
+
+            fireEvent.click(screen.getByTestId('my-work-today-snooze-a1-tomorrow'));
+
+            await screen.findByTestId('my-work-today-error');
+            // The list stays on screen and the optimistic bump is undone — the
+            // chip reads overdue again, matching what is still on disk.
+            expect(screen.getByText('Ship the parser')).toBeTruthy();
+            expect(screen.getByTestId('my-work-today-due-a1').getAttribute('data-tone')).toBe('overdue');
+            expect(getTasks).toHaveBeenCalledTimes(1); // no refetch after a failed write
+        });
+
+        it('takes the row out of the urgent bucket the moment it is picked, before the write lands', async () => {
+            // The optimistic due date reflows the buckets immediately, so the
+            // row is gone from "Needs you today" while the PATCH is still in
+            // flight — snoozing feels instant rather than waiting on the disk.
+            patchTask.mockReturnValueOnce(new Promise(() => { /* never settles */ }));
+            getTasks.mockResolvedValue(ONE_ITEM);
+            renderTab();
+            await openSnoozeMenu();
+
+            fireEvent.click(screen.getByTestId('my-work-today-snooze-a1-tomorrow'));
+
+            await waitFor(() => expect(screen.queryByTestId('my-work-today-needs-you')).toBeNull());
+            expect(getTasks).toHaveBeenCalledTimes(1); // the refetch has not run yet
+        });
+
+        it('guards against a second mutation while one is in flight', async () => {
+            patchTask.mockReturnValueOnce(new Promise(() => { /* never settles */ }));
+            getTasks.mockResolvedValue({
+                actionItems: [
+                    { id: 'a1', text: 'Ship the parser', checked: false },
+                    { id: 'a2', text: 'Write the docs', checked: false },
+                ],
+                followUps: [],
+            });
+            renderTab();
+            await openSnoozeMenu('a1');
+            fireEvent.click(screen.getByTestId('my-work-today-snooze-a1-tomorrow'));
+
+            // The other row's actions go dead while the write is outstanding, so
+            // two mutations can never race for the same file.
+            await waitFor(() => {
+                expect((screen.getByTestId('my-work-today-snooze-a2') as HTMLButtonElement).disabled).toBe(true);
+            });
+            expect((screen.getByTestId('my-work-today-edit-a2') as HTMLButtonElement).disabled).toBe(true);
+
+            fireEvent.click(screen.getByTestId('my-work-today-snooze-a2'));
+            expect(screen.queryByTestId('my-work-today-snooze-menu-a2')).toBeNull();
+            expect(patchTask).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    // ── Inline edit ──────────────────────────────────────────────────────────
+
+    describe('inline edit', () => {
+        const ONE_ITEM = {
+            actionItems: [{ id: 'a1', text: 'Ship the parser', checked: false }],
+            followUps: [],
+        };
+
+        async function startEditing(id = 'a1') {
+            fireEvent.click(await screen.findByTestId(`my-work-today-edit-${id}`));
+            return screen.getByTestId(`my-work-today-edit-input-${id}`) as HTMLInputElement;
+        }
+
+        it('opens an editor seeded with the item text', async () => {
+            getTasks.mockResolvedValue(ONE_ITEM);
+            renderTab();
+            const input = await startEditing();
+            expect(input.value).toBe('Ship the parser');
+        });
+
+        it('sends the new text on Enter and refetches under the new id', async () => {
+            // The id is derived from the line's content, so rewriting the text
+            // changes it — the component re-reads the list rather than trying
+            // to keep the old id alive.
+            getTasks
+                .mockResolvedValueOnce(ONE_ITEM)
+                .mockResolvedValueOnce({
+                    actionItems: [{ id: 'a1-renamed', text: 'Draft the parser RFC', checked: false }],
+                    followUps: [],
+                });
+            renderTab();
+            const input = await startEditing();
+
+            fireEvent.change(input, { target: { value: 'Draft the parser RFC' } });
+            fireEvent.keyDown(input, { key: 'Enter' });
+
+            expect(patchTask).toHaveBeenCalledWith('a1', { text: 'Draft the parser RFC' });
+            await waitFor(() => expect(getTasks).toHaveBeenCalledTimes(2));
+            await screen.findByTestId('my-work-today-action-a1-renamed');
+            expect(screen.queryByTestId('my-work-today-action-a1')).toBeNull();
+            expect(screen.getByText('Draft the parser RFC')).toBeTruthy();
+        });
+
+        it('abandons the edit on Escape without writing anything', async () => {
+            getTasks.mockResolvedValue(ONE_ITEM);
+            renderTab();
+            const input = await startEditing();
+
+            fireEvent.change(input, { target: { value: 'Half-typed thought' } });
+            fireEvent.keyDown(input, { key: 'Escape' });
+
+            expect(patchTask).not.toHaveBeenCalled();
+            expect(screen.getByText('Ship the parser')).toBeTruthy();
+            expect(screen.queryByTestId('my-work-today-edit-input-a1')).toBeNull();
+        });
+
+        it('writes nothing when the text comes back unchanged or empty', async () => {
+            getTasks.mockResolvedValue(ONE_ITEM);
+            renderTab();
+            let input = await startEditing();
+            fireEvent.keyDown(input, { key: 'Enter' }); // untouched
+            expect(patchTask).not.toHaveBeenCalled();
+
+            input = await startEditing();
+            fireEvent.change(input, { target: { value: '   ' } });
+            fireEvent.keyDown(input, { key: 'Enter' }); // blanked
+            expect(patchTask).not.toHaveBeenCalled();
+        });
+
+        it('commits on blur, so clicking away does not lose the edit', async () => {
+            getTasks.mockResolvedValue(ONE_ITEM);
+            renderTab();
+            const input = await startEditing();
+
+            fireEvent.change(input, { target: { value: 'Reworded' } });
+            fireEvent.blur(input);
+
+            expect(patchTask).toHaveBeenCalledWith('a1', { text: 'Reworded' });
+        });
+
+        it('edits a follow-up row the same way', async () => {
+            getTasks.mockResolvedValue({
+                actionItems: [],
+                followUps: [{ id: 'f1', text: 'Cutover sign-off', checked: false, person: 'Priya' }],
+            });
+            renderTab();
+            const input = await startEditing('f1');
+
+            fireEvent.change(input, { target: { value: 'Nudge Priya on cutover' } });
+            fireEvent.keyDown(input, { key: 'Enter' });
+
+            expect(patchTask).toHaveBeenCalledWith('f1', { text: 'Nudge Priya on cutover' });
+        });
+
+        it('rolls the text back and shows an inline error when the PATCH fails', async () => {
+            patchTask.mockRejectedValueOnce(new Error('nope'));
+            getTasks.mockResolvedValue(ONE_ITEM);
+            renderTab();
+            const input = await startEditing();
+
+            fireEvent.change(input, { target: { value: 'Draft the parser RFC' } });
+            fireEvent.keyDown(input, { key: 'Enter' });
+
+            await screen.findByTestId('my-work-today-error');
+            // The list is still there, showing what is actually on disk.
+            expect(screen.getByText('Ship the parser')).toBeTruthy();
+            expect(screen.queryByText('Draft the parser RFC')).toBeNull();
+            expect(getTasks).toHaveBeenCalledTimes(1);
+        });
+
+        it('starts editing on a double-click of the item text', async () => {
+            getTasks.mockResolvedValue(ONE_ITEM);
+            renderTab();
+            fireEvent.doubleClick(await screen.findByText('Ship the parser'));
+
+            expect(screen.getByTestId('my-work-today-edit-input-a1')).toBeTruthy();
+            // The double-click must not have toggled the checkbox on its way in.
+            expect(patchTask).not.toHaveBeenCalled();
         });
     });
 });

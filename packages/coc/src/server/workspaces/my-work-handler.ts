@@ -351,6 +351,19 @@ export function registerMyWorkRoutes(
                 const patch: TaskPatch = {};
                 if (typeof body.checked === 'boolean') patch.checked = body.checked;
                 if (typeof body.text === 'string') patch.text = body.text;
+                // `due` sets or clears the line's `@due(...)` — the snooze path.
+                // Only an ISO date or an explicit null gets through, so nothing
+                // unparseable can be written onto a markdown line.
+                if (body.due !== undefined) {
+                    if (body.due === null) {
+                        patch.due = null;
+                    } else if (typeof body.due === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.due)) {
+                        patch.due = body.due;
+                    } else {
+                        sendError(res, 400, 'due must be a YYYY-MM-DD date or null');
+                        return;
+                    }
+                }
 
                 // Read-modify-write: re-read fresh, patch the one target line, write.
                 const aiPath = actionItemsPath(dataDir);

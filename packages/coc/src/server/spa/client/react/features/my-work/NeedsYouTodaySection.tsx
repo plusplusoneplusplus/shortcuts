@@ -5,14 +5,14 @@
  * vertical space and leaves no stray header behind.
  */
 import type { MyWorkTask } from '@plusplusoneplusplus/coc-client';
-import { SectionHeading, TaskRow } from './TaskRow';
+import { SectionHeading, TaskRow, type TaskRowActions } from './TaskRow';
 
 export interface NeedsYouTodaySectionProps {
     items: MyWorkTask[];
-    onToggle: (task: MyWorkTask) => void;
+    actions: TaskRowActions;
 }
 
-export function NeedsYouTodaySection({ items, onToggle }: NeedsYouTodaySectionProps) {
+export function NeedsYouTodaySection({ items, actions }: NeedsYouTodaySectionProps) {
     if (items.length === 0) return null;
     return (
         <section data-testid="my-work-today-needs-you">
@@ -25,7 +25,7 @@ export function NeedsYouTodaySection({ items, onToggle }: NeedsYouTodaySectionPr
                         key={task.id}
                         task={task}
                         testIdPrefix="my-work-today-action"
-                        onToggle={onToggle}
+                        actions={actions}
                     />
                 ))}
             </ul>

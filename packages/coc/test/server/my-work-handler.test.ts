@@ -525,6 +525,41 @@ describe('My Work Handler', () => {
             expect(readActionItems()).toBe('# Action Items\n- [ ] New text\n');
         });
 
+        it('PATCH snoozes an item by bumping its @due(), leaving the rest of the line alone', async () => {
+            writeActionItems('# Action Items\n- [ ] Chase sign-off #contoso [↗](https://x.test/t)\n');
+            const list = JSON.parse((await request(`${baseUrl}/api/my-work/tasks`)).body);
+            const id = list.actionItems[0].id;
+
+            const res = await patchJSON(`${baseUrl}/api/my-work/tasks/${id}`, { due: '2026-08-19' });
+            expect(res.status).toBe(200);
+            expect(readActionItems()).toBe(
+                '# Action Items\n- [ ] Chase sign-off @due(2026-08-19) #contoso [↗](https://x.test/t)\n',
+            );
+        });
+
+        it('PATCH clears a due date with an explicit null', async () => {
+            writeActionItems('# Action Items\n- [ ] Chase sign-off @due(2026-08-19)\n');
+            const list = JSON.parse((await request(`${baseUrl}/api/my-work/tasks`)).body);
+
+            const res = await patchJSON(`${baseUrl}/api/my-work/tasks/${list.actionItems[0].id}`, { due: null });
+            expect(res.status).toBe(200);
+            expect(readActionItems()).toBe('# Action Items\n- [ ] Chase sign-off\n');
+        });
+
+        it('PATCH rejects a due date that is not an ISO day, leaving the file untouched', async () => {
+            const original = '# Action Items\n- [ ] Chase sign-off\n';
+            writeActionItems(original);
+            const list = JSON.parse((await request(`${baseUrl}/api/my-work/tasks`)).body);
+
+            // Anything unparseable would otherwise be written verbatim onto the
+            // markdown line, where nothing can read it back.
+            const res = await patchJSON(`${baseUrl}/api/my-work/tasks/${list.actionItems[0].id}`, {
+                due: 'next tuesday',
+            });
+            expect(res.status).toBe(400);
+            expect(readActionItems()).toBe(original);
+        });
+
         it('PATCH toggles a follow-up item', async () => {
             writeFollowUps('# Follow Ups\n## Bob\n- [ ] Waiting on review\n');
             const list = JSON.parse((await request(`${baseUrl}/api/my-work/tasks`)).body);
