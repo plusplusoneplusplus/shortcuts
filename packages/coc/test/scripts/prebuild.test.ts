@@ -132,10 +132,7 @@ describe('prebuild script', () => {
         const rootDir = makeTempDir();
         const cocPackageRoot = path.join(rootDir, 'packages', 'coc');
         fs.mkdirSync(cocPackageRoot, { recursive: true });
-        fs.writeFileSync(
-            path.join(cocPackageRoot, 'package.json'),
-            JSON.stringify({ version: '9.8.7' }),
-        );
+        fs.writeFileSync(path.join(rootDir, 'package.json'), JSON.stringify({ version: '9.8.7' }));
 
         script.writeBuildInfo({
             rootDir,
@@ -155,5 +152,30 @@ describe('prebuild script', () => {
                 'export const BUILD_COMMIT = "unknown";\n' +
                 'export const BUILD_VERSION = "9.8.7";\n',
         );
+    });
+
+    it('reports the workspace root version, not the coc package version', () => {
+        const rootDir = makeTempDir();
+        const cocPackageRoot = path.join(rootDir, 'packages', 'coc');
+        fs.mkdirSync(cocPackageRoot, { recursive: true });
+        fs.writeFileSync(path.join(rootDir, 'package.json'), JSON.stringify({ version: '3.4.2' }));
+        fs.writeFileSync(
+            path.join(cocPackageRoot, 'package.json'),
+            JSON.stringify({ version: '1.2.0' }),
+        );
+
+        script.writeBuildInfo({
+            rootDir,
+            cocPackageRoot,
+            run: () => 'abc123\n',
+        });
+
+        const written = fs.readFileSync(
+            path.join(cocPackageRoot, 'src', 'server', 'core', 'build-info.ts'),
+            'utf8',
+        );
+        expect(written).toContain('export const BUILD_VERSION = "3.4.2";');
+        expect(written).toContain('export const BUILD_COMMIT = "abc123";');
+        expect(written).not.toContain('1.2.0');
     });
 });

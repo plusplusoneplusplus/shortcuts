@@ -159,21 +159,27 @@ describe.each(VIEWERS)('file-name banner — $name mode', ({ Viewer }) => {
         expect(banners[1].querySelector('[data-testid="diff-file-banner-counts"]')!.textContent).toContain('−0');
     });
 
-    it('is sticky to the top of the scroll container', () => {
+    it('renders in-flow rows unstyled by sticky — the docked overlay does that job', () => {
         const { container } = render(<Viewer diff={MULTI_FILE_DIFF} showFileBanners data-testid="diff" />);
         for (const banner of container.querySelectorAll<HTMLElement>('[data-testid="diff-file-banner"]')) {
-            expect(banner.className).toContain('sticky');
-            expect(banner.className).toContain('top-0');
+            expect(banner.className).not.toContain('sticky');
         }
     });
 
-    it('clips vertical overflow so the banner sticks to the host scroll container', () => {
-        // `overflow-x-auto` alone would make the viewer its own scrollport, and a
-        // sticky banner inside a box that never scrolls vertically never engages.
+    it('keeps the horizontal scroller off the viewer root so the dock can be sticky', () => {
+        // A sticky descendant of the horizontal scroller would anchor to a box
+        // that never scrolls vertically and never engage, so the rows get their
+        // own `overflow-x-auto` wrapper and the root stays a plain block.
         const { container } = render(<Viewer diff={MODIFIED_DIFF} showFileBanners data-testid="diff" />);
         const viewer = container.querySelector<HTMLElement>('[data-testid="diff"]')!;
-        expect(viewer.className).toContain('overflow-x-auto');
-        expect(viewer.className).toContain('overflow-y-clip');
+        expect(viewer.className).not.toContain('overflow-x-auto');
+        expect(viewer.className).not.toContain('overflow-y-clip');
+
+        // The rows still scroll sideways for long lines.
+        const banner = container.querySelector<HTMLElement>('[data-testid="diff-file-banner"]')!;
+        const scroller = banner.closest('.overflow-x-auto');
+        expect(scroller).toBeTruthy();
+        expect(scroller!.parentElement).toBe(viewer);
     });
 
     it('leaves overflow untouched on the surfaces that opt out', () => {

@@ -10,6 +10,7 @@
 import { Dialog } from '../../ui/Dialog';
 import { DevToolsPanel } from './DevToolsPanel';
 import { popOutOpened } from '../../utils/popOutWindow';
+import { PopOutIcon } from '../canvas/components/icons';
 import { DEV_TOOLS_POPOUT_WINDOW_NAME, devToolsPopOutUrl } from '../../layout/PopOutDevToolsShell';
 
 export interface DevToolsDialogProps {
@@ -38,12 +39,12 @@ export function DevToolsDialog({ open, onClose }: DevToolsDialogProps) {
             <h2 className="text-base font-semibold text-[#1e1e1e] dark:text-[#cccccc]">Dev Tools</h2>
             <button
                 data-testid="dev-tools-popout-btn"
-                className="ml-auto text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-sm leading-none px-1"
+                className="ml-auto inline-flex items-center text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] leading-none px-1"
                 onClick={handlePopOut}
                 aria-label="Open in new window"
                 title="Open in new window"
             >
-                ⧉
+                <PopOutIcon />
             </button>
             <button
                 data-testid="dialog-close-btn"

@@ -21,7 +21,8 @@ import {
     type LineMatchRange,
 } from './diffFindModel';
 import { FileBannerRow } from './FileBannerRow';
-import { parseFileBanners, buildBannerIndex, buildPreambleIndex, pinnedBannerForTopRow, type FileBanner } from './fileBannerModel';
+import { parseFileBanners, buildBannerIndex, buildPreambleIndex, type FileBanner } from './fileBannerModel';
+import { useDockedFileBanner } from './useDockedFileBanner';
 
 export interface UnifiedDiffViewerProps {
     diff: string;
@@ -647,18 +648,6 @@ export interface UnifiedDiffViewerHandle {
     scrollLineIntoView: (lineIndex: number) => void;
 }
 
-/**
- * `overflow-x: auto` alone computes `overflow-y` to `auto` as well, which makes
- * the viewer its own scrollport. A sticky file banner would then anchor to that
- * box — which never scrolls vertically — and never engage. `overflow-y: clip`
- * keeps horizontal scrolling for long lines without creating a vertical
- * scrollport, so banners stick to the host's scroll container as intended.
- * Applied only on the banner path so other diff surfaces are untouched.
- */
-export function stickyScrollportFix(showFileBanners: boolean | undefined): string {
-    return showFileBanners ? 'overflow-y-clip ' : '';
-}
-
 /** Reusable up/down buttons for navigating between diff hunks. */
 export function HunkNavButtons({ onPrev, onNext }: { onPrev: () => void; onNext: () => void }) {
     return (
@@ -1214,18 +1203,24 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
         selectedText: string;
     }>({ visible: false, position: { x: 0, y: 0 }, selection: null, selectedText: '' });
 
-    // Banner docked at the top edge (windowed path only). The row is derived from
+    // Banner docked at the top edge. On the windowed path the top row comes from
     // scroll geometry rather than getVirtualItems()[0], which includes `overscan`
     // rows above the viewport and so lags the true top edge by up to 24 rows.
     const topRowIndex = virtualized
         ? rowVirtualizer.getVirtualItemForOffset(rowVirtualizer.scrollOffset ?? 0)?.index
         : undefined;
-    const pinned = useMemo(
-        () => (topRowIndex === undefined
-            ? undefined
-            : pinnedBannerForTopRow(fileBanners.map(b => ({ rowIndex: b.startIdx, banner: b })), topRowIndex)),
-        [fileBanners, topRowIndex],
+    const bannerRowEntries = useMemo(
+        () => fileBanners.map(b => ({ rowIndex: b.startIdx, banner: b })),
+        [fileBanners],
     );
+    const dockedBanner = useDockedFileBanner({
+        enabled: !!showFileBanners,
+        container: containerRef,
+        scrollEl,
+        entries: bannerRowEntries,
+        virtualized,
+        topRowIndex,
+    });
 
     // Stores the last validated selection so handleContextMenu can use it without stale closures.
     const pendingSelectionRef = useRef<{ selection: DiffCommentSelection; selectedText: string } | null>(null);
@@ -1315,43 +1310,24 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             onMouseUp={enableComments ? handleMouseUp : undefined}
             onMouseDown={enableComments ? handleMouseDown : undefined}
             onContextMenu={enableComments ? handleContextMenu : undefined}
-            className={`overflow-x-auto ${stickyScrollportFix(showFileBanners)}font-mono text-xs leading-tight text-[#1e1e1e] dark:text-[#cccccc] bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded`}
+            className={`${showFileBanners ? '' : 'overflow-x-auto '}font-mono text-xs leading-tight text-[#1e1e1e] dark:text-[#cccccc] bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded`}
             data-testid={testId}
         >
-            {/* Windowed rows are absolutely positioned, so an in-flow sticky
-                banner cannot hold. Overlay a copy for the current file — but
-                only once its own in-flow banner row has scrolled above the top
-                edge, else the same file shows two banners. The wrapper is
-                zero-height so mounting it never shifts the row list. */}
-            {showFileBanners && virtualized && pinned?.overlay && (
+            {/* Dock the current file's banner at the top edge. This sits outside
+                the horizontal scroller below on purpose: sticky inside it would
+                anchor to a box that never scrolls vertically and never engage
+                (see useDockedFileBanner). Out here the nearest scrollport is the
+                host's, and the banner also stays put when long lines are scrolled
+                sideways. The wrapper is zero-height so mounting it never shifts
+                the row list. */}
+            {dockedBanner && (
                 <div className="sticky top-0 z-20 h-0" data-testid="diff-file-banner-pinned-wrapper">
                     <div className="absolute inset-x-0 top-0">
-                        <FileBannerRow banner={pinned.banner} sticky={false} data-testid="diff-file-banner-pinned" />
+                        <FileBannerRow banner={dockedBanner} data-testid="diff-file-banner-pinned" />
                     </div>
                 </div>
             )}
-            {virtualized ? (
-                <div style={{ height: rowVirtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
-                    {rowVirtualizer.getVirtualItems().map(vi => (
-                        <div
-                            key={vi.key}
-                            data-index={vi.index}
-                            ref={rowVirtualizer.measureElement}
-                            style={{
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                width: '100%',
-                                transform: `translateY(${vi.start - rowVirtualizer.options.scrollMargin}px)`,
-                            }}
-                        >
-                            {renderLineRow(vi.index)}
-                        </div>
-                    ))}
-                </div>
-            ) : (
-                lines.map((_, i) => renderLineRow(i))
-            )}
+            {showFileBanners ? <div className="overflow-x-auto">{rowList()}</div> : rowList()}
         </div>
         {enableComments && (
             <DiffContextMenu
@@ -1378,6 +1354,35 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
         </>
     );
 
+    /**
+     * The row list itself. Wrapped in the horizontal scroller when banners are
+     * on, so long lines still scroll sideways while the docked banner above
+     * stays outside that scroller.
+     */
+    function rowList() {
+        if (!virtualized) return lines.map((_, i) => renderLineRow(i));
+        return (
+            <div style={{ height: rowVirtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
+                {rowVirtualizer.getVirtualItems().map(vi => (
+                    <div
+                        key={vi.key}
+                        data-index={vi.index}
+                        ref={rowVirtualizer.measureElement}
+                        style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: '100%',
+                            transform: `translateY(${vi.start - rowVirtualizer.options.scrollMargin}px)`,
+                        }}
+                    >
+                        {renderLineRow(vi.index)}
+                    </div>
+                ))}
+            </div>
+        );
+    }
+
     function renderLineRow(i: number) {
                 const line = lines[i];
                 const { type, oldLine, newLine } = diffLines[i];
@@ -1386,7 +1391,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
                     const banner = bannerByStart.get(i);
                     // The `diff --git` row becomes the banner; the rest of the
                     // preamble (index / mode / ---/+++ / rename …) is dropped.
-                    if (banner) return <FileBannerRow key={i} banner={banner} sticky={!virtualized} />;
+                    if (banner) return <FileBannerRow key={i} banner={banner} />;
                     if (suppressedPreamble.has(i)) return null;
                 }
                 if (hiddenPreamble.has(i)) return null;

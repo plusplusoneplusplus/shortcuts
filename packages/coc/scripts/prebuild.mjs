@@ -53,7 +53,10 @@ export function writeBuildInfo({
     cocPackageRoot = packageRoot,
     run = execFileSync,
 } = {}) {
-    const packageJsonPath = path.join(cocPackageRoot, 'package.json');
+    // The product version is the workspace root version — that is what the
+    // release bumps (in lockstep with coc-desktop). The coc package's own
+    // version is not published and drifts, so it must not be reported.
+    const packageJsonPath = path.join(rootDir, 'package.json');
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
     const commit = resolveBuildCommit({ rootDir, run });
     const outputPath = path.join(cocPackageRoot, 'src', 'server', 'core', 'build-info.ts');

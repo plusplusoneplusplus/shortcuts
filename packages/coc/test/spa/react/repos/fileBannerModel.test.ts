@@ -13,6 +13,7 @@ import {
     buildPreambleIndex,
     bannerForLineIndex,
     pinnedBannerForTopRow,
+    pinnedBannerFromRowTops,
     bannerDetailsText,
     splitPath,
 } from '../../../../src/server/spa/client/react/features/git/diff/fileBannerModel';
@@ -344,6 +345,41 @@ describe('pinnedBannerForTopRow', () => {
 
     it('keeps the last banner docked past the end of the diff', () => {
         expect(pinnedBannerForTopRow(ENTRIES, 100000)).toEqual({ banner: 'B', overlay: true });
+    });
+});
+
+describe('pinnedBannerFromRowTops', () => {
+    // Row tops in viewport coordinates, as measured on the eager (non-windowed)
+    // path where every banner row is mounted. Port top is 100 throughout.
+    const PORT = 100;
+
+    it('returns nothing for an empty entry list', () => {
+        expect(pinnedBannerFromRowTops([], PORT)).toBeUndefined();
+    });
+
+    it('docks nothing while the first row is still at or below the edge', () => {
+        expect(pinnedBannerFromRowTops([{ top: PORT, banner: 'A' }], PORT)).toBeUndefined();
+        expect(pinnedBannerFromRowTops([{ top: PORT + 40, banner: 'A' }], PORT)).toBeUndefined();
+    });
+
+    it('docks the owning file once its row is above the edge', () => {
+        const entries = [{ top: PORT - 300, banner: 'A' }, { top: PORT + 200, banner: 'B' }];
+        expect(pinnedBannerFromRowTops(entries, PORT)).toBe('A');
+    });
+
+    it('hands over as soon as the next row crosses the edge', () => {
+        const entries = [{ top: PORT - 900, banner: 'A' }, { top: PORT - 1, banner: 'B' }];
+        expect(pinnedBannerFromRowTops(entries, PORT)).toBe('B');
+    });
+
+    it('keeps the last file docked past the end of the diff', () => {
+        const entries = [{ top: -5000, banner: 'A' }, { top: -4000, banner: 'B' }];
+        expect(pinnedBannerFromRowTops(entries, PORT)).toBe('B');
+    });
+
+    it('treats a sub-pixel gap as still parked on the edge', () => {
+        // Fractional layout offsets must not flicker the dock on and off.
+        expect(pinnedBannerFromRowTops([{ top: PORT - 0.25, banner: 'A' }], PORT)).toBeUndefined();
     });
 });
 
