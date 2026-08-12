@@ -7,6 +7,7 @@ import type { WorkspaceInfo, ProcessStore } from '@plusplusoneplusplus/forge';
 
 const execFileAsync = promisify(execFile);
 import type { RepoInfo, TreeEntry, TreeListResult, FileSearchResult, SearchFilesResult } from './types';
+import { fuzzyFileScore, rankFuzzyMatches } from '../shared/fuzzy-file-score';
 
 export interface RepoTreeServiceOptions {
     /**
@@ -750,33 +751,11 @@ export class RepoTreeService {
 
     /**
      * Fuzzy-score a single file path against a query.
-     * Mirrors the scoring logic in QuickOpen.tsx.
+     * Delegates to the scorer shared with the SPA file-finder dialogs.
      * Returns 0 if not all query characters are found in order.
      */
     static fuzzyScore(query: string, filePath: string): number {
-        const q = query.toLowerCase();
-        const t = filePath.toLowerCase();
-        if (!q) return 0;
-
-        let qi = 0;
-        let score = 0;
-        let prevMatchIdx = -1;
-
-        for (let ti = 0; ti < t.length && qi < q.length; ti++) {
-            if (t[ti] === q[qi]) {
-                if (ti === prevMatchIdx + 1) score += 2;
-                if (ti === 0 || t[ti - 1] === '/' || t[ti - 1] === '-' || t[ti - 1] === '_' || t[ti - 1] === '.') {
-                    score += 3;
-                }
-                score += 1;
-                prevMatchIdx = ti;
-                qi++;
-            }
-        }
-
-        if (qi < q.length) return 0;
-        score += Math.max(0, 50 - filePath.length);
-        return score;
+        return fuzzyFileScore(query, filePath);
     }
 
     /**
@@ -799,17 +778,8 @@ export class RepoTreeService {
             showIgnored: options?.showIgnored ?? false,
         });
 
-        const results: FileSearchResult[] = [];
-        for (const filePath of files) {
-            const score = RepoTreeService.fuzzyScore(query, filePath);
-            if (score > 0) {
-                results.push({ path: filePath, score });
-            }
-        }
-
-        results.sort((a, b) => b.score - a.score);
-
-        return { results: results.slice(0, limit), truncated };
+        const results: FileSearchResult[] = rankFuzzyMatches(query, files, limit);
+        return { results, truncated };
     }
 
     /**
