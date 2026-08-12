@@ -36,6 +36,15 @@ function renderTab(props: Partial<{ workspaceId: string; active: boolean }> = {}
     return render(<MyWorkTodayTab workspaceId="my_work" active {...props} />);
 }
 
+/**
+ * Open the collapsed "Everything else" bucket. Non-urgent items (checked, or
+ * synced recently) live behind the disclosure, so assertions about them have to
+ * expand it first.
+ */
+async function expandEverythingElse() {
+    fireEvent.click(await screen.findByTestId('my-work-today-everything-else-toggle'));
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('MyWorkTodayTab', () => {
@@ -69,6 +78,8 @@ describe('MyWorkTodayTab', () => {
         await screen.findByText('Ship the parser');
 
         expect(screen.getByTestId('my-work-today-action-a1')).toBeTruthy();
+        // a2 is checked, so it sits in the collapsed bucket.
+        await expandEverythingElse();
         expect(screen.getByTestId('my-work-today-action-a2')).toBeTruthy();
         // Follow-ups grouped by person (Alice appears once as a group).
         expect(screen.getByTestId('my-work-today-person-Alice')).toBeTruthy();
@@ -213,6 +224,7 @@ describe('MyWorkTodayTab', () => {
         archiveTasks.mockRejectedValueOnce(new Error('archive boom'));
         renderTab();
         await screen.findByText('Ship the parser');
+        await expandEverythingElse(); // the checked item lives behind the disclosure
 
         fireEvent.click(screen.getByTestId('my-work-today-clear-completed'));
 
@@ -284,7 +296,8 @@ describe('MyWorkTodayTab', () => {
     it('badges items older than two days on both lists, in days then weeks', async () => {
         getTasks.mockResolvedValue(withAges());
         renderTab();
-        await screen.findByText('Ship the parser');
+        // a1 is 3 days old — badge-worthy, but not stale enough to be urgent.
+        await expandEverythingElse();
 
         expect(screen.getByTestId('my-work-today-age-a1').textContent).toBe('3d');
         // Waiting On is where age is the whole signal — 21 days reads as weeks.
@@ -294,7 +307,7 @@ describe('MyWorkTodayTab', () => {
     it('omits the badge for fresh and undated items', async () => {
         getTasks.mockResolvedValue(withAges());
         renderTab();
-        await screen.findByText('Ship the parser');
+        await expandEverythingElse();
 
         expect(screen.queryByTestId('my-work-today-age-a2')).toBeNull(); // 1 day old
         expect(screen.queryByTestId('my-work-today-age-a3')).toBeNull(); // no addedAt
@@ -317,5 +330,190 @@ describe('MyWorkTodayTab', () => {
         for (const cls of openNote.className.split(/\s+/)) {
             expect(clear.classList.contains(cls)).toBe(true);
         }
+    });
+
+    // ── Urgency buckets ──────────────────────────────────────────────────────
+
+    describe('urgency buckets', () => {
+        /** Testids of the `<li>` rows inside a container, in DOM order. */
+        function rowIds(container: HTMLElement): string[] {
+            return [...container.querySelectorAll('li')].map(li => li.getAttribute('data-testid') ?? '');
+        }
+
+        it('puts stale unchecked items in "Needs you today" and fresh ones behind the disclosure', async () => {
+            getTasks.mockResolvedValue({
+                actionItems: [
+                    { id: 'old', text: 'Stale item', checked: false, addedAt: daysAgo(9) },
+                    { id: 'fresh', text: 'Fresh item', checked: false, addedAt: daysAgo(1) },
+                ],
+                followUps: [],
+            });
+            renderTab();
+
+            const needsYou = await screen.findByTestId('my-work-today-needs-you');
+            expect(rowIds(needsYou)).toEqual(['my-work-today-action-old']);
+            // The fresh one is not urgent, so it is collapsed out of sight.
+            expect(screen.queryByText('Fresh item')).toBeNull();
+
+            await expandEverythingElse();
+            expect(screen.getByText('Fresh item')).toBeTruthy();
+        });
+
+        it('treats a checked item as not urgent no matter how old it is', async () => {
+            getTasks.mockResolvedValue({
+                actionItems: [{ id: 'done', text: 'Long done', checked: true, addedAt: daysAgo(30) }],
+                followUps: [],
+            });
+            renderTab();
+
+            await screen.findByTestId('my-work-today-everything-else');
+            expect(screen.queryByTestId('my-work-today-needs-you')).toBeNull();
+        });
+
+        it('keeps hand-added (undated) items in "Needs you today" rather than burying them', async () => {
+            getTasks.mockResolvedValue({
+                actionItems: [{ id: 'hand', text: 'Typed by hand', checked: false }],
+                followUps: [],
+            });
+            renderTab();
+
+            const needsYou = await screen.findByTestId('my-work-today-needs-you');
+            expect(rowIds(needsYou)).toEqual(['my-work-today-action-hand']);
+            expect(screen.queryByTestId('my-work-today-everything-else')).toBeNull();
+        });
+
+        it('orders Waiting On oldest first, both across person groups and within one', async () => {
+            getTasks.mockResolvedValue({
+                actionItems: [],
+                followUps: [
+                    // Deliberately out of age order in the file.
+                    { id: 'f1', text: 'Alice newer', checked: false, person: 'Alice', addedAt: daysAgo(3) },
+                    { id: 'f2', text: 'Bob mid', checked: false, person: 'Bob', addedAt: daysAgo(12) },
+                    { id: 'f3', text: 'Alice oldest', checked: false, person: 'Alice', addedAt: daysAgo(20) },
+                    { id: 'f4', text: 'Cara undated', checked: false, person: 'Cara' },
+                ],
+            });
+            renderTab();
+
+            const section = await screen.findByTestId('my-work-today-followups');
+            // Groups rank by their oldest item; the undated group sorts last.
+            const groups = [...section.querySelectorAll('[data-testid^="my-work-today-person-"]')]
+                .map(el => el.getAttribute('data-testid'));
+            expect(groups).toEqual([
+                'my-work-today-person-Alice', // 20d
+                'my-work-today-person-Bob',   // 12d
+                'my-work-today-person-Cara',  // undated
+            ]);
+            // And within Alice, the 20d item precedes the 3d one.
+            expect(rowIds(screen.getByTestId('my-work-today-person-Alice'))).toEqual([
+                'my-work-today-followup-f3',
+                'my-work-today-followup-f1',
+            ]);
+        });
+
+        it('sorts undated follow-ups last within a group, keeping file order among ties', async () => {
+            getTasks.mockResolvedValue({
+                actionItems: [],
+                followUps: [
+                    { id: 'u1', text: 'Undated first in file', checked: false, person: 'Alice' },
+                    { id: 'd1', text: 'Dated', checked: false, person: 'Alice', addedAt: daysAgo(5) },
+                    { id: 'u2', text: 'Undated second in file', checked: false, person: 'Alice' },
+                ],
+            });
+            renderTab();
+
+            const alice = await screen.findByTestId('my-work-today-person-Alice');
+            expect(rowIds(alice)).toEqual([
+                'my-work-today-followup-d1', // dated items outrank undated ones
+                'my-work-today-followup-u1', // ties keep the order the note lists
+                'my-work-today-followup-u2',
+            ]);
+        });
+
+        it('collapses "Everything else" by default and expands it on click', async () => {
+            getTasks.mockResolvedValue({
+                actionItems: [
+                    { id: 'a1', text: 'Fresh one', checked: false, addedAt: daysAgo(0) },
+                    { id: 'a2', text: 'Fresh two', checked: true, addedAt: daysAgo(1) },
+                ],
+                followUps: [],
+            });
+            renderTab();
+
+            const toggle = await screen.findByTestId('my-work-today-everything-else-toggle');
+            // Collapsed by default, with a count so the hidden volume is visible.
+            expect(toggle.getAttribute('aria-expanded')).toBe('false');
+            expect(toggle.textContent).toContain('Everything else (2)');
+            expect(screen.queryByText('Fresh one')).toBeNull();
+
+            fireEvent.click(toggle);
+
+            expect(toggle.getAttribute('aria-expanded')).toBe('true');
+            expect(screen.getByText('Fresh one')).toBeTruthy();
+            expect(screen.getByText('Fresh two')).toBeTruthy();
+
+            // And it collapses again.
+            fireEvent.click(toggle);
+            expect(toggle.getAttribute('aria-expanded')).toBe('false');
+            expect(screen.queryByText('Fresh one')).toBeNull();
+        });
+
+        it('renders nothing at all for an empty bucket — no stray header', async () => {
+            // Every item is urgent: no follow-ups, nothing left over.
+            getTasks.mockResolvedValue({
+                actionItems: [{ id: 'a1', text: 'Stale item', checked: false, addedAt: daysAgo(9) }],
+                followUps: [],
+            });
+            renderTab();
+
+            await screen.findByTestId('my-work-today-needs-you');
+            expect(screen.queryByTestId('my-work-today-followups')).toBeNull();
+            expect(screen.queryByText('Waiting on others')).toBeNull();
+            expect(screen.queryByTestId('my-work-today-everything-else')).toBeNull();
+            expect(screen.queryByTestId('my-work-today-everything-else-toggle')).toBeNull();
+            expect(screen.queryByText(/Everything else/)).toBeNull();
+        });
+
+        it('omits the "Needs you today" header when nothing is urgent', async () => {
+            getTasks.mockResolvedValue({
+                actionItems: [{ id: 'a1', text: 'Fresh item', checked: false, addedAt: daysAgo(1) }],
+                followUps: [{ id: 'f1', text: 'Waiting', checked: false, person: 'Alice' }],
+            });
+            renderTab();
+
+            await screen.findByTestId('my-work-today-followups');
+            expect(screen.queryByTestId('my-work-today-needs-you')).toBeNull();
+            expect(screen.queryByText('Needs you today')).toBeNull();
+        });
+
+        it('keeps the list-level controls reachable when the urgent bucket is empty', async () => {
+            getTasks.mockResolvedValue({
+                actionItems: [{ id: 'a1', text: 'Fresh done', checked: true, addedAt: daysAgo(1) }],
+                followUps: [],
+            });
+            renderTab();
+
+            // Nothing urgent, everything collapsed — but archiving and the note
+            // links must not disappear with the section that used to host them.
+            await screen.findByTestId('my-work-today-everything-else');
+            expect(screen.queryByTestId('my-work-today-needs-you')).toBeNull();
+            expect(screen.getByTestId('my-work-today-clear-completed')).toBeTruthy();
+            expect(screen.getByTestId('my-work-today-open-actions')).toBeTruthy();
+            expect(screen.getByTestId('my-work-today-open-followups')).toBeTruthy();
+        });
+
+        it('toggling still works on a row inside the collapsed bucket', async () => {
+            getTasks.mockResolvedValue({
+                actionItems: [{ id: 'a1', text: 'Fresh item', checked: false, addedAt: daysAgo(1) }],
+                followUps: [],
+            });
+            renderTab();
+            await expandEverythingElse();
+
+            fireEvent.click(screen.getByTestId('my-work-today-check-a1'));
+
+            expect(patchTask).toHaveBeenCalledWith('a1', { checked: true });
+            await waitFor(() => expect(getTasks).toHaveBeenCalledTimes(2));
+        });
     });
 });
