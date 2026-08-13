@@ -19,6 +19,10 @@ import {
     TableHeaderWithWrap,
 } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/tableColumnWrap';
 import { TableReorder } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/tableReorder';
+import {
+    htmlToMarkdown,
+    markdownToHtml,
+} from '../../../../src/server/spa/client/react/features/notes/editor/noteMarkdown';
 
 let editor: Editor | null = null;
 
@@ -349,6 +353,88 @@ describe('tableReorder — selection after a move (AC-09)', () => {
         expect(ed.commands.moveTableColumnRight()).toBe(true);
         expect(ed.commands.moveTableColumnRight()).toBe(true);
         expect(rows(ed)[0]).toEqual(['H2', 'H3', 'H1']);
+    });
+});
+
+describe('tableReorder — markdown after a move (AC-13, AC-14)', () => {
+    /**
+     * The pipe-table lines of a note's markdown. The editor always keeps a
+     * trailing empty paragraph, which serializes to its own block below the
+     * table; nothing here is about that block.
+     */
+    function tableLines(markdown: string): string[] {
+        return markdown.split('\n').filter((line) => line.startsWith('|'));
+    }
+
+    /** Save the editor's document the way the note IO path does. */
+    function save(ed: Editor): string {
+        return htmlToMarkdown(ed.getHTML());
+    }
+
+    it('a row move produces a valid GFM table with the separator still on line 2', () => {
+        const ed = makeEditor(THREE_BY_THREE);
+        putCaret(ed, 1, 0);
+        ed.commands.moveTableRowDown();
+        expect(tableLines(save(ed))).toEqual([
+            '| H1 | H2 | H3 |',
+            '| --- | --- | --- |',
+            '| B1 | B2 | B3 |',
+            '| A1 | A2 | A3 |',
+            '| C1 | C2 | C3 |',
+        ]);
+    });
+
+    it('markdown from a row move round-trips to the identical string', () => {
+        const ed = makeEditor(THREE_BY_THREE);
+        putCaret(ed, 3, 0);
+        ed.commands.moveTableRowUp();
+        const markdown = tableLines(save(ed)).join('\n');
+        expect(tableLines(htmlToMarkdown(markdownToHtml(markdown))).join('\n')).toBe(markdown);
+    });
+
+    it('a column move reorders header and body cells together', () => {
+        const ed = makeEditor(THREE_BY_THREE);
+        putCaret(ed, 1, 0);
+        ed.commands.moveTableColumnRight();
+        expect(tableLines(save(ed))).toEqual([
+            '| H2 | H1 | H3 |',
+            '| --- | --- | --- |',
+            '| A2 | A1 | A3 |',
+            '| B2 | B1 | B3 |',
+            '| C2 | C1 | C3 |',
+        ]);
+    });
+
+    it('alignment markers travel with their column', () => {
+        const ed = makeEditor(
+            '<table><tbody>'
+            + '<tr>'
+            + '<th style="text-align: center"><p>H1</p></th>'
+            + '<th><p>H2</p></th>'
+            + '<th style="text-align: right"><p>H3</p></th>'
+            + '</tr>'
+            + '<tr><td><p>A1</p></td><td><p>A2</p></td><td><p>A3</p></td></tr>'
+            + '</tbody></table>',
+        );
+        putCaret(ed, 1, 0);
+        expect(ed.commands.moveTableColumnRight()).toBe(true);
+        const lines = tableLines(save(ed));
+        expect(lines[0]).toBe('| H2 | H1 | H3 |');
+        expect(lines[1]).toBe('| --- | :---: | ---: |');
+
+        // …and survives the reload that follows the save.
+        const markdown = lines.join('\n');
+        expect(tableLines(htmlToMarkdown(markdownToHtml(markdown))).join('\n')).toBe(markdown);
+    });
+
+    it('the header row still serializes as the header after body rows are reordered', () => {
+        const ed = makeEditor(THREE_BY_THREE);
+        putCaret(ed, 1, 0);
+        ed.commands.moveTableRowDown();
+        const reloaded = markdownToHtml(tableLines(save(ed)).join('\n'));
+        // Exactly the three original header cells are <th>; no body row was promoted.
+        expect(reloaded.match(/<th[\s>]/g)).toHaveLength(3);
+        expect(reloaded.indexOf('H1')).toBeLessThan(reloaded.indexOf('B1'));
     });
 });
 

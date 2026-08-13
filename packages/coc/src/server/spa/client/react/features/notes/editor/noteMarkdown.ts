@@ -419,9 +419,16 @@ turndown.addRule('tableRow', {
 
         let needsSeparator = isInThead || thCells.length > 0;
 
-        // td-only tables (e.g. pasted content): first row still needs a GFM separator
+        // td-only tables (e.g. pasted content): first row still needs a GFM separator.
+        // "First" means first in the whole table, not first in its section: a
+        // <thead>+<tbody> table (what `markdownToHtml` emits) would otherwise get a
+        // second separator after the first body row, splitting the table in two on the
+        // way back to markdown.
         if (!needsSeparator && node.parentNode) {
-            const firstTr = Array.from(node.parentNode.childNodes).find(c => c.nodeName === 'TR');
+            const table = (node as Element).closest?.('table');
+            const firstTr = table
+                ? allTableRows(table)[0]
+                : Array.from(node.parentNode.childNodes).find(c => c.nodeName === 'TR');
             needsSeparator = firstTr === node;
         }
 
@@ -429,7 +436,13 @@ turndown.addRule('tableRow', {
             const cells = thCells.length > 0 ? thCells : Array.from(node.querySelectorAll('td'));
             const separators = cells.map((cell) => {
                 const style = (cell as Element).getAttribute('style') ?? '';
-                const align = style.match(/text-align:\s*(\w+)/i)?.[1] ?? '';
+                // Tiptap writes alignment as `style="text-align: …"`; `marked` writes it
+                // as the HTML `align` attribute. Both have to be read or an aligned
+                // table loses its markers the first time it round-trips.
+                const align =
+                    style.match(/text-align:\s*(\w+)/i)?.[1]
+                    ?? (cell as Element).getAttribute('align')
+                    ?? '';
                 if (align === 'center') return '| :---: ';
                 if (align === 'right') return '| ---: ';
                 return '| --- ';

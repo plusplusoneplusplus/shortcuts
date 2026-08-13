@@ -738,6 +738,45 @@ describe('noteMarkdown', () => {
             expect(reloadedHtml).not.toContain('<th');
         });
 
+        // A <thead>+<tbody> table is what `markdownToHtml` itself emits, so these
+        // two guard the plain save → reload → save cycle. Both used to break it:
+        // the first body row was "the first <tr> of its parent", which earned it a
+        // second separator line, and `align="center"` (marked's spelling of what
+        // Tiptap writes as `style="text-align: center"`) was not read at all.
+        it('htmlToMarkdown — a <thead>+<tbody> table gets exactly one separator', () => {
+            const html =
+                '<table><thead><tr><th>H1</th><th>H2</th></tr></thead>' +
+                '<tbody>' +
+                '<tr><td>A1</td><td>A2</td></tr>' +
+                '<tr><td>B1</td><td>B2</td></tr>' +
+                '</tbody></table>';
+            const lines = norm(htmlToMarkdown(html)).split('\n').filter(Boolean);
+            expect(lines).toEqual([
+                '| H1 | H2 |',
+                '| --- | --- |',
+                '| A1 | A2 |',
+                '| B1 | B2 |',
+            ]);
+        });
+
+        it('round-trip — a table with two body rows is byte-identical', () => {
+            const md = '| H1 | H2 |\n| --- | --- |\n| A1 | A2 |\n| B1 | B2 |';
+            expect(norm(roundTrip(md))).toBe(md);
+        });
+
+        it('round-trip — alignment markers survive (marked writes align=, Tiptap writes style=)', () => {
+            const md = '| L | C | R |\n| --- | :---: | ---: |\n| a | b | c |';
+            expect(norm(roundTrip(md))).toBe(md);
+        });
+
+        it('htmlToMarkdown — alignment given as an align attribute', () => {
+            const html =
+                '<table><thead><tr>' +
+                '<th align="center">C</th><th align="right">R</th>' +
+                '</tr></thead></table>';
+            expect(htmlToMarkdown(html)).toContain('| :---: | ---: |');
+        });
+
         it('round-trip — pasted table (td-only) renders back as table', () => {
             const html =
                 '<table><tbody>' +
