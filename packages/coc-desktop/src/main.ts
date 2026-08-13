@@ -14,6 +14,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import { app, BrowserWindow, Menu, Notification, Tray, dialog, nativeImage, shell, clipboard, ipcMain, globalShortcut } from 'electron';
 import { attachOrStart, defaultDataDir, ServerHandle } from './server-controller';
 import {
@@ -73,6 +74,13 @@ import {
     DEVTUNNEL_MODAL_CANCEL_CHANNEL,
     DEVTUNNEL_MODAL_SUBMIT_CHANNEL,
 } from './devtunnel-modal';
+import {
+    buildIssueUrl,
+    reportIssueDataUrl,
+    ReportIssueEnvironment,
+    REPORT_ISSUE_CANCEL_CHANNEL,
+    REPORT_ISSUE_SUBMIT_CHANNEL,
+} from './report-issue';
 import { isPopOutChildUrl } from './popout-chrome';
 import { createPopOutWindow, registerPopOutIpc } from './popout-window-host';
 
@@ -105,6 +113,10 @@ let devTunnelManager: DevTunnelHostManager | null = null;
 let devTunnelModalWindow: BrowserWindow | null = null;
 /** Guard so the Dev Tunnel modal IPC handlers are registered only once. */
 let devTunnelModalIpcRegistered = false;
+/** The Report an Issue… modal window, while open (all platforms). */
+let reportIssueModalWindow: BrowserWindow | null = null;
+/** Guard so the Report an Issue… IPC handlers are registered only once. */
+let reportIssueIpcRegistered = false;
 /** AC-01: guard so the global capture accelerator is registered only once. */
 let screenshotShortcutRegistered = false;
 
@@ -589,8 +601,131 @@ function setupApplicationMenu(currentChannel?: UpdateChannel): void {
         debug: buildDebugMenuHandlers(),
         // Disabled "Elevation: …" row under About, so an admin launch is visible.
         elevation: getElevation(),
+        // AC-01: "Report an Issue…" at the top of the Help submenu, every platform.
+        onReportIssue: () => openReportIssueModal(),
     });
     Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+// ─── Report an Issue… (AC-01..AC-04) ────────────────────────────────────────
+//
+// All behaviour (body composition, URL building, the length cap, the modal
+// markup and its wiring) lives in the electron-free `report-issue.ts`. This
+// block is only the Electron glue: open the modal window, handle submit/cancel,
+// and hand the finished URL to the default browser. CoC never authenticates to
+// GitHub and never uploads anything — the user presses GitHub's own submit
+// button on the prefilled form.
+
+/** Snapshot the environment facts that get published with the report. */
+function currentReportIssueEnvironment(): ReportIssueEnvironment {
+    return {
+        appVersion: app.getVersion(),
+        electronVersion: process.versions.electron ?? 'unknown',
+        nodeVersion: process.versions.node ?? 'unknown',
+        platform: process.platform,
+        release: os.release(),
+        arch: process.arch,
+    };
+}
+
+/** Register the Report an Issue… submit/cancel IPC handlers exactly once. */
+function registerReportIssueIpc(): void {
+    if (reportIssueIpcRegistered) {
+        return;
+    }
+    reportIssueIpcRegistered = true;
+    ipcMain.on(REPORT_ISSUE_SUBMIT_CHANNEL, (_event, rawTitle: unknown, rawBody: unknown) => {
+        const title = typeof rawTitle === 'string' ? rawTitle.trim() : '';
+        const description = typeof rawBody === 'string' ? rawBody : '';
+        closeReportIssueModal();
+        if (!title) {
+            return;
+        }
+        submitIssueReport(title, description);
+    });
+    ipcMain.on(REPORT_ISSUE_CANCEL_CHANNEL, () => {
+        closeReportIssueModal();
+    });
+}
+
+/**
+ * AC-03/AC-04: open GitHub's new-issue form prefilled with the report. When the
+ * encoded URL would run past the safe length, copy the full body to the
+ * clipboard, open the bare form, and tell the user to paste — never truncate.
+ */
+function submitIssueReport(title: string, description: string): void {
+    const result = buildIssueUrl({
+        title,
+        description,
+        environment: currentReportIssueEnvironment(),
+    });
+    if (result.overflow) {
+        clipboard.writeText(result.body);
+    }
+    void shell.openExternal(result.url).catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`[coc-desktop] failed to open issue URL: ${message}\n`);
+    });
+    if (result.overflow) {
+        void dialog.showMessageBox({
+            type: 'info',
+            title: 'Report an Issue',
+            message: 'Your description was too long to prefill.',
+            detail:
+                'The full report was copied to the clipboard. Paste it (Ctrl+V / Cmd+V) into ' +
+                "GitHub's issue body before submitting.",
+            buttons: ['OK'],
+        });
+    }
+}
+
+/**
+ * Open the fixed-size, dark-shell Report an Issue… modal owned by the main
+ * window. Focus an already-open modal rather than stacking two.
+ */
+function openReportIssueModal(): void {
+    registerReportIssueIpc();
+    if (reportIssueModalWindow && !reportIssueModalWindow.isDestroyed()) {
+        reportIssueModalWindow.focus();
+        return;
+    }
+    const modal = new BrowserWindow({
+        width: 520,
+        height: 560,
+        parent: mainWindow ?? undefined,
+        modal: true,
+        resizable: false,
+        minimizable: false,
+        maximizable: false,
+        fullscreenable: false,
+        show: false,
+        backgroundColor: '#0d1117',
+        title: 'Report an Issue',
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+        },
+    });
+    modal.setMenuBarVisibility(false);
+    modal.once('ready-to-show', () => {
+        if (!modal.isDestroyed()) {
+            modal.show();
+        }
+    });
+    modal.on('closed', () => {
+        reportIssueModalWindow = null;
+    });
+    void modal.loadURL(reportIssueDataUrl({ environment: currentReportIssueEnvironment() }));
+    reportIssueModalWindow = modal;
+}
+
+/** Close the Report an Issue… modal if it is still open. */
+function closeReportIssueModal(): void {
+    if (reportIssueModalWindow && !reportIssueModalWindow.isDestroyed()) {
+        reportIssueModalWindow.close();
+    }
+    reportIssueModalWindow = null;
 }
 
 // ─── AC-01/03/04: Windows-only Dev Tunnel wiring ────────────────────────────
