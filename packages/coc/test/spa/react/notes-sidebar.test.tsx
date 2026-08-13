@@ -985,7 +985,7 @@ describe('NotesSidebar', () => {
             selectedRootLabel: 'Notes',
             onSelectRoot,
         });
-        await findByTestId('notes-tree');
+        await findByTestId('notes-tree-default');
 
         fireEvent.click(await findByTestId('notes-root-selector'));
         fireEvent.click(await findByTestId('notes-root-option-docs'));
@@ -1002,7 +1002,7 @@ describe('NotesSidebar', () => {
             selectedRootLabel: 'Notes',
             onSelectRoot,
         });
-        await findByTestId('notes-tree');
+        await findByTestId('notes-tree-default');
 
         fireEvent.click(await findByTestId('notes-root-selector'));
         fireEvent.click(await findByTestId('notes-root-option-docs'), { ctrlKey: true });
@@ -1028,7 +1028,7 @@ describe('NotesSidebar', () => {
             selectedRootLabel: 'Notes',
             onSelectRoot,
         });
-        await findByTestId('notes-tree');
+        await findByTestId('notes-tree-default');
 
         fireEvent.click(await findByTestId('notes-root-selector'));
         fireEvent.click(await findByTestId('notes-root-option-docs'), { ctrlKey: true });
@@ -1049,7 +1049,7 @@ describe('NotesSidebar', () => {
             selectedRootLabel: 'Notes',
             onSelectRoot,
         });
-        await findByTestId('notes-tree');
+        await findByTestId('notes-tree-default');
 
         fireEvent.click(await findByTestId('notes-root-selector'));
         fireEvent.click(await findByTestId('notes-root-option-plans'), { shiftKey: true });
@@ -1076,7 +1076,7 @@ describe('NotesSidebar', () => {
             selectedRootLabel: 'Notes',
             onSelectRoot,
         });
-        await findByTestId('notes-tree');
+        await findByTestId('notes-tree-default');
 
         fireEvent.click(await findByTestId('notes-root-selector'));
         const taskRoot = await findByTestId('notes-root-option-task:primary');
@@ -1106,7 +1106,7 @@ describe('NotesSidebar', () => {
             selectedRootLabel: 'Task Plans',
             onSelectRoot: vi.fn(),
         });
-        await findByTestId('notes-tree');
+        await findByTestId('notes-tree-task:primary');
 
         fireEvent.click(await findByTestId('add-note-btn'));
         const aiCreate = await findByTestId('add-note-ai-create');
@@ -1125,7 +1125,7 @@ describe('NotesSidebar', () => {
             onSelectRoot: vi.fn(),
             onRootsChanged,
         });
-        await findByTestId('notes-tree');
+        await findByTestId('notes-tree-default');
 
         fireEvent.click(await findByTestId('notes-root-selector'));
         fireEvent.click(await findByTestId('notes-root-option-docs'), { ctrlKey: true });
@@ -1160,7 +1160,7 @@ describe('NotesSidebar', () => {
             onSelectRoot,
             onRootsChanged,
         });
-        await findByTestId('notes-tree');
+        await findByTestId('notes-tree-docs');
 
         fireEvent.click(await findByTestId('notes-root-selector'));
         fireEvent.click(await findByTestId('notes-root-option-docs'), { ctrlKey: true });
@@ -1191,7 +1191,7 @@ describe('NotesSidebar', () => {
             onSelectRoot: vi.fn(),
             onRootsChanged,
         });
-        await findByTestId('notes-tree');
+        await findByTestId('notes-tree-default');
 
         fireEvent.click(await findByTestId('notes-root-selector'));
         fireEvent.click(await findByTestId('notes-root-option-docs'), { ctrlKey: true });

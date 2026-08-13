@@ -88,7 +88,12 @@ export function NotesRootSection({
             )}
 
             {!loading && !error && tree && tree.length > 0 && (
-                <NotesTree {...treeProps} nodes={tree} visiblePaths={filter?.visible ?? null} />
+                <NotesTree
+                    {...treeProps}
+                    nodes={tree}
+                    visiblePaths={filter?.visible ?? null}
+                    rootTestId={tid('notes-tree')}
+                />
             )}
 
             {!loading && !error && tree && tree.length > 0 && filter && filter.visible.size === 0 && (

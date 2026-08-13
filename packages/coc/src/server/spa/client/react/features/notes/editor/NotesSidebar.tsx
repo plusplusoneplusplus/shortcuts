@@ -15,7 +15,7 @@ import { useNotesClipboard, planClipboardPaste } from '../hooks/useNotesClipboar
 import { getSpaCocClient } from '../../../api/cocClient';
 import { notesApi } from '../notesApi';
 import { useGlobalToast } from '../../../contexts/ToastContext';
-import { useNotesTreesExpansion, useNotesTreeScroll } from './NotesTreeExpansion';
+import { useNotesTreesExpansion, useNotesSectionsExpanded, useNotesTreeScroll } from './NotesTreeExpansion';
 
 /** Synthetic root node used when right-clicking empty space in the sidebar. */
 const ROOT_NODE: NoteTreeNode = { name: '', path: '', type: 'notebook' };
@@ -201,35 +201,68 @@ export interface NotesSidebarProps {
 
 export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, canGoBack, onGoBack, canGoForward, onGoForward, onNotesRootReady, onRestoreEditorFocus, markSeenRef, isDefaultRoot = true, selectedRootId, selectedRootLabel, roots, onSelectRoot, onRootsChanged, footer }: NotesSidebarProps) {
     const { addToast } = useGlobalToast();
+    /** Roots in API order — the section stack (AC-01). */
+    const orderedRootIds = useMemo(() => roots?.map(r => r.rootId) ?? [], [roots]);
     /**
-     * The root every sidebar-level handler acts on. Stacked sections will make
-     * this the section last interacted with; today it is simply the selected
-     * root, so behaviour is unchanged while the data layer becomes per-root.
+     * The root every sidebar-level handler acts on: the section last interacted
+     * with, reset to whatever root the parent selects.
      */
-    const activeRootId = selectedRootId ?? 'default';
+    const parentRootId = selectedRootId ?? 'default';
+    /**
+     * Sections only render once the roots list agrees with the selected root.
+     * Right after a workspace switch the parent still holds the previous
+     * workspace's roots for a beat, and stacking them would fetch a tree for a
+     * root that does not belong to this workspace.
+     */
+    const hasMultipleRoots = orderedRootIds.length > 1 && orderedRootIds.includes(parentRootId);
+    /** Open/closed state per section, persisted per workspace + root (AC-02). */
+    const sections = useNotesSectionsExpanded(workspaceId, orderedRootIds, selectedRootId);
+    const { expandedRootIds } = sections;
+    const [focusedRootId, setFocusedRootId] = useState<string | null>(null);
+    const [lastParentRootId, setLastParentRootId] = useState(parentRootId);
+    if (lastParentRootId !== parentRootId) {
+        // Reset during render, not in an effect: a fetch keyed off the active
+        // root must never run for the root the parent just navigated away from.
+        setLastParentRootId(parentRootId);
+        setFocusedRootId(null);
+    }
+    const activeRootId = (lastParentRootId === parentRootId ? focusedRootId : null) ?? parentRootId;
+    /**
+     * Mirrors `activeRootId` for handlers that fire in the same tick as the
+     * click that focused a section — the state update has not landed yet, but
+     * the mutation still has to target the section the user just touched.
+     */
+    const activeRootIdRef = useRef(activeRootId);
+    activeRootIdRef.current = activeRootId;
     const rootParam = notesRootParam(activeRootId);
-    /** Roots whose trees are held in memory. Becomes the expanded sections later. */
-    const activeRootIds = useMemo(() => [activeRootId], [activeRootId]);
+    /**
+     * Roots whose trees are held in memory: every expanded section, so a root is
+     * only fetched once its section first opens and is cached after (AC-03).
+     */
+    const activeRootIds = useMemo(
+        () => (hasMultipleRoots ? expandedRootIds : [activeRootId]),
+        [hasMultipleRoots, expandedRootIds, activeRootId],
+    );
     const { getTree, refresh: refreshRoot } = useNotesTrees(workspaceId, activeRootIds);
     const { tree, notesRoot, systemFolders, loading, error } = getTree(activeRootId);
     const rootMutations = useNotesRootMutations(workspaceId, refreshRoot);
-    const refresh = useCallback(() => refreshRoot(activeRootId), [refreshRoot, activeRootId]);
+    const refresh = useCallback(() => refreshRoot(activeRootIdRef.current), [refreshRoot]);
     const createNode = useCallback(
         (parentPath: string, name: string, type: 'notebook' | 'section' | 'page') =>
-            rootMutations.createNode(activeRootId, parentPath, name, type),
-        [rootMutations, activeRootId],
+            rootMutations.createNode(activeRootIdRef.current, parentPath, name, type),
+        [rootMutations],
     );
     const renameNode = useCallback(
-        (oldPath: string, newPath: string) => rootMutations.renameNode(activeRootId, oldPath, newPath),
-        [rootMutations, activeRootId],
+        (oldPath: string, newPath: string) => rootMutations.renameNode(activeRootIdRef.current, oldPath, newPath),
+        [rootMutations],
     );
     const deleteNode = useCallback(
-        (path: string) => rootMutations.deleteNode(activeRootId, path),
-        [rootMutations, activeRootId],
+        (path: string) => rootMutations.deleteNode(activeRootIdRef.current, path),
+        [rootMutations],
     );
     const reorderNodes = useCallback(
-        (parentPath: string, order: string[]) => rootMutations.reorderNodes(activeRootId, parentPath, order),
-        [rootMutations, activeRootId],
+        (parentPath: string, order: string[]) => rootMutations.reorderNodes(activeRootIdRef.current, parentPath, order),
+        [rootMutations],
     );
     const { isNoteUpdated, markAsSeen, syncSeenState } = useNoteSeenState(workspaceId);
     const isNoteChatRunning = useNoteChatRunning(workspaceId);
@@ -239,9 +272,21 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     const { getExpanded, setExpanded: setExpandedForRoot } = useNotesTreesExpansion(workspaceId, activeRootIds);
     const expandedPaths = getExpanded(activeRootId);
     const setExpandedPaths = useCallback(
-        (action: SetStateAction<Set<string>>) => setExpandedForRoot(activeRootId, action),
-        [setExpandedForRoot, activeRootId],
+        (action: SetStateAction<Set<string>>) => setExpandedForRoot(activeRootIdRef.current, action),
+        [setExpandedForRoot],
     );
+    /**
+     * Point the sidebar-level handlers (paste, drop, keyboard, context menu,
+     * range selection) at the section the user just touched. Moving between
+     * sections drops the multi-selection, so only one section can ever hold one
+     * (AC-05) and cut/copy/paste stays inside a single root.
+     */
+    const focusRoot = useCallback((rootId: string) => {
+        if (activeRootIdRef.current === rootId) return;
+        activeRootIdRef.current = rootId;
+        setFocusedRootId(rootId);
+        clearSelection();
+    }, [clearSelection]);
     const [renamingPath, setRenamingPath] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [gitInitialized, setGitInitialized] = useState(false);
@@ -258,11 +303,9 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     );
     const [rootDropdownOpen, setRootDropdownOpen] = useState(false);
     const rootDropdownRef = useRef<HTMLDivElement>(null);
-    const hasMultipleRoots = roots && roots.length > 1;
     const [selectedRootIdsForRemoval, setSelectedRootIdsForRemoval] = useState<Set<string>>(new Set());
     const [rootSelectionAnchor, setRootSelectionAnchor] = useState<string | null>(null);
     const [removingSelectedRoots, setRemovingSelectedRoots] = useState(false);
-    const orderedRootIds = useMemo(() => roots?.map(r => r.rootId) ?? [], [roots]);
     const removableRootIds = useMemo(
         () => new Set((roots ?? []).filter(r => !r.isDefault && !r.isProtected).map(r => r.rootId)),
         [roots],
@@ -878,11 +921,21 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
 
     // ── Derived values for the redesigned header / meta row ────────────────
 
-    const totalPages = useMemo(() => (tree ? countTotalPages(tree) : 0), [tree]);
-    const updatedCount = useMemo(
-        () => (tree ? countUpdatedPages(tree, isNoteUpdated) : 0),
-        [tree, isNoteUpdated],
-    );
+    /** Meta pills count the whole column, so with sections they span every root. */
+    const totalPages = useMemo(() => {
+        if (!hasMultipleRoots) return tree ? countTotalPages(tree) : 0;
+        return orderedRootIds.reduce((sum, rootId) => {
+            const rootTree = getTree(rootId).tree;
+            return sum + (rootTree ? countTotalPages(rootTree) : 0);
+        }, 0);
+    }, [hasMultipleRoots, tree, orderedRootIds, getTree]);
+    const updatedCount = useMemo(() => {
+        if (!hasMultipleRoots) return tree ? countUpdatedPages(tree, isNoteUpdated) : 0;
+        return orderedRootIds.reduce((sum, rootId) => {
+            const rootTree = getTree(rootId).tree;
+            return sum + (rootTree ? countUpdatedPages(rootTree, isNoteUpdated) : 0);
+        }, 0);
+    }, [hasMultipleRoots, tree, isNoteUpdated, orderedRootIds, getTree]);
 
     const filter = useMemo(
         () => (tree ? buildVisibilityFilter(tree, searchQuery) : null),
@@ -902,6 +955,36 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         () => (tree ? flattenVisibleNodePaths(tree, effectiveExpanded, filter?.visible ?? null) : []),
         [tree, effectiveExpanded, filter],
     );
+
+    /**
+     * Render state for every expanded section. Each root gets its own search
+     * filter — so a section with zero matches still shows its header and an
+     * empty state instead of vanishing (AC-06) — and its own flat row list, so
+     * a shift-range never spans two roots.
+     */
+    const sectionStates = useMemo(() => {
+        const map: Record<string, {
+            filter: ReturnType<typeof buildVisibilityFilter> | null;
+            effectiveExpanded: Set<string>;
+            flatList: string[];
+        }> = {};
+        for (const rootId of activeRootIds) {
+            const rootTree = getTree(rootId).tree;
+            const rootFilter = rootTree ? buildVisibilityFilter(rootTree, searchQuery) : null;
+            const base = getExpanded(rootId);
+            const combined = rootFilter
+                ? new Set([...base, ...rootFilter.expand])
+                : base;
+            map[rootId] = {
+                filter: rootFilter,
+                effectiveExpanded: combined,
+                flatList: rootTree
+                    ? flattenVisibleNodePaths(rootTree, combined, rootFilter?.visible ?? null)
+                    : [],
+            };
+        }
+        return map;
+    }, [activeRootIds, getTree, getExpanded, searchQuery]);
 
     /**
      * Drag payload for the current multi-selection: {path,name,type} for every
@@ -1308,43 +1391,117 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                 onKeyDown={handleTreeKeyDown}
                 onContextMenu={handleBackgroundContextMenu}
             >
-                <NotesRootSection
-                    loading={loading}
-                    error={error}
-                    tree={tree}
-                    searchQuery={searchQuery}
-                    filter={filter}
-                    treeProps={{
-                        selectedPath,
-                        expandedPaths: effectiveExpanded,
-                        systemFolders,
-                        onToggleExpand: handleToggleExpand,
-                        onSelectPage: handleSelectPage,
-                        onContextMenu: handleContextMenu,
-                        isNoteUpdated,
-                        isNoteChatRunning,
-                        countDescendantPages,
-                        multiSelectedPaths,
-                        cutPaths,
-                        selectionDragItems,
-                        onSelectWithModifiers: handleSelectWithModifiers,
-                        renamingPath,
-                        onStartRename: handleStartInlineRename,
-                        onRenameCommit: handleCommitInlineRename,
-                        onRenameCancel: handleCancelInlineRename,
-                        dragDrop: {
-                            createDragStartHandler: dragDrop.createDragStartHandler,
-                            createDragEndHandler: dragDrop.createDragEndHandler,
-                            createDragOverHandler: dragDrop.createDragOverHandler,
-                            createDragEnterHandler: dragDrop.createDragEnterHandler,
-                            createDragLeaveHandler: dragDrop.createDragLeaveHandler,
-                            createDropHandler: dragDrop.createDropHandler,
-                            dropTargetPath: dragDrop.dropTargetPath,
-                            dropPosition: dragDrop.dropPosition,
-                            onDrop: handleNoteDrop,
-                        },
-                    }}
-                />
+                {hasMultipleRoots ? (
+                    roots!.map(root => {
+                        const rootId = root.rootId;
+                        const state = getTree(rootId);
+                        const section = sectionStates[rootId];
+                        const focus = () => focusRoot(rootId);
+                        const isProtectedRoot = root.isDefault || Boolean(root.isProtected);
+                        return (
+                            <NotesRootSection
+                                key={rootId}
+                                testIdSuffix={rootId}
+                                header={{
+                                    label: root.label,
+                                    expanded: sections.isExpanded(rootId),
+                                    onToggle: () => sections.toggle(rootId),
+                                    count: state.tree ? countTotalPages(state.tree) : undefined,
+                                    isDefault: root.isDefault,
+                                    isProtected: isProtectedRoot,
+                                    protectedReason: isProtectedRoot
+                                        ? (root.isDefault
+                                            ? 'Default managed root cannot be removed'
+                                            : 'Managed through Task/Plans settings and cannot be removed')
+                                        : undefined,
+                                }}
+                                loading={state.loading}
+                                error={state.error}
+                                tree={state.tree}
+                                searchQuery={searchQuery}
+                                filter={section?.filter ?? null}
+                                treeProps={{
+                                    selectedPath,
+                                    expandedPaths: section?.effectiveExpanded ?? getExpanded(rootId),
+                                    systemFolders: state.systemFolders,
+                                    onToggleExpand: (path) => { focus(); handleToggleExpand(path); },
+                                    onSelectPage: (path) => { focus(); handleSelectPage(path); },
+                                    onContextMenu: (node, x, y) => { focus(); handleContextMenu(node, x, y); },
+                                    isNoteUpdated,
+                                    isNoteChatRunning,
+                                    countDescendantPages,
+                                    multiSelectedPaths: rootId === activeRootId ? multiSelectedPaths : undefined,
+                                    cutPaths: rootId === activeRootId ? cutPaths : undefined,
+                                    selectionDragItems: rootId === activeRootId ? selectionDragItems : undefined,
+                                    onSelectWithModifiers: (path, shiftKey, ctrlKey) => {
+                                        focus();
+                                        handleMultiSelect(
+                                            path,
+                                            { shift: shiftKey, ctrl: ctrlKey },
+                                            section?.flatList ?? [],
+                                        );
+                                    },
+                                    renamingPath: rootId === activeRootId ? renamingPath : null,
+                                    onStartRename: (node) => { focus(); handleStartInlineRename(node); },
+                                    onRenameCommit: handleCommitInlineRename,
+                                    onRenameCancel: handleCancelInlineRename,
+                                    dragDrop: {
+                                        createDragStartHandler: (item) => {
+                                            const handler = dragDrop.createDragStartHandler(item);
+                                            return (e) => { focus(); handler(e); };
+                                        },
+                                        createDragEndHandler: dragDrop.createDragEndHandler,
+                                        createDragOverHandler: dragDrop.createDragOverHandler,
+                                        createDragEnterHandler: dragDrop.createDragEnterHandler,
+                                        createDragLeaveHandler: dragDrop.createDragLeaveHandler,
+                                        createDropHandler: dragDrop.createDropHandler,
+                                        dropTargetPath: dragDrop.dropTargetPath,
+                                        dropPosition: dragDrop.dropPosition,
+                                        onDrop: handleNoteDrop,
+                                    },
+                                }}
+                            />
+                        );
+                    })
+                ) : (
+                    <NotesRootSection
+                        loading={loading}
+                        error={error}
+                        tree={tree}
+                        searchQuery={searchQuery}
+                        filter={filter}
+                        treeProps={{
+                            selectedPath,
+                            expandedPaths: effectiveExpanded,
+                            systemFolders,
+                            onToggleExpand: handleToggleExpand,
+                            onSelectPage: handleSelectPage,
+                            onContextMenu: handleContextMenu,
+                            isNoteUpdated,
+                            isNoteChatRunning,
+                            countDescendantPages,
+                            multiSelectedPaths,
+                            cutPaths,
+                            selectionDragItems,
+                            onSelectWithModifiers: handleSelectWithModifiers,
+                            renamingPath,
+                            onStartRename: handleStartInlineRename,
+                            onRenameCommit: handleCommitInlineRename,
+                            onRenameCancel: handleCancelInlineRename,
+                            dragDrop: {
+                                createDragStartHandler: dragDrop.createDragStartHandler,
+                                createDragEndHandler: dragDrop.createDragEndHandler,
+                                createDragOverHandler: dragDrop.createDragOverHandler,
+                                createDragEnterHandler: dragDrop.createDragEnterHandler,
+                                createDragLeaveHandler: dragDrop.createDragLeaveHandler,
+                                createDropHandler: dragDrop.createDropHandler,
+                                dropTargetPath: dragDrop.dropTargetPath,
+                                dropPosition: dragDrop.dropPosition,
+                                onDrop: handleNoteDrop,
+                            },
+                        }}
+                    />
+                )}
             </div>
 
             {/* Multi-selection footer badge */}
