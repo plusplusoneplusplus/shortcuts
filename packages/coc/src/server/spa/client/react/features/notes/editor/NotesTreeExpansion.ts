@@ -272,6 +272,10 @@ export interface UseNotesSectionsExpandedResult {
  * listed, else the first listed root — which is what guarantees at least one
  * open section on a first load (AC-02). A root the user explicitly collapsed
  * stays collapsed, even if that leaves every section closed.
+ *
+ * The fallback is pinned for as long as the workspace and that root survive:
+ * `defaultExpandedRootId` follows the active root, and letting it move would
+ * silently close the section the user just navigated away from.
  */
 export function useNotesSectionsExpanded(
     workspaceId: string,
@@ -283,11 +287,19 @@ export function useNotesSectionsExpanded(
         () => ({ scopeKey: workspaceId, entries: {} }),
     );
 
+    const pinnedFallbackRef = useRef<{ scopeKey: string; rootId: string } | null>(null);
     const fallbackRootId = useMemo(() => {
         const ids = rootsKey ? rootsKey.split('\0') : [];
-        if (defaultExpandedRootId && ids.includes(defaultExpandedRootId)) return defaultExpandedRootId;
-        return ids[0];
-    }, [rootsKey, defaultExpandedRootId]);
+        const pinned = pinnedFallbackRef.current;
+        if (pinned && pinned.scopeKey === workspaceId && ids.includes(pinned.rootId)) {
+            return pinned.rootId;
+        }
+        const next = defaultExpandedRootId && ids.includes(defaultExpandedRootId)
+            ? defaultExpandedRootId
+            : ids[0];
+        pinnedFallbackRef.current = next ? { scopeKey: workspaceId, rootId: next } : null;
+        return next;
+    }, [rootsKey, defaultExpandedRootId, workspaceId]);
 
     const expandedByRoot = useMemo(() => {
         const overrides = state.scopeKey === workspaceId ? state.entries : {};

@@ -146,53 +146,30 @@ describe('NotesView root selection preservation', () => {
         }));
     });
 
-    it('plain root click switches one active root, clears the selected note, and scopes browsing to that root', async () => {
+    it('selecting a page in another section switches the active root and scopes the editor to it', async () => {
         renderNotesView();
 
-        await screen.findByTestId('notes-root-selector');
+        await screen.findByTestId('notes-section-header-docs');
         await waitFor(() => {
             expect(mocks.getTree).toHaveBeenCalledWith('ws1', undefined);
         });
         expect(screen.getByTestId('mock-note-editor').getAttribute('data-note-path')).toBe('DefaultNotebook/Default.md');
         expect(screen.getByTestId('mock-note-editor').getAttribute('data-root')).toBe('default');
 
-        fireEvent.click(screen.getByTestId('notes-root-selector'));
-        fireEvent.click(await screen.findByTestId('notes-root-option-docs'));
+        // Expanding the Docs section fetches its tree lazily; clicking a page in it
+        // is what moves the active root now that the dropdown is gone.
+        fireEvent.click(screen.getByTestId('notes-section-header-docs-toggle'));
+        await waitFor(() => expect(mocks.getTree).toHaveBeenCalledWith('ws1', 'docs'));
+
+        const docsTree = await screen.findByTestId('notes-tree-docs');
+        fireEvent.click(docsTree.querySelector('[data-testid="notes-tree-item-DocsNotebook"]')!);
 
         await waitFor(() => {
-            expect(mocks.getTree).toHaveBeenCalledWith('ws1', 'docs');
             expect(screen.getByTestId('mock-note-editor').getAttribute('data-root')).toBe('docs');
-            expect(screen.getByTestId('mock-note-editor').getAttribute('data-note-path')).toBe('');
         });
-
-        expect(mocks.dispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_NOTE_PATH', notePath: null });
-        expect(screen.queryByTestId('notes-root-dropdown')).toBeNull();
-        expect(await screen.findByTestId('notes-tree-item-DocsNotebook')).toBeTruthy();
-        expect(screen.queryByTestId('notes-tree-item-DefaultNotebook')).toBeNull();
         expect(screen.getByTestId('mock-note-editor').getAttribute('data-is-default-root')).toBe('false');
-    });
-
-    it('modifier collection selection is removal-only and leaves active-root page browsing unchanged', async () => {
-        renderNotesView();
-
-        const otherPage = await screen.findByTestId('notes-tree-item-Other.md');
-
-        fireEvent.click(screen.getByTestId('notes-root-selector'));
-        fireEvent.click(await screen.findByTestId('notes-root-option-docs'), { ctrlKey: true });
-
-        expect(screen.getByTestId('notes-root-dropdown')).toBeTruthy();
-        expect(screen.getByTestId('notes-root-option-docs').getAttribute('data-removal-selected')).toBe('true');
-        expect(mocks.getTree).not.toHaveBeenCalledWith('ws1', 'docs');
-        expect(screen.getByTestId('mock-note-editor').getAttribute('data-root')).toBe('default');
-        expect(screen.getByTestId('mock-note-editor').getAttribute('data-note-path')).toBe('DefaultNotebook/Default.md');
-
-        fireEvent.click(otherPage, { ctrlKey: true });
-
-        expect(otherPage.getAttribute('aria-selected')).toBe('true');
-        expect(screen.getByTestId('notes-root-option-docs').getAttribute('data-removal-selected')).toBe('true');
-        expect(mocks.getTree).not.toHaveBeenCalledWith('ws1', 'docs');
-        expect(screen.getByTestId('mock-note-editor').getAttribute('data-root')).toBe('default');
-        expect(screen.getByTestId('mock-note-editor').getAttribute('data-note-path')).toBe('DefaultNotebook/Default.md');
+        // Both sections stay on screen — that is the point of the stack.
+        expect(screen.getByTestId('notes-tree-default')).toBeTruthy();
     });
 
     it('refreshes discovered collections and falls back to managed Notes when the active task root disappears', async () => {
@@ -201,11 +178,13 @@ describe('NotesView root selection preservation', () => {
             .mockResolvedValue({ roots: [ROOTS[0]] });
         renderNotesView();
 
-        fireEvent.click(await screen.findByTestId('notes-root-selector'));
-        fireEvent.click(await screen.findByTestId('notes-root-option-task:primary'));
+        fireEvent.click(await screen.findByTestId('notes-section-header-task:primary-toggle'));
 
         await waitFor(() => {
             expect(mocks.getTree).toHaveBeenCalledWith('ws1', 'task:primary');
+        });
+        fireEvent.click(await screen.findByTestId('notes-tree-item-Existing.plan.md'));
+        await waitFor(() => {
             expect(screen.getByTestId('mock-note-editor').getAttribute('data-root')).toBe('task:primary');
         });
         expect(mocks.noteEditorProps[mocks.noteEditorProps.length - 1]?.chatDisabledReason).toContain('managed Notes collection');
@@ -221,7 +200,8 @@ describe('NotesView root selection preservation', () => {
             expect(screen.getByTestId('mock-note-editor').getAttribute('data-note-path')).toBe('');
         });
         expect(window.localStorage.getItem('coc-notes-selected-root-ws1')).toBe('default');
-        expect(screen.queryByTestId('notes-root-selector')).toBeNull();
+        // Back to one root ⇒ back to the bare, headerless tree (AC-07).
+        expect(screen.queryByTestId('notes-section-header-task:primary')).toBeNull();
         expect(window.location.hash).toBe('#repos/ws1/notes');
     });
 
@@ -232,13 +212,11 @@ describe('NotesView root selection preservation', () => {
         renderNotesView(null);
 
         expect(await screen.findByTestId('refresh-notes-btn')).toBeTruthy();
-        expect(screen.queryByTestId('notes-root-selector')).toBeNull();
+        expect(screen.queryByTestId('notes-section-header-task:primary')).toBeNull();
 
         fireEvent.click(screen.getByTestId('refresh-notes-btn'));
 
-        expect(await screen.findByTestId('notes-root-selector')).toBeTruthy();
-        fireEvent.click(screen.getByTestId('notes-root-selector'));
-        expect((await screen.findByTestId('notes-root-option-task:primary')).textContent).toContain('Task Plans');
+        expect((await screen.findByTestId('notes-section-header-task:primary')).textContent).toContain('Task Plans');
     });
 
     it('drops stale root and tree responses when switching workspaces', async () => {
@@ -298,7 +276,6 @@ describe('NotesView root selection preservation', () => {
             expect(screen.getByTestId('notes-tree-item-WorkspaceTwo.plan.md')).toBeTruthy();
             expect(screen.queryByTestId('notes-tree-item-WorkspaceOne.plan.md')).toBeNull();
         });
-        fireEvent.click(screen.getByTestId('notes-root-selector'));
         expect(screen.queryByText('Workspace One Plans')).toBeNull();
         expect(screen.getAllByText('Workspace Two Plans').length).toBeGreaterThan(0);
     });
