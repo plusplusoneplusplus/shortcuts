@@ -23,6 +23,7 @@ import {
     TableCellWithWrap,
     TableHeaderWithWrap,
 } from './extensions/tableColumnWrap';
+import { TableReorder } from './extensions/tableReorder';
 import { Highlight } from '@tiptap/extension-highlight';
 import { FindAndReplace } from '@tiptap/extension-find-and-replace';
 import { TextAlign } from '@tiptap/extension-text-align';
@@ -257,6 +258,9 @@ export function RichEditorCore({
             // per column by the toolbar toggle); everything else is stock.
             TableCellWithWrap,
             TableHeaderWithWrap,
+            // Row/column move commands. prosemirror-tables has them;
+            // @tiptap/extension-table does not expose them.
+            TableReorder,
             Highlight.configure({ multicolor: true }),
             TextAlign.configure({ types: ['heading', 'paragraph'] }),
             IndentExtension,
