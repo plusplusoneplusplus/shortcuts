@@ -3,6 +3,7 @@ import type { ReactNode, RefObject, KeyboardEvent as ReactKeyboardEvent } from '
 import type { Editor } from '@tiptap/react';
 import type { TocEntry } from './noteTocUtils';
 import { activeTableHasColumnWidths, clearActiveTableColumnWidths } from './tableColumnWidths';
+import { tableHeaderState } from './tableHeaderState';
 import { TABLE_CELL_COLORS, activeCellBackgroundColor } from './extensions/tableCellBackground';
 import { NoteTocPanel } from './NoteTocPanel';
 
@@ -1034,7 +1035,11 @@ function TableControls({ editor }: TableControlsProps) {
     // Recomputed on every toolbar render, which a selection or doc change
     // already triggers — so the button enables the moment a border is dragged.
     const hasWidths = activeTableHasColumnWidths(editor);
+    // Header-ness is structural, so it is read off the doc rather than from
+    // `isActive`. Same recompute-per-render story as `hasWidths`.
+    const headers = tableHeaderState(editor);
     const btnCls = TABLE_BTN_CLS;
+    const pressedCls = ' bg-[#e8e8e8] dark:bg-[#3c3c3c]';
 
     return (
         <div
@@ -1093,6 +1098,29 @@ function TableControls({ editor }: TableControlsProps) {
                 className={btnCls}
                 onMouseDown={(e) => { e.preventDefault(); tc().deleteTable().run(); }}>
                 Del Table
+            </button>
+            <Sep />
+            {/* Header shape — appended last so the buttons above keep their
+                positions. Anything other than a plain header row makes the table
+                serialize as raw HTML instead of a GFM pipe table. */}
+            <button type="button" title="Toggle header row" aria-label="Toggle header row"
+                aria-pressed={headers.row}
+                className={btnCls + (headers.row ? pressedCls : '')}
+                onMouseDown={(e) => { e.preventDefault(); tc().toggleHeaderRow().run(); }}>
+                Header Row
+            </button>
+            <button type="button" title="Toggle header column" aria-label="Toggle header column"
+                aria-pressed={headers.column}
+                className={btnCls + (headers.column ? pressedCls : '')}
+                onMouseDown={(e) => { e.preventDefault(); tc().toggleHeaderColumn().run(); }}>
+                Header Col
+            </button>
+            {/* No pressed state: the selection can span cells in mixed states, so
+                there is no single bit to show. */}
+            <button type="button" title="Toggle header cell" aria-label="Toggle header cell"
+                className={btnCls}
+                onMouseDown={(e) => { e.preventDefault(); tc().toggleHeaderCell().run(); }}>
+                Header Cell
             </button>
         </div>
     );

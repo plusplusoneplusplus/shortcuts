@@ -12,9 +12,21 @@ vi.mock(
     () => tableWidthMocks,
 );
 
+// Header-ness is read off a real ProseMirror doc, which the mock editor has no
+// way to supply, so the helper is stubbed here and exercised for real in
+// tableHeaderState.test.ts.
+const tableHeaderMocks = vi.hoisted(() => ({
+    tableHeaderState: vi.fn(() => ({ row: false, column: false })),
+}));
+vi.mock(
+    '../../../../src/server/spa/client/react/features/notes/editor/tableHeaderState',
+    () => tableHeaderMocks,
+);
+
 beforeEach(() => {
     tableWidthMocks.activeTableHasColumnWidths.mockReset().mockReturnValue(false);
     tableWidthMocks.clearActiveTableColumnWidths.mockReset().mockReturnValue(true);
+    tableHeaderMocks.tableHeaderState.mockReset().mockReturnValue({ row: false, column: false });
 });
 
 // ── Mock editor factory ─────────────────────────────────────────────────────
@@ -32,6 +44,9 @@ function makeMockEditor(
     const deleteRow = vi.fn(() => ({ run: vi.fn() }));
     const deleteTable = vi.fn(() => ({ run: vi.fn() }));
     const setCellAttribute = vi.fn(() => ({ run: vi.fn() }));
+    const toggleHeaderRow = vi.fn(() => ({ run: vi.fn() }));
+    const toggleHeaderColumn = vi.fn(() => ({ run: vi.fn() }));
+    const toggleHeaderCell = vi.fn(() => ({ run: vi.fn() }));
 
     const focusResult = {
         toggleBold: () => ({ run: vi.fn() }),
@@ -59,6 +74,9 @@ function makeMockEditor(
         deleteRow,
         deleteTable,
         setCellAttribute,
+        toggleHeaderRow,
+        toggleHeaderColumn,
+        toggleHeaderCell,
     };
 
     return {
@@ -161,6 +179,79 @@ describe('NoteEditorToolbar — table controls', () => {
 
         fireEvent.mouseDown(screen.getByLabelText('Delete table'));
         expect(editor._focusResult.deleteTable).toHaveBeenCalled();
+    });
+
+    // ── Header shape toggles (AC-01, AC-02, AC-04) ──────────────────────────
+
+    const HEADER_BUTTONS = [
+        ['Toggle header row', 'toggleHeaderRow'],
+        ['Toggle header column', 'toggleHeaderColumn'],
+        ['Toggle header cell', 'toggleHeaderCell'],
+    ] as const;
+
+    it('hides the header toggles when the cursor is outside a table', () => {
+        const editor = makeMockEditor(() => false);
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        for (const [label] of HEADER_BUTTONS) {
+            expect(screen.queryByLabelText(label)).toBeNull();
+        }
+    });
+
+    it('shows exactly the three header toggles inside a table', () => {
+        const editor = makeMockEditor((name) => name === 'table');
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        for (const [label] of HEADER_BUTTONS) {
+            expect(screen.getByLabelText(label)).toBeDefined();
+        }
+        const strip = screen.getByTestId('table-controls-row');
+        const headerButtons = Array.from(strip.querySelectorAll('button'))
+            .filter((b) => (b.getAttribute('aria-label') ?? '').startsWith('Toggle header'));
+        expect(headerButtons.length).toBe(3);
+    });
+
+    for (const [label, command] of HEADER_BUTTONS) {
+        it(`"${label}" calls ${command} once and keeps editor focus`, () => {
+            const editor = makeMockEditor((name) => name === 'table');
+            render(<NoteEditorToolbar editor={editor as never} />);
+
+            const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+            fireEvent(screen.getByLabelText(label), event);
+
+            expect(editor._focusResult[command]).toHaveBeenCalledTimes(1);
+            // preventDefault on mousedown is what stops the editor from blurring.
+            expect(event.defaultPrevented).toBe(true);
+        });
+    }
+
+    it('header row / column buttons reflect tableHeaderState via aria-pressed', () => {
+        const shapes = [
+            { row: false, column: false },
+            { row: true, column: false },
+            { row: false, column: true },
+            { row: true, column: true },
+        ];
+
+        for (const shape of shapes) {
+            tableHeaderMocks.tableHeaderState.mockReturnValue(shape);
+            const editor = makeMockEditor((name) => name === 'table');
+            const { unmount } = render(<NoteEditorToolbar editor={editor as never} />);
+
+            const rowBtn = screen.getByLabelText('Toggle header row');
+            const colBtn = screen.getByLabelText('Toggle header column');
+            expect(rowBtn.getAttribute('aria-pressed')).toBe(String(shape.row));
+            expect(colBtn.getAttribute('aria-pressed')).toBe(String(shape.column));
+            // Pressed background matches what the rest of the toolbar uses.
+            expect(rowBtn.className.includes('bg-[#e8e8e8]')).toBe(shape.row);
+            expect(colBtn.className.includes('bg-[#e8e8e8]')).toBe(shape.column);
+
+            // Per-cell state is ambiguous across a multi-cell selection, so the
+            // cell button stays a plain action.
+            expect(screen.getByLabelText('Toggle header cell').hasAttribute('aria-pressed'))
+                .toBe(false);
+            unmount();
+        }
     });
 
     // ── "Reset column widths" (AC-08) ───────────────────────────────────────
