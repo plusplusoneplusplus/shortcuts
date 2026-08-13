@@ -76,7 +76,9 @@ describe('ConversationMetadataPopover', () => {
         expect(screen.queryByText('Agent Provider')).toBeNull();
         expect(screen.getByText('codex')).toBeDefined();
         expect(screen.getByText('Reasoning Effort')).toBeDefined();
-        expect(screen.getByText('Default')).toBeDefined();
+        // Two rows read "Default" now — Reasoning Effort and Style.
+        expect(screen.getAllByText('Default')).toHaveLength(2);
+        expect(screen.getByText('Style')).toBeDefined();
         expect(screen.getByText('Session ID')).toBeDefined();
         expect(screen.getByText('sdk-sess-789')).toBeDefined();
         expect(screen.getByText('Backend')).toBeDefined();
@@ -1019,7 +1021,8 @@ describe('buildRows – reasoning effort', () => {
         const trigger = screen.getByRole('button', { name: /conversation metadata/i });
         await act(async () => { fireEvent.click(trigger); });
         expect(screen.getByText('Reasoning Effort')).toBeDefined();
-        expect(screen.getByText('Default')).toBeDefined();
+        // Style also reads "Default" for a conversation that never picked a style.
+        expect(screen.getAllByText('Default').length).toBeGreaterThanOrEqual(1);
         expect(screen.getByText('effort Default')).toBeDefined();
     });
 
@@ -1108,5 +1111,26 @@ describe('buildRows – commit chat rows', () => {
         expect(screen.getByText('Commit')).toBeDefined();
         expect(screen.getByText(FULL_HASH)).toBeDefined();
         expect(screen.getByText(SUBJECT)).toBeDefined();
+    });
+});
+
+// ============================================================================
+// Chat style row
+// ============================================================================
+
+describe('buildRows – chat style', () => {
+    it('shows the label of the style the conversation last ran with', () => {
+        const rows = buildRows({ id: 'p-style', metadata: { chatStyle: 'analytical' } });
+        expect(rows.find(r => r.label === 'Style')!.value).toBe('Analytical');
+    });
+
+    it('shows Default when the conversation has no recorded style', () => {
+        const rows = buildRows({ id: 'p-nostyle' });
+        expect(rows.find(r => r.label === 'Style')!.value).toBe('Default');
+    });
+
+    it('shows Default when the recorded style is not a stable wire value', () => {
+        const rows = buildRows({ id: 'p-bogus', metadata: { chatStyle: 'friendly' } });
+        expect(rows.find(r => r.label === 'Style')!.value).toBe('Default');
     });
 });

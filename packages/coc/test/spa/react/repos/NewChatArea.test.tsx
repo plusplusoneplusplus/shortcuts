@@ -2518,3 +2518,134 @@ describe('NewChatArea', () => {
     });
 });
 
+
+// ============================================================================
+// Chat style selector
+// ============================================================================
+
+describe('NewChatArea — chat style', () => {
+    async function send(prompt = 'Hello') {
+        const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: prompt } });
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+        });
+        return mockEnqueueTask.mock.calls[0][0];
+    }
+
+    it('hides the Style chip when the owning server has the flag off', async () => {
+        mockChatStyleEnabled.value = false;
+        render(<NewChatArea workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('new-chat-send-btn')).toBeTruthy());
+        expect(screen.queryByTestId('chat-style-selector')).toBeNull();
+    });
+
+    it('omits chatStyle from the payload when the flag is off', async () => {
+        mockChatStyleEnabled.value = false;
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 't1' } });
+        render(<NewChatArea workspaceId="ws-1" />);
+
+        expect((await send()).payload.chatStyle).toBeUndefined();
+    });
+
+    it('shows the chip and starts a new chat on Default', async () => {
+        mockChatStyleEnabled.value = true;
+        render(<NewChatArea workspaceId="ws-1" />);
+
+        await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
+        expect(screen.getByTestId('chat-style-selector').getAttribute('data-style-value')).toBe('default');
+        expect(screen.getByTestId('chat-style-label').textContent).toBe('Style: Default');
+    });
+
+    it('sends chatStyle: default when the user leaves the chip alone', async () => {
+        mockChatStyleEnabled.value = true;
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 't1' } });
+        render(<NewChatArea workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
+
+        expect((await send()).payload.chatStyle).toBe('default');
+    });
+
+    it('ignores any saved repo preference — new chats never inherit a style', async () => {
+        mockChatStyleEnabled.value = true;
+        mockRepoPrefs.value = { lastChatStyle: 'analytical' };
+        render(<NewChatArea workspaceId="ws-1" />);
+
+        await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
+        expect(screen.getByTestId('chat-style-selector').getAttribute('data-style-value')).toBe('default');
+    });
+
+    it('does not write the pick to repo-scoped preferences', async () => {
+        mockChatStyleEnabled.value = true;
+        render(<NewChatArea workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('chat-style-trigger-btn'));
+        fireEvent.click(screen.getByTestId('chat-style-option-structured'));
+
+        expect(screen.getByTestId('chat-style-selector').getAttribute('data-style-value')).toBe('structured');
+        expect(mockPatchRepo).not.toHaveBeenCalledWith('ws-1', expect.objectContaining({ lastChatStyle: expect.anything() }));
+    });
+
+    it('sends the selected style on the new-chat payload', async () => {
+        mockChatStyleEnabled.value = true;
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 't1' } });
+        render(<NewChatArea workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('chat-style-trigger-btn'));
+        fireEvent.click(screen.getByTestId('chat-style-option-analytical'));
+
+        expect((await send()).payload.chatStyle).toBe('analytical');
+    });
+
+    it('hides the chip for out-of-scope modes like Ralph', async () => {
+        mockChatStyleEnabled.value = true;
+        mockRalphEnabled.value = true;
+        render(<NewChatArea workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
+        fireEvent.click(screen.getByTestId('workflow-mode-option-ralph'));
+        expect(screen.queryByTestId('chat-style-selector')).toBeNull();
+    });
+
+    // The inline toolbar puts Effort before Style, matching the compact settings
+    // editor. Guards against the two layouts drifting apart again.
+    function expectPrecedes(first: HTMLElement, second: HTMLElement) {
+        expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+
+    it('orders the inline toolbar model · effort · style in legacy (non-tier) mode', async () => {
+        mockChatStyleEnabled.value = true;
+        render(<NewChatArea workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
+
+        const toolbar = screen.getByTestId('chat-input-toolbar');
+        const model = within(toolbar).getByTestId('model-picker-chip');
+        const effort = within(toolbar).getByTestId('effort-pill-selector');
+        const style = within(toolbar).getByTestId('chat-style-selector');
+
+        expectPrecedes(model, effort);
+        expectPrecedes(effort, style);
+    });
+
+    it('orders the inline toolbar effort · style in effort-tier mode', async () => {
+        mockChatStyleEnabled.value = true;
+        mockEffortLevelsEnabled.value = true;
+        mockEffortTiers.value = {
+            low: { model: 'gpt-5-mini', reasoningEffort: 'low' },
+            medium: { model: 'gpt-5.4', reasoningEffort: 'medium' },
+            high: { model: 'gpt-5.4', reasoningEffort: 'high' },
+        };
+        render(<NewChatArea workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('effort-tier-selector')).toBeTruthy());
+
+        const toolbar = screen.getByTestId('chat-input-toolbar');
+        const effort = within(toolbar).getByTestId('effort-tier-selector');
+        const style = within(toolbar).getByTestId('chat-style-selector');
+
+        expect(within(toolbar).queryByTestId('model-picker-chip')).toBeNull();
+        expectPrecedes(effort, style);
+    });
+});

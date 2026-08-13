@@ -6,6 +6,7 @@ import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { BottomSheet } from '../../../ui/BottomSheet';
 import { Dialog } from '../../../ui/Dialog';
 import { getRalphContext, readCommitChatContext } from '../../../../../../tasks/task-types';
+import { CHAT_STYLE_LABELS, DEFAULT_CHAT_STYLE, isChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { ClientTokenUsage } from '../../../types/dashboard';
 
 const RALPH_FIELD_TRUNCATE = 200;
@@ -76,6 +77,15 @@ function formatInteger(value: number): string {
 }
 
 const REASONING_EFFORT_DEFAULT = 'Default';
+
+/**
+ * Display label for the conversation's recorded response style. The server
+ * records a style on every turn, so a conversation with nothing stored has only
+ * ever run on Default — which is exactly what the row then shows.
+ */
+function formatChatStyle(value: unknown): string {
+    return CHAT_STYLE_LABELS[isChatStyle(value) ? value : DEFAULT_CHAT_STYLE];
+}
 
 function formatReasoningEffort(value: unknown): string {
     const raw = toStringValue(value);
@@ -274,6 +284,7 @@ export function buildRows(process: any, turnsCount?: number): MetaRow[] {
     push('Mode', process?.metadata?.mode || process?.mode);
     push('Agent Provider', getAgentNameFromProcess(process));
     push('Reasoning Effort', formatReasoningEffort(process?.config?.reasoningEffort || process?.metadata?.reasoningEffort));
+    push('Style', formatChatStyle(process?.metadata?.chatStyle));
     push('Session ID', sessionId, { breakAll: true, mono: true, link: sessionId ? `#logs?sessionId=${encodeURIComponent(sessionId)}` : undefined });
     push('Backend', process?.metadata?.backend);
     push('Started', formatTimestamp(startedAt));

@@ -11,6 +11,8 @@ import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import type { AIProcess, CanvasSummary } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
+import { useChatStyleSelectorEnabled } from '../../hooks/feature-flags/useChatStyleSelectorEnabled';
+import { DEFAULT_CHAT_STYLE, isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
 import { getCocClientForWorkspace, lookupCloneBaseUrl } from '../../repos/cloneRegistry';
 import { isRemoteWorkspace } from '../../repos/remoteWorkspaceAggregation';
 import { getConversationTurns } from './conversation/chatConversationUtils';
@@ -234,6 +236,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
     const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
     const [selectedFollowUpEffortTier, setSelectedFollowUpEffortTier] = useState<EffortTierKey>('medium');
+    // Style belongs to THIS conversation, not to the workspace — it is restored
+    // from `metadata.chatStyle` (the style the last turn was recorded with) and
+    // reset per process.
+    const [followUpChatStyle, setFollowUpChatStyle] = useState<ChatStyle>(DEFAULT_CHAT_STYLE);
     const [ralphGrillSetup, setRalphGrillSetup] = useState<RalphGrillSetup>({ enabled: true, depth: 'standard', agents: [] });
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [sessionTokenLimit, setSessionTokenLimit] = useState<number | undefined>(undefined);
@@ -313,6 +319,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
      *  or when the user explicitly picks a tier. Prevents the init fallback from
      *  clobbering a seeded value or an in-flight pick. Reset on taskId change. */
     const afterTierInitializedRef = useRef(false);
+    /** Set to true once the follow-up style has been initialised from this
+     *  conversation's `metadata.chatStyle`, or when the user picks one. Reset on
+     *  process change so a late response from another conversation cannot
+     *  replace the active selection. */
+    const chatStyleInitializedRef = useRef(false);
     /** Tracks first mount of the model-override effect so we don't re-derive on initial render. */
     const modelOverrideMountedRef = useRef(false);
     const previousSessionProviderRef = useRef<string | null>(null);
@@ -449,6 +460,10 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             serverLabel: sourceRemoteInfo.serverLabel,
         });
     }, [reposCtx, reposCtx?.repos, workspaceId, workspaceName, workspaceRootPath, workspaceRemoteUrl, sourceRemoteInfo]);
+
+    // Resolve the Style flag from the server that owns this process, so a remote
+    // conversation follows its own server's setting, not the local one's.
+    const chatStyleSelectorEnabled = useChatStyleSelectorEnabled(sourceRemoteInfo.baseUrl);
 
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
     const canRetrieveConversations = useConversationRetrievalCapability(workspaceId, sessionContextAttachmentsEnabled);
@@ -803,6 +818,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         goalPatchedRef.current = false;
         effortInitializedRef.current = false;
         afterTierInitializedRef.current = false;
+        chatStyleInitializedRef.current = false;
+        setFollowUpChatStyle(DEFAULT_CHAT_STYLE);
         modelOverrideMountedRef.current = false;
         setEffortOverride(null);
         setInvalidScratchpadPaths(new Set());
@@ -1059,6 +1076,23 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         if (processDetails) afterTierInitializedRef.current = true;
     }, [processDetails, workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    // Restore this conversation's style from its process record. The server
+    // records `metadata.chatStyle` on every turn, so a conversation with no
+    // stored style has never run one — it reads as Default. Initialised once per
+    // process so a slow response for a different conversation cannot overwrite a
+    // selection the user already made here.
+    useEffect(() => {
+        if (chatStyleInitializedRef.current || !processDetails) return;
+        const saved = (processDetails as any)?.metadata?.chatStyle;
+        setFollowUpChatStyle(isChatStyle(saved) ? saved : DEFAULT_CHAT_STYLE);
+        chatStyleInitializedRef.current = true;
+    }, [processDetails]);
+
+    function handleFollowUpChatStyleChange(style: ChatStyle) {
+        chatStyleInitializedRef.current = true;
+        setFollowUpChatStyle(style);
+    }
+
     // When the selected tier becomes unconfigured, fall back to the first configured tier.
     useEffect(() => {
         if (!useFollowUpEffortTierMode) return;
@@ -1213,6 +1247,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         clearAttachedContext: attachedContext.clear,
         modelOverride: effectiveFollowUpModelOverride,
         effortOverride: effectiveFollowUpEffort,
+        // Omitted entirely when the owning server has the flag off, so an older
+        // or opted-out server never receives a field it would reject.
+        chatStyle: chatStyleSelectorEnabled ? followUpChatStyle : undefined,
         workspaceId,
         ralphGrillSetup: selectedMode === 'ralph' && ralphMultiAgentGrillEnabled ? ralphGrillSetup : undefined,
         sessionContextAttachmentsEnabled,
@@ -2695,6 +2732,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                             effortTierMap={followUpEffortTierMap}
                             selectedEffortTier={selectedFollowUpEffortTier}
                             onEffortTierChange={handleFollowUpEffortTierChange}
+                            chatStyle={chatStyleSelectorEnabled ? followUpChatStyle : undefined}
+                            onChatStyleChange={chatStyleSelectorEnabled ? handleFollowUpChatStyleChange : undefined}
                             ralphMultiAgentGrillEnabled={ralphMultiAgentGrillEnabled}
                             ralphGrillSetup={ralphGrillSetup}
                             onRalphGrillSetupChange={setRalphGrillSetup}
@@ -2835,6 +2874,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     effortTierMap={followUpEffortTierMap}
                     selectedEffortTier={selectedFollowUpEffortTier}
                     onEffortTierChange={handleFollowUpEffortTierChange}
+                    chatStyle={chatStyleSelectorEnabled ? followUpChatStyle : undefined}
+                    onChatStyleChange={chatStyleSelectorEnabled ? handleFollowUpChatStyleChange : undefined}
                     ralphMultiAgentGrillEnabled={ralphMultiAgentGrillEnabled}
                     ralphGrillSetup={ralphGrillSetup}
                     onRalphGrillSetupChange={setRalphGrillSetup}

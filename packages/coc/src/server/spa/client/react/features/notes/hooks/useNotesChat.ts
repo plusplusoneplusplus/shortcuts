@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { AIProcess, ChatProvider, EffortTierKey, ReasoningEffort } from '@plusplusoneplusplus/coc-client';
+import type { AIProcess, ChatProvider, ChatStyle, EffortTierKey, ReasoningEffort } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
 import type { AttachmentPayload } from '../../../types/attachments';
 import { isCommitChatLensEnabled } from '../../../utils/config';
@@ -40,6 +40,7 @@ export interface NotesChatAiSelection {
     /** Per-turn reasoning-effort override. */
     reasoningEffort?: ReasoningEffort;
     /** Response style; presentation only, validated server-side at the queue boundary. */
+    chatStyle?: ChatStyle;
     /** Effort-tier key; carried on the top-level task config, like the composer. */
     effortTier?: EffortTierKey;
     /** Auto-provider routing intent (mutually exclusive with `provider`). */
@@ -279,6 +280,7 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
                 // note binding and Lens metadata are re-applied on top server-side.
                 ...(aiSelection?.provider ? { provider: aiSelection.provider } : {}),
                 ...(aiSelection?.reasoningEffort ? { reasoningEffort: aiSelection.reasoningEffort } : {}),
+                ...(aiSelection?.chatStyle ? { chatStyle: aiSelection.chatStyle } : {}),
                 ...(aiSelection?.effortTier ? { effortTier: aiSelection.effortTier } : {}),
                 ...(aiSelection?.autoProviderRouting ? { autoProviderRouting: true } : {}),
                 ...(aiSelection?.workingDirectory ? { workingDirectory: aiSelection.workingDirectory } : {}),
