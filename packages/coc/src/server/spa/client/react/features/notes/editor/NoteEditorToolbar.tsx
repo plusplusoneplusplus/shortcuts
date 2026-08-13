@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import type { ReactNode, RefObject, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { Editor } from '@tiptap/react';
 import type { TocEntry } from './noteTocUtils';
+import { activeTableHasColumnWidths, clearActiveTableColumnWidths } from './tableColumnWidths';
 import { NoteTocPanel } from './NoteTocPanel';
 
 export interface NoteEditorToolbarProps {
@@ -936,6 +937,9 @@ function TableControls({ editor }: TableControlsProps) {
     if (!editor.isActive('table')) return null;
 
     const tc = () => editor.chain().focus();
+    // Recomputed on every toolbar render, which a selection or doc change
+    // already triggers — so the button enables the moment a border is dragged.
+    const hasWidths = activeTableHasColumnWidths(editor);
     const btnCls = "h-7 px-1.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]";
 
     return (
@@ -978,6 +982,16 @@ function TableControls({ editor }: TableControlsProps) {
             </button>
             <Sep />
             {/* Table-level */}
+            <button type="button" title="Reset column widths" aria-label="Reset column widths"
+                disabled={!hasWidths}
+                className={btnCls + ' disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent'}
+                onMouseDown={(e) => {
+                    e.preventDefault();
+                    if (!hasWidths) return;
+                    clearActiveTableColumnWidths(editor);
+                }}>
+                Reset Widths
+            </button>
             <button type="button" title="Delete table" aria-label="Delete table"
                 className={btnCls}
                 onMouseDown={(e) => { e.preventDefault(); tc().deleteTable().run(); }}>

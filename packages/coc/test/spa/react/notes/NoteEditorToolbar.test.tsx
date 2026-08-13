@@ -1,6 +1,20 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { NoteEditorToolbar } from '../../../../src/server/spa/client/react/features/notes/editor/NoteEditorToolbar';
+
+const tableWidthMocks = vi.hoisted(() => ({
+    activeTableHasColumnWidths: vi.fn(() => false),
+    clearActiveTableColumnWidths: vi.fn(() => true),
+}));
+vi.mock(
+    '../../../../src/server/spa/client/react/features/notes/editor/tableColumnWidths',
+    () => tableWidthMocks,
+);
+
+beforeEach(() => {
+    tableWidthMocks.activeTableHasColumnWidths.mockReset().mockReturnValue(false);
+    tableWidthMocks.clearActiveTableColumnWidths.mockReset().mockReturnValue(true);
+});
 
 // ── Mock editor factory ─────────────────────────────────────────────────────
 
@@ -142,6 +156,66 @@ describe('NoteEditorToolbar — table controls', () => {
 
         fireEvent.mouseDown(screen.getByLabelText('Delete table'));
         expect(editor._focusResult.deleteTable).toHaveBeenCalled();
+    });
+
+    // ── "Reset column widths" (AC-08) ───────────────────────────────────────
+    //
+    // The width helpers walk a real ProseMirror doc, which the mock editor has
+    // no way to supply, so they are stubbed here and exercised for real in
+    // tableColumnWidths.test.ts.
+
+    it('hides "Reset column widths" when the cursor is outside a table', () => {
+        const editor = makeMockEditor(() => false);
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.queryByLabelText('Reset column widths')).toBeNull();
+    });
+
+    it('shows "Reset column widths" when the cursor is inside a table', () => {
+        const editor = makeMockEditor((name) => name === 'table');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByLabelText('Reset column widths')).toBeDefined();
+    });
+
+    it('disables "Reset column widths" when no cell has a colwidth', () => {
+        tableWidthMocks.activeTableHasColumnWidths.mockReturnValue(false);
+        const editor = makeMockEditor((name) => name === 'table');
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        const btn = screen.getByLabelText('Reset column widths') as HTMLButtonElement;
+        expect(btn.disabled).toBe(true);
+
+        fireEvent.mouseDown(btn);
+        expect(tableWidthMocks.clearActiveTableColumnWidths).not.toHaveBeenCalled();
+    });
+
+    it('enables "Reset column widths" when the table carries a colwidth', () => {
+        tableWidthMocks.activeTableHasColumnWidths.mockReturnValue(true);
+        const editor = makeMockEditor((name) => name === 'table');
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        expect((screen.getByLabelText('Reset column widths') as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    it('"Reset column widths" clears the widths exactly once', () => {
+        tableWidthMocks.activeTableHasColumnWidths.mockReturnValue(true);
+        const editor = makeMockEditor((name) => name === 'table');
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        fireEvent.mouseDown(screen.getByLabelText('Reset column widths'));
+
+        expect(tableWidthMocks.clearActiveTableColumnWidths).toHaveBeenCalledTimes(1);
+        expect(tableWidthMocks.clearActiveTableColumnWidths).toHaveBeenCalledWith(editor);
+    });
+
+    it('"Reset column widths" preventDefaults its mousedown so editor focus survives', () => {
+        tableWidthMocks.activeTableHasColumnWidths.mockReturnValue(true);
+        const editor = makeMockEditor((name) => name === 'table');
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+        fireEvent(screen.getByLabelText('Reset column widths'), event);
+
+        expect(event.defaultPrevented).toBe(true);
     });
 });
 
