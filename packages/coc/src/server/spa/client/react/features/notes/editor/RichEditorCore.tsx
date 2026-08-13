@@ -48,6 +48,12 @@ import { SidenoteRefExtension } from './extensions/sidenoteRefExtension';
 import { FilePathNodeExtension } from './filePathNodeExtension';
 import { useLinkHandlers } from '../../../hooks/useLinkHandlers';
 import { openLink } from '../../../utils/link-handler';
+// Every rule in this stylesheet is scoped to `.note-editor .ProseMirror`, so it
+// belongs to the editor, not to the note page that happens to host it. Imported
+// here (rather than only from NoteEditor) so a mount outside Notes — the
+// markdown review dialog's rich view, for one — still gets the styles even if
+// the bundler ever code-splits the two apart.
+import './noteEditor.css';
 
 // ── Props ───────────────────────────────────────────────────────────────────
 
@@ -384,7 +390,13 @@ export function RichEditorCore({
 
     return (
         <>
-            <EditorContent editor={editor} />
+            {/* `note-editor` is the CSS scope every rule in noteEditor.css hangs
+                off. NoteEditor also puts it on its own container, but a bare
+                mount (the markdown review dialog's rich view) has no such
+                ancestor, and without it the table cell fills — which render as
+                `background-color: var(--note-table-bg-*)`, and the palette is
+                declared on that scope — resolve to nothing and disappear. */}
+            <EditorContent editor={editor} className="note-editor" />
             <YouTubePopupDialog videoId={popupVideoId} onClose={() => setPopupVideoId(null)} />
             <PdfPopupDialog
                 pdf={popupPdf}
