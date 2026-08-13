@@ -52,10 +52,19 @@ export interface AppMenuHandlers {
      * to keep the menu unchanged.
      */
     elevation?: ElevationState;
+    /**
+     * Invoked by "Report an Issue…", the first row of the Help submenu on every
+     * platform. `main.ts` opens the report modal from here. Omit it and the row
+     * is still rendered (so the menu shape is stable) but clicking does nothing.
+     */
+    onReportIssue?: () => void;
 }
 
 /** The "Check for Updates…" label — shared so tests and both platforms agree. */
 export const CHECK_FOR_UPDATES_LABEL = 'Check for Updates…';
+
+/** The "Report an Issue…" label — the first row of the Help submenu. */
+export const REPORT_ISSUE_LABEL = 'Report an Issue…';
 
 /** The top-level "Debug" menu label (Fix 3). */
 export const DEBUG_MENU_LABEL = 'Debug';
@@ -300,6 +309,13 @@ export function buildAppMenuTemplate(
         ],
     };
 
+    // "Report an Issue…" heads the Help submenu on every platform, separated from
+    // the About/update rows below it.
+    const reportIssueItems: MenuItemConstructorOptions[] = [
+        { label: REPORT_ISSUE_LABEL, click: handlers.onReportIssue ?? (() => {}) },
+        { type: 'separator' },
+    ];
+
     if (platform === 'darwin') {
         const template: MenuItemConstructorOptions[] = [
             {
@@ -328,6 +344,20 @@ export function buildAppMenuTemplate(
         if (handlers.debug) {
             template.push(buildDebugMenu(handlers.debug));
         }
+        // macOS has no Help submenu of its own, so one is added to host
+        // "Report an Issue…". The About/update rows are repeated here (they also
+        // stay in the app submenu above, which is untouched) so the Help menu
+        // reads the same on every platform.
+        template.push({
+            label: 'Help',
+            submenu: [
+                ...reportIssueItems,
+                aboutItem,
+                { type: 'separator' },
+                checkForUpdatesItem,
+                updateChannelItem,
+            ],
+        });
         return template;
     }
 
@@ -355,6 +385,7 @@ export function buildAppMenuTemplate(
     template.push({
         label: 'Help',
         submenu: [
+            ...reportIssueItems,
             aboutItem,
             ...elevationItems,
             { type: 'separator' },

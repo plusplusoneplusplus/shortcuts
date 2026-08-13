@@ -20,6 +20,7 @@ import {
     DEV_TUNNEL_EXPECTED_URL_SUFFIX,
     CHECK_FOR_UPDATES_LABEL,
     UPDATE_CHANNEL_LABEL,
+    REPORT_ISSUE_LABEL,
     DEV_TUNNEL_MENU_LABEL,
     DEV_TUNNEL_CONFIGURE_LABEL,
     DEV_TUNNEL_START_LABEL,
@@ -210,6 +211,69 @@ describe('buildAppMenuTemplate — Windows', () => {
         const check = items.find((i) => i.label === CHECK_FOR_UPDATES_LABEL)!;
         (check.click as () => void)();
         expect(handlers.onCheckForUpdates).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('buildAppMenuTemplate — Report an Issue… (AC-01)', () => {
+    const platforms: NodeJS.Platform[] = ['darwin', 'win32', 'linux'];
+
+    for (const platform of platforms) {
+        describe(platform, () => {
+            const onReportIssue = vi.fn();
+            const template = buildAppMenuTemplate(platform, 'CoC', {
+                onCheckForUpdates: vi.fn(),
+                onReportIssue,
+            });
+            const help = template.find((i) => i.label === 'Help');
+
+            it('has a Help submenu', () => {
+                expect(help).toBeDefined();
+            });
+
+            it('puts "Report an Issue…" first, followed by a separator', () => {
+                const items = submenuOf(help!);
+                expect(items[0].label).toBe(REPORT_ISSUE_LABEL);
+                expect(isSeparator(items[1])).toBe(true);
+            });
+
+            it('keeps About, Check for Updates… and Update Channel below it', () => {
+                const items = submenuOf(help!);
+                const labels = items.filter((i) => i.label).map((i) => i.label);
+                expect(labels.slice(1)).toEqual(
+                    expect.arrayContaining([
+                        'About CoC',
+                        CHECK_FOR_UPDATES_LABEL,
+                        UPDATE_CHANNEL_LABEL,
+                    ]),
+                );
+                expect(labelIdx(items, 'About CoC')).toBeGreaterThan(0);
+            });
+
+            it('wires the click to the provided handler', () => {
+                const items = submenuOf(help!);
+                (items[0].click as () => void)();
+                expect(onReportIssue).toHaveBeenCalledTimes(1);
+            });
+
+            it('renders the row (and a no-op click) when no handler is supplied', () => {
+                const bare = buildAppMenuTemplate(platform, 'CoC', {
+                    onCheckForUpdates: vi.fn(),
+                });
+                const items = submenuOf(bare.find((i) => i.label === 'Help')!);
+                expect(items[0].label).toBe(REPORT_ISSUE_LABEL);
+                expect(() => (items[0].click as () => void)()).not.toThrow();
+            });
+        });
+    }
+
+    it('leaves the macOS app submenu untouched', () => {
+        const template = buildAppMenuTemplate('darwin', 'CoC', {
+            onCheckForUpdates: vi.fn(),
+            onReportIssue: vi.fn(),
+        });
+        const app = submenuOf(template[0]);
+        expect(app[0].role).toBe('about');
+        expect(app.some((i) => i.label === REPORT_ISSUE_LABEL)).toBe(false);
     });
 });
 
