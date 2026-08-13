@@ -1,10 +1,11 @@
-import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode, type SetStateAction } from 'react';
 import type { NoteTreeNode } from '../notesApi';
 import type { ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import { ContextMenu } from '../../../tasks/comments/ContextMenu';
 import { NotesRootSection } from './NotesRootSection';
 import { NotesDialogs } from './NotesDialogs';
-import { useNotesTree } from './useNotesTree';
+import { useNotesTrees, notesRootParam } from './useNotesTrees';
+import { useNotesRootMutations } from './useNotesRootMutations';
 import { useNotesContextMenu } from './useNotesContextMenu';
 import { useNotesDragDrop, getNotesParentPath, getDraggedItems, planBulkMove, type NoteDragItem, type DropPosition } from '../hooks/useNotesDragDrop';
 import { useNoteSeenState } from '../hooks/useNoteSeenState';
@@ -14,7 +15,7 @@ import { useNotesClipboard, planClipboardPaste } from '../hooks/useNotesClipboar
 import { getSpaCocClient } from '../../../api/cocClient';
 import { notesApi } from '../notesApi';
 import { useGlobalToast } from '../../../contexts/ToastContext';
-import { useNotesTreeExpansion, useNotesTreeScroll } from './NotesTreeExpansion';
+import { useNotesTreesExpansion, useNotesTreeScroll } from './NotesTreeExpansion';
 
 /** Synthetic root node used when right-clicking empty space in the sidebar. */
 const ROOT_NODE: NoteTreeNode = { name: '', path: '', type: 'notebook' };
@@ -200,14 +201,47 @@ export interface NotesSidebarProps {
 
 export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, canGoBack, onGoBack, canGoForward, onGoForward, onNotesRootReady, onRestoreEditorFocus, markSeenRef, isDefaultRoot = true, selectedRootId, selectedRootLabel, roots, onSelectRoot, onRootsChanged, footer }: NotesSidebarProps) {
     const { addToast } = useGlobalToast();
-    const rootParam = selectedRootId && selectedRootId !== 'default' ? selectedRootId : undefined;
-    const { tree, notesRoot, systemFolders, loading, error, refresh, createNode, renameNode, deleteNode, reorderNodes } = useNotesTree(workspaceId, rootParam);
+    /**
+     * The root every sidebar-level handler acts on. Stacked sections will make
+     * this the section last interacted with; today it is simply the selected
+     * root, so behaviour is unchanged while the data layer becomes per-root.
+     */
+    const activeRootId = selectedRootId ?? 'default';
+    const rootParam = notesRootParam(activeRootId);
+    /** Roots whose trees are held in memory. Becomes the expanded sections later. */
+    const activeRootIds = useMemo(() => [activeRootId], [activeRootId]);
+    const { getTree, refresh: refreshRoot } = useNotesTrees(workspaceId, activeRootIds);
+    const { tree, notesRoot, systemFolders, loading, error } = getTree(activeRootId);
+    const rootMutations = useNotesRootMutations(workspaceId, refreshRoot);
+    const refresh = useCallback(() => refreshRoot(activeRootId), [refreshRoot, activeRootId]);
+    const createNode = useCallback(
+        (parentPath: string, name: string, type: 'notebook' | 'section' | 'page') =>
+            rootMutations.createNode(activeRootId, parentPath, name, type),
+        [rootMutations, activeRootId],
+    );
+    const renameNode = useCallback(
+        (oldPath: string, newPath: string) => rootMutations.renameNode(activeRootId, oldPath, newPath),
+        [rootMutations, activeRootId],
+    );
+    const deleteNode = useCallback(
+        (path: string) => rootMutations.deleteNode(activeRootId, path),
+        [rootMutations, activeRootId],
+    );
+    const reorderNodes = useCallback(
+        (parentPath: string, order: string[]) => rootMutations.reorderNodes(activeRootId, parentPath, order),
+        [rootMutations, activeRootId],
+    );
     const { isNoteUpdated, markAsSeen, syncSeenState } = useNoteSeenState(workspaceId);
     const isNoteChatRunning = useNoteChatRunning(workspaceId);
     const { ctxMenu, dialog, openContextMenu, closeContextMenu, openDialog, closeDialog, setSubmitting } = useNotesContextMenu();
     const { selectedPaths: multiSelectedPaths, anchorPath, handleSelect: handleMultiSelect, clearSelection } = useNotesSelection();
     const { clipboard, cutPaths, setCut, setCopy, clearClipboard } = useNotesClipboard();
-    const [expandedPaths, setExpandedPaths] = useNotesTreeExpansion(workspaceId, selectedRootId);
+    const { getExpanded, setExpanded: setExpandedForRoot } = useNotesTreesExpansion(workspaceId, activeRootIds);
+    const expandedPaths = getExpanded(activeRootId);
+    const setExpandedPaths = useCallback(
+        (action: SetStateAction<Set<string>>) => setExpandedForRoot(activeRootId, action),
+        [setExpandedForRoot, activeRootId],
+    );
     const [renamingPath, setRenamingPath] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [gitInitialized, setGitInitialized] = useState(false);
@@ -302,7 +336,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                 return next;
             });
         }
-    }, [selectedPath, tree]);
+    }, [selectedPath, tree, setExpandedPaths]);
 
     // Notify parent when the notes root path becomes available
     useEffect(() => {
@@ -360,7 +394,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
             else next.add(path);
             return next;
         });
-    }, []);
+    }, [setExpandedPaths]);
 
     const handleContextMenu = useCallback((node: NoteTreeNode, x: number, y: number) => {
         openContextMenu(node, x, y);

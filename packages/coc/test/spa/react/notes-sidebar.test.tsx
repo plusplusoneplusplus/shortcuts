@@ -1472,6 +1472,59 @@ describe('NotesSidebar', () => {
         expect(localStorage.getItem('coc-notes-expanded-ws1-default')).toBeNull();
     });
 
+    // ── Per-root data layer ────────────────────────────────────────────
+    //
+    // The sidebar fetches and mutates through the root-keyed hooks
+    // (useNotesTrees / useNotesRootMutations) so stacked sections can each own
+    // a root. These lock in that the active root reaches every call and that a
+    // root's tree is cached for the session (AC-03).
+
+    it('fetches the selected root and passes it to mutations', async () => {
+        const { findByTestId } = renderSidebar(null, vi.fn(), { selectedRootId: 'docs' });
+        await waitFor(() => expect(mockGetTree).toHaveBeenCalledWith('ws1', 'docs'));
+
+        const nb1 = await findByTestId('notes-tree-item-Notebook1');
+        fireEvent.click(nb1);
+        const page = await findByTestId('notes-tree-item-TopPage');
+        fireEvent.contextMenu(page, { clientX: 50, clientY: 50 });
+        await waitFor(() => expect(document.querySelector('[data-testid="context-menu"]')).toBeTruthy());
+        const menu = document.querySelector('[data-testid="context-menu"]')!;
+        const renameBtn = Array.from(menu.querySelectorAll('[role="menuitem"]')).find(i => i.textContent === 'Rename') as HTMLElement;
+        fireEvent.click(renameBtn);
+        await waitFor(() => expect(document.querySelector('[data-testid="notes-inline-rename-input"]')).toBeTruthy());
+        const input = document.querySelector('[data-testid="notes-inline-rename-input"]') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'Renamed' } });
+        await act(async () => {
+            fireEvent.keyDown(input, { key: 'Enter' });
+        });
+
+        await waitFor(() => {
+            expect(mockRenameNode).toHaveBeenCalledWith('ws1', 'Notebook1/TopPage', 'Notebook1/Renamed', 'docs');
+        });
+        // The refetch after a mutation stays on the mutated root.
+        expect(mockGetTree.mock.calls.every(c => c[1] === 'docs')).toBe(true);
+    });
+
+    it('serves an already-fetched root from cache when the selection returns to it', async () => {
+        const { findByTestId, rerender } = renderSidebar(null, vi.fn(), { selectedRootId: 'default' });
+        await findByTestId('notes-tree-item-Notebook1');
+        await waitFor(() => expect(mockGetTree).toHaveBeenCalledWith('ws1', undefined));
+
+        rerender(
+            <NotesSidebar workspaceId="ws1" selectedPath={null} selectedRootId="docs" onSelectPage={vi.fn()} />,
+        );
+        await waitFor(() => expect(mockGetTree).toHaveBeenCalledWith('ws1', 'docs'));
+        const callsAfterDocs = mockGetTree.mock.calls.length;
+
+        rerender(
+            <NotesSidebar workspaceId="ws1" selectedPath={null} selectedRootId="default" onSelectPage={vi.fn()} />,
+        );
+        // Back on a root already in the session cache — its tree renders without
+        // another request, and never flashes the loading state.
+        expect(await findByTestId('notes-tree-item-Notebook1')).toBeTruthy();
+        expect(mockGetTree.mock.calls.length).toBe(callsAfterDocs);
+    });
+
     it('does not render a page-count badge on empty folders', async () => {
         const { findByTestId } = renderSidebar();
         const nb2 = await findByTestId('notes-tree-item-Notebook2');
