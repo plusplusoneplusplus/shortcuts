@@ -124,11 +124,26 @@
 }
 
 /* Tables */
+
+/* The column-resizing plugin's node view wraps every table in this div. A table
+   dragged wider than the note body scrolls here instead of overflowing the page
+   (AC-12) — the table itself keeps `overflow: hidden` so the absolutely
+   positioned cell-selection tint and resize handle clip to it. */
+.note-editor .ProseMirror .tableWrapper {
+    overflow-x: auto;
+    margin: 0.75rem 0;
+}
+
 .note-editor .ProseMirror table {
     border-collapse: collapse;
-    width: 100%;
-    margin: 0.75rem 0;
-    table-layout: auto;
+    /* `fixed` is required by ProseMirror column resizing (AC-10): with `auto`
+       the browser recomputes widths from content and treats the plugin's
+       <colgroup> widths as suggestions, so a drag snaps back. `min-width`
+       rather than `width` so an unsized table still fills the note body but a
+       resized one can honour the px width tiptap puts on the element. */
+    table-layout: fixed;
+    min-width: 100%;
+    margin: 0;
     overflow: hidden;
 }
 
@@ -156,7 +171,9 @@
     pointer-events: none;
 }
 
-/* Column resize handle stub (resizable: false, but safe to pre-define) */
+/* Column resize handle. The plugin only puts this element in the DOM while a
+   column border is hovered or dragged, so it is opaque — fading it would just
+   make the affordance hard to find (AC-02). */
 .note-editor .ProseMirror .column-resize-handle {
     position: absolute;
     right: -2px;
@@ -165,7 +182,14 @@
     width: 4px;
     cursor: col-resize;
     background: #0078d4;
-    opacity: 0;
+    pointer-events: none;
+    z-index: 20;
+}
+
+/* Set on the editor root by the resizing plugin for the duration of a drag, so
+   the cursor stays col-resize even as the pointer leaves the border. */
+.note-editor .ProseMirror.resize-cursor {
+    cursor: col-resize;
 }
 
 /* Dark mode — tables */
@@ -180,6 +204,11 @@
 
 .dark .note-editor .ProseMirror .selectedCell::after {
     background: rgba(0, 120, 212, 0.22);
+}
+
+/* A brighter handle so it reads against the dark cell borders (AC-11). */
+.dark .note-editor .ProseMirror .column-resize-handle {
+    background: #4ea6ea;
 }
 
 /* ── Images ──────────────────────────────────────────────────────────────── */

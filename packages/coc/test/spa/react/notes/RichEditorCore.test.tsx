@@ -12,6 +12,7 @@ let capturedEditorProps: any = null;
 let capturedLinkConfig: any = null;
 let capturedExtensions: unknown[] = [];
 let capturedStarterKitConfig: any = null;
+let capturedTableConfig: any = null;
 let capturedLowlightOptions: any = null;
 const mockLowlightRegistry = vi.hoisted(() => ({ __lowlight: true }));
 
@@ -77,7 +78,14 @@ vi.mock('@tiptap/extension-link', () => ({
     },
 }));
 vi.mock('@tiptap/extension-placeholder', () => ({ Placeholder: { configure: () => ({}) } }));
-vi.mock('@tiptap/extension-table', () => ({ Table: { configure: () => ({}) } }));
+vi.mock('@tiptap/extension-table', () => ({
+    Table: {
+        configure: (config: any) => {
+            capturedTableConfig = config;
+            return { name: 'table', config };
+        },
+    },
+}));
 vi.mock('@tiptap/extension-table-row', () => ({ TableRow: {} }));
 vi.mock('@tiptap/extension-table-cell', () => ({ TableCell: {} }));
 vi.mock('@tiptap/extension-table-header', () => ({ TableHeader: {} }));
@@ -142,6 +150,7 @@ describe('RichEditorCore', () => {
         capturedLinkConfig = null;
         capturedExtensions = [];
         capturedStarterKitConfig = null;
+        capturedTableConfig = null;
         capturedLowlightOptions = null;
     });
 
@@ -252,6 +261,32 @@ describe('RichEditorCore', () => {
         expect(pdfIndex).toBeGreaterThanOrEqual(1);
         // MapBlock must remain first; PdfBlock sits alongside the other custom blocks.
         expect(capturedExtensions[0]).toBe(mockMapBlock);
+    });
+
+    // ── Table column resizing ───────────────────────────────────────────
+
+    it('enables column resizing on tables so a column border can be dragged (AC-01)', () => {
+        render(<RichEditorCore />);
+
+        expect(capturedTableConfig).toBeDefined();
+        expect(capturedTableConfig.resizable).toBe(true);
+        expect(capturedTableConfig.lastColumnResizable).toBe(true);
+    });
+
+    it('gives the resize handle an explicit hit area and a usable minimum column width (AC-01)', () => {
+        render(<RichEditorCore />);
+
+        expect(typeof capturedTableConfig.handleWidth).toBe('number');
+        expect(capturedTableConfig.handleWidth).toBeGreaterThan(0);
+        // tiptap's default of 25px leaves almost no content box once our
+        // border-box padding and borders are subtracted.
+        expect(capturedTableConfig.cellMinWidth).toBeGreaterThanOrEqual(60);
+    });
+
+    it('does not render a wrapper div in getHTML output, so the markdown serializer still sees a bare table (AC-06)', () => {
+        render(<RichEditorCore />);
+
+        expect(capturedTableConfig.renderWrapper).toBeFalsy();
     });
 
     // ── Code-block syntax highlighting (lowlight swap) ──────────────────

@@ -225,7 +225,24 @@ export function RichEditorCore({
                 },
             }),
             Placeholder.configure({ placeholder }),
-            Table.configure({ resizable: false }),
+            // Column resizing (AC-01). `resizable: true` installs ProseMirror's
+            // `columnResizing` plugin, which owns the drag: it renders the
+            // `.column-resize-handle` decoration, puts `.resize-cursor` on the
+            // editor root while dragging, and writes the new width into each
+            // cell's `colwidth` attribute on mouseup. Its TableView also wraps
+            // the table in `div.tableWrapper`, which the CSS scrolls (AC-12).
+            // `renderWrapper` stays off so `getHTML()` keeps emitting a bare
+            // `<table>` for the markdown serializer.
+            //
+            // `cellMinWidth` is 60 rather than tiptap's 25 because with our
+            // border-box cells (1px border + 8/10px padding) 25px leaves ~3px of
+            // content box — a column you can drag into uselessness.
+            Table.configure({
+                resizable: true,
+                handleWidth: 5,
+                cellMinWidth: 60,
+                lastColumnResizable: true,
+            }),
             TableRow,
             TableCell,
             TableHeader,

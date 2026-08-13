@@ -171,6 +171,68 @@ describe('noteEditor.css theme consistency', () => {
     });
 });
 
+describe('noteEditor.css resizable tables', () => {
+    const tableRule = () =>
+        css.match(/\.note-editor\s+\.ProseMirror\s+table\s*\{[^}]+\}/)?.[0];
+    const handleRule = () =>
+        css.match(
+            /\.note-editor\s+\.ProseMirror\s+\.column-resize-handle\s*\{[^}]+\}/,
+        )?.[0];
+
+    it('lays tables out with table-layout: fixed, which column resizing requires (AC-10)', () => {
+        // With `auto` the browser recomputes column widths from cell content and
+        // treats the plugin's <colgroup> widths as suggestions, so a drag
+        // appears to do nothing or snaps back.
+        expect(tableRule()).toBeDefined();
+        expect(tableRule()).toMatch(/table-layout:\s*fixed/);
+    });
+
+    it('does not pin the table to width: 100%, which would redistribute every dragged pixel (AC-10)', () => {
+        expect(tableRule()).not.toMatch(/[^-]width:\s*100%/);
+        // …but an unsized table should still fill the note body.
+        expect(tableRule()).toMatch(/min-width:\s*100%/);
+    });
+
+    it('keeps the resize handle visible instead of the old opacity: 0 stub (AC-02)', () => {
+        expect(handleRule()).toBeDefined();
+        expect(handleRule()).not.toMatch(/opacity:\s*0\s*;/);
+        expect(handleRule()).toMatch(/cursor:\s*col-resize/);
+    });
+
+    it('keeps the col-resize cursor for the whole drag via the plugin .resize-cursor class (AC-02)', () => {
+        const rule = css.match(
+            /\.note-editor\s+\.ProseMirror\.resize-cursor\s*\{[^}]+\}/,
+        );
+        expect(rule).not.toBeNull();
+        expect(rule![0]).toMatch(/cursor:\s*col-resize/);
+    });
+
+    it('gives the resize handle a dark-mode color (AC-11)', () => {
+        const rule = css.match(
+            /\.dark\s+\.note-editor\s+\.ProseMirror\s+\.column-resize-handle\s*\{[^}]+\}/,
+        );
+        expect(rule).not.toBeNull();
+        expect(rule![0]).toMatch(/background:\s*#/);
+    });
+
+    it('scrolls a table wider than the note body inside the plugin tableWrapper (AC-12)', () => {
+        const rule = css.match(
+            /\.note-editor\s+\.ProseMirror\s+\.tableWrapper\s*\{[^}]+\}/,
+        );
+        expect(rule).not.toBeNull();
+        expect(rule![0]).toMatch(/overflow-x:\s*auto/);
+    });
+
+    it('keeps cells position: relative and border-box so the handle anchors and dragged px match rendered px', () => {
+        const cellRule = css.match(
+            /\.note-editor\s+\.ProseMirror\s+th,\s*\.note-editor\s+\.ProseMirror\s+td\s*\{[^}]+\}/,
+        );
+        expect(cellRule).not.toBeNull();
+        expect(cellRule![0]).toMatch(/position:\s*relative/);
+        expect(cellRule![0]).toMatch(/box-sizing:\s*border-box/);
+    });
+});
+
 describe('noteEditor.css indentation scale (data-indent)', () => {
     // The Notes indentation feature reuses ONE CSS scale for paragraphs,
     // headings, AND block-level visual embeds (image, pdfBlock, mapBlock,
