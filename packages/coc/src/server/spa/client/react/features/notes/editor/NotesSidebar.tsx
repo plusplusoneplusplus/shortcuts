@@ -15,7 +15,12 @@ import { useNotesClipboard, planClipboardPaste } from '../hooks/useNotesClipboar
 import { getSpaCocClient } from '../../../api/cocClient';
 import { notesApi } from '../notesApi';
 import { useGlobalToast } from '../../../contexts/ToastContext';
-import { useNotesTreesExpansion, useNotesSectionsExpanded, useNotesTreeScroll } from './NotesTreeExpansion';
+import {
+    useNotesTreesExpansion,
+    useNotesSectionsExpanded,
+    useNotesTreeScroll,
+    NOTES_STACKED_SCROLL_ROOT_ID,
+} from './NotesTreeExpansion';
 
 /** Synthetic root node used when right-clicking empty space in the sidebar. */
 const ROOT_NODE: NoteTreeNode = { name: '', path: '', type: 'notebook' };
@@ -297,11 +302,25 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     const [addDropdownOpen, setAddDropdownOpen] = useState(false);
     const addDropdownRef = useRef<HTMLDivElement>(null);
     const treeAreaRef = useRef<HTMLDivElement>(null);
+    /**
+     * Stacked sections share the one `notes-tree-area`, so their scroll belongs
+     * to the whole column — keying it per root would restore a foreign offset
+     * every time the user touched another section. Ready means every expanded
+     * section has settled, otherwise a late tree would shift the restored
+     * offset out from under the user.
+     */
+    const scrollReady = useMemo(() => {
+        if (!hasMultipleRoots) return !loading && !!tree && tree.length > 0;
+        const states = expandedRootIds.map(rootId => getTree(rootId));
+        return states.length > 0
+            && states.every(state => !state.loading)
+            && states.some(state => !!state.tree && state.tree.length > 0);
+    }, [hasMultipleRoots, loading, tree, expandedRootIds, getTree]);
     const handleTreeScroll = useNotesTreeScroll(
         workspaceId,
-        selectedRootId,
+        hasMultipleRoots ? NOTES_STACKED_SCROLL_ROOT_ID : selectedRootId,
         treeAreaRef,
-        !loading && !!tree && tree.length > 0,
+        scrollReady,
     );
     /** Root ids the user is allowed to remove — the default and protected roots are not. */
     const removableRootIds = useMemo(

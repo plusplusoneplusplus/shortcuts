@@ -13,6 +13,13 @@ import {
 
 const DEFAULT_ROOT_ID = 'default';
 
+/**
+ * Scroll scope for the stacked sidebar. Every root shares one scroll container
+ * there, so its position belongs to the whole column rather than to whichever
+ * section was touched last.
+ */
+export const NOTES_STACKED_SCROLL_ROOT_ID = '__all__';
+
 export function notesTreeExpandedStorageKey(workspaceId: string, rootId: string): string {
     return `coc-notes-expanded-${workspaceId}-${rootId}`;
 }
@@ -356,14 +363,18 @@ export function useNotesSectionsExpanded(
  * Restores the scroll position once the scoped tree is ready, saves scrolls at
  * most once per animation frame, and flushes the last position on scope change
  * or unmount.
+ *
+ * `scopeRootId` is the root whose scroll this is. A stacked sidebar shows every
+ * root in one container, so it passes {@link NOTES_STACKED_SCROLL_ROOT_ID}
+ * instead of a real root id.
  */
 export function useNotesTreeScroll(
     workspaceId: string,
-    selectedRootId: string | undefined,
+    scopeRootId: string | undefined,
     treeAreaRef: RefObject<HTMLDivElement | null>,
     ready: boolean,
 ): UIEventHandler<HTMLDivElement> {
-    const storageKey = notesTreeScrollStorageKey(workspaceId, selectedRootId ?? DEFAULT_ROOT_ID);
+    const storageKey = notesTreeScrollStorageKey(workspaceId, scopeRootId ?? DEFAULT_ROOT_ID);
     const restoredStorageKeyRef = useRef<string | null>(null);
     const animationFrameRef = useRef<number | null>(null);
 

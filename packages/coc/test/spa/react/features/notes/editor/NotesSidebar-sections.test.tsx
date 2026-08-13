@@ -10,7 +10,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { ComponentProps } from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { NotesRootEntry, NoteTreeNode } from '../../../../../../src/server/spa/client/react/features/notes/notesApi';
 
 vi.mock('../../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
@@ -193,6 +193,54 @@ describe('NotesSidebar stacked root sections', () => {
         expect(screen.queryByTestId('notes-search-empty-docs')).toBeNull();
         expect(screen.getByTestId('notes-tree-item-BetaOne')).toBeTruthy();
         expect(screen.queryByTestId('notes-tree-item-AlphaOne')).toBeNull();
+    });
+
+    it('scrolls the stacked column under one sidebar-level key, not per root', async () => {
+        localStorage.setItem('coc-notes-scroll-ws1-__all__', '64');
+        const frames: FrameRequestCallback[] = [];
+        vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => {
+            frames.push(callback);
+            return frames.length;
+        });
+        vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+
+        renderSidebar();
+        await screen.findByTestId('notes-tree-default');
+        const treeArea = screen.getByTestId('notes-tree-area');
+        await waitFor(() => expect(treeArea.scrollTop).toBe(64));
+
+        // Touching another section must not move the scroll scope with it.
+        await expandDocs();
+        fireEvent.click(screen.getByTestId('notes-tree-item-BetaOne'));
+
+        treeArea.scrollTop = 130;
+        fireEvent.scroll(treeArea);
+        expect(frames).toHaveLength(1);
+        act(() => frames[frames.length - 1](0));
+
+        expect(localStorage.getItem('coc-notes-scroll-ws1-__all__')).toBe('130');
+        expect(localStorage.getItem('coc-notes-scroll-ws1-docs')).toBeNull();
+        expect(localStorage.getItem('coc-notes-scroll-ws1-default')).toBeNull();
+    });
+
+    it('keeps the per-root scroll key for a single-root workspace (AC-07)', async () => {
+        const frames: FrameRequestCallback[] = [];
+        vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => {
+            frames.push(callback);
+            return frames.length;
+        });
+        vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+
+        renderSidebar({ roots: [ROOTS[0]] });
+        await screen.findByTestId('notes-tree');
+        const treeArea = screen.getByTestId('notes-tree-area');
+
+        treeArea.scrollTop = 42;
+        fireEvent.scroll(treeArea);
+        act(() => frames[frames.length - 1](0));
+
+        expect(localStorage.getItem('coc-notes-scroll-ws1-default')).toBe('42');
+        expect(localStorage.getItem('coc-notes-scroll-ws1-__all__')).toBeNull();
     });
 
     it('renders a bare tree with no section chrome for a single-root workspace (AC-07)', async () => {
