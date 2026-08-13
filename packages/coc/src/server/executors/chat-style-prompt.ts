@@ -1,4 +1,17 @@
-import { CHAT_STYLE_LABELS, isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
+import { CHAT_STYLE_LABELS, DEFAULT_CHAT_STYLE, isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
+import type { ChatPayload } from '../tasks/task-types';
+import {
+    hasClassifyDiffContext,
+    hasCommitChatContext,
+    hasNoteChatContext,
+    hasNoteCreateContext,
+    hasReplicationContext,
+    hasResolveCommentsContext,
+    hasResolveDiffCommentsMultiContext,
+    hasTaskGenerationContext,
+    isChatPayload,
+    normalizeChatModeOrDefault,
+} from '../tasks/task-types';
 
 /**
  * One focus line per real style. `'default'` deliberately has no entry: Default
@@ -42,4 +55,53 @@ export function prependChatStyleBlock(prompt: string, style: unknown): string {
     return prompt;
   }
   return `${block}\n\n${prompt}`;
+}
+
+/**
+ * Whether a new-chat task payload is in scope for style injection.
+ *
+ * Mirrors `ExecutorRegistry.resolveChatExecutor`: only the four user-facing chat
+ * executors qualify — ask (`chat-base`), autopilot, commit-chat and note-chat.
+ * Ralph, classification, task generation, note creation, resolve-comments,
+ * replication, Dreams and workflows are all out of scope.
+ */
+export function isChatStyleEligiblePayload(payload: Record<string, unknown> | undefined): boolean {
+    if (!payload || !isChatPayload(payload)) {
+        return false;
+    }
+    if (
+        hasTaskGenerationContext(payload)
+        || hasReplicationContext(payload)
+        || hasResolveCommentsContext(payload)
+        || hasResolveDiffCommentsMultiContext(payload)
+        || hasClassifyDiffContext(payload)
+        || hasNoteCreateContext(payload)
+        || (payload as ChatPayload).tools?.includes('resolve-comments')
+    ) {
+        return false;
+    }
+    if (hasCommitChatContext(payload) || hasNoteChatContext(payload)) {
+        return true;
+    }
+    const mode = normalizeChatModeOrDefault((payload as ChatPayload).mode);
+    return mode === 'ask' || mode === 'autopilot';
+}
+
+/**
+ * The style recorded for a conversation so far. A conversation that never
+ * recorded one starts at `'default'`, which is what makes the very first turn
+ * inject whenever the user picked a real style.
+ */
+export function recordedChatStyle(metadata: Record<string, unknown> | undefined): ChatStyle {
+    const stored = metadata?.chatStyle;
+    return isChatStyle(stored) ? stored : DEFAULT_CHAT_STYLE;
+}
+
+/**
+ * The single injection rule: inject when the style selected for this turn
+ * differs from the style last recorded for the conversation and is not
+ * `'default'`. Switching *to* Default deliberately emits nothing.
+ */
+export function shouldInjectChatStyle(selected: ChatStyle, recorded: ChatStyle): boolean {
+    return selected !== DEFAULT_CHAT_STYLE && selected !== recorded;
 }

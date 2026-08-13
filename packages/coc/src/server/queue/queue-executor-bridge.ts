@@ -47,6 +47,12 @@ export interface CLITaskExecutorOptions {
      * reference. Threaded to user-facing chat executors only.
      */
     getGlobalSystemPrompt?: () => string | undefined;
+    /**
+     * Live read of the `features.chatStyleSelector` admin flag, checked as each
+     * new conversation starts so disabling the feature stops style injection
+     * even for an older client or an already-open composer.
+     */
+    getChatStyleSelectorEnabled?: () => boolean;
     /** Resolve Auto provider routing when a queued chat task starts execution. */
     resolveDefaultProvider?: ResolveDefaultProviderForExecution;
     /** Live read of admin-configured effort tiers, for execution-time tier resolution. */
@@ -210,6 +216,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             ralphMultiAgentGrillEnabled: options.ralphMultiAgentGrillEnabled,
             resolveAiServiceForProvider: options.resolveAiServiceForProvider,
             getGlobalSystemPrompt: options.getGlobalSystemPrompt,
+            getChatStyleSelectorEnabled: options.getChatStyleSelectorEnabled,
             resolveSkillConfig: skillCfg,
             resolveWorkspaceIdForPath: (p: string) => this.resolveWorkspaceIdForPath(p),
             onTitleNeeded: (pid: string, turns: ConversationTurn[]) => this.generateTitleIfNeeded(pid, turns),

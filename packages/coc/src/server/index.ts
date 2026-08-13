@@ -374,6 +374,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         () => sendMessageCapability,
         // Runtime provider/tier helpers for `send_to_conversation`.
         () => sendToConversationRuntime,
+        // Live read of the chat-style experiment flag. Checked as each new
+        // conversation starts, so turning the feature off immediately stops
+        // prompt injection even for an older client.
+        () => runtimeConfigService.config.features.chatStyleSelector === true,
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by

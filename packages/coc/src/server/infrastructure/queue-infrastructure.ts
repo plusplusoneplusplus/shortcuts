@@ -69,6 +69,7 @@ export function createQueueInfrastructure(
     getEnqueueChat?: () => import('../llm-tools/send-to-conversation-tool').EnqueueChatFn | undefined,
     getSendMessage?: () => import('../llm-tools/send-to-conversation-tool').SendMessageFn | undefined,
     getSendToConversationRuntime?: () => import('../llm-tools/send-to-conversation-tool').SendToConversationRuntimeOptions | undefined,
+    getChatStyleSelectorEnabled?: () => boolean,
 ): QueueInfrastructure {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or create in-memory for tests.
     let db: Database.Database;
@@ -99,6 +100,7 @@ export function createQueueInfrastructure(
         ralphMultiAgentGrillEnabled,
         resolveAiServiceForProvider,
         getGlobalSystemPrompt,
+        getChatStyleSelectorEnabled,
         initialDelayMs: options.queue?.restartPickupDelayMs,
         getCronInfra,
         getTriggerInfra,

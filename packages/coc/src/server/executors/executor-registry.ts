@@ -48,6 +48,12 @@ export interface ExecutorRegistryOptions {
      * the operator-wide instruction reaches every provider via `systemMessage`.
      */
     getGlobalSystemPrompt?: () => string | undefined;
+    /**
+     * Live read of the `features.chatStyleSelector` admin flag. Threaded to the
+     * lifecycle runner so the gate is enforced server-side as each new
+     * conversation starts.
+     */
+    getChatStyleSelectorEnabled?: () => boolean;
     resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
     onTitleNeeded: (processId: string, turns: ConversationTurn[]) => void;
@@ -146,7 +152,7 @@ export class ExecutorRegistry {
             getRunner: options.getDreamRunExecutor ?? (() => undefined),
             cancelledTasks: options.cancelledTasks ?? new Set(),
         });
-        this.runner = new ProcessLifecycleRunner(store, options.dataDir, options.onTitleNeeded, options.provider);
+        this.runner = new ProcessLifecycleRunner(store, options.dataDir, options.onTitleNeeded, options.provider, options.getChatStyleSelectorEnabled);
     }
 
     /** Dispatch a task to the appropriate executor based on its type and payload. */
