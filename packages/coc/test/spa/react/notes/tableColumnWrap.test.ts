@@ -275,11 +275,10 @@ describe('editing and structural commands (AC-05, AC-06, AC-07)', () => {
         expect(wraps(ed)[3]).toBe('nowrap');
     });
 
-    // AC-06 is not satisfied yet: prosemirror-tables builds a new row from the
-    // cell type's defaults, so a row added into a nowrap column wraps. Locked in
-    // as the current behavior so the follow-up that fixes it has to update this
-    // test deliberately rather than silently.
-    it('gives a row added into a nowrap column the default (AC-06, pending)', () => {
+    // prosemirror-tables builds a new row from the cell type's defaults, so
+    // without the inheritance plugin the new cell wraps and the column reads as
+    // half-applied — the toolbar toggle would then flip to "wrap".
+    it('gives a row added into a nowrap column the column setting (AC-06)', () => {
         const ed = makeEditor(GRID);
         caretInCell(ed, 3);
         toggleActiveColumnWrap(ed);
@@ -288,8 +287,59 @@ describe('editing and structural commands (AC-05, AC-06, AC-07)', () => {
         ed.chain().focus().addRowAfter().run();
         expect(cells(ed)).toHaveLength(12);
         // New row sits between the old rows 2 and 3, so its cells are 6..8.
+        expect(wraps(ed).slice(6, 9)).toEqual(['nowrap', 'wrap', 'wrap']);
+        expect(wraps(ed).filter(w => w === 'nowrap')).toHaveLength(4);
+        // And the column still reads as fully applied from the new row.
+        caretInCell(ed, 6);
+        expect(activeColumnWrap(ed)).toBe('nowrap');
+    });
+
+    it('gives a row added above a nowrap column the setting too (AC-06)', () => {
+        const ed = makeEditor(GRID);
+        caretInCell(ed, 1);
+        toggleActiveColumnWrap(ed);
+
+        caretInCell(ed, 4); // middle row, first column
+        ed.chain().focus().addRowBefore().run();
+        // New row lands between the old rows 1 and 2, so its cells are 3..5.
+        expect(wraps(ed).slice(3, 6)).toEqual(['wrap', 'nowrap', 'wrap']);
+        expect(wraps(ed).filter(w => w === 'nowrap')).toHaveLength(4);
+    });
+
+    it('leaves a wrapping column alone when a row is added (AC-06)', () => {
+        const ed = makeEditor(GRID);
+        caretInCell(ed, 0);
+        ed.chain().focus().addRowAfter().run();
+        expect(wraps(ed).every(w => w === 'wrap')).toBe(true);
+    });
+
+    // The plugin must not "finish" a column the user never fully set — a doc
+    // written before this feature, or one row toggled by hand.
+    it('does not spread nowrap from a partially applied column (AC-06)', () => {
+        const ed = makeEditor(GRID);
+        caretInCell(ed, 3);
+        toggleActiveColumnWrap(ed);
+
+        // Knock the header cell of that column back to the default, leaving the
+        // column mixed, then add a row.
+        const headerPos = cellPositions(ed)[0];
+        const header = ed.state.doc.nodeAt(headerPos)!;
+        ed.view.dispatch(
+            ed.state.tr.setNodeMarkup(headerPos, undefined, { ...header.attrs, wrap: 'wrap' }),
+        );
+        caretInCell(ed, 3);
+        ed.chain().focus().addRowAfter().run();
+
         expect(wraps(ed).slice(6, 9)).toEqual(['wrap', 'wrap', 'wrap']);
-        // The rows that already existed keep the setting.
+    });
+
+    it('does not touch the cells of a newly inserted table (AC-06)', () => {
+        const ed = makeEditor(GRID);
+        caretInCell(ed, 3);
+        toggleActiveColumnWrap(ed);
+
+        ed.chain().focus().insertContentAt(ed.state.doc.content.size, GRID).run();
+        // Only the original table's column carries the setting.
         expect(wraps(ed).filter(w => w === 'nowrap')).toHaveLength(3);
     });
 

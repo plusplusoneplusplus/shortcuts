@@ -21,7 +21,9 @@
 
 import type { Editor } from '@tiptap/react';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import type { EditorState } from '@tiptap/pm/state';
+import type { EditorState, Transaction } from '@tiptap/pm/state';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Mapping } from '@tiptap/pm/transform';
 import { TableMap } from '@tiptap/pm/tables';
 import { TableCellWithBackground, TableHeaderWithBackground } from './tableCellBackground';
 import { findActiveTable } from '../tableColumnWidths';
@@ -54,6 +56,10 @@ const wrapAttribute = {
 export const TableCellWithWrap = TableCellWithBackground.extend({
     addAttributes() {
         return { ...this.parent?.(), ...wrapAttribute };
+    },
+    // Registered on the cell (not the header) so it runs once per editor.
+    addProseMirrorPlugins() {
+        return [wrapInheritancePlugin()];
     },
 });
 
@@ -180,4 +186,98 @@ export function toggleActiveColumnWrap(editor: Editor | null | undefined): boole
     if (!tr.docChanged) return false;
     editor.view.dispatch(tr);
     return true;
+}
+
+const wrapInheritanceKey = new PluginKey('tableColumnWrapInheritance');
+
+/**
+ * Keeps a no-wrap column no-wrap when a row is added to it.
+ *
+ * prosemirror-tables builds the cells of a new row from the cell type's
+ * defaults, so `addRowAfter` in a `nowrap` column drops a wrapping cell into the
+ * middle of it — the column stops looking like a column, and the toolbar toggle
+ * flips to "wrap" because it reads the column as half-applied. There is no hook
+ * on the row commands, so this reconciles after the fact instead.
+ *
+ * The rule is deliberately narrow: a freshly inserted cell inherits `nowrap`
+ * only when *every* pre-existing cell of its column is already `nowrap`. A
+ * mixed column (a doc written before this feature, say) is left exactly as it
+ * is, and a whole new table — every cell fresh, nothing pre-existing to inherit
+ * from — is untouched.
+ */
+function wrapInheritancePlugin(): Plugin {
+    return new Plugin({
+        key: wrapInheritanceKey,
+        appendTransaction(transactions, _oldState, newState) {
+            if (!transactions.some(tr => tr.docChanged)) return null;
+
+            // Inverting the combined mapping turns "was this new-doc position
+            // inserted?" into a `deleted` flag on the way back to the old doc.
+            const mapping = new Mapping();
+            for (const tr of transactions) mapping.appendMapping(tr.mapping);
+            const toOld = mapping.invert();
+            const isFresh = (pos: number): boolean => toOld.mapResult(pos).deleted;
+
+            let tr: Transaction | null = null;
+
+            newState.doc.descendants((node, pos) => {
+                if (node.type.name !== 'table') return true;
+                const tableStart = pos + 1;
+                const map = TableMap.get(node);
+
+                // Freshness is read off the *row*, not the cell: a cell
+                // attribute change is a ReplaceAroundStep over the cell, so the
+                // cell would look inserted and the plugin would undo any
+                // deliberate per-cell edit inside a nowrap column.
+                const freshRows = new Set<number>();
+                node.forEach((row, offset, index) => {
+                    if (isFresh(tableStart + offset)) freshRows.add(index);
+                });
+                if (freshRows.size === 0) return false;
+
+                for (let col = 0; col < map.width; col++) {
+                    const fresh: { pos: number; node: ProseMirrorNode }[] = [];
+                    const freshSeen = new Set<number>();
+                    const existingSeen = new Set<number>();
+                    let existing = 0;
+                    let existingNowrap = 0;
+
+                    for (let row = 0; row < map.height; row++) {
+                        const relativePos = map.map[row * map.width + col];
+                        const cell = node.nodeAt(relativePos);
+                        if (!cell) continue;
+                        const cellPos = tableStart + relativePos;
+                        if (freshRows.has(row)) {
+                            // A rowspan cell reached from several rows counts once.
+                            if (freshSeen.has(relativePos)) continue;
+                            freshSeen.add(relativePos);
+                            fresh.push({ pos: cellPos, node: cell });
+                        } else {
+                            existingSeen.add(cellPos);
+                            existing++;
+                            if (cell.attrs?.wrap === 'nowrap') existingNowrap++;
+                        }
+                    }
+
+                    if (fresh.length === 0 || existing === 0 || existingNowrap !== existing) continue;
+
+                    for (const cell of fresh) {
+                        // A rowspan cell straddling an old and a new row is not new.
+                        if (existingSeen.has(cell.pos)) continue;
+                        if (cell.node.attrs?.wrap === 'nowrap') continue;
+                        tr = tr ?? newState.tr;
+                        tr.setNodeMarkup(cell.pos, undefined, {
+                            ...cell.node.attrs,
+                            wrap: 'nowrap',
+                        });
+                    }
+                }
+
+                // Nested tables are not a thing here; no reason to descend.
+                return false;
+            });
+
+            return tr;
+        },
+    });
 }
