@@ -300,6 +300,17 @@ describe('RichEditorCore', () => {
         expect(capturedTableConfig.lastColumnResizable).toBe(true);
     });
 
+    it('registers the tableReorder extension, which is what surfaces the row/column move commands', () => {
+        render(<RichEditorCore />);
+
+        // @tiptap/extension-table ships no move commands, so without this
+        // extension the toolbar's Move Row/Col buttons have nothing to call.
+        const reorder = capturedExtensions.find(
+            (e: any) => e?.name === 'tableReorder',
+        );
+        expect(reorder).toBeDefined();
+    });
+
     it('gives the resize handle an explicit hit area and a usable minimum column width (AC-01)', () => {
         render(<RichEditorCore />);
 

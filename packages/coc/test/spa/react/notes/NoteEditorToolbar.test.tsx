@@ -47,6 +47,9 @@ beforeEach(() => {
 function makeMockEditor(
     isActiveOverride?: (name: string, attrs?: Record<string, unknown>) => boolean,
     getAttributesOverride?: (name: string) => Record<string, unknown>,
+    // Per-command `editor.can()` answers; anything unlisted reads as allowed,
+    // so existing tests keep the enabled rendering they were written against.
+    canOverride?: Record<string, boolean>,
 ) {
     const insertTable = vi.fn(() => ({ run: vi.fn() }));
     const addColumnBefore = vi.fn(() => ({ run: vi.fn() }));
@@ -60,6 +63,10 @@ function makeMockEditor(
     const toggleHeaderRow = vi.fn(() => ({ run: vi.fn() }));
     const toggleHeaderColumn = vi.fn(() => ({ run: vi.fn() }));
     const toggleHeaderCell = vi.fn(() => ({ run: vi.fn() }));
+    const moveTableRowUp = vi.fn(() => ({ run: vi.fn() }));
+    const moveTableRowDown = vi.fn(() => ({ run: vi.fn() }));
+    const moveTableColumnLeft = vi.fn(() => ({ run: vi.fn() }));
+    const moveTableColumnRight = vi.fn(() => ({ run: vi.fn() }));
 
     const focusResult = {
         toggleBold: () => ({ run: vi.fn() }),
@@ -90,13 +97,22 @@ function makeMockEditor(
         toggleHeaderRow,
         toggleHeaderColumn,
         toggleHeaderCell,
+        moveTableRowUp,
+        moveTableRowDown,
+        moveTableColumnLeft,
+        moveTableColumnRight,
     };
+
+    const canResult = new Proxy({}, {
+        get: (_target, prop: string) => () => canOverride?.[prop] ?? true,
+    });
 
     return {
         isActive: vi.fn((name: string, attrs?: Record<string, unknown>) =>
             isActiveOverride ? isActiveOverride(name, attrs) : false),
         getAttributes: vi.fn((name: string) =>
             getAttributesOverride ? getAttributesOverride(name) : {}),
+        can: vi.fn(() => canResult),
         chain: () => ({ focus: () => focusResult }),
         _focusResult: focusResult,
     };
@@ -192,6 +208,80 @@ describe('NoteEditorToolbar — table controls', () => {
 
         fireEvent.mouseDown(screen.getByLabelText('Delete table'));
         expect(editor._focusResult.deleteTable).toHaveBeenCalled();
+    });
+
+    // ── Row / column moves (AC-11, AC-12) ───────────────────────────────────
+
+    const MOVE_BUTTONS = [
+        ['Move column left', 'moveTableColumnLeft'],
+        ['Move column right', 'moveTableColumnRight'],
+        ['Move row up', 'moveTableRowUp'],
+        ['Move row down', 'moveTableRowDown'],
+    ] as const;
+
+    it('hides the move buttons when the cursor is outside a table', () => {
+        const editor = makeMockEditor(() => false);
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        for (const [label] of MOVE_BUTTONS) {
+            expect(screen.queryByLabelText(label)).toBeNull();
+        }
+    });
+
+    it('shows all four move buttons inside a table', () => {
+        const editor = makeMockEditor((name) => name === 'table');
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        for (const [label] of MOVE_BUTTONS) {
+            expect(screen.getByLabelText(label)).toBeDefined();
+        }
+    });
+
+    for (const [label, command] of MOVE_BUTTONS) {
+        it(`"${label}" calls ${command}`, () => {
+            const editor = makeMockEditor((name) => name === 'table');
+            render(<NoteEditorToolbar editor={editor as never} />);
+
+            fireEvent.mouseDown(screen.getByLabelText(label));
+            expect(editor._focusResult[command]).toHaveBeenCalled();
+        });
+
+        it(`"${label}" renders disabled and dispatches nothing when can() says no`, () => {
+            const editor = makeMockEditor(
+                (name) => name === 'table',
+                undefined,
+                { [command]: false },
+            );
+            render(<NoteEditorToolbar editor={editor as never} />);
+
+            const button = screen.getByLabelText(label);
+            expect(button.getAttribute('aria-disabled')).toBe('true');
+            expect((button as HTMLButtonElement).disabled).toBe(true);
+
+            fireEvent.mouseDown(button);
+            expect(editor._focusResult[command]).not.toHaveBeenCalled();
+        });
+
+        it(`"${label}" is enabled when can() allows it`, () => {
+            const editor = makeMockEditor((name) => name === 'table');
+            render(<NoteEditorToolbar editor={editor as never} />);
+
+            const button = screen.getByLabelText(label);
+            expect(button.getAttribute('aria-disabled')).toBe('false');
+            expect((button as HTMLButtonElement).disabled).toBe(false);
+        });
+    }
+
+    it('disables the move buttons on an editor without the TableReorder extension', () => {
+        // `can()` on such an editor has no move commands at all; the strip must
+        // still render rather than throwing on the missing method.
+        const editor = makeMockEditor((name) => name === 'table');
+        editor.can = vi.fn(() => ({})) as never;
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        for (const [label] of MOVE_BUTTONS) {
+            expect((screen.getByLabelText(label) as HTMLButtonElement).disabled).toBe(true);
+        }
     });
 
     // ── Header shape toggles (AC-01, AC-02, AC-04) ──────────────────────────

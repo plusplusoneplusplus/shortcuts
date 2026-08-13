@@ -1044,6 +1044,18 @@ function TableControls({ editor }: TableControlsProps) {
     const noWrap = activeColumnWrap(editor) === 'nowrap';
     const btnCls = TABLE_BTN_CLS;
     const pressedCls = ' bg-[#e8e8e8] dark:bg-[#3c3c3c]';
+    const disabledCls = ' disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent';
+    // The move commands report their own legality — boundaries, the pinned
+    // header row, merged cells, multi-row selections — so the button state is
+    // just `can()`. Optional chaining keeps the strip alive against an editor
+    // built without the TableReorder extension: the moves read as unavailable
+    // rather than throwing out of the whole toolbar.
+    const canMove = (command: 'moveTableRowUp' | 'moveTableRowDown' | 'moveTableColumnLeft' | 'moveTableColumnRight') =>
+        editor.can?.()?.[command]?.() === true;
+    const canMoveColLeft = canMove('moveTableColumnLeft');
+    const canMoveColRight = canMove('moveTableColumnRight');
+    const canMoveRowUp = canMove('moveTableRowUp');
+    const canMoveRowDown = canMove('moveTableRowDown');
 
     return (
         <div
@@ -1075,6 +1087,32 @@ function TableControls({ editor }: TableControlsProps) {
                 onMouseDown={(e) => { e.preventDefault(); toggleActiveColumnWrap(editor); }}>
                 Wrap
             </button>
+            {/* Move one position, not a drag: the column holding the caret
+                swaps with its neighbour, and the moved column stays selected so
+                repeat clicks keep walking it along. Appended after the wrap
+                toggle so the existing column buttons keep their positions. */}
+            <button type="button" title="Move column left" aria-label="Move column left"
+                disabled={!canMoveColLeft}
+                aria-disabled={!canMoveColLeft}
+                className={btnCls + disabledCls}
+                onMouseDown={(e) => {
+                    e.preventDefault();
+                    if (!canMoveColLeft) return;
+                    tc().moveTableColumnLeft().run();
+                }}>
+                Move Col ←
+            </button>
+            <button type="button" title="Move column right" aria-label="Move column right"
+                disabled={!canMoveColRight}
+                aria-disabled={!canMoveColRight}
+                className={btnCls + disabledCls}
+                onMouseDown={(e) => {
+                    e.preventDefault();
+                    if (!canMoveColRight) return;
+                    tc().moveTableColumnRight().run();
+                }}>
+                Move Col →
+            </button>
             <Sep />
             {/* Row operations */}
             <button type="button" title="Add row before" aria-label="Add row before"
@@ -1091,6 +1129,32 @@ function TableControls({ editor }: TableControlsProps) {
                 className={btnCls}
                 onMouseDown={(e) => { e.preventDefault(); tc().deleteRow().run(); }}>
                 Del Row
+            </button>
+            {/* The header row is pinned at index 0 — a header row anywhere else
+                puts the GFM `| --- |` separator in the wrong place and stops the
+                note round-tripping — so the extension disables both directions
+                around it. */}
+            <button type="button" title="Move row up" aria-label="Move row up"
+                disabled={!canMoveRowUp}
+                aria-disabled={!canMoveRowUp}
+                className={btnCls + disabledCls}
+                onMouseDown={(e) => {
+                    e.preventDefault();
+                    if (!canMoveRowUp) return;
+                    tc().moveTableRowUp().run();
+                }}>
+                Move Row ↑
+            </button>
+            <button type="button" title="Move row down" aria-label="Move row down"
+                disabled={!canMoveRowDown}
+                aria-disabled={!canMoveRowDown}
+                className={btnCls + disabledCls}
+                onMouseDown={(e) => {
+                    e.preventDefault();
+                    if (!canMoveRowDown) return;
+                    tc().moveTableRowDown().run();
+                }}>
+                Move Row ↓
             </button>
             <Sep />
             {/* Cell fill — applies across whatever the current cell selection is */}
