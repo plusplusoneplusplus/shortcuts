@@ -87,15 +87,22 @@ vi.mock('@tiptap/extension-table', () => ({
     },
 }));
 vi.mock('@tiptap/extension-table-row', () => ({ TableRow: {} }));
-// The cell/header extensions are subclassed by tableCellBackground.ts, so the
-// stubs need `.extend()` — returning a plain marker keeps this suite focused on
-// which extensions RichEditorCore registers.
-vi.mock('@tiptap/extension-table-cell', () => ({
-    TableCell: { extend: () => ({ name: 'tableCell' }) },
-}));
-vi.mock('@tiptap/extension-table-header', () => ({
-    TableHeader: { extend: () => ({ name: 'tableHeader' }) },
-}));
+// The cell/header extensions are subclassed twice over — by
+// tableCellBackground.ts and then by tableColumnWrap.ts — so `.extend()` has to
+// return something extendable again. A self-returning marker keeps this suite
+// focused on which extensions RichEditorCore registers.
+// (Defined inline in each factory: a mock factory runs before this module's own
+// top-level bindings are initialised, so a shared helper would hit its TDZ.)
+vi.mock('@tiptap/extension-table-cell', () => {
+    const stub: any = { name: 'tableCell' };
+    stub.extend = () => stub;
+    return { TableCell: stub };
+});
+vi.mock('@tiptap/extension-table-header', () => {
+    const stub: any = { name: 'tableHeader' };
+    stub.extend = () => stub;
+    return { TableHeader: stub };
+});
 vi.mock('@tiptap/extension-highlight', () => ({ Highlight: { configure: () => ({}) } }));
 vi.mock('../../../../src/server/spa/client/react/features/notes/editor/extensions/resizableImage', () => ({
     ResizableImage: { configure: () => ({}) },
