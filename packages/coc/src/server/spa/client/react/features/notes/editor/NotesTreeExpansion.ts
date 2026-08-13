@@ -20,6 +20,22 @@ export function notesTreeScrollStorageKey(workspaceId: string, rootId: string): 
     return `coc-notes-scroll-${workspaceId}-${rootId}`;
 }
 
+export function notesSectionExpandedStorageKey(workspaceId: string, rootId: string): string {
+    return `coc-notes-section-expanded-${workspaceId}-${rootId}`;
+}
+
+/** Persisted section open/closed flag; `null` when nothing was stored yet. */
+export function readSectionExpanded(storageKey: string): boolean | null {
+    try {
+        const raw = localStorage.getItem(storageKey);
+        if (raw === 'true') return true;
+        if (raw === 'false') return false;
+        return null;
+    } catch {
+        return null;
+    }
+}
+
 export function readExpandedPaths(storageKey: string): Set<string> {
     try {
         const raw = localStorage.getItem(storageKey);
@@ -107,6 +123,41 @@ export function useNotesTreeExpansion(
         state.storageKey === storageKey ? state.expanded : readExpandedPaths(storageKey),
         setExpanded,
     ];
+}
+
+/**
+ * Persisted open/closed state for one sidebar section, scoped to a workspace
+ * and Notes root. `defaultExpanded` applies only until the user toggles the
+ * section for the first time; after that the stored value wins.
+ */
+export function useNotesSectionExpanded(
+    workspaceId: string,
+    rootId: string,
+    defaultExpanded: boolean,
+): [boolean, (next: boolean) => void] {
+    const storageKey = notesSectionExpandedStorageKey(workspaceId, rootId);
+    const [state, setState] = useState(() => ({
+        storageKey,
+        expanded: readSectionExpanded(storageKey),
+    }));
+
+    useEffect(() => {
+        setState(prev => prev.storageKey === storageKey
+            ? prev
+            : { storageKey, expanded: readSectionExpanded(storageKey) });
+    }, [storageKey]);
+
+    const setExpanded = useCallback((next: boolean) => {
+        try {
+            localStorage.setItem(storageKey, String(next));
+        } catch {
+            /* ignore */
+        }
+        setState({ storageKey, expanded: next });
+    }, [storageKey]);
+
+    const stored = state.storageKey === storageKey ? state.expanded : readSectionExpanded(storageKey);
+    return [stored ?? defaultExpanded, setExpanded];
 }
 
 /**
