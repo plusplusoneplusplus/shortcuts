@@ -456,17 +456,19 @@ turndown.addRule('table', {
     },
 });
 
-// Column-resized tables: ProseMirror's columnResizing plugin records a dragged
-// width as a `colwidth` attribute on every cell of that column, and GFM pipe
-// syntax has nowhere to put it. Such a table is emitted as a raw single-line HTML
-// block that marked passes through unchanged and Tiptap re-parses on reload — the
-// same escape hatch `indentedList` / `mathDisplay` use for content markdown cannot
-// express. A table with no `colwidth` anywhere is untouched and still takes the
-// pipe-table path above, so only notes where a border was actually dragged pay
-// the cost of an unreadable line-level diff.
+// Tables carrying per-cell state GFM pipe syntax cannot express: a dragged column
+// width (`colwidth`, from ProseMirror's columnResizing plugin) or a cell fill
+// (`data-bg`, from the tableCellBackground extension). Such a table is emitted as
+// a raw single-line HTML block that marked passes through unchanged and Tiptap
+// re-parses on reload — the same escape hatch `indentedList` / `mathDisplay` use
+// for content markdown cannot express. A table with neither attribute anywhere is
+// untouched and still takes the pipe-table path above, so only notes where a
+// border was actually dragged or a cell actually filled pay the cost of an
+// unreadable line-level diff.
 // NOTE: addRule() unshifts, so this must stay registered AFTER the plain `table`
 // rule for it to be checked (and win) first.
-const SIZED_CELL_SELECTOR = 'th[colwidth], td[colwidth]';
+const RAW_TABLE_CELL_SELECTOR =
+    'th[colwidth], td[colwidth], th[data-bg], td[data-bg]';
 
 function tableRowChildren(parent: Element): Element[] {
     return Array.from(parent.children).filter(child => child.nodeName === 'TR');
@@ -488,7 +490,7 @@ function cellFirstColwidth(cell: Element): string | null {
     return /^\d+$/.test(first) ? first : null;
 }
 
-function serializeSizedTableCell(cell: Element): string {
+function serializeRawTableCell(cell: Element): string {
     const tag = cell.nodeName.toLowerCase();
     const attrs: string[] = [];
     for (const name of ['colspan', 'rowspan']) {
@@ -497,8 +499,13 @@ function serializeSizedTableCell(cell: Element): string {
     }
     const colwidth = cell.getAttribute('colwidth');
     if (colwidth) attrs.push(`colwidth="${escapeAttr(colwidth)}"`);
-    // A cell's `style` carries its text-align, which is authored content — only the
-    // *computed* style Table.renderHTML puts on <table>/<col> is dropped.
+    // `data-bg` is the fill's primary carrier — an inert data attribute, so it
+    // survives anything that might one day strip `style`. The style below is only
+    // what makes the fill visible in renderers that are not the editor.
+    const backgroundColor = cell.getAttribute('data-bg');
+    if (backgroundColor) attrs.push(`data-bg="${escapeAttr(backgroundColor)}"`);
+    // A cell's `style` carries its text-align and its fill, both authored content —
+    // only the *computed* style Table.renderHTML puts on <table>/<col> is dropped.
     const style = cell.getAttribute('style');
     if (style) attrs.push(`style="${escapeAttr(style)}"`);
     const attrStr = attrs.length > 0 ? ' ' + attrs.join(' ') : '';
@@ -511,12 +518,15 @@ function serializeSizedTableCell(cell: Element): string {
  * `<colgroup>` is a redundant convenience — the per-cell `colwidth` arrays are the
  * lossless record. One `<col>` per first-row cell is only correct when no cell in
  * that row is merged, so a `colspan > 1` first row drops the colgroup entirely
- * rather than emitting a mis-aligned one.
+ * rather than emitting a mis-aligned one. A table that took the raw path for a
+ * cell fill alone has no widths at all, and an all-bare `<col>` list would be
+ * pure noise, so that case drops the colgroup too.
  */
-function serializeSizedTableColgroup(firstRow: Element | null): string {
+function serializeRawTableColgroup(firstRow: Element | null): string {
     if (!firstRow) return '';
     const cells = tableCellChildren(firstRow);
     if (cells.length === 0 || cells.some(cell => cellColspan(cell) > 1)) return '';
+    if (cells.every(cell => cellFirstColwidth(cell) === null)) return '';
     const cols = cells.map(cell => {
         const width = cellFirstColwidth(cell);
         // `width` as an attribute, not a style: Tiptap's parseColgroupWidth reads
@@ -526,14 +536,14 @@ function serializeSizedTableColgroup(firstRow: Element | null): string {
     return `<colgroup>${cols.join('')}</colgroup>`;
 }
 
-function serializeSizedTable(table: Element): string {
+function serializeRawTable(table: Element): string {
     const sections: string[] = [];
     let firstRow: Element | null = null;
 
     const pushSection = (tag: string, rows: Element[]): void => {
         if (rows.length === 0) return;
         if (!firstRow) firstRow = rows[0];
-        sections.push(`<${tag}>${rows.map(serializeSizedTableRow).join('')}</${tag}>`);
+        sections.push(`<${tag}>${rows.map(serializeRawTableRow).join('')}</${tag}>`);
     };
 
     for (const child of Array.from(table.children)) {
@@ -545,24 +555,24 @@ function serializeSizedTable(table: Element): string {
     // an implicit <tbody>, so this is rare) still needs a home.
     pushSection('tbody', tableRowChildren(table));
 
-    return `<table>${serializeSizedTableColgroup(firstRow)}${sections.join('')}</table>`;
+    return `<table>${serializeRawTableColgroup(firstRow)}${sections.join('')}</table>`;
 }
 
-function serializeSizedTableRow(row: Element): string {
-    return `<tr>${tableCellChildren(row).map(serializeSizedTableCell).join('')}</tr>`;
+function serializeRawTableRow(row: Element): string {
+    return `<tr>${tableCellChildren(row).map(serializeRawTableCell).join('')}</tr>`;
 }
 
-turndown.addRule('sizedTable', {
+turndown.addRule('rawTable', {
     filter(node) {
         return (
             node.nodeName === 'TABLE' &&
-            (node as Element).querySelector(SIZED_CELL_SELECTOR) !== null
+            (node as Element).querySelector(RAW_TABLE_CELL_SELECTOR) !== null
         );
     },
     replacement(_content, node) {
         // The block must be a single physical line with no interior blank line, or
         // marked terminates the HTML block early and mangles the rest of the note.
-        const html = serializeSizedTable(node as Element).replace(/\s*\r?\n\s*/g, ' ');
+        const html = serializeRawTable(node as Element).replace(/\s*\r?\n\s*/g, ' ');
         return `\n\n${html}\n\n`;
     },
 });

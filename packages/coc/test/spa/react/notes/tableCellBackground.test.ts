@@ -23,6 +23,10 @@ import {
     tableCellBackgroundVar,
     tableCellColorFromStyle,
 } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/tableCellBackground';
+import {
+    htmlToMarkdown,
+    markdownToHtml,
+} from '../../../../src/server/spa/client/react/features/notes/editor/noteMarkdown';
 
 let editor: Editor | null = null;
 
@@ -288,5 +292,48 @@ describe('setCellAttribute over a cell selection', () => {
 
         expect(cells(ed).map(c => c.attrs.backgroundColor)).toEqual([null, null, null, null]);
         expect(ed.getHTML()).not.toContain('data-bg');
+    });
+});
+
+describe('markdown round trip through a real editor (AC-12)', () => {
+    /** doc → getHTML → .md → HTML → doc, the exact save/reload path. */
+    function reload(ed: Editor): Editor {
+        const md = htmlToMarkdown(ed.getHTML());
+        ed.destroy();
+        return makeEditor(markdownToHtml(md));
+    }
+
+    it('survives a save and reload with every token intact', () => {
+        const ed = makeEditor(GRID);
+        selectCells(ed, 0, 1);
+        ed.chain().focus().setCellAttribute('backgroundColor', 'blue').run();
+        selectCells(ed, 3, 3);
+        ed.chain().focus().setCellAttribute('backgroundColor', 'purple').run();
+        const before = cells(ed).map(c => `${c.type}:${String(c.attrs.backgroundColor)}`);
+        expect(before).toEqual([
+            'tableHeader:blue', 'tableHeader:blue', 'tableCell:null', 'tableCell:purple',
+        ]);
+
+        const reloaded = reload(ed);
+        expect(cells(reloaded).map(c => `${c.type}:${String(c.attrs.backgroundColor)}`)).toEqual(before);
+    });
+
+    it('leaves an uncolored table on the pipe-table path', () => {
+        const ed = makeEditor(GRID);
+        const md = htmlToMarkdown(ed.getHTML());
+        expect(md).toContain('| --- |');
+        expect(md).not.toContain('<table');
+    });
+
+    it('keeps a fill and a colwidth on the same cell (AC-13)', () => {
+        const ed = makeEditor(GRID);
+        selectCells(ed, 0, 0);
+        ed.chain().focus().setCellAttribute('backgroundColor', 'green').run();
+        ed.chain().focus().setCellAttribute('colwidth', [180]).run();
+
+        const reloaded = reload(ed);
+        const first = cells(reloaded)[0];
+        expect(first.attrs.backgroundColor).toBe('green');
+        expect(first.attrs.colwidth).toEqual([180]);
     });
 });

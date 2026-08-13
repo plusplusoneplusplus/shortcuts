@@ -923,6 +923,138 @@ describe('noteMarkdown', () => {
         });
     });
 
+    // ── Table cell background color (data-bg persistence) ───────────────
+
+    describe('table cell background persistence', () => {
+        // What Tiptap's getHTML() emits for a filled cell: the token in `data-bg`
+        // plus an inline style resolving the theme's CSS variable.
+        const bg = (token: string) =>
+            ` data-bg="${token}" style="background-color: var(--note-table-bg-${token});"`;
+        const coloredTableHtml =
+            '<table><tbody>' +
+            '<tr><th><p>A</p></th><th><p>B</p></th></tr>' +
+            `<tr><td${bg('yellow')}><p>1</p></td><td><p>2</p></td></tr>` +
+            '</tbody></table>';
+
+        // AC-09 — the regression guard that matters most: an uncolored, unsized
+        // table must still produce byte-identical pipe markdown.
+        it('htmlToMarkdown — a table with no data-bg is unchanged by the widened rule', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><th><p>A</p></th><th><p>B</p></th></tr>' +
+                '<tr><td><p>1</p></td><td><p>2</p></td></tr>' +
+                '</tbody></table>';
+            expect(htmlToMarkdown(html)).toBe('| A | B |\n| --- | --- |\n| 1 | 2 |\n');
+        });
+
+        // AC-10
+        it('htmlToMarkdown — one colored td emits a raw HTML block keeping data-bg', () => {
+            const md = htmlToMarkdown(coloredTableHtml);
+            const block = md.trim();
+            expect(block.split('\n')).toHaveLength(1);
+            expect(block.startsWith('<table>')).toBe(true);
+            expect(block.endsWith('</table>')).toBe(true);
+            expect(block).toContain('data-bg="yellow"');
+            expect(block).toContain('background-color: var(--note-table-bg-yellow);');
+            // Not a pipe table
+            expect(md).not.toContain('| --- |');
+            // No widths anywhere, so no pointless all-bare colgroup
+            expect(block).not.toContain('<colgroup>');
+            // Uncolored cells stay bare
+            expect(block).toContain('<td><p>2</p></td>');
+        });
+
+        it('htmlToMarkdown — a colored th emits a raw block with data-bg on the th', () => {
+            const html =
+                '<table><tbody>' +
+                `<tr><th${bg('green')}><p>A</p></th><th><p>B</p></th></tr>` +
+                '</tbody></table>';
+            const block = htmlToMarkdown(html).trim();
+            expect(block).toContain(`<th${bg('green')}><p>A</p></th>`);
+        });
+
+        it('htmlToMarkdown — the raw colored block is surrounded by blank lines', () => {
+            const md = htmlToMarkdown(`<p>before</p>${coloredTableHtml}<p>after</p>`);
+            const lines = md.split('\n');
+            const idx = lines.findIndex(line => line.startsWith('<table>'));
+            expect(idx).toBeGreaterThan(0);
+            expect(lines[idx - 1]).toBe('');
+            expect(lines[idx + 1]).toBe('');
+            expect(md).toContain('after');
+        });
+
+        // AC-11 — goal-doc risk 1: nothing between marked and Tiptap strips the
+        // attribute or the style off a td/th.
+        it('markdownToHtml — a raw table block keeps data-bg and the style', () => {
+            const md = `\n\n${'<table><tbody>' +
+                `<tr><td${bg('blue')}><p>1</p></td></tr>` +
+                '</tbody></table>'}\n\n`;
+            const html = markdownToHtml(md);
+            expect(html).toContain('data-bg="blue"');
+            expect(html).toContain('background-color: var(--note-table-bg-blue);');
+        });
+
+        // AC-12
+        it('round-trip — html → md → html preserves every cell fill', () => {
+            const reloaded = markdownToHtml(htmlToMarkdown(coloredTableHtml));
+            expect(reloaded).toContain('data-bg="yellow"');
+            expect(reloaded).toContain('background-color: var(--note-table-bg-yellow);');
+            expect(htmlToMarkdown(reloaded)).toBe(htmlToMarkdown(coloredTableHtml));
+        });
+
+        // AC-13 at the serialization layer — colspan/rowspan/colwidth coexist
+        // with a fill on the same cell.
+        it('htmlToMarkdown — colspan, rowspan and colwidth survive alongside data-bg', () => {
+            const html =
+                '<table><tbody>' +
+                `<tr><td colspan="2" rowspan="2" colwidth="180,240"${bg('pink')}><p>X</p></td></tr>` +
+                '</tbody></table>';
+            const block = htmlToMarkdown(html).trim();
+            expect(block).toContain('colspan="2"');
+            expect(block).toContain('rowspan="2"');
+            expect(block).toContain('colwidth="180,240"');
+            expect(block).toContain('data-bg="pink"');
+            expect(htmlToMarkdown(markdownToHtml(block))).toBe(htmlToMarkdown(html));
+        });
+
+        it('htmlToMarkdown — a fill and a text-align share one style attribute', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><td data-bg="orange" style="text-align: center; background-color: var(--note-table-bg-orange);"><p>A</p></td></tr>' +
+                '</tbody></table>';
+            const block = htmlToMarkdown(html).trim();
+            expect(block).toContain('text-align: center');
+            expect(block).toContain('background-color: var(--note-table-bg-orange);');
+        });
+
+        it('round-trip — a colored table does not swallow the block after it', () => {
+            const md = htmlToMarkdown(`${coloredTableHtml}<ul><li>one</li></ul>`);
+            const reloaded = markdownToHtml(md);
+            expect(reloaded).toContain('<li>one</li>');
+            expect(reloaded.indexOf('</table>')).toBeLessThan(reloaded.indexOf('<li>one</li>'));
+        });
+
+        it('round-trip — a plain table beside a colored one keeps pipe syntax', () => {
+            const plain =
+                '<table><tbody>' +
+                '<tr><th><p>P</p></th><th><p>Q</p></th></tr>' +
+                '<tr><td><p>1</p></td><td><p>2</p></td></tr>' +
+                '</tbody></table>';
+            const md = htmlToMarkdown(`${plain}<p>between</p>${coloredTableHtml}`);
+            expect(md).toContain('| P | Q |');
+            expect(md.match(/<table>/g)).toHaveLength(1);
+        });
+
+        it('htmlToMarkdown — clearing the last fill returns the table to pipe syntax', () => {
+            const cleared =
+                '<table><tbody>' +
+                '<tr><th><p>A</p></th><th><p>B</p></th></tr>' +
+                '<tr><td><p>1</p></td><td><p>2</p></td></tr>' +
+                '</tbody></table>';
+            expect(htmlToMarkdown(cleared)).toBe('| A | B |\n| --- | --- |\n| 1 | 2 |\n');
+        });
+    });
+
     // ── Image resize serialization ──────────────────────────────────────
 
     describe('image resize serialization', () => {
