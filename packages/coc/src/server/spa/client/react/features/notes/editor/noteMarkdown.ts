@@ -456,6 +456,117 @@ turndown.addRule('table', {
     },
 });
 
+// Column-resized tables: ProseMirror's columnResizing plugin records a dragged
+// width as a `colwidth` attribute on every cell of that column, and GFM pipe
+// syntax has nowhere to put it. Such a table is emitted as a raw single-line HTML
+// block that marked passes through unchanged and Tiptap re-parses on reload — the
+// same escape hatch `indentedList` / `mathDisplay` use for content markdown cannot
+// express. A table with no `colwidth` anywhere is untouched and still takes the
+// pipe-table path above, so only notes where a border was actually dragged pay
+// the cost of an unreadable line-level diff.
+// NOTE: addRule() unshifts, so this must stay registered AFTER the plain `table`
+// rule for it to be checked (and win) first.
+const SIZED_CELL_SELECTOR = 'th[colwidth], td[colwidth]';
+
+function tableRowChildren(parent: Element): Element[] {
+    return Array.from(parent.children).filter(child => child.nodeName === 'TR');
+}
+
+function tableCellChildren(row: Element): Element[] {
+    return Array.from(row.children).filter(
+        child => child.nodeName === 'TH' || child.nodeName === 'TD',
+    );
+}
+
+function cellColspan(cell: Element): number {
+    return parseInt(cell.getAttribute('colspan') ?? '1', 10) || 1;
+}
+
+/** First entry of a cell's `colwidth` array (one entry per spanned column). */
+function cellFirstColwidth(cell: Element): string | null {
+    const first = (cell.getAttribute('colwidth') ?? '').split(',')[0]?.trim() ?? '';
+    return /^\d+$/.test(first) ? first : null;
+}
+
+function serializeSizedTableCell(cell: Element): string {
+    const tag = cell.nodeName.toLowerCase();
+    const attrs: string[] = [];
+    for (const name of ['colspan', 'rowspan']) {
+        const value = cell.getAttribute(name);
+        if (value && value !== '1') attrs.push(`${name}="${escapeAttr(value)}"`);
+    }
+    const colwidth = cell.getAttribute('colwidth');
+    if (colwidth) attrs.push(`colwidth="${escapeAttr(colwidth)}"`);
+    // A cell's `style` carries its text-align, which is authored content — only the
+    // *computed* style Table.renderHTML puts on <table>/<col> is dropped.
+    const style = cell.getAttribute('style');
+    if (style) attrs.push(`style="${escapeAttr(style)}"`);
+    const attrStr = attrs.length > 0 ? ' ' + attrs.join(' ') : '';
+    // innerHTML keeps inline formatting (<strong>, <a>, …) as HTML; it is not
+    // re-run through turndown, Tiptap parses it back directly.
+    return `<${tag}${attrStr}>${cell.innerHTML}</${tag}>`;
+}
+
+/**
+ * `<colgroup>` is a redundant convenience — the per-cell `colwidth` arrays are the
+ * lossless record. One `<col>` per first-row cell is only correct when no cell in
+ * that row is merged, so a `colspan > 1` first row drops the colgroup entirely
+ * rather than emitting a mis-aligned one.
+ */
+function serializeSizedTableColgroup(firstRow: Element | null): string {
+    if (!firstRow) return '';
+    const cells = tableCellChildren(firstRow);
+    if (cells.length === 0 || cells.some(cell => cellColspan(cell) > 1)) return '';
+    const cols = cells.map(cell => {
+        const width = cellFirstColwidth(cell);
+        // `width` as an attribute, not a style: Tiptap's parseColgroupWidth reads
+        // only the attribute, so a style-only colgroup round trip loses widths.
+        return width ? `<col width="${width}">` : '<col>';
+    });
+    return `<colgroup>${cols.join('')}</colgroup>`;
+}
+
+function serializeSizedTable(table: Element): string {
+    const sections: string[] = [];
+    let firstRow: Element | null = null;
+
+    const pushSection = (tag: string, rows: Element[]): void => {
+        if (rows.length === 0) return;
+        if (!firstRow) firstRow = rows[0];
+        sections.push(`<${tag}>${rows.map(serializeSizedTableRow).join('')}</${tag}>`);
+    };
+
+    for (const child of Array.from(table.children)) {
+        if (child.nodeName === 'THEAD' || child.nodeName === 'TBODY' || child.nodeName === 'TFOOT') {
+            pushSection(child.nodeName.toLowerCase(), tableRowChildren(child));
+        }
+    }
+    // Defensive: a <tr> parsed directly under <table> (DOM parsers normally insert
+    // an implicit <tbody>, so this is rare) still needs a home.
+    pushSection('tbody', tableRowChildren(table));
+
+    return `<table>${serializeSizedTableColgroup(firstRow)}${sections.join('')}</table>`;
+}
+
+function serializeSizedTableRow(row: Element): string {
+    return `<tr>${tableCellChildren(row).map(serializeSizedTableCell).join('')}</tr>`;
+}
+
+turndown.addRule('sizedTable', {
+    filter(node) {
+        return (
+            node.nodeName === 'TABLE' &&
+            (node as Element).querySelector(SIZED_CELL_SELECTOR) !== null
+        );
+    },
+    replacement(_content, node) {
+        // The block must be a single physical line with no interior blank line, or
+        // marked terminates the HTML block early and mangles the rest of the note.
+        const html = serializeSizedTable(node as Element).replace(/\s*\r?\n\s*/g, ' ');
+        return `\n\n${html}\n\n`;
+    },
+});
+
 // Mermaid fenced code block: <pre><code class="language-mermaid">…</code></pre> → ```mermaid\n…\n```
 // Registered last so it wins over turndown's built-in fenced-code rule for mermaid blocks.
 turndown.addRule('mermaidCode', {
@@ -733,6 +844,26 @@ function stripCodeBlockTrailingNewline(html: string): string {
     );
 }
 
+// Tiptap's `Table.renderHTML` writes colgroup widths as an inline *style*
+// (`<col style="width: 180px">`), but its `parseColwidth` colgroup fallback reads
+// only the `width` *attribute* off `<col>` — so a style-only colgroup silently
+// loses every width on reload. Rewrite style → attribute on load so colgroup-only
+// HTML (pasted, hand-written, or from an older save) still parses into `colwidth`.
+// A `<col>` whose style carries no px width (Tiptap's `min-width` placeholder for
+// an unsized column) just loses the dead style.
+function normalizeColgroupWidths(html: string): string {
+    return html.replace(/<col\b([^>]*?)\/?>/gi, (match, attrs: string) => {
+        const style = getHtmlAttr(attrs, 'style');
+        if (!style) return match;
+        const rest = attrs.replace(/\s*\bstyle\s*=\s*(["'])[\s\S]*?\1/i, '');
+        // An explicit width attribute already wins over the style; keep it as-is.
+        if (getHtmlAttr(rest, 'width')) return `<col${rest}>`;
+        const styleWidth = /(?:^|;)\s*width\s*:\s*(\d+(?:\.\d+)?)\s*px/i.exec(style)?.[1];
+        if (!styleWidth) return `<col${rest}>`;
+        return `<col${rest} width="${Math.round(parseFloat(styleWidth))}">`;
+    });
+}
+
 // marked emits a fenced code block's info-string verbatim as the `<code>`
 // class (```` ```ts ```` → `<code class="language-ts">`). CodeBlockLowlight only
 // highlights a block whose `language` attribute is one of the 16 registered
@@ -771,7 +902,9 @@ export function markdownToHtml(md: string): string {
     const { body, defs } = extractQaFootnoteDefs(md);
     const html = injectQaAnswers(marked.parse(body) as string, defs);
     return resolveFencedCodeLanguages(
-        stripCodeBlockTrailingNewline(stripNbspParagraphPlaceholders(postProcessTaskLists(html))),
+        normalizeColgroupWidths(
+            stripCodeBlockTrailingNewline(stripNbspParagraphPlaceholders(postProcessTaskLists(html))),
+        ),
     );
 }
 

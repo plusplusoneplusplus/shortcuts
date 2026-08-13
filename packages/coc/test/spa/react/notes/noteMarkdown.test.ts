@@ -750,6 +750,179 @@ describe('noteMarkdown', () => {
         });
     });
 
+    // ── Table column widths (colwidth persistence) ──────────────────────
+
+    describe('table column width persistence', () => {
+        // What Tiptap's getHTML() emits after a column border has been dragged:
+        // a computed style on <table>/<col> plus the authoritative cell colwidth.
+        const sizedTableHtml =
+            '<table style="min-width: 420px">' +
+            '<colgroup><col style="width: 180px"><col></colgroup>' +
+            '<tbody>' +
+            '<tr><th colwidth="180"><p>A</p></th><th><p>B</p></th></tr>' +
+            '<tr><td colwidth="180"><p>1</p></td><td><p>2</p></td></tr>' +
+            '</tbody></table>';
+
+        // AC-06
+        it('htmlToMarkdown — a table with colwidth emits a single-line raw HTML block', () => {
+            const md = htmlToMarkdown(sizedTableHtml);
+            const block = md.trim();
+            expect(block.split('\n')).toHaveLength(1);
+            expect(block.startsWith('<table>')).toBe(true);
+            expect(block.endsWith('</table>')).toBe(true);
+            expect(block).toContain('width="180"');
+            expect(block).toContain('colwidth="180"');
+            // Computed styles on <table>/<col> are dropped so the bytes stay stable.
+            expect(block).not.toContain('style=');
+            // Not a pipe table
+            expect(md).not.toContain('| --- |');
+        });
+
+        it('htmlToMarkdown — the raw table block is surrounded by blank lines', () => {
+            const md = htmlToMarkdown(`<p>before</p>${sizedTableHtml}<p>after</p>`);
+            const lines = md.split('\n');
+            const idx = lines.findIndex(line => line.startsWith('<table>'));
+            expect(idx).toBeGreaterThan(0);
+            expect(lines[idx - 1]).toBe('');
+            expect(lines[idx + 1]).toBe('');
+        });
+
+        it('htmlToMarkdown — an unsized column emits a bare <col> and no cell colwidth', () => {
+            const block = htmlToMarkdown(sizedTableHtml).trim();
+            expect(block).toContain('<colgroup><col width="180"><col></colgroup>');
+            expect(block).toContain('<th><p>B</p></th>');
+        });
+
+        // AC-06 negative — colspan alone is not a width, so this stays a pipe table
+        it('htmlToMarkdown — a table with only colspan still emits a pipe table', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><th colspan="2"><p>Wide</p></th></tr>' +
+                '<tr><td><p>1</p></td><td><p>2</p></td></tr>' +
+                '</tbody></table>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('| Wide |');
+            expect(md).toContain('| --- |');
+            expect(md).not.toContain('<table');
+        });
+
+        // AC-05 regression guard: no colwidth anywhere → byte-identical pipe table
+        it('htmlToMarkdown — a table with no colwidth is unchanged by the new rule', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><th><p>A</p></th><th><p>B</p></th></tr>' +
+                '<tr><td><p>1</p></td><td><p>2</p></td></tr>' +
+                '</tbody></table>';
+            expect(htmlToMarkdown(html)).toBe('| A | B |\n| --- | --- |\n| 1 | 2 |\n');
+        });
+
+        // AC-07
+        it('round-trip — markdownToHtml passes the raw block through and keeps widths', () => {
+            const reloaded = markdownToHtml(htmlToMarkdown(sizedTableHtml));
+            expect(reloaded).toContain('colwidth="180"');
+            expect(reloaded).toContain('<col width="180">');
+            expect(reloaded).toContain('<table>');
+        });
+
+        it('round-trip — re-saving the reloaded HTML is idempotent', () => {
+            const once = htmlToMarkdown(sizedTableHtml);
+            const twice = htmlToMarkdown(markdownToHtml(once));
+            expect(twice).toBe(once);
+        });
+
+        it('round-trip — a raw table block does not swallow adjacent blocks', () => {
+            const md = htmlToMarkdown(
+                `<p>before</p>${sizedTableHtml}<ul><li>one</li><li>two</li></ul>`,
+            );
+            const reloaded = markdownToHtml(md);
+            expect(reloaded).toContain('before');
+            expect(reloaded).toContain('<table>');
+            expect(reloaded).toContain('<li>one</li>');
+            expect(reloaded).toContain('<li>two</li>');
+            // The list must not have been absorbed into the HTML block
+            expect(reloaded.indexOf('</table>')).toBeLessThan(reloaded.indexOf('<li>one</li>'));
+        });
+
+        // AC-09
+        it('markdownToHtml — normalizes <col style="width: 180px"> to <col width="180">', () => {
+            const md = '<table><colgroup><col style="width: 180px"><col></colgroup>' +
+                '<tbody><tr><th>A</th><th>B</th></tr></tbody></table>';
+            const html = markdownToHtml(md);
+            expect(html).toContain('<col width="180">');
+            expect(html).not.toContain('style="width: 180px"');
+        });
+
+        it('markdownToHtml — a <col> style with no px width just loses the dead style', () => {
+            const md = '<table><colgroup><col style="min-width: 25px"></colgroup>' +
+                '<tbody><tr><th>A</th></tr></tbody></table>';
+            const html = markdownToHtml(md);
+            expect(html).toContain('<colgroup><col></colgroup>');
+        });
+
+        it('markdownToHtml — an explicit width attribute wins over the style', () => {
+            const md = '<table><colgroup><col width="240" style="width: 180px"></colgroup>' +
+                '<tbody><tr><th>A</th></tr></tbody></table>';
+            expect(markdownToHtml(md)).toContain('<col width="240">');
+        });
+
+        // Merged first-row cells: the colgroup would be mis-aligned, so it is
+        // dropped and the lossless per-cell colwidth arrays carry the widths.
+        it('htmlToMarkdown — a colspan first row drops the colgroup but keeps cell colwidth', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><th colspan="2" colwidth="180,240"><p>Wide</p></th></tr>' +
+                '<tr><td colwidth="180"><p>1</p></td><td colwidth="240"><p>2</p></td></tr>' +
+                '</tbody></table>';
+            const block = htmlToMarkdown(html).trim();
+            expect(block).not.toContain('<colgroup>');
+            expect(block).toContain('colspan="2"');
+            expect(block).toContain('colwidth="180,240"');
+            expect(htmlToMarkdown(markdownToHtml(block))).toBe(htmlToMarkdown(html));
+        });
+
+        it('htmlToMarkdown — cell text-align survives the raw block', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><th colwidth="180" style="text-align: center"><p>A</p></th></tr>' +
+                '</tbody></table>';
+            expect(htmlToMarkdown(html).trim()).toContain('style="text-align: center"');
+        });
+
+        it('htmlToMarkdown — inline formatting inside a sized cell stays HTML', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><td colwidth="180"><p><strong>Alice</strong></p></td></tr>' +
+                '</tbody></table>';
+            expect(htmlToMarkdown(html).trim()).toContain('<strong>Alice</strong>');
+        });
+
+        it('round-trip — a plain table and a sized table in one note keep their own forms', () => {
+            const plain =
+                '<table><tbody>' +
+                '<tr><th><p>P</p></th><th><p>Q</p></th></tr>' +
+                '<tr><td><p>1</p></td><td><p>2</p></td></tr>' +
+                '</tbody></table>';
+            const md = htmlToMarkdown(`${plain}<p>between</p>${sizedTableHtml}`);
+            expect(md).toContain('| P | Q |');
+            expect(md).toContain('| --- | --- |');
+            expect(md).toContain('<table>');
+            // One raw block only — the plain table stayed pipe syntax
+            expect(md.match(/<table>/g)).toHaveLength(1);
+
+            // Only the sized table's own bytes are asserted for idempotence here.
+            // A plain pipe table is NOT idempotent across a bare
+            // markdownToHtml→htmlToMarkdown pair — marked splits it into
+            // <thead>/<tbody> and the `tableRow` td-only heuristic then emits a
+            // second separator after the first body row. That is a pre-existing
+            // quirk of this composition, unrelated to column widths, and the real
+            // editor path does not hit it (Tiptap re-normalizes to one <tbody>
+            // with <th> in the first row before htmlToMarkdown ever runs).
+            const rawBlock = (s: string) =>
+                s.split('\n').find(line => line.startsWith('<table>'));
+            expect(rawBlock(htmlToMarkdown(markdownToHtml(md)))).toBe(rawBlock(md));
+        });
+    });
+
     // ── Image resize serialization ──────────────────────────────────────
 
     describe('image resize serialization', () => {
