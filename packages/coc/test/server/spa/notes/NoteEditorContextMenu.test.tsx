@@ -104,8 +104,10 @@ vi.mock('@tiptap/extension-link', () => ({ Link: { configure: () => ({}) } }));
 vi.mock('@tiptap/extension-placeholder', () => ({ Placeholder: { configure: () => ({}) } }));
 vi.mock('@tiptap/extension-table', () => ({ Table: { configure: () => ({}) } }));
 vi.mock('@tiptap/extension-table-row', () => ({ TableRow: {} }));
-vi.mock('@tiptap/extension-table-cell', () => ({ TableCell: {} }));
-vi.mock('@tiptap/extension-table-header', () => ({ TableHeader: {} }));
+// tableCellBackground.ts calls `.extend()` on both of these at import time, so
+// the stubs need it or the whole module graph fails to load.
+vi.mock('@tiptap/extension-table-cell', () => ({ TableCell: { extend: () => ({}) } }));
+vi.mock('@tiptap/extension-table-header', () => ({ TableHeader: { extend: () => ({}) } }));
 vi.mock('@tiptap/extension-highlight', () => ({ Highlight: { configure: () => ({}) } }));
 vi.mock('../../../../src/server/spa/client/react/features/notes/editor/extensions/resizableImage', () => ({
     ResizableImage: { configure: () => ({}) },
