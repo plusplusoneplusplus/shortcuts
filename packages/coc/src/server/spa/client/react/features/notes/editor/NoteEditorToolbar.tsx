@@ -5,6 +5,7 @@ import type { TocEntry } from './noteTocUtils';
 import { activeTableHasColumnWidths, clearActiveTableColumnWidths } from './tableColumnWidths';
 import { tableHeaderState } from './tableHeaderState';
 import { TABLE_CELL_COLORS, activeCellBackgroundColor } from './extensions/tableCellBackground';
+import { activeColumnWrap, toggleActiveColumnWrap } from './extensions/tableColumnWrap';
 import { NoteTocPanel } from './NoteTocPanel';
 
 export interface NoteEditorToolbarProps {
@@ -1038,6 +1039,9 @@ function TableControls({ editor }: TableControlsProps) {
     // Header-ness is structural, so it is read off the doc rather than from
     // `isActive`. Same recompute-per-render story as `hasWidths`.
     const headers = tableHeaderState(editor);
+    // Same story again: the column's wrap mode is read off the doc, so it is
+    // recomputed per render and follows the caret from column to column.
+    const noWrap = activeColumnWrap(editor) === 'nowrap';
     const btnCls = TABLE_BTN_CLS;
     const pressedCls = ' bg-[#e8e8e8] dark:bg-[#3c3c3c]';
 
@@ -1061,6 +1065,15 @@ function TableControls({ editor }: TableControlsProps) {
                 className={btnCls}
                 onMouseDown={(e) => { e.preventDefault(); tc().deleteColumn().run(); }}>
                 Del Col
+            </button>
+            {/* Pressed means "this column does not wrap" — the non-default
+                state, matching how the header toggles read. */}
+            <button type="button" title="Toggle column text wrapping" aria-label="Toggle column text wrapping"
+                aria-pressed={noWrap}
+                data-testid="table-wrap-toggle"
+                className={btnCls + (noWrap ? pressedCls : '')}
+                onMouseDown={(e) => { e.preventDefault(); toggleActiveColumnWrap(editor); }}>
+                Wrap
             </button>
             <Sep />
             {/* Row operations */}

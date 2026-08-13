@@ -23,10 +23,23 @@ vi.mock(
     () => tableHeaderMocks,
 );
 
+// Wrap state is likewise read off a real doc; the real helpers are covered in
+// tableColumnWrap.test.ts.
+const tableWrapMocks = vi.hoisted(() => ({
+    activeColumnWrap: vi.fn((): string | null => 'wrap'),
+    toggleActiveColumnWrap: vi.fn(() => true),
+}));
+vi.mock(
+    '../../../../src/server/spa/client/react/features/notes/editor/extensions/tableColumnWrap',
+    () => tableWrapMocks,
+);
+
 beforeEach(() => {
     tableWidthMocks.activeTableHasColumnWidths.mockReset().mockReturnValue(false);
     tableWidthMocks.clearActiveTableColumnWidths.mockReset().mockReturnValue(true);
     tableHeaderMocks.tableHeaderState.mockReset().mockReturnValue({ row: false, column: false });
+    tableWrapMocks.activeColumnWrap.mockReset().mockReturnValue('wrap');
+    tableWrapMocks.toggleActiveColumnWrap.mockReset().mockReturnValue(true);
 });
 
 // ── Mock editor factory ─────────────────────────────────────────────────────
@@ -311,6 +324,71 @@ describe('NoteEditorToolbar — table controls', () => {
         const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
         fireEvent(screen.getByLabelText('Reset column widths'), event);
 
+        expect(event.defaultPrevented).toBe(true);
+    });
+});
+
+// ── "Toggle column text wrapping" (AC-04) ───────────────────────────────────
+
+describe('NoteEditorToolbar — column wrap toggle', () => {
+    const inTable = (name: string) => name === 'table';
+
+    it('hides the wrap toggle when the caret is outside a table', () => {
+        const editor = makeMockEditor(() => false);
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        expect(screen.queryByTestId('table-wrap-toggle')).toBeNull();
+        expect(screen.queryByLabelText('Toggle column text wrapping')).toBeNull();
+    });
+
+    it('shows the wrap toggle inside a table, in the column group before the first separator', () => {
+        const editor = makeMockEditor(inTable);
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        const btn = screen.getByTestId('table-wrap-toggle');
+        expect(btn.getAttribute('aria-label')).toBe('Toggle column text wrapping');
+        expect(btn.getAttribute('title')).toBe('Toggle column text wrapping');
+        expect(btn.textContent).toBe('Wrap');
+
+        // It belongs to the column operations group: "Del Col" is its immediate
+        // left-hand neighbour and nothing between them.
+        const strip = screen.getByTestId('table-controls-row');
+        const buttons = Array.from(strip.querySelectorAll('button'));
+        const delColIndex = buttons.findIndex((b) => b.getAttribute('aria-label') === 'Delete column');
+        expect(buttons[delColIndex + 1]).toBe(btn);
+    });
+
+    it('reflects the column wrap mode via aria-pressed and the pressed background', () => {
+        for (const [mode, pressed] of [['wrap', false], ['nowrap', true]] as const) {
+            tableWrapMocks.activeColumnWrap.mockReturnValue(mode);
+            const editor = makeMockEditor(inTable);
+            const { unmount } = render(<NoteEditorToolbar editor={editor as never} />);
+
+            const btn = screen.getByTestId('table-wrap-toggle');
+            expect(btn.getAttribute('aria-pressed')).toBe(String(pressed));
+            expect(btn.className.includes('bg-[#e8e8e8]')).toBe(pressed);
+            unmount();
+        }
+    });
+
+    it('treats a null wrap mode as not pressed', () => {
+        tableWrapMocks.activeColumnWrap.mockReturnValue(null);
+        const editor = makeMockEditor(inTable);
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        expect(screen.getByTestId('table-wrap-toggle').getAttribute('aria-pressed')).toBe('false');
+    });
+
+    it('toggles the column exactly once and keeps editor focus', () => {
+        const editor = makeMockEditor(inTable);
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+        fireEvent(screen.getByTestId('table-wrap-toggle'), event);
+
+        expect(tableWrapMocks.toggleActiveColumnWrap).toHaveBeenCalledTimes(1);
+        expect(tableWrapMocks.toggleActiveColumnWrap).toHaveBeenCalledWith(editor);
+        // preventDefault on mousedown is what stops the editor from blurring.
         expect(event.defaultPrevented).toBe(true);
     });
 });
