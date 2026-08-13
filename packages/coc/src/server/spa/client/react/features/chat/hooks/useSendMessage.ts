@@ -8,7 +8,7 @@ import type { ClientConversationTurn } from '../../../types/dashboard';
 import type { ChatMode } from '../../../repos/modeConfig';
 import type { DeliveryMode } from '@plusplusoneplusplus/forge';
 import type { AttachmentPayload } from '../../../types/attachments';
-import { CocApiError, type ChatStyle, type ProcessMessageRequest } from '@plusplusoneplusplus/coc-client';
+import { CocApiError, type ProcessMessageRequest } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import { validateSessionContextAttachmentsForSend } from '../sessionContextDrop';
@@ -67,12 +67,6 @@ export interface UseSendMessageOptions {
      * persisted per-model effort, then the SDK default.
      */
     effortOverride?: 'low' | 'medium' | 'high' | 'xhigh' | null;
-    /**
-     * Response style for this turn. Pass `undefined` when the owning server has
-     * the Style experiment off — the field is then omitted from the request, so
-     * a server that would reject it never sees it.
-     */
-    chatStyle?: ChatStyle;
     /**
      * Workspace ID used for the Ralph promotion endpoint when `selectedMode === 'ralph'`.
      * Without it the server falls back to the workspaceId stored on the process.
@@ -136,7 +130,6 @@ export function useSendMessage({
     clearAttachedContext,
     modelOverride,
     effortOverride,
-    chatStyle,
     workspaceId,
     sessionContextAttachmentsEnabled = false,
     conversationRetrievalAvailable,
@@ -167,8 +160,7 @@ export function useSendMessage({
         ...(skillNames.length > 0 ? { skillNames } : {}),
         ...(modelOverride ? { model: modelOverride } : {}),
         ...(effortOverride ? { reasoningEffort: effortOverride } : {}),
-        ...(chatStyle ? { chatStyle } : {}),
-    }), [images, modelOverride, effortOverride, chatStyle, selectedMode, toPayload]);
+    }), [images, modelOverride, effortOverride, selectedMode, toPayload]);
 
     const closeFollowUpStream = useCallback(() => {
         if (followUpEventSourceRef.current) {

@@ -21,7 +21,7 @@
  */
 
 import type { Attachment, MCPServerConfig } from '@plusplusoneplusplus/forge';
-import type { ChatStyle, ForEachItem, MapReduceChildMode, MapReduceItem } from '@plusplusoneplusplus/coc-client';
+import type { ForEachItem, MapReduceChildMode, MapReduceItem } from '@plusplusoneplusplus/coc-client';
 import type { RalphGrillSetup } from '../ralph/grill-planning';
 
 // ============================================================================
@@ -571,12 +571,6 @@ export interface ChatPayload {
     provider?: ChatProvider;
     /** Per-turn reasoning-effort override, normalized to task config by queue validation. */
     reasoningEffort?: ReasoningEffort;
-    /**
-     * How the response should be written. Presentation only — never affects
-     * provider, model, effort, tools, or permissions. Validated at the queue
-     * boundary and copied into `process.metadata.chatStyle` at execution start.
-     */
-    chatStyle?: ChatStyle;
 }
 
 export interface RunWorkflowPayload {

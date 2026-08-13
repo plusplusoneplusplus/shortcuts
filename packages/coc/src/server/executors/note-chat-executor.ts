@@ -139,7 +139,6 @@ export class NoteChatExecutor extends ChatBaseExecutor {
 
         const systemMessage = await systemMessageBuilder()
             .appendGlobalSystemPrompt(this.resolveGlobalSystemPrompt())
-            .appendChatStyle(payload.chatStyle, this.isChatStyleSelectorEnabled())
             .appendToolGuidance(toolGuidance)
             .appendAutoFolder(autoFolderContext)
             .build();

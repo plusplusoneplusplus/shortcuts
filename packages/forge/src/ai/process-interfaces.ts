@@ -406,13 +406,6 @@ export interface PendingMessage {
     /** Selected skill names to inject as `context.skills` on the drained follow-up payload. */
     skillNames?: string[];
     /**
-     * Opaque response-style tag selected for this turn, carried so a message
-     * buffered behind an active response still runs with the style the user
-     * chose. Forge stays product-neutral: the caller validates the value before
-     * buffering it and again when draining it.
-     */
-    chatStyle?: string;
-    /**
      * Opaque follow-up context to carry onto the drained follow-up payload's
      * `context` (e.g. `{ triggerId, source: 'trigger' }`). Lets automated
      * sources buffer a message while a turn is in flight without losing the

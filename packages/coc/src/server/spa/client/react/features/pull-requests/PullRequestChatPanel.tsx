@@ -61,7 +61,6 @@ export function PullRequestChatPanel({
         provider: submission.provider,
         model: submission.model,
         reasoningEffort: submission.reasoningEffort,
-        chatStyle: submission.chatStyle,
         config: submission.config,
         workingDirectory: submission.workingDirectory,
     });

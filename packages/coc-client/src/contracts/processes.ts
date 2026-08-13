@@ -1,4 +1,4 @@
-import type { ChatStyle, JsonObject } from './common';
+import type { JsonObject } from './common';
 
 export type AIProcessStatus = 'queued' | 'running' | 'cancelling' | 'completed' | 'failed' | 'cancelled';
 
@@ -124,12 +124,6 @@ export interface ProcessMessageRequest {
    * default. Sent as `body.reasoningEffort` to `POST /api/processes/:id/message`.
    */
   reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
-  /**
-   * Optional per-turn chat style. Applies to this turn and becomes the
-   * conversation's style for later turns. Omitted by legacy clients, which
-   * keeps existing behavior. An unknown value is rejected with HTTP 400.
-   */
-  chatStyle?: ChatStyle;
   [key: string]: unknown;
 }
 

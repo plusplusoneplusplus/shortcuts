@@ -120,7 +120,6 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
             // Concrete provider only; Auto routing rides as a boolean intent.
             ...(submission.provider && submission.provider !== 'auto' ? { provider: submission.provider } : {}),
             ...(submission.reasoningEffort ? { reasoningEffort: submission.reasoningEffort } : {}),
-            ...(submission.chatStyle ? { chatStyle: submission.chatStyle } : {}),
             ...(submission.config?.effortTier ? { effortTier: submission.config.effortTier } : {}),
             ...(autoProviderRouting ? { autoProviderRouting: true } : {}),
             ...(submission.workingDirectory ? { workingDirectory: submission.workingDirectory } : {}),

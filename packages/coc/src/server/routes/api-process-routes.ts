@@ -1091,7 +1091,6 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 ...(fields.mode ? { mode: fields.mode } : {}),
                 ...(fields.model ? { model: fields.model } : {}),
                 ...(fields.effort ? { effort: fields.effort } : {}),
-                ...(fields.chatStyle ? { chatStyle: fields.chatStyle } : {}),
                 deliveryMode: fields.deliveryMode,
                 ...(resumeSessionId ? { resumeSessionId } : {}),
                 ...(fields.optimisticId !== undefined ? { optimisticId: fields.optimisticId } : {}),

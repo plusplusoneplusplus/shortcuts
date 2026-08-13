@@ -14,8 +14,6 @@ import type { ModePillOption } from './ModePillSelector';
 import { EffortPillSelector } from './EffortPillSelector';
 import type { EffortLevel, EffortPillOption } from './EffortPillSelector';
 import { EffortTierSelector } from './EffortTierSelector';
-import { ChatStyleSelector } from './ChatStyleSelector';
-import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { EffortTierKey, LocalEffortTiersMap } from '../../hooks/useProviderEffortTiers';
 import { ComposerMetaStrip } from './ComposerMetaStrip';
 import { useContainerWidth } from './hooks/useContainerWidth';
@@ -187,15 +185,6 @@ export interface FollowUpInputAreaProps {
     selectedEffortTier?: EffortTierKey;
     /** Called when the user picks a tier. Used when `useEffortTierMode` is true. */
     onEffortTierChange?: (tier: EffortTierKey) => void;
-    /**
-     * Response style for this conversation. Rendered as a Style chip beside
-     * Effort only when both this and `onChatStyleChange` are set — the owner
-     * (ChatDetail) resolves the feature flag against the server that owns the
-     * process, so this component stays flag-agnostic.
-     */
-    chatStyle?: ChatStyle;
-    /** Called when the user picks a style. Required for the Style chip to render. */
-    onChatStyleChange?: (style: ChatStyle) => void;
     /** Enables the gated Ralph multi-agent grill setup UI for promotion. */
     ralphMultiAgentGrillEnabled?: boolean;
     /** Current multi-agent grill setup state for promotion. */
@@ -273,8 +262,6 @@ export function FollowUpInputArea({
     effortTierMap,
     selectedEffortTier,
     onEffortTierChange,
-    chatStyle,
-    onChatStyleChange,
     ralphMultiAgentGrillEnabled = false,
     ralphGrillSetup,
     onRalphGrillSetupChange,
@@ -934,17 +921,6 @@ export function FollowUpInputArea({
                                     selectedTier={selectedEffortTier}
                                     onChange={onEffortTierChange}
                                     data-testid="follow-up-effort-tier-selector"
-                                    mobileTapTarget={true}
-                                    compact={isToolbarNarrow}
-                                />
-                            )}
-                            {/* Style chip — how the response is written. Presentation
-                                 only; never affects model, effort, tools, or permissions. */}
-                            {chatStyle && onChatStyleChange && (
-                                <ChatStyleSelector
-                                    selectedStyle={chatStyle}
-                                    onChange={onChatStyleChange}
-                                    data-testid="follow-up-chat-style-selector"
                                     mobileTapTarget={true}
                                     compact={isToolbarNarrow}
                                 />

@@ -197,12 +197,6 @@ export interface ChatModeExecutorOptions {
      */
     getGlobalSystemPrompt?: () => string | undefined;
     /**
-     * Live read of the `features.chatStyleSelector` experiment flag, backed by
-     * RuntimeConfigService. Checked when each turn starts so an admin turning
-     * the experiment off immediately stops style injection.
-     */
-    getChatStyleSelectorEnabled?: () => boolean;
-    /**
      * Shared per-process AbortController registry owned by the queue bridge.
      * The executor registers a controller when a turn starts and passes its
      * signal into `sendMessage`, so the bridge's cancel path can abort the
@@ -272,8 +266,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
     /** Live read of the admin global system prompt; injected into user-facing sessions. */
     protected readonly getGlobalSystemPromptFn?: () => string | undefined;
-    /** Live read of the chat-style experiment flag; gates style injection per turn. */
-    protected readonly getChatStyleSelectorEnabledFn?: () => boolean;
     /** Shared per-process AbortController registry (owned by the queue bridge). */
     protected readonly processAbortControllers?: Map<string, AbortController>;
     /**
@@ -303,7 +295,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.ralphMultiAgentGrillEnabled = options.ralphMultiAgentGrillEnabled === true;
         this.resolveAiServiceForProvider = options.resolveAiServiceForProvider;
         this.getGlobalSystemPromptFn = options.getGlobalSystemPrompt;
-        this.getChatStyleSelectorEnabledFn = options.getChatStyleSelectorEnabled;
         this.processAbortControllers = options.processAbortControllers;
     }
 
@@ -334,16 +325,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
      */
     protected resolveGlobalSystemPrompt(): string | undefined {
         return this.getGlobalSystemPromptFn?.();
-    }
-
-    /**
-     * Whether the chat Style experiment is enabled right now. Read live at the
-     * start of every turn so disabling the admin setting stops style injection
-     * without a restart, even for a client that still sends `chatStyle`.
-     * Defaults to `false` when the callback is not wired.
-     */
-    protected isChatStyleSelectorEnabled(): boolean {
-        return this.getChatStyleSelectorEnabledFn?.() === true;
     }
 
     /**
@@ -592,8 +573,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             globalSystemPrompt: this.resolveGlobalSystemPrompt(),
             forEachGeneration,
             mapReduceGeneration,
-            chatStyle: payload.chatStyle,
-            chatStyleEnabled: this.isChatStyleSelectorEnabled(),
             memoryV2: ctx.memoryV2,
             toolGuidance: ctx.toolGuidance,
             autoFolderContext: isGrilling ? undefined : autoFolderContext,

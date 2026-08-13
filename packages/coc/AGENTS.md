@@ -406,37 +406,6 @@ all have their own `references/*.md`.
   reported through `reportCanvasCorruption` (workspace/canvas id, file role,
   bare name, error class/errno only — never canvas content or absolute paths);
   do not go back to a bare `catch {}`.
-- **Chat style selector** (live admin flag `features.chatStyleSelector`, default
-  off, runtime flag `chatStyleSelectorEnabled`) adds a `Style: Human|Direct|
-  Analytical|Structured` chip beside Effort in the new-chat and follow-up
-  composers. Style changes only how a response is written — never the provider,
-  model, effort, tools, permission mode, or any structured output contract.
-  `ChatStyle` + `isChatStyle()` are the single contract, exported from
-  `@plusplusoneplusplus/coc-client`; reuse them instead of re-listing the four
-  values. Prompt text lives ONLY in `src/server/executors/chat-style.ts` and is
-  asserted verbatim in `chat-style.test.ts` — treat wording edits as product
-  changes. The block is exactly four lines — open tag, `Selected style: X.`, one
-  focus line, close tag. There is no shared preamble; general tone and precedence
-  guidance comes from the admin global system prompt and the agent harness, so do
-  not reintroduce a baseline here. Executors reach it through `SystemMessageBuilder.appendChatStyle()`,
-  chained after global/repo behavior instructions and before source-link,
-  memory, and tool guidance; never concatenate the wording yourself. It applies
-  only to `chat-base` (Ask), `autopilot`, `note-chat`, `commit-chat`, and
-  `follow-up` executors — Ralph, classification, task generation, note creation,
-  resolve-comments, Dreams, and workflows are deliberately excluded. The gate is
-  enforced on BOTH sides: the SPA hides the chip and omits the field, and
-  executors read a live `getChatStyleSelectorEnabled` callback per turn (wired
-  `server/index.ts` → `queue-infrastructure` → bridge → registry →
-  `chat-base-executor`) so disabling it stops injection even for an older client.
-  `payload.chatStyle` is validated in `validateAndParseTask()` and `body.chatStyle`
-  in `normalizeFollowUpInput()`; an unknown value is a 400, an omitted one keeps
-  legacy behavior. The workspace seed is `PerRepoPreferences.lastChatStyle` (also
-  in the zod schema at `server/preferences/schema.ts`); the conversation owns
-  `process.metadata.chatStyle`. A follow-up that CHANGES the style is never
-  steered into an in-flight response — `ProcessMessageDeliveryService` buffers it
-  so the next turn gets a freshly built system message, and the value rides
-  `PendingMessage.chatStyle` (a product-neutral string on the forge side,
-  re-validated on drain).
 - **Quick Ask side-notes** (live admin flag `features.quickAskSidenotes`
   default on, gating both the server endpoints and the SPA UI via
   `isQuickAskSidenotesEnabled()` / `useQuickAskSidenotesEnabled`) let a user

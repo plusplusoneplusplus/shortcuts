@@ -43,7 +43,6 @@ export function CommitChatPanel({ workspaceId, commitHash, commitMessage, onClos
         provider: submission.provider,
         model: submission.model,
         reasoningEffort: submission.reasoningEffort,
-        chatStyle: submission.chatStyle,
         config: submission.config,
         workingDirectory: submission.workingDirectory,
     });

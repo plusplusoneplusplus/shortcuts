@@ -42,7 +42,6 @@ export function PrChatPanel({ workspaceId, prId, filePath, repoId, prTitle, onCl
         provider: submission.provider,
         model: submission.model,
         reasoningEffort: submission.reasoningEffort,
-        chatStyle: submission.chatStyle,
         config: submission.config,
         workingDirectory: submission.workingDirectory,
     });
