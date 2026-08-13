@@ -176,6 +176,16 @@
     font-weight: 600;
 }
 
+/* Header column spine (AC-13). A `<th>` already gets the tint and the bold
+   weight wherever it sits, so a header column is legible but reads like a
+   mis-rendered first row. The thicker right border on the leading cell is what
+   separates "attributes down the left" from "header row". Deliberately no
+   `text-align: center` — a header column must stay left-aligned like the shared
+   th/td rule above sets it. */
+.note-editor .ProseMirror th:first-child {
+    border-right: 2px solid #e0e0e0;
+}
+
 /* A link inside a filled cell. The normal `#0078d4` only manages 2.9:1 on the
    purple pastel (and misses 4.5:1 on all six), because these fills are the text
    highlight hexes, which were picked to sit under near-black body text. Darken
@@ -244,6 +254,11 @@
 
 .dark .note-editor .ProseMirror th {
     background: #252526;
+}
+
+/* Dark counterpart of the header-column spine (AC-13). */
+.dark .note-editor .ProseMirror th:first-child {
+    border-right: 2px solid #3c3c3c;
 }
 
 /* Same problem in the other direction: `#4ea6ea` lands at 4.0:1 on the dark

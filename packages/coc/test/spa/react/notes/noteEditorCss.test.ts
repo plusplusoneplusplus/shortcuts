@@ -224,6 +224,32 @@ describe('noteEditor.css resizable tables', () => {
         expect(rule![0]).toMatch(/overflow-x:\s*auto/);
     });
 
+    it('gives a header column a spine border so it does not read as a header row (AC-13)', () => {
+        const rule = css.match(
+            /\.note-editor\s+\.ProseMirror\s+th:first-child\s*\{[^}]+\}/,
+        );
+        expect(rule).not.toBeNull();
+        expect(rule![0]).toMatch(/border-right:\s*2px\s+solid\s+#e0e0e0/);
+    });
+
+    it('gives the header-column spine a dark-mode counterpart (AC-13)', () => {
+        const rule = css.match(
+            /\.dark\s+\.note-editor\s+\.ProseMirror\s+th:first-child\s*\{[^}]+\}/,
+        );
+        expect(rule).not.toBeNull();
+        expect(rule![0]).toMatch(/border-right:\s*2px\s+solid\s+#3c3c3c/);
+    });
+
+    it('does not center header text, which would misalign a header column (AC-13)', () => {
+        // The shared th/td rule sets `text-align: left`; a th-only override to
+        // center would break the "attribute down the left" reading.
+        const thRule = css.match(
+            /\.note-editor\s+\.ProseMirror\s+th\s*\{[^}]+\}/,
+        );
+        expect(thRule).not.toBeNull();
+        expect(thRule![0]).not.toMatch(/text-align:\s*center/);
+    });
+
     it('keeps cells position: relative and border-box so the handle anchors and dragged px match rendered px', () => {
         const cellRule = css.match(
             /\.note-editor\s+\.ProseMirror\s+th,\s*\.note-editor\s+\.ProseMirror\s+td\s*\{[^}]+\}/,
