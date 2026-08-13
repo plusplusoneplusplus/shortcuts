@@ -2,8 +2,7 @@ import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode } fro
 import type { NoteTreeNode } from '../notesApi';
 import type { ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import { ContextMenu } from '../../../tasks/comments/ContextMenu';
-import { Spinner } from '../../../ui/Spinner';
-import { NotesTree } from './NotesTree';
+import { NotesRootSection } from './NotesRootSection';
 import { NotesDialogs } from './NotesDialogs';
 import { useNotesTree } from './useNotesTree';
 import { useNotesContextMenu } from './useNotesContextMenu';
@@ -1275,46 +1274,31 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                 onKeyDown={handleTreeKeyDown}
                 onContextMenu={handleBackgroundContextMenu}
             >
-                {loading && (
-                    <div className="flex items-center justify-center py-6" data-testid="notes-loading">
-                        <Spinner size="md" />
-                    </div>
-                )}
-
-                {error && !loading && (
-                    <div className="py-6 px-4 text-center text-xs text-red-500 dark:text-red-400" data-testid="notes-error">
-                        {error}
-                    </div>
-                )}
-
-                {!loading && !error && tree && tree.length === 0 && (
-                    <div className="py-6 px-4 text-center text-xs text-[#656d76] dark:text-[#666] italic" data-testid="notes-empty">
-                        No notebooks yet
-                    </div>
-                )}
-
-                {!loading && !error && tree && tree.length > 0 && (
-                    <NotesTree
-                        nodes={tree}
-                        selectedPath={selectedPath}
-                        expandedPaths={effectiveExpanded}
-                        systemFolders={systemFolders}
-                        onToggleExpand={handleToggleExpand}
-                        onSelectPage={handleSelectPage}
-                        onContextMenu={handleContextMenu}
-                        isNoteUpdated={isNoteUpdated}
-                        isNoteChatRunning={isNoteChatRunning}
-                        visiblePaths={filter?.visible ?? null}
-                        countDescendantPages={countDescendantPages}
-                        multiSelectedPaths={multiSelectedPaths}
-                        cutPaths={cutPaths}
-                        selectionDragItems={selectionDragItems}
-                        onSelectWithModifiers={handleSelectWithModifiers}
-                        renamingPath={renamingPath}
-                        onStartRename={handleStartInlineRename}
-                        onRenameCommit={handleCommitInlineRename}
-                        onRenameCancel={handleCancelInlineRename}
-                        dragDrop={{
+                <NotesRootSection
+                    loading={loading}
+                    error={error}
+                    tree={tree}
+                    searchQuery={searchQuery}
+                    filter={filter}
+                    treeProps={{
+                        selectedPath,
+                        expandedPaths: effectiveExpanded,
+                        systemFolders,
+                        onToggleExpand: handleToggleExpand,
+                        onSelectPage: handleSelectPage,
+                        onContextMenu: handleContextMenu,
+                        isNoteUpdated,
+                        isNoteChatRunning,
+                        countDescendantPages,
+                        multiSelectedPaths,
+                        cutPaths,
+                        selectionDragItems,
+                        onSelectWithModifiers: handleSelectWithModifiers,
+                        renamingPath,
+                        onStartRename: handleStartInlineRename,
+                        onRenameCommit: handleCommitInlineRename,
+                        onRenameCancel: handleCancelInlineRename,
+                        dragDrop: {
                             createDragStartHandler: dragDrop.createDragStartHandler,
                             createDragEndHandler: dragDrop.createDragEndHandler,
                             createDragOverHandler: dragDrop.createDragOverHandler,
@@ -1324,15 +1308,9 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                             dropTargetPath: dragDrop.dropTargetPath,
                             dropPosition: dragDrop.dropPosition,
                             onDrop: handleNoteDrop,
-                        }}
-                    />
-                )}
-
-                {!loading && !error && tree && tree.length > 0 && filter && filter.visible.size === 0 && (
-                    <div className="py-6 px-4 text-center text-xs text-[#656d76] dark:text-[#9d9d9d] italic" data-testid="notes-search-empty">
-                        No notes match “{searchQuery.trim()}”
-                    </div>
-                )}
+                        },
+                    }}
+                />
             </div>
 
             {/* Multi-selection footer badge */}
