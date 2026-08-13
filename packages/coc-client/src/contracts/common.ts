@@ -3,6 +3,40 @@ export type JsonObject = Record<string, unknown>;
 export type ChatProvider = 'copilot' | 'codex' | 'claude' | 'opencode';
 export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 
+/**
+ * How a chat response is written. Style controls presentation only — never the
+ * provider, model, reasoning effort, tools, or permission mode.
+ *
+ * `'default'` is a real, first-class wire value rather than the absence of one:
+ * it means "add no style instruction at all", and it is representable in the
+ * payload and in `process.metadata.chatStyle` so that switching *to* Default is
+ * distinguishable from never having chosen a style.
+ *
+ * This file is the single source of truth for the values — nothing else may
+ * re-list them.
+ */
+export type ChatStyle = 'default' | 'human' | 'direct' | 'analytical' | 'structured';
+
+/** Stable wire values for {@link ChatStyle}, in display order (Default first). */
+export const CHAT_STYLES: readonly ChatStyle[] = ['default', 'human', 'direct', 'analytical', 'structured'];
+
+/** Style a new conversation starts on, and the value an omitted field means. */
+export const DEFAULT_CHAT_STYLE: ChatStyle = 'default';
+
+/** Display labels for {@link ChatStyle}, keyed by wire value. */
+export const CHAT_STYLE_LABELS: Readonly<Record<ChatStyle, string>> = {
+  default: 'Default',
+  human: 'Human',
+  direct: 'Direct',
+  analytical: 'Analytical',
+  structured: 'Structured',
+};
+
+/** Runtime guard for the stable {@link ChatStyle} wire values. */
+export function isChatStyle(value: unknown): value is ChatStyle {
+  return typeof value === 'string' && (CHAT_STYLES as readonly string[]).includes(value);
+}
+
 export interface PaginatedResponse<T> {
   items: T[];
   total: number;

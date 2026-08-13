@@ -18,6 +18,7 @@ import type {
     ProcessStore, AIProcess, AIProcessStatus, Attachment, PendingMessage,
 } from '@plusplusoneplusplus/forge';
 import { resolveModelForProvider, isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
+import { CHAT_STYLES, DEFAULT_CHAT_STYLE, isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { QueueExecutorBridge } from '../core/api-handler';
 import type { ChatProvider } from '../tasks/task-types';
 import { normalizeChatMode } from '../tasks/task-types';
@@ -58,6 +59,13 @@ export interface NormalizedFollowUpFields {
     requestedModel?: string;
     /** Per-turn reasoning-effort override; unknown values are dropped. */
     effort?: ReasoningEffort;
+    /**
+     * Style selected for this turn. Unlike the effort override, an unknown
+     * value is a client error (HTTP 400) rather than silently dropped, so a
+     * style the user picked is never quietly ignored. An omitted field
+     * normalizes to `'default'`, which injects nothing.
+     */
+    chatStyle: ChatStyle;
 }
 
 export type NormalizeFollowUpResult =
@@ -105,9 +113,18 @@ export function normalizeFollowUpInput(
             ? (body.reasoningEffort as ReasoningEffort)
             : undefined;
 
+    // Per-turn chat style. Omitted means 'default' (inject nothing);
+    // present-but-unknown is rejected so a client never silently gets a
+    // different style than the one it asked for.
+    if (body.chatStyle !== undefined && body.chatStyle !== null && !isChatStyle(body.chatStyle)) {
+        return { ok: false, error: `Invalid chatStyle: must be one of ${CHAT_STYLES.join(', ')}` };
+    }
+    const chatStyle: ChatStyle = isChatStyle(body.chatStyle) ? body.chatStyle : DEFAULT_CHAT_STYLE;
+
     return {
         ok: true,
         value: {
+            chatStyle,
             ...(mode ? { mode } : {}),
             deliveryMode,
             ...(selectedSkillNames ? { selectedSkillNames } : {}),

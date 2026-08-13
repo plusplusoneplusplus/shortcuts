@@ -178,6 +178,32 @@ describe('normalizeFollowUpInput', () => {
         });
     });
 
+    describe('chatStyle', () => {
+        it('treats an omitted style as default', () => {
+            const r = normalizeFollowUpInput({}, 'copilot');
+            expect(r.ok && r.value.chatStyle).toBe('default');
+        });
+        it('treats an explicit null as default', () => {
+            const r = normalizeFollowUpInput({ chatStyle: null }, 'copilot');
+            expect(r.ok && r.value.chatStyle).toBe('default');
+        });
+        it('keeps every stable value', () => {
+            for (const style of ['default', 'human', 'direct', 'analytical', 'structured']) {
+                const r = normalizeFollowUpInput({ chatStyle: style }, 'copilot');
+                expect(r.ok && r.value.chatStyle).toBe(style);
+            }
+        });
+        it('rejects an unknown style instead of dropping it', () => {
+            const r = normalizeFollowUpInput({ chatStyle: 'concise' }, 'copilot');
+            expect(r.ok).toBe(false);
+            expect(!r.ok && r.error).toContain('Invalid chatStyle');
+        });
+        it('rejects a non-string style', () => {
+            const r = normalizeFollowUpInput({ chatStyle: 7 }, 'copilot');
+            expect(r.ok).toBe(false);
+        });
+    });
+
     describe('optimisticId', () => {
         it('keeps a string optimisticId', () => {
             const r = normalizeFollowUpInput({ optimisticId: 'opt-1' }, 'copilot');
