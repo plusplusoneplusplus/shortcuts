@@ -46,6 +46,8 @@ const INHERITED_LENS_CHAT_MODE = {
 export type {
     Comment,
     CommentThread,
+    CreateNoteNodeResponse,
+    RenameNoteNodeResponse,
     NoteSearchMatch,
     NoteSearchResponse,
     NoteSearchResult,

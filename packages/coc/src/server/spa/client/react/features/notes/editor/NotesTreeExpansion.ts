@@ -2,6 +2,7 @@ import {
     useCallback,
     useEffect,
     useLayoutEffect,
+    useMemo,
     useRef,
     useState,
     type Dispatch,
@@ -123,6 +124,96 @@ export function useNotesTreeExpansion(
         state.storageKey === storageKey ? state.expanded : readExpandedPaths(storageKey),
         setExpanded,
     ];
+}
+
+export interface UseNotesTreesExpansionResult {
+    /** Expanded folders for every listed root, keyed by root ID. */
+    expandedByRoot: Record<string, Set<string>>;
+    /** Expanded folders for one root (falls back to storage for unlisted roots). */
+    getExpanded: (rootId: string) => Set<string>;
+    /** Update one root's expanded folders; persists under that root's own key. */
+    setExpanded: (rootId: string, action: SetStateAction<Set<string>>) => void;
+    /** Flip one folder open/closed inside one root. */
+    toggleExpanded: (rootId: string, path: string) => void;
+}
+
+/**
+ * Expanded-folder state for several roots at once — the stacked-sections
+ * counterpart of `useNotesTreeExpansion`, which only covers a single root and
+ * cannot be called once per root in a loop.
+ *
+ * Storage keys are identical to the single-root hook's, so a root's folders
+ * stay expanded across the switch to stacked sections. Entries are read from
+ * storage on first sight and written back only after a user change.
+ */
+export function useNotesTreesExpansion(
+    workspaceId: string,
+    rootIds: string[],
+): UseNotesTreesExpansionResult {
+    const rootsKey = rootIds.join('\0');
+    const [state, setState] = useState<{ scopeKey: string; entries: Record<string, Set<string>> }>(
+        () => ({ scopeKey: workspaceId, entries: {} }),
+    );
+    /** Roots changed by the user since the last persist pass. */
+    const dirtyRef = useRef<Set<string>>(new Set());
+
+    const expandedByRoot = useMemo(() => {
+        const stored = state.scopeKey === workspaceId ? state.entries : {};
+        const next: Record<string, Set<string>> = { ...stored };
+        for (const rootId of rootsKey ? rootsKey.split('\0') : []) {
+            if (!(rootId in next)) {
+                next[rootId] = readExpandedPaths(notesTreeExpandedStorageKey(workspaceId, rootId));
+            }
+        }
+        return next;
+    }, [rootsKey, state, workspaceId]);
+
+    // Drop cached entries when the workspace changes so another workspace's
+    // folders never leak into this one.
+    useEffect(() => {
+        dirtyRef.current.clear();
+        setState(prev => (prev.scopeKey === workspaceId ? prev : { scopeKey: workspaceId, entries: {} }));
+    }, [workspaceId]);
+
+    useEffect(() => {
+        if (dirtyRef.current.size === 0) return;
+        if (state.scopeKey !== workspaceId) return;
+        for (const rootId of dirtyRef.current) {
+            const expanded = state.entries[rootId];
+            if (expanded) {
+                writeExpandedPaths(notesTreeExpandedStorageKey(workspaceId, rootId), expanded);
+            }
+        }
+        dirtyRef.current.clear();
+    }, [state, workspaceId]);
+
+    const setExpanded = useCallback((rootId: string, action: SetStateAction<Set<string>>) => {
+        dirtyRef.current.add(rootId);
+        setState(prev => {
+            const prevEntries = prev.scopeKey === workspaceId ? prev.entries : {};
+            const current = prevEntries[rootId]
+                ?? readExpandedPaths(notesTreeExpandedStorageKey(workspaceId, rootId));
+            const expanded = typeof action === 'function' ? action(current) : action;
+            return { scopeKey: workspaceId, entries: { ...prevEntries, [rootId]: expanded } };
+        });
+    }, [workspaceId]);
+
+    const getExpanded = useCallback(
+        (rootId: string) => expandedByRoot[rootId]
+            ?? readExpandedPaths(notesTreeExpandedStorageKey(workspaceId, rootId)),
+        [expandedByRoot, workspaceId],
+    );
+
+    const toggleExpanded = useCallback((rootId: string, path: string) => {
+        setExpanded(rootId, prev => {
+            const next = new Set(prev);
+            if (next.has(path)) next.delete(path);
+            else next.add(path);
+            return next;
+        });
+    }, [setExpanded]);
+
+    return { expandedByRoot, getExpanded, setExpanded, toggleExpanded };
 }
 
 /**
