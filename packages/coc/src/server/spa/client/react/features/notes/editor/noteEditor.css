@@ -186,6 +186,28 @@
     border-right: 2px solid #e0e0e0;
 }
 
+/* Per-column no-wrap. The constraint sits on the cell's *block children*, not
+   on the cell: browsers largely ignore `max-width` on a `td`, and
+   `text-overflow` needs a bounded box to clip against. ProseMirror always wraps
+   cell content in a block (a `<p>`), so there is always something to target.
+
+   Under `table-layout: fixed` the column's own width already bounds the line,
+   so `--note-table-nowrap-max` is just the ceiling for a column nobody has
+   resized yet — set the variable per column once there is a better source than
+   the 24rem guess.
+
+   No color is introduced here, so dark mode needs no counterpart rule. A cell
+   holding several blocks (multiple paragraphs, or a `<br>`) clips each block on
+   its own line rather than collapsing to one — hiding the later blocks outright
+   would drop text the user can still reach by clicking into the cell. */
+.note-editor .ProseMirror td[data-wrap='nowrap'] > *,
+.note-editor .ProseMirror th[data-wrap='nowrap'] > * {
+    max-width: var(--note-table-nowrap-max, 24rem);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 /* A link inside a filled cell. The normal `#0078d4` only manages 2.9:1 on the
    purple pastel (and misses 4.5:1 on all six), because these fills are the text
    highlight hexes, which were picked to sit under near-black body text. Darken

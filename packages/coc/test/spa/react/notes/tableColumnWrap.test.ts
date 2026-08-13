@@ -9,6 +9,8 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { Editor } from '@tiptap/core';
 import { StarterKit } from '@tiptap/starter-kit';
 import { Table } from '@tiptap/extension-table';
@@ -312,5 +314,79 @@ describe('editing and structural commands (AC-05, AC-06, AC-07)', () => {
             'wrap', 'nowrap',
             'wrap', 'nowrap',
         ]);
+    });
+});
+
+/**
+ * The clipping rule lives in noteEditor.css and targets DOM this file does not
+ * write — tiptap renders it. So the rule can stop applying with every attribute
+ * assertion above still green: rename the attribute, or drop the block child
+ * the selector reaches through, and no-wrap silently becomes a no-op. This
+ * feeds the *actual selector text* out of the stylesheet to `querySelector`
+ * against a really-mounted editor.
+ *
+ * Not checked: that anything visually clips. jsdom does no layout, so the
+ * ellipsis stays a manual browser check.
+ */
+describe('the no-wrap CSS rule matches the rendered cell (AC-12)', () => {
+    const css = readFileSync(
+        resolve(
+            __dirname,
+            '../../../../src/server/spa/client/react/features/notes/editor/noteEditor.css',
+        ),
+        'utf-8',
+    );
+
+    let host: HTMLElement | null = null;
+
+    afterEach(() => {
+        host?.remove();
+        host = null;
+    });
+
+    /** Mounts an editor inside the `.note-editor` wrapper the app renders. */
+    function mount(content: string): Editor {
+        host = document.createElement('div');
+        host.className = 'note-editor';
+        document.body.appendChild(host);
+        editor = new Editor({
+            element: host,
+            extensions: [
+                StarterKit.configure({ link: false }),
+                Table.configure({ resizable: true, handleWidth: 5, cellMinWidth: 60, lastColumnResizable: true }),
+                TableRow,
+                TableCellWithWrap,
+                TableHeaderWithWrap,
+            ],
+            content,
+        });
+        return editor;
+    }
+
+    /** The selector list of the no-wrap rule, as written in the stylesheet. */
+    function nowrapRuleSelector(): string {
+        // Comments strip first: they sit between rules, so they would otherwise
+        // ride along into the selector text.
+        const rule = css
+            .replace(/\/\*[\s\S]*?\*\//g, '')
+            .match(/([^{}]*\[data-wrap='nowrap'\][^{}]*)\{([^}]*)\}/);
+        expect(rule).not.toBeNull();
+        // It is the clipping rule or this test is pointing at the wrong one.
+        expect(rule![2]).toMatch(/text-overflow:\s*ellipsis/);
+        return rule![1].trim();
+    }
+
+    it('selects the block child of every cell in a toggled column, header included', () => {
+        const ed = mount(GRID);
+        caretInCell(ed, 1);
+        toggleActiveColumnWrap(ed);
+
+        const matched = Array.from(host!.querySelectorAll(nowrapRuleSelector()));
+        expect(matched.map(el => el.textContent)).toEqual(['h2', 'a2', 'b2']);
+    });
+
+    it('selects nothing while every column still wraps', () => {
+        mount(GRID);
+        expect(host!.querySelectorAll(nowrapRuleSelector())).toHaveLength(0);
     });
 });

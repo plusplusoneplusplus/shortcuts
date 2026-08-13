@@ -476,3 +476,67 @@ describe('noteEditor.css table cell fill palette (AC-08)', () => {
         expect(darkRule![0]).not.toContain('!important');
     });
 });
+
+describe('noteEditor.css per-column no-wrap (AC-08, AC-12, AC-13)', () => {
+    const nowrapRule = () =>
+        css.match(
+            /\.note-editor\s+\.ProseMirror\s+td\[data-wrap='nowrap'\]\s*>\s*\*,\s*\n\s*\.note-editor\s+\.ProseMirror\s+th\[data-wrap='nowrap'\]\s*>\s*\*\s*\{[^}]+\}/,
+        )?.[0];
+
+    it('clips a no-wrap cell to one line with an ellipsis (AC-12)', () => {
+        expect(nowrapRule()).toBeDefined();
+        expect(nowrapRule()!).toMatch(/white-space:\s*nowrap/);
+        expect(nowrapRule()!).toMatch(/overflow:\s*hidden/);
+        expect(nowrapRule()!).toMatch(/text-overflow:\s*ellipsis/);
+    });
+
+    it('caps the width from a CSS variable with a fallback default (AC-12)', () => {
+        // The fallback is what makes the ellipsis work on a column nobody has
+        // resized. The variable is the hook for feeding a real column width in
+        // later — hard-coding the cap would close that off.
+        expect(nowrapRule()!).toMatch(
+            /max-width:\s*var\(--note-table-nowrap-max,\s*[^)]+\)/,
+        );
+    });
+
+    it('constrains the cell block children, not the cell itself (AC-12)', () => {
+        // `max-width` on a td is largely ignored by browsers, and text-overflow
+        // needs a bounded box — so the selector must reach the inner block.
+        // Losing the `> *` would make the rule silently do nothing.
+        const cellOnly = css.match(
+            /\.note-editor\s+\.ProseMirror\s+td\[data-wrap='nowrap'\]\s*\{/,
+        );
+        expect(cellOnly).toBeNull();
+        expect(nowrapRule()!).toContain('> *');
+    });
+
+    it('applies to header cells too, so a no-wrap column clips top to bottom (AC-02)', () => {
+        expect(nowrapRule()!).toContain("th[data-wrap='nowrap']");
+        expect(nowrapRule()!).toContain("td[data-wrap='nowrap']");
+    });
+
+    it('introduces no color, so dark mode needs no counterpart rule (AC-13)', () => {
+        expect(nowrapRule()!).not.toMatch(/color:/);
+        expect(nowrapRule()!).not.toMatch(/background/);
+        expect(css).not.toMatch(/\.dark[^{]*\[data-wrap='nowrap'\]/);
+    });
+
+    it('reaches a wide table through the scrolling wrapper rather than clipping it (AC-08)', () => {
+        // AC-08 asked for `overflow: hidden` to come off the table element. The
+        // column-resize work got there another way: the plugin's `.tableWrapper`
+        // scrolls, so nothing is unreachable, and the table keeps `overflow:
+        // hidden` to clip the absolutely positioned selection tint and resize
+        // handle to its own box. Both halves are asserted here so the intent
+        // behind AC-08 — no silently unreachable columns — stays pinned.
+        const wrapper = css.match(
+            /\.note-editor\s+\.ProseMirror\s+\.tableWrapper\s*\{[^}]+\}/,
+        );
+        expect(wrapper).not.toBeNull();
+        expect(wrapper![0]).toMatch(/overflow-x:\s*auto/);
+
+        const table = css.match(
+            /\.note-editor\s+\.ProseMirror\s+table\s*\{[^}]+\}/,
+        );
+        expect(table![0]).not.toMatch(/overflow-x:\s*(hidden|clip)/);
+    });
+});
