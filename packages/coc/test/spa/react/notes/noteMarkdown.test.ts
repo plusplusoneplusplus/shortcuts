@@ -708,20 +708,21 @@ describe('noteMarkdown', () => {
             expect(rt).toContain('Outro paragraph');
         });
 
-        it('htmlToMarkdown — td-only table (no th, no thead) emits separator', () => {
+        it('htmlToMarkdown — td-only table takes the raw HTML path, not a synthesized header', () => {
             const html =
                 '<table><tbody>' +
                 '<tr><td>A</td><td>B</td></tr>' +
                 '<tr><td>1</td><td>2</td></tr>' +
                 '</tbody></table>';
             const md = htmlToMarkdown(html);
-            expect(md).toContain('| A | B |');
-            expect(md).toContain('| --- |');
-            expect(md).toContain('| 1 | 2 |');
+            // A pipe table cannot say "no header row", so the first data row would
+            // be silently promoted on reload — raw HTML keeps the shape instead.
+            expect(md).toContain('<table>');
+            expect(md).not.toContain('| --- |');
+            expect(md).not.toContain('<th');
         });
 
-        it('round-trip — td-only table survives save/reload cycle', () => {
-            // Start from the markdown that a td-only table would produce
+        it('round-trip — td-only table survives save/reload cycle without gaining a header', () => {
             const html =
                 '<table><tbody>' +
                 '<tr><td>Name</td><td>Value</td></tr>' +
@@ -734,6 +735,7 @@ describe('noteMarkdown', () => {
             expect(reloadedHtml).toContain('Name');
             expect(reloadedHtml).toContain('bar');
             expect(reloadedHtml).not.toMatch(/<p>\|/);
+            expect(reloadedHtml).not.toContain('<th');
         });
 
         it('round-trip — pasted table (td-only) renders back as table', () => {
@@ -745,8 +747,138 @@ describe('noteMarkdown', () => {
             const md = htmlToMarkdown(html);
             const reloadedHtml = markdownToHtml(md);
             expect(reloadedHtml).toContain('<table>');
-            expect(reloadedHtml).toContain('<th');
             expect(reloadedHtml).not.toContain('<p>| X');
+        });
+    });
+
+    // ── Table header shapes (header row / column / cell toggles) ────────
+    //
+    // GFM pipe syntax can express exactly one header row on top. Every other
+    // header layout the toolbar toggles can produce routes to a raw HTML block
+    // so the shape survives a save/reload cycle.
+    describe('table header shape persistence', () => {
+        /** Ordered tag names of the cells in each row of the first table. */
+        function cellTagGrid(html: string): string[][] {
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            const table = doc.querySelector('table');
+            if (!table) return [];
+            return Array.from(table.querySelectorAll('tr')).map(row =>
+                Array.from(row.children)
+                    .filter(cell => cell.nodeName === 'TH' || cell.nodeName === 'TD')
+                    .map(cell => cell.nodeName.toLowerCase()),
+            );
+        }
+
+        const headerRowHtml =
+            '<table><tbody>' +
+            '<tr><th><p>H1</p></th><th><p>H2</p></th></tr>' +
+            '<tr><td><p>a</p></td><td><p>b</p></td></tr>' +
+            '</tbody></table>';
+
+        const headerColumnHtml =
+            '<table><tbody>' +
+            '<tr><th><p>Name</p></th><td><p>Ada</p></td></tr>' +
+            '<tr><th><p>Role</p></th><td><p>Eng</p></td></tr>' +
+            '</tbody></table>';
+
+        const bothHeadersHtml =
+            '<table><tbody>' +
+            '<tr><th><p></p></th><th><p>Q1</p></th></tr>' +
+            '<tr><th><p>Rev</p></th><td><p>10</p></td></tr>' +
+            '</tbody></table>';
+
+        const noHeaderHtml =
+            '<table><tbody>' +
+            '<tr><td><p>a</p></td><td><p>b</p></td></tr>' +
+            '<tr><td><p>c</p></td><td><p>d</p></td></tr>' +
+            '</tbody></table>';
+
+        const singleHeaderCellHtml =
+            '<table><tbody>' +
+            '<tr><td><p>a</p></td><td><p>b</p></td></tr>' +
+            '<tr><td><p>c</p></td><th><p>H</p></th></tr>' +
+            '</tbody></table>';
+
+        it('header column → raw HTML with no separator lines', () => {
+            const md = htmlToMarkdown(headerColumnHtml);
+            expect(md).toContain('<table>');
+            // The old per-row `thCells.length > 0` branch emitted a separator after
+            // every row, which marked parses back as pipes-in-paragraphs.
+            expect(md).not.toContain('---');
+            expect(md).not.toMatch(/^\s*\|/m);
+        });
+
+        it('header-less table → raw HTML block padded by blank lines', () => {
+            const md = htmlToMarkdown(noHeaderHtml);
+            const block = norm(md).trim();
+            expect(block.startsWith('<table>')).toBe(true);
+            expect(block.endsWith('</table>')).toBe(true);
+            // One physical line, or marked terminates the HTML block early.
+            expect(block.split('\n')).toHaveLength(1);
+        });
+
+        it('single header cell → raw HTML', () => {
+            const md = htmlToMarkdown(singleHeaderCellHtml);
+            expect(md).toContain('<table>');
+            expect(md).toContain('<th>');
+            expect(md).not.toContain('| --- |');
+        });
+
+        it('header row + header column → raw HTML with the corner th intact', () => {
+            const md = htmlToMarkdown(bothHeadersHtml);
+            expect(md).toContain('<table>');
+            expect(md).not.toContain('| --- |');
+            expect(cellTagGrid(md)).toEqual([
+                ['th', 'th'],
+                ['th', 'td'],
+            ]);
+        });
+
+        it('header row only stays on the pipe path', () => {
+            const md = htmlToMarkdown(headerRowHtml);
+            expect(md).not.toContain('<table>');
+            expect(md).toContain('| H1 | H2 |');
+            expect(md).toContain('| --- |');
+        });
+
+        it.each([
+            ['header row only', headerRowHtml, [['th', 'th'], ['td', 'td']]],
+            ['header column only', headerColumnHtml, [['th', 'td'], ['th', 'td']]],
+            ['both headers', bothHeadersHtml, [['th', 'th'], ['th', 'td']]],
+            ['no header', noHeaderHtml, [['td', 'td'], ['td', 'td']]],
+            ['single header cell', singleHeaderCellHtml, [['td', 'td'], ['td', 'th']]],
+        ])('round-trip preserves cell tag positions — %s', (_label, html, grid) => {
+            const reloaded = markdownToHtml(htmlToMarkdown(html));
+            expect(cellTagGrid(reloaded)).toEqual(grid);
+        });
+
+        it.each([
+            ['header column only', headerColumnHtml],
+            ['both headers', bothHeadersHtml],
+            ['no header', noHeaderHtml],
+            ['single header cell', singleHeaderCellHtml],
+        ])('two save/reload cycles are idempotent — %s', (_label, html) => {
+            const first = htmlToMarkdown(html);
+            const second = htmlToMarkdown(markdownToHtml(first));
+            const third = htmlToMarkdown(markdownToHtml(second));
+            expect(second).toBe(first);
+            expect(third).toBe(first);
+        });
+
+        it('a raw HTML table between two paragraphs leaves both as markdown', () => {
+            const html = `<p>before</p>${noHeaderHtml}<p>after</p>`;
+            const md = norm(htmlToMarkdown(html));
+            const lines = md.split('\n').filter(Boolean);
+            expect(lines[0]).toBe('before');
+            expect(lines[lines.length - 1]).toBe('after');
+            expect(lines.some(line => line.startsWith('<table>'))).toBe(true);
+
+            // marked must treat the block as HTML, not as escaped inline text.
+            const reloaded = markdownToHtml(md);
+            expect(reloaded).toContain('<table>');
+            expect(reloaded).not.toContain('&lt;table');
+            expect(reloaded).toContain('before');
+            expect(reloaded).toContain('after');
         });
     });
 

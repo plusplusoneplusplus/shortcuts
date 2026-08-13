@@ -456,14 +456,21 @@ turndown.addRule('table', {
     },
 });
 
-// Tables carrying per-cell state GFM pipe syntax cannot express: a dragged column
-// width (`colwidth`, from ProseMirror's columnResizing plugin) or a cell fill
-// (`data-bg`, from the tableCellBackground extension). Such a table is emitted as
-// a raw single-line HTML block that marked passes through unchanged and Tiptap
-// re-parses on reload — the same escape hatch `indentedList` / `mathDisplay` use
-// for content markdown cannot express. A table with neither attribute anywhere is
-// untouched and still takes the pipe-table path above, so only notes where a
-// border was actually dragged or a cell actually filled pay the cost of an
+// A table takes the pipe-table path above only when GFM syntax can express it in
+// full; otherwise it is emitted as a raw single-line HTML block that marked passes
+// through unchanged and Tiptap re-parses on reload — the same escape hatch
+// `indentedList` / `mathDisplay` use for content markdown cannot express. Two
+// things push a table off the pipe path:
+//
+//  1. Per-cell state with no pipe syntax: a dragged column width (`colwidth`, from
+//     ProseMirror's columnResizing plugin) or a cell fill (`data-bg`, from the
+//     tableCellBackground extension).
+//  2. A header layout that is not GFM-shaped — see `isGfmShapedTable`. A pipe table
+//     is exactly one header row on top, so a header column, a lone header cell, or
+//     no header at all has no faithful pipe form.
+//
+// Everything a plain insert-and-type produces is still GFM-shaped with no per-cell
+// state, so only notes that actually used one of those features pay the cost of an
 // unreadable line-level diff.
 // NOTE: addRule() unshifts, so this must stay registered AFTER the plain `table`
 // rule for it to be checked (and win) first.
@@ -478,6 +485,52 @@ function tableCellChildren(row: Element): Element[] {
     return Array.from(row.children).filter(
         child => child.nodeName === 'TH' || child.nodeName === 'TD',
     );
+}
+
+/**
+ * Every `<tr>` under a table, in document order, whether it sits in a section
+ * (`<thead>`/`<tbody>`/`<tfoot>`) or directly under `<table>` — Tiptap emits a
+ * single `<tbody>` with no `<thead>`, pasted HTML may use either, and a DOM parser
+ * can leave a bare `<tr>` in rare cases.
+ */
+function allTableRows(table: Element): Element[] {
+    const rows: Element[] = [];
+    for (const child of Array.from(table.children)) {
+        if (child.nodeName === 'TR') rows.push(child);
+        else if (
+            child.nodeName === 'THEAD' ||
+            child.nodeName === 'TBODY' ||
+            child.nodeName === 'TFOOT'
+        ) {
+            rows.push(...tableRowChildren(child));
+        }
+    }
+    return rows;
+}
+
+/**
+ * A GFM pipe table is exactly one header row across the top, so a table can take
+ * the pipe path only when its first row is all `<th>` and no later row holds one.
+ * Anything else — no header row, a header column, a single header cell — has no
+ * pipe form and must serialize as raw HTML instead, or reload would silently
+ * change its shape: a header-less table gets its first data row promoted by the
+ * `tableRow` fallback, and a header column emits a separator line after *every*
+ * row, which is not a table at all.
+ *
+ * A table with no rows, or whose first row has no cells, counts as GFM-shaped so
+ * degenerate markup keeps its current output rather than churning into HTML.
+ */
+function isGfmShapedTable(table: Element): boolean {
+    const rows = allTableRows(table);
+    if (rows.length === 0) return true;
+
+    const headerCells = tableCellChildren(rows[0]);
+    if (headerCells.length === 0) return true;
+    if (!headerCells.every(cell => cell.nodeName === 'TH')) return false;
+
+    return rows
+        .slice(1)
+        .every(row => tableCellChildren(row).every(cell => cell.nodeName !== 'TH'));
 }
 
 function cellColspan(cell: Element): number {
@@ -564,9 +617,11 @@ function serializeRawTableRow(row: Element): string {
 
 turndown.addRule('rawTable', {
     filter(node) {
+        if (node.nodeName !== 'TABLE') return false;
+        const table = node as Element;
         return (
-            node.nodeName === 'TABLE' &&
-            (node as Element).querySelector(RAW_TABLE_CELL_SELECTOR) !== null
+            table.querySelector(RAW_TABLE_CELL_SELECTOR) !== null ||
+            !isGfmShapedTable(table)
         );
     },
     replacement(_content, node) {
