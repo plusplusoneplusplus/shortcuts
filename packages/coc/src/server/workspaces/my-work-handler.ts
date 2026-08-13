@@ -22,12 +22,70 @@ import {
     addActionItem,
     addFollowUp,
     archiveCheckedActionItems,
+    formatTaskLine,
     type TaskPatch,
 } from './my-work-tasks';
+import { parseTimeline, TIMELINE_NOTE_PATH } from './my-work-timeline';
 
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/**
+ * A synced item is either a bare string or an object carrying the text plus
+ * the metadata that makes it actionable. Strings stay the whole contract for
+ * callers that have nothing but a sentence.
+ */
+type SyncItem = string | {
+    text?: unknown;
+    sourceUrl?: unknown;
+    due?: unknown;
+    tags?: unknown;
+};
+
+function asString(value: unknown): string | undefined {
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+/** ISO `YYYY-MM-DD` only — anything else is dropped rather than written through. */
+function asDue(value: unknown): string | undefined {
+    const s = asString(value);
+    return s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : undefined;
+}
+
+function asTags(value: unknown): string[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const tags = value
+        .map((t) => asString(t)?.replace(/^#+/, '').replace(/\s+/g, '-'))
+        .filter((t): t is string => Boolean(t));
+    return tags.length > 0 ? tags : undefined;
+}
+
+/**
+ * Render one sync item as a markdown checkbox line. Returns null for an item
+ * with no usable text, so a malformed entry is skipped rather than writing a
+ * blank checkbox into the note.
+ */
+function syncItemToLine(item: SyncItem): string | null {
+    if (typeof item === 'string') {
+        const text = asString(item);
+        return text ? formatTaskLine(text) : null;
+    }
+    if (!item || typeof item !== 'object') return null;
+    const text = asString(item.text);
+    if (!text) return null;
+    return formatTaskLine(text, {
+        due: asDue(item.due),
+        tags: asTags(item.tags),
+        sourceUrl: asString(item.sourceUrl),
+    });
+}
+
+/** Serialize a batch, dropping unusable entries. */
+function syncItemsToLines(items: unknown): string[] {
+    if (!Array.isArray(items)) return [];
+    return items.map((item) => syncItemToLine(item as SyncItem)).filter((l): l is string => l !== null);
+}
 
 function getNotesRoot(dataDir: string): string {
     return getRepoDataPath(dataDir, MY_WORK_WORKSPACE_ID, 'notes');
@@ -39,6 +97,15 @@ function actionItemsPath(dataDir: string): string {
 
 function followUpsPath(dataDir: string): string {
     return path.join(getNotesRoot(dataDir), 'Follow Ups.md');
+}
+
+/**
+ * The Work Radar timeline note. The path is a constant joined onto the notes
+ * root — nothing from the request reaches it, so this stays a read of one known
+ * file rather than a general file-read endpoint.
+ */
+function timelinePath(dataDir: string): string {
+    return path.join(getNotesRoot(dataDir), ...TIMELINE_NOTE_PATH.split('/'));
 }
 
 /** Read a notes file, treating a missing file as empty content. */
@@ -120,21 +187,22 @@ export function registerMyWorkRoutes(
 
                 // Append action items
                 const actionItemsPath = path.join(notesRoot, 'Action Items.md');
-                if (body.actionItems && Array.isArray(body.actionItems) && body.actionItems.length > 0) {
-                    const items = body.actionItems.map((item: string) => `- [ ] ${item}`).join('\n');
-                    const section = `${syncHeader}${items}\n`;
+                const actionLines = syncItemsToLines(body.actionItems);
+                if (actionLines.length > 0) {
+                    const section = `${syncHeader}${actionLines.join('\n')}\n`;
                     await fs.promises.appendFile(actionItemsPath, section, 'utf-8');
                 }
 
                 // Append follow-ups (grouped by person)
                 const followUpsPath = path.join(notesRoot, 'Follow Ups.md');
+                let followUpCount = 0;
                 if (body.followUps && typeof body.followUps === 'object' && Object.keys(body.followUps).length > 0) {
                     let section = syncHeader;
                     for (const [person, items] of Object.entries(body.followUps)) {
                         section += `### ${person}\n`;
-                        if (Array.isArray(items)) {
-                            section += items.map((item: string) => `- [ ] ${item}`).join('\n') + '\n';
-                        }
+                        const lines = syncItemsToLines(items);
+                        followUpCount += lines.length;
+                        if (lines.length > 0) section += lines.join('\n') + '\n';
                     }
                     await fs.promises.appendFile(followUpsPath, section, 'utf-8');
                 }
@@ -142,8 +210,10 @@ export function registerMyWorkRoutes(
                 sendJSON(res, 200, {
                     synced: true,
                     date: dateLabel,
-                    actionItemCount: body.actionItems?.length ?? 0,
-                    followUpCount: body.followUps ? Object.values(body.followUps).flat().length : 0,
+                    // Counts report what was actually written, so an entry that
+                    // was skipped as unusable does not read as synced.
+                    actionItemCount: actionLines.length,
+                    followUpCount,
                 });
             } catch (err: any) {
                 sendError(res, 500, `Sync failed: ${err.message}`);
@@ -273,6 +343,28 @@ export function registerMyWorkRoutes(
     });
 
     // ------------------------------------------------------------------
+    // GET /api/my-work/timeline — "What changed" strip for the Today tab
+    //
+    // Read-only, and read-only of exactly one file. A missing note is the
+    // normal state right now (nothing writes it yet), so it answers 200 with
+    // an empty list rather than 404 — the strip draws nothing for it either
+    // way, and an error would be a lie about the file being broken.
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/my-work\/timeline$/,
+        handler: async (_req, res) => {
+            try {
+                const content = await readFileOrEmpty(timelinePath(dataDir));
+                const { entries, total } = parseTimeline(content);
+                sendJSON(res, 200, { entries, total, notePath: TIMELINE_NOTE_PATH });
+            } catch (err: any) {
+                sendError(res, 500, `Failed to read timeline: ${err.message}`);
+            }
+        },
+    });
+
+    // ------------------------------------------------------------------
     // PATCH /api/my-work/tasks/:id — Toggle/edit a single checkbox line
     // ------------------------------------------------------------------
     routes.push({
@@ -291,6 +383,19 @@ export function registerMyWorkRoutes(
                 const patch: TaskPatch = {};
                 if (typeof body.checked === 'boolean') patch.checked = body.checked;
                 if (typeof body.text === 'string') patch.text = body.text;
+                // `due` sets or clears the line's `@due(...)` — the snooze path.
+                // Only an ISO date or an explicit null gets through, so nothing
+                // unparseable can be written onto a markdown line.
+                if (body.due !== undefined) {
+                    if (body.due === null) {
+                        patch.due = null;
+                    } else if (typeof body.due === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.due)) {
+                        patch.due = body.due;
+                    } else {
+                        sendError(res, 400, 'due must be a YYYY-MM-DD date or null');
+                        return;
+                    }
+                }
 
                 // Read-modify-write: re-read fresh, patch the one target line, write.
                 const aiPath = actionItemsPath(dataDir);

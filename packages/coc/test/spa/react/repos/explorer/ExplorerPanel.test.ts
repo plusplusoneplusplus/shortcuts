@@ -165,12 +165,18 @@ describe('ExplorerPanel', () => {
             expect(source).toContain('data-testid="explorer-refresh-btn"');
         });
 
-        it('clears childrenMap on refresh', () => {
-            expect(source).toContain('setChildrenMap(new Map())');
+        it('does not blank the cached tree data on refresh', () => {
+            expect(source).not.toContain('setChildrenMap(new Map())');
+            expect(source).not.toContain('setExpandedPaths(new Set())');
         });
 
-        it('clears expandedPaths on refresh', () => {
-            expect(source).toContain('setExpandedPaths(new Set())');
+        it('re-fetches the root plus every expanded directory in parallel', () => {
+            expect(source).toContain('Promise.allSettled');
+            expect(source).toContain('targets.map(dir => explorerApi.tree(workspaceId, { path: dir }))');
+        });
+
+        it('guards against a superseded refresh overwriting fresher data', () => {
+            expect(source).toContain('refreshRunIdRef');
         });
     });
 

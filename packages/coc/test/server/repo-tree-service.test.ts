@@ -241,6 +241,342 @@ describe('RepoTreeService.resolveRepo', () => {
     });
 });
 
+describe('RepoTreeService.resolveRepoRoot', () => {
+    it('returns the root path for a known repoId', async () => {
+        seedDefaultRepo();
+        expect(await service.resolveRepoRoot(REPO_ID)).toBe(repoDir);
+    });
+
+    it('returns undefined for an unknown repoId', async () => {
+        seedDefaultRepo();
+        expect(await service.resolveRepoRoot('nonexistent')).toBeUndefined();
+    });
+
+    it('returns undefined when no workspaces are registered', async () => {
+        expect(await service.resolveRepoRoot(REPO_ID)).toBeUndefined();
+    });
+
+    it('resolves from the ProcessStore when workspaces.json is absent', async () => {
+        fs.mkdirSync(repoDir, { recursive: true });
+        const store = {
+            getWorkspaces: async () => [{ id: REPO_ID, name: REPO_NAME, rootPath: repoDir }],
+        };
+        const svc = new RepoTreeService(dataDir, undefined, store as never);
+        expect(await svc.resolveRepoRoot(REPO_ID)).toBe(repoDir);
+    });
+
+    it('agrees with resolveRepo().localPath', async () => {
+        seedDefaultRepo();
+        const repo = await service.resolveRepo(REPO_ID);
+        expect(await service.resolveRepoRoot(REPO_ID)).toBe(repo!.localPath);
+    });
+});
+
+describe('file-tree operations avoid the git-spawning resolver', () => {
+    // resolveRepo runs `git rev-parse` + `git remote get-url` (two subprocesses,
+    // 5s timeout each). None of the file-tree paths need that metadata, so a
+    // regression here would put subprocess spawns back on every keystroke.
+    function spyOnResolveRepo(svc: RepoTreeService): () => number {
+        let calls = 0;
+        const original = svc.resolveRepo.bind(svc);
+        svc.resolveRepo = async (repoId: string) => {
+            calls++;
+            return original(repoId);
+        };
+        return () => calls;
+    }
+
+    it('searchFiles never calls resolveRepo', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'index.ts'), 'x');
+        const calls = spyOnResolveRepo(service);
+
+        await service.searchFiles(REPO_ID, 'index');
+        expect(calls()).toBe(0);
+    });
+
+    it('listFilesRecursive never calls resolveRepo', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'a.ts'), 'x');
+        const calls = spyOnResolveRepo(service);
+
+        await service.listFilesRecursive(REPO_ID, '.');
+        expect(calls()).toBe(0);
+    });
+
+    it('listDirectory never calls resolveRepo', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'a.ts'), 'x');
+        const calls = spyOnResolveRepo(service);
+
+        await service.listDirectory(REPO_ID, '.');
+        expect(calls()).toBe(0);
+    });
+
+    it('readBlob and writeBlob never call resolveRepo', async () => {
+        seedDefaultRepo();
+        const calls = spyOnResolveRepo(service);
+
+        await service.writeBlob(REPO_ID, 'written.txt', 'hi');
+        await service.readBlob(REPO_ID, 'written.txt');
+        expect(calls()).toBe(0);
+    });
+
+    it('still reports unknown repos through the cheap resolver', async () => {
+        seedDefaultRepo();
+        await expect(service.listDirectory('nope', '.')).rejects.toThrow(/repo not found/i);
+        await expect(service.readBlob('nope', 'a.txt')).rejects.toThrow(/repo not found/i);
+        await expect(service.writeBlob('nope', 'a.txt', 'x')).rejects.toThrow(/repo not found/i);
+    });
+});
+
+describe('RepoTreeService whole-repo file list cache', () => {
+    /** Polls until `predicate` holds, so background refreshes need no fake timers. */
+    async function waitFor(predicate: () => Promise<boolean>, label: string): Promise<void> {
+        for (let i = 0; i < 100; i++) {
+            if (await predicate()) return;
+            await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        throw new Error(`Timed out waiting for: ${label}`);
+    }
+
+    function newService(options?: { fileListCacheTtlMs?: number }) {
+        return new RepoTreeService(dataDir, { fileListCacheTtlMs: 60_000, ...options });
+    }
+
+    it('serves a repeat listing from cache without picking up new files', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'first.ts'), 'x');
+        const svc = newService();
+
+        const initial = await svc.listFilesRecursive(REPO_ID, '.', { showIgnored: true });
+        expect(initial.files).toContain('first.ts');
+
+        fs.writeFileSync(path.join(repoDir, 'second.ts'), 'x');
+        const cached = await svc.listFilesRecursive(REPO_ID, '.', { showIgnored: true });
+        expect(cached.files).toContain('first.ts');
+        expect(cached.files).not.toContain('second.ts');
+    });
+
+    it('invalidateFileListCache forces a recompute', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'first.ts'), 'x');
+        const svc = newService();
+
+        await svc.listFilesRecursive(REPO_ID, '.', { showIgnored: true });
+        fs.writeFileSync(path.join(repoDir, 'second.ts'), 'x');
+        svc.invalidateFileListCache(REPO_ID);
+
+        const fresh = await svc.listFilesRecursive(REPO_ID, '.', { showIgnored: true });
+        expect(fresh.files).toContain('second.ts');
+    });
+
+    it('invalidateFileListCache() with no argument clears every repo', async () => {
+        fs.mkdirSync(repoDir, { recursive: true });
+        const otherDir = path.join(tmpDir, 'other');
+        fs.mkdirSync(otherDir, { recursive: true });
+        seedWorkspacesJson([
+            { id: REPO_ID, name: REPO_NAME, rootPath: repoDir },
+            { id: 'other-id', name: 'other', rootPath: otherDir },
+        ]);
+        fs.writeFileSync(path.join(repoDir, 'a.ts'), 'x');
+        fs.writeFileSync(path.join(otherDir, 'b.ts'), 'x');
+        const svc = newService();
+
+        await svc.listFilesRecursive(REPO_ID, '.', { showIgnored: true });
+        await svc.listFilesRecursive('other-id', '.', { showIgnored: true });
+
+        fs.writeFileSync(path.join(repoDir, 'a2.ts'), 'x');
+        fs.writeFileSync(path.join(otherDir, 'b2.ts'), 'x');
+        svc.invalidateFileListCache();
+
+        expect((await svc.listFilesRecursive(REPO_ID, '.', { showIgnored: true })).files).toContain('a2.ts');
+        expect((await svc.listFilesRecursive('other-id', '.', { showIgnored: true })).files).toContain('b2.ts');
+    });
+
+    it('scopes invalidation to the requested repo', async () => {
+        fs.mkdirSync(repoDir, { recursive: true });
+        const otherDir = path.join(tmpDir, 'other');
+        fs.mkdirSync(otherDir, { recursive: true });
+        seedWorkspacesJson([
+            { id: REPO_ID, name: REPO_NAME, rootPath: repoDir },
+            { id: 'other-id', name: 'other', rootPath: otherDir },
+        ]);
+        fs.writeFileSync(path.join(otherDir, 'b.ts'), 'x');
+        const svc = newService();
+
+        await svc.listFilesRecursive('other-id', '.', { showIgnored: true });
+        fs.writeFileSync(path.join(otherDir, 'b2.ts'), 'x');
+        svc.invalidateFileListCache(REPO_ID);
+
+        const other = await svc.listFilesRecursive('other-id', '.', { showIgnored: true });
+        expect(other.files).not.toContain('b2.ts');
+    });
+
+    it('writeBlob invalidates the cache so new files become searchable', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'first.ts'), 'x');
+        const svc = newService();
+
+        await svc.searchFiles(REPO_ID, 'first', { showIgnored: true });
+        await svc.writeBlob(REPO_ID, 'created.ts', 'x');
+
+        const result = await svc.searchFiles(REPO_ID, 'created', { showIgnored: true });
+        expect(result.results.map(r => r.path)).toContain('created.ts');
+    });
+
+    it('keys the cache on showIgnored so variants do not share an entry', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'kept.ts'), 'x');
+        const svc = newService();
+
+        const seen: boolean[] = [];
+        const original = (svc as any).computeRootFileList.bind(svc);
+        (svc as any).computeRootFileList = async (repoRoot: string, showIgnored: boolean) => {
+            seen.push(showIgnored);
+            return original(repoRoot, showIgnored);
+        };
+
+        await svc.listFilesRecursive(REPO_ID, '.', { showIgnored: true });
+        await svc.listFilesRecursive(REPO_ID, '.', { showIgnored: false });
+        // Each variant computes once...
+        expect(seen).toEqual([true, false]);
+
+        // ...and each is then served from its own cache entry.
+        await svc.listFilesRecursive(REPO_ID, '.', { showIgnored: true });
+        await svc.listFilesRecursive(REPO_ID, '.', { showIgnored: false });
+        expect(seen).toEqual([true, false]);
+    });
+
+    it('filters gitignored files out of the cached listing', async () => {
+        if (!isGitAvailable()) return;
+        seedDefaultRepo();
+        initGitRepo(repoDir);
+        fs.writeFileSync(path.join(repoDir, '.gitignore'), 'ignored.ts\n');
+        fs.writeFileSync(path.join(repoDir, 'kept.ts'), 'x');
+        fs.writeFileSync(path.join(repoDir, 'ignored.ts'), 'x');
+        const svc = newService();
+
+        const hidden = await svc.listFilesRecursive(REPO_ID, '.', { showIgnored: false });
+        expect(hidden.files).toContain('kept.ts');
+        expect(hidden.files).not.toContain('ignored.ts');
+
+        const shown = await svc.listFilesRecursive(REPO_ID, '.', { showIgnored: true });
+        expect(shown.files).toContain('ignored.ts');
+    });
+
+    it('does not cache sub-directory listings', async () => {
+        seedDefaultRepo();
+        fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'src', 'a.ts'), 'x');
+        const svc = newService();
+
+        await svc.listFilesRecursive(REPO_ID, 'src', { showIgnored: true });
+        fs.writeFileSync(path.join(repoDir, 'src', 'b.ts'), 'x');
+
+        const second = await svc.listFilesRecursive(REPO_ID, 'src', { showIgnored: true });
+        expect(second.files).toContain('src/b.ts');
+    });
+
+    it('serves a stale entry immediately and refreshes in the background', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'first.ts'), 'x');
+        const svc = newService({ fileListCacheTtlMs: 0 });
+
+        await svc.listFilesRecursive(REPO_ID, '.', { showIgnored: true });
+        fs.writeFileSync(path.join(repoDir, 'second.ts'), 'x');
+
+        // The stale read returns the old list rather than blocking on a rescan.
+        const stale = await svc.listFilesRecursive(REPO_ID, '.', { showIgnored: true });
+        expect(stale.files).not.toContain('second.ts');
+
+        // The refresh it kicked off lands shortly after.
+        await waitFor(
+            async () => (await svc.listFilesRecursive(REPO_ID, '.', { showIgnored: true })).files.includes('second.ts'),
+            'background refresh to observe second.ts',
+        );
+    });
+
+    it('shares one computation between concurrent cold callers', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'a.ts'), 'x');
+        const svc = newService();
+
+        let computeCount = 0;
+        const original = (svc as any).computeRootFileList.bind(svc);
+        (svc as any).computeRootFileList = async (...args: unknown[]) => {
+            computeCount++;
+            return original(...args);
+        };
+
+        const results = await Promise.all([
+            svc.listFilesRecursive(REPO_ID, '.', { showIgnored: true }),
+            svc.listFilesRecursive(REPO_ID, '.', { showIgnored: true }),
+            svc.listFilesRecursive(REPO_ID, '.', { showIgnored: true }),
+        ]);
+
+        expect(computeCount).toBe(1);
+        for (const result of results) {
+            expect(result.files).toContain('a.ts');
+        }
+    });
+
+    it('repeated searches reuse the cached listing', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'index.ts'), 'x');
+        const svc = newService();
+
+        let computeCount = 0;
+        const original = (svc as any).computeRootFileList.bind(svc);
+        (svc as any).computeRootFileList = async (...args: unknown[]) => {
+            computeCount++;
+            return original(...args);
+        };
+
+        for (const query of ['i', 'in', 'ind', 'inde', 'index']) {
+            await svc.searchFiles(REPO_ID, query, { showIgnored: true });
+        }
+        expect(computeCount).toBe(1);
+    });
+});
+
+describe('RepoTreeService whole-repo file list cap', () => {
+    it('defaults to a higher cap than per-directory listings', async () => {
+        seedDefaultRepo();
+        for (let i = 0; i < 20; i++) {
+            fs.writeFileSync(path.join(repoDir, `file${i}.ts`), 'x');
+        }
+        // Default maxEntries is 5000 for directories; the whole-repo list must not
+        // inherit a cap that would hide most of a large repo from file search.
+        const svc = new RepoTreeService(dataDir);
+        const result = await svc.listFilesRecursive(REPO_ID, '.', { showIgnored: true });
+        expect(result.files.length).toBe(20);
+        expect(result.truncated).toBe(false);
+    });
+
+    it('honours an explicit maxEntries for the whole-repo list', async () => {
+        seedDefaultRepo();
+        for (let i = 0; i < 10; i++) {
+            fs.writeFileSync(path.join(repoDir, `file${i}.ts`), 'x');
+        }
+        const svc = new RepoTreeService(dataDir, { maxEntries: 3 });
+        const result = await svc.listFilesRecursive(REPO_ID, '.', { showIgnored: true });
+        expect(result.files.length).toBe(3);
+        expect(result.truncated).toBe(true);
+    });
+
+    it('honours an explicit fileListMaxEntries over maxEntries', async () => {
+        seedDefaultRepo();
+        for (let i = 0; i < 10; i++) {
+            fs.writeFileSync(path.join(repoDir, `file${i}.ts`), 'x');
+        }
+        const svc = new RepoTreeService(dataDir, { maxEntries: 3, fileListMaxEntries: 8 });
+        const result = await svc.listFilesRecursive(REPO_ID, '.', { showIgnored: true });
+        expect(result.files.length).toBe(8);
+        expect(result.truncated).toBe(true);
+    });
+});
+
 describe('RepoTreeService.readBlob', () => {
     it('reads text file as utf-8', async () => {
         seedDefaultRepo();

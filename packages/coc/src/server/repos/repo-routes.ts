@@ -105,8 +105,8 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                 });
                 if (!parsed) return;
 
-                const repo = await svc.resolveRepo(parsed.repoId);
-                if (!repo) {
+                const repoRoot = await svc.resolveRepoRoot(parsed.repoId);
+                if (!repoRoot) {
                     send404(res, `Unknown repo: ${parsed.repoId}`);
                     return;
                 }
@@ -142,8 +142,8 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                 });
                 if (!parsed) return;
 
-                const repo = await svc.resolveRepo(parsed.repoId);
-                if (!repo) {
+                const repoRoot = await svc.resolveRepoRoot(parsed.repoId);
+                if (!repoRoot) {
                     send404(res, `Unknown repo: ${parsed.repoId}`);
                     return;
                 }
@@ -181,8 +181,8 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                 const limit = isNaN(rawLimit) ? 50 : Math.min(Math.max(rawLimit, 1), 200);
                 const showIgnored = parsedUrl.query.showIgnored === 'true';
 
-                const repo = await svc.resolveRepo(repoId);
-                if (!repo) {
+                const repoRoot = await svc.resolveRepoRoot(repoId);
+                if (!repoRoot) {
                     send404(res, `Unknown repo: ${repoId}`);
                     return;
                 }
@@ -208,8 +208,8 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                 });
                 if (!parsed) return;
 
-                const repo = await svc.resolveRepo(parsed.repoId);
-                if (!repo) {
+                const repoRoot = await svc.resolveRepoRoot(parsed.repoId);
+                if (!repoRoot) {
                     send404(res, `Unknown repo: ${parsed.repoId}`);
                     return;
                 }
@@ -259,8 +259,8 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                     return;
                 }
 
-                const repo = await svc.resolveRepo(parsed.repoId);
-                if (!repo) {
+                const repoRoot = await svc.resolveRepoRoot(parsed.repoId);
+                if (!repoRoot) {
                     send404(res, `Unknown repo: ${parsed.repoId}`);
                     return;
                 }
@@ -290,14 +290,14 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                 });
                 if (!parsed) return;
 
-                const repo = await svc.resolveRepo(parsed.repoId);
-                if (!repo) {
+                const repoRoot = await svc.resolveRepoRoot(parsed.repoId);
+                if (!repoRoot) {
                     send404(res, `Unknown repo: ${parsed.repoId}`);
                     return;
                 }
 
-                const absPath = path.resolve(repo.localPath, parsed.path);
-                const normalizedRepo = path.resolve(repo.localPath);
+                const absPath = path.resolve(repoRoot, parsed.path);
+                const normalizedRepo = path.resolve(repoRoot);
                 if (!absPath.startsWith(normalizedRepo + path.sep) && absPath !== normalizedRepo) {
                     send400(res, 'Invalid path: directory traversal not allowed');
                     return;

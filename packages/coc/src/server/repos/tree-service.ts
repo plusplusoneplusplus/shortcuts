@@ -7,6 +7,7 @@ import type { WorkspaceInfo, ProcessStore } from '@plusplusoneplusplus/forge';
 
 const execFileAsync = promisify(execFile);
 import type { RepoInfo, TreeEntry, TreeListResult, FileSearchResult, SearchFilesResult } from './types';
+import { fuzzyFileScore, rankFuzzyMatches } from '../shared/fuzzy-file-score';
 
 export interface RepoTreeServiceOptions {
     /**
@@ -15,6 +16,29 @@ export interface RepoTreeServiceOptions {
      * Default: 5000.
      */
     maxEntries?: number;
+
+    /**
+     * Maximum entries returned by a whole-repo file listing (`listFilesRecursive`).
+     * Defaults to `maxEntries` when that is set explicitly, otherwise 50000 —
+     * a per-directory cap of 5000 is generous, but the same cap applied to a
+     * whole repo hides most files in any large repo from file search.
+     */
+    fileListMaxEntries?: number;
+
+    /**
+     * How long a cached whole-repo file list is served before it is refreshed.
+     * Stale entries are still returned immediately while the refresh runs in the
+     * background. Default: 10000 ms.
+     */
+    fileListCacheTtlMs?: number;
+}
+
+/** A cached whole-repo file listing. */
+interface CachedFileList {
+    files: string[];
+    truncated: boolean;
+    /** Epoch ms at which this entry was produced. */
+    at: number;
 }
 
 /** Extension → MIME type map for common file types. */
@@ -197,8 +221,15 @@ async function getGitIgnoredNames(
 
 export class RepoTreeService {
     private readonly maxEntries: number;
+    private readonly fileListMaxEntries: number;
+    private readonly fileListCacheTtlMs: number;
     private readonly dataDir: string;
     private readonly store?: ProcessStore;
+
+    /** Whole-repo file listings, keyed by repoId + showIgnored. */
+    private readonly fileListCache = new Map<string, CachedFileList>();
+    /** In-flight refreshes, so concurrent callers share one walk per key. */
+    private readonly fileListRefreshes = new Map<string, Promise<CachedFileList>>();
 
     private static rgAvailable: boolean | undefined;
 
@@ -315,7 +346,67 @@ export class RepoTreeService {
     constructor(dataDir: string, options?: RepoTreeServiceOptions, store?: ProcessStore) {
         this.dataDir = dataDir;
         this.maxEntries = options?.maxEntries ?? 5000;
+        this.fileListMaxEntries = options?.fileListMaxEntries ?? options?.maxEntries ?? 50000;
+        this.fileListCacheTtlMs = options?.fileListCacheTtlMs ?? 10000;
         this.store = store;
+    }
+
+    /** Cache key for a whole-repo file listing. */
+    private static fileListKey(repoId: string, showIgnored: boolean): string {
+        return `${repoId} ${showIgnored ? 1 : 0}`;
+    }
+
+    /**
+     * Drop cached whole-repo file listings.
+     * Called after writes; pass a repoId to scope the invalidation to one repo.
+     */
+    invalidateFileListCache(repoId?: string): void {
+        if (repoId === undefined) {
+            this.fileListCache.clear();
+            return;
+        }
+        for (const showIgnored of [true, false]) {
+            this.fileListCache.delete(RepoTreeService.fileListKey(repoId, showIgnored));
+        }
+    }
+
+    /**
+     * Recompute a repo's file listing and store it in the cache.
+     * Concurrent callers share one in-flight computation per key.
+     */
+    private refreshFileList(
+        key: string,
+        repoRoot: string,
+        showIgnored: boolean,
+    ): Promise<CachedFileList> {
+        const existing = this.fileListRefreshes.get(key);
+        if (existing) return existing;
+
+        const promise = this.computeRootFileList(repoRoot, showIgnored)
+            .then(result => {
+                const entry: CachedFileList = { ...result, at: Date.now() };
+                this.fileListCache.set(key, entry);
+                return entry;
+            })
+            .finally(() => {
+                this.fileListRefreshes.delete(key);
+            });
+
+        this.fileListRefreshes.set(key, promise);
+        return promise;
+    }
+
+    /** Uncached whole-repo listing: ripgrep when available, directory walk otherwise. */
+    private async computeRootFileList(
+        repoRoot: string,
+        showIgnored: boolean,
+    ): Promise<{ files: string[]; truncated: boolean }> {
+        const rgResult = await this.listFilesWithRipgrep(repoRoot, {
+            showIgnored,
+            maxEntries: this.fileListMaxEntries,
+        });
+        if (rgResult) return rgResult;
+        return this.walkFiles(repoRoot, repoRoot, showIgnored, this.fileListMaxEntries);
     }
 
     /**
@@ -329,11 +420,26 @@ export class RepoTreeService {
 
     /**
      * Resolve a repo by ID. Returns undefined if not found.
+     *
+     * Populates git metadata (headSha, remoteUrl) via subprocesses. Callers that
+     * only need the on-disk location must use {@link resolveRepoRoot} instead.
      */
     async resolveRepo(repoId: string): Promise<RepoInfo | undefined> {
         const workspaces = await this.readWorkspaces();
         const ws = workspaces.find(w => w.id === repoId);
         return ws ? RepoTreeService.toRepoInfo(ws) : undefined;
+    }
+
+    /**
+     * Resolve just the on-disk root path for a repo, without spawning git.
+     *
+     * `resolveRepo` runs `git rev-parse` and `git remote get-url` to build a full
+     * RepoInfo; file-tree operations need none of that, so they use this instead.
+     * Returns undefined if the repo is not registered.
+     */
+    async resolveRepoRoot(repoId: string): Promise<string | undefined> {
+        const workspaces = await this.readWorkspaces();
+        return workspaces.find(w => w.id === repoId)?.rootPath;
     }
 
     /**
@@ -350,12 +456,11 @@ export class RepoTreeService {
         relativePath: string,
         options?: { showIgnored?: boolean },
     ): Promise<TreeListResult> {
-        const repo = await this.resolveRepo(repoId);
-        if (!repo) {
+        const repoRoot = await this.resolveRepoRoot(repoId);
+        if (!repoRoot) {
             throw new Error(`Repo not found: ${repoId}`);
         }
 
-        const repoRoot = repo.localPath;
         const normalizedRel = stripLeadingSeparators(relativePath === '' || relativePath === '.' ? '.' : relativePath);
         const absPath = path.resolve(repoRoot, normalizedRel);
         assertInsideRepo(repoRoot, absPath);
@@ -470,31 +575,53 @@ export class RepoTreeService {
         relativePath: string,
         options?: { showIgnored?: boolean },
     ): Promise<{ files: string[]; truncated: boolean }> {
-        const repo = await this.resolveRepo(repoId);
-        if (!repo) {
+        const repoRoot = await this.resolveRepoRoot(repoId);
+        if (!repoRoot) {
             throw new Error(`Repo not found: ${repoId}`);
         }
 
-        const repoRoot = repo.localPath;
         const normalizedRel = stripLeadingSeparators(relativePath === '' || relativePath === '.' ? '.' : relativePath);
         const absRoot = path.resolve(repoRoot, normalizedRel);
         assertInsideRepo(repoRoot, absRoot);
 
-        // Fast path: use ripgrep when listing the entire repo root
-        if (normalizedRel === '.' || normalizedRel === '') {
-            const rgResult = await this.listFilesWithRipgrep(absRoot, {
-                showIgnored: options?.showIgnored,
-                maxEntries: this.maxEntries,
-            });
-            if (rgResult) return rgResult;
-            // rg unavailable or errored — fall through to existing walk
-        }
-
-        const files: string[] = [];
         const showIgnored = options?.showIgnored ?? false;
 
+        // Whole-repo listing: served from cache, stale-while-revalidate.
+        // This is the hot path behind file search, where the same listing was
+        // otherwise recomputed (a full ripgrep walk) on every keystroke.
+        if (normalizedRel === '.' || normalizedRel === '') {
+            const key = RepoTreeService.fileListKey(repoId, showIgnored);
+            const cached = this.fileListCache.get(key);
+            if (cached) {
+                if (Date.now() - cached.at >= this.fileListCacheTtlMs) {
+                    // Serve the stale list now; refresh for the next caller.
+                    // Files appear from agents, git and installs without going
+                    // through writeBlob, so entries cannot be trusted forever.
+                    void this.refreshFileList(key, repoRoot, showIgnored).catch(() => {});
+                }
+                return { files: cached.files, truncated: cached.truncated };
+            }
+            const fresh = await this.refreshFileList(key, repoRoot, showIgnored);
+            return { files: fresh.files, truncated: fresh.truncated };
+        }
+
+        return this.walkFiles(repoRoot, absRoot, showIgnored, this.maxEntries);
+    }
+
+    /**
+     * Depth-first walk collecting file paths relative to `repoRoot`.
+     * Respects gitignore unless `showIgnored`. Stops at `maxEntries`.
+     */
+    private async walkFiles(
+        repoRoot: string,
+        absRoot: string,
+        showIgnored: boolean,
+        maxEntries: number,
+    ): Promise<{ files: string[]; truncated: boolean }> {
+        const files: string[] = [];
+
         const walk = async (dir: string): Promise<void> => {
-            if (files.length >= this.maxEntries) return;
+            if (files.length >= maxEntries) return;
 
             let dirents: fs.Dirent[];
             try {
@@ -533,7 +660,7 @@ export class RepoTreeService {
             filtered.sort((a, b) => a.name.localeCompare(b.name));
 
             for (const entry of filtered) {
-                if (files.length >= this.maxEntries) return;
+                if (files.length >= maxEntries) return;
                 const fullPath = path.join(dir, entry.name);
                 if (entry.isDir) {
                     await walk(fullPath);
@@ -545,8 +672,8 @@ export class RepoTreeService {
         };
 
         await walk(absRoot);
-        const truncated = files.length >= this.maxEntries;
-        return { files: truncated ? files.slice(0, this.maxEntries) : files, truncated };
+        const truncated = files.length >= maxEntries;
+        return { files: truncated ? files.slice(0, maxEntries) : files, truncated };
     }
 
     /**
@@ -558,12 +685,11 @@ export class RepoTreeService {
         repoId: string,
         relativePath: string,
     ): Promise<{ content: string; encoding: 'utf-8' | 'base64'; mimeType: string }> {
-        const repo = await this.resolveRepo(repoId);
-        if (!repo) {
+        const repoRoot = await this.resolveRepoRoot(repoId);
+        if (!repoRoot) {
             throw new Error(`Repo not found: ${repoId}`);
         }
 
-        const repoRoot = repo.localPath;
         const absPath = path.resolve(repoRoot, stripLeadingSeparators(relativePath));
         assertInsideRepo(repoRoot, absPath);
 
@@ -605,12 +731,11 @@ export class RepoTreeService {
      * @throws if repo not found, path traversal detected, or path is a directory.
      */
     async writeBlob(repoId: string, relativePath: string, content: string): Promise<void> {
-        const repo = await this.resolveRepo(repoId);
-        if (!repo) {
+        const repoRoot = await this.resolveRepoRoot(repoId);
+        if (!repoRoot) {
             throw new Error(`Repo not found: ${repoId}`);
         }
 
-        const repoRoot = repo.localPath;
         const absPath = path.resolve(repoRoot, stripLeadingSeparators(relativePath));
         assertInsideRepo(repoRoot, absPath);
 
@@ -619,37 +744,18 @@ export class RepoTreeService {
         await fs.promises.mkdir(parentDir, { recursive: true });
 
         await fs.promises.writeFile(absPath, content, 'utf-8');
+
+        // A write may have created a file that is not in the cached listing.
+        this.invalidateFileListCache(repoId);
     }
 
     /**
      * Fuzzy-score a single file path against a query.
-     * Mirrors the scoring logic in QuickOpen.tsx.
+     * Delegates to the scorer shared with the SPA file-finder dialogs.
      * Returns 0 if not all query characters are found in order.
      */
     static fuzzyScore(query: string, filePath: string): number {
-        const q = query.toLowerCase();
-        const t = filePath.toLowerCase();
-        if (!q) return 0;
-
-        let qi = 0;
-        let score = 0;
-        let prevMatchIdx = -1;
-
-        for (let ti = 0; ti < t.length && qi < q.length; ti++) {
-            if (t[ti] === q[qi]) {
-                if (ti === prevMatchIdx + 1) score += 2;
-                if (ti === 0 || t[ti - 1] === '/' || t[ti - 1] === '-' || t[ti - 1] === '_' || t[ti - 1] === '.') {
-                    score += 3;
-                }
-                score += 1;
-                prevMatchIdx = ti;
-                qi++;
-            }
-        }
-
-        if (qi < q.length) return 0;
-        score += Math.max(0, 50 - filePath.length);
-        return score;
+        return fuzzyFileScore(query, filePath);
     }
 
     /**
@@ -672,17 +778,8 @@ export class RepoTreeService {
             showIgnored: options?.showIgnored ?? false,
         });
 
-        const results: FileSearchResult[] = [];
-        for (const filePath of files) {
-            const score = RepoTreeService.fuzzyScore(query, filePath);
-            if (score > 0) {
-                results.push({ path: filePath, score });
-            }
-        }
-
-        results.sort((a, b) => b.score - a.score);
-
-        return { results: results.slice(0, limit), truncated };
+        const results: FileSearchResult[] = rankFuzzyMatches(query, files, limit);
+        return { results, truncated };
     }
 
     /**

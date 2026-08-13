@@ -22,8 +22,9 @@ describe('QuickOpen component', () => {
             expect(source).toContain('export function QuickOpen');
         });
 
-        it('exports fuzzyMatch function', () => {
-            expect(source).toContain('export function fuzzyMatch');
+        it('does not redefine a local fuzzy scorer', () => {
+            // Scoring is shared with the server via shared/fuzzy-file-score.
+            expect(source).not.toContain('export function fuzzyMatch');
         });
 
         it('exports highlightFuzzy function', () => {
@@ -63,14 +64,17 @@ describe('QuickOpen component', () => {
             expect(source).toContain('setLoading');
         });
 
-        it('calls server-side search endpoint with query and limit', () => {
-            expect(source).toContain('explorerApi.searchFiles(workspaceId, query');
-            expect(source).toContain('limit: 50');
+        it('fetches the path list once per open', () => {
+            expect(source).toContain('explorerApi.listFiles(workspaceId');
         });
 
-        it('does not fetch /files endpoint on open', () => {
-            // The old bulk-fetch endpoint must no longer appear
-            expect(source).not.toContain('listFiles(');
+        it('does not call the per-keystroke search endpoint', () => {
+            // Matching happens in the browser; /search stays for other callers.
+            expect(source).not.toContain('explorerApi.searchFiles(');
+        });
+
+        it('caps rendered results', () => {
+            expect(source).toContain('RESULT_LIMIT = 50');
         });
     });
 
@@ -79,39 +83,32 @@ describe('QuickOpen component', () => {
             expect(source).toContain("const [query, setQuery] = useState('')");
         });
 
-        it('manages results state (server-populated)', () => {
-            expect(source).toContain("useState<string[]>([])");
+        it('holds the fetched path list in state', () => {
+            expect(source).toContain("const [allFiles, setAllFiles] = useState<string[]>([])");
         });
 
-        it('does not use client-side fuzzyMatch for filtering', () => {
-            // fuzzyMatch may still be exported but must not be called inside the component
-            expect(source).not.toContain('fuzzyMatch(query, f)');
+        it('derives results with the shared scorer', () => {
+            expect(source).toContain("from '../../../../../../shared/fuzzy-file-score'");
+            expect(source).toContain('rankFuzzyMatches(trimmed, allFiles, RESULT_LIMIT)');
         });
 
-        it('maps server response paths from results array', () => {
-            expect(source).toContain('data.results.map(r => r.path)');
+        it('memoizes results so matching reruns only on query or file-list change', () => {
+            expect(source).toContain('useMemo(');
+            expect(source).toContain('}, [query, allFiles]);');
         });
 
-        it('shows empty list when query is empty (no fetch)', () => {
-            expect(source).toContain('!query.trim()');
-            expect(source).toContain("setResults([])");
+        it('shows an empty list when the query is empty', () => {
+            expect(source).toContain('if (!trimmed) return [];');
         });
     });
 
-    describe('debounce and cancellation', () => {
-        it('uses setTimeout for debounce', () => {
-            expect(source).toContain('setTimeout(');
+    describe('no debounce, cancellable fetch', () => {
+        it('has no debounce timer — matching is local and synchronous', () => {
+            expect(source).not.toContain('debounceRef');
+            expect(source).not.toContain(', 200)');
         });
 
-        it('uses clearTimeout to cancel pending debounce', () => {
-            expect(source).toContain('clearTimeout(');
-        });
-
-        it('uses debounceRef to hold the timeout handle', () => {
-            expect(source).toContain('debounceRef');
-        });
-
-        it('uses AbortController to cancel in-flight requests', () => {
+        it('uses AbortController to cancel the in-flight list fetch', () => {
             expect(source).toContain('AbortController');
         });
 
@@ -119,8 +116,8 @@ describe('QuickOpen component', () => {
             expect(source).toContain('abort.signal.aborted');
         });
 
-        it('debounce delay is 200ms', () => {
-            expect(source).toContain(', 200)');
+        it('aborts the fetch when the dialog closes', () => {
+            expect(source).toContain('return () => abort.abort();');
         });
     });
 
@@ -174,8 +171,9 @@ describe('QuickOpen component', () => {
             expect(source).toContain('data-testid="quick-open-no-results"');
         });
 
-        it('shows loading state', () => {
+        it('shows the loading state only before the first list arrives', () => {
             expect(source).toContain('Loading files');
+            expect(source).toContain('loading && results.length === 0 && allFiles.length === 0');
         });
 
         it('shows result count in footer', () => {
@@ -234,63 +232,5 @@ describe('QuickOpen component', () => {
     });
 });
 
-describe('fuzzyMatch algorithm', () => {
-    let fuzzyMatch: (query: string, target: string) => { match: boolean; score: number };
-
-    beforeAll(async () => {
-        // Read the source to extract the function
-        const source = fs.readFileSync(QUICK_OPEN_PATH, 'utf-8');
-        // Validate the function exists
-        expect(source).toContain('export function fuzzyMatch');
-
-        // Use dynamic import - construct module path
-        const mod = await import(QUICK_OPEN_PATH.replace(/\.tsx$/, ''));
-        fuzzyMatch = mod.fuzzyMatch;
-    });
-
-    it('matches exact substring', () => {
-        const result = fuzzyMatch('index', 'src/index.ts');
-        expect(result.match).toBe(true);
-        expect(result.score).toBeGreaterThan(0);
-    });
-
-    it('matches characters in order (non-contiguous)', () => {
-        const result = fuzzyMatch('idx', 'index.ts');
-        expect(result.match).toBe(true);
-    });
-
-    it('returns no match when characters are not in order', () => {
-        const result = fuzzyMatch('zxy', 'index.ts');
-        expect(result.match).toBe(false);
-    });
-
-    it('returns match true with score 0 for empty query', () => {
-        const result = fuzzyMatch('', 'anything.ts');
-        expect(result.match).toBe(true);
-        expect(result.score).toBe(0);
-    });
-
-    it('is case insensitive', () => {
-        const result = fuzzyMatch('INDEX', 'src/index.ts');
-        expect(result.match).toBe(true);
-    });
-
-    it('scores shorter targets higher for same query', () => {
-        const short = fuzzyMatch('idx', 'index.ts');
-        const long = fuzzyMatch('idx', 'very/deep/path/to/some/index.ts');
-        expect(short.score).toBeGreaterThan(long.score);
-    });
-
-    it('scores consecutive matches higher', () => {
-        const consecutive = fuzzyMatch('ind', 'index.ts');
-        const scattered = fuzzyMatch('ind', 'integration-dashboard.ts');
-        expect(consecutive.score).toBeGreaterThan(scattered.score);
-    });
-
-    it('gives bonus for matching at path separator', () => {
-        const atSep = fuzzyMatch('i', 'src/index.ts');
-        const midWord = fuzzyMatch('n', 'src/index.ts');
-        // 'i' matches right after '/' separator, 'n' matches mid-word
-        expect(atSep.score).toBeGreaterThan(midWord.score);
-    });
-});
+// The scoring algorithm itself is covered in test/server/fuzzy-file-score.test.ts,
+// which exercises the module shared by this dialog and the /search endpoint.

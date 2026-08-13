@@ -2,168 +2,248 @@
  * MyWorkTodayTab — actionable "Today" view for a virtual workspace (My Work,
  * and later My Life via the `workspaceId` prop).
  *
- * Reads the task model exposed by the My Work task routes
- * (`getSpaCocClient().myWork`), which parse `Action Items.md` and
- * `Follow Ups.md` as the single source of truth. Renders the current action
- * items and "waiting on" follow-ups (grouped by person) with checkbox toggling
- * and a quick-add bar.
+ * Reads the task model exposed by the My Work task routes via
+ * `useMyWorkTasks`, which parses `Action Items.md` and `Follow Ups.md` as the
+ * single source of truth. The snapshot is then sorted into three urgency
+ * buckets for display — Needs you today, Waiting on others, Everything else —
+ * so the tab reads as a triage surface rather than an every-open-item backlog.
  *
- * Toggles are optimistic: flip locally, PATCH, then refetch so the id/line map
- * stays in sync (ids are within-snapshot addressing tokens, so any mutation that
- * reflows lines must be followed by a refetch). A failed PATCH rolls the toggle
- * back and surfaces an inline error.
+ * Bucketing is purely a view concern (`taskBuckets.ts`): the notes keep their
+ * on-disk order and users go on editing them by hand.
+ *
+ * The list-level controls (the filter, `Clear completed`, both `Open note`
+ * links) sit in the header rather than on a section, because any single bucket
+ * can be empty — and an empty bucket renders nothing at all. Beside them the
+ * header carries the triage chip: how much is overdue, due today, or stalled,
+ * rather than a done-count that can only ever trend downward on a list that
+ * never empties.
+ *
+ * Above the buckets sits the "What changed" strip, which reads a different
+ * file (`notes/Work/timeline.md`) through its own endpoint and renders zero
+ * pixels when that file is absent, empty or unreadable — see
+ * `WhatChangedStrip`.
+ *
+ * Rows can be edited in place and snoozed (a `@due(...)` bump), so an item can
+ * leave the list without being marked done — the notes are also what the
+ * weekly summary is generated from, and a box ticked for something you did not
+ * do writes a false "Completed" line into it.
+ *
+ * This component owns the state the keyboard layer drives (selection, which
+ * editor and which menu is open, which sections are expanded) so that `j`/`k`
+ * step through exactly the rows that are on screen and every shortcut lands on
+ * the same handler its click does. See `useTaskKeyboardTriage`.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { MyWorkTask, MyWorkTasks } from '@plusplusoneplusplus/coc-client';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import type { MyWorkTask } from '@plusplusoneplusplus/coc-client';
+import { useMyWorkTasks } from './useMyWorkTasks';
+import {
+    bucketActionItems, filterTasks, formatTriageSummary, groupFollowUpsByAge,
+    isoDaysFromNow, triageSummary,
+} from './taskBuckets';
+import type { TaskRowActions } from './TaskRow';
+import { NeedsYouTodaySection } from './NeedsYouTodaySection';
+import { WaitingOnSection } from './WaitingOnSection';
+import { EverythingElseSection } from './EverythingElseSection';
+import { TodayEmptyState, TodayNoMatches, TodaySkeleton } from './TodayPlaceholders';
+import { useTaskKeyboardTriage } from './useTaskKeyboardTriage';
+import { WhatChangedStrip } from './WhatChangedStrip';
 
 export interface MyWorkTodayTabProps {
     /** Virtual workspace whose notes back the Today view (e.g. `my_work`). */
     workspaceId: string;
-    /** True while this tab is the visible sub-tab; drives the initial fetch. */
+    /** True while this tab is the visible sub-tab; drives fetch and shortcuts. */
     active?: boolean;
 }
 
-/** Group follow-ups by their `person` heading, preserving first-seen order. */
-function groupByPerson(followUps: MyWorkTask[]): { person: string; items: MyWorkTask[] }[] {
-    const order: string[] = [];
-    const byPerson = new Map<string, MyWorkTask[]>();
-    for (const item of followUps) {
-        const person = item.person ?? '';
-        if (!byPerson.has(person)) {
-            byPerson.set(person, []);
-            order.push(person);
-        }
-        byPerson.get(person)!.push(item);
-    }
-    return order.map(person => ({ person, items: byPerson.get(person)! }));
-}
-
 export function MyWorkTodayTab({ workspaceId, active = true }: MyWorkTodayTabProps) {
-    const [tasks, setTasks] = useState<MyWorkTasks | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const {
+        tasks, actionItems, followUps, firstLoad, isEmpty, error, busy,
+        doneCount, load, toggle, editText, snooze, addActionItem, clearCompleted, sync,
+    } = useMyWorkTasks(active);
     const [quickAdd, setQuickAdd] = useState('');
-    const [busy, setBusy] = useState(false);
-    // Guard against a fetch resolving after the component unmounts.
-    const mounted = useRef(true);
-    useEffect(() => {
-        mounted.current = true;
-        return () => { mounted.current = false; };
-    }, []);
+    const [filter, setFilter] = useState('');
+    const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [snoozeMenuId, setSnoozeMenuId] = useState<string | null>(null);
+    const [everythingElseExpanded, setEverythingElseExpanded] = useState(false);
+    const [expandedPeople, setExpandedPeople] = useState<ReadonlySet<string>>(() => new Set());
+    const containerRef = useRef<HTMLDivElement>(null);
+    const filterRef = useRef<HTMLInputElement>(null);
 
-    const load = useCallback(async () => {
-        setLoading(true);
-        setError(null);
-        try {
-            const result = await getSpaCocClient().myWork.getTasks();
-            if (mounted.current) setTasks(result);
-        } catch (err) {
-            if (mounted.current) setError(getSpaCocClientErrorMessage(err, 'Failed to load tasks'));
-        } finally {
-            if (mounted.current) setLoading(false);
-        }
-    }, []);
+    const filterActive = filter.trim().length > 0;
+    const visibleActionItems = useMemo(() => filterTasks(actionItems, filter), [actionItems, filter]);
+    const visibleFollowUps = useMemo(() => filterTasks(followUps, filter), [followUps, filter]);
 
-    // Fetch once the tab becomes active. `active` defaults true so the tab also
-    // works when rendered standalone (tests, future embeddings).
-    const hasLoaded = useRef(false);
-    useEffect(() => {
-        if (active && !hasLoaded.current) {
-            hasLoaded.current = true;
-            void load();
-        }
-    }, [active, load]);
+    const { needsYou, everythingElse } = useMemo(
+        () => bucketActionItems(visibleActionItems, new Date()),
+        [visibleActionItems],
+    );
+    const followUpGroups = useMemo(() => groupFollowUpsByAge(visibleFollowUps, new Date()), [visibleFollowUps]);
+    // The chip reports the whole snapshot, not the filtered view: "2 overdue"
+    // is a fact about your day, and having it change as you type in the filter
+    // box would make it useless as a standing signal.
+    const triage = useMemo(
+        () => formatTriageSummary(triageSummary(actionItems, followUps, new Date())),
+        [actionItems, followUps],
+    );
 
-    const toggle = useCallback(async (task: MyWorkTask) => {
-        const nextChecked = !task.checked;
-        // Optimistic flip on whichever list the task lives in.
-        setTasks(prev => prev && {
-            actionItems: prev.actionItems.map(t => t.id === task.id ? { ...t, checked: nextChecked } : t),
-            followUps: prev.followUps.map(t => t.id === task.id ? { ...t, checked: nextChecked } : t),
+    // Filtering is an explicit act of looking for something, so it expands the
+    // disclosures rather than hiding matches behind them.
+    const peopleExpanded = useMemo<ReadonlySet<string>>(
+        () => (filterActive ? new Set(followUpGroups.map(g => g.person ?? '')) : expandedPeople),
+        [filterActive, followUpGroups, expandedPeople],
+    );
+    const elseExpanded = filterActive || everythingElseExpanded;
+
+    // Nav order for `j`/`k`: exactly the rows on screen, top to bottom. Rows
+    // inside a collapsed disclosure are deliberately absent — stepping onto a
+    // row nobody can see is the classic way a selection ring gets lost.
+    const visibleRows = useMemo<MyWorkTask[]>(() => [
+        ...needsYou,
+        ...followUpGroups.flatMap(g => (peopleExpanded.has(g.person ?? '') ? g.items : [])),
+        ...(elseExpanded ? everythingElse : []),
+    ], [needsYou, followUpGroups, peopleExpanded, elseExpanded, everythingElse]);
+    const order = useMemo(() => visibleRows.map(t => t.id), [visibleRows]);
+    const findTask = useCallback((id: string) => visibleRows.find(t => t.id === id), [visibleRows]);
+
+    useTaskKeyboardTriage({
+        containerRef,
+        enabled: active,
+        order,
+        selectedId,
+        menuOpen: snoozeMenuId !== null,
+        onSelect: setSelectedId,
+        onToggle: id => { const t = findTask(id); if (t && !busy) toggle(t); },
+        onEdit: id => { if (!busy) setEditingId(id); },
+        onSetDue: setSnoozeMenuId,
+        // `s` is the one-keystroke defer — "not today". Anything more specific
+        // is what `d` and its picker are for.
+        onSnooze: id => {
+            const t = findTask(id);
+            if (t && !busy) void snooze(t, isoDaysFromNow(new Date(), 1));
+        },
+        onFocusFilter: () => filterRef.current?.focus(),
+        onEscape: () => {
+            if (snoozeMenuId) setSnoozeMenuId(null);
+            else setSelectedId(null);
+        },
+    });
+
+    const rowActions: TaskRowActions = useMemo(() => ({
+        onToggle: toggle,
+        onEdit: (task, text) => { void editText(task, text); },
+        onSnooze: (task, due) => { void snooze(task, due); },
+        busy,
+        selectedId,
+        editingId,
+        setEditingId,
+        snoozeMenuId,
+        setSnoozeMenuId,
+        onSelect: setSelectedId,
+    }), [toggle, editText, snooze, busy, selectedId, editingId, snoozeMenuId]);
+
+    const togglePerson = useCallback((person: string) => {
+        setExpandedPeople(prev => {
+            const next = new Set(prev);
+            if (!next.delete(person)) next.add(person);
+            return next;
         });
-        try {
-            await getSpaCocClient().myWork.patchTask(task.id, { checked: nextChecked });
-            // Refetch: toggling can change ids and (for follow-ups) grouping.
-            await load();
-        } catch (err) {
-            // Roll the optimistic flip back and surface the failure inline.
-            setTasks(prev => prev && {
-                actionItems: prev.actionItems.map(t => t.id === task.id ? { ...t, checked: task.checked } : t),
-                followUps: prev.followUps.map(t => t.id === task.id ? { ...t, checked: task.checked } : t),
-            });
-            if (mounted.current) setError(getSpaCocClientErrorMessage(err, 'Failed to update task'));
-        }
-    }, [load]);
+    }, []);
 
-    const submitQuickAdd = useCallback(async () => {
+    const submitQuickAdd = async () => {
         const text = quickAdd.trim();
-        if (!text || busy) return; // empty quick-add is a no-op
-        setBusy(true);
-        setError(null);
-        try {
-            await getSpaCocClient().myWork.addTask({ list: 'action', text });
-            if (mounted.current) setQuickAdd('');
-            await load();
-        } catch (err) {
-            if (mounted.current) setError(getSpaCocClientErrorMessage(err, 'Failed to add task'));
-        } finally {
-            if (mounted.current) setBusy(false);
-        }
-    }, [quickAdd, busy, load]);
-
-    const actionItems = tasks?.actionItems ?? [];
-    const followUps = tasks?.followUps ?? [];
-    const followUpGroups = useMemo(() => groupByPerson(followUps), [followUps]);
-    const doneCount = actionItems.filter(t => t.checked).length;
-    const totalCount = actionItems.length;
-
-    // Archive every checked action item under `## Archive`, then refetch. Shares
-    // the `busy` guard with quick-add so only one mutation runs at a time, and it
-    // never optimistically mutates the list (ids reflow after the write). Mirrors
-    // `submitQuickAdd()`: set busy → clear error → mutate → refetch → finally.
-    const clearCompleted = useCallback(async () => {
-        if (busy || doneCount === 0) return; // nothing checked, or a mutation already in flight
-        setBusy(true);
-        setError(null);
-        try {
-            await getSpaCocClient().myWork.archiveTasks();
-            await load();
-        } catch (err) {
-            if (mounted.current) setError(getSpaCocClientErrorMessage(err, 'Failed to archive completed items'));
-        } finally {
-            if (mounted.current) setBusy(false);
-        }
-    }, [busy, doneCount, load]);
-    // Once tasks have loaded we keep the lists mounted — a mutation error shows
-    // as an inline banner above them, not by blanking the view (so an optimistic
-    // rollback stays visible). The full loading state is only the first fetch.
-    const firstLoad = loading && !tasks;
-    const isEmpty = !!tasks && actionItems.length === 0 && followUps.length === 0;
-
-    const openNote = (path: string) => {
-        location.hash = `#repos/${workspaceId}/notes/${encodeURIComponent(path)}`;
+        if (!text) return;
+        if (await addActionItem(text)) setQuickAdd('');
     };
 
+    const openNote = useCallback((path: string) => {
+        location.hash = `#repos/${workspaceId}/notes/${encodeURIComponent(path)}`;
+    }, [workspaceId]);
+
+    const linkClass = 'text-xs text-blue-600 dark:text-blue-400 hover:underline';
+    // A filter that matches nothing is not the same thing as an empty list, and
+    // offering Sync for it would be answering a question nobody asked.
+    const noMatches = !!tasks && filterActive
+        && needsYou.length === 0 && followUpGroups.length === 0 && everythingElse.length === 0;
+
     return (
-        <div className="flex flex-col h-full min-h-0 overflow-auto p-4 gap-4 text-gray-900 dark:text-gray-100" data-testid="my-work-today-tab">
-            <div className="flex items-center justify-between">
+        <div
+            ref={containerRef}
+            className="flex flex-col h-full min-h-0 overflow-auto p-4 gap-4 text-gray-900 dark:text-gray-100"
+            data-testid="my-work-today-tab"
+        >
+            <div className="flex items-center justify-between gap-3">
                 <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Today</h2>
-                {totalCount > 0 && (
-                    <span
-                        className="text-xs text-gray-500 dark:text-gray-400"
-                        data-testid="my-work-today-stat"
-                    >
-                        {doneCount}/{totalCount} done
-                    </span>
-                )}
+                <div className="flex items-center gap-3">
+                    {tasks && (
+                        <input
+                            ref={filterRef}
+                            type="text"
+                            className="text-xs w-32 border border-gray-300 dark:border-gray-600 rounded px-2 py-0.5 bg-transparent"
+                            placeholder="Filter… (/)"
+                            aria-label="Filter items"
+                            value={filter}
+                            onChange={e => setFilter(e.target.value)}
+                            onKeyDown={e => {
+                                // Escape leaves the box rather than clearing it:
+                                // the shortcuts are suppressed while it has focus,
+                                // so getting out is what you need first.
+                                if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); }
+                            }}
+                            data-testid="my-work-today-filter"
+                        />
+                    )}
+                    {/* Triage state, not progress: how much is actually on fire
+                        right now. An all-clear snapshot renders no chip. */}
+                    {triage.length > 0 && (
+                        <span
+                            className="text-xs text-gray-500 dark:text-gray-400"
+                            data-testid="my-work-today-stat"
+                        >
+                            {triage.join(' · ')}
+                        </span>
+                    )}
+                    {tasks && doneCount >= 1 && (
+                        <button
+                            type="button"
+                            className={`${linkClass} disabled:opacity-50`}
+                            onClick={() => void clearCompleted()}
+                            disabled={busy}
+                            aria-busy={busy}
+                            data-testid="my-work-today-clear-completed"
+                        >
+                            {busy ? 'Clearing…' : 'Clear completed'}
+                        </button>
+                    )}
+                    {tasks && (
+                        <>
+                            <button
+                                type="button"
+                                className={linkClass}
+                                onClick={() => openNote('Action Items.md')}
+                                data-testid="my-work-today-open-actions"
+                            >
+                                Action Items
+                            </button>
+                            <button
+                                type="button"
+                                className={linkClass}
+                                onClick={() => openNote('Follow Ups.md')}
+                                data-testid="my-work-today-open-followups"
+                            >
+                                Follow Ups
+                            </button>
+                        </>
+                    )}
+                </div>
             </div>
 
-            {firstLoad && (
-                <div className="text-sm text-gray-500 dark:text-gray-400" data-testid="my-work-today-loading">
-                    Loading tasks…
-                </div>
-            )}
+            {/* Pinned above the buckets: what changed overnight, before what you
+                have to do about it. Renders nothing at all — not an empty box —
+                when there is no timeline note, which is currently the norm. */}
+            <WhatChangedStrip workspaceId={workspaceId} active={active} />
+
+            {firstLoad && <TodaySkeleton />}
 
             {error && (
                 <div
@@ -183,99 +263,27 @@ export function MyWorkTodayTab({ workspaceId, active = true }: MyWorkTodayTabPro
             )}
 
             {isEmpty && (
-                <div className="text-sm text-gray-500 dark:text-gray-400" data-testid="my-work-today-empty">
-                    Nothing for today. Add an action item below to get started.
-                </div>
+                <TodayEmptyState onSync={() => void sync()} onOpenNote={openNote} busy={busy} />
             )}
+
+            {noMatches && <TodayNoMatches onClear={() => setFilter('')} />}
 
             {tasks && (
                 <>
-                    <section data-testid="my-work-today-actions">
-                        <div className="flex items-center justify-between mb-2">
-                            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                Action Items
-                            </h3>
-                            <div className="flex items-center gap-3">
-                                {doneCount >= 1 && (
-                                    <button
-                                        type="button"
-                                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
-                                        onClick={() => void clearCompleted()}
-                                        disabled={busy}
-                                        aria-busy={busy}
-                                        data-testid="my-work-today-clear-completed"
-                                    >
-                                        {busy ? 'Clearing…' : 'Clear completed'}
-                                    </button>
-                                )}
-                                <button
-                                    type="button"
-                                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                                    onClick={() => openNote('Action Items.md')}
-                                    data-testid="my-work-today-open-actions"
-                                >
-                                    Open note
-                                </button>
-                            </div>
-                        </div>
-                        <ul className="flex flex-col gap-1">
-                            {actionItems.map(task => (
-                                <li key={task.id} data-testid={`my-work-today-action-${task.id}`}>
-                                    <label className="flex items-start gap-2 text-sm cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={task.checked}
-                                            onChange={() => void toggle(task)}
-                                            data-testid={`my-work-today-check-${task.id}`}
-                                        />
-                                        <span className={task.checked ? 'line-through text-gray-400' : ''}>
-                                            {task.text}
-                                        </span>
-                                    </label>
-                                </li>
-                            ))}
-                        </ul>
-                    </section>
-
-                    <section data-testid="my-work-today-followups">
-                        <div className="flex items-center justify-between mb-2">
-                            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                Waiting On
-                            </h3>
-                            <button
-                                type="button"
-                                className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                                onClick={() => openNote('Follow Ups.md')}
-                                data-testid="my-work-today-open-followups"
-                            >
-                                Open note
-                            </button>
-                        </div>
-                        {followUpGroups.map(group => (
-                            <div key={group.person || '__none__'} className="mb-2" data-testid={`my-work-today-person-${group.person || 'unassigned'}`}>
-                                {group.person && (
-                                    <div className="text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">{group.person}</div>
-                                )}
-                                <ul className="flex flex-col gap-1">
-                                    {group.items.map(task => (
-                                        <li key={task.id} data-testid={`my-work-today-followup-${task.id}`}>
-                                            <label className="flex items-start gap-2 text-sm cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={task.checked}
-                                                    onChange={() => void toggle(task)}
-                                                    data-testid={`my-work-today-check-${task.id}`}
-                                                />
-                                                <span className={task.checked ? 'line-through text-gray-400' : ''}>
-                                                    {task.text}
-                                                </span>
-                                            </label>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        ))}
-                    </section>
+                    <NeedsYouTodaySection items={needsYou} actions={rowActions} />
+                    <WaitingOnSection
+                        groups={followUpGroups}
+                        actions={rowActions}
+                        expanded={peopleExpanded}
+                        onToggleExpanded={togglePerson}
+                        workspaceId={workspaceId}
+                    />
+                    <EverythingElseSection
+                        items={everythingElse}
+                        actions={rowActions}
+                        expanded={elseExpanded}
+                        onToggleExpanded={() => setEverythingElseExpanded(v => !v)}
+                    />
                 </>
             )}
 

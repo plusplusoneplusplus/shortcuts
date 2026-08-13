@@ -18,6 +18,7 @@ import {
     addActionItem,
     addFollowUp,
     archiveCheckedActionItems,
+    formatTaskLine,
 } from '../../src/server/workspaces/my-work-tasks';
 
 // The exact DEFAULT_NOTES content from my-work-workspace.ts.
@@ -112,6 +113,88 @@ describe('parseFollowUps', () => {
         const content = '# Follow Ups\n## Alice\n- [ ] ping\n## Bob\n- [ ] ping\n';
         const items = parseFollowUps(content);
         expect(items[0].id).not.toBe(items[1].id);
+    });
+});
+
+describe('addedAt from ## Synced headings', () => {
+    // Fixed "today" so the year inference for the year-less `Mon D` format is
+    // deterministic regardless of when the suite runs.
+    const NOW = new Date(2026, 7, 12); // Aug 12, 2026 (local)
+
+    it('stamps action items with the most recent sync date above them', () => {
+        const content =
+            '# Action Items\n- [ ] hand added\n\n## Synced Aug 3\n- [ ] older\n\n## Synced Aug 11\n- [ ] newer\n';
+        const items = parseActionItems(content, NOW);
+        expect(items.map((i) => [i.text, i.addedAt])).toEqual([
+            ['hand added', undefined],
+            ['older', '2026-08-03'],
+            ['newer', '2026-08-11'],
+        ]);
+    });
+
+    it('rolls a future-looking bare Mon D back to the previous year', () => {
+        // Dec 20 read on Aug 12 can only mean last December.
+        const items = parseActionItems('## Synced Dec 20\n- [ ] a\n', NOW);
+        expect(items[0].addedAt).toBe('2025-12-20');
+    });
+
+    it('accepts an explicit year and an ISO date', () => {
+        expect(parseActionItems('## Synced Aug 3, 2024\n- [ ] a\n', NOW)[0].addedAt).toBe(
+            '2024-08-03',
+        );
+        expect(parseActionItems('## Synced 2023-01-09\n- [ ] a\n', NOW)[0].addedAt).toBe(
+            '2023-01-09',
+        );
+    });
+
+    it('leaves items undated when no sync heading precedes them', () => {
+        const items = parseActionItems(DEFAULT_ACTION_ITEMS, NOW);
+        expect(items[0].addedAt).toBeUndefined();
+    });
+
+    it('stamps follow-ups written as ### person under a ## Synced batch', () => {
+        const content =
+            '# Follow Ups\n## Synced Aug 5\n### Alice\n- [ ] a1\n### Bob\n- [ ] b1\n## Synced Aug 11\n### Alice\n- [ ] a2\n';
+        const items = parseFollowUps(content, NOW);
+        expect(items.map((i) => [i.person, i.text, i.addedAt])).toEqual([
+            ['Alice', 'a1', '2026-08-05'],
+            ['Bob', 'b1', '2026-08-05'],
+            ['Alice', 'a2', '2026-08-11'],
+        ]);
+    });
+
+    it('never treats a Synced heading as a person', () => {
+        const content = '# Follow Ups\n## Synced Aug 9\n- [ ] no person heading\n';
+        const items = parseFollowUps(content, NOW);
+        expect(items[0].person).toBeUndefined();
+        expect(items[0].addedAt).toBe('2026-08-09');
+    });
+
+    it('keeps an unparseable "Synced …" heading as a person', () => {
+        // A real person could be headed `## Synced Systems Team`; only readable
+        // dates are treated as batch boundaries.
+        const content = '# Follow Ups\n## Synced Systems Team\n- [ ] a\n';
+        const items = parseFollowUps(content, NOW);
+        expect(items[0].person).toBe('Synced Systems Team');
+        expect(items[0].addedAt).toBeUndefined();
+    });
+
+    it('does not stamp follow-ups that precede the first sync heading', () => {
+        const items = parseFollowUps(DEFAULT_FOLLOW_UPS, NOW);
+        expect(items[0].addedAt).toBeUndefined();
+        expect(items[0].person).toBe('Example Person');
+    });
+
+    it('reads the sync date off a CRLF heading', () => {
+        const items = parseActionItems('## Synced Aug 9\r\n- [ ] a\r\n', NOW);
+        expect(items[0].addedAt).toBe('2026-08-09');
+    });
+
+    it('does not change the bytes written back by a patch under a sync heading', () => {
+        const content = '# Action Items\n\n## Synced Aug 9\n- [ ] a\n- [ ] b\n';
+        const id = parseActionItems(content, NOW)[0].id;
+        const next = patchActionItem(content, id, { checked: true })!;
+        expect(next).toBe('# Action Items\n\n## Synced Aug 9\n- [x] a\n- [ ] b\n');
     });
 });
 
@@ -245,5 +328,342 @@ describe('archiveCheckedActionItems', () => {
         const archiveSection = next.slice(next.indexOf('## Archive'));
         expect(archiveSection).toContain('- [x] previously done');
         expect(archiveSection).toContain('- [x] new done');
+    });
+});
+
+// ============================================================================
+// Inline metadata — `@due(...)`, `#tag`, `[↗](url)`
+// ============================================================================
+
+describe('inline metadata', () => {
+    const LINE = '- [ ] Send revised cutover plan @due(2026-08-14) #contoso [↗](https://teams.microsoft.com/l/message/19:abc)';
+
+    it('extracts due, tags and source link, and keeps them out of the text', () => {
+        const [item] = parseActionItems(`# Action Items\n${LINE}\n`);
+        expect(item.text).toBe('Send revised cutover plan');
+        expect(item.due).toBe('2026-08-14');
+        expect(item.tags).toEqual(['contoso']);
+        expect(item.sourceUrl).toBe('https://teams.microsoft.com/l/message/19:abc');
+    });
+
+    it('reads the same metadata on follow-up lines', () => {
+        const content = '# Follow Ups\n## Priya\n- [ ] cutover sign-off #contoso @due(2026-09-01)\n';
+        const [item] = parseFollowUps(content);
+        expect(item.person).toBe('Priya');
+        expect(item.text).toBe('cutover sign-off');
+        expect(item.due).toBe('2026-09-01');
+        expect(item.tags).toEqual(['contoso']);
+    });
+
+    it('collects several tags in order and drops duplicates', () => {
+        const [item] = parseActionItems('- [ ] triage #alpha #beta #alpha\n');
+        expect(item.tags).toEqual(['alpha', 'beta']);
+        expect(item.text).toBe('triage');
+    });
+
+    it('reads metadata written anywhere on the line, not just at the end', () => {
+        const [item] = parseActionItems('- [ ] @due(2026-01-02) ping #ops Priya\n');
+        expect(item.due).toBe('2026-01-02');
+        expect(item.tags).toEqual(['ops']);
+        expect(item.text).toBe('ping Priya');
+    });
+
+    it('leaves items with no metadata exactly as before (fields absent)', () => {
+        const [item] = parseActionItems(DEFAULT_ACTION_ITEMS);
+        expect(item.text).toBe('Example: Add your first action item');
+        expect(item.due).toBeUndefined();
+        expect(item.tags).toBeUndefined();
+        expect(item.sourceUrl).toBeUndefined();
+    });
+
+    it('preserves the exact spacing of a line that carries no metadata', () => {
+        const [item] = parseActionItems('- [ ] two  spaces   kept\n');
+        expect(item.text).toBe('two  spaces   kept');
+    });
+
+    it('ignores a url fragment and an email-ish @ that are not metadata', () => {
+        const [item] = parseActionItems('- [ ] read https://example.com/doc#section with a@b.com\n');
+        expect(item.tags).toBeUndefined();
+        expect(item.due).toBeUndefined();
+        expect(item.text).toBe('read https://example.com/doc#section with a@b.com');
+    });
+
+    it('leaves an ordinary markdown link in the text — only `↗` is a source link', () => {
+        const [item] = parseActionItems('- [ ] see [the doc](https://example.com/d)\n');
+        expect(item.sourceUrl).toBeUndefined();
+        expect(item.text).toBe('see [the doc](https://example.com/d)');
+    });
+
+    it('ignores a malformed due date, leaving it in the text', () => {
+        const [item] = parseActionItems('- [ ] ship it @due(next tuesday)\n');
+        expect(item.due).toBeUndefined();
+        expect(item.text).toBe('ship it @due(next tuesday)');
+    });
+
+    it('carries metadata and the sync date together', () => {
+        const content = '# Action Items\n\n## Synced Aug 10, 2026\n- [ ] nudge Priya @due(2026-08-14) #contoso\n';
+        const [item] = parseActionItems(content, new Date('2026-08-12T12:00:00Z'));
+        expect(item.addedAt).toBe('2026-08-10');
+        expect(item.due).toBe('2026-08-14');
+    });
+
+    it('reads metadata on CRLF lines without swallowing the carriage return', () => {
+        const content = '# Action Items\r\n- [ ] plan @due(2026-08-14) #contoso [↗](https://x.test/a)\r\n';
+        const [item] = parseActionItems(content);
+        expect(item.text).toBe('plan');
+        expect(item.due).toBe('2026-08-14');
+        expect(item.sourceUrl).toBe('https://x.test/a');
+        // Toggling rewrites one line and keeps CRLF endings intact.
+        const next = patchActionItem(content, item.id, { checked: true })!;
+        expect(next).toBe('# Action Items\r\n- [x] plan @due(2026-08-14) #contoso [↗](https://x.test/a)\r\n');
+    });
+});
+
+describe('metadata round-trip through patch', () => {
+    const CONTENT = '# Action Items\n- [ ] cutover plan @due(2026-08-14) #contoso [↗](https://x.test/t)\n';
+
+    it('toggling preserves the raw metadata byte-for-byte', () => {
+        const [item] = parseActionItems(CONTENT);
+        const next = patchActionItem(CONTENT, item.id, { checked: true })!;
+        expect(next).toBe('# Action Items\n- [x] cutover plan @due(2026-08-14) #contoso [↗](https://x.test/t)\n');
+        expect(changedLineCount(CONTENT, next)).toBe(1);
+
+        const [after] = parseActionItems(next);
+        expect(after.checked).toBe(true);
+        expect(after.due).toBe('2026-08-14');
+        expect(after.tags).toEqual(['contoso']);
+        expect(after.sourceUrl).toBe('https://x.test/t');
+    });
+
+    it('editing the text re-attaches the metadata rather than dropping it', () => {
+        const [item] = parseActionItems(CONTENT);
+        // The client only ever has the stripped display text to send back.
+        const next = patchActionItem(CONTENT, item.id, { text: 'revised cutover plan' })!;
+        expect(next).toBe('# Action Items\n- [ ] revised cutover plan @due(2026-08-14) #contoso [↗](https://x.test/t)\n');
+
+        const [after] = parseActionItems(next);
+        expect(after.text).toBe('revised cutover plan');
+        expect(after.sourceUrl).toBe('https://x.test/t');
+    });
+
+    it('metadata typed into the replacement text wins field by field', () => {
+        const [item] = parseActionItems(CONTENT);
+        const next = patchActionItem(CONTENT, item.id, { text: 'cutover plan @due(2026-09-01)' })!;
+        const [after] = parseActionItems(next);
+        // The typed due date replaces the old one...
+        expect(after.due).toBe('2026-09-01');
+        // ...but the fields it said nothing about survive. Merging per field
+        // rather than wholesale is what keeps inline edit from silently
+        // throwing away the source link — the one thing on the line that makes
+        // the item actionable without going to hunt for its thread.
+        expect(after.sourceUrl).toBe('https://x.test/t');
+        expect(after.tags).toEqual(['contoso']);
+    });
+
+    it('lets an edit add a tag to an item without disturbing its due date', () => {
+        const [item] = parseActionItems(CONTENT);
+        const next = patchActionItem(CONTENT, item.id, { text: 'cutover plan #urgent' })!;
+        const [after] = parseActionItems(next);
+        expect(after.due).toBe('2026-08-14');
+        expect(after.tags).toEqual(['urgent']);
+        expect(after.sourceUrl).toBe('https://x.test/t');
+    });
+
+    it('editing a plain item is unchanged — no metadata appears from nowhere', () => {
+        const content = '# Action Items\n- [ ] plain item\n';
+        const [item] = parseActionItems(content);
+        const next = patchActionItem(content, item.id, { text: 'renamed item' })!;
+        expect(next).toBe('# Action Items\n- [ ] renamed item\n');
+    });
+
+    it('archiving moves the line with its metadata intact', () => {
+        const { content: next } = archiveCheckedActionItems(
+            '# Action Items\n- [x] done thing @due(2026-08-01) #ops [↗](https://x.test/d)\n',
+        );
+        const archiveSection = next.slice(next.indexOf('## Archive'));
+        expect(archiveSection).toContain('- [x] done thing @due(2026-08-01) #ops [↗](https://x.test/d)');
+    });
+});
+
+describe('snooze — the `due` patch', () => {
+    // Snooze is a `@due()` bump and nothing else: the text, the tags and the
+    // link are the user's, so a deferral must not touch them. It exists so an
+    // item can leave the list without being ticked — the same files are what
+    // the weekly summary reads `- [x]` lines out of, and a box ticked for
+    // something undone writes a false "Completed" into that report.
+
+    it('adds a due date to a line that has none', () => {
+        const content = '# Action Items\n- [ ] chase the cutover sign-off\n';
+        const [item] = parseActionItems(content);
+        const next = patchActionItem(content, item.id, { due: '2026-08-13' })!;
+        expect(next).toBe('# Action Items\n- [ ] chase the cutover sign-off @due(2026-08-13)\n');
+        expect(changedLineCount(content, next)).toBe(1);
+        expect(parseActionItems(next)[0].due).toBe('2026-08-13');
+    });
+
+    it('moves an existing due date without duplicating the token', () => {
+        const content = '- [ ] ship @due(2026-08-12)\n';
+        const [item] = parseActionItems(content);
+        const next = patchActionItem(content, item.id, { due: '2026-08-19' })!;
+        expect(next).toBe('- [ ] ship @due(2026-08-19)\n');
+        expect(next.match(/@due\(/g)).toHaveLength(1);
+    });
+
+    it('keeps the text, tags and source link intact across a bump', () => {
+        const content = '- [ ] cutover plan @due(2026-08-14) #contoso [↗](https://x.test/t)\n';
+        const [item] = parseActionItems(content);
+        const next = patchActionItem(content, item.id, { due: '2026-08-21' })!;
+        const [after] = parseActionItems(next);
+        expect(after.text).toBe('cutover plan');
+        expect(after.due).toBe('2026-08-21');
+        expect(after.tags).toEqual(['contoso']);
+        expect(after.sourceUrl).toBe('https://x.test/t');
+    });
+
+    it('clears the due date with null', () => {
+        const content = '- [ ] ship @due(2026-08-12) #ops\n';
+        const [item] = parseActionItems(content);
+        const next = patchActionItem(content, item.id, { due: null })!;
+        expect(next).toBe('- [ ] ship #ops\n');
+        expect(parseActionItems(next)[0].due).toBeUndefined();
+    });
+
+    it('drops the item out of the urgent bucket — the whole point', () => {
+        // Bucketing lives in the client, but the server side of it is that the
+        // date on disk is the one the client will read back.
+        const content = '- [ ] nudge Priya @due(2026-08-10)\n';
+        const [item] = parseActionItems(content);
+        const next = patchActionItem(content, item.id, { due: '2026-08-19' })!;
+        expect(parseActionItems(next)[0].due).toBe('2026-08-19');
+    });
+
+    it('changes the id, and the pre-bump id no longer resolves', () => {
+        const content = '- [ ] ship @due(2026-08-12)\n';
+        const [item] = parseActionItems(content);
+        const next = patchActionItem(content, item.id, { due: '2026-08-19' })!;
+        const [after] = parseActionItems(next);
+        expect(after.id).not.toBe(item.id);
+        // Stale id → null, not a silent write to the wrong line. The client
+        // refetches after every mutation, which is what keeps this safe.
+        expect(patchActionItem(next, item.id, { due: '2026-09-01' })).toBeNull();
+    });
+
+    it('snoozes a follow-up the same way', () => {
+        const content = '# Follow Ups\n## Priya\n- [ ] cutover sign-off\n';
+        const [item] = parseFollowUps(content);
+        const next = patchFollowUp(content, item.id, { due: '2026-08-19' })!;
+        expect(next).toBe('# Follow Ups\n## Priya\n- [ ] cutover sign-off @due(2026-08-19)\n');
+        expect(parseFollowUps(next)[0].person).toBe('Priya');
+    });
+
+    it('preserves CRLF and every other line byte-for-byte', () => {
+        const content = '# Action Items\r\n- [ ] first\r\n- [ ] second @due(2026-08-12)\r\n- [x] third\r\n';
+        const target = parseActionItems(content)[1];
+        const next = patchActionItem(content, target.id, { due: '2026-08-20' })!;
+        expect(next).toBe('# Action Items\r\n- [ ] first\r\n- [ ] second @due(2026-08-20)\r\n- [x] third\r\n');
+        expect(changedLineCount(content, next)).toBe(1);
+    });
+
+    it('preserves indentation on a nested item', () => {
+        const content = '- [ ] parent\n    - [ ] nested item\n';
+        const target = parseActionItems(content)[1];
+        const next = patchActionItem(content, target.id, { due: '2026-08-20' })!;
+        expect(next).toBe('- [ ] parent\n    - [ ] nested item @due(2026-08-20)\n');
+    });
+
+    it('combines with a check in one write', () => {
+        const content = '- [ ] ship\n';
+        const [item] = parseActionItems(content);
+        const next = patchActionItem(content, item.id, { checked: true, due: '2026-08-20' })!;
+        expect(next).toBe('- [x] ship @due(2026-08-20)\n');
+    });
+});
+
+describe('id hashing over metadata', () => {
+    // The id hashes the RAW line, metadata included. These tests pin that
+    // choice: it keeps otherwise-identical items distinct, at the cost of the
+    // id changing when metadata changes — which is fine, because an id is a
+    // within-snapshot addressing token and the client refetches after a write.
+
+    it('gives distinct ids to items that differ only in their source link', () => {
+        const items = parseActionItems(
+            '- [ ] follow up on cutover [↗](https://x.test/a)\n- [ ] follow up on cutover [↗](https://x.test/b)\n',
+        );
+        expect(items).toHaveLength(2);
+        expect(items[0].id).not.toBe(items[1].id);
+        // Both show the same display text; only the link tells them apart.
+        expect(items.map((i) => i.text)).toEqual(['follow up on cutover', 'follow up on cutover']);
+        // And each id still addresses its own line.
+        const next = patchActionItem(
+            '- [ ] follow up on cutover [↗](https://x.test/a)\n- [ ] follow up on cutover [↗](https://x.test/b)\n',
+            items[1].id,
+            { checked: true },
+        )!;
+        expect(next).toBe('- [ ] follow up on cutover [↗](https://x.test/a)\n- [x] follow up on cutover [↗](https://x.test/b)\n');
+    });
+
+    it('keeps ids byte-identical to the no-metadata baseline', () => {
+        // Same file, parsed before and after this feature: an item with no
+        // metadata must keep the id it always had.
+        const [item] = parseActionItems(DEFAULT_ACTION_ITEMS);
+        expect(item.id).toBe(
+            parseActionItems('- [ ] Example: Add your first action item\n')[0].id,
+        );
+    });
+
+    it('changes the id when the due date changes, and the new id addresses the line', () => {
+        const before = '- [ ] ship @due(2026-08-14)\n';
+        const after = '- [ ] ship @due(2026-09-01)\n';
+        const idBefore = parseActionItems(before)[0].id;
+        const idAfter = parseActionItems(after)[0].id;
+        expect(idAfter).not.toBe(idBefore);
+        // The stale id is simply not found — the caller refetches, it does not
+        // silently patch the wrong line.
+        expect(patchActionItem(after, idBefore, { checked: true })).toBeNull();
+        expect(patchActionItem(after, idAfter, { checked: true })).toBe('- [x] ship @due(2026-09-01)\n');
+    });
+});
+
+describe('formatTaskLine', () => {
+    it('writes a bare line when there is no metadata', () => {
+        expect(formatTaskLine('Send the spec')).toBe('- [ ] Send the spec');
+    });
+
+    it('writes metadata in canonical order', () => {
+        expect(
+            formatTaskLine('Send the spec', {
+                due: '2026-08-14',
+                tags: ['contoso', 'urgent'],
+                sourceUrl: 'https://x.test/a',
+            }),
+        ).toBe('- [ ] Send the spec @due(2026-08-14) #contoso #urgent [↗](https://x.test/a)');
+    });
+
+    it('round-trips back through the parser', () => {
+        const line = formatTaskLine('Send the spec', {
+            due: '2026-08-14',
+            tags: ['contoso'],
+            sourceUrl: 'https://x.test/a',
+        });
+        const [item] = parseActionItems(`${line}\n`);
+        expect(item.text).toBe('Send the spec');
+        expect(item.due).toBe('2026-08-14');
+        expect(item.tags).toEqual(['contoso']);
+        expect(item.sourceUrl).toBe('https://x.test/a');
+    });
+
+    it('collapses newlines so one item cannot become two lines', () => {
+        expect(formatTaskLine('first\nsecond')).toBe('- [ ] first second');
+        expect(formatTaskLine('sneaky\n## Archive')).toBe('- [ ] sneaky ## Archive');
+    });
+
+    it('percent-encodes parens in a url so the link cannot be terminated early', () => {
+        const line = formatTaskLine('doc', { sourceUrl: 'https://x.test/a(b)c' });
+        expect(line).toBe('- [ ] doc [↗](https://x.test/a%28b%29c)');
+        expect(parseActionItems(`${line}\n`)[0].sourceUrl).toBe('https://x.test/a%28b%29c');
+    });
+
+    it('strips a leading # a caller left on a tag', () => {
+        expect(formatTaskLine('x', { tags: ['#ops'] })).toBe('- [ ] x #ops');
     });
 });

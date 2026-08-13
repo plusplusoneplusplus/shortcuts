@@ -1,49 +1,24 @@
 /**
  * QuickOpen — command-palette-style file finder dialog.
- * Debounces keystrokes and delegates search to the server-side /search endpoint.
+ * Fetches the repo's path list once per open and fuzzy-matches in the browser,
+ * so keystrokes cost no network round-trip.
  * Portal-rendered to document.body.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { cn } from '../../../ui/cn';
+import { rankFuzzyMatches } from '../../../../../../shared/fuzzy-file-score';
 import { explorerApi } from './explorerApi';
+
+/** Maximum results rendered for a query. */
+const RESULT_LIMIT = 50;
 
 export interface QuickOpenProps {
     workspaceId: string;
     open: boolean;
     onClose: () => void;
     onFileSelect: (filePath: string) => void;
-}
-
-/** Simple fuzzy match: all characters of the query must appear in order. */
-export function fuzzyMatch(query: string, target: string): { match: boolean; score: number } {
-    const q = query.toLowerCase();
-    const t = target.toLowerCase();
-    if (!q) return { match: true, score: 0 };
-
-    let qi = 0;
-    let score = 0;
-    let prevMatchIdx = -1;
-
-    for (let ti = 0; ti < t.length && qi < q.length; ti++) {
-        if (t[ti] === q[qi]) {
-            // Bonus for consecutive matches
-            if (ti === prevMatchIdx + 1) score += 2;
-            // Bonus for matching at start or after separator
-            if (ti === 0 || t[ti - 1] === '/' || t[ti - 1] === '\\' || t[ti - 1] === '.' || t[ti - 1] === '-' || t[ti - 1] === '_') {
-                score += 3;
-            }
-            score += 1;
-            prevMatchIdx = ti;
-            qi++;
-        }
-    }
-
-    if (qi < q.length) return { match: false, score: 0 };
-    // Bonus for shorter targets (more specific matches rank higher)
-    score += Math.max(0, 50 - target.length);
-    return { match: true, score };
 }
 
 /** Highlight matched characters in the file path. */
@@ -82,66 +57,51 @@ function dirName(p: string): string {
 
 export function QuickOpen({ workspaceId, open, onClose, onFileSelect }: QuickOpenProps) {
     const [query, setQuery] = useState('');
-    const [results, setResults] = useState<string[]>([]);
+    const [allFiles, setAllFiles] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
     const [highlightIndex, setHighlightIndex] = useState(0);
     const inputRef = useRef<HTMLInputElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
-    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const abortRef = useRef<AbortController | null>(null);
 
-    // Reset state when dialog opens — no initial fetch
+    // Fetch the path list once per open, then match locally on every keystroke.
+    // The server caches this listing, so reopening is cheap.
     useEffect(() => {
         if (!open) return;
         setQuery('');
-        setResults([]);
         setHighlightIndex(0);
-        setLoading(false);
-    }, [open]);
 
-    // Debounced server-side search on query change
-    useEffect(() => {
-        if (!open) return;
+        const abort = new AbortController();
+        abortRef.current = abort;
+        setLoading(true);
+        explorerApi.listFiles(workspaceId, { signal: abort.signal })
+            .then((data: { files: string[]; truncated: boolean }) => {
+                if (abort.signal.aborted) return;
+                setAllFiles(data.files);
+            })
+            .catch(() => {
+                if (abort.signal.aborted) return;
+                setAllFiles([]);
+            })
+            .finally(() => {
+                if (!abort.signal.aborted) setLoading(false);
+            });
 
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-        if (abortRef.current) abortRef.current.abort();
-
-        if (!query.trim()) {
-            setResults([]);
-            setLoading(false);
-            return;
-        }
-
-        debounceRef.current = setTimeout(() => {
-            const abort = new AbortController();
-            abortRef.current = abort;
-            setLoading(true);
-            explorerApi.searchFiles(workspaceId, query, { limit: 50, signal: abort.signal })
-                .then((data: { results: { path: string; score: number }[]; truncated: boolean }) => {
-                    if (abort.signal.aborted) return;
-                    setResults(data.results.map(r => r.path));
-                })
-                .catch(() => {
-                    if (abort.signal.aborted) return;
-                    setResults([]);
-                })
-                .finally(() => {
-                    if (!abort.signal.aborted) setLoading(false);
-                });
-        }, 200);
-
-        return () => {
-            if (debounceRef.current) clearTimeout(debounceRef.current);
-        };
-    }, [query, open, workspaceId]);
+        return () => abort.abort();
+    }, [open, workspaceId]);
 
     // Cleanup on unmount
     useEffect(() => {
         return () => {
-            if (debounceRef.current) clearTimeout(debounceRef.current);
             if (abortRef.current) abortRef.current.abort();
         };
     }, []);
+
+    const results = useMemo(() => {
+        const trimmed = query.trim();
+        if (!trimmed) return [];
+        return rankFuzzyMatches(trimmed, allFiles, RESULT_LIMIT).map(m => m.path);
+    }, [query, allFiles]);
 
     // Auto-focus input when opened
     useEffect(() => {
@@ -235,7 +195,9 @@ export function QuickOpen({ workspaceId, open, onClose, onFileSelect }: QuickOpe
                     className="flex-1 overflow-y-auto"
                     data-testid="quick-open-results"
                 >
-                    {loading ? (
+                    {/* Only blank out while the very first list is loading — once
+                        results exist they stay rendered, so typing never flickers. */}
+                    {loading && results.length === 0 && allFiles.length === 0 ? (
                         <div className="flex items-center justify-center py-4 text-sm text-[#848484]">
                             Loading files…
                         </div>

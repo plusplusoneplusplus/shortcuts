@@ -115,6 +115,12 @@ describe('My Work Handler', () => {
         fs.rmSync(dataDir, { recursive: true, force: true });
     });
 
+    /** Read one of the My Work notes back off disk. */
+    function readNote(name: string): string {
+        const notesDir = getRepoDataPath(dataDir, MY_WORK_WORKSPACE_ID, 'notes');
+        return fs.readFileSync(path.join(notesDir, name), 'utf-8');
+    }
+
     // ── GET /api/my-work/status ──────────────────────────────────────────
 
     describe('GET /api/my-work/status', () => {
@@ -221,6 +227,105 @@ describe('My Work Handler', () => {
             const body = JSON.parse(res.body);
             expect(body.synced).toBe(true);
         });
+
+        // ── Object items: text plus source link / due / tags ──────────────
+
+        it('serializes an object item with a source link, due date and tags', async () => {
+            const res = await postJSON(`${baseUrl}/api/my-work/sync`, {
+                actionItems: [
+                    {
+                        text: 'Send revised cutover plan',
+                        due: '2026-08-14',
+                        tags: ['contoso'],
+                        sourceUrl: 'https://teams.microsoft.com/l/message/19:abc',
+                    },
+                ],
+            });
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.body).actionItemCount).toBe(1);
+
+            expect(readNote('Action Items.md')).toContain(
+                '- [ ] Send revised cutover plan @due(2026-08-14) #contoso [\u2197](https://teams.microsoft.com/l/message/19:abc)',
+            );
+        });
+
+        it('accepts strings and objects in the same batch', async () => {
+            await postJSON(`${baseUrl}/api/my-work/sync`, {
+                actionItems: [
+                    'Plain string item',
+                    { text: 'Object item', sourceUrl: 'https://x.test/a' },
+                ],
+            });
+            const content = readNote('Action Items.md');
+            // The plain string keeps writing exactly the line it always did.
+            expect(content).toContain('- [ ] Plain string item\n');
+            expect(content).toContain('- [ ] Object item [\u2197](https://x.test/a)');
+        });
+
+        it('carries source links through follow-ups too', async () => {
+            const res = await postJSON(`${baseUrl}/api/my-work/sync`, {
+                followUps: {
+                    Priya: [
+                        { text: 'Cutover sign-off', sourceUrl: 'https://x.test/p', tags: ['#contoso'] },
+                        'Plain waiting item',
+                    ],
+                },
+            });
+            expect(JSON.parse(res.body).followUpCount).toBe(2);
+            const content = readNote('Follow Ups.md');
+            expect(content).toContain('### Priya');
+            expect(content).toContain('- [ ] Cutover sign-off #contoso [\u2197](https://x.test/p)');
+            expect(content).toContain('- [ ] Plain waiting item');
+        });
+
+        it('drops an unusable entry instead of writing a blank checkbox', async () => {
+            const res = await postJSON(`${baseUrl}/api/my-work/sync`, {
+                actionItems: ['', '   ', { sourceUrl: 'https://x.test/a' }, { text: 'Real one' }],
+            });
+            expect(JSON.parse(res.body).actionItemCount).toBe(1);
+            const content = readNote('Action Items.md');
+            expect(content).toContain('- [ ] Real one');
+            expect(content).not.toContain('- [ ] \n');
+        });
+
+        it('ignores a due date that is not an ISO day', async () => {
+            await postJSON(`${baseUrl}/api/my-work/sync`, {
+                actionItems: [{ text: 'Ship it', due: 'next tuesday' }],
+            });
+            const content = readNote('Action Items.md');
+            expect(content).toContain('- [ ] Ship it\n');
+            expect(content).not.toContain('@due');
+        });
+
+        it('keeps a multi-line item on one checkbox line', async () => {
+            await postJSON(`${baseUrl}/api/my-work/sync`, {
+                actionItems: [{ text: 'first line\n## Archive\n- [x] forged' }],
+            });
+            const content = readNote('Action Items.md');
+            expect(content).toContain('- [ ] first line ## Archive - [x] forged');
+            expect(content).not.toContain('\n## Archive');
+        });
+
+        it('round-trips a synced source link back out through GET', async () => {
+            await postJSON(`${baseUrl}/api/my-work/sync`, {
+                actionItems: [
+                    {
+                        text: 'Send revised cutover plan',
+                        due: '2026-08-14',
+                        tags: ['contoso'],
+                        sourceUrl: 'https://x.test/thread',
+                    },
+                ],
+            });
+            const res = await request(`${baseUrl}/api/my-work/tasks`);
+            const item = JSON.parse(res.body).actionItems.find(
+                (i: any) => i.text === 'Send revised cutover plan',
+            );
+            expect(item).toBeTruthy();
+            expect(item.due).toBe('2026-08-14');
+            expect(item.tags).toEqual(['contoso']);
+            expect(item.sourceUrl).toBe('https://x.test/thread');
+        });
     });
 
     // ── POST /api/my-work/generate-summary ───────────────────────────────
@@ -319,6 +424,96 @@ describe('My Work Handler', () => {
 
     // ── Task routes (Today view) ─────────────────────────────────────────
 
+    // ── GET /api/my-work/timeline ────────────────────────────────────────
+
+    describe('GET /api/my-work/timeline', () => {
+        function writeTimeline(content: string) {
+            const dir = path.join(getRepoDataPath(dataDir, MY_WORK_WORKSPACE_ID, 'notes'), 'Work');
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(path.join(dir, 'timeline.md'), content, 'utf-8');
+        }
+
+        async function getTimeline() {
+            const res = await request(`${baseUrl}/api/my-work/timeline`);
+            return { status: res.status, body: JSON.parse(res.body) };
+        }
+
+        it('returns an empty list when the note does not exist', async () => {
+            // Nothing writes this note yet, so "missing" is the normal state and
+            // must not read as an error.
+            const { status, body } = await getTimeline();
+            expect(status).toBe(200);
+            expect(body.entries).toEqual([]);
+            expect(body.total).toBe(0);
+        });
+
+        it('returns an empty list for an empty note', async () => {
+            writeTimeline('');
+            const { status, body } = await getTimeline();
+            expect(status).toBe(200);
+            expect(body.entries).toEqual([]);
+            expect(body.total).toBe(0);
+        });
+
+        it('returns parsed entries with resolved thread links', async () => {
+            writeTimeline([
+                '## 2026-08-09',
+                '- 06:00 **[contoso-migration]** cutover slipped → [thread](threads/contoso-migration.md)',
+                '- 07:30 **[q3-budget]** Dana approved → [thread](threads/q3-budget.md)',
+            ].join('\n'));
+
+            const { status, body } = await getTimeline();
+            expect(status).toBe(200);
+            expect(body.total).toBe(2);
+            expect(body.entries).toHaveLength(2);
+            expect(body.entries[0]).toMatchObject({
+                date: '2026-08-09',
+                time: '06:00',
+                thread: 'contoso-migration',
+                text: 'cutover slipped',
+                link: { kind: 'note', path: 'Work/threads/contoso-migration.md' },
+            });
+        });
+
+        it('caps at five entries and reports the true total', async () => {
+            writeTimeline(['## 2026-08-09', ...Array.from({ length: 9 }, (_, i) => `- 0${i}:00 **[t${i}]** entry ${i}`)].join('\n'));
+            const { body } = await getTimeline();
+            expect(body.entries).toHaveLength(5);
+            expect(body.total).toBe(9);
+        });
+
+        it('skips malformed lines instead of failing the request', async () => {
+            writeTimeline([
+                'not a bullet at all',
+                '## nonsense heading',
+                '- ',
+                '- 06:00 **[real]** the one good line',
+            ].join('\n'));
+            const { status, body } = await getTimeline();
+            expect(status).toBe(200);
+            expect(body.entries).toHaveLength(1);
+            expect(body.entries[0].thread).toBe('real');
+        });
+
+        it('reports the note path so the client can link to it', async () => {
+            const { body } = await getTimeline();
+            expect(body.notePath).toBe('Work/timeline.md');
+        });
+
+        it('is read-only — it never creates the note or its directory', async () => {
+            await getTimeline();
+            const workDir = path.join(getRepoDataPath(dataDir, MY_WORK_WORKSPACE_ID, 'notes'), 'Work');
+            expect(fs.existsSync(workDir)).toBe(false);
+        });
+
+        it('takes no path input — a traversal attempt is simply not a route', async () => {
+            // The note path is a constant; there is no parameter to poison. A
+            // suffixed URL falls through to the SPA rather than reading a file.
+            const res = await request(`${baseUrl}/api/my-work/timeline/../../../etc/passwd`);
+            expect(res.body).not.toContain('root:');
+        });
+    });
+
     describe('Task routes', () => {
         function notesDir() {
             return getRepoDataPath(dataDir, MY_WORK_WORKSPACE_ID, 'notes');
@@ -351,6 +546,36 @@ describe('My Work Handler', () => {
             expect(body.followUps).toHaveLength(1);
             expect(body.followUps[0]).toMatchObject({ text: 'API timeline', person: 'Sarah' });
             expect(typeof body.actionItems[0].id).toBe('string');
+        });
+
+        it('GET stamps synced items with the sync date the handler wrote', async () => {
+            // Round-trip: `formatSyncDate()` writes `## Synced Mon D`, the
+            // parser must read that back as today's ISO date on every item of
+            // the batch — and must not turn the heading into a person.
+            const now = new Date();
+            const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+            await postJSON(`${baseUrl}/api/my-work/sync`, {
+                actionItems: ['Send API spec to Sarah'],
+                followUps: { Sarah: ['Waiting on design review'] },
+            });
+
+            const body = JSON.parse((await request(`${baseUrl}/api/my-work/tasks`)).body);
+            expect(body.actionItems[0]).toMatchObject({
+                text: 'Send API spec to Sarah',
+                addedAt: today,
+            });
+            expect(body.followUps[0]).toMatchObject({
+                text: 'Waiting on design review',
+                person: 'Sarah',
+                addedAt: today,
+            });
+        });
+
+        it('GET leaves hand-added items undated', async () => {
+            writeActionItems('# Action Items\n- [ ] Ship the slice\n');
+            const body = JSON.parse((await request(`${baseUrl}/api/my-work/tasks`)).body);
+            expect(body.actionItems[0].addedAt).toBeUndefined();
         });
 
         it('GET treats missing files as empty', async () => {
@@ -388,6 +613,41 @@ describe('My Work Handler', () => {
             const res = await patchJSON(`${baseUrl}/api/my-work/tasks/${id}`, { text: 'New text' });
             expect(res.status).toBe(200);
             expect(readActionItems()).toBe('# Action Items\n- [ ] New text\n');
+        });
+
+        it('PATCH snoozes an item by bumping its @due(), leaving the rest of the line alone', async () => {
+            writeActionItems('# Action Items\n- [ ] Chase sign-off #contoso [↗](https://x.test/t)\n');
+            const list = JSON.parse((await request(`${baseUrl}/api/my-work/tasks`)).body);
+            const id = list.actionItems[0].id;
+
+            const res = await patchJSON(`${baseUrl}/api/my-work/tasks/${id}`, { due: '2026-08-19' });
+            expect(res.status).toBe(200);
+            expect(readActionItems()).toBe(
+                '# Action Items\n- [ ] Chase sign-off @due(2026-08-19) #contoso [↗](https://x.test/t)\n',
+            );
+        });
+
+        it('PATCH clears a due date with an explicit null', async () => {
+            writeActionItems('# Action Items\n- [ ] Chase sign-off @due(2026-08-19)\n');
+            const list = JSON.parse((await request(`${baseUrl}/api/my-work/tasks`)).body);
+
+            const res = await patchJSON(`${baseUrl}/api/my-work/tasks/${list.actionItems[0].id}`, { due: null });
+            expect(res.status).toBe(200);
+            expect(readActionItems()).toBe('# Action Items\n- [ ] Chase sign-off\n');
+        });
+
+        it('PATCH rejects a due date that is not an ISO day, leaving the file untouched', async () => {
+            const original = '# Action Items\n- [ ] Chase sign-off\n';
+            writeActionItems(original);
+            const list = JSON.parse((await request(`${baseUrl}/api/my-work/tasks`)).body);
+
+            // Anything unparseable would otherwise be written verbatim onto the
+            // markdown line, where nothing can read it back.
+            const res = await patchJSON(`${baseUrl}/api/my-work/tasks/${list.actionItems[0].id}`, {
+                due: 'next tuesday',
+            });
+            expect(res.status).toBe(400);
+            expect(readActionItems()).toBe(original);
         });
 
         it('PATCH toggles a follow-up item', async () => {
