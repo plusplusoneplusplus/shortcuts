@@ -47,6 +47,16 @@ export interface QuickAskTurnLayerProps {
     onRetry: (id: string) => void;
     onDelete: (id: string) => void;
     onCopy: (note: ClientSideNote) => void;
+    /**
+     * Attach the current selection as chat context. When supplied, the selection
+     * pill gains a "📎 Attach" action beside "✨ Ask AI".
+     *
+     * NOTE: this layer is mounted only under the admin `features.quickAskSidenotes`
+     * flag, so the Attach action rides on that flag too — it is invisible when
+     * side-notes are disabled. The right-click "Attach as context" menu item is
+     * unaffected and remains available either way.
+     */
+    onAttachContext?: (turnIndex: number, role: 'user' | 'assistant', snippet: string) => void;
 }
 
 interface OpenPopover {
@@ -76,6 +86,7 @@ export function QuickAskTurnLayer({
     onRetry,
     onDelete,
     onCopy,
+    onAttachContext,
 }: QuickAskTurnLayerProps) {
     const [selection, setSelection] = useState<QuickAskSelection | null>(null);
     // Selection whose Ask AI pill has been triggered and expanded into the
@@ -117,7 +128,7 @@ export function QuickAskTurnLayer({
         };
         const onMouseDown = (e: MouseEvent) => {
             const target = e.target as HTMLElement | null;
-            if (target && target.closest('[data-testid="quick-ask-pill"]')) {return;}
+            if (target && target.closest('[data-testid="quick-ask-pill-container"]')) {return;}
             setSelection(null);
         };
         document.addEventListener('mouseup', onMouseUp);
@@ -173,6 +184,16 @@ export function QuickAskTurnLayer({
         window.getSelection()?.removeAllRanges();
         setSelection(null);
     }, []);
+
+    // Attach the selected text as chat context, then dismiss the pill the same
+    // way Ask AI does (drop the DOM selection + clear our state).
+    const handleAttach = useCallback(() => {
+        const sel = selectionRef.current;
+        if (!sel || !onAttachContext) {return;}
+        onAttachContext(turnIndex, 'assistant', sel.selectedText);
+        window.getSelection()?.removeAllRanges();
+        setSelection(null);
+    }, [onAttachContext, turnIndex]);
 
     // Submit the input: pass the typed question through (empty/whitespace →
     // undefined, preserving the default "Briefly explain" server behavior).
@@ -308,7 +329,12 @@ export function QuickAskTurnLayer({
     return (
         <>
             {selection && !input && (
-                <QuickAskPill rect={selection.rect} onAsk={handleAsk} onDismiss={clearSelection} />
+                <QuickAskPill
+                    rect={selection.rect}
+                    onAsk={handleAsk}
+                    onDismiss={clearSelection}
+                    onAttach={onAttachContext ? handleAttach : undefined}
+                />
             )}
 
             {input && (

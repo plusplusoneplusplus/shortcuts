@@ -1842,6 +1842,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                             onRetry={id => onRetrySidenote?.(id)}
                             onDelete={id => onDeleteSidenote?.(id)}
                             onCopy={note => onCopySidenote?.(note)}
+                            onAttachContext={onAttachContext}
                         />
                     )}
                 </div>

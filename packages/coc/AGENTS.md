@@ -458,7 +458,11 @@ all have their own `references/*.md`.
   `.../react/features/chat/quick-ask/`; `useQuickAskSidenotes` issues all three
   calls via `requestForWorkspace(workspaceId, …)` so a remote clone's side-notes
   are stored on its own server — the routes only check the id shape, so a
-  local-origin call would write the file under the LOCAL data dir.
+  local-origin call would write the file under the LOCAL data dir. The selection
+  pill (`QuickAskPill`) is a split pill: ✨ Ask AI plus, when `QuickAskTurnLayer`
+  gets an `onAttachContext` prop, 📎 Attach, which files the selected text as
+  chat context. Both actions ride this flag since the whole layer does; the
+  right-click "Attach as context" item stays available when the flag is off.
 - **Kusto query canvas** (`kusto.enabled`, default off) is a
   `type: 'kusto'` canvas branch on the generic canvas infrastructure. Its full
   state (KQL query, cluster/database, typed columns+rows capped at
