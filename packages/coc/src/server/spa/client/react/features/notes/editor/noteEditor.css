@@ -129,7 +129,7 @@
    render `background-color: var(--note-table-bg-yellow)`, so each theme picks
    its own actual color: pale pastels in light mode (the same hexes the text
    highlight palette uses), desaturated tints in dark mode chosen so the default
-   body text `#cccccc` stays readable on them. */
+   body text stays readable on them. */
 .note-editor .ProseMirror {
     --note-table-bg-yellow: #fff3b0;
     --note-table-bg-green: #b9f5d0;
@@ -176,6 +176,16 @@
     font-weight: 600;
 }
 
+/* A link inside a filled cell. The normal `#0078d4` only manages 2.9:1 on the
+   purple pastel (and misses 4.5:1 on all six), because these fills are the text
+   highlight hexes, which were picked to sit under near-black body text. Darken
+   the link just for filled cells rather than darkening the fills — the fill has
+   to stay pale to be a fill. Worst case across the six is now 4.9:1. */
+.note-editor .ProseMirror td[data-bg] a,
+.note-editor .ProseMirror th[data-bg] a {
+    color: #00568f;
+}
+
 /* Tiptap cell selection highlight */
 .note-editor .ProseMirror .selectedCell::after {
     content: '';
@@ -208,15 +218,23 @@
 
 /* Dark mode — tables */
 
-/* Same six tokens, dark tints. Contrast against `#cccccc` body text is the
-   constraint here — do not swap these for the light pastels. */
+/* Same six tokens, dark tints — do not swap these for the light pastels.
+
+   All six sit at the same relative luminance (~0.049) on purpose. Two things
+   pull in opposite directions: a fill has to be lighter than the surrounding
+   `#1e1e1e` cell to read as a fill at all, and it has to stay dark enough that
+   `#d4d4d4` body text keeps a 4.5:1 ratio on it. Equal luminance is what makes
+   the six read as one palette — the first guess at these values ranged from
+   1.33:1 to 1.69:1 against an unfilled cell, so a yellow cell looked filled and
+   a purple one looked like a rendering glitch. Now every token is ~1.56:1
+   against an unfilled cell and ~7.2:1 under body text. */
 .dark .note-editor .ProseMirror {
-    --note-table-bg-yellow: #4a4327;
-    --note-table-bg-green: #27412f;
-    --note-table-bg-blue: #243b4d;
-    --note-table-bg-pink: #4a2b38;
-    --note-table-bg-orange: #4a3826;
-    --note-table-bg-purple: #3a2e4d;
+    --note-table-bg-yellow: #453e24;
+    --note-table-bg-green: #294431;
+    --note-table-bg-blue: #284155;
+    --note-table-bg-pink: #583343;
+    --note-table-bg-orange: #4d3b28;
+    --note-table-bg-purple: #46375d;
 }
 
 .dark .note-editor .ProseMirror th,
@@ -226,6 +244,13 @@
 
 .dark .note-editor .ProseMirror th {
     background: #252526;
+}
+
+/* Same problem in the other direction: `#4ea6ea` lands at 4.0:1 on the dark
+   fills, so brighten it for filled cells only. Worst case is now 5.1:1. */
+.dark .note-editor .ProseMirror td[data-bg] a,
+.dark .note-editor .ProseMirror th[data-bg] a {
+    color: #6fbcf5;
 }
 
 .dark .note-editor .ProseMirror .selectedCell::after {

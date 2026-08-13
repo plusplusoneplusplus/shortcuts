@@ -340,6 +340,102 @@ describe('noteEditor.css table cell fill palette (AC-08)', () => {
         }
     });
 
+    // --- Contrast (goal-doc risk 4) ---
+    //
+    // The dark hexes started life as guesses. These assertions are the eyeball
+    // pass made mechanical: relative luminance and WCAG contrast straight off
+    // the values in the stylesheet, so a future "let's brighten purple a bit"
+    // cannot quietly push a fill under AA or make it invisible.
+
+    const relLuminance = (hex: string) => {
+        const channels = [1, 3, 5]
+            .map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
+            .map(v => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+        return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+    };
+    const contrast = (a: string, b: string) => {
+        const [hi, lo] = [relLuminance(a), relLuminance(b)].sort((x, y) => y - x);
+        return (hi + 0.05) / (lo + 0.05);
+    };
+    const paletteOf = (rule: string | undefined) =>
+        TABLE_CELL_COLORS.map(({ token }) => {
+            const value = rule?.match(new RegExp(`--note-table-bg-${token}:\\s*(#[0-9a-fA-F]{6});`))?.[1];
+            expect(value, `--note-table-bg-${token}`).toBeDefined();
+            return { token, value: value! };
+        });
+    // The color a rule sets, given the selector list that opens it.
+    const colorOf = (selector: RegExp) => {
+        const rule = css.match(selector);
+        expect(rule, String(selector)).not.toBeNull();
+        return rule![0].match(/color:\s*(#[0-9a-fA-F]{6})/)![1];
+    };
+
+    it('keeps dark-mode body text at AA on every fill', () => {
+        const bodyInk = colorOf(/\.dark\s+\.note-editor\s+\.ProseMirror\s*\{[^}]+\}/);
+        for (const { token, value } of paletteOf(dark())) {
+            expect(contrast(value, bodyInk), `${token} under ${bodyInk}`).toBeGreaterThanOrEqual(4.5);
+        }
+    });
+
+    it('keeps light-mode body text at AA on every fill', () => {
+        const bodyInk = colorOf(/\.note-editor\s+\.ProseMirror\s*\{[^}]+\}/);
+        for (const { token, value } of paletteOf(light())) {
+            expect(contrast(value, bodyInk), `${token} under ${bodyInk}`).toBeGreaterThanOrEqual(4.5);
+        }
+    });
+
+    it('makes a dark fill visible against an unfilled cell and against the header grey', () => {
+        // A fill nobody can see is the whole feature failing silently. #1e1e1e
+        // is the dark editor surface an unfilled td sits on; #252526 is the th
+        // grey a filled header cell sits next to.
+        for (const { token, value } of paletteOf(dark())) {
+            expect(contrast(value, '#1e1e1e'), `${token} vs unfilled cell`).toBeGreaterThan(1.5);
+            expect(contrast(value, '#252526'), `${token} vs header grey`).toBeGreaterThan(1.35);
+        }
+    });
+
+    it('gives the six dark fills near-equal luminance so none reads as stronger than the others', () => {
+        // Uneven luminance was the actual defect in the first pass: yellow at
+        // 1.69:1 against an unfilled cell looked filled, purple at 1.33:1 looked
+        // like a glitch. Same weight, different hue.
+        const luminances = paletteOf(dark()).map(({ value }) => relLuminance(value));
+        const spread = Math.max(...luminances) / Math.min(...luminances);
+        expect(spread).toBeLessThan(1.1);
+    });
+
+    it('recolors links inside a filled cell so they clear AA on every fill, in both themes', () => {
+        // The default link blues were chosen against the plain editor surface
+        // and miss 4.5:1 on the fills in both themes — light #0078d4 bottoms out
+        // at 2.9:1 on purple, dark #4ea6ea at 4.0:1. Each theme scopes a
+        // corrected link color to [data-bg] cells; the fills stay put.
+        const cases = [
+            {
+                theme: 'light',
+                rule: /\.note-editor\s+\.ProseMirror\s+td\[data-bg\]\s+a,\s*\n\s*\.note-editor\s+\.ProseMirror\s+th\[data-bg\]\s+a\s*\{[^}]+\}/,
+                palette: light(),
+            },
+            {
+                theme: 'dark',
+                rule: /\.dark\s+\.note-editor\s+\.ProseMirror\s+td\[data-bg\]\s+a,\s*\n\s*\.dark\s+\.note-editor\s+\.ProseMirror\s+th\[data-bg\]\s+a\s*\{[^}]+\}/,
+                palette: dark(),
+            },
+        ];
+        for (const { theme, rule, palette } of cases) {
+            const link = colorOf(rule);
+            for (const { token, value } of paletteOf(palette)) {
+                expect(contrast(value, link), `${theme} link on ${token}`).toBeGreaterThanOrEqual(4.5);
+            }
+        }
+    });
+
+    it('scopes the filled-cell link color to cells that actually carry a fill', () => {
+        // If the selector lost its [data-bg] the corrected color would apply to
+        // every table link, including unfilled cells where it is wrong.
+        const filledLinkRules = css.match(/\.ProseMirror\s+t[dh]\[data-bg\]\s+a/g);
+        expect(filledLinkRules).not.toBeNull();
+        expect(filledLinkRules!.length).toBe(4); // td + th, light + dark
+    });
+
     it('leaves the default header grey as a plain element rule so an inline fill outranks it (AC-07)', () => {
         // The fill is an inline style on the <th>; inline specificity beats this
         // stylesheet rule with no extra CSS. Promoting it to a more specific or
