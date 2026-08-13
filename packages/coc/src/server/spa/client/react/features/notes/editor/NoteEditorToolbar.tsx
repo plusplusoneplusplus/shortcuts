@@ -3,6 +3,7 @@ import type { ReactNode, RefObject, KeyboardEvent as ReactKeyboardEvent } from '
 import type { Editor } from '@tiptap/react';
 import type { TocEntry } from './noteTocUtils';
 import { activeTableHasColumnWidths, clearActiveTableColumnWidths } from './tableColumnWidths';
+import { TABLE_CELL_COLORS, activeCellBackgroundColor } from './extensions/tableCellBackground';
 import { NoteTocPanel } from './NoteTocPanel';
 
 export interface NoteEditorToolbarProps {
@@ -933,6 +934,99 @@ interface TableControlsProps {
     editor: Editor;
 }
 
+const TABLE_BTN_CLS = "h-7 px-1.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]";
+const SWATCH_CLS = 'w-6 h-6 rounded-sm border hover:scale-110 transition-transform';
+
+/**
+ * Cell fill picker for the table strip.
+ *
+ * `setCellAttribute` walks a `CellSelection` and falls back to the cell holding
+ * the caret, so one call covers a single cell, a whole row, a whole column and
+ * an arbitrary rectangle — which is why there are no separate "fill row" /
+ * "fill column" buttons. Unlike `HighlightButton` the trigger is not a split
+ * button: there is no sensible default fill to toggle, so clicking it only
+ * opens the panel.
+ */
+function TableCellColorButton({ editor }: TableControlsProps) {
+    const activeToken = activeCellBackgroundColor(editor);
+    const activeSwatch = TABLE_CELL_COLORS.find((c) => c.token === activeToken);
+
+    const apply = (token: string | null, close: () => void) => {
+        editor.chain().focus().setCellAttribute('backgroundColor', token).run();
+        close();
+    };
+
+    return (
+        <ToolbarDropdown
+            panelTestId="table-cell-color-picker"
+            panelClassName="flex gap-1 p-1.5"
+            renderTrigger={({ open, toggle, triggerRef }) => (
+                <button
+                    ref={triggerRef}
+                    type="button"
+                    title="Cell fill color"
+                    aria-label="Cell fill color"
+                    aria-haspopup="true"
+                    aria-expanded={open}
+                    className={TABLE_BTN_CLS + ' inline-flex items-center gap-1'}
+                    onMouseDown={(e) => {
+                        e.preventDefault();
+                        toggle();
+                    }}
+                >
+                    <span
+                        data-testid="table-cell-color-current"
+                        data-token={activeToken ?? ''}
+                        className="inline-block w-3 h-3 rounded-sm border border-[#ccc] dark:border-[#555]"
+                        style={activeSwatch ? { backgroundColor: activeSwatch.swatch } : undefined}
+                    />
+                    Fill
+                </button>
+            )}
+            renderPanel={({ close }) => (
+                <>
+                    {TABLE_CELL_COLORS.map(({ token, name, swatch }) => (
+                        <button
+                            key={token}
+                            type="button"
+                            title={`Fill ${name}`}
+                            aria-label={`Fill ${name}`}
+                            aria-pressed={activeToken === token}
+                            data-testid={`table-cell-color-${token}`}
+                            className={
+                                SWATCH_CLS + ' '
+                                + (activeToken === token
+                                    ? 'border-[#0078d4] ring-1 ring-[#0078d4]'
+                                    : 'border-[#ccc] dark:border-[#555]')
+                            }
+                            style={{ backgroundColor: swatch }}
+                            onMouseDown={(e) => {
+                                e.preventDefault();
+                                apply(token, close);
+                            }}
+                        />
+                    ))}
+                    {/* Clearing sets the attribute to null, which drops the inline
+                        style — so a header cell falls back to the default grey. */}
+                    <button
+                        type="button"
+                        title="Clear cell fill"
+                        aria-label="Clear cell fill"
+                        data-testid="table-cell-color-clear"
+                        className={SWATCH_CLS + ' border-[#ccc] dark:border-[#555] flex items-center justify-center text-xs text-[#888]'}
+                        onMouseDown={(e) => {
+                            e.preventDefault();
+                            apply(null, close);
+                        }}
+                    >
+                        ✕
+                    </button>
+                </>
+            )}
+        />
+    );
+}
+
 function TableControls({ editor }: TableControlsProps) {
     if (!editor.isActive('table')) return null;
 
@@ -940,7 +1034,7 @@ function TableControls({ editor }: TableControlsProps) {
     // Recomputed on every toolbar render, which a selection or doc change
     // already triggers — so the button enables the moment a border is dragged.
     const hasWidths = activeTableHasColumnWidths(editor);
-    const btnCls = "h-7 px-1.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]";
+    const btnCls = TABLE_BTN_CLS;
 
     return (
         <div
@@ -980,6 +1074,9 @@ function TableControls({ editor }: TableControlsProps) {
                 onMouseDown={(e) => { e.preventDefault(); tc().deleteRow().run(); }}>
                 Del Row
             </button>
+            <Sep />
+            {/* Cell fill — applies across whatever the current cell selection is */}
+            <TableCellColorButton editor={editor} />
             <Sep />
             {/* Table-level */}
             <button type="button" title="Reset column widths" aria-label="Reset column widths"

@@ -22,6 +22,8 @@
 
 import { TableCell } from '@tiptap/extension-table-cell';
 import { TableHeader } from '@tiptap/extension-table-header';
+import type { Editor } from '@tiptap/react';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 
 export interface TableCellColor {
     /** Persisted value, e.g. `yellow`. Also the CSS variable suffix. */
@@ -114,3 +116,38 @@ export const TableHeaderWithBackground = TableHeader.extend({
         return { ...this.parent?.(), ...backgroundColorAttribute };
     },
 });
+
+/** Only a token the CSS actually defines counts as a fill. */
+function normalizeToken(value: unknown): string | null {
+    return isKnownTableCellColor(value) ? value : null;
+}
+
+/**
+ * The fill token shared by every cell in the current selection, or null when
+ * there is none, the selection spans cells with different fills, or the cursor
+ * is outside a table.
+ *
+ * Two paths because tiptap's own `getAttributes` reads a single node: for a
+ * caret it is exactly right, but for a `CellSelection` it would report one
+ * arbitrary cell and light up a swatch that only some of the selection has.
+ * A `CellSelection` is duck-typed via `forEachCell` rather than imported, so
+ * this stays free of a direct `prosemirror-tables` dependency.
+ */
+export function activeCellBackgroundColor(editor: Editor | null | undefined): string | null {
+    if (!editor) return null;
+
+    const selection = editor.state?.selection as unknown as {
+        forEachCell?: (fn: (node: ProseMirrorNode) => void) => void;
+    } | undefined;
+
+    if (typeof selection?.forEachCell === 'function') {
+        const tokens = new Set<string | null>();
+        selection.forEachCell((node) => tokens.add(normalizeToken(node.attrs?.backgroundColor)));
+        return tokens.size === 1 ? (tokens.values().next().value ?? null) : null;
+    }
+
+    return (
+        normalizeToken(editor.getAttributes('tableCell')?.backgroundColor)
+        ?? normalizeToken(editor.getAttributes('tableHeader')?.backgroundColor)
+    );
+}

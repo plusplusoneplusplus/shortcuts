@@ -13,8 +13,10 @@ import { Editor } from '@tiptap/core';
 import { StarterKit } from '@tiptap/starter-kit';
 import { Table } from '@tiptap/extension-table';
 import { TableRow } from '@tiptap/extension-table-row';
+import { CellSelection } from '@tiptap/pm/tables';
 import {
     TABLE_CELL_COLORS,
+    activeCellBackgroundColor,
     TableCellWithBackground,
     TableHeaderWithBackground,
     isKnownTableCellColor,
@@ -177,5 +179,114 @@ describe('backgroundColor cell attribute', () => {
 
         ed.chain().focus().setCellAttribute('backgroundColor', null).run();
         expect(cells(ed).map(c => c.attrs.backgroundColor)).toEqual([null, null]);
+    });
+});
+
+// ── Selection-aware active token (AC-03, AC-04, AC-15) ───────────────────────
+
+/** Document positions of every cell node, in document order. */
+function cellPositions(ed: Editor): number[] {
+    const found: number[] = [];
+    ed.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'tableCell' || node.type.name === 'tableHeader') found.push(pos);
+    });
+    return found;
+}
+
+/** Select the rectangle spanning the cells at the two given indices. */
+function selectCells(ed: Editor, anchorIndex: number, headIndex: number): void {
+    const positions = cellPositions(ed);
+    const { state } = ed;
+    ed.view.dispatch(
+        state.tr.setSelection(
+            CellSelection.create(state.doc, positions[anchorIndex], positions[headIndex]),
+        ),
+    );
+}
+
+const GRID =
+    '<table><tbody>'
+    + '<tr><th>h1</th><th>h2</th></tr>'
+    + '<tr><td>a</td><td>b</td></tr>'
+    + '</tbody></table>';
+
+describe('activeCellBackgroundColor', () => {
+    it('returns null without an editor', () => {
+        expect(activeCellBackgroundColor(null)).toBeNull();
+        expect(activeCellBackgroundColor(undefined)).toBeNull();
+    });
+
+    it('reads the caret cell, including a header cell', () => {
+        const ed = makeEditor(
+            '<table><tbody><tr><th data-bg="blue">h</th></tr><tr><td data-bg="pink">a</td></tr></tbody></table>',
+        );
+        const [headerPos, cellPos] = cellPositions(ed);
+        ed.commands.setTextSelection(headerPos + 2);
+        expect(activeCellBackgroundColor(ed)).toBe('blue');
+        ed.commands.setTextSelection(cellPos + 2);
+        expect(activeCellBackgroundColor(ed)).toBe('pink');
+    });
+
+    it('returns null for an unfilled cell', () => {
+        const ed = makeEditor(GRID);
+        ed.commands.setTextSelection(cellPositions(ed)[0] + 2);
+        expect(activeCellBackgroundColor(ed)).toBeNull();
+    });
+
+    it('reports the shared token of a uniformly filled cell selection', () => {
+        const ed = makeEditor(GRID);
+        selectCells(ed, 0, 3);
+        ed.chain().focus().setCellAttribute('backgroundColor', 'yellow').run();
+        expect(activeCellBackgroundColor(ed)).toBe('yellow');
+    });
+
+    it('reports null when the selection spans cells with differing fills', () => {
+        const ed = makeEditor(GRID);
+        selectCells(ed, 0, 1);
+        ed.chain().focus().setCellAttribute('backgroundColor', 'green').run();
+        selectCells(ed, 0, 3);
+        expect(activeCellBackgroundColor(ed)).toBeNull();
+    });
+
+    it('ignores an unknown token left on the cell', () => {
+        const ed = makeEditor('<table><tbody><tr><td>a</td></tr></tbody></table>');
+        const [pos] = cellPositions(ed);
+        ed.view.dispatch(ed.state.tr.setNodeMarkup(pos, undefined, {
+            ...ed.state.doc.nodeAt(pos)!.attrs,
+            backgroundColor: 'chartreuse',
+        }));
+        ed.commands.setTextSelection(pos + 2);
+        expect(activeCellBackgroundColor(ed)).toBeNull();
+    });
+});
+
+describe('setCellAttribute over a cell selection', () => {
+    it('fills a whole row, header included, in one undo step (AC-03, AC-04)', () => {
+        const ed = makeEditor(GRID);
+        selectCells(ed, 0, 1);
+        ed.chain().focus().setCellAttribute('backgroundColor', 'blue').run();
+
+        expect(cells(ed).map(c => c.attrs.backgroundColor)).toEqual(['blue', 'blue', null, null]);
+        ed.commands.undo();
+        expect(cells(ed).map(c => c.attrs.backgroundColor)).toEqual([null, null, null, null]);
+    });
+
+    it('fills a whole column across header and body rows (AC-04)', () => {
+        const ed = makeEditor(GRID);
+        selectCells(ed, 0, 2);
+        ed.chain().focus().setCellAttribute('backgroundColor', 'orange').run();
+
+        expect(cells(ed).map(c => c.attrs.backgroundColor)).toEqual(['orange', null, 'orange', null]);
+    });
+
+    it('clears every cell in the selection (AC-05)', () => {
+        const ed = makeEditor(GRID);
+        selectCells(ed, 0, 3);
+        ed.chain().focus().setCellAttribute('backgroundColor', 'pink').run();
+        selectCells(ed, 0, 3);
+        ed.chain().focus().setCellAttribute('backgroundColor', null).run();
+
+        expect(cells(ed).map(c => c.attrs.backgroundColor)).toEqual([null, null, null, null]);
+        expect(ed.getHTML()).not.toContain('data-bg');
     });
 });

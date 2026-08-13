@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { NoteEditorToolbar } from '../../../../src/server/spa/client/react/features/notes/editor/NoteEditorToolbar';
+import { TABLE_CELL_COLORS } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/tableCellBackground';
 
 const tableWidthMocks = vi.hoisted(() => ({
     activeTableHasColumnWidths: vi.fn(() => false),
@@ -20,6 +21,7 @@ beforeEach(() => {
 
 function makeMockEditor(
     isActiveOverride?: (name: string, attrs?: Record<string, unknown>) => boolean,
+    getAttributesOverride?: (name: string) => Record<string, unknown>,
 ) {
     const insertTable = vi.fn(() => ({ run: vi.fn() }));
     const addColumnBefore = vi.fn(() => ({ run: vi.fn() }));
@@ -29,6 +31,7 @@ function makeMockEditor(
     const addRowAfter = vi.fn(() => ({ run: vi.fn() }));
     const deleteRow = vi.fn(() => ({ run: vi.fn() }));
     const deleteTable = vi.fn(() => ({ run: vi.fn() }));
+    const setCellAttribute = vi.fn(() => ({ run: vi.fn() }));
 
     const focusResult = {
         toggleBold: () => ({ run: vi.fn() }),
@@ -55,12 +58,14 @@ function makeMockEditor(
         addRowAfter,
         deleteRow,
         deleteTable,
+        setCellAttribute,
     };
 
     return {
         isActive: vi.fn((name: string, attrs?: Record<string, unknown>) =>
             isActiveOverride ? isActiveOverride(name, attrs) : false),
-        getAttributes: vi.fn(() => ({})),
+        getAttributes: vi.fn((name: string) =>
+            getAttributesOverride ? getAttributesOverride(name) : {}),
         chain: () => ({ focus: () => focusResult }),
         _focusResult: focusResult,
     };
@@ -216,6 +221,124 @@ describe('NoteEditorToolbar — table controls', () => {
         fireEvent(screen.getByLabelText('Reset column widths'), event);
 
         expect(event.defaultPrevented).toBe(true);
+    });
+});
+
+describe('NoteEditorToolbar — cell fill color picker', () => {
+    const inTable = (name: string) => name === 'table';
+
+    function openPicker(editor: ReturnType<typeof makeMockEditor>) {
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Cell fill color'));
+        return screen.getByTestId('table-cell-color-picker');
+    }
+
+    it('hides the fill button when the caret is outside a table', () => {
+        const editor = makeMockEditor(() => false);
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.queryByLabelText('Cell fill color')).toBeNull();
+    });
+
+    it('shows the fill button inside a table with the panel closed', () => {
+        const editor = makeMockEditor(inTable);
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        expect(screen.getByLabelText('Cell fill color')).toBeDefined();
+        expect(screen.queryByTestId('table-cell-color-picker')).toBeNull();
+    });
+
+    it('opens the panel without touching the document', () => {
+        const editor = makeMockEditor(inTable);
+        const panel = openPicker(editor);
+
+        expect(panel).toBeDefined();
+        expect(screen.getByLabelText('Cell fill color').getAttribute('aria-expanded')).toBe('true');
+        expect(editor._focusResult.setCellAttribute).not.toHaveBeenCalled();
+    });
+
+    it('renders exactly the exported palette plus a clear button', () => {
+        const editor = makeMockEditor(inTable);
+        openPicker(editor);
+
+        for (const { token, name } of TABLE_CELL_COLORS) {
+            const swatch = screen.getByTestId(`table-cell-color-${token}`);
+            expect(swatch.getAttribute('aria-label')).toBe(`Fill ${name}`);
+        }
+        expect(screen.getByTestId('table-cell-color-clear')).toBeDefined();
+        expect(
+            screen.getByTestId('table-cell-color-picker').querySelectorAll('button').length,
+        ).toBe(TABLE_CELL_COLORS.length + 1);
+    });
+
+    it.each(TABLE_CELL_COLORS.map((c) => c.token))(
+        'clicking the %s swatch sets the token and closes the panel',
+        (token) => {
+            const editor = makeMockEditor(inTable);
+            openPicker(editor);
+
+            fireEvent.mouseDown(screen.getByTestId(`table-cell-color-${token}`));
+
+            expect(editor._focusResult.setCellAttribute).toHaveBeenCalledWith('backgroundColor', token);
+            expect(screen.queryByTestId('table-cell-color-picker')).toBeNull();
+        },
+    );
+
+    it('clicking clear unsets the fill and closes the panel', () => {
+        const editor = makeMockEditor(inTable);
+        openPicker(editor);
+
+        fireEvent.mouseDown(screen.getByTestId('table-cell-color-clear'));
+
+        expect(editor._focusResult.setCellAttribute).toHaveBeenCalledWith('backgroundColor', null);
+        expect(screen.queryByTestId('table-cell-color-picker')).toBeNull();
+    });
+
+    it('prevents the mousedown default on the trigger and on a swatch', () => {
+        const editor = makeMockEditor(inTable);
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        const triggerEvent = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+        fireEvent(screen.getByLabelText('Cell fill color'), triggerEvent);
+        expect(triggerEvent.defaultPrevented).toBe(true);
+
+        const swatchEvent = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+        fireEvent(screen.getByTestId('table-cell-color-green'), swatchEvent);
+        expect(swatchEvent.defaultPrevented).toBe(true);
+    });
+
+    it('marks only the current cell token as pressed', () => {
+        const editor = makeMockEditor(inTable, (name) =>
+            name === 'tableCell' ? { backgroundColor: 'green' } : {});
+        openPicker(editor);
+
+        for (const { token } of TABLE_CELL_COLORS) {
+            expect(screen.getByTestId(`table-cell-color-${token}`).getAttribute('aria-pressed'))
+                .toBe(String(token === 'green'));
+        }
+        expect(screen.getByTestId('table-cell-color-current').getAttribute('data-token')).toBe('green');
+    });
+
+    it('reads the token off a header cell when the caret sits in a th', () => {
+        const editor = makeMockEditor(inTable, (name) =>
+            name === 'tableHeader' ? { backgroundColor: 'blue' } : {});
+        openPicker(editor);
+
+        expect(screen.getByTestId('table-cell-color-blue').getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('marks nothing pressed for an unfilled cell or an unknown token', () => {
+        for (const attrs of [{}, { backgroundColor: 'chartreuse' }]) {
+            const editor = makeMockEditor(inTable, () => attrs);
+            const { unmount } = render(<NoteEditorToolbar editor={editor as never} />);
+            fireEvent.mouseDown(screen.getByLabelText('Cell fill color'));
+
+            for (const { token } of TABLE_CELL_COLORS) {
+                expect(screen.getByTestId(`table-cell-color-${token}`).getAttribute('aria-pressed'))
+                    .toBe('false');
+            }
+            expect(screen.getByTestId('table-cell-color-current').getAttribute('data-token')).toBe('');
+            unmount();
+        }
     });
 });
 
