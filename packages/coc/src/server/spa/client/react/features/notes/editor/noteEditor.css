@@ -125,6 +125,20 @@
 
 /* Tables */
 
+/* Per-cell fill palette. Cells store a semantic token (`data-bg="yellow"`) and
+   render `background-color: var(--note-table-bg-yellow)`, so each theme picks
+   its own actual color: pale pastels in light mode (the same hexes the text
+   highlight palette uses), desaturated tints in dark mode chosen so the default
+   body text `#cccccc` stays readable on them. */
+.note-editor .ProseMirror {
+    --note-table-bg-yellow: #fff3b0;
+    --note-table-bg-green: #b9f5d0;
+    --note-table-bg-blue: #bde0fe;
+    --note-table-bg-pink: #ffc8dd;
+    --note-table-bg-orange: #ffd6a5;
+    --note-table-bg-purple: #e0c3fc;
+}
+
 /* The column-resizing plugin's node view wraps every table in this div. A table
    dragged wider than the note body scrolls here instead of overflowing the page
    (AC-12) — the table itself keeps `overflow: hidden` so the absolutely
@@ -193,6 +207,18 @@
 }
 
 /* Dark mode — tables */
+
+/* Same six tokens, dark tints. Contrast against `#cccccc` body text is the
+   constraint here — do not swap these for the light pastels. */
+.dark .note-editor .ProseMirror {
+    --note-table-bg-yellow: #4a4327;
+    --note-table-bg-green: #27412f;
+    --note-table-bg-blue: #243b4d;
+    --note-table-bg-pink: #4a2b38;
+    --note-table-bg-orange: #4a3826;
+    --note-table-bg-purple: #3a2e4d;
+}
+
 .dark .note-editor .ProseMirror th,
 .dark .note-editor .ProseMirror td {
     border-color: #3c3c3c;

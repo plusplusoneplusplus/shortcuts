@@ -19,8 +19,10 @@ import { Link } from '@tiptap/extension-link';
 import { Placeholder } from '@tiptap/extension-placeholder';
 import { Table } from '@tiptap/extension-table';
 import { TableRow } from '@tiptap/extension-table-row';
-import { TableCell } from '@tiptap/extension-table-cell';
-import { TableHeader } from '@tiptap/extension-table-header';
+import {
+    TableCellWithBackground,
+    TableHeaderWithBackground,
+} from './extensions/tableCellBackground';
 import { Highlight } from '@tiptap/extension-highlight';
 import { FindAndReplace } from '@tiptap/extension-find-and-replace';
 import { TextAlign } from '@tiptap/extension-text-align';
@@ -244,8 +246,10 @@ export function RichEditorCore({
                 lastColumnResizable: true,
             }),
             TableRow,
-            TableCell,
-            TableHeader,
+            // Stock TableCell/TableHeader plus a `backgroundColor` token
+            // attribute (per-cell fill); everything else about them is stock.
+            TableCellWithBackground,
+            TableHeaderWithBackground,
             Highlight.configure({ multicolor: true }),
             TextAlign.configure({ types: ['heading', 'paragraph'] }),
             IndentExtension,

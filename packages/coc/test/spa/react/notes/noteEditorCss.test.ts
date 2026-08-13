@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import { TABLE_CELL_COLORS } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/tableCellBackground';
 
 const cssPath = resolve(
     __dirname,
@@ -297,5 +298,59 @@ describe('noteEditor.css indentation scale (data-indent)', () => {
 
     it('gives find & replace matches a dark-mode treatment via the .dark class', () => {
         expect(css).toMatch(/\.dark\s+\.note-editor\s+\.ProseMirror\s+\.find-and-replace-result\s*\{/);
+    });
+});
+
+describe('noteEditor.css table cell fill palette (AC-08)', () => {
+    // `.note-editor .ProseMirror { … }` appears several times in the file (base
+    // typography, the dark color override, …); the palette lives in whichever
+    // one declares the variables, so match on that rather than on ordering.
+    const blocks = (selector: RegExp) =>
+        Array.from(css.matchAll(/([^{}]*)\{([^}]*)\}/g))
+            // The capture also swallows any preceding comment, so compare on the
+            // last line — the selector itself.
+            .filter(m => selector.test(m[1].trim().split('\n').pop()!.trim()) && m[2].includes('--note-table-bg-'))
+            .map(m => m[2]);
+    const light = () => blocks(/^\.note-editor\s+\.ProseMirror$/)[0];
+    const dark = () => blocks(/^\.dark\s+\.note-editor\s+\.ProseMirror$/)[0];
+
+    it('defines every palette token in the light block', () => {
+        expect(light()).toBeDefined();
+        for (const { token } of TABLE_CELL_COLORS) {
+            expect(light()).toContain(`--note-table-bg-${token}:`);
+        }
+    });
+
+    it('redefines every palette token in the .dark block', () => {
+        expect(dark()).toBeDefined();
+        for (const { token } of TABLE_CELL_COLORS) {
+            expect(dark()).toContain(`--note-table-bg-${token}:`);
+        }
+    });
+
+    it('gives each token a different value per theme, or the fill would be unreadable in one of them', () => {
+        const valueOf = (rule: string | undefined, token: string) =>
+            rule?.match(new RegExp(`--note-table-bg-${token}:\\s*([^;]+);`))?.[1]?.trim();
+        for (const { token, swatch } of TABLE_CELL_COLORS) {
+            const lightValue = valueOf(light(), token);
+            const darkValue = valueOf(dark(), token);
+            expect(lightValue).toBe(swatch);
+            expect(darkValue).toBeDefined();
+            expect(darkValue).not.toBe(lightValue);
+        }
+    });
+
+    it('leaves the default header grey as a plain element rule so an inline fill outranks it (AC-07)', () => {
+        // The fill is an inline style on the <th>; inline specificity beats this
+        // stylesheet rule with no extra CSS. Promoting it to a more specific or
+        // !important rule would silently break header fills.
+        const rule = css.match(/\.note-editor\s+\.ProseMirror\s+th\s*\{[^}]+\}/);
+        expect(rule).not.toBeNull();
+        expect(rule![0]).toMatch(/background:\s*#f3f3f3/);
+        expect(rule![0]).not.toContain('!important');
+
+        const darkRule = css.match(/\.dark\s+\.note-editor\s+\.ProseMirror\s+th\s*\{[^}]+\}/);
+        expect(darkRule).not.toBeNull();
+        expect(darkRule![0]).not.toContain('!important');
     });
 });

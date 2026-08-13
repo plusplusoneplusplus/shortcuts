@@ -87,8 +87,15 @@ vi.mock('@tiptap/extension-table', () => ({
     },
 }));
 vi.mock('@tiptap/extension-table-row', () => ({ TableRow: {} }));
-vi.mock('@tiptap/extension-table-cell', () => ({ TableCell: {} }));
-vi.mock('@tiptap/extension-table-header', () => ({ TableHeader: {} }));
+// The cell/header extensions are subclassed by tableCellBackground.ts, so the
+// stubs need `.extend()` — returning a plain marker keeps this suite focused on
+// which extensions RichEditorCore registers.
+vi.mock('@tiptap/extension-table-cell', () => ({
+    TableCell: { extend: () => ({ name: 'tableCell' }) },
+}));
+vi.mock('@tiptap/extension-table-header', () => ({
+    TableHeader: { extend: () => ({ name: 'tableHeader' }) },
+}));
 vi.mock('@tiptap/extension-highlight', () => ({ Highlight: { configure: () => ({}) } }));
 vi.mock('../../../../src/server/spa/client/react/features/notes/editor/extensions/resizableImage', () => ({
     ResizableImage: { configure: () => ({}) },
