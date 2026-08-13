@@ -251,6 +251,95 @@ export function useNotesSectionExpanded(
     return [stored ?? defaultExpanded, setExpanded];
 }
 
+export interface UseNotesSectionsExpandedResult {
+    /** Open/closed flag for every listed root, keyed by root ID. */
+    expandedByRoot: Record<string, boolean>;
+    /** Listed roots that are currently open, in the order they were passed. */
+    expandedRootIds: string[];
+    isExpanded: (rootId: string) => boolean;
+    setExpanded: (rootId: string, next: boolean) => void;
+    toggle: (rootId: string) => void;
+}
+
+/**
+ * Open/closed state for a stack of root sections — the multi-root counterpart of
+ * `useNotesSectionExpanded`, which covers one root and so cannot be called once
+ * per root in a loop.
+ *
+ * Storage keys match the single-root hook's, so a section keeps its state across
+ * reloads. A root with nothing stored starts open only when it is the fallback
+ * root: `defaultExpandedRootId` (the previously selected root) when it is still
+ * listed, else the first listed root — which is what guarantees at least one
+ * open section on a first load (AC-02). A root the user explicitly collapsed
+ * stays collapsed, even if that leaves every section closed.
+ */
+export function useNotesSectionsExpanded(
+    workspaceId: string,
+    rootIds: string[],
+    defaultExpandedRootId?: string,
+): UseNotesSectionsExpandedResult {
+    const rootsKey = rootIds.join('\0');
+    const [state, setState] = useState<{ scopeKey: string; entries: Record<string, boolean> }>(
+        () => ({ scopeKey: workspaceId, entries: {} }),
+    );
+
+    const fallbackRootId = useMemo(() => {
+        const ids = rootsKey ? rootsKey.split('\0') : [];
+        if (defaultExpandedRootId && ids.includes(defaultExpandedRootId)) return defaultExpandedRootId;
+        return ids[0];
+    }, [rootsKey, defaultExpandedRootId]);
+
+    const expandedByRoot = useMemo(() => {
+        const overrides = state.scopeKey === workspaceId ? state.entries : {};
+        const next: Record<string, boolean> = {};
+        for (const rootId of rootsKey ? rootsKey.split('\0') : []) {
+            if (rootId in overrides) {
+                next[rootId] = overrides[rootId];
+                continue;
+            }
+            const stored = readSectionExpanded(notesSectionExpandedStorageKey(workspaceId, rootId));
+            next[rootId] = stored ?? rootId === fallbackRootId;
+        }
+        return next;
+    }, [fallbackRootId, rootsKey, state, workspaceId]);
+
+    const expandedRootIds = useMemo(
+        () => (rootsKey ? rootsKey.split('\0') : []).filter(rootId => expandedByRoot[rootId]),
+        [expandedByRoot, rootsKey],
+    );
+
+    // Another workspace's sections must never leak into this one.
+    useEffect(() => {
+        setState(prev => (prev.scopeKey === workspaceId ? prev : { scopeKey: workspaceId, entries: {} }));
+    }, [workspaceId]);
+
+    const setExpanded = useCallback((rootId: string, next: boolean) => {
+        try {
+            localStorage.setItem(notesSectionExpandedStorageKey(workspaceId, rootId), String(next));
+        } catch {
+            /* ignore */
+        }
+        setState(prev => {
+            const prevEntries = prev.scopeKey === workspaceId ? prev.entries : {};
+            return { scopeKey: workspaceId, entries: { ...prevEntries, [rootId]: next } };
+        });
+    }, [workspaceId]);
+
+    const isExpanded = useCallback(
+        (rootId: string) => expandedByRoot[rootId]
+            ?? readSectionExpanded(notesSectionExpandedStorageKey(workspaceId, rootId))
+            ?? rootId === fallbackRootId,
+        [expandedByRoot, fallbackRootId, workspaceId],
+    );
+
+    const toggle = useCallback(
+        (rootId: string) => setExpanded(rootId, !isExpanded(rootId)),
+        [isExpanded, setExpanded],
+    );
+
+    return { expandedByRoot, expandedRootIds, isExpanded, setExpanded, toggle };
+}
+
 /**
  * Restores the scroll position once the scoped tree is ready, saves scrolls at
  * most once per animation frame, and flushes the last position on scope change
