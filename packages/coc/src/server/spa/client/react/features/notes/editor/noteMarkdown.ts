@@ -463,8 +463,9 @@ turndown.addRule('table', {
 // things push a table off the pipe path:
 //
 //  1. Per-cell state with no pipe syntax: a dragged column width (`colwidth`, from
-//     ProseMirror's columnResizing plugin) or a cell fill (`data-bg`, from the
-//     tableCellBackground extension).
+//     ProseMirror's columnResizing plugin), a cell fill (`data-bg`, from the
+//     tableCellBackground extension) or a no-wrap column (`data-wrap`, from the
+//     tableColumnWrap extension).
 //  2. A header layout that is not GFM-shaped — see `isGfmShapedTable`. A pipe table
 //     is exactly one header row on top, so a header column, a lone header cell, or
 //     no header at all has no faithful pipe form.
@@ -475,7 +476,7 @@ turndown.addRule('table', {
 // NOTE: addRule() unshifts, so this must stay registered AFTER the plain `table`
 // rule for it to be checked (and win) first.
 const RAW_TABLE_CELL_SELECTOR =
-    'th[colwidth], td[colwidth], th[data-bg], td[data-bg]';
+    'th[colwidth], td[colwidth], th[data-bg], td[data-bg], th[data-wrap], td[data-wrap]';
 
 function tableRowChildren(parent: Element): Element[] {
     return Array.from(parent.children).filter(child => child.nodeName === 'TR');
@@ -557,6 +558,11 @@ function serializeRawTableCell(cell: Element): string {
     // what makes the fill visible in renderers that are not the editor.
     const backgroundColor = cell.getAttribute('data-bg');
     if (backgroundColor) attrs.push(`data-bg="${escapeAttr(backgroundColor)}"`);
+    // `data-wrap` is only ever emitted for a no-wrap cell — the default renders no
+    // attribute — so its mere presence is the setting. Whitelisted like the rest:
+    // the raw path copies the attributes it knows, never arbitrary pasted ones.
+    const wrap = cell.getAttribute('data-wrap');
+    if (wrap) attrs.push(`data-wrap="${escapeAttr(wrap)}"`);
     // A cell's `style` carries its text-align and its fill, both authored content —
     // only the *computed* style Table.renderHTML puts on <table>/<col> is dropped.
     const style = cell.getAttribute('style');

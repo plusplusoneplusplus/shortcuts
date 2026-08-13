@@ -1187,6 +1187,120 @@ describe('noteMarkdown', () => {
         });
     });
 
+    // ── Per-column wrap mode (data-wrap persistence) ────────────────────
+
+    describe('table column wrap persistence', () => {
+        // What Tiptap emits for a no-wrap column: `data-wrap="nowrap"` on every
+        // cell of that column, header included. The default renders no attribute
+        // at all, which is what keeps untouched tables on the pipe path.
+        const nowrapTableHtml =
+            '<table><tbody>' +
+            '<tr><th data-wrap="nowrap"><p>A</p></th><th><p>B</p></th></tr>' +
+            '<tr><td data-wrap="nowrap"><p>a long single line</p></td><td><p>2</p></td></tr>' +
+            '</tbody></table>';
+
+        // AC-09 — the regression guard: a table with no no-wrap column must still
+        // produce byte-identical pipe markdown.
+        it('htmlToMarkdown — a table with no data-wrap still emits a pipe table', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><th><p>A</p></th><th><p>B</p></th></tr>' +
+                '<tr><td><p>1</p></td><td><p>2</p></td></tr>' +
+                '</tbody></table>';
+            expect(htmlToMarkdown(html)).toBe('| A | B |\n| --- | --- |\n| 1 | 2 |\n');
+        });
+
+        // AC-10
+        it('htmlToMarkdown — a nowrap column emits a raw HTML block keeping data-wrap', () => {
+            const md = htmlToMarkdown(nowrapTableHtml);
+            const block = md.trim();
+            expect(block.split('\n')).toHaveLength(1);
+            expect(block.startsWith('<table>')).toBe(true);
+            expect(block.endsWith('</table>')).toBe(true);
+            expect(md).not.toContain('| --- |');
+            expect(block).toContain('<th data-wrap="nowrap"><p>A</p></th>');
+            expect(block).toContain('<td data-wrap="nowrap"><p>a long single line</p></td>');
+            // The other column stays bare — the setting is per column.
+            expect(block).toContain('<th><p>B</p></th>');
+            expect(block).toContain('<td><p>2</p></td>');
+        });
+
+        // AC-10 (round trip) — nothing between marked and Tiptap drops the
+        // attribute, so a reload lands back in the same wrap state.
+        it('round-trip — html → md → html preserves data-wrap on the column', () => {
+            const reloaded = markdownToHtml(htmlToMarkdown(nowrapTableHtml));
+            expect(reloaded.match(/data-wrap="nowrap"/g)).toHaveLength(2);
+            expect(htmlToMarkdown(reloaded)).toBe(htmlToMarkdown(nowrapTableHtml));
+        });
+
+        // AC-11 — the raw path keeps the cell's real markup, so in-cell breaks
+        // survive where the GFM path would have collapsed them to <br>.
+        it('round-trip — a nowrap cell with multiple paragraphs keeps its breaks', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><th data-wrap="nowrap"><p>A</p></th></tr>' +
+                '<tr><td data-wrap="nowrap"><p>one</p><p>two</p></td></tr>' +
+                '</tbody></table>';
+            const md = htmlToMarkdown(html);
+            expect(md.trim().split('\n')).toHaveLength(1);
+            expect(md).toContain('<td data-wrap="nowrap"><p>one</p><p>two</p></td>');
+            const reloaded = markdownToHtml(md);
+            expect(reloaded).toContain('<p>one</p><p>two</p>');
+            expect(htmlToMarkdown(reloaded)).toBe(md);
+        });
+
+        it('round-trip — a nowrap cell with a <br> keeps the break', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><th data-wrap="nowrap"><p>A</p></th></tr>' +
+                '<tr><td data-wrap="nowrap"><p>one<br>two</p></td></tr>' +
+                '</tbody></table>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('<br>');
+            expect(markdownToHtml(md)).toContain('<br>');
+        });
+
+        // A cell can carry every per-cell setting at once; the raw emitter must
+        // not lose one while writing another.
+        it('htmlToMarkdown — data-wrap coexists with data-bg, colwidth and spans', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><td colspan="2" rowspan="2" colwidth="180,240" data-bg="pink" ' +
+                'data-wrap="nowrap" style="text-align: center"><p>X</p></td></tr>' +
+                '</tbody></table>';
+            const block = htmlToMarkdown(html).trim();
+            expect(block).toContain('colspan="2"');
+            expect(block).toContain('rowspan="2"');
+            expect(block).toContain('colwidth="180,240"');
+            expect(block).toContain('data-bg="pink"');
+            expect(block).toContain('data-wrap="nowrap"');
+            expect(block).toContain('text-align: center');
+            expect(htmlToMarkdown(markdownToHtml(block))).toBe(htmlToMarkdown(html));
+        });
+
+        it('htmlToMarkdown — turning the last nowrap column back to wrap restores pipe syntax', () => {
+            const cleared =
+                '<table><tbody>' +
+                '<tr><th><p>A</p></th><th><p>B</p></th></tr>' +
+                '<tr><td><p>a long single line</p></td><td><p>2</p></td></tr>' +
+                '</tbody></table>';
+            expect(htmlToMarkdown(cleared)).toBe(
+                '| A | B |\n| --- | --- |\n| a long single line | 2 |\n',
+            );
+        });
+
+        it('round-trip — a nowrap table beside a plain one leaves the plain one on pipes', () => {
+            const plain =
+                '<table><tbody>' +
+                '<tr><th><p>P</p></th><th><p>Q</p></th></tr>' +
+                '<tr><td><p>1</p></td><td><p>2</p></td></tr>' +
+                '</tbody></table>';
+            const md = htmlToMarkdown(`${plain}<p>between</p>${nowrapTableHtml}`);
+            expect(md).toContain('| P | Q |');
+            expect(md.match(/<table>/g)).toHaveLength(1);
+        });
+    });
+
     // ── Image resize serialization ──────────────────────────────────────
 
     describe('image resize serialization', () => {

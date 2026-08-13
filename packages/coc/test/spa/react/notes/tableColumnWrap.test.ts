@@ -23,6 +23,10 @@ import {
     isTableWrapMode,
     toggleActiveColumnWrap,
 } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/tableColumnWrap';
+import {
+    htmlToMarkdown,
+    markdownToHtml,
+} from '../../../../src/server/spa/client/react/features/notes/editor/noteMarkdown';
 
 let editor: Editor | null = null;
 
@@ -388,5 +392,37 @@ describe('the no-wrap CSS rule matches the rendered cell (AC-12)', () => {
     it('selects nothing while every column still wraps', () => {
         mount(GRID);
         expect(host!.querySelectorAll(nowrapRuleSelector())).toHaveLength(0);
+    });
+});
+
+/**
+ * The setting is only real if it survives a save/reload, and notes save as
+ * markdown. The suite in `noteMarkdown.test.ts` covers the serializer from
+ * hand-written HTML; this closes the loop with the HTML tiptap actually emits,
+ * so a change to how the attribute renders can't quietly drop the table off the
+ * raw-HTML path and back onto pipes (where the setting has no home).
+ */
+describe('the wrap mode survives a markdown round trip (AC-10)', () => {
+    it('reloads a toggled column out of markdown with the setting intact', () => {
+        const ed = makeEditor(GRID);
+        caretInCell(ed, 1);
+        toggleActiveColumnWrap(ed);
+
+        const markdown = htmlToMarkdown(ed.getHTML());
+        expect(markdown).toContain('data-wrap="nowrap"');
+        expect(markdown).not.toContain('| --- |');
+
+        ed.destroy();
+        const reloaded = makeEditor(markdownToHtml(markdown));
+        expect(wraps(reloaded)).toEqual([
+            'wrap', 'nowrap', 'wrap',
+            'wrap', 'nowrap', 'wrap',
+            'wrap', 'nowrap', 'wrap',
+        ]);
+    });
+
+    it('keeps an untouched table on the pipe path', () => {
+        const ed = makeEditor(GRID);
+        expect(htmlToMarkdown(ed.getHTML())).toContain('| --- |');
     });
 });
