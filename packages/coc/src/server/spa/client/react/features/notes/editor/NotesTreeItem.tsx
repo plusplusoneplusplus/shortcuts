@@ -142,7 +142,7 @@ export function NotesTreeItem({
             <div
                 className={cn(
                     'relative grid items-center gap-1.5 pr-2 py-[3px] min-h-[26px] cursor-pointer text-[13px] transition-colors',
-                    'grid-cols-[14px_minmax(0,1fr)_auto]',
+                    'grid-cols-[14px_16px_minmax(0,1fr)_auto]',
                     'hover:bg-[#d0d7de]/[0.34] dark:hover:bg-white/[0.06]',
                     selected && 'bg-[#ddf4ff] dark:bg-[#0078d4]/20 text-[#1f2328] dark:text-[#cccccc]',
                     selected && 'shadow-[inset_3px_0_0_#0969da] dark:shadow-[inset_3px_0_0_#3794ff]',
@@ -182,6 +182,8 @@ export function NotesTreeItem({
                 ) : (
                     <span className="flex-shrink-0 inline-block" aria-hidden="true" />
                 )}
+                {/* Type icon column — notebook / section / page glyph */}
+                <NodeTypeIcon type={node.type} />
                 {/* Name — inline-editable on double-click (AC-06) */}
                 {isRenaming ? (
                     <InlineRenameInput
@@ -248,6 +250,37 @@ export function NotesTreeItem({
                 />
             )}
         </div>
+    );
+}
+
+/**
+ * Leading type glyph for a tree row — notebook, section (folder) or page
+ * (document). Chosen purely from `node.type`; the chevron alone still carries
+ * open/closed state, so there is no open-folder variant. Decorative: hidden from
+ * assistive tech, no tooltip, and transparent to pointer events so a click on the
+ * glyph lands on the row exactly like a click on the name.
+ */
+function NodeTypeIcon({ type }: { type: NoteTreeNode['type'] }) {
+    const path = type === 'notebook'
+        // Notebook: a bound book with a spine rule.
+        ? 'M4 1.5A1.5 1.5 0 0 0 2.5 3v10A1.5 1.5 0 0 0 4 14.5h8.5a.5.5 0 0 0 .5-.5V2a.5.5 0 0 0-.5-.5H4zm0 1h1v11H4a.5.5 0 0 1-.5-.5V3a.5.5 0 0 1 .5-.5zm2 0h6v11H6v-11z'
+        : type === 'section'
+            // Section: a closed folder with a tab.
+            ? 'M1.75 3a.75.75 0 0 0-.75.75v8.5c0 .414.336.75.75.75h12.5a.75.75 0 0 0 .75-.75V5.25a.75.75 0 0 0-.75-.75H8.06L6.81 3.25a.75.75 0 0 0-.53-.25H1.75z'
+            // Page: a document sheet with a folded corner.
+            : 'M3.5 1.5a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V5.5L9.5 1.5h-6zm5.5 1.25L12.25 6H9.5a.5.5 0 0 1-.5-.5V2.75zM5 8h6v1H5V8zm0 2.5h6v1H5v-1z';
+
+    return (
+        <span
+            className="flex-shrink-0 inline-flex justify-center text-[#656d76] dark:text-[#9d9d9d] pointer-events-none"
+            data-testid="notes-tree-item-icon"
+            data-node-type={type}
+            aria-hidden="true"
+        >
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                <path d={path} />
+            </svg>
+        </span>
     );
 }
 
