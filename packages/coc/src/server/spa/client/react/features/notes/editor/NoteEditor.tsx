@@ -35,7 +35,7 @@ import type { PaperLinkInfo } from './extensions/paperLink';
 import type { PdfPopupTarget } from './extensions/PdfPopupDialog';
 import { AIEditNavigator } from './AIEditNavigator';
 import type { TocEntry } from './noteTocUtils';
-import { extractHeadings } from './noteTocUtils';
+import { extractHeadings, findActiveTocIndex, jumpToHeading } from './noteTocUtils';
 import './noteEditor.css';
 
 import { NoteConflictBanner } from './NoteConflictBanner';
@@ -950,7 +950,7 @@ export function NoteEditor({
     const handleTocJump = useCallback((entry: TocEntry) => {
         const ed = editorRef.current;
         if (!ed) return;
-        ed.chain().setTextSelection(entry.pos).scrollIntoView().run();
+        jumpToHeading(ed, editorScrollContainerRef.current, entry);
         setTocOpen(false);
     }, []);
 
@@ -961,17 +961,12 @@ export function NoteEditor({
         const scrollContainer = editorScrollContainerRef.current;
         if (!scrollContainer) return;
 
+        // Resolve each entry through its ProseMirror position rather than
+        // zipping the entry list against `querySelectorAll('h1, h2, h3')` by
+        // index — `extractHeadings` skips empty headings, so those two lists
+        // drift apart and the wrong row lights up.
         const updateActive = () => {
-            const headingEls = scrollContainer.querySelectorAll<HTMLElement>(
-                '.ProseMirror h1, .ProseMirror h2, .ProseMirror h3',
-            );
-            const containerTop = scrollContainer.getBoundingClientRect().top;
-            let activeIdx: number | null = null;
-            headingEls.forEach((el, i) => {
-                const top = el.getBoundingClientRect().top - containerTop;
-                if (top <= 8) activeIdx = i;
-            });
-            setTocActiveIndex(activeIdx);
+            setTocActiveIndex(findActiveTocIndex(tocEntries, editor, scrollContainer));
         };
 
         scrollContainer.addEventListener('scroll', updateActive, { passive: true });
