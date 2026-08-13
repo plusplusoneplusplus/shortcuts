@@ -406,6 +406,53 @@ all have their own `references/*.md`.
   reported through `reportCanvasCorruption` (workspace/canvas id, file role,
   bare name, error class/errno only — never canvas content or absolute paths);
   do not go back to a bare `catch {}`.
+- **Chat style selector** (live admin flag `features.chatStyleSelector`, default
+  off, runtime flag `chatStyleSelectorEnabled`) adds a `Style: Default|Human|
+  Direct|Analytical|Structured` chip beside Effort in the new-chat and follow-up
+  composers. The style instruction is prepended to the **user message**, never
+  injected into the system message. Style changes only how a response is
+  written — never the provider, model, effort, tools, permission mode, or any
+  structured output contract.
+  - `ChatStyle`, `CHAT_STYLES`, `DEFAULT_CHAT_STYLE`, `CHAT_STYLE_LABELS`, and
+    `isChatStyle()` are the single contract, exported from
+    `@plusplusoneplusplus/coc-client`; reuse them instead of re-listing the five
+    values. `'default'` is a real, first-class wire value — `isChatStyle
+    ('default')` is true — so switching *to* Default is distinguishable from
+    never having chosen. `validateAndParseTask()` and `normalizeFollowUpInput()`
+    re-validate: unknown → 400, omitted → `'default'`.
+  - Prompt text lives ONLY in `src/server/executors/chat-style-prompt.ts` and is
+    asserted verbatim in `chat-style-prompt.test.ts` — treat wording edits as
+    product changes. The block is exactly four lines — open tag,
+    `Selected style: X.`, one focus line, close tag — followed by a blank line
+    and then the user's text. There is no shared preamble. `Default` has no
+    focus line and no block at all: the builder returns `undefined` and the
+    prepend function returns the prompt byte-for-byte unchanged.
+  - Injection rule, one rule for every turn: inject when the selected style
+    differs from the style last recorded on `process.metadata.chatStyle` AND is
+    not `'default'`. A brand-new conversation starts recorded as `'default'`, so
+    turn 1 injects only when the user picked a real style. The recorded style is
+    updated on **every** turn including no-block ones, so Default is a real
+    state, not a gap. Switching to Default injects nothing and deliberately does
+    not undo an earlier style; that tradeoff is a product decision, not
+    something to work around.
+  - Injection happens before persistence — new chats in
+    `ProcessLifecycleRunner` (the only point upstream of the turn-0 write; NOT
+    `chat-base-executor.effectivePrompt`, which is never persisted) and
+    follow-ups in the `POST /api/processes/:id/message` route (the last point
+    before `ProcessMessageDeliveryService` writes `displayContent`). The block is
+    therefore stored and rendered verbatim in the user bubble — no stripping, no
+    hidden prefix, no special renderer. Do not add stripping without revisiting
+    that decision.
+  - Scope is `chat-base` (Ask), `autopilot`, `note-chat`, `commit-chat`, and
+    follow-ups only, enforced by `isChatStyleEligiblePayload`. Ralph,
+    classification, task generation, note creation, resolve-comments, Dreams,
+    and workflows never inject. The flag is enforced on both sides so an older
+    client cannot force injection: the SPA hides the chip and omits `chatStyle`,
+    and the server checks the live flag per turn.
+  - Deliberately absent: no `PerRepoPreferences.lastChatStyle` seed (new chats
+    always start on Default, there is no workspace-level style), and no
+    style-change buffering special case in `ProcessMessageDeliveryService` — the
+    style rides the user message, so no freshly built system message is needed.
 - **Quick Ask side-notes** (live admin flag `features.quickAskSidenotes`
   default on, gating both the server endpoints and the SPA UI via
   `isQuickAskSidenotesEnabled()` / `useQuickAskSidenotesEnabled`) let a user
