@@ -23,6 +23,7 @@ import {
 import { FileBannerRow } from './FileBannerRow';
 import { parseFileBanners, buildBannerIndex, buildPreambleIndex, type FileBanner } from './fileBannerModel';
 import { useDockedFileBanner } from './useDockedFileBanner';
+import { observeOffsetUntilCleanup } from './observeOffsetUntilCleanup';
 
 export interface UnifiedDiffViewerProps {
     diff: string;
@@ -1070,6 +1071,9 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             const h = (el as HTMLElement).getBoundingClientRect?.().height;
             return h && h > 0 ? h : DIFF_LINE_ESTIMATE_PX;
         },
+        // The stock observer leaves its scroll-stop timer running past unmount,
+        // which then re-renders a viewer that is already gone.
+        observeElementOffset: observeOffsetUntilCleanup,
     });
 
     useImperativeHandle(ref, () => {
