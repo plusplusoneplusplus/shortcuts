@@ -24,6 +24,8 @@ const OPEN_FIND_BAR_CHANNEL = 'coc-desktop:open-find-bar';
 const CLOSE_FIND_BAR_CHANNEL = 'coc-desktop:close-find-bar';
 const DEVTUNNEL_MODAL_SUBMIT_CHANNEL = 'coc-desktop:devtunnel-modal-submit';
 const DEVTUNNEL_MODAL_CANCEL_CHANNEL = 'coc-desktop:devtunnel-modal-cancel';
+const REPORT_ISSUE_SUBMIT_CHANNEL = 'coc-desktop:report-issue-submit';
+const REPORT_ISSUE_CANCEL_CHANNEL = 'coc-desktop:report-issue-cancel';
 const SCREENSHOT_OVERLAY_INIT_CHANNEL = 'coc-desktop:screenshot-overlay-init';
 const SCREENSHOT_CROP_CHANNEL = 'coc-desktop:screenshot-crop';
 const SCREENSHOT_CANCEL_CHANNEL = 'coc-desktop:screenshot-cancel';
@@ -112,6 +114,18 @@ const api = {
     devtunnelModal: {
         submit: (tunnelId: string) => ipcRenderer.send(DEVTUNNEL_MODAL_SUBMIT_CHANNEL, tunnelId),
         cancel: () => ipcRenderer.send(DEVTUNNEL_MODAL_CANCEL_CHANNEL),
+    },
+    /**
+     * Report an Issue… modal bridge (see `report-issue.ts`). The modal document
+     * calls `submit(title, description)` with both fields already trimmed, or
+     * `cancel()` to dismiss. The main process builds the prefilled GitHub URL and
+     * opens it in the default browser — nothing is uploaded from here, and no
+     * credential ever crosses this bridge.
+     */
+    reportIssue: {
+        submit: (title: string, description: string) =>
+            ipcRenderer.send(REPORT_ISSUE_SUBMIT_CHANNEL, title, description),
+        cancel: () => ipcRenderer.send(REPORT_ISSUE_CANCEL_CHANNEL),
     },
     /**
      * Screenshot capture + annotate bridge (see screenshot-capture.ts), used from

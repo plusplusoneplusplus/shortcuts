@@ -28,6 +28,10 @@ import {
     DEVTUNNEL_MODAL_CANCEL_CHANNEL,
 } from '../src/devtunnel-modal';
 import {
+    REPORT_ISSUE_SUBMIT_CHANNEL,
+    REPORT_ISSUE_CANCEL_CHANNEL,
+} from '../src/report-issue';
+import {
     SCREENSHOT_OVERLAY_INIT_CHANNEL,
     SCREENSHOT_CROP_CHANNEL,
     SCREENSHOT_CANCEL_CHANNEL,
@@ -116,6 +120,27 @@ describe('preload bridge', () => {
         expect(send).toHaveBeenCalledWith(DEVTUNNEL_MODAL_SUBMIT_CHANNEL, 'tunnel-1');
         api.devtunnelModal.cancel();
         expect(send).toHaveBeenCalledWith(DEVTUNNEL_MODAL_CANCEL_CHANNEL);
+    });
+
+    it('reportIssue submit/cancel send on the real report-issue channels', () => {
+        const api = exposedApi();
+        api.reportIssue.submit('Crash on open', 'Steps to reproduce…');
+        expect(send).toHaveBeenCalledWith(
+            REPORT_ISSUE_SUBMIT_CHANNEL,
+            'Crash on open',
+            'Steps to reproduce…',
+        );
+        api.reportIssue.cancel();
+        expect(send).toHaveBeenCalledWith(REPORT_ISSUE_CANCEL_CHANNEL);
+    });
+
+    it('the report-issue channel literals in preload.ts match report-issue.ts', () => {
+        const source = readFileSync(
+            path.join(path.dirname(fileURLToPath(import.meta.url)), '../src/preload.ts'),
+            'utf8',
+        );
+        expect(source).toContain(`'${REPORT_ISSUE_SUBMIT_CHANNEL}'`);
+        expect(source).toContain(`'${REPORT_ISSUE_CANCEL_CHANNEL}'`);
     });
 
     it('screenshot.crop / cancel send on the real screenshot channels', () => {
