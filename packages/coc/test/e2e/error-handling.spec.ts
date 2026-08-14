@@ -359,8 +359,10 @@ test.describe('Error Handling (008)', () => {
         await expect(page.locator('#view-admin')).toBeVisible({ timeout: 5000 });
         await expect(page.locator('#admin-page-content')).not.toBeEmpty({ timeout: 5000 });
 
-        // Switch to repos (navigate away from admin)
-        await page.click('[data-tab="repos"]');
+        // Close the dialog (the topbar sits behind its backdrop, so Escape —
+        // not a tab click — is how the user leaves admin)
+        await page.keyboard.press('Escape');
+        await expect(page.locator('#admin-dialog')).toHaveCount(0);
         await expect(page.locator('#view-repos')).toBeVisible();
 
         // Return to admin — intercept to verify stats API is called again

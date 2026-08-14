@@ -3,7 +3,7 @@
  * Wraps providers around the layout shell.
  */
 
-import { useEffect, useCallback, useState, useRef, useMemo } from 'react';
+import { useEffect, useCallback, useState, useRef, useMemo, lazy, Suspense } from 'react';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { QueueProvider, useQueue } from './contexts/QueueContext';
 import { useQueueBootstrap } from './contexts/useQueueBootstrap';
@@ -46,6 +46,11 @@ import { resolveWorkItemOriginId } from './features/work-items/workItemOriginSco
 import { useEnforceWindowLock } from './features/scope-window/useWindowLock';
 
 import { ContainerAgentProvider } from './contexts/ContainerAgentContext';
+import { useAdminDialogRoute } from './admin/useAdminDialogRoute';
+
+// Admin is an overlay dialog, not a route. Lazy so the (large) admin shell
+// stays out of the initial bundle even though the host is always mounted.
+const AdminDialog = lazy(() => import('./admin/AdminDialog').then(m => ({ default: m.AdminDialog })));
 
 interface MarkdownReviewDialogState {
     open: boolean;
@@ -339,10 +344,13 @@ function AppInner() {
         return () => window.clearInterval(intervalId);
     }, [appState.selectedRepoId]);
 
-    // Admin is a full-page route handled by Router.tsx via the #admin hash.
+    // Admin opens as an overlay dialog over the current view. The hash stays the
+    // source of truth — `useAdminDialogRoute` derives "open" from it, so deep
+    // links and browser back/forward drive the dialog too.
     const handleAdminOpen = useCallback(() => {
         location.hash = '#admin';
     }, []);
+    const adminDialog = useAdminDialogRoute();
 
     useEffect(() => {
         const handleOpenMarkdownReview = (event: Event) => {
@@ -434,6 +442,11 @@ function AppInner() {
                         where TopBar keeps the top-right cluster. */}
                     <GlobalStatusDock onAdminOpen={handleAdminOpen} />
                 </div>
+                {adminDialog.open && (
+                    <Suspense fallback={null}>
+                        <AdminDialog open onClose={adminDialog.close} />
+                    </Suspense>
+                )}
                 <FloatingChatManager />
                 <BottomNav />
                 <ToastContainer toasts={toasts} removeToast={removeToast} />

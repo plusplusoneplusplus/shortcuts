@@ -8,8 +8,9 @@
  * so existing importers keep working.
  */
 
-import { useEffect, useLayoutEffect, useCallback, useRef, lazy, Suspense } from 'react';
+import { useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { useApp } from '../contexts/AppContext';
+import { useVisibleDashboardTab } from './useVisibleDashboardTab';
 import { useQueue } from '../contexts/QueueContext';
 import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
@@ -31,10 +32,10 @@ import {
 // importers that reach for them via `layout/Router` keep working unchanged.
 export * from './dashboardRoutes';
 
-const AdminPanel = lazy(() => import('../admin/AdminPanel').then(m => ({ default: m.AdminPanel })));
-// Memory/Skills/Logs/Usage/Models/Servers no longer mount as standalone
-// top-level views — they render embedded inside AdminPanel's right pane.
-// All these tabs fall through to the admin shell so the sidebar stays mounted.
+// Admin (and the tool routes it embeds — memory/skills/logs/stats/servers/
+// dreams-admin) no longer render as top-level views. `App` mounts them in the
+// admin overlay dialog instead, and this router keeps showing whatever view the
+// user was on so it stays mounted (and scrolled) behind the dialog.
 
 function StubView({ id, label }: { id: string; label: string }) {
     return <div id={id}>{label}</div>;
@@ -67,6 +68,9 @@ export function Router() {
     });
     const repoRouteStateRef = useRef(state.repoRouteState);
     const repoTabStateRef = useRef(state.repoTabState);
+    // Admin hashes open the overlay dialog without replacing the page, so the
+    // view to render is the last non-admin tab, not `state.activeTab`.
+    const renderedTab = useVisibleDashboardTab();
     processDeepLinkContextRef.current = {
         queueState,
         selectedRepoId: state.selectedRepoId,
@@ -164,30 +168,14 @@ export function Router() {
         state.settingsSection,
     ]);
 
-    switch (state.activeTab) {
+    // `renderedTab` (above) is the last non-admin view, so it stays mounted —
+    // and keeps its scroll position — behind the admin dialog, and is simply
+    // revealed again on close.
+    switch (renderedTab) {
         case 'repos':
             return <ReposView />;
         case 'wiki':
             return <WikiView />;
-        // The admin shell hosts itself plus the tool views as embedded
-        // right-pane content. All of these dashboard tabs render the exact
-        // same React tree; AdminPanel switches on `state.activeTab` to
-        // decide what to mount in `<main>`. Memory is included here so the
-        // admin sidebar always remains visible on the left.
-        case 'admin':
-        case 'memory':
-        case 'skills':
-        case 'logs':
-        case 'stats':
-        case 'servers':
-        case 'dreams-admin':
-            return (
-                <Suspense fallback={<div className="flex items-center justify-center h-full text-[#888]">Loading…</div>}>
-                    <div className="h-full overflow-hidden" data-testid="admin-scroll-container">
-                        <AdminPanel />
-                    </div>
-                </Suspense>
-            );
         case 'reports':
             return <StubView id="view-reports" label="Reports" />;
         default:

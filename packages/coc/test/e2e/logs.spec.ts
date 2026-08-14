@@ -16,6 +16,10 @@ const { captureEntry, clearLogBuffer } = require('../../dist/server/index');
 
 /** Navigate to the Admin page so the Tools sidebar rows become clickable. */
 async function openAdminTools(page: Page): Promise<void> {
+    // Admin is an overlay dialog. When an admin-shell hash (#logs, #skills, …)
+    // is already routed the sidebar is on screen and the topbar gear sits
+    // behind the backdrop, so opening again is both unnecessary and impossible.
+    if (await page.locator('#view-admin').isVisible()) return;
     await page.click('#admin-toggle');
     await expect(page.locator('#view-admin')).toBeVisible({ timeout: 10000 });
 }

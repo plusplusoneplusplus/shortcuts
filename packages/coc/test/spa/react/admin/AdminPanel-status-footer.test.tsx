@@ -1,7 +1,10 @@
 /**
- * AdminPanel — docks the shared status cluster inside its own left sidebar
- * footer (remote-first shell), so the app-wide GlobalStatusDock stands down and
- * no partial-width empty strip is painted beneath the admin content pane.
+ * AdminPanel — does NOT dock the shared status cluster in its own sidebar.
+ *
+ * Admin is an overlay dialog now, not a page: the view behind the dialog keeps
+ * its own dock (global band or its own sidebar footer), so docking a second
+ * cluster inside the admin sidebar would show two at once — and an admin gear
+ * inside admin. `GlobalStatusDock` correspondingly has no admin stand-down.
  *
  * @vitest-environment jsdom
  */
@@ -44,7 +47,7 @@ beforeEach(() => {
 import { AdminPanel } from '../../../../src/server/spa/client/react/admin/AdminPanel';
 
 describe('AdminPanel — docked status footer', () => {
-    it('renders the docked status footer inside the admin sidebar', async () => {
+    it('renders no docked status footer inside the admin sidebar', async () => {
         await act(async () => {
             render(
                 <AppProvider>
@@ -53,11 +56,10 @@ describe('AdminPanel — docked status footer', () => {
             );
         });
 
-        const footer = screen.getByTestId('docked-status-footer');
         const sidebar = document.querySelector('.ar-sidebar');
         expect(sidebar).not.toBeNull();
-        expect(sidebar!.contains(footer)).toBe(true);
-        // Pinned to the very bottom of the sidebar, after the Restart footer.
-        expect(sidebar!.lastElementChild).toBe(footer);
+        expect(screen.queryByTestId('docked-status-footer')).toBeNull();
+        // The restart cluster is the last thing in the sidebar now.
+        expect(sidebar!.lastElementChild?.className).toContain('ar-sidebar-foot');
     });
 });

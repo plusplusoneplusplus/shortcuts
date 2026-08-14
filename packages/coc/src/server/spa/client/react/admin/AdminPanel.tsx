@@ -24,7 +24,6 @@ import { PromptsPanel } from './PromptsPanel';
 import { ProviderTokensSection } from './ProviderTokensSection';
 import { SettingsCard } from './SettingsCard';
 import { AdminRow, AdminToggle, SourceBadge } from './adminControls';
-import { DockedStatusFooter } from '../layout/DockedStatusFooter';
 
 import { isContainerMode, isServersEnabled } from '../utils/config';
 import { AIProviderPage } from './AIProviderPage';
@@ -330,7 +329,9 @@ export function AdminPanel() {
     });
 
     return (
-        <div id="view-admin" className="admin-redesign">
+        // Bounded, non-scrolling outer container: `.admin-redesign` fills the
+        // dialog body and clips, so only `.ar-main` scrolls.
+        <div id="view-admin" className="admin-redesign" data-testid="admin-scroll-container">
             <div id="admin-page-content" className="ar-shell">
                 {/* ── Sidebar ── */}
                 <aside className="ar-sidebar" aria-label="Admin sections">
@@ -390,11 +391,10 @@ export function AdminPanel() {
                         )}
                     </div>
 
-                    {/* Remote-first shell: dock the status/action cluster in the
-                        admin sidebar's own footer so it lives in the left column
-                        (like the chat view) instead of the app-wide bottom band.
-                        No-ops in classic / mobile, where the topbar keeps it. */}
-                    <DockedStatusFooter />
+                    {/* No status/action cluster here: admin is an overlay dialog,
+                        so the page behind it keeps its own dock (global or
+                        sidebar). Docking a second one in this sidebar would show
+                        two clusters at once — and an admin gear inside admin. */}
                 </aside>
 
                 {/* ── Main pane ── */}

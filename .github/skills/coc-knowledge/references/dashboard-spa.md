@@ -1333,9 +1333,10 @@ the AI Provider page. It is distinct from the per-workspace `DreamsPanel`.
 
 Clicking an embedded tool row dispatches `SET_ACTIVE_TAB` and updates
 `location.hash` to the corresponding top-level route (`#memory`, `#skills`,
-`#dreams-admin`, `#logs`, `#stats`, `#servers`). The Router maps every embedded tool
-tab plus `'admin'` itself to a single `<AdminPanel />` render, so the admin shell
-(sidebar + breadcrumb + right pane) stays mounted across navigation.
+`#dreams-admin`, `#logs`, `#stats`, `#servers`). Every one of those hashes plus
+`'admin'` itself opens the **admin overlay dialog** — see "Admin as an overlay
+dialog" below — so the admin shell (sidebar + breadcrumb + right pane) stays
+mounted across navigation.
 `AdminPanel` switches on `state.activeTab` — when it matches an embedded tool
 route, the right pane mounts the corresponding View embedded inside an
 `.ar-tool-embed` flex column (instead of the standard `.ar-page` card grid).
@@ -1345,6 +1346,58 @@ Clicking an admin/settings row resets the dashboard tab back to `'admin'`,
 unmounts the embed, and renders the standard admin card content.
 Each tool's internal sub-tab/hash scheme (e.g. `#skills/installed`,
 `#logs?sessionId=…`) is unchanged.
+
+### Admin as an overlay dialog
+
+Admin is a dialog, not a page. The gear (`#admin-toggle` in the topbar cluster,
+`sidebar-admin-toggle` in the docked sidebar cluster) sets `location.hash` to
+`#admin`; nothing navigates away.
+
+- `admin/adminDialogRoute.ts` is the pure policy: `ADMIN_SHELL_TABS` (the seven
+  tabs the shell owns — `admin`, `memory`, `skills`, `logs`, `stats`, `servers`,
+  `dreams-admin`), `isAdminShellTab`, `isAdminShellHash`, and
+  `resolveAdminCloseHash`.
+- `admin/useAdminDialogRoute.ts` **derives** `open` from `state.activeTab` rather
+  than holding React state, so deep links (`#admin/settings/appearance`,
+  `#admin/database/processes?page=2`) and browser back/forward drive the dialog
+  for free. It records the last non-admin `location.hash` and `close()` restores
+  it, falling back to `#repos` on a cold deep link.
+- `App.tsx` lazy-mounts `<AdminDialog>` (keeping the large admin shell out of the
+  initial bundle); `admin/AdminDialog.tsx` puts `AdminPanel` inside `ui/Dialog`
+  with `max-w-[1100px] h-[85vh]`, `dense`, and a `renderHeader` that is just a
+  `×` row — `AdminPanel` owns all interior chrome.
+- `layout/Router.tsx` has **no** admin branch. While an admin hash is routed it
+  keeps rendering the last non-admin tab, so the chat/notes/repo view underneath
+  stays mounted and keeps its scroll position, and is simply revealed on close.
+  That tab comes from `layout/useVisibleDashboardTab.ts`, the shared "what is
+  actually on screen" hook (last non-admin tab, seeded with `repos`).
+- Status dock: the admin sidebar hosts **no** `DockedStatusFooter` any more — the
+  page behind the dialog keeps its own dock, and `GlobalStatusDock` therefore has
+  no admin stand-down. Its remaining sub-tab stand-downs are evaluated against
+  `useVisibleDashboardTab()`, not `state.activeTab`, so opening admin over Notes
+  (or Settings / Git / PRs) doesn't flip them off and paint a second dock.
+
+Hash parsing is untouched: `dashboardRoutes.ts` (`parseAdminSubTab`,
+`parseSettingsSubTabFromHash`, `parseAdminDatabaseDeepLink`) and
+`adminNavigation.ts` still own routing and nav policy.
+
+**Writing tests against admin.** Two consequences of admin being modal trip up
+E2E specs written for the old full page (`test/e2e/admin-dialog.spec.ts` covers
+the dialog itself):
+
+- While the dialog is open the page chrome — topbar tabs, hamburger, bottom nav —
+  is behind the backdrop and cannot be clicked. Leaving admin means Escape, the
+  `×`, a backdrop click, or setting `location.hash` directly.
+- Any admin-shell hash (`#logs`, `#skills`, `#memory`, …) already has the dialog
+  open, so clicking `#admin-toggle` to "go to admin" times out. Guard the gear
+  click with `if (await page.locator('#view-admin').isVisible()) return;`.
+- Opening admin no longer unmounts the view underneath — that is the whole point
+  — so it can't be used to make another view go away. Navigate to a real
+  non-admin tab (`location.hash = '#wiki'`) instead.
+
+Below the shell's 600px container breakpoint the sidebar collapses into
+`.ar-mobile-tab-select`; the nav buttons still exist but are hidden, so at phone
+width sections are reached with `selectOption('settings:appearance')` etc.
 
 ### Skills Config panel & folder-source grouping
 

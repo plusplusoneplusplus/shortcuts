@@ -94,6 +94,12 @@ test.describe('Mobile Navigation', () => {
         // skills button should exist (suppress unused-var lint)
         await expect(skillsBtn).toBeVisible();
 
+        // Skills and Memory are admin tool views, which render inside the admin
+        // dialog — fullscreen on mobile, so it covers the bottom nav. Close it
+        // before tapping the next entry.
+        await page.keyboard.press('Escape');
+        await expect(page.locator('#admin-dialog')).toHaveCount(0);
+
         // Tap Memory
         await memoryBtn.tap();
         await expect(page.locator('#view-memory')).toBeVisible();
