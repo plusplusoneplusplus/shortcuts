@@ -62,6 +62,12 @@ export interface NotesTreeProps {
     onRenameCommit?: (node: NoteTreeNode, newName: string) => void;
     /** Cancel the inline rename (Esc). */
     onRenameCancel?: () => void;
+    /**
+     * `data-testid` for the root `role="tree"` element. Stacked root sections
+     * pass a per-section id so several trees stay addressable; the single-tree
+     * sidebar keeps the default.
+     */
+    rootTestId?: string;
 }
 
 function hasNodeUpdate(node: NoteTreeNode, isNoteUpdated?: (node: NoteTreeNode) => boolean): boolean {
@@ -92,9 +98,10 @@ export function NotesTree({
     onStartRename,
     onRenameCommit,
     onRenameCancel,
+    rootTestId = 'notes-tree',
 }: NotesTreeProps) {
     return (
-        <div role="tree" data-testid={depth === 0 ? 'notes-tree' : undefined}>
+        <div role="tree" data-testid={depth === 0 ? rootTestId : undefined}>
             {nodes.map(node => {
                 if (visiblePaths && !visiblePaths.has(node.path)) return null;
 

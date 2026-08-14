@@ -162,7 +162,7 @@ export function NotesView({ workspaceId, sourceSelectionId, initialNotePath, def
 
     // ── Notes roots (multi-root support) ────────────────────────────────────
 
-    const { roots, selectedRootId, isDefaultRoot, selectedRootLabel, selectRoot, refreshRoots } = useNotesRoots(workspaceId);
+    const { roots, selectedRootId, isDefaultRoot, selectRoot, refreshRoots } = useNotesRoots(workspaceId);
 
     // Root param for API calls (undefined = default managed root)
     const rootParam = selectedRootId !== 'default' ? selectedRootId : undefined;
@@ -655,7 +655,6 @@ export function NotesView({ workspaceId, sourceSelectionId, initialNotePath, def
                         markSeenRef={markSeenRef}
                         isDefaultRoot={isDefaultRoot}
                         selectedRootId={selectedRootId}
-                        selectedRootLabel={selectedRootLabel}
                         roots={roots}
                         onSelectRoot={selectRoot}
                         onRootsChanged={refreshRoots}

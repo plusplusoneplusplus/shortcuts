@@ -19,8 +19,11 @@ import { Link } from '@tiptap/extension-link';
 import { Placeholder } from '@tiptap/extension-placeholder';
 import { Table } from '@tiptap/extension-table';
 import { TableRow } from '@tiptap/extension-table-row';
-import { TableCell } from '@tiptap/extension-table-cell';
-import { TableHeader } from '@tiptap/extension-table-header';
+import {
+    TableCellWithWrap,
+    TableHeaderWithWrap,
+} from './extensions/tableColumnWrap';
+import { TableReorder } from './extensions/tableReorder';
 import { Highlight } from '@tiptap/extension-highlight';
 import { FindAndReplace } from '@tiptap/extension-find-and-replace';
 import { TextAlign } from '@tiptap/extension-text-align';
@@ -46,6 +49,12 @@ import { SidenoteRefExtension } from './extensions/sidenoteRefExtension';
 import { FilePathNodeExtension } from './filePathNodeExtension';
 import { useLinkHandlers } from '../../../hooks/useLinkHandlers';
 import { openLink } from '../../../utils/link-handler';
+// Every rule in this stylesheet is scoped to `.note-editor .ProseMirror`, so it
+// belongs to the editor, not to the note page that happens to host it. Imported
+// here (rather than only from NoteEditor) so a mount outside Notes — the
+// markdown review dialog's rich view, for one — still gets the styles even if
+// the bundler ever code-splits the two apart.
+import './noteEditor.css';
 
 // ── Props ───────────────────────────────────────────────────────────────────
 
@@ -225,10 +234,33 @@ export function RichEditorCore({
                 },
             }),
             Placeholder.configure({ placeholder }),
-            Table.configure({ resizable: false }),
+            // Column resizing (AC-01). `resizable: true` installs ProseMirror's
+            // `columnResizing` plugin, which owns the drag: it renders the
+            // `.column-resize-handle` decoration, puts `.resize-cursor` on the
+            // editor root while dragging, and writes the new width into each
+            // cell's `colwidth` attribute on mouseup. Its TableView also wraps
+            // the table in `div.tableWrapper`, which the CSS scrolls (AC-12).
+            // `renderWrapper` stays off so `getHTML()` keeps emitting a bare
+            // `<table>` for the markdown serializer.
+            //
+            // `cellMinWidth` is 60 rather than tiptap's 25 because with our
+            // border-box cells (1px border + 8/10px padding) 25px leaves ~3px of
+            // content box — a column you can drag into uselessness.
+            Table.configure({
+                resizable: true,
+                handleWidth: 5,
+                cellMinWidth: 60,
+                lastColumnResizable: true,
+            }),
             TableRow,
-            TableCell,
-            TableHeader,
+            // Stock TableCell/TableHeader plus two attributes: a
+            // `backgroundColor` token (per-cell fill) and a `wrap` mode (set
+            // per column by the toolbar toggle); everything else is stock.
+            TableCellWithWrap,
+            TableHeaderWithWrap,
+            // Row/column move commands. prosemirror-tables has them;
+            // @tiptap/extension-table does not expose them.
+            TableReorder,
             Highlight.configure({ multicolor: true }),
             TextAlign.configure({ types: ['heading', 'paragraph'] }),
             IndentExtension,
@@ -363,7 +395,13 @@ export function RichEditorCore({
 
     return (
         <>
-            <EditorContent editor={editor} />
+            {/* `note-editor` is the CSS scope every rule in noteEditor.css hangs
+                off. NoteEditor also puts it on its own container, but a bare
+                mount (the markdown review dialog's rich view) has no such
+                ancestor, and without it the table cell fills — which render as
+                `background-color: var(--note-table-bg-*)`, and the palette is
+                declared on that scope — resolve to nothing and disappear. */}
+            <EditorContent editor={editor} className="note-editor" />
             <YouTubePopupDialog videoId={popupVideoId} onClose={() => setPopupVideoId(null)} />
             <PdfPopupDialog
                 pdf={popupPdf}

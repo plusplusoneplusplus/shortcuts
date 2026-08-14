@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import { TABLE_CELL_COLORS } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/tableCellBackground';
 
 const cssPath = resolve(
     __dirname,
@@ -171,6 +172,94 @@ describe('noteEditor.css theme consistency', () => {
     });
 });
 
+describe('noteEditor.css resizable tables', () => {
+    const tableRule = () =>
+        css.match(/\.note-editor\s+\.ProseMirror\s+table\s*\{[^}]+\}/)?.[0];
+    const handleRule = () =>
+        css.match(
+            /\.note-editor\s+\.ProseMirror\s+\.column-resize-handle\s*\{[^}]+\}/,
+        )?.[0];
+
+    it('lays tables out with table-layout: fixed, which column resizing requires (AC-10)', () => {
+        // With `auto` the browser recomputes column widths from cell content and
+        // treats the plugin's <colgroup> widths as suggestions, so a drag
+        // appears to do nothing or snaps back.
+        expect(tableRule()).toBeDefined();
+        expect(tableRule()).toMatch(/table-layout:\s*fixed/);
+    });
+
+    it('does not pin the table to width: 100%, which would redistribute every dragged pixel (AC-10)', () => {
+        expect(tableRule()).not.toMatch(/[^-]width:\s*100%/);
+        // …but an unsized table should still fill the note body.
+        expect(tableRule()).toMatch(/min-width:\s*100%/);
+    });
+
+    it('keeps the resize handle visible instead of the old opacity: 0 stub (AC-02)', () => {
+        expect(handleRule()).toBeDefined();
+        expect(handleRule()).not.toMatch(/opacity:\s*0\s*;/);
+        expect(handleRule()).toMatch(/cursor:\s*col-resize/);
+    });
+
+    it('keeps the col-resize cursor for the whole drag via the plugin .resize-cursor class (AC-02)', () => {
+        const rule = css.match(
+            /\.note-editor\s+\.ProseMirror\.resize-cursor\s*\{[^}]+\}/,
+        );
+        expect(rule).not.toBeNull();
+        expect(rule![0]).toMatch(/cursor:\s*col-resize/);
+    });
+
+    it('gives the resize handle a dark-mode color (AC-11)', () => {
+        const rule = css.match(
+            /\.dark\s+\.note-editor\s+\.ProseMirror\s+\.column-resize-handle\s*\{[^}]+\}/,
+        );
+        expect(rule).not.toBeNull();
+        expect(rule![0]).toMatch(/background:\s*#/);
+    });
+
+    it('scrolls a table wider than the note body inside the plugin tableWrapper (AC-12)', () => {
+        const rule = css.match(
+            /\.note-editor\s+\.ProseMirror\s+\.tableWrapper\s*\{[^}]+\}/,
+        );
+        expect(rule).not.toBeNull();
+        expect(rule![0]).toMatch(/overflow-x:\s*auto/);
+    });
+
+    it('gives a header column a spine border so it does not read as a header row (AC-13)', () => {
+        const rule = css.match(
+            /\.note-editor\s+\.ProseMirror\s+th:first-child\s*\{[^}]+\}/,
+        );
+        expect(rule).not.toBeNull();
+        expect(rule![0]).toMatch(/border-right:\s*2px\s+solid\s+#e0e0e0/);
+    });
+
+    it('gives the header-column spine a dark-mode counterpart (AC-13)', () => {
+        const rule = css.match(
+            /\.dark\s+\.note-editor\s+\.ProseMirror\s+th:first-child\s*\{[^}]+\}/,
+        );
+        expect(rule).not.toBeNull();
+        expect(rule![0]).toMatch(/border-right:\s*2px\s+solid\s+#3c3c3c/);
+    });
+
+    it('does not center header text, which would misalign a header column (AC-13)', () => {
+        // The shared th/td rule sets `text-align: left`; a th-only override to
+        // center would break the "attribute down the left" reading.
+        const thRule = css.match(
+            /\.note-editor\s+\.ProseMirror\s+th\s*\{[^}]+\}/,
+        );
+        expect(thRule).not.toBeNull();
+        expect(thRule![0]).not.toMatch(/text-align:\s*center/);
+    });
+
+    it('keeps cells position: relative and border-box so the handle anchors and dragged px match rendered px', () => {
+        const cellRule = css.match(
+            /\.note-editor\s+\.ProseMirror\s+th,\s*\.note-editor\s+\.ProseMirror\s+td\s*\{[^}]+\}/,
+        );
+        expect(cellRule).not.toBeNull();
+        expect(cellRule![0]).toMatch(/position:\s*relative/);
+        expect(cellRule![0]).toMatch(/box-sizing:\s*border-box/);
+    });
+});
+
 describe('noteEditor.css indentation scale (data-indent)', () => {
     // The Notes indentation feature reuses ONE CSS scale for paragraphs,
     // headings, AND block-level visual embeds (image, pdfBlock, mapBlock,
@@ -235,5 +324,219 @@ describe('noteEditor.css indentation scale (data-indent)', () => {
 
     it('gives find & replace matches a dark-mode treatment via the .dark class', () => {
         expect(css).toMatch(/\.dark\s+\.note-editor\s+\.ProseMirror\s+\.find-and-replace-result\s*\{/);
+    });
+});
+
+describe('noteEditor.css table cell fill palette (AC-08)', () => {
+    // `.note-editor .ProseMirror { … }` appears several times in the file (base
+    // typography, the dark color override, …); the palette lives in whichever
+    // one declares the variables, so match on that rather than on ordering.
+    const blocks = (selector: RegExp) =>
+        Array.from(css.matchAll(/([^{}]*)\{([^}]*)\}/g))
+            // The capture also swallows any preceding comment, so compare on the
+            // last line — the selector itself.
+            .filter(m => selector.test(m[1].trim().split('\n').pop()!.trim()) && m[2].includes('--note-table-bg-'))
+            .map(m => m[2]);
+    const light = () => blocks(/^\.note-editor\s+\.ProseMirror$/)[0];
+    const dark = () => blocks(/^\.dark\s+\.note-editor\s+\.ProseMirror$/)[0];
+
+    it('defines every palette token in the light block', () => {
+        expect(light()).toBeDefined();
+        for (const { token } of TABLE_CELL_COLORS) {
+            expect(light()).toContain(`--note-table-bg-${token}:`);
+        }
+    });
+
+    it('redefines every palette token in the .dark block', () => {
+        expect(dark()).toBeDefined();
+        for (const { token } of TABLE_CELL_COLORS) {
+            expect(dark()).toContain(`--note-table-bg-${token}:`);
+        }
+    });
+
+    it('gives each token a different value per theme, or the fill would be unreadable in one of them', () => {
+        const valueOf = (rule: string | undefined, token: string) =>
+            rule?.match(new RegExp(`--note-table-bg-${token}:\\s*([^;]+);`))?.[1]?.trim();
+        for (const { token, swatch } of TABLE_CELL_COLORS) {
+            const lightValue = valueOf(light(), token);
+            const darkValue = valueOf(dark(), token);
+            expect(lightValue).toBe(swatch);
+            expect(darkValue).toBeDefined();
+            expect(darkValue).not.toBe(lightValue);
+        }
+    });
+
+    // --- Contrast (goal-doc risk 4) ---
+    //
+    // The dark hexes started life as guesses. These assertions are the eyeball
+    // pass made mechanical: relative luminance and WCAG contrast straight off
+    // the values in the stylesheet, so a future "let's brighten purple a bit"
+    // cannot quietly push a fill under AA or make it invisible.
+
+    const relLuminance = (hex: string) => {
+        const channels = [1, 3, 5]
+            .map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
+            .map(v => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+        return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+    };
+    const contrast = (a: string, b: string) => {
+        const [hi, lo] = [relLuminance(a), relLuminance(b)].sort((x, y) => y - x);
+        return (hi + 0.05) / (lo + 0.05);
+    };
+    const paletteOf = (rule: string | undefined) =>
+        TABLE_CELL_COLORS.map(({ token }) => {
+            const value = rule?.match(new RegExp(`--note-table-bg-${token}:\\s*(#[0-9a-fA-F]{6});`))?.[1];
+            expect(value, `--note-table-bg-${token}`).toBeDefined();
+            return { token, value: value! };
+        });
+    // The color a rule sets, given the selector list that opens it.
+    const colorOf = (selector: RegExp) => {
+        const rule = css.match(selector);
+        expect(rule, String(selector)).not.toBeNull();
+        return rule![0].match(/color:\s*(#[0-9a-fA-F]{6})/)![1];
+    };
+
+    it('keeps dark-mode body text at AA on every fill', () => {
+        const bodyInk = colorOf(/\.dark\s+\.note-editor\s+\.ProseMirror\s*\{[^}]+\}/);
+        for (const { token, value } of paletteOf(dark())) {
+            expect(contrast(value, bodyInk), `${token} under ${bodyInk}`).toBeGreaterThanOrEqual(4.5);
+        }
+    });
+
+    it('keeps light-mode body text at AA on every fill', () => {
+        const bodyInk = colorOf(/\.note-editor\s+\.ProseMirror\s*\{[^}]+\}/);
+        for (const { token, value } of paletteOf(light())) {
+            expect(contrast(value, bodyInk), `${token} under ${bodyInk}`).toBeGreaterThanOrEqual(4.5);
+        }
+    });
+
+    it('makes a dark fill visible against an unfilled cell and against the header grey', () => {
+        // A fill nobody can see is the whole feature failing silently. #1e1e1e
+        // is the dark editor surface an unfilled td sits on; #252526 is the th
+        // grey a filled header cell sits next to.
+        for (const { token, value } of paletteOf(dark())) {
+            expect(contrast(value, '#1e1e1e'), `${token} vs unfilled cell`).toBeGreaterThan(1.5);
+            expect(contrast(value, '#252526'), `${token} vs header grey`).toBeGreaterThan(1.35);
+        }
+    });
+
+    it('gives the six dark fills near-equal luminance so none reads as stronger than the others', () => {
+        // Uneven luminance was the actual defect in the first pass: yellow at
+        // 1.69:1 against an unfilled cell looked filled, purple at 1.33:1 looked
+        // like a glitch. Same weight, different hue.
+        const luminances = paletteOf(dark()).map(({ value }) => relLuminance(value));
+        const spread = Math.max(...luminances) / Math.min(...luminances);
+        expect(spread).toBeLessThan(1.1);
+    });
+
+    it('recolors links inside a filled cell so they clear AA on every fill, in both themes', () => {
+        // The default link blues were chosen against the plain editor surface
+        // and miss 4.5:1 on the fills in both themes — light #0078d4 bottoms out
+        // at 2.9:1 on purple, dark #4ea6ea at 4.0:1. Each theme scopes a
+        // corrected link color to [data-bg] cells; the fills stay put.
+        const cases = [
+            {
+                theme: 'light',
+                rule: /\.note-editor\s+\.ProseMirror\s+td\[data-bg\]\s+a,\s*\n\s*\.note-editor\s+\.ProseMirror\s+th\[data-bg\]\s+a\s*\{[^}]+\}/,
+                palette: light(),
+            },
+            {
+                theme: 'dark',
+                rule: /\.dark\s+\.note-editor\s+\.ProseMirror\s+td\[data-bg\]\s+a,\s*\n\s*\.dark\s+\.note-editor\s+\.ProseMirror\s+th\[data-bg\]\s+a\s*\{[^}]+\}/,
+                palette: dark(),
+            },
+        ];
+        for (const { theme, rule, palette } of cases) {
+            const link = colorOf(rule);
+            for (const { token, value } of paletteOf(palette)) {
+                expect(contrast(value, link), `${theme} link on ${token}`).toBeGreaterThanOrEqual(4.5);
+            }
+        }
+    });
+
+    it('scopes the filled-cell link color to cells that actually carry a fill', () => {
+        // If the selector lost its [data-bg] the corrected color would apply to
+        // every table link, including unfilled cells where it is wrong.
+        const filledLinkRules = css.match(/\.ProseMirror\s+t[dh]\[data-bg\]\s+a/g);
+        expect(filledLinkRules).not.toBeNull();
+        expect(filledLinkRules!.length).toBe(4); // td + th, light + dark
+    });
+
+    it('leaves the default header grey as a plain element rule so an inline fill outranks it (AC-07)', () => {
+        // The fill is an inline style on the <th>; inline specificity beats this
+        // stylesheet rule with no extra CSS. Promoting it to a more specific or
+        // !important rule would silently break header fills.
+        const rule = css.match(/\.note-editor\s+\.ProseMirror\s+th\s*\{[^}]+\}/);
+        expect(rule).not.toBeNull();
+        expect(rule![0]).toMatch(/background:\s*#f3f3f3/);
+        expect(rule![0]).not.toContain('!important');
+
+        const darkRule = css.match(/\.dark\s+\.note-editor\s+\.ProseMirror\s+th\s*\{[^}]+\}/);
+        expect(darkRule).not.toBeNull();
+        expect(darkRule![0]).not.toContain('!important');
+    });
+});
+
+describe('noteEditor.css per-column no-wrap (AC-08, AC-12, AC-13)', () => {
+    const nowrapRule = () =>
+        css.match(
+            /\.note-editor\s+\.ProseMirror\s+td\[data-wrap='nowrap'\]\s*>\s*\*,\s*\n\s*\.note-editor\s+\.ProseMirror\s+th\[data-wrap='nowrap'\]\s*>\s*\*\s*\{[^}]+\}/,
+        )?.[0];
+
+    it('clips a no-wrap cell to one line with an ellipsis (AC-12)', () => {
+        expect(nowrapRule()).toBeDefined();
+        expect(nowrapRule()!).toMatch(/white-space:\s*nowrap/);
+        expect(nowrapRule()!).toMatch(/overflow:\s*hidden/);
+        expect(nowrapRule()!).toMatch(/text-overflow:\s*ellipsis/);
+    });
+
+    it('caps the width from a CSS variable with a fallback default (AC-12)', () => {
+        // The fallback is what makes the ellipsis work on a column nobody has
+        // resized. The variable is the hook for feeding a real column width in
+        // later — hard-coding the cap would close that off.
+        expect(nowrapRule()!).toMatch(
+            /max-width:\s*var\(--note-table-nowrap-max,\s*[^)]+\)/,
+        );
+    });
+
+    it('constrains the cell block children, not the cell itself (AC-12)', () => {
+        // `max-width` on a td is largely ignored by browsers, and text-overflow
+        // needs a bounded box — so the selector must reach the inner block.
+        // Losing the `> *` would make the rule silently do nothing.
+        const cellOnly = css.match(
+            /\.note-editor\s+\.ProseMirror\s+td\[data-wrap='nowrap'\]\s*\{/,
+        );
+        expect(cellOnly).toBeNull();
+        expect(nowrapRule()!).toContain('> *');
+    });
+
+    it('applies to header cells too, so a no-wrap column clips top to bottom (AC-02)', () => {
+        expect(nowrapRule()!).toContain("th[data-wrap='nowrap']");
+        expect(nowrapRule()!).toContain("td[data-wrap='nowrap']");
+    });
+
+    it('introduces no color, so dark mode needs no counterpart rule (AC-13)', () => {
+        expect(nowrapRule()!).not.toMatch(/color:/);
+        expect(nowrapRule()!).not.toMatch(/background/);
+        expect(css).not.toMatch(/\.dark[^{]*\[data-wrap='nowrap'\]/);
+    });
+
+    it('reaches a wide table through the scrolling wrapper rather than clipping it (AC-08)', () => {
+        // AC-08 asked for `overflow: hidden` to come off the table element. The
+        // column-resize work got there another way: the plugin's `.tableWrapper`
+        // scrolls, so nothing is unreachable, and the table keeps `overflow:
+        // hidden` to clip the absolutely positioned selection tint and resize
+        // handle to its own box. Both halves are asserted here so the intent
+        // behind AC-08 — no silently unreachable columns — stays pinned.
+        const wrapper = css.match(
+            /\.note-editor\s+\.ProseMirror\s+\.tableWrapper\s*\{[^}]+\}/,
+        );
+        expect(wrapper).not.toBeNull();
+        expect(wrapper![0]).toMatch(/overflow-x:\s*auto/);
+
+        const table = css.match(
+            /\.note-editor\s+\.ProseMirror\s+table\s*\{[^}]+\}/,
+        );
+        expect(table![0]).not.toMatch(/overflow-x:\s*(hidden|clip)/);
     });
 });

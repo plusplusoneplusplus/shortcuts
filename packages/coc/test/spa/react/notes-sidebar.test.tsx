@@ -975,127 +975,93 @@ describe('NotesSidebar', () => {
         expect(processIds.includes('queue-abc-123')).toBe(false);
     });
 
-    // ── Root selector dropdown ───────────────────────────────────────────
+    // ── Root management in the section headers ───────────────────────────
 
-    it('plain root click switches the active root and closes the dropdown', async () => {
+    it('drops the root dropdown and keeps a static Notes title with several roots', async () => {
+        const { findByTestId, queryByTestId, container } = renderSidebar(null, vi.fn(), {
+            roots: ROOTS,
+            selectedRootId: 'default',
+            onSelectRoot: vi.fn(),
+        });
+        await findByTestId('notes-tree-default');
+
+        expect(queryByTestId('notes-root-selector')).toBeNull();
+        expect(queryByTestId('notes-root-dropdown')).toBeNull();
+        expect(container.querySelector('[data-testid="notes-sidebar"]')!.textContent).toContain('Notes');
+    });
+
+    it('reports the focused section upwards so the persisted root selection follows', async () => {
         const onSelectRoot = vi.fn();
+        const { findByTestId } = renderSidebar(null, vi.fn(), {
+            roots: [ROOTS[0], ROOTS[1]],
+            selectedRootId: 'default',
+            onSelectRoot,
+        });
+        // Open the second section, then click a page inside it.
+        fireEvent.click(await findByTestId('notes-section-header-docs-toggle'));
+        const tree = await findByTestId('notes-tree-docs');
+        const notebook = await waitFor(() => {
+            const el = tree.querySelector('[data-testid="notes-tree-item-Notebook1"]');
+            expect(el).toBeTruthy();
+            return el!;
+        });
+        fireEvent.click(notebook);
+        const page = await waitFor(() => {
+            const el = tree.querySelector('[data-testid="notes-tree-item-TopPage"]');
+            expect(el).toBeTruthy();
+            return el!;
+        });
+        fireEvent.click(page);
+
+        await waitFor(() => expect(onSelectRoot).toHaveBeenCalledWith('docs'));
+    });
+
+    it('removes one root from its section overflow, refreshes roots, and never deletes note files', async () => {
+        const onRootsChanged = vi.fn().mockResolvedValue(undefined);
+        const { findByTestId } = renderSidebar(null, vi.fn(), {
+            roots: ROOTS,
+            selectedRootId: 'default',
+            onSelectRoot: vi.fn(),
+            onRootsChanged,
+        });
+        await findByTestId('notes-tree-default');
+
+        fireEvent.click(await findByTestId('notes-section-header-docs-menu-btn'));
+        await act(async () => {
+            fireEvent.click(await findByTestId('notes-section-header-docs-action-remove-root'));
+        });
+
+        await waitFor(() => expect(mockRemoveRoot).toHaveBeenCalledWith('ws1', 'docs'));
+        expect(mockRemoveRoot).toHaveBeenCalledTimes(1);
+        expect(mockRemoveRoot).not.toHaveBeenCalledWith('ws1', 'default');
+        expect(mockDeleteNode).not.toHaveBeenCalled();
+        expect(onRootsChanged).toHaveBeenCalledOnce();
+        expect(mockAddToast).toHaveBeenCalledWith('Removed note collection', 'success');
+    });
+
+    it('disables Remove root for the default and task-managed roots', async () => {
         const { findByTestId, queryByTestId } = renderSidebar(null, vi.fn(), {
             roots: ROOTS,
             selectedRootId: 'default',
-            selectedRootLabel: 'Notes',
-            onSelectRoot,
+            onSelectRoot: vi.fn(),
         });
-        await findByTestId('notes-tree');
+        await findByTestId('notes-tree-default');
 
-        fireEvent.click(await findByTestId('notes-root-selector'));
-        fireEvent.click(await findByTestId('notes-root-option-docs'));
+        fireEvent.click(await findByTestId('notes-section-header-default-menu-btn'));
+        const defaultRemove = await findByTestId('notes-section-header-default-action-remove-root');
+        expect(defaultRemove).toBeDisabled();
+        expect(defaultRemove.getAttribute('title')).toContain('Default managed root');
+        expect(queryByTestId('notes-section-header-default-protected')).toBeTruthy();
 
-        expect(onSelectRoot).toHaveBeenCalledWith('docs');
-        await waitFor(() => expect(queryByTestId('notes-root-dropdown')).toBeNull());
-    });
+        fireEvent.click(await findByTestId('notes-section-header-task:primary-menu-btn'));
+        const taskRemove = await findByTestId('notes-section-header-task:primary-action-remove-root');
+        expect(taskRemove).toBeDisabled();
+        expect(taskRemove.getAttribute('title')).toContain('Task/Plans settings');
+        expect(queryByTestId('notes-section-header-task:primary-protected')).toBeTruthy();
 
-    it('ctrl/cmd-click toggles additional roots without switching roots or closing the dropdown', async () => {
-        const onSelectRoot = vi.fn();
-        const { findByTestId, queryByTestId } = renderSidebar(null, vi.fn(), {
-            roots: ROOTS,
-            selectedRootId: 'default',
-            selectedRootLabel: 'Notes',
-            onSelectRoot,
-        });
-        await findByTestId('notes-tree');
-
-        fireEvent.click(await findByTestId('notes-root-selector'));
-        fireEvent.click(await findByTestId('notes-root-option-docs'), { ctrlKey: true });
-        fireEvent.click(await findByTestId('notes-root-option-plans'), { metaKey: true });
-
-        expect(onSelectRoot).not.toHaveBeenCalled();
-        expect(queryByTestId('notes-root-dropdown')).toBeTruthy();
-        expect((await findByTestId('notes-root-option-docs')).getAttribute('data-removal-selected')).toBe('true');
-        expect((await findByTestId('notes-root-option-plans')).getAttribute('data-removal-selected')).toBe('true');
-        expect(queryByTestId('notes-root-selected-check-docs')).toBeTruthy();
-        expect(queryByTestId('notes-root-selected-check-plans')).toBeTruthy();
-
-        fireEvent.click(await findByTestId('notes-root-option-docs'), { ctrlKey: true });
-        expect((await findByTestId('notes-root-option-docs')).getAttribute('data-removal-selected')).toBeNull();
-        expect((await findByTestId('notes-root-option-plans')).getAttribute('data-removal-selected')).toBe('true');
-    });
-
-    it('shift-click selects a contiguous range of additional roots and keeps the dropdown open', async () => {
-        const onSelectRoot = vi.fn();
-        const { findByTestId, queryByTestId } = renderSidebar(null, vi.fn(), {
-            roots: ROOTS,
-            selectedRootId: 'default',
-            selectedRootLabel: 'Notes',
-            onSelectRoot,
-        });
-        await findByTestId('notes-tree');
-
-        fireEvent.click(await findByTestId('notes-root-selector'));
-        fireEvent.click(await findByTestId('notes-root-option-docs'), { ctrlKey: true });
-        fireEvent.click(await findByTestId('notes-root-option-archive'), { shiftKey: true });
-
-        expect(onSelectRoot).not.toHaveBeenCalled();
-        expect(queryByTestId('notes-root-dropdown')).toBeTruthy();
-        expect((await findByTestId('notes-root-option-docs')).getAttribute('data-removal-selected')).toBe('true');
-        expect((await findByTestId('notes-root-option-plans')).getAttribute('data-removal-selected')).toBe('true');
-        expect((await findByTestId('notes-root-option-archive')).getAttribute('data-removal-selected')).toBe('true');
-    });
-
-    it('keeps the default root protected when a shift range includes it', async () => {
-        const onSelectRoot = vi.fn();
-        const { findByTestId, queryByTestId } = renderSidebar(null, vi.fn(), {
-            roots: ROOTS,
-            selectedRootId: 'default',
-            selectedRootLabel: 'Notes',
-            onSelectRoot,
-        });
-        await findByTestId('notes-tree');
-
-        fireEvent.click(await findByTestId('notes-root-selector'));
-        fireEvent.click(await findByTestId('notes-root-option-plans'), { shiftKey: true });
-
-        expect(onSelectRoot).not.toHaveBeenCalled();
-        expect(queryByTestId('notes-root-dropdown')).toBeTruthy();
-        expect((await findByTestId('notes-root-option-default')).getAttribute('data-removal-selected')).toBeNull();
-        expect((await findByTestId('notes-root-option-docs')).getAttribute('data-removal-selected')).toBe('true');
-        expect((await findByTestId('notes-root-option-plans')).getAttribute('data-removal-selected')).toBe('true');
-        expect(queryByTestId('notes-root-protected-default')).toBeTruthy();
-    });
-
-    it('shows task-derived roots as protected and excludes them from modifier and range removal', async () => {
-        const onSelectRoot = vi.fn();
-        const protectedRangeRoots: NotesRootEntry[] = [
-            ROOTS[0],
-            ROOTS[1],
-            ROOTS[4],
-            ROOTS[2],
-        ];
-        const { findByTestId, queryByTestId } = renderSidebar(null, vi.fn(), {
-            roots: protectedRangeRoots,
-            selectedRootId: 'default',
-            selectedRootLabel: 'Notes',
-            onSelectRoot,
-        });
-        await findByTestId('notes-tree');
-
-        fireEvent.click(await findByTestId('notes-root-selector'));
-        const taskRoot = await findByTestId('notes-root-option-task:primary');
-        expect(taskRoot.textContent).toContain('Task Plans');
-        expect(taskRoot.getAttribute('title')).toContain('Task/Plans settings');
-        expect(queryByTestId('notes-root-protected-task:primary')).toBeTruthy();
-
-        fireEvent.click(taskRoot, { ctrlKey: true });
-        expect(taskRoot.getAttribute('data-removal-selected')).toBeNull();
-        expect(onSelectRoot).not.toHaveBeenCalled();
-        expect(queryByTestId('notes-root-remove-selected')).toBeNull();
-
-        fireEvent.click(await findByTestId('notes-root-option-docs'), { ctrlKey: true });
-        fireEvent.click(await findByTestId('notes-root-option-plans'), { shiftKey: true });
-
-        expect((await findByTestId('notes-root-option-docs')).getAttribute('data-removal-selected')).toBe('true');
-        expect(taskRoot.getAttribute('data-removal-selected')).toBeNull();
-        expect((await findByTestId('notes-root-option-plans')).getAttribute('data-removal-selected')).toBe('true');
-        expect((await findByTestId('notes-root-remove-selected')).textContent).toContain('(2)');
+        fireEvent.click(defaultRemove);
+        fireEvent.click(taskRemove);
+        expect(mockRemoveRoot).not.toHaveBeenCalled();
     });
 
     it('keeps default-root-only AI creation unavailable with a clear reason in external collections', async () => {
@@ -1103,10 +1069,9 @@ describe('NotesSidebar', () => {
             isDefaultRoot: false,
             roots: ROOTS,
             selectedRootId: 'task:primary',
-            selectedRootLabel: 'Task Plans',
             onSelectRoot: vi.fn(),
         });
-        await findByTestId('notes-tree');
+        await findByTestId('notes-tree-task:primary');
 
         fireEvent.click(await findByTestId('add-note-btn'));
         const aiCreate = await findByTestId('add-note-ai-create');
@@ -1116,57 +1081,20 @@ describe('NotesSidebar', () => {
         expect(queryByTestId('ai-create-note-textarea')).toBeNull();
     });
 
-    it('bulk-removes selected additional roots, refreshes roots, and never deletes note files', async () => {
-        const onRootsChanged = vi.fn().mockResolvedValue(undefined);
-        const { findByTestId, queryByTestId } = renderSidebar(null, vi.fn(), {
-            roots: ROOTS,
-            selectedRootId: 'default',
-            selectedRootLabel: 'Notes',
-            onSelectRoot: vi.fn(),
-            onRootsChanged,
-        });
-        await findByTestId('notes-tree');
-
-        fireEvent.click(await findByTestId('notes-root-selector'));
-        fireEvent.click(await findByTestId('notes-root-option-docs'), { ctrlKey: true });
-        fireEvent.click(await findByTestId('notes-root-option-plans'), { ctrlKey: true });
-
-        const removeSelected = await findByTestId('notes-root-remove-selected');
-        expect(removeSelected.textContent).toContain('Remove selected (2)');
-
-        await act(async () => {
-            fireEvent.click(removeSelected);
-        });
-
-        await waitFor(() => {
-            expect(mockRemoveRoot).toHaveBeenCalledWith('ws1', 'docs');
-            expect(mockRemoveRoot).toHaveBeenCalledWith('ws1', 'plans');
-        });
-        expect(mockRemoveRoot).toHaveBeenCalledTimes(2);
-        expect(mockRemoveRoot).not.toHaveBeenCalledWith('ws1', 'default');
-        expect(mockDeleteNode).not.toHaveBeenCalled();
-        expect(onRootsChanged).toHaveBeenCalledOnce();
-        expect(mockAddToast).toHaveBeenCalledWith('Removed 2 note collections', 'success');
-        await waitFor(() => expect(queryByTestId('notes-root-remove-selected')).toBeNull());
-    });
-
     it('falls back to the default root when the active additional root is removed', async () => {
         const onSelectRoot = vi.fn();
         const onRootsChanged = vi.fn().mockResolvedValue(undefined);
         const { findByTestId } = renderSidebar(null, vi.fn(), {
             roots: ROOTS,
             selectedRootId: 'docs',
-            selectedRootLabel: 'Docs',
             onSelectRoot,
             onRootsChanged,
         });
-        await findByTestId('notes-tree');
+        await findByTestId('notes-tree-docs');
 
-        fireEvent.click(await findByTestId('notes-root-selector'));
-        fireEvent.click(await findByTestId('notes-root-option-docs'), { ctrlKey: true });
-
+        fireEvent.click(await findByTestId('notes-section-header-docs-menu-btn'));
         await act(async () => {
-            fireEvent.click(await findByTestId('notes-root-remove-selected'));
+            fireEvent.click(await findByTestId('notes-section-header-docs-action-remove-root'));
         });
 
         await waitFor(() => {
@@ -1176,59 +1104,24 @@ describe('NotesSidebar', () => {
         expect(onRootsChanged).toHaveBeenCalledOnce();
     });
 
-    it('surfaces remove errors through the global toast and still refreshes successful removals', async () => {
+    it('surfaces a remove failure through the global toast and leaves the roots list alone', async () => {
         const onRootsChanged = vi.fn().mockResolvedValue(undefined);
-        mockRemoveRoot.mockImplementation(async (_workspaceId: string, rootId: string) => {
-            if (rootId === 'docs') {
-                throw new Error('Cannot remove docs');
-            }
-            return { removed: rootId };
-        });
+        mockRemoveRoot.mockRejectedValue(new Error('Cannot remove docs'));
         const { findByTestId } = renderSidebar(null, vi.fn(), {
             roots: ROOTS,
             selectedRootId: 'default',
-            selectedRootLabel: 'Notes',
             onSelectRoot: vi.fn(),
             onRootsChanged,
         });
-        await findByTestId('notes-tree');
+        await findByTestId('notes-tree-default');
 
-        fireEvent.click(await findByTestId('notes-root-selector'));
-        fireEvent.click(await findByTestId('notes-root-option-docs'), { ctrlKey: true });
-        fireEvent.click(await findByTestId('notes-root-option-plans'), { ctrlKey: true });
-
+        fireEvent.click(await findByTestId('notes-section-header-docs-menu-btn'));
         await act(async () => {
-            fireEvent.click(await findByTestId('notes-root-remove-selected'));
+            fireEvent.click(await findByTestId('notes-section-header-docs-action-remove-root'));
         });
 
-        await waitFor(() => {
-            expect(mockAddToast).toHaveBeenCalledWith('Cannot remove docs', 'error');
-            expect(mockAddToast).toHaveBeenCalledWith('Removed 1 note collection', 'success');
-        });
-        expect(onRootsChanged).toHaveBeenCalledOnce();
-    });
-
-    it('keeps collection removal selection separate from page multi-selection', async () => {
-        const onSelectRoot = vi.fn();
-        const onSelectPage = vi.fn();
-        const { findByTestId } = renderSidebar(null, onSelectPage, {
-            roots: ROOTS,
-            selectedRootId: 'default',
-            selectedRootLabel: 'Notes',
-            onSelectRoot,
-        });
-        const notebook = await findByTestId('notes-tree-item-Notebook1');
-        fireEvent.click(notebook);
-        const page = await findByTestId('notes-tree-item-TopPage');
-
-        fireEvent.click(await findByTestId('notes-root-selector'));
-        fireEvent.click(await findByTestId('notes-root-option-docs'), { ctrlKey: true });
-        fireEvent.click(page, { ctrlKey: true });
-
-        expect(onSelectRoot).not.toHaveBeenCalled();
-        expect(onSelectPage).not.toHaveBeenCalled();
-        expect((await findByTestId('notes-root-option-docs')).getAttribute('data-removal-selected')).toBe('true');
-        expect(page.getAttribute('aria-selected')).toBe('true');
+        await waitFor(() => expect(mockAddToast).toHaveBeenCalledWith('Cannot remove docs', 'error'));
+        expect(onRootsChanged).not.toHaveBeenCalled();
     });
 
     // ── Bulk drag-move (AC-03) ────────────────────────────────────────────
@@ -1470,6 +1363,59 @@ describe('NotesSidebar', () => {
         );
         expect(await findByTestId('notes-tree-item-Section1')).toBeTruthy();
         expect(localStorage.getItem('coc-notes-expanded-ws1-default')).toBeNull();
+    });
+
+    // ── Per-root data layer ────────────────────────────────────────────
+    //
+    // The sidebar fetches and mutates through the root-keyed hooks
+    // (useNotesTrees / useNotesRootMutations) so stacked sections can each own
+    // a root. These lock in that the active root reaches every call and that a
+    // root's tree is cached for the session (AC-03).
+
+    it('fetches the selected root and passes it to mutations', async () => {
+        const { findByTestId } = renderSidebar(null, vi.fn(), { selectedRootId: 'docs' });
+        await waitFor(() => expect(mockGetTree).toHaveBeenCalledWith('ws1', 'docs'));
+
+        const nb1 = await findByTestId('notes-tree-item-Notebook1');
+        fireEvent.click(nb1);
+        const page = await findByTestId('notes-tree-item-TopPage');
+        fireEvent.contextMenu(page, { clientX: 50, clientY: 50 });
+        await waitFor(() => expect(document.querySelector('[data-testid="context-menu"]')).toBeTruthy());
+        const menu = document.querySelector('[data-testid="context-menu"]')!;
+        const renameBtn = Array.from(menu.querySelectorAll('[role="menuitem"]')).find(i => i.textContent === 'Rename') as HTMLElement;
+        fireEvent.click(renameBtn);
+        await waitFor(() => expect(document.querySelector('[data-testid="notes-inline-rename-input"]')).toBeTruthy());
+        const input = document.querySelector('[data-testid="notes-inline-rename-input"]') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'Renamed' } });
+        await act(async () => {
+            fireEvent.keyDown(input, { key: 'Enter' });
+        });
+
+        await waitFor(() => {
+            expect(mockRenameNode).toHaveBeenCalledWith('ws1', 'Notebook1/TopPage', 'Notebook1/Renamed', 'docs');
+        });
+        // The refetch after a mutation stays on the mutated root.
+        expect(mockGetTree.mock.calls.every(c => c[1] === 'docs')).toBe(true);
+    });
+
+    it('serves an already-fetched root from cache when the selection returns to it', async () => {
+        const { findByTestId, rerender } = renderSidebar(null, vi.fn(), { selectedRootId: 'default' });
+        await findByTestId('notes-tree-item-Notebook1');
+        await waitFor(() => expect(mockGetTree).toHaveBeenCalledWith('ws1', undefined));
+
+        rerender(
+            <NotesSidebar workspaceId="ws1" selectedPath={null} selectedRootId="docs" onSelectPage={vi.fn()} />,
+        );
+        await waitFor(() => expect(mockGetTree).toHaveBeenCalledWith('ws1', 'docs'));
+        const callsAfterDocs = mockGetTree.mock.calls.length;
+
+        rerender(
+            <NotesSidebar workspaceId="ws1" selectedPath={null} selectedRootId="default" onSelectPage={vi.fn()} />,
+        );
+        // Back on a root already in the session cache — its tree renders without
+        // another request, and never flashes the loading state.
+        expect(await findByTestId('notes-tree-item-Notebook1')).toBeTruthy();
+        expect(mockGetTree.mock.calls.length).toBe(callsAfterDocs);
     });
 
     it('does not render a page-count badge on empty folders', async () => {

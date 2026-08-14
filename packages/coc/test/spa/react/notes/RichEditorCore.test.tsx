@@ -12,6 +12,7 @@ let capturedEditorProps: any = null;
 let capturedLinkConfig: any = null;
 let capturedExtensions: unknown[] = [];
 let capturedStarterKitConfig: any = null;
+let capturedTableConfig: any = null;
 let capturedLowlightOptions: any = null;
 const mockLowlightRegistry = vi.hoisted(() => ({ __lowlight: true }));
 
@@ -34,8 +35,8 @@ vi.mock('@tiptap/react', () => ({
         capturedExtensions = config?.extensions ?? [];
         return mockEditor;
     },
-    EditorContent: ({ editor }: { editor: unknown }) =>
-        editor ? <div data-testid="rich-editor-content" /> : null,
+    EditorContent: ({ editor, className }: { editor: unknown; className?: string }) =>
+        editor ? <div data-testid="rich-editor-content" className={className} /> : null,
 }));
 
 vi.mock('@tiptap/starter-kit', () => ({
@@ -77,10 +78,31 @@ vi.mock('@tiptap/extension-link', () => ({
     },
 }));
 vi.mock('@tiptap/extension-placeholder', () => ({ Placeholder: { configure: () => ({}) } }));
-vi.mock('@tiptap/extension-table', () => ({ Table: { configure: () => ({}) } }));
+vi.mock('@tiptap/extension-table', () => ({
+    Table: {
+        configure: (config: any) => {
+            capturedTableConfig = config;
+            return { name: 'table', config };
+        },
+    },
+}));
 vi.mock('@tiptap/extension-table-row', () => ({ TableRow: {} }));
-vi.mock('@tiptap/extension-table-cell', () => ({ TableCell: {} }));
-vi.mock('@tiptap/extension-table-header', () => ({ TableHeader: {} }));
+// The cell/header extensions are subclassed twice over — by
+// tableCellBackground.ts and then by tableColumnWrap.ts — so `.extend()` has to
+// return something extendable again. A self-returning marker keeps this suite
+// focused on which extensions RichEditorCore registers.
+// (Defined inline in each factory: a mock factory runs before this module's own
+// top-level bindings are initialised, so a shared helper would hit its TDZ.)
+vi.mock('@tiptap/extension-table-cell', () => {
+    const stub: any = { name: 'tableCell' };
+    stub.extend = () => stub;
+    return { TableCell: stub };
+});
+vi.mock('@tiptap/extension-table-header', () => {
+    const stub: any = { name: 'tableHeader' };
+    stub.extend = () => stub;
+    return { TableHeader: stub };
+});
 vi.mock('@tiptap/extension-highlight', () => ({ Highlight: { configure: () => ({}) } }));
 vi.mock('../../../../src/server/spa/client/react/features/notes/editor/extensions/resizableImage', () => ({
     ResizableImage: { configure: () => ({}) },
@@ -142,6 +164,7 @@ describe('RichEditorCore', () => {
         capturedLinkConfig = null;
         capturedExtensions = [];
         capturedStarterKitConfig = null;
+        capturedTableConfig = null;
         capturedLowlightOptions = null;
     });
 
@@ -154,6 +177,19 @@ describe('RichEditorCore', () => {
     it('renders EditorContent', () => {
         render(<RichEditorCore />);
         expect(screen.getByTestId('rich-editor-content')).toBeDefined();
+    });
+
+    // ── CSS scope travels with the editor ────────────────────────────────
+
+    it('carries the note-editor CSS scope class itself, so styles do not depend on the host', () => {
+        // Every rule in noteEditor.css is `.note-editor .ProseMirror …`. NoteEditor
+        // puts that class on its own container, but RichEditorCore is also mounted
+        // bare (markdown review dialog, rich view). Without the class on the editor
+        // itself, a bare mount loses all of it — most visibly the table cell fills,
+        // whose `var(--note-table-bg-*)` palette is declared on that same scope and
+        // silently resolves to nothing, so a filled cell renders unfilled.
+        render(<RichEditorCore />);
+        expect(screen.getByTestId('rich-editor-content').className).toContain('note-editor');
     });
 
     // ── onChange fires when content changes ──────────────────────────────
@@ -252,6 +288,43 @@ describe('RichEditorCore', () => {
         expect(pdfIndex).toBeGreaterThanOrEqual(1);
         // MapBlock must remain first; PdfBlock sits alongside the other custom blocks.
         expect(capturedExtensions[0]).toBe(mockMapBlock);
+    });
+
+    // ── Table column resizing ───────────────────────────────────────────
+
+    it('enables column resizing on tables so a column border can be dragged (AC-01)', () => {
+        render(<RichEditorCore />);
+
+        expect(capturedTableConfig).toBeDefined();
+        expect(capturedTableConfig.resizable).toBe(true);
+        expect(capturedTableConfig.lastColumnResizable).toBe(true);
+    });
+
+    it('registers the tableReorder extension, which is what surfaces the row/column move commands', () => {
+        render(<RichEditorCore />);
+
+        // @tiptap/extension-table ships no move commands, so without this
+        // extension the toolbar's Move Row/Col buttons have nothing to call.
+        const reorder = capturedExtensions.find(
+            (e: any) => e?.name === 'tableReorder',
+        );
+        expect(reorder).toBeDefined();
+    });
+
+    it('gives the resize handle an explicit hit area and a usable minimum column width (AC-01)', () => {
+        render(<RichEditorCore />);
+
+        expect(typeof capturedTableConfig.handleWidth).toBe('number');
+        expect(capturedTableConfig.handleWidth).toBeGreaterThan(0);
+        // tiptap's default of 25px leaves almost no content box once our
+        // border-box padding and borders are subtracted.
+        expect(capturedTableConfig.cellMinWidth).toBeGreaterThanOrEqual(60);
+    });
+
+    it('does not render a wrapper div in getHTML output, so the markdown serializer still sees a bare table (AC-06)', () => {
+        render(<RichEditorCore />);
+
+        expect(capturedTableConfig.renderWrapper).toBeFalsy();
     });
 
     // ── Code-block syntax highlighting (lowlight swap) ──────────────────

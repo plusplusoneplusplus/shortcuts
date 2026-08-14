@@ -1,11 +1,11 @@
-import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode, type SetStateAction } from 'react';
 import type { NoteTreeNode } from '../notesApi';
 import type { ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import { ContextMenu } from '../../../tasks/comments/ContextMenu';
-import { Spinner } from '../../../ui/Spinner';
-import { NotesTree } from './NotesTree';
+import { NotesRootSection } from './NotesRootSection';
 import { NotesDialogs } from './NotesDialogs';
-import { useNotesTree } from './useNotesTree';
+import { useNotesTrees, notesRootParam } from './useNotesTrees';
+import { useNotesRootMutations } from './useNotesRootMutations';
 import { useNotesContextMenu } from './useNotesContextMenu';
 import { useNotesDragDrop, getNotesParentPath, getDraggedItems, planBulkMove, type NoteDragItem, type DropPosition } from '../hooks/useNotesDragDrop';
 import { useNoteSeenState } from '../hooks/useNoteSeenState';
@@ -15,7 +15,12 @@ import { useNotesClipboard, planClipboardPaste } from '../hooks/useNotesClipboar
 import { getSpaCocClient } from '../../../api/cocClient';
 import { notesApi } from '../notesApi';
 import { useGlobalToast } from '../../../contexts/ToastContext';
-import { useNotesTreeExpansion, useNotesTreeScroll } from './NotesTreeExpansion';
+import {
+    useNotesTreesExpansion,
+    useNotesSectionsExpanded,
+    useNotesTreeScroll,
+    NOTES_STACKED_SCROLL_ROOT_ID,
+} from './NotesTreeExpansion';
 
 /** Synthetic root node used when right-clicking empty space in the sidebar. */
 const ROOT_NODE: NoteTreeNode = { name: '', path: '', type: 'notebook' };
@@ -182,9 +187,7 @@ export interface NotesSidebarProps {
     isDefaultRoot?: boolean;
     /** The selected root ID to pass to the tree fetch ('default' or a relative path). */
     selectedRootId?: string;
-    /** Display label for the currently selected root. */
-    selectedRootLabel?: string;
-    /** All available roots for the dropdown. */
+    /** All available roots — one stacked section each. */
     roots?: import('../notesApi').NotesRootEntry[];
     /** Callback when the user selects a different root. */
     onSelectRoot?: (rootId: string) => void;
@@ -199,16 +202,98 @@ export interface NotesSidebarProps {
     footer?: ReactNode;
 }
 
-export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, canGoBack, onGoBack, canGoForward, onGoForward, onNotesRootReady, onRestoreEditorFocus, markSeenRef, isDefaultRoot = true, selectedRootId, selectedRootLabel, roots, onSelectRoot, onRootsChanged, footer }: NotesSidebarProps) {
+export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, canGoBack, onGoBack, canGoForward, onGoForward, onNotesRootReady, onRestoreEditorFocus, markSeenRef, isDefaultRoot = true, selectedRootId, roots, onSelectRoot, onRootsChanged, footer }: NotesSidebarProps) {
     const { addToast } = useGlobalToast();
-    const rootParam = selectedRootId && selectedRootId !== 'default' ? selectedRootId : undefined;
-    const { tree, notesRoot, systemFolders, loading, error, refresh, createNode, renameNode, deleteNode, reorderNodes } = useNotesTree(workspaceId, rootParam);
+    /** Roots in API order — the section stack (AC-01). */
+    const orderedRootIds = useMemo(() => roots?.map(r => r.rootId) ?? [], [roots]);
+    /**
+     * The root every sidebar-level handler acts on: the section last interacted
+     * with, reset to whatever root the parent selects.
+     */
+    const parentRootId = selectedRootId ?? 'default';
+    /**
+     * Sections only render once the roots list agrees with the selected root.
+     * Right after a workspace switch the parent still holds the previous
+     * workspace's roots for a beat, and stacking them would fetch a tree for a
+     * root that does not belong to this workspace.
+     */
+    const hasMultipleRoots = orderedRootIds.length > 1 && orderedRootIds.includes(parentRootId);
+    /** Open/closed state per section, persisted per workspace + root (AC-02). */
+    const sections = useNotesSectionsExpanded(workspaceId, orderedRootIds, selectedRootId);
+    const { expandedRootIds } = sections;
+    const [focusedRootId, setFocusedRootId] = useState<string | null>(null);
+    const [lastParentRootId, setLastParentRootId] = useState(parentRootId);
+    if (lastParentRootId !== parentRootId) {
+        // Reset during render, not in an effect: a fetch keyed off the active
+        // root must never run for the root the parent just navigated away from.
+        setLastParentRootId(parentRootId);
+        setFocusedRootId(null);
+    }
+    const activeRootId = (lastParentRootId === parentRootId ? focusedRootId : null) ?? parentRootId;
+    /**
+     * Mirrors `activeRootId` for handlers that fire in the same tick as the
+     * click that focused a section — the state update has not landed yet, but
+     * the mutation still has to target the section the user just touched.
+     */
+    const activeRootIdRef = useRef(activeRootId);
+    activeRootIdRef.current = activeRootId;
+    const rootParam = notesRootParam(activeRootId);
+    /**
+     * Roots whose trees are held in memory: every expanded section, so a root is
+     * only fetched once its section first opens and is cached after (AC-03).
+     */
+    const activeRootIds = useMemo(
+        () => (hasMultipleRoots ? expandedRootIds : [activeRootId]),
+        [hasMultipleRoots, expandedRootIds, activeRootId],
+    );
+    const { getTree, refresh: refreshRoot } = useNotesTrees(workspaceId, activeRootIds);
+    const { tree, notesRoot, systemFolders, loading, error } = getTree(activeRootId);
+    const rootMutations = useNotesRootMutations(workspaceId, refreshRoot);
+    const refresh = useCallback(() => refreshRoot(activeRootIdRef.current), [refreshRoot]);
+    const createNode = useCallback(
+        (parentPath: string, name: string, type: 'notebook' | 'section' | 'page') =>
+            rootMutations.createNode(activeRootIdRef.current, parentPath, name, type),
+        [rootMutations],
+    );
+    const renameNode = useCallback(
+        (oldPath: string, newPath: string) => rootMutations.renameNode(activeRootIdRef.current, oldPath, newPath),
+        [rootMutations],
+    );
+    const deleteNode = useCallback(
+        (path: string) => rootMutations.deleteNode(activeRootIdRef.current, path),
+        [rootMutations],
+    );
+    const reorderNodes = useCallback(
+        (parentPath: string, order: string[]) => rootMutations.reorderNodes(activeRootIdRef.current, parentPath, order),
+        [rootMutations],
+    );
     const { isNoteUpdated, markAsSeen, syncSeenState } = useNoteSeenState(workspaceId);
     const isNoteChatRunning = useNoteChatRunning(workspaceId);
     const { ctxMenu, dialog, openContextMenu, closeContextMenu, openDialog, closeDialog, setSubmitting } = useNotesContextMenu();
     const { selectedPaths: multiSelectedPaths, anchorPath, handleSelect: handleMultiSelect, clearSelection } = useNotesSelection();
     const { clipboard, cutPaths, setCut, setCopy, clearClipboard } = useNotesClipboard();
-    const [expandedPaths, setExpandedPaths] = useNotesTreeExpansion(workspaceId, selectedRootId);
+    const { getExpanded, setExpanded: setExpandedForRoot } = useNotesTreesExpansion(workspaceId, activeRootIds);
+    const expandedPaths = getExpanded(activeRootId);
+    const setExpandedPaths = useCallback(
+        (action: SetStateAction<Set<string>>) => setExpandedForRoot(activeRootIdRef.current, action),
+        [setExpandedForRoot],
+    );
+    /**
+     * Point the sidebar-level handlers (paste, drop, keyboard, context menu,
+     * range selection) at the section the user just touched. Moving between
+     * sections drops the multi-selection, so only one section can ever hold one
+     * (AC-05) and cut/copy/paste stays inside a single root.
+     *
+     * Also reports the root upwards: with the root dropdown gone, touching a
+     * section is the only way the parent's persisted root selection moves.
+     */
+    const focusRoot = useCallback((rootId: string) => {
+        if (activeRootIdRef.current === rootId) return;
+        activeRootIdRef.current = rootId;
+        setFocusedRootId(rootId);
+        clearSelection();
+        onSelectRoot?.(rootId);
+    }, [clearSelection, onSelectRoot]);
     const [renamingPath, setRenamingPath] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [gitInitialized, setGitInitialized] = useState(false);
@@ -217,55 +302,32 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     const [addDropdownOpen, setAddDropdownOpen] = useState(false);
     const addDropdownRef = useRef<HTMLDivElement>(null);
     const treeAreaRef = useRef<HTMLDivElement>(null);
+    /**
+     * Stacked sections share the one `notes-tree-area`, so their scroll belongs
+     * to the whole column — keying it per root would restore a foreign offset
+     * every time the user touched another section. Ready means every expanded
+     * section has settled, otherwise a late tree would shift the restored
+     * offset out from under the user.
+     */
+    const scrollReady = useMemo(() => {
+        if (!hasMultipleRoots) return !loading && !!tree && tree.length > 0;
+        const states = expandedRootIds.map(rootId => getTree(rootId));
+        return states.length > 0
+            && states.every(state => !state.loading)
+            && states.some(state => !!state.tree && state.tree.length > 0);
+    }, [hasMultipleRoots, loading, tree, expandedRootIds, getTree]);
     const handleTreeScroll = useNotesTreeScroll(
         workspaceId,
-        selectedRootId,
+        hasMultipleRoots ? NOTES_STACKED_SCROLL_ROOT_ID : selectedRootId,
         treeAreaRef,
-        !loading && !!tree && tree.length > 0,
+        scrollReady,
     );
-    const [rootDropdownOpen, setRootDropdownOpen] = useState(false);
-    const rootDropdownRef = useRef<HTMLDivElement>(null);
-    const hasMultipleRoots = roots && roots.length > 1;
-    const [selectedRootIdsForRemoval, setSelectedRootIdsForRemoval] = useState<Set<string>>(new Set());
-    const [rootSelectionAnchor, setRootSelectionAnchor] = useState<string | null>(null);
-    const [removingSelectedRoots, setRemovingSelectedRoots] = useState(false);
-    const orderedRootIds = useMemo(() => roots?.map(r => r.rootId) ?? [], [roots]);
+    /** Root ids the user is allowed to remove — the default and protected roots are not. */
     const removableRootIds = useMemo(
         () => new Set((roots ?? []).filter(r => !r.isDefault && !r.isProtected).map(r => r.rootId)),
         [roots],
     );
-    const removableSelectionCount = useMemo(
-        () => [...selectedRootIdsForRemoval].filter(id => removableRootIds.has(id)).length,
-        [removableRootIds, selectedRootIdsForRemoval],
-    );
-
-    useEffect(() => {
-        if (rootDropdownOpen) return;
-        setSelectedRootIdsForRemoval(prev => prev.size === 0 ? prev : new Set());
-        setRootSelectionAnchor(null);
-    }, [rootDropdownOpen]);
-
-    // Close root dropdown on outside click
-    useEffect(() => {
-        if (!rootDropdownOpen) return;
-        function handleClickOutside(e: MouseEvent) {
-            if (rootDropdownRef.current && !rootDropdownRef.current.contains(e.target as Node)) {
-                setRootDropdownOpen(false);
-            }
-        }
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [rootDropdownOpen]);
-
-    // Close root dropdown on Escape
-    useEffect(() => {
-        if (!rootDropdownOpen) return;
-        function handleKeyDown(e: KeyboardEvent) {
-            if (e.key === 'Escape') setRootDropdownOpen(false);
-        }
-        document.addEventListener('keydown', handleKeyDown);
-        return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [rootDropdownOpen]);
+    const [removingRootId, setRemovingRootId] = useState<string | null>(null);
 
     // Close dropdown on outside click
     useEffect(() => {
@@ -303,7 +365,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                 return next;
             });
         }
-    }, [selectedPath, tree]);
+    }, [selectedPath, tree, setExpandedPaths]);
 
     // Notify parent when the notes root path becomes available
     useEffect(() => {
@@ -361,7 +423,7 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
             else next.add(path);
             return next;
         });
-    }, []);
+    }, [setExpandedPaths]);
 
     const handleContextMenu = useCallback((node: NoteTreeNode, x: number, y: number) => {
         openContextMenu(node, x, y);
@@ -845,11 +907,21 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
 
     // ── Derived values for the redesigned header / meta row ────────────────
 
-    const totalPages = useMemo(() => (tree ? countTotalPages(tree) : 0), [tree]);
-    const updatedCount = useMemo(
-        () => (tree ? countUpdatedPages(tree, isNoteUpdated) : 0),
-        [tree, isNoteUpdated],
-    );
+    /** Meta pills count the whole column, so with sections they span every root. */
+    const totalPages = useMemo(() => {
+        if (!hasMultipleRoots) return tree ? countTotalPages(tree) : 0;
+        return orderedRootIds.reduce((sum, rootId) => {
+            const rootTree = getTree(rootId).tree;
+            return sum + (rootTree ? countTotalPages(rootTree) : 0);
+        }, 0);
+    }, [hasMultipleRoots, tree, orderedRootIds, getTree]);
+    const updatedCount = useMemo(() => {
+        if (!hasMultipleRoots) return tree ? countUpdatedPages(tree, isNoteUpdated) : 0;
+        return orderedRootIds.reduce((sum, rootId) => {
+            const rootTree = getTree(rootId).tree;
+            return sum + (rootTree ? countUpdatedPages(rootTree, isNoteUpdated) : 0);
+        }, 0);
+    }, [hasMultipleRoots, tree, isNoteUpdated, orderedRootIds, getTree]);
 
     const filter = useMemo(
         () => (tree ? buildVisibilityFilter(tree, searchQuery) : null),
@@ -869,6 +941,36 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         () => (tree ? flattenVisibleNodePaths(tree, effectiveExpanded, filter?.visible ?? null) : []),
         [tree, effectiveExpanded, filter],
     );
+
+    /**
+     * Render state for every expanded section. Each root gets its own search
+     * filter — so a section with zero matches still shows its header and an
+     * empty state instead of vanishing (AC-06) — and its own flat row list, so
+     * a shift-range never spans two roots.
+     */
+    const sectionStates = useMemo(() => {
+        const map: Record<string, {
+            filter: ReturnType<typeof buildVisibilityFilter> | null;
+            effectiveExpanded: Set<string>;
+            flatList: string[];
+        }> = {};
+        for (const rootId of activeRootIds) {
+            const rootTree = getTree(rootId).tree;
+            const rootFilter = rootTree ? buildVisibilityFilter(rootTree, searchQuery) : null;
+            const base = getExpanded(rootId);
+            const combined = rootFilter
+                ? new Set([...base, ...rootFilter.expand])
+                : base;
+            map[rootId] = {
+                filter: rootFilter,
+                effectiveExpanded: combined,
+                flatList: rootTree
+                    ? flattenVisibleNodePaths(rootTree, combined, rootFilter?.visible ?? null)
+                    : [],
+            };
+        }
+        return map;
+    }, [activeRootIds, getTree, getExpanded, searchQuery]);
 
     /**
      * Drag payload for the current multi-selection: {path,name,type} for every
@@ -895,57 +997,6 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         handleMultiSelect(path, { shift: shiftKey, ctrl: ctrlKey }, flatPageList);
     }, [handleMultiSelect, flatPageList]);
 
-    const handleRootOptionClick = useCallback((rootId: string, isProtected: boolean, e: React.MouseEvent<HTMLButtonElement>) => {
-        const hasModifier = e.shiftKey || e.ctrlKey || e.metaKey;
-        if (!hasModifier) {
-            onSelectRoot?.(rootId);
-            setRootSelectionAnchor(rootId);
-            setSelectedRootIdsForRemoval(new Set());
-            setRootDropdownOpen(false);
-            return;
-        }
-
-        e.preventDefault();
-        if (isProtected) {
-            return;
-        }
-        if (e.shiftKey) {
-            const anchor = rootSelectionAnchor && orderedRootIds.includes(rootSelectionAnchor)
-                ? rootSelectionAnchor
-                : selectedRootId;
-            const anchorIndex = anchor ? orderedRootIds.indexOf(anchor) : -1;
-            const targetIndex = orderedRootIds.indexOf(rootId);
-            if (anchorIndex === -1 || targetIndex === -1) {
-                return;
-            }
-
-            const start = Math.min(anchorIndex, targetIndex);
-            const end = Math.max(anchorIndex, targetIndex);
-            const range = orderedRootIds.slice(start, end + 1);
-            setSelectedRootIdsForRemoval(prev => {
-                const next = new Set(prev);
-                for (const id of range) {
-                    if (removableRootIds.has(id)) {
-                        next.add(id);
-                    }
-                }
-                return next;
-            });
-            return;
-        }
-
-        setRootSelectionAnchor(rootId);
-        setSelectedRootIdsForRemoval(prev => {
-            const next = new Set(prev);
-            if (next.has(rootId)) {
-                next.delete(rootId);
-            } else {
-                next.add(rootId);
-            }
-            return next;
-        });
-    }, [onSelectRoot, orderedRootIds, removableRootIds, rootSelectionAnchor, selectedRootId]);
-
     const handleRefreshNotes = useCallback(async () => {
         await Promise.allSettled([
             refresh(),
@@ -953,50 +1004,35 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
         ]);
     }, [onRootsChanged, refresh]);
 
-    const handleRemoveSelectedRoots = useCallback(async () => {
-        if (removingSelectedRoots) {
+    /**
+     * Remove one root, driven from that section header's overflow menu. This is
+     * where the old dropdown's multi-select "Remove selected (N)" flow landed:
+     * a stacked layout has no equivalent of shift-picking rows, and each section
+     * already scopes the action to exactly one root.
+     */
+    const handleRemoveRoot = useCallback(async (rootId: string) => {
+        if (removingRootId || !removableRootIds.has(rootId)) {
             return;
         }
-        const selectedIds = [...selectedRootIdsForRemoval].filter(id => removableRootIds.has(id));
-        if (selectedIds.length === 0) {
-            return;
-        }
-
-        setRemovingSelectedRoots(true);
-        let removedCount = 0;
-        const removedIds: string[] = [];
-        const failures: string[] = [];
-
-        for (const rootId of selectedIds) {
-            try {
-                await notesApi.removeRoot(workspaceId, rootId);
-                removedCount += 1;
-                removedIds.push(rootId);
-            } catch (error) {
-                failures.push(error instanceof Error && error.message
-                    ? error.message
-                    : `Failed to remove root '${rootId}'`);
-            }
-        }
-
+        setRemovingRootId(rootId);
         try {
-            if (removedCount > 0) {
-                if (selectedRootId && removedIds.includes(selectedRootId)) {
-                    onSelectRoot?.('default');
-                }
-                await onRootsChanged?.();
-                addToast(`Removed ${removedCount} note collection${removedCount === 1 ? '' : 's'}`, 'success');
+            await notesApi.removeRoot(workspaceId, rootId);
+            if (selectedRootId === rootId) {
+                onSelectRoot?.('default');
             }
-
-            for (const failure of failures) {
-                addToast(failure, 'error');
-            }
+            await onRootsChanged?.();
+            addToast('Removed note collection', 'success');
+        } catch (error) {
+            addToast(
+                error instanceof Error && error.message
+                    ? error.message
+                    : `Failed to remove root '${rootId}'`,
+                'error',
+            );
         } finally {
-            setSelectedRootIdsForRemoval(new Set());
-            setRootSelectionAnchor(null);
-            setRemovingSelectedRoots(false);
+            setRemovingRootId(null);
         }
-    }, [addToast, onRootsChanged, onSelectRoot, removableRootIds, removingSelectedRoots, selectedRootId, selectedRootIdsForRemoval, workspaceId]);
+    }, [addToast, onRootsChanged, onSelectRoot, removableRootIds, removingRootId, selectedRootId, workspaceId]);
 
     /** Wraps onSelectPage to also clear multi-selection on plain click. */
     const handleSelectPage = useCallback((path: string) => {
@@ -1045,92 +1081,10 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                         <path d="M6 4l4 4-4 4" />
                     </svg>
                 </button>
-                {/* Root selector — dropdown when multiple roots, static label when single */}
-                {hasMultipleRoots ? (
-                    <div className="relative flex-1 min-w-0" ref={rootDropdownRef}>
-                        <button
-                            type="button"
-                            className="flex items-center gap-1 max-w-full text-[13px] font-semibold text-[#1f2328] dark:text-[#cccccc] truncate hover:bg-[#f6f8fa] dark:hover:bg-[#2a2d2e] rounded-md px-1.5 py-0.5"
-                            onClick={() => setRootDropdownOpen(prev => !prev)}
-                            aria-haspopup="listbox"
-                            aria-expanded={rootDropdownOpen}
-                            data-testid="notes-root-selector"
-                            title={`Current root: ${selectedRootLabel ?? 'Notes'}`}
-                        >
-                            <span className="truncate">{selectedRootLabel ?? 'Notes'}</span>
-                            <svg className="w-3 h-3 flex-shrink-0 opacity-60" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M4 6l4 4 4-4" />
-                            </svg>
-                        </button>
-                        {rootDropdownOpen && (
-                            <div
-                                className="absolute left-0 top-full mt-1 z-30 min-w-[180px] max-w-[300px] bg-white dark:bg-[#252526] border border-[#d0d7de] dark:border-[#3c3c3c] rounded-md shadow-[0_8px_24px_rgba(140,149,159,0.2)] py-1"
-                                role="listbox"
-                                data-testid="notes-root-dropdown"
-                            >
-                                {roots!.map(r => {
-                                    const selectedForRemoval = removableRootIds.has(r.rootId)
-                                        && selectedRootIdsForRemoval.has(r.rootId);
-                                    const isActive = r.rootId === selectedRootId;
-                                    const isProtected = r.isDefault || Boolean(r.isProtected);
-                                    const protectedReason = r.isDefault
-                                        ? 'Default managed root cannot be removed'
-                                        : 'Managed through Task/Plans settings and cannot be removed';
-                                    return (
-                                        <button
-                                            key={r.rootId}
-                                            className={`w-full flex items-center justify-between gap-2 px-3 py-1.5 text-xs truncate ${
-                                                selectedForRemoval
-                                                    ? 'bg-[#fff8c5] dark:bg-[#5a3b00]/30 text-[#1f2328] dark:text-[#ffdf5d] font-semibold'
-                                                    : isActive
-                                                        ? 'bg-[#ddf4ff] dark:bg-[#0a3b66]/40 text-[#0969da] dark:text-[#79c0ff] font-semibold'
-                                                        : 'text-[#1f2328] dark:text-[#cccccc] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2d2e]'
-                                            }`}
-                                            role="option"
-                                            aria-selected={isActive}
-                                            aria-label={`${r.label}${isActive ? ', current root' : ''}${isProtected ? `, ${protectedReason.toLowerCase()}` : selectedForRemoval ? ', selected for removal' : ''}`}
-                                            onClick={(e) => handleRootOptionClick(r.rootId, isProtected, e)}
-                                            data-testid={`notes-root-option-${r.rootId}`}
-                                            data-removal-selected={selectedForRemoval ? 'true' : undefined}
-                                            title={isProtected ? protectedReason : r.rootId}
-                                        >
-                                            <span className="min-w-0 flex items-center gap-1 truncate">
-                                                <span aria-hidden="true">{r.isDefault ? '📓' : '📁'}</span>
-                                                <span className="truncate">{r.label}</span>
-                                            </span>
-                                            <span className="flex-shrink-0 text-[11px] text-[#656d76] dark:text-[#9d9d9d]">
-                                                {selectedForRemoval ? (
-                                                    <span data-testid={`notes-root-selected-check-${r.rootId}`} aria-hidden="true">✓</span>
-                                                ) : isProtected ? (
-                                                    <span data-testid={`notes-root-protected-${r.rootId}`} title={protectedReason} aria-label="Protected root">🔒</span>
-                                                ) : isActive ? (
-                                                    <span>Current</span>
-                                                ) : null}
-                                            </span>
-                                        </button>
-                                    );
-                                })}
-                                {removableSelectionCount > 0 && (
-                                    <div className="mt-1 pt-1 border-t border-[#d0d7de] dark:border-[#3c3c3c]">
-                                        <button
-                                            type="button"
-                                            className="w-full px-3 py-1.5 text-left text-xs font-semibold text-[#cf222e] dark:text-[#ff7b72] hover:bg-[#ffebe9] dark:hover:bg-[#3c1f1f] disabled:opacity-60 disabled:cursor-not-allowed"
-                                            onClick={() => void handleRemoveSelectedRoots()}
-                                            disabled={removingSelectedRoots}
-                                            data-testid="notes-root-remove-selected"
-                                        >
-                                            {removingSelectedRoots ? 'Removing…' : `Remove selected (${removableSelectionCount})`}
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                ) : (
-                    <span className="flex-1 min-w-0 text-[13px] font-semibold text-[#1f2328] dark:text-[#cccccc] truncate">
-                        Notes
-                    </span>
-                )}
+                {/* Static title — roots are labelled by their own section headers below. */}
+                <span className="flex-1 min-w-0 text-[13px] font-semibold text-[#1f2328] dark:text-[#cccccc] truncate">
+                    Notes
+                </span>
                 <button
                     type="button"
                     className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-transparent text-[#1f2328] dark:text-[#cccccc] hover:bg-[#f6f8fa] dark:hover:bg-[#2a2d2e] disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1275,63 +1229,128 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
                 onKeyDown={handleTreeKeyDown}
                 onContextMenu={handleBackgroundContextMenu}
             >
-                {loading && (
-                    <div className="flex items-center justify-center py-6" data-testid="notes-loading">
-                        <Spinner size="md" />
-                    </div>
-                )}
-
-                {error && !loading && (
-                    <div className="py-6 px-4 text-center text-xs text-red-500 dark:text-red-400" data-testid="notes-error">
-                        {error}
-                    </div>
-                )}
-
-                {!loading && !error && tree && tree.length === 0 && (
-                    <div className="py-6 px-4 text-center text-xs text-[#656d76] dark:text-[#666] italic" data-testid="notes-empty">
-                        No notebooks yet
-                    </div>
-                )}
-
-                {!loading && !error && tree && tree.length > 0 && (
-                    <NotesTree
-                        nodes={tree}
-                        selectedPath={selectedPath}
-                        expandedPaths={effectiveExpanded}
-                        systemFolders={systemFolders}
-                        onToggleExpand={handleToggleExpand}
-                        onSelectPage={handleSelectPage}
-                        onContextMenu={handleContextMenu}
-                        isNoteUpdated={isNoteUpdated}
-                        isNoteChatRunning={isNoteChatRunning}
-                        visiblePaths={filter?.visible ?? null}
-                        countDescendantPages={countDescendantPages}
-                        multiSelectedPaths={multiSelectedPaths}
-                        cutPaths={cutPaths}
-                        selectionDragItems={selectionDragItems}
-                        onSelectWithModifiers={handleSelectWithModifiers}
-                        renamingPath={renamingPath}
-                        onStartRename={handleStartInlineRename}
-                        onRenameCommit={handleCommitInlineRename}
-                        onRenameCancel={handleCancelInlineRename}
-                        dragDrop={{
-                            createDragStartHandler: dragDrop.createDragStartHandler,
-                            createDragEndHandler: dragDrop.createDragEndHandler,
-                            createDragOverHandler: dragDrop.createDragOverHandler,
-                            createDragEnterHandler: dragDrop.createDragEnterHandler,
-                            createDragLeaveHandler: dragDrop.createDragLeaveHandler,
-                            createDropHandler: dragDrop.createDropHandler,
-                            dropTargetPath: dragDrop.dropTargetPath,
-                            dropPosition: dragDrop.dropPosition,
-                            onDrop: handleNoteDrop,
+                {hasMultipleRoots ? (
+                    roots!.map(root => {
+                        const rootId = root.rootId;
+                        const state = getTree(rootId);
+                        const section = sectionStates[rootId];
+                        const focus = () => focusRoot(rootId);
+                        const isProtectedRoot = root.isDefault || Boolean(root.isProtected);
+                        return (
+                            <NotesRootSection
+                                key={rootId}
+                                testIdSuffix={rootId}
+                                header={{
+                                    label: root.label,
+                                    expanded: sections.isExpanded(rootId),
+                                    onToggle: () => sections.toggle(rootId),
+                                    count: state.tree ? countTotalPages(state.tree) : undefined,
+                                    isDefault: root.isDefault,
+                                    isProtected: isProtectedRoot,
+                                    protectedReason: isProtectedRoot
+                                        ? (root.isDefault
+                                            ? 'Default managed root cannot be removed'
+                                            : 'Managed through Task/Plans settings and cannot be removed')
+                                        : undefined,
+                                    actions: [{
+                                        id: 'remove-root',
+                                        label: removingRootId === rootId ? 'Removing…' : 'Remove root',
+                                        danger: true,
+                                        disabled: isProtectedRoot || removingRootId !== null,
+                                        title: isProtectedRoot
+                                            ? (root.isDefault
+                                                ? 'Default managed root cannot be removed'
+                                                : 'Managed through Task/Plans settings and cannot be removed')
+                                            : `Remove ${root.label} from this workspace`,
+                                        onSelect: () => { void handleRemoveRoot(rootId); },
+                                    }],
+                                }}
+                                loading={state.loading}
+                                error={state.error}
+                                tree={state.tree}
+                                searchQuery={searchQuery}
+                                filter={section?.filter ?? null}
+                                treeProps={{
+                                    selectedPath,
+                                    expandedPaths: section?.effectiveExpanded ?? getExpanded(rootId),
+                                    systemFolders: state.systemFolders,
+                                    onToggleExpand: (path) => { focus(); handleToggleExpand(path); },
+                                    onSelectPage: (path) => { focus(); handleSelectPage(path); },
+                                    onContextMenu: (node, x, y) => { focus(); handleContextMenu(node, x, y); },
+                                    isNoteUpdated,
+                                    isNoteChatRunning,
+                                    countDescendantPages,
+                                    multiSelectedPaths: rootId === activeRootId ? multiSelectedPaths : undefined,
+                                    cutPaths: rootId === activeRootId ? cutPaths : undefined,
+                                    selectionDragItems: rootId === activeRootId ? selectionDragItems : undefined,
+                                    onSelectWithModifiers: (path, shiftKey, ctrlKey) => {
+                                        focus();
+                                        handleMultiSelect(
+                                            path,
+                                            { shift: shiftKey, ctrl: ctrlKey },
+                                            section?.flatList ?? [],
+                                        );
+                                    },
+                                    renamingPath: rootId === activeRootId ? renamingPath : null,
+                                    onStartRename: (node) => { focus(); handleStartInlineRename(node); },
+                                    onRenameCommit: handleCommitInlineRename,
+                                    onRenameCancel: handleCancelInlineRename,
+                                    dragDrop: {
+                                        createDragStartHandler: (item) => {
+                                            const handler = dragDrop.createDragStartHandler(item);
+                                            return (e) => { focus(); handler(e); };
+                                        },
+                                        createDragEndHandler: dragDrop.createDragEndHandler,
+                                        createDragOverHandler: dragDrop.createDragOverHandler,
+                                        createDragEnterHandler: dragDrop.createDragEnterHandler,
+                                        createDragLeaveHandler: dragDrop.createDragLeaveHandler,
+                                        createDropHandler: dragDrop.createDropHandler,
+                                        dropTargetPath: dragDrop.dropTargetPath,
+                                        dropPosition: dragDrop.dropPosition,
+                                        onDrop: handleNoteDrop,
+                                    },
+                                }}
+                            />
+                        );
+                    })
+                ) : (
+                    <NotesRootSection
+                        loading={loading}
+                        error={error}
+                        tree={tree}
+                        searchQuery={searchQuery}
+                        filter={filter}
+                        treeProps={{
+                            selectedPath,
+                            expandedPaths: effectiveExpanded,
+                            systemFolders,
+                            onToggleExpand: handleToggleExpand,
+                            onSelectPage: handleSelectPage,
+                            onContextMenu: handleContextMenu,
+                            isNoteUpdated,
+                            isNoteChatRunning,
+                            countDescendantPages,
+                            multiSelectedPaths,
+                            cutPaths,
+                            selectionDragItems,
+                            onSelectWithModifiers: handleSelectWithModifiers,
+                            renamingPath,
+                            onStartRename: handleStartInlineRename,
+                            onRenameCommit: handleCommitInlineRename,
+                            onRenameCancel: handleCancelInlineRename,
+                            dragDrop: {
+                                createDragStartHandler: dragDrop.createDragStartHandler,
+                                createDragEndHandler: dragDrop.createDragEndHandler,
+                                createDragOverHandler: dragDrop.createDragOverHandler,
+                                createDragEnterHandler: dragDrop.createDragEnterHandler,
+                                createDragLeaveHandler: dragDrop.createDragLeaveHandler,
+                                createDropHandler: dragDrop.createDropHandler,
+                                dropTargetPath: dragDrop.dropTargetPath,
+                                dropPosition: dragDrop.dropPosition,
+                                onDrop: handleNoteDrop,
+                            },
                         }}
                     />
-                )}
-
-                {!loading && !error && tree && tree.length > 0 && filter && filter.visible.size === 0 && (
-                    <div className="py-6 px-4 text-center text-xs text-[#656d76] dark:text-[#9d9d9d] italic" data-testid="notes-search-empty">
-                        No notes match “{searchQuery.trim()}”
-                    </div>
                 )}
             </div>
 

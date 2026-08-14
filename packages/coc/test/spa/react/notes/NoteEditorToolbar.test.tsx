@@ -1,11 +1,55 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { NoteEditorToolbar } from '../../../../src/server/spa/client/react/features/notes/editor/NoteEditorToolbar';
+import { TABLE_CELL_COLORS } from '../../../../src/server/spa/client/react/features/notes/editor/extensions/tableCellBackground';
+
+const tableWidthMocks = vi.hoisted(() => ({
+    activeTableHasColumnWidths: vi.fn(() => false),
+    clearActiveTableColumnWidths: vi.fn(() => true),
+}));
+vi.mock(
+    '../../../../src/server/spa/client/react/features/notes/editor/tableColumnWidths',
+    () => tableWidthMocks,
+);
+
+// Header-ness is read off a real ProseMirror doc, which the mock editor has no
+// way to supply, so the helper is stubbed here and exercised for real in
+// tableHeaderState.test.ts.
+const tableHeaderMocks = vi.hoisted(() => ({
+    tableHeaderState: vi.fn(() => ({ row: false, column: false })),
+}));
+vi.mock(
+    '../../../../src/server/spa/client/react/features/notes/editor/tableHeaderState',
+    () => tableHeaderMocks,
+);
+
+// Wrap state is likewise read off a real doc; the real helpers are covered in
+// tableColumnWrap.test.ts.
+const tableWrapMocks = vi.hoisted(() => ({
+    activeColumnWrap: vi.fn((): string | null => 'wrap'),
+    toggleActiveColumnWrap: vi.fn(() => true),
+}));
+vi.mock(
+    '../../../../src/server/spa/client/react/features/notes/editor/extensions/tableColumnWrap',
+    () => tableWrapMocks,
+);
+
+beforeEach(() => {
+    tableWidthMocks.activeTableHasColumnWidths.mockReset().mockReturnValue(false);
+    tableWidthMocks.clearActiveTableColumnWidths.mockReset().mockReturnValue(true);
+    tableHeaderMocks.tableHeaderState.mockReset().mockReturnValue({ row: false, column: false });
+    tableWrapMocks.activeColumnWrap.mockReset().mockReturnValue('wrap');
+    tableWrapMocks.toggleActiveColumnWrap.mockReset().mockReturnValue(true);
+});
 
 // ── Mock editor factory ─────────────────────────────────────────────────────
 
 function makeMockEditor(
     isActiveOverride?: (name: string, attrs?: Record<string, unknown>) => boolean,
+    getAttributesOverride?: (name: string) => Record<string, unknown>,
+    // Per-command `editor.can()` answers; anything unlisted reads as allowed,
+    // so existing tests keep the enabled rendering they were written against.
+    canOverride?: Record<string, boolean>,
 ) {
     const insertTable = vi.fn(() => ({ run: vi.fn() }));
     const addColumnBefore = vi.fn(() => ({ run: vi.fn() }));
@@ -15,6 +59,14 @@ function makeMockEditor(
     const addRowAfter = vi.fn(() => ({ run: vi.fn() }));
     const deleteRow = vi.fn(() => ({ run: vi.fn() }));
     const deleteTable = vi.fn(() => ({ run: vi.fn() }));
+    const setCellAttribute = vi.fn(() => ({ run: vi.fn() }));
+    const toggleHeaderRow = vi.fn(() => ({ run: vi.fn() }));
+    const toggleHeaderColumn = vi.fn(() => ({ run: vi.fn() }));
+    const toggleHeaderCell = vi.fn(() => ({ run: vi.fn() }));
+    const moveTableRowUp = vi.fn(() => ({ run: vi.fn() }));
+    const moveTableRowDown = vi.fn(() => ({ run: vi.fn() }));
+    const moveTableColumnLeft = vi.fn(() => ({ run: vi.fn() }));
+    const moveTableColumnRight = vi.fn(() => ({ run: vi.fn() }));
 
     const focusResult = {
         toggleBold: () => ({ run: vi.fn() }),
@@ -41,12 +93,26 @@ function makeMockEditor(
         addRowAfter,
         deleteRow,
         deleteTable,
+        setCellAttribute,
+        toggleHeaderRow,
+        toggleHeaderColumn,
+        toggleHeaderCell,
+        moveTableRowUp,
+        moveTableRowDown,
+        moveTableColumnLeft,
+        moveTableColumnRight,
     };
+
+    const canResult = new Proxy({}, {
+        get: (_target, prop: string) => () => canOverride?.[prop] ?? true,
+    });
 
     return {
         isActive: vi.fn((name: string, attrs?: Record<string, unknown>) =>
             isActiveOverride ? isActiveOverride(name, attrs) : false),
-        getAttributes: vi.fn(() => ({})),
+        getAttributes: vi.fn((name: string) =>
+            getAttributesOverride ? getAttributesOverride(name) : {}),
+        can: vi.fn(() => canResult),
         chain: () => ({ focus: () => focusResult }),
         _focusResult: focusResult,
     };
@@ -142,6 +208,396 @@ describe('NoteEditorToolbar — table controls', () => {
 
         fireEvent.mouseDown(screen.getByLabelText('Delete table'));
         expect(editor._focusResult.deleteTable).toHaveBeenCalled();
+    });
+
+    // ── Row / column moves (AC-11, AC-12) ───────────────────────────────────
+
+    const MOVE_BUTTONS = [
+        ['Move column left', 'moveTableColumnLeft'],
+        ['Move column right', 'moveTableColumnRight'],
+        ['Move row up', 'moveTableRowUp'],
+        ['Move row down', 'moveTableRowDown'],
+    ] as const;
+
+    it('hides the move buttons when the cursor is outside a table', () => {
+        const editor = makeMockEditor(() => false);
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        for (const [label] of MOVE_BUTTONS) {
+            expect(screen.queryByLabelText(label)).toBeNull();
+        }
+    });
+
+    it('shows all four move buttons inside a table', () => {
+        const editor = makeMockEditor((name) => name === 'table');
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        for (const [label] of MOVE_BUTTONS) {
+            expect(screen.getByLabelText(label)).toBeDefined();
+        }
+    });
+
+    for (const [label, command] of MOVE_BUTTONS) {
+        it(`"${label}" calls ${command}`, () => {
+            const editor = makeMockEditor((name) => name === 'table');
+            render(<NoteEditorToolbar editor={editor as never} />);
+
+            fireEvent.mouseDown(screen.getByLabelText(label));
+            expect(editor._focusResult[command]).toHaveBeenCalled();
+        });
+
+        it(`"${label}" renders disabled and dispatches nothing when can() says no`, () => {
+            const editor = makeMockEditor(
+                (name) => name === 'table',
+                undefined,
+                { [command]: false },
+            );
+            render(<NoteEditorToolbar editor={editor as never} />);
+
+            const button = screen.getByLabelText(label);
+            expect(button.getAttribute('aria-disabled')).toBe('true');
+            expect((button as HTMLButtonElement).disabled).toBe(true);
+
+            fireEvent.mouseDown(button);
+            expect(editor._focusResult[command]).not.toHaveBeenCalled();
+        });
+
+        it(`"${label}" is enabled when can() allows it`, () => {
+            const editor = makeMockEditor((name) => name === 'table');
+            render(<NoteEditorToolbar editor={editor as never} />);
+
+            const button = screen.getByLabelText(label);
+            expect(button.getAttribute('aria-disabled')).toBe('false');
+            expect((button as HTMLButtonElement).disabled).toBe(false);
+        });
+    }
+
+    it('disables the move buttons on an editor without the TableReorder extension', () => {
+        // `can()` on such an editor has no move commands at all; the strip must
+        // still render rather than throwing on the missing method.
+        const editor = makeMockEditor((name) => name === 'table');
+        editor.can = vi.fn(() => ({})) as never;
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        for (const [label] of MOVE_BUTTONS) {
+            expect((screen.getByLabelText(label) as HTMLButtonElement).disabled).toBe(true);
+        }
+    });
+
+    // ── Header shape toggles (AC-01, AC-02, AC-04) ──────────────────────────
+
+    const HEADER_BUTTONS = [
+        ['Toggle header row', 'toggleHeaderRow'],
+        ['Toggle header column', 'toggleHeaderColumn'],
+        ['Toggle header cell', 'toggleHeaderCell'],
+    ] as const;
+
+    it('hides the header toggles when the cursor is outside a table', () => {
+        const editor = makeMockEditor(() => false);
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        for (const [label] of HEADER_BUTTONS) {
+            expect(screen.queryByLabelText(label)).toBeNull();
+        }
+    });
+
+    it('shows exactly the three header toggles inside a table', () => {
+        const editor = makeMockEditor((name) => name === 'table');
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        for (const [label] of HEADER_BUTTONS) {
+            expect(screen.getByLabelText(label)).toBeDefined();
+        }
+        const strip = screen.getByTestId('table-controls-row');
+        const headerButtons = Array.from(strip.querySelectorAll('button'))
+            .filter((b) => (b.getAttribute('aria-label') ?? '').startsWith('Toggle header'));
+        expect(headerButtons.length).toBe(3);
+    });
+
+    for (const [label, command] of HEADER_BUTTONS) {
+        it(`"${label}" calls ${command} once and keeps editor focus`, () => {
+            const editor = makeMockEditor((name) => name === 'table');
+            render(<NoteEditorToolbar editor={editor as never} />);
+
+            const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+            fireEvent(screen.getByLabelText(label), event);
+
+            expect(editor._focusResult[command]).toHaveBeenCalledTimes(1);
+            // preventDefault on mousedown is what stops the editor from blurring.
+            expect(event.defaultPrevented).toBe(true);
+        });
+    }
+
+    it('header row / column buttons reflect tableHeaderState via aria-pressed', () => {
+        const shapes = [
+            { row: false, column: false },
+            { row: true, column: false },
+            { row: false, column: true },
+            { row: true, column: true },
+        ];
+
+        for (const shape of shapes) {
+            tableHeaderMocks.tableHeaderState.mockReturnValue(shape);
+            const editor = makeMockEditor((name) => name === 'table');
+            const { unmount } = render(<NoteEditorToolbar editor={editor as never} />);
+
+            const rowBtn = screen.getByLabelText('Toggle header row');
+            const colBtn = screen.getByLabelText('Toggle header column');
+            expect(rowBtn.getAttribute('aria-pressed')).toBe(String(shape.row));
+            expect(colBtn.getAttribute('aria-pressed')).toBe(String(shape.column));
+            // Pressed background matches what the rest of the toolbar uses.
+            expect(rowBtn.className.includes('bg-[#e8e8e8]')).toBe(shape.row);
+            expect(colBtn.className.includes('bg-[#e8e8e8]')).toBe(shape.column);
+
+            // Per-cell state is ambiguous across a multi-cell selection, so the
+            // cell button stays a plain action.
+            expect(screen.getByLabelText('Toggle header cell').hasAttribute('aria-pressed'))
+                .toBe(false);
+            unmount();
+        }
+    });
+
+    // ── "Reset column widths" (AC-08) ───────────────────────────────────────
+    //
+    // The width helpers walk a real ProseMirror doc, which the mock editor has
+    // no way to supply, so they are stubbed here and exercised for real in
+    // tableColumnWidths.test.ts.
+
+    it('hides "Reset column widths" when the cursor is outside a table', () => {
+        const editor = makeMockEditor(() => false);
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.queryByLabelText('Reset column widths')).toBeNull();
+    });
+
+    it('shows "Reset column widths" when the cursor is inside a table', () => {
+        const editor = makeMockEditor((name) => name === 'table');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByLabelText('Reset column widths')).toBeDefined();
+    });
+
+    it('disables "Reset column widths" when no cell has a colwidth', () => {
+        tableWidthMocks.activeTableHasColumnWidths.mockReturnValue(false);
+        const editor = makeMockEditor((name) => name === 'table');
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        const btn = screen.getByLabelText('Reset column widths') as HTMLButtonElement;
+        expect(btn.disabled).toBe(true);
+
+        fireEvent.mouseDown(btn);
+        expect(tableWidthMocks.clearActiveTableColumnWidths).not.toHaveBeenCalled();
+    });
+
+    it('enables "Reset column widths" when the table carries a colwidth', () => {
+        tableWidthMocks.activeTableHasColumnWidths.mockReturnValue(true);
+        const editor = makeMockEditor((name) => name === 'table');
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        expect((screen.getByLabelText('Reset column widths') as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    it('"Reset column widths" clears the widths exactly once', () => {
+        tableWidthMocks.activeTableHasColumnWidths.mockReturnValue(true);
+        const editor = makeMockEditor((name) => name === 'table');
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        fireEvent.mouseDown(screen.getByLabelText('Reset column widths'));
+
+        expect(tableWidthMocks.clearActiveTableColumnWidths).toHaveBeenCalledTimes(1);
+        expect(tableWidthMocks.clearActiveTableColumnWidths).toHaveBeenCalledWith(editor);
+    });
+
+    it('"Reset column widths" preventDefaults its mousedown so editor focus survives', () => {
+        tableWidthMocks.activeTableHasColumnWidths.mockReturnValue(true);
+        const editor = makeMockEditor((name) => name === 'table');
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+        fireEvent(screen.getByLabelText('Reset column widths'), event);
+
+        expect(event.defaultPrevented).toBe(true);
+    });
+});
+
+// ── "Toggle column text wrapping" (AC-04) ───────────────────────────────────
+
+describe('NoteEditorToolbar — column wrap toggle', () => {
+    const inTable = (name: string) => name === 'table';
+
+    it('hides the wrap toggle when the caret is outside a table', () => {
+        const editor = makeMockEditor(() => false);
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        expect(screen.queryByTestId('table-wrap-toggle')).toBeNull();
+        expect(screen.queryByLabelText('Toggle column text wrapping')).toBeNull();
+    });
+
+    it('shows the wrap toggle inside a table, in the column group before the first separator', () => {
+        const editor = makeMockEditor(inTable);
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        const btn = screen.getByTestId('table-wrap-toggle');
+        expect(btn.getAttribute('aria-label')).toBe('Toggle column text wrapping');
+        expect(btn.getAttribute('title')).toBe('Toggle column text wrapping');
+        expect(btn.textContent).toBe('Wrap');
+
+        // It belongs to the column operations group: "Del Col" is its immediate
+        // left-hand neighbour and nothing between them.
+        const strip = screen.getByTestId('table-controls-row');
+        const buttons = Array.from(strip.querySelectorAll('button'));
+        const delColIndex = buttons.findIndex((b) => b.getAttribute('aria-label') === 'Delete column');
+        expect(buttons[delColIndex + 1]).toBe(btn);
+    });
+
+    it('reflects the column wrap mode via aria-pressed and the pressed background', () => {
+        for (const [mode, pressed] of [['wrap', false], ['nowrap', true]] as const) {
+            tableWrapMocks.activeColumnWrap.mockReturnValue(mode);
+            const editor = makeMockEditor(inTable);
+            const { unmount } = render(<NoteEditorToolbar editor={editor as never} />);
+
+            const btn = screen.getByTestId('table-wrap-toggle');
+            expect(btn.getAttribute('aria-pressed')).toBe(String(pressed));
+            expect(btn.className.includes('bg-[#e8e8e8]')).toBe(pressed);
+            unmount();
+        }
+    });
+
+    it('treats a null wrap mode as not pressed', () => {
+        tableWrapMocks.activeColumnWrap.mockReturnValue(null);
+        const editor = makeMockEditor(inTable);
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        expect(screen.getByTestId('table-wrap-toggle').getAttribute('aria-pressed')).toBe('false');
+    });
+
+    it('toggles the column exactly once and keeps editor focus', () => {
+        const editor = makeMockEditor(inTable);
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+        fireEvent(screen.getByTestId('table-wrap-toggle'), event);
+
+        expect(tableWrapMocks.toggleActiveColumnWrap).toHaveBeenCalledTimes(1);
+        expect(tableWrapMocks.toggleActiveColumnWrap).toHaveBeenCalledWith(editor);
+        // preventDefault on mousedown is what stops the editor from blurring.
+        expect(event.defaultPrevented).toBe(true);
+    });
+});
+
+describe('NoteEditorToolbar — cell fill color picker', () => {
+    const inTable = (name: string) => name === 'table';
+
+    function openPicker(editor: ReturnType<typeof makeMockEditor>) {
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Cell fill color'));
+        return screen.getByTestId('table-cell-color-picker');
+    }
+
+    it('hides the fill button when the caret is outside a table', () => {
+        const editor = makeMockEditor(() => false);
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.queryByLabelText('Cell fill color')).toBeNull();
+    });
+
+    it('shows the fill button inside a table with the panel closed', () => {
+        const editor = makeMockEditor(inTable);
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        expect(screen.getByLabelText('Cell fill color')).toBeDefined();
+        expect(screen.queryByTestId('table-cell-color-picker')).toBeNull();
+    });
+
+    it('opens the panel without touching the document', () => {
+        const editor = makeMockEditor(inTable);
+        const panel = openPicker(editor);
+
+        expect(panel).toBeDefined();
+        expect(screen.getByLabelText('Cell fill color').getAttribute('aria-expanded')).toBe('true');
+        expect(editor._focusResult.setCellAttribute).not.toHaveBeenCalled();
+    });
+
+    it('renders exactly the exported palette plus a clear button', () => {
+        const editor = makeMockEditor(inTable);
+        openPicker(editor);
+
+        for (const { token, name } of TABLE_CELL_COLORS) {
+            const swatch = screen.getByTestId(`table-cell-color-${token}`);
+            expect(swatch.getAttribute('aria-label')).toBe(`Fill ${name}`);
+        }
+        expect(screen.getByTestId('table-cell-color-clear')).toBeDefined();
+        expect(
+            screen.getByTestId('table-cell-color-picker').querySelectorAll('button').length,
+        ).toBe(TABLE_CELL_COLORS.length + 1);
+    });
+
+    it.each(TABLE_CELL_COLORS.map((c) => c.token))(
+        'clicking the %s swatch sets the token and closes the panel',
+        (token) => {
+            const editor = makeMockEditor(inTable);
+            openPicker(editor);
+
+            fireEvent.mouseDown(screen.getByTestId(`table-cell-color-${token}`));
+
+            expect(editor._focusResult.setCellAttribute).toHaveBeenCalledWith('backgroundColor', token);
+            expect(screen.queryByTestId('table-cell-color-picker')).toBeNull();
+        },
+    );
+
+    it('clicking clear unsets the fill and closes the panel', () => {
+        const editor = makeMockEditor(inTable);
+        openPicker(editor);
+
+        fireEvent.mouseDown(screen.getByTestId('table-cell-color-clear'));
+
+        expect(editor._focusResult.setCellAttribute).toHaveBeenCalledWith('backgroundColor', null);
+        expect(screen.queryByTestId('table-cell-color-picker')).toBeNull();
+    });
+
+    it('prevents the mousedown default on the trigger and on a swatch', () => {
+        const editor = makeMockEditor(inTable);
+        render(<NoteEditorToolbar editor={editor as never} />);
+
+        const triggerEvent = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+        fireEvent(screen.getByLabelText('Cell fill color'), triggerEvent);
+        expect(triggerEvent.defaultPrevented).toBe(true);
+
+        const swatchEvent = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+        fireEvent(screen.getByTestId('table-cell-color-green'), swatchEvent);
+        expect(swatchEvent.defaultPrevented).toBe(true);
+    });
+
+    it('marks only the current cell token as pressed', () => {
+        const editor = makeMockEditor(inTable, (name) =>
+            name === 'tableCell' ? { backgroundColor: 'green' } : {});
+        openPicker(editor);
+
+        for (const { token } of TABLE_CELL_COLORS) {
+            expect(screen.getByTestId(`table-cell-color-${token}`).getAttribute('aria-pressed'))
+                .toBe(String(token === 'green'));
+        }
+        expect(screen.getByTestId('table-cell-color-current').getAttribute('data-token')).toBe('green');
+    });
+
+    it('reads the token off a header cell when the caret sits in a th', () => {
+        const editor = makeMockEditor(inTable, (name) =>
+            name === 'tableHeader' ? { backgroundColor: 'blue' } : {});
+        openPicker(editor);
+
+        expect(screen.getByTestId('table-cell-color-blue').getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('marks nothing pressed for an unfilled cell or an unknown token', () => {
+        for (const attrs of [{}, { backgroundColor: 'chartreuse' }]) {
+            const editor = makeMockEditor(inTable, () => attrs);
+            const { unmount } = render(<NoteEditorToolbar editor={editor as never} />);
+            fireEvent.mouseDown(screen.getByLabelText('Cell fill color'));
+
+            for (const { token } of TABLE_CELL_COLORS) {
+                expect(screen.getByTestId(`table-cell-color-${token}`).getAttribute('aria-pressed'))
+                    .toBe('false');
+            }
+            expect(screen.getByTestId('table-cell-color-current').getAttribute('data-token')).toBe('');
+            unmount();
+        }
     });
 });
 

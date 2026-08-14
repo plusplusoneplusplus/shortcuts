@@ -708,20 +708,21 @@ describe('noteMarkdown', () => {
             expect(rt).toContain('Outro paragraph');
         });
 
-        it('htmlToMarkdown — td-only table (no th, no thead) emits separator', () => {
+        it('htmlToMarkdown — td-only table takes the raw HTML path, not a synthesized header', () => {
             const html =
                 '<table><tbody>' +
                 '<tr><td>A</td><td>B</td></tr>' +
                 '<tr><td>1</td><td>2</td></tr>' +
                 '</tbody></table>';
             const md = htmlToMarkdown(html);
-            expect(md).toContain('| A | B |');
-            expect(md).toContain('| --- |');
-            expect(md).toContain('| 1 | 2 |');
+            // A pipe table cannot say "no header row", so the first data row would
+            // be silently promoted on reload — raw HTML keeps the shape instead.
+            expect(md).toContain('<table>');
+            expect(md).not.toContain('| --- |');
+            expect(md).not.toContain('<th');
         });
 
-        it('round-trip — td-only table survives save/reload cycle', () => {
-            // Start from the markdown that a td-only table would produce
+        it('round-trip — td-only table survives save/reload cycle without gaining a header', () => {
             const html =
                 '<table><tbody>' +
                 '<tr><td>Name</td><td>Value</td></tr>' +
@@ -734,6 +735,46 @@ describe('noteMarkdown', () => {
             expect(reloadedHtml).toContain('Name');
             expect(reloadedHtml).toContain('bar');
             expect(reloadedHtml).not.toMatch(/<p>\|/);
+            expect(reloadedHtml).not.toContain('<th');
+        });
+
+        // A <thead>+<tbody> table is what `markdownToHtml` itself emits, so these
+        // two guard the plain save → reload → save cycle. Both used to break it:
+        // the first body row was "the first <tr> of its parent", which earned it a
+        // second separator line, and `align="center"` (marked's spelling of what
+        // Tiptap writes as `style="text-align: center"`) was not read at all.
+        it('htmlToMarkdown — a <thead>+<tbody> table gets exactly one separator', () => {
+            const html =
+                '<table><thead><tr><th>H1</th><th>H2</th></tr></thead>' +
+                '<tbody>' +
+                '<tr><td>A1</td><td>A2</td></tr>' +
+                '<tr><td>B1</td><td>B2</td></tr>' +
+                '</tbody></table>';
+            const lines = norm(htmlToMarkdown(html)).split('\n').filter(Boolean);
+            expect(lines).toEqual([
+                '| H1 | H2 |',
+                '| --- | --- |',
+                '| A1 | A2 |',
+                '| B1 | B2 |',
+            ]);
+        });
+
+        it('round-trip — a table with two body rows is byte-identical', () => {
+            const md = '| H1 | H2 |\n| --- | --- |\n| A1 | A2 |\n| B1 | B2 |';
+            expect(norm(roundTrip(md))).toBe(md);
+        });
+
+        it('round-trip — alignment markers survive (marked writes align=, Tiptap writes style=)', () => {
+            const md = '| L | C | R |\n| --- | :---: | ---: |\n| a | b | c |';
+            expect(norm(roundTrip(md))).toBe(md);
+        });
+
+        it('htmlToMarkdown — alignment given as an align attribute', () => {
+            const html =
+                '<table><thead><tr>' +
+                '<th align="center">C</th><th align="right">R</th>' +
+                '</tr></thead></table>';
+            expect(htmlToMarkdown(html)).toContain('| :---: | ---: |');
         });
 
         it('round-trip — pasted table (td-only) renders back as table', () => {
@@ -745,8 +786,557 @@ describe('noteMarkdown', () => {
             const md = htmlToMarkdown(html);
             const reloadedHtml = markdownToHtml(md);
             expect(reloadedHtml).toContain('<table>');
-            expect(reloadedHtml).toContain('<th');
             expect(reloadedHtml).not.toContain('<p>| X');
+        });
+    });
+
+    // ── Table header shapes (header row / column / cell toggles) ────────
+    //
+    // GFM pipe syntax can express exactly one header row on top. Every other
+    // header layout the toolbar toggles can produce routes to a raw HTML block
+    // so the shape survives a save/reload cycle.
+    describe('table header shape persistence', () => {
+        /** Ordered tag names of the cells in each row of the first table. */
+        function cellTagGrid(html: string): string[][] {
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            const table = doc.querySelector('table');
+            if (!table) return [];
+            return Array.from(table.querySelectorAll('tr')).map(row =>
+                Array.from(row.children)
+                    .filter(cell => cell.nodeName === 'TH' || cell.nodeName === 'TD')
+                    .map(cell => cell.nodeName.toLowerCase()),
+            );
+        }
+
+        const headerRowHtml =
+            '<table><tbody>' +
+            '<tr><th><p>H1</p></th><th><p>H2</p></th></tr>' +
+            '<tr><td><p>a</p></td><td><p>b</p></td></tr>' +
+            '</tbody></table>';
+
+        const headerColumnHtml =
+            '<table><tbody>' +
+            '<tr><th><p>Name</p></th><td><p>Ada</p></td></tr>' +
+            '<tr><th><p>Role</p></th><td><p>Eng</p></td></tr>' +
+            '</tbody></table>';
+
+        const bothHeadersHtml =
+            '<table><tbody>' +
+            '<tr><th><p></p></th><th><p>Q1</p></th></tr>' +
+            '<tr><th><p>Rev</p></th><td><p>10</p></td></tr>' +
+            '</tbody></table>';
+
+        const noHeaderHtml =
+            '<table><tbody>' +
+            '<tr><td><p>a</p></td><td><p>b</p></td></tr>' +
+            '<tr><td><p>c</p></td><td><p>d</p></td></tr>' +
+            '</tbody></table>';
+
+        const singleHeaderCellHtml =
+            '<table><tbody>' +
+            '<tr><td><p>a</p></td><td><p>b</p></td></tr>' +
+            '<tr><td><p>c</p></td><th><p>H</p></th></tr>' +
+            '</tbody></table>';
+
+        it('header column → raw HTML with no separator lines', () => {
+            const md = htmlToMarkdown(headerColumnHtml);
+            expect(md).toContain('<table>');
+            // The old per-row `thCells.length > 0` branch emitted a separator after
+            // every row, which marked parses back as pipes-in-paragraphs.
+            expect(md).not.toContain('---');
+            expect(md).not.toMatch(/^\s*\|/m);
+        });
+
+        it('header-less table → raw HTML block padded by blank lines', () => {
+            const md = htmlToMarkdown(noHeaderHtml);
+            const block = norm(md).trim();
+            expect(block.startsWith('<table>')).toBe(true);
+            expect(block.endsWith('</table>')).toBe(true);
+            // One physical line, or marked terminates the HTML block early.
+            expect(block.split('\n')).toHaveLength(1);
+        });
+
+        it('single header cell → raw HTML', () => {
+            const md = htmlToMarkdown(singleHeaderCellHtml);
+            expect(md).toContain('<table>');
+            expect(md).toContain('<th>');
+            expect(md).not.toContain('| --- |');
+        });
+
+        it('header row + header column → raw HTML with the corner th intact', () => {
+            const md = htmlToMarkdown(bothHeadersHtml);
+            expect(md).toContain('<table>');
+            expect(md).not.toContain('| --- |');
+            expect(cellTagGrid(md)).toEqual([
+                ['th', 'th'],
+                ['th', 'td'],
+            ]);
+        });
+
+        it('header row only stays on the pipe path', () => {
+            const md = htmlToMarkdown(headerRowHtml);
+            expect(md).not.toContain('<table>');
+            expect(md).toContain('| H1 | H2 |');
+            expect(md).toContain('| --- |');
+        });
+
+        it.each([
+            ['header row only', headerRowHtml, [['th', 'th'], ['td', 'td']]],
+            ['header column only', headerColumnHtml, [['th', 'td'], ['th', 'td']]],
+            ['both headers', bothHeadersHtml, [['th', 'th'], ['th', 'td']]],
+            ['no header', noHeaderHtml, [['td', 'td'], ['td', 'td']]],
+            ['single header cell', singleHeaderCellHtml, [['td', 'td'], ['td', 'th']]],
+        ])('round-trip preserves cell tag positions — %s', (_label, html, grid) => {
+            const reloaded = markdownToHtml(htmlToMarkdown(html));
+            expect(cellTagGrid(reloaded)).toEqual(grid);
+        });
+
+        it.each([
+            ['header column only', headerColumnHtml],
+            ['both headers', bothHeadersHtml],
+            ['no header', noHeaderHtml],
+            ['single header cell', singleHeaderCellHtml],
+        ])('two save/reload cycles are idempotent — %s', (_label, html) => {
+            const first = htmlToMarkdown(html);
+            const second = htmlToMarkdown(markdownToHtml(first));
+            const third = htmlToMarkdown(markdownToHtml(second));
+            expect(second).toBe(first);
+            expect(third).toBe(first);
+        });
+
+        it('a raw HTML table between two paragraphs leaves both as markdown', () => {
+            const html = `<p>before</p>${noHeaderHtml}<p>after</p>`;
+            const md = norm(htmlToMarkdown(html));
+            const lines = md.split('\n').filter(Boolean);
+            expect(lines[0]).toBe('before');
+            expect(lines[lines.length - 1]).toBe('after');
+            expect(lines.some(line => line.startsWith('<table>'))).toBe(true);
+
+            // marked must treat the block as HTML, not as escaped inline text.
+            const reloaded = markdownToHtml(md);
+            expect(reloaded).toContain('<table>');
+            expect(reloaded).not.toContain('&lt;table');
+            expect(reloaded).toContain('before');
+            expect(reloaded).toContain('after');
+        });
+    });
+
+    // ── Table column widths (colwidth persistence) ──────────────────────
+
+    describe('table column width persistence', () => {
+        // What Tiptap's getHTML() emits after a column border has been dragged:
+        // a computed style on <table>/<col> plus the authoritative cell colwidth.
+        const sizedTableHtml =
+            '<table style="min-width: 420px">' +
+            '<colgroup><col style="width: 180px"><col></colgroup>' +
+            '<tbody>' +
+            '<tr><th colwidth="180"><p>A</p></th><th><p>B</p></th></tr>' +
+            '<tr><td colwidth="180"><p>1</p></td><td><p>2</p></td></tr>' +
+            '</tbody></table>';
+
+        // AC-06
+        it('htmlToMarkdown — a table with colwidth emits a single-line raw HTML block', () => {
+            const md = htmlToMarkdown(sizedTableHtml);
+            const block = md.trim();
+            expect(block.split('\n')).toHaveLength(1);
+            expect(block.startsWith('<table>')).toBe(true);
+            expect(block.endsWith('</table>')).toBe(true);
+            expect(block).toContain('width="180"');
+            expect(block).toContain('colwidth="180"');
+            // Computed styles on <table>/<col> are dropped so the bytes stay stable.
+            expect(block).not.toContain('style=');
+            // Not a pipe table
+            expect(md).not.toContain('| --- |');
+        });
+
+        it('htmlToMarkdown — the raw table block is surrounded by blank lines', () => {
+            const md = htmlToMarkdown(`<p>before</p>${sizedTableHtml}<p>after</p>`);
+            const lines = md.split('\n');
+            const idx = lines.findIndex(line => line.startsWith('<table>'));
+            expect(idx).toBeGreaterThan(0);
+            expect(lines[idx - 1]).toBe('');
+            expect(lines[idx + 1]).toBe('');
+        });
+
+        it('htmlToMarkdown — an unsized column emits a bare <col> and no cell colwidth', () => {
+            const block = htmlToMarkdown(sizedTableHtml).trim();
+            expect(block).toContain('<colgroup><col width="180"><col></colgroup>');
+            expect(block).toContain('<th><p>B</p></th>');
+        });
+
+        // AC-06 negative — colspan alone is not a width, so this stays a pipe table
+        it('htmlToMarkdown — a table with only colspan still emits a pipe table', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><th colspan="2"><p>Wide</p></th></tr>' +
+                '<tr><td><p>1</p></td><td><p>2</p></td></tr>' +
+                '</tbody></table>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('| Wide |');
+            expect(md).toContain('| --- |');
+            expect(md).not.toContain('<table');
+        });
+
+        // AC-05 regression guard: no colwidth anywhere → byte-identical pipe table
+        it('htmlToMarkdown — a table with no colwidth is unchanged by the new rule', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><th><p>A</p></th><th><p>B</p></th></tr>' +
+                '<tr><td><p>1</p></td><td><p>2</p></td></tr>' +
+                '</tbody></table>';
+            expect(htmlToMarkdown(html)).toBe('| A | B |\n| --- | --- |\n| 1 | 2 |\n');
+        });
+
+        // AC-07
+        it('round-trip — markdownToHtml passes the raw block through and keeps widths', () => {
+            const reloaded = markdownToHtml(htmlToMarkdown(sizedTableHtml));
+            expect(reloaded).toContain('colwidth="180"');
+            expect(reloaded).toContain('<col width="180">');
+            expect(reloaded).toContain('<table>');
+        });
+
+        it('round-trip — re-saving the reloaded HTML is idempotent', () => {
+            const once = htmlToMarkdown(sizedTableHtml);
+            const twice = htmlToMarkdown(markdownToHtml(once));
+            expect(twice).toBe(once);
+        });
+
+        it('round-trip — a raw table block does not swallow adjacent blocks', () => {
+            const md = htmlToMarkdown(
+                `<p>before</p>${sizedTableHtml}<ul><li>one</li><li>two</li></ul>`,
+            );
+            const reloaded = markdownToHtml(md);
+            expect(reloaded).toContain('before');
+            expect(reloaded).toContain('<table>');
+            expect(reloaded).toContain('<li>one</li>');
+            expect(reloaded).toContain('<li>two</li>');
+            // The list must not have been absorbed into the HTML block
+            expect(reloaded.indexOf('</table>')).toBeLessThan(reloaded.indexOf('<li>one</li>'));
+        });
+
+        // AC-09
+        it('markdownToHtml — normalizes <col style="width: 180px"> to <col width="180">', () => {
+            const md = '<table><colgroup><col style="width: 180px"><col></colgroup>' +
+                '<tbody><tr><th>A</th><th>B</th></tr></tbody></table>';
+            const html = markdownToHtml(md);
+            expect(html).toContain('<col width="180">');
+            expect(html).not.toContain('style="width: 180px"');
+        });
+
+        it('markdownToHtml — a <col> style with no px width just loses the dead style', () => {
+            const md = '<table><colgroup><col style="min-width: 25px"></colgroup>' +
+                '<tbody><tr><th>A</th></tr></tbody></table>';
+            const html = markdownToHtml(md);
+            expect(html).toContain('<colgroup><col></colgroup>');
+        });
+
+        it('markdownToHtml — an explicit width attribute wins over the style', () => {
+            const md = '<table><colgroup><col width="240" style="width: 180px"></colgroup>' +
+                '<tbody><tr><th>A</th></tr></tbody></table>';
+            expect(markdownToHtml(md)).toContain('<col width="240">');
+        });
+
+        // Merged first-row cells: the colgroup would be mis-aligned, so it is
+        // dropped and the lossless per-cell colwidth arrays carry the widths.
+        it('htmlToMarkdown — a colspan first row drops the colgroup but keeps cell colwidth', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><th colspan="2" colwidth="180,240"><p>Wide</p></th></tr>' +
+                '<tr><td colwidth="180"><p>1</p></td><td colwidth="240"><p>2</p></td></tr>' +
+                '</tbody></table>';
+            const block = htmlToMarkdown(html).trim();
+            expect(block).not.toContain('<colgroup>');
+            expect(block).toContain('colspan="2"');
+            expect(block).toContain('colwidth="180,240"');
+            expect(htmlToMarkdown(markdownToHtml(block))).toBe(htmlToMarkdown(html));
+        });
+
+        it('htmlToMarkdown — cell text-align survives the raw block', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><th colwidth="180" style="text-align: center"><p>A</p></th></tr>' +
+                '</tbody></table>';
+            expect(htmlToMarkdown(html).trim()).toContain('style="text-align: center"');
+        });
+
+        it('htmlToMarkdown — inline formatting inside a sized cell stays HTML', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><td colwidth="180"><p><strong>Alice</strong></p></td></tr>' +
+                '</tbody></table>';
+            expect(htmlToMarkdown(html).trim()).toContain('<strong>Alice</strong>');
+        });
+
+        it('round-trip — a plain table and a sized table in one note keep their own forms', () => {
+            const plain =
+                '<table><tbody>' +
+                '<tr><th><p>P</p></th><th><p>Q</p></th></tr>' +
+                '<tr><td><p>1</p></td><td><p>2</p></td></tr>' +
+                '</tbody></table>';
+            const md = htmlToMarkdown(`${plain}<p>between</p>${sizedTableHtml}`);
+            expect(md).toContain('| P | Q |');
+            expect(md).toContain('| --- | --- |');
+            expect(md).toContain('<table>');
+            // One raw block only — the plain table stayed pipe syntax
+            expect(md.match(/<table>/g)).toHaveLength(1);
+
+            // Only the sized table's own bytes are asserted for idempotence here.
+            // A plain pipe table is NOT idempotent across a bare
+            // markdownToHtml→htmlToMarkdown pair — marked splits it into
+            // <thead>/<tbody> and the `tableRow` td-only heuristic then emits a
+            // second separator after the first body row. That is a pre-existing
+            // quirk of this composition, unrelated to column widths, and the real
+            // editor path does not hit it (Tiptap re-normalizes to one <tbody>
+            // with <th> in the first row before htmlToMarkdown ever runs).
+            const rawBlock = (s: string) =>
+                s.split('\n').find(line => line.startsWith('<table>'));
+            expect(rawBlock(htmlToMarkdown(markdownToHtml(md)))).toBe(rawBlock(md));
+        });
+    });
+
+    // ── Table cell background color (data-bg persistence) ───────────────
+
+    describe('table cell background persistence', () => {
+        // What Tiptap's getHTML() emits for a filled cell: the token in `data-bg`
+        // plus an inline style resolving the theme's CSS variable.
+        const bg = (token: string) =>
+            ` data-bg="${token}" style="background-color: var(--note-table-bg-${token});"`;
+        const coloredTableHtml =
+            '<table><tbody>' +
+            '<tr><th><p>A</p></th><th><p>B</p></th></tr>' +
+            `<tr><td${bg('yellow')}><p>1</p></td><td><p>2</p></td></tr>` +
+            '</tbody></table>';
+
+        // AC-09 — the regression guard that matters most: an uncolored, unsized
+        // table must still produce byte-identical pipe markdown.
+        it('htmlToMarkdown — a table with no data-bg is unchanged by the widened rule', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><th><p>A</p></th><th><p>B</p></th></tr>' +
+                '<tr><td><p>1</p></td><td><p>2</p></td></tr>' +
+                '</tbody></table>';
+            expect(htmlToMarkdown(html)).toBe('| A | B |\n| --- | --- |\n| 1 | 2 |\n');
+        });
+
+        // AC-10
+        it('htmlToMarkdown — one colored td emits a raw HTML block keeping data-bg', () => {
+            const md = htmlToMarkdown(coloredTableHtml);
+            const block = md.trim();
+            expect(block.split('\n')).toHaveLength(1);
+            expect(block.startsWith('<table>')).toBe(true);
+            expect(block.endsWith('</table>')).toBe(true);
+            expect(block).toContain('data-bg="yellow"');
+            expect(block).toContain('background-color: var(--note-table-bg-yellow);');
+            // Not a pipe table
+            expect(md).not.toContain('| --- |');
+            // No widths anywhere, so no pointless all-bare colgroup
+            expect(block).not.toContain('<colgroup>');
+            // Uncolored cells stay bare
+            expect(block).toContain('<td><p>2</p></td>');
+        });
+
+        it('htmlToMarkdown — a colored th emits a raw block with data-bg on the th', () => {
+            const html =
+                '<table><tbody>' +
+                `<tr><th${bg('green')}><p>A</p></th><th><p>B</p></th></tr>` +
+                '</tbody></table>';
+            const block = htmlToMarkdown(html).trim();
+            expect(block).toContain(`<th${bg('green')}><p>A</p></th>`);
+        });
+
+        it('htmlToMarkdown — the raw colored block is surrounded by blank lines', () => {
+            const md = htmlToMarkdown(`<p>before</p>${coloredTableHtml}<p>after</p>`);
+            const lines = md.split('\n');
+            const idx = lines.findIndex(line => line.startsWith('<table>'));
+            expect(idx).toBeGreaterThan(0);
+            expect(lines[idx - 1]).toBe('');
+            expect(lines[idx + 1]).toBe('');
+            expect(md).toContain('after');
+        });
+
+        // AC-11 — goal-doc risk 1: nothing between marked and Tiptap strips the
+        // attribute or the style off a td/th.
+        it('markdownToHtml — a raw table block keeps data-bg and the style', () => {
+            const md = `\n\n${'<table><tbody>' +
+                `<tr><td${bg('blue')}><p>1</p></td></tr>` +
+                '</tbody></table>'}\n\n`;
+            const html = markdownToHtml(md);
+            expect(html).toContain('data-bg="blue"');
+            expect(html).toContain('background-color: var(--note-table-bg-blue);');
+        });
+
+        // AC-12
+        it('round-trip — html → md → html preserves every cell fill', () => {
+            const reloaded = markdownToHtml(htmlToMarkdown(coloredTableHtml));
+            expect(reloaded).toContain('data-bg="yellow"');
+            expect(reloaded).toContain('background-color: var(--note-table-bg-yellow);');
+            expect(htmlToMarkdown(reloaded)).toBe(htmlToMarkdown(coloredTableHtml));
+        });
+
+        // AC-13 at the serialization layer — colspan/rowspan/colwidth coexist
+        // with a fill on the same cell.
+        it('htmlToMarkdown — colspan, rowspan and colwidth survive alongside data-bg', () => {
+            const html =
+                '<table><tbody>' +
+                `<tr><td colspan="2" rowspan="2" colwidth="180,240"${bg('pink')}><p>X</p></td></tr>` +
+                '</tbody></table>';
+            const block = htmlToMarkdown(html).trim();
+            expect(block).toContain('colspan="2"');
+            expect(block).toContain('rowspan="2"');
+            expect(block).toContain('colwidth="180,240"');
+            expect(block).toContain('data-bg="pink"');
+            expect(htmlToMarkdown(markdownToHtml(block))).toBe(htmlToMarkdown(html));
+        });
+
+        it('htmlToMarkdown — a fill and a text-align share one style attribute', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><td data-bg="orange" style="text-align: center; background-color: var(--note-table-bg-orange);"><p>A</p></td></tr>' +
+                '</tbody></table>';
+            const block = htmlToMarkdown(html).trim();
+            expect(block).toContain('text-align: center');
+            expect(block).toContain('background-color: var(--note-table-bg-orange);');
+        });
+
+        it('round-trip — a colored table does not swallow the block after it', () => {
+            const md = htmlToMarkdown(`${coloredTableHtml}<ul><li>one</li></ul>`);
+            const reloaded = markdownToHtml(md);
+            expect(reloaded).toContain('<li>one</li>');
+            expect(reloaded.indexOf('</table>')).toBeLessThan(reloaded.indexOf('<li>one</li>'));
+        });
+
+        it('round-trip — a plain table beside a colored one keeps pipe syntax', () => {
+            const plain =
+                '<table><tbody>' +
+                '<tr><th><p>P</p></th><th><p>Q</p></th></tr>' +
+                '<tr><td><p>1</p></td><td><p>2</p></td></tr>' +
+                '</tbody></table>';
+            const md = htmlToMarkdown(`${plain}<p>between</p>${coloredTableHtml}`);
+            expect(md).toContain('| P | Q |');
+            expect(md.match(/<table>/g)).toHaveLength(1);
+        });
+
+        it('htmlToMarkdown — clearing the last fill returns the table to pipe syntax', () => {
+            const cleared =
+                '<table><tbody>' +
+                '<tr><th><p>A</p></th><th><p>B</p></th></tr>' +
+                '<tr><td><p>1</p></td><td><p>2</p></td></tr>' +
+                '</tbody></table>';
+            expect(htmlToMarkdown(cleared)).toBe('| A | B |\n| --- | --- |\n| 1 | 2 |\n');
+        });
+    });
+
+    // ── Per-column wrap mode (data-wrap persistence) ────────────────────
+
+    describe('table column wrap persistence', () => {
+        // What Tiptap emits for a no-wrap column: `data-wrap="nowrap"` on every
+        // cell of that column, header included. The default renders no attribute
+        // at all, which is what keeps untouched tables on the pipe path.
+        const nowrapTableHtml =
+            '<table><tbody>' +
+            '<tr><th data-wrap="nowrap"><p>A</p></th><th><p>B</p></th></tr>' +
+            '<tr><td data-wrap="nowrap"><p>a long single line</p></td><td><p>2</p></td></tr>' +
+            '</tbody></table>';
+
+        // AC-09 — the regression guard: a table with no no-wrap column must still
+        // produce byte-identical pipe markdown.
+        it('htmlToMarkdown — a table with no data-wrap still emits a pipe table', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><th><p>A</p></th><th><p>B</p></th></tr>' +
+                '<tr><td><p>1</p></td><td><p>2</p></td></tr>' +
+                '</tbody></table>';
+            expect(htmlToMarkdown(html)).toBe('| A | B |\n| --- | --- |\n| 1 | 2 |\n');
+        });
+
+        // AC-10
+        it('htmlToMarkdown — a nowrap column emits a raw HTML block keeping data-wrap', () => {
+            const md = htmlToMarkdown(nowrapTableHtml);
+            const block = md.trim();
+            expect(block.split('\n')).toHaveLength(1);
+            expect(block.startsWith('<table>')).toBe(true);
+            expect(block.endsWith('</table>')).toBe(true);
+            expect(md).not.toContain('| --- |');
+            expect(block).toContain('<th data-wrap="nowrap"><p>A</p></th>');
+            expect(block).toContain('<td data-wrap="nowrap"><p>a long single line</p></td>');
+            // The other column stays bare — the setting is per column.
+            expect(block).toContain('<th><p>B</p></th>');
+            expect(block).toContain('<td><p>2</p></td>');
+        });
+
+        // AC-10 (round trip) — nothing between marked and Tiptap drops the
+        // attribute, so a reload lands back in the same wrap state.
+        it('round-trip — html → md → html preserves data-wrap on the column', () => {
+            const reloaded = markdownToHtml(htmlToMarkdown(nowrapTableHtml));
+            expect(reloaded.match(/data-wrap="nowrap"/g)).toHaveLength(2);
+            expect(htmlToMarkdown(reloaded)).toBe(htmlToMarkdown(nowrapTableHtml));
+        });
+
+        // AC-11 — the raw path keeps the cell's real markup, so in-cell breaks
+        // survive where the GFM path would have collapsed them to <br>.
+        it('round-trip — a nowrap cell with multiple paragraphs keeps its breaks', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><th data-wrap="nowrap"><p>A</p></th></tr>' +
+                '<tr><td data-wrap="nowrap"><p>one</p><p>two</p></td></tr>' +
+                '</tbody></table>';
+            const md = htmlToMarkdown(html);
+            expect(md.trim().split('\n')).toHaveLength(1);
+            expect(md).toContain('<td data-wrap="nowrap"><p>one</p><p>two</p></td>');
+            const reloaded = markdownToHtml(md);
+            expect(reloaded).toContain('<p>one</p><p>two</p>');
+            expect(htmlToMarkdown(reloaded)).toBe(md);
+        });
+
+        it('round-trip — a nowrap cell with a <br> keeps the break', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><th data-wrap="nowrap"><p>A</p></th></tr>' +
+                '<tr><td data-wrap="nowrap"><p>one<br>two</p></td></tr>' +
+                '</tbody></table>';
+            const md = htmlToMarkdown(html);
+            expect(md).toContain('<br>');
+            expect(markdownToHtml(md)).toContain('<br>');
+        });
+
+        // A cell can carry every per-cell setting at once; the raw emitter must
+        // not lose one while writing another.
+        it('htmlToMarkdown — data-wrap coexists with data-bg, colwidth and spans', () => {
+            const html =
+                '<table><tbody>' +
+                '<tr><td colspan="2" rowspan="2" colwidth="180,240" data-bg="pink" ' +
+                'data-wrap="nowrap" style="text-align: center"><p>X</p></td></tr>' +
+                '</tbody></table>';
+            const block = htmlToMarkdown(html).trim();
+            expect(block).toContain('colspan="2"');
+            expect(block).toContain('rowspan="2"');
+            expect(block).toContain('colwidth="180,240"');
+            expect(block).toContain('data-bg="pink"');
+            expect(block).toContain('data-wrap="nowrap"');
+            expect(block).toContain('text-align: center');
+            expect(htmlToMarkdown(markdownToHtml(block))).toBe(htmlToMarkdown(html));
+        });
+
+        it('htmlToMarkdown — turning the last nowrap column back to wrap restores pipe syntax', () => {
+            const cleared =
+                '<table><tbody>' +
+                '<tr><th><p>A</p></th><th><p>B</p></th></tr>' +
+                '<tr><td><p>a long single line</p></td><td><p>2</p></td></tr>' +
+                '</tbody></table>';
+            expect(htmlToMarkdown(cleared)).toBe(
+                '| A | B |\n| --- | --- |\n| a long single line | 2 |\n',
+            );
+        });
+
+        it('round-trip — a nowrap table beside a plain one leaves the plain one on pipes', () => {
+            const plain =
+                '<table><tbody>' +
+                '<tr><th><p>P</p></th><th><p>Q</p></th></tr>' +
+                '<tr><td><p>1</p></td><td><p>2</p></td></tr>' +
+                '</tbody></table>';
+            const md = htmlToMarkdown(`${plain}<p>between</p>${nowrapTableHtml}`);
+            expect(md).toContain('| P | Q |');
+            expect(md.match(/<table>/g)).toHaveLength(1);
         });
     });
 

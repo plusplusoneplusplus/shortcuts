@@ -347,3 +347,46 @@ describe('table cells — in-cell line breaks', () => {
         expect(md).not.toContain('<br>');
     });
 });
+
+// Regression guard for the DOM-implementation gap that broke shard 3: turndown runs
+// against the real browser DOM in the app but against domino here under Node, and
+// domino's querySelector returns `undefined` for a miss where the browser returns
+// `null`. Any `querySelector(...) !== null` check therefore silently inverts under
+// Node — it matched everything. These cases pin the *routing decision* (pipe table vs
+// raw HTML block, code fence vs mermaid fence) in the environment where that gap is
+// observable; the jsdom suite cannot catch a regression here.
+describe('DOM-implementation robustness (querySelector miss is undefined under domino)', () => {
+    it('keeps a plain table on the GFM pipe path instead of the raw-HTML path', () => {
+        const html =
+            '<table><tbody>' +
+            '<tr><th><p>A</p></th><th><p>B</p></th></tr>' +
+            '<tr><td><p>1</p></td><td><p>2</p></td></tr>' +
+            '</tbody></table>';
+        const md = htmlToMarkdown(html);
+        expect(md).toContain('| A | B |');
+        expect(md).not.toContain('<table>');
+    });
+
+    it('still routes a table with per-cell state to the raw-HTML path', () => {
+        const html =
+            '<table><tbody>' +
+            '<tr><th data-bg="yellow"><p>A</p></th></tr>' +
+            '<tr><td><p>1</p></td></tr>' +
+            '</tbody></table>';
+        const md = htmlToMarkdown(html);
+        expect(md).toContain('<table>');
+        expect(md).toContain('data-bg="yellow"');
+    });
+
+    it('leaves a non-mermaid code block as a plain fence with its content intact', () => {
+        const md = htmlToMarkdown('<pre><code class="language-js">const x = 1;</code></pre>');
+        expect(md).toContain('const x = 1;');
+        expect(md).not.toContain('```mermaid');
+    });
+
+    it('still routes a mermaid code block to a mermaid fence', () => {
+        const md = htmlToMarkdown('<pre><code class="language-mermaid">graph TD;</code></pre>');
+        expect(md).toContain('```mermaid');
+        expect(md).toContain('graph TD;');
+    });
+});

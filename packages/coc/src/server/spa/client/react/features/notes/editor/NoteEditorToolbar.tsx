@@ -2,6 +2,10 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import type { ReactNode, RefObject, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { Editor } from '@tiptap/react';
 import type { TocEntry } from './noteTocUtils';
+import { activeTableHasColumnWidths, clearActiveTableColumnWidths } from './tableColumnWidths';
+import { tableHeaderState } from './tableHeaderState';
+import { TABLE_CELL_COLORS, activeCellBackgroundColor } from './extensions/tableCellBackground';
+import { activeColumnWrap, toggleActiveColumnWrap } from './extensions/tableColumnWrap';
 import { NoteTocPanel } from './NoteTocPanel';
 
 export interface NoteEditorToolbarProps {
@@ -932,11 +936,126 @@ interface TableControlsProps {
     editor: Editor;
 }
 
+const TABLE_BTN_CLS = "h-7 px-1.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]";
+const SWATCH_CLS = 'w-6 h-6 rounded-sm border hover:scale-110 transition-transform';
+
+/**
+ * Cell fill picker for the table strip.
+ *
+ * `setCellAttribute` walks a `CellSelection` and falls back to the cell holding
+ * the caret, so one call covers a single cell, a whole row, a whole column and
+ * an arbitrary rectangle — which is why there are no separate "fill row" /
+ * "fill column" buttons. Unlike `HighlightButton` the trigger is not a split
+ * button: there is no sensible default fill to toggle, so clicking it only
+ * opens the panel.
+ */
+function TableCellColorButton({ editor }: TableControlsProps) {
+    const activeToken = activeCellBackgroundColor(editor);
+    const activeSwatch = TABLE_CELL_COLORS.find((c) => c.token === activeToken);
+
+    const apply = (token: string | null, close: () => void) => {
+        editor.chain().focus().setCellAttribute('backgroundColor', token).run();
+        close();
+    };
+
+    return (
+        <ToolbarDropdown
+            panelTestId="table-cell-color-picker"
+            panelClassName="flex gap-1 p-1.5"
+            renderTrigger={({ open, toggle, triggerRef }) => (
+                <button
+                    ref={triggerRef}
+                    type="button"
+                    title="Cell fill color"
+                    aria-label="Cell fill color"
+                    aria-haspopup="true"
+                    aria-expanded={open}
+                    className={TABLE_BTN_CLS + ' inline-flex items-center gap-1'}
+                    onMouseDown={(e) => {
+                        e.preventDefault();
+                        toggle();
+                    }}
+                >
+                    <span
+                        data-testid="table-cell-color-current"
+                        data-token={activeToken ?? ''}
+                        className="inline-block w-3 h-3 rounded-sm border border-[#ccc] dark:border-[#555]"
+                        style={activeSwatch ? { backgroundColor: activeSwatch.swatch } : undefined}
+                    />
+                    Fill
+                </button>
+            )}
+            renderPanel={({ close }) => (
+                <>
+                    {TABLE_CELL_COLORS.map(({ token, name, swatch }) => (
+                        <button
+                            key={token}
+                            type="button"
+                            title={`Fill ${name}`}
+                            aria-label={`Fill ${name}`}
+                            aria-pressed={activeToken === token}
+                            data-testid={`table-cell-color-${token}`}
+                            className={
+                                SWATCH_CLS + ' '
+                                + (activeToken === token
+                                    ? 'border-[#0078d4] ring-1 ring-[#0078d4]'
+                                    : 'border-[#ccc] dark:border-[#555]')
+                            }
+                            style={{ backgroundColor: swatch }}
+                            onMouseDown={(e) => {
+                                e.preventDefault();
+                                apply(token, close);
+                            }}
+                        />
+                    ))}
+                    {/* Clearing sets the attribute to null, which drops the inline
+                        style — so a header cell falls back to the default grey. */}
+                    <button
+                        type="button"
+                        title="Clear cell fill"
+                        aria-label="Clear cell fill"
+                        data-testid="table-cell-color-clear"
+                        className={SWATCH_CLS + ' border-[#ccc] dark:border-[#555] flex items-center justify-center text-xs text-[#888]'}
+                        onMouseDown={(e) => {
+                            e.preventDefault();
+                            apply(null, close);
+                        }}
+                    >
+                        ✕
+                    </button>
+                </>
+            )}
+        />
+    );
+}
+
 function TableControls({ editor }: TableControlsProps) {
     if (!editor.isActive('table')) return null;
 
     const tc = () => editor.chain().focus();
-    const btnCls = "h-7 px-1.5 rounded text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050]";
+    // Recomputed on every toolbar render, which a selection or doc change
+    // already triggers — so the button enables the moment a border is dragged.
+    const hasWidths = activeTableHasColumnWidths(editor);
+    // Header-ness is structural, so it is read off the doc rather than from
+    // `isActive`. Same recompute-per-render story as `hasWidths`.
+    const headers = tableHeaderState(editor);
+    // Same story again: the column's wrap mode is read off the doc, so it is
+    // recomputed per render and follows the caret from column to column.
+    const noWrap = activeColumnWrap(editor) === 'nowrap';
+    const btnCls = TABLE_BTN_CLS;
+    const pressedCls = ' bg-[#e8e8e8] dark:bg-[#3c3c3c]';
+    const disabledCls = ' disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent';
+    // The move commands report their own legality — boundaries, the pinned
+    // header row, merged cells, multi-row selections — so the button state is
+    // just `can()`. Optional chaining keeps the strip alive against an editor
+    // built without the TableReorder extension: the moves read as unavailable
+    // rather than throwing out of the whole toolbar.
+    const canMove = (command: 'moveTableRowUp' | 'moveTableRowDown' | 'moveTableColumnLeft' | 'moveTableColumnRight') =>
+        editor.can?.()?.[command]?.() === true;
+    const canMoveColLeft = canMove('moveTableColumnLeft');
+    const canMoveColRight = canMove('moveTableColumnRight');
+    const canMoveRowUp = canMove('moveTableRowUp');
+    const canMoveRowDown = canMove('moveTableRowDown');
 
     return (
         <div
@@ -959,6 +1078,41 @@ function TableControls({ editor }: TableControlsProps) {
                 onMouseDown={(e) => { e.preventDefault(); tc().deleteColumn().run(); }}>
                 Del Col
             </button>
+            {/* Pressed means "this column does not wrap" — the non-default
+                state, matching how the header toggles read. */}
+            <button type="button" title="Toggle column text wrapping" aria-label="Toggle column text wrapping"
+                aria-pressed={noWrap}
+                data-testid="table-wrap-toggle"
+                className={btnCls + (noWrap ? pressedCls : '')}
+                onMouseDown={(e) => { e.preventDefault(); toggleActiveColumnWrap(editor); }}>
+                Wrap
+            </button>
+            {/* Move one position, not a drag: the column holding the caret
+                swaps with its neighbour, and the moved column stays selected so
+                repeat clicks keep walking it along. Appended after the wrap
+                toggle so the existing column buttons keep their positions. */}
+            <button type="button" title="Move column left" aria-label="Move column left"
+                disabled={!canMoveColLeft}
+                aria-disabled={!canMoveColLeft}
+                className={btnCls + disabledCls}
+                onMouseDown={(e) => {
+                    e.preventDefault();
+                    if (!canMoveColLeft) return;
+                    tc().moveTableColumnLeft().run();
+                }}>
+                Move Col ←
+            </button>
+            <button type="button" title="Move column right" aria-label="Move column right"
+                disabled={!canMoveColRight}
+                aria-disabled={!canMoveColRight}
+                className={btnCls + disabledCls}
+                onMouseDown={(e) => {
+                    e.preventDefault();
+                    if (!canMoveColRight) return;
+                    tc().moveTableColumnRight().run();
+                }}>
+                Move Col →
+            </button>
             <Sep />
             {/* Row operations */}
             <button type="button" title="Add row before" aria-label="Add row before"
@@ -976,12 +1130,74 @@ function TableControls({ editor }: TableControlsProps) {
                 onMouseDown={(e) => { e.preventDefault(); tc().deleteRow().run(); }}>
                 Del Row
             </button>
+            {/* The header row is pinned at index 0 — a header row anywhere else
+                puts the GFM `| --- |` separator in the wrong place and stops the
+                note round-tripping — so the extension disables both directions
+                around it. */}
+            <button type="button" title="Move row up" aria-label="Move row up"
+                disabled={!canMoveRowUp}
+                aria-disabled={!canMoveRowUp}
+                className={btnCls + disabledCls}
+                onMouseDown={(e) => {
+                    e.preventDefault();
+                    if (!canMoveRowUp) return;
+                    tc().moveTableRowUp().run();
+                }}>
+                Move Row ↑
+            </button>
+            <button type="button" title="Move row down" aria-label="Move row down"
+                disabled={!canMoveRowDown}
+                aria-disabled={!canMoveRowDown}
+                className={btnCls + disabledCls}
+                onMouseDown={(e) => {
+                    e.preventDefault();
+                    if (!canMoveRowDown) return;
+                    tc().moveTableRowDown().run();
+                }}>
+                Move Row ↓
+            </button>
+            <Sep />
+            {/* Cell fill — applies across whatever the current cell selection is */}
+            <TableCellColorButton editor={editor} />
             <Sep />
             {/* Table-level */}
+            <button type="button" title="Reset column widths" aria-label="Reset column widths"
+                disabled={!hasWidths}
+                className={btnCls + ' disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent'}
+                onMouseDown={(e) => {
+                    e.preventDefault();
+                    if (!hasWidths) return;
+                    clearActiveTableColumnWidths(editor);
+                }}>
+                Reset Widths
+            </button>
             <button type="button" title="Delete table" aria-label="Delete table"
                 className={btnCls}
                 onMouseDown={(e) => { e.preventDefault(); tc().deleteTable().run(); }}>
                 Del Table
+            </button>
+            <Sep />
+            {/* Header shape — appended last so the buttons above keep their
+                positions. Anything other than a plain header row makes the table
+                serialize as raw HTML instead of a GFM pipe table. */}
+            <button type="button" title="Toggle header row" aria-label="Toggle header row"
+                aria-pressed={headers.row}
+                className={btnCls + (headers.row ? pressedCls : '')}
+                onMouseDown={(e) => { e.preventDefault(); tc().toggleHeaderRow().run(); }}>
+                Header Row
+            </button>
+            <button type="button" title="Toggle header column" aria-label="Toggle header column"
+                aria-pressed={headers.column}
+                className={btnCls + (headers.column ? pressedCls : '')}
+                onMouseDown={(e) => { e.preventDefault(); tc().toggleHeaderColumn().run(); }}>
+                Header Col
+            </button>
+            {/* No pressed state: the selection can span cells in mixed states, so
+                there is no single bit to show. */}
+            <button type="button" title="Toggle header cell" aria-label="Toggle header cell"
+                className={btnCls}
+                onMouseDown={(e) => { e.preventDefault(); tc().toggleHeaderCell().run(); }}>
+                Header Cell
             </button>
         </div>
     );
