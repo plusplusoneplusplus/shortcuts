@@ -1046,6 +1046,16 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
     // and tests are unchanged. Beyond VIRTUALIZE_THRESHOLD the row list is
     // windowed: only viewport + overscan rows mount, bounding DOM-node count.
     const virtualized = lines.length > VIRTUALIZE_THRESHOLD;
+    // Rows `renderLineRow` drops entirely (suppressed/hidden git preamble, and
+    // every line inside a collapsed hunk). Windowed rows still get a wrapper
+    // element, so the virtualizer has to size these at 0 — otherwise each one
+    // reserves DIFF_LINE_ESTIMATE_PX and the diff opens with a blank band where
+    // the preamble used to be.
+    const isBlankRow = useCallback((i: number) => {
+        if (skipIndices.has(i)) return true;
+        if (showFileBanners && suppressedPreamble.has(i)) return true;
+        return hiddenPreamble.has(i);
+    }, [skipIndices, showFileBanners, suppressedPreamble, hiddenPreamble]);
     const [scrollEl, setScrollEl] = useState<HTMLElement | null>(null);
     const [scrollMargin, setScrollMargin] = useState(0);
     useLayoutEffect(() => {
@@ -1062,19 +1072,31 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
     const rowVirtualizer = useVirtualizer({
         count: virtualized ? lines.length : 0,
         getScrollElement: () => scrollEl,
-        estimateSize: () => DIFF_LINE_ESTIMATE_PX,
+        estimateSize: (i) => (isBlankRow(i) ? 0 : DIFF_LINE_ESTIMATE_PX),
         overscan: 24,
         scrollMargin,
-        // jsdom reports 0-height rects; fall back to the estimate so windowing
-        // stays deterministic in tests while self-correcting in a real browser.
         measureElement: (el) => {
-            const h = (el as HTMLElement).getBoundingClientRect?.().height;
+            const node = el as HTMLElement;
+            // A dropped row renders nothing, so its wrapper is genuinely empty
+            // and must measure 0. Only rows that rendered content fall back to
+            // the estimate — jsdom reports 0-height rects for everything, and
+            // that fallback keeps windowing deterministic in tests while
+            // self-correcting in a real browser.
+            if (node.childElementCount === 0) return 0;
+            const h = node.getBoundingClientRect?.().height;
             return h && h > 0 ? h : DIFF_LINE_ESTIMATE_PX;
         },
         // The stock observer leaves its scroll-stop timer running past unmount,
         // which then re-renders a viewer that is already gone.
         observeElementOffset: observeOffsetUntilCleanup,
     });
+
+    // Collapsing/expanding a hunk flips which rows render nothing. Sizes already
+    // measured for those rows would keep reserving their old height, so drop the
+    // measurement cache and let the new estimates apply.
+    useEffect(() => {
+        if (virtualized) rowVirtualizer.measure();
+    }, [isBlankRow, virtualized]);
 
     useImperativeHandle(ref, () => {
         // Windowed path: off-screen rows aren't in the DOM, so drive navigation
