@@ -4,8 +4,9 @@
  * Tests global admin page functionality: navigation, storage stats display,
  * refresh, preview wipe, and data wipe with confirmation dialog.
  *
- * The admin page is rendered at #admin and contains stat cards, a refresh
- * button, wipe preview, and a wipe-data button protected by a confirm() dialog.
+ * Admin is rendered at #admin as a centered overlay dialog over the current
+ * page (see `admin-dialog.spec.ts`) and contains stat cards, a refresh button,
+ * wipe preview, and a wipe-data button protected by a confirm() dialog.
  */
 
 import { test, expect } from './fixtures/server-fixture';
@@ -15,11 +16,11 @@ import { seedProcess, seedWorkspace, request } from './fixtures/seed';
 // Helpers
 // ================================================================
 
-/** Navigate to the global admin page via the gear icon. */
+/** Open the global admin dialog via the gear icon. */
 async function navigateToAdmin(page: import('@playwright/test').Page, serverUrl: string): Promise<void> {
     await page.goto(serverUrl);
     await page.click('#admin-toggle');
-    // Admin view becomes visible (AdminPanel is a separate route view)
+    // Admin view becomes visible (AdminPanel is hosted by the admin dialog)
     await expect(page.locator('#view-admin')).toBeVisible({ timeout: 5000 });
     // Wait for page to initialize (stats load)
     await expect(page.locator('#admin-page-content')).not.toBeEmpty({ timeout: 5000 });
@@ -113,14 +114,17 @@ test.describe('Admin Panel (008)', () => {
         await expect(page.locator('.ar-breadcrumb')).toContainText('Usage & Costs');
     });
 
-    test('8.2 navigating away from admin hides admin page', async ({ page, serverUrl }) => {
+    test('8.2 navigating away from admin closes the admin dialog', async ({ page, serverUrl }) => {
         await navigateToAdmin(page, serverUrl);
 
-        // Click Repos tab (navigates away from admin route)
-        await page.click('[data-tab="repos"]');
+        // Admin is a modal dialog, so the topbar tabs sit behind its backdrop —
+        // leaving admin means changing the hash (what the × / Escape do), not
+        // clicking a tab underneath.
+        await page.evaluate(() => { location.hash = '#repos'; });
 
-        // Repos view should be visible; admin view no longer shown
+        // Repos view is on screen and the admin dialog is gone.
         await expect(page.locator('#view-repos')).toBeVisible();
+        await expect(page.locator('#admin-dialog')).toHaveCount(0);
     });
 
     // ----------------------------------------------------------------

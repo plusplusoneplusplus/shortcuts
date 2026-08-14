@@ -18,6 +18,10 @@ import { test, expect } from './fixtures/server-fixture';
 
 /** Navigate to the Admin page so the Tools sidebar rows become clickable. */
 async function openAdminTools(page: Page): Promise<void> {
+    // Admin is an overlay dialog. When an admin-shell hash (#skills, #logs, …)
+    // is already routed the sidebar is on screen and the topbar gear sits
+    // behind the backdrop, so opening again is both unnecessary and impossible.
+    if (await page.locator('#view-admin').isVisible()) return;
     await page.click('#admin-toggle');
     await expect(page.locator('#view-admin')).toBeVisible({ timeout: 10000 });
 }
@@ -55,6 +59,13 @@ test.describe('Navigation', () => {
         await page.click('#skills-toggle');
         await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
 
+        // Skills lives inside the admin dialog, so the topbar is behind the
+        // backdrop — closing the dialog is what returns the user to Repos.
+        await page.keyboard.press('Escape');
+        await expect(page.locator('#admin-dialog')).toHaveCount(0);
+        await expect(page.locator('#view-repos')).toBeVisible();
+
+        // …and the topbar Repos tab works again once the dialog is gone.
         await page.click('[data-tab="repos"]');
         await expect(page.locator('#view-repos')).toBeVisible();
     });
@@ -128,11 +139,12 @@ test.describe('Navigation', () => {
         await page.goto(serverUrl);
         const hamburger = page.locator('#hamburger-btn');
 
-        // Switch to Skills (via the Admin Tools sidebar) — hamburger should now
-        // navigate back to repos rather than toggle the popover.
-        await openAdminTools(page);
-        await page.click('#skills-toggle');
-        await expect(page.locator('#view-skills')).toBeVisible({ timeout: 10000 });
+        // Switch to a non-Repos top-level tab — hamburger should now navigate
+        // back to repos rather than toggle the popover. Wiki is used rather
+        // than Skills because the admin tool views live in a modal dialog whose
+        // backdrop covers the topbar.
+        await page.goto(serverUrl + '#wiki');
+        await expect(page.locator('#view-wiki')).toBeVisible({ timeout: 10000 });
 
         // Hamburger click should not toggle the popover open
         await expect(hamburger).toHaveAttribute('aria-pressed', 'false');

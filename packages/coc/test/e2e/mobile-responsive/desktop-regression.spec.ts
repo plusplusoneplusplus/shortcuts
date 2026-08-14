@@ -138,8 +138,9 @@ test.describe('Desktop Regression', () => {
         await page.goto(`${serverUrl}/#memory`);
         await expect(page.locator('#view-memory')).toBeVisible();
 
-        // Skills lives inside the Admin Tools sidebar.
-        await page.click('#admin-toggle');
+        // Skills lives inside the Admin Tools sidebar. #memory is an admin-shell
+        // route too, so the dialog is already open — the gear is behind its
+        // backdrop and the sidebar is already on screen.
         await expect(page.locator('#view-admin')).toBeVisible({ timeout: 10000 });
         await page.click('#skills-toggle');
         await expect(page.locator('#view-skills')).toBeVisible();

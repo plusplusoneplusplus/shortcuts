@@ -392,8 +392,11 @@ test.describe('Pull Requests tab — list', () => {
             await expect(page.locator('.pr-row')).toHaveCount(3, { timeout: 10000 });
             expect(fetchCount).toBe(1);
 
-            // Navigate away to a different view (standalone Processes tab removed; use Admin toggle)
-            await page.click('#admin-toggle');
+            // Navigate away to a different view. Admin is no longer usable for
+            // this: it opens as an overlay dialog and deliberately leaves the
+            // page behind mounted, so the PR list would never unmount.
+            // Hash-only, so the SPA (and its cache) is never reloaded.
+            await page.evaluate(() => { location.hash = '#wiki'; });
             await expect(page.locator('[data-testid="pr-list"]')).not.toBeVisible({ timeout: 5000 });
 
             // Navigate back to the PR tab (without full page reload)

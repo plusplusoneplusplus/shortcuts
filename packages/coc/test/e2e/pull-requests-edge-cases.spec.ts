@@ -238,8 +238,11 @@ test.describe('Pull Requests — cache edge cases', () => {
             await expect(page.locator('[data-testid="error-message"]')).toBeVisible({ timeout: 10000 });
             expect(fetchCount).toBe(1);
 
-            // Navigate away (standalone Processes tab removed; use Admin toggle to leave repos view)
-            await page.click('#admin-toggle');
+            // Navigate away. Admin is no longer usable for this: it opens as an
+            // overlay dialog and deliberately leaves the page behind mounted,
+            // so the PR list would never unmount. Hash-only, so the SPA (and
+            // its cache) is never reloaded.
+            await page.evaluate(() => { location.hash = '#wiki'; });
             await expect(page.locator('[data-testid="pr-list"]')).not.toBeVisible({ timeout: 5000 });
 
             // Navigate back — should fetch again (error was not cached)

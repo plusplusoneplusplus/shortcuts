@@ -1381,6 +1381,24 @@ Hash parsing is untouched: `dashboardRoutes.ts` (`parseAdminSubTab`,
 `parseSettingsSubTabFromHash`, `parseAdminDatabaseDeepLink`) and
 `adminNavigation.ts` still own routing and nav policy.
 
+**Writing tests against admin.** Two consequences of admin being modal trip up
+E2E specs written for the old full page (`test/e2e/admin-dialog.spec.ts` covers
+the dialog itself):
+
+- While the dialog is open the page chrome — topbar tabs, hamburger, bottom nav —
+  is behind the backdrop and cannot be clicked. Leaving admin means Escape, the
+  `×`, a backdrop click, or setting `location.hash` directly.
+- Any admin-shell hash (`#logs`, `#skills`, `#memory`, …) already has the dialog
+  open, so clicking `#admin-toggle` to "go to admin" times out. Guard the gear
+  click with `if (await page.locator('#view-admin').isVisible()) return;`.
+- Opening admin no longer unmounts the view underneath — that is the whole point
+  — so it can't be used to make another view go away. Navigate to a real
+  non-admin tab (`location.hash = '#wiki'`) instead.
+
+Below the shell's 600px container breakpoint the sidebar collapses into
+`.ar-mobile-tab-select`; the nav buttons still exist but are hidden, so at phone
+width sections are reached with `selectOption('settings:appearance')` etc.
+
 ### Skills Config panel & folder-source grouping
 
 The Skills route's **Config** sub-tab (`features/skills/SkillsConfigPanel.tsx`)
