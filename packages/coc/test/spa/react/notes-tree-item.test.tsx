@@ -460,4 +460,82 @@ describe('NotesTreeItem', () => {
         expect(onSelectPage).not.toHaveBeenCalled();
         expect(onToggleExpand).not.toHaveBeenCalled();
     });
+
+    describe('type icon', () => {
+        for (const type of ['notebook', 'section', 'page'] as const) {
+            it(`renders exactly one ${type} icon carrying its node type`, () => {
+                const { getAllByTestId } = render(
+                    <NotesTreeItem node={makeNode({ type, name: 'Row' })} selectedPath={null} isExpanded={false} depth={0}
+                        onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()} />,
+                );
+                const icons = getAllByTestId('notes-tree-item-icon');
+                expect(icons).toHaveLength(1);
+                expect(icons[0].getAttribute('data-node-type')).toBe(type);
+                expect(icons[0].querySelectorAll('svg')).toHaveLength(1);
+            });
+        }
+
+        it('gives each node type a distinct glyph', () => {
+            const paths = (['notebook', 'section', 'page'] as const).map(type => {
+                const { getByTestId, unmount } = render(
+                    <NotesTreeItem node={makeNode({ type, name: 'Row' })} selectedPath={null} isExpanded={false} depth={0}
+                        onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()} />,
+                );
+                const d = getByTestId('notes-tree-item-icon').querySelector('path')?.getAttribute('d');
+                unmount();
+                return d;
+            });
+            expect(new Set(paths).size).toBe(3);
+        });
+
+        it('keeps the icon decorative — hidden from AT, no tooltip, click-through', () => {
+            const { getByTestId } = render(
+                <NotesTreeItem node={makeNode({ type: 'page', name: 'Pg' })} selectedPath={null} isExpanded={false} depth={0}
+                    onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()} />,
+            );
+            const icon = getByTestId('notes-tree-item-icon');
+            expect(icon.getAttribute('aria-hidden')).toBe('true');
+            expect(icon.getAttribute('title')).toBeNull();
+            expect(icon.getAttribute('tabindex')).toBeNull();
+            expect(icon.className).toContain('pointer-events-none');
+        });
+
+        it('keeps the chevron spacer on page rows and the chevron on folder rows', () => {
+            const page = render(
+                <NotesTreeItem node={makeNode({ type: 'page', name: 'Pg' })} selectedPath={null} isExpanded={false} depth={0}
+                    onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()} />,
+            );
+            expect(page.queryByTestId('chevron')).toBeNull();
+            // Chevron column spacer + icon + name + trailing badges = 4 row children.
+            expect(page.getByTestId('notes-tree-item-Pg').children).toHaveLength(4);
+            page.unmount();
+
+            const folder = render(
+                <NotesTreeItem node={makeNode({ type: 'section', name: 'Sec' })} selectedPath={null} isExpanded={false} depth={0}
+                    onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()} />,
+            );
+            expect(folder.getByTestId('chevron').textContent).toBe('▸');
+            expect(folder.getByTestId('notes-tree-item-Sec').children).toHaveLength(4);
+        });
+
+        it('selects the row when the icon itself is clicked', () => {
+            const onSelectPage = vi.fn();
+            const { getByTestId } = render(
+                <NotesTreeItem node={makeNode({ type: 'page', path: 'nb/p.md', name: 'p.md' })} selectedPath={null} isExpanded={false} depth={0}
+                    onToggleExpand={vi.fn()} onSelectPage={onSelectPage} onContextMenu={vi.fn()} />,
+            );
+            fireEvent.click(getByTestId('notes-tree-item-icon'));
+            expect(onSelectPage).toHaveBeenCalledWith('nb/p.md');
+        });
+
+        it('keeps the indent formula and a fixed-width icon column', () => {
+            const { getByTestId } = render(
+                <NotesTreeItem node={makeNode({ type: 'page', name: 'Deep' })} selectedPath={null} isExpanded={false} depth={2}
+                    onToggleExpand={vi.fn()} onSelectPage={vi.fn()} onContextMenu={vi.fn()} />,
+            );
+            const row = getByTestId('notes-tree-item-Deep');
+            expect((row as HTMLElement).style.paddingLeft).toBe('42px');
+            expect(row.className).toContain('grid-cols-[14px_16px_minmax(0,1fr)_auto]');
+        });
+    });
 });

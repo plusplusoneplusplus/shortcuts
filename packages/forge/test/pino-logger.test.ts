@@ -39,6 +39,53 @@ function captureStream(): { stream: Writable; lines: () => string[] } {
     };
 }
 
+/** Poll until every path exists, giving up after `timeoutMs`. */
+async function waitForFiles(files: string[], timeoutMs = 5000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (!files.every((f) => fs.existsSync(f)) && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 10));
+    }
+}
+
+/** The bits of SonicBoom (pino's file destination) this file drives. */
+type FileDestination = {
+    flushSync?: () => void;
+    end: () => void;
+    on: (event: string, listener: () => void) => void;
+};
+
+/**
+ * Flush and close the file destinations behind `logger`, resolving once their
+ * fds are actually closed.
+ *
+ * `pino.destination({ sync: false })` opens and writes on later ticks, so
+ * deleting the log dir first leaves an in-flight open to fail with ENOENT.
+ * SonicBoom re-emits that as an unlistened `error`, which Vitest reports as an
+ * unhandled error and fails the whole run.
+ */
+async function closeFileDestinations(logger: pino.Logger): Promise<void> {
+    const dest = (logger as unknown as Record<symbol, unknown>)[pino.symbols.streamSym] as
+        | { streams?: Array<{ stream?: unknown }> }
+        | undefined;
+
+    const closing = (dest?.streams ?? [])
+        .map((entry) => entry.stream as FileDestination | undefined)
+        // Only the file destinations expose `flushSync`, so this skips the
+        // process.stderr entry that multistream always carries. Never end that
+        // one — the rest of the test run still writes to it.
+        .filter((stream): stream is FileDestination => typeof stream?.flushSync === 'function')
+        .map(
+            (stream) =>
+                new Promise<void>((resolve) => {
+                    stream.on('close', resolve);
+                    stream.on('error', resolve);
+                    stream.end();
+                })
+        );
+
+    await Promise.all(closing);
+}
+
 // ---------------------------------------------------------------------------
 // createPinoAdapter
 // ---------------------------------------------------------------------------
@@ -172,30 +219,34 @@ describe('createRootPinoLogger', () => {
     });
 
     it('createRootPinoLogger with logDir creates .ndjson files on write', async () => {
-        const tmpDir = path.join(os.tmpdir(), `pino-test-${Date.now()}`);
-        fs.mkdirSync(tmpDir, { recursive: true });
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pino-test-'));
+        const aiFile = path.join(tmpDir, 'ai-service.ndjson');
+        const cocFile = path.join(tmpDir, 'coc-service.ndjson');
+
+        const logger = createRootPinoLogger({
+            level: 'info',
+            logDir: tmpDir,
+            stores: {
+                'ai-service': { file: true },
+                'coc-service': { file: true },
+            },
+        });
 
         try {
-            const logger = createRootPinoLogger({
-                level: 'info',
-                logDir: tmpDir,
-                stores: {
-                    'ai-service': { file: true },
-                    'coc-service': { file: true },
-                },
-            });
-
             logger.info('trigger flush');
 
-            // Give async destination a tick to flush
-            await new Promise((r) => setTimeout(r, 100));
+            // The destinations are async, so poll instead of sleeping a fixed
+            // amount — a loaded Windows runner needs well over a tick to open
+            // the files.
+            await waitForFiles([aiFile, cocFile]);
 
-            const aiFile = path.join(tmpDir, 'ai-service.ndjson');
-            const cocFile = path.join(tmpDir, 'coc-service.ndjson');
             expect(fs.existsSync(aiFile)).toBe(true);
             expect(fs.existsSync(cocFile)).toBe(true);
         } finally {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
+            // Close first: removing the dir out from under a pending open
+            // throws ENOENT from inside SonicBoom, far away from this test.
+            await closeFileDestinations(logger);
+            fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
         }
     });
 });
