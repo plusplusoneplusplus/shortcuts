@@ -1369,6 +1369,13 @@ Admin is a dialog, not a page. The gear (`#admin-toggle` in the topbar cluster,
 - `layout/Router.tsx` has **no** admin branch. While an admin hash is routed it
   keeps rendering the last non-admin tab, so the chat/notes/repo view underneath
   stays mounted and keeps its scroll position, and is simply revealed on close.
+  That tab comes from `layout/useVisibleDashboardTab.ts`, the shared "what is
+  actually on screen" hook (last non-admin tab, seeded with `repos`).
+- Status dock: the admin sidebar hosts **no** `DockedStatusFooter` any more — the
+  page behind the dialog keeps its own dock, and `GlobalStatusDock` therefore has
+  no admin stand-down. Its remaining sub-tab stand-downs are evaluated against
+  `useVisibleDashboardTab()`, not `state.activeTab`, so opening admin over Notes
+  (or Settings / Git / PRs) doesn't flip them off and paint a second dock.
 
 Hash parsing is untouched: `dashboardRoutes.ts` (`parseAdminSubTab`,
 `parseSettingsSubTabFromHash`, `parseAdminDatabaseDeepLink`) and

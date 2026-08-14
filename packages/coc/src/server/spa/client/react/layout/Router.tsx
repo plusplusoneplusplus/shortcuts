@@ -10,7 +10,7 @@
 
 import { useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { isAdminShellTab } from '../admin/adminDialogRoute';
+import { useVisibleDashboardTab } from './useVisibleDashboardTab';
 import { useQueue } from '../contexts/QueueContext';
 import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
@@ -68,9 +68,9 @@ export function Router() {
     });
     const repoRouteStateRef = useRef(state.repoRouteState);
     const repoTabStateRef = useRef(state.repoTabState);
-    // The view rendered behind the admin dialog. Seeded with the app default so
-    // a cold deep-link to `#admin` still has something to show underneath.
-    const lastNonAdminTabRef = useRef<DashboardTab>('repos');
+    // Admin hashes open the overlay dialog without replacing the page, so the
+    // view to render is the last non-admin tab, not `state.activeTab`.
+    const renderedTab = useVisibleDashboardTab();
     processDeepLinkContextRef.current = {
         queueState,
         selectedRepoId: state.selectedRepoId,
@@ -168,16 +168,9 @@ export function Router() {
         state.settingsSection,
     ]);
 
-    // Admin hashes open the overlay dialog without replacing the page. Render
-    // the last non-admin view so it stays mounted (and keeps its scroll
-    // position) behind the dialog, and is simply revealed again on close.
-    if (!isAdminShellTab(state.activeTab)) {
-        lastNonAdminTabRef.current = state.activeTab;
-    }
-    const renderedTab = isAdminShellTab(state.activeTab)
-        ? lastNonAdminTabRef.current
-        : state.activeTab;
-
+    // `renderedTab` (above) is the last non-admin view, so it stays mounted —
+    // and keeps its scroll position — behind the admin dialog, and is simply
+    // revealed again on close.
     switch (renderedTab) {
         case 'repos':
             return <ReposView />;

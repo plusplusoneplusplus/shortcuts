@@ -11,7 +11,6 @@
  * footer instead, so the content pane keeps full height and no partial-width
  * band is painted beneath it:
  *   - the workspace chat/activity sub-tab (`SplitWorkspacePanel` `footer`),
- *   - the Admin shell (its `.ar-sidebar` hosts `DockedStatusFooter`),
  *   - the workspace notes sub-tab (`NotesView`'s own `NotesSidebar` footer),
  *   - the workspace settings sub-tab (`RepoSettingsTab`'s own nav footer),
  *   - the workspace pull-requests sub-tab (`PullRequestsTab`'s PR queue footer),
@@ -19,6 +18,12 @@
  * This global dock covers every OTHER tab/sub-tab, so it renders null on those
  * views to avoid double-docking. Together they hide the topbar cluster on every
  * desktop remote-shell tab (`TopBar`'s `statusInDock`).
+ *
+ * Admin is an overlay dialog rather than a page, so it gets no stand-down: the
+ * page behind the dialog keeps its own dock (and the admin sidebar no longer
+ * hosts one). Which page that is comes from `useVisibleDashboardTab`, not from
+ * `state.activeTab` — otherwise opening admin over e.g. Notes would flip the
+ * sub-tab stand-downs off and paint a second dock under the note editor.
  *
  * Its width tracks the live left-column width published by `SplitWorkspacePanel`
  * via the `--workspace-left-col-width` CSS variable, falling back to the panel's
@@ -33,20 +38,13 @@
 
 import { StatusActions } from './StatusActions';
 import { useApp } from '../contexts/AppContext';
+import { useVisibleDashboardTab } from './useVisibleDashboardTab';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
 import { useSplitWorkspacePanelEnabled } from '../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 
 /** Fallback width when no split sidebar is mounted (matches the panel default). */
 const DEFAULT_LEFT_COL_WIDTH = 360;
-
-/**
- * Dashboard tabs whose Router branch mounts `AdminPanel` (the fixed-width admin
- * sidebar shell). On these the admin sidebar hosts the cluster in its own footer
- * (`DockedStatusFooter`), so the global dock stands down. Keep in sync with the
- * admin cases in Router's `renderActiveView`.
- */
-const ADMIN_SHELL_TABS = new Set(['admin', 'memory', 'skills', 'logs', 'stats', 'servers', 'dreams-admin']);
 
 export interface GlobalStatusDockProps {
     /** Admin-open handler, forwarded to the docked admin button. */
@@ -58,19 +56,17 @@ export function GlobalStatusDock({ onAdminOpen }: GlobalStatusDockProps) {
     const remoteShell = useRemoteShellEnabled();
     const splitWorkspacePanelEnabled = useSplitWorkspacePanelEnabled();
     const { isMobile } = useBreakpoint();
+    // The page behind the admin dialog, which is what the dock sits under.
+    const visibleTab = useVisibleDashboardTab();
 
     if (!remoteShell || isMobile) return null;
-
-    // The admin shell hosts the cluster in its own left sidebar footer
-    // (`DockedStatusFooter`), so stand down on every tab that mounts it.
-    if (ADMIN_SHELL_TABS.has(state.activeTab)) return null;
 
     // The workspace chat/activity sub-tab hosts the dock in its own left-column
     // footer so the chat detail pane keeps full height. Don't render a second
     // dock over that view.
     const inPanelFooter =
         splitWorkspacePanelEnabled &&
-        state.activeTab === 'repos' &&
+        visibleTab === 'repos' &&
         !!state.selectedRepoId &&
         (state.activeRepoSubTab === 'chats' || state.activeRepoSubTab === 'activity');
     if (inPanelFooter) return null;
@@ -81,7 +77,7 @@ export function GlobalStatusDock({ onAdminOpen }: GlobalStatusDockProps) {
     // strip beside it — beneath the editor. Applies to regular repos, My Life,
     // and My Work alike, since My Work now docks per-sub-tab like a regular repo.
     const inNotesSidebarFooter =
-        state.activeTab === 'repos' &&
+        visibleTab === 'repos' &&
         !!state.selectedRepoId &&
         state.activeRepoSubTab === 'notes';
     if (inNotesSidebarFooter) return null;
@@ -89,7 +85,7 @@ export function GlobalStatusDock({ onAdminOpen }: GlobalStatusDockProps) {
     // The settings sub-tab hosts the cluster in `RepoSettingsTab`'s own nav
     // footer, matching Notes/Admin owned-sidebar behavior.
     const inSettingsSidebarFooter =
-        state.activeTab === 'repos' &&
+        visibleTab === 'repos' &&
         !!state.selectedRepoId &&
         state.activeRepoSubTab === 'settings';
     if (inSettingsSidebarFooter) return null;
@@ -98,7 +94,7 @@ export function GlobalStatusDock({ onAdminOpen }: GlobalStatusDockProps) {
     // of `NotesGitTab`'s own commit-history sidebar, so the diff detail pane
     // keeps full height. Stand down like Notes/Settings.
     const inNotesGitSidebarFooter =
-        state.activeTab === 'repos' &&
+        visibleTab === 'repos' &&
         !!state.selectedRepoId &&
         state.activeRepoSubTab === 'git';
     if (inNotesGitSidebarFooter) return null;
@@ -109,7 +105,7 @@ export function GlobalStatusDock({ onAdminOpen }: GlobalStatusDockProps) {
     // global band would neither match its width nor belong under the detail
     // pane — stand down like Notes/Settings.
     const inPrQueueFooter =
-        state.activeTab === 'repos' &&
+        visibleTab === 'repos' &&
         !!state.selectedRepoId &&
         state.activeRepoSubTab === 'pull-requests';
     if (inPrQueueFooter) return null;

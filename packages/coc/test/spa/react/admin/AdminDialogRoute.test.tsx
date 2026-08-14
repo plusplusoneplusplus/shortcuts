@@ -31,11 +31,24 @@ vi.mock('../../../../src/server/spa/client/react/admin/AdminPanel', () => ({
     AdminPanel: () => <div id="view-admin">admin</div>,
 }));
 
+// The status dock only exists in the remote-first shell; turn it on so the
+// AC-03 "exactly one dock" assertion has something to count.
+vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
+    useRemoteShellEnabled: () => true,
+}));
+
+// The cluster itself needs the full app-shell provider tree; this test is about
+// how many docks are on screen, not what they contain.
+vi.mock('../../../../src/server/spa/client/react/layout/StatusActions', () => ({
+    StatusActions: () => <div data-testid="status-actions-stub" />,
+}));
+
 vi.mock('../../../../src/server/spa/client/react/wiki/WikiView', () => ({
     WikiView: () => <div data-testid="wiki-view-stub">wiki</div>,
 }));
 
 import { Router } from '../../../../src/server/spa/client/react/layout/Router';
+import { GlobalStatusDock } from '../../../../src/server/spa/client/react/layout/GlobalStatusDock';
 import { AdminDialog } from '../../../../src/server/spa/client/react/admin/AdminDialog';
 import { useAdminDialogRoute } from '../../../../src/server/spa/client/react/admin/useAdminDialogRoute';
 import {
@@ -182,6 +195,26 @@ describe('admin dialog routing', () => {
 
         fireEvent.keyDown(document, { key: 'Escape' });
         expect(window.location.hash).toBe('#repos/my-repo/chats');
+
+        unmount();
+    });
+
+    it('keeps exactly one status dock on screen while the dialog is open (AC-03)', () => {
+        // The page behind the dialog owns the dock now; the admin sidebar docks
+        // none (see AdminPanel-status-footer). Standing the global dock down on
+        // admin hashes — as it used to — would leave the page with none at all.
+        setHash('#repos');
+        const { queryAllByTestId, unmount } = renderWithProviders(
+            <>
+                <Harness />
+                <GlobalStatusDock />
+            </>,
+        );
+
+        expect(queryAllByTestId('global-status-dock')).toHaveLength(1);
+        setHash('#admin/settings/appearance');
+        expect(document.getElementById('admin-dialog')).not.toBeNull();
+        expect(queryAllByTestId('global-status-dock')).toHaveLength(1);
 
         unmount();
     });

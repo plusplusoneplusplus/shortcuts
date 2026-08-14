@@ -5,10 +5,11 @@
  * the remote-first shell on desktop, and only as wide as the left sidebar
  * column. Off (classic mode) or on mobile it renders nothing (topbar keeps the
  * cluster). It also renders nothing on views that dock the cluster in their own
- * left-column footer: the workspace chat/activity sub-tab, the admin shell, the
- * workspace notes sub-tab, the workspace settings sub-tab, and the workspace
- * notes-git sub-tab. My Work docks per-sub-tab like a regular repo, so those
- * same sub-tab stand-downs cover it.
+ * left-column footer: the workspace chat/activity sub-tab, the workspace notes
+ * sub-tab, the workspace settings sub-tab, and the workspace notes-git sub-tab.
+ * My Work docks per-sub-tab like a regular repo, so those same sub-tab
+ * stand-downs cover it. Admin is an overlay dialog, so it gets no stand-down —
+ * but the stand-downs are evaluated against the page BEHIND the dialog.
  *
  * @vitest-environment jsdom
  */
@@ -76,23 +77,46 @@ describe('GlobalStatusDock', () => {
         expect(wrapper.style.width).toContain('360px');
     });
 
-    it('renders nothing on the admin tab (the admin sidebar hosts the cluster in its own footer)', () => {
+    it('keeps rendering while the admin dialog is open (admin is an overlay, not a page)', () => {
+        // Admin no longer replaces the page and its sidebar no longer docks a
+        // cluster, so the page behind the dialog keeps its dock — exactly one.
         mockAppState = { activeTab: 'admin', selectedRepoId: null, activeRepoSubTab: undefined };
-        const { container } = render(<GlobalStatusDock />);
-        // The admin shell renders its own sidebar and docks the status cluster in
-        // its footer (`DockedStatusFooter`), so the global bottom band stands down
-        // to avoid the empty partial-width strip beside it.
+        render(<GlobalStatusDock />);
+        expect(screen.getAllByTestId('status-actions')).toHaveLength(1);
+    });
+
+    it('keeps rendering on every admin-shell tab hosted by the dialog', () => {
+        for (const tab of ['admin', 'memory', 'skills', 'logs', 'stats', 'servers', 'dreams-admin']) {
+            mockAppState = { activeTab: tab, selectedRepoId: null, activeRepoSubTab: undefined };
+            const { unmount } = render(<GlobalStatusDock />);
+            expect(screen.getAllByTestId('status-actions')).toHaveLength(1);
+            unmount();
+        }
+    });
+
+    it('still stands down when the admin dialog opens over a view that docks its own footer', () => {
+        // Regression: the stand-downs read the tab BEHIND the dialog. Reading
+        // `state.activeTab` instead would flip them off the moment admin opened
+        // and paint a second dock under the note editor.
+        mockAppState = { activeTab: 'repos', selectedRepoId: 'ws-a', activeRepoSubTab: 'notes' };
+        const { container, rerender } = render(<GlobalStatusDock />);
+        expect(container.firstChild).toBeNull();
+
+        mockAppState = { activeTab: 'admin', selectedRepoId: 'ws-a', activeRepoSubTab: 'notes' };
+        rerender(<GlobalStatusDock />);
         expect(screen.queryByTestId('status-actions')).toBeNull();
         expect(container.firstChild).toBeNull();
     });
 
-    it('renders nothing on every tab that mounts the admin shell', () => {
-        for (const tab of ['admin', 'memory', 'skills', 'logs', 'stats', 'servers', 'dreams-admin']) {
-            mockAppState = { activeTab: tab, selectedRepoId: null, activeRepoSubTab: undefined };
-            const { container, unmount } = render(<GlobalStatusDock />);
-            expect(container.firstChild).toBeNull();
-            unmount();
-        }
+    it('restores the dock when the admin dialog closes back onto a plain tab', () => {
+        mockAppState = { activeTab: 'wiki', selectedRepoId: null, activeRepoSubTab: undefined };
+        const { rerender } = render(<GlobalStatusDock />);
+        mockAppState = { activeTab: 'logs', selectedRepoId: null, activeRepoSubTab: undefined };
+        rerender(<GlobalStatusDock />);
+        expect(screen.getAllByTestId('status-actions')).toHaveLength(1);
+        mockAppState = { activeTab: 'wiki', selectedRepoId: null, activeRepoSubTab: undefined };
+        rerender(<GlobalStatusDock />);
+        expect(screen.getAllByTestId('status-actions')).toHaveLength(1);
     });
 
     it('renders nothing on the My Work notes sub-tab (NotesView docks the cluster in its own sidebar footer)', () => {
