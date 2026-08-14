@@ -61,13 +61,14 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  /* Fit to the available vertical space. The route mounts inside a
-     parent that supplies a definite height (`h-full overflow-hidden` in
-     Router, or the AdminDialog body with `min-h-0`). Filling that
-     parent — rather than growing past it — is what guarantees the
-     whole admin page never scrolls. */
+  /* Fit to the available vertical space. The shell mounts inside the
+     AdminDialog body, which supplies a definite height (`min-h-0` inside a
+     height-capped dialog panel). Filling that parent — rather than growing
+     past it — plus clipping here is what guarantees the whole admin surface
+     never scrolls as one page; only `.ar-main` scrolls internally. */
   height: 100%;
   min-height: 0;
+  overflow: hidden;
 }
 
 [data-theme="light"] .admin-redesign {
@@ -114,9 +115,9 @@
 
 /* ── App shell (sidebar + main) ───────────────────────────────── */
 /*
- * The admin route is mounted inside a parent that provides a definite
- * height (Router wraps it in `h-full overflow-hidden`, AdminDialog wraps
- * it in a flex body with `min-h-0`). The shell fills that parent exactly
+ * The admin shell is mounted inside a parent that provides a definite
+ * height (the AdminDialog body — a flex child with `min-h-0` inside a
+ * height-capped dialog panel). The shell fills that parent exactly
  * and never grows beyond it — only the main pane is allowed to scroll
  * internally if its content overflows. The sidebar stays put.
  */

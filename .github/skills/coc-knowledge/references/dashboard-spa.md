@@ -1333,9 +1333,10 @@ the AI Provider page. It is distinct from the per-workspace `DreamsPanel`.
 
 Clicking an embedded tool row dispatches `SET_ACTIVE_TAB` and updates
 `location.hash` to the corresponding top-level route (`#memory`, `#skills`,
-`#dreams-admin`, `#logs`, `#stats`, `#servers`). The Router maps every embedded tool
-tab plus `'admin'` itself to a single `<AdminPanel />` render, so the admin shell
-(sidebar + breadcrumb + right pane) stays mounted across navigation.
+`#dreams-admin`, `#logs`, `#stats`, `#servers`). Every one of those hashes plus
+`'admin'` itself opens the **admin overlay dialog** — see "Admin as an overlay
+dialog" below — so the admin shell (sidebar + breadcrumb + right pane) stays
+mounted across navigation.
 `AdminPanel` switches on `state.activeTab` — when it matches an embedded tool
 route, the right pane mounts the corresponding View embedded inside an
 `.ar-tool-embed` flex column (instead of the standard `.ar-page` card grid).
@@ -1345,6 +1346,33 @@ Clicking an admin/settings row resets the dashboard tab back to `'admin'`,
 unmounts the embed, and renders the standard admin card content.
 Each tool's internal sub-tab/hash scheme (e.g. `#skills/installed`,
 `#logs?sessionId=…`) is unchanged.
+
+### Admin as an overlay dialog
+
+Admin is a dialog, not a page. The gear (`#admin-toggle` in the topbar cluster,
+`sidebar-admin-toggle` in the docked sidebar cluster) sets `location.hash` to
+`#admin`; nothing navigates away.
+
+- `admin/adminDialogRoute.ts` is the pure policy: `ADMIN_SHELL_TABS` (the seven
+  tabs the shell owns — `admin`, `memory`, `skills`, `logs`, `stats`, `servers`,
+  `dreams-admin`), `isAdminShellTab`, `isAdminShellHash`, and
+  `resolveAdminCloseHash`.
+- `admin/useAdminDialogRoute.ts` **derives** `open` from `state.activeTab` rather
+  than holding React state, so deep links (`#admin/settings/appearance`,
+  `#admin/database/processes?page=2`) and browser back/forward drive the dialog
+  for free. It records the last non-admin `location.hash` and `close()` restores
+  it, falling back to `#repos` on a cold deep link.
+- `App.tsx` lazy-mounts `<AdminDialog>` (keeping the large admin shell out of the
+  initial bundle); `admin/AdminDialog.tsx` puts `AdminPanel` inside `ui/Dialog`
+  with `max-w-[1100px] h-[85vh]`, `dense`, and a `renderHeader` that is just a
+  `×` row — `AdminPanel` owns all interior chrome.
+- `layout/Router.tsx` has **no** admin branch. While an admin hash is routed it
+  keeps rendering the last non-admin tab, so the chat/notes/repo view underneath
+  stays mounted and keeps its scroll position, and is simply revealed on close.
+
+Hash parsing is untouched: `dashboardRoutes.ts` (`parseAdminSubTab`,
+`parseSettingsSubTabFromHash`, `parseAdminDatabaseDeepLink`) and
+`adminNavigation.ts` still own routing and nav policy.
 
 ### Skills Config panel & folder-source grouping
 

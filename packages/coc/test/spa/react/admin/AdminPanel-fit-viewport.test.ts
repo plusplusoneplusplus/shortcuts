@@ -1,12 +1,11 @@
 /**
- * Layout invariants for the admin route: the page must fit the available
- * vertical space, never grow into a single big scrollable page, and only
- * the right pane (`.ar-main`) is allowed to scroll internally when its
- * content overflows.
+ * Layout invariants for the admin surface: it must fit the available vertical
+ * space, never grow into a single big scrollable page, and only the right pane
+ * (`.ar-main`) is allowed to scroll internally when its content overflows.
  *
  * These checks are static (string-level) but lock the contract between
- * `Router.tsx` (the outer wrapper) and `admin-redesign.css` (the shell
- * sizing) so that any regression to the previous "whole page scrolls"
+ * `AdminDialog.tsx` (the height-capped host) and `admin-redesign.css` (the
+ * shell sizing) so that any regression to the previous "whole page scrolls"
  * behaviour shows up here, not in production.
  */
 
@@ -20,6 +19,10 @@ const css = readFileSync(
 );
 const routerSource = readFileSync(
     resolve(__dirname, '../../../../src/server/spa/client/react/layout/Router.tsx'),
+    'utf-8',
+);
+const adminDialogSource = readFileSync(
+    resolve(__dirname, '../../../../src/server/spa/client/react/admin/AdminDialog.tsx'),
     'utf-8',
 );
 const adminPanelSource = readFileSync(
@@ -47,16 +50,20 @@ function rootBlock(): string {
 }
 
 describe('AdminPanel — fit-to-viewport layout invariants', () => {
-    it('Router wraps the admin route in an overflow-hidden container, not a scroller', () => {
-        // Find the admin route branch.
-        const adminCase = routerSource.match(/case 'admin':[\s\S]*?return\s*\([\s\S]*?\);/);
-        expect(adminCase, 'admin case in Router.tsx not found').not.toBeNull();
-        const branch = adminCase![0];
-        expect(branch).toMatch(/data-testid="admin-scroll-container"/);
-        // The outer wrapper must clip overflow (so the whole page can't scroll).
-        expect(branch).toMatch(/overflow-hidden/);
-        // It must NOT mark itself as a scroll container any longer.
-        expect(branch).not.toMatch(/overflow-y-auto/);
+    it('Router no longer renders admin as a page — the dialog owns it', () => {
+        // Admin hashes open the overlay dialog over whatever view the user was
+        // on; the router must not mount the shell as a top-level route.
+        expect(routerSource).not.toMatch(/case 'admin':/);
+        expect(routerSource).not.toMatch(/<AdminPanel\s*\/>/);
+    });
+
+    it('AdminDialog caps the shell height so it fits the viewport, not the page', () => {
+        // A fixed viewport-relative height (plus Dialog's own max-h-[90vh] and
+        // overflow-hidden panel) is what stops the whole admin surface from
+        // becoming one long scrolling page.
+        expect(adminDialogSource).toMatch(/h-\[\d+vh\]/);
+        // The host must not introduce its own scroller — `.ar-main` scrolls.
+        expect(adminDialogSource).not.toMatch(/overflow-y-auto/);
     });
 
     it('root .admin-redesign fills its parent so children can size against it', () => {

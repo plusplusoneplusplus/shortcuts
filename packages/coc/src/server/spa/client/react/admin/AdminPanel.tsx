@@ -330,7 +330,9 @@ export function AdminPanel() {
     });
 
     return (
-        <div id="view-admin" className="admin-redesign">
+        // Bounded, non-scrolling outer container: `.admin-redesign` fills the
+        // dialog body and clips, so only `.ar-main` scrolls.
+        <div id="view-admin" className="admin-redesign" data-testid="admin-scroll-container">
             <div id="admin-page-content" className="ar-shell">
                 {/* ── Sidebar ── */}
                 <aside className="ar-sidebar" aria-label="Admin sections">

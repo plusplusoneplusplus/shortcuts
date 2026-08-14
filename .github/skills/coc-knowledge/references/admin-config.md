@@ -64,8 +64,8 @@ The admin route uses a self-contained, Linear-inspired design system that lives 
 
 The admin page is structured as a two-column shell that fills the available vertical space and never scrolls as a whole. Only the right pane is scrollable.
 
-- The route mounts inside `<div className="h-full overflow-hidden" data-testid="admin-scroll-container">` (Router) or the `AdminDialog` body (`flex-1 min-h-0 overflow-y-auto`). Both supply a definite height to the panel.
-- The `.admin-redesign` root (on `#view-admin`) is `height: 100%; min-height: 0` so the panel fills that parent exactly.
+- The shell mounts inside the `AdminDialog` body (`flex-1 min-h-0 overflow-y-auto`) of a height-capped dialog panel (`max-w-[1100px] h-[85vh]`, itself `max-h-[90vh] overflow-hidden`), which supplies a definite height to the panel.
+- The `.admin-redesign` root (on `#view-admin`, `data-testid="admin-scroll-container"`) is `height: 100%; min-height: 0; overflow: hidden` so the panel fills that parent exactly and clips rather than growing.
 - `<div className="ar-shell">` is a CSS grid (`var(--ar-sidebar-w)` + `1fr`) with `height: 100%; min-height: 0; overflow: hidden`.
 - `<aside className="ar-sidebar">` fills the grid row (`height: 100%; min-height: 0`) and only scrolls internally if its own brand/nav/stats stack ever exceeds the viewport. It is **not** sticky and must not use `100vh` — both would break inside the `AdminDialog` and any nested pane whose container height differs from the viewport.
 - `<main className="ar-main">` is the **single scroll region** of the admin route: `min-height: 0; height: 100%; overflow-y: auto`. The sticky topbar (`.ar-topbar` with the `.ar-breadcrumb`) pins to the top of this scroller, and the page body (`.ar-page` with `.ar-page-header` + cards) flows underneath.
