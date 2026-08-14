@@ -176,6 +176,23 @@ const taskNotification = (taskId: string, status = 'completed') => ({
     type: 'system', subtype: 'task_notification', task_id: taskId, status, output_file: `/tmp/${taskId}.out`, summary: `task ${taskId} ${status}`,
 });
 const resultMsg = (extra: Record<string, unknown> = {}) => ({ type: 'result', subtype: 'success', ...extra });
+/** Assistant frame launching a background Bash via `run_in_background`. */
+const bgToolUseAssistant = (toolUseId: string) => ({
+    type: 'assistant',
+    message: { content: [{ type: 'tool_use', id: toolUseId, name: 'Bash', input: { command: 'npm test', run_in_background: true } }] },
+});
+
+/** Mirrors CLAUDE_POST_DRAIN_SETTLE_GRACE_MS in claude-sdk-service.ts. */
+const POST_DRAIN_GRACE_MS = 30_000;
+
+/**
+ * Drive the message loop to a standstill under fake timers: each pass lets the
+ * pending microtasks and zero-delay timers run so the loop can consume every
+ * already-yielded frame and make its settle decision.
+ */
+const settleLoop = async () => {
+    for (let i = 0; i < 20; i++) await vi.advanceTimersByTimeAsync(0);
+};
 
 describe('ClaudeSDKService background tasks', () => {
     let svc: ClaudeSDKService;
@@ -186,6 +203,7 @@ describe('ClaudeSDKService background tasks', () => {
     });
 
     afterEach(() => {
+        delete process.env.COC_CLAUDE_BACKGROUND_DRAIN_TIMEOUT_MS;
         resetSDKLogger();
         svc.dispose();
         vi.useRealTimers();
@@ -472,6 +490,182 @@ describe('ClaudeSDKService background tasks', () => {
             expect(result.success).toBe(true);
             expect(result.response).toBe('workingdone');
             await fake.whenInputClosed();
+            expect(fake.isInputEnded()).toBe(true);
+        });
+    });
+
+    // ── Drain-after-result settlement ──────────────────────────────────────────
+    // Regression for a turn hanging until the drain cap aborts it: a `result`
+    // deferred settle, the last background task then drained, and no `result`
+    // re-invocation or `session_state_changed: idle` frame followed — so nothing
+    // closed the gate. A `result` is a terminal signal too, so the drain settles
+    // the turn, but only after a quiet window (the SDK re-invokes the model after
+    // a background task reports, and that arrives as new frames).
+
+    describe('settles when the last background task drains after a result', () => {
+        it('closes the gate after the quiet window when a task_notification is the last frame', async () => {
+            vi.useFakeTimers();
+            const fake = makeTerminalAssistantFake({
+                pre: [
+                    assistantText('started'),
+                    bgToolUseAssistant('tu1'),
+                    resultMsg({ result: 'started' }),
+                    // Terminal drain, then silence — no re-invocation, no idle.
+                    taskNotification('tu1', 'completed'),
+                ],
+            });
+            mockDynamicImport.mockResolvedValue({ query: fake.queryFn });
+
+            const sendP = svc.sendMessage({ prompt: 'background then silence' });
+            await settleLoop();
+            // Still inside the quiet window: the gate stays open in case the SDK
+            // re-invokes with the task's output.
+            expect(fake.isInputEnded()).toBe(false);
+
+            await vi.advanceTimersByTimeAsync(POST_DRAIN_GRACE_MS + 1_000);
+            const result = await sendP;
+
+            expect(result.success).toBe(true);
+            expect(result.response).toBe('started');
+            expect(fake.isInputEnded()).toBe(true);
+        });
+
+        it('closes the gate after the quiet window when a terminal task_updated is the last frame', async () => {
+            vi.useFakeTimers();
+            const fake = makeTerminalAssistantFake({
+                pre: [
+                    assistantText('started'),
+                    taskStarted('bg1'),
+                    resultMsg({ result: 'started' }),
+                    taskUpdated('bg1'),
+                ],
+            });
+            mockDynamicImport.mockResolvedValue({ query: fake.queryFn });
+
+            const sendP = svc.sendMessage({ prompt: 'background then silence' });
+            await settleLoop();
+            expect(fake.isInputEnded()).toBe(false);
+
+            await vi.advanceTimersByTimeAsync(POST_DRAIN_GRACE_MS + 1_000);
+            const result = await sendP;
+
+            expect(result.success).toBe(true);
+            expect(result.response).toBe('started');
+            expect(fake.isInputEnded()).toBe(true);
+        });
+
+        it('does not settle on the deferred result itself while the task is still in flight', async () => {
+            vi.useFakeTimers();
+            const fake = makeDeferredStreamingFake({
+                pre: [assistantText('started'), taskStarted('bg1'), resultMsg({ result: 'started' })],
+                batches: [[taskNotification('bg1'), assistantText(' finished'), resultMsg({})]],
+            });
+            mockDynamicImport.mockResolvedValue({ query: fake.queryFn });
+
+            const sendP = svc.sendMessage({ prompt: 'slow background task' });
+            await fake.whenReachedBatch(0);
+            // Well past the quiet window — the task never drained, so the window
+            // was never armed and the gate must still be open.
+            await vi.advanceTimersByTimeAsync(POST_DRAIN_GRACE_MS * 4);
+            expect(fake.isInputEnded()).toBe(false);
+
+            // The re-invocation lands and is still consumed in full.
+            fake.releaseBatch();
+            const result = await sendP;
+            expect(result.success).toBe(true);
+            expect(result.response).toBe('started finished');
+        });
+
+        it('cancels the quiet window when the SDK re-invokes after the drain', async () => {
+            vi.useFakeTimers();
+            const fake = makeTerminalAssistantFake({
+                pre: [
+                    assistantText('started'),
+                    taskStarted('bg1'),
+                    resultMsg({ result: 'started' }),
+                    // Drain arms the quiet window...
+                    taskNotification('bg1'),
+                    // ...and the re-invocation cancels it and settles instead.
+                    assistantText(' finished'),
+                    resultMsg({ result: ' finished' }),
+                ],
+            });
+            mockDynamicImport.mockResolvedValue({ query: fake.queryFn });
+
+            const sendP = svc.sendMessage({ prompt: 'background with re-invocation' });
+            await settleLoop();
+            const result = await sendP;
+
+            expect(result.success).toBe(true);
+            expect(result.response).toBe('started finished');
+            expect(fake.isInputEnded()).toBe(true);
+        });
+
+        it('the no-background fast path settles at the first result without waiting for the window', async () => {
+            vi.useFakeTimers();
+            const fake = makeDeferredStreamingFake({
+                pre: [assistantText('done'), resultMsg({ result: 'done' })],
+            });
+            mockDynamicImport.mockResolvedValue({ query: fake.queryFn });
+
+            const sendP = svc.sendMessage({ prompt: 'no background' });
+            await settleLoop();
+            // Closed immediately — no drain timer, no quiet window.
+            expect(fake.isInputEnded()).toBe(true);
+            expect(await sendP).toMatchObject({ success: true, response: 'done' });
+        });
+    });
+
+    // ── Drain-cap ceiling (default + env override) ─────────────────────────────
+
+    describe('background drain cap ceiling', () => {
+        /** A turn whose background task never reports — only the cap can end it. */
+        const wedgedFake = () => makeDeferredStreamingFake({
+            pre: [assistantText('started'), taskStarted('wedged'), resultMsg({ result: 'started' })],
+            batches: [[taskNotification('wedged'), resultMsg({})]], // never released
+        });
+
+        it('defaults to 60 minutes', async () => {
+            vi.useFakeTimers();
+            const fake = wedgedFake();
+            mockDynamicImport.mockResolvedValue({ query: fake.queryFn });
+
+            const sendP = svc.sendMessage({ prompt: 'wedged background' });
+            await vi.advanceTimersByTimeAsync(59 * 60_000);
+            expect(fake.isInputEnded()).toBe(false);
+
+            await vi.advanceTimersByTimeAsync(2 * 60_000);
+            await sendP;
+            expect(fake.isInputEnded()).toBe(true);
+        });
+
+        it('honors COC_CLAUDE_BACKGROUND_DRAIN_TIMEOUT_MS as the ceiling', async () => {
+            process.env.COC_CLAUDE_BACKGROUND_DRAIN_TIMEOUT_MS = '10000';
+            vi.useFakeTimers();
+            const fake = wedgedFake();
+            mockDynamicImport.mockResolvedValue({ query: fake.queryFn });
+
+            const sendP = svc.sendMessage({ prompt: 'wedged background' });
+            await vi.advanceTimersByTimeAsync(9_000);
+            expect(fake.isInputEnded()).toBe(false);
+
+            await vi.advanceTimersByTimeAsync(2_000);
+            await sendP;
+            expect(fake.isInputEnded()).toBe(true);
+        });
+
+        it('ignores a non-numeric override and still lets a smaller caller timeoutMs lower the cap', async () => {
+            process.env.COC_CLAUDE_BACKGROUND_DRAIN_TIMEOUT_MS = 'not-a-number';
+            vi.useFakeTimers();
+            const fake = wedgedFake();
+            mockDynamicImport.mockResolvedValue({ query: fake.queryFn });
+
+            const sendP = svc.sendMessage({ prompt: 'wedged background', timeoutMs: 5_000 });
+            await vi.advanceTimersByTimeAsync(4_000);
+            expect(fake.isInputEnded()).toBe(false);
+
+            await vi.advanceTimersByTimeAsync(2_000);
+            await sendP;
             expect(fake.isInputEnded()).toBe(true);
         });
     });
