@@ -385,6 +385,49 @@ describe('AdminPanel — embedded tools render in the right panel', () => {
         expect(document.getElementById('logs-toggle')!.getAttribute('aria-current')).toBeNull();
     });
 
+    // AC-03 — every tool route that used to be its own full page now renders
+    // inside the admin dialog. Sweep all of them in one pass so a tab that
+    // loses its embed wrapper or its sidebar highlight can't slip through.
+    it('every embedded tool route mounts its view with the sidebar row highlighted', async () => {
+        (window as any).__DASHBOARD_CONFIG__ = {
+            apiBasePath: '/api',
+            wsPath: '/ws',
+            serversEnabled: true,
+        };
+        mockDreamsAdminConfig();
+        await act(async () => { renderAdmin(); });
+        await waitFor(() => expect(document.getElementById('servers-toggle')).toBeTruthy());
+
+        const toolTabs = ['memory', 'skills', 'dreams-admin', 'stats', 'logs', 'servers'];
+        for (const tab of toolTabs) {
+            await act(async () => {
+                fireEvent.click(document.getElementById(`${tab}-toggle`)!);
+            });
+
+            await waitFor(() => {
+                expect(document.querySelector(`[data-testid="admin-tool-embed-${tab}"]`)).toBeTruthy();
+            });
+
+            const row = document.getElementById(`${tab}-toggle`)!;
+            expect(row.className, `${tab} row should be active`).toContain('is-active');
+            expect(row.getAttribute('aria-current')).toBe('page');
+
+            // Exactly one nav row is highlighted at a time.
+            const active = document.querySelectorAll('.ar-nav-item.is-active');
+            expect(active.length, `${tab} should be the only active row`).toBe(1);
+        }
+
+        // …and Configure — the seventh admin-shell route — takes the highlight
+        // back when the user returns to it.
+        await act(async () => {
+            fireEvent.click(document.querySelector<HTMLButtonElement>('[data-testid="settings-nav-configure"]')!);
+        });
+        await waitFor(() => {
+            expect(document.querySelector('[data-testid^="admin-tool-embed-"]')).toBeNull();
+        });
+        expect(document.querySelectorAll('.ar-nav-item.is-active').length).toBe(1);
+    });
+
     it('clears admin/settings row is-active styling when an embedded tool view is active', async () => {
         await act(async () => { renderAdmin(); });
         await waitFor(() => expect(document.getElementById('skills-toggle')).toBeTruthy());

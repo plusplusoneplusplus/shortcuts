@@ -69,6 +69,13 @@
   height: 100%;
   min-height: 0;
   overflow: hidden;
+
+  /* Responsive queries below key off *this* box, not the viewport. The shell
+     lives inside AdminDialog, which caps it at ~1100px however wide the
+     window is, so a viewport media query would never fire on a desktop
+     monitor even when the shell itself is narrow. */
+  container-type: inline-size;
+  container-name: ar-shell;
 }
 
 [data-theme="light"] .admin-redesign {
@@ -324,6 +331,12 @@
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+
+  /* Second query container: the page content (`.aip-*` grids and toolbars)
+     has to react to the width of the pane it sits in, which is the shell
+     minus the 248px sidebar. */
+  container-type: inline-size;
+  container-name: ar-main;
 }
 
 /* Embedded tool view (Skills/Logs/Usage/Models/Servers). Hand all
@@ -1175,12 +1188,13 @@
 }
 
 /* ── Responsive ─────────────────────────────────────────────── */
-/* Collapse the sidebar to a mobile select on narrow viewports. The
-   admin page is rendered inside the dashboard right pane, which can be
-   substantially narrower than the browser viewport — keep this
-   breakpoint low so the sidebar stays visible on typical desktop and
-   tablet widths. */
-@media (max-width: 600px) {
+/* Collapse the sidebar to a mobile select once the shell itself gets
+   narrow. Measured against the `ar-shell` container rather than the
+   viewport: the shell is rendered inside AdminDialog and is never wider
+   than ~1100px, and on mobile the dialog goes fullscreen so the container
+   width tracks the viewport anyway. Keep this breakpoint low so the
+   sidebar stays visible at every desktop and tablet dialog width. */
+@container ar-shell (max-width: 600px) {
   .admin-redesign {
     --ar-sidebar-w: 0;
   }
@@ -1976,7 +1990,11 @@
 }
 
 /* ── Responsive ─────────────────────────────────────────────── */
-@media (max-width: 900px) {
+/* Keyed off `ar-main` — the pane these grids actually live in, i.e. the
+   dialog shell minus the 248px sidebar. The thresholds are the old
+   viewport ones with the sidebar subtracted (900 → 660, 600 → 600, where
+   the sidebar is already collapsed). */
+@container ar-main (max-width: 660px) {
   .admin-redesign .aip-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1998,7 +2016,7 @@
     grid-template-columns: 1fr;
   }
 }
-@media (max-width: 600px) {
+@container ar-main (max-width: 600px) {
   .admin-redesign .aip-summary-grid {
     grid-template-columns: 1fr;
   }
