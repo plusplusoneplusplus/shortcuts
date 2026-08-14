@@ -638,8 +638,11 @@ turndown.addRule('rawTable', {
     filter(node) {
         if (node.nodeName !== 'TABLE') return false;
         const table = node as Element;
+        // Truthiness, not `!== null`: turndown runs on the browser DOM in the app but
+        // on domino under Node, and domino's querySelector returns `undefined` rather
+        // than `null` for a miss — so `!== null` sent *every* table down the raw path.
         return (
-            table.querySelector(RAW_TABLE_CELL_SELECTOR) !== null ||
+            Boolean(table.querySelector(RAW_TABLE_CELL_SELECTOR)) ||
             !isGfmShapedTable(table)
         );
     },
@@ -656,8 +659,10 @@ turndown.addRule('rawTable', {
 turndown.addRule('mermaidCode', {
     filter(node) {
         if (node.nodeName !== 'PRE') return false;
-        const code = (node as Element).querySelector('code.language-mermaid');
-        return code !== null;
+        // Truthiness for the same reason as `rawTable` above: under domino a miss is
+        // `undefined`, so `!== null` matched every <pre> and rewrote plain code blocks
+        // into empty ```mermaid fences.
+        return Boolean((node as Element).querySelector('code.language-mermaid'));
     },
     replacement(_content, node) {
         const el = node as HTMLElement;
