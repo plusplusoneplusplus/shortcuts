@@ -28,6 +28,7 @@ import { processMessageAttachments } from '../core/attachment-utils';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import { prependSelectedSkillsDirective } from '../executors/prompt-builder';
 import { prependChatStyleBlock, recordedChatStyle, shouldInjectChatStyle } from '../executors/chat-style-prompt';
+import { isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
 import { getStoppedChatResumeUnavailableMessage, normalizeChatMode, serializeCommitChatMetadata } from '../tasks/task-types';
 import type { ChatProvider } from '../tasks/task-types';
 import {
@@ -197,6 +198,10 @@ function queuedTaskToProcess(task: QueuedTask): AIProcess {
             // Carried here too so the i menu names the commit while the chat is
             // still queued, instead of gaining the row only once it starts.
             commitChat: serializeCommitChatMetadata(task.payload),
+            // Same reason as `mode` above: the composer (and the i menu) must
+            // show the style the run will actually use, not Default, while the
+            // task is still queued.
+            ...(isChatStyle(payload?.chatStyle) ? { chatStyle: payload.chatStyle as ChatStyle } : {}),
         },
     };
 }

@@ -236,10 +236,16 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
     const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
     const [selectedFollowUpEffortTier, setSelectedFollowUpEffortTier] = useState<EffortTierKey>('medium');
-    // Style belongs to THIS conversation, not to the workspace — it is restored
-    // from `metadata.chatStyle` (the style the last turn was recorded with) and
-    // reset per process.
-    const [followUpChatStyle, setFollowUpChatStyle] = useState<ChatStyle>(DEFAULT_CHAT_STYLE);
+    // Style belongs to THIS conversation, not to the workspace. `null` means the
+    // user has not touched the selector here, so the value follows whatever the
+    // process record last recorded (`metadata.chatStyle`, written on every turn);
+    // a pick sets the override and wins from then on, including over a
+    // later-arriving record. Reset per process.
+    const [chatStyleOverride, setChatStyleOverride] = useState<ChatStyle | null>(null);
+    const recordedChatStyle = isChatStyle((processDetails as any)?.metadata?.chatStyle)
+        ? ((processDetails as any).metadata.chatStyle as ChatStyle)
+        : undefined;
+    const followUpChatStyle = chatStyleOverride ?? recordedChatStyle ?? DEFAULT_CHAT_STYLE;
     const [ralphGrillSetup, setRalphGrillSetup] = useState<RalphGrillSetup>({ enabled: true, depth: 'standard', agents: [] });
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [sessionTokenLimit, setSessionTokenLimit] = useState<number | undefined>(undefined);
@@ -319,11 +325,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
      *  or when the user explicitly picks a tier. Prevents the init fallback from
      *  clobbering a seeded value or an in-flight pick. Reset on taskId change. */
     const afterTierInitializedRef = useRef(false);
-    /** Set to true once the follow-up style has been initialised from this
-     *  conversation's `metadata.chatStyle`, or when the user picks one. Reset on
-     *  process change so a late response from another conversation cannot
-     *  replace the active selection. */
-    const chatStyleInitializedRef = useRef(false);
     /** Tracks first mount of the model-override effect so we don't re-derive on initial render. */
     const modelOverrideMountedRef = useRef(false);
     const previousSessionProviderRef = useRef<string | null>(null);
@@ -818,8 +819,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         goalPatchedRef.current = false;
         effortInitializedRef.current = false;
         afterTierInitializedRef.current = false;
-        chatStyleInitializedRef.current = false;
-        setFollowUpChatStyle(DEFAULT_CHAT_STYLE);
+        setChatStyleOverride(null);
         modelOverrideMountedRef.current = false;
         setEffortOverride(null);
         setInvalidScratchpadPaths(new Set());
@@ -1076,21 +1076,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         if (processDetails) afterTierInitializedRef.current = true;
     }, [processDetails, workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Restore this conversation's style from its process record. The server
-    // records `metadata.chatStyle` on every turn, so a conversation with no
-    // stored style has never run one — it reads as Default. Initialised once per
-    // process so a slow response for a different conversation cannot overwrite a
-    // selection the user already made here.
-    useEffect(() => {
-        if (chatStyleInitializedRef.current || !processDetails) return;
-        const saved = (processDetails as any)?.metadata?.chatStyle;
-        setFollowUpChatStyle(isChatStyle(saved) ? saved : DEFAULT_CHAT_STYLE);
-        chatStyleInitializedRef.current = true;
-    }, [processDetails]);
-
     function handleFollowUpChatStyleChange(style: ChatStyle) {
-        chatStyleInitializedRef.current = true;
-        setFollowUpChatStyle(style);
+        setChatStyleOverride(style);
     }
 
     // When the selected tier becomes unconfigured, fall back to the first configured tier.

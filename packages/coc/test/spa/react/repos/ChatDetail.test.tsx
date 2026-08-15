@@ -2549,7 +2549,84 @@ describe('ChatDetail — per-conversation chat style', () => {
 
         await waitFor(() => expect(selectorStyle()).toBe('structured'));
         // A later render pass driven by the same (stale) process record must not
-        // clobber the pick — the per-process init only runs once.
+        // clobber the pick — the user override wins over the recorded style.
+        expect(selectorStyle()).toBe('structured');
+    });
+
+    // Regression: a freshly enqueued chat's first /processes/ snapshot is
+    // synthesized from the queued task and can carry no chatStyle. The composer
+    // must still show the conversation's style once a later snapshot (queue
+    // refresh / real process record) delivers it, instead of staying on Default
+    // and posting the next turn as `default`.
+    function renderWithLateProcessStyle(lateStyle: string) {
+        const taskId = 'queue_task-style';
+        let processCalls = 0;
+        const syntheticProcess = {
+            id: taskId,
+            type: 'chat',
+            status: 'running',
+            metadata: { type: 'chat', queueTaskId: 'task-style' },
+            conversationTurns: [],
+        };
+        const realProcess = makeProcess({
+            id: taskId,
+            status: 'running',
+            metadata: { sessionId: 'sess-style', chatStyle: lateStyle },
+        });
+        setupFetch({
+            '/skills/all': { body: { merged: [] } },
+            '/processes/': () => {
+                processCalls += 1;
+                const p = processCalls === 1 ? syntheticProcess : realProcess;
+                return new Response(JSON.stringify({ process: p, children: [], total: 0 }), {
+                    status: 200,
+                    headers: { 'content-type': 'application/json' },
+                });
+            },
+            '/models': { body: [] },
+        });
+
+        const refreshRef = createRef<() => void>();
+        function LateStyleHarness() {
+            const { dispatch } = useQueue();
+            useEffect(() => {
+                (refreshRef as React.MutableRefObject<(() => void) | null>).current =
+                    () => dispatch({ type: 'REFRESH_SELECTED_QUEUE_TASK' });
+            }, [dispatch]);
+            return <ChatDetail taskId={taskId} />;
+        }
+        render(<Wrap><LateStyleHarness /></Wrap>);
+        return { refreshRef, processCalls: () => processCalls };
+    }
+
+    it('picks up the style when it only arrives on a later process snapshot', async () => {
+        mockState.chatStyleSelectorEnabled = true;
+        const { refreshRef } = renderWithLateProcessStyle('human');
+
+        await waitFor(() => expect(selectorStyle()).toBe('default'));
+
+        await act(async () => {
+            refreshRef.current?.();
+        });
+
+        await waitFor(() => expect(selectorStyle()).toBe('human'));
+    });
+
+    it('keeps a user pick when a later process snapshot carries a different style', async () => {
+        mockState.chatStyleSelectorEnabled = true;
+        const { refreshRef } = renderWithLateProcessStyle('human');
+
+        await waitFor(() => expect(selectorStyle()).toBe('default'));
+
+        fireEvent.click(screen.getByTestId('chat-style-trigger-btn'));
+        fireEvent.click(screen.getByTestId('chat-style-option-structured'));
+        await waitFor(() => expect(selectorStyle()).toBe('structured'));
+
+        await act(async () => {
+            refreshRef.current?.();
+        });
+
+        await waitFor(() => expect(selectorStyle()).toBe('structured'));
         expect(selectorStyle()).toBe('structured');
     });
 });

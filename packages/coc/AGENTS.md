@@ -453,6 +453,12 @@ all have their own `references/*.md`.
     always start on Default, there is no workspace-level style), and no
     style-change buffering special case in `ProcessMessageDeliveryService` — the
     style rides the user message, so no freshly built system message is needed.
+  - The follow-up composer's style is *derived*, not synced: `ChatDetail` keeps
+    only a `chatStyleOverride` (null until the user picks) and falls back to
+    `processDetails.metadata.chatStyle`, so a late, partial, or re-fetched
+    record converges on the right value while a user pick always wins.
+    `queuedTaskToProcess` mirrors `payload.chatStyle` into the synthetic queued
+    process for the same reason it mirrors `mode` — an invalid value is dropped.
 - **Quick Ask side-notes** (live admin flag `features.quickAskSidenotes`
   default on, gating both the server endpoints and the SPA UI via
   `isQuickAskSidenotesEnabled()` / `useQuickAskSidenotesEnabled`) let a user
