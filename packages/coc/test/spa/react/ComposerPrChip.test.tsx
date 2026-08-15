@@ -444,27 +444,217 @@ describe('ComposerPrChip — failed-checks popover', () => {
         expect(queryByTestId(`composer-pr-chip-popover-open-${KEY}`)).toBeNull();
     });
 
-    it('all passing: the checks badge stays a non-interactive span and opens no popover', () => {
+    it('all passing: the checks badge still opens the popover so the passing checks are reachable', () => {
         const checks: PrCheckRow[] = [check('a', 'success'), check('b', 'success')];
         const { getByTestId, queryByTestId } = render(
             <ComposerPrChip item={readyItem({ checksState: 'ready', checks })} onDismiss={() => {}} />,
         );
         const badge = getByTestId('composer-pr-chip-checks');
-        expect(badge.tagName).toBe('SPAN');
+        expect(badge.tagName).toBe('BUTTON');
         expect(badge.getAttribute('data-failing')).toBe('0');
         fireEvent.click(badge);
-        expect(queryByTestId(POPOVER_TESTID)).toBeNull();
+        expect(queryByTestId(POPOVER_TESTID)).not.toBeNull();
+        // Opens on Failed, which is empty here — the auto-fix empty copy shows.
+        expect(getByTestId(`composer-pr-chip-checks-none-${KEY}`).textContent).toContain(
+            'No failing checks right now',
+        );
     });
 
-    it('pending but none failing: the checks badge is not clickable', () => {
+    it('pending but none failing: the checks badge is clickable', () => {
         const checks: PrCheckRow[] = [check('a', 'success'), check('b', 'pending')];
         const { getByTestId, queryByTestId } = render(
             <ComposerPrChip item={readyItem({ checksState: 'ready', checks })} onDismiss={() => {}} />,
         );
         const badge = getByTestId('composer-pr-chip-checks');
-        expect(badge.tagName).toBe('SPAN');
+        expect(badge.tagName).toBe('BUTTON');
         fireEvent.click(badge);
-        expect(queryByTestId(POPOVER_TESTID)).toBeNull();
+        expect(queryByTestId(POPOVER_TESTID)).not.toBeNull();
+    });
+
+    it('no checks at all: the badge renders nothing', () => {
+        const { queryByTestId } = render(
+            <ComposerPrChip item={readyItem({ checksState: 'ready', checks: [] })} onDismiss={() => {}} />,
+        );
+        expect(queryByTestId('composer-pr-chip-checks')).toBeNull();
+    });
+});
+
+describe('ComposerPrChip — clickable check categories', () => {
+    const mixedChecks: PrCheckRow[] = [
+        checkWithUrl('build', 'failure', 'https://github.com/owner/repo/actions/runs/1'),
+        check('unit', 'success'),
+        check('types', 'success'),
+        check('e2e', 'pending'),
+        check('deploy', 'running'),
+        check('flaky', 'skipped'),
+    ];
+
+    function openPopover(checks: PrCheckRow[] = mixedChecks) {
+        const utils = render(
+            <ComposerPrChip item={readyItem({ checksState: 'ready', checks })} onDismiss={() => {}} />,
+        );
+        fireEvent.click(utils.getByTestId('composer-pr-chip-checks'));
+        return utils;
+    }
+
+    const categoryId = (id: string) => `composer-pr-chip-category-${id}-${KEY}`;
+    const listId = `composer-pr-chip-checks-list-${KEY}`;
+
+    function listedNames(container: HTMLElement): string[] {
+        return Array.from(container.querySelectorAll('[data-testid="composer-pr-chip-checks-failed-row"]'))
+            .map(el => el.getAttribute('data-name') ?? '');
+    }
+
+    it('the three category rows are focusable buttons with aria-pressed reflecting the active one', () => {
+        const { getByTestId } = openPopover();
+        for (const id of ['pending', 'passed', 'failed']) {
+            const btn = getByTestId(categoryId(id));
+            expect(btn.tagName).toBe('BUTTON');
+            expect(btn.getAttribute('type')).toBe('button');
+            expect(btn.hasAttribute('disabled')).toBe(false);
+        }
+        // Failed is the default.
+        expect(getByTestId(categoryId('failed')).getAttribute('aria-pressed')).toBe('true');
+        expect(getByTestId(categoryId('passed')).getAttribute('aria-pressed')).toBe('false');
+        expect(getByTestId(categoryId('pending')).getAttribute('aria-pressed')).toBe('false');
+    });
+
+    it('opens on Failed and clicking Passed swaps the list to the passing checks', () => {
+        const { getByTestId } = openPopover();
+        expect(listedNames(getByTestId(listId))).toEqual(['build']);
+        expect(getByTestId(listId).getAttribute('data-category')).toBe('failing');
+
+        fireEvent.click(getByTestId(categoryId('passed')));
+        expect(listedNames(getByTestId(listId))).toEqual(['unit', 'types']);
+        expect(getByTestId(listId).getAttribute('data-category')).toBe('passing');
+        expect(getByTestId(categoryId('passed')).getAttribute('aria-pressed')).toBe('true');
+        expect(getByTestId(categoryId('failed')).getAttribute('aria-pressed')).toBe('false');
+    });
+
+    it('"In progress" lists pending AND running checks, matching its count', () => {
+        const { getByTestId } = openPopover();
+        fireEvent.click(getByTestId(categoryId('pending')));
+        const names = listedNames(getByTestId(listId));
+        expect(names).toEqual(['e2e', 'deploy']);
+        expect(getByTestId(`composer-pr-chip-counts-pending-${KEY}`).textContent).toBe(String(names.length));
+    });
+
+    it('clicking Failed lists the failing checks, and the skipped check stays unreachable', () => {
+        const { getByTestId } = openPopover();
+        fireEvent.click(getByTestId(categoryId('passed')));
+        fireEvent.click(getByTestId(categoryId('failed')));
+        expect(listedNames(getByTestId(listId))).toEqual(['build']);
+        // 'flaky' (skipped) is in no category, so it is never listed.
+        for (const id of ['pending', 'passed', 'failed']) {
+            fireEvent.click(getByTestId(categoryId(id)));
+            expect(listedNames(getByTestId(listId))).not.toContain('flaky');
+        }
+    });
+
+    it('clicking the active category clears the filter back to Failed', () => {
+        const { getByTestId } = openPopover();
+        fireEvent.click(getByTestId(categoryId('passed')));
+        expect(getByTestId(listId).getAttribute('data-category')).toBe('passing');
+
+        fireEvent.click(getByTestId(categoryId('passed')));
+        expect(getByTestId(listId).getAttribute('data-category')).toBe('failing');
+        expect(getByTestId(categoryId('failed')).getAttribute('aria-pressed')).toBe('true');
+
+        // Clicking the already-active Failed keeps it on Failed.
+        fireEvent.click(getByTestId(categoryId('failed')));
+        expect(getByTestId(listId).getAttribute('data-category')).toBe('failing');
+    });
+
+    it('each category lists exactly as many rows as its count shows', () => {
+        const { getByTestId, queryByTestId } = openPopover();
+        const counts: Array<[string, string]> = [
+            ['pending', `composer-pr-chip-counts-pending-${KEY}`],
+            ['passed', `composer-pr-chip-counts-passed-${KEY}`],
+            ['failed', `composer-pr-chip-counts-failed-${KEY}`],
+        ];
+        for (const [id, countTestId] of counts) {
+            fireEvent.click(getByTestId(categoryId(id)));
+            const list = queryByTestId(listId);
+            const rendered = list ? listedNames(list).length : 0;
+            expect(String(rendered)).toBe(getByTestId(countTestId).textContent);
+        }
+    });
+
+    it('rows keep the failed-row shape: emoji, link in a new tab, status label and duration', () => {
+        const checks: PrCheckRow[] = [
+            { id: 'unit', name: 'unit', status: 'success', duration: '1m 4s', interpretation: 'all good', detailsUrl: 'https://ci.example/unit' },
+        ];
+        const { getByTestId } = openPopover(checks);
+        fireEvent.click(getByTestId(categoryId('passed')));
+        const row = getByTestId(listId).querySelector('[data-testid="composer-pr-chip-checks-failed-row"]')!;
+        expect(row.getAttribute('data-status')).toBe('success');
+        expect(row.textContent).toContain('unit');
+        expect(row.textContent).toContain('Passed');
+        expect(row.textContent).toContain('1m 4s');
+        // The interpretation/description line is not rendered.
+        expect(row.textContent).not.toContain('all good');
+        const link = row.querySelector('a')!;
+        expect(link.getAttribute('href')).toBe('https://ci.example/unit');
+        expect(link.getAttribute('target')).toBe('_blank');
+        expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+    });
+
+    it('an empty category shows a neutral line, and the Failed empty state keeps the auto-fix copy', () => {
+        const checks: PrCheckRow[] = [check('unit', 'success')];
+        const { getByTestId, queryByTestId } = openPopover(checks);
+        // Default Failed with zero failures → the auto-fix empty copy.
+        expect(getByTestId(`composer-pr-chip-checks-none-${KEY}`).textContent).toContain(
+            'No failing checks right now — arm auto-fix to catch the next failure.',
+        );
+
+        // A zero-count category is still clickable, and gets a neutral line instead.
+        fireEvent.click(getByTestId(categoryId('pending')));
+        const empty = getByTestId(`composer-pr-chip-checks-empty-${KEY}`);
+        expect(empty.textContent).toBe('No checks in progress.');
+        expect(empty.textContent).not.toContain('auto-fix');
+        expect(queryByTestId(listId)).toBeNull();
+    });
+
+    it('the list region scrolls internally with a max height so the toggles stay visible', () => {
+        const many: PrCheckRow[] = Array.from({ length: 24 }, (_, i) => check(`pass-${i}`, 'success'));
+        const { getByTestId } = openPopover(many);
+        fireEvent.click(getByTestId(categoryId('passed')));
+        const list = getByTestId(listId);
+        expect(listedNames(list)).toHaveLength(24);
+        expect(list.className).toContain('overflow-y-auto');
+        expect(list.className).toContain('max-h-[240px]');
+        // No truncation / "+N more" affordance.
+        expect(getByTestId(POPOVER_TESTID).textContent).not.toContain('more');
+        // The archive link stays rendered below the list.
+        expect(getByTestId(`composer-pr-chip-archive-settings-${KEY}`)).toBeTruthy();
+    });
+
+    it('the selected category survives a re-render from the status poll', () => {
+        const item = readyItem({ checksState: 'ready', checks: mixedChecks });
+        const { getByTestId, rerender } = render(<ComposerPrChip item={item} onDismiss={() => {}} />);
+        fireEvent.click(getByTestId('composer-pr-chip-checks'));
+        fireEvent.click(getByTestId(categoryId('passed')));
+        expect(getByTestId(listId).getAttribute('data-category')).toBe('passing');
+
+        // A poll refresh delivers a new (equal) rows array.
+        rerender(
+            <ComposerPrChip
+                item={readyItem({ checksState: 'ready', checks: [...mixedChecks] })}
+                onDismiss={() => {}}
+            />,
+        );
+        expect(getByTestId(listId).getAttribute('data-category')).toBe('passing');
+    });
+
+    it('resets to Failed when the popover is closed and reopened', () => {
+        const { getByTestId } = openPopover();
+        fireEvent.click(getByTestId(categoryId('passed')));
+        expect(getByTestId(listId).getAttribute('data-category')).toBe('passing');
+
+        const badge = getByTestId('composer-pr-chip-checks');
+        fireEvent.click(badge);
+        fireEvent.click(badge);
+        expect(getByTestId(listId).getAttribute('data-category')).toBe('failing');
     });
 });
 
