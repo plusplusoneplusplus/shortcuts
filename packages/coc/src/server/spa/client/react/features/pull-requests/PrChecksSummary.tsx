@@ -57,10 +57,32 @@ export interface CheckStatusSummary {
     unknown: number;
 }
 
+/** The summary bucket a check status is tallied into. */
+export type CheckSummaryBucket = Exclude<keyof CheckStatusSummary, 'total'>;
+
+/**
+ * Maps one check status onto its summary bucket. `running` folds into `pending`
+ * (both "in progress"). This is the single status → bucket mapping:
+ * {@link summarizeCheckRows} counts with it, and the popover's category filter
+ * selects with it, so counts and filtered lists can never diverge.
+ */
+export function checkSummaryBucket(status: CheckStatus): CheckSummaryBucket {
+    switch (status) {
+        case 'success':   return 'passing';
+        case 'failure':   return 'failing';
+        case 'pending':
+        case 'running':   return 'pending';
+        case 'skipped':   return 'skipped';
+        case 'warning':   return 'warning';
+        case 'cancelled': return 'cancelled';
+        case 'unknown':   return 'unknown';
+    }
+}
+
 /**
  * Tallies check rows into the summary buckets (AC-03 — passing / failing /
  * pending / skipped counts, plus warning / cancelled / unknown so the total is
- * lossless). `running` folds into `pending` (both "in progress").
+ * lossless), via {@link checkSummaryBucket}.
  */
 export function summarizeCheckRows(rows: readonly PrCheckRow[]): CheckStatusSummary {
     const summary: CheckStatusSummary = {
@@ -74,16 +96,7 @@ export function summarizeCheckRows(rows: readonly PrCheckRow[]): CheckStatusSumm
         unknown: 0,
     };
     for (const row of rows) {
-        switch (row.status) {
-            case 'success':   summary.passing += 1; break;
-            case 'failure':   summary.failing += 1; break;
-            case 'pending':
-            case 'running':   summary.pending += 1; break;
-            case 'skipped':   summary.skipped += 1; break;
-            case 'warning':   summary.warning += 1; break;
-            case 'cancelled': summary.cancelled += 1; break;
-            case 'unknown':   summary.unknown += 1; break;
-        }
+        summary[checkSummaryBucket(row.status)] += 1;
     }
     return summary;
 }

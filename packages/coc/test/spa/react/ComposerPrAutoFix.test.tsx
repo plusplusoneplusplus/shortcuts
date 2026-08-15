@@ -314,12 +314,14 @@ describe('ComposerPrChip CI auto-fix controls (AC-05)', () => {
         expect(mocks.triggers.delete).toHaveBeenCalledWith('ws1', 'trg-1');
     });
 
-    it('keeps the checks badge a plain pill (no popover) when the flag is off and nothing is failing', async () => {
+    it('opens the popover without auto-fix controls when the flag is off and nothing is failing', async () => {
         mocks.triggersEnabled = false;
         const { badge, queryByTestId } = await renderWithPendingPr('proc-1');
-        expect(badge.tagName).toBe('SPAN');
+        expect(badge.tagName).toBe('BUTTON');
         fireEvent.click(badge);
-        expect(queryByTestId(`composer-pr-chip-checks-popover-${ITEM_KEY}`)).toBeNull();
+        // The checks are still browsable; only the auto-fix block is gone.
+        expect(queryByTestId(`composer-pr-chip-checks-popover-${ITEM_KEY}`)).not.toBeNull();
+        expect(queryByTestId(`composer-pr-chip-autofix-${ITEM_KEY}`)).toBeNull();
     });
 
     it('hides the auto-fix controls + badge when the triggers flag is off', async () => {

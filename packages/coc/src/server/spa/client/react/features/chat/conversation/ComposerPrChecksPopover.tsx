@@ -1,7 +1,12 @@
 /**
  * ComposerPrChecksPopover — click-opened popover that opens from the CI badge
- * and shows live check counts, two toggles (Auto-fix CI & address comments,
- * Auto-merge when ready), and an Auto-archive settings link.
+ * and shows live check counts, a drill-down list of the checks in the selected
+ * count category, two toggles (Auto-fix CI & address comments, Auto-merge when
+ * ready), and an Auto-archive settings link.
+ *
+ * The three count rows (In progress / Passed / Failed) are buttons that filter
+ * the list below them; it opens on Failed and clicking the active category
+ * returns to it.
  *
  * Anchored to the in-composer chip's checks badge ({@link ComposerPrChip}) and
  * rendered through a React portal so the composer card's `overflow-hidden` can't
@@ -16,7 +21,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { cn } from '../../../ui/cn';
-import { checkStatusEmoji, checkStatusLabel, summarizeCheckRows } from '../../pull-requests/PrChecksSummary';
+import { checkStatusEmoji, checkStatusLabel, checkSummaryBucket, summarizeCheckRows } from '../../pull-requests/PrChecksSummary';
 import { checkStatusClass } from '../../pull-requests/pr-derived-data';
 import type { PrCheckRow } from '../../pull-requests/pr-derived-data';
 
@@ -62,9 +67,15 @@ export interface ComposerPrChecksAutoMerge {
 export interface ComposerPrChecksPopoverProps {
     /** The badge button the popover anchors to (for positioning + outside-click). */
     anchorRef: React.RefObject<HTMLElement>;
-    /** Failed check rows to list — callers pass only `status === 'failure'`. */
+    /**
+     * Failed check rows — callers pass only `status === 'failure'`. Used as the
+     * list source when `allRows` is absent.
+     */
     failed: readonly PrCheckRow[];
-    /** All check rows — used to render the In progress / Passed / Failed count summary. */
+    /**
+     * All check rows — the source for both the In progress / Passed / Failed
+     * count summary and the drill-down list under the selected category.
+     */
     allRows?: readonly PrCheckRow[];
     /** PR number, for the accessible label. */
     prNumber: number | string;
@@ -81,6 +92,45 @@ export interface ComposerPrChecksPopoverProps {
     /** Hash link to the auto-archive settings section (e.g. `#repos/{id}/settings/preferences`). */
     archiveSettingsHref?: string;
 }
+
+/**
+ * The three clickable count categories. `bucket` is the {@link checkSummaryBucket}
+ * value the category selects, so a row is listed under a category exactly when it
+ * was counted there — one mapping, no divergence. Statuses outside these three
+ * buckets (skipped / cancelled / warning / unknown) stay unreachable here.
+ */
+const CATEGORIES = [
+    {
+        bucket: 'pending' as const,
+        /** Testid suffix — matches the pre-existing count testids. */
+        id: 'pending',
+        label: 'In progress',
+        glyph: '●',
+        glyphClass: 'text-[#0969da] dark:text-[#58a6ff]',
+        emptyText: 'No checks in progress.',
+    },
+    {
+        bucket: 'passing' as const,
+        id: 'passed',
+        label: 'Passed',
+        glyph: '✓',
+        glyphClass: 'text-[#1a7f37] dark:text-[#3fb950]',
+        emptyText: 'No passing checks.',
+    },
+    {
+        bucket: 'failing' as const,
+        id: 'failed',
+        label: 'Failed',
+        glyph: '✕',
+        glyphClass: 'text-[#cf222e] dark:text-[#f85149]',
+        emptyText: 'No failing checks right now — arm auto-fix to catch the next failure.',
+    },
+];
+
+type CheckCategory = (typeof CATEGORIES)[number]['bucket'];
+
+/** The category the popover opens on — its initial view is today's failed drill-down. */
+const DEFAULT_CATEGORY: CheckCategory = 'failing';
 
 /** Margin (px) kept between the popover and the viewport edges. */
 const VIEWPORT_MARGIN = 8;
@@ -124,7 +174,17 @@ export function ComposerPrChecksPopover({
     const popoverRef = useRef<HTMLDivElement | null>(null);
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
+    // Which count category the drill-down list is showing. Opens on "Failed" and
+    // resets to it on every open (the popover unmounts when closed); clicking the
+    // active category clears back to the default.
+    const [category, setCategory] = useState<CheckCategory>(DEFAULT_CATEGORY);
+
     const summary = allRows && allRows.length > 0 ? summarizeCheckRows(allRows) : null;
+    // `allRows` carries every check; `failed` is the pre-filtered failure subset the
+    // caller still uses for "Fix now", and is the only source when no rows were passed.
+    const listSource = allRows ?? failed;
+    const listed = listSource.filter(row => checkSummaryBucket(row.status) === category);
+    const activeCategory = CATEGORIES.find(c => c.bucket === category)!;
 
     // Position above the badge (the chip docks at the bottom of the viewport);
     // measured after layout so the popover's own size is known. Falls back below
@@ -146,7 +206,9 @@ export function ComposerPrChecksPopover({
         if (top < VIEWPORT_MARGIN) top = a.bottom + ANCHOR_GAP;
 
         setPos({ top, left });
-    }, [anchorRef, failed.length, allRows?.length]);
+        // Re-measured when the category changes too, so the popover stays glued to
+        // the badge as the list's height changes instead of drifting off the anchor.
+    }, [anchorRef, failed.length, allRows?.length, category]);
 
     // Close on outside click / touch.
     useEffect(() => {
@@ -218,54 +280,67 @@ export function ComposerPrChecksPopover({
                 )}
             </div>
 
-            {/* ── Count summary ─────────────────────────────────────────────── */}
+            {/* ── Count summary — each row filters the drill-down below ─────── */}
             {summary && (
                 <div
                     className="mb-2 flex flex-col gap-0.5"
                     data-testid={`composer-pr-chip-counts-${itemKey}`}
                 >
-                    <div className="flex items-center justify-between px-1 py-0.5 text-[11px]">
-                        <span className="flex items-center gap-1.5">
-                            <span aria-hidden="true" className="font-semibold text-[#0969da] dark:text-[#58a6ff]">●</span>
-                            <span className="text-[#57606a] dark:text-[#8b949e]">In progress</span>
-                        </span>
-                        <span className="font-mono font-medium tabular-nums text-[#57606a] dark:text-[#8b949e]"
-                            data-testid={`composer-pr-chip-counts-pending-${itemKey}`}>
-                            {summary.pending}
-                        </span>
-                    </div>
-                    <div className="flex items-center justify-between px-1 py-0.5 text-[11px]">
-                        <span className="flex items-center gap-1.5">
-                            <span aria-hidden="true" className="font-semibold text-[#1a7f37] dark:text-[#3fb950]">✓</span>
-                            <span className="text-[#57606a] dark:text-[#8b949e]">Passed</span>
-                        </span>
-                        <span className="font-mono font-medium tabular-nums text-[#57606a] dark:text-[#8b949e]"
-                            data-testid={`composer-pr-chip-counts-passed-${itemKey}`}>
-                            {summary.passing}
-                        </span>
-                    </div>
-                    <div className="flex items-center justify-between px-1 py-0.5 text-[11px]">
-                        <span className="flex items-center gap-1.5">
-                            <span aria-hidden="true" className="font-semibold text-[#cf222e] dark:text-[#f85149]">✕</span>
-                            <span className="text-[#57606a] dark:text-[#8b949e]">Failed</span>
-                        </span>
-                        <span className="font-mono font-medium tabular-nums text-[#57606a] dark:text-[#8b949e]"
-                            data-testid={`composer-pr-chip-counts-failed-${itemKey}`}>
-                            {summary.failing}
-                        </span>
-                    </div>
+                    {CATEGORIES.map(c => {
+                        const active = c.bucket === category;
+                        return (
+                            <button
+                                key={c.bucket}
+                                type="button"
+                                aria-pressed={active}
+                                title={`Show ${c.label.toLowerCase()} checks`}
+                                data-testid={`composer-pr-chip-category-${c.id}-${itemKey}`}
+                                data-active={active ? 'true' : 'false'}
+                                // Clicking the active category clears the filter back to Failed.
+                                onClick={() => setCategory(active ? DEFAULT_CATEGORY : c.bucket)}
+                                className={cn(
+                                    'flex w-full items-center justify-between rounded px-1 py-0.5 text-[11px]',
+                                    'cursor-pointer border-none text-left',
+                                    active
+                                        ? 'bg-[#ddf4ff] font-medium dark:bg-[#388bfd]/25'
+                                        : 'bg-transparent hover:bg-black/[0.04] dark:hover:bg-white/[0.06]',
+                                )}
+                            >
+                                <span className="flex items-center gap-1.5">
+                                    <span aria-hidden="true" className={cn('font-semibold', c.glyphClass)}>{c.glyph}</span>
+                                    <span className={active ? 'text-[#1f2328] dark:text-[#c9d1d9]' : 'text-[#57606a] dark:text-[#8b949e]'}>
+                                        {c.label}
+                                    </span>
+                                </span>
+                                <span
+                                    className={cn(
+                                        'font-mono font-medium tabular-nums',
+                                        active ? 'text-[#1f2328] dark:text-[#c9d1d9]' : 'text-[#57606a] dark:text-[#8b949e]',
+                                    )}
+                                    data-testid={`composer-pr-chip-counts-${c.id}-${itemKey}`}
+                                >
+                                    {summary[c.bucket]}
+                                </span>
+                            </button>
+                        );
+                    })}
                 </div>
             )}
 
-            {/* ── Failed check drill-down ───────────────────────────────────── */}
-            {failed.length > 0 && (
-                <ul className="m-0 mb-2 flex max-h-[180px] list-none flex-col gap-0.5 overflow-y-auto p-0">
-                    {failed.map(row => (
+            {/* ── Check drill-down for the selected category ────────────────── */}
+            {listed.length > 0 && (
+                <ul
+                    className="m-0 mb-2 flex max-h-[240px] list-none flex-col gap-0.5 overflow-y-auto p-0"
+                    data-testid={`composer-pr-chip-checks-list-${itemKey}`}
+                    data-category={category}
+                >
+                    {listed.map(row => (
                         <li
                             key={row.id}
                             className="flex items-center gap-1.5 rounded px-1 py-0.5 text-[11px] leading-snug hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
                             data-testid="composer-pr-chip-checks-failed-row"
                             data-status={row.status}
+                            data-name={row.name}
                         >
                             <span className={cn('shrink-0 font-semibold', checkStatusClass(row.status))} aria-hidden="true">
                                 {checkStatusEmoji(row.status)}
@@ -299,13 +374,18 @@ export function ComposerPrChecksPopover({
                 </ul>
             )}
 
-            {/* Empty state — only shown when no count summary and no failed rows. */}
-            {!summary && failed.length === 0 && (
+            {/* Empty state for the selected category. The auto-fix wording is reserved
+                for Failed; the other two get a short neutral line. */}
+            {listed.length === 0 && (
                 <div
                     className="mb-2 px-1 py-1 text-[11px] text-[#57606a] dark:text-[#8b949e]"
-                    data-testid={`composer-pr-chip-checks-none-${itemKey}`}
+                    data-testid={
+                        category === DEFAULT_CATEGORY
+                            ? `composer-pr-chip-checks-none-${itemKey}`
+                            : `composer-pr-chip-checks-empty-${itemKey}`
+                    }
                 >
-                    No failing checks right now — arm auto-fix to catch the next failure.
+                    {activeCategory.emptyText}
                 </div>
             )}
 

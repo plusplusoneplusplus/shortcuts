@@ -566,9 +566,25 @@ const CLAUDE_SUPPORTED_COMMANDS_TIMEOUT_MS = 5_000;
  * normal turn — which closes the input at its first `result` — never arms it and
  * behaves exactly as before. A wedged task (e.g. `task_started` with no terminal
  * `task_notification`, or `sleep infinity`) cannot pin the turn past this cap.
- * Generous enough for a multi-minute background `vitest`/build to complete.
+ *
+ * This bounds a *wedged* task only. A legitimate drain settles through
+ * `settleIfReady` as soon as the last tracked task clears, so the cap should
+ * never fire on healthy work. One hour is sized for a full-suite test sweep run
+ * in the background while staying well under `StaleTaskDetector`'s ~6h05m
+ * force-fail, which is the next net below it.
  */
-const CLAUDE_BACKGROUND_DRAIN_TIMEOUT_MS = 20 * 60_000;
+const CLAUDE_BACKGROUND_DRAIN_TIMEOUT_MS = 60 * 60_000;
+/**
+ * Quiet window after the last tracked background task drains on a turn whose
+ * only terminal signal so far is a `result` frame. A `result` is terminal for
+ * its own turn, but the SDK re-invokes the model after a background task
+ * reports, and that re-invocation arrives as new frames on the same session —
+ * closing stdin the instant the task clears would drop it. So the drain arms
+ * this short quiet window instead: any further frame cancels it, and only
+ * genuine silence settles the turn. A terminal assistant (`end_turn`) frame is
+ * final for the whole turn and still settles immediately, with no grace.
+ */
+const CLAUDE_POST_DRAIN_SETTLE_GRACE_MS = 30_000;
 /**
  * Resolve the `getContextUsage()` guard timeout. Honors a positive numeric
  * `COC_CLAUDE_CONTEXT_USAGE_TIMEOUT_MS` override (used by tests to exercise the
@@ -581,6 +597,20 @@ function resolveClaudeContextUsageTimeoutMs(): number {
         if (Number.isFinite(parsed) && parsed > 0) return parsed;
     }
     return CLAUDE_CONTEXT_USAGE_TIMEOUT_MS;
+}
+/**
+ * Resolve the background-task drain cap ceiling. Honors a positive numeric
+ * `COC_CLAUDE_BACKGROUND_DRAIN_TIMEOUT_MS` override — an escape hatch for
+ * background work that legitimately outruns the default — and otherwise falls
+ * back to {@link CLAUDE_BACKGROUND_DRAIN_TIMEOUT_MS}.
+ */
+function resolveClaudeBackgroundDrainCapMs(): number {
+    const raw = process.env.COC_CLAUDE_BACKGROUND_DRAIN_TIMEOUT_MS;
+    if (raw !== undefined && raw.trim() !== '') {
+        const parsed = Number(raw);
+        if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
+    return CLAUDE_BACKGROUND_DRAIN_TIMEOUT_MS;
 }
 /** Reasoning-effort levels CoC forwards to Claude Code's `effort` option. */
 const CLAUDE_EFFORT_LEVELS: readonly ReasoningEffort[] = ['low', 'medium', 'high', 'xhigh'];
@@ -970,6 +1000,14 @@ export class ClaudeSDKService implements ISDKService {
                 drainCapTimer = undefined;
             }
         };
+        // Post-drain quiet-window timer; any incoming frame cancels it.
+        let postDrainSettleTimer: ReturnType<typeof setTimeout> | undefined;
+        const clearPostDrainSettle = () => {
+            if (postDrainSettleTimer) {
+                clearTimeout(postDrainSettleTimer);
+                postDrainSettleTimer = undefined;
+            }
+        };
 
         const model = this.normalizeClaudeModel(options.model);
         const permissionOptions = this.resolveClaudePermissionOptions(options.mode);
@@ -1120,24 +1158,58 @@ export class ClaudeSDKService implements ISDKService {
                     extractClaudeContextSnapshot(await this.safeGetClaudeContextUsage(handle)),
             });
 
-            // Settlement signal for a turn whose CLI writes its final assistant
-            // message (`message.stop_reason: 'end_turn'`) and then blocks on
-            // stdin EOF without ever emitting a `result` or a
-            // `session_state_changed: idle` frame. The signal is held rather
-            // than acted on immediately: the turn only settles once no
-            // background task is still tracked, so an early end_turn frame can
+            // "The turn has produced a terminal signal of some kind; only
+            // pending background work is holding the gate open." Set by a
+            // terminal assistant frame (`message.stop_reason: 'end_turn'`) and
+            // by a `result` frame that deferred settle. The signal is held
+            // rather than acted on immediately: the turn only settles once no
+            // background task is still tracked, so an early terminal frame can
             // never cut off in-flight background work. Re-checked after each
-            // background-task drain so a terminal-assistant frame that arrives
-            // before the final task notification still settles the turn.
+            // background-task drain, so a terminal signal that arrived before
+            // the final task notification still settles the turn instead of
+            // leaving it hanging until the drain cap aborts it.
+            let turnTerminalSignalSeen = false;
+            // Narrower: an `end_turn` frame is final for the WHOLE turn, so it
+            // settles the moment the last task drains. A `result` is final only
+            // for its own turn — the SDK re-invokes after a background task
+            // reports — so it settles through the quiet window instead.
             let terminalAssistantSeen = false;
-            const settleIfReady = async (): Promise<void> => {
-                if (!terminalAssistantSeen || backgroundTasks.size > 0) return;
+            const settleNow = async (): Promise<void> => {
                 clearDrainCap();
+                clearPostDrainSettle();
                 await captureContextUsageThenClose();
+            };
+            const armPostDrainSettle = () => {
+                if (postDrainSettleTimer || CLAUDE_POST_DRAIN_SETTLE_GRACE_MS <= 0) return;
+                postDrainSettleTimer = setTimeout(() => {
+                    postDrainSettleTimer = undefined;
+                    if (backgroundTasks.size > 0) return;
+                    getSDKLogger().debug(
+                        {
+                            provider: CLAUDE_PROVIDER,
+                            event: 'claude_post_drain_settle',
+                            graceMs: CLAUDE_POST_DRAIN_SETTLE_GRACE_MS,
+                        },
+                        'Claude background tasks drained and the stream went quiet; closing input',
+                    );
+                    void settleNow();
+                }, CLAUDE_POST_DRAIN_SETTLE_GRACE_MS);
+                postDrainSettleTimer.unref?.();
+            };
+            const settleIfReady = async (): Promise<void> => {
+                if (!turnTerminalSignalSeen || backgroundTasks.size > 0) return;
+                if (terminalAssistantSeen) {
+                    await settleNow();
+                    return;
+                }
+                armPostDrainSettle();
             };
 
             for await (const msg of handle) {
                 if (abortController.signal.aborted) break;
+                // The stream is not quiet — a re-invocation (or anything else)
+                // is still arriving, so restart the post-drain window.
+                clearPostDrainSettle();
                 publishProviderSessionId(this.extractSessionId(msg));
                 if (this.isAssistantMessage(msg)) {
                     for (const block of msg.message.content) {
@@ -1159,6 +1231,7 @@ export class ClaudeSDKService implements ISDKService {
                     // behind settleIfReady so pending background work is not cut off.
                     if (this.isTerminalAssistantMessage(msg)) {
                         terminalAssistantSeen = true;
+                        turnTerminalSignalSeen = true;
                         await settleIfReady();
                     }
                 } else if (this.isUserMessage(msg)) {
@@ -1194,9 +1267,12 @@ export class ClaudeSDKService implements ISDKService {
                     // When background work is pending, keep the gate open until the
                     // SDK reports idle, bounded by the drain cap.
                     if (backgroundTasks.size === 0) {
-                        clearDrainCap();
-                        await captureContextUsageThenClose();
+                        await settleNow();
                     } else {
+                        // A `result` IS a terminal signal — the only thing still
+                        // holding the gate open is the tracked background work,
+                        // so record it and let the drain settle the turn.
+                        turnTerminalSignalSeen = true;
                         armDrainCap();
                     }
                 } else if (this.isRateLimitEvent(msg)) {
@@ -1219,23 +1295,22 @@ export class ClaudeSDKService implements ISDKService {
                     const status = msg.patch?.status;
                     if (status && CLAUDE_TERMINAL_TASK_STATUSES.has(status)) {
                         settleBackgroundTasks(msg.task_id);
-                        // Draining the final task may release a terminal-assistant
-                        // signal that arrived while the task was still running.
+                        // Draining the final task may release a terminal signal
+                        // that arrived while the task was still running.
                         await settleIfReady();
                     } else if (msg.patch?.is_backgrounded === true) {
                         registerBackgroundTask(msg.task_id, 'shell');
                     }
                 } else if (this.isClaudeSystemSubtype(msg, 'task_notification')) {
                     settleBackgroundTasks(msg.task_id, msg.tool_use_id);
-                    // Draining the final task may release a terminal-assistant
-                    // signal that arrived while the task was still running.
+                    // Draining the final task may release a terminal signal
+                    // that arrived while the task was still running.
                     await settleIfReady();
                 } else if (this.isClaudeSystemSubtype(msg, 'session_state_changed')) {
                     // Authoritative turn-over signal: the SDK's background drain
                     // loop has exited. Settle regardless of our local tracking.
                     if (msg.state === 'idle') {
-                        clearDrainCap();
-                        await captureContextUsageThenClose();
+                        await settleNow();
                     }
                 } else if (this.isClaudeSystemSubtype(msg, 'permission_denied')) {
                     // Purely observational — never fails or short-circuits the
@@ -1295,6 +1370,7 @@ export class ClaudeSDKService implements ISDKService {
             return { success: false, error: message, sessionId: currentSessionId, effectiveModel: model };
         } finally {
             clearDrainCap();
+            clearPostDrainSettle();
             midTurnUsagePoll.dispose();
             // Idempotent: unblocks the streaming-input generator if the turn
             // ended via abort/throw before a settle signal closed it.
@@ -1375,14 +1451,16 @@ export class ClaudeSDKService implements ISDKService {
     /**
      * Resolve the wall-clock ceiling for holding the input gate open while
      * background tasks drain. Honors a smaller caller `timeoutMs` budget when
-     * given, but never exceeds {@link CLAUDE_BACKGROUND_DRAIN_TIMEOUT_MS}.
+     * given, but never exceeds the ceiling from
+     * {@link resolveClaudeBackgroundDrainCapMs}.
      */
     private resolveBackgroundDrainCapMs(options: SendMessageOptions): number {
+        const ceiling = resolveClaudeBackgroundDrainCapMs();
         const requested = options.timeoutMs;
         if (typeof requested === 'number' && Number.isFinite(requested) && requested > 0) {
-            return Math.min(requested, CLAUDE_BACKGROUND_DRAIN_TIMEOUT_MS);
+            return Math.min(requested, ceiling);
         }
-        return CLAUDE_BACKGROUND_DRAIN_TIMEOUT_MS;
+        return ceiling;
     }
 
     /**

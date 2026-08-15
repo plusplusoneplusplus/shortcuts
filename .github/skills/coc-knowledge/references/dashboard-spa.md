@@ -1976,10 +1976,50 @@ The top-level `#memory` route is embedded in the Admin shell's Knowledge group a
 
 `MemoryV2Panel` lists the global scope plus registered workspace scopes, lets users enable/disable the active scope from the Settings tab, exports JSON, and wipes the active scope after confirmation. The tab content is split into `MemoryV2FactsTab`, `MemoryV2ReviewTab`, `MemoryV2EpisodesTab`, and `MemoryV2SettingsTab`.
 
+## Notes editor toolbar structure
+
+`features/notes/editor/NoteEditorToolbar.tsx` is composition only: it decides
+which rows exist (formatting row, find/replace row, contextual table strip) and
+delegates everything else to `features/notes/editor/toolbar/`.
+
+- `formattingCommands.ts` — `FORMATTING_GROUPS`, the descriptor list driving the
+  formatting half of the toolbar. Each inner array is one visual group and a
+  separator is drawn between groups, so reordering the toolbar is an edit here
+  rather than in JSX. A descriptor carries `id`, `label` (used for both `title`
+  and `aria-label`), `icon`, `run(editor)`, and optional `activeName`/
+  `activeAttrs` for the pressed state. Stateful controls (highlight, heading,
+  list, table insert, insert PDF, find) sit in the same list as slots so the
+  separator layout stays in one place. `toggleLink` lives here too — it is the
+  one command that prompts for input.
+- `FormattingToolbar.tsx` — renders the descriptor groups, plus the highlight
+  split button, heading dropdown, and list dropdown. Exports `HIGHLIGHT_COLORS`
+  and `HEADING_LEVELS`.
+- `ToolbarDropdown.tsx` — the single dropdown primitive (`ToolbarDropdown`,
+  `MenuItem`, `Sep`). It owns open/close state, outside-click and Escape
+  dismissal with focus return to the trigger, and — in `menu` mode — roving
+  Arrow/Home/End focus over `role="menuitem"` children, with focus landing on
+  the checked item on open. `MenuItem` activates on `onMouseDown` (with
+  `preventDefault`, so the editor selection survives) plus Enter/Space, and
+  deliberately has no `onClick`, which would run the command twice.
+- `useFindReplaceToolbarController.ts` — owns whether the find row is showing,
+  plus `useFindAndReplaceState` (the `transaction` subscription) and
+  `getSelectedText`.
+- `TableToolbarControls.tsx` — the contextual table strip, the insert-size
+  picker (`TABLE_PICKER_COLS`/`ROWS`), the cell fill picker, and
+  `useTableToolbarState`, which derives widths / header shape / wrap mode / move
+  availability. Outside a table it short-circuits and reads nothing off the doc.
+- `ToolbarHostActions.tsx` — the right-end actions (AI edits, comments, chat,
+  TOC, refresh, custom `toolbarRight`). These read no editor state, are driven
+  entirely by props, and stay visible in source mode. `hasHostActions(props)`
+  decides whether the `ml-auto` spacer is emitted at all.
+
+`NoteEditorToolbar.tsx` re-exports `HIGHLIGHT_COLORS`, `HEADING_LEVELS`,
+`TABLE_PICKER_COLS`, and `TABLE_PICKER_ROWS` so it stays the entry point.
+
 ## Notes rich editor find & replace
 
 In-document find and replace lives behind the 🔍 button in the Notes toolbar
-(`features/notes/editor/NoteEditorToolbar.tsx`), backed by
+(`features/notes/editor/toolbar/FindReplacePanel.tsx`), backed by
 `@tiptap/extension-find-and-replace`. The extension is registered last in
 `RichEditorCore` so its match decorations paint above the comment and AI-edit
 decorations. State lives on the editor instance
@@ -1999,39 +2039,8 @@ native browser find across the whole page (sidebar, TOC, comments, chat panel).
 It is rich-mode only — source mode mounts a separate raw-markdown editor — so the
 button sits inside the `hidden`-gated formatting group and the panel force-closes
 on a switch to source. Closing the panel clears the search term so no orphan
-highlights survive. Content inside NodeViews (`mermaidBlock`, `mathNode`,
-`pdfBlock`, `mapBlock`) is outside the searchable text flow and will not match;
-fenced code blocks are real ProseMirror text and do match. `replaceAll` is one
-transaction, so a single undo reverts it, and it preserves surrounding marks —
-including comment marks spanning the replaced text.
-Default match styles are disabled (`injectCSS: false`) because the bundled yellow
-fill is indistinguishable from the first `HIGHLIGHT_COLORS` shade; `noteEditor.css`
-outlines matches instead so one sitting inside a user highlight still reads.
-
-## Notes rich editor find & replace
-
-In-document find and replace lives behind the 🔍 button in the Notes toolbar
-(`features/notes/editor/NoteEditorToolbar.tsx`), backed by
-`@tiptap/extension-find-and-replace`. The extension is registered last in
-`RichEditorCore` so its match decorations paint above the comment and AI-edit
-decorations. State lives on the editor instance
-(`editor.storage.findAndReplace`: term, modifiers, `results`, `currentIndex`);
-the toolbar is not the component that calls `useEditor`, so the panel subscribes
-to `transaction` events to keep the `n / total` counter live.
-
-The panel offers find/replace inputs, prev/next (Enter and Shift+Enter in the
-find input), Aa / `ab|` / `.*` modifier toggles, and Replace / Replace all. Regex
-mode is RE2-backed, so lookarounds and backreferences are unsupported and an
-invalid pattern yields zero matches rather than throwing; whole-word is disabled
-in regex mode because the extension ignores it there. Opening the panel seeds the
-term from a single-line selection.
-
-Constraints worth knowing: no keyboard shortcut is bound, so `Ctrl+F` remains
-native browser find across the whole page (sidebar, TOC, comments, chat panel).
-It is rich-mode only — source mode mounts a separate raw-markdown editor — so the
-button sits inside the `hidden`-gated formatting group and the panel force-closes
-on a switch to source. Closing the panel clears the search term so no orphan
-highlights survive. Content inside NodeViews (`mermaidBlock`, `mathNode`,
+highlights survive — both invariants live in `useFindReplaceToolbarController`.
+Content inside NodeViews (`mermaidBlock`, `mathNode`,
 `pdfBlock`, `mapBlock`) is outside the searchable text flow and will not match;
 fenced code blocks are real ProseMirror text and do match. `replaceAll` is one
 transaction, so a single undo reverts it, and it preserves surrounding marks —
