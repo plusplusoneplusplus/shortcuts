@@ -23,7 +23,7 @@ import {
 } from './logic/calculator';
 
 const INITIAL_EXPRESSION = '0xFF << 4';
-const INITIAL_WIDTH: CalcWidth = 32;
+const INITIAL_WIDTH: CalcWidth = 64;
 
 const READOUTS: readonly { base: CalcBase; label: string }[] = [
     { base: 'dec', label: 'DEC' },

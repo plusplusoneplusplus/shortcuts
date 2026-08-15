@@ -20,7 +20,9 @@ describe('ProgrammerCalculatorCard', () => {
         expect(readout('hex')).toBe('FF0');
         expect(readout('dec')).toBe('4080');
         expect(readout('oct')).toBe('7760');
-        expect(readout('bin')).toBe('0000 0000 0000 0000 0000 1111 1111 0000');
+        expect(readout('bin')).toBe(
+            '0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 1111 1111 0000'
+        );
     });
 
     it('wraps the value when the width shrinks', () => {
@@ -43,7 +45,7 @@ describe('ProgrammerCalculatorCard', () => {
 
     it('renders one button per bit of the selected width', () => {
         render(<ProgrammerCalculatorCard />);
-        expect(screen.getAllByTestId(/^calc-bit-\d+$/).length).toBe(32);
+        expect(screen.getAllByTestId(/^calc-bit-\d+$/).length).toBe(64);
         fireEvent.change(screen.getByTestId('calc-width'), { target: { value: '8' } });
         expect(screen.getAllByTestId(/^calc-bit-\d+$/).length).toBe(8);
     });
