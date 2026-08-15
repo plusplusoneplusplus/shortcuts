@@ -236,8 +236,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
     const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
     const [selectedFollowUpEffortTier, setSelectedFollowUpEffortTier] = useState<EffortTierKey>('medium');
-    // Style belongs to THIS conversation, not to the workspace's latest new-chat
-    // choice — it is restored from `metadata.chatStyle` and reset per process.
+    // Style belongs to THIS conversation, not to the workspace — it is restored
+    // from `metadata.chatStyle` (the style the last turn was recorded with) and
+    // reset per process.
     const [followUpChatStyle, setFollowUpChatStyle] = useState<ChatStyle>(DEFAULT_CHAT_STYLE);
     const [ralphGrillSetup, setRalphGrillSetup] = useState<RalphGrillSetup>({ enabled: true, depth: 'standard', agents: [] });
     const [skills, setSkills] = useState<SkillItem[]>([]);
@@ -461,7 +462,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     }, [reposCtx, reposCtx?.repos, workspaceId, workspaceName, workspaceRootPath, workspaceRemoteUrl, sourceRemoteInfo]);
 
     // Resolve the Style flag from the server that owns this process, so a remote
-    // conversation follows its own server's experiment, not the local one's.
+    // conversation follows its own server's setting, not the local one's.
     const chatStyleSelectorEnabled = useChatStyleSelectorEnabled(sourceRemoteInfo.baseUrl);
 
     const sessionContextAttachmentsEnabled = isSessionContextAttachmentsEnabled();
@@ -1075,10 +1076,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         if (processDetails) afterTierInitializedRef.current = true;
     }, [processDetails, workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Restore this conversation's style from its process record. An older chat
-    // with no saved style shows Human; its next send stores Human. Initialised
-    // once per process so a slow response for a different conversation cannot
-    // overwrite a selection the user already made here.
+    // Restore this conversation's style from its process record. The server
+    // records `metadata.chatStyle` on every turn, so a conversation with no
+    // stored style has never run one — it reads as Default. Initialised once per
+    // process so a slow response for a different conversation cannot overwrite a
+    // selection the user already made here.
     useEffect(() => {
         if (chatStyleInitializedRef.current || !processDetails) return;
         const saved = (processDetails as any)?.metadata?.chatStyle;
@@ -1245,8 +1247,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         clearAttachedContext: attachedContext.clear,
         modelOverride: effectiveFollowUpModelOverride,
         effortOverride: effectiveFollowUpEffort,
-        // Omitted entirely when the owning server has the experiment off, so an
-        // older or opted-out server never receives a field it would reject.
+        // Omitted entirely when the owning server has the flag off, so an older
+        // or opted-out server never receives a field it would reject.
         chatStyle: chatStyleSelectorEnabled ? followUpChatStyle : undefined,
         workspaceId,
         ralphGrillSetup: selectedMode === 'ralph' && ralphMultiAgentGrillEnabled ? ralphGrillSetup : undefined,

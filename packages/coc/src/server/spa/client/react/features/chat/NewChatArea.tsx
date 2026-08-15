@@ -39,7 +39,7 @@ import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
 import type { EffortTierKey } from '../../hooks/useProviderEffortTiers';
 import { EffortTierSelector } from './EffortTierSelector';
 import { ChatStyleSelector } from './ChatStyleSelector';
-import { DEFAULT_CHAT_STYLE, isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
+import { DEFAULT_CHAT_STYLE, type ChatStyle } from '@plusplusoneplusplus/coc-client';
 import { useChatStyleSelectorEnabled } from '../../hooks/feature-flags/useChatStyleSelectorEnabled';
 import { resolveEffortTier, resolveEffectiveTier } from '../../utils/resolveEffortTier';
 import { getDraft, setDraft, clearDraft, newChatDraftKey } from './hooks/useDraftStore';
@@ -99,9 +99,9 @@ export interface NewChatAreaProps {
 }
 
 /**
- * Modes the Style experiment covers in its first version: the ordinary
- * conversational surfaces. Ralph, workflows, and other structured-output flows
- * already have stronger output contracts, so they receive no style instruction.
+ * Modes the Style chip covers: the ordinary conversational surfaces. Ralph,
+ * workflows, and the other structured-output flows already have stronger output
+ * contracts, so they receive no style instruction.
  */
 function isChatStyleSupportedMode(mode: string): boolean {
     return mode === 'ask' || mode === 'autopilot';
@@ -120,8 +120,9 @@ export interface InitialChatComposerSubmission {
     config?: { effortTier?: EffortTierKey };
     /**
      * How the response should be written. Only sent when the owning server
-     * enables the Style experiment and the mode is Ask or Autopilot; every
-     * adapter that rebuilds the enqueue payload must forward it.
+     * enables the Style chip and the mode is Ask or Autopilot; every adapter
+     * that rebuilds the enqueue payload must forward it. `'default'` is a real
+     * value — it tells the server the user is on Default, which injects nothing.
      */
     chatStyle?: ChatStyle;
 }
@@ -319,8 +320,8 @@ export function InitialChatComposer({
     const [selectedProvider, setSelectedProvider] = useState<ChatProvider>(() => getSelectableComposerDefaultProvider([]));
     const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
     const [selectedEffortTier, setSelectedEffortTier] = useState<EffortTierKey>('medium');
-    // Style is repo-scoped, not global: it seeds from this workspace's
-    // `lastChatStyle` preference and falls back to Human.
+    // Every new chat starts on Default — there is no workspace- or user-level
+    // style preference to seed from, by design.
     const [selectedChatStyle, setSelectedChatStyle] = useState<ChatStyle>(DEFAULT_CHAT_STYLE);
     const [ralphDirectGoalDraft, setRalphDirectGoalDraft] = useState<string | null>(null);
     const [ralphGrillSetup, setRalphGrillSetup] = useState<RalphGrillSetup>({ enabled: true, depth: 'standard', agents: [] });
@@ -344,7 +345,7 @@ export function InitialChatComposer({
     const cloneBaseUrl = useResolveCloneBaseUrl()(workspaceId);
 
     // Resolve the Style flag against the server that owns the selected clone, so
-    // one server's experiment never leaks into a clone owned by another.
+    // one server's flag never leaks into a clone owned by another.
     const chatStyleSelectorEnabled = useChatStyleSelectorEnabled(cloneBaseUrl);
 
     const { attachments, addFromPaste, addFromFileInput, addScreenshotDataUrl, removeAttachment, clearAttachments, restoreAttachments, error: attachmentError, toPayload } = useFileAttachments();
@@ -596,16 +597,12 @@ export function InitialChatComposer({
         const fallbackProvider = getSelectableDefaultProvider();
         let cancelled = false;
         if (!workspaceId) {
-            setSelectedChatStyle(DEFAULT_CHAT_STYLE);
             setSelectedProvider(fallbackProvider);
             return;
         }
         cloneClient.preferences.getRepo(workspaceId)
             .then((prefs: any) => {
                 if (cancelled) return;
-                // Read the saved style from this same request rather than
-                // issuing a second preferences fetch. Missing or invalid → Human.
-                setSelectedChatStyle(isChatStyle(prefs?.lastChatStyle) ? prefs.lastChatStyle : DEFAULT_CHAT_STYLE);
                 const last = prefs?.lastChatProvider;
                 if (isChatProvider(last) && isSelectableProvider(last, agentProviders)) {
                     setSelectedProvider(last);
@@ -615,7 +612,6 @@ export function InitialChatComposer({
             })
             .catch(() => {
                 if (cancelled) return;
-                setSelectedChatStyle(DEFAULT_CHAT_STYLE);
                 setSelectedProvider(fallbackProvider);
             });
         return () => { cancelled = true; };
@@ -707,13 +703,9 @@ export function InitialChatComposer({
     }
 
     function handleChatStyleChange(style: ChatStyle) {
-        // Update locally first: a failed preference write must not cost the user
-        // the style they just picked for this send.
+        // Per-send only: the pick is not written to any preference store, so a
+        // new chat always starts on Default again.
         setSelectedChatStyle(style);
-        if (workspaceId) {
-            cloneClient.preferences.patchRepo(workspaceId, { lastChatStyle: style })
-                .catch(() => { /* non-fatal — the selection still applies to this send */ });
-        }
     }
 
     function handleEffortTierChange(tier: EffortTierKey) {
@@ -1212,8 +1204,8 @@ export function InitialChatComposer({
 
     /**
      * Style chip, rendered beside Effort. Hidden when the owning server has the
-     * experiment off, and for modes that are out of scope for the first version
-     * (Ralph and other structured-output flows).
+     * flag off, and for modes that are out of scope (Ralph and the other
+     * structured-output flows). Never hidden merely because Default is selected.
      */
     function renderChatStyleControl(className?: string) {
         if (!chatStyleSelectorEnabled || !isChatStyleSupportedMode(selectedMode)) return null;

@@ -467,11 +467,13 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             excalidrawEnabled: opts.runtimeConfigService!.config.excalidraw?.enabled ?? false,
             canvasEnabled: opts.runtimeConfigService!.config.canvas?.enabled ?? false,
             kustoEnabled: opts.runtimeConfigService!.config.kusto?.enabled ?? false,
+            chatStyleSelectorEnabled: opts.runtimeConfigService!.config.features?.chatStyleSelector === true,
         })
         : () => ({
             excalidrawEnabled: opts.resolvedConfig?.excalidraw?.enabled ?? false,
             canvasEnabled: opts.resolvedConfig?.canvas?.enabled ?? false,
             kustoEnabled: opts.resolvedConfig?.kusto?.enabled ?? false,
+            chatStyleSelectorEnabled: opts.resolvedConfig?.features?.chatStyleSelector === true,
         });
     const isKustoEnabled = (): boolean => getLiveFeatureFlags().kustoEnabled;
     // Async extension-canvas capabilities + host.complete. Live (admin toggle

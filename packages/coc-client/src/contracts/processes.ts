@@ -125,9 +125,10 @@ export interface ProcessMessageRequest {
    */
   reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
   /**
-   * Optional per-turn chat style. Applies to this turn and becomes the
-   * conversation's style for later turns. Omitted by legacy clients, which
-   * keeps existing behavior. An unknown value is rejected with HTTP 400.
+   * Style selected for this turn. The server injects a style block into the
+   * user message only when this differs from the conversation's recorded style
+   * and is not `'default'`. An omitted field means `'default'`; an unknown
+   * value is rejected with HTTP 400.
    */
   chatStyle?: ChatStyle;
   [key: string]: unknown;

@@ -1,6 +1,5 @@
 import type { EffortTierKey, EnqueueTaskResponse } from './queue';
-import type { ChatStyle } from './common';
-import type { ChatProvider, ReasoningEffort } from './common';
+import type { ChatProvider, ChatStyle, ReasoningEffort } from './common';
 
 export type NoteNodeType = 'notebook' | 'section' | 'page';
 

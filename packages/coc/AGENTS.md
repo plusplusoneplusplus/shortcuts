@@ -407,36 +407,52 @@ all have their own `references/*.md`.
   bare name, error class/errno only — never canvas content or absolute paths);
   do not go back to a bare `catch {}`.
 - **Chat style selector** (live admin flag `features.chatStyleSelector`, default
-  off, runtime flag `chatStyleSelectorEnabled`) adds a `Style: Human|Direct|
-  Analytical|Structured` chip beside Effort in the new-chat and follow-up
-  composers. Style changes only how a response is written — never the provider,
-  model, effort, tools, permission mode, or any structured output contract.
-  `ChatStyle` + `isChatStyle()` are the single contract, exported from
-  `@plusplusoneplusplus/coc-client`; reuse them instead of re-listing the four
-  values. Prompt text lives ONLY in `src/server/executors/chat-style.ts` and is
-  asserted verbatim in `chat-style.test.ts` — treat wording edits as product
-  changes. The block is exactly four lines — open tag, `Selected style: X.`, one
-  focus line, close tag. There is no shared preamble; general tone and precedence
-  guidance comes from the admin global system prompt and the agent harness, so do
-  not reintroduce a baseline here. Executors reach it through `SystemMessageBuilder.appendChatStyle()`,
-  chained after global/repo behavior instructions and before source-link,
-  memory, and tool guidance; never concatenate the wording yourself. It applies
-  only to `chat-base` (Ask), `autopilot`, `note-chat`, `commit-chat`, and
-  `follow-up` executors — Ralph, classification, task generation, note creation,
-  resolve-comments, Dreams, and workflows are deliberately excluded. The gate is
-  enforced on BOTH sides: the SPA hides the chip and omits the field, and
-  executors read a live `getChatStyleSelectorEnabled` callback per turn (wired
-  `server/index.ts` → `queue-infrastructure` → bridge → registry →
-  `chat-base-executor`) so disabling it stops injection even for an older client.
-  `payload.chatStyle` is validated in `validateAndParseTask()` and `body.chatStyle`
-  in `normalizeFollowUpInput()`; an unknown value is a 400, an omitted one keeps
-  legacy behavior. The workspace seed is `PerRepoPreferences.lastChatStyle` (also
-  in the zod schema at `server/preferences/schema.ts`); the conversation owns
-  `process.metadata.chatStyle`. A follow-up that CHANGES the style is never
-  steered into an in-flight response — `ProcessMessageDeliveryService` buffers it
-  so the next turn gets a freshly built system message, and the value rides
-  `PendingMessage.chatStyle` (a product-neutral string on the forge side,
-  re-validated on drain).
+  off, runtime flag `chatStyleSelectorEnabled`) adds a `Style: Default|Human|
+  Direct|Analytical|Structured` chip beside Effort in the new-chat and follow-up
+  composers. The style instruction is prepended to the **user message**, never
+  injected into the system message. Style changes only how a response is
+  written — never the provider, model, effort, tools, permission mode, or any
+  structured output contract.
+  - `ChatStyle`, `CHAT_STYLES`, `DEFAULT_CHAT_STYLE`, `CHAT_STYLE_LABELS`, and
+    `isChatStyle()` are the single contract, exported from
+    `@plusplusoneplusplus/coc-client`; reuse them instead of re-listing the five
+    values. `'default'` is a real, first-class wire value — `isChatStyle
+    ('default')` is true — so switching *to* Default is distinguishable from
+    never having chosen. `validateAndParseTask()` and `normalizeFollowUpInput()`
+    re-validate: unknown → 400, omitted → `'default'`.
+  - Prompt text lives ONLY in `src/server/executors/chat-style-prompt.ts` and is
+    asserted verbatim in `chat-style-prompt.test.ts` — treat wording edits as
+    product changes. The block is exactly four lines — open tag,
+    `Selected style: X.`, one focus line, close tag — followed by a blank line
+    and then the user's text. There is no shared preamble. `Default` has no
+    focus line and no block at all: the builder returns `undefined` and the
+    prepend function returns the prompt byte-for-byte unchanged.
+  - Injection rule, one rule for every turn: inject when the selected style
+    differs from the style last recorded on `process.metadata.chatStyle` AND is
+    not `'default'`. A brand-new conversation starts recorded as `'default'`, so
+    turn 1 injects only when the user picked a real style. The recorded style is
+    updated on **every** turn including no-block ones, so Default is a real
+    state, not a gap. Switching to Default injects nothing and deliberately does
+    not undo an earlier style; that tradeoff is a product decision, not
+    something to work around.
+  - Injection happens before persistence — new chats in
+    `ProcessLifecycleRunner` (the only point upstream of the turn-0 write; NOT
+    `chat-base-executor.effectivePrompt`, which is never persisted) and
+    follow-ups in the `POST /api/processes/:id/message` route (the last point
+    before `ProcessMessageDeliveryService` writes `displayContent`). The block is
+    therefore stored and rendered verbatim in the user bubble — no stripping, no
+    hidden prefix, no special renderer. Do not add stripping without revisiting
+    that decision.
+  - Scope is `chat-base` (Ask), `autopilot`, `note-chat`, `commit-chat`, and
+    follow-ups only, enforced by `isChatStyleEligiblePayload`. Ralph,
+    classification, task generation, note creation, resolve-comments, Dreams,
+    and workflows never inject. The flag is enforced on both sides so an older
+    client cannot force injection: the SPA hides the chip and omits `chatStyle`,
+    and the server checks the live flag per turn.
+  - Deliberately absent: no `PerRepoPreferences.lastChatStyle` seed (new chats
+    always start on Default, there is no workspace-level style), and no
+    style-change buffering special case in `ProcessMessageDeliveryService` — the
+    style rides the user message, so no freshly built system message is needed.
 - **Quick Ask side-notes** (live admin flag `features.quickAskSidenotes`
   default on, gating both the server endpoints and the SPA UI via
   `isQuickAskSidenotesEnabled()` / `useQuickAskSidenotesEnabled`) let a user
@@ -458,7 +474,11 @@ all have their own `references/*.md`.
   `.../react/features/chat/quick-ask/`; `useQuickAskSidenotes` issues all three
   calls via `requestForWorkspace(workspaceId, …)` so a remote clone's side-notes
   are stored on its own server — the routes only check the id shape, so a
-  local-origin call would write the file under the LOCAL data dir.
+  local-origin call would write the file under the LOCAL data dir. The selection
+  pill (`QuickAskPill`) is a split pill: ✨ Ask AI plus, when `QuickAskTurnLayer`
+  gets an `onAttachContext` prop, 📎 Attach, which files the selected text as
+  chat context. Both actions ride this flag since the whole layer does; the
+  right-click "Attach as context" item stays available when the flag is off.
 - **Kusto query canvas** (`kusto.enabled`, default off) is a
   `type: 'kusto'` canvas branch on the generic canvas infrastructure. Its full
   state (KQL query, cluster/database, typed columns+rows capped at

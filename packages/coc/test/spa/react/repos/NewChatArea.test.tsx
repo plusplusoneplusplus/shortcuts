@@ -2518,6 +2518,7 @@ describe('NewChatArea', () => {
     });
 });
 
+
 // ============================================================================
 // Chat style selector
 // ============================================================================
@@ -2532,14 +2533,14 @@ describe('NewChatArea — chat style', () => {
         return mockEnqueueTask.mock.calls[0][0];
     }
 
-    it('hides the Style chip when the owning server has the experiment off', async () => {
+    it('hides the Style chip when the owning server has the flag off', async () => {
         mockChatStyleEnabled.value = false;
         render(<NewChatArea workspaceId="ws-1" />);
         await waitFor(() => expect(screen.getByTestId('new-chat-send-btn')).toBeTruthy());
         expect(screen.queryByTestId('chat-style-selector')).toBeNull();
     });
 
-    it('omits chatStyle from the payload when the experiment is off', async () => {
+    it('omits chatStyle from the payload when the flag is off', async () => {
         mockChatStyleEnabled.value = false;
         mockEnqueueTask.mockResolvedValueOnce({ task: { id: 't1' } });
         render(<NewChatArea workspaceId="ws-1" />);
@@ -2547,46 +2548,34 @@ describe('NewChatArea — chat style', () => {
         expect((await send()).payload.chatStyle).toBeUndefined();
     });
 
-    it('shows the chip and defaults a fresh workspace to Human', async () => {
+    it('shows the chip and starts a new chat on Default', async () => {
         mockChatStyleEnabled.value = true;
         render(<NewChatArea workspaceId="ws-1" />);
 
         await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
-        expect(screen.getByTestId('chat-style-selector').getAttribute('data-style-value')).toBe('human');
+        expect(screen.getByTestId('chat-style-selector').getAttribute('data-style-value')).toBe('default');
+        expect(screen.getByTestId('chat-style-label').textContent).toBe('Style: Default');
     });
 
-    it('restores the workspace saved style from repo preferences', async () => {
+    it('sends chatStyle: default when the user leaves the chip alone', async () => {
+        mockChatStyleEnabled.value = true;
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 't1' } });
+        render(<NewChatArea workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
+
+        expect((await send()).payload.chatStyle).toBe('default');
+    });
+
+    it('ignores any saved repo preference — new chats never inherit a style', async () => {
         mockChatStyleEnabled.value = true;
         mockRepoPrefs.value = { lastChatStyle: 'analytical' };
         render(<NewChatArea workspaceId="ws-1" />);
 
-        await waitFor(() => {
-            expect(screen.getByTestId('chat-style-selector').getAttribute('data-style-value')).toBe('analytical');
-        });
-    });
-
-    it.each(['Human', 'friendly', '', 42, null])(
-        'falls back to Human for the invalid saved preference %j',
-        async (saved) => {
-            mockChatStyleEnabled.value = true;
-            mockRepoPrefs.value = { lastChatStyle: saved };
-            render(<NewChatArea workspaceId="ws-1" />);
-
-            await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
-            expect(screen.getByTestId('chat-style-selector').getAttribute('data-style-value')).toBe('human');
-        },
-    );
-
-    it('falls back to Human when the preferences request fails', async () => {
-        mockChatStyleEnabled.value = true;
-        mockRepoPrefs.value = {};
-        render(<NewChatArea workspaceId="ws-1" />);
-
         await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
-        expect(screen.getByTestId('chat-style-selector').getAttribute('data-style-value')).toBe('human');
+        expect(screen.getByTestId('chat-style-selector').getAttribute('data-style-value')).toBe('default');
     });
 
-    it('persists the pick to repo-scoped preferences on the owning server', async () => {
+    it('does not write the pick to repo-scoped preferences', async () => {
         mockChatStyleEnabled.value = true;
         render(<NewChatArea workspaceId="ws-1" />);
         await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
@@ -2594,21 +2583,8 @@ describe('NewChatArea — chat style', () => {
         fireEvent.click(screen.getByTestId('chat-style-trigger-btn'));
         fireEvent.click(screen.getByTestId('chat-style-option-structured'));
 
-        expect(mockPatchRepo).toHaveBeenCalledWith('ws-1', { lastChatStyle: 'structured' });
-    });
-
-    it('keeps the picked style for this send when the preference write fails', async () => {
-        mockChatStyleEnabled.value = true;
-        mockPatchRepo.mockRejectedValue(new Error('offline'));
-        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 't1' } });
-        render(<NewChatArea workspaceId="ws-1" />);
-        await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
-
-        fireEvent.click(screen.getByTestId('chat-style-trigger-btn'));
-        fireEvent.click(screen.getByTestId('chat-style-option-direct'));
-
-        expect(screen.getByTestId('chat-style-selector').getAttribute('data-style-value')).toBe('direct');
-        expect((await send()).payload.chatStyle).toBe('direct');
+        expect(screen.getByTestId('chat-style-selector').getAttribute('data-style-value')).toBe('structured');
+        expect(mockPatchRepo).not.toHaveBeenCalledWith('ws-1', expect.objectContaining({ lastChatStyle: expect.anything() }));
     });
 
     it('sends the selected style on the new-chat payload', async () => {

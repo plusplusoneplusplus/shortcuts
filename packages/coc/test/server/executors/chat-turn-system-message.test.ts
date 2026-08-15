@@ -46,7 +46,6 @@ function input(overrides: Partial<ChatTurnSystemMessageInput> = {}): ChatTurnSys
         provider: 'copilot',
         forEachGeneration: null,
         mapReduceGeneration: null,
-        chatStyleEnabled: false,
         memoryV2: memoryAddon(),
         toolGuidance: '',
         ...overrides,
@@ -107,14 +106,6 @@ describe('buildChatTurnSystemMessage', () => {
         expect(withoutFolder!.content).not.toContain('notes/Plans');
     });
 
-    it('injects chat style only when the experiment flag is on', async () => {
-        const enabled = await buildChatTurnSystemMessage(input({ chatStyle: 'direct', chatStyleEnabled: true }));
-        const disabled = await buildChatTurnSystemMessage(input({ chatStyle: 'direct', chatStyleEnabled: false }));
-
-        expect(enabled!.content).not.toEqual(disabled!.content);
-        expect(enabled!.content.length).toBeGreaterThan(disabled!.content.length);
-    });
-
     it('omits the global prompt block when the admin setting is unset or blank', async () => {
         const unset = await buildChatTurnSystemMessage(input({ globalSystemPrompt: undefined }));
         const blank = await buildChatTurnSystemMessage(input({ globalSystemPrompt: '   ' }));
@@ -136,8 +127,6 @@ describe('first-turn and follow-up parity', () => {
             mode: 'ask',
             provider: 'claude',
             globalSystemPrompt: 'OPERATOR-RULE',
-            chatStyle: 'analytical',
-            chatStyleEnabled: true,
             memoryV2: memoryAddon('MEMORY-BLOCK'),
             toolGuidance: 'TOOL-GUIDANCE',
             autoFolderContext: autoFolder(),

@@ -18,7 +18,7 @@ import type {
     ProcessStore, AIProcess, AIProcessStatus, Attachment, PendingMessage,
 } from '@plusplusoneplusplus/forge';
 import { resolveModelForProvider, isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
-import { CHAT_STYLES, isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
+import { CHAT_STYLES, DEFAULT_CHAT_STYLE, isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { QueueExecutorBridge } from '../core/api-handler';
 import type { ChatProvider } from '../tasks/task-types';
 import { normalizeChatMode } from '../tasks/task-types';
@@ -60,11 +60,12 @@ export interface NormalizedFollowUpFields {
     /** Per-turn reasoning-effort override; unknown values are dropped. */
     effort?: ReasoningEffort;
     /**
-     * Per-turn chat style. Unlike the effort override, an unknown value is a
-     * client error (HTTP 400) rather than silently dropped, so a style the user
-     * picked is never quietly ignored.
+     * Style selected for this turn. Unlike the effort override, an unknown
+     * value is a client error (HTTP 400) rather than silently dropped, so a
+     * style the user picked is never quietly ignored. An omitted field
+     * normalizes to `'default'`, which injects nothing.
      */
-    chatStyle?: ChatStyle;
+    chatStyle: ChatStyle;
 }
 
 export type NormalizeFollowUpResult =
@@ -112,16 +113,18 @@ export function normalizeFollowUpInput(
             ? (body.reasoningEffort as ReasoningEffort)
             : undefined;
 
-    // Per-turn chat style. Omitted keeps legacy behavior; present-but-unknown is
-    // rejected so a client cannot get a different style than the one it asked for.
+    // Per-turn chat style. Omitted means 'default' (inject nothing);
+    // present-but-unknown is rejected so a client never silently gets a
+    // different style than the one it asked for.
     if (body.chatStyle !== undefined && body.chatStyle !== null && !isChatStyle(body.chatStyle)) {
         return { ok: false, error: `Invalid chatStyle: must be one of ${CHAT_STYLES.join(', ')}` };
     }
-    const chatStyle: ChatStyle | undefined = isChatStyle(body.chatStyle) ? body.chatStyle : undefined;
+    const chatStyle: ChatStyle = isChatStyle(body.chatStyle) ? body.chatStyle : DEFAULT_CHAT_STYLE;
 
     return {
         ok: true,
         value: {
+            chatStyle,
             ...(mode ? { mode } : {}),
             deliveryMode,
             ...(selectedSkillNames ? { selectedSkillNames } : {}),
@@ -130,7 +133,6 @@ export function normalizeFollowUpInput(
             modelCoerced: resolvedModelOverride.coerced,
             ...(resolvedModelOverride.requestedModel ? { requestedModel: resolvedModelOverride.requestedModel } : {}),
             ...(effort ? { effort } : {}),
-            ...(chatStyle ? { chatStyle } : {}),
         },
     };
 }
@@ -155,8 +157,6 @@ export interface FollowUpMessageInput {
     mode?: string;
     model?: string;
     effort?: ReasoningEffort;
-    /** Per-turn chat style, already validated against the stable wire values. */
-    chatStyle?: ChatStyle;
     deliveryMode: 'immediate' | 'enqueue';
     /** Strict-resume SDK session ID for a cancelled-chat continuation. */
     resumeSessionId?: string;
@@ -230,14 +230,6 @@ export class ProcessMessageDeliveryService {
         let buffered = false;
         let steerSucceeded = false;
 
-        // Steering can only inject user text into a response already underway —
-        // it cannot rebuild that response's system message. So a message that
-        // *changes* the style must not be steered: buffer it as the next pending
-        // turn, which runs with a freshly built system message. A message
-        // carrying the style the conversation already has steers as before.
-        const changesChatStyle = input.chatStyle !== undefined
-            && input.chatStyle !== (proc.metadata?.chatStyle as string | undefined);
-
         // Buffer a follow-up as a pending message for server-side drain. The user
         // turn is NOT appended here — it is deferred until drainPendingMessages
         // appends it after the in-flight assistant response, preserving correct
@@ -259,7 +251,6 @@ export class ProcessMessageDeliveryService {
                 ...(input.imageTempDir ? { imageTempDir: input.imageTempDir } : {}),
                 ...(input.fileAttachmentMeta ? { fileAttachmentMeta: input.fileAttachmentMeta } : {}),
                 ...(input.selectedSkillNames && input.selectedSkillNames.length > 0 ? { skillNames: input.selectedSkillNames } : {}),
-                ...(input.chatStyle ? { chatStyle: input.chatStyle } : {}),
                 createdAt: this.now().toISOString(),
             };
             await this.store.appendPendingMessage(id, pendingMessage);
@@ -270,7 +261,7 @@ export class ProcessMessageDeliveryService {
             if (this.bridge.enqueue) {
                 const displayName = truncateDisplayName(input.content.trim());
                 const parentTask = this.bridge.findTaskByProcessId?.(id);
-                if (parentTask && parentTask.status === 'running' && input.deliveryMode === 'immediate' && this.bridge.steerProcess && !changesChatStyle) {
+                if (parentTask && parentTask.status === 'running' && input.deliveryMode === 'immediate' && this.bridge.steerProcess) {
                     const steered = await this.bridge.steerProcess(id, input.content);
                     if (!steered) {
                         // Steering failed (no active SDK session); buffer for server-side drain.
@@ -310,7 +301,6 @@ export class ProcessMessageDeliveryService {
                             ...(input.mode ? { mode: input.mode } : {}),
                             ...(input.model ? { model: input.model } : {}),
                             ...(input.effort ? { reasoningEffort: input.effort } : {}),
-                            ...(input.chatStyle ? { chatStyle: input.chatStyle } : {}),
                             deliveryMode: input.deliveryMode,
                         },
                         // Mirror the per-turn reasoning-effort into config so executors
@@ -321,7 +311,7 @@ export class ProcessMessageDeliveryService {
                     path = 'enqueued';
                 }
             } else {
-                this.bridge.executeFollowUp(id, input.contentWithContext ?? input.content, input.attachments, input.mode, input.deliveryMode, input.images, input.selectedSkillNames, input.model, undefined, input.effort, input.resumeSessionId, input.chatStyle).catch(() => {
+                this.bridge.executeFollowUp(id, input.contentWithContext ?? input.content, input.attachments, input.mode, input.deliveryMode, input.images, input.selectedSkillNames, input.model, undefined, input.effort, input.resumeSessionId).catch(() => {
                 }).finally(() => {
                     if (input.imageTempDir) { cleanupTempDir(input.imageTempDir); }
                 });

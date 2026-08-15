@@ -514,43 +514,30 @@ describe('validateAndParseTask – ChatPayload.provider validation', () => {
     });
 });
 
+
 // ============================================================================
-// chat style
+// chat – chatStyle validation
 // ============================================================================
 
-describe('validateAndParseTask – chat style validation', () => {
-    it.each(['human', 'direct', 'analytical', 'structured'])('accepts the stable wire value %s', (style) => {
-        const result = validateAndParseTask({
-            type: 'chat',
-            payload: { prompt: 'hello', chatStyle: style },
-        });
+describe('validateAndParseTask – chat chatStyle', () => {
+    it('normalizes an omitted chatStyle to default', () => {
+        const result = validateAndParseTask({ type: 'chat', payload: { prompt: 'hello' } });
         expect(result.valid).toBe(true);
-        expect((result.input!.payload as any).chatStyle).toBe(style);
+        expect((result.input!.payload as any).chatStyle).toBe('default');
     });
 
-    it.each([
-        ['an unknown style', 'friendly'],
-        ['a label instead of a wire value', 'Human'],
-        ['an empty string', ''],
-        ['a non-string', 42],
-        ['an object', {}],
-    ])('rejects %s with a 400-style error listing the accepted values', (_label, style) => {
-        const result = validateAndParseTask({
-            type: 'chat',
-            payload: { prompt: 'hello', chatStyle: style },
-        });
+    it('keeps every stable style value', () => {
+        for (const style of ['default', 'human', 'direct', 'analytical', 'structured']) {
+            const result = validateAndParseTask({ type: 'chat', payload: { prompt: 'hello', chatStyle: style } });
+            expect(result.valid).toBe(true);
+            expect((result.input!.payload as any).chatStyle).toBe(style);
+        }
+    });
+
+    it('rejects an unknown chatStyle', () => {
+        const result = validateAndParseTask({ type: 'chat', payload: { prompt: 'hello', chatStyle: 'concise' } });
         expect(result.valid).toBe(false);
-        expect(result.error).toMatch(/invalid chatStyle/i);
-        expect(result.error).toContain('human, direct, analytical, structured');
-    });
-
-    it('stays backward compatible when the field is omitted', () => {
-        const result = validateAndParseTask({
-            type: 'chat',
-            payload: { prompt: 'hello' },
-        });
-        expect(result.valid).toBe(true);
-        expect((result.input!.payload as any).chatStyle).toBeUndefined();
+        expect(result.error).toContain('Invalid chatStyle');
     });
 
     it('does not validate chatStyle for non-chat task types', () => {

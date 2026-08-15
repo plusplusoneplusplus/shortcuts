@@ -41,7 +41,12 @@ import {
     resolveModelForProvider,
     toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
-import { isChatStyle } from '@plusplusoneplusplus/coc-client';
+import { DEFAULT_CHAT_STYLE, isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
+import {
+    isChatStyleEligiblePayload,
+    prependChatStyleBlock,
+    shouldInjectChatStyle,
+} from './chat-style-prompt';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 import type { ChatPayload, ChatProvider, PrClassificationPayload } from '../tasks/task-types';
 import {
@@ -173,8 +178,6 @@ export interface LifecycleRunnerOptions {
         reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh',
         /** Require this exact SDK session ID to be resumed; no fresh-session fallback. */
         strictResumeSessionId?: string,
-        /** Chat style explicitly carried by this turn; overrides the conversation's stored style. */
-        chatStyle?: string,
     ) => Promise<void>;
     /**
      * Resume a process whose durable `pendingAskUserAnswer` was persisted after
@@ -380,16 +383,44 @@ export class ProcessLifecycleRunner extends BaseExecutor {
     private readonly onGenerateTitle: (processId: string, turns: ConversationTurn[]) => void;
     /** Active AI provider recorded on new processes for attribution. */
     private readonly provider: 'copilot' | 'codex' | 'claude' | 'opencode';
+    /**
+     * Live read of the `features.chatStyleSelector` admin flag. Checked as each
+     * new conversation starts, so turning the experiment off immediately stops
+     * style injection even for a client that still sends `chatStyle`.
+     */
+    private readonly getChatStyleSelectorEnabled?: () => boolean;
 
     constructor(
         store: ProcessStore,
         dataDir: string | undefined,
         onGenerateTitle: (processId: string, turns: ConversationTurn[]) => void,
         provider?: 'copilot' | 'codex' | 'claude' | 'opencode',
+        getChatStyleSelectorEnabled?: () => boolean,
     ) {
         super(store, dataDir);
         this.onGenerateTitle = onGenerateTitle;
         this.provider = provider ?? 'copilot';
+        this.getChatStyleSelectorEnabled = getChatStyleSelectorEnabled;
+    }
+
+    /**
+     * Style to run (and record) for a brand-new conversation.
+     *
+     * Returns `undefined` when the admin flag is off or the task is not one of
+     * the four in-scope chat executors — in both cases nothing is injected and
+     * `metadata.chatStyle` is left unwritten. Re-validated here because a
+     * buffered or restarted task can reach this point without passing through
+     * queue validation again.
+     */
+    private resolveNewChatStyle(payload: Record<string, unknown> | undefined): ChatStyle | undefined {
+        if (this.getChatStyleSelectorEnabled?.() !== true) {
+            return undefined;
+        }
+        if (!isChatStyleEligiblePayload(payload)) {
+            return undefined;
+        }
+        const requested = (payload as ChatPayload | undefined)?.chatStyle;
+        return isChatStyle(requested) ? requested : DEFAULT_CHAT_STYLE;
     }
 
     /**
@@ -486,10 +517,6 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                         turnSource,
                         followUpEffort,
                         strictResumeSessionId,
-                        // Validated here as well as at the API boundary: a
-                        // buffered or restarted task can reach this point
-                        // without passing through queue validation again.
-                        isChatStyle(followUpPayload.chatStyle) ? followUpPayload.chatStyle : undefined,
                     );
                 }
                 const duration = Date.now() - startTime;
@@ -523,8 +550,18 @@ export class ProcessLifecycleRunner extends BaseExecutor {
 
         // New task: create a process entry
         const processId = toQueueProcessId(task.id);
-        const prompt = applySkillContent(extractPrompt(task), task);
+        const rawPrompt = applySkillContent(extractPrompt(task), task);
         const payload = task.payload as any;
+        // Style selected for this brand-new conversation. `undefined` means the
+        // feature is off or this task type is out of scope, in which case no
+        // block is injected and no style is recorded.
+        const taskChatStyle = this.resolveNewChatStyle(task.payload);
+        // A new conversation has recorded nothing yet, so its starting style is
+        // 'default' — which is exactly why turn 1 injects whenever the user
+        // picked a real style, and stays silent when they did not.
+        const injectChatStyle = taskChatStyle !== undefined
+            && shouldInjectChatStyle(taskChatStyle, DEFAULT_CHAT_STYLE);
+        const prompt = injectChatStyle ? prependChatStyleBlock(rawPrompt, taskChatStyle) : rawPrompt;
         // pr-classification tasks always run read-only ask mode (see
         // ClassificationExecutor). Record it explicitly so UI surfaces don't
         // fall back to labelling a mode-less classification process 'autopilot'.
@@ -538,7 +575,12 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             : isPrClassificationPayload(task.payload)
                 ? (task.payload as unknown as PrClassificationPayload).skills
                 : undefined;
-        const displayPrompt = prependSelectedSkillsDirective(prompt, selectedSkills);
+        // The style block stays the outermost prefix of the stored user message
+        // so the chat bubble opens with it (AC-05), even when a skills directive
+        // is also present.
+        const displayPrompt = injectChatStyle
+            ? prependChatStyleBlock(prependSelectedSkillsDirective(rawPrompt, selectedSkills), taskChatStyle)
+            : prependSelectedSkillsDirective(rawPrompt, selectedSkills);
         const workingDirectory = opts.getWorkingDirectoryFn(task);
         const taskProvider = await resolveExecutionProvider(task, opts, this.provider);
         applyEffortTierForProvider(task, taskProvider, opts);
@@ -634,13 +676,11 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 lensChat: isChatPayload(task.payload)
                     ? task.payload.context?.lensChat
                     : undefined,
-                // The conversation owns its style from here on: the follow-up
-                // composer restores it from metadata rather than from the
-                // workspace's latest new-chat choice. Re-validated here so a
-                // payload that bypassed the queue boundary cannot store garbage.
-                chatStyle: isChatPayload(task.payload) && isChatStyle(task.payload.chatStyle)
-                    ? task.payload.chatStyle
-                    : undefined,
+                // Recorded on every in-scope turn, including the turns that
+                // inject nothing, so 'default' is a real state rather than a
+                // gap. Later turns compare against this to decide whether the
+                // user switched styles.
+                chatStyle: taskChatStyle,
             },
         };
 

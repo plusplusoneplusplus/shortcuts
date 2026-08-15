@@ -1,11 +1,15 @@
 /**
  * ChatStyleSelector — a single-chip dropdown that lets the user pick how the
- * response is written (Human / Direct / Analytical / Structured).
+ * response is written (Default / Human / Direct / Analytical / Structured).
  *
  * Mirrors EffortTierSelector's button, popover, focus, outside-click, dark-mode,
  * and compact-trigger conventions so the two chips read as one control group.
- * Unlike effort tiers, every style is always selectable — there is no per-provider
- * configuration to look up.
+ * Unlike effort tiers, every style is always selectable — there is no
+ * per-provider configuration to look up.
+ *
+ * Default is first in the list and is what a new chat starts on; picking it adds
+ * no style instruction to the message at all. The chip still reads
+ * `Style: Default` in that state — it is never hidden or blanked.
  *
  * Style changes presentation only; it never affects the model, reasoning effort,
  * tools, or permission mode.
@@ -13,19 +17,11 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { cn } from '../../ui/cn';
-import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
-
-export const CHAT_STYLE_KEYS: readonly ChatStyle[] = ['human', 'direct', 'analytical', 'structured'];
-
-export const CHAT_STYLE_LABELS: Record<ChatStyle, string> = {
-    human: 'Human',
-    direct: 'Direct',
-    analytical: 'Analytical',
-    structured: 'Structured',
-};
+import { CHAT_STYLES, CHAT_STYLE_LABELS, type ChatStyle } from '@plusplusoneplusplus/coc-client';
 
 /** One-line behavior description shown on each dropdown row. */
 export const CHAT_STYLE_DESCRIPTIONS: Record<ChatStyle, string> = {
+    default: 'No style instruction is added to your message.',
     human: 'Natural, conversational, like a helpful coworker.',
     direct: 'Answer first, fewest words that keep the important facts.',
     analytical: 'Reasoning, assumptions, alternatives, and tradeoffs.',
@@ -74,7 +70,7 @@ export function ChatStyleSelector({
         return () => document.removeEventListener('mousedown', handleClick);
     }, [open]);
 
-    const selectedLabel = CHAT_STYLE_LABELS[selectedStyle] ?? CHAT_STYLE_LABELS.human;
+    const selectedLabel = CHAT_STYLE_LABELS[selectedStyle] ?? CHAT_STYLE_LABELS.default;
 
     return (
         <div
@@ -136,7 +132,7 @@ export function ChatStyleSelector({
                     aria-label="Select response style"
                     data-testid="chat-style-menu"
                 >
-                    {CHAT_STYLE_KEYS.map(style => {
+                    {CHAT_STYLES.map(style => {
                         const isSelected = style === selectedStyle;
                         return (
                             <button

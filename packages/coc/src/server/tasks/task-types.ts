@@ -572,9 +572,9 @@ export interface ChatPayload {
     /** Per-turn reasoning-effort override, normalized to task config by queue validation. */
     reasoningEffort?: ReasoningEffort;
     /**
-     * How the response should be written. Presentation only — never affects
+     * Style selected for the first turn. Presentation only — never affects
      * provider, model, effort, tools, or permissions. Validated at the queue
-     * boundary and copied into `process.metadata.chatStyle` at execution start.
+     * boundary, where an omitted field is normalized to `'default'`.
      */
     chatStyle?: ChatStyle;
 }

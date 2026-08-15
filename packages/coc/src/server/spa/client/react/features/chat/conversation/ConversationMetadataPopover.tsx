@@ -6,7 +6,7 @@ import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { BottomSheet } from '../../../ui/BottomSheet';
 import { Dialog } from '../../../ui/Dialog';
 import { getRalphContext, readCommitChatContext } from '../../../../../../tasks/task-types';
-import { isChatStyle } from '@plusplusoneplusplus/coc-client';
+import { CHAT_STYLE_LABELS, DEFAULT_CHAT_STYLE, isChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { ClientTokenUsage } from '../../../types/dashboard';
 
 const RALPH_FIELD_TRUNCATE = 200;
@@ -79,13 +79,12 @@ function formatInteger(value: number): string {
 const REASONING_EFFORT_DEFAULT = 'Default';
 
 /**
- * Display label for the conversation's saved response style. Returns `null` for
- * a legacy conversation with no stored style, so the row is omitted rather than
- * claiming a style the conversation never ran with.
+ * Display label for the conversation's recorded response style. The server
+ * records a style on every turn, so a conversation with nothing stored has only
+ * ever run on Default — which is exactly what the row then shows.
  */
-function formatChatStyle(value: unknown): string | null {
-    if (!isChatStyle(value)) return null;
-    return value.charAt(0).toUpperCase() + value.slice(1);
+function formatChatStyle(value: unknown): string {
+    return CHAT_STYLE_LABELS[isChatStyle(value) ? value : DEFAULT_CHAT_STYLE];
 }
 
 function formatReasoningEffort(value: unknown): string {

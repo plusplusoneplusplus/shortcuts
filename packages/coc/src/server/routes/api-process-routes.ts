@@ -27,6 +27,7 @@ import { saveImagesToTempFiles, isImageDataUrl } from '../core/image-utils';
 import { processMessageAttachments } from '../core/attachment-utils';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import { prependSelectedSkillsDirective } from '../executors/prompt-builder';
+import { prependChatStyleBlock, recordedChatStyle, shouldInjectChatStyle } from '../executors/chat-style-prompt';
 import { getStoppedChatResumeUnavailableMessage, normalizeChatMode, serializeCommitChatMetadata } from '../tasks/task-types';
 import type { ChatProvider } from '../tasks/task-types';
 import {
@@ -1073,16 +1074,44 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 );
             }
 
+            // Chat style for this turn. The block is injected here — before the
+            // delivery service persists the user turn — so the stored message
+            // carries it and the transcript shows it (AC-05). Gated server-side
+            // so an older client cannot force injection, and skipped for Ralph
+            // conversations, which are out of scope.
+            const styleGateOpen = ctx.getLiveFeatureFlags?.().chatStyleSelectorEnabled === true
+                && normalizeChatMode(proc.metadata?.mode) !== 'ralph';
+            const recordedStyle = recordedChatStyle(proc.metadata as Record<string, unknown> | undefined);
+            const injectStyle = styleGateOpen && shouldInjectChatStyle(fields.chatStyle, recordedStyle);
+            // The recorded style is updated on every in-scope turn, including
+            // the turns that inject nothing, so switching to Default is a real
+            // state and not a gap. Only an actual change needs a write.
+            if (styleGateOpen && fields.chatStyle !== recordedStyle) {
+                await store.updateProcess(id, {
+                    metadata: {
+                        type: proc.metadata?.type ?? 'chat',
+                        ...(proc.metadata ?? {}),
+                        chatStyle: fields.chatStyle,
+                    },
+                });
+            }
+            const applyStyle = (text: string): string =>
+                injectStyle ? prependChatStyleBlock(text, fields.chatStyle) : text;
+
             // Pass content through as-is — /skill tokens are kept in the prompt
             // so the AI SDK receives the full user intent (e.g. "/impl fix the bug").
-            const messageContent = (body.content as string);
-            const displayContent = prependSelectedSkillsDirective(messageContent, fields.selectedSkillNames);
-            const isPasteExternalized = messageContent.length > PASTE_THRESHOLD;
+            const messageContent = applyStyle(body.content as string);
+            const displayContent = applyStyle(
+                prependSelectedSkillsDirective(body.content as string, fields.selectedSkillNames),
+            );
+            // Measured against what the user actually typed — the style block is
+            // server-injected and must not tip a message over the paste threshold.
+            const isPasteExternalized = (body.content as string).length > PASTE_THRESHOLD;
 
             const deliveryInput: FollowUpMessageInput = {
                 content: messageContent,
                 displayContent,
-                ...(messageContentWithContext ? { contentWithContext: messageContentWithContext } : {}),
+                ...(messageContentWithContext ? { contentWithContext: applyStyle(messageContentWithContext) } : {}),
                 ...(attachments ? { attachments } : {}),
                 ...(validatedImages ? { images: validatedImages } : {}),
                 ...(imageTempDir ? { imageTempDir } : {}),
@@ -1091,7 +1120,6 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 ...(fields.mode ? { mode: fields.mode } : {}),
                 ...(fields.model ? { model: fields.model } : {}),
                 ...(fields.effort ? { effort: fields.effort } : {}),
-                ...(fields.chatStyle ? { chatStyle: fields.chatStyle } : {}),
                 deliveryMode: fields.deliveryMode,
                 ...(resumeSessionId ? { resumeSessionId } : {}),
                 ...(fields.optimisticId !== undefined ? { optimisticId: fields.optimisticId } : {}),

@@ -69,8 +69,8 @@ export interface UseSendMessageOptions {
     effortOverride?: 'low' | 'medium' | 'high' | 'xhigh' | null;
     /**
      * Response style for this turn. Pass `undefined` when the owning server has
-     * the Style experiment off — the field is then omitted from the request, so
-     * a server that would reject it never sees it.
+     * the Style chip off — the field is then omitted from the request, so a
+     * server that would reject it never sees it.
      */
     chatStyle?: ChatStyle;
     /**

@@ -2470,6 +2470,7 @@ describe('ChatDetail — per-conversation after effort tier', () => {
     });
 });
 
+
 // ============================================================================
 // Chat style — per-conversation follow-up selection
 // ============================================================================
@@ -2479,7 +2480,7 @@ describe('ChatDetail — per-conversation chat style', () => {
         return screen.getByTestId('follow-up-chat-style-selector').getAttribute('data-style-value');
     }
 
-    it('hides the Style chip when the owning server has the experiment off', async () => {
+    it('hides the Style chip when the owning server has the flag off', async () => {
         mockState.chatStyleSelectorEnabled = false;
         setupStandardFetch(
             makeTask({ status: 'completed', processId: 'proc-1' }),
@@ -2492,7 +2493,7 @@ describe('ChatDetail — per-conversation chat style', () => {
         expect(screen.queryByTestId('follow-up-chat-style-selector')).toBeNull();
     });
 
-    it.each(['human', 'direct', 'analytical', 'structured'])(
+    it.each(['default', 'human', 'direct', 'analytical', 'structured'])(
         'restores %s from the conversation metadata',
         async (style) => {
             mockState.chatStyleSelectorEnabled = true;
@@ -2507,7 +2508,7 @@ describe('ChatDetail — per-conversation chat style', () => {
         },
     );
 
-    it('shows Human for a legacy conversation that has no stored style', async () => {
+    it('shows Default for a conversation that has no stored style', async () => {
         mockState.chatStyleSelectorEnabled = true;
         setupStandardFetch(
             makeTask({ status: 'completed', processId: 'proc-1' }),
@@ -2517,10 +2518,10 @@ describe('ChatDetail — per-conversation chat style', () => {
         render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
 
         await waitFor(() => expect(screen.getByTestId('follow-up-chat-style-selector')).toBeTruthy());
-        expect(selectorStyle()).toBe('human');
+        expect(selectorStyle()).toBe('default');
     });
 
-    it('shows Human when the stored style is not a stable wire value', async () => {
+    it('shows Default when the stored style is not a stable wire value', async () => {
         mockState.chatStyleSelectorEnabled = true;
         setupStandardFetch(
             makeTask({ status: 'completed', processId: 'proc-1' }),
@@ -2530,7 +2531,7 @@ describe('ChatDetail — per-conversation chat style', () => {
         render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
 
         await waitFor(() => expect(screen.getByTestId('follow-up-chat-style-selector')).toBeTruthy());
-        expect(selectorStyle()).toBe('human');
+        expect(selectorStyle()).toBe('default');
     });
 
     it('applies a change immediately and does not revert it when the process record refreshes', async () => {

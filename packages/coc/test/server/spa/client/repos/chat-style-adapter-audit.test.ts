@@ -60,9 +60,9 @@ describe('chat style — InitialChatComposerSubmission adapter audit', () => {
         expect(source).toMatch(/isChatStyleSupportedMode[\s\S]{0,200}mode === 'ask' \|\| mode === 'autopilot'/);
     });
 
-    it('the composer persists the pick to repo-scoped preferences, never a global browser key', () => {
+    it('the composer keeps the style per-send — no preference seed, no browser key', () => {
         const source = readFileSync(COMPOSER_PATH, 'utf-8');
-        expect(source).toContain('patchRepo(workspaceId, { lastChatStyle: style })');
+        expect(source).not.toContain('lastChatStyle');
         expect(source).not.toMatch(/localStorage\.[gs]etItem\([^)]*chat-style/);
     });
 });
