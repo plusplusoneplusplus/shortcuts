@@ -68,7 +68,9 @@ describe('AddFolderDialog', () => {
             expect(repositoryServiceMocks.browseWorkspaceFolders).toHaveBeenCalledWith('~');
         });
         expect(screen.getByTestId('folder-browser')).toBeTruthy();
-        expect(screen.getByText('/workspace-root')).toBeTruthy();
+        // The waitFor above only proves the call was made; the breadcrumb still
+        // reads "…" until the resolved response lands in state, so poll for it.
+        expect(await screen.findByText('/workspace-root')).toBeTruthy();
     });
 
     it('discovers repositories and registers selected items', async () => {
