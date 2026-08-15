@@ -21,7 +21,8 @@ const CHAT_STYLE_FOCUS_LINES: Readonly<Partial<Record<ChatStyle, string>>> = {
   human:
     'Write like a helpful coworker in a normal conversation. Keep the flow natural and let the wording carry the answer instead of structure.',
   direct:
-    'Lead with the answer or action. Use the fewest words that preserve important facts. Cut preamble, softening, repetition, and background the user did not ask for.',
+    'Lead with the answer or action, then only what the user needs to act on it. '
+    + 'Short sentences, plain words. Cut preamble, softening, and background they did not ask for — short, not compressed.',
   analytical:
     'Explain the reasoning. Surface assumptions, evidence, causes, alternatives, and tradeoffs, and say what the risks are. Give a useful summary of the reasoning and its conclusions rather than a raw transcript of your internal thinking.',
   structured:
