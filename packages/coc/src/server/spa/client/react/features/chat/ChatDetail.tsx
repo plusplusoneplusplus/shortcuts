@@ -335,6 +335,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const { toasts, addToast, removeToast } = useToast();
     const textPaste = useTextPaste();
     const attachedContext = useAttachedContext();
+    // Attaching a snippet (Quick Ask "Attach" pill, turn context menu) is a
+    // prelude to typing, so hand focus to the composer right away.
+    const handleAttachContext = useCallback((turnIndex: number, role: 'user' | 'assistant', snippet: string) => {
+        attachedContext.add(turnIndex, role, snippet);
+        richTextRef.current?.focus();
+    }, [attachedContext.add]);
     const { isMobile } = useBreakpoint();
     const selection = useConversationSelection();
     const { state: queueState, dispatch: queueDispatch } = useQueue();
@@ -2517,7 +2523,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         onTurnClick={selection.handleTurnClick}
                         onCopySelected={handleCopySelected}
                         onCancelSelection={selection.stopSelecting}
-                        onAttachContext={attachedContext.add}
+                        onAttachContext={handleAttachContext}
                         onPinTurn={handlePinTurn}
                         onArchiveTurn={handleArchiveTurn}
                         onRewindTurn={rewindAction}
