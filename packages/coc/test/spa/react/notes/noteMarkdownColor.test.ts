@@ -86,16 +86,16 @@ describe('noteMarkdown — text color (AC-01)', () => {
         });
 
         it('strips styles other than color from a span', () => {
-            const html = markdownToHtml('<span style="font-size:99px;position:fixed">x</span>');
+            const html = markdownToHtml('<span style="letter-spacing:2px;position:fixed">x</span>');
             expect(html).toContain('<span>x</span>');
-            expect(html).not.toContain('font-size');
+            expect(html).not.toContain('letter-spacing');
             expect(html).not.toContain('position');
         });
 
         it('keeps only the color declaration when a span carries several', () => {
-            const html = markdownToHtml(`<span style="font-size:99px;color:${RED}">x</span>`);
+            const html = markdownToHtml(`<span style="letter-spacing:2px;color:${RED}">x</span>`);
             expect(html).toContain(`<span style="color:${RED}">x</span>`);
-            expect(html).not.toContain('font-size');
+            expect(html).not.toContain('letter-spacing');
         });
 
         it('ignores a color form that is not persisted', () => {
@@ -128,7 +128,7 @@ describe('noteMarkdown — text color (AC-01)', () => {
         });
 
         it('unwraps a span whose style carried no persisted color', () => {
-            expect(htmlToMarkdown('<p><span style="font-size: 99px">hi</span></p>').trim()).toBe('hi');
+            expect(htmlToMarkdown('<p><span style="letter-spacing: 2px">hi</span></p>').trim()).toBe('hi');
         });
 
         it('drops an empty colored span rather than emitting a bare wrapper', () => {

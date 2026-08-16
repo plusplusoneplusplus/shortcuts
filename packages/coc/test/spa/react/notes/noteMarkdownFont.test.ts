@@ -68,10 +68,10 @@ describe('noteMarkdown — font family (AC-02)', () => {
             );
         });
 
-        it('still strips styles that are neither color nor font-family', () => {
-            const html = markdownToHtml(`<span style="font-size:99px;font-family:${SERIF}">x</span>`);
+        it('still strips styles that are none of the persisted declarations', () => {
+            const html = markdownToHtml(`<span style="letter-spacing:2px;font-family:${SERIF}">x</span>`);
             expect(html).toContain(`<span style="font-family:${SERIF}">x</span>`);
-            expect(html).not.toContain('font-size');
+            expect(html).not.toContain('letter-spacing');
         });
 
         it('drops a font-family value that is not persistable', () => {
@@ -105,7 +105,7 @@ describe('noteMarkdown — font family (AC-02)', () => {
         });
 
         it('unwraps a span whose style carried no persisted declaration', () => {
-            expect(htmlToMarkdown('<p><span style="font-size: 99px">hi</span></p>').trim()).toBe('hi');
+            expect(htmlToMarkdown('<p><span style="letter-spacing: 2px">hi</span></p>').trim()).toBe('hi');
         });
 
         it('leaves the note-link span rule alone', () => {

@@ -17,6 +17,7 @@ import {
     readStyleProp,
 } from './colorPalette';
 import { readInlineFontFamily } from './fontFamilies';
+import { readInlineFontSize } from './fontSizes';
 import { clampIndent, parseIndentAttr } from './extensions/indentShared';
 import { resolveCodeLanguage } from './extensions/notesLowlight';
 import { clampPdfHeight, parsePdfHeightAttr } from './extensions/pdfHeightShared';
@@ -258,13 +259,15 @@ turndown.addRule('highlight', {
     },
 });
 
-// Text style: <span style="color:…; font-family:…"> → the same inline HTML.
-// Markdown has syntax for neither, and inline HTML is the one form that survives
-// marked → Tiptap → turndown *and* still renders in an external Markdown viewer.
+// Text style: <span style="color:…; font-family:…; font-size:…"> → the same
+// inline HTML. Markdown has syntax for none of them, and inline HTML is the one
+// form that survives marked → Tiptap → turndown *and* still renders in an
+// external Markdown viewer.
 //
-// Color and font are two attributes of the SAME Tiptap `textStyle` mark, so one
-// span can carry both and they have to be serialized together — a second,
-// independent span rule would never see a span the first rule already claimed.
+// Color, font family and font size are three attributes of the SAME Tiptap
+// `textStyle` mark, so one span can carry all three and they have to be
+// serialized together — a second, independent span rule would never see a span
+// the first rule already claimed.
 // Declarations are emitted in a fixed order so re-saving an untouched note
 // produces byte-identical Markdown.
 //
@@ -279,6 +282,8 @@ function readTextStyleDeclarations(node: Node): string[] {
     if (color) declarations.push(`color:${color}`);
     const fontFamily = readInlineFontFamily(style);
     if (fontFamily) declarations.push(`font-family:${fontFamily}`);
+    const fontSize = readInlineFontSize(style);
+    if (fontSize) declarations.push(`font-size:${fontSize}`);
     return declarations;
 }
 
@@ -1016,9 +1021,11 @@ function normalizeColgroupWidths(html: string): string {
 
 // `marked` passes inline HTML through verbatim, so a `<span>`/`<mark>` in the
 // source arrives at Tiptap with whatever `style` was written. Only the
-// declarations each tag persists are honored — `color` and `font-family` on
-// `<span>`, `background-color` on `<mark>` — and only in a form
-// `normalizeCssColor` / `normalizeFontStack` recognizes. Everything else is
+// declarations each tag persists are honored — `color`, `font-family` and
+// `font-size` on `<span>`, `background-color` on `<mark>` — and only in a form
+// `normalizeCssColor` / `normalizeFontStack` / `normalizeFontSize` recognizes.
+// A `font-size` in any unit other than `px`, or outside the persisted range, is
+// dropped like any other unrecognized value. Everything else is
 // dropped, so a hand-written or pasted `style` cannot turn the note format into
 // a general HTML-styling escape hatch. A tag left with no honored declaration
 // loses its `style` attribute entirely; for a `<span>` that also means turndown
@@ -1037,6 +1044,8 @@ function sanitizeInlineStyles(html: string): string {
         if (isSpan) {
             const fontFamily = readInlineFontFamily(raw);
             if (fontFamily) declarations.push(`font-family:${fontFamily}`);
+            const fontSize = readInlineFontSize(raw);
+            if (fontSize) declarations.push(`font-size:${fontSize}`);
         }
         const rest = attrs.replace(/\s*\bstyle\s*=\s*(["'])[\s\S]*?\1/i, '');
         const style = declarations.length > 0 ? ` style="${declarations.join('; ')}"` : '';
