@@ -85,6 +85,48 @@ describe('ProgrammerCalculatorCard', () => {
         expect(readout('hex')).toBe('10');
     });
 
+    it('shows a real result in DEC without an error', () => {
+        render(<ProgrammerCalculatorCard />);
+        fireEvent.change(screen.getByTestId('calc-expression'), { target: { value: '4850*0.1' } });
+        expect(screen.queryByTestId('calc-error')).toBeNull();
+        expect(readout('dec')).toBe('485');
+    });
+
+    it('notes that the bit views are truncated for a non-integral result', () => {
+        render(<ProgrammerCalculatorCard />);
+        const input = screen.getByTestId('calc-expression');
+        fireEvent.change(input, { target: { value: '22/7.0' } });
+        expect(screen.queryByTestId('calc-error')).toBeNull();
+        expect(readout('dec')).toBe('3.14285714285714');
+        expect(readout('hex')).toBe('3');
+        expect(screen.getByTestId('calc-truncation-note').textContent).toBe(
+            'bit views truncated from 3.14285714285714'
+        );
+    });
+
+    it('hides the truncation note for an integral result', () => {
+        render(<ProgrammerCalculatorCard />);
+        const input = screen.getByTestId('calc-expression');
+        fireEvent.change(input, { target: { value: '22/7.0' } });
+        expect(screen.getByTestId('calc-truncation-note')).toBeTruthy();
+        fireEvent.change(input, { target: { value: '4850*0.1' } });
+        expect(screen.queryByTestId('calc-truncation-note')).toBeNull();
+        fireEvent.change(input, { target: { value: '0xFF' } });
+        expect(screen.queryByTestId('calc-truncation-note')).toBeNull();
+    });
+
+    it('keeps the bit grid clickable after a real result', () => {
+        render(<ProgrammerCalculatorCard />);
+        const input = screen.getByTestId('calc-expression');
+        fireEvent.change(screen.getByTestId('calc-width'), { target: { value: '8' } });
+        fireEvent.change(input, { target: { value: '22/7.0' } });
+        expect(screen.getByTestId('calc-bit-0').getAttribute('aria-pressed')).toBe('true');
+        fireEvent.click(screen.getByTestId('calc-bit-2'));
+        expect((input as HTMLInputElement).value).toBe('0x7');
+        expect(readout('dec')).toBe('7');
+        expect(screen.queryByTestId('calc-truncation-note')).toBeNull();
+    });
+
     it('offers a copy button for every readout', () => {
         render(<ProgrammerCalculatorCard />);
         for (const base of ['dec', 'hex', 'oct', 'bin']) {
