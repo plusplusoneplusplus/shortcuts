@@ -25,6 +25,8 @@ import {
 } from './extensions/tableColumnWrap';
 import { TableReorder } from './extensions/tableReorder';
 import { Highlight } from '@tiptap/extension-highlight';
+import { Superscript } from '@tiptap/extension-superscript';
+import { Subscript } from '@tiptap/extension-subscript';
 import { TextStyle, Color, FontFamily, FontSize } from '@tiptap/extension-text-style';
 import { FindAndReplace } from '@tiptap/extension-find-and-replace';
 import { TextAlign } from '@tiptap/extension-text-align';
@@ -263,6 +265,11 @@ export function RichEditorCore({
             // @tiptap/extension-table does not expose them.
             TableReorder,
             Highlight.configure({ multicolor: true }),
+            // Superscript / subscript. Upstream declares no `excludes`, so a run
+            // could otherwise carry both marks at once and render as neither.
+            // Listing both names makes each one clear the other on apply.
+            Superscript.extend({ excludes: 'superscript subscript' }),
+            Subscript.extend({ excludes: 'superscript subscript' }),
             // Text color. TextStyle is the generic <span style="…"> mark Color
             // hangs its `color` attribute off; both ship in
             // @tiptap/extension-text-style. Only inline `color` survives the
