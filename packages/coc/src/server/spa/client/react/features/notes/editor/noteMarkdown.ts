@@ -16,6 +16,7 @@ import {
     readInlineColor,
     readStyleProp,
 } from './colorPalette';
+import { readInlineFontFamily } from './fontFamilies';
 import { clampIndent, parseIndentAttr } from './extensions/indentShared';
 import { resolveCodeLanguage } from './extensions/notesLowlight';
 import { clampPdfHeight, parsePdfHeightAttr } from './extensions/pdfHeightShared';
@@ -257,27 +258,40 @@ turndown.addRule('highlight', {
     },
 });
 
-// Text color: <span style="color:…"> → the same inline HTML. Markdown has no
-// color syntax, and inline HTML is the one form that survives marked → Tiptap →
-// turndown *and* still renders in an external Markdown viewer.
+// Text style: <span style="color:…; font-family:…"> → the same inline HTML.
+// Markdown has syntax for neither, and inline HTML is the one form that survives
+// marked → Tiptap → turndown *and* still renders in an external Markdown viewer.
+//
+// Color and font are two attributes of the SAME Tiptap `textStyle` mark, so one
+// span can carry both and they have to be serialized together — a second,
+// independent span rule would never see a span the first rule already claimed.
+// Declarations are emitted in a fixed order so re-saving an untouched note
+// produces byte-identical Markdown.
 //
 // NOTE: addRule() unshifts, so this is checked BEFORE the plain `highlight` rule
 // above but AFTER every span rule registered later (note-link, file-ref, math,
-// comment, Quick Ask). Those spans never carry a color, so the ordering only
-// matters as insurance.
-turndown.addRule('textColorSpan', {
+// comment, Quick Ask). Those spans carry neither declaration, so the ordering
+// only matters as insurance.
+function readTextStyleDeclarations(node: Node): string[] {
+    const style = (node as HTMLElement).getAttribute('style');
+    const declarations: string[] = [];
+    const color = readInlineColor(style, 'color');
+    if (color) declarations.push(`color:${color}`);
+    const fontFamily = readInlineFontFamily(style);
+    if (fontFamily) declarations.push(`font-family:${fontFamily}`);
+    return declarations;
+}
+
+turndown.addRule('textStyleSpan', {
     filter(node) {
-        return (
-            node.nodeName === 'SPAN' &&
-            readInlineColor((node as HTMLElement).getAttribute('style'), 'color') !== null
-        );
+        return node.nodeName === 'SPAN' && readTextStyleDeclarations(node).length > 0;
     },
     replacement(content, node) {
-        const color = readInlineColor((node as HTMLElement).getAttribute('style'), 'color');
-        // An empty span carries no text to color — drop the wrapper rather than
+        const declarations = readTextStyleDeclarations(node);
+        // An empty span carries no text to style — drop the wrapper rather than
         // leaving `<span style="…"></span>` noise in the file.
-        if (!color || !content) return content;
-        return `<span style="color:${color}">${content}</span>`;
+        if (declarations.length === 0 || !content) return content;
+        return `<span style="${declarations.join('; ')}">${content}</span>`;
     },
 });
 
@@ -1001,20 +1015,31 @@ function normalizeColgroupWidths(html: string): string {
 }
 
 // `marked` passes inline HTML through verbatim, so a `<span>`/`<mark>` in the
-// source arrives at Tiptap with whatever `style` was written. Only the one
-// declaration each tag persists is honored — `color` on `<span>`,
-// `background-color` on `<mark>` — and only in a form `normalizeCssColor`
-// recognizes. Everything else is dropped, so a hand-written or pasted `style`
-// cannot turn the note format into a general HTML-styling escape hatch. A tag
-// left with no honored declaration loses its `style` attribute entirely; for a
-// `<span>` that also means turndown unwraps it on the next save.
-function sanitizeInlineColorStyles(html: string): string {
+// source arrives at Tiptap with whatever `style` was written. Only the
+// declarations each tag persists are honored — `color` and `font-family` on
+// `<span>`, `background-color` on `<mark>` — and only in a form
+// `normalizeCssColor` / `normalizeFontStack` recognizes. Everything else is
+// dropped, so a hand-written or pasted `style` cannot turn the note format into
+// a general HTML-styling escape hatch. A tag left with no honored declaration
+// loses its `style` attribute entirely; for a `<span>` that also means turndown
+// unwraps it on the next save.
+//
+// The declaration order here matches the `textStyleSpan` turndown rule, so a
+// note that is loaded and re-saved without an edit serializes unchanged.
+function sanitizeInlineStyles(html: string): string {
     return html.replace(/<(span|mark)\b([^>]*?)(\/?)>/gi, (match, tag: string, attrs: string, selfClose: string) => {
         if (!/\bstyle\s*=/i.test(attrs)) return match;
-        const prop = tag.toLowerCase() === 'span' ? 'color' : 'background-color';
-        const color = normalizeCssColor(readStyleProp(getHtmlAttr(attrs, 'style'), prop));
+        const raw = getHtmlAttr(attrs, 'style');
+        const isSpan = tag.toLowerCase() === 'span';
+        const declarations: string[] = [];
+        const color = normalizeCssColor(readStyleProp(raw, isSpan ? 'color' : 'background-color'));
+        if (color) declarations.push(`${isSpan ? 'color' : 'background-color'}:${color}`);
+        if (isSpan) {
+            const fontFamily = readInlineFontFamily(raw);
+            if (fontFamily) declarations.push(`font-family:${fontFamily}`);
+        }
         const rest = attrs.replace(/\s*\bstyle\s*=\s*(["'])[\s\S]*?\1/i, '');
-        const style = color ? ` style="${prop}:${color}"` : '';
+        const style = declarations.length > 0 ? ` style="${declarations.join('; ')}"` : '';
         return `<${tag}${rest}${style}${selfClose}>`;
     });
 }
@@ -1056,7 +1081,7 @@ export function markdownToHtml(md: string): string {
     // tokenizer, a singleton, cannot see per-call definitions).
     const { body, defs } = extractQaFootnoteDefs(md);
     const html = injectQaAnswers(marked.parse(body) as string, defs);
-    return sanitizeInlineColorStyles(resolveFencedCodeLanguages(
+    return sanitizeInlineStyles(resolveFencedCodeLanguages(
         normalizeColgroupWidths(
             stripCodeBlockTrailingNewline(stripNbspParagraphPlaceholders(postProcessTaskLists(html))),
         ),

@@ -105,6 +105,20 @@ export function fontStackKey(raw: string | null | undefined): string | null {
 }
 
 /**
+ * The canonical font stack carried by a raw `style` attribute string, or `null`.
+ *
+ * Takes the attribute rather than the element's `CSSStyleDeclaration` for the
+ * same reason `readInlineColor` does: the attribute is what was actually
+ * authored, and it reads the same under jsdom, domino and a real browser. The
+ * `(?:^|;)` anchor keeps this from matching the tail of some other declaration.
+ */
+export function readInlineFontFamily(style: string | null | undefined): string | null {
+    if (!style) return null;
+    const raw = /(?:^|;)\s*font-family\s*:\s*([^;]+)/i.exec(style)?.[1]?.trim();
+    return normalizeFontStack(raw);
+}
+
+/**
  * The menu entry a stack corresponds to, or `null` for an unset, unparsable, or
  * foreign font (a stack pasted from elsewhere is kept on the mark but has no
  * row to check, so the trigger falls back to "Default").
