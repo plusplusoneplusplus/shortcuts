@@ -239,6 +239,25 @@ turndown.addRule('strikethrough', {
     },
 });
 
+// Superscript / subscript: <sup> / <sub> → the same literal HTML tags. Markdown
+// has no portable syntax for either (pandoc's `^x^` / `~x~` collide with our
+// `~~strike~~` and `==highlight==` handling), and inline HTML is what marked
+// passes back through to Tiptap's parseHTML. Without a rule turndown would drop
+// the tags and keep only the bare text, silently losing the mark on every save.
+turndown.addRule('superscript', {
+    filter: 'sup',
+    replacement(content) {
+        return `<sup>${content}</sup>`;
+    },
+});
+
+turndown.addRule('subscript', {
+    filter: 'sub',
+    replacement(content) {
+        return `<sub>${content}</sub>`;
+    },
+});
+
 // Highlight: <mark> → ==text==, except for a non-default color, which has no
 // `==` syntax and is emitted as inline HTML instead. The default color stays
 // bare `==text==` so ordinary highlights remain clean Markdown and every note
