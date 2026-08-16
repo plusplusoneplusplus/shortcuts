@@ -16,6 +16,7 @@ import {
     normalizeFontSize,
     readInlineFontSize,
 } from '../../../../src/server/spa/client/react/features/notes/editor/fontSizes';
+import { activeFontSize } from '../../../../src/server/spa/client/react/features/notes/editor/toolbar/FontSizeDropdown';
 
 describe('FONT_SIZE_OPTIONS', () => {
     it('is exactly the fourteen agreed entries, in order', () => {
@@ -235,6 +236,105 @@ describe('font size mark in a real editor', () => {
         editor.commands.setTextSelection({ from: 6, to: 6 });
         editor.chain().focus().setFontSize('24px').run();
         expect(findSizeOption(editor.getAttributes('textStyle').fontSize)?.label).toBe('24');
+        editor.destroy();
+    });
+});
+
+/**
+ * AC-02.3: the trigger reads "Default" for a selection that spans more than one
+ * size, not just one with no size at all.
+ *
+ * These run against a real editor because the bug they pin lives in Tiptap:
+ * `getAttributes('textStyle')` reports the *first* mark in the range with no
+ * check that the range agrees, so every case below reads a size from it.
+ */
+describe('activeFontSize across a selection', () => {
+    /**
+     * `hello world` with a size on `hello`, on ` world`, or on neither.
+     *
+     * The space goes with the second run so that two equal sizes really do
+     * cover the whole selection — an unsized space between them would be a
+     * third run, and correctly read as mixed.
+     */
+    function sizedRuns(hello: string | null, world: string | null) {
+        const editor = createEditor();
+        if (hello) {
+            editor.commands.setTextSelection({ from: 1, to: 6 });
+            editor.chain().setFontSize(hello).run();
+        }
+        if (world) {
+            editor.commands.setTextSelection({ from: 6, to: 12 });
+            editor.chain().setFontSize(world).run();
+        }
+        // Select the whole paragraph, both runs.
+        editor.commands.setTextSelection({ from: 1, to: 12 });
+        return editor;
+    }
+
+    it('reads null when a sized run is followed by an unsized one', () => {
+        const editor = sizedRuns('24px', null);
+        // Tiptap alone would answer 24px here — that is the bug being fixed.
+        expect(editor.getAttributes('textStyle').fontSize).toBe('24px');
+        expect(activeFontSize(editor)).toBeNull();
+        editor.destroy();
+    });
+
+    it('reads null when an unsized run is followed by a sized one', () => {
+        const editor = sizedRuns(null, '24px');
+        expect(activeFontSize(editor)).toBeNull();
+        editor.destroy();
+    });
+
+    it('reads null when the selection spans two different sizes', () => {
+        const editor = sizedRuns('12px', '24px');
+        expect(activeFontSize(editor)).toBeNull();
+        editor.destroy();
+    });
+
+    it('reads the size when every run in the selection carries it', () => {
+        const editor = sizedRuns('24px', '24px');
+        expect(findSizeOption(activeFontSize(editor))?.label).toBe('24');
+        editor.destroy();
+    });
+
+    it('reads the size when one run covers the whole selection', () => {
+        const editor = createEditor();
+        selectHello(editor);
+        editor.chain().setFontSize('24px').run();
+        selectHello(editor);
+        expect(findSizeOption(activeFontSize(editor))?.label).toBe('24');
+        editor.destroy();
+    });
+
+    it('reads the size for a caret inside a sized run', () => {
+        const editor = createEditor();
+        selectHello(editor);
+        editor.chain().setFontSize('24px').run();
+        editor.commands.setTextSelection({ from: 3, to: 3 });
+        expect(findSizeOption(activeFontSize(editor))?.label).toBe('24');
+        editor.destroy();
+    });
+
+    it('reads null for a selection with no size anywhere', () => {
+        const editor = createEditor();
+        editor.commands.setTextSelection({ from: 1, to: 12 });
+        expect(activeFontSize(editor)).toBeNull();
+        editor.destroy();
+    });
+
+    it('treats spellings that normalize alike as one size, not a mix', () => {
+        // A reloaded note can carry `24 px` on one run and `24px` on the next.
+        const editor = sizedRuns('24 px', '24.0px');
+        expect(findSizeOption(activeFontSize(editor))?.label).toBe('24');
+        editor.destroy();
+    });
+
+    it('spans paragraphs — a size in one and none in the next reads null', () => {
+        const editor = createEditor('<p>hello</p><p>world</p>');
+        editor.commands.setTextSelection({ from: 1, to: 6 });
+        editor.chain().setFontSize('24px').run();
+        editor.commands.setTextSelection({ from: 1, to: 13 });
+        expect(activeFontSize(editor)).toBeNull();
         editor.destroy();
     });
 });

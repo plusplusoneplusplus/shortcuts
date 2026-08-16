@@ -50,6 +50,10 @@ function makeMockEditor(
     // Per-command `editor.can()` answers; anything unlisted reads as allowed,
     // so existing tests keep the enabled rendering they were written against.
     canOverride?: Record<string, boolean>,
+    // The text runs a non-empty selection covers, each as its `font-size` or
+    // `null` for an unsized run. Omit for a collapsed caret, which is what
+    // every test written before the mixed-selection cases assumes.
+    selectionSizes?: (string | null)[],
 ) {
     const insertTable = vi.fn(() => ({ run: vi.fn() }));
     const addColumnBefore = vi.fn(() => ({ run: vi.fn() }));
@@ -115,7 +119,22 @@ function makeMockEditor(
         get: (_target, prop: string) => () => canOverride?.[prop] ?? true,
     });
 
+    // A stand-in for the ProseMirror doc the size dropdown walks: one text node
+    // per run, carrying a textStyle mark only when that run has a size.
+    const selectionNodes = (selectionSizes ?? []).map((fontSize) => ({
+        isText: true,
+        marks: fontSize === null ? [] : [{ type: { name: 'textStyle' }, attrs: { fontSize } }],
+    }));
+
     return {
+        state: {
+            selection: { from: 1, to: 1 + selectionNodes.length, empty: selectionSizes === undefined },
+            doc: {
+                nodesBetween: (_from: number, _to: number, fn: (node: unknown) => unknown) => {
+                    for (const node of selectionNodes) fn(node);
+                },
+            },
+        },
         isActive: vi.fn((name: string, attrs?: Record<string, unknown>) =>
             isActiveOverride ? isActiveOverride(name, attrs) : false),
         getAttributes: vi.fn((name: string) =>
@@ -1103,6 +1122,62 @@ describe('NoteEditorToolbar — font size dropdown', () => {
         expect(screen.getByTestId('font-size-item-default').getAttribute('aria-checked')).toBe('true');
     });
 
+    /**
+     * A non-empty selection covering the given runs (`null` = an unsized run).
+     *
+     * `getAttributes` answers with the first sized run, the way Tiptap's
+     * `getMarkAttributes` does — so a trigger that trusts it fails these.
+     */
+    function selectionEditor(...sizes: (string | null)[]) {
+        const firstSized = sizes.find((size) => size !== null);
+        return makeMockEditor(
+            undefined,
+            (name) => (name === 'textStyle' && firstSized ? { fontSize: firstSized } : {}),
+            undefined,
+            sizes,
+        );
+    }
+
+    it('reads Default when the selection runs from sized into unsized text', () => {
+        const editor = selectionEditor('24px', null);
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('font-size-dropdown-label').textContent).toBe('Default');
+        fireEvent.mouseDown(screen.getByLabelText('Font size'));
+        expect(screen.getByTestId('font-size-item-24').getAttribute('aria-checked')).toBe('false');
+        expect(screen.getByTestId('font-size-item-default').getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('reads Default when the selection runs from unsized into sized text', () => {
+        const editor = selectionEditor(null, '24px');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('font-size-dropdown-label').textContent).toBe('Default');
+    });
+
+    it('reads Default when the selection spans two different sizes', () => {
+        const editor = selectionEditor('12px', '24px');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('font-size-dropdown-label').textContent).toBe('Default');
+        fireEvent.mouseDown(screen.getByLabelText('Font size'));
+        expect(screen.getByTestId('font-size-item-12').getAttribute('aria-checked')).toBe('false');
+        expect(screen.getByTestId('font-size-item-24').getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('still reads the size when the whole selection carries it', () => {
+        // Two runs, same size — split by some other mark, say bold.
+        const editor = selectionEditor('24px', '24px');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('font-size-dropdown-label').textContent).toBe('24');
+        fireEvent.mouseDown(screen.getByLabelText('Font size'));
+        expect(screen.getByTestId('font-size-item-24').getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('still reads the size for a caret sitting inside sized text', () => {
+        // Collapsed: no range to survey, so the stored mark is the answer.
+        const editor = sizeEditor('24px');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('font-size-dropdown-label').textContent).toBe('24');
+    });
+
     it('closes on Escape', () => {
         const editor = makeMockEditor();
         render(<NoteEditorToolbar editor={editor as never} />);
@@ -1618,7 +1693,9 @@ describe('NoteEditorToolbar — find & replace', () => {
         const editor = makeFindMockEditor();
         editor.state = {
             selection: { empty: false, from: 1, to: 6 },
-            doc: { textBetween: () => 'alpha' },
+            // nodesBetween is unused here, but the font-size dropdown surveys
+            // the selection on every render and a real doc always has it.
+            doc: { textBetween: () => 'alpha', nodesBetween: () => {} },
         } as never;
         render(<NoteEditorToolbar editor={editor as never} />);
 

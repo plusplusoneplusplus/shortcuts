@@ -1,6 +1,11 @@
 import type { Editor } from '@tiptap/react';
 import { ToolbarDropdown, MenuItem } from './ToolbarDropdown';
-import { DEFAULT_FONT_SIZE_OPTION, FONT_SIZE_OPTIONS, findSizeOption } from '../fontSizes';
+import {
+    DEFAULT_FONT_SIZE_OPTION,
+    FONT_SIZE_OPTIONS,
+    findSizeOption,
+    normalizeFontSize,
+} from '../fontSizes';
 
 /**
  * The font-size picker.
@@ -14,9 +19,38 @@ import { DEFAULT_FONT_SIZE_OPTION, FONT_SIZE_OPTIONS, findSizeOption } from '../
  * an H2, and "Default" restores whatever size the heading or theme dictates.
  */
 
-/** The font size on the current selection, or `null` when unset. */
+/**
+ * The font size on the current selection, or `null` when it is unset or the
+ * selection spans more than one size.
+ *
+ * `getAttributes` is only right for a caret. Tiptap's `getMarkAttributes`
+ * collects every `textStyle` mark in the range and hands back the *first* one,
+ * with no check that the range agrees — so a run of 24px text followed by
+ * unsized text would light up the 24 row. A selection that covers a mix has no
+ * one size to report, so the trigger reads "Default" instead.
+ */
 export function activeFontSize(editor: Editor): string | null {
-    return (editor.getAttributes('textStyle').fontSize as string | undefined) ?? null;
+    const { from, to, empty } = editor.state.selection;
+    // A caret covers no text to survey, and its stored marks are what typed
+    // text will pick up — exactly what `getAttributes` reports.
+    if (empty) return (editor.getAttributes('textStyle').fontSize as string | undefined) ?? null;
+
+    let seen: string | null | undefined;
+    let mixed = false;
+    editor.state.doc.nodesBetween(from, to, (node) => {
+        if (mixed) return false;
+        if (!node.isText) return true;
+        const fontSize = node.marks.find((mark) => mark.type.name === 'textStyle')?.attrs.fontSize;
+        // A run with no size — or one in a unit we do not persist — is its own
+        // distinct value, so sized + unsized reads as mixed rather than
+        // inheriting the sized run's label.
+        const size = normalizeFontSize(fontSize as string | undefined);
+        if (seen === undefined) seen = size;
+        else if (seen !== size) mixed = true;
+        return true;
+    });
+
+    return mixed ? null : (seen ?? null);
 }
 
 export function FontSizeDropdown({ editor }: { editor: Editor }) {
