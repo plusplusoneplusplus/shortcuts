@@ -77,6 +77,8 @@ describe('formatting command descriptors — inventory', () => {
             'Bold',
             'Italic',
             'Strikethrough',
+            'Superscript',
+            'Subscript',
             'Blockquote',
             'Code',
             'Code block',
@@ -89,7 +91,9 @@ describe('formatting command descriptors — inventory', () => {
 
     it('keeps every stateful control in the group list as a slot', () => {
         expect(slotIds()).toEqual([
+            'fontSize',
             'color',
+            'fontFamily',
             'heading',
             'list',
             'tableInsert',
@@ -109,8 +113,8 @@ describe('formatting command descriptors — inventory', () => {
         const order = FORMATTING_GROUPS.map((group) =>
             group.map((i) => (i.kind === 'command' ? i.command.id : i.slot)));
         expect(order).toEqual([
-            ['bold', 'italic', 'strike', 'color'],
-            ['heading'],
+            ['fontSize', 'bold', 'italic', 'strike', 'superscript', 'subscript', 'color'],
+            ['fontFamily', 'heading'],
             ['list'],
             ['blockquote', 'code', 'codeBlock'],
             ['link', 'horizontalRule'],
@@ -127,6 +131,8 @@ describe('formatting command descriptors — active state', () => {
         ['bold', 'bold'],
         ['italic', 'italic'],
         ['strike', 'strike'],
+        ['superscript', 'superscript'],
+        ['subscript', 'subscript'],
         ['blockquote', 'blockquote'],
         ['code', 'code'],
         ['codeBlock', 'codeBlock'],
@@ -151,6 +157,8 @@ describe('formatting command descriptors — commands', () => {
         ['bold', 'toggleBold'],
         ['italic', 'toggleItalic'],
         ['strike', 'toggleStrike'],
+        ['superscript', 'toggleSuperscript'],
+        ['subscript', 'toggleSubscript'],
         ['blockquote', 'toggleBlockquote'],
         ['code', 'toggleCode'],
         ['codeBlock', 'toggleCodeBlock'],

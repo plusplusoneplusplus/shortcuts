@@ -75,6 +75,10 @@ export const FORMATTING_GROUPS: ToolbarItem[][] = [
         cmd({ id: 'bold', label: 'Bold', icon: 'B', activeName: 'bold', run: (e) => chain(e).toggleBold().run() }),
         cmd({ id: 'italic', label: 'Italic', icon: 'I', activeName: 'italic', run: (e) => chain(e).toggleItalic().run() }),
         cmd({ id: 'strike', label: 'Strikethrough', icon: 'S̶', activeName: 'strike', run: (e) => chain(e).toggleStrike().run() }),
+        // The two marks are mutually exclusive in the schema, so toggling one
+        // off the other needs no extra wiring here.
+        cmd({ id: 'superscript', label: 'Superscript', icon: 'x²', activeName: 'superscript', run: (e) => chain(e).toggleSuperscript().run() }),
+        cmd({ id: 'subscript', label: 'Subscript', icon: 'x₂', activeName: 'subscript', run: (e) => chain(e).toggleSubscript().run() }),
         slot('color'),
     ],
     // Text appearance: font first, then heading level — the two controls that
