@@ -11,8 +11,10 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { Editor } from '@tiptap/react';
 import {
+    ALIGN_OPTIONS,
     FORMATTING_GROUPS,
     FORMATTING_COMMANDS,
+    activeAlignOption,
     isCommandActive,
     toggleLink,
     type ToolbarCommandDescriptor,
@@ -80,10 +82,6 @@ describe('formatting command descriptors — inventory', () => {
             'Code block',
             'Link',
             'Horizontal rule',
-            'Align left',
-            'Align center',
-            'Align right',
-            'Justify',
             'Increase indent',
             'Decrease indent',
         ]);
@@ -96,6 +94,7 @@ describe('formatting command descriptors — inventory', () => {
             'list',
             'tableInsert',
             'insertPdf',
+            'align',
             'find',
         ]);
     });
@@ -116,7 +115,7 @@ describe('formatting command descriptors — inventory', () => {
             ['blockquote', 'code', 'codeBlock'],
             ['link', 'horizontalRule'],
             ['tableInsert', 'insertPdf'],
-            ['alignLeft', 'alignCenter', 'alignRight', 'alignJustify'],
+            ['align'],
             ['increaseIndent', 'decreaseIndent'],
             ['find'],
         ]);
@@ -135,23 +134,6 @@ describe('formatting command descriptors — active state', () => {
     ])('%s reports active from isActive("%s")', (id, nodeName) => {
         const { editor } = makeEditor((name) => name === nodeName);
         expect(isCommandActive(editor, byId(id))).toBe(true);
-    });
-
-    it('reads alignment active state through textStyle with the alignment attribute', () => {
-        for (const [id, textAlign] of [
-            ['alignLeft', 'left'],
-            ['alignCenter', 'center'],
-            ['alignRight', 'right'],
-            ['alignJustify', 'justify'],
-        ] as const) {
-            const command = byId(id);
-            expect(command.activeName).toBe('textStyle');
-            expect(command.activeAttrs).toEqual({ textAlign });
-
-            const { editor } = makeEditor();
-            isCommandActive(editor, command);
-            expect(editor.isActive).toHaveBeenCalledWith('textStyle', { textAlign });
-        }
     });
 
     it('reports commands without an active node as never pressed', () => {
@@ -182,18 +164,6 @@ describe('formatting command descriptors — commands', () => {
         expect(run).toHaveBeenCalledTimes(1);
     });
 
-    it.each([
-        ['alignLeft', 'left'],
-        ['alignCenter', 'center'],
-        ['alignRight', 'right'],
-        ['alignJustify', 'justify'],
-    ])('%s runs setTextAlign("%s")', (id, value) => {
-        const { editor, calls, run } = makeEditor();
-        byId(id).run(editor);
-        expect(calls).toEqual([{ name: 'setTextAlign', args: [value] }]);
-        expect(run).toHaveBeenCalledTimes(1);
-    });
-
     it('focuses the editor before every command, so the caret survives the click', () => {
         for (const command of FORMATTING_COMMANDS) {
             if (command.id === 'link') continue; // covered separately — it prompts
@@ -201,6 +171,46 @@ describe('formatting command descriptors — commands', () => {
             command.run(editor);
             expect(focus, command.id).toHaveBeenCalled();
         }
+    });
+});
+
+describe('alignment options', () => {
+    /** `isActive` called with attributes only, the way `activeAlignOption` calls it. */
+    function makeAlignEditor(current: string | null) {
+        const isActive = vi.fn((attrs: unknown) =>
+            (attrs as { textAlign?: string }).textAlign === current);
+        return { isActive } as unknown as Editor & { isActive: typeof isActive };
+    }
+
+    it('keeps all four alignments, in menu order, with unique ids and test ids', () => {
+        expect(ALIGN_OPTIONS.map((o) => o.id)).toEqual([
+            'alignLeft', 'alignCenter', 'alignRight', 'alignJustify',
+        ]);
+        expect(ALIGN_OPTIONS.map((o) => o.label)).toEqual([
+            'Align left', 'Align center', 'Align right', 'Justify',
+        ]);
+        expect(ALIGN_OPTIONS.map((o) => o.value)).toEqual(['left', 'center', 'right', 'justify']);
+        expect(ALIGN_OPTIONS.map((o) => o.icon)).toEqual(['⫷', '≡', '⫸', '☰']);
+        expect(new Set(ALIGN_OPTIONS.map((o) => o.testId)).size).toBe(ALIGN_OPTIONS.length);
+    });
+
+    it('is no longer wired through the command descriptors', () => {
+        expect(FORMATTING_COMMANDS.some((c) => c.id.startsWith('align'))).toBe(false);
+    });
+
+    it.each(['left', 'center', 'right', 'justify'])(
+        'reports %s active from the textAlign attribute alone',
+        (value) => {
+            const editor = makeAlignEditor(value);
+            expect(activeAlignOption(editor)?.value).toBe(value);
+            // Not `isActive('textStyle', { textAlign })` — the attribute lives
+            // on the paragraph/heading node, so that form never matches.
+            expect(editor.isActive).toHaveBeenCalledWith({ textAlign: value });
+        },
+    );
+
+    it('reports no alignment when nothing matches', () => {
+        expect(activeAlignOption(makeAlignEditor(null))).toBeNull();
     });
 });
 

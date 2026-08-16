@@ -82,6 +82,7 @@ function makeMockEditor(
         toggleBulletList: vi.fn(() => ({ run: vi.fn() })),
         toggleOrderedList: vi.fn(() => ({ run: vi.fn() })),
         toggleTaskList: vi.fn(() => ({ run: vi.fn() })),
+        setTextAlign: vi.fn(() => ({ run: vi.fn() })),
         toggleBlockquote: () => ({ run: vi.fn() }),
         toggleCode: () => ({ run: vi.fn() }),
         toggleCodeBlock: () => ({ run: vi.fn() }),
@@ -1074,6 +1075,95 @@ describe('NoteEditorToolbar — list dropdown', () => {
         fireEvent.mouseDown(screen.getByTestId('list-dropdown'));
         fireEvent.mouseDown(document.body);
         expect(screen.queryByTestId('list-dropdown-menu')).toBeNull();
+    });
+});
+
+describe('NoteEditorToolbar — alignment dropdown', () => {
+    /**
+     * `activeAlignOption` calls `editor.isActive({ textAlign })` with the
+     * attributes alone, so the override reads its first argument as an object.
+     */
+    const alignedTo = (current: string) =>
+        ((name: string) => (name as unknown as { textAlign?: string })?.textAlign === current) as
+            (name: string, attrs?: Record<string, unknown>) => boolean;
+
+    it('replaces the four flat alignment buttons with a single trigger', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('align-dropdown')).toBeDefined();
+        for (const label of ['Align left', 'Align center', 'Align right', 'Justify']) {
+            expect(screen.queryByLabelText(label)).toBeNull();
+        }
+    });
+
+    it('opens a menu with the four alignments', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        const trigger = screen.getByTestId('align-dropdown');
+        expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+        expect(trigger.getAttribute('aria-label')).toBe('Text alignment');
+
+        fireEvent.mouseDown(trigger);
+        const menu = screen.getByTestId('align-dropdown-menu');
+        expect(menu.getAttribute('role')).toBe('menu');
+        expect(menu.getAttribute('aria-label')).toBe('Text alignment');
+        expect(screen.getByTestId('align-item-left').textContent).toContain('Align left');
+        expect(screen.getByTestId('align-item-center').textContent).toContain('Align center');
+        expect(screen.getByTestId('align-item-right').textContent).toContain('Align right');
+        expect(screen.getByTestId('align-item-justify').textContent).toContain('Justify');
+    });
+
+    it.each([
+        ['align-item-left', 'left'],
+        ['align-item-center', 'center'],
+        ['align-item-right', 'right'],
+        ['align-item-justify', 'justify'],
+    ])('%s runs setTextAlign("%s") and closes the menu', (testId, value) => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByTestId('align-dropdown'));
+        fireEvent.mouseDown(screen.getByTestId(testId));
+
+        expect(editor._focusResult.setTextAlign).toHaveBeenCalledTimes(1);
+        expect(editor._focusResult.setTextAlign).toHaveBeenCalledWith(value);
+        expect(screen.queryByTestId('align-dropdown-menu')).toBeNull();
+    });
+
+    it('shows the left-align icon and no highlight when nothing is aligned', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('align-dropdown-label').textContent).toBe('⫷');
+        expect(screen.getByTestId('align-dropdown').className).not.toContain('bg-[#e8e8e8]');
+    });
+
+    it.each([
+        ['center', '≡', 'align-item-center'],
+        ['right', '⫸', 'align-item-right'],
+        ['justify', '☰', 'align-item-justify'],
+    ])('reflects %s alignment in the trigger and the checked row', (value, icon, testId) => {
+        const editor = makeMockEditor(alignedTo(value));
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('align-dropdown-label').textContent).toBe(icon);
+        expect(screen.getByTestId('align-dropdown').className).toContain('bg-[#e8e8e8]');
+
+        fireEvent.mouseDown(screen.getByTestId('align-dropdown'));
+        expect(screen.getByTestId(testId).getAttribute('aria-checked')).toBe('true');
+        expect(screen.getByTestId('align-item-left').getAttribute('aria-checked')).toBe('false');
+        // Focus lands on the checked row when the menu opens.
+        expect(document.activeElement).toBe(screen.getByTestId(testId));
+    });
+
+    it('Escape closes the menu and an outside click closes it too', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByTestId('align-dropdown'));
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByTestId('align-dropdown-menu')).toBeNull();
+        expect(document.activeElement).toBe(screen.getByTestId('align-dropdown'));
+
+        fireEvent.mouseDown(screen.getByTestId('align-dropdown'));
+        fireEvent.mouseDown(document.body);
+        expect(screen.queryByTestId('align-dropdown-menu')).toBeNull();
     });
 });
 

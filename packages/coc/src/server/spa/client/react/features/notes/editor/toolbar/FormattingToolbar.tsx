@@ -5,7 +5,9 @@ import { ToolbarDropdown, MenuItem, Sep } from './ToolbarDropdown';
 import { ColorDropdown } from './ColorDropdown';
 import { TableInsertButton } from './TableToolbarControls';
 import {
+    ALIGN_OPTIONS,
     FORMATTING_GROUPS,
+    activeAlignOption,
     isCommandActive,
     type ToolbarCommandDescriptor,
     type ToolbarItem,
@@ -209,6 +211,62 @@ function ListDropdown({ editor }: { editor: Editor }) {
     );
 }
 
+// ── Alignment dropdown ──────────────────────────────────────────────────────
+
+function AlignDropdown({ editor }: { editor: Editor }) {
+    const active = activeAlignOption(editor);
+
+    return (
+        <ToolbarDropdown
+            menu
+            menuLabel="Text alignment"
+            panelTestId="align-dropdown-menu"
+            panelClassName="p-1 min-w-[9rem]"
+            renderTrigger={({ open, toggle, triggerRef }) => (
+                <button
+                    ref={triggerRef}
+                    type="button"
+                    title="Text alignment"
+                    aria-label="Text alignment"
+                    aria-haspopup="menu"
+                    aria-expanded={open}
+                    data-testid="align-dropdown"
+                    className={
+                        'h-7 px-1 rounded flex items-center gap-0.5 text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050] ' +
+                        (active || open ? 'bg-[#e8e8e8] dark:bg-[#3c3c3c] ' : '') +
+                        (active ? 'font-bold' : '')
+                    }
+                    onMouseDown={(e) => {
+                        e.preventDefault(); // keep editor selection
+                        toggle();
+                    }}
+                >
+                    <span data-testid="align-dropdown-label">{(active ?? ALIGN_OPTIONS[0]).icon}</span>
+                    <span className="text-[10px]">▾</span>
+                </button>
+            )}
+            renderPanel={({ close }) => (
+                <>
+                    {ALIGN_OPTIONS.map(({ id, label, icon, value, testId }) => (
+                        <MenuItem
+                            key={id}
+                            checked={active?.value === value}
+                            testId={testId}
+                            icon={icon}
+                            onSelect={() => {
+                                editor.chain().focus().setTextAlign(value).run();
+                                close();
+                            }}
+                        >
+                            {label}
+                        </MenuItem>
+                    ))}
+                </>
+            )}
+        />
+    );
+}
+
 // ── Descriptor-driven formatting group rendering ────────────────────────────
 
 export interface FormattingToolbarProps {
@@ -252,6 +310,8 @@ export function FormattingToolbar({ editor, findOpen, onToggleFind, onInsertPdf 
                 return <HeadingDropdown key={key} editor={editor} />;
             case 'list':
                 return <ListDropdown key={key} editor={editor} />;
+            case 'align':
+                return <AlignDropdown key={key} editor={editor} />;
             case 'tableInsert':
                 return <TableInsertButton key={key} editor={editor} />;
             case 'insertPdf':
