@@ -27,6 +27,7 @@ export interface ToolbarCommandDescriptor {
 export type ToolbarSlot =
     | 'color'
     | 'fontFamily'
+    | 'fontSize'
     | 'heading'
     | 'list'
     | 'align'
@@ -68,6 +69,9 @@ export function toggleLink(editor: Editor): void {
 export const FORMATTING_GROUPS: ToolbarItem[][] = [
     // Text formatting
     [
+        // Size leads the group: it is the one control here that is read before
+        // it is used, so it sits where the eye starts rather than after Bold.
+        slot('fontSize'),
         cmd({ id: 'bold', label: 'Bold', icon: 'B', activeName: 'bold', run: (e) => chain(e).toggleBold().run() }),
         cmd({ id: 'italic', label: 'Italic', icon: 'I', activeName: 'italic', run: (e) => chain(e).toggleItalic().run() }),
         cmd({ id: 'strike', label: 'Strikethrough', icon: 'S̶', activeName: 'strike', run: (e) => chain(e).toggleStrike().run() }),

@@ -79,6 +79,8 @@ function makeMockEditor(
         unsetColor: vi.fn(() => ({ run: vi.fn() })),
         setFontFamily: vi.fn(() => ({ run: vi.fn() })),
         unsetFontFamily: vi.fn(() => ({ run: vi.fn() })),
+        setFontSize: vi.fn(() => ({ run: vi.fn() })),
+        unsetFontSize: vi.fn(() => ({ run: vi.fn() })),
         toggleHeading: vi.fn(() => ({ run: vi.fn() })),
         setParagraph: vi.fn(() => ({ run: vi.fn() })),
         toggleBulletList: vi.fn(() => ({ run: vi.fn() })),
@@ -1007,6 +1009,118 @@ describe('NoteEditorToolbar — font family dropdown', () => {
         fireEvent.mouseDown(screen.getByLabelText('Font family'));
         fireEvent.keyDown(document, { key: 'Escape' });
         expect(screen.queryByTestId('font-dropdown-menu')).toBeNull();
+    });
+});
+
+describe('NoteEditorToolbar — font size dropdown', () => {
+    /** Reports a font size on the textStyle mark, the way Tiptap does. */
+    function sizeEditor(fontSize: string) {
+        return makeMockEditor(undefined, (name) => (name === 'textStyle' ? { fontSize } : {}));
+    }
+
+    /** The label text of each row in the open menu, in render order. */
+    function menuLabels() {
+        return Array.from(
+            screen.getByTestId('font-size-dropdown-menu').querySelectorAll('[role="menuitem"]'),
+        // Last span is the label; the first is the ✓ column.
+        ).map((el) => el.querySelector('span:last-child')?.textContent);
+    }
+
+    it('renders the trigger reading "Default" with no size on the selection', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByLabelText('Font size')).toBeDefined();
+        expect(screen.getByTestId('font-size-dropdown-label').textContent).toBe('Default');
+    });
+
+    it('the menu is hidden until the trigger is clicked', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.queryByTestId('font-size-dropdown-menu')).toBeNull();
+        fireEvent.mouseDown(screen.getByLabelText('Font size'));
+        expect(screen.getByTestId('font-size-dropdown-menu')).toBeDefined();
+    });
+
+    it('lists all fourteen sizes, in order', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Font size'));
+        expect(menuLabels()).toEqual([
+            'Default', '8', '9', '10', '11', '12', '14', '16', '18', '24', '30', '36', '48', '60',
+        ]);
+    });
+
+    for (const px of [8, 12, 24, 60]) {
+        it(`the ${px} row calls setFontSize with ${px}px`, () => {
+            const editor = makeMockEditor();
+            render(<NoteEditorToolbar editor={editor as never} />);
+            fireEvent.mouseDown(screen.getByLabelText('Font size'));
+            fireEvent.mouseDown(screen.getByTestId(`font-size-item-${px}`));
+            expect(editor._focusResult.setFontSize).toHaveBeenCalledWith(`${px}px`);
+            expect(editor._focusResult.unsetFontSize).not.toHaveBeenCalled();
+        });
+    }
+
+    it('the Default row unsets the mark instead of setting a size', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Font size'));
+        fireEvent.mouseDown(screen.getByTestId('font-size-item-default'));
+        expect(editor._focusResult.unsetFontSize).toHaveBeenCalled();
+        expect(editor._focusResult.setFontSize).not.toHaveBeenCalled();
+    });
+
+    it('picking a size closes the menu', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Font size'));
+        fireEvent.mouseDown(screen.getByTestId('font-size-item-24'));
+        expect(screen.queryByTestId('font-size-dropdown-menu')).toBeNull();
+    });
+
+    it('the trigger shows the selection\'s size and checkmarks its row', () => {
+        const editor = sizeEditor('24px');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('font-size-dropdown-label').textContent).toBe('24');
+        fireEvent.mouseDown(screen.getByLabelText('Font size'));
+        expect(screen.getByTestId('font-size-item-24').getAttribute('aria-checked')).toBe('true');
+        expect(screen.getByTestId('font-size-item-default').getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('matches the row even after the browser rewrites the length', () => {
+        // A real browser reports `element.style.fontSize` back in its own
+        // spelling; without normalization no row would match.
+        const editor = sizeEditor('24.0px');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('font-size-dropdown-label').textContent).toBe('24');
+    });
+
+    it('falls back to Default for an off-ladder size without crashing', () => {
+        const editor = sizeEditor('13px');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('font-size-dropdown-label').textContent).toBe('Default');
+        fireEvent.mouseDown(screen.getByLabelText('Font size'));
+        expect(screen.getByTestId('font-size-item-default').getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('closes on Escape', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Font size'));
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByTestId('font-size-dropdown-menu')).toBeNull();
+    });
+
+    it('sits immediately to the left of Bold in the toolbar', () => {
+        const editor = makeMockEditor();
+        const { container } = render(<NoteEditorToolbar editor={editor as never} />);
+        const trigger = screen.getByTestId('font-size-dropdown');
+        const bold = screen.getByLabelText('Bold');
+        // compareDocumentPosition: FOLLOWING means bold comes after the trigger.
+        expect(trigger.compareDocumentPosition(bold) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        // …and nothing else renders between them.
+        const controls = Array.from(container.querySelectorAll('button'));
+        expect(controls.indexOf(bold) - controls.indexOf(trigger)).toBe(1);
     });
 });
 

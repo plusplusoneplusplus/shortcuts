@@ -4,6 +4,7 @@ import type { Editor } from '@tiptap/react';
 import { ToolbarDropdown, MenuItem, Sep } from './ToolbarDropdown';
 import { ColorDropdown } from './ColorDropdown';
 import { FontFamilyDropdown } from './FontFamilyDropdown';
+import { FontSizeDropdown } from './FontSizeDropdown';
 import { TableInsertButton } from './TableToolbarControls';
 import {
     ALIGN_OPTIONS,
@@ -309,6 +310,8 @@ export function FormattingToolbar({ editor, findOpen, onToggleFind, onInsertPdf 
                 return <ColorDropdown key={key} editor={editor} />;
             case 'fontFamily':
                 return <FontFamilyDropdown key={key} editor={editor} />;
+            case 'fontSize':
+                return <FontSizeDropdown key={key} editor={editor} />;
             case 'heading':
                 return <HeadingDropdown key={key} editor={editor} />;
             case 'list':
