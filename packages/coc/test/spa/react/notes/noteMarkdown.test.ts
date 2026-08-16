@@ -253,9 +253,16 @@ describe('noteMarkdown', () => {
             expect(md).toContain('==highlighted==');
         });
 
-        it('converts <mark> with style attribute to ==text==', () => {
+        it('converts a default-colored <mark> to ==text==', () => {
+            const md = htmlToMarkdown('<p><mark data-color="#fff3b0" style="background-color: #fff3b0">yellow</mark></p>');
+            expect(md).toContain('==yellow==');
+        });
+
+        it('keeps a non-default <mark> color as inline HTML', () => {
+            // `==` carries no color, so a picked color would be silently dropped.
+            // See noteMarkdownColor.test.ts for the full colour round trip.
             const md = htmlToMarkdown('<p><mark data-color="#ffc8dd" style="background-color: #ffc8dd">pink</mark></p>');
-            expect(md).toContain('==pink==');
+            expect(md).toContain('<mark style="background-color:#ffc8dd">pink</mark>');
         });
 
         it('converts <pre><code class="language-mermaid"> back to mermaid fenced block', () => {
@@ -2165,6 +2172,77 @@ describe('noteMarkdown', () => {
             const md1 = htmlToMarkdown(editorHtml);
             const md2 = htmlToMarkdown(markdownToHtml(md1));
             expect(md2).toBe(md1);
+        });
+    });
+
+    // AC-03: sup/sub persist as literal HTML tags — Markdown has no portable
+    // syntax for either, and pandoc's `^x^` / `~x~` collides with our
+    // `~~strike~~` / `==highlight==` handling, so it is deliberately unsupported.
+    describe('superscript and subscript', () => {
+        describe('htmlToMarkdown', () => {
+            it('emits <sup> verbatim', () => {
+                expect(htmlToMarkdown('<p>x<sup>2</sup></p>')).toContain('x<sup>2</sup>');
+            });
+
+            it('emits <sub> verbatim', () => {
+                expect(htmlToMarkdown('<p>H<sub>2</sub>O</p>')).toContain('H<sub>2</sub>O');
+            });
+
+            it('keeps a sup nested inside a bold run', () => {
+                expect(htmlToMarkdown('<p><strong>x<sup>2</sup></strong></p>')).toContain('**x<sup>2</sup>**');
+            });
+
+            it('keeps a sup inside a list item', () => {
+                expect(htmlToMarkdown('<ul><li><p>x<sup>2</sup></p></li></ul>')).toContain('-   x<sup>2</sup>');
+            });
+
+            it('keeps a sub inside a table cell', () => {
+                const md = htmlToMarkdown(
+                    '<table><tbody><tr><th><p>formula</p></th></tr><tr><td><p>H<sub>2</sub>O</p></td></tr></tbody></table>',
+                );
+                expect(md).toContain('H<sub>2</sub>O');
+            });
+
+            it('does not emit pandoc ^ / ~ syntax', () => {
+                const md = htmlToMarkdown('<p>x<sup>2</sup> and H<sub>2</sub>O</p>');
+                expect(md).not.toContain('^2^');
+                expect(md).not.toContain('~2~');
+            });
+        });
+
+        describe('markdownToHtml', () => {
+            it('restores <sup> from inline HTML', () => {
+                expect(markdownToHtml('x<sup>2</sup>')).toContain('<sup>2</sup>');
+            });
+
+            it('restores <sub> from inline HTML', () => {
+                expect(markdownToHtml('H<sub>2</sub>O')).toContain('<sub>2</sub>');
+            });
+        });
+
+        describe('round-trip', () => {
+            function roundTrip(md: string): string {
+                return htmlToMarkdown(markdownToHtml(md));
+            }
+
+            it('is byte-identical for H<sub>2</sub>O and x<sup>2</sup>', () => {
+                const md = 'H<sub>2</sub>O and x<sup>2</sup>';
+                expect(norm(roundTrip(md))).toBe(md);
+            });
+
+            it('survives inside a bold run', () => {
+                expect(norm(roundTrip('**x<sup>2</sup>**'))).toBe('**x<sup>2</sup>**');
+            });
+
+            it('survives inside a list item', () => {
+                expect(norm(roundTrip('-   x<sup>2</sup>'))).toBe('-   x<sup>2</sup>');
+            });
+
+            it('is idempotent across a second save', () => {
+                const md1 = htmlToMarkdown('<p>H<sub>2</sub>O and x<sup>2</sup></p>');
+                const md2 = htmlToMarkdown(markdownToHtml(md1));
+                expect(md2).toBe(md1);
+            });
         });
     });
 });

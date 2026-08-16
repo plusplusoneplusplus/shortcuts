@@ -24,7 +24,16 @@ export interface ToolbarCommandDescriptor {
  * its own state (a dropdown, a host callback, or the find panel toggle). They
  * sit in the group list so the separator layout stays in one place.
  */
-export type ToolbarSlot = 'highlight' | 'heading' | 'list' | 'tableInsert' | 'insertPdf' | 'find';
+export type ToolbarSlot =
+    | 'color'
+    | 'fontFamily'
+    | 'fontSize'
+    | 'heading'
+    | 'list'
+    | 'align'
+    | 'tableInsert'
+    | 'insertPdf'
+    | 'find';
 
 export type ToolbarItem =
     | { kind: 'command'; command: ToolbarCommandDescriptor }
@@ -60,13 +69,21 @@ export function toggleLink(editor: Editor): void {
 export const FORMATTING_GROUPS: ToolbarItem[][] = [
     // Text formatting
     [
+        // Size leads the group: it is the one control here that is read before
+        // it is used, so it sits where the eye starts rather than after Bold.
+        slot('fontSize'),
         cmd({ id: 'bold', label: 'Bold', icon: 'B', activeName: 'bold', run: (e) => chain(e).toggleBold().run() }),
         cmd({ id: 'italic', label: 'Italic', icon: 'I', activeName: 'italic', run: (e) => chain(e).toggleItalic().run() }),
         cmd({ id: 'strike', label: 'Strikethrough', icon: 'S̶', activeName: 'strike', run: (e) => chain(e).toggleStrike().run() }),
-        slot('highlight'),
+        // The two marks are mutually exclusive in the schema, so toggling one
+        // off the other needs no extra wiring here.
+        cmd({ id: 'superscript', label: 'Superscript', icon: 'x²', activeName: 'superscript', run: (e) => chain(e).toggleSuperscript().run() }),
+        cmd({ id: 'subscript', label: 'Subscript', icon: 'x₂', activeName: 'subscript', run: (e) => chain(e).toggleSubscript().run() }),
+        slot('color'),
     ],
-    // Headings
-    [slot('heading')],
+    // Text appearance: font first, then heading level — the two controls that
+    // change how a run reads rather than what it means.
+    [slot('fontFamily'), slot('heading')],
     // Lists
     [slot('list')],
     // Block elements
@@ -83,12 +100,7 @@ export const FORMATTING_GROUPS: ToolbarItem[][] = [
     // Insert
     [slot('tableInsert'), slot('insertPdf')],
     // Alignment
-    [
-        cmd({ id: 'alignLeft', label: 'Align left', icon: '⫷', activeName: 'textStyle', activeAttrs: { textAlign: 'left' }, run: (e) => chain(e).setTextAlign('left').run() }),
-        cmd({ id: 'alignCenter', label: 'Align center', icon: '≡', activeName: 'textStyle', activeAttrs: { textAlign: 'center' }, run: (e) => chain(e).setTextAlign('center').run() }),
-        cmd({ id: 'alignRight', label: 'Align right', icon: '⫸', activeName: 'textStyle', activeAttrs: { textAlign: 'right' }, run: (e) => chain(e).setTextAlign('right').run() }),
-        cmd({ id: 'alignJustify', label: 'Justify', icon: '☰', activeName: 'textStyle', activeAttrs: { textAlign: 'justify' }, run: (e) => chain(e).setTextAlign('justify').run() }),
-    ],
+    [slot('align')],
     // Indent
     [
         cmd({ id: 'increaseIndent', label: 'Increase indent', icon: '→|', run: (e) => chain(e).increaseIndent().run() }),
@@ -99,6 +111,41 @@ export const FORMATTING_GROUPS: ToolbarItem[][] = [
     // instance the extension does not reach).
     [slot('find')],
 ];
+
+/**
+ * The rows of the alignment dropdown, in menu order.
+ *
+ * Kept here rather than in the toolbar component for the same reason as the
+ * command descriptors: labels, icons and the value each row sets stay plain
+ * data that tests can assert on without rendering anything.
+ */
+export interface AlignOption {
+    /** Stable identifier — also the React key. */
+    id: string;
+    label: string;
+    icon: string;
+    /** The value handed to `setTextAlign`, and the `textAlign` attribute to match on. */
+    value: 'left' | 'center' | 'right' | 'justify';
+    testId: string;
+}
+
+export const ALIGN_OPTIONS: readonly AlignOption[] = [
+    { id: 'alignLeft', label: 'Align left', icon: '⫷', value: 'left', testId: 'align-item-left' },
+    { id: 'alignCenter', label: 'Align center', icon: '≡', value: 'center', testId: 'align-item-center' },
+    { id: 'alignRight', label: 'Align right', icon: '⫸', value: 'right', testId: 'align-item-right' },
+    { id: 'alignJustify', label: 'Justify', icon: '☰', value: 'justify', testId: 'align-item-justify' },
+] as const;
+
+/**
+ * The alignment in effect for the current selection, or null when none matches.
+ *
+ * The attribute lives on the paragraph/heading node, not on a mark, so this
+ * asks `isActive` for the attribute alone — `isActive('textStyle', {...})`
+ * never matches and left every alignment control permanently unpressed.
+ */
+export function activeAlignOption(editor: Editor): AlignOption | null {
+    return ALIGN_OPTIONS.find((option) => editor.isActive({ textAlign: option.value })) ?? null;
+}
 
 /** Every command descriptor across all groups, in render order. */
 export const FORMATTING_COMMANDS: ToolbarCommandDescriptor[] = FORMATTING_GROUPS

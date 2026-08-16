@@ -14,7 +14,9 @@ import {
     bitsOf,
     evaluate,
     formatBinaryGrouped,
+    formatReal,
     formatValue,
+    realToBigInt,
     toHexLiteral,
     toggleBit,
     truncate,
@@ -38,8 +40,11 @@ export function ProgrammerCalculatorCard() {
     const [signed, setSigned] = useState(false);
     const [value, setValue] = useState(() => {
         const first = evaluate(INITIAL_EXPRESSION, { width: INITIAL_WIDTH, signed: false });
-        return first.ok ? first.value : 0n;
+        return first.ok && first.kind === 'int' ? first.value : 0n;
     });
+    // The real result behind `value`, or null when the expression was integral.
+    // DEC shows it in full; the other bases show `value`, truncated toward zero.
+    const [real, setReal] = useState<number | null>(null);
     const [error, setError] = useState('');
 
     const apply = (nextExpression: string, nextWidth: CalcWidth, nextSigned: boolean) => {
@@ -53,7 +58,8 @@ export function ProgrammerCalculatorCard() {
         }
         const result = evaluate(nextExpression, { width: nextWidth, signed: nextSigned });
         if (result.ok) {
-            setValue(result.value);
+            setValue(result.kind === 'real' ? realToBigInt(result.value) : result.value);
+            setReal(result.kind === 'real' ? result.value : null);
             setError('');
         } else {
             // Keep the last good value visible, wrapped to the current width.
@@ -119,7 +125,10 @@ export function ProgrammerCalculatorCard() {
 
             <div className="flex flex-col gap-1">
                 {READOUTS.map(({ base, label }) => {
-                    const text = formatValue(value, width, signed, base);
+                    const text =
+                        base === 'dec' && real !== null
+                            ? formatReal(real)
+                            : formatValue(value, width, signed, base);
                     const shown = base === 'bin' ? formatBinaryGrouped(value, width) : text;
                     return (
                         <div key={base} className="flex items-center gap-2">
@@ -141,6 +150,15 @@ export function ProgrammerCalculatorCard() {
                     );
                 })}
             </div>
+
+            {real !== null && !Number.isInteger(real) && (
+                <p
+                    className="text-[11px] text-[#656d76] dark:text-[#999]"
+                    data-testid="calc-truncation-note"
+                >
+                    bit views truncated from {formatReal(real)}
+                </p>
+            )}
 
             <div className="flex flex-wrap gap-x-3 gap-y-2" data-testid="calc-bit-grid">
                 {/* Nibbles, most-significant first, so the grid reads like the BIN readout. */}

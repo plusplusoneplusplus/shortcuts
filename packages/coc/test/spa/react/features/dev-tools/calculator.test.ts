@@ -8,8 +8,10 @@ import {
     bitsOf,
     evaluate,
     formatBinaryGrouped,
+    formatReal,
     formatValue,
     maskFor,
+    realToBigInt,
     toHexLiteral,
     toSigned,
     toggleBit,
@@ -23,6 +25,14 @@ const s32 = { width: 32 as CalcWidth, signed: true };
 function value(expr: string, opts = u32): bigint {
     const result = evaluate(expr, opts);
     if (!result.ok) throw new Error(`expected success, got: ${result.error}`);
+    if (result.kind !== 'int') throw new Error(`expected an integer result, got: ${result.value}`);
+    return result.value;
+}
+
+function realValue(expr: string, opts = u32): number {
+    const result = evaluate(expr, opts);
+    if (!result.ok) throw new Error(`expected success, got: ${result.error}`);
+    if (result.kind !== 'real') throw new Error(`expected a real result, got: ${result.value}`);
     return result.value;
 }
 
@@ -206,5 +216,179 @@ describe('formatting', () => {
         expect(formatBinaryGrouped(0xf1n, 8)).toBe('1111 0001');
         expect(toHexLiteral(0xf1n, 8)).toBe('0xF1');
         expect(toHexLiteral(0x1f1n, 8)).toBe('0xF1');
+    });
+});
+
+describe('evaluate — real literals', () => {
+    it('reads decimal literals in every shape', () => {
+        expect(realValue('0.5')).toBe(0.5);
+        expect(realValue('.5 + .5')).toBe(1);
+        expect(realValue('3.')).toBe(3);
+        expect(realValue('3.25 * 4')).toBe(13);
+    });
+
+    it('reads scientific literals in either case', () => {
+        expect(realValue('1.5e-3')).toBe(0.0015);
+        expect(realValue('2E10')).toBe(20000000000);
+        expect(realValue('1e3 + 1')).toBe(1001);
+    });
+
+    it('the multiplication that started all this', () => {
+        expect(realValue('4850*0.1')).toBeCloseTo(485, 10);
+        expect(formatReal(realValue('4850*0.1'))).toBe('485');
+    });
+
+    it('rejects an out-of-range literal', () => {
+        expect(error('1e400')).toContain('out of range');
+    });
+
+    it('does not swallow the "e" constant after an integer', () => {
+        // `2e` is `2` next to the constant `e`, which is not a valid expression.
+        expect(error('2e')).toContain('Unexpected token');
+    });
+});
+
+describe('evaluate — dual numeric path', () => {
+    it('keeps integer division integral until a real operand shows up', () => {
+        expect(value('7/2')).toBe(3n);
+        expect(realValue('7.0/2')).toBe(3.5);
+        expect(realValue('7/2.0')).toBe(3.5);
+    });
+
+    it('stays on the bigint path for integer-only expressions', () => {
+        expect(evaluate('2 + 3', u32)).toEqual({ ok: true, kind: 'int', value: 5n });
+        expect(evaluate('0xFF << 4', u32)).toEqual({ ok: true, kind: 'int', value: 0xff0n });
+    });
+
+    it('keeps 64-bit integer expressions exact once reals exist', () => {
+        const w64 = { width: 64 as CalcWidth, signed: false };
+        expect(value('0xFFFFFFFFFFFFFFFF - 1', w64)).toBe(18446744073709551614n);
+        expect(value('(1 << 62) + 1', w64)).toBe(4611686018427387905n);
+    });
+
+    it('carries a negated integer into real math without wrapping it', () => {
+        expect(realValue('-1 * 0.5', u32)).toBe(-0.5);
+        expect(realValue('-1 * 0.5', s32)).toBe(-0.5);
+        // A literal still reads through the signed setting, like the readout.
+        expect(realValue('0xFFFFFFFF * 0.5', u32)).toBe(2147483647.5);
+        expect(realValue('0xFFFFFFFF * 0.5', s32)).toBe(-0.5);
+    });
+});
+
+describe('evaluate — real operators', () => {
+    it('handles the arithmetic operators', () => {
+        expect(realValue('1.5 + 2')).toBe(3.5);
+        expect(realValue('1.5 - 2')).toBe(-0.5);
+        expect(realValue('1.5 * 2')).toBe(3);
+        expect(realValue('7.5 % 2')).toBe(1.5);
+        expect(realValue('-1.5')).toBe(-1.5);
+        expect(realValue('+1.5')).toBe(1.5);
+        expect(realValue('(1.5 + 0.5) * 3')).toBe(6);
+    });
+
+    it('exponentiates right-associatively and tighter than unary minus', () => {
+        expect(realValue('2**10')).toBe(1024);
+        expect(realValue('-2**2')).toBe(-4);
+        expect(realValue('2**3**2')).toBe(512);
+        expect(realValue('2**-1')).toBe(0.5);
+        expect(realValue('(-2)**2')).toBe(4);
+        expect(realValue('2 ** 0.5')).toBeCloseTo(Math.SQRT2, 12);
+    });
+});
+
+describe('evaluate — functions and constants', () => {
+    it('evaluates each named function', () => {
+        expect(realValue('sqrt(2)')).toBeCloseTo(Math.SQRT2, 12);
+        expect(realValue('abs(-3.5)')).toBe(3.5);
+        expect(realValue('round(2.5)')).toBe(3);
+        expect(realValue('floor(-1.5)')).toBe(-2);
+        expect(realValue('ceil(1.2)')).toBe(2);
+        expect(realValue('pow(2,8)')).toBe(256);
+        expect(realValue('log(1)')).toBe(0);
+        expect(realValue('log2(8)')).toBe(3);
+        expect(realValue('log10(1000)')).toBe(3);
+        expect(realValue('exp(0)')).toBe(1);
+    });
+
+    it('takes one or more arguments for min and max', () => {
+        expect(realValue('min(1,2,3)')).toBe(1);
+        expect(realValue('max(1.5,2)')).toBe(2);
+        expect(realValue('min(4)')).toBe(4);
+        expect(realValue('max(1, 2 * 3, 4)')).toBe(6);
+    });
+
+    it('resolves the constants', () => {
+        expect(realValue('pi')).toBe(Math.PI);
+        expect(realValue('e')).toBe(Math.E);
+        expect(realValue('2 * pi')).toBeCloseTo(Math.PI * 2, 12);
+    });
+
+    it('is case-insensitive for names', () => {
+        expect(realValue('PI')).toBe(Math.PI);
+        expect(realValue('E')).toBe(Math.E);
+        expect(realValue('SQRT(4)')).toBe(2);
+        expect(realValue('Max(1,2)')).toBe(2);
+    });
+
+    it('reports the wrong argument count by name', () => {
+        expect(error('sqrt()')).toBe('"sqrt" takes 1 argument, got 0');
+        expect(error('sqrt(1,2)')).toBe('"sqrt" takes 1 argument, got 2');
+        expect(error('pow(1)')).toBe('"pow" takes 2 arguments, got 1');
+        expect(error('min()')).toBe('"min" needs at least 1 argument');
+    });
+
+    it('reports an unknown name', () => {
+        expect(error('sin(1)')).toBe('Unknown function "sin"');
+        expect(error('tau')).toBe('Unknown name "tau"');
+        // Inherited Object keys are not functions or constants.
+        expect(error('constructor(1)')).toBe('Unknown function "constructor"');
+        expect(error('toString')).toBe('Unknown name "toString"');
+    });
+});
+
+describe('evaluate — real errors', () => {
+    it('rejects a real operand for every bitwise operator', () => {
+        expect(error('1.5 & 1')).toBe('Bitwise "&" needs integer operands');
+        expect(error('1.5 | 1')).toBe('Bitwise "|" needs integer operands');
+        expect(error('1.5 ^ 1')).toBe('Bitwise "^" needs integer operands');
+        expect(error('1.5 << 1')).toBe('Bitwise "<<" needs integer operands');
+        expect(error('1 >> 1.5')).toBe('Bitwise ">>" needs integer operands');
+        expect(error('~1.5')).toBe('Bitwise "~" needs an integer operand');
+        expect(error('sqrt(4) & 1')).toBe('Bitwise "&" needs integer operands');
+    });
+
+    it('reports division and modulo by zero on both paths', () => {
+        expect(error('1/0')).toBe('Divide by zero');
+        expect(error('1.0/0')).toBe('Divide by zero');
+        expect(error('1.0 % 0')).toBe('Modulo by zero');
+    });
+
+    it('reports NaN and overflow instead of returning them', () => {
+        expect(error('sqrt(-1)')).toBe('Result is not a number');
+        expect(error('log(-1)')).toBe('Result is not a number');
+        expect(error('1e308 * 10')).toBe('Result is out of range');
+    });
+});
+
+describe('real formatting', () => {
+    it('strips trailing zeros and caps at 15 significant digits', () => {
+        expect(formatReal(485.00000000000006)).toBe('485');
+        expect(formatReal(22 / 7)).toBe('3.14285714285714');
+        expect(formatReal(0.5)).toBe('0.5');
+        expect(formatReal(-0)).toBe('0');
+        expect(formatReal(1e16)).toBe('10000000000000000');
+    });
+
+    it('falls back to exponent notation only at the extremes', () => {
+        expect(formatReal(1e21)).toBe('1e+21');
+        expect(formatReal(1e-7)).toBe('1e-7');
+        expect(formatReal(1e-6)).toBe('0.000001');
+    });
+
+    it('truncates toward zero for the bit views', () => {
+        expect(realToBigInt(3.9)).toBe(3n);
+        expect(realToBigInt(-3.9)).toBe(-3n);
+        expect(truncate(realToBigInt(-3.9), 8)).toBe(0xfdn);
+        expect(truncate(realToBigInt(485.00000000000006), 8)).toBe(truncate(485n, 8));
     });
 });

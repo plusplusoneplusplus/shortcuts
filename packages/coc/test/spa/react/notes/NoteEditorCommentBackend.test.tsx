@@ -53,6 +53,10 @@ const mockEditor = {
     commands: { setContent: mockSetContent, clearContent: mockClearContent },
     getHTML: mockGetHTML,
     isActive: vi.fn(() => false),
+    getAttributes: vi.fn(() => ({})),
+    // The toolbar's size dropdown surveys the selection on render; a caret in
+    // an empty doc is the least a real editor ever hands it.
+    state: { selection: { from: 0, to: 0, empty: true }, doc: { nodesBetween: () => {} } },
     chain: () => ({
         focus: () => ({
             toggleBold: () => ({ run: vi.fn() }),

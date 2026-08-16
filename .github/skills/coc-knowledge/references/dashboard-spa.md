@@ -1266,7 +1266,7 @@ classification-free path.
 
 `EffortPillSelector` drives the per-turn `reasoningEffort` override (Low/Medium/High; `null` = no override, falls back to the persisted per-model effort then the SDK default). The chip is structurally a dropdown menu (`AgentSelectorChip` style): trigger button (bars icon + label + chevron) opens a popover listbox with `Auto`/`Low`/`Medium`/`High` entries. The `Auto` entry explicitly clears the override and is also what the currently-selected level toggles to when re-clicked. New chats persist the selection alongside the draft (`useDraftStore` → `Draft.effortOverride`). Follow-ups thread the choice through `useSendMessage → ProcessMessageRequest.reasoningEffort → POST /api/processes/:id/message` and into either `bridge.enqueue` (queued) or `bridge.executeFollowUp` (direct/buffered). The server mirrors the value into `task.config.reasoningEffort` via `queue-shared.validateAndParseTask`, so executors see it from a single canonical location.
 
-`ChatStyleSelector` renders a `Style: <label>` chip after Effort in both composers (inline toolbar and compact settings editor agree on Effort-then-Style) when `features.chatStyleSelector` is on. Options and labels come from `CHAT_STYLES` / `CHAT_STYLE_LABELS` in `@plusplusoneplusplus/coc-client` — `Default` first, then Human, Direct, Analytical, Structured — so only the one-line descriptions live in the component; do not re-list the wire values. `Default` is what a new chat starts on and its description says plainly that no style instruction is added; the chip still reads `Style: Default` rather than hiding itself. It mirrors `EffortTierSelector`'s popover, focus, outside-click, dark-mode, and compact-trigger conventions, but every style is always selectable — there is no per-provider configuration. `useChatStyleSelectorEnabled(apiBase)` resolves the flag against the server that owns the target: with no `apiBase` it reads the live dashboard config and subscribes to `DASHBOARD_CONFIG_UPDATED_EVENT`; with one it fetches `${apiBase}/config/runtime` (cached per base) and treats an unreachable or older server as unsupported. `NewChatArea` shows the chip for Ask/Autopilot only and always starts on `DEFAULT_CHAT_STYLE` — there is deliberately no preference seed and no `preferences.patchRepo` write, so a workspace never carries a style into a new chat. `ChatDetail` restores the follow-up style from `processDetails.metadata.chatStyle` (the style the last turn recorded; missing or invalid reads as `'default'`) once per process and resets on process change, so conversations stay independent; `useSendMessage.buildMessageRequest()` includes `chatStyle` only when the flag is on, so a flag-off client omits the field entirely. `ConversationMetadataPopover` shows the `Style` row unconditionally, `Default` included, because Default is a real state. The style is prepended to the user message server-side and is visible verbatim in the user bubble — the SPA does no stripping or special rendering. There is no keyboard shortcut for Style.
+`ChatStyleSelector` renders a `Style: <label>` chip after Effort in both composers (inline toolbar and compact settings editor agree on Effort-then-Style) when `features.chatStyleSelector` is on. Options and labels come from `CHAT_STYLES` / `CHAT_STYLE_LABELS` in `@plusplusoneplusplus/coc-client` — `Default` first, then Human, Direct, Analytical, Structured — so only the one-line descriptions live in the component; do not re-list the wire values. `Default` is what a new chat starts on and its description says plainly that no style instruction is added; the chip still reads `Style: Default` rather than hiding itself. It mirrors `EffortTierSelector`'s popover, focus, outside-click, dark-mode, and compact-trigger conventions, but every style is always selectable — there is no per-provider configuration. `useChatStyleSelectorEnabled(apiBase)` resolves the flag against the server that owns the target: with no `apiBase` it reads the live dashboard config and subscribes to `DASHBOARD_CONFIG_UPDATED_EVENT`; with one it fetches `${apiBase}/config/runtime` (cached per base) and treats an unreachable or older server as unsupported. `NewChatArea` shows the chip for Ask/Autopilot only and always starts on `DEFAULT_CHAT_STYLE` — there is deliberately no preference seed and no `preferences.patchRepo` write, so a workspace never carries a style into a new chat. `ChatDetail` derives the follow-up style rather than syncing it into state: a `chatStyleOverride` (null until the user picks, reset on task change) takes precedence over `processDetails.metadata.chatStyle` (the style the last turn recorded; missing or invalid reads as `'default'`), so a late or partial process record — e.g. the synthetic queued snapshot — still lands the right style while a user pick is never clobbered, and conversations stay independent; `useSendMessage.buildMessageRequest()` includes `chatStyle` only when the flag is on, so a flag-off client omits the field entirely. `ConversationMetadataPopover` shows the `Style` row unconditionally, `Default` included, because Default is a real state. The style is prepended to the user message server-side and is visible verbatim in the user bubble — the SPA does no stripping or special rendering. There is no keyboard shortcut for Style.
 
 Effort-tier mode is enabled by default through `effortLevels.enabled` and can be turned off live from Admin when users need the legacy separate model picker and reasoning-effort controls. `EffortTierSelector` lists `Very Low`, `Low`, `Medium`, and `High` in that order. For concrete providers, tooltips expose the concrete model and reasoning effort mapped to the selected tier and each configured menu option; empty reasoning effort displays as `Auto`, and unconfigured options remain disabled with an Admin configuration tooltip. For the Auto provider selection, all tier keys remain selectable and tooltips explain that the provider and model are resolved at scheduling time.
 
@@ -1992,8 +1992,13 @@ delegates everything else to `features/notes/editor/toolbar/`.
   separator layout stays in one place. `toggleLink` lives here too — it is the
   one command that prompts for input.
 - `FormattingToolbar.tsx` — renders the descriptor groups, plus the highlight
-  split button, heading dropdown, and list dropdown. Exports `HIGHLIGHT_COLORS`
-  and `HEADING_LEVELS`.
+  split button, heading dropdown, and list dropdown. Re-exports
+  `HIGHLIGHT_COLORS` / `DEFAULT_HIGHLIGHT_COLOR` from `colorPalette.ts` and
+  exports `HEADING_LEVELS`.
+- `colorPalette.ts` (in `editor/`, not `toolbar/`) — the single source of truth
+  for the inline color palettes and `normalizeCssColor` / `readStyleProp` /
+  `readInlineColor`. It imports neither React nor Tiptap so `noteMarkdown.ts`
+  can read `DEFAULT_HIGHLIGHT_COLOR` from the plain serialization path.
 - `ToolbarDropdown.tsx` — the single dropdown primitive (`ToolbarDropdown`,
   `MenuItem`, `Sep`). It owns open/close state, outside-click and Escape
   dismissal with focus return to the trigger, and — in `menu` mode — roving
@@ -2015,6 +2020,38 @@ delegates everything else to `features/notes/editor/toolbar/`.
 
 `NoteEditorToolbar.tsx` re-exports `HIGHLIGHT_COLORS`, `HEADING_LEVELS`,
 `TABLE_PICKER_COLS`, and `TABLE_PICKER_ROWS` so it stays the entry point.
+
+## Notes rich editor inline colors
+
+Markdown has no color syntax, so `noteMarkdown.ts` persists inline color as
+inline HTML — the one form that survives `marked` → Tiptap → `turndown` and
+still renders in an external Markdown viewer:
+
+- Text color → `<span style="color:#rrggbb">text</span>` (`textColorSpan`
+  turndown rule).
+- Highlight → bare `==text==` for `DEFAULT_HIGHLIGHT_COLOR`, and
+  `<mark style="background-color:#rrggbb">text</mark>` for any other color. The
+  default staying bare is what keeps every note written before colors were
+  persisted byte-identical, so no migration is needed. The color is read from
+  the `style` attribute, falling back to Tiptap's `data-color`.
+
+Every color read goes through `normalizeCssColor` (`colorPalette.ts`), which
+canonicalizes to lowercase `#rrggbb` and accepts `#rgb`, `#rrggbb`, `rgb()` and
+`rgba()` (alpha dropped). This is what makes the round trip idempotent: a
+browser rewrites `style="color: #e11d48"` to `rgb(225, 29, 72)` when Tiptap
+parses it back, so without normalization every save would churn the file.
+Anything else — a CSS keyword, `hsl()`, a custom property — normalizes to
+`null` and is treated as no color.
+
+On the way in, `sanitizeInlineColorStyles` keeps only `color` on a `<span>` and
+only `background-color` on a `<mark>`, dropping every other declaration, so a
+pasted or hand-written `style` cannot make the note format a general
+HTML-styling escape hatch. A `<span>` left with no honored color loses its
+`style` and is unwrapped entirely on the next save.
+
+The `==` marked tokenizer matches `[^\n]+?` (non-greedy, single line) rather
+than `[^=]+`, because a colored word nested inside a highlight puts an `=` in
+the content via `style="…"`.
 
 ## Notes rich editor find & replace
 

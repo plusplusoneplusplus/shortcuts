@@ -50,6 +50,10 @@ function makeMockEditor(
     // Per-command `editor.can()` answers; anything unlisted reads as allowed,
     // so existing tests keep the enabled rendering they were written against.
     canOverride?: Record<string, boolean>,
+    // The text runs a non-empty selection covers, each as its `font-size` or
+    // `null` for an unsized run. Omit for a collapsed caret, which is what
+    // every test written before the mixed-selection cases assumes.
+    selectionSizes?: (string | null)[],
 ) {
     const insertTable = vi.fn(() => ({ run: vi.fn() }));
     const addColumnBefore = vi.fn(() => ({ run: vi.fn() }));
@@ -73,12 +77,20 @@ function makeMockEditor(
         toggleItalic: () => ({ run: vi.fn() }),
         toggleStrike: () => ({ run: vi.fn() }),
         toggleHighlight: vi.fn(() => ({ run: vi.fn() })),
+        setHighlight: vi.fn(() => ({ run: vi.fn() })),
         unsetHighlight: vi.fn(() => ({ run: vi.fn() })),
+        setColor: vi.fn(() => ({ run: vi.fn() })),
+        unsetColor: vi.fn(() => ({ run: vi.fn() })),
+        setFontFamily: vi.fn(() => ({ run: vi.fn() })),
+        unsetFontFamily: vi.fn(() => ({ run: vi.fn() })),
+        setFontSize: vi.fn(() => ({ run: vi.fn() })),
+        unsetFontSize: vi.fn(() => ({ run: vi.fn() })),
         toggleHeading: vi.fn(() => ({ run: vi.fn() })),
         setParagraph: vi.fn(() => ({ run: vi.fn() })),
         toggleBulletList: vi.fn(() => ({ run: vi.fn() })),
         toggleOrderedList: vi.fn(() => ({ run: vi.fn() })),
         toggleTaskList: vi.fn(() => ({ run: vi.fn() })),
+        setTextAlign: vi.fn(() => ({ run: vi.fn() })),
         toggleBlockquote: () => ({ run: vi.fn() }),
         toggleCode: () => ({ run: vi.fn() }),
         toggleCodeBlock: () => ({ run: vi.fn() }),
@@ -107,7 +119,22 @@ function makeMockEditor(
         get: (_target, prop: string) => () => canOverride?.[prop] ?? true,
     });
 
+    // A stand-in for the ProseMirror doc the size dropdown walks: one text node
+    // per run, carrying a textStyle mark only when that run has a size.
+    const selectionNodes = (selectionSizes ?? []).map((fontSize) => ({
+        isText: true,
+        marks: fontSize === null ? [] : [{ type: { name: 'textStyle' }, attrs: { fontSize } }],
+    }));
+
     return {
+        state: {
+            selection: { from: 1, to: 1 + selectionNodes.length, empty: selectionSizes === undefined },
+            doc: {
+                nodesBetween: (_from: number, _to: number, fn: (node: unknown) => unknown) => {
+                    for (const node of selectionNodes) fn(node);
+                },
+            },
+        },
         isActive: vi.fn((name: string, attrs?: Record<string, unknown>) =>
             isActiveOverride ? isActiveOverride(name, attrs) : false),
         getAttributes: vi.fn((name: string) =>
@@ -721,69 +748,97 @@ describe('NoteEditorToolbar — table size picker', () => {
     });
 });
 
-describe('NoteEditorToolbar — highlight controls', () => {
-    it('renders "Highlight" button in toolbar', () => {
+describe('NoteEditorToolbar — color dropdown', () => {
+    it('renders the merged "A" color trigger instead of a standalone HL button', () => {
         const editor = makeMockEditor();
         render(<NoteEditorToolbar editor={editor as never} />);
-        expect(screen.getByLabelText('Highlight')).toBeDefined();
+        expect(screen.getByLabelText('Text and highlight color')).toBeDefined();
+        expect(screen.queryByLabelText('Highlight')).toBeNull();
+        expect(screen.queryByLabelText('Highlight colors')).toBeNull();
     });
 
-    it('renders "Highlight colors" dropdown arrow', () => {
+    it('color panel is hidden by default', () => {
         const editor = makeMockEditor();
         render(<NoteEditorToolbar editor={editor as never} />);
-        expect(screen.getByLabelText('Highlight colors')).toBeDefined();
+        expect(screen.queryByTestId('color-dropdown-panel')).toBeNull();
     });
 
-    it('clicking Highlight button calls toggleHighlight with default color', () => {
+    it('clicking the trigger shows both labelled sections', () => {
         const editor = makeMockEditor();
         render(<NoteEditorToolbar editor={editor as never} />);
-        fireEvent.mouseDown(screen.getByLabelText('Highlight'));
-        expect(editor._focusResult.toggleHighlight).toHaveBeenCalledWith({ color: '#fff3b0' });
+        fireEvent.mouseDown(screen.getByLabelText('Text and highlight color'));
+        const panel = screen.getByTestId('color-dropdown-panel');
+        expect(panel.textContent).toContain('Text Color');
+        expect(panel.textContent).toContain('Highlight Color');
     });
 
-    it('color picker is hidden by default', () => {
+    it('each section has 10 swatches plus its own reset row', () => {
         const editor = makeMockEditor();
         render(<NoteEditorToolbar editor={editor as never} />);
-        expect(screen.queryByTestId('highlight-color-picker')).toBeNull();
+        fireEvent.mouseDown(screen.getByLabelText('Text and highlight color'));
+        const panel = screen.getByTestId('color-dropdown-panel');
+        // (10 swatches + 1 reset) x 2 sections
+        expect(panel.querySelectorAll('button').length).toBe(22);
+        expect(screen.getByLabelText('Default text color')).toBeDefined();
+        expect(screen.getByLabelText('Remove highlight')).toBeDefined();
     });
 
-    it('clicking dropdown arrow shows color picker', () => {
+    it('clicking a text swatch calls setColor with that color', () => {
         const editor = makeMockEditor();
         render(<NoteEditorToolbar editor={editor as never} />);
-        fireEvent.mouseDown(screen.getByLabelText('Highlight colors'));
-        expect(screen.getByTestId('highlight-color-picker')).toBeDefined();
+        fireEvent.mouseDown(screen.getByLabelText('Text and highlight color'));
+        fireEvent.mouseDown(screen.getByLabelText('Text Blue'));
+        expect(editor._focusResult.setColor).toHaveBeenCalledWith('#3b82f6');
     });
 
-    it('color picker has 6 color swatches plus remove button', () => {
+    it('clicking a highlight swatch calls setHighlight with that color', () => {
         const editor = makeMockEditor();
         render(<NoteEditorToolbar editor={editor as never} />);
-        fireEvent.mouseDown(screen.getByLabelText('Highlight colors'));
-        const picker = screen.getByTestId('highlight-color-picker');
-        // 6 color buttons + 1 remove button = 7
-        expect(picker.querySelectorAll('button').length).toBe(7);
-    });
-
-    it('clicking a color swatch calls toggleHighlight with that color', () => {
-        const editor = makeMockEditor();
-        render(<NoteEditorToolbar editor={editor as never} />);
-        fireEvent.mouseDown(screen.getByLabelText('Highlight colors'));
+        fireEvent.mouseDown(screen.getByLabelText('Text and highlight color'));
         fireEvent.mouseDown(screen.getByLabelText('Highlight Pink'));
-        expect(editor._focusResult.toggleHighlight).toHaveBeenCalledWith({ color: '#ffc8dd' });
+        expect(editor._focusResult.setHighlight).toHaveBeenCalledWith({ color: '#ffc8dd' });
     });
 
-    it('clicking Remove highlight calls unsetHighlight', () => {
+    it('keeps the original six highlight swatches so existing notes still match', () => {
         const editor = makeMockEditor();
         render(<NoteEditorToolbar editor={editor as never} />);
-        fireEvent.mouseDown(screen.getByLabelText('Highlight colors'));
+        fireEvent.mouseDown(screen.getByLabelText('Text and highlight color'));
+        for (const name of ['Yellow', 'Green', 'Blue', 'Pink', 'Orange', 'Purple']) {
+            expect(screen.getByLabelText(`Highlight ${name}`)).toBeDefined();
+        }
+    });
+
+    // Each reset must touch only its own mark — that is the whole point of two
+    // sections sharing one panel.
+    it('the text reset calls unsetColor and leaves the highlight alone', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Text and highlight color'));
+        fireEvent.mouseDown(screen.getByLabelText('Default text color'));
+        expect(editor._focusResult.unsetColor).toHaveBeenCalled();
+        expect(editor._focusResult.unsetHighlight).not.toHaveBeenCalled();
+    });
+
+    it('the highlight reset calls unsetHighlight and leaves the text color alone', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Text and highlight color'));
         fireEvent.mouseDown(screen.getByLabelText('Remove highlight'));
         expect(editor._focusResult.unsetHighlight).toHaveBeenCalled();
+        expect(editor._focusResult.unsetColor).not.toHaveBeenCalled();
     });
 
-    it('highlight button shows active state when highlight is active', () => {
-        const editor = makeMockEditor((name) => name === 'highlight');
+    it('the trigger bar reflects the selection\'s text color', () => {
+        const editor = makeMockEditor(
+            undefined,
+            (name) => (name === 'textStyle' ? { color: 'rgb(59, 130, 246)' } : {}),
+        );
         render(<NoteEditorToolbar editor={editor as never} />);
-        const btn = screen.getByLabelText('Highlight');
-        expect(btn.className).toContain('font-bold');
+        // The browser reports the style back as `rgb(...)`; the trigger has to
+        // canonicalize it or the active swatch never matches.
+        expect(screen.getByTestId('color-dropdown-bar').getAttribute('style')).toContain('rgb(59, 130, 246)');
+        fireEvent.mouseDown(screen.getByLabelText('Text and highlight color'));
+        expect(screen.getByLabelText('Text Blue').getAttribute('aria-pressed')).toBe('true');
     });
 
     it('does not render a chat panel toggle (chat toggle lives in MyWorkView header)', () => {
@@ -863,6 +918,285 @@ describe('NoteEditorToolbar — styled text-mark buttons', () => {
         expect(strikeBtn.querySelector('s')).not.toBeNull();
     });
 
+});
+
+describe('NoteEditorToolbar — font family dropdown', () => {
+    /** Reports a font stack on the textStyle mark, the way Tiptap does. */
+    function fontEditor(fontFamily: string) {
+        return makeMockEditor(undefined, (name) => (name === 'textStyle' ? { fontFamily } : {}));
+    }
+
+    it('renders the trigger reading "Default" with no font on the selection', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByLabelText('Font family')).toBeDefined();
+        expect(screen.getByTestId('font-dropdown-label').textContent).toBe('Default');
+    });
+
+    it('the menu is hidden until the trigger is clicked', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.queryByTestId('font-dropdown-menu')).toBeNull();
+        fireEvent.mouseDown(screen.getByLabelText('Font family'));
+        expect(screen.getByTestId('font-dropdown-menu')).toBeDefined();
+    });
+
+    it('lists exactly the six fonts, in order', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Font family'));
+        const items = Array.from(
+            screen.getByTestId('font-dropdown-menu').querySelectorAll('[role="menuitem"]'),
+        // Last span is the label; the first is the ✓ column.
+        ).map((el) => el.querySelector('span:last-child')?.textContent);
+        expect(items).toEqual(['Default', 'Sans', 'Serif', 'Mono', 'Arial', 'Times']);
+    });
+
+    it('each font row previews itself by rendering its label in its own stack', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Font family'));
+        const monoLabel = screen.getByTestId('font-item-mono').querySelector('span:last-child');
+        expect(monoLabel?.getAttribute('style')).toContain('JetBrains Mono');
+        // The reset row has no font of its own to preview.
+        expect(screen.getByTestId('font-item-default').querySelector('span:last-child')?.getAttribute('style'))
+            .toBeFalsy();
+    });
+
+    for (const { testId, stack } of [
+        { testId: 'font-item-sans', stack: '-apple-system, "Segoe UI", Roboto, sans-serif' },
+        { testId: 'font-item-serif', stack: 'Georgia, "Times New Roman", serif' },
+        { testId: 'font-item-mono', stack: '"JetBrains Mono", Consolas, "SF Mono", Menlo, monospace' },
+        { testId: 'font-item-arial', stack: 'Arial, Helvetica, sans-serif' },
+        { testId: 'font-item-times', stack: '"Times New Roman", Times, serif' },
+    ]) {
+        it(`${testId} calls setFontFamily with its stack`, () => {
+            const editor = makeMockEditor();
+            render(<NoteEditorToolbar editor={editor as never} />);
+            fireEvent.mouseDown(screen.getByLabelText('Font family'));
+            fireEvent.mouseDown(screen.getByTestId(testId));
+            expect(editor._focusResult.setFontFamily).toHaveBeenCalledWith(stack);
+            expect(editor._focusResult.unsetFontFamily).not.toHaveBeenCalled();
+        });
+    }
+
+    it('the Default row unsets the mark instead of setting a font', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Font family'));
+        fireEvent.mouseDown(screen.getByTestId('font-item-default'));
+        expect(editor._focusResult.unsetFontFamily).toHaveBeenCalled();
+        expect(editor._focusResult.setFontFamily).not.toHaveBeenCalled();
+    });
+
+    it('picking a font closes the menu', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Font family'));
+        fireEvent.mouseDown(screen.getByTestId('font-item-mono'));
+        expect(screen.queryByTestId('font-dropdown-menu')).toBeNull();
+    });
+
+    it('the trigger names the selection\'s font and checkmarks its row', () => {
+        const editor = fontEditor('"JetBrains Mono", Consolas, "SF Mono", Menlo, monospace');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('font-dropdown-label').textContent).toBe('Mono');
+        fireEvent.mouseDown(screen.getByLabelText('Font family'));
+        expect(screen.getByTestId('font-item-mono').getAttribute('aria-checked')).toBe('true');
+        expect(screen.getByTestId('font-item-default').getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('matches the row even after the browser rewrites the stack\'s quoting', () => {
+        // A real browser reports `element.style.fontFamily` back with its own
+        // quote and spacing conventions; without normalization no row matches.
+        const editor = fontEditor("'JetBrains Mono',Consolas,'SF Mono',Menlo,monospace");
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('font-dropdown-label').textContent).toBe('Mono');
+    });
+
+    it('falls back to Default for a foreign font without crashing', () => {
+        const editor = fontEditor('Comic Sans MS, cursive');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('font-dropdown-label').textContent).toBe('Default');
+        fireEvent.mouseDown(screen.getByLabelText('Font family'));
+        expect(screen.getByTestId('font-item-default').getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('closes on Escape', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Font family'));
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByTestId('font-dropdown-menu')).toBeNull();
+    });
+});
+
+describe('NoteEditorToolbar — font size dropdown', () => {
+    /** Reports a font size on the textStyle mark, the way Tiptap does. */
+    function sizeEditor(fontSize: string) {
+        return makeMockEditor(undefined, (name) => (name === 'textStyle' ? { fontSize } : {}));
+    }
+
+    /** The label text of each row in the open menu, in render order. */
+    function menuLabels() {
+        return Array.from(
+            screen.getByTestId('font-size-dropdown-menu').querySelectorAll('[role="menuitem"]'),
+        // Last span is the label; the first is the ✓ column.
+        ).map((el) => el.querySelector('span:last-child')?.textContent);
+    }
+
+    it('renders the trigger reading "Default" with no size on the selection', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByLabelText('Font size')).toBeDefined();
+        expect(screen.getByTestId('font-size-dropdown-label').textContent).toBe('Default');
+    });
+
+    it('the menu is hidden until the trigger is clicked', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.queryByTestId('font-size-dropdown-menu')).toBeNull();
+        fireEvent.mouseDown(screen.getByLabelText('Font size'));
+        expect(screen.getByTestId('font-size-dropdown-menu')).toBeDefined();
+    });
+
+    it('lists all fourteen sizes, in order', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Font size'));
+        expect(menuLabels()).toEqual([
+            'Default', '8', '9', '10', '11', '12', '14', '16', '18', '24', '30', '36', '48', '60',
+        ]);
+    });
+
+    for (const px of [8, 12, 24, 60]) {
+        it(`the ${px} row calls setFontSize with ${px}px`, () => {
+            const editor = makeMockEditor();
+            render(<NoteEditorToolbar editor={editor as never} />);
+            fireEvent.mouseDown(screen.getByLabelText('Font size'));
+            fireEvent.mouseDown(screen.getByTestId(`font-size-item-${px}`));
+            expect(editor._focusResult.setFontSize).toHaveBeenCalledWith(`${px}px`);
+            expect(editor._focusResult.unsetFontSize).not.toHaveBeenCalled();
+        });
+    }
+
+    it('the Default row unsets the mark instead of setting a size', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Font size'));
+        fireEvent.mouseDown(screen.getByTestId('font-size-item-default'));
+        expect(editor._focusResult.unsetFontSize).toHaveBeenCalled();
+        expect(editor._focusResult.setFontSize).not.toHaveBeenCalled();
+    });
+
+    it('picking a size closes the menu', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Font size'));
+        fireEvent.mouseDown(screen.getByTestId('font-size-item-24'));
+        expect(screen.queryByTestId('font-size-dropdown-menu')).toBeNull();
+    });
+
+    it('the trigger shows the selection\'s size and checkmarks its row', () => {
+        const editor = sizeEditor('24px');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('font-size-dropdown-label').textContent).toBe('24');
+        fireEvent.mouseDown(screen.getByLabelText('Font size'));
+        expect(screen.getByTestId('font-size-item-24').getAttribute('aria-checked')).toBe('true');
+        expect(screen.getByTestId('font-size-item-default').getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('matches the row even after the browser rewrites the length', () => {
+        // A real browser reports `element.style.fontSize` back in its own
+        // spelling; without normalization no row would match.
+        const editor = sizeEditor('24.0px');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('font-size-dropdown-label').textContent).toBe('24');
+    });
+
+    it('falls back to Default for an off-ladder size without crashing', () => {
+        const editor = sizeEditor('13px');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('font-size-dropdown-label').textContent).toBe('Default');
+        fireEvent.mouseDown(screen.getByLabelText('Font size'));
+        expect(screen.getByTestId('font-size-item-default').getAttribute('aria-checked')).toBe('true');
+    });
+
+    /**
+     * A non-empty selection covering the given runs (`null` = an unsized run).
+     *
+     * `getAttributes` answers with the first sized run, the way Tiptap's
+     * `getMarkAttributes` does — so a trigger that trusts it fails these.
+     */
+    function selectionEditor(...sizes: (string | null)[]) {
+        const firstSized = sizes.find((size) => size !== null);
+        return makeMockEditor(
+            undefined,
+            (name) => (name === 'textStyle' && firstSized ? { fontSize: firstSized } : {}),
+            undefined,
+            sizes,
+        );
+    }
+
+    it('reads Default when the selection runs from sized into unsized text', () => {
+        const editor = selectionEditor('24px', null);
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('font-size-dropdown-label').textContent).toBe('Default');
+        fireEvent.mouseDown(screen.getByLabelText('Font size'));
+        expect(screen.getByTestId('font-size-item-24').getAttribute('aria-checked')).toBe('false');
+        expect(screen.getByTestId('font-size-item-default').getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('reads Default when the selection runs from unsized into sized text', () => {
+        const editor = selectionEditor(null, '24px');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('font-size-dropdown-label').textContent).toBe('Default');
+    });
+
+    it('reads Default when the selection spans two different sizes', () => {
+        const editor = selectionEditor('12px', '24px');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('font-size-dropdown-label').textContent).toBe('Default');
+        fireEvent.mouseDown(screen.getByLabelText('Font size'));
+        expect(screen.getByTestId('font-size-item-12').getAttribute('aria-checked')).toBe('false');
+        expect(screen.getByTestId('font-size-item-24').getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('still reads the size when the whole selection carries it', () => {
+        // Two runs, same size — split by some other mark, say bold.
+        const editor = selectionEditor('24px', '24px');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('font-size-dropdown-label').textContent).toBe('24');
+        fireEvent.mouseDown(screen.getByLabelText('Font size'));
+        expect(screen.getByTestId('font-size-item-24').getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('still reads the size for a caret sitting inside sized text', () => {
+        // Collapsed: no range to survey, so the stored mark is the answer.
+        const editor = sizeEditor('24px');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('font-size-dropdown-label').textContent).toBe('24');
+    });
+
+    it('closes on Escape', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Font size'));
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByTestId('font-size-dropdown-menu')).toBeNull();
+    });
+
+    it('sits immediately to the left of Bold in the toolbar', () => {
+        const editor = makeMockEditor();
+        const { container } = render(<NoteEditorToolbar editor={editor as never} />);
+        const trigger = screen.getByTestId('font-size-dropdown');
+        const bold = screen.getByLabelText('Bold');
+        // compareDocumentPosition: FOLLOWING means bold comes after the trigger.
+        expect(trigger.compareDocumentPosition(bold) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        // …and nothing else renders between them.
+        const controls = Array.from(container.querySelectorAll('button'));
+        expect(controls.indexOf(bold) - controls.indexOf(trigger)).toBe(1);
+    });
 });
 
 // ── Heading & list dropdowns ────────────────────────────────────────────────
@@ -1043,6 +1377,95 @@ describe('NoteEditorToolbar — list dropdown', () => {
         fireEvent.mouseDown(screen.getByTestId('list-dropdown'));
         fireEvent.mouseDown(document.body);
         expect(screen.queryByTestId('list-dropdown-menu')).toBeNull();
+    });
+});
+
+describe('NoteEditorToolbar — alignment dropdown', () => {
+    /**
+     * `activeAlignOption` calls `editor.isActive({ textAlign })` with the
+     * attributes alone, so the override reads its first argument as an object.
+     */
+    const alignedTo = (current: string) =>
+        ((name: string) => (name as unknown as { textAlign?: string })?.textAlign === current) as
+            (name: string, attrs?: Record<string, unknown>) => boolean;
+
+    it('replaces the four flat alignment buttons with a single trigger', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('align-dropdown')).toBeDefined();
+        for (const label of ['Align left', 'Align center', 'Align right', 'Justify']) {
+            expect(screen.queryByLabelText(label)).toBeNull();
+        }
+    });
+
+    it('opens a menu with the four alignments', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        const trigger = screen.getByTestId('align-dropdown');
+        expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+        expect(trigger.getAttribute('aria-label')).toBe('Text alignment');
+
+        fireEvent.mouseDown(trigger);
+        const menu = screen.getByTestId('align-dropdown-menu');
+        expect(menu.getAttribute('role')).toBe('menu');
+        expect(menu.getAttribute('aria-label')).toBe('Text alignment');
+        expect(screen.getByTestId('align-item-left').textContent).toContain('Align left');
+        expect(screen.getByTestId('align-item-center').textContent).toContain('Align center');
+        expect(screen.getByTestId('align-item-right').textContent).toContain('Align right');
+        expect(screen.getByTestId('align-item-justify').textContent).toContain('Justify');
+    });
+
+    it.each([
+        ['align-item-left', 'left'],
+        ['align-item-center', 'center'],
+        ['align-item-right', 'right'],
+        ['align-item-justify', 'justify'],
+    ])('%s runs setTextAlign("%s") and closes the menu', (testId, value) => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByTestId('align-dropdown'));
+        fireEvent.mouseDown(screen.getByTestId(testId));
+
+        expect(editor._focusResult.setTextAlign).toHaveBeenCalledTimes(1);
+        expect(editor._focusResult.setTextAlign).toHaveBeenCalledWith(value);
+        expect(screen.queryByTestId('align-dropdown-menu')).toBeNull();
+    });
+
+    it('shows the left-align icon and no highlight when nothing is aligned', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('align-dropdown-label').textContent).toBe('⫷');
+        expect(screen.getByTestId('align-dropdown').className).not.toContain('bg-[#e8e8e8]');
+    });
+
+    it.each([
+        ['center', '≡', 'align-item-center'],
+        ['right', '⫸', 'align-item-right'],
+        ['justify', '☰', 'align-item-justify'],
+    ])('reflects %s alignment in the trigger and the checked row', (value, icon, testId) => {
+        const editor = makeMockEditor(alignedTo(value));
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('align-dropdown-label').textContent).toBe(icon);
+        expect(screen.getByTestId('align-dropdown').className).toContain('bg-[#e8e8e8]');
+
+        fireEvent.mouseDown(screen.getByTestId('align-dropdown'));
+        expect(screen.getByTestId(testId).getAttribute('aria-checked')).toBe('true');
+        expect(screen.getByTestId('align-item-left').getAttribute('aria-checked')).toBe('false');
+        // Focus lands on the checked row when the menu opens.
+        expect(document.activeElement).toBe(screen.getByTestId(testId));
+    });
+
+    it('Escape closes the menu and an outside click closes it too', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByTestId('align-dropdown'));
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByTestId('align-dropdown-menu')).toBeNull();
+        expect(document.activeElement).toBe(screen.getByTestId('align-dropdown'));
+
+        fireEvent.mouseDown(screen.getByTestId('align-dropdown'));
+        fireEvent.mouseDown(document.body);
+        expect(screen.queryByTestId('align-dropdown-menu')).toBeNull();
     });
 });
 
@@ -1270,7 +1693,9 @@ describe('NoteEditorToolbar — find & replace', () => {
         const editor = makeFindMockEditor();
         editor.state = {
             selection: { empty: false, from: 1, to: 6 },
-            doc: { textBetween: () => 'alpha' },
+            // nodesBetween is unused here, but the font-size dropdown surveys
+            // the selection on every render and a real doc always has it.
+            doc: { textBetween: () => 'alpha', nodesBetween: () => {} },
         } as never;
         render(<NoteEditorToolbar editor={editor as never} />);
 
@@ -1317,7 +1742,7 @@ describe('NoteEditorToolbar — find & replace', () => {
  */
 describe('NoteEditorToolbar — shared dropdown behaviour', () => {
     const dropdowns = [
-        { trigger: 'Highlight colors', panel: 'highlight-color-picker' },
+        { trigger: 'Text and highlight color', panel: 'color-dropdown-panel' },
         { trigger: 'Insert table', panel: 'table-size-picker' },
     ];
 

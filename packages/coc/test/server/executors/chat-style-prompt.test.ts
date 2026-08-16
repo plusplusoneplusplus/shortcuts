@@ -22,7 +22,7 @@ describe('buildChatStyleBlock', () => {
       [
         '<chat-style>',
         'Selected style: Direct.',
-        'Lead with the answer or action. Use the fewest words that preserve important facts. Cut preamble, softening, repetition, and background the user did not ask for.',
+        'Lead with the answer or action, then only what the user needs to act on it. Short sentences, plain words. Cut preamble, softening, and background they did not ask for — short, not compressed.',
         '</chat-style>',
       ].join('\n')
     );

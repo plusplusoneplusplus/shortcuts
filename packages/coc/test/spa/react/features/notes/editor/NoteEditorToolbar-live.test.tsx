@@ -1,6 +1,6 @@
 /**
- * NoteEditorToolbar-live.test.tsx — the heading/list dropdowns against a REAL
- * TipTap editor instead of a mock.
+ * NoteEditorToolbar-live.test.tsx — the heading/list/alignment dropdowns against
+ * a REAL TipTap editor instead of a mock.
  *
  * The behavioural suite (test/spa/react/notes/NoteEditorToolbar.test.tsx) drives
  * the dropdowns with a mock editor, so it can only prove the right command was
@@ -19,6 +19,7 @@ import type { Editor } from '@tiptap/react';
 import { StarterKit } from '@tiptap/starter-kit';
 import { TaskList } from '@tiptap/extension-task-list';
 import { TaskItem } from '@tiptap/extension-task-item';
+import { TextAlign } from '@tiptap/extension-text-align';
 import { NoteEditorToolbar } from '../../../../../../src/server/spa/client/react/features/notes/editor/NoteEditorToolbar';
 
 afterEach(cleanup);
@@ -34,6 +35,7 @@ function Harness() {
             StarterKit.configure({ heading: { levels: [1, 2, 3, 4, 5, 6] }, link: false }),
             TaskList,
             TaskItem.configure({ nested: true }),
+            TextAlign.configure({ types: ['heading', 'paragraph'] }),
         ],
         content: '<p>hello</p>',
     });
@@ -75,6 +77,7 @@ function caretAtStart(ed: Editor) {
 
 const headingLabel = () => screen.getByTestId('heading-dropdown-label').textContent;
 const listLabel = () => screen.getByTestId('list-dropdown-label').textContent;
+const alignLabel = () => screen.getByTestId('align-dropdown-label').textContent;
 
 function openMenu(testId: string) {
     fireEvent.mouseDown(screen.getByTestId(testId));
@@ -219,5 +222,38 @@ describe('list dropdown against a real editor', () => {
 
         expect(screen.getByTestId('list-item-ordered').getAttribute('aria-checked')).toBe('true');
         expect(screen.getByTestId('list-item-bullet').getAttribute('aria-checked')).toBe('false');
+    });
+});
+
+describe('alignment dropdown against a real editor', () => {
+    it('starts unaligned, showing the left-align icon', () => {
+        mount();
+        expect(alignLabel()).toBe('⫷');
+    });
+
+    it.each([
+        ['align-item-center', 'center', '≡'],
+        ['align-item-right', 'right', '⫸'],
+        ['align-item-justify', 'justify', '☰'],
+    ])('picking %s aligns the paragraph and the trigger reads %s', (testId, value, icon) => {
+        const ed = mount();
+
+        openMenu('align-dropdown');
+        selectItem(testId);
+
+        expect(ed.getHTML()).toContain(`text-align: ${value}`);
+        expect(alignLabel()).toBe(icon);
+        expect(screen.queryByTestId('align-dropdown-menu')).toBeNull();
+    });
+
+    it('marks the current alignment in the menu — the check the old textStyle lookup never matched', () => {
+        mount();
+
+        openMenu('align-dropdown');
+        selectItem('align-item-right');
+        openMenu('align-dropdown');
+
+        expect(screen.getByTestId('align-item-right').getAttribute('aria-checked')).toBe('true');
+        expect(screen.getByTestId('align-item-center').getAttribute('aria-checked')).toBe('false');
     });
 });

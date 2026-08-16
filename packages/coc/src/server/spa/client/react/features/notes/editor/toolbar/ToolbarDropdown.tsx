@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import type { ReactNode, RefObject, KeyboardEvent as ReactKeyboardEvent } from 'react';
+import type { CSSProperties, ReactNode, RefObject, KeyboardEvent as ReactKeyboardEvent } from 'react';
 
 // ── Shared toolbar chrome ───────────────────────────────────────────────────
 
@@ -147,6 +147,8 @@ export interface MenuItemProps {
     testId: string;
     /** Extra classes for the label span (heading items mimic their own weight/size). */
     labelClassName?: string;
+    /** Inline label styles — font rows preview themselves by setting their own stack. */
+    labelStyle?: CSSProperties;
     /** Leading glyph column; heading items leave it empty. */
     icon?: string;
     children: ReactNode;
@@ -160,7 +162,7 @@ export interface MenuItemProps {
  * suppressing the mousedown default does not suppress the following click, so
  * an `onClick` here would run the command a second time.
  */
-export function MenuItem({ checked, onSelect, testId, labelClassName, icon, children }: MenuItemProps) {
+export function MenuItem({ checked, onSelect, testId, labelClassName, labelStyle, icon, children }: MenuItemProps) {
     return (
         <button
             type="button"
@@ -185,7 +187,7 @@ export function MenuItem({ checked, onSelect, testId, labelClassName, icon, chil
         >
             <span className="w-3 text-[10px] text-[#0078d4] dark:text-[#4daafc]">{checked ? '✓' : ''}</span>
             {icon !== undefined && <span className="w-4 text-center text-xs">{icon}</span>}
-            <span className={labelClassName}>{children}</span>
+            <span className={labelClassName} style={labelStyle}>{children}</span>
         </button>
     );
 }
