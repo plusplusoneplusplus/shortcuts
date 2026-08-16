@@ -24,7 +24,15 @@ export interface ToolbarCommandDescriptor {
  * its own state (a dropdown, a host callback, or the find panel toggle). They
  * sit in the group list so the separator layout stays in one place.
  */
-export type ToolbarSlot = 'color' | 'heading' | 'list' | 'align' | 'tableInsert' | 'insertPdf' | 'find';
+export type ToolbarSlot =
+    | 'color'
+    | 'fontFamily'
+    | 'heading'
+    | 'list'
+    | 'align'
+    | 'tableInsert'
+    | 'insertPdf'
+    | 'find';
 
 export type ToolbarItem =
     | { kind: 'command'; command: ToolbarCommandDescriptor }
@@ -65,8 +73,9 @@ export const FORMATTING_GROUPS: ToolbarItem[][] = [
         cmd({ id: 'strike', label: 'Strikethrough', icon: 'S̶', activeName: 'strike', run: (e) => chain(e).toggleStrike().run() }),
         slot('color'),
     ],
-    // Headings
-    [slot('heading')],
+    // Text appearance: font first, then heading level — the two controls that
+    // change how a run reads rather than what it means.
+    [slot('fontFamily'), slot('heading')],
     // Lists
     [slot('list')],
     // Block elements

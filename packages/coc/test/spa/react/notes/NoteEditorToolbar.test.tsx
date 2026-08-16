@@ -77,6 +77,8 @@ function makeMockEditor(
         unsetHighlight: vi.fn(() => ({ run: vi.fn() })),
         setColor: vi.fn(() => ({ run: vi.fn() })),
         unsetColor: vi.fn(() => ({ run: vi.fn() })),
+        setFontFamily: vi.fn(() => ({ run: vi.fn() })),
+        unsetFontFamily: vi.fn(() => ({ run: vi.fn() })),
         toggleHeading: vi.fn(() => ({ run: vi.fn() })),
         setParagraph: vi.fn(() => ({ run: vi.fn() })),
         toggleBulletList: vi.fn(() => ({ run: vi.fn() })),
@@ -895,6 +897,117 @@ describe('NoteEditorToolbar — styled text-mark buttons', () => {
         expect(strikeBtn.querySelector('s')).not.toBeNull();
     });
 
+});
+
+describe('NoteEditorToolbar — font family dropdown', () => {
+    /** Reports a font stack on the textStyle mark, the way Tiptap does. */
+    function fontEditor(fontFamily: string) {
+        return makeMockEditor(undefined, (name) => (name === 'textStyle' ? { fontFamily } : {}));
+    }
+
+    it('renders the trigger reading "Default" with no font on the selection', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByLabelText('Font family')).toBeDefined();
+        expect(screen.getByTestId('font-dropdown-label').textContent).toBe('Default');
+    });
+
+    it('the menu is hidden until the trigger is clicked', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.queryByTestId('font-dropdown-menu')).toBeNull();
+        fireEvent.mouseDown(screen.getByLabelText('Font family'));
+        expect(screen.getByTestId('font-dropdown-menu')).toBeDefined();
+    });
+
+    it('lists exactly the six fonts, in order', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Font family'));
+        const items = Array.from(
+            screen.getByTestId('font-dropdown-menu').querySelectorAll('[role="menuitem"]'),
+        // Last span is the label; the first is the ✓ column.
+        ).map((el) => el.querySelector('span:last-child')?.textContent);
+        expect(items).toEqual(['Default', 'Sans', 'Serif', 'Mono', 'Arial', 'Times']);
+    });
+
+    it('each font row previews itself by rendering its label in its own stack', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Font family'));
+        const monoLabel = screen.getByTestId('font-item-mono').querySelector('span:last-child');
+        expect(monoLabel?.getAttribute('style')).toContain('JetBrains Mono');
+        // The reset row has no font of its own to preview.
+        expect(screen.getByTestId('font-item-default').querySelector('span:last-child')?.getAttribute('style'))
+            .toBeFalsy();
+    });
+
+    for (const { testId, stack } of [
+        { testId: 'font-item-sans', stack: '-apple-system, "Segoe UI", Roboto, sans-serif' },
+        { testId: 'font-item-serif', stack: 'Georgia, "Times New Roman", serif' },
+        { testId: 'font-item-mono', stack: '"JetBrains Mono", Consolas, "SF Mono", Menlo, monospace' },
+        { testId: 'font-item-arial', stack: 'Arial, Helvetica, sans-serif' },
+        { testId: 'font-item-times', stack: '"Times New Roman", Times, serif' },
+    ]) {
+        it(`${testId} calls setFontFamily with its stack`, () => {
+            const editor = makeMockEditor();
+            render(<NoteEditorToolbar editor={editor as never} />);
+            fireEvent.mouseDown(screen.getByLabelText('Font family'));
+            fireEvent.mouseDown(screen.getByTestId(testId));
+            expect(editor._focusResult.setFontFamily).toHaveBeenCalledWith(stack);
+            expect(editor._focusResult.unsetFontFamily).not.toHaveBeenCalled();
+        });
+    }
+
+    it('the Default row unsets the mark instead of setting a font', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Font family'));
+        fireEvent.mouseDown(screen.getByTestId('font-item-default'));
+        expect(editor._focusResult.unsetFontFamily).toHaveBeenCalled();
+        expect(editor._focusResult.setFontFamily).not.toHaveBeenCalled();
+    });
+
+    it('picking a font closes the menu', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Font family'));
+        fireEvent.mouseDown(screen.getByTestId('font-item-mono'));
+        expect(screen.queryByTestId('font-dropdown-menu')).toBeNull();
+    });
+
+    it('the trigger names the selection\'s font and checkmarks its row', () => {
+        const editor = fontEditor('"JetBrains Mono", Consolas, "SF Mono", Menlo, monospace');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('font-dropdown-label').textContent).toBe('Mono');
+        fireEvent.mouseDown(screen.getByLabelText('Font family'));
+        expect(screen.getByTestId('font-item-mono').getAttribute('aria-checked')).toBe('true');
+        expect(screen.getByTestId('font-item-default').getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('matches the row even after the browser rewrites the stack\'s quoting', () => {
+        // A real browser reports `element.style.fontFamily` back with its own
+        // quote and spacing conventions; without normalization no row matches.
+        const editor = fontEditor("'JetBrains Mono',Consolas,'SF Mono',Menlo,monospace");
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('font-dropdown-label').textContent).toBe('Mono');
+    });
+
+    it('falls back to Default for a foreign font without crashing', () => {
+        const editor = fontEditor('Comic Sans MS, cursive');
+        render(<NoteEditorToolbar editor={editor as never} />);
+        expect(screen.getByTestId('font-dropdown-label').textContent).toBe('Default');
+        fireEvent.mouseDown(screen.getByLabelText('Font family'));
+        expect(screen.getByTestId('font-item-default').getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('closes on Escape', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Font family'));
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(screen.queryByTestId('font-dropdown-menu')).toBeNull();
+    });
 });
 
 // ── Heading & list dropdowns ────────────────────────────────────────────────

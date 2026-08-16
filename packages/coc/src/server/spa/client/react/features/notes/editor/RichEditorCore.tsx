@@ -25,7 +25,7 @@ import {
 } from './extensions/tableColumnWrap';
 import { TableReorder } from './extensions/tableReorder';
 import { Highlight } from '@tiptap/extension-highlight';
-import { TextStyle, Color } from '@tiptap/extension-text-style';
+import { TextStyle, Color, FontFamily } from '@tiptap/extension-text-style';
 import { FindAndReplace } from '@tiptap/extension-find-and-replace';
 import { TextAlign } from '@tiptap/extension-text-align';
 import { IndentExtension } from './extensions/indentExtension';
@@ -269,6 +269,10 @@ export function RichEditorCore({
             // markdown round trip — noteMarkdown strips every other style prop.
             TextStyle,
             Color,
+            // Font family — another attribute on the same TextStyle span, so a
+            // run can carry both a color and a font without either extension
+            // clobbering the other. Stacks come from `fontFamilies.ts`.
+            FontFamily,
             TextAlign.configure({ types: ['heading', 'paragraph'] }),
             IndentExtension,
             ResizableImage.configure({ inline: false, allowBase64: false }),

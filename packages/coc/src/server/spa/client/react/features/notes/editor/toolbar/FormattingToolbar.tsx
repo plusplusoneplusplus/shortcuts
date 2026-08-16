@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import type { Editor } from '@tiptap/react';
 import { ToolbarDropdown, MenuItem, Sep } from './ToolbarDropdown';
 import { ColorDropdown } from './ColorDropdown';
+import { FontFamilyDropdown } from './FontFamilyDropdown';
 import { TableInsertButton } from './TableToolbarControls';
 import {
     ALIGN_OPTIONS,
@@ -306,6 +307,8 @@ export function FormattingToolbar({ editor, findOpen, onToggleFind, onInsertPdf 
         switch (item.slot) {
             case 'color':
                 return <ColorDropdown key={key} editor={editor} />;
+            case 'fontFamily':
+                return <FontFamilyDropdown key={key} editor={editor} />;
             case 'heading':
                 return <HeadingDropdown key={key} editor={editor} />;
             case 'list':
