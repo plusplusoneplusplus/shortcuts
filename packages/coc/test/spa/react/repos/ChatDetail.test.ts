@@ -1614,4 +1614,27 @@ describe('ChatDetail', () => {
             expect(source).toContain('return () => { cancelled = true; cancelIdle(); };');
         });
     });
+
+    describe('attaching selection context focuses the composer', () => {
+        it('wraps attachedContext.add in a handler that focuses the rich text input', () => {
+            const idx = source.indexOf('const handleAttachContext = useCallback(');
+            expect(idx).toBeGreaterThan(-1);
+            const block = source.slice(idx, idx + 400);
+            expect(block).toContain('attachedContext.add(turnIndex, role, snippet);');
+            // Focus happens right after the add so the user can start typing.
+            const addIdx = block.indexOf('attachedContext.add(turnIndex, role, snippet);');
+            const focusIdx = block.indexOf('richTextRef.current?.focus();');
+            expect(focusIdx).toBeGreaterThan(addIdx);
+        });
+
+        it('passes the focusing handler (not the raw add) to ConversationArea', () => {
+            expect(source).toContain('onAttachContext={handleAttachContext}');
+            expect(source).not.toContain('onAttachContext={attachedContext.add}');
+        });
+
+        it('declares richTextRef before the handler so the ref is in scope', () => {
+            expect(source.indexOf('const richTextRef = useRef<RichTextInputHandle>(null);'))
+                .toBeLessThan(source.indexOf('const handleAttachContext = useCallback('));
+        });
+    });
 });
