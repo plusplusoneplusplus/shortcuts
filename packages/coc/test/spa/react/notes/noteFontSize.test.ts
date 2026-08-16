@@ -338,3 +338,37 @@ describe('activeFontSize across a selection', () => {
         editor.destroy();
     });
 });
+
+/**
+ * The dropdown reads the selection during render, so it also renders against
+ * editors that have no live ProseMirror view: a torn-down one, and the partial
+ * doubles the toolbar's own tests mount. Reaching straight into
+ * `editor.state.selection` / `editor.state.doc` threw for both and took the
+ * whole toolbar down with it, so the probes are pinned here.
+ */
+describe('activeFontSize without a live editor state', () => {
+    /** The reads every toolbar double provides, with `state` left to the caller. */
+    function double(state?: unknown) {
+        return { state, getAttributes: () => ({}) } as unknown as Editor;
+    }
+
+    it('reads null when the editor has no state at all', () => {
+        expect(activeFontSize(double())).toBeNull();
+    });
+
+    it('falls back to the stored marks when a range selection has no doc to walk', () => {
+        const editor = {
+            state: { selection: { from: 1, to: 5, empty: false } },
+            getAttributes: () => ({ fontSize: '24px' }),
+        } as unknown as Editor;
+        expect(activeFontSize(editor)).toBe('24px');
+    });
+
+    it('reads null for a range selection whose doc cannot be walked', () => {
+        expect(activeFontSize(double({ selection: { from: 1, to: 5, empty: false }, doc: {} }))).toBeNull();
+    });
+
+    it('reads null for a caret on an editor with no doc', () => {
+        expect(activeFontSize(double({ selection: { from: 1, to: 1, empty: true } }))).toBeNull();
+    });
+});

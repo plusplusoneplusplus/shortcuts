@@ -30,14 +30,24 @@ import {
  * one size to report, so the trigger reads "Default" instead.
  */
 export function activeFontSize(editor: Editor): string | null {
-    const { from, to, empty } = editor.state.selection;
     // A caret covers no text to survey, and its stored marks are what typed
-    // text will pick up — exactly what `getAttributes` reports.
-    if (empty) return (editor.getAttributes('textStyle').fontSize as string | undefined) ?? null;
+    // text will pick up — exactly what `getAttributes` reports. It is also the
+    // only read left when there is no ProseMirror state to walk, which is how a
+    // torn-down editor and the toolbar tests' partial doubles both look; probe
+    // for it the way `getSelectedText` and `extractHeadings` do, because this
+    // runs on every toolbar render.
+    const storedFontSize = () =>
+        (editor.getAttributes('textStyle').fontSize as string | undefined) ?? null;
 
+    const selection = editor.state?.selection;
+    if (!selection || selection.empty) return storedFontSize();
+    const doc = editor.state?.doc;
+    if (typeof doc?.nodesBetween !== 'function') return storedFontSize();
+
+    const { from, to } = selection;
     let seen: string | null | undefined;
     let mixed = false;
-    editor.state.doc.nodesBetween(from, to, (node) => {
+    doc.nodesBetween(from, to, (node) => {
         if (mixed) return false;
         if (!node.isText) return true;
         const fontSize = node.marks.find((mark) => mark.type.name === 'textStyle')?.attrs.fontSize;
