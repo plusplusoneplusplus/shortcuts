@@ -25,6 +25,7 @@ import {
 } from './extensions/tableColumnWrap';
 import { TableReorder } from './extensions/tableReorder';
 import { Highlight } from '@tiptap/extension-highlight';
+import { TextStyle, Color } from '@tiptap/extension-text-style';
 import { FindAndReplace } from '@tiptap/extension-find-and-replace';
 import { TextAlign } from '@tiptap/extension-text-align';
 import { IndentExtension } from './extensions/indentExtension';
@@ -262,6 +263,12 @@ export function RichEditorCore({
             // @tiptap/extension-table does not expose them.
             TableReorder,
             Highlight.configure({ multicolor: true }),
+            // Text color. TextStyle is the generic <span style="…"> mark Color
+            // hangs its `color` attribute off; both ship in
+            // @tiptap/extension-text-style. Only inline `color` survives the
+            // markdown round trip — noteMarkdown strips every other style prop.
+            TextStyle,
+            Color,
             TextAlign.configure({ types: ['heading', 'paragraph'] }),
             IndentExtension,
             ResizableImage.configure({ inline: false, allowBase64: false }),
