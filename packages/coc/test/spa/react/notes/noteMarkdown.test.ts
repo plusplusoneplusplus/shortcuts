@@ -253,9 +253,16 @@ describe('noteMarkdown', () => {
             expect(md).toContain('==highlighted==');
         });
 
-        it('converts <mark> with style attribute to ==text==', () => {
+        it('converts a default-colored <mark> to ==text==', () => {
+            const md = htmlToMarkdown('<p><mark data-color="#fff3b0" style="background-color: #fff3b0">yellow</mark></p>');
+            expect(md).toContain('==yellow==');
+        });
+
+        it('keeps a non-default <mark> color as inline HTML', () => {
+            // `==` carries no color, so a picked color would be silently dropped.
+            // See noteMarkdownColor.test.ts for the full colour round trip.
             const md = htmlToMarkdown('<p><mark data-color="#ffc8dd" style="background-color: #ffc8dd">pink</mark></p>');
-            expect(md).toContain('==pink==');
+            expect(md).toContain('<mark style="background-color:#ffc8dd">pink</mark>');
         });
 
         it('converts <pre><code class="language-mermaid"> back to mermaid fenced block', () => {

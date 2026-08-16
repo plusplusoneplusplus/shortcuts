@@ -1,6 +1,7 @@
 import { Fragment } from 'react';
 import type { ReactNode } from 'react';
 import type { Editor } from '@tiptap/react';
+import { HIGHLIGHT_COLORS, DEFAULT_HIGHLIGHT_COLOR } from '../colorPalette';
 import { ToolbarDropdown, MenuItem, Sep } from './ToolbarDropdown';
 import { TableInsertButton } from './TableToolbarControls';
 import {
@@ -11,17 +12,10 @@ import {
 } from './formattingCommands';
 
 // ── Highlight color palette ─────────────────────────────────────────────────
+// Lives in `colorPalette.ts` so `noteMarkdown.ts` can read the default color
+// without importing a React module; re-exported here for existing consumers.
 
-export const HIGHLIGHT_COLORS = [
-    { name: 'Yellow', color: '#fff3b0' },
-    { name: 'Green', color: '#b9f5d0' },
-    { name: 'Blue', color: '#bde0fe' },
-    { name: 'Pink', color: '#ffc8dd' },
-    { name: 'Orange', color: '#ffd6a5' },
-    { name: 'Purple', color: '#e0c3fc' },
-] as const;
-
-const DEFAULT_HIGHLIGHT_COLOR = HIGHLIGHT_COLORS[0].color;
+export { HIGHLIGHT_COLORS, DEFAULT_HIGHLIGHT_COLOR } from '../colorPalette';
 
 // ── Toolbar button helper ───────────────────────────────────────────────────
 

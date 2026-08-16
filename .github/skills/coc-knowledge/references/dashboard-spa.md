@@ -1992,8 +1992,13 @@ delegates everything else to `features/notes/editor/toolbar/`.
   separator layout stays in one place. `toggleLink` lives here too — it is the
   one command that prompts for input.
 - `FormattingToolbar.tsx` — renders the descriptor groups, plus the highlight
-  split button, heading dropdown, and list dropdown. Exports `HIGHLIGHT_COLORS`
-  and `HEADING_LEVELS`.
+  split button, heading dropdown, and list dropdown. Re-exports
+  `HIGHLIGHT_COLORS` / `DEFAULT_HIGHLIGHT_COLOR` from `colorPalette.ts` and
+  exports `HEADING_LEVELS`.
+- `colorPalette.ts` (in `editor/`, not `toolbar/`) — the single source of truth
+  for the inline color palettes and `normalizeCssColor` / `readStyleProp` /
+  `readInlineColor`. It imports neither React nor Tiptap so `noteMarkdown.ts`
+  can read `DEFAULT_HIGHLIGHT_COLOR` from the plain serialization path.
 - `ToolbarDropdown.tsx` — the single dropdown primitive (`ToolbarDropdown`,
   `MenuItem`, `Sep`). It owns open/close state, outside-click and Escape
   dismissal with focus return to the trigger, and — in `menu` mode — roving
@@ -2015,6 +2020,38 @@ delegates everything else to `features/notes/editor/toolbar/`.
 
 `NoteEditorToolbar.tsx` re-exports `HIGHLIGHT_COLORS`, `HEADING_LEVELS`,
 `TABLE_PICKER_COLS`, and `TABLE_PICKER_ROWS` so it stays the entry point.
+
+## Notes rich editor inline colors
+
+Markdown has no color syntax, so `noteMarkdown.ts` persists inline color as
+inline HTML — the one form that survives `marked` → Tiptap → `turndown` and
+still renders in an external Markdown viewer:
+
+- Text color → `<span style="color:#rrggbb">text</span>` (`textColorSpan`
+  turndown rule).
+- Highlight → bare `==text==` for `DEFAULT_HIGHLIGHT_COLOR`, and
+  `<mark style="background-color:#rrggbb">text</mark>` for any other color. The
+  default staying bare is what keeps every note written before colors were
+  persisted byte-identical, so no migration is needed. The color is read from
+  the `style` attribute, falling back to Tiptap's `data-color`.
+
+Every color read goes through `normalizeCssColor` (`colorPalette.ts`), which
+canonicalizes to lowercase `#rrggbb` and accepts `#rgb`, `#rrggbb`, `rgb()` and
+`rgba()` (alpha dropped). This is what makes the round trip idempotent: a
+browser rewrites `style="color: #e11d48"` to `rgb(225, 29, 72)` when Tiptap
+parses it back, so without normalization every save would churn the file.
+Anything else — a CSS keyword, `hsl()`, a custom property — normalizes to
+`null` and is treated as no color.
+
+On the way in, `sanitizeInlineColorStyles` keeps only `color` on a `<span>` and
+only `background-color` on a `<mark>`, dropping every other declaration, so a
+pasted or hand-written `style` cannot make the note format a general
+HTML-styling escape hatch. A `<span>` left with no honored color loses its
+`style` and is unwrapped entirely on the next save.
+
+The `==` marked tokenizer matches `[^\n]+?` (non-greedy, single line) rather
+than `[^=]+`, because a colored word nested inside a highlight puts an `=` in
+the content via `style="…"`.
 
 ## Notes rich editor find & replace
 

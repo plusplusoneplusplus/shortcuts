@@ -10,6 +10,12 @@ import TurndownService from 'turndown';
 import { isEmbeddableMapUrl, isPdfUrl } from '@plusplusoneplusplus/forge/editor/rendering';
 import { mathNodeMarkedExtension } from './mathNodeMarked';
 import { wrapMathDelimiters, type MathDelimiter } from '../../../../shared/math/mathTokenizer';
+import {
+    DEFAULT_HIGHLIGHT_COLOR,
+    normalizeCssColor,
+    readInlineColor,
+    readStyleProp,
+} from './colorPalette';
 import { clampIndent, parseIndentAttr } from './extensions/indentShared';
 import { resolveCodeLanguage } from './extensions/notesLowlight';
 import { clampPdfHeight, parsePdfHeightAttr } from './extensions/pdfHeightShared';
@@ -173,7 +179,12 @@ const highlightExtension: marked.MarkedExtension = {
                 return src.indexOf('==');
             },
             tokenizer(src: string) {
-                const match = /^==([^=]+)==/.exec(src);
+                // `[^\n]+?` rather than `[^=]+`: a highlight may legitimately
+                // contain an `=`, and since colors persist as inline HTML the
+                // very common case — a colored word inside a highlight — carries
+                // one in `style="…"`. Staying non-greedy and single-line keeps
+                // the old matches (`a ==b== c` still highlights just `b`).
+                const match = /^==([^\n]+?)==/.exec(src);
                 if (match) {
                     return {
                         type: 'highlight',
@@ -226,11 +237,47 @@ turndown.addRule('strikethrough', {
     },
 });
 
-// Highlight: <mark> → ==text==
+// Highlight: <mark> → ==text==, except for a non-default color, which has no
+// `==` syntax and is emitted as inline HTML instead. The default color stays
+// bare `==text==` so ordinary highlights remain clean Markdown and every note
+// written before colors were persisted keeps its exact current serialization.
 turndown.addRule('highlight', {
     filter: 'mark',
-    replacement(content) {
+    replacement(content, node) {
+        const el = node as HTMLElement;
+        // Tiptap's Highlight extension writes `data-color` alongside the inline
+        // style; either one alone is enough to recover the color.
+        const color =
+            readInlineColor(el.getAttribute('style'), 'background-color')
+            ?? normalizeCssColor(el.getAttribute('data-color'));
+        if (color && color !== DEFAULT_HIGHLIGHT_COLOR) {
+            return `<mark style="background-color:${color}">${content}</mark>`;
+        }
         return `==${content}==`;
+    },
+});
+
+// Text color: <span style="color:…"> → the same inline HTML. Markdown has no
+// color syntax, and inline HTML is the one form that survives marked → Tiptap →
+// turndown *and* still renders in an external Markdown viewer.
+//
+// NOTE: addRule() unshifts, so this is checked BEFORE the plain `highlight` rule
+// above but AFTER every span rule registered later (note-link, file-ref, math,
+// comment, Quick Ask). Those spans never carry a color, so the ordering only
+// matters as insurance.
+turndown.addRule('textColorSpan', {
+    filter(node) {
+        return (
+            node.nodeName === 'SPAN' &&
+            readInlineColor((node as HTMLElement).getAttribute('style'), 'color') !== null
+        );
+    },
+    replacement(content, node) {
+        const color = readInlineColor((node as HTMLElement).getAttribute('style'), 'color');
+        // An empty span carries no text to color — drop the wrapper rather than
+        // leaving `<span style="…"></span>` noise in the file.
+        if (!color || !content) return content;
+        return `<span style="color:${color}">${content}</span>`;
     },
 });
 
@@ -953,6 +1000,25 @@ function normalizeColgroupWidths(html: string): string {
     });
 }
 
+// `marked` passes inline HTML through verbatim, so a `<span>`/`<mark>` in the
+// source arrives at Tiptap with whatever `style` was written. Only the one
+// declaration each tag persists is honored — `color` on `<span>`,
+// `background-color` on `<mark>` — and only in a form `normalizeCssColor`
+// recognizes. Everything else is dropped, so a hand-written or pasted `style`
+// cannot turn the note format into a general HTML-styling escape hatch. A tag
+// left with no honored declaration loses its `style` attribute entirely; for a
+// `<span>` that also means turndown unwraps it on the next save.
+function sanitizeInlineColorStyles(html: string): string {
+    return html.replace(/<(span|mark)\b([^>]*?)(\/?)>/gi, (match, tag: string, attrs: string, selfClose: string) => {
+        if (!/\bstyle\s*=/i.test(attrs)) return match;
+        const prop = tag.toLowerCase() === 'span' ? 'color' : 'background-color';
+        const color = normalizeCssColor(readStyleProp(getHtmlAttr(attrs, 'style'), prop));
+        const rest = attrs.replace(/\s*\bstyle\s*=\s*(["'])[\s\S]*?\1/i, '');
+        const style = color ? ` style="${prop}:${color}"` : '';
+        return `<${tag}${rest}${style}${selfClose}>`;
+    });
+}
+
 // marked emits a fenced code block's info-string verbatim as the `<code>`
 // class (```` ```ts ```` → `<code class="language-ts">`). CodeBlockLowlight only
 // highlights a block whose `language` attribute is one of the 16 registered
@@ -990,11 +1056,11 @@ export function markdownToHtml(md: string): string {
     // tokenizer, a singleton, cannot see per-call definitions).
     const { body, defs } = extractQaFootnoteDefs(md);
     const html = injectQaAnswers(marked.parse(body) as string, defs);
-    return resolveFencedCodeLanguages(
+    return sanitizeInlineColorStyles(resolveFencedCodeLanguages(
         normalizeColgroupWidths(
             stripCodeBlockTrailingNewline(stripNbspParagraphPlaceholders(postProcessTaskLists(html))),
         ),
-    );
+    ));
 }
 
 /**
