@@ -36,6 +36,38 @@ export const HIGHLIGHT_COLORS: readonly PaletteColor[] = [
     { name: 'Pink', color: '#ffc8dd' },
     { name: 'Orange', color: '#ffd6a5' },
     { name: 'Purple', color: '#e0c3fc' },
+    // Added when the picker grew to a 5x2 grid. The six above are load-bearing —
+    // they are what existing notes already contain — so new pastels are appended,
+    // never inserted, and are tuned to the same lightness as the originals.
+    { name: 'Teal', color: '#a8f0e6' },
+    { name: 'Red', color: '#ffb3b3' },
+    { name: 'Lime', color: '#e4f9a0' },
+    { name: 'Gray', color: '#e2e2e2' },
+];
+
+/**
+ * Text (ink) swatches, 5x2 in the picker.
+ *
+ * These are mid-tone rather than the deep shades a light-only editor would use:
+ * the note editor renders on white *and* on `#1e1e1e`, and the color is written
+ * into the `.md` file, so one literal hex has to stay readable on both. Mid-tones
+ * clear the contrast floor against the dark background while still reading as a
+ * color (not as grey) on white.
+ *
+ * There is no "default" entry — clearing the mark is `unsetColor`, not a color,
+ * so a paragraph the user never colored still serializes to plain Markdown.
+ */
+export const TEXT_COLORS: readonly PaletteColor[] = [
+    { name: 'Red', color: '#ef4444' },
+    { name: 'Orange', color: '#f97316' },
+    { name: 'Amber', color: '#f59e0b' },
+    { name: 'Green', color: '#22c55e' },
+    { name: 'Teal', color: '#14b8a6' },
+    { name: 'Blue', color: '#3b82f6' },
+    { name: 'Indigo', color: '#6366f1' },
+    { name: 'Purple', color: '#a855f7' },
+    { name: 'Pink', color: '#ec4899' },
+    { name: 'Gray', color: '#9ca3af' },
 ];
 
 /**

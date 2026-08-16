@@ -91,7 +91,7 @@ describe('formatting command descriptors — inventory', () => {
 
     it('keeps every stateful control in the group list as a slot', () => {
         expect(slotIds()).toEqual([
-            'highlight',
+            'color',
             'heading',
             'list',
             'tableInsert',
@@ -110,7 +110,7 @@ describe('formatting command descriptors — inventory', () => {
         const order = FORMATTING_GROUPS.map((group) =>
             group.map((i) => (i.kind === 'command' ? i.command.id : i.slot)));
         expect(order).toEqual([
-            ['bold', 'italic', 'strike', 'highlight'],
+            ['bold', 'italic', 'strike', 'color'],
             ['heading'],
             ['list'],
             ['blockquote', 'code', 'codeBlock'],

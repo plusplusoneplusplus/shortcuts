@@ -9,7 +9,7 @@ import { TableToolbarControls } from './toolbar/TableToolbarControls';
 import { ToolbarHostActions, hasHostActions } from './toolbar/ToolbarHostActions';
 
 // Re-exported so the toolbar module stays the entry point for these constants.
-export { HIGHLIGHT_COLORS, HEADING_LEVELS } from './toolbar/FormattingToolbar';
+export { HIGHLIGHT_COLORS, TEXT_COLORS, HEADING_LEVELS } from './toolbar/FormattingToolbar';
 export { TABLE_PICKER_COLS, TABLE_PICKER_ROWS } from './toolbar/TableToolbarControls';
 
 export interface NoteEditorToolbarProps {

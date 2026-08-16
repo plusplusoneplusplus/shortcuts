@@ -3,12 +3,16 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, fireEvent, screen, cleanup } from '@testing-library/react';
 import { Editor } from '@tiptap/core';
 import { StarterKit } from '@tiptap/starter-kit';
+import { Highlight } from '@tiptap/extension-highlight';
+import { TextStyle, Color } from '@tiptap/extension-text-style';
 import { NoteEditorToolbar } from '../../../../src/server/spa/client/react/features/notes/editor/NoteEditorToolbar';
 
 function createTestEditor(content = '<p>Hello world</p>') {
     return new Editor({
         element: document.createElement('div'),
-        extensions: [StarterKit],
+        // The color dropdown drives setColor/setHighlight, so the test editor
+        // needs the same mark extensions RichEditorCore registers.
+        extensions: [StarterKit, Highlight.configure({ multicolor: true }), TextStyle, Color],
         content,
     });
 }
@@ -307,7 +311,7 @@ describe('NoteEditorToolbar — refresh button', () => {
     });
 });
 
-describe('NoteEditorToolbar — highlight swatch dark-mode contrast', () => {
+describe('NoteEditorToolbar — color dropdown', () => {
     let editor: Editor;
 
     afterEach(() => {
@@ -316,13 +320,76 @@ describe('NoteEditorToolbar — highlight swatch dark-mode contrast', () => {
         vi.restoreAllMocks();
     });
 
-    it('renders the HL swatch with dark ink so it stays readable on the pale highlight color', () => {
+    it('replaces the old split HL button with a single "A" trigger', () => {
         editor = createTestEditor();
         render(<NoteEditorToolbar editor={editor} />);
-        const swatch = screen.getByText('HL');
-        // The swatch background is always a pale palette color in both themes,
-        // so the label must use dark text to keep enough contrast in dark mode.
-        expect(swatch.className).toContain('text-[#1e1e1e]');
+        expect(screen.getByLabelText('Text and highlight color')).toBeInTheDocument();
+        expect(screen.queryByText('HL')).not.toBeInTheDocument();
+    });
+
+    it('shows a Text Color and a Highlight Color section with palette swatches', () => {
+        editor = createTestEditor();
+        render(<NoteEditorToolbar editor={editor} />);
+        fireEvent.mouseDown(screen.getByLabelText('Text and highlight color'));
+
+        const panel = screen.getByTestId('color-dropdown-panel');
+        expect(panel.textContent).toContain('Text Color');
+        expect(panel.textContent).toContain('Highlight Color');
+        // The swatch itself carries the literal palette hex — that value is what
+        // ends up in the `.md` file, so it is worth asserting on.
+        expect(screen.getByLabelText('Highlight Yellow').getAttribute('style'))
+            .toContain('rgb(255, 243, 176)');
+        expect(screen.getByLabelText('Text Red').getAttribute('style'))
+            .toContain('rgb(239, 68, 68)');
+    });
+
+    it('keeps the editor selection by suppressing mousedown on trigger and swatches', () => {
+        editor = createTestEditor();
+        render(<NoteEditorToolbar editor={editor} />);
+
+        // `fireEvent` returns false when the handler called preventDefault.
+        const trigger = screen.getByLabelText('Text and highlight color');
+        expect(fireEvent.mouseDown(trigger)).toBe(false);
+        expect(fireEvent.mouseDown(screen.getByLabelText('Text Blue'))).toBe(false);
+
+        fireEvent.mouseDown(trigger);
+        expect(fireEvent.mouseDown(screen.getByLabelText('Highlight Green'))).toBe(false);
+        fireEvent.mouseDown(trigger);
+        expect(fireEvent.mouseDown(screen.getByLabelText('Default text color'))).toBe(false);
+    });
+
+    // The two sections share one panel, so the risk is that one reset wipes both
+    // marks. Driven through the real toolbar against a real editor.
+    it('applies both marks to one selection and resets them independently', () => {
+        editor = createTestEditor();
+        render(<NoteEditorToolbar editor={editor} />);
+        const trigger = screen.getByLabelText('Text and highlight color');
+        const selectWord = () => editor.commands.setTextSelection({ from: 1, to: 6 });
+
+        selectWord();
+        fireEvent.mouseDown(trigger);
+        fireEvent.mouseDown(screen.getByLabelText('Text Blue'));
+        selectWord();
+        fireEvent.mouseDown(trigger);
+        fireEvent.mouseDown(screen.getByLabelText('Highlight Green'));
+
+        selectWord();
+        expect(editor.getAttributes('textStyle').color).toBe('#3b82f6');
+        expect(editor.getAttributes('highlight').color).toBe('#b9f5d0');
+        expect(editor.getHTML()).toContain('<mark');
+
+        // Clearing the text color must leave the highlight standing…
+        fireEvent.mouseDown(trigger);
+        fireEvent.mouseDown(screen.getByLabelText('Default text color'));
+        selectWord();
+        expect(editor.getAttributes('textStyle').color).toBeUndefined();
+        expect(editor.getAttributes('highlight').color).toBe('#b9f5d0');
+
+        // …and clearing the highlight afterwards leaves nothing behind.
+        fireEvent.mouseDown(trigger);
+        fireEvent.mouseDown(screen.getByLabelText('Remove highlight'));
+        selectWord();
+        expect(editor.isActive('highlight')).toBe(false);
     });
 });
 

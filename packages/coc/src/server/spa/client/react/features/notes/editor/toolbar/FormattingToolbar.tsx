@@ -1,8 +1,8 @@
 import { Fragment } from 'react';
 import type { ReactNode } from 'react';
 import type { Editor } from '@tiptap/react';
-import { HIGHLIGHT_COLORS, DEFAULT_HIGHLIGHT_COLOR } from '../colorPalette';
 import { ToolbarDropdown, MenuItem, Sep } from './ToolbarDropdown';
+import { ColorDropdown } from './ColorDropdown';
 import { TableInsertButton } from './TableToolbarControls';
 import {
     FORMATTING_GROUPS,
@@ -11,11 +11,11 @@ import {
     type ToolbarItem,
 } from './formattingCommands';
 
-// ── Highlight color palette ─────────────────────────────────────────────────
-// Lives in `colorPalette.ts` so `noteMarkdown.ts` can read the default color
+// ── Color palettes ──────────────────────────────────────────────────────────
+// Live in `colorPalette.ts` so `noteMarkdown.ts` can read the default color
 // without importing a React module; re-exported here for existing consumers.
 
-export { HIGHLIGHT_COLORS, DEFAULT_HIGHLIGHT_COLOR } from '../colorPalette';
+export { HIGHLIGHT_COLORS, TEXT_COLORS, DEFAULT_HIGHLIGHT_COLOR } from '../colorPalette';
 
 // ── Toolbar button helper ───────────────────────────────────────────────────
 
@@ -59,93 +59,6 @@ export function TB({ editor, label, icon, command, activeName, activeAttrs, clas
         >
             {renderIcon(icon)}
         </button>
-    );
-}
-
-// ── Highlight button with color picker ───────────────────────────────────────
-
-function HighlightButton({ editor }: { editor: Editor }) {
-    const isActive = editor.isActive('highlight');
-
-    return (
-        <ToolbarDropdown
-            panelTestId="highlight-color-picker"
-            panelClassName="flex gap-1 p-1.5"
-            renderTrigger={({ open, toggle, triggerRef }) => (
-                <div className="flex items-center">
-                    {/* Main highlight toggle */}
-                    <button
-                        type="button"
-                        title="Highlight"
-                        aria-label="Highlight"
-                        className={
-                            'h-7 px-1 rounded-l flex items-center justify-center text-xs hover:bg-[#e0e0e0] dark:hover:bg-[#505050] ' +
-                            (isActive ? 'bg-[#e8e8e8] dark:bg-[#3c3c3c] font-bold' : '')
-                        }
-                        onMouseDown={(e) => {
-                            e.preventDefault();
-                            editor.chain().focus().toggleHighlight({ color: DEFAULT_HIGHLIGHT_COLOR }).run();
-                        }}
-                    >
-                        <span
-                            className="inline-block w-4 h-4 leading-4 text-center rounded-sm text-[10px] font-bold text-[#1e1e1e]"
-                            style={{ backgroundColor: isActive ? (editor.getAttributes('highlight').color ?? DEFAULT_HIGHLIGHT_COLOR) : DEFAULT_HIGHLIGHT_COLOR }}
-                        >
-                            HL
-                        </span>
-                    </button>
-                    {/* Dropdown arrow */}
-                    <button
-                        ref={triggerRef}
-                        type="button"
-                        title="Highlight colors"
-                        aria-label="Highlight colors"
-                        aria-haspopup="true"
-                        aria-expanded={open}
-                        className="h-7 w-4 rounded-r flex items-center justify-center text-[10px] hover:bg-[#e0e0e0] dark:hover:bg-[#505050]"
-                        onMouseDown={(e) => {
-                            e.preventDefault();
-                            toggle();
-                        }}
-                    >
-                        ▾
-                    </button>
-                </div>
-            )}
-            renderPanel={({ close }) => (
-                <>
-                    {HIGHLIGHT_COLORS.map(({ name, color }) => (
-                        <button
-                            key={color}
-                            type="button"
-                            title={name}
-                            aria-label={`Highlight ${name}`}
-                            className="w-6 h-6 rounded-sm border border-[#ccc] dark:border-[#555] hover:scale-110 transition-transform"
-                            style={{ backgroundColor: color }}
-                            onMouseDown={(e) => {
-                                e.preventDefault();
-                                editor.chain().focus().toggleHighlight({ color }).run();
-                                close();
-                            }}
-                        />
-                    ))}
-                    {/* Remove highlight */}
-                    <button
-                        type="button"
-                        title="Remove highlight"
-                        aria-label="Remove highlight"
-                        className="w-6 h-6 rounded-sm border border-[#ccc] dark:border-[#555] hover:scale-110 transition-transform flex items-center justify-center text-xs text-[#888]"
-                        onMouseDown={(e) => {
-                            e.preventDefault();
-                            editor.chain().focus().unsetHighlight().run();
-                            close();
-                        }}
-                    >
-                        ✕
-                    </button>
-                </>
-            )}
-        />
     );
 }
 
@@ -333,8 +246,8 @@ export function FormattingToolbar({ editor, findOpen, onToggleFind, onInsertPdf 
             return <CommandButton key={key} editor={editor} command={item.command} />;
         }
         switch (item.slot) {
-            case 'highlight':
-                return <HighlightButton key={key} editor={editor} />;
+            case 'color':
+                return <ColorDropdown key={key} editor={editor} />;
             case 'heading':
                 return <HeadingDropdown key={key} editor={editor} />;
             case 'list':

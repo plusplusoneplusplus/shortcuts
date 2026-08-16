@@ -64,6 +64,7 @@ const mockEditor = {
     commands: { setContent: mockSetContent, clearContent: mockClearContent },
     getHTML: mockGetHTML,
     isActive: vi.fn(() => false),
+    getAttributes: vi.fn(() => ({})),
     isDestroyed: false,
     state: { doc: {}, selection: { empty: true } },
     chain: () => ({

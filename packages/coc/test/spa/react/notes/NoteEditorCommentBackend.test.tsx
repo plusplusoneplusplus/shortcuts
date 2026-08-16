@@ -53,6 +53,7 @@ const mockEditor = {
     commands: { setContent: mockSetContent, clearContent: mockClearContent },
     getHTML: mockGetHTML,
     isActive: vi.fn(() => false),
+    getAttributes: vi.fn(() => ({})),
     chain: () => ({
         focus: () => ({
             toggleBold: () => ({ run: vi.fn() }),

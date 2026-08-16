@@ -65,6 +65,7 @@ const mockEditor = {
     commands: { setContent: mockSetContent, clearContent: mockClearContent },
     getHTML: mockGetHTML,
     isActive: vi.fn(() => false),
+    getAttributes: vi.fn(() => ({})),
     state: {
         get selection() {
             return { empty: selectionEmpty, from: 1, to: 5 };

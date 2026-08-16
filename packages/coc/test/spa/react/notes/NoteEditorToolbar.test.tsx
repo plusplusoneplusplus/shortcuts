@@ -73,7 +73,10 @@ function makeMockEditor(
         toggleItalic: () => ({ run: vi.fn() }),
         toggleStrike: () => ({ run: vi.fn() }),
         toggleHighlight: vi.fn(() => ({ run: vi.fn() })),
+        setHighlight: vi.fn(() => ({ run: vi.fn() })),
         unsetHighlight: vi.fn(() => ({ run: vi.fn() })),
+        setColor: vi.fn(() => ({ run: vi.fn() })),
+        unsetColor: vi.fn(() => ({ run: vi.fn() })),
         toggleHeading: vi.fn(() => ({ run: vi.fn() })),
         setParagraph: vi.fn(() => ({ run: vi.fn() })),
         toggleBulletList: vi.fn(() => ({ run: vi.fn() })),
@@ -721,69 +724,97 @@ describe('NoteEditorToolbar — table size picker', () => {
     });
 });
 
-describe('NoteEditorToolbar — highlight controls', () => {
-    it('renders "Highlight" button in toolbar', () => {
+describe('NoteEditorToolbar — color dropdown', () => {
+    it('renders the merged "A" color trigger instead of a standalone HL button', () => {
         const editor = makeMockEditor();
         render(<NoteEditorToolbar editor={editor as never} />);
-        expect(screen.getByLabelText('Highlight')).toBeDefined();
+        expect(screen.getByLabelText('Text and highlight color')).toBeDefined();
+        expect(screen.queryByLabelText('Highlight')).toBeNull();
+        expect(screen.queryByLabelText('Highlight colors')).toBeNull();
     });
 
-    it('renders "Highlight colors" dropdown arrow', () => {
+    it('color panel is hidden by default', () => {
         const editor = makeMockEditor();
         render(<NoteEditorToolbar editor={editor as never} />);
-        expect(screen.getByLabelText('Highlight colors')).toBeDefined();
+        expect(screen.queryByTestId('color-dropdown-panel')).toBeNull();
     });
 
-    it('clicking Highlight button calls toggleHighlight with default color', () => {
+    it('clicking the trigger shows both labelled sections', () => {
         const editor = makeMockEditor();
         render(<NoteEditorToolbar editor={editor as never} />);
-        fireEvent.mouseDown(screen.getByLabelText('Highlight'));
-        expect(editor._focusResult.toggleHighlight).toHaveBeenCalledWith({ color: '#fff3b0' });
+        fireEvent.mouseDown(screen.getByLabelText('Text and highlight color'));
+        const panel = screen.getByTestId('color-dropdown-panel');
+        expect(panel.textContent).toContain('Text Color');
+        expect(panel.textContent).toContain('Highlight Color');
     });
 
-    it('color picker is hidden by default', () => {
+    it('each section has 10 swatches plus its own reset row', () => {
         const editor = makeMockEditor();
         render(<NoteEditorToolbar editor={editor as never} />);
-        expect(screen.queryByTestId('highlight-color-picker')).toBeNull();
+        fireEvent.mouseDown(screen.getByLabelText('Text and highlight color'));
+        const panel = screen.getByTestId('color-dropdown-panel');
+        // (10 swatches + 1 reset) x 2 sections
+        expect(panel.querySelectorAll('button').length).toBe(22);
+        expect(screen.getByLabelText('Default text color')).toBeDefined();
+        expect(screen.getByLabelText('Remove highlight')).toBeDefined();
     });
 
-    it('clicking dropdown arrow shows color picker', () => {
+    it('clicking a text swatch calls setColor with that color', () => {
         const editor = makeMockEditor();
         render(<NoteEditorToolbar editor={editor as never} />);
-        fireEvent.mouseDown(screen.getByLabelText('Highlight colors'));
-        expect(screen.getByTestId('highlight-color-picker')).toBeDefined();
+        fireEvent.mouseDown(screen.getByLabelText('Text and highlight color'));
+        fireEvent.mouseDown(screen.getByLabelText('Text Blue'));
+        expect(editor._focusResult.setColor).toHaveBeenCalledWith('#3b82f6');
     });
 
-    it('color picker has 6 color swatches plus remove button', () => {
+    it('clicking a highlight swatch calls setHighlight with that color', () => {
         const editor = makeMockEditor();
         render(<NoteEditorToolbar editor={editor as never} />);
-        fireEvent.mouseDown(screen.getByLabelText('Highlight colors'));
-        const picker = screen.getByTestId('highlight-color-picker');
-        // 6 color buttons + 1 remove button = 7
-        expect(picker.querySelectorAll('button').length).toBe(7);
-    });
-
-    it('clicking a color swatch calls toggleHighlight with that color', () => {
-        const editor = makeMockEditor();
-        render(<NoteEditorToolbar editor={editor as never} />);
-        fireEvent.mouseDown(screen.getByLabelText('Highlight colors'));
+        fireEvent.mouseDown(screen.getByLabelText('Text and highlight color'));
         fireEvent.mouseDown(screen.getByLabelText('Highlight Pink'));
-        expect(editor._focusResult.toggleHighlight).toHaveBeenCalledWith({ color: '#ffc8dd' });
+        expect(editor._focusResult.setHighlight).toHaveBeenCalledWith({ color: '#ffc8dd' });
     });
 
-    it('clicking Remove highlight calls unsetHighlight', () => {
+    it('keeps the original six highlight swatches so existing notes still match', () => {
         const editor = makeMockEditor();
         render(<NoteEditorToolbar editor={editor as never} />);
-        fireEvent.mouseDown(screen.getByLabelText('Highlight colors'));
+        fireEvent.mouseDown(screen.getByLabelText('Text and highlight color'));
+        for (const name of ['Yellow', 'Green', 'Blue', 'Pink', 'Orange', 'Purple']) {
+            expect(screen.getByLabelText(`Highlight ${name}`)).toBeDefined();
+        }
+    });
+
+    // Each reset must touch only its own mark — that is the whole point of two
+    // sections sharing one panel.
+    it('the text reset calls unsetColor and leaves the highlight alone', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Text and highlight color'));
+        fireEvent.mouseDown(screen.getByLabelText('Default text color'));
+        expect(editor._focusResult.unsetColor).toHaveBeenCalled();
+        expect(editor._focusResult.unsetHighlight).not.toHaveBeenCalled();
+    });
+
+    it('the highlight reset calls unsetHighlight and leaves the text color alone', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByLabelText('Text and highlight color'));
         fireEvent.mouseDown(screen.getByLabelText('Remove highlight'));
         expect(editor._focusResult.unsetHighlight).toHaveBeenCalled();
+        expect(editor._focusResult.unsetColor).not.toHaveBeenCalled();
     });
 
-    it('highlight button shows active state when highlight is active', () => {
-        const editor = makeMockEditor((name) => name === 'highlight');
+    it('the trigger bar reflects the selection\'s text color', () => {
+        const editor = makeMockEditor(
+            undefined,
+            (name) => (name === 'textStyle' ? { color: 'rgb(59, 130, 246)' } : {}),
+        );
         render(<NoteEditorToolbar editor={editor as never} />);
-        const btn = screen.getByLabelText('Highlight');
-        expect(btn.className).toContain('font-bold');
+        // The browser reports the style back as `rgb(...)`; the trigger has to
+        // canonicalize it or the active swatch never matches.
+        expect(screen.getByTestId('color-dropdown-bar').getAttribute('style')).toContain('rgb(59, 130, 246)');
+        fireEvent.mouseDown(screen.getByLabelText('Text and highlight color'));
+        expect(screen.getByLabelText('Text Blue').getAttribute('aria-pressed')).toBe('true');
     });
 
     it('does not render a chat panel toggle (chat toggle lives in MyWorkView header)', () => {
@@ -1317,7 +1348,7 @@ describe('NoteEditorToolbar — find & replace', () => {
  */
 describe('NoteEditorToolbar — shared dropdown behaviour', () => {
     const dropdowns = [
-        { trigger: 'Highlight colors', panel: 'highlight-color-picker' },
+        { trigger: 'Text and highlight color', panel: 'color-dropdown-panel' },
         { trigger: 'Insert table', panel: 'table-size-picker' },
     ];
 
