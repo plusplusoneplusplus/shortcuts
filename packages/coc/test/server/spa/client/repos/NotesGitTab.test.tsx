@@ -223,8 +223,13 @@ describe('NotesGitTab (notes-git)', () => {
     });
 
     // ── Sync status indicator (ahead/behind) ────────────────────────
+    //
+    // The ahead/behind readout is gated on the *configured* `notesGit.remoteUrl`,
+    // the same gate as the Sync / Reset buttons, so these tests must configure a
+    // remote. Preferences load asynchronously, so assert with `findBy*`.
 
-    it('shows "N commits not pushed" when the local branch is ahead of origin', () => {
+    it('shows "N commits not pushed" when the local branch is ahead of origin', async () => {
+        mockGetWorkspacePreferences.mockResolvedValue({ notesGit: { remoteUrl: 'git@example.com:me/notes.git' } });
         hookReturn = {
             ...defaultHookReturn,
             initialized: true,
@@ -232,12 +237,12 @@ describe('NotesGitTab (notes-git)', () => {
             log: [],
         };
         render(<NotesGitTab workspaceId="ws-1" />);
-        const sync = screen.getByTestId('notes-git-sync-status');
-        expect(sync).toBeDefined();
+        expect(await screen.findByTestId('notes-git-sync-status')).toBeDefined();
         expect(screen.getByText(/2 commits not pushed/)).toBeDefined();
     });
 
-    it('singularizes "1 commit not pushed"', () => {
+    it('singularizes "1 commit not pushed"', async () => {
+        mockGetWorkspacePreferences.mockResolvedValue({ notesGit: { remoteUrl: 'git@example.com:me/notes.git' } });
         hookReturn = {
             ...defaultHookReturn,
             initialized: true,
@@ -245,10 +250,11 @@ describe('NotesGitTab (notes-git)', () => {
             log: [],
         };
         render(<NotesGitTab workspaceId="ws-1" />);
-        expect(screen.getByText(/1 commit not pushed/)).toBeDefined();
+        expect(await screen.findByText(/1 commit not pushed/)).toBeDefined();
     });
 
-    it('shows "Synced with origin" when ahead and behind are both zero', () => {
+    it('shows "Synced with origin" when ahead and behind are both zero', async () => {
+        mockGetWorkspacePreferences.mockResolvedValue({ notesGit: { remoteUrl: 'git@example.com:me/notes.git' } });
         hookReturn = {
             ...defaultHookReturn,
             initialized: true,
@@ -256,11 +262,12 @@ describe('NotesGitTab (notes-git)', () => {
             log: [],
         };
         render(<NotesGitTab workspaceId="ws-1" />);
-        expect(screen.getByTestId('notes-git-sync-status')).toBeDefined();
+        expect(await screen.findByTestId('notes-git-sync-status')).toBeDefined();
         expect(screen.getByText(/Synced with origin/)).toBeDefined();
     });
 
-    it('shows "N behind" when origin is ahead of the local branch', () => {
+    it('shows "N behind" when origin is ahead of the local branch', async () => {
+        mockGetWorkspacePreferences.mockResolvedValue({ notesGit: { remoteUrl: 'git@example.com:me/notes.git' } });
         hookReturn = {
             ...defaultHookReturn,
             initialized: true,
@@ -268,10 +275,11 @@ describe('NotesGitTab (notes-git)', () => {
             log: [],
         };
         render(<NotesGitTab workspaceId="ws-1" />);
-        expect(screen.getByText(/3 behind/)).toBeDefined();
+        expect(await screen.findByText(/3 behind/)).toBeDefined();
     });
 
-    it('renders no sync line when there is no upstream tracking ref', () => {
+    it('renders no sync line when there is no upstream tracking ref', async () => {
+        mockGetWorkspacePreferences.mockResolvedValue({ notesGit: { remoteUrl: 'git@example.com:me/notes.git' } });
         hookReturn = {
             ...defaultHookReturn,
             initialized: true,
@@ -279,10 +287,14 @@ describe('NotesGitTab (notes-git)', () => {
             log: [],
         };
         render(<NotesGitTab workspaceId="ws-1" />);
+        // Wait for the prefs load to land so this is a real assertion about the
+        // upstream gate, not just about the pre-load render.
+        await screen.findByTestId('notes-git-sync-btn');
         expect(screen.queryByTestId('notes-git-sync-status')).toBeNull();
     });
 
-    it('still shows the unpushed line when the working tree is clean (early-return regression)', () => {
+    it('still shows the unpushed line when the working tree is clean (early-return regression)', async () => {
+        mockGetWorkspacePreferences.mockResolvedValue({ notesGit: { remoteUrl: 'git@example.com:me/notes.git' } });
         hookReturn = {
             ...defaultHookReturn,
             initialized: true,
@@ -293,7 +305,70 @@ describe('NotesGitTab (notes-git)', () => {
         // Working tree still reads Clean...
         expect(screen.getByText(/Clean/)).toBeDefined();
         // ...but the unpushed commits are surfaced alongside it.
-        expect(screen.getByText(/2 commits not pushed/)).toBeDefined();
+        expect(await screen.findByText(/2 commits not pushed/)).toBeDefined();
+    });
+
+    // ── Status / action gating agree on one condition ───────────────
+
+    it('hides the ahead/behind line and both remote actions when no remoteUrl is configured, even with a stale local origin ref', async () => {
+        // Real user state: the notes repo still has an `origin/<branch>` ref
+        // left over from an earlier config or a past reset-from-origin, so the
+        // server reports hasUpstream/ahead — but the remote URL has been cleared.
+        // Nothing can push, so nothing should nag about unpushed commits.
+        mockGetWorkspacePreferences.mockResolvedValue({ notesGit: {} });
+        hookReturn = {
+            ...defaultHookReturn,
+            initialized: true,
+            status: makeStatus({ clean: true, hasUpstream: true, ahead: 37, behind: 0 }),
+            log: [],
+        };
+        render(<NotesGitTab workspaceId="ws-1" />);
+
+        // Let the preferences load settle before asserting absence.
+        await waitFor(() => expect(mockGetWorkspacePreferences).toHaveBeenCalled());
+        await screen.findByTestId('notes-git-commit-btn');
+
+        expect(screen.queryByTestId('notes-git-sync-status')).toBeNull();
+        expect(screen.queryByText(/37 commits not pushed/)).toBeNull();
+        expect(screen.queryByText(/Synced with origin/)).toBeNull();
+        expect(screen.queryByTestId('notes-git-sync-btn')).toBeNull();
+        expect(screen.queryByTestId('notes-git-reset-btn')).toBeNull();
+        // Local-history-only is a healthy state: the tree still reads clean.
+        expect(screen.getByText(/Clean/)).toBeDefined();
+    });
+
+    it('shows both the unpushed line and the Sync button when a remoteUrl is configured and ahead > 0', async () => {
+        mockGetWorkspacePreferences.mockResolvedValue({ notesGit: { remoteUrl: 'git@example.com:me/notes.git' } });
+        hookReturn = {
+            ...defaultHookReturn,
+            initialized: true,
+            status: makeStatus({ clean: true, hasUpstream: true, ahead: 37, behind: 0 }),
+            log: [],
+        };
+        render(<NotesGitTab workspaceId="ws-1" />);
+
+        // The warning and the action that resolves it appear together.
+        expect(await screen.findByTestId('notes-git-sync-status')).toBeDefined();
+        expect(screen.getByText(/37 commits not pushed/)).toBeDefined();
+        expect(screen.getByTestId('notes-git-sync-btn')).toBeDefined();
+        expect(screen.getByTestId('notes-git-reset-btn')).toBeDefined();
+    });
+
+    it('treats a whitespace-only remoteUrl as no remote for both status and actions', async () => {
+        mockGetWorkspacePreferences.mockResolvedValue({ notesGit: { remoteUrl: '   ' } });
+        hookReturn = {
+            ...defaultHookReturn,
+            initialized: true,
+            status: makeStatus({ hasUpstream: true, ahead: 5, behind: 0 }),
+            log: [],
+        };
+        render(<NotesGitTab workspaceId="ws-1" />);
+
+        await waitFor(() => expect(mockGetWorkspacePreferences).toHaveBeenCalled());
+        await screen.findByTestId('notes-git-commit-btn');
+
+        expect(screen.queryByTestId('notes-git-sync-status')).toBeNull();
+        expect(screen.queryByTestId('notes-git-sync-btn')).toBeNull();
     });
 
     // ── Initialized view: History list ──────────────────────────────
