@@ -89,7 +89,7 @@ export function SourceLink({ task }: { task: MyWorkTask }) {
             href={task.sourceUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="shrink-0 px-2 py-0.5 -my-0.5 rounded text-sm leading-5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30"
+            className="shrink-0 touch-target inline-flex items-center justify-center px-2 py-0.5 -my-0.5 rounded text-sm leading-5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30"
             title={task.sourceUrl}
             aria-label="Open source"
             data-testid={`my-work-today-source-${task.id}`}
@@ -130,7 +130,8 @@ export interface TaskRowActions {
 }
 
 const ACTION_BTN_CLASS =
-    'shrink-0 px-1.5 py-0.5 -my-0.5 rounded text-xs leading-5 text-gray-400 hover:text-gray-700 ' +
+    'shrink-0 touch-target inline-flex items-center justify-center ' +
+    'px-1.5 py-0.5 -my-0.5 rounded text-xs leading-5 text-gray-400 hover:text-gray-700 ' +
     'dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700/60 disabled:opacity-40';
 
 /**
@@ -272,7 +273,7 @@ export function TaskRow({ task, testIdPrefix, actions }: TaskRowProps) {
     if (editing) {
         return (
             <li
-                className="flex items-start gap-1"
+                className="flex items-start gap-1 min-w-0"
                 data-task-id={task.id}
                 // The editor's own focus ring is the visible treatment here, but
                 // the row is still the selected one and says so.
@@ -293,13 +294,16 @@ export function TaskRow({ task, testIdPrefix, actions }: TaskRowProps) {
 
     return (
         <li
-            className={`flex items-start gap-1 group px-1 -mx-1 ${selectionClass}`}
+            className={`flex items-start gap-1 min-w-0 group px-1 -mx-1 ${selectionClass}`}
             data-task-id={task.id}
             data-selected={selected || undefined}
             onMouseDown={() => onSelect?.(task.id)}
             data-testid={`${testIdPrefix}-${task.id}`}
         >
-            <label className="flex-1 flex items-start gap-2 text-sm cursor-pointer">
+            {/* `min-w-0` + `flex-wrap`: a long title wraps and the `shrink-0`
+                chips fall to the next line, instead of the row growing past the
+                viewport and taking the page's horizontal scrollbar with it. */}
+            <label className="flex-1 min-w-0 flex flex-wrap items-start gap-2 text-sm cursor-pointer">
                 <input
                     type="checkbox"
                     checked={task.checked}
@@ -310,7 +314,7 @@ export function TaskRow({ task, testIdPrefix, actions }: TaskRowProps) {
                     path. `onDoubleClick` on the span alone would still toggle
                     the checkbox via the label, hence the preventDefault. */}
                 <span
-                    className={task.checked ? 'line-through text-gray-400' : ''}
+                    className={`min-w-0 break-words ${task.checked ? 'line-through text-gray-400' : ''}`}
                     onDoubleClick={e => { e.preventDefault(); if (!busy) setEditingId(task.id); }}
                 >
                     {task.text}
