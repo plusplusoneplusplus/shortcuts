@@ -9,10 +9,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-
-const COMMIT_LIST_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'commits', 'CommitList.tsx'
-);
+import { readCommitListSource } from '../../helpers/commit-list-source';
 
 const TOOLTIP_PATH = path.join(
     __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'commits', 'CommitTooltip.tsx'
@@ -28,7 +25,7 @@ describe('CommitList fixup visual grouping', () => {
     let fixupUtilsSource: string;
 
     beforeAll(() => {
-        commitListSource = fs.readFileSync(COMMIT_LIST_PATH, 'utf-8');
+        commitListSource = readCommitListSource();
         tooltipSource = fs.readFileSync(TOOLTIP_PATH, 'utf-8');
         fixupUtilsSource = fs.readFileSync(FIXUP_UTILS_PATH, 'utf-8');
     });

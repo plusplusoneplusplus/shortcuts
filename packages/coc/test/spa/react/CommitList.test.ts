@@ -8,10 +8,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-
-const COMPONENT_PATH = path.join(
-    __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'commits', 'CommitList.tsx'
-);
+import { readCommitListSource } from '../helpers/commit-list-source';
 
 const FILE_TREE_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'diff', 'FileTree.tsx'
@@ -22,7 +19,7 @@ describe('CommitList', () => {
     let fileTreeSource: string;
 
     beforeAll(() => {
-        source = fs.readFileSync(COMPONENT_PATH, 'utf-8');
+        source = readCommitListSource();
         fileTreeSource = fs.readFileSync(FILE_TREE_PATH, 'utf-8');
     });
 
@@ -160,14 +157,14 @@ describe('CommitList', () => {
         });
 
         it('fetches files through typed git client', () => {
-            expect(source).toContain('listCommitFiles(workspaceId');
+            expect(source).toContain('listCommitFiles(activeWorkspaceId');
         });
 
         it('fetches the file list through the workspace-routed client (remote-aware)', () => {
             // Must route through getCocClientForWorkspace so a remote workspace's
             // file list is fetched from its owning server, not the local one.
             expect(source).toContain("import { getCocClientForWorkspace }");
-            expect(source).toContain('getCocClientForWorkspace(workspaceId).git.listCommitFiles');
+            expect(source).toContain('getCocClientForWorkspace(activeWorkspaceId).git.listCommitFiles');
             expect(source).not.toContain('getSpaCocClient().git.listCommitFiles');
         });
 

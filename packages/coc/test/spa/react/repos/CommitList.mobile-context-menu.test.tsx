@@ -14,6 +14,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import * as fs from 'fs';
 import * as path from 'path';
 import { mockViewport } from '../../../spa/helpers/viewport-mock';
+import { readCommitListSource } from '../../helpers/commit-list-source';
 
 // --- Module mocks ---
 
@@ -48,10 +49,6 @@ vi.mock('../../../../src/server/spa/client/react/ui', () => ({
 
 import { CommitList } from '../../../../src/server/spa/client/react/features/git/commits/CommitList';
 import type { GitCommitItem } from '../../../../src/server/spa/client/react/features/git/commits/CommitList';
-
-const COMPONENT_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'commits', 'CommitList.tsx',
-);
 
 const COMMIT_A: GitCommitItem = {
     hash: 'aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111',
@@ -144,7 +141,7 @@ describe('CommitList — source shape (mobile context menu)', () => {
     let source: string;
 
     beforeEach(() => {
-        source = fs.readFileSync(COMPONENT_PATH, 'utf-8');
+        source = readCommitListSource();
     });
 
     it('exports isTouchOnly helper', () => {
@@ -274,7 +271,7 @@ describe('CommitList — ⋮ overflow button improvements', () => {
     });
 
     it('⋮ button has improved styling (w-9 h-9, bg tint)', () => {
-        const source = fs.readFileSync(COMPONENT_PATH, 'utf-8');
+        const source = readCommitListSource();
         // Should have increased size
         expect(source).toContain('w-9 h-9');
         // Should have subtle background
