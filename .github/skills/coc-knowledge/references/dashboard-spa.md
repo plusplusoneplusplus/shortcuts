@@ -447,11 +447,14 @@ Extension canvases (`type: 'extension'`) render
 `ExtensionCanvasView` in preview mode: the extension's `ui.html` runs inside an
 `<iframe sandbox="allow-scripts">` whose injected `window.CanvasHost` bridge
 (`version`/`onState`/`invoke`/`setState`/`listFiles`/`readFile`) talks to the host over `postMessage`.
-The host posts `canvas-state` on ready and on every live update, services
+The host side lives in `useExtensionCanvasHostController`, not the view: it
+posts `canvas-state` on ready and on every live update, services
 `invoke-capability` through `canvases.invokeCapability` and `set-state` through
 the revision-checked `canvases.save`, so human UI actions and AI capability
-calls share one gate. The bridge is protocol **v2** (constants and the error
-shape live in `features/canvas/canvas-host-protocol.ts`): `invoke`/`setState`
+calls share one gate. The bridge is protocol **v2** (constants, the method
+table and the error shape live in `features/canvas/canvas-host-contract.ts`;
+`canvas-host-bootstrap.ts` generates both the live and the offline in-frame
+host from that one table): `invoke`/`setState`
 tag each message with a monotonic `id` and return a promise that settles on the
 host's `{ type: 'response', id, ok, result | error }` reply, or rejects after
 60s with `code: 'timeout'`. Rejections all carry `{ code, message }` with

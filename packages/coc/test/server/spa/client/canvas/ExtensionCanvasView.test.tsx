@@ -23,7 +23,7 @@ import { ExtensionCanvasView, buildExtensionSrcDoc } from '../../../../../src/se
 import {
     CANVAS_HOST_VERSION,
     CANVAS_HOST_REQUEST_TIMEOUT_MS,
-} from '../../../../../src/server/spa/client/react/features/canvas/canvas-host-protocol';
+} from '../../../../../src/server/spa/client/react/features/canvas/canvas-host-contract';
 import { EXTENSION_ROOT_ID } from '../../../../../src/server/spa/client/react/features/canvas/extension-runtime';
 
 function makeCanvas(overrides: Record<string, unknown> = {}) {

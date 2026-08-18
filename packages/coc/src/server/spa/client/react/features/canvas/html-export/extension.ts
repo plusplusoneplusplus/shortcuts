@@ -49,7 +49,7 @@
  * document and embed the frozen state as the recoverable source.
  */
 
-import { CANVAS_HOST_VERSION } from '../canvas-host-protocol';
+import { buildOfflineCanvasHostBootstrap } from '../canvas-host-bootstrap';
 import { buildExtensionRootHtml, buildExtensionRuntimeScript } from '../extension-runtime';
 import { CANVAS_LIBRARIES } from '../../../../../../canvas/canvas-libraries';
 import type { CanvasLibraryId } from '../../../../../../canvas/canvas-libraries';
@@ -188,53 +188,15 @@ function neutralizeExternalReferences(html: string): { html: string; warnings: s
 }
 
 /**
- * Build the offline `CanvasHost` bootstrap script injected ahead of the extension
- * `uiHtml` inside the iframe. It delivers the frozen state to `onState`; there is
- * no server and no persistence, so `invoke`/`setState` reject rather than doing
- * anything — nothing in the exported file can call a CoC route, run a capability,
- * or save state.
- *
- * The rejection is what makes the degradation honest under protocol v2: a v2
- * extension `await`s these calls, so an inert no-op returning `undefined` (or a
- * promise that never settles) would hang the exported page instead of letting the
- * extension show its own "unavailable" state. Each rejected promise gets a
- * no-op `catch` attached before it is handed out, so an extension that fires and
- * forgets does not raise an unhandled rejection in the exported page — while an
- * extension that awaits still observes `code: 'offline'`.
+ * Build the offline `CanvasHost` bootstrap injected ahead of the extension
+ * `uiHtml` inside the iframe. The frozen state goes in as a JS literal; every
+ * server-backed method comes out of the SHARED method table rejecting with
+ * `code: 'offline'`, so this host can never be missing a method the live one has.
  */
 function buildOfflineBootstrap(frozenState: unknown, title: string, revision: number): string {
-    const stateLiteral = toEmbeddableJson(frozenState);
-    const metaLiteral = toEmbeddableJson({ revision, title });
-    return (
-        '<script>\n' +
-        '(function () {\n' +
-        `    var STATE = ${stateLiteral};\n` +
-        `    var META = ${metaLiteral};\n` +
-        '    function offline(method) {\n' +
-        '        return function () {\n' +
-        "            var err = new Error('CanvasHost.' + method + ' is unavailable in this view-only snapshot — there is no server and nothing is saved.');\n" +
-        "            err.code = 'offline';\n" +
-        '            var rejected = Promise.reject(err);\n' +
-        '            rejected.catch(function () { /* observed on await; silent when ignored */ });\n' +
-        '            return rejected;\n' +
-        '        };\n' +
-        '    }\n' +
-        '    window.CanvasHost = {\n' +
-        `        version: ${CANVAS_HOST_VERSION},\n` +
-        '        onState: function (cb) {\n' +
-        "            if (typeof cb !== 'function') return;\n" +
-        '            try { cb(STATE, META); } catch (e) { /* extension render error — leave as-is */ }\n' +
-        '        },\n' +
-        "        invoke: offline('invoke'),\n" +
-        "        setState: offline('setState'),\n" +
-        // Files are NOT inlined into the export: it would multiply the file size
-        // with no bound and no story for what happens at 100 MB. The artifact is
-        // told so, loudly, rather than hanging on a promise that never settles.
-        "        listFiles: offline('listFiles'),\n" +
-        "        readFile: offline('readFile'),\n" +
-        '    };\n' +
-        '})();\n' +
-        '</script>'
+    return buildOfflineCanvasHostBootstrap(
+        toEmbeddableJson(frozenState),
+        toEmbeddableJson({ revision, title }),
     );
 }
 

@@ -110,7 +110,7 @@ Full catalog:
 | `config-changed` | admin-handler |
 | `wiki-reload/rebuilding/error` | broadcastWikiEvent() |
 | `comment-added/updated/deleted` | diff-comments-handler |
-| `canvas-updated` | canvas-routes (user saves; AI edits use the per-process SSE channel instead) |
+| `canvas-updated` | `CanvasUpdateNotifier`, the single fanout every canvas mutation (user save, capability, Kusto create/run) goes through. It emits this WS event AND a ProcessStore/SSE update on the canvas's `processId`; no route emits either on its own. AI tool edits use the per-process SSE channel |
 
 ## Data Flow — Standalone Mode
 

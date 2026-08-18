@@ -17,7 +17,7 @@ import {
     buildExtensionExportBody,
     type ExtensionExportInput,
 } from '../../../../../src/server/spa/client/react/features/canvas/html-export/extension';
-import { CANVAS_HOST_VERSION } from '../../../../../src/server/spa/client/react/features/canvas/canvas-host-protocol';
+import { CANVAS_HOST_VERSION } from '../../../../../src/server/spa/client/react/features/canvas/canvas-host-contract';
 
 const SIMPLE_UI = '<div id="app">Hello</div><script>CanvasHost.onState(function (s) { document.title = s.n; });</script>';
 

@@ -34,7 +34,7 @@ vi.mock('@excalidraw/excalidraw', () => ({
 import { MarkdownView } from '../../../src/server/spa/client/react/shared/MarkdownView';
 import { KustoEmbedGroupProvider } from '../../../src/server/spa/client/react/shared/KustoEmbedGroup';
 import { chatMarkdownToHtml } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
-import { CANVAS_HOST_VERSION } from '../../../src/server/spa/client/react/features/canvas/canvas-host-protocol';
+import { CANVAS_HOST_VERSION } from '../../../src/server/spa/client/react/features/canvas/canvas-host-contract';
 
 mocks.client = {
     canvases: {
