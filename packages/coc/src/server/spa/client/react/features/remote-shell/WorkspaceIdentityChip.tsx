@@ -15,12 +15,14 @@ import { AddRepoDialog } from '../../repos/AddRepoDialog';
 import { CloneRepoDialog } from '../../repos/CloneRepoDialog';
 import { getRepoSelectionId, isRepoSelected } from '../../repos/cloneIdentity';
 import { groupKey, groupReposByRemote, type RepoData, type RepoGroup } from '../../repos/repoGrouping';
+import { getGroupWsl } from '../../repos/repoPickerModel';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import { ToastContainer, useToast } from '../../ui/Toast';
 import { copyToClipboard } from '../../utils/format';
 import { computeCloneStatusMap, describeRemoveBlock, summarizeRemote } from './shellModel';
 import { RemoteProviderBadge } from './RemoteProviderBadge';
 import { useDropdownPopover } from './useDropdownPopover';
+import { WslBadge } from './WslBadge';
 import { PickerEmpty, PickerRow, PickerSection, RepoPickerPopover } from './RepoPickerPopover';
 import { useRecentRemotes } from './useRecentRemotes';
 import { useShellNavigation } from './useShellNavigation';
@@ -209,6 +211,10 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
         // when it *is* a single clone. Multi-clone groups drill into the clone
         // list (the clone popover), which offers Remove per clone. (AC-01)
         const soleClone = group.repos.length === 1 ? group.repos[0] : null;
+        // All-or-nothing: the group row is only marked WSL when every clone under
+        // it is WSL-hosted; a mixed group stays unmarked and the per-clone rows
+        // carry the distinction. (AC-03)
+        const groupWsl = getGroupWsl(group);
         return (
             <PickerRow
                 key={key}
@@ -237,6 +243,7 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
                 ) : undefined}
                 badges={
                     <>
+                        {groupWsl && <WslBadge distro={groupWsl.distro} />}
                         {summary.cloneCount > 1 && (
                             <span className="inline-flex items-center gap-0.5 h-[16px] px-1.5 rounded-full text-[10px] font-semibold leading-none bg-black/[0.06] dark:bg-white/[0.10] text-[#555] dark:text-[#bbb]">
                                 <CloneGlyph />

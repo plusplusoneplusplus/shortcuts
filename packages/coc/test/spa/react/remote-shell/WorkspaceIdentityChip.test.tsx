@@ -267,3 +267,53 @@ describe('resolveRepoCopyPath', () => {
         expect(resolveRepoCopyPath({} as any)).toBeNull();
     });
 });
+
+describe('WorkspaceIdentityChip group row — WSL pill (AC-03)', () => {
+    const wslRepo = (id: string, name: string, remoteUrl: string, distro: string | null = 'Ubuntu') => ({
+        workspace: {
+            id, name, color: '#0078d4', remoteUrl,
+            rootPath: `//wsl.localhost/Ubuntu/home/u/${id}`,
+            wsl: { distro },
+        },
+        gitInfo: { isGitRepo: true, branch: 'main', dirty: false, remoteUrl },
+    });
+
+    function groupRowFor(name: string): HTMLElement | undefined {
+        return screen.queryAllByTestId('remote-dropdown-item')
+            .find(row => row.textContent?.includes(name));
+    }
+
+    it('shows the pill when every clone in the group is WSL-hosted', () => {
+        const repos = [wslRepo('a', 'shortcuts', SHORTCUTS), wslRepo('b', 'shortcuts-2', SHORTCUTS)];
+        openPicker(repos, repos[0]);
+
+        const badge = groupRowFor('shortcuts')!.querySelector('[data-testid="wsl-badge"]')!;
+        expect(badge).toBeTruthy();
+        expect(badge.textContent).toBe('WSL');
+        expect(badge.getAttribute('aria-label')).toBe('Hosted in WSL (Ubuntu)');
+    });
+
+    it('shows no pill on a mixed group', () => {
+        const repos = [wslRepo('a', 'shortcuts', SHORTCUTS), repo('b', 'shortcuts-2', SHORTCUTS)];
+        openPicker(repos, repos[0]);
+
+        expect(screen.getAllByTestId('remote-dropdown-item')).toHaveLength(1);
+        expect(screen.queryAllByTestId('wsl-badge')).toHaveLength(0);
+    });
+
+    it('shows no pill when no clone is WSL-hosted', () => {
+        const repos = [repo('a', 'shortcuts', SHORTCUTS), repo('f', 'forge', FORGE)];
+        openPicker(repos, repos[0]);
+
+        expect(screen.queryAllByTestId('wsl-badge')).toHaveLength(0);
+    });
+
+    it('keeps the clone-count badge alongside the pill on an all-WSL group', () => {
+        const repos = [wslRepo('a', 'shortcuts', SHORTCUTS), wslRepo('b', 'shortcuts-2', SHORTCUTS)];
+        openPicker(repos, repos[0]);
+
+        const row = groupRowFor('shortcuts')!;
+        expect(row.querySelector('[data-testid="wsl-badge"]')).toBeTruthy();
+        expect(row.textContent).toContain('2');
+    });
+});

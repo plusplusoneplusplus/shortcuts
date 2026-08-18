@@ -54,3 +54,33 @@ export function getRepoWsl(repo: RepoData): RepoWslInfo | null {
     if (!wsl || typeof wsl !== 'object') return null;
     return { distro: typeof wsl.distro === 'string' && wsl.distro ? wsl.distro : null };
 }
+
+/**
+ * A group's WSL marker under the all-or-nothing rule: a group row shows the
+ * `WSL` pill only when it has clones and **every** clone is WSL-hosted. A mixed
+ * group (some WSL, some native) shows nothing at the group level — the
+ * distinction is visible per clone once the group is expanded — and an empty
+ * group shows nothing either.
+ *
+ * The distro is carried through only when all clones agree on it; clones spread
+ * across different distros report `null`, so the label degrades to the generic
+ * `Hosted in WSL`.
+ */
+export function getGroupWsl(group: { repos: RepoData[] }): RepoWslInfo | null {
+    const repos = group?.repos ?? [];
+    if (repos.length === 0) return null;
+
+    let distro: string | null = null;
+    let first = true;
+    for (const repo of repos) {
+        const wsl = getRepoWsl(repo);
+        if (!wsl) return null;
+        if (first) {
+            distro = wsl.distro;
+            first = false;
+        } else if (distro !== wsl.distro) {
+            distro = null;
+        }
+    }
+    return { distro };
+}
