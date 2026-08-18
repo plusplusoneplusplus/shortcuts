@@ -19,6 +19,16 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     };
 });
 
+// Pin host WSL detection off so the UNC-root assertions below exercise the path
+// predicate alone, regardless of what the test machine actually is.
+vi.mock('../../src/server/endev/endev-detector', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../src/server/endev/endev-detector')>();
+    return {
+        ...actual,
+        isNativeWslEnvironment: vi.fn(() => false),
+    };
+});
+
 vi.mock('fs', async (importOriginal) => {
     const actual = await importOriginal<typeof import('fs')>();
     return {
@@ -90,5 +100,38 @@ describe('GET /api/workspaces — WSL repo detection', () => {
             expect.objectContaining({ id: 'ws-wsl', isGitRepo: true }),
         ]);
         expect(fs.existsSync).toHaveBeenCalledWith(expectedGitDir);
+    });
+});
+
+describe('GET /api/workspaces — WSL marker', () => {
+    let server: http.Server;
+    let baseUrl: string;
+    const store = createMockProcessStore();
+
+    beforeAll(async () => {
+        const routes: Route[] = [];
+        registerApiRoutes(routes, store);
+        server = http.createServer(createRouter({ routes, spaHtml: '<html></html>' }));
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        baseUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+    });
+
+    afterAll(async () => {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+    });
+
+    it('reports the distro for a WSL-rooted workspace and omits the marker otherwise', async () => {
+        (store.getWorkspaces as ReturnType<typeof vi.fn>).mockResolvedValue([
+            { id: 'ws-unc', name: 'wsl-clone', rootPath: String.raw`\\wsl.localhost\Ubuntu-24.04\home\tester\repo` },
+            { id: 'ws-native', name: 'native-clone', rootPath: String.raw`C:\src\repo` },
+        ]);
+
+        const res = await request(`${baseUrl}/api/workspaces`);
+
+        expect(res.status).toBe(200);
+        const workspaces = res.json().workspaces;
+        expect(workspaces[0]).toMatchObject({ id: 'ws-unc', wsl: { distro: 'Ubuntu-24.04' } });
+        expect(workspaces[1].id).toBe('ws-native');
+        expect(workspaces[1]).not.toHaveProperty('wsl');
     });
 });
