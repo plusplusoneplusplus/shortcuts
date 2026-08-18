@@ -9,7 +9,20 @@ import * as path from 'path';
 const LAYOUT_DIR = path.join(
     __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'layout'
 );
-const SOURCE = fs.readFileSync(path.join(LAYOUT_DIR, 'PopOutGitReviewShell.tsx'), 'utf-8');
+const KERNEL_DIR = path.join(LAYOUT_DIR, 'popoutGitReview');
+
+function kernelSource(file: string): string {
+    return fs.readFileSync(path.join(KERNEL_DIR, file), 'utf-8');
+}
+
+const COMMIT_SOURCE = kernelSource('CommitReviewContent.tsx');
+const PR_SOURCE = kernelSource('PrReviewContent.tsx');
+const BRANCH_SOURCE = kernelSource('BranchRangeReviewContent.tsx');
+const LAYOUT_SOURCE = kernelSource('PopOutReviewLayout.tsx');
+const MODEL_SOURCE = kernelSource('usePopOutReviewModel.ts');
+const COMMENT_MAP_SOURCE = kernelSource('useFileCommentMap.ts');
+/** Every adapter plus the shared kernel, for "somewhere in the flow" assertions. */
+const SOURCE = [COMMIT_SOURCE, PR_SOURCE, BRANCH_SOURCE, LAYOUT_SOURCE, MODEL_SOURCE, COMMENT_MAP_SOURCE].join('\n');
 
 describe('PopOutGitReviewShell: file panel integration', () => {
     it('imports PopOutFilePanel', () => {
@@ -41,57 +54,46 @@ describe('PopOutGitReviewShell: file panel integration', () => {
         expect(SOURCE).toContain("computeDiffCommentKey");
     });
 
-    it('renders PopOutFilePanel in commit review content', () => {
-        expect(SOURCE).toContain('<PopOutFilePanel');
-    });
-
-    it('passes isPopOut to CommitDetail', () => {
-        // The isPopOut prop should be passed as a boolean (no value = true)
-        expect(SOURCE).toMatch(/CommitDetail[\s\S]*?isPopOut/);
+    it('renders PopOutFilePanel from the shared review layout', () => {
+        expect(LAYOUT_SOURCE).toContain('<PopOutFilePanel');
+        // Adapters configure the layout instead of rendering the rail themselves.
+        expect(COMMIT_SOURCE).toContain('<PopOutReviewLayout');
+        expect(PR_SOURCE).toContain('<PopOutReviewLayout');
+        expect(BRANCH_SOURCE).toContain('<PopOutReviewLayout');
     });
 
     it('passes isPopOut to BranchRangeOverview', () => {
-        expect(SOURCE).toMatch(/BranchRangeOverview[\s\S]*?isPopOut/);
+        expect(BRANCH_SOURCE).toMatch(/BranchRangeOverview[\s\S]*?isPopOut/);
+    });
+
+    it('switches between the diff surface and the overview in one place', () => {
+        expect(LAYOUT_SOURCE).toContain('model.selectedFilePath ? renderDiff(model.selectedFilePath) : overview');
     });
 
     it('renders FileDiffPanel for selected file, placeholder for commit overview', () => {
-        const commitSection = SOURCE.slice(
-            SOURCE.indexOf('function CommitReviewContent'),
-            SOURCE.indexOf('// ── Branch range review content'),
-        );
-        expect(commitSection).toMatch(/selectedFilePath \? \(/);
-        expect(commitSection).toMatch(/selectedFilePath \? \(\s*<FileDiffPanel/);
-        expect(commitSection).toContain('Select a file to view its diff');
+        expect(COMMIT_SOURCE).toMatch(/renderDiff=\{filePath => \(\s*<FileDiffPanel/);
+        expect(COMMIT_SOURCE).toContain('Select a file to view its diff');
     });
 
     it('renders FileDiffPanel for selected commit files', () => {
-        const commitSection = SOURCE.slice(
-            SOURCE.indexOf('function CommitReviewContent'),
-            SOURCE.indexOf('// ── Branch range review content'),
-        );
-        expect(commitSection).toMatch(/selectedFilePath \? \(\s*<FileDiffPanel/);
-        expect(commitSection).toContain('createCommitDiffSource(workspaceId, commitHash');
-        expect(commitSection).toContain('onBack={handleBack}');
+        expect(COMMIT_SOURCE).toContain('createCommitDiffSource(workspaceId, commitHash');
+        expect(COMMIT_SOURCE).toContain('popOutDiffPanelProps(model, filePath');
     });
 
     it('renders BranchRangeOverview only for branch overview', () => {
-        const branchSection = SOURCE.slice(
-            SOURCE.indexOf('function BranchRangeReviewContent'),
-            SOURCE.indexOf('// ── Inner content'),
-        );
-        expect(branchSection).toMatch(/selectedFilePath \? \(/);
-        expect(branchSection).toMatch(/: \(\s*<BranchRangeOverview/);
-        expect(branchSection).toMatch(/<BranchRangeOverview[\s\S]*?isPopOut/);
+        expect(BRANCH_SOURCE).toMatch(/overview=\{\(\s*<BranchRangeOverview/);
+        expect(BRANCH_SOURCE).toMatch(/<BranchRangeOverview[\s\S]*?isPopOut/);
     });
 
     it('renders FileDiffPanel for selected branch-range files', () => {
-        const branchSection = SOURCE.slice(
-            SOURCE.indexOf('function BranchRangeReviewContent'),
-            SOURCE.indexOf('// ── Inner content'),
-        );
-        expect(branchSection).toMatch(/selectedFilePath \? \(\s*<FileDiffPanel/);
-        expect(branchSection).toContain('createBranchRangeDiffSource(workspaceId');
-        expect(branchSection).toContain('onBack={handleBack}');
+        expect(BRANCH_SOURCE).toMatch(/renderDiff=\{filePath => \(\s*<FileDiffPanel/);
+        expect(BRANCH_SOURCE).toContain('createBranchRangeDiffSource(workspaceId');
+        expect(BRANCH_SOURCE).toContain('popOutDiffPanelProps(model, filePath)');
+    });
+
+    it('shares the back handler and label across review types', () => {
+        expect(MODEL_SOURCE).toContain('onBack: model.handleBack');
+        expect(MODEL_SOURCE).toContain("backLabel: 'All files'");
     });
 
     it('does not pass focused-file props into overview components', () => {
@@ -100,56 +102,56 @@ describe('PopOutGitReviewShell: file panel integration', () => {
     });
 
     it('uses toggle-deselect handler for file selection', () => {
-        expect(SOURCE).toContain('prev === filePath ? null : filePath');
+        expect(MODEL_SOURCE).toContain('prev === filePath ? null : filePath');
     });
 
-    it('has selectedFilePath state in CommitReviewContent', () => {
-        expect(SOURCE).toContain('selectedFilePath');
-        expect(SOURCE).toContain('setSelectedFilePath');
-    });
-
-    it('has selectedFilePath state in BranchRangeReviewContent', () => {
-        // Both content components use selectedFilePath
-        const matches = SOURCE.match(/useState<string \| null>\(null\)/g);
-        expect(matches).not.toBeNull();
-        expect(matches!.length).toBeGreaterThanOrEqual(2);
+    it('owns selectedFilePath state once, in the shared review model', () => {
+        expect(MODEL_SOURCE).toContain('setSelectedFilePath');
+        // No adapter keeps its own copy of the selection.
+        for (const adapter of [COMMIT_SOURCE, PR_SOURCE, BRANCH_SOURCE]) {
+            expect(adapter).not.toContain('setSelectedFilePath');
+            expect(adapter).toContain('usePopOutReviewModel');
+        }
     });
 
     it('converts BranchRangeFile to FileChange for file panel', () => {
-        expect(SOURCE).toContain('fileChanges');
+        expect(BRANCH_SOURCE).toContain('fileChanges');
     });
 
     it('uses flex layout for content with file panel', () => {
-        expect(SOURCE).toContain('flex flex-1 min-h-0');
+        expect(LAYOUT_SOURCE).toContain('flex flex-1 min-h-0');
     });
 });
 
 describe('PopOutGitReviewShell: comment count mapping', () => {
-    it('maps comment storage keys to file paths for commit mode', () => {
-        expect(SOURCE).toContain('computeDiffCommentKey');
-        expect(SOURCE).toContain("fileCommentMap");
+    it('maps comment storage keys to file paths in one shared hook', () => {
+        expect(COMMENT_MAP_SOURCE).toContain('computeDiffCommentKey');
+        expect(COMMENT_MAP_SOURCE).toContain('fileCommentMap');
+        for (const adapter of [COMMIT_SOURCE, BRANCH_SOURCE]) {
+            expect(adapter).toContain('useFileCommentMap(workspaceId');
+            expect(adapter).not.toContain('computeDiffCommentKey');
+        }
+    });
+
+    it('uses parent/commit refs for commit mode', () => {
+        expect(COMMIT_SOURCE).toContain('`${commitHash}^`');
     });
 
     it('uses branch-base/branch-head refs for branch-range mode', () => {
-        expect(SOURCE).toContain("'branch-base'");
-        expect(SOURCE).toContain("'branch-head'");
+        expect(BRANCH_SOURCE).toContain("'branch-base'");
+        expect(BRANCH_SOURCE).toContain("'branch-head'");
     });
 });
 
 describe('PopOutGitReviewShell: PR source label suppression', () => {
     it('passes showSourceLabel={false} to FileDiffPanel in PR review', () => {
-        const prSection = SOURCE.slice(
-            SOURCE.indexOf('function PrReviewContent'),
-        );
-        expect(prSection).toContain('showSourceLabel={false}');
+        expect(PR_SOURCE).toContain('showSourceLabel={false}');
     });
 });
 
 describe('PopOutGitReviewShell: PR file list statuses', () => {
-    const prSection = SOURCE.slice(SOURCE.indexOf('function PrReviewContent'));
-
     it('builds the PR file list with parseDiffFileList so real statuses survive', () => {
-        expect(prSection).toContain('setFileList(parseDiffFileList(diffText))');
+        expect(PR_SOURCE).toContain('setFileList(parseDiffFileList(diffText))');
     });
 
     it('no longer hardcodes every PR file to modified', () => {

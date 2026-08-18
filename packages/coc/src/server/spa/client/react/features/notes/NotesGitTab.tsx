@@ -71,7 +71,11 @@ function NotesGitInitPrompt({ onInit }: { onInit: () => void }) {
 
 function NotesGitStatusSection({
     status,
+    hasRemote,
 }: {
+    /** Whether a `notesGit.remoteUrl` is configured — the same gate the Sync /
+     *  Reset buttons use, so status and actions can never disagree. */
+    hasRemote: boolean;
     status: {
         clean: boolean;
         staged: string[];
@@ -118,7 +122,12 @@ function NotesGitStatusSection({
                     )}
                 </div>
             )}
-            <NotesGitSyncStatus hasUpstream={status.hasUpstream} ahead={status.ahead} behind={status.behind} />
+            <NotesGitSyncStatus
+                hasRemote={hasRemote}
+                hasUpstream={status.hasUpstream}
+                ahead={status.ahead}
+                behind={status.behind}
+            />
         </>
     );
 }
@@ -126,20 +135,32 @@ function NotesGitStatusSection({
 /**
  * Sync line: whether committed changes have reached `origin/<branch>`.
  * Orthogonal to working-tree state, so it renders for both clean and dirty
- * trees. Hidden entirely when there is no local upstream tracking ref
- * (`hasUpstream` false) — sync state is unknown then. `ahead` is always
- * accurate; `behind` reflects the last fetch/sync and may be stale.
+ * trees. `ahead` is always accurate; `behind` reflects the last fetch/sync
+ * and may be stale.
+ *
+ * Hidden entirely when no `notesGit.remoteUrl` is configured, which is the
+ * same condition that gates the Sync / Reset buttons. A notes repo can hold a
+ * stale local `origin/<branch>` ref (left by an earlier config or a past reset
+ * from origin) long after the remote URL is cleared; without this gate the tab
+ * would report "N commits not pushed" while hiding every control that could
+ * push them, and the sync route would reject the call anyway. Local-history-only
+ * notes are a valid, healthy setup — say nothing about push state at all.
+ *
+ * Also hidden when there is no local upstream tracking ref (`hasUpstream`
+ * false) — sync state is unknown then.
  */
 function NotesGitSyncStatus({
+    hasRemote,
     hasUpstream,
     ahead,
     behind,
 }: {
+    hasRemote: boolean;
     hasUpstream?: boolean;
     ahead?: number | null;
     behind?: number | null;
 }) {
-    if (!hasUpstream || ahead == null) return null;
+    if (!hasRemote || !hasUpstream || ahead == null) return null;
 
     const aheadCount = ahead ?? 0;
     const behindCount = behind ?? 0;
@@ -544,6 +565,11 @@ export function NotesGitTab({ workspaceId, isDefaultRoot = true, dockStatusFoote
         return <NotesGitInitPrompt onInit={initialize} />;
     }
 
+    // Single source of truth for "this notes repo pushes somewhere": gates the
+    // Sync / Reset actions *and* the ahead/behind readout, so the tab can never
+    // report unpushed commits while offering no way to push them.
+    const hasRemote = remoteUrl.trim().length > 0;
+
     // Commit button + optional message input
     const commitActions = (
         <div className="flex items-center gap-2">
@@ -577,7 +603,7 @@ export function NotesGitTab({ workspaceId, isDefaultRoot = true, dockStatusFoote
             >
                 Commit Now
             </Button>
-            {remoteUrl.trim() && (
+            {hasRemote && (
                 <Button
                     variant="ghost"
                     size="sm"
@@ -589,7 +615,7 @@ export function NotesGitTab({ workspaceId, isDefaultRoot = true, dockStatusFoote
                     Sync
                 </Button>
             )}
-            {remoteUrl.trim() && (
+            {hasRemote && (
                 <Button
                     variant="ghost"
                     size="sm"
@@ -627,7 +653,7 @@ export function NotesGitTab({ workspaceId, isDefaultRoot = true, dockStatusFoote
                     actions={commitActions}
                     className="px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]"
                 />
-                {status && <NotesGitStatusSection status={status} />}
+                {status && <NotesGitStatusSection status={status} hasRemote={hasRemote} />}
                 <NotesGitHistoryList log={log} selectedHash={selectedHash} onSelect={handleSelectCommit} />
                 {/* Docked status/action cluster (remote-first shell). No-ops in
                     classic / mobile via DockedStatusFooter's own gate. */}

@@ -14,6 +14,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import * as fs from 'fs';
 import * as path from 'path';
 import { mockViewport } from '../../../spa/helpers/viewport-mock';
+import { readCommitListSource } from '../../helpers/commit-list-source';
 
 // --- Module mocks ---
 
@@ -48,10 +49,6 @@ vi.mock('../../../../src/server/spa/client/react/ui', () => ({
 
 import { CommitList } from '../../../../src/server/spa/client/react/features/git/commits/CommitList';
 import type { GitCommitItem } from '../../../../src/server/spa/client/react/features/git/commits/CommitList';
-
-const COMPONENT_PATH = path.join(
-    __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'commits', 'CommitList.tsx',
-);
 
 const COMMIT_A: GitCommitItem = {
     hash: 'aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111',
@@ -123,7 +120,7 @@ describe('CommitList — source shape (swipe)', () => {
     let source: string;
 
     beforeEach(() => {
-        source = fs.readFileSync(COMPONENT_PATH, 'utf-8');
+        source = readCommitListSource();
     });
 
     it('imports useSwipeReveal', () => {
@@ -216,7 +213,7 @@ describe('CommitList — swipe integration on touch devices', () => {
         // We need to render with swipe actions visible.
         // Since swipe action buttons only appear when translateX < -15,
         // we test by checking the source shape instead.
-        const source = fs.readFileSync(COMPONENT_PATH, 'utf-8');
+        const source = readCommitListSource();
         expect(source).toContain("onSwipeAction?.('review', commitHash)");
         expect(source).toContain("onSwipeAction?.('ask-ai', commitHash)");
         expect(source).toContain("onSwipeAction?.('more', commitHash)");
@@ -227,7 +224,7 @@ describe('CommitList — swipe integration on touch devices', () => {
 
 describe('CommitList — swipe disabled during multi-select', () => {
     it('passes disabled=true to SwipeableCommitRow when isMobileSelecting', () => {
-        const source = fs.readFileSync(COMPONENT_PATH, 'utf-8');
+        const source = readCommitListSource();
         expect(source).toContain('disabled={isMobileSelecting}');
     });
 });
