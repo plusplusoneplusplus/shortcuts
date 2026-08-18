@@ -29,6 +29,7 @@ import {
 import { getEffectiveDefaultDisabledTools, getEffectiveLlmToolRegistry } from '../llm-tools/llm-tool-registry';
 import { withToolParameterMetadata } from '../llm-tools/llm-tool-parameter-schemas';
 import { detectEnDevEligibility } from '../endev/endev-detector';
+import { resolveHostCopyPath } from '../host-copy-path';
 import { skillCache } from '../skills/skill-handler';
 import {
     getServerDetail,
@@ -295,9 +296,13 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
         pattern: '/api/workspaces',
         handler: async (_req, res) => {
             const workspaces = await store.getWorkspaces();
+            // `copyPath` is the host-reachable form of `rootPath` — identical to it
+            // everywhere except a native-WSL server, where it becomes the Windows
+            // UNC path so the dashboard's "Copy path" pastes into Windows apps.
             const enriched = workspaces.map(ws => ({
                 ...ws,
                 isGitRepo: hasGitDirectory(ws.rootPath),
+                copyPath: resolveHostCopyPath(ws.rootPath),
             }));
             sendJSON(res, 200, { workspaces: enriched });
         },

@@ -101,3 +101,32 @@ export function toNativePath(p: string): string {
     }
     return toForwardSlashes(p);
 }
+
+/**
+ * Convert a Linux absolute path into the Windows-reachable WSL UNC form
+ * (`\\wsl.localhost\<distro>\home\user\repo`), so it can be pasted into
+ * Windows apps such as Explorer.
+ *
+ * Returns the path unchanged when it cannot or should not be translated:
+ * - `distro` is missing or blank (we have no namespace to point at),
+ * - the path is already a WSL UNC path (no double translation),
+ * - the path is not a Linux absolute path (Windows drive paths, relative paths).
+ */
+export function toWslUncPath(p: string, distro: string | undefined | null): string {
+    const distroName = (distro ?? '').trim();
+    if (!distroName || !p) {
+        return p;
+    }
+    if (isWslUncPath(p) || getWslUncRoot(p)) {
+        return p;
+    }
+    if (!isLinuxAbsolutePath(toForwardSlashes(p))) {
+        return p;
+    }
+
+    const remainder = trimTrailingPathSeparators(toForwardSlashes(p))
+        .replace(/^\/+/, '')
+        .replace(/\//g, '\\');
+    const root = `\\\\wsl.localhost\\${distroName}`;
+    return remainder.length > 0 ? `${root}\\${remainder}` : root;
+}

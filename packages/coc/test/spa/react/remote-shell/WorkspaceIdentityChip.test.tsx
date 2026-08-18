@@ -46,7 +46,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/repositoryService', () =>
     removeWorkspace: (...args: unknown[]) => mockRemoveWorkspace(...args),
 }));
 
-import { WorkspaceIdentityChip } from '../../../../src/server/spa/client/react/features/remote-shell/WorkspaceIdentityChip';
+import { resolveRepoCopyPath, WorkspaceIdentityChip } from '../../../../src/server/spa/client/react/features/remote-shell/WorkspaceIdentityChip';
 
 const SHORTCUTS = 'https://github.com/acme/shortcuts.git';
 const FORGE = 'https://github.com/acme/forge.git';
@@ -177,5 +177,93 @@ describe('WorkspaceIdentityChip row menu (AC-01)', () => {
         fireEvent.click(rowMenuFor('forge')!);
         fireEvent.mouseDown(removeItem()!);
         expect(screen.getByTestId('remote-dropdown')).toBeTruthy();
+    });
+});
+
+describe('WorkspaceIdentityChip row menu — Copy path (AC-01/AC-02)', () => {
+    function copyItem(): HTMLElement | undefined {
+        return screen.queryAllByRole('menuitem').find(el => el.textContent?.includes('Copy path'));
+    }
+
+    function mockClipboard() {
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        Object.defineProperty(navigator, 'clipboard', {
+            value: { writeText },
+            configurable: true,
+        });
+        return writeText;
+    }
+
+    it('offers Copy path alongside Remove from CoC', () => {
+        const repos = [repo('a', 'shortcuts', SHORTCUTS), repo('f', 'forge', FORGE)];
+        openPicker(repos, repos[0]);
+
+        fireEvent.click(rowMenuFor('forge')!);
+        expect(copyItem()).toBeTruthy();
+        expect(removeItem()).toBeTruthy();
+    });
+
+    it('copies the server-resolved copyPath and toasts', async () => {
+        const writeText = mockClipboard();
+        const repos = [repo('a', 'shortcuts', SHORTCUTS), repo('f', 'forge', FORGE)];
+        // The server hands the SPA a host-reachable path — inside WSL that is the
+        // Windows UNC form, which the client copies verbatim (AC-02).
+        (repos[1].workspace as any).copyPath = '\\\\wsl.localhost\\Ubuntu\\r\\f';
+        openPicker(repos, repos[0]);
+
+        fireEvent.click(rowMenuFor('forge')!);
+        fireEvent.click(copyItem()!);
+
+        await waitFor(() => expect(writeText).toHaveBeenCalledWith('\\\\wsl.localhost\\Ubuntu\\r\\f'));
+        await waitFor(() => expect(screen.getByText('Path copied to clipboard')).toBeTruthy());
+    });
+
+    it('falls back to the raw workspace path when the server sent no copyPath', async () => {
+        const writeText = mockClipboard();
+        const repos = [repo('a', 'shortcuts', SHORTCUTS), repo('f', 'forge', FORGE)];
+        openPicker(repos, repos[0]);
+
+        fireEvent.click(rowMenuFor('forge')!);
+        fireEvent.click(copyItem()!);
+
+        await waitFor(() => expect(writeText).toHaveBeenCalledWith('/r/f'));
+    });
+
+    it('toasts an error when the clipboard write rejects', async () => {
+        const writeText = vi.fn().mockRejectedValue(new Error('denied'));
+        Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+        const repos = [repo('a', 'shortcuts', SHORTCUTS), repo('f', 'forge', FORGE)];
+        openPicker(repos, repos[0]);
+
+        fireEvent.click(rowMenuFor('forge')!);
+        fireEvent.click(copyItem()!);
+
+        await waitFor(() => expect(screen.getByText('Could not copy path')).toBeTruthy());
+    });
+
+    it('disables Copy path when the workspace has no resolvable path', () => {
+        const repos = [repo('a', 'shortcuts', SHORTCUTS), repo('f', 'forge', FORGE)];
+        delete (repos[1].workspace as any).rootPath;
+        openPicker(repos, repos[0]);
+
+        fireEvent.click(rowMenuFor('forge')!);
+        const item = copyItem()!;
+        expect(item.hasAttribute('disabled')).toBe(true);
+        expect(item.closest('[title]')?.getAttribute('title')).toContain('no local path');
+    });
+});
+
+describe('resolveRepoCopyPath', () => {
+    it('prefers copyPath, then path, then rootPath', () => {
+        expect(resolveRepoCopyPath({ workspace: { copyPath: '\\\\unc', path: '/p', rootPath: '/r' } } as any)).toBe('\\\\unc');
+        expect(resolveRepoCopyPath({ workspace: { path: '/p', rootPath: '/r' } } as any)).toBe('/p');
+        expect(resolveRepoCopyPath({ workspace: { rootPath: '/r' } } as any)).toBe('/r');
+    });
+
+    it('returns null when nothing usable is present', () => {
+        expect(resolveRepoCopyPath({ workspace: {} } as any)).toBeNull();
+        expect(resolveRepoCopyPath({ workspace: { rootPath: '   ' } } as any)).toBeNull();
+        expect(resolveRepoCopyPath({ workspace: { rootPath: 42 } } as any)).toBeNull();
+        expect(resolveRepoCopyPath({} as any)).toBeNull();
     });
 });

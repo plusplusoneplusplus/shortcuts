@@ -6,6 +6,7 @@ import {
     parseWslUncPath,
     toForwardSlashes,
     toNativePath,
+    toWslUncPath,
     windowsPathToWslPath,
 } from '../../src/utils/path-utils';
 import { isWithinDirectory } from '../../src/utils/path-security';
@@ -155,5 +156,48 @@ describe('isWithinDirectory', () => {
     it('resolves relative paths against cwd', () => {
         const cwd = process.cwd();
         expect(isWithinDirectory('child', cwd)).toBe(true);
+    });
+});
+
+describe('toWslUncPath', () => {
+    it('translates a Linux absolute path into the Windows UNC form', () => {
+        expect(toWslUncPath('/home/yiheng/projects/shortcuts', 'Ubuntu')).toBe(
+            '\\\\wsl.localhost\\Ubuntu\\home\\yiheng\\projects\\shortcuts'
+        );
+    });
+
+    it('translates the filesystem root', () => {
+        expect(toWslUncPath('/', 'Ubuntu')).toBe('\\\\wsl.localhost\\Ubuntu');
+    });
+
+    it('drops a trailing separator', () => {
+        expect(toWslUncPath('/home/yiheng/', 'Ubuntu')).toBe(
+            '\\\\wsl.localhost\\Ubuntu\\home\\yiheng'
+        );
+    });
+
+    it('keeps a distro name with spaces verbatim', () => {
+        expect(toWslUncPath('/opt/tools', 'Ubuntu 22.04')).toBe(
+            '\\\\wsl.localhost\\Ubuntu 22.04\\opt\\tools'
+        );
+    });
+
+    it('returns the path unchanged when the distro is missing', () => {
+        expect(toWslUncPath('/home/yiheng', undefined)).toBe('/home/yiheng');
+        expect(toWslUncPath('/home/yiheng', null)).toBe('/home/yiheng');
+        expect(toWslUncPath('/home/yiheng', '   ')).toBe('/home/yiheng');
+    });
+
+    it('does not translate an already-UNC path twice', () => {
+        const unc = '\\\\wsl.localhost\\Ubuntu\\home\\yiheng';
+        expect(toWslUncPath(unc, 'Ubuntu')).toBe(unc);
+        expect(toWslUncPath('\\\\wsl$\\Ubuntu\\home', 'Ubuntu')).toBe('\\\\wsl$\\Ubuntu\\home');
+        expect(toWslUncPath('//wsl.localhost/Ubuntu/home', 'Ubuntu')).toBe('//wsl.localhost/Ubuntu/home');
+    });
+
+    it('returns non-Linux paths unchanged', () => {
+        expect(toWslUncPath('C:\\repo', 'Ubuntu')).toBe('C:\\repo');
+        expect(toWslUncPath('relative/dir', 'Ubuntu')).toBe('relative/dir');
+        expect(toWslUncPath('', 'Ubuntu')).toBe('');
     });
 });
