@@ -37,7 +37,14 @@ export function buildRequiredWorkspacePackages({
 export function resolveBuildCommit({
     rootDir = repoRoot,
     run = execFileSync,
+    env = process.env,
 } = {}) {
+    // Builds without a .git directory (the Docker image build context excludes
+    // it) pass the commit in explicitly.
+    const fromEnv = env.COC_BUILD_COMMIT?.trim();
+    if (fromEnv) {
+        return fromEnv;
+    }
     try {
         return run('git', ['rev-parse', 'HEAD'], {
             cwd: rootDir,
@@ -52,13 +59,14 @@ export function writeBuildInfo({
     rootDir = repoRoot,
     cocPackageRoot = packageRoot,
     run = execFileSync,
+    env = process.env,
 } = {}) {
     // The product version is the workspace root version — that is what the
     // release bumps (in lockstep with coc-desktop). The coc package's own
     // version is not published and drifts, so it must not be reported.
     const packageJsonPath = path.join(rootDir, 'package.json');
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-    const commit = resolveBuildCommit({ rootDir, run });
+    const commit = resolveBuildCommit({ rootDir, run, env });
     const outputPath = path.join(cocPackageRoot, 'src', 'server', 'core', 'build-info.ts');
 
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });

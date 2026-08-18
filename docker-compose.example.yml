@@ -1,0 +1,44 @@
+# Single-box CoC: one container, one user, opened at http://127.0.0.1:4000.
+#
+#   docker compose -f docker-compose.example.yml up -d
+#
+# The server binds 127.0.0.1 *inside* the container by policy (same as a native
+# `coc serve`). Under host networking the container's loopback is the host's
+# loopback, so the dashboard is reachable at http://127.0.0.1:4000 and nowhere
+# else. Remote access is a deliberate hop you own: SSH port-forward, a dev
+# tunnel, or an authenticating reverse proxy.
+#
+# Workspaces are in-container paths: chats, terminals, git and agents all run
+# inside the container against /work/<name>. Register repos in the UI as
+# /work/<name>, not as their host paths.
+services:
+  coc:
+    image: ghcr.io/plusplusoneplusplus/coc:latest
+    network_mode: host               # server binds 127.0.0.1 in-container; host loopback == container loopback
+    # no `ports:` — port publishing can't reach a loopback-bound process and is ignored under host networking
+    volumes:
+      - coc-data:/data               # ~/.coc (config, processes.db, skills, logs), agent auth state, git creds
+      - ~/projects:/work             # register repos in the UI as /work/<name>
+      # Optional: reuse host agent logins instead of env tokens
+      # - ~/.copilot:/data/.copilot
+      # - ~/.claude:/data/.claude
+      # - ~/.codex:/data/.codex
+      # - ~/.gitconfig:/data/.gitconfig:ro
+      # - ~/.ssh:/data/.ssh:ro
+    environment:
+      # Pick one auth path per provider you use.
+      # COPILOT_GITHUB_TOKEN: ${COPILOT_GITHUB_TOKEN}
+      # GH_TOKEN: ${GH_TOKEN}
+      # ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      # OPENAI_API_KEY: ${OPENAI_API_KEY}
+      # Optional first-boot seeding (see docker/entrypoint.sh):
+      # COC_INIT_REPOS: https://github.com/you/repo.git,https://github.com/you/other.git#main
+      TZ: UTC
+    # The container runs as uid 1000. If your host user differs, uncomment so
+    # bind-mounted repos stay writable by both:
+    # user: "${UID:-1000}:${GID:-1000}"
+    restart: unless-stopped
+    # Override flags if 4000 is taken: keep --host 127.0.0.1.
+    # command: ["--host", "127.0.0.1", "--port", "4100", "--data-dir", "/data/.coc"]
+volumes:
+  coc-data:
