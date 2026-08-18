@@ -278,6 +278,35 @@ describe('VirtualWorkspaceShellHeader', () => {
         expect(mockOnSelectRepo).not.toHaveBeenCalled();
     });
 
+    it('a WSL-hosted repo row renders the WSL pill with the distro in its accessible text', () => {
+        const repo = makeLocalRepo('ws-wsl', 'shortcuts');
+        (repo.workspace as any).wsl = { distro: 'Ubuntu' };
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={[repo]} onSelectRepo={mockOnSelectRepo} />);
+        fireEvent.click(screen.getByTestId('demo-shell-identity'));
+        const row = screen.getByTestId('demo-repo-local-row');
+        const pill = screen.getByTestId('wsl-badge');
+        expect(row.contains(pill)).toBe(true);
+        expect(pill.textContent).toBe('WSL');
+        expect(pill.getAttribute('aria-label')).toBe('Hosted in WSL (Ubuntu)');
+    });
+
+    it('a native checkout of the same remote renders no WSL pill', () => {
+        const repos = [makeLocalRepo('ws-native', 'shortcuts', 'C:/src/shortcuts')];
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={repos} onSelectRepo={mockOnSelectRepo} />);
+        fireEvent.click(screen.getByTestId('demo-shell-identity'));
+        expect(screen.queryByTestId('wsl-badge')).toBeNull();
+    });
+
+    it('keeps the offline pill on a WSL row', () => {
+        const repo = makeRemoteRepo('ws-r-wsl', 'shortcuts', 'srv-1', 'Dev Server', 'offline');
+        (repo.workspace as any).wsl = { distro: 'Ubuntu-24.04' };
+        render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={[repo]} onSelectRepo={mockOnSelectRepo} />);
+        fireEvent.click(screen.getByTestId('demo-shell-identity'));
+        const row = screen.getByTestId('demo-repo-remote-row');
+        expect(row.contains(screen.getByTestId('wsl-badge'))).toBe(true);
+        expect(row.textContent).toContain('offline');
+    });
+
     it('filter hides repos that do not match the query', () => {
         const repos = [makeLocalRepo('ws-1', 'shortcuts'), makeLocalRepo('ws-2', 'dotfiles')];
         render(<VirtualWorkspaceShellHeader config={makeConfig()} repos={repos} onSelectRepo={mockOnSelectRepo} />);

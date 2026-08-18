@@ -34,3 +34,23 @@ export function shortPath(fullPath: string): string {
     const parts = fullPath.replace(/\\/g, '/').split('/').filter(Boolean);
     return parts.slice(-2).join('/');
 }
+
+/**
+ * Marker the server attaches to a WSL-hosted workspace. Mirrors
+ * `WorkspaceWslInfo` in the coc-client contracts; restated here so this
+ * presentation helper stays dependency-light.
+ */
+export interface RepoWslInfo {
+    distro: string | null;
+}
+
+/**
+ * The workspace's WSL marker, or `null` when the checkout is not WSL-hosted.
+ * The server owns the decision (`src/server/wsl-workspace.ts`); this only reads
+ * the field off the payload — never sniffs the path itself.
+ */
+export function getRepoWsl(repo: RepoData): RepoWslInfo | null {
+    const wsl = (repo.workspace as any)?.wsl as { distro?: unknown } | null | undefined;
+    if (!wsl || typeof wsl !== 'object') return null;
+    return { distro: typeof wsl.distro === 'string' && wsl.distro ? wsl.distro : null };
+}

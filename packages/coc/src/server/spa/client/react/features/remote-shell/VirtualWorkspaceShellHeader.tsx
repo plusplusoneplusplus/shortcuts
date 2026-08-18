@@ -20,7 +20,8 @@ import { PickerEmpty, PickerRow, PickerSection, RepoPickerPopover } from './Repo
 import type { VirtualWorkspaceHeaderConfig } from './virtualWorkspaceHeader';
 import type { RepoData } from '../../repos/repoGrouping';
 import { isRemoteRepo } from '../../repos/repoGrouping';
-import { getServerName, isRepoOffline, shortPath } from '../../repos/repoPickerModel';
+import { getRepoWsl, getServerName, isRepoOffline, shortPath } from '../../repos/repoPickerModel';
+import { WslBadge } from './WslBadge';
 import { getRepoSelectionId } from '../../repos/cloneIdentity';
 
 export interface VirtualWorkspaceShellHeaderProps {
@@ -76,6 +77,8 @@ export function VirtualWorkspaceShellHeader({ config, repos, onSelectRepo, hideI
             ? getServerName(repo)
             : shortPath(String(repo.workspace.rootPath ?? repo.workspace.path ?? ''));
 
+        const wsl = getRepoWsl(repo);
+
         return (
             <PickerRow
                 key={getRepoSelectionId(repo)}
@@ -84,11 +87,16 @@ export function VirtualWorkspaceShellHeader({ config, repos, onSelectRepo, hideI
                 sublabel={sublabel}
                 offline={offline}
                 onClick={() => handleSelect(repo)}
-                badges={offline ? (
-                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-[#848484]/10 text-[#848484] dark:text-[#666] flex-shrink-0">
-                        offline
-                    </span>
-                ) : undefined}
+                badges={
+                    <>
+                        {wsl && <WslBadge distro={wsl.distro} />}
+                        {offline && (
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-[#848484]/10 text-[#848484] dark:text-[#666] flex-shrink-0">
+                                offline
+                            </span>
+                        )}
+                    </>
+                }
             />
         );
     };

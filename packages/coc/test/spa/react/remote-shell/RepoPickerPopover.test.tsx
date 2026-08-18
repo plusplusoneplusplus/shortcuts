@@ -15,6 +15,10 @@ import {
     RepoPickerPopover,
     type RepoPickerPopoverProps,
 } from '../../../../src/server/spa/client/react/features/remote-shell/RepoPickerPopover';
+import {
+    WslBadge,
+    wslBadgeLabel,
+} from '../../../../src/server/spa/client/react/features/remote-shell/WslBadge';
 
 afterEach(cleanup);
 
@@ -140,5 +144,41 @@ describe('PickerRow', () => {
     it('renders trailing badges', () => {
         render(<PickerRow testId="row" name="repo" badges={<span data-testid="row-badge">2</span>} />);
         expect(screen.getByTestId('row-badge')).toBeTruthy();
+    });
+});
+
+describe('WslBadge', () => {
+    it('renders the literal text WSL and puts the distro in the accessible text only', () => {
+        render(<WslBadge distro="Ubuntu" />);
+        const pill = screen.getByTestId('wsl-badge');
+        expect(pill.textContent).toBe('WSL');
+        expect(pill.getAttribute('aria-label')).toBe('Hosted in WSL (Ubuntu)');
+        expect(pill.getAttribute('title')).toBe('Hosted in WSL (Ubuntu)');
+    });
+
+    it('falls back to the generic label when the distro is unknown', () => {
+        render(<WslBadge distro={null} />);
+        const pill = screen.getByTestId('wsl-badge');
+        expect(pill.textContent).toBe('WSL');
+        expect(pill.getAttribute('aria-label')).toBe('Hosted in WSL');
+    });
+
+    it('treats a blank distro as unknown', () => {
+        expect(wslBadgeLabel('   ')).toBe('Hosted in WSL');
+        expect(wslBadgeLabel(undefined)).toBe('Hosted in WSL');
+        expect(wslBadgeLabel('Ubuntu-24.04')).toBe('Hosted in WSL (Ubuntu-24.04)');
+    });
+
+    it('sits alongside the other row badges without a bespoke PickerRow branch', () => {
+        render(
+            <PickerRow
+                testId="row"
+                name="shortcuts"
+                badges={<><WslBadge distro="Ubuntu" /><span data-testid="row-badge">2</span></>}
+            />,
+        );
+        const row = screen.getByTestId('row');
+        expect(row.contains(screen.getByTestId('wsl-badge'))).toBe(true);
+        expect(row.contains(screen.getByTestId('row-badge'))).toBe(true);
     });
 });
