@@ -8,6 +8,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
+import { readCommitListSource } from '../helpers/commit-list-source';
 
 const FILE_TREE_PATH = path.join(
     __dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'diff', 'FileTree.tsx'
@@ -256,11 +257,11 @@ describe('FileTree shared components', () => {
     });
 
     describe('consumers import from FileTree', () => {
+        // CommitList is split across an interaction kernel, hooks, and
+        // presentation components, so the import lives in whichever module
+        // renders the expanded file list. Read the whole family.
         it('CommitList imports shared components from FileTree', () => {
-            const commitListPath = path.join(
-                path.dirname(FILE_TREE_PATH), '..', 'commits', 'CommitList.tsx'
-            );
-            const commitListSource = fs.readFileSync(commitListPath, 'utf-8');
+            const commitListSource = readCommitListSource();
             expect(commitListSource).toContain("from '../diff/FileTree'");
             expect(commitListSource).toContain('FlatFileList');
         });
