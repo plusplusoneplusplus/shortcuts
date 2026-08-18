@@ -1431,21 +1431,35 @@ describe('NoteEditorToolbar — alignment dropdown', () => {
         expect(screen.queryByTestId('align-dropdown-menu')).toBeNull();
     });
 
+    /** The alignment the trigger is currently drawing, read off the svg. */
+    const triggerIcon = () =>
+        screen.getByTestId('align-dropdown-label').querySelector('svg')?.getAttribute('data-testid');
+
     it('shows the left-align icon and no highlight when nothing is aligned', () => {
         const editor = makeMockEditor();
         render(<NoteEditorToolbar editor={editor as never} />);
-        expect(screen.getByTestId('align-dropdown-label').textContent).toBe('⫷');
+        expect(triggerIcon()).toBe('align-icon-left');
         expect(screen.getByTestId('align-dropdown').className).not.toContain('bg-[#e8e8e8]');
     });
 
+    it('draws each menu row with its own alignment icon, not a text glyph', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByTestId('align-dropdown'));
+        for (const value of ['left', 'center', 'right', 'justify']) {
+            const row = screen.getByTestId(`align-item-${value}`);
+            expect(row.querySelector(`svg[data-testid="align-icon-${value}"]`)).not.toBeNull();
+        }
+    });
+
     it.each([
-        ['center', '≡', 'align-item-center'],
-        ['right', '⫸', 'align-item-right'],
-        ['justify', '☰', 'align-item-justify'],
+        ['center', 'align-icon-center', 'align-item-center'],
+        ['right', 'align-icon-right', 'align-item-right'],
+        ['justify', 'align-icon-justify', 'align-item-justify'],
     ])('reflects %s alignment in the trigger and the checked row', (value, icon, testId) => {
         const editor = makeMockEditor(alignedTo(value));
         render(<NoteEditorToolbar editor={editor as never} />);
-        expect(screen.getByTestId('align-dropdown-label').textContent).toBe(icon);
+        expect(triggerIcon()).toBe(icon);
         expect(screen.getByTestId('align-dropdown').className).toContain('bg-[#e8e8e8]');
 
         fireEvent.mouseDown(screen.getByTestId('align-dropdown'));

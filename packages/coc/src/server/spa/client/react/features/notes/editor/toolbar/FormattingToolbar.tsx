@@ -2,6 +2,7 @@ import { Fragment } from 'react';
 import type { ReactNode } from 'react';
 import type { Editor } from '@tiptap/react';
 import { ToolbarDropdown, MenuItem, Sep } from './ToolbarDropdown';
+import { AlignIcon } from './AlignIcon';
 import { ColorDropdown } from './ColorDropdown';
 import { FontFamilyDropdown } from './FontFamilyDropdown';
 import { FontSizeDropdown } from './FontSizeDropdown';
@@ -243,18 +244,20 @@ function AlignDropdown({ editor }: { editor: Editor }) {
                         toggle();
                     }}
                 >
-                    <span data-testid="align-dropdown-label">{(active ?? ALIGN_OPTIONS[0]).icon}</span>
+                    <span data-testid="align-dropdown-label" className="flex items-center">
+                        <AlignIcon value={(active ?? ALIGN_OPTIONS[0]).value} />
+                    </span>
                     <span className="text-[10px]">▾</span>
                 </button>
             )}
             renderPanel={({ close }) => (
                 <>
-                    {ALIGN_OPTIONS.map(({ id, label, icon, value, testId }) => (
+                    {ALIGN_OPTIONS.map(({ id, label, value, testId }) => (
                         <MenuItem
                             key={id}
                             checked={active?.value === value}
                             testId={testId}
-                            icon={icon}
+                            icon={<AlignIcon value={value} />}
                             onSelect={() => {
                                 editor.chain().focus().setTextAlign(value).run();
                                 close();

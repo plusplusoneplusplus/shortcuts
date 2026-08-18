@@ -112,28 +112,30 @@ export const FORMATTING_GROUPS: ToolbarItem[][] = [
     [slot('find')],
 ];
 
+export type AlignValue = 'left' | 'center' | 'right' | 'justify';
+
 /**
  * The rows of the alignment dropdown, in menu order.
  *
  * Kept here rather than in the toolbar component for the same reason as the
- * command descriptors: labels, icons and the value each row sets stay plain
- * data that tests can assert on without rendering anything.
+ * command descriptors: the label and the value each row sets stay plain data
+ * that tests can assert on without rendering anything. The glyph is drawn by
+ * `AlignIcon`, keyed off `value`, so it does not live here.
  */
 export interface AlignOption {
     /** Stable identifier — also the React key. */
     id: string;
     label: string;
-    icon: string;
     /** The value handed to `setTextAlign`, and the `textAlign` attribute to match on. */
-    value: 'left' | 'center' | 'right' | 'justify';
+    value: AlignValue;
     testId: string;
 }
 
 export const ALIGN_OPTIONS: readonly AlignOption[] = [
-    { id: 'alignLeft', label: 'Align left', icon: '⫷', value: 'left', testId: 'align-item-left' },
-    { id: 'alignCenter', label: 'Align center', icon: '≡', value: 'center', testId: 'align-item-center' },
-    { id: 'alignRight', label: 'Align right', icon: '⫸', value: 'right', testId: 'align-item-right' },
-    { id: 'alignJustify', label: 'Justify', icon: '☰', value: 'justify', testId: 'align-item-justify' },
+    { id: 'alignLeft', label: 'Align left', value: 'left', testId: 'align-item-left' },
+    { id: 'alignCenter', label: 'Align center', value: 'center', testId: 'align-item-center' },
+    { id: 'alignRight', label: 'Align right', value: 'right', testId: 'align-item-right' },
+    { id: 'alignJustify', label: 'Justify', value: 'justify', testId: 'align-item-justify' },
 ] as const;
 
 /**
