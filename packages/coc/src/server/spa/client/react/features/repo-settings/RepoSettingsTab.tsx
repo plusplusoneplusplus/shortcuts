@@ -753,7 +753,11 @@ export function RepoSettingsTab({ workspaceId, repo, dockStatusFooter = false }:
                                     </span>
                                 }
                             >
-                                <div className="flex gap-2.5">
+                                {/* Five tiles share ~343px on a phone, which cuts
+                                    the "Workflows"/"Completed" labels in half; a
+                                    2-up grid below `md` gives each label room.
+                                    `md:flex` restores the single desktop row. */}
+                                <div className="grid grid-cols-2 gap-2.5 md:flex">
                                     <StatCard value={repo.workflows?.length || 0} label="Workflows" testId="info-stat-workflows" />
                                     <StatCard value={repo.taskCount || 0} label="Plans" testId="info-stat-plans" />
                                     <StatCard value={stats.running} label="Running" dotClass="bg-[#0969da] dark:bg-[#3794ff]" testId="info-stat-running" />

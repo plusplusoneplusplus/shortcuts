@@ -314,6 +314,40 @@ describe('RepoSettingsTab redesigned sidebar', () => {
         expect(screen.getByTestId('info-stat-failed').textContent).toContain('2');
     });
 
+    // AC-03 regression: five stat tiles in a single flex row left ~49px each at
+    // 375px, which cut the "Workflows"/"Completed" labels in half. They wrap
+    // 2-up below `md` and go back to one row from `md` up.
+    it('wraps the Info stat tiles 2-up on mobile and restores the single row on desktop', async () => {
+        const repoWithStats = {
+            ...makeRepo('ws-1'),
+            stats: { success: 3, failed: 0, running: 1 },
+            taskCount: 4,
+            workflows: new Array(2).fill({}),
+        };
+
+        const { RepoSettingsTab } = await import(
+            '../../../../src/server/spa/client/react/features/repo-settings/RepoSettingsTab'
+        );
+        const { AppProvider } = await import(
+            '../../../../src/server/spa/client/react/contexts/AppContext'
+        );
+
+        await act(async () => {
+            render(
+                <AppProvider>
+                    <RepoSettingsTab workspaceId="ws-1" repo={repoWithStats as any} />
+                </AppProvider>
+            );
+        });
+
+        await waitFor(() => expect(screen.getByTestId('info-stat-workflows')).toBeTruthy());
+        const row = screen.getByTestId('info-stat-workflows').parentElement!;
+        expect(row.className).toContain('grid-cols-2');
+        expect(row.className).toContain('md:flex');
+        // The bare single-row flex is what clipped the labels.
+        expect(row.className.split(/\s+/)).not.toContain('flex');
+    });
+
     it('exposes refresh and copy header actions on the Info section only', async () => {
         await act(async () => { await renderSettingsTab({ initialSection: 'info' }); });
         await waitFor(() => expect(screen.getByTestId('settings-header-refresh')).toBeTruthy());
