@@ -12,7 +12,18 @@ import {
 const LAYOUT_DIR = path.join(
     __dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'layout'
 );
+const KERNEL_DIR = path.join(LAYOUT_DIR, 'popoutGitReview');
 const SOURCE = fs.readFileSync(path.join(LAYOUT_DIR, 'PopOutGitReviewShell.tsx'), 'utf-8');
+
+function kernelSource(file: string): string {
+    return fs.readFileSync(path.join(KERNEL_DIR, file), 'utf-8');
+}
+
+const ROUTE_SOURCE = kernelSource('popoutGitReviewRoute.ts');
+const LIFECYCLE_SOURCE = kernelSource('usePopOutReviewLifecycle.ts');
+const COMMIT_SOURCE = kernelSource('CommitReviewContent.tsx');
+const PR_SOURCE = kernelSource('PrReviewContent.tsx');
+const BRANCH_SOURCE = kernelSource('BranchRangeReviewContent.tsx');
 
 // ── Route parsing ─────────────────────────────────────────────────────────────
 
@@ -132,12 +143,21 @@ describe('PopOutGitReviewShell: structure', () => {
         expect(SOURCE).toContain('export function PopOutGitReviewShell');
     });
 
-    it('exports parsePopOutGitReviewRoute helper', () => {
-        expect(SOURCE).toContain('export function parsePopOutGitReviewRoute');
+    it('re-exports parsePopOutGitReviewRoute from the route module', () => {
+        expect(SOURCE).toContain('export { parsePopOutGitReviewRoute }');
+        expect(ROUTE_SOURCE).toContain('export function parsePopOutGitReviewRoute');
     });
 
-    it('exports PopOutGitReviewParams type', () => {
-        expect(SOURCE).toContain('export interface PopOutGitReviewParams');
+    it('re-exports the PopOutGitReviewParams type from the route module', () => {
+        expect(SOURCE).toContain('export type { PopOutGitReviewParams }');
+        expect(ROUTE_SOURCE).toContain('export interface PopOutGitReviewParams');
+    });
+
+    it('keeps the shell free of per-review-type flow logic', () => {
+        // Commit/PR/branch-range flows live in adapters under popoutGitReview/.
+        expect(SOURCE).not.toContain('useClassification');
+        expect(SOURCE).not.toContain('usePrReviewProgress');
+        expect(SOURCE).not.toContain('FileDiffPanel');
     });
 });
 
@@ -164,8 +184,9 @@ describe('PopOutGitReviewShell: content components', () => {
         expect(SOURCE).toContain('<CommitReviewContent');
     });
 
-    it('renders BranchRangeOverview for branch-range reviews', () => {
-        expect(SOURCE).toContain('<BranchRangeOverview');
+    it('renders BranchRangeReviewContent for branch-range reviews', () => {
+        expect(SOURCE).toContain('<BranchRangeReviewContent');
+        expect(BRANCH_SOURCE).toContain('<BranchRangeOverview');
     });
 
     it('renders PrReviewContent for PR reviews', () => {
@@ -173,7 +194,7 @@ describe('PopOutGitReviewShell: content components', () => {
     });
 
     it('uses createPrDiffSource for PR file diffs', () => {
-        expect(SOURCE).toContain('createPrDiffSource');
+        expect(PR_SOURCE).toContain('createPrDiffSource');
     });
 });
 
@@ -181,35 +202,39 @@ describe('PopOutGitReviewShell: typed client loading', () => {
     it('routes git calls through getCocClientForWorkspace, not getSpaCocClient directly', () => {
         // All git data loading goes through getCocClientForWorkspace so remote workspaces
         // route to the correct remote CoC server instead of the local one.
-        expect(SOURCE).toContain('getCocClientForWorkspace');
-        expect(SOURCE).not.toContain('getSpaCocClient()');
-        expect(SOURCE).toContain('.git.getCommit');
-        expect(SOURCE).toContain('.git.getBranchRange');
-        expect(SOURCE).toContain('.git.listBranchRangeFiles');
+        const adapters = COMMIT_SOURCE + PR_SOURCE + BRANCH_SOURCE;
+        expect(adapters).toContain('getCocClientForWorkspace');
+        expect(adapters).not.toContain('getSpaCocClient()');
+        expect(COMMIT_SOURCE).toContain('.git.getCommit');
+        expect(BRANCH_SOURCE).toContain('.git.getBranchRange');
+        expect(BRANCH_SOURCE).toContain('.git.listBranchRangeFiles');
     });
 
     it('does not own git endpoint strings for shell data loading', () => {
-        expect(SOURCE).not.toContain('/git/branch-range/files');
-        expect(SOURCE).not.toContain('/git/commits/${encodeURIComponent(commitHash)}');
+        const adapters = SOURCE + COMMIT_SOURCE + PR_SOURCE + BRANCH_SOURCE;
+        expect(adapters).not.toContain('/git/branch-range/files');
+        expect(adapters).not.toContain('/git/commits/${encodeURIComponent(commitHash)}');
     });
 
     it('loads PR diff data through origin-scoped client APIs', () => {
-        expect(SOURCE).toContain('getDiffForOrigin(progressOriginId, prId');
-        expect(SOURCE).toContain('originId: progressOriginId');
-        expect(SOURCE).not.toContain('getDiff(repoId, prId)');
+        expect(PR_SOURCE).toContain('getDiffForOrigin(progressOriginId, prId');
+        expect(PR_SOURCE).toContain('originId: progressOriginId');
+        expect(PR_SOURCE).not.toContain('getDiff(repoId, prId)');
     });
 });
 
 describe('PopOutGitReviewShell: remote clone registry bootstrap', () => {
     it('imports registerCloneBaseUrls for registry seeding', () => {
-        expect(SOURCE).toContain('registerCloneBaseUrls');
+        expect(ROUTE_SOURCE).toContain('registerCloneBaseUrls');
     });
 
     it('seeds registry from cloneBaseUrl param when present', () => {
-        // The shell must call registerCloneBaseUrls with the workspace/baseUrl pair
-        // so all workspace-scoped calls inside the popout route to the remote server.
-        expect(SOURCE).toContain("cloneBaseUrl");
-        expect(SOURCE).toContain("registerCloneBaseUrls([{ workspaceId");
+        // The shell seeds the registry with the workspace/baseUrl pair before any
+        // child renders, so all workspace-scoped calls inside the popout route to
+        // the remote server. The guard keeps re-renders from re-seeding it.
+        expect(SOURCE).toContain('registerPopOutCloneBases(params)');
+        expect(ROUTE_SOURCE).toContain('cloneBaseUrl');
+        expect(ROUTE_SOURCE).toContain('registerCloneBaseUrls(registrations)');
     });
 
     it('parses cloneBaseUrl from URL search params for commit route', () => {
@@ -251,34 +276,35 @@ describe('PopOutGitReviewShell: remote clone registry bootstrap', () => {
     it('surfaces listBranchRangeFiles errors instead of swallowing them', () => {
         // Branch-range calls must NOT use .catch(() => ({ files: [] })) — that would
         // silently hide remote routing failures and show an empty list with no message.
-        expect(SOURCE).not.toContain('.catch(() => ({ files: [] }))');
+        expect(BRANCH_SOURCE).not.toContain('.catch(() => ({ files: [] }))');
     });
 });
 
 describe('PopOutGitReviewShell: BroadcastChannel communication', () => {
-    it('uses useGitReviewPopOutChannel hook', () => {
-        expect(SOURCE).toContain('useGitReviewPopOutChannel');
+    it('drives the channel through the shared lifecycle hook', () => {
+        expect(SOURCE).toContain('usePopOutReviewLifecycle');
+        expect(LIFECYCLE_SOURCE).toContain('useGitReviewPopOutChannel');
     });
 
     it('sends git-review-popout-opened on mount', () => {
-        expect(SOURCE).toContain("'git-review-popout-opened'");
+        expect(LIFECYCLE_SOURCE).toContain("'git-review-popout-opened'");
     });
 
     it('sends git-review-popout-closed on beforeunload', () => {
-        expect(SOURCE).toContain("'git-review-popout-closed'");
-        expect(SOURCE).toContain("'beforeunload'");
+        expect(LIFECYCLE_SOURCE).toContain("'git-review-popout-closed'");
+        expect(LIFECYCLE_SOURCE).toContain("'beforeunload'");
     });
 
     it('closes window on git-review-popout-restore message', () => {
-        expect(SOURCE).toContain("'git-review-popout-restore'");
-        expect(SOURCE).toContain("window.close()");
+        expect(LIFECYCLE_SOURCE).toContain("'git-review-popout-restore'");
+        expect(LIFECYCLE_SOURCE).toContain("window.close()");
     });
 });
 
 describe('PopOutGitReviewShell: route parsing in shell', () => {
     it('reads workspaceId from URLSearchParams', () => {
-        expect(SOURCE).toContain("URLSearchParams");
-        expect(SOURCE).toContain("'workspace'");
+        expect(ROUTE_SOURCE).toContain("URLSearchParams");
+        expect(ROUTE_SOURCE).toContain("'workspace'");
     });
 
     it('renders invalid URL message for unknown routes', () => {
