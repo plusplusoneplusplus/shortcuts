@@ -140,6 +140,7 @@ describe('prebuild script', () => {
             run: () => {
                 throw new Error('git unavailable');
             },
+            env: {},
         });
 
         expect(
@@ -152,6 +153,38 @@ describe('prebuild script', () => {
                 'export const BUILD_COMMIT = "unknown";\n' +
                 'export const BUILD_VERSION = "9.8.7";\n',
         );
+    });
+
+    it('prefers COC_BUILD_COMMIT over git (no .git in the Docker build context)', () => {
+        const gitCalls: string[][] = [];
+        const run = (command: string, args: string[]) => {
+            gitCalls.push([command, ...args]);
+            return 'from-git\n';
+        };
+
+        expect(script.resolveBuildCommit({ rootDir: '/repo', run, env: { COC_BUILD_COMMIT: ' abc123def ' } })).toBe('abc123def');
+        expect(gitCalls).toEqual([]);
+
+        // Empty/blank env falls through to git.
+        expect(script.resolveBuildCommit({ rootDir: '/repo', run, env: { COC_BUILD_COMMIT: '   ' } })).toBe('from-git');
+        expect(script.resolveBuildCommit({ rootDir: '/repo', run, env: {} })).toBe('from-git');
+        expect(gitCalls).toHaveLength(2);
+
+        const rootDir = makeTempDir();
+        const cocPackageRoot = path.join(rootDir, 'packages', 'coc');
+        fs.mkdirSync(cocPackageRoot, { recursive: true });
+        fs.writeFileSync(path.join(rootDir, 'package.json'), JSON.stringify({ version: '1.0.0' }));
+        script.writeBuildInfo({
+            rootDir,
+            cocPackageRoot,
+            run: () => {
+                throw new Error('git unavailable');
+            },
+            env: { COC_BUILD_COMMIT: 'deadbeef' },
+        });
+        expect(
+            fs.readFileSync(path.join(cocPackageRoot, 'src', 'server', 'core', 'build-info.ts'), 'utf8'),
+        ).toContain('export const BUILD_COMMIT = "deadbeef";');
     });
 
     it('reports the workspace root version, not the coc package version', () => {
@@ -168,6 +201,7 @@ describe('prebuild script', () => {
             rootDir,
             cocPackageRoot,
             run: () => 'abc123\n',
+            env: {},
         });
 
         const written = fs.readFileSync(

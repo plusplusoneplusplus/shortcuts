@@ -122,6 +122,53 @@ needed.
 > **Troubleshooting:** If you see exit code 3 ("AI unavailable"), run `copilot`
 > and use `/login` to verify your authentication.
 
+## Run with Docker
+
+The server ships as `ghcr.io/plusplusoneplusplus/coc` (Linux amd64/arm64) — no
+clone, no local Node, no build:
+
+```bash
+docker run -d --name coc --network host \
+  -v coc-data:/data \
+  -v ~/projects:/work \
+  ghcr.io/plusplusoneplusplus/coc:latest
+# → http://127.0.0.1:4000
+```
+
+Or with Compose: `docker compose -f docker-compose.example.yml up -d`
+([`docker-compose.example.yml`](docker-compose.example.yml)).
+
+Things to know:
+
+- **Loopback only, so `--network host` — not `-p`.** The server binds
+  `127.0.0.1` inside the container by policy (same as a native `coc serve`).
+  Bridge port publishing can't reach a loopback bind, so `-p 4000:4000` will
+  silently not work; with host networking the container's `127.0.0.1:4000` *is*
+  your host's. Docker Desktop on macOS/Windows needs 4.34+ with **Enable host
+  networking** turned on. Remote access is a hop you own: SSH port-forward, a
+  dev tunnel, or an authenticating reverse proxy.
+- **Workspaces are in-container paths.** Chats, terminals, git and agents run
+  inside the container — register repos as `/work/<name>`, not their host paths.
+- **`/data` is everything persistent** (`HOME`): `~/.coc` (config,
+  `processes.db`, skills, logs) plus agent logins. Keep it on a named volume.
+- **Agent auth**: pass `COPILOT_GITHUB_TOKEN` / `GH_TOKEN` / `ANTHROPIC_API_KEY`
+  / `OPENAI_API_KEY` as env, or mount your host `~/.copilot`, `~/.claude`,
+  `~/.codex` under `/data/`, or run the login (`copilot` → `/login`) once in the
+  in-app terminal — it persists on `/data`.
+- **The container runs as uid 1000.** If your host user differs, add
+  `--user $(id -u):$(id -g)` so bind-mounted repos stay writable by both.
+- **CLI**: `docker exec coc coc queue …`, `docker exec coc coc --version`.
+  `git` and `gh` are in the image.
+- **Change the port, keep the host**: `… ghcr.io/plusplusoneplusplus/coc:latest --host 127.0.0.1 --port 4100 --data-dir /data/.coc`.
+- **First-boot seeding** (optional env, see [`docker/entrypoint.sh`](docker/entrypoint.sh)):
+  `COC_INIT_REPOS`, `COC_INIT_CONFIG`, `COC_INIT_SKILLS_DIR`,
+  `GIT_AUTHOR_NAME`/`GIT_AUTHOR_EMAIL`.
+- **Graceful stop**: `docker stop` sends SIGTERM through `tini`; the queue drains
+  before exit.
+
+Running CoC as a managed service, one instance per tenant behind an auth
+sidecar? See [`deploy/tenant/`](deploy/tenant/README.md).
+
 ## Monorepo Packages
 
 | Package | Description | npm |

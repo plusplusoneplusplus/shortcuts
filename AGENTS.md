@@ -11,7 +11,7 @@ Guidance for AI agents working in this repository. NEVER create document files u
 
 ## Repo Layout (one-liner)
 
-npm workspaces monorepo for published Node packages including `coc-workflow`, `forge`, `coc`, `coc-client`, `coc-agent-sdk`, `coc-memory`, `deep-wiki`, `coccontainer`, and `coc-connector` (consolidated Teams + WhatsApp messaging connectors).
+npm workspaces monorepo for published Node packages including `coc-workflow`, `forge`, `coc`, `coc-client`, `coc-agent-sdk`, `coc-memory`, `deep-wiki`, `coccontainer`, and `coc-connector` (consolidated Teams + WhatsApp messaging connectors). The root `Dockerfile` + `docker/` + `deploy/tenant/` ship the server as `ghcr.io/plusplusoneplusplus/coc` (loopback-bound by policy; see `packages/coc/test/docker/`).
 
 ## Load the CoC Knowledge Skill
 

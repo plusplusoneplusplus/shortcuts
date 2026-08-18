@@ -1,0 +1,334 @@
+# One CoC instance per tenant — reference Kubernetes manifests.
+#
+# Replace TENANT_ID / TENANT_HOST / IMAGE_TAG (a provisioner stamps these per
+# tenant; see README.md). Namespace: one per tenant keeps quotas, secrets and
+# NetworkPolicy scoping simple; a shared namespace with per-tenant labels also
+# works.
+#
+# Shape:
+#   ingress (TLS, t-<id>.<wildcard>) → Service → auth-proxy sidecar (pod IP:8080)
+#     → http://127.0.0.1:4000 → coc (this image, --host 127.0.0.1)
+# The coc container never publishes a port. It is reachable only from inside
+# the pod's network namespace, i.e. only through the sidecar.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: coc-tenant-TENANT_ID
+  labels:
+    coc.plusplusoneplusplus.io/tenant: TENANT_ID
+---
+# /data — ~/.coc (config, processes.db, skills, logs) plus agent auth state.
+# SQLite ⇒ ReadWriteOnce, exactly one pod ever.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: coc-data
+  namespace: coc-tenant-TENANT_ID
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 20Gi
+---
+# /work — tenant repos, cloned inside the container by the entrypoint.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: coc-work
+  namespace: coc-tenant-TENANT_ID
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 50Gi
+---
+# Per-tenant agent credentials. Provisioned by the control plane; or leave
+# empty and let the tenant log in via the in-app terminal (persisted on /data).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: coc-agent-secrets
+  namespace: coc-tenant-TENANT_ID
+type: Opaque
+stringData:
+  COPILOT_GITHUB_TOKEN: ""
+  GH_TOKEN: ""
+  ANTHROPIC_API_KEY: ""
+  OPENAI_API_KEY: ""
+---
+# Sidecar OIDC settings (issuer, client id/secret, cookie secret). Provisioned
+# by the control plane; one OIDC client per tenant hostname.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: coc-auth-proxy
+  namespace: coc-tenant-TENANT_ID
+type: Opaque
+stringData:
+  OIDC_ISSUER_URL: https://idp.example.com/
+  OIDC_CLIENT_ID: coc-tenant-TENANT_ID
+  OIDC_CLIENT_SECRET: ""
+  COOKIE_SECRET: ""             # 32 random bytes, base64 (oauth2-proxy requirement)
+---
+# First-boot seeding env consumed by docker/entrypoint.sh (all optional).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coc-init
+  namespace: coc-tenant-TENANT_ID
+data:
+  COC_INIT_REPOS: ""          # e.g. https://github.com/org/repo.git,https://github.com/org/other.git#main
+  COC_INIT_CONFIG: /etc/coc-init/config.yaml
+  GIT_AUTHOR_NAME: "TENANT_ID"
+  GIT_AUTHOR_EMAIL: "TENANT_ID@coc.example.com"
+---
+# Files for first-boot seeding (mounted, not env: dotted keys are not valid env names).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coc-init-files
+  namespace: coc-tenant-TENANT_ID
+data:
+  config.yaml: |
+    # Seeded into /data/.coc/config.yaml on first boot only (never overwrites tenant edits).
+    theme: auto
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coc
+  namespace: coc-tenant-TENANT_ID
+  labels:
+    app: coc
+    coc.plusplusoneplusplus.io/tenant: TENANT_ID
+spec:
+  replicas: 1                     # SQLite on RWO storage: never more than one
+  strategy:
+    type: Recreate                # release the PVC and the drain before the new pod starts
+  selector:
+    matchLabels:
+      app: coc
+  template:
+    metadata:
+      labels:
+        app: coc
+        coc.plusplusoneplusplus.io/tenant: TENANT_ID
+    spec:
+      # ≥ the queue drain timeout: SIGTERM → tini → coc serve drains running tasks.
+      terminationGracePeriodSeconds: 600
+      # Optional: stronger kernel isolation for autopilot agents.
+      # runtimeClassName: gvisor
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: coc-data
+        - name: work
+          persistentVolumeClaim:
+            claimName: coc-work
+        - name: coc-init
+          configMap:
+            name: coc-init-files
+        - name: tmp
+          emptyDir: {}
+      containers:
+        - name: coc
+          image: ghcr.io/plusplusoneplusplus/coc:IMAGE_TAG
+          imagePullPolicy: IfNotPresent
+          # Loopback bind is policy; only the sidecar in this pod can reach it.
+          args: ["--host", "127.0.0.1", "--port", "4000", "--data-dir", "/data/.coc"]
+          # Intentionally no `ports:` — nothing outside the pod may address coc directly.
+          env:
+            - name: COC_PORT
+              value: "4000"
+            - name: TZ
+              value: UTC
+          envFrom:
+            - secretRef:
+                name: coc-agent-secrets
+            - configMapRef:
+                name: coc-init
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: work
+              mountPath: /work
+            - name: coc-init
+              mountPath: /etc/coc-init
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false   # agents write to /work and /tmp; /app stays untouched
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "4"
+              memory: 8Gi
+          # httpGet probes hit the pod IP, which a loopback bind does not answer;
+          # exec the same probe the image HEALTHCHECK uses.
+          startupProbe:
+            exec:
+              command: ["node", "-e", "fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+            periodSeconds: 5
+            failureThreshold: 24
+          readinessProbe:
+            exec:
+              command: ["node", "-e", "fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["node", "-e", "fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+            periodSeconds: 30
+            failureThreshold: 3
+        - name: auth-proxy
+          # oauth2-proxy shown; Envoy/Pomerium/etc. work the same way. Requirements:
+          # upstream http://127.0.0.1:4000, WebSocket + SSE passthrough, no
+          # X-Forwarded-Prefix (root path only), long/disabled idle timeouts.
+          image: quay.io/oauth2-proxy/oauth2-proxy:v7.7.1
+          args:
+            - --http-address=0.0.0.0:8080
+            - --upstream=http://127.0.0.1:4000
+            - --upstream-timeout=0
+            - --provider=oidc
+            - --oidc-issuer-url=$(OIDC_ISSUER_URL)
+            - --client-id=$(OIDC_CLIENT_ID)
+            - --redirect-url=https://TENANT_HOST/oauth2/callback
+            - --email-domain=*
+            # Restrict to the tenant's members: an IdP group/claim per tenant.
+            - --allowed-group=coc-tenant-TENANT_ID
+            - --cookie-secure=true
+            - --cookie-samesite=lax
+            - --cookie-refresh=1h
+            - --pass-access-token=false
+            - --skip-provider-button=true
+          env:
+            - name: OIDC_ISSUER_URL
+              valueFrom:
+                secretKeyRef: { name: coc-auth-proxy, key: OIDC_ISSUER_URL }
+            - name: OIDC_CLIENT_ID
+              valueFrom:
+                secretKeyRef: { name: coc-auth-proxy, key: OIDC_CLIENT_ID }
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: { name: coc-auth-proxy, key: OIDC_CLIENT_SECRET }
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef: { name: coc-auth-proxy, key: COOKIE_SECRET }
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: coc
+  namespace: coc-tenant-TENANT_ID
+spec:
+  selector:
+    app: coc
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http      # auth-proxy only; coc itself is loopback-bound
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: coc
+  namespace: coc-tenant-TENANT_ID
+  annotations:
+    # WebSocket terminals and SSE streams: keep long-lived connections open.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "64m"
+    cert-manager.io/cluster-issuer: letsencrypt
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [TENANT_HOST]
+      secretName: coc-tls
+  rules:
+    - host: TENANT_HOST         # one hostname per tenant: coc has no base-path support
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: coc
+                port:
+                  name: http
+---
+# Treat every tenant pod as hostile: only the ingress controller may talk to
+# the sidecar, and an autopilot agent may only reach an egress allowlist.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: coc-tenant
+  namespace: coc-tenant-TENANT_ID
+spec:
+  podSelector:
+    matchLabels:
+      app: coc
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080          # auth-proxy only; 4000 is loopback and unroutable anyway
+  egress:
+    - to:                     # DNS
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:                     # IdP, github.com/api.github.com, api.openai.com, api.anthropic.com,
+        - ipBlock:            # registry.npmjs.org — narrow this to your egress gateway / resolved CIDRs.
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.169.254/32   # cloud metadata endpoint
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 22            # git over SSH

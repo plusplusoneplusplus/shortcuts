@@ -34,6 +34,24 @@ coc list ./pipelines/
 coc serve
 ```
 
+## Run with Docker
+
+```bash
+docker run -d --name coc --network host -v coc-data:/data -v ~/projects:/work \
+  ghcr.io/plusplusoneplusplus/coc:latest
+# → http://127.0.0.1:4000
+```
+
+The image runs `coc serve --host 127.0.0.1 --port 4000 --data-dir /data/.coc`
+as uid 1000 with `HOME=/data`. It binds loopback inside the container by
+policy, so use `--network host` (bridge `-p` can't reach it) and register repos
+as in-container paths (`/work/<name>`). Agent auth: env tokens
+(`COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) or a
+one-time login in the in-app terminal, persisted on `/data`. CLI:
+`docker exec coc coc queue …`. Full notes, the Compose recipe and the
+per-tenant managed pattern: [repo README → Run with Docker](../../README.md#run-with-docker)
+and [`deploy/tenant/`](../../deploy/tenant/README.md).
+
 ## Commands
 
 ### `coc run <path>`

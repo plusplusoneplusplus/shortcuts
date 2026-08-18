@@ -33,6 +33,13 @@ all have their own `references/*.md`.
 
 - **Server Vitest tests** live under `packages/coc/test/server/`. Any
   server change should add or update tests there.
+- **Docker image contract tests** live under `packages/coc/test/docker/`
+  (root `Dockerfile`, `docker-compose.example.yml`, `deploy/tenant/*`,
+  `docker/entrypoint.sh` run under `sh` with fake `coc`/`git`/`curl`). Any
+  change to those files must keep them green; the loopback-only bind
+  (`--host 127.0.0.1`, no `EXPOSE`, no published port for `coc`) is policy.
+  `scripts/prebuild.mjs` honours `COC_BUILD_COMMIT` (the image build has no
+  `.git`).
 - **Admin export/import/wipe storage behavior** lives under
   `src/server/storage/snapshot/`: `types.ts` (the domain contract),
   `registry.ts` (`createSnapshotDomains()` plus the collect/restore/wipe

@@ -1,0 +1,19 @@
+# Build context for the CoC server image (Dockerfile at repo root).
+# Keep .claude/ and packages/forge/resources/ — forge bundles skills from resources at build time.
+# Keep packages/*/scripts/ — they are build scripts (prebuild.mjs, build-client.mjs).
+node_modules
+packages/*/node_modules
+packages/*/dist
+packages/coc/src/server/spa/client/dist
+packages/coc-desktop/release
+.git
+.github
+coverage
+**/*.log
+**/.DS_Store
+docs
+media
+scripts/skillopt
+test-results
+playwright-report
+notes

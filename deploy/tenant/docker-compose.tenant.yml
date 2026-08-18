@@ -1,0 +1,70 @@
+# One CoC instance per tenant — plain Docker equivalent of tenant.yaml.
+#
+#   TENANT_ID=acme TENANT_HOST=t-acme.coc.example.com OIDC_... COOKIE_SECRET=... \
+#     docker compose -p coc-acme -f docker-compose.tenant.yml up -d
+#
+# `coc` publishes no ports and binds 127.0.0.1. `auth-proxy` and `coc` share one
+# network namespace, so the proxy reaches http://127.0.0.1:4000 and nothing else
+# can. Docker Compose only allows `ports:` on the service that OWNS the shared
+# namespace (a service using network_mode: "service:x" may not publish), so the
+# proxy owns the namespace here and coc joins it — the reverse of the k8s pod
+# where both containers are peers. Only 8080 is ever published, and only on the
+# host loopback: a host reverse proxy (Caddy/nginx/Traefik) terminates TLS for
+# TENANT_HOST and forwards to it. Port 4000 is never published anywhere.
+services:
+  auth-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.7.1
+    container_name: coc-${TENANT_ID:?set TENANT_ID}-auth-proxy
+    command:
+      - --http-address=0.0.0.0:8080
+      - --upstream=http://127.0.0.1:4000
+      - --upstream-timeout=0
+      - --provider=oidc
+      - --oidc-issuer-url=${OIDC_ISSUER_URL:?set OIDC_ISSUER_URL}
+      - --client-id=${OIDC_CLIENT_ID:?set OIDC_CLIENT_ID}
+      - --redirect-url=https://${TENANT_HOST:?set TENANT_HOST}/oauth2/callback
+      - --email-domain=*
+      - --allowed-group=coc-tenant-${TENANT_ID}
+      - --cookie-secure=true
+      - --cookie-samesite=lax
+      - --cookie-refresh=1h
+      - --skip-provider-button=true
+    environment:
+      OAUTH2_PROXY_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?set OIDC_CLIENT_SECRET}
+      OAUTH2_PROXY_COOKIE_SECRET: ${COOKIE_SECRET:?set COOKIE_SECRET}
+    ports:
+      - "${PROXY_BIND:-127.0.0.1:18080}:8080"   # host reverse proxy → here; never 4000
+    restart: unless-stopped
+
+  coc:
+    image: ghcr.io/plusplusoneplusplus/coc:${IMAGE_TAG:-latest}
+    container_name: coc-${TENANT_ID:?set TENANT_ID}
+    network_mode: "service:auth-proxy"   # same netns as the sidecar: 127.0.0.1:4000 is reachable only from there
+    depends_on: [auth-proxy]
+    # Intentionally no `ports:` (and not allowed with a shared namespace): nothing
+    # outside this compose project can address the CoC process.
+    command: ["--host", "127.0.0.1", "--port", "4000", "--data-dir", "/data/.coc"]
+    volumes:
+      - coc-data:/data
+      - coc-work:/work
+    environment:
+      COC_PORT: "4000"
+      TZ: UTC
+      # First-boot seeding (all optional; see docker/entrypoint.sh)
+      COC_INIT_REPOS: ${COC_INIT_REPOS:-}
+      GIT_AUTHOR_NAME: ${GIT_AUTHOR_NAME:-${TENANT_ID}}
+      GIT_AUTHOR_EMAIL: ${GIT_AUTHOR_EMAIL:-${TENANT_ID}@coc.example.com}
+      # Per-tenant agent credentials (or log in via the in-app terminal; persisted on /data)
+      COPILOT_GITHUB_TOKEN: ${COPILOT_GITHUB_TOKEN:-}
+      GH_TOKEN: ${GH_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    stop_grace_period: 10m           # ≥ queue drain timeout; SIGTERM → tini → coc serve drains
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    restart: unless-stopped
+
+volumes:
+  coc-data:
+  coc-work:
