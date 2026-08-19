@@ -896,28 +896,37 @@ describe('NoteEditorToolbar — table controls secondary row', () => {
     });
 });
 
-describe('NoteEditorToolbar — styled text-mark buttons', () => {
-    it('Bold button renders with <strong> tag', () => {
+describe('NoteEditorToolbar — drawn command icons', () => {
+    it.each([
+        ['Bold', 'bold'],
+        ['Italic', 'italic'],
+        ['Strikethrough', 'strike'],
+        ['Superscript', 'superscript'],
+        ['Subscript', 'subscript'],
+        ['Blockquote', 'blockquote'],
+        ['Code', 'code'],
+        ['Code block', 'codeBlock'],
+        ['Link', 'link'],
+        ['Horizontal rule', 'horizontalRule'],
+        ['Increase indent', 'increaseIndent'],
+        ['Decrease indent', 'decreaseIndent'],
+        ['Find and replace', 'find'],
+    ])('draws the %s button instead of typing a glyph', (label, id) => {
         const editor = makeMockEditor();
         render(<NoteEditorToolbar editor={editor as never} />);
-        const boldBtn = screen.getByLabelText('Bold');
-        expect(boldBtn.querySelector('strong')).not.toBeNull();
+        const button = screen.getByLabelText(label);
+        expect(button.querySelector(`svg[data-testid="toolbar-icon-${id}"]`)).not.toBeNull();
+        // No leftover character next to the drawing.
+        expect(button.textContent).toBe('');
     });
 
-    it('Italic button renders with <em> tag', () => {
+    it('draws the Insert PDF button rather than showing the 📄 emoji', () => {
         const editor = makeMockEditor();
-        render(<NoteEditorToolbar editor={editor as never} />);
-        const italicBtn = screen.getByLabelText('Italic');
-        expect(italicBtn.querySelector('em')).not.toBeNull();
+        render(<NoteEditorToolbar editor={editor as never} onInsertPdf={() => {}} />);
+        const button = screen.getByTestId('insert-pdf-btn');
+        expect(button.querySelector('svg[data-testid="toolbar-icon-insertPdf"]')).not.toBeNull();
+        expect(button.textContent).toBe('');
     });
-
-    it('Strikethrough button renders with <s> tag', () => {
-        const editor = makeMockEditor();
-        render(<NoteEditorToolbar editor={editor as never} />);
-        const strikeBtn = screen.getByLabelText('Strikethrough');
-        expect(strikeBtn.querySelector('s')).not.toBeNull();
-    });
-
 });
 
 describe('NoteEditorToolbar — font family dropdown', () => {

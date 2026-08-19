@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import type { Editor } from '@tiptap/react';
 import { ToolbarDropdown, MenuItem, Sep } from './ToolbarDropdown';
 import { AlignIcon } from './AlignIcon';
+import { ToolbarIcon, hasToolbarIcon } from './ToolbarIcon';
 import { ColorDropdown } from './ColorDropdown';
 import { FontFamilyDropdown } from './FontFamilyDropdown';
 import { FontSizeDropdown } from './FontSizeDropdown';
@@ -28,6 +29,8 @@ interface TBProps {
     editor: Editor;
     label: string;
     icon: string;
+    /** Command id — selects the drawn icon; falls back to `icon` when unknown. */
+    iconId?: string;
     command: () => void;
     activeName?: string;
     activeAttrs?: Record<string, unknown>;
@@ -35,8 +38,13 @@ interface TBProps {
     className?: string;
 }
 
-/** Render text-mark icons with appropriate HTML formatting. */
-function renderIcon(icon: string): ReactNode {
+/**
+ * The button's glyph: the drawn icon when the command has one, otherwise its
+ * text `icon` — with the marks that have no drawing styled to match what they
+ * do.
+ */
+function renderIcon(icon: string, iconId?: string): ReactNode {
+    if (iconId && hasToolbarIcon(iconId)) return <ToolbarIcon name={iconId} />;
     switch (icon) {
         case 'B': return <strong className="font-bold">B</strong>;
         case 'I': return <em className="italic">I</em>;
@@ -45,7 +53,7 @@ function renderIcon(icon: string): ReactNode {
     }
 }
 
-export function TB({ editor, label, icon, command, activeName, activeAttrs, className }: TBProps) {
+export function TB({ editor, label, icon, iconId, command, activeName, activeAttrs, className }: TBProps) {
     const isActive = activeName ? editor.isActive(activeName, activeAttrs) : false;
     return (
         <button
@@ -62,7 +70,7 @@ export function TB({ editor, label, icon, command, activeName, activeAttrs, clas
                 command();
             }}
         >
-            {renderIcon(icon)}
+            {renderIcon(icon, iconId)}
         </button>
     );
 }
@@ -289,6 +297,7 @@ function CommandButton({ editor, command }: { editor: Editor; command: ToolbarCo
             editor={editor}
             label={command.label}
             icon={command.icon}
+            iconId={command.id}
             command={() => command.run(editor)}
             activeName={command.activeName}
             activeAttrs={command.activeAttrs}
@@ -338,7 +347,7 @@ export function FormattingToolbar({ editor, findOpen, onToggleFind, onInsertPdf 
                             onInsertPdf();
                         }}
                     >
-                        📄
+                        <ToolbarIcon name="insertPdf" />
                     </button>
                 );
             case 'find':
@@ -348,6 +357,7 @@ export function FormattingToolbar({ editor, findOpen, onToggleFind, onInsertPdf 
                         editor={editor}
                         label="Find and replace"
                         icon="🔍"
+                        iconId="find"
                         // Toggling off goes through the controller so the search
                         // is cleared, same as the panel's ✕ and Esc.
                         command={onToggleFind}
