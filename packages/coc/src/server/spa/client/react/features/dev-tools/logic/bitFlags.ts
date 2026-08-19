@@ -20,7 +20,7 @@
  * React-free and dependency-free so it can be unit-tested directly.
  */
 
-import { evaluate } from './calculator';
+import { type CalcWidth, evaluate, maskFor, toHexLiteral, truncate } from './calculator';
 
 /**
  * What a parsed name turned out to be.
@@ -360,5 +360,185 @@ export function parseFlagDefinitions(source: string): ParsedFlagSet {
         parsedLines: parsedLineSet.size,
         totalLines: parsedLineSet.size + skipped.length,
         sequential,
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Decode / encode
+// ---------------------------------------------------------------------------
+
+/** A single-bit flag whose bit is set in the decoded value. */
+export interface DecodedFlag {
+    name: string;
+    value: bigint;
+    bit: number;
+}
+
+/** A composite whose bits are *all* present — a partial match is not a match. */
+export interface DecodedAlias {
+    name: string;
+    value: bigint;
+}
+
+/** A `*_MASK` sub-field, read out as a small number rather than as flags. */
+export interface DecodedField {
+    name: string;
+    /** The mask itself, e.g. `0x30`. */
+    mask: bigint;
+    /** The masked bits shifted down, e.g. `0x30` in `0x20` reads as `2`. */
+    value: bigint;
+    shift: number;
+}
+
+export interface DecodeResult {
+    /** The input truncated to the selected width. */
+    value: bigint;
+    flags: DecodedFlag[];
+    aliases: DecodedAlias[];
+    fields: DecodedField[];
+    /** Set bits nothing in the set accounts for. */
+    unknown: bigint;
+    unknownBits: number[];
+    /** One line, e.g. `A | C | unknown 0x80`; `0` when nothing is set. */
+    summary: string;
+    /** True when the value is 0 — the card shows "no flags set", not an error. */
+    empty: boolean;
+}
+
+/** Bit indices set in a value, low to high. */
+function bitIndices(value: bigint): number[] {
+    const bits: number[] = [];
+    for (let i = 0; value >> BigInt(i); i++) {
+        if ((value >> BigInt(i)) & 1n) bits.push(i);
+    }
+    return bits;
+}
+
+/**
+ * Work out which named flags, aliases and sub-fields a number contains.
+ *
+ * An alias only counts when every one of its bits is present, so a half-matched
+ * `ALL = A | B | C` is silently absent rather than misleadingly listed. Bits no
+ * name accounts for come back as `unknown` so nothing is quietly dropped.
+ */
+export function decodeValue(entries: readonly FlagEntry[], input: bigint, width: CalcWidth): DecodeResult {
+    const value = truncate(input, width);
+    const limit = maskFor(width);
+
+    const flags: DecodedFlag[] = [];
+    const aliases: DecodedAlias[] = [];
+    const fields: DecodedField[] = [];
+    let covered = 0n;
+
+    for (const entry of entries) {
+        const entryValue = truncate(entry.value, width);
+        if (entryValue === 0n) continue; // `NONE = 0` is never "set".
+        switch (entry.kind) {
+            case 'flag':
+                if ((value & entryValue) === entryValue) {
+                    flags.push({ name: entry.name, value: entryValue, bit: bitIndexOf(entryValue) });
+                    covered |= entryValue;
+                }
+                break;
+            case 'alias':
+                if ((value & entryValue) === entryValue) {
+                    aliases.push({ name: entry.name, value: entryValue });
+                    covered |= entryValue;
+                }
+                break;
+            case 'mask': {
+                // A field's bits are accounted for whether or not it reads as 0,
+                // otherwise a zero sub-field would leak into `unknown`.
+                covered |= entryValue;
+                const masked = value & entryValue;
+                if (masked === 0n) break;
+                const shift = entry.shift ?? 0;
+                fields.push({ name: entry.name, mask: entryValue, value: masked >> BigInt(shift), shift });
+                break;
+            }
+            default:
+                break; // 'shift' and 'zero' are never bits of the value.
+        }
+    }
+
+    const unknown = value & ~covered & limit;
+    return {
+        value,
+        flags,
+        aliases,
+        fields,
+        unknown,
+        unknownBits: bitIndices(unknown),
+        summary: summarizeDecoded({ value, flags, aliases, fields, unknown }, width),
+        empty: value === 0n,
+    };
+}
+
+/**
+ * The one-line form, used both above the table and by the copy button.
+ *
+ * An alias is only worth a slot when it names bits no matched flag already
+ * named — otherwise `A | B | BOTH` says the same thing three times.
+ */
+function summarizeDecoded(
+    parts: Pick<DecodeResult, 'value' | 'flags' | 'aliases' | 'fields' | 'unknown'>,
+    width: CalcWidth,
+): string {
+    const named = parts.flags.reduce((acc, f) => acc | f.value, 0n);
+    const pieces: string[] = [];
+    for (const flag of parts.flags) pieces.push(flag.name);
+    for (const alias of parts.aliases) {
+        if ((alias.value & ~named) !== 0n) pieces.push(alias.name);
+    }
+    for (const field of parts.fields) pieces.push(`${field.name}=${field.value}`);
+    if (parts.unknown !== 0n) pieces.push(`unknown ${toHexLiteral(parts.unknown, width)}`);
+    return pieces.length > 0 ? pieces.join(' | ') : toHexLiteral(parts.value, width);
+}
+
+/** What the card's checkboxes and sub-field inputs currently hold. */
+export interface FlagSelection {
+    /** Names of ticked `flag` and `alias` entries. */
+    selected: readonly string[];
+    /** Sub-field values by `*_MASK` name, already shifted down. */
+    fields?: Readonly<Record<string, bigint>>;
+}
+
+/**
+ * The reverse direction: turn ticked names and sub-field numbers back into a
+ * number. Unknown names are ignored so a selection kept across a set switch
+ * degrades instead of throwing.
+ */
+export function encodeSelection(entries: readonly FlagEntry[], selection: FlagSelection, width: CalcWidth): bigint {
+    const byName = new Map(entries.map(entry => [entry.name, entry]));
+    let value = 0n;
+
+    for (const name of selection.selected) {
+        const entry = byName.get(name);
+        if (!entry || (entry.kind !== 'flag' && entry.kind !== 'alias')) continue;
+        value |= entry.value;
+    }
+    for (const [name, fieldValue] of Object.entries(selection.fields ?? {})) {
+        const entry = byName.get(name);
+        if (!entry || entry.kind !== 'mask') continue;
+        value |= (fieldValue << BigInt(entry.shift ?? 0)) & entry.value;
+    }
+    return truncate(value, width);
+}
+
+/**
+ * The selection a number implies — what the checkboxes should show after the
+ * user types into the numeric box.
+ */
+export function selectionFor(entries: readonly FlagEntry[], value: bigint, width: CalcWidth): FlagSelection {
+    const decoded = decodeValue(entries, value, width);
+    const fields: Record<string, bigint> = {};
+    for (const entry of entries) {
+        if (entry.kind !== 'mask') continue;
+        const masked = truncate(value, width) & truncate(entry.value, width);
+        fields[entry.name] = masked >> BigInt(entry.shift ?? 0);
+    }
+    return {
+        selected: [...decoded.flags.map(f => f.name), ...decoded.aliases.map(a => a.name)],
+        fields,
     };
 }

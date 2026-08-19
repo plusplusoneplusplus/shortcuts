@@ -8,7 +8,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+    decodeValue,
+    encodeSelection,
     parseFlagDefinitions,
+    selectionFor,
     type FlagEntry,
 } from '../../../../../src/server/spa/client/react/features/dev-tools/logic/bitFlags';
 
@@ -198,5 +201,131 @@ describe('parseFlagDefinitions — sequential enums', () => {
         const parsed = parseFlagDefinitions('enum { A = 1, B = 2, C = 4, D = 8 };');
         expect(parsed.sequential).toBe(false);
         expect(parsed.warnings).toEqual([]);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Decode / encode
+// ---------------------------------------------------------------------------
+
+/** A mixed set: single bits, an alias, a `NONE = 0`, and a `_MASK`/`_SHIFT` pair. */
+const MIXED = parseFlagDefinitions(`
+enum Caps {
+    NONE  = 0,
+    READ  = 1 << 0,
+    WRITE = 1 << 1,
+    EXEC  = 1 << 2,
+    ALL   = READ | WRITE | EXEC,
+    SPEED_MASK  = 0x30,
+    SPEED_SHIFT = 4,
+};
+`).entries;
+
+describe('decodeValue', () => {
+    it('names the single bits that are set', () => {
+        const decoded = decodeValue(MIXED, 0x5n, 32);
+        expect(decoded.flags.map(f => [f.name, f.bit])).toEqual([
+            ['READ', 0],
+            ['EXEC', 2],
+        ]);
+        expect(decoded.unknown).toBe(0n);
+    });
+
+    it('reports leftover bits nothing accounts for', () => {
+        const decoded = decodeValue(MIXED, 0x85n, 32);
+        expect(decoded.flags.map(f => f.name)).toEqual(['READ', 'EXEC']);
+        expect(decoded.unknown).toBe(0x80n);
+        expect(decoded.unknownBits).toEqual([7]);
+        expect(decoded.summary).toBe('READ | EXEC | unknown 0x80');
+    });
+
+    it('lists an alias only when every one of its bits is present', () => {
+        expect(decodeValue(MIXED, 0x7n, 32).aliases.map(a => a.name)).toEqual(['ALL']);
+        expect(decodeValue(MIXED, 0x3n, 32).aliases).toEqual([]);
+    });
+
+    it('keeps a fully matched alias out of the summary when its bits are already named', () => {
+        expect(decodeValue(MIXED, 0x7n, 32).summary).toBe('READ | WRITE | EXEC');
+    });
+
+    it('reads a multi-bit field as a shifted-down number', () => {
+        const decoded = decodeValue(MIXED, 0x30n, 32);
+        expect(decoded.fields).toEqual([{ name: 'SPEED_MASK', mask: 0x30n, value: 3n, shift: 4 }]);
+        expect(decoded.unknown).toBe(0n);
+        expect(decoded.summary).toBe('SPEED_MASK=3');
+    });
+
+    it('falls back to the mask trailing-zero count when there is no _SHIFT', () => {
+        const entries = parseFlagDefinitions('enum { SPEED_MASK = 0x30 };').entries;
+        expect(decodeValue(entries, 0x20n, 32).fields[0]?.value).toBe(2n);
+    });
+
+    it('treats zero as an empty state, not an error', () => {
+        const decoded = decodeValue(MIXED, 0n, 32);
+        expect(decoded.empty).toBe(true);
+        expect(decoded.flags).toEqual([]);
+        expect(decoded.aliases).toEqual([]);
+        expect(decoded.fields).toEqual([]);
+        expect(decoded.summary).toBe('0x0');
+    });
+
+    it('never matches a NONE = 0 entry', () => {
+        expect(decodeValue(MIXED, 0xffn, 32).flags.map(f => f.name)).not.toContain('NONE');
+    });
+
+    it('never reports a _SHIFT partner as a bit', () => {
+        // SPEED_SHIFT = 4 shares its value with EXEC; only EXEC may be listed.
+        expect(decodeValue(MIXED, 0x4n, 32).flags.map(f => f.name)).toEqual(['EXEC']);
+    });
+
+    it('truncates the input to the selected width', () => {
+        const decoded = decodeValue(MIXED, 0x1ffn, 8);
+        expect(decoded.value).toBe(0xffn);
+        // Bits 3, 6 and 7 have no name in this set; bits 4-5 are the mask.
+        expect(decoded.unknown).toBe(0xc8n);
+    });
+});
+
+describe('encodeSelection', () => {
+    it('ORs the ticked flags together', () => {
+        expect(encodeSelection(MIXED, { selected: ['READ', 'EXEC'] }, 32)).toBe(0x5n);
+    });
+
+    it('sets every constituent bit when an alias is ticked', () => {
+        expect(encodeSelection(MIXED, { selected: ['ALL'] }, 32)).toBe(0x7n);
+    });
+
+    it('shifts a sub-field up into its mask and clamps it there', () => {
+        expect(encodeSelection(MIXED, { selected: [], fields: { SPEED_MASK: 3n } }, 32)).toBe(0x30n);
+        expect(encodeSelection(MIXED, { selected: [], fields: { SPEED_MASK: 0xffn } }, 32)).toBe(0x30n);
+    });
+
+    it('ignores names the current set does not have', () => {
+        expect(encodeSelection(MIXED, { selected: ['READ', 'GONE'] }, 32)).toBe(0x1n);
+    });
+
+    it('truncates to the selected width', () => {
+        const entries = parseFlagDefinitions('enum { HIGH = 1 << 9 };').entries;
+        expect(encodeSelection(entries, { selected: ['HIGH'] }, 8)).toBe(0n);
+    });
+
+    it('round-trips a mixed selection through decode', () => {
+        const selection = { selected: ['READ', 'EXEC', 'ALL'], fields: { SPEED_MASK: 2n } };
+        const value = encodeSelection(MIXED, selection, 32);
+        const back = selectionFor(MIXED, value, 32);
+        expect(new Set(back.selected)).toEqual(new Set(['READ', 'WRITE', 'EXEC', 'ALL']));
+        expect(back.fields?.SPEED_MASK).toBe(2n);
+        expect(encodeSelection(MIXED, back, 32)).toBe(value);
+    });
+});
+
+describe('selectionFor', () => {
+    it('ticks every flag a typed number covers', () => {
+        const selection = selectionFor(MIXED, 0xffn, 32);
+        expect(new Set(selection.selected)).toEqual(new Set(['READ', 'WRITE', 'EXEC', 'ALL']));
+    });
+
+    it('reports a zeroed sub-field as 0 rather than dropping it', () => {
+        expect(selectionFor(MIXED, 0x1n, 32).fields?.SPEED_MASK).toBe(0n);
     });
 });
