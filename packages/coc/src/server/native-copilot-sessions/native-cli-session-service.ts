@@ -16,6 +16,8 @@ import {
     sessionMatchesWorkspace,
 } from './native-copilot-session-service';
 import type { NativeCopilotSessionService } from './native-copilot-session-service';
+import { NativeTranscriptIndex } from './native-transcript-index';
+import type { TranscriptFileSystem } from './native-transcript-index';
 import type {
     NativeCliSessionDetail,
     NativeCliSessionDetailResult,
@@ -23,6 +25,7 @@ import type {
     NativeCliSessionListOptions,
     NativeCliSessionListResult,
     NativeCliSessionProviderId,
+    NativeCliSessionSearchStrategy,
     NativeSessionProvider,
     NativeSessionWorkspaceScope,
     ReconstructedConversationTurn,
@@ -55,14 +58,12 @@ interface NativeCliSessionMetadata {
     recordedCwds?: string[];
 }
 
-interface CachedMetadata {
-    mtimeMs: number;
-    size: number;
-    metadata: NativeCliSessionMetadata | null;
-}
-
 interface FileSessionProviderOptions {
     storePath?: string;
+    /** Bound on indexed transcript files; tests use it to force eviction. */
+    indexCapacity?: number;
+    /** Injected filesystem seam so tests can count reads and stats. */
+    fileSystem?: TranscriptFileSystem;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -204,14 +205,6 @@ function snippetForQuery(raw: string, query: string | undefined): string[] {
     return [raw.slice(start, end).replace(/\s+/g, ' ').trim()];
 }
 
-function readUtf8(filePath: string): string | null {
-    try {
-        return fs.readFileSync(filePath, 'utf8');
-    } catch {
-        return null;
-    }
-}
-
 function safeStat(filePath: string): fs.Stats | null {
     try {
         return fs.statSync(filePath);
@@ -224,12 +217,27 @@ abstract class JsonlFileNativeSessionProvider implements NativeSessionProvider {
     readonly provider: NativeCliSessionProviderId;
     readonly label: string;
     readonly storePath: string;
-    private readonly metadataCache = new Map<string, CachedMetadata>();
+    /**
+     * File-backed stores have no native text index, so a free-text query is
+     * served by substring-scanning candidate transcripts on demand.
+     */
+    readonly searchStrategy: NativeCliSessionSearchStrategy = 'on-demand-scan';
+    protected readonly index: NativeTranscriptIndex<NativeCliSessionMetadata>;
 
-    protected constructor(provider: NativeCliSessionProviderId, label: string, storePath: string) {
+    protected constructor(
+        provider: NativeCliSessionProviderId,
+        label: string,
+        storePath: string,
+        options: FileSessionProviderOptions = {},
+    ) {
         this.provider = provider;
         this.label = label;
         this.storePath = storePath;
+        this.index = new NativeTranscriptIndex<NativeCliSessionMetadata>({
+            parseMetadata: (filePath, raw, stat) => this.parseMetadata(filePath, raw, stat),
+            capacity: options.indexCapacity,
+            fileSystem: options.fileSystem,
+        });
     }
 
     listSessions(
@@ -238,6 +246,7 @@ abstract class JsonlFileNativeSessionProvider implements NativeSessionProvider {
     ): NativeCliSessionListResult & { limit: number; offset: number } {
         const limit = clampLimit(options.limit);
         const offset = clampOffset(options.offset);
+        this.index.beginPass();
         const storeState = this.getStoreState();
         if (storeState !== 'ok') {
             return { available: false, reason: storeState, limit, offset };
@@ -257,7 +266,7 @@ abstract class JsonlFileNativeSessionProvider implements NativeSessionProvider {
         const rows: Array<{ metadata: NativeCliSessionMetadata; snippets: string[] }> = [];
 
         for (const filePath of files) {
-            const metadata = this.getMetadata(filePath);
+            const metadata = this.index.getMetadata(filePath);
             if (!metadata || !this.metadataMatchesWorkspace(metadata, scope)) {
                 continue;
             }
@@ -283,7 +292,7 @@ abstract class JsonlFileNativeSessionProvider implements NativeSessionProvider {
                 deduplicatedSessionIds.add(metadata.id);
                 continue;
             }
-            const raw = q ? readUtf8(filePath) : null;
+            const raw = q ? this.index.readRaw(filePath) : null;
             const snippets = raw && q ? snippetForQuery(raw, q) : [];
             if (q && snippets.length === 0) {
                 continue;
@@ -317,6 +326,7 @@ abstract class JsonlFileNativeSessionProvider implements NativeSessionProvider {
     }
 
     getSession(scope: NativeSessionWorkspaceScope, id: string): NativeCliSessionDetailResult {
+        this.index.beginPass();
         const storeState = this.getStoreState();
         if (storeState !== 'ok') {
             return { available: false, reason: storeState };
@@ -329,7 +339,7 @@ abstract class JsonlFileNativeSessionProvider implements NativeSessionProvider {
         }
         const matches: Array<{ metadata: NativeCliSessionMetadata; filePath: string }> = [];
         for (const filePath of files) {
-            const metadata = this.getMetadata(filePath);
+            const metadata = this.index.getMetadata(filePath);
             if (!metadata || metadata.id !== id || !this.metadataMatchesWorkspace(metadata, scope)) {
                 continue;
             }
@@ -338,7 +348,7 @@ abstract class JsonlFileNativeSessionProvider implements NativeSessionProvider {
         matches.sort((a, b) => compareMetadataUpdatedDesc(a.metadata, b.metadata));
         const match = matches[0];
         if (match) {
-            const raw = readUtf8(match.filePath);
+            const raw = this.index.readRaw(match.filePath);
             if (raw === null) {
                 return { available: false, reason: 'store-invalid' };
             }
@@ -362,21 +372,6 @@ abstract class JsonlFileNativeSessionProvider implements NativeSessionProvider {
         }
         const stat = safeStat(this.storePath);
         return stat?.isDirectory() ? 'ok' : 'store-invalid';
-    }
-
-    private getMetadata(filePath: string): NativeCliSessionMetadata | null {
-        const stat = safeStat(filePath);
-        if (!stat?.isFile()) {
-            return null;
-        }
-        const cached = this.metadataCache.get(filePath);
-        if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
-            return cached.metadata;
-        }
-        const raw = readUtf8(filePath);
-        const metadata = raw === null ? null : this.parseMetadata(filePath, raw, stat);
-        this.metadataCache.set(filePath, { mtimeMs: stat.mtimeMs, size: stat.size, metadata });
-        return metadata;
     }
 }
 
@@ -405,7 +400,7 @@ function walkJsonlFiles(root: string, predicate: (filePath: string) => boolean):
 
 export class CodexNativeSessionProvider extends JsonlFileNativeSessionProvider {
     constructor(options: FileSessionProviderOptions = {}) {
-        super('codex', 'Codex', options.storePath ?? path.join(os.homedir(), '.codex', 'sessions'));
+        super('codex', 'Codex', options.storePath ?? path.join(os.homedir(), '.codex', 'sessions'), options);
     }
 
     protected listCandidateFiles(): string[] {
@@ -452,6 +447,8 @@ export class CopilotNativeSessionProvider implements NativeSessionProvider {
     readonly provider = 'copilot' as const;
     readonly label = 'GitHub Copilot';
     readonly storePath: string;
+    /** Copilot's own SQLite store carries an FTS `search_index` table. */
+    readonly searchStrategy: NativeCliSessionSearchStrategy = 'native-index';
 
     constructor(private readonly service: NativeCopilotSessionService) {
         this.storePath = service.getStorePath();
@@ -522,7 +519,7 @@ export function dashEncodeWorkspaceRoot(rootPath: string | undefined): string | 
 
 export class ClaudeNativeSessionProvider extends JsonlFileNativeSessionProvider {
     constructor(options: FileSessionProviderOptions = {}) {
-        super('claude', 'Claude Code', options.storePath ?? path.join(os.homedir(), '.claude', 'projects'));
+        super('claude', 'Claude Code', options.storePath ?? path.join(os.homedir(), '.claude', 'projects'), options);
     }
 
     protected listCandidateFiles(scope: NativeSessionWorkspaceScope): string[] {

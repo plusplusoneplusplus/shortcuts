@@ -149,7 +149,112 @@ export interface NativeCopilotSessionDetailResponse {
   session?: NativeCopilotSessionDetail;
 }
 
-export type NativeCliSessionProviderId = 'copilot' | 'codex' | 'claude';
+/**
+ * Every native CLI session provider CoC knows about.
+ *
+ * Membership here does NOT mean the provider is servable — that is decided by
+ * the descriptor's {@link NativeCliProviderDescriptor.status} in
+ * {@link NATIVE_CLI_PROVIDER_DESCRIPTORS}, which is the single gate shared by
+ * the server registry, the route parser, and the dashboard tab list.
+ */
+export type NativeCliSessionProviderId = 'copilot' | 'codex' | 'claude' | 'opencode';
+
+/**
+ * How a provider answers a free-text query.
+ *
+ * - `native-index`: the CLI's own store has a text index (Copilot's SQLite FTS).
+ * - `on-demand-scan`: CoC substring-scans candidate transcripts per request.
+ * - `unavailable`: the provider cannot serve text search at all.
+ */
+export type NativeCliSessionSearchStrategy = 'native-index' | 'on-demand-scan' | 'unavailable';
+
+/** Whether a provider can currently be served. */
+export type NativeCliProviderStatus = 'available' | 'planned';
+
+/**
+ * The authoritative description of one native CLI session provider.
+ *
+ * This is the only place provider identity, display copy, store location, and
+ * search semantics are declared. The server builds its provider registry from
+ * these descriptors and the dashboard builds its tab list from them, so a
+ * provider can never be half-wired into one surface but not the other.
+ */
+export interface NativeCliProviderDescriptor {
+  id: NativeCliSessionProviderId;
+  /** Short tab/badge label, e.g. `Codex`. */
+  label: string;
+  /** Sentence-form label for the read-only external-record notice. */
+  externalLabel: string;
+  /** Human-readable default store location, shown when no concrete path is known. */
+  storeHint: string;
+  searchStrategy: NativeCliSessionSearchStrategy;
+  status: NativeCliProviderStatus;
+  /** Why a `planned` provider is not servable yet. Omitted when `available`. */
+  plannedNote?: string;
+}
+
+export const NATIVE_CLI_PROVIDER_DESCRIPTORS: readonly NativeCliProviderDescriptor[] = [
+  {
+    id: 'copilot',
+    label: 'Copilot',
+    externalLabel: 'Native Copilot CLI session',
+    storeHint: '~/.copilot/session-store.db',
+    searchStrategy: 'native-index',
+    status: 'available',
+  },
+  {
+    id: 'codex',
+    label: 'Codex',
+    externalLabel: 'Native Codex CLI session',
+    storeHint: '~/.codex/sessions',
+    searchStrategy: 'on-demand-scan',
+    status: 'available',
+  },
+  {
+    id: 'claude',
+    label: 'Claude',
+    externalLabel: 'Native Claude Code session',
+    storeHint: '~/.claude/projects',
+    searchStrategy: 'on-demand-scan',
+    status: 'available',
+  },
+  {
+    id: 'opencode',
+    label: 'OpenCode',
+    externalLabel: 'Native OpenCode CLI session',
+    storeHint: '~/.opencode',
+    searchStrategy: 'unavailable',
+    status: 'planned',
+    plannedNote: 'CoC cannot read the OpenCode CLI session store yet.',
+  },
+];
+
+export const NATIVE_CLI_PROVIDER_IDS: readonly NativeCliSessionProviderId[] =
+  NATIVE_CLI_PROVIDER_DESCRIPTORS.map(descriptor => descriptor.id);
+
+/** Descriptors the server can actually serve and the dashboard should offer. */
+export const AVAILABLE_NATIVE_CLI_PROVIDER_DESCRIPTORS: readonly NativeCliProviderDescriptor[] =
+  NATIVE_CLI_PROVIDER_DESCRIPTORS.filter(descriptor => descriptor.status === 'available');
+
+export function isNativeCliSessionProviderId(value: unknown): value is NativeCliSessionProviderId {
+  return typeof value === 'string'
+    && NATIVE_CLI_PROVIDER_IDS.includes(value as NativeCliSessionProviderId);
+}
+
+export function getNativeCliProviderDescriptor(
+  id: NativeCliSessionProviderId,
+): NativeCliProviderDescriptor {
+  const descriptor = NATIVE_CLI_PROVIDER_DESCRIPTORS.find(candidate => candidate.id === id);
+  if (!descriptor) {
+    throw new Error(`Unknown native CLI session provider: ${id}`);
+  }
+  return descriptor;
+}
+
+/** True when the provider is declared servable by the shared registry. */
+export function isNativeCliProviderAvailable(id: NativeCliSessionProviderId): boolean {
+  return getNativeCliProviderDescriptor(id).status === 'available';
+}
 export type NativeCliSessionsUnavailableReason = 'feature-disabled' | 'store-missing' | 'store-invalid';
 
 export interface NativeCliSessionListItem extends NativeCopilotSessionListItem {
@@ -173,6 +278,8 @@ export interface ListNativeCliSessionsResponse {
   available?: boolean;
   reason?: NativeCliSessionsUnavailableReason;
   provider?: NativeCliSessionProviderId;
+  /** How the responding provider answered (or would answer) a text query. */
+  searchStrategy?: NativeCliSessionSearchStrategy;
   items: NativeCliSessionListItem[];
   total: number;
   searchIndexAvailable?: boolean;
@@ -187,5 +294,6 @@ export interface NativeCliSessionDetailResponse {
   available?: boolean;
   reason?: NativeCliSessionsUnavailableReason;
   provider?: NativeCliSessionProviderId;
+  searchStrategy?: NativeCliSessionSearchStrategy;
   session?: NativeCliSessionDetail;
 }

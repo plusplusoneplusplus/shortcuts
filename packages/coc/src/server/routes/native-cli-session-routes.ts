@@ -8,18 +8,30 @@
 
 import * as url from 'url';
 import * as http from 'http';
-import type { ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { sendJSON } from '../core/api-handler';
 import { badRequest, handleAPIError, notFound } from '../errors';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import { DEFAULT_NATIVE_SESSION_LIST_LIMIT } from '../native-copilot-sessions/native-copilot-session-service';
+import {
+    getNativeCliProviderDescriptor,
+    isNativeCliSessionProviderId,
+    NATIVE_CLI_PROVIDER_IDS,
+} from '../native-copilot-sessions/types';
 import type {
     NativeCliSessionProviderId,
     NativeSessionProvider,
-    NativeSessionWorkspaceScope,
 } from '../native-copilot-sessions/types';
-import { parseGitHubRemoteUrl, readGitOriginRemote } from '../work-items/work-item-sync-github-repo';
+import {
+    createScopeBuilder,
+    featureDisabledListPayload,
+    parseListFilters,
+    queryNumber,
+    queryString,
+    unavailableListPayload,
+} from './native-session-route-utils';
+import type { ResolveWorkspaceRepository } from './native-session-route-utils';
 
 export interface NativeCliSessionRouteContext {
     routes: Route[];
@@ -27,61 +39,35 @@ export interface NativeCliSessionRouteContext {
     getEnabled: () => boolean;
     providers: ReadonlyMap<NativeCliSessionProviderId, NativeSessionProvider>;
     /** Override of workspace `owner/repo` resolution (tests avoid real git calls). */
-    resolveWorkspaceRepository?: (workspace: WorkspaceInfo) => string | undefined | Promise<string | undefined>;
-}
-
-async function defaultResolveWorkspaceRepository(workspace: WorkspaceInfo): Promise<string | undefined> {
-    if (!workspace.rootPath) {
-        return undefined;
-    }
-    const remote = await readGitOriginRemote(workspace.rootPath);
-    if (!remote) {
-        return undefined;
-    }
-    const parsed = parseGitHubRemoteUrl(remote);
-    return parsed ? `${parsed.owner}/${parsed.repo}` : undefined;
-}
-
-function queryString(value: unknown): string | undefined {
-    if (typeof value !== 'string') {
-        return undefined;
-    }
-    const trimmed = value.trim();
-    return trimmed ? trimmed : undefined;
-}
-
-function queryNumber(value: unknown): number | undefined {
-    const raw = queryString(value);
-    if (raw === undefined) {
-        return undefined;
-    }
-    const parsed = Number.parseInt(raw, 10);
-    return Number.isNaN(parsed) ? undefined : parsed;
-}
-
-function parseProvider(value: unknown): NativeCliSessionProviderId | undefined {
-    const raw = queryString(value) ?? 'copilot';
-    return raw === 'copilot' || raw === 'codex' || raw === 'claude' || raw === 'opencode' ? raw : undefined;
+    resolveWorkspaceRepository?: ResolveWorkspaceRepository;
 }
 
 export function registerNativeCliSessionRoutes(ctx: NativeCliSessionRouteContext): void {
     const { routes, store, getEnabled, providers } = ctx;
-    const resolveRepository = ctx.resolveWorkspaceRepository ?? defaultResolveWorkspaceRepository;
-
-    const buildScope = async (workspace: WorkspaceInfo): Promise<NativeSessionWorkspaceScope> => ({
-        rootPath: workspace.rootPath,
-        repository: await resolveRepository(workspace),
-    });
+    const buildScope = createScopeBuilder(ctx.resolveWorkspaceRepository);
 
     const resolveProvider = (res: http.ServerResponse, raw: unknown): NativeSessionProvider | null => {
-        const providerId = parseProvider(raw);
-        if (!providerId) {
-            handleAPIError(res, badRequest('provider must be one of: copilot, codex, claude'));
+        const requested = queryString(raw) ?? 'copilot';
+        if (!isNativeCliSessionProviderId(requested)) {
+            handleAPIError(res, badRequest(
+                `provider must be one of: ${NATIVE_CLI_PROVIDER_IDS.join(', ')}`,
+            ));
             return null;
         }
-        const provider = providers.get(providerId);
+        const descriptor = getNativeCliProviderDescriptor(requested);
+        // A `planned` descriptor is a known provider CoC cannot serve yet. It is
+        // reported as such rather than as a registry wiring bug, and the shared
+        // registry keeps it out of the dashboard tab list in the first place.
+        if (descriptor.status !== 'available') {
+            handleAPIError(res, badRequest(
+                descriptor.plannedNote
+                    ?? `Native CLI session provider is not supported yet: ${requested}`,
+            ));
+            return null;
+        }
+        const provider = providers.get(requested);
         if (!provider) {
-            handleAPIError(res, badRequest(`Native CLI session provider is not registered: ${providerId}`));
+            handleAPIError(res, badRequest(`Native CLI session provider is not registered: ${requested}`));
             return null;
         }
         return provider;
@@ -95,14 +81,7 @@ export function registerNativeCliSessionRoutes(ctx: NativeCliSessionRouteContext
             const limit = queryNumber(query.limit) ?? DEFAULT_NATIVE_SESSION_LIST_LIMIT;
             const offset = queryNumber(query.offset) ?? 0;
             if (!getEnabled()) {
-                sendJSON(res, 200, {
-                    enabled: false,
-                    reason: 'feature-disabled',
-                    items: [],
-                    total: 0,
-                    limit,
-                    offset,
-                });
+                sendJSON(res, 200, featureDisabledListPayload(limit, offset));
                 return;
             }
 
@@ -113,27 +92,15 @@ export function registerNativeCliSessionRoutes(ctx: NativeCliSessionRouteContext
 
             const result = provider.listSessions(await buildScope(workspace), {
                 provider: provider.provider,
-                q: queryString(query.q),
-                sessionId: queryString(query.sessionId),
-                branch: queryString(query.branch),
-                from: queryString(query.from),
-                to: queryString(query.to),
-                limit: queryNumber(query.limit),
-                offset: queryNumber(query.offset),
+                ...parseListFilters(query),
                 excludeSessionIds: store.getSdkSessionIds?.(workspace.id),
             });
 
             if (!result.available) {
-                sendJSON(res, 200, {
-                    enabled: true,
-                    available: false,
-                    reason: result.reason,
-                    items: [],
-                    total: 0,
-                    limit: result.limit,
-                    offset: result.offset,
+                sendJSON(res, 200, unavailableListPayload(result.reason, result.limit, result.offset, {
                     provider: provider.provider,
-                });
+                    searchStrategy: provider.searchStrategy,
+                }));
                 return;
             }
 
@@ -141,6 +108,7 @@ export function registerNativeCliSessionRoutes(ctx: NativeCliSessionRouteContext
                 enabled: true,
                 available: true,
                 provider: provider.provider,
+                searchStrategy: provider.searchStrategy,
                 items: result.items,
                 total: result.total,
                 searchIndexAvailable: result.searchIndexAvailable,
@@ -174,6 +142,7 @@ export function registerNativeCliSessionRoutes(ctx: NativeCliSessionRouteContext
                     available: false,
                     reason: result.reason,
                     provider: provider.provider,
+                    searchStrategy: provider.searchStrategy,
                 });
                 return;
             }
@@ -185,6 +154,7 @@ export function registerNativeCliSessionRoutes(ctx: NativeCliSessionRouteContext
                 enabled: true,
                 available: true,
                 provider: provider.provider,
+                searchStrategy: provider.searchStrategy,
                 session: result.session,
             });
         },

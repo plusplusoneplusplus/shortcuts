@@ -226,8 +226,8 @@ Unified read-only, workspace-scoped views over native Copilot (`~/.copilot/sessi
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/workspaces/:id/native-cli-sessions?provider=copilot|codex|claude` | List workspace-matching native CLI sessions. Query also accepts `q`, `sessionId`, `branch`, `from`/`to`, `limit`, and `offset`. Response includes provider-tagged `items`, `total`, `searchIndexAvailable`, `deduplicatedCount`, `backgroundJobCount`, `limit`, and `offset`. |
-| GET | `/api/workspaces/:id/native-cli-sessions/:sessionId?provider=copilot|codex|claude` | Read one workspace-matching native CLI session, returning provider-tagged metadata, store path, and reconstructed `conversation: ReconstructedConversationTurn[]`. Unknown or out-of-workspace sessions return 404. |
+| GET | `/api/workspaces/:id/native-cli-sessions?provider=copilot|codex|claude` | List workspace-matching native CLI sessions. `provider` defaults to `copilot` and is validated against the shared descriptor registry: an unknown id returns 400 listing every known id, and a provider staged as `planned` (currently `opencode`) returns 400 with its descriptor note rather than an internal "not registered" error. Query also accepts `q`, `sessionId`, `branch`, `from`/`to`, `limit`, and `offset`. Response includes provider-tagged `items`, `total`, `searchStrategy` (`native-index` \| `on-demand-scan` \| `unavailable`), `searchIndexAvailable`, `deduplicatedCount`, `backgroundJobCount`, `limit`, and `offset`. |
+| GET | `/api/workspaces/:id/native-cli-sessions/:sessionId?provider=copilot|codex|claude` | Read one workspace-matching native CLI session, returning provider-tagged metadata, `searchStrategy`, store path, and reconstructed `conversation: ReconstructedConversationTurn[]`. Provider validation matches the list route. Unknown or out-of-workspace sessions return 404. |
 
 ## Dreams
 

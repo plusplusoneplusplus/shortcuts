@@ -1,3 +1,5 @@
+import type { NativeCliSessionProviderId, NativeCliSessionSearchStrategy } from '@plusplusoneplusplus/coc-client';
+
 /**
  * Native GitHub Copilot CLI session types.
  *
@@ -176,7 +178,26 @@ export type NativeCopilotSessionDetailResult =
     | { available: true; session: NativeCopilotSessionDetail | null }
     | { available: false; reason: Exclude<NativeCopilotSessionsUnavailableReason, 'feature-disabled'> };
 
-export type NativeCliSessionProviderId = 'copilot' | 'codex' | 'claude' | 'opencode';
+/**
+ * Provider identity is owned by the shared descriptor registry in
+ * `@plusplusoneplusplus/coc-client` so the server registry, the route parser,
+ * and the dashboard tab list cannot drift apart. Re-exported here so existing
+ * server-side importers keep a single import site.
+ */
+export type {
+    NativeCliProviderDescriptor,
+    NativeCliProviderStatus,
+    NativeCliSessionProviderId,
+    NativeCliSessionSearchStrategy,
+} from '@plusplusoneplusplus/coc-client';
+export {
+    AVAILABLE_NATIVE_CLI_PROVIDER_DESCRIPTORS,
+    NATIVE_CLI_PROVIDER_DESCRIPTORS,
+    NATIVE_CLI_PROVIDER_IDS,
+    getNativeCliProviderDescriptor,
+    isNativeCliProviderAvailable,
+    isNativeCliSessionProviderId,
+} from '@plusplusoneplusplus/coc-client';
 
 export type NativeCliSessionsUnavailableReason = 'feature-disabled' | 'store-missing' | 'store-invalid';
 
@@ -218,6 +239,13 @@ export interface NativeSessionProvider {
     readonly provider: NativeCliSessionProviderId;
     readonly label: string;
     readonly storePath: string;
+    /**
+     * How this provider answers a free-text query. Declared explicitly rather
+     * than inferred from `searchIndexAvailable` so route responses and UI copy
+     * describe search behaviour directly instead of guessing from an
+     * implementation detail.
+     */
+    readonly searchStrategy: NativeCliSessionSearchStrategy;
     listSessions(
         scope: NativeSessionWorkspaceScope,
         options?: NativeCliSessionListOptions,

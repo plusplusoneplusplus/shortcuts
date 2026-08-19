@@ -33,6 +33,7 @@ import {
     WIKI_ADMIN_TAB_VALUES,
 } from '../types/dashboard';
 import type { NativeCliSessionProviderId } from '@plusplusoneplusplus/coc-client';
+import { isNativeCliProviderAvailable, isNativeCliSessionProviderId } from '@plusplusoneplusplus/coc-client';
 import { isQueueProcessId, toQueueProcessId } from '../utils/queue-process-id';
 import type { AppAction, AppContextState } from '../contexts/AppContext';
 import type { QueueAction, QueueContextState } from '../contexts/QueueContext';
@@ -342,7 +343,9 @@ export function parseNativeCliSessionDeepLink(
     const parts = hashSegments(hash);
     if (parts[0] === 'repos' && parts[1] && parts[2] === 'cli-sessions') {
         const provider = parts[3] ? decodeSegment(parts[3]) : 'copilot';
-        if (provider !== 'copilot' && provider !== 'codex' && provider !== 'claude') return null;
+        // Gated by the shared descriptor registry, so a deep link can only
+        // address a provider the server actually serves.
+        if (!isNativeCliSessionProviderId(provider) || !isNativeCliProviderAvailable(provider)) return null;
         return {
             workspaceId: decodeSegment(parts[1]),
             provider,
