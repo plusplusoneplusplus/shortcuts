@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
@@ -1793,6 +1793,115 @@ describe('MyWorkTodayTab', () => {
         it('does not fetch the timeline until the tab is active', () => {
             renderTab({ active: false });
             expect(getTimeline).not.toHaveBeenCalled();
+        });
+    });
+    // ── AC-02: mobile responsive ────────────────────────────────────────────
+    //
+    // jsdom applies no CSS, so these assert the class contract the layout rests
+    // on (`md:` counterparts for every mobile override) plus the one piece that
+    // is real DOM behaviour — the visual-viewport padding. A regression that
+    // drops `md:w-32` back to a bare `w-32`, or unwraps the row, fails here.
+    describe('mobile responsive (AC-02)', () => {
+        it('reflows the header to a column below md and keeps one row from md up', async () => {
+            renderTab();
+            const header = (await screen.findByText('Today')).parentElement!;
+            expect(header.className).toContain('flex-col');
+            expect(header.className).toContain('md:flex-row');
+            expect(header.className).toContain('md:justify-between');
+
+            const controls = screen.getByTestId('my-work-today-filter').parentElement!;
+            expect(controls.className).toContain('flex-wrap');
+            expect(controls.className).toContain('md:flex-nowrap');
+        });
+
+        it('gives the filter the full width on mobile and w-32 only from md up', async () => {
+            renderTab();
+            const filter = await screen.findByTestId('my-work-today-filter');
+            expect(filter.className).toContain('w-full');
+            expect(filter.className).toContain('md:w-32');
+            // The old hardcoded width, with no breakpoint prefix, is the bug.
+            expect(filter.className.split(/\s+/)).not.toContain('w-32');
+        });
+
+        it('lets a long task title wrap instead of widening the row', async () => {
+            getTasks.mockResolvedValue({
+                actionItems: [{
+                    id: 'a1',
+                    text: 'Ship the parser rewrite and reconcile every downstream consumer before the freeze',
+                    checked: false,
+                    tags: ['infra'],
+                }],
+                followUps: [],
+            });
+            renderTab();
+            const row = await screen.findByTestId('my-work-today-action-a1');
+            expect(row.className).toContain('min-w-0');
+
+            const label = row.querySelector('label')!;
+            expect(label.className).toContain('min-w-0');
+            expect(label.className).toContain('flex-wrap');
+
+            const text = screen.getByText(/Ship the parser rewrite/);
+            expect(text.className).toContain('break-words');
+            // Badges stay pinned at their intrinsic size, per AC-02.2.
+            expect(screen.getByTestId('my-work-today-tag-a1-infra').className).toContain('shrink-0');
+        });
+
+        it('gives every row affordance a 44px touch target on mobile only', async () => {
+            getTasks.mockResolvedValue({
+                actionItems: [{ id: 'a1', text: 'Ship the parser', checked: false, sourceUrl: 'https://example.test/x' }],
+                followUps: [],
+            });
+            renderTab();
+            await screen.findByTestId('my-work-today-action-a1');
+
+            for (const testId of [
+                'my-work-today-edit-a1',
+                'my-work-today-snooze-a1',
+                'my-work-today-source-a1',
+                'my-work-today-quickadd-btn',
+                'my-work-today-quickadd-input',
+            ]) {
+                expect(screen.getByTestId(testId).className).toContain('touch-target');
+            }
+        });
+
+        it('pads the scroll container by the on-screen keyboard height', async () => {
+            const listeners: Array<() => void> = [];
+            const vv = {
+                height: 667,
+                addEventListener: (_: string, fn: () => void) => { listeners.push(fn); },
+                removeEventListener: () => {},
+            };
+            Object.defineProperty(window, 'visualViewport', { value: vv, configurable: true });
+            Object.defineProperty(window, 'innerHeight', { value: 667, configurable: true });
+            try {
+                renderTab();
+                const container = await screen.findByTestId('my-work-today-tab');
+                expect(container.style.paddingBottom).toBe('');
+
+                // Keyboard opens: the visual viewport shrinks, the layout one does not.
+                vv.height = 367;
+                act(() => { listeners.forEach(fn => fn()); });
+                expect(container.style.paddingBottom).toBe('300px');
+
+                vv.height = 667;
+                act(() => { listeners.forEach(fn => fn()); });
+                expect(container.style.paddingBottom).toBe('');
+            } finally {
+                Reflect.deleteProperty(window, 'visualViewport');
+            }
+        });
+
+        it('scrolls the quick-add form into view when the input takes focus', async () => {
+            const scrollIntoView = vi.fn();
+            renderTab();
+            const input = await screen.findByTestId('my-work-today-quickadd-input');
+            const form = screen.getByTestId('my-work-today-quickadd');
+            (form as HTMLElement).scrollIntoView = scrollIntoView;
+
+            fireEvent.focus(input);
+            expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
         });
     });
 });

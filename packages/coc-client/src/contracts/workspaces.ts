@@ -4,6 +4,15 @@ import type { MapReduceProcessContext } from './map-reduce';
 import type { EffortTierKey } from './queue';
 import type { WorktreeMetadata } from './worktree';
 
+/**
+ * Marker set by the server on a workspace whose checkout lives inside WSL.
+ * Absent means the checkout is not WSL-hosted.
+ */
+export interface WorkspaceWslInfo {
+  /** Distro name when the server could determine it, otherwise `null`. */
+  distro: string | null;
+}
+
 export interface WorkspaceInfo {
   id: string;
   name: string;
@@ -15,6 +24,8 @@ export interface WorkspaceInfo {
   remoteUrl?: string;
   description?: string;
   isGitRepo?: boolean;
+  /** Present only when the checkout lives inside WSL. */
+  wsl?: WorkspaceWslInfo;
   virtual?: boolean;
   [key: string]: unknown;
 }

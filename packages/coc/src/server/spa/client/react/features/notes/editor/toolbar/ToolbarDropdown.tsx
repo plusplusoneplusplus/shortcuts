@@ -149,8 +149,8 @@ export interface MenuItemProps {
     labelClassName?: string;
     /** Inline label styles — font rows preview themselves by setting their own stack. */
     labelStyle?: CSSProperties;
-    /** Leading glyph column; heading items leave it empty. */
-    icon?: string;
+    /** Leading glyph column — a character or a small svg; heading items leave it empty. */
+    icon?: ReactNode;
     children: ReactNode;
 }
 
@@ -186,7 +186,9 @@ export function MenuItem({ checked, onSelect, testId, labelClassName, labelStyle
             }}
         >
             <span className="w-3 text-[10px] text-[#0078d4] dark:text-[#4daafc]">{checked ? '✓' : ''}</span>
-            {icon !== undefined && <span className="w-4 text-center text-xs">{icon}</span>}
+            {icon !== undefined && (
+                <span className="w-4 flex items-center justify-center text-xs">{icon}</span>
+            )}
             <span className={labelClassName} style={labelStyle}>{children}</span>
         </button>
     );

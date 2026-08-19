@@ -198,8 +198,13 @@ describe('alignment options', () => {
             'Align left', 'Align center', 'Align right', 'Justify',
         ]);
         expect(ALIGN_OPTIONS.map((o) => o.value)).toEqual(['left', 'center', 'right', 'justify']);
-        expect(ALIGN_OPTIONS.map((o) => o.icon)).toEqual(['⫷', '≡', '⫸', '☰']);
         expect(new Set(ALIGN_OPTIONS.map((o) => o.testId)).size).toBe(ALIGN_OPTIONS.length);
+    });
+
+    it('carries no glyph — the icon is drawn by AlignIcon off the value', () => {
+        for (const option of ALIGN_OPTIONS) {
+            expect(option).not.toHaveProperty('icon');
+        }
     });
 
     it('is no longer wired through the command descriptors', () => {

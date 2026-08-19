@@ -16,9 +16,15 @@
  *   GET    /api/workspaces/:wsId/canvases/:canvasId/files/<path>  — read one file (?encoding=base64 to force bytes)
  *   POST   /api/workspaces/:wsId/canvases/:canvasId/capabilities/:name — invoke a capability against the shared state
  *
- * User saves broadcast a `canvas-updated` WebSocket event so other dashboard
- * tabs can refresh. Revision conflicts return 409 with the current record so
- * the client can offer a reload.
+ * These handlers validate requests and map outcomes to status codes; they do not
+ * write. Every canvas mutation goes through `CanvasMutationService`, which
+ * announces each success once through `CanvasUpdateNotifier` — one
+ * `canvas-updated` WebSocket event so other dashboard tabs can refresh, and one
+ * ProcessStore/SSE event so the chat timeline sees it. No route emits either on
+ * its own; that is what keeps the two channels from drifting apart.
+ *
+ * Revision conflicts return 409 with the current record so the client can offer
+ * a reload.
  *
  * Capability invocations are SERIALIZED PER CANVAS and re-read the canvas
  * inside the critical section, so two concurrent invocations both land instead
@@ -31,14 +37,14 @@ import { sendJSON, sendError, parseBody } from '../core/api-handler';
 import type { Route } from '../types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
-import { emitCanvasUpdated } from '../streaming/sse-handler';
 import { CanvasStore, isValidCanvasId, isSafeCanvasFilePath, hasEncodedPathEscape } from './canvas-store';
-import type { CanvasEdit, CanvasCommentStatus, CanvasRecord, CanvasExtensionManifest } from './canvas-store';
-import { runCanvasCapability, isValidCapabilityName } from './canvas-capability-runner';
+import type { CanvasEdit, CanvasCommentStatus } from './canvas-store';
+import { isValidCapabilityName } from './canvas-capability-runner';
 import type { CapabilityCompleteFn } from './canvas-capability-runner';
-import { queueCanvasCapabilityRun } from './canvas-capability-queue';
 import { createCanvasCompleteFn } from './canvas-capability-completion';
-import { runKustoCanvas } from '../kusto/kusto-service';
+import { createCanvasUpdateNotifier } from './canvas-update-notifier';
+import { CanvasMutationService, isAsyncCapability } from './canvas-mutation-service';
+import type { CapabilityAttribution } from './canvas-mutation-service';
 import type { KustoClientFactory } from '../kusto/kusto-exec';
 
 const listPattern = /^\/api\/workspaces\/([^/]+)\/canvases$/;
@@ -55,15 +61,6 @@ const filesPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/files$/;
 const fileDetailPattern = /^\/api\/workspaces\/([^/]+)\/canvases\/([^/]+)\/files\/(.+)$/;
 
 const COMMENT_STATUSES: readonly CanvasCommentStatus[] = ['open', 'sent', 'resolved'];
-
-/**
- * Whether the manifest declares this capability async. A manifest with no
- * matching entry — or none at all, which every extension written before
- * capability metadata was required looks like — is sync, the legacy path.
- */
-function isAsyncCapability(manifest: CanvasExtensionManifest | undefined, capability: string): boolean {
-    return manifest?.capabilities?.some(meta => meta?.name === capability && meta.async === true) === true;
-}
 
 interface SaveCanvasBody {
     content?: string;
@@ -92,34 +89,27 @@ export function registerCanvasRoutes(
      * Injectable `host.complete` implementation. Overridden in tests so a
      * capability run never reaches a real model.
      */
-    completeFactory?: (attribution: { workspaceId: string; canvasId: string; capability: string; processId?: string }) => CapabilityCompleteFn,
+    completeFactory?: (attribution: CapabilityAttribution) => CapabilityCompleteFn,
 ): void {
     const store = new CanvasStore(dataDir);
 
     /** Real `host.complete`: the one-shot AI invoker, bound to who asked for it. */
-    const defaultCompleteFactory = (attribution: { workspaceId: string; canvasId: string; capability: string; processId?: string }): CapabilityCompleteFn =>
+    const defaultCompleteFactory = (attribution: CapabilityAttribution): CapabilityCompleteFn =>
         createCanvasCompleteFn(dataDir, attribution);
 
-    const broadcastCanvasUpdated = (wsId: string, canvas: CanvasRecord, editor: 'ai' | 'user'): void => {
-        getWsServer?.()?.broadcastProcessEvent({
-            type: 'canvas-updated',
-            workspaceId: wsId,
-            canvasId: canvas.id,
-            processId: canvas.processId,
-            title: canvas.title,
-            revision: canvas.revision,
-            editor,
-            timestamp: Date.now(),
-        });
-        if (processStore && canvas.processId) {
-            emitCanvasUpdated(processStore, canvas.processId, {
-                canvasId: canvas.id,
-                title: canvas.title,
-                revision: canvas.revision,
-                editor,
-            });
-        }
-    };
+    // One notifier, one mutation service: every canvas write in this file goes
+    // through `mutations`, and every success it returns has already announced
+    // itself on both realtime channels. No route emits an event on its own.
+    const mutations = new CanvasMutationService({
+        store,
+        notifier: createCanvasUpdateNotifier({
+            ...(getWsServer ? { getWsServer } : {}),
+            ...(processStore ? { processStore } : {}),
+        }),
+        ...(getCanvasHostApisEnabled ? { getCanvasHostApisEnabled } : {}),
+        completeFactory: completeFactory ?? defaultCompleteFactory,
+        ...(kustoClientFactory ? { kustoClientFactory } : {}),
+    });
 
     routes.push({
         method: 'GET',
@@ -159,15 +149,11 @@ export function registerCanvasRoutes(
             if (typeof body.content !== 'string') {
                 return sendError(res, 400, 'content is required');
             }
-            const canvas = store.createCanvas({
-                workspaceId: wsId,
-                type: 'kusto',
+            const canvas = mutations.createKustoCanvas(wsId, {
                 title: typeof body.title === 'string' && body.title.trim() ? body.title : 'Kusto Query',
                 content: body.content,
                 ...(typeof body.processId === 'string' ? { processId: body.processId } : {}),
-                editor: 'user',
             });
-            broadcastCanvasUpdated(wsId, canvas, 'user');
             sendJSON(res, 201, { canvas });
         },
     });
@@ -209,40 +195,28 @@ export function registerCanvasRoutes(
                 return sendError(res, 400, 'Provide content, edits, or title');
             }
 
-            const result = store.updateCanvas(wsId, canvasId, {
+            const outcome = mutations.saveCanvas(wsId, canvasId, {
                 content: body.content,
                 edits: body.edits,
                 expectedRevision: body.expectedRevision,
                 title: body.title,
-                editor: 'user',
             });
 
-            if (!result.ok) {
-                if (result.reason === 'not-found') {
-                    return sendError(res, 404, 'Canvas not found');
-                }
-                if (result.reason === 'revision-conflict') {
-                    return sendJSON(res, 409, {
-                        error: 'revision-conflict',
-                        currentRevision: result.currentRevision,
-                        canvas: store.getCanvas(wsId, canvasId),
-                    });
-                }
-                return sendError(res, 400, result.error);
+            if (outcome.kind === 'not-found') {
+                return sendError(res, 404, 'Canvas not found');
+            }
+            if (outcome.kind === 'revision-conflict') {
+                return sendJSON(res, 409, {
+                    error: 'revision-conflict',
+                    currentRevision: outcome.currentRevision,
+                    canvas: outcome.canvas,
+                });
+            }
+            if (outcome.kind === 'invalid') {
+                return sendError(res, 400, outcome.error);
             }
 
-            getWsServer?.()?.broadcastProcessEvent({
-                type: 'canvas-updated',
-                workspaceId: wsId,
-                canvasId,
-                processId: result.canvas.processId,
-                title: result.canvas.title,
-                revision: result.canvas.revision,
-                editor: 'user',
-                timestamp: Date.now(),
-            });
-
-            sendJSON(res, 200, { canvas: result.canvas });
+            sendJSON(res, 200, { canvas: outcome.canvas });
         },
     });
 
@@ -498,53 +472,7 @@ export function registerCanvasRoutes(
                 return sendError(res, 404, 'Not found');
             }
 
-            // Serialize per canvas. The read-modify-write below races rarely at
-            // the sync path's 1 s budget and reliably at the async path's 30 s,
-            // and the re-read INSIDE the critical section is what makes run N+1
-            // start from run N's output instead of losing to its revision check.
-            const outcome = await queueCanvasCapabilityRun(wsId, canvasId, async () => {
-                const fresh = store.getCanvas(wsId, canvasId);
-                const freshExtension = store.getExtension(wsId, canvasId);
-                if (!fresh || fresh.type !== 'extension' || !freshExtension) {
-                    return { kind: 'gone' } as const;
-                }
-                const isAsync = isAsyncCapability(freshExtension.manifest, capability);
-                if (isAsync && !getCanvasHostApisEnabled?.()) {
-                    return { kind: 'disabled' } as const;
-                }
-
-                const run = await runCanvasCapability(
-                    freshExtension.capabilitiesJs,
-                    capability,
-                    fresh.content,
-                    body.params,
-                    isAsync
-                        ? {
-                            async: true,
-                            complete: (completeFactory ?? defaultCompleteFactory)({
-                                workspaceId: wsId,
-                                canvasId,
-                                capability,
-                                ...(fresh.processId ? { processId: fresh.processId } : {}),
-                            }),
-                        }
-                        : undefined,
-                );
-                if (!run.ok) {
-                    return { kind: 'run-error', error: run.error } as const;
-                }
-
-                const result = store.updateCanvas(wsId, canvasId, {
-                    content: run.state,
-                    expectedRevision: fresh.revision,
-                    editor: 'user',
-                });
-                if (!result.ok) {
-                    // A user save landed while the capability ran — caller retries with fresh state.
-                    return { kind: 'conflict' } as const;
-                }
-                return { kind: 'ok', canvas: result.canvas } as const;
-            });
+            const outcome = await mutations.invokeCapability(wsId, canvasId, capability, body.params);
 
             if (outcome.kind === 'gone') {
                 return sendError(res, 404, 'Extension canvas not found');
@@ -556,10 +484,9 @@ export function registerCanvasRoutes(
                 return sendError(res, 422, outcome.error);
             }
             if (outcome.kind === 'conflict') {
-                return sendJSON(res, 409, { error: 'revision-conflict', canvas: store.getCanvas(wsId, canvasId) });
+                return sendJSON(res, 409, { error: 'revision-conflict', canvas: outcome.canvas });
             }
 
-            broadcastCanvasUpdated(wsId, outcome.canvas, 'user');
             sendJSON(res, 200, { canvas: outcome.canvas });
         },
     });
@@ -591,23 +518,18 @@ export function registerCanvasRoutes(
             if (typeof body.clusterUrl === 'string') overrides.clusterUrl = body.clusterUrl;
             if (typeof body.database === 'string') overrides.database = body.database;
 
-            const outcome = await runKustoCanvas(store, wsId, canvasId, {
-                overrides,
-                editor: 'user',
-                ...(kustoClientFactory ? { clientFactory: kustoClientFactory } : {}),
-            });
+            const outcome = await mutations.runKusto(wsId, canvasId, overrides);
 
-            if (!outcome.ok) {
-                if (outcome.reason === 'not-found') {
-                    return sendError(res, 404, 'Kusto canvas not found');
-                }
-                if (outcome.reason === 'wrong-type') {
-                    return sendError(res, 400, 'Canvas is not a Kusto canvas');
-                }
+            if (outcome.kind === 'not-found') {
+                return sendError(res, 404, 'Kusto canvas not found');
+            }
+            if (outcome.kind === 'wrong-type') {
+                return sendError(res, 400, 'Canvas is not a Kusto canvas');
+            }
+            if (outcome.kind === 'persist-failed') {
                 return sendError(res, 500, `Failed to persist run: ${outcome.error}`);
             }
 
-            broadcastCanvasUpdated(wsId, outcome.canvas, 'user');
             sendJSON(res, 200, { canvas: outcome.canvas });
         },
     });

@@ -15,11 +15,14 @@ import { AddRepoDialog } from '../../repos/AddRepoDialog';
 import { CloneRepoDialog } from '../../repos/CloneRepoDialog';
 import { getRepoSelectionId, isRepoSelected } from '../../repos/cloneIdentity';
 import { groupKey, groupReposByRemote, type RepoData, type RepoGroup } from '../../repos/repoGrouping';
+import { getGroupWsl } from '../../repos/repoPickerModel';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import { ToastContainer, useToast } from '../../ui/Toast';
+import { copyToClipboard } from '../../utils/format';
 import { computeCloneStatusMap, describeRemoveBlock, summarizeRemote } from './shellModel';
 import { RemoteProviderBadge } from './RemoteProviderBadge';
 import { useDropdownPopover } from './useDropdownPopover';
+import { WslBadge } from './WslBadge';
 import { PickerEmpty, PickerRow, PickerSection, RepoPickerPopover } from './RepoPickerPopover';
 import { useRecentRemotes } from './useRecentRemotes';
 import { useShellNavigation } from './useShellNavigation';
@@ -72,6 +75,25 @@ function CloneGlyph() {
             <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
         </svg>
     );
+}
+
+/**
+ * The path a repo row copies to the clipboard.
+ *
+ * `copyPath` is the server-resolved, host-reachable form of the workspace root
+ * (the Windows `\\wsl.localhost\<distro>\…` UNC path when the CoC server runs
+ * natively inside WSL, and the plain path everywhere else). Older payloads and
+ * remote sources that predate the field fall back to the raw workspace path.
+ * `RepoData.workspace` is untyped, so every candidate is guarded.
+ */
+export function resolveRepoCopyPath(repo: RepoData): string | null {
+    const ws = repo.workspace as { copyPath?: unknown; path?: unknown; rootPath?: unknown } | undefined;
+    for (const candidate of [ws?.copyPath, ws?.path, ws?.rootPath]) {
+        if (typeof candidate === 'string' && candidate.trim().length > 0) {
+            return candidate;
+        }
+    }
+    return null;
 }
 
 const unreadBadgeClass = 'min-w-[14px] h-[14px] px-[3px] rounded-full bg-[#d16969] text-white text-[8px] font-semibold flex items-center justify-center leading-none';
@@ -141,16 +163,36 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
 
     const { requestRemove, removeDialog } = useWorkspaceRemoval({ repos, selectedRepo: repo, addToast });
 
+    const copyRepoPath = useCallback(async (rowRepo: RepoData) => {
+        const path = resolveRepoCopyPath(rowRepo);
+        if (!path) {
+            return;
+        }
+        try {
+            await copyToClipboard(path);
+            addToast('Path copied to clipboard', 'success');
+        } catch {
+            addToast('Could not copy path', 'error');
+        }
+    }, [addToast]);
+
     const buildRowMenuItems = useCallback((rowRepo: RepoData): ContextMenuItem[] => {
         const block = describeRemoveBlock(rowRepo, cloneStatus[String(rowRepo.workspace.id)]);
+        const copyPath = resolveRepoCopyPath(rowRepo);
         return [{
+            label: 'Copy path',
+            icon: '📋',
+            disabled: !copyPath,
+            title: copyPath ?? 'This repository has no local path',
+            onClick: () => { setRowMenu(null); close(); void copyRepoPath(rowRepo); },
+        }, {
             label: 'Remove from CoC',
             icon: 'X',
             disabled: !!block,
             title: block ?? undefined,
             onClick: () => { setRowMenu(null); close(); requestRemove(rowRepo); },
         }];
-    }, [cloneStatus, close, requestRemove]);
+    }, [cloneStatus, close, copyRepoPath, requestRemove]);
 
     const filteredGroups = query.trim()
         ? groups.filter(group => groupMatchesSearch(group, query))
@@ -169,6 +211,10 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
         // when it *is* a single clone. Multi-clone groups drill into the clone
         // list (the clone popover), which offers Remove per clone. (AC-01)
         const soleClone = group.repos.length === 1 ? group.repos[0] : null;
+        // All-or-nothing: the group row is only marked WSL when every clone under
+        // it is WSL-hosted; a mixed group stays unmarked and the per-clone rows
+        // carry the distinction. (AC-03)
+        const groupWsl = getGroupWsl(group);
         return (
             <PickerRow
                 key={key}
@@ -197,6 +243,7 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
                 ) : undefined}
                 badges={
                     <>
+                        {groupWsl && <WslBadge distro={groupWsl.distro} />}
                         {summary.cloneCount > 1 && (
                             <span className="inline-flex items-center gap-0.5 h-[16px] px-1.5 rounded-full text-[10px] font-semibold leading-none bg-black/[0.06] dark:bg-white/[0.10] text-[#555] dark:text-[#bbb]">
                                 <CloneGlyph />

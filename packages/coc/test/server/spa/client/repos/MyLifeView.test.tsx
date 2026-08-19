@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
@@ -448,6 +448,72 @@ describe('MyLifeView', () => {
             renderView();
 
             expect(screen.getByTestId('my-life-header')).toBeTruthy();
+        });
+    });
+
+    describe('mobile responsive header (AC-01)', () => {
+        it('scrolls the tab strip horizontally instead of squeezing it', () => {
+            mockIsMobile = true;
+            renderView();
+
+            const strip = screen.getByTestId('my-life-header-tabs');
+            expect(strip.className).toContain('overflow-x-auto');
+            // Hidden scrollbar — the strip is swiped, not scrollbar-dragged.
+            expect(strip.className).toContain('scrollbar-hide');
+            expect(strip.className).toContain('min-w-0');
+
+            // Tabs never shrink or wrap, so the row stays one row.
+            const tab = screen.getByTestId('my-life-tab-notes');
+            expect(tab.className).toContain('whitespace-nowrap');
+            expect(tab.className).toContain('shrink-0');
+        });
+
+        it('collapses the action buttons into a single overflow menu on mobile', () => {
+            mockIsMobile = true;
+            renderView();
+
+            expect(screen.getByTestId('my-life-actions-overflow-btn')).toBeTruthy();
+            // Closed by default — no labelled action buttons on the row.
+            expect(screen.queryByTestId('my-life-sync-btn')).toBeNull();
+            expect(screen.queryByTestId('my-life-generate-btn')).toBeNull();
+            expect(screen.queryByTestId('my-life-actions-overflow-menu')).toBeNull();
+        });
+
+        it('lists both actions in the overflow menu and runs them', async () => {
+            mockIsMobile = true;
+            renderView();
+
+            fireEvent.click(screen.getByTestId('my-life-actions-overflow-btn'));
+            expect(screen.getByTestId('my-life-actions-overflow-menu')).toBeTruthy();
+            expect(screen.getByTestId('my-life-sync-btn')).toBeTruthy();
+            expect(screen.getByTestId('my-life-generate-btn')).toBeTruthy();
+
+            await act(async () => {
+                fireEvent.click(screen.getByTestId('my-life-sync-btn'));
+            });
+            expect(repositoryServiceMocks.syncMyLife).toHaveBeenCalledTimes(1);
+            // Picking an item closes the menu.
+            expect(screen.queryByTestId('my-life-actions-overflow-menu')).toBeNull();
+        });
+
+        it('closes the overflow menu on Escape', () => {
+            mockIsMobile = true;
+            renderView();
+
+            fireEvent.click(screen.getByTestId('my-life-actions-overflow-btn'));
+            expect(screen.getByTestId('my-life-actions-overflow-menu')).toBeTruthy();
+
+            fireEvent.keyDown(document, { key: 'Escape' });
+            expect(screen.queryByTestId('my-life-actions-overflow-menu')).toBeNull();
+        });
+
+        it('keeps full labelled action buttons on desktop with no overflow trigger', () => {
+            mockIsMobile = false;
+            renderView();
+
+            expect(screen.getByTestId('my-life-sync-btn')).toBeTruthy();
+            expect(screen.getByTestId('my-life-generate-btn')).toBeTruthy();
+            expect(screen.queryByTestId('my-life-actions-overflow-btn')).toBeNull();
         });
     });
 });

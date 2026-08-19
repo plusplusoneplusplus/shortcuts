@@ -16,7 +16,12 @@ import type {
     NativeCliSessionDetail,
     NativeCliSessionListItem,
     NativeCliSessionProviderId,
+    NativeCliSessionSearchStrategy,
     NativeCliSessionsUnavailableReason,
+} from '@plusplusoneplusplus/coc-client';
+import {
+    AVAILABLE_NATIVE_CLI_PROVIDER_DESCRIPTORS,
+    getNativeCliProviderDescriptor,
 } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
 import { Button, Spinner, cn } from '../../ui';
@@ -41,34 +46,25 @@ import {
     toNativeSessionMetadataProcess,
 } from './nativeSessionChatAdapter';
 
-const PROVIDERS: NativeCliSessionProviderId[] = ['copilot', 'codex', 'claude', 'opencode'];
+/**
+ * Provider tabs come from the shared descriptor registry, so the dashboard can
+ * only offer providers the server actually registers. A provider staged as
+ * `planned` (no CoC reader yet) is absent here instead of rendering a tab whose
+ * requests the server rejects.
+ */
+const PROVIDERS: NativeCliSessionProviderId[] = AVAILABLE_NATIVE_CLI_PROVIDER_DESCRIPTORS.map(d => d.id);
 
-const PROVIDER_META: Record<NativeCliSessionProviderId, { label: string; externalLabel: string; store: string }> = {
-    codex: {
-        label: 'Codex',
-        externalLabel: 'Native Codex CLI session',
-        store: '~/.codex/sessions',
-    },
-    claude: {
-        label: 'Claude',
-        externalLabel: 'Native Claude Code session',
-        store: '~/.claude/projects',
-    },
-    copilot: {
-        label: 'Copilot',
-        externalLabel: 'Native Copilot CLI session',
-        store: '~/.copilot/session-store.db',
-    },
-    opencode: {
-        label: 'OpenCode',
-        externalLabel: 'Native OpenCode CLI session',
-        store: '~/.opencode/session-store.db',
-    },
-};
+function providerLabel(provider: NativeCliSessionProviderId): string {
+    return getNativeCliProviderDescriptor(provider).label;
+}
+
+function providerStoreHint(provider: NativeCliSessionProviderId): string {
+    return getNativeCliProviderDescriptor(provider).storeHint;
+}
 
 function readOnlyTooltip(provider: NativeCliSessionProviderId, storePath?: string | null): string {
-    const path = storePath || PROVIDER_META[provider].store;
-    return `This data is read from the local ${PROVIDER_META[provider].label} CLI session store (${path}) and cannot be modified from CoC.`;
+    const path = storePath || providerStoreHint(provider);
+    return `This data is read from the local ${providerLabel(provider)} CLI session store (${path}) and cannot be modified from CoC.`;
 }
 
 interface NativeCliSessionsPanelProps {
@@ -96,12 +92,12 @@ function unavailableCopy(provider: NativeCliSessionProviderId, reason: NativeCli
     if (reason === 'store-missing') {
         return {
             title: 'Native session store not found',
-            body: `No native ${PROVIDER_META[provider].label} CLI session store exists at ${PROVIDER_META[provider].store} on the CoC server. Run the CLI at least once to create it.`,
+            body: `No native ${providerLabel(provider)} CLI session store exists at ${providerStoreHint(provider)} on the CoC server. Run the CLI at least once to create it.`,
         };
     }
     return {
         title: 'Native session store unavailable',
-        body: `The native ${PROVIDER_META[provider].label} CLI session store could not be read. It may be corrupt or use an unsupported schema.`,
+        body: `The native ${providerLabel(provider)} CLI session store could not be read. It may be corrupt or use an unsupported schema.`,
     };
 }
 
@@ -124,7 +120,7 @@ function ExternalLabel({ provider, storePath }: { provider: NativeCliSessionProv
             title={readOnlyTooltip(provider, storePath)}
             className="inline-flex items-center rounded-full border border-[#d0d7de] bg-[#f6f8fa] px-1.5 py-px text-[10px] font-medium text-[#57606a]"
         >
-            {PROVIDER_META[provider].externalLabel}
+            {getNativeCliProviderDescriptor(provider).externalLabel}
         </span>
     );
 }
@@ -269,6 +265,12 @@ export function NativeCliSessionsPanel({ workspaceId }: NativeCliSessionsPanelPr
     const items = listResponse?.items ?? [];
     const total = listResponse?.total ?? 0;
     const limit = listResponse?.limit ?? 50;
+    // Prefer the provider's explicitly declared strategy; fall back to the older
+    // `searchIndexAvailable` signal so a stale server response still reads right.
+    const searchStrategy: NativeCliSessionSearchStrategy = listResponse?.searchStrategy
+        ?? (listResponse?.available === true && listResponse.searchIndexAvailable === false
+            ? 'on-demand-scan'
+            : 'native-index');
     const hasFilters = Boolean(filters.q || filters.sessionId || filters.branch || filters.from || filters.to);
 
     const applyFilters = (e: React.FormEvent) => {
@@ -305,7 +307,7 @@ export function NativeCliSessionsPanel({ workspaceId }: NativeCliSessionsPanelPr
                             )}
                             data-testid={`native-sessions-provider-${candidate}`}
                         >
-                            {PROVIDER_META[candidate].label}
+                            {providerLabel(candidate)}
                         </button>
                     ))}
                 </div>
@@ -359,9 +361,14 @@ export function NativeCliSessionsPanel({ workspaceId }: NativeCliSessionsPanelPr
                     </label>
                     <Button type="submit" size="sm" data-testid="native-sessions-apply-filters">Apply</Button>
                 </form>
-                {listResponse?.available === true && listResponse.searchIndexAvailable === false && filters.q && (
+                {listResponse?.available === true && filters.q && searchStrategy === 'on-demand-scan' && (
                     <p className="mt-1 text-xs text-amber-700" data-testid="native-sessions-search-unavailable">
                         This provider has no native search index. CoC is using on-demand substring search for the current filter.
+                    </p>
+                )}
+                {listResponse?.available === true && filters.q && searchStrategy === 'unavailable' && (
+                    <p className="mt-1 text-xs text-amber-700" data-testid="native-sessions-search-strategy-unavailable">
+                        This provider cannot search transcript text. Clear the search filter to browse sessions.
                     </p>
                 )}
                 {listResponse?.available === true && (listResponse.deduplicatedCount ?? 0) > 0 && (
@@ -394,8 +401,8 @@ export function NativeCliSessionsPanel({ workspaceId }: NativeCliSessionsPanelPr
                 {!listLoading && !listError && !unavailable && items.length === 0 && (
                     <div className="m-3 rounded border border-[#d0d7de] bg-white p-4 text-center text-sm text-[#57606a]" data-testid="native-sessions-empty">
                         {hasFilters
-                            ? `No native ${PROVIDER_META[provider].label} CLI sessions match the current filters.`
-                            : `No native ${PROVIDER_META[provider].label} CLI sessions were found for this workspace.`}
+                            ? `No native ${providerLabel(provider)} CLI sessions match the current filters.`
+                            : `No native ${providerLabel(provider)} CLI sessions were found for this workspace.`}
                     </div>
                 )}
                 {!listLoading && !listError && !unavailable && items.length > 0 && (

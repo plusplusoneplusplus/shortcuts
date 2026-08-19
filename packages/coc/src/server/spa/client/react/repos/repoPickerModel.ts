@@ -34,3 +34,53 @@ export function shortPath(fullPath: string): string {
     const parts = fullPath.replace(/\\/g, '/').split('/').filter(Boolean);
     return parts.slice(-2).join('/');
 }
+
+/**
+ * Marker the server attaches to a WSL-hosted workspace. Mirrors
+ * `WorkspaceWslInfo` in the coc-client contracts; restated here so this
+ * presentation helper stays dependency-light.
+ */
+export interface RepoWslInfo {
+    distro: string | null;
+}
+
+/**
+ * The workspace's WSL marker, or `null` when the checkout is not WSL-hosted.
+ * The server owns the decision (`src/server/wsl-workspace.ts`); this only reads
+ * the field off the payload — never sniffs the path itself.
+ */
+export function getRepoWsl(repo: RepoData): RepoWslInfo | null {
+    const wsl = (repo.workspace as any)?.wsl as { distro?: unknown } | null | undefined;
+    if (!wsl || typeof wsl !== 'object') return null;
+    return { distro: typeof wsl.distro === 'string' && wsl.distro ? wsl.distro : null };
+}
+
+/**
+ * A group's WSL marker under the all-or-nothing rule: a group row shows the
+ * `WSL` pill only when it has clones and **every** clone is WSL-hosted. A mixed
+ * group (some WSL, some native) shows nothing at the group level — the
+ * distinction is visible per clone once the group is expanded — and an empty
+ * group shows nothing either.
+ *
+ * The distro is carried through only when all clones agree on it; clones spread
+ * across different distros report `null`, so the label degrades to the generic
+ * `Hosted in WSL`.
+ */
+export function getGroupWsl(group: { repos: RepoData[] }): RepoWslInfo | null {
+    const repos = group?.repos ?? [];
+    if (repos.length === 0) return null;
+
+    let distro: string | null = null;
+    let first = true;
+    for (const repo of repos) {
+        const wsl = getRepoWsl(repo);
+        if (!wsl) return null;
+        if (first) {
+            distro = wsl.distro;
+            first = false;
+        } else if (distro !== wsl.distro) {
+            distro = null;
+        }
+    }
+    return { distro };
+}

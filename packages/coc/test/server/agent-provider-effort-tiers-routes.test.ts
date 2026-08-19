@@ -58,7 +58,7 @@ const CATALOG_WITH_REASONING: ModelInfo[] = [
 const COPILOT_DEFAULTS = {
     'very-low': { model: 'gpt-5.6-luna',  reasoningEffort: 'xhigh' },
     low:    { model: 'gpt-5.6-terra', reasoningEffort: 'xhigh' },
-    medium: { model: 'claude-opus-5', reasoningEffort: 'xhigh' },
+    medium: { model: 'gpt-5.6-sol',   reasoningEffort: 'medium' },
     high:   { model: 'gpt-5.6-sol',   reasoningEffort: 'xhigh' },
 };
 

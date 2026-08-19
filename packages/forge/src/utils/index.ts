@@ -121,6 +121,7 @@ export {
     parseWslUncPath,
     trimTrailingPathSeparators,
     windowsPathToWslPath,
+    toWslUncPath,
 } from './path-utils';
 
 export {

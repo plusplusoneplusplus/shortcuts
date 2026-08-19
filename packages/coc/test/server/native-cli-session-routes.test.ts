@@ -4,11 +4,13 @@ import type { ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import { createRouter } from '../../src/server/shared/router';
 import type { Route } from '../../src/server/types';
 import { registerNativeCliSessionRoutes } from '../../src/server/routes/native-cli-session-routes';
+import { NATIVE_CLI_PROVIDER_IDS } from '../../src/server/native-copilot-sessions/types';
 import type {
     NativeCliSessionDetailResult,
     NativeCliSessionListOptions,
     NativeCliSessionListResult,
     NativeCliSessionProviderId,
+    NativeCliSessionSearchStrategy,
     NativeSessionProvider,
     NativeSessionWorkspaceScope,
 } from '../../src/server/native-copilot-sessions/types';
@@ -16,6 +18,7 @@ import type {
 class StubProvider implements NativeSessionProvider {
     readonly label: string;
     readonly storePath: string;
+    searchStrategy: NativeCliSessionSearchStrategy = 'on-demand-scan';
     listCalls: Array<{ scope: NativeSessionWorkspaceScope; options: NativeCliSessionListOptions }> = [];
     getCalls: Array<{ scope: NativeSessionWorkspaceScope; id: string }> = [];
 
@@ -219,5 +222,96 @@ describe('native CLI session routes', () => {
         const invalid = await getJson(server.baseUrl, '/api/workspaces/ws-1/native-cli-sessions?provider=unknown');
         expect(invalid.status).toBe(400);
         expect(invalid.body.error).toContain('provider must be one of');
+    });
+
+    it('rejects a staged provider with its descriptor note rather than a wiring error', async () => {
+        // Regression: `opencode` was accepted by the route parser but had no
+        // registered provider, so selecting it surfaced an internal
+        // "not registered" error. It is now gated by the shared registry.
+        const provider = new StubProvider('codex', { available: true, items: [], total: 0, searchIndexAvailable: false, deduplicatedCount: 0, backgroundJobCount: 0, limit: 50, offset: 0 });
+        const server = await startRouteServer({ enabled: true, provider });
+        servers.push(server);
+
+        const list = await getJson(server.baseUrl, '/api/workspaces/ws-1/native-cli-sessions?provider=opencode');
+        expect(list.status).toBe(400);
+        expect(list.body.error).toContain('OpenCode');
+        expect(list.body.error).not.toContain('not registered');
+
+        const detail = await getJson(server.baseUrl, '/api/workspaces/ws-1/native-cli-sessions/some-id?provider=opencode');
+        expect(detail.status).toBe(400);
+        expect(detail.body.error).toContain('OpenCode');
+        expect(provider.listCalls).toHaveLength(0);
+        expect(provider.getCalls).toHaveLength(0);
+    });
+
+    it('lists every known provider id in the invalid-provider message', async () => {
+        const provider = new StubProvider('codex', { available: true, items: [], total: 0, searchIndexAvailable: false, deduplicatedCount: 0, backgroundJobCount: 0, limit: 50, offset: 0 });
+        const server = await startRouteServer({ enabled: true, provider });
+        servers.push(server);
+
+        const res = await getJson(server.baseUrl, '/api/workspaces/ws-1/native-cli-sessions?provider=gemini');
+        expect(res.status).toBe(400);
+        for (const id of NATIVE_CLI_PROVIDER_IDS) {
+            expect(res.body.error).toContain(id);
+        }
+    });
+
+    it('reports an available provider that is not registered as a wiring error', async () => {
+        const routes: Route[] = [];
+        registerNativeCliSessionRoutes({
+            routes,
+            store: makeStore({ id: 'ws-1', name: 'Workspace', rootPath: '/repo' }),
+            getEnabled: () => true,
+            providers: new Map(),
+            resolveWorkspaceRepository: () => 'owner/repo',
+        });
+        const httpServer = http.createServer(createRouter({ routes, spaHtml: '' }));
+        await new Promise<void>(resolve => httpServer.listen(0, '127.0.0.1', resolve));
+        const address = httpServer.address();
+        if (!address || typeof address === 'string') { throw new Error('Expected TCP address'); }
+        servers.push({ close: () => new Promise<void>((resolve, reject) => httpServer.close(err => err ? reject(err) : resolve())) });
+
+        const res = await getJson(`http://127.0.0.1:${address.port}`, '/api/workspaces/ws-1/native-cli-sessions?provider=codex');
+        expect(res.status).toBe(400);
+        expect(res.body.error).toContain('not registered');
+    });
+
+    it('reports the provider search strategy on list and detail responses', async () => {
+        const provider = new StubProvider('copilot', { available: true, items: [], total: 0, searchIndexAvailable: true, deduplicatedCount: 0, backgroundJobCount: 0, limit: 50, offset: 0 });
+        provider.searchStrategy = 'native-index';
+        const server = await startRouteServer({ enabled: true, provider });
+        servers.push(server);
+
+        const list = await getJson(server.baseUrl, '/api/workspaces/ws-1/native-cli-sessions?provider=copilot');
+        expect(list.body).toMatchObject({ available: true, provider: 'copilot', searchStrategy: 'native-index' });
+
+        const detail = await getJson(server.baseUrl, '/api/workspaces/ws-1/native-cli-sessions/x?provider=copilot');
+        expect(detail.status).toBe(404);
+    });
+
+    it('reports the search strategy alongside an unavailable store', async () => {
+        const provider = new StubProvider('codex', { available: false, reason: 'store-invalid', limit: 50, offset: 0 });
+        const server = await startRouteServer({ enabled: true, provider });
+        servers.push(server);
+
+        const list = await getJson(server.baseUrl, '/api/workspaces/ws-1/native-cli-sessions?provider=codex');
+        expect(list.body).toMatchObject({
+            available: false,
+            reason: 'store-invalid',
+            provider: 'codex',
+            searchStrategy: 'on-demand-scan',
+        });
+    });
+
+    it('defaults to the copilot provider when none is supplied', async () => {
+        const provider = new StubProvider('copilot', { available: true, items: [], total: 0, searchIndexAvailable: true, deduplicatedCount: 0, backgroundJobCount: 0, limit: 50, offset: 0 });
+        provider.searchStrategy = 'native-index';
+        const server = await startRouteServer({ enabled: true, provider });
+        servers.push(server);
+
+        const list = await getJson(server.baseUrl, '/api/workspaces/ws-1/native-cli-sessions');
+        expect(list.status).toBe(200);
+        expect(list.body.provider).toBe('copilot');
+        expect(provider.listCalls).toHaveLength(1);
     });
 });

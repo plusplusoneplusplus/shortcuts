@@ -896,28 +896,37 @@ describe('NoteEditorToolbar — table controls secondary row', () => {
     });
 });
 
-describe('NoteEditorToolbar — styled text-mark buttons', () => {
-    it('Bold button renders with <strong> tag', () => {
+describe('NoteEditorToolbar — drawn command icons', () => {
+    it.each([
+        ['Bold', 'bold'],
+        ['Italic', 'italic'],
+        ['Strikethrough', 'strike'],
+        ['Superscript', 'superscript'],
+        ['Subscript', 'subscript'],
+        ['Blockquote', 'blockquote'],
+        ['Code', 'code'],
+        ['Code block', 'codeBlock'],
+        ['Link', 'link'],
+        ['Horizontal rule', 'horizontalRule'],
+        ['Increase indent', 'increaseIndent'],
+        ['Decrease indent', 'decreaseIndent'],
+        ['Find and replace', 'find'],
+    ])('draws the %s button instead of typing a glyph', (label, id) => {
         const editor = makeMockEditor();
         render(<NoteEditorToolbar editor={editor as never} />);
-        const boldBtn = screen.getByLabelText('Bold');
-        expect(boldBtn.querySelector('strong')).not.toBeNull();
+        const button = screen.getByLabelText(label);
+        expect(button.querySelector(`svg[data-testid="toolbar-icon-${id}"]`)).not.toBeNull();
+        // No leftover character next to the drawing.
+        expect(button.textContent).toBe('');
     });
 
-    it('Italic button renders with <em> tag', () => {
+    it('draws the Insert PDF button rather than showing the 📄 emoji', () => {
         const editor = makeMockEditor();
-        render(<NoteEditorToolbar editor={editor as never} />);
-        const italicBtn = screen.getByLabelText('Italic');
-        expect(italicBtn.querySelector('em')).not.toBeNull();
+        render(<NoteEditorToolbar editor={editor as never} onInsertPdf={() => {}} />);
+        const button = screen.getByTestId('insert-pdf-btn');
+        expect(button.querySelector('svg[data-testid="toolbar-icon-insertPdf"]')).not.toBeNull();
+        expect(button.textContent).toBe('');
     });
-
-    it('Strikethrough button renders with <s> tag', () => {
-        const editor = makeMockEditor();
-        render(<NoteEditorToolbar editor={editor as never} />);
-        const strikeBtn = screen.getByLabelText('Strikethrough');
-        expect(strikeBtn.querySelector('s')).not.toBeNull();
-    });
-
 });
 
 describe('NoteEditorToolbar — font family dropdown', () => {
@@ -1431,21 +1440,35 @@ describe('NoteEditorToolbar — alignment dropdown', () => {
         expect(screen.queryByTestId('align-dropdown-menu')).toBeNull();
     });
 
+    /** The alignment the trigger is currently drawing, read off the svg. */
+    const triggerIcon = () =>
+        screen.getByTestId('align-dropdown-label').querySelector('svg')?.getAttribute('data-testid');
+
     it('shows the left-align icon and no highlight when nothing is aligned', () => {
         const editor = makeMockEditor();
         render(<NoteEditorToolbar editor={editor as never} />);
-        expect(screen.getByTestId('align-dropdown-label').textContent).toBe('⫷');
+        expect(triggerIcon()).toBe('align-icon-left');
         expect(screen.getByTestId('align-dropdown').className).not.toContain('bg-[#e8e8e8]');
     });
 
+    it('draws each menu row with its own alignment icon, not a text glyph', () => {
+        const editor = makeMockEditor();
+        render(<NoteEditorToolbar editor={editor as never} />);
+        fireEvent.mouseDown(screen.getByTestId('align-dropdown'));
+        for (const value of ['left', 'center', 'right', 'justify']) {
+            const row = screen.getByTestId(`align-item-${value}`);
+            expect(row.querySelector(`svg[data-testid="align-icon-${value}"]`)).not.toBeNull();
+        }
+    });
+
     it.each([
-        ['center', '≡', 'align-item-center'],
-        ['right', '⫸', 'align-item-right'],
-        ['justify', '☰', 'align-item-justify'],
+        ['center', 'align-icon-center', 'align-item-center'],
+        ['right', 'align-icon-right', 'align-item-right'],
+        ['justify', 'align-icon-justify', 'align-item-justify'],
     ])('reflects %s alignment in the trigger and the checked row', (value, icon, testId) => {
         const editor = makeMockEditor(alignedTo(value));
         render(<NoteEditorToolbar editor={editor as never} />);
-        expect(screen.getByTestId('align-dropdown-label').textContent).toBe(icon);
+        expect(triggerIcon()).toBe(icon);
         expect(screen.getByTestId('align-dropdown').className).toContain('bg-[#e8e8e8]');
 
         fireEvent.mouseDown(screen.getByTestId('align-dropdown'));

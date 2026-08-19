@@ -97,6 +97,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/FollowUpInputArea
 }));
 
 import { NativeCopilotSessionsPanel } from '../../../../src/server/spa/client/react/features/native-copilot-sessions/NativeCopilotSessionsPanel';
+import { AVAILABLE_NATIVE_CLI_PROVIDER_DESCRIPTORS } from '@plusplusoneplusplus/coc-client';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -427,6 +428,45 @@ describe('NativeCopilotSessionsPanel', () => {
         expect(window.location.hash).toBe('#repos/ws-1/cli-sessions/claude');
         expect(screen.getByTestId('native-sessions-provider-claude').getAttribute('aria-selected')).toBe('true');
         expect(screen.getByTestId('native-session-external-label').textContent).toContain('Native Claude Code session');
+    });
+
+    it('renders one tab per available provider and none for staged providers', async () => {
+        // Regression: an OpenCode tab was rendered while the server registry had
+        // no OpenCode provider, so selecting it produced a hard error.
+        mockList.mockResolvedValue(makeListResponse([makeListItem()]));
+        render(<NativeCopilotSessionsPanel workspaceId="ws-1" />);
+        await waitFor(() => expect(mockList).toHaveBeenCalled());
+
+        for (const descriptor of AVAILABLE_NATIVE_CLI_PROVIDER_DESCRIPTORS) {
+            expect(screen.getByTestId(`native-sessions-provider-${descriptor.id}`).textContent).toBe(descriptor.label);
+        }
+        expect(screen.queryByTestId('native-sessions-provider-opencode')).toBeNull();
+        expect(screen.getByTestId('native-sessions-provider-switcher').querySelectorAll('button'))
+            .toHaveLength(AVAILABLE_NATIVE_CLI_PROVIDER_DESCRIPTORS.length);
+    });
+
+    it('explains on-demand search only when the provider reports that strategy', async () => {
+        mockList.mockResolvedValue({ ...makeListResponse([makeListItem()]), searchStrategy: 'on-demand-scan', searchIndexAvailable: false });
+        render(<NativeCopilotSessionsPanel workspaceId="ws-1" />);
+        await waitFor(() => expect(mockList).toHaveBeenCalled());
+
+        fireEvent.change(screen.getByTestId('native-sessions-search-input'), { target: { value: 'billing' } });
+        fireEvent.click(screen.getByTestId('native-sessions-apply-filters'));
+
+        await waitFor(() => expect(screen.getByTestId('native-sessions-search-unavailable')).toBeTruthy());
+    });
+
+    it('does not warn about search when the provider is natively indexed', async () => {
+        mockList.mockResolvedValue({ ...makeListResponse([makeListItem()]), searchStrategy: 'native-index', searchIndexAvailable: true });
+        render(<NativeCopilotSessionsPanel workspaceId="ws-1" />);
+        await waitFor(() => expect(mockList).toHaveBeenCalled());
+
+        fireEvent.change(screen.getByTestId('native-sessions-search-input'), { target: { value: 'billing' } });
+        fireEvent.click(screen.getByTestId('native-sessions-apply-filters'));
+
+        await waitFor(() => expect(mockList).toHaveBeenCalledTimes(2));
+        expect(screen.queryByTestId('native-sessions-search-unavailable')).toBeNull();
+        expect(screen.queryByTestId('native-sessions-search-strategy-unavailable')).toBeNull();
     });
 
     it('ignores a deep-link hash that targets a different workspace', async () => {

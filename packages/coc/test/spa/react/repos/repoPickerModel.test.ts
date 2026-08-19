@@ -3,7 +3,7 @@
  * of VirtualWorkspaceShellHeader so both remote dropdowns render identical rows.
  */
 import { describe, expect, it } from 'vitest';
-import { getServerName, isRepoOffline, shortPath } from '../../../../src/server/spa/client/react/repos/repoPickerModel';
+import { getGroupWsl, getRepoWsl, getServerName, isRepoOffline, shortPath } from '../../../../src/server/spa/client/react/repos/repoPickerModel';
 import type { RepoData } from '../../../../src/server/spa/client/react/repos/repoGrouping';
 
 function remoteRepo(remote: Record<string, unknown> | null, baseUrl?: string): RepoData {
@@ -63,5 +63,48 @@ describe('shortPath', () => {
 
     it('returns empty string for empty input', () => {
         expect(shortPath('')).toBe('');
+    });
+});
+
+function wslRepo(id: string, distro: string | null): RepoData {
+    return { workspace: { id, name: id, wsl: { distro } } } as unknown as RepoData;
+}
+
+function nativeRepo(id: string): RepoData {
+    return { workspace: { id, name: id } } as unknown as RepoData;
+}
+
+describe('getRepoWsl', () => {
+    it('reads the server marker and its distro', () => {
+        expect(getRepoWsl(wslRepo('a', 'Ubuntu'))).toEqual({ distro: 'Ubuntu' });
+    });
+
+    it('returns null when the workspace carries no marker', () => {
+        expect(getRepoWsl(nativeRepo('a'))).toBeNull();
+    });
+});
+
+describe('getGroupWsl (AC-03 all-or-nothing rule)', () => {
+    it('marks a group whose every clone is WSL-hosted', () => {
+        const group = { repos: [wslRepo('a', 'Ubuntu'), wslRepo('b', 'Ubuntu')] };
+        expect(getGroupWsl(group)).toEqual({ distro: 'Ubuntu' });
+    });
+
+    it('drops the distro when clones live in different distros', () => {
+        const group = { repos: [wslRepo('a', 'Ubuntu'), wslRepo('b', 'Ubuntu-24.04')] };
+        expect(getGroupWsl(group)).toEqual({ distro: null });
+    });
+
+    it('does not mark a mixed group', () => {
+        const group = { repos: [wslRepo('a', 'Ubuntu'), nativeRepo('b')] };
+        expect(getGroupWsl(group)).toBeNull();
+    });
+
+    it('does not mark a group with no WSL clones', () => {
+        expect(getGroupWsl({ repos: [nativeRepo('a'), nativeRepo('b')] })).toBeNull();
+    });
+
+    it('does not mark an empty group', () => {
+        expect(getGroupWsl({ repos: [] })).toBeNull();
     });
 });

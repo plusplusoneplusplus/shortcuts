@@ -684,6 +684,39 @@ all have their own `references/*.md`.
   timeline as a markdown blockquote (the chat turn shape has no reasoning
   field). The metadata header is preserved and no follow-up/streaming/resume or
   per-turn (pin/archive/delete) actions are wired.
+- **Native CLI session provider kernel** (`src/server/native-copilot-sessions/`)
+  keeps provider identity in exactly one place. `NATIVE_CLI_PROVIDER_DESCRIPTORS`
+  in `@plusplusoneplusplus/coc-client` declares each provider's id, label,
+  external label, store hint, `searchStrategy`, and `available`/`planned`
+  status. `native-cli-provider-registry.ts` (`createNativeCliSessionProviders`)
+  builds the served provider map from the `available` descriptors and throws at
+  server construction when one has no factory or reports a search strategy that
+  disagrees with its descriptor. The route parser, the dashboard tab list, and
+  `parseNativeCliSessionDeepLink` all gate on the same registry, so a provider
+  can never be selectable in the UI without a server provider behind it. Add a
+  provider by adding its descriptor plus a factory — never by widening a union
+  or a hard-coded list. `opencode` is intentionally `planned`: it has no store
+  reader, gets no tab, and its route requests return 400 with the descriptor's
+  `plannedNote`.
+- **File-backed transcript listing** goes through
+  `native-transcript-index.ts`. The index caches parsed list metadata keyed by
+  file path + `mtimeMs` + `size` (LRU-bounded, default 2000 files) so warm list
+  requests only `stat`, and `beginPass()`/`readRaw()` ensure one request reads a
+  transcript at most once even when metadata parsing and substring search both
+  need it. Never read transcript bytes directly in a provider — go through the
+  index so the caching and single-read guarantees hold.
+- **Transcript parsers** live per provider under
+  `native-copilot-sessions/parsers/` (`claude-transcript-parser.ts`,
+  `codex-rollout-parser.ts`) over shared `transcript-parser-core.ts` helpers;
+  `cli-session-parsers.ts` is a re-export barrel. Keep provider envelope
+  handling inside its own module so a change to one CLI's format cannot regress
+  another's reconstruction.
+- **Native session route plumbing** (query parsing, workspace scope building,
+  feature-disabled and store-unavailable envelopes) is shared by the unified
+  `native-cli-session-routes.ts` and the legacy Copilot-only
+  `native-copilot-session-routes.ts` aliases via
+  `routes/native-session-route-utils.ts`. Fix behaviour there once rather than
+  mirroring it across both controllers.
 - **Work-item create/update side effects** (hierarchy `parentId` validation,
   GitHub/Azure Boards provider sync, response-cache invalidation, dashboard
   broadcasts, auto-execute) live in the shared command service

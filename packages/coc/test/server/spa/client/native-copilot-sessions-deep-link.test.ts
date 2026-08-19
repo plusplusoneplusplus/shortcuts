@@ -5,6 +5,7 @@ import {
     parseNativeCopilotSessionDeepLink,
     buildNativeCopilotSessionHash,
 } from '../../../../src/server/spa/client/react/layout/Router';
+import { AVAILABLE_NATIVE_CLI_PROVIDER_DESCRIPTORS } from '@plusplusoneplusplus/coc-client';
 
 describe('parseNativeCliSessionDeepLink', () => {
     it('returns null for hashes outside the cli-sessions tab', () => {
@@ -114,5 +115,39 @@ describe('buildNativeCopilotSessionHash', () => {
     it('round-trips through the parser', () => {
         const hash = buildNativeCopilotSessionHash('ws-1', 'sess-abc');
         expect(parseNativeCopilotSessionDeepLink(hash)).toEqual({ workspaceId: 'ws-1', sessionId: 'sess-abc' });
+    });
+});
+
+describe('deep-link provider gating', () => {
+    it('rejects a provider staged as planned in the shared registry', () => {
+        // Regression: an `#.../cli-sessions/opencode` link used to be parseable
+        // in some surfaces while no server provider could serve it.
+        expect(parseNativeCliSessionDeepLink('#repos/ws-1/cli-sessions/opencode')).toBeNull();
+        expect(parseNativeCliSessionDeepLink('#repos/ws-1/cli-sessions/opencode/session-1')).toBeNull();
+    });
+
+    it('rejects an unknown provider segment', () => {
+        expect(parseNativeCliSessionDeepLink('#repos/ws-1/cli-sessions/gemini')).toBeNull();
+    });
+
+    it('accepts every provider the shared registry declares available', () => {
+        for (const descriptor of AVAILABLE_NATIVE_CLI_PROVIDER_DESCRIPTORS) {
+            expect(parseNativeCliSessionDeepLink(`#repos/ws-1/cli-sessions/${descriptor.id}`)).toEqual({
+                workspaceId: 'ws-1',
+                provider: descriptor.id,
+                sessionId: null,
+            });
+        }
+    });
+
+    it('round-trips a built hash for every available provider', () => {
+        for (const descriptor of AVAILABLE_NATIVE_CLI_PROVIDER_DESCRIPTORS) {
+            const hash = buildNativeCliSessionHash('ws-1', descriptor.id, 'session-1');
+            expect(parseNativeCliSessionDeepLink(hash)).toEqual({
+                workspaceId: 'ws-1',
+                provider: descriptor.id,
+                sessionId: 'session-1',
+            });
+        }
     });
 });

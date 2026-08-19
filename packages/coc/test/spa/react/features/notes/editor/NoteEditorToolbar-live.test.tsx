@@ -77,7 +77,9 @@ function caretAtStart(ed: Editor) {
 
 const headingLabel = () => screen.getByTestId('heading-dropdown-label').textContent;
 const listLabel = () => screen.getByTestId('list-dropdown-label').textContent;
-const alignLabel = () => screen.getByTestId('align-dropdown-label').textContent;
+/** The alignment the trigger is drawing, read off its svg rather than its text. */
+const alignLabel = () =>
+    screen.getByTestId('align-dropdown-label').querySelector('svg')?.getAttribute('data-testid');
 
 function openMenu(testId: string) {
     fireEvent.mouseDown(screen.getByTestId(testId));
@@ -228,14 +230,14 @@ describe('list dropdown against a real editor', () => {
 describe('alignment dropdown against a real editor', () => {
     it('starts unaligned, showing the left-align icon', () => {
         mount();
-        expect(alignLabel()).toBe('⫷');
+        expect(alignLabel()).toBe('align-icon-left');
     });
 
     it.each([
-        ['align-item-center', 'center', '≡'],
-        ['align-item-right', 'right', '⫸'],
-        ['align-item-justify', 'justify', '☰'],
-    ])('picking %s aligns the paragraph and the trigger reads %s', (testId, value, icon) => {
+        ['align-item-center', 'center', 'align-icon-center'],
+        ['align-item-right', 'right', 'align-icon-right'],
+        ['align-item-justify', 'justify', 'align-icon-justify'],
+    ])('picking %s aligns the paragraph and the trigger draws %s', (testId, value, icon) => {
         const ed = mount();
 
         openMenu('align-dropdown');

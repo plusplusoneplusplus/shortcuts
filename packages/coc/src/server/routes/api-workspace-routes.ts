@@ -29,6 +29,9 @@ import {
 import { getEffectiveDefaultDisabledTools, getEffectiveLlmToolRegistry } from '../llm-tools/llm-tool-registry';
 import { withToolParameterMetadata } from '../llm-tools/llm-tool-parameter-schemas';
 import { detectEnDevEligibility } from '../endev/endev-detector';
+import { resolveHostCopyPath } from '../host-copy-path';
+import { detectWslWorkspace } from '../wsl-workspace';
+import { isNativeWslEnvironment } from '../endev/endev-detector';
 import { skillCache } from '../skills/skill-handler';
 import {
     getServerDetail,
@@ -295,10 +298,24 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
         pattern: '/api/workspaces',
         handler: async (_req, res) => {
             const workspaces = await store.getWorkspaces();
-            const enriched = workspaces.map(ws => ({
-                ...ws,
-                isGitRepo: hasGitDirectory(ws.rootPath),
-            }));
+            // `copyPath` is the host-reachable form of `rootPath` — identical to it
+            // everywhere except a native-WSL server, where it becomes the Windows
+            // UNC path so the dashboard's "Copy path" pastes into Windows apps.
+            // `wsl` marks checkouts living inside WSL so the repo dropdown can
+            // tell a WSL clone apart from a native clone of the same remote.
+            const wslEnv = {
+                isNativeWsl: isNativeWslEnvironment(),
+                wslDistro: process.env.WSL_DISTRO_NAME,
+            };
+            const enriched = workspaces.map(ws => {
+                const wsl = detectWslWorkspace(ws.rootPath, wslEnv);
+                return {
+                    ...ws,
+                    isGitRepo: hasGitDirectory(ws.rootPath),
+                    copyPath: resolveHostCopyPath(ws.rootPath),
+                    ...(wsl ? { wsl } : {}),
+                };
+            });
             sendJSON(res, 200, { workspaces: enriched });
         },
     });

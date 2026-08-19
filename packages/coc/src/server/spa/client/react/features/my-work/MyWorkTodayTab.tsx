@@ -35,6 +35,7 @@
  */
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { MyWorkTask } from '@plusplusoneplusplus/coc-client';
+import { useVisualViewport } from '../../hooks/ui/useVisualViewport';
 import { useMyWorkTasks } from './useMyWorkTasks';
 import {
     bucketActionItems, filterTasks, formatTriageSummary, groupFollowUpsByAge,
@@ -69,6 +70,11 @@ export function MyWorkTodayTab({ workspaceId, active = true }: MyWorkTodayTabPro
     const [expandedPeople, setExpandedPeople] = useState<ReadonlySet<string>>(() => new Set());
     const containerRef = useRef<HTMLDivElement>(null);
     const filterRef = useRef<HTMLInputElement>(null);
+    const quickAddRef = useRef<HTMLFormElement>(null);
+    // The layout viewport does not shrink when the on-screen keyboard opens, so
+    // `mt-auto` would park the quick-add form underneath it. Padding the scroll
+    // container by the keyboard's height gives the form somewhere to scroll to.
+    const keyboardHeight = useVisualViewport();
 
     const filterActive = filter.trim().length > 0;
     const visibleActionItems = useMemo(() => filterTasks(actionItems, filter), [actionItems, filter]);
@@ -170,16 +176,20 @@ export function MyWorkTodayTab({ workspaceId, active = true }: MyWorkTodayTabPro
         <div
             ref={containerRef}
             className="flex flex-col h-full min-h-0 overflow-auto p-4 gap-4 text-gray-900 dark:text-gray-100"
+            style={keyboardHeight > 0 ? { paddingBottom: keyboardHeight } : undefined}
             data-testid="my-work-today-tab"
         >
-            <div className="flex items-center justify-between gap-3">
+            {/* One row from `md:` up. Below it the controls drop under the
+                heading and the filter takes the full width, rather than fighting
+                the title for the ~120px a `w-32` box wants. */}
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between md:gap-3">
                 <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Today</h2>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3 md:flex-nowrap">
                     {tasks && (
                         <input
                             ref={filterRef}
                             type="text"
-                            className="text-xs w-32 border border-gray-300 dark:border-gray-600 rounded px-2 py-0.5 bg-transparent"
+                            className="text-xs w-full touch-target md:w-32 border border-gray-300 dark:border-gray-600 rounded px-2 py-0.5 bg-transparent"
                             placeholder="Filter… (/)"
                             aria-label="Filter items"
                             value={filter}
@@ -288,21 +298,25 @@ export function MyWorkTodayTab({ workspaceId, active = true }: MyWorkTodayTabPro
             )}
 
             <form
+                ref={quickAddRef}
                 className="flex items-center gap-2 mt-auto"
                 onSubmit={e => { e.preventDefault(); void submitQuickAdd(); }}
                 data-testid="my-work-today-quickadd"
             >
                 <input
                     type="text"
-                    className="flex-1 text-sm border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-transparent"
+                    className="flex-1 min-w-0 touch-target text-sm border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-transparent"
                     placeholder="Add an action item…"
                     value={quickAdd}
                     onChange={e => setQuickAdd(e.target.value)}
+                    // Focusing the field is what opens the keyboard, so this is
+                    // the moment the form has to be brought back into view.
+                    onFocus={() => quickAddRef.current?.scrollIntoView?.({ block: 'nearest' })}
                     data-testid="my-work-today-quickadd-input"
                 />
                 <button
                     type="submit"
-                    className="text-sm px-3 py-1 rounded bg-blue-600 text-white disabled:opacity-50"
+                    className="shrink-0 touch-target text-sm px-3 py-1 rounded bg-blue-600 text-white disabled:opacity-50"
                     disabled={busy || quickAdd.trim().length === 0}
                     data-testid="my-work-today-quickadd-btn"
                 >
