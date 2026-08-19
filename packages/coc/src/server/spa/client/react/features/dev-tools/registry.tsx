@@ -7,6 +7,7 @@
 
 import type { DevTool } from './types';
 import { ProgrammerCalculatorCard } from './ProgrammerCalculatorCard';
+import { BitFlagDecoderCard } from './BitFlagDecoderCard';
 import { BaseConverterCard } from './BaseConverterCard';
 import { EncodersCard } from './EncodersCard';
 import { TimestampCard } from './TimestampCard';
@@ -25,6 +26,13 @@ export const DEV_TOOLS: readonly DevTool[] = [
         description: 'Evaluate C-style integer expressions with DEC / HEX / OCT / BIN readouts',
         keywords: ['calc', 'calculator', 'hex', 'binary', 'octal', 'bitwise', 'shift', 'bits'],
         component: ProgrammerCalculatorCard,
+    },
+    {
+        id: 'bit-flags',
+        name: 'Bit flag decoder',
+        description: 'Decode a number against pasted C++ flag definitions, and tick flags back into a number',
+        keywords: ['flag', 'flags', 'bitflag', 'bitmask', 'mask', 'enum', 'decode', 'bits', 'cpp'],
+        component: BitFlagDecoderCard,
     },
     {
         id: 'base-converter',
