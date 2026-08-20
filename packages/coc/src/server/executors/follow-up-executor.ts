@@ -61,6 +61,7 @@ import {
 } from './chat-turn-settlement';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
+import { computeAssistantResponseOrdinal } from './turn-performance-tracker';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { buildChatTurnContext } from './chat-turn-context-builder';
 import type { ChatTurnContext } from './chat-turn-context-builder';
@@ -345,6 +346,12 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         // Start TTFT/TPS timing before any streaming can begin; the first
         // output chunk is stamped by appendOutputChunk via the tracker.
         this.turnPerformance.begin(processId);
+
+        // Metric turn index: 0-based assistant-response ordinal (never 0 on a
+        // follow-up — the first response of a new session settles in
+        // ChatBaseExecutor.execute). Counted from the pre-turn snapshot so the
+        // success and error settles agree.
+        const turnPerformanceOrdinal = computeAssistantResponseOrdinal(process.conversationTurns);
 
         let chatCtx: ChatTurnContext | undefined;
 
@@ -667,7 +674,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             });
 
             this.settleTurnPerformance(processId, {
-                turnIndex: assistantTurn.turnIndex,
+                turnIndex: turnPerformanceOrdinal,
                 workspaceId: wsId,
                 provider: sessionProvider,
                 model: result.effectiveModel ?? policy.modelId,
@@ -690,11 +697,9 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
             const partial = this.capturePartialTurn(processId);
 
-            let errorTurnIndex = process.conversationTurns?.length ?? 0;
             await this.appendFinalConversationTurn(
                 processId,
                 (turnIndex) => {
-                    errorTurnIndex = turnIndex;
                     return {
                         role: 'assistant' as const,
                         content: partial.hasPartial ? partial.content : `Error: ${errorMsg}`,
@@ -731,7 +736,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 }
             );
             this.settleTurnPerformance(processId, {
-                turnIndex: errorTurnIndex,
+                turnIndex: turnPerformanceOrdinal,
                 workspaceId: wsId,
                 provider: sessionProvider,
                 model: providerModel.model,

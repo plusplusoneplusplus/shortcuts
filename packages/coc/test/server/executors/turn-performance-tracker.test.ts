@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { TokenUsage } from '@plusplusoneplusplus/forge';
 import {
     TurnPerformanceTracker,
+    computeAssistantResponseOrdinal,
     deriveTurnPerformanceEvent,
     type InFlightTurnTiming,
     type TurnSettlementContext,
@@ -314,5 +315,37 @@ describe('BaseExecutor.appendOutputChunk first-output stamp', () => {
         executor.appendOutputChunkPublic('proc-1', 'chunk');
         expect(executor.turnPerformancePublic.hasInFlight('proc-1')).toBe(false);
         expect(executor.getOutputBufferPublic('proc-1')).toBe('chunk');
+    });
+});
+
+// ============================================================================
+// computeAssistantResponseOrdinal
+// ============================================================================
+
+describe('computeAssistantResponseOrdinal', () => {
+    it('returns 0 for undefined, empty, and user-only turn lists (the new-session case)', () => {
+        expect(computeAssistantResponseOrdinal(undefined)).toBe(0);
+        expect(computeAssistantResponseOrdinal([])).toBe(0);
+        expect(computeAssistantResponseOrdinal([{ role: 'user' }])).toBe(0);
+    });
+
+    it('counts persisted assistant turns, not conversation indexes', () => {
+        // user0, asst1, user2 → the response about to settle is ordinal 1,
+        // even though its conversation turn index would be 3.
+        expect(computeAssistantResponseOrdinal([
+            { role: 'user' },
+            { role: 'assistant' },
+            { role: 'user' },
+        ])).toBe(1);
+    });
+
+    it('excludes the in-progress streaming placeholder for the settling turn', () => {
+        // Regression: a throttled mid-turn flush persists the current response
+        // as a streaming assistant turn; counting it made first turns settle
+        // at ordinal 1, leaving the firstTurnOnly (turn_index = 0) bucket empty.
+        expect(computeAssistantResponseOrdinal([
+            { role: 'user' },
+            { role: 'assistant', streaming: true },
+        ])).toBe(0);
     });
 });

@@ -16,7 +16,7 @@
  * global. Pure Node.js; cross-platform.
  */
 
-import type { TokenUsage, TurnPerformanceEvent, TurnPerformanceStatus } from '@plusplusoneplusplus/forge';
+import type { ConversationTurn, TokenUsage, TurnPerformanceEvent, TurnPerformanceStatus } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Types
@@ -57,6 +57,30 @@ export interface TurnSettlementContext {
 // ============================================================================
 // Pure derivation
 // ============================================================================
+
+/**
+ * Metric `turnIndex` for the assistant response about to settle: the 0-based
+ * ordinal of that response within the process, i.e. the count of assistant
+ * turns already persisted before it. `turnIndex = 0` therefore identifies the
+ * first response of a new session (the headline "new-session TTFT" filter),
+ * unlike conversation turn indexes, which interleave user turns and never put
+ * an assistant response at 0. Cold-resumed processes carry their historical
+ * assistant turns, so their first live response is deliberately not ordinal 0
+ * — it resumes a large history and is not a fresh-session TTFT sample.
+ *
+ * Turns still flagged `streaming` are the in-progress placeholder for the
+ * response being settled (persisted by throttled flushes mid-turn) and are
+ * excluded, so a settle that runs after a flush does not count its own turn.
+ */
+export function computeAssistantResponseOrdinal(
+    turns: readonly Pick<ConversationTurn, 'role' | 'streaming'>[] | undefined,
+): number {
+    if (!turns) return 0;
+    return turns.reduce(
+        (count, turn) => (turn.role === 'assistant' && !turn.streaming ? count + 1 : count),
+        0,
+    );
+}
 
 /** Round to 3 decimal places so stored TPS values stay readable. */
 function round3(value: number): number {

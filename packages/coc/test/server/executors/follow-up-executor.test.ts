@@ -1800,10 +1800,15 @@ describe('FollowUpExecutor contextTier', () => {
 
             expect(recorder.record).toHaveBeenCalledTimes(1);
             const event = recorder.record.mock.calls[0][0];
+            // turnIndex is the assistant-response ordinal, not the conversation
+            // turn index: the fixture has one prior assistant turn, so this
+            // response is ordinal 1. Regression guard for the firstTurnOnly
+            // (turn_index = 0) filter — conversation indexes would put every
+            // assistant row at an odd index and leave the 0 bucket empty.
             expect(event).toMatchObject({
-                id: 'proc-perf:2',
+                id: 'proc-perf:1',
                 processId: 'proc-perf',
-                turnIndex: 2,
+                turnIndex: 1,
                 workspaceId: 'ws-perf',
                 provider: 'copilot',
                 model: 'gpt-5.6',
@@ -1832,7 +1837,7 @@ describe('FollowUpExecutor contextTier', () => {
             const event = recorder.record.mock.calls[0][0];
             expect(event).toMatchObject({
                 processId: 'proc-perf-err',
-                turnIndex: 2,
+                turnIndex: 1,
                 status: 'errored',
             });
             expect(event.firstOutputAt).toBeNull();
