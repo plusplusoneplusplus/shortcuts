@@ -12,6 +12,7 @@
  * workspace default provider/model — no AI-selection payload.
  */
 
+import { buildRalphSubmitPrompt } from '@plusplusoneplusplus/coc-workflow/ralph';
 import type { RalphSessionRecord, RalphSubmitRecord } from './types';
 
 // ============================================================================
@@ -106,10 +107,11 @@ export function buildSubmitTaskPayload(input: BuildSubmitTaskInput) {
         workingDirectory, folderPath, repoId, extraContext,
     } = input;
 
-    const prompt = buildSubmitPrompt({
+    const prompt = buildRalphSubmitPrompt({
         originalGoal,
         progressPath,
         sessionId,
+        submitIndex,
         baselineSha,
         sessionStartedAt,
         sessionCompletedAt,
@@ -151,43 +153,4 @@ export function buildSubmitTaskPayload(input: BuildSubmitTaskInput) {
             },
         },
     };
-}
-
-// ============================================================================
-// Prompt builder (interim)
-// ============================================================================
-
-interface BuildSubmitPromptInput {
-    originalGoal: string;
-    progressPath: string;
-    sessionId: string;
-    baselineSha?: string;
-    sessionStartedAt: string;
-    sessionCompletedAt?: string;
-}
-
-/**
- * Interim prompt for the submit job. AC-03 replaces this with the full
- * portable builder (commit-determination strategies, result-block contract,
- * conflict-abort rule) in @plusplusoneplusplus/coc-workflow/ralph.
- */
-function buildSubmitPrompt(input: BuildSubmitPromptInput): string {
-    const {
-        originalGoal, progressPath, sessionId,
-        baselineSha, sessionStartedAt, sessionCompletedAt,
-    } = input;
-
-    const commitStrategy = baselineSha
-        ? `Determine the session's commits as the range ${baselineSha}..HEAD on the current branch.`
-        : `This legacy session has no baseline SHA. Determine candidate commits from \`git log\` between ${sessionStartedAt} and ${sessionCompletedAt ?? 'now'}, cross-check them against commit SHAs mentioned in the progress journal at ${progressPath}, and submit only the verified list.`;
-
-    return [
-        `Submit the commits produced by Ralph session ${sessionId} as a GitHub pull request.`,
-        '',
-        `Session goal:\n${originalGoal}`,
-        '',
-        commitStrategy,
-        '',
-        'Invoke the `submit-commits-as-pr` skill with the explicit comma-separated commit SHA list. Do not resolve cherry-pick conflicts — on conflict the submit aborts.',
-    ].join('\n');
 }

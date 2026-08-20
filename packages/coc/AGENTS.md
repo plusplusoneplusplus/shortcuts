@@ -244,6 +244,12 @@ all have their own `references/*.md`.
   `RalphExecutor` must use validation-only system instructions whenever
   `context.ralph.finalCheck` is present. Do not route final checks through the
   normal implementation-loop system prompt.
+- **Ralph PR-submit tasks** (`context.ralph.submit` present) must never be
+  routed through iteration orchestration: the bridge hands them to
+  `orchestrateSubmitCompletion` (`src/server/ralph/orchestrate-submit.ts`),
+  which parses the `RALPH_SUBMIT_RESULT` block and updates the persisted
+  `submits[]` record only — a submit completion never enqueues further work
+  and server code never switches git branches.
 - **Ralph manual-only completion** treats explicit manual-verification-only
   `Remaining:` progress as complete autonomous work: do not queue another
   implementation iteration; enqueue final-check and preserve the manual

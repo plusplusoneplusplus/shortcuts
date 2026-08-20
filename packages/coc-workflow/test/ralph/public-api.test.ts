@@ -5,6 +5,7 @@ import {
     appendProgress,
     buildFinalCheckPrompt,
     buildRalphIterationPrompt,
+    buildRalphSubmitPrompt,
     classifyRalphProgressStagnation,
     decideRalphIterationActions,
     decideRalphFinalCheckActions,
@@ -13,6 +14,7 @@ import {
     parseFinalCheckResult,
     parseProgressSections,
     parseRalphSignal,
+    parseRalphSubmitResult,
     type FinalCheckResult,
     type RalphSessionRecord,
 } from '../../src/ralph';
@@ -33,6 +35,8 @@ describe('Ralph public module boundary', () => {
         expect(typeof classifyRalphProgressStagnation).toBe('function');
         expect(typeof buildFinalCheckPrompt).toBe('function');
         expect(typeof parseFinalCheckResult).toBe('function');
+        expect(typeof buildRalphSubmitPrompt).toBe('function');
+        expect(typeof parseRalphSubmitResult).toBe('function');
         expect(typeof decideRalphIterationActions).toBe('function');
         expect(typeof decideRalphFinalCheckActions).toBe('function');
         expect(typeof formatFinalCheckProgressSection).toBe('function');

@@ -225,6 +225,19 @@ describe('RalphSessionStore — upsertSubmitRecord (AC-02)', () => {
         expect(rec.submits![1]).toMatchObject({ submitIndex: 2, status: 'queued' });
     });
 
+    it('preserves the original startedAt when a status patch omits it (AC-03)', async () => {
+        await store.initSession(WS, SID, { originalGoal: 'g', maxIterations: 1 });
+        await store.upsertSubmitRecord(WS, SID, 1, { status: 'queued', startedAt: '2026-08-20T10:00:00Z' });
+
+        const rec = await store.upsertSubmitRecord(WS, SID, 1, {
+            status: 'completed',
+            completedAt: '2026-08-20T10:05:00Z',
+        });
+
+        expect(rec.submits![0].startedAt).toBe('2026-08-20T10:00:00Z');
+        expect(rec.submits![0].completedAt).toBe('2026-08-20T10:05:00Z');
+    });
+
     it('legacy session.json without submits parses fine and initialises the array on first upsert', async () => {
         const legacy = {
             sessionId: SID,

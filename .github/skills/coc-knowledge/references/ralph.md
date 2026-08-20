@@ -454,14 +454,30 @@ Task construction and guards live in
 `enqueue-final-check.ts`): `buildSubmitTaskPayload` enqueues a `mode='ralph'`
 chat with `context.ralph.submit = { kind: 'submit-pr', submitIndex }` and
 taskGroup role `submit-pr`, deliberately carrying no provider/model selection so
-workspace defaults apply. The prompt tells the agent to determine commits via
-`baselineSha..HEAD` when the session has a baseline, else via a
-startedAt/completedAt time window cross-checked against `progress.md`, and to
-invoke the `submit-commits-as-pr` skill with an explicit SHA list without
-resolving conflicts. The queue bridge routes `context.ralph.submit` completions
-away from iteration orchestration (result parsing and record completion updates
-are the submit completion path's job). Server code never switches git branches —
-the only branch manipulation happens inside the submit skill's script.
+workspace defaults apply. The prompt comes from the portable
+`buildRalphSubmitPrompt` (`@plusplusoneplusplus/coc-workflow/ralph`,
+`submit-prompt.ts`): determine commits via `baselineSha..HEAD` when the session
+has a baseline, else via a startedAt/completedAt time window cross-checked
+against `progress.md`; whole-session scope (all loops including gap-fix); invoke
+the `submit-commits-as-pr` skill with an explicit comma-separated SHA list; PR
+title/body from the goal plus a progress-journal summary, auto-merge on, not
+draft; never resolve cherry-pick conflicts (the skill aborts); end with a
+`RALPH_SUBMIT_RESULT` JSON block
+`{ status: 'submitted'|'failed', prUrl?, prNumber?, commitShas?, error? }`.
+
+On task completion the queue bridge routes `context.ralph.submit` completions to
+`handleSubmitCompletion` →
+`packages/coc/src/server/ralph/orchestrate-submit.ts`
+(`orchestrateSubmitCompletion`), which records the `processId`, parses the
+response with the tolerant portable `parseRalphSubmitResult`
+(`submit-result-parser.ts`, modeled on `parseFinalCheckResult`), and updates the
+persisted submit record: `submitted` → `completed` with
+`prUrl`/`prNumber`/`commitShas`; `failed` → `failed` with the agent's `error`;
+missing/malformed block → `failed` with `error: 'unparseable'`. `completedAt` is
+set on terminal updates and `upsertSubmitRecord` preserves the original
+`startedAt` on patches. A submit completion never enqueues further work. Server
+code never switches git branches — the only branch manipulation happens inside
+the submit skill's script.
 
 ## Scheduled Ralph Runs
 

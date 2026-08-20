@@ -186,6 +186,26 @@ export interface RalphSubmitRecord {
     error?: string;
 }
 
+export type RalphSubmitParseStatus = 'submitted' | 'failed' | 'unparseable';
+
+/**
+ * Parsed outcome of a PR-submit agent response (the RALPH_SUBMIT_RESULT
+ * JSON block the submit prompt instructs the agent to end with).
+ */
+export interface RalphSubmitResult {
+    status: RalphSubmitParseStatus;
+    /** URL of the created pull request; present when status is 'submitted'. */
+    prUrl?: string;
+    prNumber?: number;
+    /** Commit SHAs included in the pull request, oldest first. */
+    commitShas?: string[];
+    /**
+     * Failure reason reported by the agent when status is 'failed', or the
+     * parse-error detail when status is 'unparseable'.
+     */
+    error?: string;
+}
+
 export interface FinalCheckGap {
     id: string;
     title: string;

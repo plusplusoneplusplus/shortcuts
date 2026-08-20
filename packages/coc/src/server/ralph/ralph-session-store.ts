@@ -618,16 +618,16 @@ export class RalphSessionStore {
             };
             const existing = base.submits ?? [];
             const idx = existing.findIndex(s => s.submitIndex === submitIndex);
-            const updated: RalphSubmitRecord = {
-                submitIndex,
-                startedAt: partial.startedAt ?? new Date().toISOString(),
-                ...partial,
-            };
             const next = [...existing];
             if (idx >= 0) {
-                next[idx] = { ...next[idx], ...updated };
+                // Preserve the original startedAt unless the patch sets one.
+                next[idx] = { ...next[idx], ...partial, submitIndex };
             } else {
-                next.push(updated);
+                next.push({
+                    startedAt: new Date().toISOString(),
+                    ...partial,
+                    submitIndex,
+                });
             }
             return { ...base, submits: next };
         });

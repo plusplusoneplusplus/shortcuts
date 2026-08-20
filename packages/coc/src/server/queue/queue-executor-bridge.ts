@@ -11,6 +11,7 @@ import { ExecutorRegistry } from '../executors/executor-registry';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
 import { orchestrateRalphIteration } from '../ralph/orchestrate-iteration';
 import { orchestrateFinalCheck } from '../ralph/orchestrate-final-check';
+import { orchestrateSubmitCompletion } from '../ralph/orchestrate-submit';
 import { loadConfigFile, DEFAULT_CONFIG } from '../../config';
 import type { CLIConfig } from '../../config';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
@@ -315,14 +316,8 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         }
 
         // ── PR-submit completions must never enqueue another iteration ───────
-        // Result parsing and submit-record updates are handled by the submit
-        // completion path (AC-03); until then this guard only prevents the
-        // submit job from being treated as a Ralph iteration.
         if (ralphCtx?.submit) {
-            getLogger().debug(
-                LogCategory.AI,
-                `[Ralph] PR-submit task ${completedTask.id} completed for session ${sessionId ?? 'unknown'}; skipping iteration orchestration.`,
-            );
+            await this.handleSubmitCompletion(processId, completedTask, responseText, ralphCtx, workspaceId, sessionId);
             return;
         }
 
@@ -393,6 +388,36 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         }
     }
 
+
+    /**
+     * Handle completion of a PR-submit task.
+     * Parses the RALPH_SUBMIT_RESULT block and updates the persisted submit
+     * record; never enqueues further work.
+     */
+    private async handleSubmitCompletion(
+        processId: string,
+        completedTask: QueuedTask,
+        responseText: string,
+        ralphCtx: any,
+        workspaceId: string | undefined,
+        sessionId: string | undefined,
+    ): Promise<void> {
+        if (!workspaceId || !sessionId || !this.dataDir) return;
+        const logger = getLogger();
+        const submitIndex: number = ralphCtx.submit?.submitIndex ?? 1;
+
+        await orchestrateSubmitCompletion({
+            workspaceId,
+            sessionId,
+            submitIndex,
+            taskId: completedTask.id,
+            processId,
+            responseText,
+            deps: { store: new RalphSessionStore({ dataDir: this.dataDir }) },
+        }).catch(err => {
+            logger.warn(LogCategory.AI, `[Ralph/Submit] orchestrateSubmitCompletion threw: ${err instanceof Error ? err.message : String(err)}`);
+        });
+    }
 
     /**
      * Handle completion of a final-check task.
