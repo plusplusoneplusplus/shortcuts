@@ -141,9 +141,12 @@ local to the mounted view. Ralph session groups, For Each run groups, Map
 Reduce run groups, and plan-file/history groups render collapsed by default on
 mount or workspace switch; unread dots/count badges and Mark all read controls
 remain the visibility affordances for unread children. Queue pause insert zones
-open the shared pause-duration menu (`Until resumed`, 1/2/3/4/8 hours) and send
+open the shared pause-duration menu (`Until resumed`, 1/2/3/4/8-hour presets,
+plus a `Custom…` row with an inline number input accepting float hours in
+(0, 24] — invalid values show an inline error without closing the menu) and send
 the selected `durationHours` only for timed pause markers; queued timed markers
-render a static `Queue pauses here · Nh` label until the executor reaches and
+render a static `Queue pauses here · <duration>` label (fractional hours
+formatted as `Xh Ym`, e.g. `1.5` → `1h 30m`) until the executor reaches and
 consumes them. Workspace-scoped group pins from
 `client.processes.listGroupPins(workspaceId)` render non-running Ralph session
 groups, For Each run groups, and Map Reduce run groups as parent rows in the
