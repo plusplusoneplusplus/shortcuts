@@ -70,6 +70,7 @@ export function createQueueInfrastructure(
     getSendMessage?: () => import('../llm-tools/send-to-conversation-tool').SendMessageFn | undefined,
     getSendToConversationRuntime?: () => import('../llm-tools/send-to-conversation-tool').SendToConversationRuntimeOptions | undefined,
     getChatStyleSelectorEnabled?: () => boolean,
+    getTurnPerformanceStore?: () => import('../executors/turn-performance-tracker').TurnPerformanceRecorder | undefined,
 ): QueueInfrastructure {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or create in-memory for tests.
     let db: Database.Database;
@@ -108,6 +109,7 @@ export function createQueueInfrastructure(
         getSendMessage,
         getSendToConversationRuntime,
         getMcpOauthManager,
+        getTurnPerformanceStore,
     });
 
     const queuePersistence = new SqliteQueuePersistence(bridge, db, {

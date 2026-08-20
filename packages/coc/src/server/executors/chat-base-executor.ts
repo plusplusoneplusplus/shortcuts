@@ -203,6 +203,12 @@ export interface ChatModeExecutorOptions {
      * in-flight turn even before an `sdkSessionId` has been persisted.
      */
     processAbortControllers?: Map<string, AbortController>;
+    /**
+     * Late-bound accessor for the turn-performance metric store. Supplied by
+     * the server after infrastructure wiring; executors record one event per
+     * settled turn through it. Optional — recording is skipped when unset.
+     */
+    getTurnPerformanceStore?: () => import('./turn-performance-tracker').TurnPerformanceRecorder | undefined;
 }
 
 /** Return type for the AI call result. */
@@ -296,6 +302,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.resolveAiServiceForProvider = options.resolveAiServiceForProvider;
         this.getGlobalSystemPromptFn = options.getGlobalSystemPrompt;
         this.processAbortControllers = options.processAbortControllers;
+        this.getTurnPerformanceRecorder = options.getTurnPerformanceStore;
     }
 
     /**

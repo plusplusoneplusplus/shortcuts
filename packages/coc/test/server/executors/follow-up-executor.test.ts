@@ -1765,4 +1765,101 @@ describe('FollowUpExecutor contextTier', () => {
             expect(callArg).not.toHaveProperty('loadDefaultMcpConfig');
         });
     });
+
+    // -------------------------------------------------------------------------
+    // Turn performance recording (AC-02)
+    // -------------------------------------------------------------------------
+
+    describe('turn performance recording', () => {
+        function makeRecorder() {
+            return { record: vi.fn(() => true) };
+        }
+
+        it('records one completed event with TTFT stamped from the first chunk', async () => {
+            sdkMocks.mockSendMessage.mockImplementation(async (opts: any) => {
+                opts.onStreamingChunk('first');
+                opts.onStreamingChunk('second');
+                return {
+                    success: true,
+                    response: 'answer',
+                    sessionId: 's1',
+                    toolCalls: [],
+                    effectiveModel: 'gpt-5.6',
+                    tokenUsage: {
+                        inputTokens: 100, outputTokens: 40, cacheReadTokens: 0,
+                        cacheWriteTokens: 0, totalTokens: 140, turnCount: 1,
+                    },
+                };
+            });
+            const proc = makeProcess({ id: 'proc-perf', metadata: { type: 'chat', workspaceId: 'ws-perf' } });
+            await store.addProcess(proc);
+
+            const recorder = makeRecorder();
+            const executor = makeExecutor(store, { getTurnPerformanceStore: () => recorder });
+            await executor.executeFollowUp('proc-perf', 'msg');
+
+            expect(recorder.record).toHaveBeenCalledTimes(1);
+            const event = recorder.record.mock.calls[0][0];
+            expect(event).toMatchObject({
+                id: 'proc-perf:2',
+                processId: 'proc-perf',
+                turnIndex: 2,
+                workspaceId: 'ws-perf',
+                provider: 'copilot',
+                model: 'gpt-5.6',
+                mode: 'ask',
+                kind: 'chat',
+                status: 'completed',
+                inputTokens: 100,
+                outputTokens: 40,
+                totalTokens: 140,
+            });
+            expect(event.firstOutputAt).not.toBeNull();
+            expect(event.ttftMs).toBeGreaterThanOrEqual(0);
+            expect(event.wallMs).toBeGreaterThanOrEqual(0);
+        });
+
+        it('records an errored event with null firstOutputAt when sendMessage throws before streaming', async () => {
+            sdkMocks.mockSendMessage.mockRejectedValue(new Error('Network error'));
+            const proc = makeProcess({ id: 'proc-perf-err' });
+            await store.addProcess(proc);
+
+            const recorder = makeRecorder();
+            const executor = makeExecutor(store, { getTurnPerformanceStore: () => recorder });
+            await executor.executeFollowUp('proc-perf-err', 'msg');
+
+            expect(recorder.record).toHaveBeenCalledTimes(1);
+            const event = recorder.record.mock.calls[0][0];
+            expect(event).toMatchObject({
+                processId: 'proc-perf-err',
+                turnIndex: 2,
+                status: 'errored',
+            });
+            expect(event.firstOutputAt).toBeNull();
+            expect(event.ttftMs).toBeNull();
+            expect(event.outputTokens).toBeNull();
+        });
+
+        it('completes the turn normally when no recorder is wired', async () => {
+            const proc = makeProcess({ id: 'proc-perf-none' });
+            await store.addProcess(proc);
+
+            const executor = makeExecutor(store);
+            await executor.executeFollowUp('proc-perf-none', 'msg');
+
+            expect(store.processes.get('proc-perf-none')?.status).toBe('completed');
+        });
+
+        it('never fails the turn when the recorder throws', async () => {
+            const recorder = { record: vi.fn(() => { throw new Error('disk full'); }) };
+            const proc = makeProcess({ id: 'proc-perf-boom' });
+            await store.addProcess(proc);
+
+            const executor = makeExecutor(store, { getTurnPerformanceStore: () => recorder as any });
+            await executor.executeFollowUp('proc-perf-boom', 'msg');
+
+            expect(recorder.record).toHaveBeenCalledTimes(1);
+            expect(store.processes.get('proc-perf-boom')?.status).toBe('completed');
+        });
+    });
 });

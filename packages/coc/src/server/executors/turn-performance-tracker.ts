@@ -32,6 +32,15 @@ export interface InFlightTurnTiming {
     firstOutputAt?: number;
 }
 
+/**
+ * Sink for settled turn events. Implemented by `TurnPerformanceStore`;
+ * kept as a minimal interface so executors stay decoupled from the storage
+ * layer and tests can inject a spy.
+ */
+export interface TurnPerformanceRecorder {
+    record(event: TurnPerformanceEvent): boolean;
+}
+
 /** Descriptive context handed in at settlement to complete the event. */
 export interface TurnSettlementContext {
     turnIndex: number;

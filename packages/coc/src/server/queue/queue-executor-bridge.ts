@@ -75,6 +75,12 @@ export interface CLITaskExecutorOptions {
     /** Late-bound provider/tier helpers for send_to_conversation. */
     getSendToConversationRuntime?: () => import('../llm-tools/send-to-conversation-tool').SendToConversationRuntimeOptions | undefined;
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
+    /**
+     * Late-bound accessor for the turn-performance metric store. Supplied by
+     * the server after infrastructure wiring; threaded to chat executors so
+     * each settled turn records one TTFT/TPS event.
+     */
+    getTurnPerformanceStore?: () => import('../executors/turn-performance-tracker').TurnPerformanceRecorder | undefined;
     onRalphSessionComplete?: (event: RalphSessionCompleteEvent) => void;
     dreamRunExecutor?: DreamRunExecutor;
 }
@@ -226,6 +232,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             getSendMessage: options.getSendMessage,
             getSendToConversationRuntime: options.getSendToConversationRuntime,
             getMcpOauthManager: options.getMcpOauthManager,
+            getTurnPerformanceStore: options.getTurnPerformanceStore,
             getDreamRunExecutor: () => this.dreamRunExecutor,
             cancelledTasks: this.cancelledTasks,
             processAbortControllers: this.processAbortControllers,
