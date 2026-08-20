@@ -486,6 +486,20 @@ the submit-pr route returning the typed `RalphSubmitPrResponse`. The client
 `RalphSessionRecord` mirrors `baselineSha?` and `submits?: RalphSubmitRecord[]`
 so the dashboard can render submit nodes from the session read response.
 
+In the dashboard SPA, `RalphWorkflowPane` shows a `Submit PR` action in the
+header meta row for ANY `phase === 'complete'` session (any terminal reason).
+One click — no confirmation dialog — calls `workspaces.submitRalphPr` on the
+selected clone's server (container override `onSubmitPr` refreshes the view);
+the button is disabled while any submit record is `queued`/`running` or while
+the request is in flight, and an inline error surfaces a rejected request
+(e.g. a 409 guard). Each `RalphSubmitRecord` renders a `RalphSubmitNode`
+("PR submit #N") appended after all iteration/final-check timeline items in
+`submitIndex` order: completed nodes link the `prUrl` in a new tab, failed
+nodes show the `error` text, and a node with a recorded `processId` is
+clickable to open the submit chat (wired to the host process-id callback like
+final-check nodes). `useRalphSessionView` keeps polling a complete session
+while a submit is `queued`/`running` so node status updates live.
+
 ## Scheduled Ralph Runs
 
 Prompt schedules with `mode='ralph'` seed a repo-scoped Ralph session before
