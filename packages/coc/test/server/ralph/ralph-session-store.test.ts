@@ -113,6 +113,74 @@ describe('RalphSessionStore — initSession', () => {
     });
 });
 
+describe('RalphSessionStore — baselineSha (AC-01)', () => {
+    const SHA = 'a'.repeat(40);
+
+    it('persists baselineSha on the newly created record', async () => {
+        await store.initSession(WS, SID, {
+            originalGoal: 'g',
+            maxIterations: 3,
+            baselineSha: SHA,
+        });
+
+        const rec = await store.readSessionRecord(WS, SID);
+        expect(rec!.baselineSha).toBe(SHA);
+    });
+
+    it('omits the field entirely when no baselineSha is provided', async () => {
+        await store.initSession(WS, SID, { originalGoal: 'g', maxIterations: 3 });
+
+        const raw = JSON.parse(
+            fs.readFileSync(store.getSessionRecordPath(WS, SID), 'utf-8'),
+        );
+        expect('baselineSha' in raw).toBe(false);
+    });
+
+    it('does not overwrite baselineSha on a later initSession call', async () => {
+        await store.initSession(WS, SID, {
+            originalGoal: 'g',
+            maxIterations: 3,
+            baselineSha: SHA,
+        });
+
+        await store.initSession(WS, SID, {
+            originalGoal: 'g',
+            maxIterations: 3,
+            baselineSha: 'b'.repeat(40),
+        });
+
+        const rec = await store.readSessionRecord(WS, SID);
+        expect(rec!.baselineSha).toBe(SHA);
+    });
+
+    it('legacy session.json without baselineSha parses and round-trips unchanged', async () => {
+        const legacy = {
+            sessionId: SID,
+            workspaceId: WS,
+            originalGoal: 'old goal',
+            maxIterations: 4,
+            currentIteration: 2,
+            phase: 'complete',
+            startedAt: '2026-01-01T00:00:00Z',
+            iterations: [],
+        };
+        const recordPath = store.getSessionRecordPath(WS, SID);
+        fs.mkdirSync(path.dirname(recordPath), { recursive: true });
+        fs.writeFileSync(recordPath, JSON.stringify(legacy, null, 2), 'utf-8');
+
+        const rec = await store.readSessionRecord(WS, SID);
+        expect(rec).not.toBeNull();
+        expect(rec!.baselineSha).toBeUndefined();
+
+        // Identity update: the persisted file still carries no baselineSha key.
+        await store.updateSessionRecord(WS, SID, (r) => ({ ...r! }));
+        const raw = JSON.parse(fs.readFileSync(recordPath, 'utf-8'));
+        expect('baselineSha' in raw).toBe(false);
+        expect(raw.originalGoal).toBe('old goal');
+        expect(raw.currentIteration).toBe(2);
+    });
+});
+
 describe('RalphSessionStore — appendProgressSection', () => {
     it('appends a parseable section block', async () => {
         await store.initSession(WS, SID, { originalGoal: 'g', maxIterations: 5 });

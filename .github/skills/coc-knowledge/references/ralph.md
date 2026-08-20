@@ -29,7 +29,16 @@ Each Ralph session owns a journal directory under the repo data directory:
 `workspaceId`, `originalGoal`, `maxIterations`, `currentIteration`, `phase`
 (`executing`, `complete`, or `failed`), `startedAt`, and an `iterations[]`
 array. Each iteration records at least `iteration`, `signal`, `startedAt`, and
-optionally `processId` and `completedAt`.
+optionally `processId` and `completedAt`. Non-worktree sessions also carry an
+optional `baselineSha` — the checkout's HEAD captured at session creation
+(`captureRalphBaselineSha` in `packages/coc/src/server/ralph/capture-baseline-sha.ts`,
+best-effort: absent when no directory is known or git fails) so later
+automation can compute the session's `baselineSha..HEAD` commit range.
+`initSession` only applies it on first creation, so continue/resume/new-loop
+never overwrite it; worktree sessions record `worktree.baseSha` instead. All
+five creation paths capture it: ralph-launch, ralph-start, promote-to-ralph,
+work-item Ralph runs (reusing `headBefore` when supplied), and Ralph schedules
+(only when `schedule.params.workingDirectory` is set).
 
 `progress.md` starts with a small header from `initSession(...)`. Every
 iteration appends a Markdown block:

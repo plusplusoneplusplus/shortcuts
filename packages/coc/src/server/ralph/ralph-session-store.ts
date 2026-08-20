@@ -67,6 +67,12 @@ export interface InitSessionInput {
     originalGoal: string;
     maxIterations: number;
     startedAt?: string;
+    /**
+     * HEAD SHA of the workspace checkout at creation time. Only applied when
+     * the record is first created — initSession is a no-op for existing
+     * records, so continue/resume/new-loop can never overwrite it.
+     */
+    baselineSha?: string;
 }
 
 export interface AppendProgressInput {
@@ -131,6 +137,7 @@ export class RalphSessionStore {
                 maxIterations: init.maxIterations,
                 currentIteration: 0,
                 phase: 'executing',
+                ...(init.baselineSha ? { baselineSha: init.baselineSha } : {}),
                 startedAt,
                 iterations: [],
             };

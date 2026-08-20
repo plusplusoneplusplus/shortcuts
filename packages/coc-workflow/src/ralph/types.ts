@@ -105,6 +105,13 @@ export interface RalphSessionRecord {
     maxIterations: number;
     currentIteration: number;
     phase: RalphSessionPhase;
+    /**
+     * HEAD SHA of the workspace checkout at session creation (non-worktree
+     * sessions). Gives later automation (e.g. PR submit) the exact
+     * `baselineSha..HEAD` commit range this session produced. Absent on
+     * legacy sessions and when the SHA could not be resolved at creation.
+     */
+    baselineSha?: string;
     startedAt: string;
     completedAt?: string;
     terminalReason?: RalphTerminalReason;

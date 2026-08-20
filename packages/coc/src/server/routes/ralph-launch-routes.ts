@@ -18,6 +18,7 @@ import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preference
 import { parseRalphAiSelection } from './ralph-route-utils';
 import { parseWorktreeExecutionRequest } from '../worktree/worktree-request';
 import { createRalphLaunchWorktree, attachWorktreeToRalphSession } from '../ralph/ralph-worktree-launch';
+import { captureRalphBaselineSha } from '../ralph/capture-baseline-sha';
 
 export interface RalphLaunchRouteContext {
     bridge: MultiRepoQueueRouter;
@@ -108,13 +109,23 @@ export function registerRalphLaunchRoutes(routes: Route[], ctx: RalphLaunchRoute
             const executionWorkingDirectory = worktreeResult.workingDirectory ?? workingDirectory;
             const executionFolderPath = worktreeMetadata ? worktreeMetadata.path : folderPath;
 
-            // Initialise the per-session journal (idempotent).
+            // Initialise the per-session journal (idempotent). Non-worktree
+            // sessions record the checkout's HEAD as the PR-submit baseline;
+            // worktree sessions already carry worktree.baseSha.
             if (dataDir && workspaceId) {
                 try {
+                    const baselineSha = worktreeMetadata
+                        ? undefined
+                        : await captureRalphBaselineSha({
+                            workingDirectory: workingDirectory ?? folderPath,
+                            store,
+                            workspaceId,
+                        });
                     const journal = new RalphSessionStore({ dataDir });
                     await journal.initSession(workspaceId, sessionId, {
                         originalGoal: goalSpec,
                         maxIterations,
+                        baselineSha,
                     });
                     // Persist the worktree onto the record now that it carries the
                     // correct goal/iteration fields (initSession is a no-op if the
