@@ -60,12 +60,10 @@ interface RepoStateRow {
 // Serialization helpers
 // ============================================================================
 
-const ALLOWED_PAUSE_DURATION_HOURS = new Set<PauseDurationHours>([1, 2, 3, 4, 8]);
-
 function normalizePauseDurationHours(value: number | null | undefined): PauseDurationHours | undefined {
     if (value === null || value === undefined) return undefined;
-    if (ALLOWED_PAUSE_DURATION_HOURS.has(value as PauseDurationHours)) {
-        return value as PauseDurationHours;
+    if (Number.isFinite(value) && value > 0 && value <= 24) {
+        return value;
     }
     throw new Error(`Invalid persisted pause marker durationHours: ${value}`);
 }

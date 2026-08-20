@@ -146,6 +146,26 @@ describe('upsertQueueItem', () => {
         expect(store.getQueueTasks('repo-1', ['queued']).map(task => task.id)).toEqual(['t1', 't2']);
     });
 
+    it('round-trips pause markers with fractional durationHours', () => {
+        const marker: PauseMarker = {
+            kind: 'pause-marker',
+            id: 'pause-float',
+            createdAt: 4321,
+            durationHours: 1.5,
+        };
+
+        store.upsertQueueItem(marker, 'repo-1', 0);
+
+        const [item] = store.getQueueItems('repo-1', ['queued']);
+        expect(item).toEqual({
+            kind: 'pause-marker',
+            id: 'pause-float',
+            repoId: 'repo-1',
+            createdAt: 4321,
+            durationHours: 1.5,
+        });
+    });
+
     it('round-trips indefinite pause markers without durationHours', () => {
         const marker: PauseMarker = {
             kind: 'pause-marker',

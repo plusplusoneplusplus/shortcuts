@@ -76,7 +76,7 @@ const CHAT_MODE_LABELS: Record<string, string> = {
 
 export type ActivityTabMode = 'chats' | 'tasks';
 
-type QueuePauseOptions = { durationHours?: 1 | 2 | 3 | 4 | 8; until?: number | string };
+type QueuePauseOptions = { durationHours?: number; until?: number | string };
 type PauseMenuScope = 'all' | 'autopilot';
 type PauseDurationHours = NonNullable<QueuePauseOptions['durationHours']>;
 type GroupPinMenuTarget = {

@@ -1318,12 +1318,35 @@ describe('Queue Handler', () => {
             expect(body.stats.pausedUntil).toBe(body.pausedUntil);
         });
 
-        it('should reject unsupported timed queue pause durations', async () => {
+        it('should pause the queue for a custom float duration', async () => {
+            const srv = await startServer();
+            const before = Date.now();
+
+            const res = await postJSON(`${srv.url}/api/queue/pause`, { durationHours: 1.5 });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.paused).toBe(true);
+            expect(body.pausedUntil).toBeGreaterThanOrEqual(before + 1.5 * 60 * 60 * 1000);
+            expect(body.pausedUntil).toBeLessThan(before + 1.6 * 60 * 60 * 1000 + 60_000);
+        });
+
+        it('should accept small fractional pause durations', async () => {
+            const srv = await startServer();
+            const before = Date.now();
+
+            const res = await postJSON(`${srv.url}/api/queue/pause`, { durationHours: 0.1 });
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.paused).toBe(true);
+            expect(body.pausedUntil).toBeGreaterThanOrEqual(before + 0.1 * 60 * 60 * 1000);
+        });
+
+        it.each([0, -2, 24.5, 'abc'])('should reject out-of-range pause duration %p', async (durationHours) => {
             const srv = await startServer();
 
-            const res = await postJSON(`${srv.url}/api/queue/pause`, { durationHours: 5 });
+            const res = await postJSON(`${srv.url}/api/queue/pause`, { durationHours });
             expect(res.status).toBe(400);
-            expect(JSON.parse(res.body).error).toContain('durationHours must be one of');
+            expect(JSON.parse(res.body).error).toBe('durationHours must be a number greater than 0 and at most 24');
         });
 
         it('should resume the queue', async () => {
@@ -2541,6 +2564,34 @@ describe('Queue Handler', () => {
             const markerItem = list.queued.find((i: any) => i.kind === 'pause-marker');
             expect(markerItem).toBeDefined();
             expect(markerItem.id).toBe(markerId);
+        });
+
+        it('accepts a custom float durationHours and round-trips it in the queued list', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'T1' }));
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'T2' }));
+
+            const markerRes = await postJSON(`${srv.url}/api/queue/pause-marker`, { afterIndex: 1, durationHours: 1.5 });
+            expect(markerRes.status).toBe(201);
+            const { markerId } = JSON.parse(markerRes.body);
+
+            const listRes = await request(`${srv.url}/api/queue`);
+            const list = JSON.parse(listRes.body);
+            const markerItem = list.queued.find((i: any) => i.kind === 'pause-marker');
+            expect(markerItem).toBeDefined();
+            expect(markerItem.id).toBe(markerId);
+            expect(markerItem.durationHours).toBe(1.5);
+        });
+
+        it('rejects an out-of-range marker durationHours', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            await postJSON(`${srv.url}/api/queue`, makeTask({ displayName: 'T1' }));
+
+            const res = await postJSON(`${srv.url}/api/queue/pause-marker`, { afterIndex: 0, durationHours: 24.5 });
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).error).toBe('durationHours must be a number greater than 0 and at most 24');
         });
 
         it('returns 400 when afterIndex is missing', async () => {
