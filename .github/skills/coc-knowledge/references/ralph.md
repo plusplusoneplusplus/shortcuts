@@ -427,6 +427,42 @@ defaults are omitted, changed/unrecovered selections are forwarded through
 `continueRalphSession()`. `coc-client` exposes `continueRalphSession()` taking a
 `RalphContinueRequest`.
 
+### Submit Session Commits as a PR
+
+`POST /api/workspaces/:workspaceId/ralph-sessions/:sessionId/submit-pr`
+(`packages/coc/src/server/routes/ralph-submit-routes.ts`) publishes a completed
+session's commits as a GitHub pull request by enqueuing an autopilot submit job
+attached to the session (same attached-job pattern as final-check). It takes no
+request body. Allowed for ANY `phase === 'complete'` session regardless of
+`terminalReason`; guards return 409 when the session is not complete, when a
+Ralph task for the session is in flight (`findInFlightRalphTask`), or when a
+prior submit is still `queued`/`running`; 404 for an unknown session. Repeat
+submits after a terminal submit are allowed and increment `submitIndex`.
+Response: `{ submitted: true, sessionId, taskId, submitIndex }`.
+
+Each submit persists a `RalphSubmitRecord` (`submitIndex`, `taskId`,
+`processId`, `startedAt`, `completedAt`, `status`
+`queued|running|completed|failed`, `prUrl`, `prNumber`, `commitShas`, `error`)
+in a `submits[]` array on the session record via
+`RalphSessionStore.upsertSubmitRecord(...)`; legacy records without `submits`
+parse fine. The record type is portable
+(`@plusplusoneplusplus/coc-workflow/ralph`, re-exported by coc's
+`server/ralph/types.ts` barrel).
+
+Task construction and guards live in
+`packages/coc/src/server/ralph/enqueue-submit.ts` (mirrors
+`enqueue-final-check.ts`): `buildSubmitTaskPayload` enqueues a `mode='ralph'`
+chat with `context.ralph.submit = { kind: 'submit-pr', submitIndex }` and
+taskGroup role `submit-pr`, deliberately carrying no provider/model selection so
+workspace defaults apply. The prompt tells the agent to determine commits via
+`baselineSha..HEAD` when the session has a baseline, else via a
+startedAt/completedAt time window cross-checked against `progress.md`, and to
+invoke the `submit-commits-as-pr` skill with an explicit SHA list without
+resolving conflicts. The queue bridge routes `context.ralph.submit` completions
+away from iteration orchestration (result parsing and record completion updates
+are the submit completion path's job). Server code never switches git branches —
+the only branch manipulation happens inside the submit skill's script.
+
 ## Scheduled Ralph Runs
 
 Prompt schedules with `mode='ralph'` seed a repo-scoped Ralph session before

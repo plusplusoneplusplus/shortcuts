@@ -21,6 +21,7 @@ import type {
     RalphFinalCheckRecord,
     RalphLoopRecord,
     RalphSessionRecord,
+    RalphSubmitRecord,
 } from './types';
 
 const SESSIONS_DIR = 'ralph-sessions';
@@ -586,6 +587,49 @@ export class RalphSessionStore {
                 next.push(updated);
             }
             return { ...base, finalChecks: next };
+        });
+    }
+
+    /**
+     * Add or update a `RalphSubmitRecord` in `session.json`.
+     *
+     * - If `submits` is absent (legacy session), it is initialised as `[]`.
+     * - If a record with `submitIndex` already exists, it is replaced.
+     * - Otherwise the record is appended.
+     *
+     * Returns the updated session record.
+     */
+    async upsertSubmitRecord(
+        workspaceId: string,
+        sessionId: string,
+        submitIndex: number,
+        partial: Partial<RalphSubmitRecord> & Pick<RalphSubmitRecord, 'status'>,
+    ): Promise<RalphSessionRecord> {
+        return this.updateSessionRecord(workspaceId, sessionId, (rec) => {
+            const base = rec ?? {
+                sessionId,
+                workspaceId,
+                originalGoal: '',
+                maxIterations: 0,
+                currentIteration: 0,
+                phase: 'complete' as const,
+                startedAt: new Date().toISOString(),
+                iterations: [],
+            };
+            const existing = base.submits ?? [];
+            const idx = existing.findIndex(s => s.submitIndex === submitIndex);
+            const updated: RalphSubmitRecord = {
+                submitIndex,
+                startedAt: partial.startedAt ?? new Date().toISOString(),
+                ...partial,
+            };
+            const next = [...existing];
+            if (idx >= 0) {
+                next[idx] = { ...next[idx], ...updated };
+            } else {
+                next.push(updated);
+            }
+            return { ...base, submits: next };
         });
     }
 

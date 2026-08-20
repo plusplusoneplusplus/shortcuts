@@ -314,6 +314,18 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             return;
         }
 
+        // ── PR-submit completions must never enqueue another iteration ───────
+        // Result parsing and submit-record updates are handled by the submit
+        // completion path (AC-03); until then this guard only prevents the
+        // submit job from being treated as a Ralph iteration.
+        if (ralphCtx?.submit) {
+            getLogger().debug(
+                LogCategory.AI,
+                `[Ralph] PR-submit task ${completedTask.id} completed for session ${sessionId ?? 'unknown'}; skipping iteration orchestration.`,
+            );
+            return;
+        }
+
         const qm = this.queueManager;
         await orchestrateRalphIteration({
             responseText,

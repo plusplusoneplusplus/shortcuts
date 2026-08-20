@@ -120,6 +120,8 @@ export interface RalphSessionRecord {
     loops?: RalphLoopRecord[];
     /** Final-check automation records. Absent on legacy sessions. */
     finalChecks?: RalphFinalCheckRecord[];
+    /** PR-submit automation records. Absent on legacy sessions. */
+    submits?: RalphSubmitRecord[];
     /**
      * The isolated Git worktree backing this session, when the session was
      * launched with opt-in worktree execution. Lets resume/continue/final-check
@@ -162,6 +164,26 @@ export interface RalphFinalCheckRecord {
     capReached?: boolean;
     /** True when gapFixGoal was absent but synthesized server-side. */
     goalSynthesized?: boolean;
+}
+
+export type RalphSubmitStatus = 'queued' | 'running' | 'completed' | 'failed';
+
+/** Metadata record for one PR-submit run within a Ralph session. */
+export interface RalphSubmitRecord {
+    /** 1-based index of this submit within the session. */
+    submitIndex: number;
+    taskId?: string;
+    processId?: string;
+    startedAt: string;
+    completedAt?: string;
+    status: RalphSubmitStatus;
+    /** URL of the created pull request; set on successful completion. */
+    prUrl?: string;
+    prNumber?: number;
+    /** Commit SHAs included in the pull request, oldest first. */
+    commitShas?: string[];
+    /** Failure reason; set when status is 'failed'. */
+    error?: string;
 }
 
 export interface FinalCheckGap {

@@ -477,6 +477,17 @@ export interface RalphContext {
         /** The loop index that triggered this check. */
         loopIndex: number;
     };
+    /**
+     * Present on PR-submit tasks only (ralph-submit-pr AC-02). Identifies this
+     * as a submit job attached to the session. When set,
+     * `enqueueRalphNextIteration` routes to the submit completion path instead
+     * of the normal iteration continuation path.
+     */
+    submit?: {
+        kind: 'submit-pr';
+        /** 1-based index of this submit within the session. */
+        submitIndex: number;
+    };
 }
 
 // ============================================================================

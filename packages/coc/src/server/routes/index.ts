@@ -108,6 +108,7 @@ import { registerRalphNewLoopRoutes } from './ralph-new-loop-routes';
 import { registerRalphPromoteRoutes } from './ralph-promote-routes';
 import { registerRalphLaunchRoutes } from './ralph-launch-routes';
 import { registerRalphResumeRoutes } from './ralph-resume-routes';
+import { registerRalphSubmitRoutes } from './ralph-submit-routes';
 import { registerWorktreeRoutes } from './worktree-routes';
 import { registerForEachRoutes } from './for-each-routes';
 import { FileForEachRunStore } from '../for-each/for-each-run-store';
@@ -835,6 +836,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerRalphPromoteRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
     registerRalphLaunchRoutes(routes, { bridge: bridgeWithResolvedDefaults, dataDir, store, getGitWorktreeExecutionEnabled });
     registerRalphResumeRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
+    registerRalphSubmitRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
 
     // Git worktree management routes (AC-06 cleanup): list + non-destructive
     // cleanup of CoC-created worktrees, scoped per workspace.

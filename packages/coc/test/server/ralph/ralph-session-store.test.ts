@@ -181,6 +181,74 @@ describe('RalphSessionStore — baselineSha (AC-01)', () => {
     });
 });
 
+describe('RalphSessionStore — upsertSubmitRecord (AC-02)', () => {
+    it('appends a queued submit record and persists it through a re-read', async () => {
+        await store.initSession(WS, SID, { originalGoal: 'g', maxIterations: 1 });
+
+        const updated = await store.upsertSubmitRecord(WS, SID, 1, {
+            status: 'queued',
+            taskId: 'task-1',
+            startedAt: '2026-08-20T10:00:00Z',
+        });
+        expect(updated.submits).toHaveLength(1);
+        expect(updated.submits![0]).toMatchObject({
+            submitIndex: 1,
+            status: 'queued',
+            taskId: 'task-1',
+            startedAt: '2026-08-20T10:00:00Z',
+        });
+
+        const reread = await store.readSessionRecord(WS, SID);
+        expect(reread!.submits).toEqual(updated.submits);
+    });
+
+    it('replaces an existing record with the same submitIndex and appends new indexes', async () => {
+        await store.initSession(WS, SID, { originalGoal: 'g', maxIterations: 1 });
+        await store.upsertSubmitRecord(WS, SID, 1, { status: 'queued', startedAt: '2026-08-20T10:00:00Z' });
+        await store.upsertSubmitRecord(WS, SID, 1, {
+            status: 'completed',
+            completedAt: '2026-08-20T10:05:00Z',
+            prUrl: 'https://github.com/o/r/pull/7',
+            prNumber: 7,
+            commitShas: ['a'.repeat(40)],
+        });
+        const rec = await store.upsertSubmitRecord(WS, SID, 2, { status: 'queued', startedAt: '2026-08-20T11:00:00Z' });
+
+        expect(rec.submits).toHaveLength(2);
+        expect(rec.submits![0]).toMatchObject({
+            submitIndex: 1,
+            status: 'completed',
+            prUrl: 'https://github.com/o/r/pull/7',
+            prNumber: 7,
+            commitShas: ['a'.repeat(40)],
+        });
+        expect(rec.submits![1]).toMatchObject({ submitIndex: 2, status: 'queued' });
+    });
+
+    it('legacy session.json without submits parses fine and initialises the array on first upsert', async () => {
+        const legacy = {
+            sessionId: SID,
+            workspaceId: WS,
+            originalGoal: 'legacy goal',
+            maxIterations: 5,
+            currentIteration: 5,
+            phase: 'complete',
+            startedAt: '2026-01-01T00:00:00Z',
+            iterations: [],
+        };
+        const recordPath = store.getSessionRecordPath(WS, SID);
+        fs.mkdirSync(path.dirname(recordPath), { recursive: true });
+        fs.writeFileSync(recordPath, JSON.stringify(legacy, null, 2), 'utf-8');
+
+        const rec = await store.readSessionRecord(WS, SID);
+        expect(rec!.submits).toBeUndefined();
+
+        const updated = await store.upsertSubmitRecord(WS, SID, 1, { status: 'queued', startedAt: '2026-08-20T10:00:00Z' });
+        expect(updated.submits).toHaveLength(1);
+        expect(updated.originalGoal).toBe('legacy goal');
+    });
+});
+
 describe('RalphSessionStore — appendProgressSection', () => {
     it('appends a parseable section block', async () => {
         await store.initSession(WS, SID, { originalGoal: 'g', maxIterations: 5 });

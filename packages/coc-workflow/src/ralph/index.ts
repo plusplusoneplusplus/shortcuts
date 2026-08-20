@@ -13,6 +13,8 @@ export type {
     RalphSessionPhase,
     RalphSessionRecord,
     RalphSignal,
+    RalphSubmitRecord,
+    RalphSubmitStatus,
     RalphTerminalReason,
     RalphWorktreeMetadata,
 } from './types';
