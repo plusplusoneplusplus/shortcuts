@@ -258,6 +258,16 @@ export { TokenUsageStatsEntry, TokenUsageStatsResponse, aggregateTokenUsageStats
 // Turn Performance (TTFT / TPS raw metric events)
 export { TurnPerformanceEvent, TurnPerformanceStatus } from './turn-performance-types';
 export {
+    AggregateTurnPerformanceOptions,
+    TURN_PERFORMANCE_GROUP_BY_VALUES,
+    TurnPerformanceDistribution,
+    TurnPerformanceGroup,
+    TurnPerformanceGroupBy,
+    TurnPerformanceStatsResponse,
+    aggregateTurnPerformance,
+    isTurnPerformanceGroupBy,
+} from './turn-performance-stats';
+export {
     COPILOT_MODEL_PRICING,
     COPILOT_PRICING_SOURCE,
     CopilotModelPricing,

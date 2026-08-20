@@ -725,6 +725,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         hostname: os.hostname(),
         bindAddress: host,
         syncEngines,
+        getTurnPerformanceStore: () => turnPerformanceInfra?.turnPerformanceStore,
         nativeCopilotSessionDbPath: options.nativeCopilotSessionDbPath,
         nativeCopilotSessionStateDir: options.nativeCopilotSessionStateDir,
         setEnqueueChat: (fn) => { enqueueChatCapability = fn; },

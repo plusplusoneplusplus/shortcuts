@@ -52,6 +52,7 @@ import { registerNotesEditsRoutes } from '../notes/notes-edits-handler';
 import { registerReplicateApplyRoutes } from '../templates/replicate-apply-handler';
 import { registerScheduleRoutes } from '../schedule/schedule-handler';
 import { registerStatsRoutes } from '../admin/stats-handler';
+import type { TurnPerformanceStore } from '../storage/turn-performance-store';
 import { registerDbBrowserRoutes } from '../admin/db-browser-handler';
 import { registerHeapRoutes } from '../admin/heap-monitor';
 import { registerSeenStateRoutes } from '../processes/seen-state-handler';
@@ -224,6 +225,8 @@ export interface RegisterRoutesOptions {
     hostname?: string;
     bindAddress?: string;
     syncEngines?: Map<string, SyncEngine>;
+    /** Late-bound accessor for the turn-performance metric store (TTFT/TPS stats route). */
+    getTurnPerformanceStore?: () => TurnPerformanceStore | undefined;
     /** Native Copilot CLI session store path override (for tests). */
     nativeCopilotSessionDbPath?: string;
     /** Native Copilot CLI `session-state` base directory override (for tests). */
@@ -752,7 +755,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
     registerLogsRoutes(routes);
     registerInstructionRoutes(routes, store);
-    registerStatsRoutes(routes, store);
+    registerStatsRoutes(routes, store, opts.getTurnPerformanceStore);
     registerDbBrowserRoutes(routes, store, dataDir);
     registerHeapRoutes(routes);
     registerMyWorkRoutes(routes, store, dataDir);
