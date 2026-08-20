@@ -6,6 +6,7 @@ import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { BottomSheet } from '../../../ui/BottomSheet';
 import { Dialog } from '../../../ui/Dialog';
 import { getRalphContext, readCommitChatContext } from '../../../../../../tasks/task-types';
+import { useSessionTurnPerformance } from '../hooks/useSessionTurnPerformance';
 import { CHAT_STYLE_LABELS, DEFAULT_CHAT_STYLE, isChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { ClientTokenUsage } from '../../../types/dashboard';
 
@@ -487,6 +488,37 @@ function TokenUsageRows({ process }: { process: any }) {
     );
 }
 
+function formatTtft(ms: number): string {
+    if (ms < 1000) return `${Math.round(ms)} ms`;
+    return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function SessionPerformanceRows({ processId }: { processId: string | null }) {
+    const { data } = useSessionTurnPerformance(processId);
+    if (!data) return null;
+
+    const parts: string[] = [];
+    if (data.firstTurnTtftMs != null) {
+        parts.push(`First token: ${formatTtft(data.firstTurnTtftMs)}`);
+    }
+    if (data.medianTpsGeneration != null) {
+        parts.push(`Median TPS: ${data.medianTpsGeneration.toFixed(1)}`);
+    }
+    if (parts.length === 0) return null;
+
+    return (
+        <div className="contents">
+            <span className="text-[#848484]">Performance</span>
+            <span
+                className="text-[#1e1e1e] dark:text-[#cccccc] break-words"
+                title={`Across ${pluralizeTurns(data.turnCount)} · TTFT excludes queue wait · TPS is generation rate`}
+            >
+                {parts.join(' · ')}
+            </span>
+        </div>
+    );
+}
+
 export function buildCompactRows(rows: MetaRow[]): MetaRow[] {
     const compactRows: MetaRow[] = [];
     let timeAdded = false;
@@ -695,6 +727,7 @@ export function ConversationMetadataPopover({ process, turnsCount, resumeSession
                     </div>
                 ))}
                 <TokenUsageRows process={process} />
+                <SessionPerformanceRows processId={toStringValue(process?.id)} />
                 {process?.metadata?.systemPrompt && (
                     <div className="contents">
                         <span className="text-[#848484]">System</span>

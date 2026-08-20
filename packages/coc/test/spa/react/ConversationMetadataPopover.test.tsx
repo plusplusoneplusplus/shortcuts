@@ -8,6 +8,23 @@ import {
     buildCompactRows,
 } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationMetadataPopover';
 
+// SessionPerformanceRows fetches turn metrics when the popover opens; resolve
+// to an empty aggregate so these tests stay network-free and the row hides.
+vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
+    getSpaCocClient: () => ({
+        stats: {
+            turnPerformance: async () => ({
+                groups: [],
+                groupBy: ['turnIndex'],
+                days: null,
+                totalEvents: 0,
+                excludedEvents: { nonCompleted: 0, noFirstToken: 0, noTokenUsage: 0 },
+                generatedAt: '2026-08-20T00:00:00.000Z',
+            }),
+        },
+    }),
+}));
+
 beforeEach(() => {
     vi.restoreAllMocks();
 });
