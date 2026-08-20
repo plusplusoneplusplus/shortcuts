@@ -479,6 +479,13 @@ set on terminal updates and `upsertSubmitRecord` preserves the original
 code never switches git branches — the only branch manipulation happens inside
 the submit skill's script.
 
+`coc-client` exposes `workspaces.submitRalphPr(workspaceId, sessionId)`
+(contract types in `src/contracts/workspaces.ts`, implementation next to
+`continueRalphSession` in `src/domains/workspaces.ts`): an empty-body POST to
+the submit-pr route returning the typed `RalphSubmitPrResponse`. The client
+`RalphSessionRecord` mirrors `baselineSha?` and `submits?: RalphSubmitRecord[]`
+so the dashboard can render submit nodes from the session read response.
+
 ## Scheduled Ralph Runs
 
 Prompt schedules with `mode='ralph'` seed a repo-scoped Ralph session before
