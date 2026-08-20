@@ -279,6 +279,9 @@ export {
     TokenUsageStatsEntry,
     TokenUsageStatsResponse,
     aggregateTokenUsageStats,
+    // Turn Performance (TTFT / TPS raw metric events)
+    TurnPerformanceEvent,
+    TurnPerformanceStatus,
     COPILOT_MODEL_PRICING,
     COPILOT_PRICING_SOURCE,
     CopilotModelPricing,

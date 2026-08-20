@@ -254,6 +254,9 @@ export { DEFAULT_AI_TIMEOUT_MS } from './timeouts';
 
 // Token Usage Stats
 export { TokenUsageStatsEntry, TokenUsageStatsResponse, aggregateTokenUsageStats } from './token-usage-stats';
+
+// Turn Performance (TTFT / TPS raw metric events)
+export { TurnPerformanceEvent, TurnPerformanceStatus } from './turn-performance-types';
 export {
     COPILOT_MODEL_PRICING,
     COPILOT_PRICING_SOURCE,

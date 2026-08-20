@@ -18,6 +18,7 @@ import type { ConversationTurn, GenericProcessMetadata, ProcessStore, TimelineIt
 import type { MidTurnTokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
 import { getLogger, LogCategory, mergeConsecutiveContentItems } from '@plusplusoneplusplus/forge';
 import { OutputFileManager } from '../processes/output-file-manager';
+import { TurnPerformanceTracker } from './turn-performance-tracker';
 import {
     ProcessSessionRegistry,
     type InteractiveAskUserHandles,
@@ -57,6 +58,13 @@ export abstract class BaseExecutor {
 
     /** Owns per-process executor session state with explicit cleanup policy. */
     protected readonly sessions = new ProcessSessionRegistry();
+
+    /**
+     * Per-turn TTFT/TPS timing state. `appendOutputChunk` stamps the first
+     * output timestamp through this tracker (O(1), at most once per turn);
+     * concrete executors call `begin`/`settle` around each turn.
+     */
+    protected readonly turnPerformance = new TurnPerformanceTracker();
 
     /** Time-based throttle: flush every N milliseconds. */
     protected static readonly THROTTLE_TIME_MS = 5000;
@@ -126,6 +134,8 @@ export abstract class BaseExecutor {
     }
 
     protected appendOutputChunk(processId: string, chunk: string): void {
+        // O(1) first-output stamp for TTFT; assigns at most once per turn.
+        this.turnPerformance.markFirstOutput(processId);
         this.sessions.getStreaming(processId).outputBuffer += chunk;
     }
 
