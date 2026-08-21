@@ -249,6 +249,56 @@ describe('ConversationTurnBubble — whitespace-only content suppression', () =>
     });
 });
 
+describe('ConversationTurnBubble — user markdown rendering', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('renders bold, heading, list, and fenced code in a user turn', () => {
+        const content = '## Title\n\n**bold** text\n\n- item one\n- item two\n\n```js\nconst x = 1;\n```';
+        const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'user', content })} />);
+        const el = container.querySelector('[data-testid="user-plain-text"]')!;
+        expect(el.querySelector('h2')?.textContent).toBe('Title');
+        expect(el.querySelector('strong')?.textContent).toBe('bold');
+        expect(Array.from(el.querySelectorAll('ul li')).map(li => li.textContent)).toEqual(['item one', 'item two']);
+        expect(el.querySelector('pre code')?.textContent).toContain('const x = 1;');
+    });
+
+    it('preserves single newlines in plain multi-line messages', () => {
+        const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'user', content: 'line one\nline two\nline three' })} />);
+        const el = container.querySelector('[data-testid="user-plain-text"]')!;
+        expect(el.querySelectorAll('br').length).toBe(2);
+        expect(el.textContent).toContain('line one');
+        expect(el.textContent).toContain('line three');
+    });
+
+    it('still linkifies bare file paths outside code, but not inside inline code', () => {
+        const content = 'See /home/user/projects/app/src/index.ts and `/home/user/projects/app/src/other.ts`';
+        const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'user', content })} />);
+        const el = container.querySelector('[data-testid="user-plain-text"]')!;
+        const links = el.querySelectorAll('span.file-path-link');
+        expect(links.length).toBe(1);
+        expect(links[0].getAttribute('data-full-path')).toBe('/home/user/projects/app/src/index.ts');
+        expect(el.querySelector('code')?.querySelector('span.file-path-link')).toBeNull();
+    });
+
+    it('escapes raw HTML in user content instead of injecting it', () => {
+        const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'user', content: 'hi <script>alert(1)</script> <b>there</b>' })} />);
+        const el = container.querySelector('[data-testid="user-plain-text"]')!;
+        expect(el.querySelector('script')).toBeNull();
+        expect(el.querySelector('b')).toBeNull();
+        expect(el.textContent).toContain('<script>alert(1)</script>');
+    });
+
+    it('raw toggle shows the literal markdown source', () => {
+        const content = '## Title\n**bold**';
+        const { container } = render(<ConversationTurnBubble turn={makeTurn({ role: 'user', content })} />);
+        fireEvent.click(container.querySelector('.bubble-raw-btn')!);
+        expect(container.querySelector('[data-testid="user-plain-text"]')).toBeNull();
+        expect(container.querySelector('.raw-content-view pre code')?.textContent).toBe(content);
+    });
+});
+
 describe('ConversationTurnBubble — large pasted content card', () => {
     beforeEach(() => {
         vi.restoreAllMocks();

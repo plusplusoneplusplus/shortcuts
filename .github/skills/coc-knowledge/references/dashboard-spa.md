@@ -790,6 +790,11 @@ contract. Notes direct goal launch remains separate because it skips grilling.
   `ConversationArea` → `ConversationTurnBubble`; missing/unknown provider
   metadata falls back to the Copilot (green) palette.
 - **User turns:** Right-aligned with `Y` avatar (blue), soft-gray rounded bubbles.
+  Message text renders as markdown through the same escape-at-generation
+  `chatMarkdownToHtml` pipeline as assistant turns (`breaks: true` preserves
+  single newlines; `linkifyFilePaths` skips code spans/blocks; raw HTML in the
+  message is escaped, never injected), so pasted/typed markdown displays
+  formatted; the raw toggle remains the escape hatch showing literal source.
   Turns with `pasteExternalized: true` keep any detected short typed prompt
   visible and render the large pasted payload as an in-bubble card with character
   count, three-line preview, expand/collapse, and Copy full content; no extra

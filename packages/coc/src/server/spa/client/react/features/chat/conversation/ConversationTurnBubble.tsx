@@ -23,7 +23,6 @@ import type { ClientSideNote, QuickAskSelection } from '../quick-ask/types';
 import { getSpaCocClient } from '../../../api/cocClient';
 import { copyToClipboard, copyHtmlToClipboard, copyImageToClipboard, splitMarkdownSections } from '../../../utils/format';
 import { embedMathCssForCopy } from '../../../utils/snapshot-copy-utils';
-import { linkifyFilePaths } from '../../../shared/file-path-utils';
 import { getLinkHrefFromEventTarget } from '../../notes/editor/linkContextMenu';
 import { openLink } from '../../../utils/link-handler';
 import { getLinkHandlersConfig } from '../../../hooks/useLinkHandlers';
@@ -67,13 +66,6 @@ function escapeAttr(value: string): string {
     return value
         .replace(/&/g, '&amp;')
         .replace(/"/g, '&quot;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-}
-
-function escapeHtml(value: string): string {
-    return value
-        .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
 }
@@ -1121,17 +1113,11 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
     const visibleUserContentText = largePasteParts ? largePasteParts.promptContent : userContentText;
     const userContentHtml = useMemo(() => {
         if (!isUser || !visibleUserContentText.trim()) return '';
-        // Split on backtick-delimited segments so paths inside inline code are not linkified.
-        // Segments at even indices are normal text; odd indices are code spans.
-        const parts = visibleUserContentText.split(/`([^`]*)`/);
-        return parts.map((part, i) => {
-            if (i % 2 === 1) {
-                // Code span — escape only, no linkification
-                return `<code>${escapeHtml(part)}</code>`;
-            }
-            return linkifyFilePaths(escapeHtml(part));
-        }).join('');
-    }, [isUser, visibleUserContentText]);
+        // Escape-at-generation markdown pipeline shared with assistant bubbles:
+        // `breaks: true` keeps single newlines, linkifyFilePaths skips code
+        // spans/blocks, and raw HTML in the message is escaped, never injected.
+        return chatMarkdownToHtml(visibleUserContentText, wsId).trim();
+    }, [isUser, visibleUserContentText, wsId]);
 
     // Lazy image fetching state
     const [imageLoadState, setImageLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
@@ -1674,7 +1660,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                         />
                     ))}
                     {isUser && !showRaw && visibleUserContentText.trim() && (
-                        <div className="whitespace-pre-wrap break-words text-[13px] text-[#1e1e1e] dark:text-[#cccccc]" data-testid="user-plain-text"
+                        <div className="markdown-body break-words text-[13px] text-[#1e1e1e] dark:text-[#cccccc]" data-testid="user-plain-text"
                             onClick={(e) => openFromTarget(e.target)}
                             dangerouslySetInnerHTML={{ __html: userContentHtml }}
                         />
