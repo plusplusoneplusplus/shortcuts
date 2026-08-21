@@ -227,18 +227,82 @@ describe('RichTextInput', () => {
         expect(getSelectionSpy).not.toHaveBeenCalled();
     });
 
-    // Regression: pasting rich HTML should strip formatting and insert plain text only.
-    it('paste strips HTML formatting and inserts plain text only', () => {
+    // Rich pastes: the text/html flavor is converted to markdown SOURCE and
+    // inserted as plain text — HTML itself never reaches the contentEditable.
+    it('paste with meaningful HTML inserts converted markdown text', () => {
         document.execCommand = vi.fn().mockReturnValue(true);
         render(<RichTextInput onChange={vi.fn()} data-testid="rich" />);
         const div = screen.getByTestId('rich');
         const wasCancelled = !fireEvent.paste(div, {
             clipboardData: {
-                getData: (type: string) => type === 'text/plain' ? 'just plain text' : '<b>just plain text</b>',
+                getData: (type: string) => type === 'text/plain'
+                    ? 'some bold text'
+                    : '<p>some <b>bold</b> text</p>',
             },
         });
         expect(wasCancelled).toBe(true);
+        expect(document.execCommand).toHaveBeenCalledWith('insertText', false, 'some **bold** text');
+    });
+
+    it('paste with trivial HTML wrapper falls back to the plain-text flavor', () => {
+        document.execCommand = vi.fn().mockReturnValue(true);
+        render(<RichTextInput onChange={vi.fn()} data-testid="rich" />);
+        const div = screen.getByTestId('rich');
+        fireEvent.paste(div, {
+            clipboardData: {
+                getData: (type: string) => type === 'text/plain'
+                    ? 'just plain text'
+                    : '<span style="color:red">just plain text</span>',
+            },
+        });
         expect(document.execCommand).toHaveBeenCalledWith('insertText', false, 'just plain text');
+    });
+
+    it('paste without an HTML flavor uses the plain-text flavor unchanged', () => {
+        document.execCommand = vi.fn().mockReturnValue(true);
+        render(<RichTextInput onChange={vi.fn()} data-testid="rich" />);
+        const div = screen.getByTestId('rich');
+        fireEvent.paste(div, {
+            clipboardData: {
+                getData: (type: string) => type === 'text/plain' ? 'plain only' : '',
+            },
+        });
+        expect(document.execCommand).toHaveBeenCalledWith('insertText', false, 'plain only');
+    });
+
+    it('paste veto via onPaste preventDefault skips markdown conversion entirely', () => {
+        document.execCommand = vi.fn().mockReturnValue(true);
+        const onPaste = vi.fn((e: React.ClipboardEvent) => {
+            e.preventDefault();
+        });
+        render(<RichTextInput onPaste={onPaste} onChange={vi.fn()} data-testid="rich" />);
+        const div = screen.getByTestId('rich');
+        fireEvent.paste(div, {
+            clipboardData: {
+                getData: (type: string) => type === 'text/plain'
+                    ? 'some bold text'
+                    : '<p>some <b>bold</b> text</p>',
+            },
+        });
+        expect(onPaste).toHaveBeenCalled();
+        expect(document.execCommand).not.toHaveBeenCalled();
+    });
+
+    it('paste with getData throwing falls back without crashing', () => {
+        document.execCommand = vi.fn().mockReturnValue(true);
+        render(<RichTextInput onChange={vi.fn()} data-testid="rich" />);
+        const div = screen.getByTestId('rich');
+        expect(() => {
+            fireEvent.paste(div, {
+                clipboardData: {
+                    getData: (type: string) => {
+                        if (type === 'text/html') throw new Error('nope');
+                        return 'plain fallback';
+                    },
+                },
+            });
+        }).not.toThrow();
+        expect(document.execCommand).toHaveBeenCalledWith('insertText', false, 'plain fallback');
     });
 
     it('paste with empty clipboard does not call execCommand', () => {
