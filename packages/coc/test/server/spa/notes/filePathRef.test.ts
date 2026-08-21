@@ -69,6 +69,34 @@ describe('file path references — markdownToHtml', () => {
         // The path inside backticks is rendered as code, not as a file-ref-link
         expect(html).toContain('<code>');
     });
+
+    it('does not split a URL link label into a file-ref chip', () => {
+        // Regression: `[URL](URL)` labels were tokenized char-by-char and the
+        // `www.example.com/….html` tail matched the file-path regex, producing
+        // a file-ref-link chip inside the <a> that fetched a bogus file preview.
+        const url = 'https://www.example.com/thread/page-1.html';
+        const html = markdownToHtml(`[${url}](${url})`);
+        expect(html).not.toContain('file-ref-link');
+        expect(html).toContain(`<a href="${url}">${url}</a>`);
+    });
+
+    it('keeps a file-path-looking link label as plain text inside the anchor', () => {
+        const html = markdownToHtml('[src/main.ts](https://example.com/code)');
+        expect(html).not.toContain('file-ref-link');
+        expect(html).toContain('<a href="https://example.com/code">src/main.ts</a>');
+    });
+
+    it('still autolinks a bare URL without a file-ref chip', () => {
+        const html = markdownToHtml('Visit https://www.example.com/thread/page-1.html now');
+        expect(html).not.toContain('file-ref-link');
+        expect(html).toContain('<a href="https://www.example.com/thread/page-1.html">');
+    });
+
+    it('still renders an angle-bracket autolink without a file-ref chip', () => {
+        const html = markdownToHtml('See <https://www.example.com/a/b.html> here');
+        expect(html).not.toContain('file-ref-link');
+        expect(html).toContain('<a href="https://www.example.com/a/b.html">');
+    });
 });
 
 // ─── turndown rule: HTML → markdown ─────────────────────────────────────────

@@ -79,7 +79,13 @@ after the scoped tree is ready.
 Links in the rich note editor display their destination URL and the
 platform-specific modifier-click instruction in a native hover hint. The hint
 is applied only to the live anchor DOM so it does not become part of the saved
-Markdown.
+Markdown, and the write is idempotent (skipped when the title already matches)
+so ProseMirror's DOMObserver never enters a redraw loop while hovering. The
+`filePathRef` marked extension never tokenizes inside a link label
+(`lexer.state.inLink`), so a `[URL](URL)` label stays one plain anchor instead
+of gaining a `file-ref-link` chip. `FilePreviewTooltip` dismisses itself when
+its anchor is detached or measures an all-zero rect, clamps its 360px card to
+the viewport width, and flips above the anchor near the bottom edge.
 
 The Notes rich editor highlights only its 16 explicitly registered Lowlight
 grammars. Unsupported fenced-code labels such as `text` and `plaintext` render

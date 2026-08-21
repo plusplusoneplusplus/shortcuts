@@ -114,7 +114,12 @@ all have their own `references/*.md`.
   mark colors; `noteEditor.css` outlines matches instead.
 - **Notes links** show the destination URL plus the platform-specific
   modifier-click instruction in the native hover hint. The hint is attached to
-  the live editor DOM and must not be serialized into note Markdown.
+  the live editor DOM and must not be serialized into note Markdown. The write
+  must stay idempotent (skip when the title already matches): ProseMirror's
+  DOMObserver redraws the link's children on every attribute mutation, and an
+  unconditional write loops when the hovered child is an inline atom chip. The
+  `filePathRef` marked extension skips inside link labels
+  (`lexer.state.inLink`) so `[URL](URL)` never gains a `file-ref-link` chip.
 - **In-memory caching** uses the one shared primitive at
   `src/server/cache/` (`createCache<T>({ namespace, ttlMs?, maxSize=500,
   immutable? })` → a handle with `get`/`set`/`getOrCompute`/`delete`/

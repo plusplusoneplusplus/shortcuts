@@ -568,6 +568,26 @@ describe('RichEditorCore', () => {
         expect(paragraph.hasAttribute('title')).toBe(false);
     });
 
+    it('does not rewrite an already-correct hover title', () => {
+        // Regression: an unconditional setAttribute triggers ProseMirror's
+        // DOMObserver, which redraws the link's children and re-fires
+        // mouseover on the recreated element — an infinite redraw loop that
+        // detaches the anchor before the file-preview tooltip measures it.
+        render(<RichEditorCore />);
+        const anchor = document.createElement('a');
+        anchor.setAttribute('href', 'https://example.com/paper');
+        const child = document.createElement('span');
+        anchor.appendChild(child);
+
+        capturedEditorProps.handleDOMEvents.mouseover({}, { target: child });
+        expect(anchor.title).toBe(getLinkHoverTitle('https://example.com/paper'));
+
+        const spy = vi.spyOn(anchor, 'setAttribute');
+        capturedEditorProps.handleDOMEvents.mouseover({}, { target: child });
+        expect(spy).not.toHaveBeenCalled();
+        spy.mockRestore();
+    });
+
     // ── File-drop seam (handleDrop / dragover) ──────────────────────────
 
     it('delegates editorProps.handleDrop to the handleDrop prop and returns its result', () => {
