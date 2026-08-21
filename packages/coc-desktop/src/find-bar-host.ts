@@ -22,6 +22,7 @@ import {
     FIND_BAR_WIDTH,
     FIND_BAR_HEIGHT,
     FIND_BAR_MARGIN,
+    FIND_BAR_TOP,
     buildFindBarHtml,
     buildFindShortcutScript,
 } from './find-in-page';
@@ -43,7 +44,7 @@ function positionFindBar(entry: FindBarEntry): void {
     const [width] = entry.win.getContentSize();
     entry.view.setBounds({
         x: Math.max(0, width - FIND_BAR_WIDTH - FIND_BAR_MARGIN),
-        y: FIND_BAR_MARGIN,
+        y: FIND_BAR_TOP,
         width: FIND_BAR_WIDTH,
         height: FIND_BAR_HEIGHT,
     });

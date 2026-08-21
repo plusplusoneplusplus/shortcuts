@@ -41,6 +41,15 @@ export const CLOSE_FIND_BAR_CHANNEL = 'coc-desktop:close-find-bar';
 export const FIND_BAR_WIDTH = 380;
 export const FIND_BAR_HEIGHT = 44;
 export const FIND_BAR_MARGIN = 12;
+/**
+ * Window-y of the bar: the SPA's 40px top bar (`h-10`, `drag-region`) plus
+ * FIND_BAR_MARGIN. The bar must sit fully BELOW that header: Electron applies
+ * the page's `-webkit-app-region: drag` regions at the window level, and they
+ * win hit-testing over child WebContentsViews layered on top (electron#26114),
+ * so any part of the bar overlapping the header gets window-drag instead of
+ * button clicks. Do not move it back up to overlap the header.
+ */
+export const FIND_BAR_TOP = 52;
 
 /**
  * Render the match-count label shown in the find bar. Mirrors the shape of an

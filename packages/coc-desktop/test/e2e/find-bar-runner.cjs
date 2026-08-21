@@ -15,7 +15,7 @@ const { app, BrowserWindow, webContents } = require('electron');
 const { registerFindBarIpc, attachFindBar } = require(
     path.join(__dirname, '..', '..', 'dist', 'find-bar-host.js'),
 );
-const { FIND_BAR_WIDTH, FIND_BAR_MARGIN } = require(
+const { FIND_BAR_WIDTH, FIND_BAR_MARGIN, FIND_BAR_TOP } = require(
     path.join(__dirname, '..', '..', 'dist', 'find-in-page.js'),
 );
 
@@ -120,6 +120,7 @@ app.whenReady().then(async () => {
         hasBarWc: !!barWc,
         bounds,
         expectedX: Math.max(0, contentWidth - FIND_BAR_WIDTH - FIND_BAR_MARGIN),
+        expectedY: FIND_BAR_TOP,
     });
     if (!barWc) {
         app.exit(1);
@@ -179,6 +180,7 @@ app.whenReady().then(async () => {
     emit('resize', {
         bounds: bounds2,
         expectedX: Math.max(0, 700 - FIND_BAR_WIDTH - FIND_BAR_MARGIN),
+        expectedY: FIND_BAR_TOP,
     });
 
     app.exit(0);
