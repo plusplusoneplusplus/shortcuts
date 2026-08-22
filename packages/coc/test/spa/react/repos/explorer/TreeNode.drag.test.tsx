@@ -42,7 +42,11 @@ function renderNode(entry: TreeEntry, workspaceId = WS) {
     );
 }
 
-/** Minimal DataTransfer stand-in — jsdom does not implement one. */
+/**
+ * Minimal DataTransfer stand-in — jsdom does not implement one. `types` is
+ * derived from setData like a browser's, because the composer sniffs `types`
+ * to decide whether to accept the drop.
+ */
 function makeDataTransfer() {
     const store: Record<string, string> = {};
     return {
@@ -50,7 +54,7 @@ function makeDataTransfer() {
         effectAllowed: 'uninitialized' as string,
         setData(format: string, data: string) { store[format] = data; },
         getData(format: string) { return store[format] ?? ''; },
-        types: [] as string[],
+        get types(): string[] { return Object.keys(store); },
     };
 }
 
@@ -87,6 +91,10 @@ describe('TreeNode drag source', () => {
             paths: [FILE.path],
         });
         expect(dataTransfer.getData('text/plain')).toBe(FILE.path);
+        // The composer accepts a drop by sniffing `types`, so advertising the
+        // MIME there is as load-bearing as the payload itself.
+        expect(dataTransfer.types).toContain(FILE_PATH_DRAG_MIME);
+        expect(dataTransfer.types).toContain('text/plain');
     });
 
     it('drags a directory by its repo-relative path, verbatim', () => {
