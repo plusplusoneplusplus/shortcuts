@@ -13,6 +13,13 @@ export const POINTER_CONTEXT_DRAG_MIME = 'application/vnd.coc.pointer-context+js
  * singular readers/drop-targets keep working unchanged.
  */
 export const SESSION_CONTEXT_BUNDLE_DRAG_MIME = 'application/vnd.coc.session-context-bundle+json';
+/**
+ * Carries one or more repo-relative file paths dragged out of the workspace
+ * Explorer tree. Purely a text-insert payload — composers splice the backticked
+ * paths in at the caret; nothing is attached as structured context.
+ */
+export const FILE_PATH_DRAG_MIME = 'application/vnd.coc.file-path+json';
+export const FILE_PATH_DRAG_KIND = 'coc.file-path';
 export const WORK_ITEM_CONTEXT_DRAG_KIND = 'coc.work-item-context';
 export const GIT_COMMIT_CONTEXT_DRAG_KIND = 'coc.git-commit-context';
 export const GIT_RANGE_CONTEXT_DRAG_KIND = 'coc.git-range-context';
@@ -83,6 +90,14 @@ export interface PullRequestContextDragPayload extends BasePointerContextDragPay
     pullRequestId: string;
     number?: number;
     status?: string;
+}
+
+export interface FilePathDragPayload {
+    kind: typeof FILE_PATH_DRAG_KIND;
+    version: 1;
+    workspaceId: string;
+    /** Repo-relative, POSIX-separated paths, verbatim as the tree API returned them. */
+    paths: string[];
 }
 
 export type PointerContextDragPayload =
@@ -625,4 +640,35 @@ export function writeSessionContextDragBundle(
     if (payloads.length > 1) {
         dataTransfer.setData(SESSION_CONTEXT_BUNDLE_DRAG_MIME, JSON.stringify(payloads));
     }
+}
+
+/**
+ * Build a file-path drag payload from the paths a drag source is offering.
+ * Blank entries are dropped; a payload with no workspace or no surviving path
+ * is not worth dragging, so the caller gets `null` and should cancel the drag.
+ */
+export function createFilePathDragPayload(workspaceId: string | null | undefined, paths: readonly string[]): FilePathDragPayload | null {
+    const safeWorkspaceId = typeof workspaceId === 'string' ? workspaceId.trim() : '';
+    if (!safeWorkspaceId) return null;
+    const safePaths = paths
+        .filter((value): value is string => typeof value === 'string')
+        .map(value => value.trim())
+        .filter(value => value.length > 0);
+    if (safePaths.length === 0) return null;
+    return {
+        kind: FILE_PATH_DRAG_KIND,
+        version: 1,
+        workspaceId: safeWorkspaceId,
+        paths: safePaths,
+    };
+}
+
+/**
+ * The `text/plain` flavour is the bare paths, newline-joined, so dropping into a
+ * non-CoC target (an editor, a terminal) still does something sane.
+ */
+export function writeFilePathDragData(dataTransfer: DragDataTransfer, payload: FilePathDragPayload): void {
+    dataTransfer.effectAllowed = 'copy';
+    dataTransfer.setData(FILE_PATH_DRAG_MIME, JSON.stringify(payload));
+    dataTransfer.setData('text/plain', payload.paths.join('\n'));
 }
