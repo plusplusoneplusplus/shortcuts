@@ -299,7 +299,7 @@ export interface CLIConfig {
         gitWorktreeExecution?: boolean;
         /** Async extension-canvas capabilities and the `host.complete` model call they get. Disabled by default. */
         canvasHostApis?: boolean;
-        /** Style selector in chat composers. Changes presentation only. Disabled by default. */
+        /** Style selector in chat composers. Changes presentation only. Enabled by default. */
         chatStyleSelector?: boolean;
     };
     /** Memory promotion configuration */
@@ -640,7 +640,7 @@ export interface ResolvedCLIConfig {
         gitWorktreeExecution: boolean;
         /** Async extension-canvas capabilities and the `host.complete` model call they get. Disabled by default. */
         canvasHostApis: boolean;
-        /** Style selector in chat composers. Changes presentation only. Disabled by default. */
+        /** Style selector in chat composers. Changes presentation only. Enabled by default. */
         chatStyleSelector: boolean;
     };
     /** Memory promotion configuration */
@@ -904,7 +904,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         schedulesInScheduledSlide: true,
         gitWorktreeExecution: false,
         canvasHostApis: false,
-        chatStyleSelector: false,
+        chatStyleSelector: true,
     },
     memoryPromotion: {
         batchSize: 50,

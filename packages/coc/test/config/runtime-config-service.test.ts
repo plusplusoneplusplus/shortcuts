@@ -46,6 +46,7 @@ describe('RuntimeConfigService', () => {
             expect(svc.config.forEach.enabled).toBe(false);
             expect(svc.config.features.gitCrossCloneCherryPick).toBe(true);
             expect(svc.config.features.commitChatLens).toBe(true);
+            expect(svc.config.features.chatStyleSelector).toBe(true);
             expect(svc.config.features.autoAgentProviderRouting).toBe(false);
             expect(svc.config.defaultProvider).toBe('copilot');
             expect(svc.config.agentProviderRouting.auto.rules.map(rule => rule.provider)).toEqual(['claude', 'codex', 'copilot']);

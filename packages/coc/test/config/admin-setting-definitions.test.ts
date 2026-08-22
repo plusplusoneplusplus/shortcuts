@@ -419,6 +419,32 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({})[flag]).toBe(false);
     });
 
+    // The chat Style selector ships on: it defaults to true so a fresh install
+    // gets the chip, but keeps the `experimental` badge and stays
+    // bootstrap-conservative (absentFallback false) so a legacy partial config
+    // that predates the flag still reads off.
+    it('exposes the chat style selector as a default-on experimental feature', () => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.chatStyleSelector');
+        expect(def, 'features.chatStyleSelector must be an admin setting').toBeDefined();
+        expect(def!.value).toEqual({ kind: 'boolean' });
+        expect(def!.default, 'chat style selector must default on').toBe(true);
+        expect(def!.absentFallback, 'chat style selector must stay bootstrap-conservative').toBe(false);
+        expect(def!.runtime).toBe('live');
+        expect(def!.runtimeFlag).toBe('chatStyleSelectorEnabled');
+        expect(def!.ui?.group).toBe('aiModes');
+        expect(def!.ui?.label).toBe('Chat style selector');
+        expect(def!.ui?.badge, 'chat style selector stays experimental').toBe('experimental');
+        expect(def!.ui?.hint).toMatch(/enabled by default/i);
+        expect(getFeatureCardSettings('aiModes').some(d => d.key === 'features.chatStyleSelector')).toBe(true);
+        // Resolved config (all fields present) reads the on default; a legacy
+        // partial config that lacks the key still reads off.
+        expect(DEFAULT_CONFIG.features.chatStyleSelector).toBe(true);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).chatStyleSelectorEnabled).toBe(true);
+        expect(buildRuntimeFeatureFlags({}).chatStyleSelectorEnabled).toBe(false);
+        // An explicit opt-out in the config file still wins over the on default.
+        expect(buildRuntimeFeatureFlags({ features: { chatStyleSelector: false } }).chatStyleSelectorEnabled).toBe(false);
+    });
+
     it('exposes triggers as a default-on, restart-required feature', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'triggers.enabled');
         expect(def, 'triggers.enabled must be an admin setting').toBeDefined();

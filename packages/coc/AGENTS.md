@@ -425,7 +425,9 @@ all have their own `references/*.md`.
   bare name, error class/errno only — never canvas content or absolute paths);
   do not go back to a bare `catch {}`.
 - **Chat style selector** (live admin flag `features.chatStyleSelector`, default
-  off, runtime flag `chatStyleSelectorEnabled`) adds a `Style: Default|Human|
+  on — `absentFallback: false`, so a legacy partial config that lacks the key
+  still reads off — runtime flag `chatStyleSelectorEnabled`) adds a
+  `Style: Default|Human|
   Direct|Analytical|Structured` chip beside Effort in the new-chat and follow-up
   composers. The style instruction is prepended to the **user message**, never
   injected into the system message. Style changes only how a response is
