@@ -66,6 +66,8 @@
       "!**/*.map",
       "node_modules/@plusplusoneplusplus/coc/dist/**/*",
       "node_modules/@plusplusoneplusplus/coc/dist/server/spa/client/dist/**/*",
+      "node_modules/@plusplusoneplusplus/coc-native/dist/**/*",
+      "node_modules/@plusplusoneplusplus/coc-native/prebuilt/**/*",
       "!release/**",
       "!**/@github/copilot/**/{linux,linuxmusl}-*/**",
       "!**/@github/copilot/mxc-bin/**"

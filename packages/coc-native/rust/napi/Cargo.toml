@@ -1,0 +1,18 @@
+[package]
+name = "coc-native"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "N-API addon exposing the CoC quick-open file index to Node"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+coc-native-core = { path = "../core" }
+napi = { version = "2", default-features = false, features = ["napi4"] }
+napi-derive = "2"
+
+[build-dependencies]
+napi-build = "2"

@@ -102,6 +102,26 @@ describe('electron-builder packaging config', () => {
             expect(buildConfig().asarUnpack ?? []).toContain('**/@esbuild/**');
         });
 
+    describe('native file index ships with the packaged server', () => {
+        it('packs the loader and the prebuilt N-API binaries', () => {
+            const files = buildConfig().files ?? [];
+            expect(files).toContain('node_modules/@plusplusoneplusplus/coc-native/dist/**/*');
+            expect(files).toContain('node_modules/@plusplusoneplusplus/coc-native/prebuilt/**/*');
+        });
+
+        it('unpacks .node binaries from the asar so they can be dlopened', () => {
+            // require() cannot load a native module from inside an asar archive.
+            expect(buildConfig().asarUnpack ?? []).toContain('**/*.node');
+        });
+
+        it('declares coc-native as a production dependency of the server package', () => {
+            const cocPkg = JSON.parse(
+                fs.readFileSync(path.resolve(__dirname, '../../coc/package.json'), 'utf8'),
+            );
+            expect(cocPkg.dependencies['@plusplusoneplusplus/coc-native']).toBeTruthy();
+        });
+    });
+
         describe('CoCContainer Windows product', () => {
             it('has a distinct application identity and installer name', () => {
                 const config = containerBuildConfig();

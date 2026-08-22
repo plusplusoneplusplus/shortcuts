@@ -18,6 +18,7 @@ export const REQUIRED_BUILD_WORKSPACES = [
     '@plusplusoneplusplus/forge',
     '@plusplusoneplusplus/coc-client',
     '@plusplusoneplusplus/coc-connector',
+    '@plusplusoneplusplus/coc-native',
 ];
 
 export function buildRequiredWorkspacePackages({

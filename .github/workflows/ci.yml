@@ -39,6 +39,17 @@ jobs:
         run: bash "$GITHUB_WORKSPACE/scripts/ci-npm-audit.sh"
         working-directory: scripts/skillopt
 
+      # The Rust file-index crate ships in the release binaries, so its
+      # dependencies get the same gate the npm graph gets.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Audit Rust dependency graph
+        run: cargo audit --file packages/coc-native/rust/Cargo.lock
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -132,8 +143,69 @@ jobs:
           path: packages/forge/coverage/
           retention-days: 14
 
+  # Rust unit layer plus the N-API boundary suite, on every platform we ship a
+  # binary for. The binary each job builds is what its own tests run against.
+  coc-native:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.x
+          cache: 'npm'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/coc-native/rust
+
+      - name: Check formatting
+        run: cargo fmt --manifest-path packages/coc-native/rust/Cargo.toml --all -- --check
+
+      # The addon crate links against Node's symbols, so only the pure-Rust core
+      # crate can be linted and tested with --all-targets.
+      - name: Lint
+        run: |
+          cargo clippy --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core --all-targets -- -D warnings
+          cargo clippy --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native -- -D warnings
+
+      - name: Run Rust unit tests
+        run: cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the addon
+        run: npm run build:native -w packages/coc-native
+
+      - name: Run N-API boundary and parity tests
+        run: npm run test:run -w packages/coc-native
+
+      - name: Upload the addon
+        uses: actions/upload-artifact@v4
+        with:
+          name: coc-native-${{ matrix.os }}
+          path: packages/coc-native/*.node
+          if-no-files-found: error
+          retention-days: 1
+
   coc-test:
     runs-on: ${{ matrix.os }}
+    needs: [coc-native]
 
     strategy:
       fail-fast: false
@@ -187,9 +259,23 @@ jobs:
         run: npm run build
         working-directory: packages/coc-connector
 
+      - name: Build coc-native package
+        run: npm run build
+        working-directory: packages/coc-native
+
       - name: Build coc SPA client bundle
         run: npm run build:client
         working-directory: packages/coc
+
+      # The tree-service suite runs both modes: fallback always, and the real
+      # addon whenever this platform's binary is available. Fallback must stay
+      # green even when the native job is skipped or its artifact is missing.
+      - name: Download the addon for the real-addon lane
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: coc-native-${{ matrix.os }}
+          path: packages/coc-native
 
       - name: Run coc tests (shard ${{ matrix.shard }}/5)
         if: matrix.os != 'ubuntu-latest'
@@ -616,6 +702,19 @@ jobs:
           docker logs coc
           exit 1
 
+      # The release build injects prebuilt binaries and asserts loaded==true;
+      # here the field only has to be present and well-formed, so a change that
+      # drops it from /api/health fails before it reaches a release.
+      - name: Assert /api/health reports the file-index mode
+        run: |
+          curl -sf http://127.0.0.1:4111/api/health \
+            | node -e 'const h=JSON.parse(require("fs").readFileSync(0,"utf8"));
+                       if (typeof h.nativeFileIndex?.loaded !== "boolean") {
+                         console.error("✗ /api/health is missing nativeFileIndex.loaded");
+                         process.exit(1);
+                       }
+                       console.log("native file index loaded:", h.nativeFileIndex.loaded);'
+
       - name: Assert the server is NOT reachable off-loopback
         run: |
           HOST_IP=$(hostname -I | awk '{print $1}')
@@ -660,7 +759,7 @@ jobs:
 
   ci:
     runs-on: ubuntu-latest
-    needs: [dependency-security, lint, forge-test, coc-test, coc-coverage, deep-wiki-test, e2e, coc-serve-smoke, coccontainer-serve-smoke, coc-desktop-test, workflow-policy-test, docker-build-smoke]
+    needs: [dependency-security, lint, forge-test, coc-native, coc-test, coc-coverage, deep-wiki-test, e2e, coc-serve-smoke, coccontainer-serve-smoke, coc-desktop-test, workflow-policy-test, docker-build-smoke]
     if: always()
     steps:
       - name: Verify all required jobs succeeded
@@ -669,6 +768,7 @@ jobs:
             [dependency-security]="${{ needs.dependency-security.result }}"
             [lint]="${{ needs.lint.result }}"
             [forge-test]="${{ needs.forge-test.result }}"
+            [coc-native]="${{ needs.coc-native.result }}"
             [coc-test]="${{ needs.coc-test.result }}"
             [coc-coverage]="${{ needs.coc-coverage.result }}"
             [deep-wiki-test]="${{ needs.deep-wiki-test.result }}"

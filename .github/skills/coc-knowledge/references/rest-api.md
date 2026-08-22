@@ -6,7 +6,7 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/health` | Health check |
+| GET | `/api/health` | Health check. Returns `{ status, uptime, processCount, nativeFileIndex: { loaded, binaryPath?, reason? } }`; `nativeFileIndex` reports whether the Rust file index backing quick-open search loaded or the server fell back to the JavaScript path |
 | GET | `/api/config` | Server configuration |
 | GET | `/api/config/runtime` | Runtime dashboard feature flags and config revision, including provider feature flags, `defaultProvider`, `autoAgentProviderRoutingEnabled`, Pull Requests flags such as `pullRequestsAutoClassifyTeamEnabled`, Work Items flags such as `workItemsWorkflowEnabled`, and `gitWorktreeExecutionEnabled` (also read by remote-target UI as the worktree-execution capability signal) |
 | GET | `/api/preferences` | Global UI preferences |

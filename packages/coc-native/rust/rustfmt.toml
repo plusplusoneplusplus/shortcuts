@@ -1,0 +1,4 @@
+# Keep short struct literals and call chains on one line, matching the density
+# of the surrounding TypeScript rather than rustfmt's narrower defaults.
+max_width = 100
+use_small_heuristics = "Max"

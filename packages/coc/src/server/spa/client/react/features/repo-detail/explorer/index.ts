@@ -10,7 +10,7 @@ export { MonacoFileEditor, getMonacoLanguage } from './MonacoFileEditor';
 export type { MonacoFileEditorProps } from './MonacoFileEditor';
 export { SearchBar } from './SearchBar';
 export type { SearchBarProps } from './SearchBar';
-export { QuickOpen, highlightFuzzy } from './QuickOpen';
+export { QuickOpen, highlightMatches, splitIndices } from './QuickOpen';
 export type { QuickOpenProps } from './QuickOpen';
 export { ExactOpen, exactMatchScore } from './ExactOpen';
 export type { ExactOpenProps } from './ExactOpen';

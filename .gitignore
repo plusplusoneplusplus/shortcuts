@@ -141,3 +141,8 @@ esbuild-check.css
 # Claude worktrees
 .claude/worktrees/
 .claude/scheduled_tasks.lock
+
+# Native file index (Rust) — build output and CI-injected binaries
+packages/coc-native/rust/target/
+packages/coc-native/prebuilt/
+packages/coc-native/*.node
