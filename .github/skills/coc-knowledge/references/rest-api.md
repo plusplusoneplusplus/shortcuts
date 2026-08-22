@@ -47,6 +47,10 @@ CoC server exposes HTTP endpoints organized by domain. All routes are registered
 | GET | `/api/workspaces/:id/summary` | Aggregated workspace summary |
 | GET | `/api/workspaces/:id/endev/status` | Cached EnDev xDPU eligibility status; `?refresh=true` revalidates |
 | POST | `/api/workspaces/:id/endev/revalidate` | Force EnDev xDPU eligibility revalidation |
+| POST | `/api/repo-groups` | Create a repo-group virtual workspace. Body `{ name, members: [workspaceId...] }`; members must be registered non-virtual repo workspaces (400 otherwise). Registers a `group-<slug>` workspace rooted at `~/.coc/repos/<groupId>/`, wires the queue bridge + schedule manager, and broadcasts `workspace-topology-changed` `added`. Returns 201 `{ workspace, members }` |
+| GET | `/api/repo-groups/:id` | Membership file + registry-resolved members; removed-workspace or missing-path members come back `stale` with a `staleReason` |
+| PATCH | `/api/repo-groups/:id` | Rename and/or replace membership (same member validation as create; rename syncs the registered workspace name). Broadcasts `updated` |
+| DELETE | `/api/repo-groups/:id` | Deregister the group workspace (broadcasts `removed`); the group's data directory stays on disk |
 
 ## Canvases
 

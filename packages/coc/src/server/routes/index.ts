@@ -72,6 +72,7 @@ import { registerWorkspaceHistoryRoutes } from './api-workspace-history-routes';
 import { registerTerminalRoutes } from '../terminal/terminal-routes';
 import { registerMyWorkRoutes } from '../workspaces/my-work-handler';
 import { registerMyLifeRoutes } from '../workspaces/my-life-handler';
+import { registerRepoGroupRoutes } from '../workspaces/repo-group-handler';
 import { registerWorkItemRoutes } from './work-item-routes';
 import { registerWorkItemHierarchyRoutes } from './work-item-hierarchy-routes';
 import { registerWorkItemSyncRoutes } from './work-item-sync-routes';
@@ -761,6 +762,15 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerHeapRoutes(routes);
     registerMyWorkRoutes(routes, store, dataDir);
     registerMyLifeRoutes(routes, store, dataDir);
+    registerRepoGroupRoutes(routes, store, dataDir, {
+        getWsServer,
+        onGroupRegistered: async (ws) => {
+            // Match the startup workspace sweep so a freshly created group can
+            // enqueue chats and host schedules without a server restart.
+            bridge.registerRepoId(ws.id, ws.rootPath);
+            await scheduleManager.registerWorkspacePath(ws.id, ws.rootPath);
+        },
+    });
 
     // Container default agent session routes (feature-flagged)
     if (opts.resolvedConfig?.containerDefaultAgent?.enabled) {
