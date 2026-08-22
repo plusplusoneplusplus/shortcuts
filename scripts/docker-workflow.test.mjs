@@ -10,10 +10,19 @@ const ci = readFileSync(path.join(workflowDir, "ci.yml"), "utf8");
 
 test("release workflow can push the server image to ghcr.io", () => {
     assert.match(release, /^permissions:\n(?:  .*\n)*  packages: write$/m);
-    assert.match(release, /^  build-docker:\n    needs: dependency-security$/m);
+    assert.match(release, /^  build-docker:\n    needs: \[dependency-security, build-native\]$/m);
     assert.match(release, /uses: docker\/login-action@v\d+\n\s+with:\n\s+registry: ghcr\.io/);
     assert.match(release, /images: \$\{\{ steps\.image\.outputs\.name \}\}/);
     assert.match(release, /echo "name=ghcr\.io\/\$\{OWNER\}\/coc" >> "\$GITHUB_OUTPUT"/);
+});
+
+test("build-docker waits on the native binaries, never on the desktop builds", () => {
+    // Dropping build-native here would silently ship an image with no native
+    // file index, degrading production to the slow JavaScript file search.
+    // Adding a desktop job here would make a mac/win failure block the image.
+    const needs = release.match(/^  build-docker:\n    needs: (.+)$/m)[1];
+    assert.match(needs, /\bbuild-native\b/);
+    assert.doesNotMatch(needs, /\bbuild-(mac|win)\b/);
 });
 
 test("release image is multi-arch, tagged by semver, and `latest` only for stable tags", () => {
