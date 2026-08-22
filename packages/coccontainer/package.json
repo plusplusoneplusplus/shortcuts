@@ -21,7 +21,7 @@
     "@plusplusoneplusplus/coc": "^1.2.0",
     "@plusplusoneplusplus/coc-connector": "^0.1.0",
     "@plusplusoneplusplus/forge": "^1.2.0",
-    "commander": "^12.1.0",
+    "commander": "^15.0.0",
     "js-yaml": "^4.3.0",
     "ws": "^8.21.1"
   },
