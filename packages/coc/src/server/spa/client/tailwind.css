@@ -1633,7 +1633,10 @@
     border-collapse: collapse;
     width: 100%;
     min-width: 380px;
-    table-layout: auto;
+    /* Fixed layout so the content-proportional <colgroup> percentages (and,
+       after a drag, the explicit px widths) are honoured instead of the
+       browser's own near-even slack distribution. */
+    table-layout: fixed;
 }
 
 /*
@@ -1650,7 +1653,6 @@
     font-size: 12px;
     line-height: 1.4;
     vertical-align: middle;
-    max-width: 320px;
 }
 
 .dark .md-table.interactive-md-table th,
@@ -1666,38 +1668,24 @@
     text-overflow: ellipsis;
 }
 
-/* The cap has to sit on an inner block. In auto table layout a column is never
-   narrower than its min-content width, and `white-space: nowrap` makes that the
-   full text width — a `max-width` on the <td> is simply ignored. A block child
-   clamps its own min-content contribution, so the column stops at 320px. */
+/* The column width does the capping now — under fixed layout the <td> is exactly
+   as wide as its <col>. The inner block still carries the clipping so a long
+   value ellipsizes inside the cell rather than bleeding past its padding. */
 .md-table.interactive-md-table tbody td > .interactive-table-cell-text {
     display: block;
-    max-width: 320px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 /*
- * Once a column has been dragged, every column carries an explicit width, so
- * the table switches to fixed layout and honours them instead of re-fitting to
- * content. The total width is set inline from the sum of those widths, so the
- * table can grow past the viewport (the scroll container handles it) while
- * still filling a narrow one.
+ * Once a column has been dragged, every column carries an explicit width and the
+ * <colgroup> is dropped. The total width is set inline from the sum of those
+ * widths, so the table can grow past the viewport (the scroll container handles
+ * it) while still filling a narrow one.
  */
 .interactive-md-table-resized {
-    table-layout: fixed;
     min-width: 100%;
-}
-
-/* Explicit widths win over the default cap. */
-.md-table.interactive-md-table-resized th,
-.md-table.interactive-md-table-resized td {
-    max-width: none;
-}
-
-.md-table.interactive-md-table-resized tbody td > .interactive-table-cell-text {
-    max-width: none;
 }
 
 .interactive-table-resizer {
