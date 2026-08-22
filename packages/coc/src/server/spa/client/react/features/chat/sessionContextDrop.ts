@@ -4,6 +4,8 @@ import { useCocClient } from '../../repos/cloneRouting';
 import { getOrFetchConfig, peekConfig, configCacheKey } from '../../api/staticConfigCache';
 import type { AttachedContextItem } from './hooks/useAttachedContext';
 import {
+    FILE_PATH_DRAG_MIME,
+    FILE_PATH_DRAG_KIND,
     GIT_COMMIT_CONTEXT_DRAG_KIND,
     GIT_RANGE_CONTEXT_DRAG_KIND,
     POINTER_CONTEXT_DRAG_MIME,
@@ -14,6 +16,7 @@ import {
     SESSION_CONTEXT_DRAG_KIND,
     SESSION_CONTEXT_DRAG_MIME,
     WORK_ITEM_CONTEXT_DRAG_KIND,
+    type FilePathDragPayload,
     type GitCommitContextDragPayload,
     type GitRangeContextDragPayload,
     type PointerContextDragPayload,
@@ -339,6 +342,67 @@ export function dataTransferHasSessionContext(dataTransfer: SessionContextDataTr
         || types.includes(RALPH_SESSION_CONTEXT_DRAG_MIME)
         || types.includes(POINTER_CONTEXT_DRAG_MIME)
         || types.includes(SESSION_CONTEXT_BUNDLE_DRAG_MIME);
+}
+
+/** True when the drag carries the Explorer's file-path payload (AC-02/AC-03). */
+export function dataTransferHasFilePath(dataTransfer: SessionContextDataTransfer | null | undefined): boolean {
+    if (!dataTransfer) return false;
+    return Array.from(dataTransfer.types ?? []).includes(FILE_PATH_DRAG_MIME);
+}
+
+/**
+ * Read the Explorer file-path payload. Paths are taken verbatim — they are
+ * repo-relative by construction and a path from another workspace is inserted
+ * as-is by design.
+ */
+export function readFilePathDragPayload(dataTransfer: SessionContextDataTransfer): FilePathDragPayload | null {
+    const raw = dataTransfer.getData(FILE_PATH_DRAG_MIME);
+    if (!raw) return null;
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        return null;
+    }
+    if (!parsed || typeof parsed !== 'object') return null;
+    const record = parsed as { kind?: unknown; version?: unknown; workspaceId?: unknown; paths?: unknown };
+    if (record.kind !== FILE_PATH_DRAG_KIND || record.version !== 1) return null;
+    const workspaceId = normalizeString(record.workspaceId);
+    if (!workspaceId || !Array.isArray(record.paths)) return null;
+    const paths = record.paths
+        .map(value => normalizeString(value))
+        .filter((value): value is string => value !== null);
+    if (paths.length === 0) return null;
+    return { kind: FILE_PATH_DRAG_KIND, version: 1, workspaceId, paths };
+}
+
+/**
+ * The text a file-path drop inserts: each path backticked, single-space
+ * separated, with one trailing space so the user can keep typing.
+ */
+export function formatFilePathInsertion(paths: readonly string[]): string {
+    return paths.map(path => `\`${path}\``).join(' ') + ' ';
+}
+
+/**
+ * Splice the backticked paths into `text` at `cursorPos`, returning the new
+ * text and the caret offset just after the inserted run. An out-of-range or
+ * missing offset appends at the end, which is what a drop onto a composer that
+ * was never focused should do.
+ */
+export function buildFilePathInsertion(
+    text: string,
+    cursorPos: number | null | undefined,
+    paths: readonly string[],
+): { text: string; cursorPos: number } {
+    const insertion = formatFilePathInsertion(paths);
+    const at = typeof cursorPos === 'number' && Number.isInteger(cursorPos) && cursorPos >= 0 && cursorPos <= text.length
+        ? cursorPos
+        : text.length;
+    return {
+        text: text.slice(0, at) + insertion + text.slice(at),
+        cursorPos: at + insertion.length,
+    };
 }
 
 export function dataTransferHasAnyData(dataTransfer: SessionContextDataTransfer | null | undefined): boolean {

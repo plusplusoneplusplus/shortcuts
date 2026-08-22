@@ -10,6 +10,7 @@ import { highlightMatch } from '../../../tasks/TaskSearchResults';
 import { filterEntries } from './FileTree';
 import type { TreeEntry } from './types';
 import { explorerApi } from './explorerApi';
+import { createFilePathDragPayload, writeFilePathDragData } from '../../chat/sessionContextDrag';
 
 export interface TreeNodeProps {
     entry: TreeEntry;
@@ -95,6 +96,18 @@ export function TreeNode({
         onSelect(entry.path, isDir);
     };
 
+    // Rows are drag sources for the chat composers: dragging one out writes the
+    // repo-relative path (files and directories alike) as a copy-only payload.
+    // The tree itself gains no drop target, so nothing here can move or reorder.
+    const handleDragStart = (e: React.DragEvent<HTMLDivElement>) => {
+        const payload = createFilePathDragPayload(workspaceId, [entry.path]);
+        if (!payload) {
+            e.preventDefault();
+            return;
+        }
+        writeFilePathDragData(e.dataTransfer, payload);
+    };
+
     const handleContextMenu = (e: React.MouseEvent) => {
         if (e.shiftKey) return;
         e.preventDefault();
@@ -120,6 +133,8 @@ export function TreeNode({
                 style={{ paddingLeft: `${12 + depth * 16}px` }}
                 data-testid={`tree-node-${entry.path}`}
                 data-tree-index={treeIndex}
+                draggable
+                onDragStart={handleDragStart}
                 onClick={handleClick}
                 onContextMenu={handleContextMenu}
                 onDoubleClick={() => { if (!isDir) onFileOpen?.(entry); }} /* kept for accessibility */

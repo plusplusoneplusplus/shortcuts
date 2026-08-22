@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+    createFilePathDragPayload,
     createGitCommitContextDragPayload,
     createGitRangeContextDragPayload,
     createPullRequestContextDragPayload,
     createRalphSessionContextDragPayload,
     createSessionContextDragPayload,
     createWorkItemContextDragPayload,
+    FILE_PATH_DRAG_KIND,
+    FILE_PATH_DRAG_MIME,
     GIT_COMMIT_CONTEXT_DRAG_KIND,
     GIT_RANGE_CONTEXT_DRAG_KIND,
     POINTER_CONTEXT_DRAG_MIME,
@@ -15,6 +18,7 @@ import {
     SESSION_CONTEXT_DRAG_KIND,
     SESSION_CONTEXT_DRAG_MIME,
     WORK_ITEM_CONTEXT_DRAG_KIND,
+    writeFilePathDragData,
     writePointerContextDragData,
     writeRalphSessionContextDragData,
     writeSessionContextDragData,
@@ -383,5 +387,47 @@ describe('sessionContextDrag', () => {
         expect(dataTransfer.setData).toHaveBeenCalledWith(RALPH_SESSION_CONTEXT_DRAG_MIME, JSON.stringify(payload));
         expect(dataTransfer.setData).toHaveBeenCalledWith('text/plain', 'CoC Ralph session context: Ralph Session - 1 iter [complete/completed] ralph-session-1');
         expect(dataTransfer.setData).not.toHaveBeenCalledWith(SESSION_CONTEXT_DRAG_MIME, expect.any(String));
+    });
+});
+
+describe('file-path drag payload', () => {
+    it('builds a single-path payload from an Explorer row', () => {
+        expect(createFilePathDragPayload('ws-1', ['packages/coc/src/foo.ts'])).toEqual({
+            kind: FILE_PATH_DRAG_KIND,
+            version: 1,
+            workspaceId: 'ws-1',
+            paths: ['packages/coc/src/foo.ts'],
+        });
+    });
+
+    it('carries an array so a future multi-select drag needs no format change', () => {
+        expect(createFilePathDragPayload('ws-1', ['a.ts', 'docs'])?.paths).toEqual(['a.ts', 'docs']);
+    });
+
+    it('drops blank paths and refuses a payload with nothing left to drag', () => {
+        expect(createFilePathDragPayload('ws-1', ['  ', 'a.ts'])?.paths).toEqual(['a.ts']);
+        expect(createFilePathDragPayload('ws-1', ['   '])).toBeNull();
+        expect(createFilePathDragPayload('ws-1', [])).toBeNull();
+        expect(createFilePathDragPayload('', ['a.ts'])).toBeNull();
+        expect(createFilePathDragPayload(null, ['a.ts'])).toBeNull();
+    });
+
+    it('writes the file-path MIME, a text/plain fallback, and a copy-only effect', () => {
+        const setData = vi.fn();
+        const dataTransfer = { setData, effectAllowed: 'none' as DataTransfer['effectAllowed'] };
+        const payload = createFilePathDragPayload('ws-1', ['a.ts', 'docs/b.md'])!;
+
+        writeFilePathDragData(dataTransfer, payload);
+
+        expect(dataTransfer.effectAllowed).toBe('copy');
+        expect(setData).toHaveBeenCalledWith(FILE_PATH_DRAG_MIME, JSON.stringify(payload));
+        expect(setData).toHaveBeenCalledWith('text/plain', 'a.ts\ndocs/b.md');
+    });
+
+    it('uses a MIME and kind distinct from every session-context kind', () => {
+        expect(FILE_PATH_DRAG_MIME).toBe('application/vnd.coc.file-path+json');
+        expect(FILE_PATH_DRAG_KIND).toBe('coc.file-path');
+        expect([SESSION_CONTEXT_DRAG_MIME, RALPH_SESSION_CONTEXT_DRAG_MIME, POINTER_CONTEXT_DRAG_MIME])
+            .not.toContain(FILE_PATH_DRAG_MIME);
     });
 });
