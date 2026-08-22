@@ -12,6 +12,7 @@ import { RalphSessionStore } from '../ralph/ralph-session-store';
 import { orchestrateRalphIteration } from '../ralph/orchestrate-iteration';
 import { orchestrateFinalCheck } from '../ralph/orchestrate-final-check';
 import { orchestrateSubmitCompletion } from '../ralph/orchestrate-submit';
+import { getRalphTaskKind } from '../ralph/task-kind';
 import { loadConfigFile, DEFAULT_CONFIG } from '../../config';
 import type { CLIConfig } from '../../config';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
@@ -309,14 +310,16 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         const workspaceId = payload.workspaceId;
         const sessionId = ralphCtx?.sessionId;
 
+        const kind = getRalphTaskKind(ralphCtx);
+
         // ── Route final-check completions separately ─────────────────────────
-        if (ralphCtx?.finalCheck) {
+        if (kind === 'final-check') {
             await this.handleFinalCheckCompletion(processId, completedTask, responseText, ralphCtx, workspaceId, sessionId);
             return;
         }
 
         // ── PR-submit completions must never enqueue another iteration ───────
-        if (ralphCtx?.submit) {
+        if (kind === 'submit') {
             await this.handleSubmitCompletion(processId, completedTask, responseText, ralphCtx, workspaceId, sessionId);
             return;
         }

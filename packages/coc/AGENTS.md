@@ -249,6 +249,13 @@ all have their own `references/*.md`.
   `RalphExecutor` must use validation-only system instructions whenever
   `context.ralph.finalCheck` is present. Do not route final checks through the
   normal implementation-loop system prompt.
+- **Ralph task kind** is derived only through `getRalphTaskKind(ctx)`
+  (`src/server/ralph/task-kind.ts`), which returns
+  `'iteration' | 'final-check' | 'submit'`. `RalphExecutor` rebuilds the user
+  prompt from `buildRalphIterationPrompt` for `'iteration'` **only**; every
+  other kind arrives with a purpose-built prompt that must reach the model
+  verbatim. Adding a new kind means extending the helper, not adding another
+  `ralphCtx.<marker>` check at a call site.
 - **Ralph PR-submit tasks** (`context.ralph.submit` present) must never be
   routed through iteration orchestration: the bridge hands them to
   `orchestrateSubmitCompletion` (`src/server/ralph/orchestrate-submit.ts`),

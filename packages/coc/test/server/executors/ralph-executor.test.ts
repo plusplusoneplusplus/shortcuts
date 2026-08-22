@@ -6,10 +6,12 @@
  * - execution user prompt contains the skill pointer, progress/context paths,
  *   iteration counter, and <goal> block
  * - final-check user prompt is the buildFinalCheckPrompt output (AC-02)
+ * - submit user prompt is the buildRalphSubmitPrompt output, passed verbatim
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
+import { buildRalphSubmitPrompt } from '@plusplusoneplusplus/coc-workflow/ralph';
 import { RalphExecutor } from '../../../src/server/executors/ralph-executor';
 import type { ChatModeExecutorOptions } from '../../../src/server/executors/chat-base-executor';
 import { createMockProcessStore } from '../helpers/mock-process-store';
@@ -77,6 +79,10 @@ function makeRalphTask(ralphCtx?: {
         checkIndex: number;
         sourceIteration: number;
         loopIndex: number;
+    };
+    submit?: {
+        kind: 'submit-pr';
+        submitIndex: number;
     };
 }, id = 'ralph-task-1'): QueuedTask {
     return {
@@ -246,6 +252,94 @@ describe('RalphExecutor system message — final-check (AC-02)', () => {
         expect(call.prompt).toBe('Run final check');
         expect(call.prompt).not.toContain('Context map:');
         expect(call.prompt).not.toContain('context.md');
+    });
+});
+
+describe('RalphExecutor system message — submit', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    const SUBMIT_PROMPT = buildRalphSubmitPrompt({
+        originalGoal: 'Build a REST API',
+        progressPath: '/data/ralph-sessions/sess-submit/progress.md',
+        sessionId: 'sess-submit',
+        submitIndex: 1,
+        baselineSha: 'abc1234',
+        sessionStartedAt: '2026-01-01T00:00:00.000Z',
+        sessionCompletedAt: '2026-01-01T01:00:00.000Z',
+    });
+
+    function makeSubmitTask() {
+        return makeRalphTask({
+            originalGoal: 'Build a REST API',
+            sessionId: 'sess-submit',
+            submit: { kind: 'submit-pr', submitIndex: 1 },
+        });
+    }
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'RALPH_SUBMIT_RESULT\n```json\n{"status":"submitted","prUrl":"https://example.com/pr/1"}\n```',
+            sessionId: 'sess-submit',
+            toolCalls: [],
+        });
+    });
+
+    it('passes the stored submit prompt through verbatim', async () => {
+        const executor = new RalphExecutor(store, makeOptions(store));
+
+        await executor.execute(makeSubmitTask(), SUBMIT_PROMPT);
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.prompt).toBe(SUBMIT_PROMPT);
+    });
+
+    it('keeps the submit result contract and carries no iteration framing', async () => {
+        const executor = new RalphExecutor(store, makeOptions(store));
+
+        await executor.execute(makeSubmitTask(), SUBMIT_PROMPT);
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.prompt).toContain('RALPH_SUBMIT_RESULT');
+        expect(call.prompt).toContain('submit-commits-as-pr');
+        expect(call.prompt).not.toContain('RALPH_NEXT');
+        expect(call.prompt).not.toContain('RALPH_COMPLETE');
+        expect(call.prompt).not.toContain('ultra-ralph');
+    });
+
+    it('does not add a context map path to submit prompts', async () => {
+        const executor = new RalphExecutor(store, makeOptions(store));
+
+        await executor.execute(makeSubmitTask(), SUBMIT_PROMPT);
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.prompt).not.toContain('Context map:');
+        expect(call.prompt).not.toContain('context.md');
+    });
+
+    it('submit system message contains NO Ralph-specific strings', async () => {
+        const executor = new RalphExecutor(store, makeOptions(store));
+
+        await executor.execute(makeSubmitTask(), SUBMIT_PROMPT);
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        const sys = call.systemMessage?.content ?? '';
+        expect(sys).not.toContain('RALPH_SUBMIT_RESULT');
+        expect(sys).not.toContain('## Goal Spec');
+        expect(sys).not.toContain('## Progress Journal');
+        expect(sys).not.toContain('ultra-ralph');
+    });
+
+    it('still uses agentMode=autopilot for submit', async () => {
+        const executor = new RalphExecutor(store, makeOptions(store));
+
+        await executor.execute(makeSubmitTask(), SUBMIT_PROMPT);
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.mode).toBe('autopilot');
     });
 });
 
