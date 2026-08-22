@@ -131,12 +131,13 @@ Opt-in isolated-worktree execution mode for Work Item and Ralph runs, gated by t
 
 ## Quick Ask Side-notes
 
-Per-process AI lookups on assistant chat turns. A text selection triggers a cheap one-shot ask (never a follow-up turn); the answer is stored as a repo-scoped annotation and never enters the conversation. All endpoints are gated by the live admin flag `features.quickAskSidenotes` (default `true`) and return `404` when disabled. Storage: `{dataDir}/repos/<workspaceId>/chat-sidenotes/<sha256(processId)>.json`. Workspace is supplied via `?workspace=<id>`.
+Per-process AI lookups on assistant chat turns. A text selection triggers a cheap grounded ask; the answer is stored as a repo-scoped annotation and never enters the conversation. A side-note can be followed up on, growing a persisted `turns` thread (turn 0 mirrors `question`/`answer`, capped at `MAX_TURNS_PER_SIDENOTE` = 10). All endpoints are gated by the live admin flag `features.quickAskSidenotes` (default `true`) and return `404` when disabled. Storage: `{dataDir}/repos/<workspaceId>/chat-sidenotes/<sha256(processId)>.json`. Workspace is supplied via `?workspace=<id>`.
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/processes/:processId/sidenotes?workspace=<id>` | List side-notes for the process (hydrate on chat open) → `{ sidenotes }` |
 | POST | `/api/processes/:processId/sidenotes?workspace=<id>` | Body `{ turnIndex, selectedText, contextBefore?, contextAfter?, question? }`. Builds a compact grounded prompt, runs the one-shot invoker (model resolved via `defaultModels.quickAsk` > `defaultModel`), persists, returns `{ sidenote }` (201). `502`/`503` on AI failure/unavailability |
+| POST | `/api/processes/:processId/sidenotes/:id/follow-up?workspace=<id>` | Body `{ question }`. Reads the note's thread from disk as grounding history (the client sends only the new question), runs the invoker, appends the answered turn, returns `{ sidenote }` (200). `400` empty question, `404` unknown note, `409` at the turn cap, `502`/`503` on AI failure |
 | DELETE | `/api/processes/:processId/sidenotes/:id?workspace=<id>` | Delete one side-note (204; 404 when missing) |
 
 ## Task Groups
