@@ -9,9 +9,8 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import * as fs from 'fs';
-import * as path from 'path';
 import { render, screen, fireEvent, act } from '@testing-library/react';
+import { readRepoGitTabSource } from '../../helpers/repo-git-tab-source';
 
 import { BranchCommitStrip } from '../../../../src/server/spa/client/react/features/git/branches/BranchCommitStrip';
 import {
@@ -19,10 +18,6 @@ import {
     saveBranchRangeBaseMode,
     useBranchRangeBaseMode,
 } from '../../../../src/server/spa/client/react/features/git/hooks/useBranchRangeBaseMode';
-
-const REPO_GIT_TAB_PATH = path.resolve(
-    __dirname, '../../../../src/server/spa/client/react/features/git/RepoGitTab.tsx'
-);
 
 const RANGE = {
     baseRef: 'origin/main',
@@ -120,21 +115,21 @@ describe('useBranchRangeBaseMode', () => {
 });
 
 describe('RepoGitTab wiring', () => {
-    const source = fs.readFileSync(REPO_GIT_TAB_PATH, 'utf-8');
+    const source = readRepoGitTabSource();
 
     it('sends the selected base with the branch-range request', () => {
         expect(source).toContain('getBranchRange(workspaceId, { refresh, base: mode })');
     });
 
     it('refetches when the toggle changes the mode', () => {
-        const start = source.indexOf('const handleBaseModeChange = useCallback');
+        const start = source.indexOf('const setBaseModeAndRefetch = useCallback');
         const block = source.slice(start, start + 400);
         expect(block).toContain('setBaseMode(mode)');
         expect(block).toContain('fetchBranchRange(false, mode)');
     });
 
     it('passes the mode into the overview and the file diff source', () => {
-        expect(source).toContain('onBaseModeChange={handleBaseModeChange}');
+        expect(source).toContain('onBaseModeChange={data.setBaseModeAndRefetch}');
         expect(source).toContain('baseMode,');
     });
 });

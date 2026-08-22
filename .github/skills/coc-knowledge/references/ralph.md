@@ -293,8 +293,15 @@ are disabled, the card shows depth only and all roles inherit the composer AI
 settings.
 Promotion requests accept an optional `grill` payload, sanitize it on the
 server, and mirror it into `metadata.ralph.grill` plus the queued synthesis task
-context. The planning helpers live in
-`packages/coc/src/server/ralph/grill-planning.ts`; they define the depth role
+context. The planning engine lives in the
+`packages/coc/src/server/ralph/grill-*.ts` module family, with
+`grill-planning.ts` as the facade that owns round orchestration and re-exports
+the public API: `grill-planning-types` (contracts), `grill-agent-config`
+(role/depth definitions), `grill-setup` (setup normalization and provenance),
+`grill-progress`, `grill-prompts`, `grill-response-parser`,
+`grill-question-consolidator` (pure dedupe/conflict), `grill-agent-runner` (SDK
+invocation), `grill-termination`, `grill-process-state`, `grill-plan-prompt`,
+and `grill-ask-user-metadata`. Together they define the depth role
 sets, per-agent provider/tier selection shape, provenance labels (`Role Agent ·
 provider/tier` when a tier applies, falling back to `Role Agent ·
 provider/model`), context normalization, strict JSON candidate-question parsing,

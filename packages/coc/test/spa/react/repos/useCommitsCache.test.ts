@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import { readRepoGitTabSource } from '../../helpers/repo-git-tab-source';
 import {
     getCommitsCache,
     setCommitsCache,
@@ -89,14 +90,11 @@ describe('RepoGitTab integration', () => {
     beforeEach(async () => {
         const fs = await import('fs');
         const path = await import('path');
-        source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'RepoGitTab.tsx'),
-            'utf-8',
-        );
+        source = readRepoGitTabSource();
     });
 
     it('RepoGitTab.tsx imports useCommitsCache', () => {
-        expect(source).toContain("from './hooks/useCommitsCache'");
+        expect(source).toContain("from '../hooks/useCommitsCache'");
     });
 
     it('fetchCommits checks cache when refresh=false and skipOffset=0', () => {
@@ -118,15 +116,15 @@ describe('RepoGitTab integration', () => {
 
     it('refreshAll calls fetchCommits(true, ...) to bypass cache', () => {
         const refreshAllStart = source.indexOf('const refreshAll = useCallback');
-        const refreshAllEnd = source.indexOf('// Load more commits');
+        const refreshAllEnd = source.indexOf('// Load more commits', refreshAllStart);
         const refreshAllBlock = source.slice(refreshAllStart, refreshAllEnd);
         expect(refreshAllBlock).toContain('fetchCommits(true, 0,');
     });
 
     it('WebSocket git-changed handler clears commits cache on git-changed events', () => {
         // WebSocket fires fetchCommits(true, ...) which clears the cache
-        const wsHandlerStart = source.indexOf('// WebSocket: auto-refresh on git-changed');
-        const wsHandlerEnd = source.indexOf('// Pull job polling helpers');
+        const wsHandlerStart = source.indexOf('// ── WebSocket refresh');
+        const wsHandlerEnd = source.indexOf('// ── Composed handlers');
         const wsBlock = source.slice(wsHandlerStart, wsHandlerEnd);
         expect(wsBlock).toContain('fetchCommits(true, 0,');
     });

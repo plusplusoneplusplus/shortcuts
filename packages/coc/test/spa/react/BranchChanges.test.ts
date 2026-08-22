@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
+import { readRepoGitTabSource } from '../helpers/repo-git-tab-source';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -461,11 +462,11 @@ describe('BranchChanges', () => {
         let gitTabSource: string;
 
         beforeAll(() => {
-            gitTabSource = fs.readFileSync(REPO_GIT_TAB_PATH, 'utf-8');
+            gitTabSource = readRepoGitTabSource();
         });
 
         it('RepoGitTab imports BranchChanges', () => {
-            expect(gitTabSource).toContain("import { BranchChanges } from './branches/BranchChanges'");
+            expect(gitTabSource).toContain("from '../branches/BranchChanges'");
         });
 
         it('RepoGitTab renders BranchChanges component', () => {
@@ -477,7 +478,7 @@ describe('BranchChanges', () => {
         });
 
         it('RepoGitTab passes branchRangeData to BranchChanges', () => {
-            expect(gitTabSource).toContain('branchRangeData={branchRangeData}');
+            expect(gitTabSource).toContain('branchRangeData={props.branchRangeData}');
         });
 
         it('RepoGitTab passes onDefaultBranch to BranchChanges', () => {
@@ -485,15 +486,15 @@ describe('BranchChanges', () => {
         });
 
         it('RepoGitTab passes onFileSelect to BranchChanges', () => {
-            expect(gitTabSource).toContain('onFileSelect={handleFileSelect}');
+            expect(gitTabSource).toContain('onFileSelect={props.onBranchFileSelect}');
         });
 
         it('RepoGitTab passes selectedFile to BranchChanges', () => {
-            expect(gitTabSource).toContain('selectedFile={selectedBranchFile}');
+            expect(gitTabSource).toContain('selectedFile={props.selectedBranchFile}');
         });
 
         it('RepoGitTab imports BranchRangeInfo type from BranchChanges', () => {
-            expect(gitTabSource).toContain("import type { BranchRangeInfo } from './branches/BranchChanges'");
+            expect(gitTabSource).toContain("BranchRangeInfo } from '../branches/BranchChanges'");
         });
 
         it('BranchChanges appears after GitPanelHeader in left panel', () => {
@@ -562,7 +563,7 @@ describe('BranchChanges', () => {
         });
 
         it('RepoGitTab drives compact from the split-workspace layout', () => {
-            const gitTab = fs.readFileSync(REPO_GIT_TAB_PATH, 'utf-8');
+            const gitTab = readRepoGitTabSource();
             expect(gitTab).toContain('compact={isSplitWorkspace}');
         });
     });
