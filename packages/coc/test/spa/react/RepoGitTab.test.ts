@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
+import { readRepoGitTabSource } from '../helpers/repo-git-tab-source';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -18,7 +19,7 @@ describe('RepoGitTab', () => {
     let source: string;
 
     beforeAll(() => {
-        source = fs.readFileSync(COMPONENT_PATH, 'utf-8');
+        source = readRepoGitTabSource();
     });
 
     describe('exports', () => {
@@ -39,12 +40,12 @@ describe('RepoGitTab', () => {
         });
 
         it('passes limit=50 query parameter', () => {
-            expect(source).toContain('limit: 50');
+            expect(source).toContain('limit: COMMIT_PAGE_SIZE');
         });
 
         it('imports typed CoC client', () => {
             // AC-07: routes Git tab data through the clone-aware client (useCocClient).
-            expect(source).toContain("import { getSpaCocClientErrorMessage } from '../../api/cocClient'");
+            expect(source).toContain("import { getSpaCocClientErrorMessage } from '../../../api/cocClient'");
             expect(source).toContain("import { useCocClient } from '../../repos/cloneRouting'");
         });
 
@@ -82,9 +83,9 @@ describe('RepoGitTab', () => {
             expect(source).toContain('setError');
         });
 
-        it('tracks rightPanelView state (discriminated union)', () => {
-            expect(source).toContain('rightPanelView');
-            expect(source).toContain('setRightPanelView');
+        it('tracks view state (discriminated union)', () => {
+            expect(source).toContain('view');
+            expect(source).toContain('setView');
         });
 
         it('defines RightPanelView type with commit, commit-file, and branch-file variants', () => {
@@ -141,13 +142,13 @@ describe('RepoGitTab', () => {
     });
 
     describe('auto-selection', () => {
-        it('auto-selects the most recent commit on load via rightPanelView', () => {
+        it('auto-selects the most recent commit on load via view', () => {
             expect(source).toContain('loaded[0]');
-            expect(source).toContain('setRightPanelView');
+            expect(source).toContain('setView');
         });
 
         it('clears selection when no commits', () => {
-            expect(source).toContain('setRightPanelView(null)');
+            expect(source).toContain('setView(null)');
         });
     });
 
@@ -157,7 +158,7 @@ describe('RepoGitTab', () => {
         });
 
         it('guards against concurrent refreshes', () => {
-            expect(source).toContain('if (refreshing) return');
+            expect(source).toContain('if (refreshingRef.current) return');
         });
 
         it('sets refreshing true before fetch', () => {
@@ -174,11 +175,11 @@ describe('RepoGitTab', () => {
         });
 
         it('preserves branch-file view during refresh', () => {
-            expect(source).toContain("rightPanelView?.type === 'branch-file'");
+            expect(source).toContain("view?.type === 'branch-file'");
         });
 
         it('preserves commit-file view during refresh', () => {
-            expect(source).toContain("rightPanelView?.type === 'commit-file'");
+            expect(source).toContain("view?.type === 'commit-file'");
         });
 
         it('handles refresh errors without blocking', () => {
@@ -193,22 +194,24 @@ describe('RepoGitTab', () => {
         });
 
         it('clears actionError on refresh (regression: stale action banners should dismiss)', () => {
-            const refreshBlock = source.match(/const refreshAll = useCallback[\s\S]*?\}, \[refreshing/);
+            const refreshBlock = source.match(/const refreshAll = useCallback[\s\S]*?\}, \[selection/);
             expect(refreshBlock).toBeTruthy();
-            expect(refreshBlock![0]).toContain('setActionError(null)');
+            expect(refreshBlock![0]).toContain('setRefreshError(null)');
+            // Every mutating action clears the stale banner before it runs.
+            expect(source).toContain('setActionError(null)');
         });
 
         it('passes refreshKey to WorkingTree', () => {
-            expect(source).toContain('refreshKey={workingChangesRefreshKey}');
+            expect(source).toContain('refreshKey={props.workingChangesRefreshKey}');
         });
 
         it('shows refresh error toast', () => {
-            expect(source).toContain('data-testid="git-refresh-error"');
+            expect(source).toContain('testId="git-refresh-error"');
         });
 
         it('refresh error banner has a dismiss button that clears the error', () => {
-            expect(source).toContain('data-testid="git-refresh-error-dismiss"');
-            expect(source).toContain('onClick={() => setRefreshError(null)}');
+            expect(source).toContain('data-testid={`${testId}-dismiss`}');
+            expect(source).toContain('onDismissRefreshError={() => data.setRefreshError(null)}');
         });
 
         it('supports R keyboard shortcut for refresh', () => {
@@ -221,37 +224,37 @@ describe('RepoGitTab', () => {
         });
 
         it('attaches keyDown handler to left panel', () => {
-            expect(source).toContain('onKeyDown={handlePanelKeyDown}');
+            expect(source).toContain('onKeyDown={onPanelKeyDown}');
         });
     });
 
     describe('git action handlers', () => {
         it('defines handleFetch callback', () => {
-            expect(source).toContain('const handleFetch = useCallback');
+            expect(source).toContain('const fetch = useCallback');
         });
 
         it('defines handlePull callback', () => {
-            expect(source).toContain('const handlePull = useCallback');
+            expect(source).toContain('const pull = useCallback');
         });
 
         it('defines handlePush callback', () => {
-            expect(source).toContain('const handlePush = useCallback');
+            expect(source).toContain('const push = useCallback');
         });
 
         it('handleFetch calls typed fetch operation', () => {
-            const fetchBlock = source.match(/handleFetch[\s\S]*?(?=const handlePull)/);
+            const fetchBlock = source.match(/const fetch = useCallback[\s\S]*?(?=const pull)/);
             expect(fetchBlock).toBeTruthy();
             expect(fetchBlock![0]).toContain('.git.fetch(workspaceId, { currentBranchOnly: true })');
         });
 
         it('handlePull calls typed pull operation', () => {
-            const pullBlock = source.match(/handlePull[\s\S]*?(?=const handlePush)/);
+            const pullBlock = source.match(/const pull = useCallback[\s\S]*?(?=const push)/);
             expect(pullBlock).toBeTruthy();
             expect(pullBlock![0]).toContain('.git.pull(workspaceId');
         });
 
         it('handlePush calls typed push operation', () => {
-            const pushBlock = source.match(/handlePush[\s\S]*?(?=const handleSelect)/);
+            const pushBlock = source.match(/const push = useCallback[\s\S]*?(?=const pushToCommit)/);
             expect(pushBlock).toBeTruthy();
             expect(pushBlock![0]).toContain('.git.push(workspaceId)');
         });
@@ -266,9 +269,9 @@ describe('RepoGitTab', () => {
         });
 
         it('all action handlers use typed git methods', () => {
-            const fetchBlock = source.match(/handleFetch[\s\S]*?(?=const handlePull)/);
-            const pullBlock = source.match(/handlePull[\s\S]*?(?=const handlePush)/);
-            const pushBlock = source.match(/handlePush[\s\S]*?(?=const handleSelect)/);
+            const fetchBlock = source.match(/const fetch = useCallback[\s\S]*?(?=const pull)/);
+            const pullBlock = source.match(/const pull = useCallback[\s\S]*?(?=const push)/);
+            const pushBlock = source.match(/const push = useCallback[\s\S]*?(?=const pushToCommit)/);
             expect(fetchBlock![0]).toContain('cloneClient.git.fetch');
             expect(pullBlock![0]).toContain('cloneClient.git.pull');
             expect(pushBlock![0]).toContain('cloneClient.git.push');
@@ -287,95 +290,95 @@ describe('RepoGitTab', () => {
         });
 
         it('handleFetch calls refreshAll on success', () => {
-            const fetchBlock = source.match(/handleFetch[\s\S]*?(?=const handlePull)/);
+            const fetchBlock = source.match(/const fetch = useCallback[\s\S]*?(?=const pull)/);
             expect(fetchBlock).toBeTruthy();
             expect(fetchBlock![0]).toContain('refreshAll()');
         });
 
         it('handlePull calls refreshAll on success', () => {
-            const pullBlock = source.match(/handlePull[\s\S]*?(?=const handlePush)/);
+            const pullBlock = source.match(/const pull = useCallback[\s\S]*?(?=const push)/);
             expect(pullBlock).toBeTruthy();
             expect(pullBlock![0]).toContain('refreshAll()');
         });
 
         it('handlePush calls refreshAll on success', () => {
-            const pushBlock = source.match(/handlePush[\s\S]*?(?=const handleSelect)/);
+            const pushBlock = source.match(/const push = useCallback[\s\S]*?(?=const pushToCommit)/);
             expect(pushBlock).toBeTruthy();
             expect(pushBlock![0]).toContain('refreshAll()');
         });
 
         it('handleFetch sets actionError on failure', () => {
-            const fetchBlock = source.match(/handleFetch[\s\S]*?(?=const handlePull)/);
+            const fetchBlock = source.match(/const fetch = useCallback[\s\S]*?(?=const pull)/);
             expect(fetchBlock).toBeTruthy();
             expect(fetchBlock![0]).toContain('setActionError');
             expect(fetchBlock![0]).toContain("'Fetch failed'");
         });
 
         it('handlePull sets actionError on failure', () => {
-            const pullBlock = source.match(/handlePull[\s\S]*?(?=const handlePush)/);
+            const pullBlock = source.match(/const pull = useCallback[\s\S]*?(?=const push)/);
             expect(pullBlock).toBeTruthy();
             expect(pullBlock![0]).toContain('setActionError');
             expect(pullBlock![0]).toContain("'Pull failed'");
         });
 
         it('handlePush sets actionError on failure', () => {
-            const pushBlock = source.match(/handlePush[\s\S]*?(?=const handleSelect)/);
+            const pushBlock = source.match(/const push = useCallback[\s\S]*?(?=const pushToCommit)/);
             expect(pushBlock).toBeTruthy();
             expect(pushBlock![0]).toContain('setActionError');
             expect(pushBlock![0]).toContain("'Push failed'");
         });
 
         it('handleFetch checks result.success and throws on false', () => {
-            const fetchBlock = source.match(/handleFetch[\s\S]*?(?=const handlePull)/);
+            const fetchBlock = source.match(/const fetch = useCallback[\s\S]*?(?=const pull)/);
             expect(fetchBlock).toBeTruthy();
             expect(fetchBlock![0]).toContain('result.success === false');
             expect(fetchBlock![0]).toContain('result.error');
         });
 
         it('handlePull checks result.success and throws on false', () => {
-            const pullBlock = source.match(/handlePull[\s\S]*?(?=const handlePush)/);
+            const pullBlock = source.match(/const pull = useCallback[\s\S]*?(?=const push)/);
             expect(pullBlock).toBeTruthy();
             expect(pullBlock![0]).toContain('result.success === false');
             expect(pullBlock![0]).toContain('result.error');
         });
 
         it('handlePush checks result.success and throws on false', () => {
-            const pushBlock = source.match(/handlePush[\s\S]*?(?=const handleSelect)/);
+            const pushBlock = source.match(/const push = useCallback[\s\S]*?(?=const pushToCommit)/);
             expect(pushBlock).toBeTruthy();
             expect(pushBlock![0]).toContain('result.success === false');
             expect(pushBlock![0]).toContain('result.error');
         });
 
-        it('defines handlePushToCommit callback', () => {
-            expect(source).toContain('const handlePushToCommit = useCallback');
+        it('defines pushToCommit callback', () => {
+            expect(source).toContain('const pushToCommit = useCallback');
         });
 
-        it('handlePushToCommit calls typed pushTo operation', () => {
-            const block = source.match(/handlePushToCommit[\s\S]*?(?=const handleRebaseAutosquash)/);
+        it('pushToCommit calls typed pushTo operation', () => {
+            const block = source.match(/const pushToCommit = useCallback[\s\S]*?(?=const rebaseAutosquash)/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('.git.pushTo(workspaceId, commit.hash)');
         });
 
-        it('handlePushToCommit sends commit hash through typed client', () => {
-            const block = source.match(/handlePushToCommit[\s\S]*?(?=const handleRebaseAutosquash)/);
+        it('pushToCommit sends commit hash through typed client', () => {
+            const block = source.match(/const pushToCommit = useCallback[\s\S]*?(?=const rebaseAutosquash)/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('commit.hash');
         });
 
-        it('handlePushToCommit calls closeContextMenu', () => {
-            const block = source.match(/handlePushToCommit[\s\S]*?(?=const handleRebaseAutosquash)/);
+        it('pushToCommit calls closeContextMenu', () => {
+            const block = source.match(/const handlePushToCommit = useCallback[\s\S]*?\}, \[/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('closeContextMenu()');
         });
 
-        it('handlePushToCommit calls refreshAll on success', () => {
-            const block = source.match(/handlePushToCommit[\s\S]*?(?=const handleRebaseAutosquash)/);
+        it('pushToCommit calls refreshAll on success', () => {
+            const block = source.match(/const pushToCommit = useCallback[\s\S]*?(?=const rebaseAutosquash)/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('refreshAll()');
         });
 
-        it('handlePushToCommit sets actionError on failure', () => {
-            const block = source.match(/handlePushToCommit[\s\S]*?(?=const handleRebaseAutosquash)/);
+        it('pushToCommit sets actionError on failure', () => {
+            const block = source.match(/const pushToCommit = useCallback[\s\S]*?(?=const rebaseAutosquash)/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('setActionError');
             expect(block![0]).toContain("'Push failed'");
@@ -386,15 +389,15 @@ describe('RepoGitTab', () => {
         });
 
         it('opens a local branch picker for cherry-picking instead of immediately cherry-picking onto HEAD', () => {
-            const block = source.match(/const handleCherryPick = useCallback[\s\S]*?(?=const handleOpenCrossCloneCherryPick)/);
+            const block = source.match(/const handleOpenCherryPickToBranch = useCallback[\s\S]*?(?=const handleCherryPickToBranch)/);
             expect(block).toBeTruthy();
-            expect(block![0]).toContain('handleOpenCherryPickToBranch([commit])');
+            expect(block![0]).toContain('setCherryPickTarget({ commits: orderedCommits })');
             expect(block![0]).not.toContain('.git.cherryPick(workspaceId, commit.hash)');
         });
 
         it('cherry-picks selected commits oldest-first onto the picked branch', () => {
-            const orderBlock = source.match(/const orderOldestFirst = useCallback[\s\S]*?(?=const handleOpenCherryPickToBranch)/);
-            const applyBlock = source.match(/const handleCherryPickToBranch = useCallback[\s\S]*?(?=const handleCherryPick = useCallback)/);
+            const orderBlock = source.match(/const orderOldestFirst = useCallback[\s\S]*?(?=const applyReorder)/);
+            const applyBlock = source.match(/const cherryPickToBranch = useCallback[\s\S]*?(?=\/\/ .. Reorder)/);
             expect(orderBlock).toBeTruthy();
             expect(applyBlock).toBeTruthy();
             expect(orderBlock![0]).toContain('return rightIndex - leftIndex');
@@ -404,23 +407,23 @@ describe('RepoGitTab', () => {
         });
 
         it('surfaces dirty/conflict cherry-pick errors without continue instructions', () => {
-            const applyBlock = source.match(/const handleCherryPickToBranch = useCallback[\s\S]*?(?=const handleCherryPick = useCallback)/);
+            const applyBlock = source.match(/const cherryPickToBranch = useCallback[\s\S]*?(?=\/\/ .. Reorder)/);
             expect(applyBlock).toBeTruthy();
             expect(applyBlock![0]).toContain('getSpaCocClientErrorMessage');
             expect(applyBlock![0]).not.toContain('cherry-pick --continue');
         });
 
         it('shows action error toast', () => {
-            expect(source).toContain('data-testid="git-action-error"');
+            expect(source).toContain('testId="git-action-error"');
         });
 
         it('action error banner has a dismiss button that clears the error', () => {
-            expect(source).toContain('data-testid="git-action-error-dismiss"');
-            expect(source).toContain('onClick={() => setActionError(null)}');
+            expect(source).toContain('data-testid={`${testId}-dismiss`}');
+            expect(source).toContain('onDismissActionError={() => actions.setActionError(null)}');
         });
 
         it('handleDropCommit polls async jobs via the shared poller before refreshing', () => {
-            const block = source.match(/const handleDropCommit = useCallback[\s\S]*?(?=const handleCommitContextMenu)/);
+            const block = source.match(/const dropCommit = useCallback[\s\S]*?(?=const cherryPickToBranch)/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('.git.dropCommit(workspaceId, commit.hash)');
             expect(block![0]).toContain('if (result.jobId)');
@@ -429,76 +432,76 @@ describe('RepoGitTab', () => {
         });
 
         it('handleDropCommit shows action-error banner state when the async job fails', () => {
-            const block = source.match(/const handleDropCommit = useCallback[\s\S]*?(?=const handleCommitContextMenu)/);
+            const block = source.match(/const dropCommit = useCallback[\s\S]*?(?=const cherryPickToBranch)/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('onFailure:');
             expect(block![0]).toContain("setActionError(error || 'Drop commit failed')");
-            expect(source).toContain('data-testid="git-action-error"');
+            expect(source).toContain('testId="git-action-error"');
         });
 
         it('passes onFetch to GitPanelHeader', () => {
-            expect(source).toContain('onFetch={handleFetch}');
+            expect(source).toContain('onFetch={actions.fetch}');
         });
 
         it('passes onPull to GitPanelHeader', () => {
-            expect(source).toContain('onPull={handlePull}');
+            expect(source).toContain('onPull={actions.pull}');
         });
 
         it('passes onPush to GitPanelHeader', () => {
-            expect(source).toContain('onPush={handlePush}');
+            expect(source).toContain('onPush={actions.push}');
         });
 
         it('passes fetching state to GitPanelHeader', () => {
-            expect(source).toContain('fetching={fetching}');
+            expect(source).toContain('fetching={actions.fetching}');
         });
 
         it('passes pulling state to GitPanelHeader', () => {
-            expect(source).toContain('pulling={pulling}');
+            expect(source).toContain('pulling={actions.pulling}');
         });
 
         it('passes pushing state to GitPanelHeader', () => {
-            expect(source).toContain('pushing={pushing}');
+            expect(source).toContain('pushing={actions.pushing}');
         });
 
         it('passes lastRefreshedAt to GitPanelHeader', () => {
-            expect(source).toContain('lastRefreshedAt={lastRefreshedAt}');
+            expect(source).toContain('lastRefreshedAt={data.lastRefreshedAt}');
         });
 
         it('passes autoPull + onAutoPullChange to GitPanelHeader', () => {
-            expect(source).toContain('autoPull={autoPull}');
-            expect(source).toContain('onAutoPullChange={handleAutoPullChange}');
+            expect(source).toContain('autoPull={autoPull.autoPull}');
+            expect(source).toContain('onAutoPullChange={autoPull.setAutoPull}');
         });
     });
 
     describe('auto-pull preference (AC-2)', () => {
         it('declares autoPull state typed as AutoPullSetting | undefined', () => {
-            expect(source).toContain('const [autoPull, setAutoPull] = useState<AutoPullSetting | undefined>(undefined)');
+            expect(source).toContain('const [autoPull, setAutoPullState] = useState<AutoPullSetting | undefined>(undefined)');
         });
 
         it('reads the persisted autoPull setting from repo preferences', () => {
             expect(source).toContain('if (prefs?.autoPull)');
-            expect(source).toContain('setAutoPull(prefs.autoPull)');
+            expect(source).toContain('setAutoPullState(prefs.autoPull)');
         });
 
         it('resets autoPull on workspace change before re-reading prefs', () => {
-            expect(source).toContain('setAutoPull(undefined)');
+            expect(source).toContain('setAutoPullState(undefined)');
         });
 
         it('persists interval changes via patchRepo with the full autoPull object', () => {
-            expect(source).toContain('const handleAutoPullChange = useCallback((next: AutoPullSetting)');
+            expect(source).toContain('const setAutoPull = useCallback((next: AutoPullSetting)');
             expect(source).toContain('cloneClient.preferences.patchRepo(workspaceId, { autoPull: next })');
         });
     });
 
     describe('auto-pull timer (AC-3 / AC-4)', () => {
         it('imports the timer hook and the pure tick logic', () => {
-            expect(source).toContain("import { useAutoPullTimer } from './hooks/useAutoPullTimer'");
-            expect(source).toContain("import { runAutoPullTick, buildAutoPullPollerCallbacks } from './autoPullTick'");
+            expect(source).toContain("import { useAutoPullTimer } from '../hooks/useAutoPullTimer'");
+            expect(source).toContain("import { runAutoPullTick, buildAutoPullPollerCallbacks } from '../autoPullTick'");
         });
 
         it('tracks a reset signal to restart the countdown', () => {
-            expect(source).toContain('const [autoPullResetSignal, setAutoPullResetSignal] = useState(0)');
-            expect(source).toContain('const bumpAutoPullReset = useCallback(() => setAutoPullResetSignal(n => n + 1)');
+            expect(source).toContain('const [resetSignal, setResetSignal] = useState(0)');
+            expect(source).toContain('const resetCountdown = useCallback(() => setResetSignal(n => n + 1)');
         });
 
         it('defines a non-blocking auto-pull toast helper', () => {
@@ -526,13 +529,13 @@ describe('RepoGitTab', () => {
             expect(source).toContain('enabled: !!autoPull?.enabled');
             expect(source).toContain('intervalMinutes: autoPull?.intervalMinutes');
             expect(source).toContain('onTick: handleAutoPull');
-            expect(source).toContain('resetSignal: autoPullResetSignal');
+            expect(source).toContain('resetSignal,');
         });
 
         it('resets the countdown on a manual pull', () => {
-            const pullBlock = source.match(/handlePull[\s\S]*?(?=const handlePush)/);
+            const pullBlock = source.match(/const pull = useCallback[\s\S]*?(?=const push)/);
             expect(pullBlock).toBeTruthy();
-            expect(pullBlock![0]).toContain('bumpAutoPullReset()');
+            expect(pullBlock![0]).toContain('onManualPull()');
         });
     });
 
@@ -543,12 +546,12 @@ describe('RepoGitTab', () => {
 
         it('updates lastRefreshedAt after initial load', () => {
             // The initial Promise.all .then should call setLastRefreshedAt(Date.now())
-            expect(source).toMatch(/Promise\.all\(\[fetchCommits\(\), fetchBranchRange\(\)\]\)\s*\.then\(\(\[loaded, rangeInfo\]\) => \{[\s\S]*?setLastRefreshedAt\(Date\.now\(\)\)/);
+            expect(source).toMatch(/Promise\.all\(\[fetchCommits\(\), fetchBranchRange\(\)\]\)[\s\S]*?markRefreshed\(\)/);
         });
 
         it('updates lastRefreshedAt after refreshAll', () => {
             // refreshAll's Promise.all .then should call setLastRefreshedAt(Date.now())
-            expect(source).toMatch(/fetchCommits\(true, 0, searchQuery\), fetchBranchRange\(true\)[\s\S]*?setLastRefreshedAt\(Date\.now\(\)\)/);
+            expect(source).toMatch(/fetchCommits\(true, 0, searchQueryRef\.current\), fetchBranchRange\(true\)[\s\S]*?markRefreshed\(\)/);
         });
 
         it('updates lastRefreshedAt after WebSocket git-changed refresh', () => {
@@ -581,7 +584,7 @@ describe('RepoGitTab', () => {
         });
 
         it('renders no banner when only ahead (ahead is shown by the header badge)', () => {
-            expect(bannerSrc()).toContain('if (behind <= 0) return null');
+            expect(bannerSrc()).toContain('behind > 0');
         });
 
         it('shows behind count in banner', () => {
@@ -593,7 +596,7 @@ describe('RepoGitTab', () => {
         });
 
         it('returns null for banner on default branch', () => {
-            expect(source).toContain('if (onDefaultBranch) return null');
+            expect(source).toContain('!onDefaultBranch && behind > 0');
         });
 
         it('has scenario banner data-testid', () => {
@@ -697,7 +700,7 @@ describe('RepoGitTab', () => {
             // Portal is built once, gated on the hoist condition.
             expect(source).toContain('const hoistedHeaderPortal = headerHoisted && headerToolbarContainer');
             // The list pane only renders the toolbar inline when NOT hoisted.
-            expect(source).toContain('{!headerHoisted && panelHeader}');
+            expect(source).toContain('{!headerHoisted && header}');
             // The capture wrapper (git-split-workspace-list) must not contain the
             // portal; it renders as a sibling after the wrapper closes.
             const captureWrapper = source.match(/data-testid="git-split-workspace-list"[\s\S]*?\{listPane\}\s*<\/div>/);
@@ -753,7 +756,7 @@ describe('RepoGitTab', () => {
 
         it('default layout still renders GitPanelHeader actions + resize handle (off-path unchanged)', () => {
             expect(source).toContain('<GitPanelHeader');
-            expect(source).toContain('onPush={handlePush}');
+            expect(source).toContain('onPush={actions.push}');
             expect(source).toContain('data-testid="git-resize-handle"');
             expect(source).toContain('{detailMain}');
         });
@@ -778,7 +781,7 @@ describe('RepoGitTab', () => {
         });
 
         it('imports CommitList', () => {
-            expect(source).toContain("import { CommitList, isTouchOnly }");
+            expect(source).toContain("import { isTouchOnly }");
         });
 
         it('imports CommitDetail', () => {
@@ -790,8 +793,8 @@ describe('RepoGitTab', () => {
         });
 
         it('imports FileDiffPanel and DiffSource factories', () => {
-            expect(source).toContain("import { FileDiffPanel } from './diff/FileDiffPanel'");
-            expect(source).toContain("import { createCommitDiffSource, createBranchRangeDiffSource } from './diff/diffSource'");
+            expect(source).toContain("import { FileDiffPanel } from '../diff/FileDiffPanel'");
+            expect(source).toContain("import { createCommitDiffSource, createBranchRangeDiffSource } from '../diff/diffSource'");
         });
 
         it('imports GitPanelHeader', () => {
@@ -799,17 +802,17 @@ describe('RepoGitTab', () => {
         });
 
         it('imports BranchPickerModal', () => {
-            expect(source).toContain("import { BranchPickerModal } from './branches/BranchPickerModal'");
+            expect(source).toContain("import { BranchPickerModal } from '../branches/BranchPickerModal'");
         });
 
         it('renders a second BranchPickerModal for cherry-pick target selection', () => {
             expect(source).toContain('title="Cherry-pick to branch"');
-            expect(source).toContain('onSelected={handleCherryPickToBranch}');
-            expect(source).toContain('isOpen={cherryPickTarget !== null}');
+            expect(source).toContain('onSelected={props.onCherryPickToBranch}');
+            expect(source).toContain('isOpen={props.cherryPickOpen}');
         });
 
         it('imports CrossCloneCherryPickModal', () => {
-            expect(source).toContain("import { CrossCloneCherryPickModal } from './CrossCloneCherryPickModal'");
+            expect(source).toContain("import { CrossCloneCherryPickModal } from '../CrossCloneCherryPickModal'");
         });
 
         it('imports the cross-clone cherry-pick runtime flag helper', () => {
@@ -865,11 +868,11 @@ describe('RepoGitTab', () => {
         });
 
         it('passes selectedFile to CommitList for active file highlighting', () => {
-            expect(source).toContain('selectedFile={selectedCommitFile}');
+            expect(source).toContain('selectedFile={props.selectedCommitFile}');
         });
 
         it('passes onFileSelect to CommitList', () => {
-            expect(source).toContain('onFileSelect={handleCommitFileSelect}');
+            expect(source).toContain('onFileSelect={props.onCommitFileSelect}');
         });
 
         it('passes workspaceId to CommitList', () => {
@@ -877,27 +880,27 @@ describe('RepoGitTab', () => {
         });
 
         it('does NOT pass metadata props to CommitDetail for full commit view', () => {
-            expect(source).not.toContain('subject={rightPanelView.commit.subject}');
-            expect(source).not.toContain('author={rightPanelView.commit.author}');
-            expect(source).not.toContain('date={rightPanelView.commit.date}');
-            expect(source).not.toContain('parentHashes={rightPanelView.commit.parentHashes}');
-            expect(source).not.toContain('body={rightPanelView.commit.body}');
+            expect(source).not.toContain('subject={view.commit.subject}');
+            expect(source).not.toContain('author={view.commit.author}');
+            expect(source).not.toContain('date={view.commit.date}');
+            expect(source).not.toContain('parentHashes={view.commit.parentHashes}');
+            expect(source).not.toContain('body={view.commit.body}');
         });
 
         it('passes filePath to FileDiffPanel for per-file diff', () => {
-            expect(source).toContain('filePath={rightPanelView.filePath}');
+            expect(source).toContain('filePath={view.filePath}');
         });
 
         it('uses compound key for commit-file FileDiffPanel', () => {
-            expect(source).toContain('key={`${rightPanelView.hash}-${rightPanelView.filePath}`}');
+            expect(source).toContain('key={`${view.hash}-${view.filePath}`}');
         });
 
         it('uses key prop on CommitDetail to force remount on hash change', () => {
-            expect(source).toContain('key={rightPanelView.commit.hash}');
+            expect(source).toContain('key={view.commit.hash}');
         });
 
         it('passes branchRangeData to BranchChanges', () => {
-            expect(source).toContain('branchRangeData={branchRangeData}');
+            expect(source).toContain('branchRangeData={props.branchRangeData}');
         });
 
         it('passes onDefaultBranch to BranchChanges', () => {
@@ -905,45 +908,45 @@ describe('RepoGitTab', () => {
         });
 
         it('passes onFileSelect to BranchChanges', () => {
-            expect(source).toContain('onFileSelect={handleFileSelect}');
+            expect(source).toContain('onFileSelect={props.onBranchFileSelect}');
         });
 
         it('passes selectedFile to BranchChanges', () => {
-            expect(source).toContain('selectedFile={selectedBranchFile}');
+            expect(source).toContain('selectedFile={props.selectedBranchFile}');
         });
 
-        it('derives selectedCommit from rightPanelView (commit or commit-file)', () => {
-            expect(source).toContain("rightPanelView?.type === 'commit'");
-            expect(source).toContain("rightPanelView?.type === 'commit-file'");
+        it('derives selectedCommit from view (commit or commit-file)', () => {
+            expect(source).toContain("view?.type === 'commit'");
+            expect(source).toContain("view?.type === 'commit-file'");
         });
 
-        it('derives selectedBranchFile from rightPanelView', () => {
-            expect(source).toContain("rightPanelView?.type === 'branch-file' ? rightPanelView.filePath : null");
+        it('derives selectedBranchFile from view', () => {
+            expect(source).toContain("view?.type === 'branch-file' ? view.filePath : null");
         });
 
         it('defines handleFileSelect callback for branch files', () => {
-            expect(source).toContain('const handleFileSelect = useCallback');
+            expect(source).toContain('const selectBranchFile = useCallback');
         });
 
         it('defines handleCommitFileSelect callback for commit files', () => {
-            expect(source).toContain('const handleCommitFileSelect = useCallback');
+            expect(source).toContain('const selectCommitFile = useCallback');
         });
 
         it('handleCommitFileSelect sets right panel to commit-file view', () => {
-            expect(source).toContain("setRightPanelView({ type: 'commit-file', hash, filePath })");
+            expect(source).toContain("setView({ type: 'commit-file', hash, filePath })");
         });
 
         it('handleFileSelect sets right panel to branch-file view', () => {
-            expect(source).toContain("setRightPanelView({ type: 'branch-file', filePath })");
+            expect(source).toContain("setView({ type: 'branch-file', filePath })");
         });
 
         it('handleSelect sets right panel to commit view', () => {
-            expect(source).toContain("setRightPanelView({ type: 'commit', commit })");
+            expect(source).toContain("setView({ type: 'commit', commit })");
         });
 
         it('renders the cross-clone cherry-pick modal with source commit context', () => {
             expect(source).toContain('<CrossCloneCherryPickModal');
-            expect(source).toContain('commits={crossCloneCherryPickCommits}');
+            expect(source).toContain('commits={props.crossCloneCommits}');
             expect(source).toContain('sourceWorkspaceId={workspaceId}');
             expect(source).toContain('sourceWorkspace={sourceWorkspace}');
         });
@@ -956,24 +959,24 @@ describe('RepoGitTab', () => {
         });
 
         it('gates the context menu entry behind the runtime feature flag', () => {
-            const menuBlock = source.match(/if \(isGitCrossCloneCherryPickEnabled\(\)\)[\s\S]*?Cherry-pick to another clone\.\.\./);
+            const menuBlock = source.match(/if \(crossCloneCherryPickEnabled\)[\s\S]*?Cherry-pick to another clone\.\.\./);
             expect(menuBlock).toBeTruthy();
         });
 
         it('opens the modal from the single-commit context menu', () => {
             expect(source).toContain('const handleOpenCrossCloneCherryPick = useCallback');
-            expect(source).toContain('setCrossCloneCherryPickCommits([commit])');
-            expect(source).toContain('onClick: () => handleOpenCrossCloneCherryPick(commit)');
+            expect(source).toContain('setCrossCloneCherryPickCommits(orderedCommits)');
+            expect(source).toContain('onClick: () => h.crossCloneCherryPick([commit])');
         });
 
         it('opens the modal for a multi-commit selection ordered oldest-first', () => {
-            expect(source).toContain('const handleOpenCrossCloneCherryPickMulti = useCallback');
+            expect(source).toContain('const handleOpenCrossCloneCherryPick = useCallback');
             expect(source).toContain('orderOldestFirst(selectedCommits)');
-            expect(source).toContain('onClick: () => handleOpenCrossCloneCherryPickMulti(selectedCommits)');
+            expect(source).toContain('onClick: () => h.crossCloneCherryPick(selectedCommits)');
         });
 
         it('refreshes after a successful patch-transfer apply', () => {
-            const block = source.match(/handleCrossCloneCherryPickApplied[\s\S]*?\}, \[refreshAll\]\)/);
+            const block = source.match(/handleCrossCloneCherryPickApplied[\s\S]*?\}, \[data\.refreshAll, showToast\]\)/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('refreshAll()');
             expect(block![0]).toContain('Cherry-picked to');
@@ -989,7 +992,7 @@ describe('RepoGitTab', () => {
         it('shows Drop Commit only inside the unpushed context-menu gate', () => {
             const matches = source.match(/label: 'Drop Commit'/g) ?? [];
             expect(matches).toHaveLength(1);
-            expect(source).toMatch(/if \(isUnpushed\) \{\s*items\.push\(\{\s*label: 'Drop Commit'[\s\S]*?handleDropCommit\(commit\)/);
+            expect(source).toMatch(/if \(isUnpushed\) \{\s*items\.push\(\{ label: 'Drop Commit'[\s\S]*?h\.dropCommit\(commit\)/);
         });
     });
 
@@ -1008,14 +1011,15 @@ describe('RepoGitTab', () => {
 
         it('shows empty right panel when deep-link hash not found (user must click to select)', () => {
             // No auto-selection on initial load — right panel starts empty
-            expect(source).toContain('setRightPanelView(null)');
+            expect(source).toContain('setView(null)');
             // isDesktop / matchMedia auto-selection intentionally removed from initial load
             expect(source).not.toContain("const isDesktop = window.matchMedia('(min-width: 1024px)').matches");
             expect(source).not.toContain('const first = loaded.length > 0 ? loaded[0] : null');
         });
 
         it('handleSelect updates location.hash with commit URL', () => {
-            expect(source).toContain("location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/' + commit.hash");
+            expect(source).toContain("location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/' + suffix");
+            expect(source).toContain('setHash(commit.hash)');
         });
 
         it('handleSelect dispatches SET_GIT_COMMIT_HASH action', () => {
@@ -1027,7 +1031,7 @@ describe('RepoGitTab', () => {
         });
 
         it('handleSelect includes workspaceId and dispatch as dependencies', () => {
-            expect(source).toContain('[workspaceId, dispatch]');
+            expect(source).toContain('[setHash, dispatch]');
         });
 
         it('reads selectedGitFilePath from context state', () => {
@@ -1036,11 +1040,11 @@ describe('RepoGitTab', () => {
 
         it('restores commit-file view when both initialCommitHash and initialFilePath are set', () => {
             expect(source).toContain('target && initialFilePath');
-            expect(source).toContain("setRightPanelView({ type: 'commit-file', hash: target.hash, filePath: initialFilePath })");
+            expect(source).toContain("setView({ type: 'commit-file', hash: target.hash, filePath: initialFilePath })");
         });
 
         it('handleCommitFileSelect updates location.hash with file path URL', () => {
-            expect(source).toContain("location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/' + hash + '/' + encodeURIComponent(filePath)");
+            expect(source).toContain("setHash(hash + '/' + encodeURIComponent(filePath))");
         });
 
         it('handleCommitFileSelect dispatches SET_GIT_FILE_PATH', () => {
@@ -1048,18 +1052,18 @@ describe('RepoGitTab', () => {
         });
 
         it('handleCommitFileSelect includes workspaceId and dispatch as dependencies', () => {
-            const handleBlock = source.match(/const handleCommitFileSelect = useCallback[\s\S]*?\}, \[([^\]]+)\]\)/);
+            const handleBlock = source.match(/const selectCommit = useCallback[\s\S]*?\}, \[([^\]]+)\]\)/);
             expect(handleBlock).toBeTruthy();
-            expect(handleBlock![0]).toContain('workspaceId');
+            expect(handleBlock![0]).toContain('setHash');
             expect(handleBlock![0]).toContain('dispatch');
         });
 
         it('defines handleBranchRangeSelect callback', () => {
-            expect(source).toContain('const handleBranchRangeSelect = useCallback');
+            expect(source).toContain('const selectBranchRange = useCallback');
         });
 
         it('handleBranchRangeSelect updates location.hash with branch-range URL', () => {
-            expect(source).toContain("location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/branch-range'");
+            expect(source).toContain("setHash('branch-range')");
         });
 
         it('handleBranchRangeSelect dispatches SET_GIT_COMMIT_HASH with branch-range', () => {
@@ -1068,38 +1072,38 @@ describe('RepoGitTab', () => {
 
         it('handleBranchRangeSelect dispatches CLEAR_GIT_FILE_PATH', () => {
             // handleBranchRangeSelect should clear file path when selecting the branch overview
-            const block = source.match(/const handleBranchRangeSelect = useCallback[\s\S]*?\}, \[([^\]]+)\]\)/);
+            const block = source.match(/const selectBranchRange = useCallback[\s\S]*?\}, \[([^\]]+)\]\)/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain("dispatch({ type: 'CLEAR_GIT_FILE_PATH' })");
         });
 
         it('handleFileSelect updates location.hash with branch-range file URL', () => {
-            expect(source).toContain("location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/branch-range/' + encodeURIComponent(filePath)");
+            expect(source).toContain("setHash('branch-range/' + encodeURIComponent(filePath))");
         });
 
         it('handleFileSelect dispatches SET_GIT_COMMIT_HASH with branch-range', () => {
-            const block = source.match(/const handleFileSelect = useCallback[\s\S]*?\}, \[([^\]]+)\]\)/);
+            const block = source.match(/const selectBranchFile = useCallback[\s\S]*?\}, \[([^\]]+)\]\)/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain("dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: 'branch-range' })");
         });
 
         it('handleFileSelect dispatches SET_GIT_FILE_PATH', () => {
-            const block = source.match(/const handleFileSelect = useCallback[\s\S]*?\}, \[([^\]]+)\]\)/);
+            const block = source.match(/const selectBranchFile = useCallback[\s\S]*?\}, \[([^\]]+)\]\)/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain("dispatch({ type: 'SET_GIT_FILE_PATH', filePath })");
         });
 
         it('restores branch-range view when initialCommitHash is branch-range', () => {
-            expect(source).toContain("initialCommitHash === 'branch-range'");
-            expect(source).toContain("setRightPanelView({ type: 'branch-range' })");
+            expect(source).toContain('initialCommitHash === BRANCH_RANGE_DEEP_LINK');
+            expect(source).toContain("setView({ type: 'branch-range' })");
         });
 
         it('restores branch-file view when initialCommitHash is branch-range with file path', () => {
-            expect(source).toContain("setRightPanelView({ type: 'branch-file', filePath: initialFilePath })");
+            expect(source).toContain("{ type: 'branch-file', filePath: initialFilePath }");
         });
 
         it('uses handleBranchRangeSelect for onBranchRangeSelect prop', () => {
-            expect(source).toContain('onBranchRangeSelect={handleBranchRangeSelect}');
+            expect(source).toContain('onBranchRangeSelect={props.onBranchRangeSelect}');
         });
 
         describe('post-mount deep-link navigation', () => {
@@ -1115,16 +1119,16 @@ describe('RepoGitTab', () => {
 
             it('skips navigation when hash is null', () => {
                 // The effect checks for falsy hash
-                expect(source).toContain('if (!hash || hash === \'branch-range\' || loading) return');
+                expect(source).toContain('if (!hash || hash === BRANCH_RANGE_DEEP_LINK || loading) return');
             });
 
             it('skips navigation when hash equals branch-range', () => {
-                expect(source).toContain("hash === 'branch-range'");
+                expect(source).toContain('hash === BRANCH_RANGE_DEEP_LINK');
             });
 
             it('skips navigation while loading', () => {
                 // loading is checked in the guard
-                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[^\]]*\]/);
+                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[\s\S]*?\]\)/);
                 expect(effectBlock).toBeTruthy();
                 expect(effectBlock![0]).toContain('loading');
             });
@@ -1138,21 +1142,21 @@ describe('RepoGitTab', () => {
             });
 
             it('finds target commit using startsWith matching', () => {
-                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[^\]]*\]/);
+                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[\s\S]*?\]\)/);
                 expect(effectBlock).toBeTruthy();
                 expect(effectBlock![0]).toContain('commits.find(c => c.hash.startsWith(hash))');
             });
 
             it('sets commit-file right panel view when filePath is present', () => {
-                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[^\]]*\]/);
+                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[\s\S]*?\]\)/);
                 expect(effectBlock).toBeTruthy();
-                expect(effectBlock![0]).toContain("setRightPanelView({ type: 'commit-file', hash: target.hash, filePath })");
+                expect(effectBlock![0]).toContain("{ type: 'commit-file', hash: target.hash, filePath }");
             });
 
             it('sets commit right panel view when no filePath', () => {
-                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[^\]]*\]/);
+                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[\s\S]*?\]\)/);
                 expect(effectBlock).toBeTruthy();
-                expect(effectBlock![0]).toContain("setRightPanelView({ type: 'commit', commit: target })");
+                expect(effectBlock![0]).toContain("{ type: 'commit', commit: target }");
             });
 
             it('includes loading and commits in the dependency array', () => {
@@ -1170,14 +1174,14 @@ describe('RepoGitTab', () => {
             });
 
             it('does not dispatch SET_GIT_COMMIT_HASH (avoids desync with URL state)', () => {
-                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[^\]]*\]/);
+                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[\s\S]*?\]\)/);
                 expect(effectBlock).toBeTruthy();
                 // The effect should NOT dispatch — it only updates the right panel view
                 expect(effectBlock![0]).not.toContain("dispatch({ type: 'SET_GIT_COMMIT_HASH'");
             });
 
             it('does not clear the hash from state after consuming', () => {
-                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[^\]]*\]/);
+                const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[\s\S]*?\]\)/);
                 expect(effectBlock).toBeTruthy();
                 expect(effectBlock![0]).not.toContain('dispatch({ type: \'SET_GIT_COMMIT_HASH\', hash: null');
             });
@@ -1186,12 +1190,12 @@ describe('RepoGitTab', () => {
 
     describe('skill review context menu', () => {
         it('imports ContextMenu component', () => {
-            expect(source).toContain("import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu'");
+            expect(source).toContain("import { ContextMenu, type ContextMenuItem } from '../../../tasks/comments/ContextMenu'");
         });
 
         it('imports typed CoC client utility', () => {
             // AC-07: routes Git tab data through the clone-aware client (useCocClient).
-            expect(source).toContain("import { getSpaCocClientErrorMessage } from '../../api/cocClient'");
+            expect(source).toContain("import { getSpaCocClientErrorMessage } from '../../../api/cocClient'");
             expect(source).toContain("import { useCocClient } from '../../repos/cloneRouting'");
         });
 
@@ -1212,9 +1216,9 @@ describe('RepoGitTab', () => {
             expect(source).toContain("type: 'commit' | 'branch-range' | 'multi-commit'");
         });
 
-        it('tracks enqueueToast state', () => {
-            expect(source).toContain('enqueueToast');
-            expect(source).toContain('setEnqueueToast');
+        it('tracks toast state', () => {
+            expect(source).toContain('toast');
+            expect(source).toContain('showToast');
         });
 
         it('defines handleCommitContextMenu callback', () => {
@@ -1229,9 +1233,9 @@ describe('RepoGitTab', () => {
             expect(source).toContain('const closeContextMenu = useCallback(() => setContextMenu(null)');
         });
 
-        it('closeContextMenu is defined before handlePushToCommit to avoid temporal dead zone', () => {
+        it('closeContextMenu is defined before pushToCommit to avoid temporal dead zone', () => {
             const closeIdx = source.indexOf('const closeContextMenu = useCallback');
-            const pushToIdx = source.indexOf('const handlePushToCommit = useCallback');
+            const pushToIdx = source.indexOf('const pushToCommit = useCallback');
             expect(closeIdx).toBeGreaterThan(-1);
             expect(pushToIdx).toBeGreaterThan(-1);
             expect(closeIdx).toBeLessThan(pushToIdx);
@@ -1239,7 +1243,7 @@ describe('RepoGitTab', () => {
 
         it('closeContextMenu is defined before handleHardReset to avoid temporal dead zone', () => {
             const closeIdx = source.indexOf('const closeContextMenu = useCallback');
-            const resetIdx = source.indexOf('const handleHardReset = useCallback');
+            const resetIdx = source.indexOf('const hardReset = useCallback');
             expect(closeIdx).toBeGreaterThan(-1);
             expect(resetIdx).toBeGreaterThan(-1);
             expect(closeIdx).toBeLessThan(resetIdx);
@@ -1247,7 +1251,7 @@ describe('RepoGitTab', () => {
 
         it('closeContextMenu is defined before handleCherryPick to avoid temporal dead zone', () => {
             const closeIdx = source.indexOf('const closeContextMenu = useCallback');
-            const cherryIdx = source.indexOf('const handleCherryPick = useCallback');
+            const cherryIdx = source.indexOf('const handleOpenCherryPickToBranch = useCallback');
             expect(closeIdx).toBeGreaterThan(-1);
             expect(cherryIdx).toBeGreaterThan(-1);
             expect(closeIdx).toBeLessThan(cherryIdx);
@@ -1255,7 +1259,7 @@ describe('RepoGitTab', () => {
 
         it('closeContextMenu is defined before handleEnqueueSkill to avoid temporal dead zone', () => {
             const closeIdx = source.indexOf('const closeContextMenu = useCallback');
-            const enqueueIdx = source.indexOf('const handleEnqueueSkill = useCallback');
+            const enqueueIdx = source.indexOf('const startSkillRun = useCallback');
             expect(closeIdx).toBeGreaterThan(-1);
             expect(enqueueIdx).toBeGreaterThan(-1);
             expect(closeIdx).toBeLessThan(enqueueIdx);
@@ -1263,32 +1267,32 @@ describe('RepoGitTab', () => {
 
         it('closeContextMenu is defined before handleSquashCommits to avoid temporal dead zone', () => {
             const closeIdx = source.indexOf('const closeContextMenu = useCallback');
-            const squashIdx = source.indexOf('const handleSquashCommits = useCallback');
+            const squashIdx = source.indexOf('const squashCommits = useCallback');
             expect(closeIdx).toBeGreaterThan(-1);
             expect(squashIdx).toBeGreaterThan(-1);
             expect(closeIdx).toBeLessThan(squashIdx);
         });
 
         it('handleSquashCommits does not enforce a contiguity check', () => {
-            const block = source.match(/const handleSquashCommits = useCallback[\s\S]*?\}, \[/);
+            const block = source.match(/export function buildSquashPrompt[\s\S]*?\n\}/);
             expect(block).toBeTruthy();
             expect(block![0]).not.toContain('selected commits must be contiguous');
         });
 
         it('handleSquashCommits still guards against pushed commits', () => {
-            const block = source.match(/const handleSquashCommits = useCallback[\s\S]*?\}, \[/);
+            const block = source.match(/const squashCommits = useCallback[\s\S]*?\}, \[/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('all selected commits must be unpushed');
         });
 
         it('handleSquashCommits detects contiguity to build an appropriate prompt', () => {
-            const block = source.match(/const handleSquashCommits = useCallback[\s\S]*?\}, \[/);
+            const block = source.match(/export function buildSquashPrompt[\s\S]*?\n\}/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('isContiguous');
         });
 
         it('handleSquashCommits includes interleaved commit context for non-contiguous squash', () => {
-            const block = source.match(/const handleSquashCommits = useCallback[\s\S]*?\}, \[/);
+            const block = source.match(/export function buildSquashPrompt[\s\S]*?\n\}/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('[SQUASH]');
             expect(block![0]).toContain('[KEEP]');
@@ -1296,17 +1300,17 @@ describe('RepoGitTab', () => {
         });
 
         it('handleSquashCommits includes workspaceId in payload so extra skill folders are resolved', () => {
-            const block = source.match(/const handleSquashCommits = useCallback[\s\S]*?\}, \[/);
+            const block = source.match(/const enqueueChat = useCallback[\s\S]*?\}, \[/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('workspaceId');
         });
 
         it('defines handleEnqueueSkill callback that opens dialog', () => {
-            expect(source).toContain('const handleEnqueueSkill = useCallback(');
+            expect(source).toContain('const startSkillRun = useCallback(');
         });
 
         it('handleEnqueueSkill sets pendingSkillRun state instead of directly enqueuing', () => {
-            const block = source.match(/const handleEnqueueSkill = useCallback[\s\S]*?\}, \[/);
+            const block = source.match(/const startSkillRun = useCallback[\s\S]*?\}, \[/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('setPendingSkillRun');
             expect(block![0]).not.toContain('/queue');
@@ -1318,7 +1322,7 @@ describe('RepoGitTab', () => {
 
         it('pendingSkillRun state includes skillName and type fields', () => {
             expect(source).toContain('skillName: string;');
-            expect(source).toContain("type: 'commit' | 'multi-commit' | 'branch-range'");
+            expect(source).toContain("type: 'commit' | 'branch-range' | 'multi-commit'");
         });
 
         it('defines pendingSkillTargetSummary via useMemo', () => {
@@ -1326,7 +1330,7 @@ describe('RepoGitTab', () => {
         });
 
         it('defines handleConfirmSkillRun async callback', () => {
-            expect(source).toContain('const handleConfirmSkillRun = useCallback(async');
+            expect(source).toContain('const confirmSkillRun = useCallback(async');
         });
 
         it('handleConfirmSkillRun accepts resolved AI selection from SkillContextDialog', () => {
@@ -1334,13 +1338,13 @@ describe('RepoGitTab', () => {
         });
 
         it('handleConfirmSkillRun uses commit hash tag for single commit', () => {
-            expect(source).toContain('<commit>${pendingSkillRun.commit.hash}</commit>');
+            expect(source).toContain('<commit>${commit.hash}</commit>');
         });
 
         it('handleConfirmSkillRun prefixes an imperative instruction before the commit tag', () => {
             // Regression: a bare <commit> payload made the agent stall and ask
             // which commit to use; the imperative tells it to act on the tag.
-            expect(source).toContain('Run the selected skill on this commit:\\n<commit>${pendingSkillRun.commit.hash}</commit>');
+            expect(source).toContain('Run the selected skill on this commit:\\n<commit>${commit.hash}</commit>');
         });
 
         it('handleConfirmSkillRun uses commit-range tag for branch range', () => {
@@ -1355,7 +1359,7 @@ describe('RepoGitTab', () => {
         });
 
         it('handleConfirmSkillRun passes provider, model, and reasoning effort to queued skill task', () => {
-            const block = source.match(/const handleConfirmSkillRun = useCallback[\s\S]*?\}, \[/);
+            const block = source.match(/const enqueueChat = useCallback[\s\S]*?\}, \[/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('provider: aiSelection.provider');
             expect(block![0]).toContain('aiSelection.model');
@@ -1368,20 +1372,20 @@ describe('RepoGitTab', () => {
         });
 
         it('handleConfirmSkillRun appends user context to prompt when non-empty', () => {
-            const block = source.match(/const handleConfirmSkillRun = useCallback[\s\S]*?\}, \[/);
+            const block = source.match(/const confirmSkillRun = useCallback[\s\S]*?\}, \[/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('User context:');
             expect(block![0]).toContain('userContext');
         });
 
         it('handleConfirmSkillRun clears pendingSkillRun after enqueue', () => {
-            const block = source.match(/const handleConfirmSkillRun = useCallback[\s\S]*?\}, \[/);
+            const block = source.match(/const confirmSkillRun = useCallback[\s\S]*?\}, \[/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('setPendingSkillRun(null)');
         });
 
         it('handleConfirmSkillRun includes workspaceId in payload so extra skill folders are resolved', () => {
-            const block = source.match(/const handleConfirmSkillRun = useCallback[\s\S]*?\}, \[/);
+            const block = source.match(/const enqueueChat = useCallback[\s\S]*?\}, \[/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('workspaceId');
         });
@@ -1389,15 +1393,15 @@ describe('RepoGitTab', () => {
         it('renders SkillContextDialog component', () => {
             expect(source).toContain('<SkillContextDialog');
             expect(source).toContain('workspaceId={workspaceId}');
-            expect(source).toContain('onConfirm={handleConfirmSkillRun}');
+            expect(source).toContain('onConfirm={props.onConfirmSkillRun}');
         });
 
         it('SkillContextDialog onClose clears pendingSkillRun', () => {
-            expect(source).toContain('onClose={() => setPendingSkillRun(null)}');
+            expect(source).toContain('onClose={props.onCancelSkillRun}');
         });
 
         it('handleEnqueueSkill does not fetch or embed diffs', () => {
-            const block = source.match(/const handleEnqueueSkill[\s\S]*?\}, \[/);
+            const block = source.match(/const startSkillRun[\s\S]*?\}, \[/);
             expect(block).toBeTruthy();
             expect(block![0]).not.toContain('MAX_LINES');
             expect(block![0]).not.toContain('truncateDiff');
@@ -1405,7 +1409,7 @@ describe('RepoGitTab', () => {
         });
 
         it('defines contextMenuItems via useMemo', () => {
-            expect(source).toContain('const contextMenuItems = useMemo<ContextMenuItem[]>');
+            expect(source).toContain('const contextMenuItems = useMemo');
         });
 
         it('contextMenuItems includes Copy Hash for commit type', () => {
@@ -1435,28 +1439,29 @@ describe('RepoGitTab', () => {
         });
 
         it('contextMenuItems includes Open as Popup only for commit type after View Diff', () => {
-            const commitBlock = source.match(/if \(contextMenu\.type === 'commit' && contextMenu\.commit\)[\s\S]*?if \(contextMenu\.type === 'multi-commit'/);
+            const commitBlock = source.match(/if \(menu\.type === 'commit' && menu\.commit\)[\s\S]*?if \(menu\.type === 'multi-commit'/);
             expect(commitBlock).toBeTruthy();
             const viewDiffIndex = commitBlock![0].indexOf("label: 'View Diff'");
             const openAsPopupIndex = commitBlock![0].indexOf("label: 'Open as Popup'");
             expect(viewDiffIndex).toBeGreaterThanOrEqual(0);
             expect(openAsPopupIndex).toBeGreaterThan(viewDiffIndex);
             expect(commitBlock![0]).toContain("icon: '↗'");
-            expect(commitBlock![0]).toContain('onClick: () => handleOpenAsPopup(commit)');
+            expect(commitBlock![0]).toContain('onClick: () => h.openAsPopup(commit)');
 
-            const multiCommitBlock = source.match(/if \(contextMenu\.type === 'multi-commit'[\s\S]*?if \(contextMenu\.type === 'branch-range'\)/);
+            const multiCommitBlock = source.match(/if \(menu\.type === 'multi-commit'[\s\S]*?if \(menu\.type === 'branch-range'\)/);
             expect(multiCommitBlock).toBeTruthy();
             expect(multiCommitBlock![0]).not.toContain('Open as Popup');
 
-            const branchRangeBlock = source.match(/if \(contextMenu\.type === 'branch-range'\)[\s\S]*?if \(skills\.length > 0\)/);
+            const branchRangeBlock = source.match(/if \(menu\.type === 'branch-range'\)[\s\S]*?if \(skills\.length > 0\)/);
             expect(branchRangeBlock).toBeTruthy();
             expect(branchRangeBlock![0]).not.toContain('Open as Popup');
         });
 
         it('contextMenuItems dependency array includes handleOpenAsPopup', () => {
-            const depsMatch = source.match(/contextMenuItems = useMemo[\s\S]*?\}, \[([^\]]+)\]/);
+            const depsMatch = source.match(/contextMenuItems = useMemo[\s\S]*?\}\), \[([^\]]+)\]/);
             expect(depsMatch).toBeTruthy();
             expect(depsMatch![1]).toContain('handleOpenAsPopup');
+            expect(source).toContain('openAsPopup: handleOpenAsPopup');
         });
 
         it('contextMenuItems includes Push to Here for unpushed commits', () => {
@@ -1470,14 +1475,14 @@ describe('RepoGitTab', () => {
             expect(menuBlock![0]).toContain('unpushedCount');
         });
 
-        it('Push to Here calls handlePushToCommit', () => {
+        it('Push to Here calls pushToCommit', () => {
             const menuBlock = source.match(/const contextMenuItems = useMemo[\s\S]*?return items;\s*\}/);
             expect(menuBlock).toBeTruthy();
-            expect(menuBlock![0]).toContain('handlePushToCommit');
+            expect(menuBlock![0]).toContain('pushToCommit');
         });
 
-        it('contextMenuItems dependency array includes handlePushToCommit and unpushedCount', () => {
-            const depsMatch = source.match(/contextMenuItems = useMemo[\s\S]*?\}, \[([^\]]+)\]/);
+        it('contextMenuItems dependency array includes pushToCommit and unpushedCount', () => {
+            const depsMatch = source.match(/contextMenuItems = useMemo[\s\S]*?\}\), \[([^\]]+)\]/);
             expect(depsMatch).toBeTruthy();
             expect(depsMatch![1]).toContain('handlePushToCommit');
             expect(depsMatch![1]).toContain('unpushedCount');
@@ -1497,7 +1502,7 @@ describe('RepoGitTab', () => {
         it('the browse entry is a plain onClick item with no children', () => {
             const block = source.match(/label: `Browse all skills…[\s\S]{0,200}/);
             expect(block).toBeTruthy();
-            expect(block![0]).toContain('onClick: handleOpenSkillBrowser');
+            expect(block![0]).toContain('onClick: () => h.openSkillBrowser(target)');
             expect(block![0]).not.toContain('children:');
         });
 
@@ -1514,43 +1519,45 @@ describe('RepoGitTab', () => {
             expect(source).toContain('const [skillBrowserContext, setSkillBrowserContext]');
         });
 
-        it('handleOpenSkillBrowser snapshots the context menu target', () => {
-            const block = source.match(/const handleOpenSkillBrowser = useCallback[\s\S]*?\}, \[/);
+        it('openSkillBrowser snapshots the context menu target', () => {
+            const block = source.match(/const openSkillBrowser = useCallback[\s\S]*?\n/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('setSkillBrowserContext');
-            expect(block![0]).toContain('type: contextMenu.type');
-            expect(block![0]).toContain('commit: contextMenu.commit');
-            expect(block![0]).toContain('commits: contextMenu.commits');
+            // The menu model builds the target from the open menu before it closes.
+            expect(source).toContain('const target: SkillMenuContext = { type: menu.type, commit: menu.commit, commits: menu.commits }');
+
         });
 
         it('handleEnqueueSkill accepts a captured context so the modal still works after the menu closes', () => {
-            const block = source.match(/const handleEnqueueSkill = useCallback[\s\S]*?\}, \[/);
+            const block = source.match(/const handleSkillBrowserSelect = useCallback[\s\S]*?\}, \[/);
             expect(block).toBeTruthy();
-            expect(block![0]).toContain('capturedContext');
-            expect(block![0]).toContain('capturedContext ?? contextMenu');
+            // The dialog outlives the menu, so the pick replays the captured target.
+            expect(block![0]).toContain('skillActions.skillBrowserContext');
+            expect(block![0]).toContain('startSkillRun(skillName, target)');
         });
 
         it('modal selection routes through handleEnqueueSkill with the captured context', () => {
             const block = source.match(/const handleSkillBrowserSelect = useCallback[\s\S]*?\}, \[/);
             expect(block).toBeTruthy();
-            expect(block![0]).toContain('handleEnqueueSkill(skillName, skillBrowserContext)');
+            expect(block![0]).toContain('skillActions.startSkillRun(skillName, target)');
         });
 
         it('renders SkillBrowserDialog wired to the captured context', () => {
             expect(source).toContain('<SkillBrowserDialog');
-            expect(source).toContain('open={!!skillBrowserContext}');
-            expect(source).toContain('onSelect={handleSkillBrowserSelect}');
-            expect(source).toContain('onClose={() => setSkillBrowserContext(null)}');
+            expect(source).toContain('open={props.skillBrowserOpen}');
+            expect(source).toContain('onSelect={props.onSkillBrowserSelect}');
+            expect(source).toContain('onClose={props.onCloseSkillBrowser}');
         });
 
         it('imports SkillBrowserDialog', () => {
-            expect(source).toContain("import { SkillBrowserDialog } from '../../queue/SkillBrowserDialog'");
+            expect(source).toContain("import { SkillBrowserDialog } from '../../../queue/SkillBrowserDialog'");
         });
 
-        it('contextMenuItems depends on handleOpenSkillBrowser', () => {
-            const depsMatch = source.match(/contextMenuItems = useMemo[\s\S]*?\}, \[([^\]]+)\]/);
+        it('contextMenuItems depends on openSkillBrowser', () => {
+            const depsMatch = source.match(/contextMenuItems = useMemo[\s\S]*?\}\), \[([^\]]+)\]/);
             expect(depsMatch).toBeTruthy();
-            expect(depsMatch![1]).toContain('handleOpenSkillBrowser');
+            expect(depsMatch![1]).toContain('skillActions');
+            expect(source).toContain('openSkillBrowser: skillActions.openSkillBrowser');
         });
 
         it('contextMenuItems includes Ask AI item for commit type', () => {
@@ -1568,7 +1575,7 @@ describe('RepoGitTab', () => {
         });
 
         it('Queue Task dispatches OPEN_DIALOG with mode task and floating-chat', () => {
-            expect(source).toContain("mode: 'task'");
+            expect(source).toContain("h.askAboutCommit(commit, 'task')");
         });
 
         it('Ask AI and Queue Task use commit hash and subject in initialPrompt', () => {
@@ -1578,7 +1585,7 @@ describe('RepoGitTab', () => {
         });
 
         it('imports useQueue from QueueContext', () => {
-            expect(source).toContain("import { useQueue } from '../../contexts/QueueContext'");
+            expect(source).toContain("import { useQueue } from '../../../contexts/QueueContext'");
         });
 
         it('destructures queueDispatch from useQueue', () => {
@@ -1595,15 +1602,15 @@ describe('RepoGitTab', () => {
 
         it('renders ContextMenu when contextMenu state is set', () => {
             expect(source).toContain('<ContextMenu');
-            expect(source).toContain('onClose={closeContextMenu}');
+            expect(source).toContain('onClose={props.onCloseContextMenu}');
         });
 
         it('renders enqueue toast notification', () => {
             expect(source).toContain('data-testid="enqueue-toast"');
         });
 
-        it('shows enqueueToast conditionally', () => {
-            expect(source).toContain('{enqueueToast && (');
+        it('shows toast conditionally', () => {
+            expect(source).toContain('{props.toast && (');
         });
 
         it('toast close button has data-testid="enqueue-toast-close"', () => {
@@ -1611,7 +1618,7 @@ describe('RepoGitTab', () => {
         });
 
         it('toast close button calls setEnqueueToast(null) on click', () => {
-            expect(source).toContain('onClick={() => setEnqueueToast(null)}');
+            expect(source).toContain('onClick={props.onDismissToast}');
         });
 
         it('toast close button has accessible aria-label', () => {
@@ -1626,11 +1633,11 @@ describe('RepoGitTab', () => {
 
     describe('branch-range Ask AI / Queue Task context menu', () => {
         it('defines buildBranchReferencePrompt helper', () => {
-            expect(source).toContain('const buildBranchReferencePrompt = useCallback');
+            expect(source).toContain('export function buildBranchReferencePrompt');
         });
 
         it('buildBranchReferencePrompt includes branch name, base..head, commit count, stat, and file count', () => {
-            expect(source).toContain('const buildBranchReferencePrompt = useCallback');
+            expect(source).toContain('export function buildBranchReferencePrompt');
             expect(source).toContain('branchLabel');
             expect(source).toContain('baseShort');
             expect(source).toContain('headShort');
@@ -1650,7 +1657,7 @@ describe('RepoGitTab', () => {
             // The old implementation fetched /git/branch-range/diff before opening the dialog.
             // The new reference-based prompt does not inline any diff content.
             // Extract the handleBranchAskAI function body (until the next top-level const)
-            const handleBlock = source.match(/const handleBranchAskAI = useCallback\(([\s\S]*?)const handleEnqueueSkill/);
+            const handleBlock = source.match(/const askAboutBranch = useCallback\(([\s\S]*?)\}, \[/);
             expect(handleBlock).toBeTruthy();
             expect(handleBlock![1]).not.toContain('/git/branch-range/diff');
             expect(handleBlock![1]).not.toContain('fetchApi');
@@ -1663,37 +1670,37 @@ describe('RepoGitTab', () => {
         });
 
         it('handleBranchAskAI is synchronous (no async/fetch)', () => {
-            const match = source.match(/const handleBranchAskAI = useCallback\(([^)]*)\)/);
+            const match = source.match(/const askAboutBranch = useCallback\(([^)]*)\)/);
             expect(match).toBeTruthy();
             expect(match![1]).not.toContain('async');
         });
 
         it('defines handleBranchAskAI callback', () => {
-            expect(source).toContain('const handleBranchAskAI = useCallback');
+            expect(source).toContain('const askAboutBranch = useCallback');
         });
 
         it('handleBranchAskAI dispatches OPEN_DIALOG with floating-chat', () => {
-            expect(source).toContain('buildBranchReferencePrompt()');
+            expect(source).toContain('buildBranchReferencePrompt({');
             expect(source).toContain("launchMode: 'floating-chat'");
         });
 
         it('contextMenuItems includes Ask AI and Queue Task for branch-range type', () => {
-            const branchBlock = source.match(/if \(contextMenu\.type === 'branch-range'\)([\s\S]*?)(?=if \(skills)/);
+            const branchBlock = source.match(/if \(menu\.type === 'branch-range'\)([\s\S]*?)(?=if \(skills)/);
             expect(branchBlock).toBeTruthy();
             expect(branchBlock![1]).toContain("label: 'Ask AI'");
             expect(branchBlock![1]).toContain("label: 'Queue Task'");
         });
 
         it('branch-range Ask AI calls handleBranchAskAI with ask mode', () => {
-            const branchBlock = source.match(/if \(contextMenu\.type === 'branch-range'\)([\s\S]*?)(?=if \(skills)/);
+            const branchBlock = source.match(/if \(menu\.type === 'branch-range'\)([\s\S]*?)(?=if \(skills)/);
             expect(branchBlock).toBeTruthy();
-            expect(branchBlock![1]).toContain("handleBranchAskAI('ask')");
+            expect(branchBlock![1]).toContain("h.askAboutBranch('ask')");
         });
 
         it('branch-range Queue Task calls handleBranchAskAI with task mode', () => {
-            const branchBlock = source.match(/if \(contextMenu\.type === 'branch-range'\)([\s\S]*?)(?=if \(skills)/);
+            const branchBlock = source.match(/if \(menu\.type === 'branch-range'\)([\s\S]*?)(?=if \(skills)/);
             expect(branchBlock).toBeTruthy();
-            expect(branchBlock![1]).toContain("handleBranchAskAI('task')");
+            expect(branchBlock![1]).toContain("h.askAboutBranch('task')");
         });
 
         it('passes onAskAI callback to CommitDetail in branch-range view', () => {
@@ -1711,24 +1718,24 @@ describe('RepoGitTab', () => {
             expect(source).toContain("commits?: GitCommitItem[]");
         });
 
-        it('handleCommitContextMenu opens multi-commit menu when rightPanelView is multi-commit', () => {
-            expect(source).toContain("rightPanelView?.type === 'multi-commit'");
-            expect(source).toContain("type: 'multi-commit', commits: rightPanelView.commits");
+        it('handleCommitContextMenu opens multi-commit menu when view is multi-commit', () => {
+            expect(source).toContain("view?.type === 'multi-commit'");
+            expect(source).toContain("type: 'multi-commit', commits: view.commits");
         });
 
-        it('handleCommitContextMenu depends on rightPanelView', () => {
-            expect(source).toContain('[commits, rightPanelView]');
+        it('handleCommitContextMenu depends on view', () => {
+            expect(source).toContain('[data.commits, selection]');
         });
 
         it('handleCommitContextMenu falls back to single commit when not in multi-commit view', () => {
             // The fallback path still creates a single-commit context menu
-            const block = source.match(/const handleCommitContextMenu = useCallback[\s\S]*?\[commits, rightPanelView\]/);
+            const block = source.match(/const handleCommitContextMenu = useCallback[\s\S]*?\[data\.commits, selection\]/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain("type: 'commit', commit");
         });
 
         it('contextMenuItems includes Ask AI and Queue Task for multi-commit type', () => {
-            const re = new RegExp("if \\(contextMenu\\.type === 'multi-commit'[\\s\\S]*?(?=if \\(contextMenu\\.type === 'branch-range'\\))");
+            const re = new RegExp("if \\(menu\\.type === 'multi-commit'[\\s\\S]*?(?=if \\(menu\\.type === 'branch-range'\\))");
             const multiBlock = source.match(re);
             expect(multiBlock).toBeTruthy();
             expect(multiBlock![0]).toContain("label: 'Ask AI'");
@@ -1736,38 +1743,41 @@ describe('RepoGitTab', () => {
         });
 
         it('multi-commit context menu offers cross-clone cherry-pick behind the feature flag', () => {
-            const re = new RegExp("if \\(contextMenu\\.type === 'multi-commit'[\\s\\S]*?(?=if \\(contextMenu\\.type === 'branch-range'\\))");
+            const re = new RegExp("if \\(menu\\.type === 'multi-commit'[\\s\\S]*?(?=if \\(menu\\.type === 'branch-range'\\))");
             const multiBlock = source.match(re);
             expect(multiBlock).toBeTruthy();
-            expect(multiBlock![0]).toContain('isGitCrossCloneCherryPickEnabled()');
+            expect(multiBlock![0]).toContain('crossCloneCherryPickEnabled');
             expect(multiBlock![0]).toContain('Cherry-pick to another clone...');
-            expect(multiBlock![0]).toContain('handleOpenCrossCloneCherryPickMulti(selectedCommits)');
+            expect(multiBlock![0]).toContain('h.crossCloneCherryPick(selectedCommits)');
         });
 
         it('multi-commit context menu builds initialPrompt with commit list', () => {
-            const re = new RegExp("if \\(contextMenu\\.type === 'multi-commit'[\\s\\S]*?(?=if \\(contextMenu\\.type === 'branch-range'\\))");
+            const re = new RegExp("if \\(menu\\.type === 'multi-commit'[\\s\\S]*?(?=if \\(menu\\.type === 'branch-range'\\))");
             const multiBlock = source.match(re);
             expect(multiBlock).toBeTruthy();
-            expect(multiBlock![0]).toContain('commits selected:');
-            expect(multiBlock![0]).toContain('c.shortHash');
-            expect(multiBlock![0]).toContain('c.subject');
+            expect(multiBlock![0]).toContain('buildCommitListSummary(selectedCommits)');
+            // The summary itself is a pure builder shared with the AI prompts.
+            expect(source).toContain('commits selected:');
+            expect(source).toContain('c.shortHash');
+            expect(source).toContain('c.subject');
         });
 
         it('multi-commit context menu dispatches OPEN_DIALOG with ask and task modes', () => {
-            const re = new RegExp("if \\(contextMenu\\.type === 'multi-commit'[\\s\\S]*?(?=if \\(contextMenu\\.type === 'branch-range'\\))");
+            const re = new RegExp("if \\(menu\\.type === 'multi-commit'[\\s\\S]*?(?=if \\(menu\\.type === 'branch-range'\\))");
             const multiBlock = source.match(re);
             expect(multiBlock).toBeTruthy();
-            expect(multiBlock![0]).toContain("mode: 'ask'");
-            expect(multiBlock![0]).toContain("mode: 'task'");
-            expect(multiBlock![0]).toContain("launchMode: 'floating-chat'");
+            expect(multiBlock![0]).toContain("h.askAboutCommits(selectedCommits, 'ask')");
+            expect(multiBlock![0]).toContain("h.askAboutCommits(selectedCommits, 'task')");
+            expect(source).toContain("launchMode: 'floating-chat'");
         });
 
         it('handleConfirmSkillRun uses commits tag for multi-commit', () => {
-            const block = source.match(/else if \(pendingSkillRun\.type === 'multi-commit'[\s\S]*?} else \{/);
+            const block = source.match(/export function buildMultiCommitSkillPrompt[\s\S]*?\n\}/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('<commits>');
             expect(block![0]).toContain('.map(c => c.hash)');
             expect(block![0]).toContain('Run the selected skill on these commits:');
+            expect(source).toContain("pendingSkillRun.type === 'multi-commit'");
         });
 
         it('handleConfirmSkillRun shortId shows commit count for multi-commit', () => {
@@ -1796,7 +1806,7 @@ describe('RepoGitTab', () => {
         });
 
         it('passes isOpen to BranchPickerModal', () => {
-            expect(source).toContain('isOpen={branchPickerOpen}');
+            expect(source).toContain('isOpen={props.branchPickerOpen}');
         });
 
         it('passes onClose to BranchPickerModal', () => {
@@ -1804,10 +1814,11 @@ describe('RepoGitTab', () => {
         });
 
         it('onSwitched calls fetchBranchRange and fetchCommits to refresh', () => {
-            const switchedBlock = source.match(/onSwitched=\{[\s\S]*?\}\}/);
+            const switchedBlock = source.match(/const reloadAfterBranchSwitch = useCallback[\s\S]*?\}, \[/);
             expect(switchedBlock).toBeTruthy();
-            expect(switchedBlock![0]).toContain('fetchBranchRange');
-            expect(switchedBlock![0]).toContain('fetchCommits');
+            expect(switchedBlock![0]).toContain('fetchBranchRange(true)');
+            expect(switchedBlock![0]).toContain('fetchCommits(true)');
+            expect(source).toContain('onSwitched={props.onBranchSwitched}');
         });
     });
 
@@ -1897,9 +1908,9 @@ describe('RepoGitTab', () => {
             expect(source).toContain("hidden lg:flex");
         });
 
-        it('defines handleMobileBack callback that clears rightPanelView', () => {
-            expect(source).toContain('const handleMobileBack = useCallback');
-            expect(source).toContain('setRightPanelView(null)');
+        it('defines selection.clearSelection callback that clears view', () => {
+            expect(source).toContain('const clearSelection = useCallback');
+            expect(source).toContain('setView(null)');
         });
 
         it('renders mobile back button with data-testid', () => {
@@ -1909,19 +1920,19 @@ describe('RepoGitTab', () => {
 
         it('mobile back button is hidden on desktop (lg:hidden)', () => {
             expect(source).toContain('lg:hidden');
-            expect(source).toContain('handleMobileBack');
+            expect(source).toContain('selection.clearSelection');
         });
 
         it('mobile back button shows "← Back to list" text', () => {
             expect(source).toContain('← Back to list');
         });
 
-        it('conditionally applies hidden class on aside based on rightPanelView', () => {
-            expect(source).toContain("rightPanelView ? ' hidden lg:block' : ''");
+        it('conditionally applies hidden class on aside based on view', () => {
+            expect(source).toContain("detailOpen ? ' hidden lg:block' : ''");
         });
 
-        it('conditionally applies hidden class on main based on rightPanelView', () => {
-            expect(source).toContain("!rightPanelView ? ' hidden lg:flex' : ''");
+        it('conditionally applies hidden class on main based on view', () => {
+            expect(source).toContain("!view ? ' hidden lg:flex' : ''");
         });
 
         it('wraps detailPanel in flex-1 container for proper sizing with back button', () => {
@@ -1933,15 +1944,15 @@ describe('RepoGitTab', () => {
             expect(source).not.toContain("const isDesktop = window.matchMedia('(min-width: 1024px)').matches");
             expect(source).not.toContain('isDesktop && first');
             // null is always set when no deep-link hash
-            expect(source).toContain('setRightPanelView(null)');
+            expect(source).toContain('setView(null)');
         });
 
-        it('preserves null rightPanelView during refresh (mobile back state)', () => {
+        it('preserves null view during refresh (mobile back state)', () => {
             // When user pressed "Back to list" on mobile, refresh should not re-open a commit
-            expect(source).toContain('rightPanelView === null');
+            expect(source).toContain('current === null');
             // The null guard appears before the loaded[0] fallback
-            const nullGuardIdx = source.indexOf('rightPanelView === null');
-            const fallbackIdx = source.indexOf("setRightPanelView({ type: 'commit', commit: loaded[0] })", nullGuardIdx);
+            const nullGuardIdx = source.indexOf('current === null');
+            const fallbackIdx = source.indexOf('return head ? { changed: true, next: head }', nullGuardIdx);
             expect(nullGuardIdx).toBeGreaterThan(0);
             expect(fallbackIdx).toBeGreaterThan(nullGuardIdx);
         });
@@ -1973,7 +1984,7 @@ describe('RepoGitTab', () => {
         });
 
         it('fetchCommits sets hasMore based on returned batch size', () => {
-            expect(source).toContain('setHasMore(loaded.length === 50)');
+            expect(source).toContain('setHasMore(loaded.length === COMMIT_PAGE_SIZE)');
         });
 
         it('fetchCommits passes skip option when skipOffset > 0', () => {
@@ -1981,17 +1992,17 @@ describe('RepoGitTab', () => {
         });
 
         it('defines handleLoadMore callback', () => {
-            expect(source).toContain('const handleLoadMore = useCallback');
+            expect(source).toContain('const loadMore = useCallback');
         });
 
         it('handleLoadMore guards against concurrent calls', () => {
-            const block = source.match(/const handleLoadMore = useCallback[\s\S]*?\}, \[[\s\S]*?\]\)/);
+            const block = source.match(/const loadMore = useCallback[\s\S]*?\}, \[[\s\S]*?\]\)/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('if (isLoadingMore || !hasMore) return');
         });
 
         it('handleLoadMore advances skip by 50', () => {
-            expect(source).toContain('const nextSkip = skip + 50');
+            expect(source).toContain('const nextSkip = skip + COMMIT_PAGE_SIZE');
         });
 
         it('handleLoadMore calls fetchCommits with nextSkip', () => {
@@ -2024,7 +2035,7 @@ describe('RepoGitTab', () => {
         });
 
         it('Load more button calls handleLoadMore on click', () => {
-            expect(source).toContain('onClick={handleLoadMore}');
+            expect(source).toContain('onClick={onLoadMore}');
         });
 
         it('resets skip to 0 on initial workspace load', () => {
@@ -2034,13 +2045,13 @@ describe('RepoGitTab', () => {
         });
 
         it('resets skip to 0 on refreshAll', () => {
-            const refreshBlock = source.match(/const refreshAll = useCallback[\s\S]*?\}, \[refreshing/);
+            const refreshBlock = source.match(/const refreshAll = useCallback[\s\S]*?\}, \[selection/);
             expect(refreshBlock).toBeTruthy();
             expect(refreshBlock![0]).toContain('setSkip(0)');
         });
 
         it('resets skip to 0 when branch is switched via BranchPickerModal', () => {
-            const switchedBlock = source.match(/onSwitched=\{[\s\S]*?\}\}/);
+            const switchedBlock = source.match(/const reloadAfterBranchSwitch = useCallback[\s\S]*?\}, \[/);
             expect(switchedBlock).toBeTruthy();
             expect(switchedBlock![0]).toContain('setSkip(0)');
         });
@@ -2053,35 +2064,35 @@ describe('RepoGitTab', () => {
         });
 
         it('defines handleMultiSelect callback', () => {
-            expect(source).toContain('const handleMultiSelect = useCallback');
+            expect(source).toContain('const selectCommits = useCallback');
         });
 
         it('handleMultiSelect delegates single-commit selection to handleSelect', () => {
-            const block = source.match(/const handleMultiSelect = useCallback[\s\S]*?\}, \[handleSelect\]\)/);
+            const block = source.match(/const selectCommits = useCallback[\s\S]*?\}, \[selectCommit\]\)/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('selectedCommits.length === 1');
-            expect(block![0]).toContain('handleSelect(selectedCommits[0])');
+            expect(block![0]).toContain('selectCommit(selectedCommits[0])');
         });
 
         it('handleMultiSelect sets multi-commit right panel view for >1 commit', () => {
-            expect(source).toContain("setRightPanelView({ type: 'multi-commit', commits: selectedCommits })");
+            expect(source).toContain("setView({ type: 'multi-commit', commits: selectedCommits })");
         });
 
-        it('derives selectedHashes useMemo from rightPanelView', () => {
-            expect(source).toContain('const selectedHashes = useMemo<ReadonlySet<string>>');
+        it('derives selectedHashes useMemo from view', () => {
+            expect(source).toContain('const selectedHashes = useMemo');
         });
 
         it('selectedHashes covers the multi-commit case', () => {
-            expect(source).toContain("rightPanelView?.type === 'multi-commit'");
-            expect(source).toContain('rightPanelView.commits.map(c => c.hash)');
+            expect(source).toContain("view?.type === 'multi-commit'");
+            expect(source).toContain('view.commits.map(c => c.hash)');
         });
 
         it('passes selectedHashes to CommitList', () => {
-            expect(source).toContain('selectedHashes={selectedHashes}');
+            expect(source).toContain('selectedHashes={props.selectedHashes}');
         });
 
         it('passes onMultiSelect to CommitList', () => {
-            expect(source).toContain('onMultiSelect={handleMultiSelect}');
+            expect(source).toContain('onMultiSelect={props.onMultiSelect}');
         });
 
         it('renders multi-commit summary panel with data-testid', () => {
@@ -2125,13 +2136,13 @@ describe('RepoGitTab', () => {
         });
 
         it('initial-load effect includes retryKey in deps', () => {
-            expect(source).toContain(', [workspaceId, fetchCommits, fetchBranchRange, retryKey]');
+            expect(source).toContain(', [workspaceId, fetchCommits, fetchBranchRange, fetchRepoState, retryKey]');
         });
     });
 
     describe('git operation poller migration', () => {
         it('imports the shared useGitOperationPoller hook', () => {
-            expect(source).toContain("import { useGitOperationPoller } from './hooks/useGitOperationPoller'");
+            expect(source).toContain("from '../hooks/useGitOperationPoller'");
         });
 
         it('creates a dedicated poller instance per async operation', () => {
@@ -2167,14 +2178,14 @@ describe('RepoGitTab', () => {
         });
 
         it('rebase autosquash starts the rebase poller', () => {
-            const block = source.match(/const handleRebaseAutosquash = useCallback[\s\S]*?(?=const handleSelect)/);
+            const block = source.match(/const rebaseAutosquash = useCallback[\s\S]*?(?=\/\/ .. History rewriting)/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('rebasePoller.start(result.jobId');
             expect(block![0]).toContain('setRebasing(false)');
         });
 
         it('reorder preserves its explicit success/failed completion rule', () => {
-            const block = source.match(/const handleApplyReorder = useCallback[\s\S]*?(?=const handleCancelReorder)/);
+            const block = source.match(/const applyReorder = useCallback[\s\S]*?(?=const cancelReorder)/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('reorderPoller.start(resp.jobId');
             expect(block![0]).toContain("isComplete: (job) => job?.status === 'success' || job?.status === 'failed'");
@@ -2219,7 +2230,7 @@ describe('RepoGitTab', () => {
         });
 
         it('Escape in the search input hides and clears the search bar', () => {
-            expect(source).toMatch(/onKeyDown=\{e =>[\s\S]*?e\.key === 'Escape'[\s\S]*?searchInputRef\.current\?\.blur\(\)[\s\S]*?hideSearch\(\)/);
+            expect(source).toMatch(/onKeyDown=\{e =>[\s\S]*?e\.key === 'Escape'[\s\S]*?searchInputRef\.current\?\.blur\(\)[\s\S]*?onHideSearch\(\)/);
         });
 
         it('search bar is hidden by default and revealed on demand (searchVisible state)', () => {
@@ -2288,36 +2299,38 @@ describe('RepoGitTab', () => {
         });
 
         it('defines handleCommitLookup callback', () => {
-            expect(source).toContain('const handleCommitLookup = useCallback');
+            expect(source).toContain('const lookupCommit = useCallback');
         });
 
         it('handleCommitLookup validates SHA pattern before lookup', () => {
-            const block = source.match(/const handleCommitLookup = useCallback[\s\S]*?\}, \[/);
+            const block = source.match(/const lookupCommit = useCallback[\s\S]*?\}, \[/);
             expect(block).toBeTruthy();
-            expect(block![0]).toContain('/^[0-9a-f]{7,40}$/');
+            expect(block![0]).toContain('isLookupCandidate(normalizedSha)');
+            expect(source).toContain('/^[0-9a-f]{7,40}$/');
         });
 
         it('handleCommitLookup calls getCommit API with workspaceId', () => {
-            const block = source.match(/const handleCommitLookup = useCallback[\s\S]*?\}, \[/);
+            const block = source.match(/const lookupCommit = useCallback[\s\S]*?\}, \[/);
             expect(block).toBeTruthy();
-            expect(block![0]).toContain('getCommit(workspaceId');
+            expect(block![0]).toContain('openCommitBySha(normalizedSha');
+            expect(source).toContain('getCommit(workspaceId');
         });
 
         it('handleCommitLookup sets openedCommit on success', () => {
-            const block = source.match(/const handleCommitLookup = useCallback[\s\S]*?\}, \[/);
+            const block = source.match(/const lookupCommit = useCallback[\s\S]*?\}, \[/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('setOpenedCommit');
         });
 
         it('handleCommitLookup sets commitLookupError on failure', () => {
-            const block = source.match(/const handleCommitLookup = useCallback[\s\S]*?\}, \[/);
+            const block = source.match(/const lookupCommit = useCallback[\s\S]*?\}, \[/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('setCommitLookupError');
         });
 
         it('search onKeyDown triggers handleCommitLookup on Enter with SHA-shaped query', () => {
-            expect(source).toContain('isGitCommitLookupEnabled() && /^[0-9a-f]{7,40}$/i.test(searchQuery.trim())');
-            expect(source).toContain('void handleCommitLookup(searchQuery.trim())');
+            expect(source).toContain('isGitCommitLookupEnabled() && isLookupCandidate(searchQuery.trim())');
+            expect(source).toContain('onCommitLookup(searchQuery.trim())');
         });
 
         it('shows SHA lookup hint with data-testid when query looks like SHA and feature enabled', () => {
@@ -2351,20 +2364,21 @@ describe('RepoGitTab', () => {
         });
 
         it('opened commit row calls handleSelect when clicked', () => {
-            expect(source).toContain('onClick={() => handleSelect(openedCommit)');
+            expect(source).toContain('onClick={() => props.onSelect(openedCommit)');
         });
 
         it('deep-link effect attempts lookup via getCommit when commit not in list', () => {
-            const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[^\]]*\]/);
+            const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[\s\S]*?\]\)/);
             expect(effectBlock).toBeTruthy();
             expect(effectBlock![0]).toContain('isGitCommitLookupEnabled()');
-            expect(effectBlock![0]).toContain('getCommit(workspaceId');
+            expect(effectBlock![0]).toContain('openCommitBySha(hash)');
+            expect(source).toContain('getCommit(workspaceId');
         });
 
         it('deep-link lookup sets openedCommit on success', () => {
-            const effectBlock = source.match(/Deep-link navigation after mount[\s\S]*?\}, \[state\.selectedGitCommitHash[^\]]*\]/);
-            expect(effectBlock).toBeTruthy();
-            expect(effectBlock![0]).toContain('setOpenedCommit');
+            const block = source.match(/const openCommitBySha = useCallback[\s\S]*?\}, \[/);
+            expect(block).toBeTruthy();
+            expect(block![0]).toContain('setOpenedCommit');
         });
 
         it('feature flag check uses isGitCommitLookupEnabled function', () => {
@@ -2373,7 +2387,7 @@ describe('RepoGitTab', () => {
         });
 
         it('handleCommitLookup does not call any state-changing git commands', () => {
-            const block = source.match(/const handleCommitLookup = useCallback[\s\S]*?\}, \[/);
+            const block = source.match(/const lookupCommit = useCallback[\s\S]*?\}, \[/);
             expect(block).toBeTruthy();
             // The lookup callback must only read; must not call git mutating operations
             expect(block![0]).not.toContain('.reset(');
@@ -2385,21 +2399,23 @@ describe('RepoGitTab', () => {
 
     describe('task payload workspaceId regression', () => {
         it('handleConfirmSkillRun includes workspaceId in queue task payload', () => {
-            const block = source.match(/const handleConfirmSkillRun = useCallback[\s\S]*?\}, \[/);
+            const block = source.match(/const enqueueChat = useCallback[\s\S]*?\}, \[/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('workspaceId');
         });
 
         it('handleSquashCommits includes workspaceId in queue task payload', () => {
-            const block = source.match(/const handleSquashCommits = useCallback[\s\S]*?\}, \[/);
+            const block = source.match(/const enqueueChat = useCallback[\s\S]*?\}, \[/);
             expect(block).toBeTruthy();
             expect(block![0]).toContain('workspaceId');
         });
 
         it('handleConflictResolveAI includes workspaceId in queue task payload', () => {
-            const block = source.match(/const handleConflictResolveAI = useCallback[\s\S]*?\}, \[/);
+            const block = source.match(/const resolveConflictsWithAI = useCallback[\s\S]*?\}, \[/);
             expect(block).toBeTruthy();
-            expect(block![0]).toContain('workspaceId');
+            expect(block![0]).toContain('enqueueChat');
+            // enqueueChat is the single place the workspace-scoped payload is built.
+            expect(source).toContain('workspaceId,');
         });
     });
 });

@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { readRepoGitTabSource } from '../../helpers/repo-git-tab-source';
 import {
     splitDiffByFile,
     buildFileDiffUrl,
@@ -278,20 +279,14 @@ describe('refreshAll cache invalidation integration', () => {
     it('RepoGitTab.tsx imports clearCacheForHash', async () => {
         const fs = await import('fs');
         const path = await import('path');
-        const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'RepoGitTab.tsx'),
-            'utf-8',
-        );
-        expect(source).toContain("import { clearCacheForHash } from './hooks/useCommitDiffCache'");
+        const source = readRepoGitTabSource();
+        expect(source).toContain("import { clearCacheForHash } from '../hooks/useCommitDiffCache'");
     });
 
     it('RepoGitTab.tsx calls clearCacheForHash in refreshAll', async () => {
         const fs = await import('fs');
         const path = await import('path');
-        const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'RepoGitTab.tsx'),
-            'utf-8',
-        );
+        const source = readRepoGitTabSource();
         expect(source).toContain('clearCacheForHash(prevSelectedHash)');
     });
 });

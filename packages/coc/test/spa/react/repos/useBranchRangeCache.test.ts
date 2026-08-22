@@ -4,6 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import { readRepoGitTabSource } from '../../helpers/repo-git-tab-source';
 import {
     getBranchRangeCache,
     setBranchRangeCache,
@@ -132,30 +133,21 @@ describe('RepoGitTab integration', () => {
     it('RepoGitTab.tsx imports useBranchRangeCache', async () => {
         const fs = await import('fs');
         const path = await import('path');
-        const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'RepoGitTab.tsx'),
-            'utf-8',
-        );
+        const source = readRepoGitTabSource();
         expect(source).toContain("from './hooks/useBranchRangeCache'");
     });
 
     it('fetchBranchRange checks cache before fetching', async () => {
         const fs = await import('fs');
         const path = await import('path');
-        const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'RepoGitTab.tsx'),
-            'utf-8',
-        );
+        const source = readRepoGitTabSource();
         expect(source).toContain('getBranchRangeCache(workspaceId, mode)');
     });
 
     it('fetchBranchRange populates cache after fetch', async () => {
         const fs = await import('fs');
         const path = await import('path');
-        const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'RepoGitTab.tsx'),
-            'utf-8',
-        );
+        const source = readRepoGitTabSource();
         expect(source).toContain('setBranchRangeCache(workspaceId,');
         expect(source).toContain('}, mode);');
     });
@@ -163,40 +155,32 @@ describe('RepoGitTab integration', () => {
     it('refresh=true clears cache before fetching', async () => {
         const fs = await import('fs');
         const path = await import('path');
-        const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'RepoGitTab.tsx'),
-            'utf-8',
-        );
+        const source = readRepoGitTabSource();
         expect(source).toContain('clearBranchRangeCache(workspaceId)');
     });
 
     it('WebSocket git-changed handler does NOT call refreshAll', async () => {
         const fs = await import('fs');
         const path = await import('path');
-        const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'RepoGitTab.tsx'),
-            'utf-8',
-        );
+        const source = readRepoGitTabSource();
         // Extract the WebSocket handler block
-        const wsHandlerStart = source.indexOf("// WebSocket: auto-refresh on git-changed");
-        const wsHandlerEnd = source.indexOf("// Pull job polling helpers");
+        const wsHandlerStart = source.indexOf('// ── WebSocket refresh');
+        const wsHandlerEnd = source.indexOf('// ── Composed handlers');
         const wsBlock = source.slice(wsHandlerStart, wsHandlerEnd);
-        // The handler should NOT call refreshAll — only fetchCommits + setWorkingChangesRefreshKey
+        // The handler should NOT call refreshAll — only a targeted refetch plus
+        // a working-changes bump.
         expect(wsBlock).not.toContain('refreshAll()');
-        expect(wsBlock).toContain('fetchCommits(true, 0, searchQuery)');
-        expect(wsBlock).toContain('setWorkingChangesRefreshKey');
+        expect(wsBlock).toContain('data.fetchCommits(true, 0, data.searchQuery)');
+        expect(wsBlock).toContain('data.bumpWorkingChanges()');
     });
 
     it('refreshAll still calls fetchBranchRange(true) for manual refresh', async () => {
         const fs = await import('fs');
         const path = await import('path');
-        const source = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'git', 'RepoGitTab.tsx'),
-            'utf-8',
-        );
+        const source = readRepoGitTabSource();
         // refreshAll should still call fetchBranchRange(true)
         const refreshAllStart = source.indexOf('const refreshAll = useCallback');
-        const refreshAllEnd = source.indexOf('// Load more commits');
+        const refreshAllEnd = source.indexOf('// Load more commits', refreshAllStart);
         const refreshAllBlock = source.slice(refreshAllStart, refreshAllEnd);
         expect(refreshAllBlock).toContain('fetchBranchRange(true)');
     });

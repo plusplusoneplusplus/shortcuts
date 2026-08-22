@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
+import { readRepoGitTabSource } from '../helpers/repo-git-tab-source';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -351,7 +352,7 @@ describe('GitPanelHeader', () => {
         let gitTabSource: string;
 
         beforeAll(() => {
-            gitTabSource = fs.readFileSync(REPO_GIT_TAB_PATH, 'utf-8');
+            gitTabSource = readRepoGitTabSource();
         });
 
         it('RepoGitTab imports GitPanelHeader', () => {
@@ -363,47 +364,47 @@ describe('GitPanelHeader', () => {
         });
 
         it('RepoGitTab passes branch prop', () => {
-            expect(gitTabSource).toMatch(/branch=\{branchName/);
+            expect(gitTabSource).toMatch(/branch=\{data\.branchName/);
         });
 
         it('RepoGitTab passes ahead prop', () => {
-            expect(gitTabSource).toContain('ahead={ahead}');
+            expect(gitTabSource).toContain('ahead={data.ahead}');
         });
 
         it('RepoGitTab passes behind prop', () => {
-            expect(gitTabSource).toContain('behind={behind}');
+            expect(gitTabSource).toContain('behind={data.behind}');
         });
 
         it('RepoGitTab passes refreshing prop', () => {
-            expect(gitTabSource).toContain('refreshing={refreshing}');
+            expect(gitTabSource).toContain('refreshing={data.refreshing}');
         });
 
         it('RepoGitTab passes onRefresh prop', () => {
-            expect(gitTabSource).toContain('onRefresh={refreshAll}');
+            expect(gitTabSource).toContain('onRefresh={data.refreshAll}');
         });
 
         it('RepoGitTab passes onFetch prop', () => {
-            expect(gitTabSource).toContain('onFetch={handleFetch}');
+            expect(gitTabSource).toContain('onFetch={actions.fetch}');
         });
 
         it('RepoGitTab passes onPull prop', () => {
-            expect(gitTabSource).toContain('onPull={handlePull}');
+            expect(gitTabSource).toContain('onPull={actions.pull}');
         });
 
         it('RepoGitTab passes onPush prop', () => {
-            expect(gitTabSource).toContain('onPush={handlePush}');
+            expect(gitTabSource).toContain('onPush={actions.push}');
         });
 
         it('RepoGitTab passes fetching prop', () => {
-            expect(gitTabSource).toContain('fetching={fetching}');
+            expect(gitTabSource).toContain('fetching={actions.fetching}');
         });
 
         it('RepoGitTab passes pulling prop', () => {
-            expect(gitTabSource).toContain('pulling={pulling}');
+            expect(gitTabSource).toContain('pulling={actions.pulling}');
         });
 
         it('RepoGitTab passes pushing prop', () => {
-            expect(gitTabSource).toContain('pushing={pushing}');
+            expect(gitTabSource).toContain('pushing={actions.pushing}');
         });
 
         it('GitPanelHeader appears before BranchChanges in left panel', () => {
