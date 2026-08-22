@@ -539,6 +539,18 @@ still enqueues final-check and a dropped `RALPH_NEXT` still continues the loop. 
 inline token stays authoritative when present (even if it disagrees with the
 journal); `NO_SIGNAL` stays terminal only when neither source carries a signal.
 
+All three Ralph task kinds — iteration, final-check and PR-submit — ride the same
+`RalphExecutor` and are told apart by `getRalphTaskKind(ctx)`
+(`packages/coc/src/server/ralph/task-kind.ts`), which reads `context.ralph` and
+returns `'iteration' | 'final-check' | 'submit'`. The executor rebuilds the user
+prompt from `buildRalphIterationPrompt` for `'iteration'` only; final-check and
+submit prompts (built at enqueue time by `buildFinalCheckPrompt` /
+`buildRalphSubmitPrompt`) pass through verbatim and get no context-map pointer.
+Repo instructions are `'ask'` for final-check and `'ralph'` for the other two —
+submit needs write access to push the branch and open the PR. `agentMode` is
+`'autopilot'` for every kind. The queue bridge routes completions off the same
+helper.
+
 Final-check tasks are still queued as Ralph chat tasks and still use autopilot
 capability, but `RalphExecutor` switches to validation-only system instructions
 when `context.ralph.finalCheck` is present. Those instructions allow inspection
