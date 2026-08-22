@@ -62,6 +62,7 @@ import { buildChatTurnSystemMessage } from './chat-turn-system-message';
 import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
 import { buildMcpOAuthHandler } from './chat-turn-runner';
 import { resolveChatMcpServersForWorkspace } from './mcp-tool-enforcement';
+import { resolveRepoGroupChatContext, appendRepoGroupContext } from '../workspaces/repo-group-chat-context';
 import { attachRalphGrillMetadataToAskUserPayloads, buildRalphGrillPlanningCompletedProgress, buildRalphGrillPlanningStartedProgress, buildRalphGrillProcessStateFromPlan, buildRalphMultiAgentGrillDirective, formatRalphGrillQuestionPlanForPrompt, planRalphGrillCandidateQuestions } from '../ralph/grill-planning';
 import type { RalphGrillPlanningProgress, RalphGrillQuestionPlanningResult, RalphGrillSetup } from '../ralph/grill-planning';
 /** Log prefix for every line this executor writes. */
@@ -754,6 +755,11 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 resolveSelectedSkillReferences(selectedSkillNames, skillDirectories, disabledSkills),
             );
 
+            // Repo-group workspaces: append the live-member listing to the
+            // prompt and grant member roots as additional working directories.
+            const repoGroupContext = await resolveRepoGroupChatContext(this.store, this.dataDir, payload.workspaceId);
+            effectivePrompt = appendRepoGroupContext(effectivePrompt, repoGroupContext);
+
             const toolEventHandler = this.buildToolEventHandler(
                 processId,
                 () => 1,
@@ -858,6 +864,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 infiniteSessions: { enabled: true } as const,
                 ...(this.keepClientWarm() ? { keepWarm: true as const, warmKey: processId } : {}),
                 workingDirectory,
+                ...(repoGroupContext ? { additionalDirectories: repoGroupContext.additionalDirectories } : {}),
                 signal: turnAbort.signal,
                 timeoutMs,
                 attachments,
