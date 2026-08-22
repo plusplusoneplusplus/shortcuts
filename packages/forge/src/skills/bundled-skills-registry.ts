@@ -99,4 +99,9 @@ export const BUNDLED_SKILLS_REGISTRY: readonly BundledSkill[] = [
         description: 'System prompts for the CoC Dream analyzer and critic internal steps — proposes and validates high-confidence dream card candidates from completed workspace conversations',
         relativePath: 'dream',
     },
+    {
+        name: 'handoff',
+        description: 'Compact the current conversation into a handoff document for another agent to pick up',
+        relativePath: 'handoff',
+    },
 ];
