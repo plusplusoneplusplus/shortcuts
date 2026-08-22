@@ -129,8 +129,8 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isGitWorktreeExecutionEnabled: () => false,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => {
+    const makeClient = () => ({
         queue: { enqueue: mockEnqueueTask },
         preferences: {
             patchGlobal: vi.fn().mockResolvedValue({}),
@@ -141,10 +141,16 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
         skills: { listAllWorkspace: vi.fn().mockResolvedValue({ merged: [] }) },
         agentProviders: { list: vi.fn().mockResolvedValue(mockAgentProvidersResponse), getReasoningEfforts: vi.fn().mockResolvedValue({ reasoningEfforts: {} }),
             getEffortTiers: vi.fn().mockImplementation(() => Promise.resolve({ effortTiers: mockEffortTiers.value })) },
-    }),
-    getSpaCocClientErrorMessage: (err: any, fallback: string) =>
-        (err instanceof Error ? err.message : undefined) || fallback,
-}));
+    });
+    return {
+        getSpaCocClient: makeClient,
+        // Remote-clone paths route through getCocClientFor(baseUrl); serve the
+        // same fake client so a registered remote workspace can render.
+        getCocClientFor: makeClient,
+        getSpaCocClientErrorMessage: (err: any, fallback: string) =>
+            (err instanceof Error ? err.message : undefined) || fallback,
+    };
+});
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useModels', () => ({
     useModels: () => ({ models: [
@@ -256,6 +262,11 @@ import {
     resetNewChatSeedContext,
 } from '../../../../src/server/spa/client/react/features/chat/newChatSeedContext';
 import { notesChatDraftKey } from '../../../../src/server/spa/client/react/features/notes/hooks/useNotesChat';
+import {
+    registerCloneBaseUrls,
+    resetCloneRegistryForTests,
+} from '../../../../src/server/spa/client/react/repos/cloneRegistry';
+import { __resetChatStyleSelectorFlagCache } from '../../../../src/server/spa/client/react/hooks/feature-flags/useChatStyleSelectorEnabled';
 
 function makeCommitPayload(overrides: Partial<GitCommitContextDragPayload> = {}): GitCommitContextDragPayload {
     return {
@@ -367,6 +378,8 @@ beforeEach(() => {
     // Stub fetch for non-queue uses (e.g. useOnboardingPreferences → patchGlobalPreferences)
     globalThis.fetch = mockFetch;
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({}) });
+    resetCloneRegistryForTests();
+    __resetChatStyleSelectorFlagCache();
 });
 
 afterEach(() => {
@@ -2538,6 +2551,25 @@ describe('NewChatArea — chat style', () => {
         render(<NewChatArea workspaceId="ws-1" />);
         await waitFor(() => expect(screen.getByTestId('new-chat-send-btn')).toBeTruthy());
         expect(screen.queryByTestId('chat-style-selector')).toBeNull();
+    });
+
+    // Regression: useResolveCloneBaseUrl hands the composer a bare server root
+    // (no /api). The probe used to hit `${root}/config/runtime`, get the SPA
+    // HTML back, and cache the chip off for every remote repo.
+    it('shows the Style chip for a remote repo whose owning server has the flag on', async () => {
+        mockChatStyleEnabled.value = false; // local flag off — the remote answer must drive the chip
+        registerCloneBaseUrls([{ workspaceId: 'ws-remote', baseUrl: 'http://remote-server:4000' }]);
+        mockAppState.workspaces = [{ id: 'ws-remote', rootPath: '/home/user/remote-repo' }];
+        mockFetch.mockImplementation(async (url: unknown) => (
+            url === 'http://remote-server:4000/api/config/runtime'
+                ? { ok: true, json: async () => ({ features: { chatStyleSelectorEnabled: true } }) }
+                : { ok: true, json: async () => ({}) }
+        ));
+
+        render(<NewChatArea workspaceId="ws-remote" />);
+
+        await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
+        expect(mockFetch).toHaveBeenCalledWith('http://remote-server:4000/api/config/runtime');
     });
 
     it('omits chatStyle from the payload when the flag is off', async () => {

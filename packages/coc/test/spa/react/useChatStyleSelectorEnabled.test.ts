@@ -92,13 +92,43 @@ describe('useChatStyleSelectorEnabled — remote clone', () => {
 
     it('follows the owning server when that server has the feature on', async () => {
         mockFetch(() => runtimeResponse({ chatStyleSelectorEnabled: true }));
-        const { result } = renderHook(() => useChatStyleSelectorEnabled('https://remote/api'));
+        const { result } = renderHook(() => useChatStyleSelectorEnabled('https://remote'));
         await waitFor(() => expect(result.current).toBe(true));
+    });
+
+    // Regression: callers hold the raw server root (useResolveCloneBaseUrl /
+    // sourceRemoteInfo), so the hook must append the api base path itself. It
+    // used to fetch `${base}/config/runtime`, which fell through to the SPA
+    // HTML and cached the selector off for every remote repo.
+    it('probes `${baseUrl}/api/config/runtime` given a raw server root', async () => {
+        const fetchSpy = mockFetch(() => runtimeResponse({ chatStyleSelectorEnabled: true }));
+        const { result } = renderHook(() => useChatStyleSelectorEnabled('https://remote'));
+        await waitFor(() => expect(result.current).toBe(true));
+        expect(fetchSpy).toHaveBeenCalledWith('https://remote/api/config/runtime');
+    });
+
+    it('tolerates a trailing slash on the server root', async () => {
+        const fetchSpy = mockFetch(() => runtimeResponse({ chatStyleSelectorEnabled: true }));
+        const { result } = renderHook(() => useChatStyleSelectorEnabled('https://remote/'));
+        await waitFor(() => expect(result.current).toBe(true));
+        expect(fetchSpy).toHaveBeenCalledWith('https://remote/api/config/runtime');
+    });
+
+    it('honors a configured non-default apiBasePath', async () => {
+        (window as { __DASHBOARD_CONFIG__?: { apiBasePath?: string } }).__DASHBOARD_CONFIG__ = { apiBasePath: '/coc-api' };
+        try {
+            const fetchSpy = mockFetch(() => runtimeResponse({ chatStyleSelectorEnabled: true }));
+            const { result } = renderHook(() => useChatStyleSelectorEnabled('https://remote'));
+            await waitFor(() => expect(result.current).toBe(true));
+            expect(fetchSpy).toHaveBeenCalledWith('https://remote/coc-api/config/runtime');
+        } finally {
+            delete (window as { __DASHBOARD_CONFIG__?: unknown }).__DASHBOARD_CONFIG__;
+        }
     });
 
     it('stays off when the owning server has the feature off, even though the local server has it on', async () => {
         mockFetch(() => runtimeResponse({ chatStyleSelectorEnabled: false }));
-        const { result } = renderHook(() => useChatStyleSelectorEnabled('https://remote/api'));
+        const { result } = renderHook(() => useChatStyleSelectorEnabled('https://remote'));
         await waitFor(() => expect(result.current).toBe(false));
         // Give the effect a chance to resolve incorrectly before asserting again.
         expect(result.current).toBe(false);
@@ -106,35 +136,35 @@ describe('useChatStyleSelectorEnabled — remote clone', () => {
 
     it('treats an older server that does not publish the flag as unsupported', async () => {
         mockFetch(() => runtimeResponse({ gitWorktreeExecutionEnabled: true }));
-        const { result } = renderHook(() => useChatStyleSelectorEnabled('https://old/api'));
+        const { result } = renderHook(() => useChatStyleSelectorEnabled('https://old'));
         await waitFor(() => expect(result.current).toBe(false));
     });
 
     it('treats an unreachable server as unsupported', async () => {
         globalThis.fetch = vi.fn(() => Promise.reject(new Error('ECONNREFUSED'))) as unknown as typeof fetch;
-        const { result } = renderHook(() => useChatStyleSelectorEnabled('https://down/api'));
+        const { result } = renderHook(() => useChatStyleSelectorEnabled('https://down'));
         await waitFor(() => expect(result.current).toBe(false));
     });
 
     it('treats a non-OK response as unsupported', async () => {
         mockFetch(() => ({ ok: false, status: 404, json: async () => ({}) }));
-        const { result } = renderHook(() => useChatStyleSelectorEnabled('https://404/api'));
+        const { result } = renderHook(() => useChatStyleSelectorEnabled('https://404'));
         await waitFor(() => expect(result.current).toBe(false));
     });
 
     it('is off while the remote answer is still in flight, so the chip never flashes', () => {
         globalThis.fetch = vi.fn(() => new Promise(() => {})) as unknown as typeof fetch;
-        const { result } = renderHook(() => useChatStyleSelectorEnabled('https://slow/api'));
+        const { result } = renderHook(() => useChatStyleSelectorEnabled('https://slow'));
         expect(result.current).toBe(false);
     });
 
-    it('caches the answer per API base instead of re-fetching on every mount', async () => {
+    it('caches the answer per server root instead of re-fetching on every mount', async () => {
         const fetchSpy = mockFetch(() => runtimeResponse({ chatStyleSelectorEnabled: true }));
-        const first = renderHook(() => useChatStyleSelectorEnabled('https://remote/api'));
+        const first = renderHook(() => useChatStyleSelectorEnabled('https://remote'));
         await waitFor(() => expect(first.result.current).toBe(true));
         first.unmount();
 
-        const second = renderHook(() => useChatStyleSelectorEnabled('https://remote/api'));
+        const second = renderHook(() => useChatStyleSelectorEnabled('https://remote'));
         expect(second.result.current).toBe(true);
         expect(fetchSpy).toHaveBeenCalledTimes(1);
     });
@@ -143,10 +173,10 @@ describe('useChatStyleSelectorEnabled — remote clone', () => {
         const fetchSpy = mockFetch((url: string) =>
             runtimeResponse({ chatStyleSelectorEnabled: url.startsWith('https://a/') }));
 
-        const a = renderHook(() => useChatStyleSelectorEnabled('https://a/api'));
+        const a = renderHook(() => useChatStyleSelectorEnabled('https://a'));
         await waitFor(() => expect(a.result.current).toBe(true));
 
-        const b = renderHook(() => useChatStyleSelectorEnabled('https://b/api'));
+        const b = renderHook(() => useChatStyleSelectorEnabled('https://b'));
         await waitFor(() => expect(b.result.current).toBe(false));
 
         expect(fetchSpy).toHaveBeenCalledTimes(2);
