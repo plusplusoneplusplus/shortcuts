@@ -19,6 +19,7 @@ export { KustoEmbedGroupProvider, useKustoEmbedGroup } from './KustoEmbedGroup';
 export type { KustoEmbedGroupValue } from './KustoEmbedGroup';
 export { extractTablesFromHtml, MIN_ROWS, MIN_COLS } from './extractTablesFromHtml';
 export type { ExtractedTable, ExtractedTableData, ColumnAlignment } from './extractTablesFromHtml';
+export { pasteHtmlToMarkdown } from './pasteHtmlToMarkdown';
 export { mountHtmlEmbeds } from './htmlEmbedMount';
 export { mountMapEmbeds } from './mapEmbedMount';
 export { SourceEditor } from './SourceEditor';
