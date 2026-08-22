@@ -17,6 +17,7 @@ import { useMyLifeEnabled } from '../../hooks/feature-flags/useMyLifeEnabled';
 import { useScopeNavigation } from '../../hooks/useScopeNavigation';
 import { MY_WORK_WORKSPACE_ID } from '../../repos/MyWorkView';
 import { MY_LIFE_WORKSPACE_ID } from '../../repos/MyLifeView';
+import { isRepoGroupWorkspaceId } from '../../repos/virtualWorkspaceIds';
 import { getRepoSelectionId } from '../../repos/cloneIdentity';
 import type { RepoData } from '../../repos/repoGrouping';
 import { useShellNavigation } from './useShellNavigation';
@@ -97,6 +98,9 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
     );
 
     const isOnReposTab = state.activeTab === 'repos';
+    // A repo group is a virtual scope without its own segment: no segment gets
+    // the thumb, and the workspace segment shows the remembered repo, inactive.
+    const groupScopeActive = isOnReposTab && isRepoGroupWorkspaceId(state.selectedRepoId);
     const activeScope: ScopeKey =
         myWorkEnabled && isOnReposTab && state.selectedRepoId === MY_WORK_WORKSPACE_ID
             ? 'work'
@@ -104,28 +108,31 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
                 ? 'life'
                 : 'workspace';
 
-    // When a virtual scope (My Work / My Life) is active, the workspace segment
-    // shows the remembered workspace but is *inactive*. Clicking its body switches
-    // back to that workspace, re-selecting it as the active scope (restoring the
-    // last-viewed note path exactly like selecting a workspace normally does via
-    // `selectClone`). The chevron keeps opening the picker. (AC-02)
+    // When a virtual scope (My Work / My Life / a repo group) is active, the
+    // workspace segment shows the remembered workspace but is *inactive*.
+    // Clicking its body switches back to that workspace, re-selecting it as the
+    // active scope (restoring the last-viewed note path exactly like selecting a
+    // workspace normally does via `selectClone`). The chevron keeps opening the
+    // picker. (AC-02)
     const switchBackToWorkspace = useCallback(() => {
         if (repo) selectClone(getRepoSelectionId(repo));
     }, [repo, selectClone]);
-    const onSwitchBack = activeScope !== 'workspace' && repo ? switchBackToWorkspace : undefined;
+    const onSwitchBack = (activeScope !== 'workspace' || groupScopeActive) && repo ? switchBackToWorkspace : undefined;
 
     const containerRef = useRef<HTMLDivElement>(null);
     const segmentRefs = useRef<Partial<Record<ScopeKey, HTMLElement | null>>>({});
     const [thumb, setThumb] = useState<{ left: number; width: number } | null>(null);
 
     const measure = useCallback(() => {
-        const el = segmentRefs.current[activeScope];
+        // A repo-group scope has no segment of its own — hide the thumb entirely
+        // rather than falsely highlighting the workspace segment.
+        const el = groupScopeActive ? null : segmentRefs.current[activeScope];
         if (!el) {
             setThumb(null);
             return;
         }
         setThumb({ left: el.offsetLeft, width: el.offsetWidth });
-    }, [activeScope]);
+    }, [activeScope, groupScopeActive]);
 
     // Re-measure on scope change / segment set change, and on any size change of
     // the container or a segment (the workspace chip's width follows the remote
@@ -183,7 +190,7 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
         <div
             ref={containerRef}
             data-testid="scope-switcher"
-            data-active-scope={activeScope}
+            data-active-scope={groupScopeActive ? 'group' : activeScope}
             role="tablist"
             aria-label="Scope"
             className="relative hidden md:flex items-center gap-0.5 min-w-0 flex-shrink-0 rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-white/70 dark:bg-[#1e1e1e]/70 px-1"
@@ -203,7 +210,7 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
             <div
                 ref={el => { segmentRefs.current.workspace = el; }}
                 role="tab"
-                aria-selected={activeScope === 'workspace'}
+                aria-selected={activeScope === 'workspace' && !groupScopeActive}
                 data-testid="scope-segment"
                 data-scope="workspace"
                 className="group relative flex items-center min-w-0"

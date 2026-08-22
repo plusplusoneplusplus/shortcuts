@@ -120,6 +120,28 @@ describe('ScopeSlideSwitcher — segments and active scope', () => {
         expect(screen.getByTestId('scope-switcher').getAttribute('data-active-scope')).toBe('workspace');
     });
 
+    it('treats a selected repo group as a virtual scope: no segment active, no thumb target', () => {
+        // A repo group has no segment of its own — the workspace segment shows
+        // the remembered repo but must not read as active. (repo-group AC-02)
+        mockAppState = { ...mockAppState, selectedRepoId: 'group-frontend' };
+        render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
+
+        expect(screen.getByTestId('scope-switcher').getAttribute('data-active-scope')).toBe('group');
+        expect(segment('workspace')!.getAttribute('aria-selected')).toBe('false');
+        expect(segment('work')!.getAttribute('aria-selected')).toBe('false');
+        expect(segment('life')!.getAttribute('aria-selected')).toBe('false');
+    });
+
+    it('clicking the workspace chip body switches back to the remembered repo while a group is active', () => {
+        mockAppState = { ...mockAppState, selectedRepoId: 'group-frontend' };
+        render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
+
+        fireEvent.click(screen.getByTestId('remote-chip'));
+
+        expect(mockSelectClone).toHaveBeenCalledWith('a');
+        expect(screen.queryByTestId('remote-dropdown')).toBeNull();
+    });
+
     it('gates the work and life segments on their feature flags', () => {
         mockMyWorkEnabled = false;
         mockMyLifeEnabled = false;

@@ -30,6 +30,8 @@ import { useScopeNavigation } from '../hooks/useScopeNavigation';
 import { useSplitWorkspacePanelEnabled } from '../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { MY_WORK_WORKSPACE_ID, getMyWorkHeaderConfig } from '../repos/MyWorkView';
 import { MY_LIFE_WORKSPACE_ID, MY_LIFE_HEADER_CONFIG } from '../repos/MyLifeView';
+import { getRepoGroupHeaderConfig } from '../repos/RepoGroupView';
+import { isRepoGroupWorkspaceId } from '../repos/virtualWorkspaceIds';
 import { useMyWorkEnabled } from '../hooks/feature-flags/useMyWorkEnabled';
 import { useMyWorkTodayViewEnabled } from '../hooks/feature-flags/useMyWorkTodayViewEnabled';
 import { useMyLifeEnabled } from '../hooks/feature-flags/useMyLifeEnabled';
@@ -150,16 +152,27 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     // OR when the window is locked to a single scope (no cross-scope UI at all).
     const hideScopeIdentity = showScopeSwitcher || isWindowLocked;
 
-    // Virtual workspaces (My Work / My Life) have no real repo, so they never hit
-    // `showRemoteHeader`. Give them the same single-row shell via a dedicated
-    // header that renders their identity + sub-tabs + actions instead of the
-    // repo-picker / clone-switcher clusters.
+    // Repo-group virtual workspaces are recognized by id prefix (not id equality
+    // like My Work / My Life — many groups may exist). The header label is the
+    // registered workspace name, falling back to the id while workspaces load.
+    // Groups have no feature flag: they only exist when the user created one.
+    const groupHeaderConfig = useMemo(() => {
+        if (!isOnReposTab || !isRepoGroupWorkspaceId(state.selectedRepoId)) return null;
+        const id = state.selectedRepoId!;
+        const ws = (state.workspaces ?? []).find((w: any) => String(w?.id) === id);
+        return getRepoGroupHeaderConfig(id, String(ws?.name ?? id));
+    }, [isOnReposTab, state.selectedRepoId, state.workspaces]);
+
+    // Virtual workspaces (My Work / My Life / repo groups) have no real repo, so
+    // they never hit `showRemoteHeader`. Give them the same single-row shell via
+    // a dedicated header that renders their identity + sub-tabs + actions instead
+    // of the repo-picker / clone-switcher clusters.
     const virtualHeaderConfig =
         myWorkEnabled && isOnReposTab && state.selectedRepoId === MY_WORK_WORKSPACE_ID
             ? getMyWorkHeaderConfig(todayViewEnabled)
             : myLifeEnabled && isOnReposTab && state.selectedRepoId === MY_LIFE_WORKSPACE_ID
                 ? MY_LIFE_HEADER_CONFIG
-                : null;
+                : groupHeaderConfig;
     const showVirtualHeader = remoteShell && !isMobile && !!virtualHeaderConfig;
 
     // In the remote-first shell the status cluster (connection / notifications /
