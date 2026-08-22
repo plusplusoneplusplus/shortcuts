@@ -75,14 +75,18 @@ import { AttachedContextPreviews } from '../../ui/AttachedContextPreviews';
 import { formatAttachedContext, useAttachedContext } from './hooks/useAttachedContext';
 import type { AttachmentPayload } from '../../types/attachments';
 import {
+    buildFilePathInsertion,
     dataTransferHasAnyData,
+    dataTransferHasFilePath,
     dataTransferHasSessionContext,
     getPayloadLogicalKey,
+    readFilePathDragPayload,
     readSessionContextDropPayload,
     useConversationRetrievalCapability,
     validateSessionContextAttachmentsForSend,
     validateSessionContextDrop,
 } from './sessionContextDrop';
+import { findComposerEditable, textOffsetFromPoint } from './filePathDropCaret';
 import {
     RALPH_SESSION_CONTEXT_DRAG_KIND,
     SESSION_CONTEXT_DRAG_KIND,
@@ -306,6 +310,9 @@ export function InitialChatComposer({
 }: InitialChatComposerProps) {
     const [input, setInput] = useState('');
     const [cursorPos, setCursorPos] = useState(0);
+    // False until the editor has reported a caret, so a drop onto a composer
+    // that was never focused appends instead of inserting at offset 0.
+    const cursorTouchedRef = useRef(false);
     const [selectedMode, setSelectedMode] = useState<ChatMode>('ask');
     const [sending, setSending] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -1003,7 +1010,10 @@ export function InitialChatComposer({
     }
 
     function handleSessionContextDragEnter(e: React.DragEvent<HTMLElement>) {
-        if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        // A file-path drag is a plain text insert, so it is accepted regardless
+        // of the session-context attachments flag.
+        if (!dataTransferHasFilePath(e.dataTransfer)
+            && (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer))) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
         sessionContextDragDepthRef.current += 1;
@@ -1011,21 +1021,52 @@ export function InitialChatComposer({
     }
 
     function handleSessionContextDragOver(e: React.DragEvent<HTMLElement>) {
-        if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        // A file-path drag is a plain text insert, so it is accepted regardless
+        // of the session-context attachments flag.
+        if (!dataTransferHasFilePath(e.dataTransfer)
+            && (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer))) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
         setSessionContextDragActive(true);
     }
 
     function handleSessionContextDragLeave(e: React.DragEvent<HTMLElement>) {
-        if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        // A file-path drag is a plain text insert, so it is accepted regardless
+        // of the session-context attachments flag.
+        if (!dataTransferHasFilePath(e.dataTransfer)
+            && (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer))) return;
         sessionContextDragDepthRef.current = Math.max(0, sessionContextDragDepthRef.current - 1);
         if (sessionContextDragDepthRef.current === 0) {
             setSessionContextDragActive(false);
         }
     }
 
+    /**
+     * Insert the dragged Explorer paths at the caret. Returns true when the
+     * drop was a file-path drop, so the session-context path (including its
+     * unsupported-payload error) never sees it.
+     */
+    function handleFilePathDrop(e: React.DragEvent<HTMLElement>): boolean {
+        if (!dataTransferHasFilePath(e.dataTransfer)) return false;
+        e.preventDefault();
+        resetSessionContextDragState();
+        const payload = readFilePathDragPayload(e.dataTransfer);
+        if (!payload) return true;
+        const current = richTextRef.current?.getValue() ?? input;
+        const editable = findComposerEditable(e.currentTarget);
+        const fromPoint = textOffsetFromPoint(editable, e.clientX, e.clientY);
+        const fallback = cursorTouchedRef.current ? cursorPos : current.length;
+        const next = buildFilePathInsertion(current, fromPoint ?? fallback, payload.paths);
+        setInput(next.text);
+        richTextRef.current?.setValue(next.text, next.cursorPos);
+        setCursorPos(next.cursorPos);
+        cursorTouchedRef.current = true;
+        richTextRef.current?.focus();
+        return true;
+    }
+
     function handleSessionContextDrop(e: React.DragEvent<HTMLElement>) {
+        if (handleFilePathDrop(e)) return;
         if (!sessionContextAttachmentsEnabled) return;
         if (!dataTransferHasSessionContext(e.dataTransfer)) {
             if (dataTransferHasAnyData(e.dataTransfer)) {
@@ -1562,6 +1603,7 @@ export function InitialChatComposer({
                         onChange={(val, pos) => {
                             setInput(val);
                             setCursorPos(pos);
+                            cursorTouchedRef.current = true;
                             if (modelCommand.modelMenuVisible) {
                                 modelCommand.setModelFilter(val);
                             } else {
