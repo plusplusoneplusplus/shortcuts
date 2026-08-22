@@ -7,16 +7,21 @@
  * `ScopeSlideSwitcher`'s workspace segment.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
 import { useRepos } from '../../contexts/ReposContext';
 import { isHidden as isHiddenTask } from '../../queue/hooks/useRepoQueueStats';
 import { AddFolderDialog } from '../../repos/AddFolderDialog';
 import { AddRepoDialog } from '../../repos/AddRepoDialog';
 import { CloneRepoDialog } from '../../repos/CloneRepoDialog';
+import { RepoGroupDialog } from '../../repos/RepoGroupDialog';
+import { deleteRepoGroup } from '../../repos/repoGroupService';
+import { isRepoGroupWorkspaceId } from '../../repos/virtualWorkspaceIds';
 import { getRepoSelectionId, isRepoSelected } from '../../repos/cloneIdentity';
 import { groupKey, groupReposByRemote, type RepoData, type RepoGroup } from '../../repos/repoGrouping';
 import { getGroupWsl } from '../../repos/repoPickerModel';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
+import { Dialog } from '../../ui/Dialog';
 import { ToastContainer, useToast } from '../../ui/Toast';
 import { copyToClipboard } from '../../utils/format';
 import { computeCloneStatusMap, describeRemoveBlock, summarizeRemote } from './shellModel';
@@ -68,6 +73,16 @@ function KebabGlyph() {
     );
 }
 
+/** Stacked-layers icon marking repo-group entries apart from plain repos. */
+function RepoGroupGlyph() {
+    return (
+        <svg data-testid="repo-group-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 3l9 5-9 5-9-5 9-5z" />
+            <path d="M3 13l9 5 9-5" />
+        </svg>
+    );
+}
+
 function CloneGlyph() {
     return (
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -113,6 +128,7 @@ function groupMatchesSearch(group: RepoGroup, query: string): boolean {
 export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceIdentityChipProps) {
     const cloneId = repo ? getRepoSelectionId(repo) : '';
     const { state: queueState } = useQueue();
+    const { state: appState } = useApp();
     const { fetchRepos, unseenCounts } = useRepos();
     const { selectClone } = useShellNavigation();
     const { toasts, addToast, removeToast } = useToast();
@@ -123,6 +139,10 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
     const [addRepoOpen, setAddRepoOpen] = useState(false);
     const [cloneOpen, setCloneOpen] = useState(false);
     const [rowMenu, setRowMenu] = useState<{ repo: RepoData; x: number; y: number } | null>(null);
+    const [groupMenu, setGroupMenu] = useState<{ workspace: any; x: number; y: number } | null>(null);
+    const [groupDialog, setGroupDialog] = useState<{ groupId: string | null } | null>(null);
+    const [groupDeleteTarget, setGroupDeleteTarget] = useState<any | null>(null);
+    const [groupDeleting, setGroupDeleting] = useState(false);
     const rootRef = useRef<HTMLDivElement>(null);
     const triggerRef = useRef<HTMLButtonElement>(null);
     const lastCloneByRemote = useRef<Record<string, string>>({});
@@ -193,6 +213,44 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
             onClick: () => { setRowMenu(null); close(); requestRemove(rowRepo); },
         }];
     }, [cloneStatus, close, copyRepoPath, requestRemove]);
+
+    // Repo-group virtual workspaces come from the full AppContext workspace
+    // list — `repos` only carries non-virtual workspaces (ReposContext filters
+    // them for the grid), so groups would never surface from it.
+    const repoGroupWorkspaces = useMemo(
+        () => ((appState.workspaces ?? []) as any[]).filter(ws => isRepoGroupWorkspaceId(ws?.id)),
+        [appState.workspaces],
+    );
+    const filteredRepoGroupWorkspaces = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        if (!q) return repoGroupWorkspaces;
+        return repoGroupWorkspaces.filter(ws =>
+            String(ws.name ?? '').toLowerCase().includes(q) || String(ws.id).toLowerCase().includes(q));
+    }, [repoGroupWorkspaces, query]);
+
+    const doDeleteGroup = useCallback(async (groupWs: any) => {
+        setGroupDeleting(true);
+        try {
+            await deleteRepoGroup(String(groupWs.id));
+            setGroupDeleteTarget(null);
+            await fetchRepos();
+            addToast(`Deleted group ${groupWs.name ?? groupWs.id}`, 'success');
+        } catch {
+            addToast(`Failed to delete group ${groupWs.name ?? groupWs.id}`, 'error');
+        } finally {
+            setGroupDeleting(false);
+        }
+    }, [fetchRepos, addToast]);
+
+    const buildGroupMenuItems = useCallback((groupWs: any): ContextMenuItem[] => [{
+        label: 'Edit group',
+        icon: '✎',
+        onClick: () => { setGroupMenu(null); close(); setGroupDialog({ groupId: String(groupWs.id) }); },
+    }, {
+        label: 'Delete group',
+        icon: 'X',
+        onClick: () => { setGroupMenu(null); close(); setGroupDeleteTarget(groupWs); },
+    }], [close]);
 
     const filteredGroups = query.trim()
         ? groups.filter(group => groupMatchesSearch(group, query))
@@ -383,6 +441,15 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
                                 <CloneGlyph />
                                 Clone repository
                             </button>
+                            <button
+                                data-testid="remote-new-repo-group-option"
+                                role="menuitem"
+                                className="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10"
+                                onClick={() => { close(); setGroupDialog({ groupId: null }); }}
+                            >
+                                <RepoGroupGlyph />
+                                New repo group…
+                            </button>
                         </div>
                     </>
                 }
@@ -392,6 +459,40 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
                     filteredGroups.map(group => renderGroupRow(group))
                 ) : (
                     <PickerEmpty>No remotes found</PickerEmpty>
+                )}
+                {filteredRepoGroupWorkspaces.length > 0 && (
+                    <>
+                        <PickerSection label="Repo groups" />
+                        {filteredRepoGroupWorkspaces.map(ws => (
+                            // Row click intentionally does nothing yet: switching the
+                            // dashboard to a group workspace lands with the group view
+                            // (AC-02); until then only the ⋮ menu edits/deletes.
+                            <PickerRow
+                                key={String(ws.id)}
+                                testId="repo-group-item"
+                                remoteKey={String(ws.id)}
+                                name={String(ws.name ?? ws.id)}
+                                sublabel="Repo group"
+                                badges={<RepoGroupGlyph />}
+                                rowMenu={
+                                    <button
+                                        data-testid="repo-group-row-menu"
+                                        data-remote-key={String(ws.id)}
+                                        aria-label={`More actions for ${ws.name ?? ws.id}`}
+                                        title="More actions"
+                                        onClick={e => {
+                                            e.stopPropagation();
+                                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                            setGroupMenu({ workspace: ws, x: rect.left, y: rect.bottom });
+                                        }}
+                                        className="flex-shrink-0 inline-flex items-center justify-center w-6 h-6 mr-1 rounded text-[#848484] dark:text-[#777] hover:bg-black/[0.06] dark:hover:bg-white/[0.10]"
+                                    >
+                                        <KebabGlyph />
+                                    </button>
+                                }
+                            />
+                        ))}
+                    </>
                 )}
             </RepoPickerPopover>
 
@@ -411,6 +512,13 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
                 onClose={() => setCloneOpen(false)}
                 onSuccess={() => { setCloneOpen(false); fetchRepos(); }}
             />
+            <RepoGroupDialog
+                open={!!groupDialog}
+                groupId={groupDialog?.groupId ?? null}
+                repos={repos}
+                onClose={() => setGroupDialog(null)}
+                onSaved={() => { setGroupDialog(null); fetchRepos(); }}
+            />
 
             {rowMenu && (
                 <ContextMenu
@@ -418,6 +526,47 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
                     items={buildRowMenuItems(rowMenu.repo)}
                     onClose={() => setRowMenu(null)}
                 />
+            )}
+            {groupMenu && (
+                <ContextMenu
+                    position={{ x: groupMenu.x, y: groupMenu.y }}
+                    items={buildGroupMenuItems(groupMenu.workspace)}
+                    onClose={() => setGroupMenu(null)}
+                />
+            )}
+            {groupDeleteTarget && (
+                <Dialog
+                    open={true}
+                    onClose={() => !groupDeleting && setGroupDeleteTarget(null)}
+                    title="Delete repo group?"
+                    id="repo-group-delete-dialog"
+                    footer={
+                        <>
+                            <button
+                                onClick={() => setGroupDeleteTarget(null)}
+                                disabled={groupDeleting}
+                                className="px-3 py-1.5 rounded-md text-[12px] font-semibold bg-[#f6f8fa] dark:bg-[#2a2a2a] border border-[#d0d7de] dark:border-[#3c3c3c] text-[#1f2328] dark:text-[#cccccc] hover:bg-[#eaeef2] dark:hover:bg-[#3c3c3c] transition-colors disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                data-testid="repo-group-delete-confirm-btn"
+                                onClick={() => doDeleteGroup(groupDeleteTarget)}
+                                disabled={groupDeleting}
+                                className="px-3 py-1.5 rounded-md text-[12px] font-semibold bg-[#cf222e] hover:bg-[#a40e26] text-white transition-colors disabled:opacity-50"
+                            >
+                                {groupDeleting ? 'Deleting...' : 'Delete'}
+                            </button>
+                        </>
+                    }
+                >
+                    <p className="text-[13px]">
+                        Delete <strong>{groupDeleteTarget.name ?? groupDeleteTarget.id}</strong> from CoC?
+                    </p>
+                    <p className="text-[12px] text-[#848484] dark:text-[#777] mt-1">
+                        Member repos are not affected, and the group's data folder (notes, history) stays on disk - only the picker entry is removed.
+                    </p>
+                </Dialog>
             )}
             {removeDialog}
             <ToastContainer toasts={toasts} removeToast={removeToast} />
