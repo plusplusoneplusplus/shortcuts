@@ -40,6 +40,14 @@ export interface RepoGroupMember {
     rootPath?: string;
 }
 
+/** Raised when create/update input fails shape or registry validation. */
+export class RepoGroupValidationError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'RepoGroupValidationError';
+    }
+}
+
 /** Well-formed repo-group workspace ID: prefix + slug charset only. */
 const REPO_GROUP_ID_PATTERN = /^group-[a-z0-9][a-z0-9-]*$/;
 
@@ -79,10 +87,10 @@ async function normalizeMembers(store: ProcessStore, members: string[]): Promise
         seen.add(id);
         const ws = registered.get(id);
         if (!ws) {
-            throw new Error(`Repo group member "${id}" is not a registered workspace`);
+            throw new RepoGroupValidationError(`Repo group member "${id}" is not a registered workspace`);
         }
         if (ws.virtual) {
-            throw new Error(`Repo group member "${id}" is not a repo workspace`);
+            throw new RepoGroupValidationError(`Repo group member "${id}" is not a repo workspace`);
         }
         normalized.push(id);
     }
@@ -92,7 +100,7 @@ async function normalizeMembers(store: ProcessStore, members: string[]): Promise
 function normalizeName(name: string): string {
     const trimmed = name.trim();
     if (!trimmed) {
-        throw new Error('Repo group name must not be empty');
+        throw new RepoGroupValidationError('Repo group name must not be empty');
     }
     return trimmed;
 }
