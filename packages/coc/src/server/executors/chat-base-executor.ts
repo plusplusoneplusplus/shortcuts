@@ -53,6 +53,7 @@ import {
     prependSelectedSkillsDirective,
     resolveSelectedSkillReferences,
 } from './prompt-builder';
+import { computeAssistantResponseOrdinal } from './turn-performance-tracker';
 import { buildMemoryV2Addon } from './memory-v2-addon';
 import type { MemoryV2Addon } from './memory-v2-addon';
 import { resolveAutoFolderContext } from './auto-folder-utils';
@@ -203,6 +204,12 @@ export interface ChatModeExecutorOptions {
      * in-flight turn even before an `sdkSessionId` has been persisted.
      */
     processAbortControllers?: Map<string, AbortController>;
+    /**
+     * Late-bound accessor for the turn-performance metric store. Supplied by
+     * the server after infrastructure wiring; executors record one event per
+     * settled turn through it. Optional — recording is skipped when unset.
+     */
+    getTurnPerformanceStore?: () => import('./turn-performance-tracker').TurnPerformanceRecorder | undefined;
 }
 
 /** Return type for the AI call result. */
@@ -296,6 +303,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.resolveAiServiceForProvider = options.resolveAiServiceForProvider;
         this.getGlobalSystemPromptFn = options.getGlobalSystemPrompt;
         this.processAbortControllers = options.processAbortControllers;
+        this.getTurnPerformanceRecorder = options.getTurnPerformanceStore;
     }
 
     /**
@@ -599,6 +607,22 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         };
     }
 
+    /**
+     * Metric `turnIndex` for the response this turn is about to append: the
+     * count of assistant turns already persisted for the process (see
+     * computeAssistantResponseOrdinal). 0 for a brand-new chat; historical
+     * turns on a cold resume keep that resume out of the new-session bucket.
+     * Never throws — an ordinal lookup failure must not fail the turn.
+     */
+    private async computeTurnPerformanceOrdinal(processId: string, workspaceId?: string): Promise<number> {
+        try {
+            const proc = await this.store.getProcess(processId, workspaceId);
+            return computeAssistantResponseOrdinal(proc?.conversationTurns);
+        } catch {
+            return 0;
+        }
+    }
+
     private emitRalphGrillPlanningProgress(processId: string, progress: RalphGrillPlanningProgress): void {
         try {
             this.store.emitProcessEvent(processId, {
@@ -644,6 +668,12 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.resetSessionStreamingState(processId);
         this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
 
+        // Start TTFT/TPS timing before any streaming can begin; the first
+        // output chunk is stamped by appendOutputChunk via the tracker.
+        // task.createdAt is the enqueue timestamp, so queue wait stays
+        // reconstructable from the raw row.
+        this.turnPerformance.begin(processId, { enqueuedAt: task.createdAt });
+
         // Rehydrate externalized images from blob store before image decoding
         await rehydrateImagesIfNeeded(payload as unknown as Record<string, unknown>);
 
@@ -684,6 +714,15 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             }
         }
 
+        // Resolve the AI provider for this chat task's selected provider, or
+        // the server-level default provider when the task does not override it.
+        // Hoisted (with the mode and the policy fields below) so the error
+        // path can settle the turn-performance event with real attribution.
+        const taskProvider: ChatProvider = payload.provider ?? this.provider;
+        const chatMode = normalizeChatModeOrDefault(payload.mode);
+        let policyModelId: string | undefined;
+        let policyReasoningEffort: string | undefined;
+
         const turnAbort = this.registerTurnAbortController(processId);
         try {
             // Rewrite large prompts to file-path references
@@ -697,9 +736,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 }
             }
 
-            // Resolve the AI service for this chat task's selected provider, or
-            // the server-level default provider when the task does not override it.
-            const taskProvider: ChatProvider = payload.provider ?? this.provider;
             const effectiveAiService: ISDKService = this.getAiServiceForProvider(taskProvider);
 
             const availability = await effectiveAiService.isAvailable();
@@ -727,7 +763,6 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             // through the shared turn-policy resolver so first turns and
             // follow-ups cannot drift apart. A first turn fails loudly on an
             // unsupported effort (no per-turn override to drop).
-            const chatMode = normalizeChatModeOrDefault(payload.mode);
             const policy = await resolveChatTurnPolicy({
                 provider: taskProvider,
                 requestedModel: task.config.model,
@@ -748,6 +783,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             });
             const effectiveModel = policy.resolvedModel;
             const contextTier = policy.contextTier;
+            policyModelId = policy.modelId;
+            policyReasoningEffort = policy.reasoningEffort;
 
             if (ralphGrillPlanning?.setup.enabled === true) {
                 this.emitRalphGrillPlanningProgress(
@@ -864,6 +901,18 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             );
             const pendingSuggestions = this.getPendingSuggestions(processId);
 
+            this.settleTurnPerformance(processId, {
+                turnIndex: await this.computeTurnPerformanceOrdinal(processId, payload.workspaceId),
+                workspaceId: payload.workspaceId,
+                provider: taskProvider,
+                model: result.effectiveModel ?? policy.modelId,
+                effortTier: policy.reasoningEffort,
+                mode: chatMode,
+                kind: task.type,
+                tokenUsage: result.tokenUsage,
+                status: 'completed',
+            });
+
             return {
                 response: result.response || '(Task completed via tool execution — no text response produced)',
                 sessionId: result.sessionId,
@@ -874,6 +923,19 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 effectiveModel: result.effectiveModel ?? policy.modelId,
             };
         } catch (err) {
+            // Settle before the interrupted-turn append below so the ordinal
+            // counts only the assistant turns that preceded this response.
+            this.settleTurnPerformance(processId, {
+                turnIndex: await this.computeTurnPerformanceOrdinal(processId, payload.workspaceId),
+                workspaceId: payload.workspaceId,
+                provider: taskProvider,
+                model: policyModelId,
+                effortTier: policyReasoningEffort,
+                mode: chatMode,
+                kind: task.type,
+                status: turnAbort.signal.aborted ? 'cancelled' : 'errored',
+            });
+
             const partial = this.capturePartialTurn(processId);
 
             if (partial.hasPartial) {
@@ -903,6 +965,9 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             throw err;
         } finally {
             this.releaseTurnAbortController(processId, turnAbort);
+            // Timing state is settled on both success and error paths; this is
+            // a leak guard for throws that bypass both settles.
+            this.turnPerformance.abandon(processId);
             if (imageTempDir) { cleanupTempDir(imageTempDir); }
             if (pasteCleanup) { pasteCleanup(); }
             modeDispose?.();

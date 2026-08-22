@@ -11,6 +11,7 @@ import { ExecutorRegistry } from '../executors/executor-registry';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
 import { orchestrateRalphIteration } from '../ralph/orchestrate-iteration';
 import { orchestrateFinalCheck } from '../ralph/orchestrate-final-check';
+import { orchestrateSubmitCompletion } from '../ralph/orchestrate-submit';
 import { loadConfigFile, DEFAULT_CONFIG } from '../../config';
 import type { CLIConfig } from '../../config';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
@@ -75,6 +76,12 @@ export interface CLITaskExecutorOptions {
     /** Late-bound provider/tier helpers for send_to_conversation. */
     getSendToConversationRuntime?: () => import('../llm-tools/send-to-conversation-tool').SendToConversationRuntimeOptions | undefined;
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
+    /**
+     * Late-bound accessor for the turn-performance metric store. Supplied by
+     * the server after infrastructure wiring; threaded to chat executors so
+     * each settled turn records one TTFT/TPS event.
+     */
+    getTurnPerformanceStore?: () => import('../executors/turn-performance-tracker').TurnPerformanceRecorder | undefined;
     onRalphSessionComplete?: (event: RalphSessionCompleteEvent) => void;
     dreamRunExecutor?: DreamRunExecutor;
 }
@@ -226,6 +233,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             getSendMessage: options.getSendMessage,
             getSendToConversationRuntime: options.getSendToConversationRuntime,
             getMcpOauthManager: options.getMcpOauthManager,
+            getTurnPerformanceStore: options.getTurnPerformanceStore,
             getDreamRunExecutor: () => this.dreamRunExecutor,
             cancelledTasks: this.cancelledTasks,
             processAbortControllers: this.processAbortControllers,
@@ -307,6 +315,12 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             return;
         }
 
+        // ── PR-submit completions must never enqueue another iteration ───────
+        if (ralphCtx?.submit) {
+            await this.handleSubmitCompletion(processId, completedTask, responseText, ralphCtx, workspaceId, sessionId);
+            return;
+        }
+
         const qm = this.queueManager;
         await orchestrateRalphIteration({
             responseText,
@@ -374,6 +388,36 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         }
     }
 
+
+    /**
+     * Handle completion of a PR-submit task.
+     * Parses the RALPH_SUBMIT_RESULT block and updates the persisted submit
+     * record; never enqueues further work.
+     */
+    private async handleSubmitCompletion(
+        processId: string,
+        completedTask: QueuedTask,
+        responseText: string,
+        ralphCtx: any,
+        workspaceId: string | undefined,
+        sessionId: string | undefined,
+    ): Promise<void> {
+        if (!workspaceId || !sessionId || !this.dataDir) return;
+        const logger = getLogger();
+        const submitIndex: number = ralphCtx.submit?.submitIndex ?? 1;
+
+        await orchestrateSubmitCompletion({
+            workspaceId,
+            sessionId,
+            submitIndex,
+            taskId: completedTask.id,
+            processId,
+            responseText,
+            deps: { store: new RalphSessionStore({ dataDir: this.dataDir }) },
+        }).catch(err => {
+            logger.warn(LogCategory.AI, `[Ralph/Submit] orchestrateSubmitCompletion threw: ${err instanceof Error ? err.message : String(err)}`);
+        });
+    }
 
     /**
      * Handle completion of a final-check task.

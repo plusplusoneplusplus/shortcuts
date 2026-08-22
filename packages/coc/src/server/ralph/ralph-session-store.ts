@@ -21,6 +21,7 @@ import type {
     RalphFinalCheckRecord,
     RalphLoopRecord,
     RalphSessionRecord,
+    RalphSubmitRecord,
 } from './types';
 
 const SESSIONS_DIR = 'ralph-sessions';
@@ -67,6 +68,12 @@ export interface InitSessionInput {
     originalGoal: string;
     maxIterations: number;
     startedAt?: string;
+    /**
+     * HEAD SHA of the workspace checkout at creation time. Only applied when
+     * the record is first created — initSession is a no-op for existing
+     * records, so continue/resume/new-loop can never overwrite it.
+     */
+    baselineSha?: string;
 }
 
 export interface AppendProgressInput {
@@ -131,6 +138,7 @@ export class RalphSessionStore {
                 maxIterations: init.maxIterations,
                 currentIteration: 0,
                 phase: 'executing',
+                ...(init.baselineSha ? { baselineSha: init.baselineSha } : {}),
                 startedAt,
                 iterations: [],
             };
@@ -579,6 +587,49 @@ export class RalphSessionStore {
                 next.push(updated);
             }
             return { ...base, finalChecks: next };
+        });
+    }
+
+    /**
+     * Add or update a `RalphSubmitRecord` in `session.json`.
+     *
+     * - If `submits` is absent (legacy session), it is initialised as `[]`.
+     * - If a record with `submitIndex` already exists, it is replaced.
+     * - Otherwise the record is appended.
+     *
+     * Returns the updated session record.
+     */
+    async upsertSubmitRecord(
+        workspaceId: string,
+        sessionId: string,
+        submitIndex: number,
+        partial: Partial<RalphSubmitRecord> & Pick<RalphSubmitRecord, 'status'>,
+    ): Promise<RalphSessionRecord> {
+        return this.updateSessionRecord(workspaceId, sessionId, (rec) => {
+            const base = rec ?? {
+                sessionId,
+                workspaceId,
+                originalGoal: '',
+                maxIterations: 0,
+                currentIteration: 0,
+                phase: 'complete' as const,
+                startedAt: new Date().toISOString(),
+                iterations: [],
+            };
+            const existing = base.submits ?? [];
+            const idx = existing.findIndex(s => s.submitIndex === submitIndex);
+            const next = [...existing];
+            if (idx >= 0) {
+                // Preserve the original startedAt unless the patch sets one.
+                next[idx] = { ...next[idx], ...partial, submitIndex };
+            } else {
+                next.push({
+                    startedAt: new Date().toISOString(),
+                    ...partial,
+                    submitIndex,
+                });
+            }
+            return { ...base, submits: next };
         });
     }
 

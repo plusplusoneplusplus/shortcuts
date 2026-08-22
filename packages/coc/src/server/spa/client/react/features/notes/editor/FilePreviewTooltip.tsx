@@ -31,6 +31,13 @@ interface PreviewData {
 
 const MAX_PREVIEW_LINES = 10;
 
+// Matches .file-preview-tooltip-card width in noteEditor.css.
+const CARD_WIDTH = 360;
+// Rough card height (header + 10 preview lines + footer) used to decide
+// whether to flip above the anchor near the bottom of the viewport.
+const CARD_ESTIMATED_HEIGHT = 280;
+const VIEWPORT_MARGIN = 8;
+
 export function FilePreviewTooltip({
     filePath,
     workspaceId,
@@ -69,12 +76,30 @@ export function FilePreviewTooltip({
     // Position tooltip below the anchor element
     const [pos, setPos] = useState({ top: 0, left: 0 });
     useEffect(() => {
+        // The anchor can be replaced under the cursor (e.g. a ProseMirror
+        // redraw recreates the hovered element) before the hover timer fires.
+        // Measuring a detached element yields an all-zero rect, which would
+        // pin the tooltip to the top-left corner — dismiss instead.
         const rect = anchorEl.getBoundingClientRect();
+        const zeroRect = rect.top === 0 && rect.left === 0
+            && rect.width === 0 && rect.height === 0;
+        if (!anchorEl.isConnected || zeroRect) {
+            onMouseLeave?.();
+            return;
+        }
+        let top = rect.bottom + 4;
+        if (top + CARD_ESTIMATED_HEIGHT > window.innerHeight) {
+            top = Math.max(VIEWPORT_MARGIN, rect.top - 4 - CARD_ESTIMATED_HEIGHT);
+        }
+        const left = Math.min(
+            Math.max(rect.left, VIEWPORT_MARGIN),
+            Math.max(VIEWPORT_MARGIN, window.innerWidth - CARD_WIDTH - VIEWPORT_MARGIN),
+        );
         setPos({
-            top: rect.bottom + window.scrollY + 4,
-            left: rect.left + window.scrollX,
+            top: top + window.scrollY,
+            left: left + window.scrollX,
         });
-    }, [anchorEl]);
+    }, [anchorEl, onMouseLeave]);
 
     const handleOpen = useCallback(() => {
         if (preview) {

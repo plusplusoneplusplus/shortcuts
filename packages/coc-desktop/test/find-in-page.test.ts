@@ -27,6 +27,8 @@ import {
     FIND_RESULT_CHANNEL,
     OPEN_FIND_BAR_CHANNEL,
     CLOSE_FIND_BAR_CHANNEL,
+    FIND_BAR_MARGIN,
+    FIND_BAR_TOP,
 } from '../src/find-in-page';
 
 describe('formatFindCount', () => {
@@ -42,6 +44,16 @@ describe('formatFindCount', () => {
     it('treats missing/negative totals as no results', () => {
         expect(formatFindCount(0, undefined as unknown as number)).toBe('No results');
         expect(formatFindCount(0, -1)).toBe('No results');
+    });
+});
+
+describe('find-bar geometry', () => {
+    it('clears the SPA top bar (40px drag-region header) plus the margin', () => {
+        // The SPA header is 40px tall (`h-10`) and draggable; Electron resolves
+        // drag regions at the window level, ABOVE child WebContentsViews, so a
+        // bar overlapping the header loses clicks to window-drag. See the
+        // FIND_BAR_TOP comment in find-in-page.ts.
+        expect(FIND_BAR_TOP).toBeGreaterThanOrEqual(40 + FIND_BAR_MARGIN);
     });
 });
 

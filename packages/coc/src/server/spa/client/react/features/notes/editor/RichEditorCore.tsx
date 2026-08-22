@@ -382,7 +382,15 @@ export function RichEditorCore({
                     const anchor = target.closest('a[href]');
                     const href = anchor?.getAttribute('href');
                     if (anchor && href) {
-                        anchor.setAttribute('title', getLinkHoverTitle(href));
+                        // Idempotent write: PM's DOMObserver treats the mutation
+                        // as an external edit and redraws the link's children;
+                        // when the hovered child is an inline atom chip the
+                        // redraw re-fires mouseover on the recreated element,
+                        // and an unconditional write loops every frame.
+                        const title = getLinkHoverTitle(href);
+                        if (anchor.getAttribute('title') !== title) {
+                            anchor.setAttribute('title', title);
+                        }
                     }
                     return false;
                 },

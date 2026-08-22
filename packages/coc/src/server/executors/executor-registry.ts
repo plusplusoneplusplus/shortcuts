@@ -66,6 +66,12 @@ export interface ExecutorRegistryOptions {
     /** Late-bound provider/tier helpers for `send_to_conversation`. */
     getSendToConversationRuntime?: () => import('../llm-tools/send-to-conversation-tool').SendToConversationRuntimeOptions | undefined;
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
+    /**
+     * Late-bound accessor for the turn-performance metric store so executors
+     * can record one TTFT/TPS event per settled turn. Optional — recording is
+     * skipped when unset.
+     */
+    getTurnPerformanceStore?: () => import('./turn-performance-tracker').TurnPerformanceRecorder | undefined;
     getDreamRunExecutor?: () => import('../dreams/dream-runner').DreamRunExecutor | undefined;
     cancelledTasks?: Set<string>;
     /**
@@ -127,6 +133,7 @@ export class ExecutorRegistry {
             getSendMessage: options.getSendMessage,
             getSendToConversationRuntime: options.getSendToConversationRuntime,
             getMcpOauthManager: options.getMcpOauthManager,
+            getTurnPerformanceStore: options.getTurnPerformanceStore,
             provider: options.provider,
             ralphMultiAgentGrillEnabled: options.ralphMultiAgentGrillEnabled,
             resolveAiServiceForProvider: options.resolveAiServiceForProvider,

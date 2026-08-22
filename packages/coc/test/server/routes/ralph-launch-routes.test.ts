@@ -501,4 +501,56 @@ describe('POST /api/ralph-launch with Git worktree (AC-04)', () => {
         const enqueueArg = mockEnqueue.mock.calls[0][0];
         expect(enqueueArg.payload.workingDirectory).toBeUndefined();
     });
+
+    // -----------------------------------------------------------------------
+    // baselineSha capture at session creation (AC-01)
+    // -----------------------------------------------------------------------
+
+    it('records the workspace HEAD as baselineSha on a non-worktree launch', async () => {
+        const headSha = git(sourceRepo, 'rev-parse', 'HEAD');
+        const res = await post(baseUrl, '/api/ralph-launch', {
+            goalSpec: 'Build something',
+            workspaceId: REPO_ID,
+        });
+
+        expect(res.status).toBe(200);
+        const record = JSON.parse(fs.readFileSync(
+            pathMod.join(dataDir, 'repos', REPO_ID, 'ralph-sessions', res.json().sessionId, 'session.json'),
+            'utf-8',
+        ));
+        expect(record.baselineSha).toBe(headSha);
+    });
+
+    it('omits baselineSha on a worktree launch (worktree.baseSha covers it)', async () => {
+        const res = await post(baseUrl, '/api/ralph-launch', {
+            goalSpec: 'Build something',
+            workspaceId: REPO_ID,
+            worktree: { enabled: true },
+        });
+
+        expect(res.status).toBe(200);
+        const record = JSON.parse(fs.readFileSync(
+            pathMod.join(dataDir, 'repos', REPO_ID, 'ralph-sessions', res.json().sessionId, 'session.json'),
+            'utf-8',
+        ));
+        expect('baselineSha' in record).toBe(false);
+        expect(record.worktree.baseSha).toMatch(/^[0-9a-f]{40}$/);
+    });
+
+    it('omits baselineSha when the workspace folder is not a git repository', async () => {
+        const nonGit = fs.mkdtempSync(pathMod.join(os.tmpdir(), 'ralph-launch-baseline-nongit-'));
+        await store.registerWorkspace({ id: 'ws-baseline-nongit', rootPath: nonGit } as any);
+        const res = await post(baseUrl, '/api/ralph-launch', {
+            goalSpec: 'Build something',
+            workspaceId: 'ws-baseline-nongit',
+        });
+
+        expect(res.status).toBe(200);
+        const record = JSON.parse(fs.readFileSync(
+            pathMod.join(dataDir, 'repos', 'ws-baseline-nongit', 'ralph-sessions', res.json().sessionId, 'session.json'),
+            'utf-8',
+        ));
+        expect('baselineSha' in record).toBe(false);
+        try { fs.rmSync(nonGit, { recursive: true, force: true }); } catch { /* ignore */ }
+    });
 });

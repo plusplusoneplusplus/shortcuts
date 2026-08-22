@@ -76,7 +76,7 @@ const CHAT_MODE_LABELS: Record<string, string> = {
 
 export type ActivityTabMode = 'chats' | 'tasks';
 
-type QueuePauseOptions = { durationHours?: 1 | 2 | 3 | 4 | 8; until?: number | string };
+type QueuePauseOptions = { durationHours?: number; until?: number | string };
 type PauseMenuScope = 'all' | 'autopilot';
 type PauseDurationHours = NonNullable<QueuePauseOptions['durationHours']>;
 type GroupPinMenuTarget = {
@@ -827,6 +827,16 @@ function formatPauseRemaining(value: number | string | undefined, now: number): 
     return `${hours}h ${minutes}m`;
 }
 
+/** Renders a float hour count as "Xh Ym" (minutes precision; sub-minute remainders dropped). */
+function formatPauseDurationLabel(durationHours: number): string {
+    const totalMinutes = Math.max(1, Math.floor(durationHours * 60));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (hours <= 0) return `${minutes}m`;
+    if (minutes === 0) return `${hours}h`;
+    return `${hours}h ${minutes}m`;
+}
+
 function formatPauseResumeTime(value: number | string | undefined): string | undefined {
     const until = pauseUntilMs(value);
     if (until === undefined) return undefined;
@@ -843,6 +853,20 @@ function PauseDurationMenu({
     quotaData?: AgentProvidersQuotaResponse | null;
 }) {
     const now = Date.now();
+
+    const [customOpen, setCustomOpen] = useState(false);
+    const [customValue, setCustomValue] = useState('');
+    const [customError, setCustomError] = useState<string | null>(null);
+
+    const submitCustom = () => {
+        const parsed = Number(customValue.trim() || NaN);
+        if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 24) {
+            setCustomError('Enter a number of hours greater than 0 and at most 24');
+            return;
+        }
+        setCustomError(null);
+        onSelect({ durationHours: parsed });
+    };
 
     const mostConstrained = getMostConstrainedProviderQuota(quotaData);
     const mostConstrainedResetDate = mostConstrained?.quotaType.resetDate;
@@ -917,6 +941,52 @@ function PauseDurationMenu({
                     {hours} {hours === 1 ? 'hour' : 'hours'}
                 </button>
             ))}
+            {!customOpen ? (
+                <button
+                    type="button"
+                    className="block w-full text-left px-2 py-1.5 rounded text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                    onClick={() => setCustomOpen(true)}
+                    data-testid={`pause-duration-${testIdScope}-custom`}
+                >
+                    Custom…
+                </button>
+            ) : (
+                <div className="px-2 py-1.5" data-testid={`pause-duration-${testIdScope}-custom-editor`}>
+                    <div className="flex items-center gap-1.5">
+                        <input
+                            type="number"
+                            min={0}
+                            max={24}
+                            step="any"
+                            autoFocus
+                            value={customValue}
+                            onChange={(e) => { setCustomValue(e.target.value); setCustomError(null); }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitCustom(); } }}
+                            placeholder="Hours"
+                            className="w-16 px-1.5 py-0.5 rounded border border-[#d0d0d0] dark:border-[#3f3f46] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc]"
+                            data-testid={`pause-duration-${testIdScope}-custom-input`}
+                        />
+                        <span className="text-[#6e6e6e] dark:text-[#999]">hours</span>
+                        <button
+                            type="button"
+                            className="px-1.5 py-0.5 rounded text-[#1e1e1e] dark:text-[#cccccc] hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                            onClick={submitCustom}
+                            title="Apply custom duration"
+                            data-testid={`pause-duration-${testIdScope}-custom-submit`}
+                        >
+                            ✓
+                        </button>
+                    </div>
+                    {customError && (
+                        <div
+                            className="mt-1 text-[10px] text-[#d1242f] dark:text-[#f85149]"
+                            data-testid={`pause-duration-${testIdScope}-custom-error`}
+                        >
+                            {customError}
+                        </div>
+                    )}
+                </div>
+            )}
             {mostConstrained && mostConstrainedResetFuture !== undefined && (
                 <>
                     <div className="my-1 border-t border-[#e8e8e8] dark:border-[#3f3f46]" />
@@ -4328,14 +4398,15 @@ function PauseMarkerRow({ markerId, durationHours, onRemove }: {
     durationHours?: PauseDurationHours;
     onRemove: () => void;
 }) {
-    const label = durationHours === undefined ? 'Queue pauses here' : `Queue pauses here · ${durationHours}h`;
+    const durationLabel = durationHours === undefined ? undefined : formatPauseDurationLabel(durationHours);
+    const label = durationLabel === undefined ? 'Queue pauses here' : `Queue pauses here · ${durationLabel}`;
     return (
         <div
             className="flex items-center gap-1.5 px-2 py-1 rounded border border-dashed border-yellow-400/60 dark:border-yellow-500/50 bg-yellow-500/5 text-yellow-700 dark:text-yellow-400 text-xs"
             data-testid="pause-marker-row"
-            title={durationHours === undefined
+            title={durationLabel === undefined
                 ? 'Queue will pause when it reaches this point'
-                : `Queue will pause for ${durationHours} ${durationHours === 1 ? 'hour' : 'hours'} when it reaches this point`}
+                : `Queue will pause for ${durationLabel} when it reaches this point`}
         >
             <span className="shrink-0 text-[11px]">⏸</span>
             <span className="flex-1 text-[11px]">{label}</span>

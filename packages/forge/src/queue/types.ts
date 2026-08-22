@@ -12,9 +12,10 @@
 // ============================================================================
 
 /**
- * Allowed duration presets for timed queue pauses.
+ * Duration in hours for timed queue pauses.
+ * Any finite number in (0, 24]; validated at the API boundary.
  */
-export type PauseDurationHours = 1 | 2 | 3 | 4 | 8;
+export type PauseDurationHours = number;
 
 /**
  * A pause marker inserted into the queue.
@@ -27,7 +28,7 @@ export interface PauseMarker {
     /** Repository identifier for persisted multi-repo queue markers. */
     repoId?: string;
     createdAt: number;
-    /** Omitted for an indefinite pause; otherwise one of the supported hour presets. */
+    /** Omitted for an indefinite pause; otherwise a duration in hours within (0, 24]. */
     durationHours?: PauseDurationHours;
 }
 

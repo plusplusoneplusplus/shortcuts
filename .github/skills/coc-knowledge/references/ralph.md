@@ -29,7 +29,16 @@ Each Ralph session owns a journal directory under the repo data directory:
 `workspaceId`, `originalGoal`, `maxIterations`, `currentIteration`, `phase`
 (`executing`, `complete`, or `failed`), `startedAt`, and an `iterations[]`
 array. Each iteration records at least `iteration`, `signal`, `startedAt`, and
-optionally `processId` and `completedAt`.
+optionally `processId` and `completedAt`. Non-worktree sessions also carry an
+optional `baselineSha` — the checkout's HEAD captured at session creation
+(`captureRalphBaselineSha` in `packages/coc/src/server/ralph/capture-baseline-sha.ts`,
+best-effort: absent when no directory is known or git fails) so later
+automation can compute the session's `baselineSha..HEAD` commit range.
+`initSession` only applies it on first creation, so continue/resume/new-loop
+never overwrite it; worktree sessions record `worktree.baseSha` instead. All
+five creation paths capture it: ralph-launch, ralph-start, promote-to-ralph,
+work-item Ralph runs (reusing `headBefore` when supplied), and Ralph schedules
+(only when `schedule.params.workingDirectory` is set).
 
 `progress.md` starts with a small header from `initSession(...)`. Every
 iteration appends a Markdown block:
@@ -417,6 +426,79 @@ The SPA `RalphWorkflowPane` "Continue loop" confirmation panel renders the same
 defaults are omitted, changed/unrecovered selections are forwarded through
 `continueRalphSession()`. `coc-client` exposes `continueRalphSession()` taking a
 `RalphContinueRequest`.
+
+### Submit Session Commits as a PR
+
+`POST /api/workspaces/:workspaceId/ralph-sessions/:sessionId/submit-pr`
+(`packages/coc/src/server/routes/ralph-submit-routes.ts`) publishes a completed
+session's commits as a GitHub pull request by enqueuing an autopilot submit job
+attached to the session (same attached-job pattern as final-check). It takes no
+request body. Allowed for ANY `phase === 'complete'` session regardless of
+`terminalReason`; guards return 409 when the session is not complete, when a
+Ralph task for the session is in flight (`findInFlightRalphTask`), or when a
+prior submit is still `queued`/`running`; 404 for an unknown session. Repeat
+submits after a terminal submit are allowed and increment `submitIndex`.
+Response: `{ submitted: true, sessionId, taskId, submitIndex }`.
+
+Each submit persists a `RalphSubmitRecord` (`submitIndex`, `taskId`,
+`processId`, `startedAt`, `completedAt`, `status`
+`queued|running|completed|failed`, `prUrl`, `prNumber`, `commitShas`, `error`)
+in a `submits[]` array on the session record via
+`RalphSessionStore.upsertSubmitRecord(...)`; legacy records without `submits`
+parse fine. The record type is portable
+(`@plusplusoneplusplus/coc-workflow/ralph`, re-exported by coc's
+`server/ralph/types.ts` barrel).
+
+Task construction and guards live in
+`packages/coc/src/server/ralph/enqueue-submit.ts` (mirrors
+`enqueue-final-check.ts`): `buildSubmitTaskPayload` enqueues a `mode='ralph'`
+chat with `context.ralph.submit = { kind: 'submit-pr', submitIndex }` and
+taskGroup role `submit-pr`, deliberately carrying no provider/model selection so
+workspace defaults apply. The prompt comes from the portable
+`buildRalphSubmitPrompt` (`@plusplusoneplusplus/coc-workflow/ralph`,
+`submit-prompt.ts`): determine commits via `baselineSha..HEAD` when the session
+has a baseline, else via a startedAt/completedAt time window cross-checked
+against `progress.md`; whole-session scope (all loops including gap-fix); invoke
+the `submit-commits-as-pr` skill with an explicit comma-separated SHA list; PR
+title/body from the goal plus a progress-journal summary, auto-merge on, not
+draft; never resolve cherry-pick conflicts (the skill aborts); end with a
+`RALPH_SUBMIT_RESULT` JSON block
+`{ status: 'submitted'|'failed', prUrl?, prNumber?, commitShas?, error? }`.
+
+On task completion the queue bridge routes `context.ralph.submit` completions to
+`handleSubmitCompletion` →
+`packages/coc/src/server/ralph/orchestrate-submit.ts`
+(`orchestrateSubmitCompletion`), which records the `processId`, parses the
+response with the tolerant portable `parseRalphSubmitResult`
+(`submit-result-parser.ts`, modeled on `parseFinalCheckResult`), and updates the
+persisted submit record: `submitted` → `completed` with
+`prUrl`/`prNumber`/`commitShas`; `failed` → `failed` with the agent's `error`;
+missing/malformed block → `failed` with `error: 'unparseable'`. `completedAt` is
+set on terminal updates and `upsertSubmitRecord` preserves the original
+`startedAt` on patches. A submit completion never enqueues further work. Server
+code never switches git branches — the only branch manipulation happens inside
+the submit skill's script.
+
+`coc-client` exposes `workspaces.submitRalphPr(workspaceId, sessionId)`
+(contract types in `src/contracts/workspaces.ts`, implementation next to
+`continueRalphSession` in `src/domains/workspaces.ts`): an empty-body POST to
+the submit-pr route returning the typed `RalphSubmitPrResponse`. The client
+`RalphSessionRecord` mirrors `baselineSha?` and `submits?: RalphSubmitRecord[]`
+so the dashboard can render submit nodes from the session read response.
+
+In the dashboard SPA, `RalphWorkflowPane` shows a `Submit PR` action in the
+header meta row for ANY `phase === 'complete'` session (any terminal reason).
+One click — no confirmation dialog — calls `workspaces.submitRalphPr` on the
+selected clone's server (container override `onSubmitPr` refreshes the view);
+the button is disabled while any submit record is `queued`/`running` or while
+the request is in flight, and an inline error surfaces a rejected request
+(e.g. a 409 guard). Each `RalphSubmitRecord` renders a `RalphSubmitNode`
+("PR submit #N") appended after all iteration/final-check timeline items in
+`submitIndex` order: completed nodes link the `prUrl` in a new tab, failed
+nodes show the `error` text, and a node with a recorded `processId` is
+clickable to open the submit chat (wired to the host process-id callback like
+final-check nodes). `useRalphSessionView` keeps polling a complete session
+while a submit is `queued`/`running` so node status updates live.
 
 ## Scheduled Ralph Runs
 

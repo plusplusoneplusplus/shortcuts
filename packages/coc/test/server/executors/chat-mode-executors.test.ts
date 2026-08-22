@@ -1804,3 +1804,145 @@ describe('ChatExecutor MCP allow-list enforcement', () => {
     });
 });
 
+
+// ============================================================================
+// Turn performance recording — first turns (AC-01/AC-02)
+// ============================================================================
+
+describe('turn performance recording (first turn)', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+    });
+
+    function makeRecorder() {
+        return { record: vi.fn(() => true) };
+    }
+
+    it('records one completed event with turnIndex 0 and TTFT stamped from the first chunk', async () => {
+        sdkMocks.mockSendMessage.mockImplementation(async (opts: any) => {
+            opts.onStreamingChunk('first');
+            opts.onStreamingChunk('second');
+            return {
+                success: true,
+                response: 'answer',
+                sessionId: 's1',
+                toolCalls: [],
+                effectiveModel: 'gpt-5.6',
+                tokenUsage: {
+                    inputTokens: 100, outputTokens: 40, cacheReadTokens: 0,
+                    cacheWriteTokens: 0, totalTokens: 140, turnCount: 1,
+                },
+            };
+        });
+
+        const recorder = makeRecorder();
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            getTurnPerformanceStore: () => recorder,
+        }));
+        const task = makeChatTask('ask', 'task-perf-1');
+        (task.payload as any).workspaceId = 'ws-perf';
+        // Simulate the process the lifecycle runner registers before execute:
+        // only the user turn exists, so this response is ordinal 0.
+        await store.addProcess({
+            id: 'queue_task-perf-1',
+            type: 'chat',
+            status: 'running',
+            startTime: new Date(),
+            promptPreview: 'Hello',
+            conversationTurns: [
+                { role: 'user', content: 'Hello', timestamp: new Date(), turnIndex: 0, timeline: [] },
+            ],
+        } as any);
+
+        await executor.execute(task, 'Hello');
+
+        expect(recorder.record).toHaveBeenCalledTimes(1);
+        const event = recorder.record.mock.calls[0][0];
+        expect(event).toMatchObject({
+            id: 'queue_task-perf-1:0',
+            processId: 'queue_task-perf-1',
+            turnIndex: 0,
+            workspaceId: 'ws-perf',
+            provider: 'copilot',
+            model: 'gpt-5.6',
+            mode: 'ask',
+            kind: 'chat',
+            status: 'completed',
+            inputTokens: 100,
+            outputTokens: 40,
+            totalTokens: 140,
+        });
+        expect(event.firstOutputAt).not.toBeNull();
+        expect(event.ttftMs).toBeGreaterThanOrEqual(0);
+        // task.createdAt is the enqueue timestamp, so queue wait is recorded.
+        expect(event.enqueuedAt).not.toBeNull();
+        expect(event.queueWaitMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it('counts historical assistant turns so a cold resume is not ordinal 0', async () => {
+        sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'ok', sessionId: 's1' });
+        const recorder = makeRecorder();
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            getTurnPerformanceStore: () => recorder,
+        }));
+        const task = makeChatTask('ask', 'task-perf-resume');
+        await store.addProcess({
+            id: 'queue_task-perf-resume',
+            type: 'chat',
+            status: 'running',
+            startTime: new Date(),
+            promptPreview: 'Hello',
+            conversationTurns: [
+                { role: 'user', content: 'old q', timestamp: new Date(), turnIndex: 0, timeline: [], historical: true },
+                { role: 'assistant', content: 'old a', timestamp: new Date(), turnIndex: 1, timeline: [], historical: true },
+                { role: 'user', content: 'Hello', timestamp: new Date(), turnIndex: 2, timeline: [] },
+            ],
+        } as any);
+
+        await executor.execute(task, 'Hello');
+
+        expect(recorder.record).toHaveBeenCalledTimes(1);
+        expect(recorder.record.mock.calls[0][0]).toMatchObject({
+            id: 'queue_task-perf-resume:1',
+            turnIndex: 1,
+        });
+    });
+
+    it('records an errored event with null TTFT when sendMessage throws before streaming', async () => {
+        sdkMocks.mockSendMessage.mockRejectedValue(new Error('Network error'));
+        const recorder = makeRecorder();
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            getTurnPerformanceStore: () => recorder,
+        }));
+
+        await expect(executor.execute(makeChatTask('ask', 'task-perf-err'), 'Hello')).rejects.toThrow('Network error');
+
+        expect(recorder.record).toHaveBeenCalledTimes(1);
+        const event = recorder.record.mock.calls[0][0];
+        expect(event).toMatchObject({
+            processId: 'queue_task-perf-err',
+            turnIndex: 0,
+            status: 'errored',
+        });
+        expect(event.firstOutputAt).toBeNull();
+        expect(event.ttftMs).toBeNull();
+        expect(event.outputTokens).toBeNull();
+    });
+
+    it('never fails the turn when the recorder throws', async () => {
+        sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'ok', sessionId: 's1' });
+        const recorder = { record: vi.fn(() => { throw new Error('disk full'); }) };
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            getTurnPerformanceStore: () => recorder as any,
+        }));
+
+        const result = await executor.execute(makeChatTask('ask', 'task-perf-boom'), 'Hello');
+
+        expect(recorder.record).toHaveBeenCalledTimes(1);
+        expect(result.response).toBe('ok');
+    });
+});

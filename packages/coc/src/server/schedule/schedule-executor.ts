@@ -23,6 +23,7 @@ import {
     resolveDefaultModel,
 } from '../preferences-handler';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
+import { captureRalphBaselineSha } from '../ralph/capture-baseline-sha';
 import type { RalphSessionCompleteEvent } from '../queue/queue-executor-bridge';
 import type {
     ScheduleEntry,
@@ -289,8 +290,13 @@ export class ScheduleExecutor {
                 : RALPH_DEFAULT_MAX_ITERATIONS;
             const originalGoal = buildSchedulePrompt(repoId, schedule);
             if (this.dataDir) {
+                // Best-effort PR-submit baseline: schedules only know a checkout
+                // path when the schedule params carry one.
+                const baselineSha = await captureRalphBaselineSha({
+                    workingDirectory: schedule.params?.workingDirectory,
+                });
                 const store = new RalphSessionStore({ dataDir: this.dataDir });
-                await store.initSession(repoId, sessionId, { originalGoal, maxIterations });
+                await store.initSession(repoId, sessionId, { originalGoal, maxIterations, baselineSha });
             }
             const taskId = this.queueManager.enqueue(
                 buildScheduleRalphTask(ctx, { sessionId, originalGoal, maxIterations, dataDir: this.dataDir }),

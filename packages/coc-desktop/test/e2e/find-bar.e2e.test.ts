@@ -95,11 +95,11 @@ describe.skipIf(skip)('find bar E2E (real Electron, mock data)', () => {
         expect(steps.get('spa-owned')).toMatchObject({ childViews: 0 });
     });
 
-    it('opens on unhandled Ctrl+F, pinned to the top-right', () => {
+    it('opens on unhandled Ctrl+F, pinned to the top-right below the header', () => {
         const open = steps.get('open')!;
         expect(open).toMatchObject({ childViews: 1, hasBarWc: true });
         expect((open.bounds as { x: number }).x).toBe(open.expectedX);
-        expect((open.bounds as { y: number }).y).toBe(12);
+        expect((open.bounds as { y: number }).y).toBe(open.expectedY);
     });
 
     it('searches both mock panels with an exact count — never its own query box', () => {
@@ -135,5 +135,6 @@ describe.skipIf(skip)('find bar E2E (real Electron, mock data)', () => {
     it('stays pinned to the top-right across window resizes', () => {
         const resize = steps.get('resize')!;
         expect((resize.bounds as { x: number }).x).toBe(resize.expectedX);
+        expect((resize.bounds as { y: number }).y).toBe(resize.expectedY);
     });
 });

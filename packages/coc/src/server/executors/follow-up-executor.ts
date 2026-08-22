@@ -61,6 +61,7 @@ import {
 } from './chat-turn-settlement';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
+import { computeAssistantResponseOrdinal } from './turn-performance-tracker';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { buildChatTurnContext } from './chat-turn-context-builder';
 import type { ChatTurnContext } from './chat-turn-context-builder';
@@ -341,6 +342,16 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
         this.resetSessionStreamingState(processId);
         this.store.registerFlushHandler?.(processId, () => this.flushConversationTurn(processId, true));
+
+        // Start TTFT/TPS timing before any streaming can begin; the first
+        // output chunk is stamped by appendOutputChunk via the tracker.
+        this.turnPerformance.begin(processId);
+
+        // Metric turn index: 0-based assistant-response ordinal (never 0 on a
+        // follow-up — the first response of a new session settles in
+        // ChatBaseExecutor.execute). Counted from the pre-turn snapshot so the
+        // success and error settles agree.
+        const turnPerformanceOrdinal = computeAssistantResponseOrdinal(process.conversationTurns);
 
         let chatCtx: ChatTurnContext | undefined;
 
@@ -662,6 +673,18 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 logLabel: FOLLOW_UP_LOG_LABEL,
             });
 
+            this.settleTurnPerformance(processId, {
+                turnIndex: turnPerformanceOrdinal,
+                workspaceId: wsId,
+                provider: sessionProvider,
+                model: result.effectiveModel ?? policy.modelId,
+                effortTier: policy.reasoningEffort,
+                mode: currentMode,
+                kind: (process.metadata?.type as string | undefined) ?? process.type,
+                tokenUsage: result.tokenUsage,
+                status: 'completed',
+            });
+
             this.store.emitProcessComplete(processId, 'completed', `${duration}ms`);
 
             this.onTitleNeeded?.(processId, allTurns);
@@ -676,16 +699,18 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
             await this.appendFinalConversationTurn(
                 processId,
-                (turnIndex) => ({
-                    role: 'assistant' as const,
-                    content: partial.hasPartial ? partial.content : `Error: ${errorMsg}`,
-                    timestamp: new Date(),
-                    turnIndex,
-                    timeline: partial.hasPartial ? partial.timeline : [],
-                    ...(partial.hasPartial ? { interrupted: true, interruptionReason: errorMsg } : {}),
-                    ...(partial.hasPartial && partial.suggestions ? { suggestions: partial.suggestions } : {}),
-                    ...(turnSource ? { turnSource } : {}),
-                }),
+                (turnIndex) => {
+                    return {
+                        role: 'assistant' as const,
+                        content: partial.hasPartial ? partial.content : `Error: ${errorMsg}`,
+                        timestamp: new Date(),
+                        turnIndex,
+                        timeline: partial.hasPartial ? partial.timeline : [],
+                        ...(partial.hasPartial ? { interrupted: true, interruptionReason: errorMsg } : {}),
+                        ...(partial.hasPartial && partial.suggestions ? { suggestions: partial.suggestions } : {}),
+                        ...(turnSource ? { turnSource } : {}),
+                    };
+                },
                 {
                     filterStreaming: true,
                     additionalUpdates: (current: AIProcess) => ({
@@ -710,12 +735,24 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     }),
                 }
             );
+            this.settleTurnPerformance(processId, {
+                turnIndex: turnPerformanceOrdinal,
+                workspaceId: wsId,
+                provider: sessionProvider,
+                model: providerModel.model,
+                mode: currentMode,
+                kind: (process.metadata?.type as string | undefined) ?? process.type,
+                status: turnAbort.signal.aborted ? 'cancelled' : 'errored',
+            });
             this.store.emitProcessComplete(processId, 'failed', `${duration}ms`);
             if (strictResumeSessionId) {
                 throw error instanceof Error ? error : new Error(errorMsg);
             }
         } finally {
             this.releaseTurnAbortController(processId, turnAbort);
+            // Timing state is settled on both success and error paths; this is
+            // a leak guard for throws that bypass both settles.
+            this.turnPerformance.abandon(processId);
             chatCtx?.dispose();
             this.cancelAskUserHandles(processId);
             try {

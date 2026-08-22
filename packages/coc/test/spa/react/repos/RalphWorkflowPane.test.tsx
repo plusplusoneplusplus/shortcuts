@@ -1202,3 +1202,174 @@ describe('RalphWorkflowPane — new-loop UI (RALPH_MULTI_LOOP enabled)', () => {
         expect(screen.queryByTestId('ralph-workflow-new-loop')).toBeNull();
     });
 });
+
+describe('RalphWorkflowPane submit PR (AC-05)', () => {
+    function makeSubmit(overrides: any = {}) {
+        return {
+            submitIndex: 1,
+            taskId: 'task-s1',
+            processId: 'proc-s1',
+            startedAt: new Date(Date.now() - 20_000).toISOString(),
+            status: 'queued',
+            ...overrides,
+        };
+    }
+
+    function completeView(recordOverrides: Partial<RalphSessionRecord> = {}): RalphSessionView {
+        return {
+            record: makeRecord({
+                phase: 'complete',
+                currentIteration: 2,
+                completedAt: new Date().toISOString(),
+                terminalReason: 'RALPH_COMPLETE',
+                iterations: [makeIter(1), makeIter(2)],
+                ...recordOverrides,
+            }),
+            sections: [],
+        };
+    }
+
+    it('does not render the Submit PR button while the session is executing', () => {
+        const view: RalphSessionView = { record: makeRecord({ phase: 'executing' }), sections: [] };
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        expect(screen.queryByTestId('ralph-workflow-submit-pr')).toBeNull();
+    });
+
+    it('renders the button for a complete session regardless of terminal reason', () => {
+        for (const terminalReason of ['RALPH_COMPLETE', 'CAP_REACHED', 'CANCELLED', 'NO_SIGNAL'] as const) {
+            const { unmount } = render(
+                <RalphWorkflowPane
+                    workspaceId="ws-1"
+                    sessionId="sess-1"
+                    view={completeView({ terminalReason })}
+                />,
+            );
+            expect(screen.getByTestId('ralph-workflow-submit-pr')).toBeInTheDocument();
+            unmount();
+        }
+    });
+
+    it('one click calls onSubmitPr once — no confirmation dialog', async () => {
+        const onSubmitPr = vi.fn().mockResolvedValue(undefined);
+        render(
+            <RalphWorkflowPane
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                view={completeView()}
+                onSubmitPr={onSubmitPr}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('ralph-workflow-submit-pr'));
+        await waitFor(() => expect(onSubmitPr).toHaveBeenCalledTimes(1));
+    });
+
+    it.each(['queued', 'running'] as const)(
+        'disables the button while a submit is %s',
+        (status) => {
+            render(
+                <RalphWorkflowPane
+                    workspaceId="ws-1"
+                    sessionId="sess-1"
+                    view={completeView({ submits: [makeSubmit({ status })] })}
+                />,
+            );
+            expect(screen.getByTestId('ralph-workflow-submit-pr')).toBeDisabled();
+        },
+    );
+
+    it('re-enables the button once every submit reached a terminal state', () => {
+        render(
+            <RalphWorkflowPane
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                view={completeView({
+                    submits: [
+                        makeSubmit({ status: 'completed', prUrl: 'https://github.com/a/b/pull/1' }),
+                        makeSubmit({ submitIndex: 2, status: 'failed', error: 'dirty worktree' }),
+                    ],
+                })}
+            />,
+        );
+        expect(screen.getByTestId('ralph-workflow-submit-pr')).toBeEnabled();
+    });
+
+    it('disables the button while the submit request itself is in flight', async () => {
+        let resolveSubmit: () => void = () => undefined;
+        const onSubmitPr = vi.fn(
+            () => new Promise<void>((resolve) => { resolveSubmit = resolve; }),
+        );
+        render(
+            <RalphWorkflowPane
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                view={completeView()}
+                onSubmitPr={onSubmitPr}
+            />,
+        );
+        const button = screen.getByTestId('ralph-workflow-submit-pr');
+        fireEvent.click(button);
+        await waitFor(() => expect(button).toBeDisabled());
+        resolveSubmit();
+        await waitFor(() => expect(button).toBeEnabled());
+    });
+
+    it('surfaces a failed submit request as an inline error', async () => {
+        const onSubmitPr = vi.fn().mockRejectedValue(new Error('submit already in flight'));
+        render(
+            <RalphWorkflowPane
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                view={completeView()}
+                onSubmitPr={onSubmitPr}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('ralph-workflow-submit-pr'));
+        await waitFor(() =>
+            expect(screen.getByTestId('ralph-workflow-submit-pr-error').textContent)
+                .toBe('submit already in flight'),
+        );
+    });
+
+    it('renders one submit node per record at the end of the timeline, in submit order', () => {
+        render(
+            <RalphWorkflowPane
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                view={completeView({
+                    submits: [
+                        makeSubmit({ submitIndex: 2, status: 'running' }),
+                        makeSubmit({
+                            submitIndex: 1,
+                            status: 'completed',
+                            prUrl: 'https://github.com/acme/repo/pull/42',
+                            prNumber: 42,
+                        }),
+                    ],
+                })}
+            />,
+        );
+        expect(screen.getByTestId('ralph-submit-status-1').textContent).toBe('Completed');
+        expect(screen.getByTestId('ralph-submit-status-2').textContent).toBe('Running');
+        expect(screen.getByTestId('ralph-submit-link-1').getAttribute('href'))
+            .toBe('https://github.com/acme/repo/pull/42');
+        // Submit nodes come after every iteration node (they run post-completion).
+        const timeline = screen.getByTestId('ralph-workflow-timeline');
+        const html = timeline.innerHTML;
+        expect(html.indexOf('ralph-submit-node-1')).toBeGreaterThan(html.indexOf('ralph-workflow-node-2'));
+        expect(html.indexOf('ralph-submit-node-2')).toBeGreaterThan(html.indexOf('ralph-submit-node-1'));
+    });
+
+    it('clicking a submit node forwards its processId via onSelectSubmit', () => {
+        const onSelectSubmit = vi.fn();
+        render(
+            <RalphWorkflowPane
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                view={completeView({ submits: [makeSubmit({ status: 'running' })] })}
+                onSelectSubmit={onSelectSubmit}
+            />,
+        );
+        fireEvent.click(screen.getByTestId('ralph-submit-node-1'));
+        expect(onSelectSubmit).toHaveBeenCalledWith('proc-s1');
+    });
+});

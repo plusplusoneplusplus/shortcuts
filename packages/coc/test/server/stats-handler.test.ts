@@ -93,15 +93,22 @@ function makeStore(override: Partial<ProcessStore> = {}): ProcessStore {
     } as unknown as ProcessStore;
 }
 
-/** Invoke the first registered route handler (GET /api/stats/token-usage). */
-async function invoke(routes: Route[], url: string): Promise<{ status: number; body: unknown }> {
-    const route = routes.find(
-        (r) => r.method === 'GET' && r.pattern === '/api/stats/token-usage'
-    );
+/** Invoke a registered GET route handler by pattern. */
+async function invokePattern(
+    routes: Route[],
+    pattern: string,
+    url: string
+): Promise<{ status: number; body: unknown }> {
+    const route = routes.find((r) => r.method === 'GET' && r.pattern === pattern);
     if (!route) throw new Error('Route not registered');
     const { res, capturedStatus, capturedBody } = fakeRes();
     await Promise.resolve(route.handler(fakeReq(url), res));
     return { status: capturedStatus(), body: capturedBody() };
+}
+
+/** Invoke the token-usage route handler. */
+async function invoke(routes: Route[], url: string): Promise<{ status: number; body: unknown }> {
+    return invokePattern(routes, '/api/stats/token-usage', url);
 }
 
 // ============================================================================
@@ -233,5 +240,162 @@ describe('registerStatsRoutes — GET /api/stats/token-usage', () => {
         expect(result.entries).toEqual([]);
         expect(result.models).toEqual([]);
         expect(result.totalDays).toBe(0);
+    });
+});
+
+// ============================================================================
+// GET /api/stats/turn-performance
+// ============================================================================
+
+import type { TurnPerformanceStore } from '../../src/server/storage/turn-performance-store';
+import type { TurnPerformanceEvent, TurnPerformanceStatsResponse } from '@plusplusoneplusplus/forge';
+
+function makeTurnEvent(overrides: Partial<TurnPerformanceEvent> = {}): TurnPerformanceEvent {
+    return {
+        id: 'p1:0',
+        processId: 'p1',
+        turnIndex: 0,
+        workspaceId: 'ws-1',
+        provider: 'claude',
+        model: 'claude-sonnet-5',
+        effortTier: null,
+        mode: 'autopilot',
+        kind: 'chat',
+        enqueuedAt: '2026-08-20T10:00:00.000Z',
+        startedAt: '2026-08-20T10:00:01.000Z',
+        firstOutputAt: '2026-08-20T10:00:03.000Z',
+        endedAt: '2026-08-20T10:00:11.000Z',
+        ttftMs: 2000,
+        queueWaitMs: 1000,
+        generationMs: 8000,
+        wallMs: 10000,
+        inputTokens: 100,
+        outputTokens: 400,
+        totalTokens: 500,
+        tpsGeneration: 50,
+        tpsWall: 40,
+        status: 'completed',
+        ...overrides,
+    };
+}
+
+function makeTurnPerformanceStore(events: TurnPerformanceEvent[] = []): {
+    store: TurnPerformanceStore;
+    queryEvents: ReturnType<typeof vi.fn>;
+} {
+    const queryEvents = vi.fn().mockReturnValue(events);
+    return {
+        store: { queryEvents } as unknown as TurnPerformanceStore,
+        queryEvents,
+    };
+}
+
+async function invokeTurnPerf(
+    routes: Route[],
+    url: string
+): Promise<{ status: number; body: unknown }> {
+    return invokePattern(routes, '/api/stats/turn-performance', url);
+}
+
+describe('registerStatsRoutes — GET /api/stats/turn-performance', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('1. happy path — 200 with aggregated shape and default groupBy=provider', async () => {
+        const { store: tpStore, queryEvents } = makeTurnPerformanceStore([
+            makeTurnEvent(),
+            makeTurnEvent({ id: 'p2:0', processId: 'p2', provider: 'copilot', ttftMs: 4000 }),
+        ]);
+
+        const routes: Route[] = [];
+        registerStatsRoutes(routes, makeStore(), () => tpStore);
+
+        const { status, body } = await invokeTurnPerf(routes, '/api/stats/turn-performance');
+
+        expect(status).toBe(200);
+        const result = body as TurnPerformanceStatsResponse;
+        expect(result.groupBy).toEqual(['provider']);
+        expect(result.days).toBeNull();
+        expect(result.totalEvents).toBe(2);
+        expect(result.groups.map((g) => g.key)).toEqual([
+            { provider: 'claude' },
+            { provider: 'copilot' },
+        ]);
+        expect(result.groups[0].ttftMs.p50).toBe(2000);
+        expect(result.excludedEvents).toEqual({ nonCompleted: 0, noFirstToken: 0, noTokenUsage: 0 });
+        expect(queryEvents).toHaveBeenCalledWith({ days: undefined, processId: undefined, firstTurnOnly: false });
+    });
+
+    it('2. days / firstTurnOnly / processId are forwarded to the store query', async () => {
+        const { store: tpStore, queryEvents } = makeTurnPerformanceStore();
+
+        const routes: Route[] = [];
+        registerStatsRoutes(routes, makeStore(), () => tpStore);
+
+        const { status, body } = await invokeTurnPerf(
+            routes,
+            '/api/stats/turn-performance?days=7&firstTurnOnly=1&processId=p42'
+        );
+
+        expect(status).toBe(200);
+        expect((body as TurnPerformanceStatsResponse).days).toBe(7);
+        expect(queryEvents).toHaveBeenCalledWith({ days: 7, processId: 'p42', firstTurnOnly: true });
+    });
+
+    it('3. repeated and comma-separated groupBy produce a composite key', async () => {
+        const { store: tpStore } = makeTurnPerformanceStore([makeTurnEvent()]);
+
+        const routes: Route[] = [];
+        registerStatsRoutes(routes, makeStore(), () => tpStore);
+
+        for (const qs of ['groupBy=provider&groupBy=model', 'groupBy=provider,model']) {
+            const { status, body } = await invokeTurnPerf(routes, `/api/stats/turn-performance?${qs}`);
+            expect(status).toBe(200);
+            const result = body as TurnPerformanceStatsResponse;
+            expect(result.groupBy).toEqual(['provider', 'model']);
+            expect(result.groups[0].key).toEqual({ provider: 'claude', model: 'claude-sonnet-5' });
+        }
+    });
+
+    it('4. bogus groupBy → 400 listing valid dimensions', async () => {
+        const { store: tpStore, queryEvents } = makeTurnPerformanceStore();
+
+        const routes: Route[] = [];
+        registerStatsRoutes(routes, makeStore(), () => tpStore);
+
+        const { status, body } = await invokeTurnPerf(routes, '/api/stats/turn-performance?groupBy=bogus');
+
+        expect(status).toBe(400);
+        const err = (body as { error: string }).error;
+        expect(err).toContain('bogus');
+        expect(err).toContain('provider');
+        expect(err).toContain('day');
+        expect(queryEvents).not.toHaveBeenCalled();
+    });
+
+    it('5. no turn-performance store wired → 200 with empty aggregate', async () => {
+        const routes: Route[] = [];
+        registerStatsRoutes(routes, makeStore());
+
+        const { status, body } = await invokeTurnPerf(routes, '/api/stats/turn-performance');
+
+        expect(status).toBe(200);
+        const result = body as TurnPerformanceStatsResponse;
+        expect(result.groups).toEqual([]);
+        expect(result.totalEvents).toBe(0);
+    });
+
+    it('6. store query error → 500 { error }', async () => {
+        const queryEvents = vi.fn(() => { throw new Error('db locked'); });
+        const tpStore = { queryEvents } as unknown as TurnPerformanceStore;
+
+        const routes: Route[] = [];
+        registerStatsRoutes(routes, makeStore(), () => tpStore);
+
+        const { status, body } = await invokeTurnPerf(routes, '/api/stats/turn-performance');
+
+        expect(status).toBe(500);
+        expect(body).toEqual({ error: 'db locked' });
     });
 });

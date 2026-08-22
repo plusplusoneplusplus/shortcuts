@@ -13,6 +13,13 @@ vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useToken
     useTokenUsageStats: vi.fn(),
 }));
 
+// The embedded performance section has its own fetch/hook lifecycle and its own
+// controls whose labels overlap this suite's text queries; it is covered by
+// TurnPerformanceView.test.tsx.
+vi.mock('../../../../../src/server/spa/client/react/features/stats/TurnPerformanceView', () => ({
+    TurnPerformanceView: () => null,
+}));
+
 import { useTokenUsageStats } from '../../../../../src/server/spa/client/react/features/chat/hooks/useTokenUsageStats';
 
 const makeHookResult = (overrides: Partial<{

@@ -8,9 +8,10 @@
  * bridge enqueues an iteration. Clicking a node calls `onSelectIteration`
  * with that id so the host can switch the chat detail pane.
  *
- * Final-check nodes carry their own recorded `processId`, so the pane's
- * `onSelectFinalCheck` is wired straight to the host `onSelectIteration`
- * (process-id) callback without the iteration→process-id translation.
+ * Final-check and PR-submit nodes carry their own recorded `processId`, so
+ * the pane's `onSelectFinalCheck` / `onSelectSubmit` are wired straight to
+ * the host `onSelectIteration` (process-id) callback without the
+ * iteration→process-id translation.
  */
 
 import type React from 'react';
@@ -102,6 +103,14 @@ export function RalphWorkflowPaneContainer(
         [workspaceId, sessionId, refresh, cloneClient],
     );
 
+    const handleSubmitPr = useCallback(
+        async () => {
+            await cloneClient.workspaces.submitRalphPr(workspaceId, sessionId);
+            refresh();
+        },
+        [workspaceId, sessionId, refresh, cloneClient],
+    );
+
     return (
         <RalphWorkflowPane
             workspaceId={workspaceId}
@@ -110,6 +119,8 @@ export function RalphWorkflowPaneContainer(
             onClose={onClose}
             onSelectIteration={onSelectIteration ? handleSelectIteration : undefined}
             onSelectFinalCheck={onSelectIteration}
+            onSelectSubmit={onSelectIteration}
+            onSubmitPr={handleSubmitPr}
             onContinue={handleContinue}
             onNewLoop={handleNewLoop}
             onResume={handleResume}

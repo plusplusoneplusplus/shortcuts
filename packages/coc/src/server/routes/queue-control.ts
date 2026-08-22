@@ -38,14 +38,14 @@ import {
     type QueueRouteContext,
 } from './queue-shared';
 
-const ALLOWED_TIMED_PAUSE_HOURS = new Set<PauseDurationHours>([1, 2, 3, 4, 8]);
+const DURATION_HOURS_ERROR = 'durationHours must be a number greater than 0 and at most 24';
 
 function parseDurationHours(value: unknown): { durationHours?: PauseDurationHours; error?: string } {
     if (value === undefined) return {};
-    if (!Number.isInteger(value) || !ALLOWED_TIMED_PAUSE_HOURS.has(value as PauseDurationHours)) {
-        return { error: 'durationHours must be one of: 1, 2, 3, 4, 8' };
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || value > 24) {
+        return { error: DURATION_HOURS_ERROR };
     }
-    return { durationHours: value as PauseDurationHours };
+    return { durationHours: value };
 }
 
 async function parsePauseUntil(req: import('http').IncomingMessage): Promise<{ until?: number; error?: string }> {
@@ -69,7 +69,7 @@ async function parsePauseUntil(req: import('http').IncomingMessage): Promise<{ u
         const { durationHours, error } = parseDurationHours(body.durationHours);
         if (error) return { error };
         if (durationHours === undefined) {
-            return { error: 'durationHours must be one of: 1, 2, 3, 4, 8' };
+            return { error: DURATION_HOURS_ERROR };
         }
         return { until: Date.now() + durationHours * 60 * 60 * 1000 };
     }

@@ -20,6 +20,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 const ralphSessionMock = vi.fn();
 const resumeRalphSessionMock = vi.fn();
 const continueRalphSessionMock = vi.fn();
+const submitRalphPrMock = vi.fn();
 const { mockModalSelection } = vi.hoisted(() => ({
     mockModalSelection: vi.fn(),
 }));
@@ -30,6 +31,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
             ralphSession: ralphSessionMock,
             resumeRalphSession: resumeRalphSessionMock,
             continueRalphSession: continueRalphSessionMock,
+            submitRalphPr: submitRalphPrMock,
         },
     }),
 }));
@@ -62,6 +64,13 @@ beforeEach(() => {
         taskId: 'task-continued',
         nextIteration: 11,
         newMaxIterations: 30,
+    });
+    submitRalphPrMock.mockReset();
+    submitRalphPrMock.mockResolvedValue({
+        submitted: true,
+        sessionId: 'sess-1',
+        taskId: 'task-submit-1',
+        submitIndex: 1,
     });
     mockModalSelection.mockReset();
     mockModalSelection.mockReturnValue({
@@ -360,5 +369,68 @@ describe('RalphWorkflowPaneContainer', () => {
             mode: 'ralph',
             initialSelection: resumeDefaults,
         });
+    });
+});
+
+describe('RalphWorkflowPaneContainer submit PR (AC-05)', () => {
+    it('clicking Submit PR calls workspaces.submitRalphPr and refreshes the view', async () => {
+        // First fetch: completed session, no submits yet. Refresh after the
+        // submit: same session with the queued submit record.
+        ralphSessionMock.mockResolvedValueOnce({
+            record: makeRecord(),
+            sections: [],
+        });
+        ralphSessionMock.mockResolvedValueOnce({
+            record: makeRecord({
+                submits: [
+                    {
+                        submitIndex: 1,
+                        taskId: 'task-submit-1',
+                        startedAt: new Date().toISOString(),
+                        status: 'queued',
+                    },
+                ],
+            }),
+            sections: [],
+        });
+
+        render(<RalphWorkflowPaneContainer workspaceId="ws-1" sessionId="sess-1" />);
+        await waitFor(() => expect(screen.getByTestId('ralph-workflow-pane')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('ralph-workflow-submit-pr'));
+        await waitFor(() => expect(submitRalphPrMock).toHaveBeenCalledWith('ws-1', 'sess-1'));
+        // The refresh re-fetched the session and the queued node appeared.
+        await waitFor(() => expect(ralphSessionMock).toHaveBeenCalledTimes(2));
+        await waitFor(() => expect(screen.getByTestId('ralph-submit-node-1')).toBeTruthy());
+        expect(screen.getByTestId('ralph-workflow-submit-pr')).toBeDisabled();
+    });
+
+    it('clicking a submit node calls onSelectIteration with its recorded processId', async () => {
+        ralphSessionMock.mockResolvedValueOnce({
+            record: makeRecord({
+                submits: [
+                    {
+                        submitIndex: 1,
+                        taskId: 'task-submit-1',
+                        processId: 'submit-proc-7',
+                        startedAt: new Date().toISOString(),
+                        status: 'running',
+                    },
+                ],
+            }),
+            sections: [],
+        });
+        const onSelectIteration = vi.fn();
+        render(
+            <RalphWorkflowPaneContainer
+                workspaceId="ws-1"
+                sessionId="sess-1"
+                onSelectIteration={onSelectIteration}
+            />,
+        );
+        await waitFor(() => expect(screen.getByTestId('ralph-workflow-pane')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('ralph-submit-node-1'));
+        expect(onSelectIteration).toHaveBeenCalledWith('submit-proc-7');
     });
 });

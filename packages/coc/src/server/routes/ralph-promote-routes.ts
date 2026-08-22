@@ -32,6 +32,7 @@ import {
 } from '../ralph/synthesis-prompt';
 import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preferences-handler';
 import { normalizeRalphGrillSetupForContext } from '../ralph/grill-planning';
+import { captureRalphBaselineSha } from '../ralph/capture-baseline-sha';
 
 export interface RalphPromoteRouteContext {
     bridge: MultiRepoQueueRouter;
@@ -179,10 +180,18 @@ export function registerRalphPromoteRoutes(routes: Route[], ctx: RalphPromoteRou
             // goal. initSession is idempotent.
             if (dataDir && wsId) {
                 try {
+                    // Record the checkout's HEAD as the PR-submit baseline now;
+                    // ralph-start's later initSession is a no-op on this record.
+                    const baselineSha = await captureRalphBaselineSha({
+                        workingDirectory,
+                        store,
+                        workspaceId: wsId,
+                    });
                     const journal = new RalphSessionStore({ dataDir });
                     await journal.initSession(wsId, sessionId, {
                         originalGoal: '',
                         maxIterations,
+                        baselineSha,
                     });
                 } catch (err) {
                     getLogger().debug(

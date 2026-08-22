@@ -33,6 +33,7 @@ import { ensureMyWorkWorkspace, seedMyWorkDefaultNotes } from './workspaces/my-w
 import { ensureMyLifeWorkspace, seedMyLifeDefaultNotes } from './workspaces/my-life-workspace';
 import { createScheduleInfrastructure } from './infrastructure/schedule-infrastructure';
 import { createCronInfrastructure } from './infrastructure/cron-infrastructure';
+import { createTurnPerformanceInfrastructure } from './infrastructure/turn-performance-infrastructure';
 import { createEnqueueWakeup } from './cron/enqueue-wakeup';
 import { createTriggerInfrastructure } from './infrastructure/trigger-infrastructure';
 import { createCiChecksFetcher } from './triggers/ci-checks-fetcher';
@@ -98,6 +99,7 @@ interface CloseHandlerDeps {
     remoteServerSshConnector: { dispose(): void };
     cronExecutor?: { shutdownAll(): void };
     cronInfraDispose?: () => void;
+    turnPerformanceInfraDispose?: () => void;
     triggerManager?: { shutdownAll(): void };
     triggerInfraDispose?: () => void;
     mcpOauthDispose?: () => void;
@@ -130,6 +132,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.scheduleInfraDispose();
         deps.cronExecutor?.shutdownAll();
         deps.cronInfraDispose?.();
+        deps.turnPerformanceInfraDispose?.();
         deps.triggerManager?.shutdownAll();
         deps.triggerInfraDispose?.();
         deps.mcpOauthDispose?.();
@@ -227,6 +230,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     // Forward declaration — trigger infra is created after queue infra
     let triggerInfra: TriggerInfrastructure | undefined;
+
+    // Forward declaration — turn-performance infra is created after queue infra;
+    // executors read the store lazily through the getter passed to the bridge.
+    let turnPerformanceInfra: import('./infrastructure/turn-performance-infrastructure').TurnPerformanceInfrastructure | undefined;
 
     // Forward declaration — the in-process enqueue capability for the opt-in
     // `send_to_conversation` tool is bound at the route layer (where the queue
@@ -378,6 +385,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         // conversation starts, so turning the feature off immediately stops
         // prompt injection even for an older client.
         () => runtimeConfigService.config.features.chatStyleSelector === true,
+        // Late-bound turn-performance metric store; created after queue infra.
+        () => turnPerformanceInfra?.turnPerformanceStore,
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
@@ -427,6 +436,14 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     }
 
     const { scheduleManager, dispose: scheduleInfraDispose } = await createScheduleInfrastructure(dataDir, queueFacade, store);
+
+    // Turn-performance metric store (TTFT/TPS rows in the shared processes.db).
+    // Non-fatal: metrics must never block server startup.
+    try {
+        turnPerformanceInfra = createTurnPerformanceInfrastructure(dataDir, store);
+    } catch (err) {
+        process.stderr.write(`[ExecutionServer] Turn-performance metrics disabled: ${err instanceof Error ? err.message : String(err)}\n`);
+    }
 
     const cronEnabled = resolvedConfig.cron?.enabled ?? false;
 
@@ -708,6 +725,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         hostname: os.hostname(),
         bindAddress: host,
         syncEngines,
+        getTurnPerformanceStore: () => turnPerformanceInfra?.turnPerformanceStore,
         nativeCopilotSessionDbPath: options.nativeCopilotSessionDbPath,
         nativeCopilotSessionStateDir: options.nativeCopilotSessionStateDir,
         setEnqueueChat: (fn) => { enqueueChatCapability = fn; },
@@ -890,6 +908,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             remoteServerSshConnector,
             cronExecutor: cronInfra?.cronExecutor,
             cronInfraDispose: cronInfra?.dispose,
+            turnPerformanceInfraDispose: turnPerformanceInfra?.dispose,
             triggerManager: triggerInfra?.triggerManager,
             triggerInfraDispose: triggerInfra?.dispose,
             mcpOauthDispose: mcpOauthInfra?.dispose,

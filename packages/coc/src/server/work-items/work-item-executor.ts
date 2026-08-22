@@ -13,6 +13,7 @@ import type { ChatMode, ChatProvider, ReasoningEffort } from '../tasks/task-type
 import { normalizeChatModeOrDefault } from '../tasks/task-types';
 import { buildRalphIterationTask, type RalphEffortTier } from '../ralph/enqueue-iteration';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
+import { captureRalphBaselineSha } from '../ralph/capture-baseline-sha';
 import { RALPH_DEFAULT_MAX_ITERATIONS } from '../preferences-handler';
 import type { GitWorktreeService } from '../worktree/worktree-service';
 
@@ -207,9 +208,16 @@ export async function executeWorkItem(
     if (executionMode === 'ralph') {
         const maxIterations = options?.maxRalphIterations ?? RALPH_DEFAULT_MAX_ITERATIONS;
         if (options?.dataDir) {
+            // Non-worktree runs record the checkout's HEAD as the PR-submit
+            // baseline (worktree runs carry worktree.baseSha instead).
+            const baselineSha = worktreeMetadata
+                ? undefined
+                : options.headBefore
+                    ?? await captureRalphBaselineSha({ workingDirectory: options.sourceRepoRoot });
             await new RalphSessionStore({ dataDir: options.dataDir }).initSession(executionWorkspaceId, ralphSessionId!, {
                 originalGoal: prompt,
                 maxIterations,
+                baselineSha,
             });
         }
         const ralphContext = {

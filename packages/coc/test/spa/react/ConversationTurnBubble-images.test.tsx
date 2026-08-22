@@ -81,10 +81,10 @@ describe('ConversationTurnBubble — user image gallery', () => {
         expect(btn.textContent).not.toContain('images');
     });
 
-    it('keeps user content as plain/linkified text and does not render MarkdownView', () => {
+    it('renders user content as markdown without mounting MarkdownView', () => {
         render(<ConversationTurnBubble turn={makeTurn({ content: 'Hello **world**' })} />);
-        const plainText = screen.getByTestId('user-plain-text');
-        expect(plainText.textContent).toBe('Hello **world**');
+        const userText = screen.getByTestId('user-plain-text');
+        expect(userText.querySelector('strong')?.textContent).toBe('world');
         expect(screen.queryByTestId('markdown-view')).toBeNull();
     });
 });
@@ -111,7 +111,7 @@ describe('ConversationTurnBubble — user image lightbox (AC-03)', () => {
     it('opens the lightbox when an inline image in the user-content path is clicked', () => {
         render(<ConversationTurnBubble turn={makeTurn({ content: 'see image' })} />);
         const container = screen.getByTestId('user-plain-text');
-        // The user-content path escapes HTML (plain/linkified text), so inject the
+        // Raw HTML in user content is escaped at generation, so inject the
         // exact markup the image() renderer emits to exercise the delegated handler
         // wired onto this dangerouslySetInnerHTML container.
         container.insertAdjacentHTML('beforeend', '<img class="chat-inline-image" src="https://example.com/a.png" alt="a">');

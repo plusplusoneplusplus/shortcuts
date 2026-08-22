@@ -153,7 +153,12 @@ const filePathExtension: marked.MarkedExtension = {
                 return m ? m.index : -1;
             },
             tokenizer(src: string) {
-                // Must not be inside a URL (preceded by :// or @ or # or " or ')
+                // Never inside a link label: marked lexes the label char by
+                // char, so a URL label like https://www.x.com/a/b.html would
+                // match at `www.` and split into a file-ref chip.
+                if ((this as { lexer?: { state?: { inLink?: boolean } } }).lexer?.state?.inLink) {
+                    return undefined;
+                }
                 // Requires at least one `/` and a known extension
                 const match = /^([a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)+\.(?:md|ts|tsx|js|jsx|json|yaml|yml|txt|py|go|sh|rs|css|html))(?=[^/a-zA-Z0-9_.-]|$)/.exec(src);
                 if (!match) return undefined;

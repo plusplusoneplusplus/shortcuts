@@ -24,6 +24,7 @@ import type {
   RalphResumeRequest,
   RalphResumeResponse,
   RalphSessionResponse,
+  RalphSubmitPrResponse,
   RegisterWorkspaceRequest,
   TerminalPinResponse,
   TerminalSessionsResponse,
@@ -357,6 +358,19 @@ export class WorkspacesClient {
     return this.transport.request<RalphResumeResponse>(
       `/workspaces/${encodePathSegment(workspaceId)}/ralph-sessions/${encodePathSegment(sessionId)}/resume`,
       options,
+    );
+  }
+
+  /**
+   * Submit all commits made by a completed Ralph session as a GitHub pull
+   * request. Enqueues an autopilot submit job attached to the session and
+   * appends a `submits[]` record to its journal. Only valid when the session
+   * `phase` is `complete`; the server rejects concurrent submits with 409.
+   */
+  submitRalphPr(workspaceId: string, sessionId: string): Promise<RalphSubmitPrResponse> {
+    return this.transport.request<RalphSubmitPrResponse>(
+      `/workspaces/${encodePathSegment(workspaceId)}/ralph-sessions/${encodePathSegment(sessionId)}/submit-pr`,
+      { method: 'POST' },
     );
   }
 

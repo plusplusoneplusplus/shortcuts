@@ -18,6 +18,8 @@ import type { ConversationTurn, GenericProcessMetadata, ProcessStore, TimelineIt
 import type { MidTurnTokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
 import { getLogger, LogCategory, mergeConsecutiveContentItems } from '@plusplusoneplusplus/forge';
 import { OutputFileManager } from '../processes/output-file-manager';
+import { TurnPerformanceTracker } from './turn-performance-tracker';
+import type { TurnPerformanceRecorder, TurnSettlementContext } from './turn-performance-tracker';
 import {
     ProcessSessionRegistry,
     type InteractiveAskUserHandles,
@@ -57,6 +59,19 @@ export abstract class BaseExecutor {
 
     /** Owns per-process executor session state with explicit cleanup policy. */
     protected readonly sessions = new ProcessSessionRegistry();
+
+    /**
+     * Per-turn TTFT/TPS timing state. `appendOutputChunk` stamps the first
+     * output timestamp through this tracker (O(1), at most once per turn);
+     * concrete executors call `begin`/`settle` around each turn.
+     */
+    protected readonly turnPerformance = new TurnPerformanceTracker();
+
+    /**
+     * Late-bound sink for settled turn events. Optional: when unset (e.g. in
+     * tests or before infrastructure wiring), settled events are dropped.
+     */
+    protected getTurnPerformanceRecorder?: () => TurnPerformanceRecorder | undefined;
 
     /** Time-based throttle: flush every N milliseconds. */
     protected static readonly THROTTLE_TIME_MS = 5000;
@@ -126,7 +141,29 @@ export abstract class BaseExecutor {
     }
 
     protected appendOutputChunk(processId: string, chunk: string): void {
+        // O(1) first-output stamp for TTFT; assigns at most once per turn.
+        this.turnPerformance.markFirstOutput(processId);
         this.sessions.getStreaming(processId).outputBuffer += chunk;
+    }
+
+    /**
+     * Settle the in-flight turn timing and hand the derived event to the
+     * turn-performance recorder. Safe no-op when no turn was being timed or
+     * no recorder is wired; never throws — a metric failure must never fail
+     * an otherwise-successful turn.
+     */
+    protected settleTurnPerformance(processId: string, context: TurnSettlementContext): void {
+        try {
+            const event = this.turnPerformance.settle(processId, context);
+            if (event) {
+                this.getTurnPerformanceRecorder?.()?.record(event);
+            }
+        } catch (err) {
+            getLogger().debug(
+                LogCategory.AI,
+                `[BaseExecutor] Failed to record turn performance for ${processId}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+        }
     }
 
     protected getTimelineBuffer(processId: string): TimelineItem[] | undefined {

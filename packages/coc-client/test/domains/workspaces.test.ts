@@ -233,4 +233,26 @@ describe('WorkspacesClient', () => {
       },
     });
   });
+
+  it('submits a completed Ralph session as a PR with an empty POST body', async () => {
+    const adapter = createMockAdapter({
+      submitted: true,
+      sessionId: 'sess/1',
+      taskId: 'task-9',
+      submitIndex: 2,
+    });
+    const client = new WorkspacesClient(adapter);
+
+    const response = await client.submitRalphPr('repo/a', 'sess/1');
+
+    expect(adapter.calls).toHaveLength(1);
+    expect(adapter.calls[0]).toEqual({
+      path: '/workspaces/repo%2Fa/ralph-sessions/sess%2F1/submit-pr',
+      options: { method: 'POST' },
+    });
+    expect(response.submitted).toBe(true);
+    expect(response.sessionId).toBe('sess/1');
+    expect(response.taskId).toBe('task-9');
+    expect(response.submitIndex).toBe(2);
+  });
 });

@@ -21,11 +21,13 @@ import type {
     RalphLoopRecord,
     RalphSessionFile,
     RalphSessionRecord,
+    RalphSubmitRecord,
     RalphTerminalReason,
     WorktreeMetadata,
 } from '@plusplusoneplusplus/coc-client';
 import { RalphWorkflowNode } from './RalphWorkflowNode';
 import { RalphFinalCheckNode } from './RalphFinalCheckNode';
+import { RalphSubmitNode } from './RalphSubmitNode';
 import { WorktreeChip } from '../../shared/WorktreeChip';
 import { useCocClient } from '../../repos/cloneRouting';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
@@ -54,6 +56,12 @@ export interface RalphWorkflowPaneProps {
     /** Click handler for a final-check node — called with the recorded
      *  final-check `processId` so the host can open that chat process. */
     onSelectFinalCheck?: (processId: string) => void;
+    /** Click handler for a PR-submit node — called with the recorded
+     *  submit `processId` so the host can open that chat process. */
+    onSelectSubmit?: (processId: string) => void;
+    /** Override the Submit PR handler (used by tests). When omitted, calls
+     *  `workspaces.submitRalphPr` on the selected clone's server directly. */
+    onSubmitPr?: () => Promise<void>;
     onClose?: () => void;
     /** Override clock for tests. */
     now?: number;
@@ -286,6 +294,8 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
         view,
         onSelectIteration,
         onSelectFinalCheck,
+        onSelectSubmit,
+        onSubmitPr,
         onClose,
         continueDefaultIterations = 20,
         onContinue,
@@ -316,6 +326,9 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
 
     const [resumeState, setResumeState] = useState<'idle' | 'confirm' | 'submitting'>('idle');
     const [resumeError, setResumeError] = useState<string | null>(null);
+
+    const [submitPrPending, setSubmitPrPending] = useState(false);
+    const [submitPrError, setSubmitPrError] = useState<string | null>(null);
     const resumeDefaults = view && view !== null ? view.resumeDefaults : undefined;
     const resumeAiSelection = useModalJobAiSelection({
         workspaceId,
@@ -372,6 +385,31 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
 
     const isRalphComplete = record.phase === 'complete'
         && record.terminalReason === 'RALPH_COMPLETE';
+
+    // Submit PR is offered for ANY completed session regardless of terminal
+    // reason. The button locks while a submit is queued/running (server also
+    // guards with a 409) or while the request itself is in flight.
+    const submits = record.submits ?? [];
+    const hasActiveSubmit = submits.some(
+        (s) => s.status === 'queued' || s.status === 'running',
+    );
+    const canSubmitPr = record.phase === 'complete';
+
+    const handleSubmitPr = async () => {
+        setSubmitPrPending(true);
+        setSubmitPrError(null);
+        try {
+            if (onSubmitPr) {
+                await onSubmitPr();
+            } else {
+                await cloneClient.workspaces.submitRalphPr(workspaceId, sessionId);
+            }
+        } catch (err) {
+            setSubmitPrError(err instanceof Error ? err.message : String(err));
+        } finally {
+            setSubmitPrPending(false);
+        }
+    };
 
     // Stuck = still in the executing phase but no queued/running task backs it
     // (the iteration was cancelled, or the server crashed mid-loop). Gate on the
@@ -499,7 +537,8 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
     // iteration is unknown) are appended at the end so nothing is dropped.
     type TimelineItem =
         | { kind: 'iteration'; iter: number }
-        | { kind: 'finalCheck'; check: RalphFinalCheckRecord };
+        | { kind: 'finalCheck'; check: RalphFinalCheckRecord }
+        | { kind: 'submit'; submit: RalphSubmitRecord };
     const timelineItems: TimelineItem[] = [];
     const placedCheckIndexes = new Set<number>();
     for (const iter of allIters) {
@@ -513,6 +552,11 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
         if (!placedCheckIndexes.has(check.checkIndex)) {
             timelineItems.push({ kind: 'finalCheck', check });
         }
+    }
+    // PR submits always happen after the session completed, so their nodes go
+    // at the end of the timeline in submit order.
+    for (const submit of [...submits].sort((a, b) => a.submitIndex - b.submitIndex)) {
+        timelineItems.push({ kind: 'submit', submit });
     }
 
     return (
@@ -579,6 +623,25 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
                             >
                                 ＋ New loop
                             </button>
+                        )}
+                        {canSubmitPr && (
+                            <button
+                                type="button"
+                                onClick={handleSubmitPr}
+                                disabled={hasActiveSubmit || submitPrPending}
+                                data-testid="ralph-workflow-submit-pr"
+                                className="rounded border border-emerald-500 bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-400 dark:bg-emerald-900/30 dark:text-emerald-200 dark:hover:bg-emerald-900/50"
+                            >
+                                {hasActiveSubmit || submitPrPending ? 'Submitting PR…' : '⇗ Submit PR'}
+                            </button>
+                        )}
+                        {submitPrError && (
+                            <span
+                                className="text-[11px] text-red-700 dark:text-red-300"
+                                data-testid="ralph-workflow-submit-pr-error"
+                            >
+                                {submitPrError}
+                            </span>
                         )}
                     </div>
                     {record.worktree && (() => {
@@ -798,6 +861,16 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
                     ) : (
                         <ol className="flex flex-col gap-2">
                             {timelineItems.map(item => {
+                                if (item.kind === 'submit') {
+                                    return (
+                                        <li key={`submit-${item.submit.submitIndex}`}>
+                                            <RalphSubmitNode
+                                                submit={item.submit}
+                                                onSelect={onSelectSubmit}
+                                            />
+                                        </li>
+                                    );
+                                }
                                 if (item.kind === 'finalCheck') {
                                     return (
                                         <li key={`fc-${item.check.checkIndex}`}>

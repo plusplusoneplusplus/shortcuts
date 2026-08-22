@@ -159,6 +159,46 @@ describe('useRalphSessionView', () => {
         expect(ralphSessionMock).toHaveBeenCalledTimes(1);
     });
 
+    it('keeps polling a complete session while a PR submit is queued/running', async () => {
+        // A submit runs after the session is complete; without this the submit
+        // node would stay frozen at "queued" until a manual refresh.
+        ralphSessionMock.mockResolvedValue({
+            record: makeRecord({
+                phase: 'complete',
+                terminalReason: 'RALPH_COMPLETE',
+                submits: [
+                    { submitIndex: 1, startedAt: new Date().toISOString(), status: 'running' },
+                ],
+            }),
+            sections: [],
+        });
+
+        renderHook(() => useRalphSessionView('ws-1', 'sess-1', 30));
+        await waitFor(() => expect(ralphSessionMock).toHaveBeenCalledTimes(1));
+        await waitFor(() => expect(ralphSessionMock.mock.calls.length).toBeGreaterThanOrEqual(3), {
+            timeout: 1500,
+        });
+    });
+
+    it('does not poll a complete session whose submits are all terminal', async () => {
+        ralphSessionMock.mockResolvedValueOnce({
+            record: makeRecord({
+                phase: 'complete',
+                terminalReason: 'RALPH_COMPLETE',
+                submits: [
+                    { submitIndex: 1, startedAt: new Date().toISOString(), status: 'completed', prUrl: 'https://github.com/x/y/pull/1' },
+                    { submitIndex: 2, startedAt: new Date().toISOString(), status: 'failed', error: 'dirty worktree' },
+                ],
+            }),
+            sections: [],
+        });
+
+        renderHook(() => useRalphSessionView('ws-1', 'sess-1', 30));
+        await waitFor(() => expect(ralphSessionMock).toHaveBeenCalledTimes(1));
+        await sleep(150);
+        expect(ralphSessionMock).toHaveBeenCalledTimes(1);
+    });
+
     it('re-loads when sessionId changes', async () => {
         ralphSessionMock.mockResolvedValueOnce({
             record: makeRecord({ sessionId: 'sess-1', phase: 'complete' }),

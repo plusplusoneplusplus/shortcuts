@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { cn } from '../ui/cn';
+import { pasteHtmlToMarkdown } from './pasteHtmlToMarkdown';
 
 export interface RichTextInputHandle {
     getValue(): string;
@@ -80,12 +81,22 @@ export const RichTextInput = forwardRef<RichTextInputHandle, RichTextInputProps>
         const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
             props.onPaste?.(e);
             if (e.defaultPrevented) return;
-            // Always paste as plain text to avoid formatting issues
-            // in the contentEditable div (bold, colors, etc.).
+            // Always insert as plain text — pasted HTML never reaches the
+            // contentEditable; rich pastes are converted to markdown source.
             e.preventDefault();
-            const text = typeof e.clipboardData?.getData === 'function'
-                ? e.clipboardData.getData('text/plain')
-                : '';
+            const getData = (type: string): string => {
+                try {
+                    return typeof e.clipboardData?.getData === 'function'
+                        ? (e.clipboardData.getData(type) ?? '')
+                        : '';
+                } catch {
+                    return '';
+                }
+            };
+            const plain = getData('text/plain');
+            // Rich pastes carry a text/html flavor: convert meaningful markup
+            // to markdown source; trivial/absent HTML falls back to text/plain.
+            const text = pasteHtmlToMarkdown(getData('text/html'), plain) ?? plain;
             if (!text) return;
             // execCommand maintains undo history in most browsers
             if (document.execCommand) {

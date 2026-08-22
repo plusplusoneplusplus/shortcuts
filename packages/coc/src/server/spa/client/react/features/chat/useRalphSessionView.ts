@@ -94,11 +94,16 @@ export function useRalphSessionView(
         return () => window.removeEventListener('ralph-session-complete', handler);
     }, [workspaceId, sessionId]);
 
-    // Poll while executing. The interval is reset (and skipped) when the
-    // session reaches a terminal phase.
+    // Poll while executing, or while a PR submit is still queued/running (a
+    // submit runs after the session is complete, so the executing-phase poll
+    // alone would leave its node frozen). The interval is reset (and skipped)
+    // once neither condition holds.
     useEffect(() => {
         if (!sessionId) return;
-        if (!view || view.record.phase !== 'executing') return;
+        const hasActiveSubmit = (view?.record.submits ?? []).some(
+            (s) => s.status === 'queued' || s.status === 'running',
+        );
+        if (!view || (view.record.phase !== 'executing' && !hasActiveSubmit)) return;
         const id = setInterval(() => setTick((n) => n + 1), pollMs);
         return () => clearInterval(id);
     }, [sessionId, view, pollMs]);

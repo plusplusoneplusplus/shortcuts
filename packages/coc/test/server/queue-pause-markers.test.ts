@@ -97,7 +97,7 @@ describe('Queue Pause Markers', () => {
         return JSON.parse(res.body).task.id;
     }
 
-    async function insertMarker(afterIndex: number, durationHours?: 1 | 2 | 3 | 4 | 8) {
+    async function insertMarker(afterIndex: number, durationHours?: number) {
         const res = await post(`${server!.url}/api/queue/pause-marker`, {
             afterIndex,
             ...(durationHours !== undefined ? { durationHours } : {}),
@@ -150,11 +150,29 @@ describe('Queue Pause Markers', () => {
         });
     });
 
-    it('POST /api/queue/pause-marker rejects non-preset durationHours and inserts nothing', async () => {
+    it('POST /api/queue/pause-marker accepts custom float durationHours and serializes it', async () => {
         await enqueueTask('T1');
-        const res = await post(`${server!.url}/api/queue/pause-marker`, { afterIndex: 0, durationHours: 5 });
+        const res = await post(`${server!.url}/api/queue/pause-marker`, { afterIndex: 0, durationHours: 5.5 });
 
-        expect(res.status).toBe(400);
+        expect(res.status).toBe(201);
+        const body = JSON.parse(res.body);
+        expect(body.durationHours).toBe(5.5);
+
+        const listRes = await request(`${server!.url}/api/queue`);
+        const queued = JSON.parse(listRes.body).queued;
+        const marker = queued.find((i: any) => i.kind === 'pause-marker');
+        expect(marker).toMatchObject({
+            id: body.markerId,
+            durationHours: 5.5,
+        });
+    });
+
+    it('POST /api/queue/pause-marker rejects out-of-range durationHours and inserts nothing', async () => {
+        await enqueueTask('T1');
+        for (const durationHours of [0, -2, 24.5]) {
+            const res = await post(`${server!.url}/api/queue/pause-marker`, { afterIndex: 0, durationHours });
+            expect(res.status, `durationHours=${durationHours}`).toBe(400);
+        }
 
         const listRes = await request(`${server!.url}/api/queue`);
         const queued = JSON.parse(listRes.body).queued;

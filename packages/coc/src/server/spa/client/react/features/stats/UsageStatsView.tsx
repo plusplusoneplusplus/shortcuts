@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useTokenUsageStats } from '../chat/hooks/useTokenUsageStats';
+import { TurnPerformanceView } from './TurnPerformanceView';
 import type { ClientTokenUsageStatsEntry, ClientTokenUsage } from '../../types/dashboard';
 
 const DAY_OPTIONS = [
@@ -323,6 +324,8 @@ export function UsageStatsView() {
                         </tfoot>
                     </table>
                 )}
+
+                <TurnPerformanceView />
             </div>
         </div>
     );
