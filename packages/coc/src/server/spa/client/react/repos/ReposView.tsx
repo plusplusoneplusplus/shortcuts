@@ -17,6 +17,8 @@ import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnab
 import { ContainerSessionView, CONTAINER_DEFAULT_REPO_ID } from '../features/container-session/ContainerSessionView';
 import { MyWorkView, MY_WORK_WORKSPACE_ID } from './MyWorkView';
 import { MyLifeView, MY_LIFE_WORKSPACE_ID } from './MyLifeView';
+import { RepoGroupView } from './RepoGroupView';
+import { isRepoGroupWorkspaceId } from './virtualWorkspaceIds';
 import { findRepoBySelectionId, getRepoSelectionId } from './cloneIdentity';
 
 
@@ -56,7 +58,8 @@ export function ReposView() {
     // list yet (repo data still loading), keep showing the loading indicator
     // rather than flashing the empty "Select a repository" panel.
     // Exception: my_work is a virtual workspace that won't appear in repos list (only when enabled).
-    if (loading && state.selectedRepoId && !(myWorkEnabled && state.selectedRepoId === MY_WORK_WORKSPACE_ID) && !(myLifeEnabled && state.selectedRepoId === MY_LIFE_WORKSPACE_ID) && !findRepoBySelectionId(repos, state.selectedRepoId)) {
+    // Repo groups are virtual too — they never appear in the repos list.
+    if (loading && state.selectedRepoId && !(myWorkEnabled && state.selectedRepoId === MY_WORK_WORKSPACE_ID) && !(myLifeEnabled && state.selectedRepoId === MY_LIFE_WORKSPACE_ID) && !isRepoGroupWorkspaceId(state.selectedRepoId) && !findRepoBySelectionId(repos, state.selectedRepoId)) {
         return (
             <div id="view-repos" className={`flex items-center justify-center ${heightClass} text-sm text-[#848484]`}>
                 Loading repositories...
@@ -69,6 +72,9 @@ export function ReposView() {
 
     // My Life virtual workspace — personal goals, journal, life admin
     const isMyLife = myLifeEnabled && state.selectedRepoId === MY_LIFE_WORKSPACE_ID;
+
+    // Repo-group virtual workspace — chat + notes across the member repos
+    const isRepoGroup = isRepoGroupWorkspaceId(state.selectedRepoId);
 
     // Container default session — smart routing chat
     const isContainerDefault = state.selectedRepoId === CONTAINER_DEFAULT_REPO_ID;
@@ -94,6 +100,11 @@ export function ReposView() {
                 // ── My Life: personal workspace with goals/journal ──
                 <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden">
                     <MyLifeView />
+                </main>
+            ) : isRepoGroup ? (
+                // ── Repo group: chat + notes across the member repos ──
+                <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden">
+                    <RepoGroupView workspaceId={state.selectedRepoId!} />
                 </main>
             ) : isMobile ? (
                 // ── Mobile: master-detail ──

@@ -10,7 +10,7 @@ import type { WsStatus } from '../hooks/useWebSocket';
 import { getSpaCocClient } from '../api/cocClient';
 import { isContainerMode, setCurrentAgentId } from '../utils/config';
 import { isQueueProcessId, toTaskId } from '../utils/queue-process-id';
-import { isVirtualWorkspaceId } from '../repos/virtualWorkspaceIds';
+import { isRepoGroupWorkspaceId, isVirtualWorkspaceId } from '../repos/virtualWorkspaceIds';
 
 // ── Sidebar persistence ────────────────────────────────────────────────
 
@@ -435,9 +435,9 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             if (savedTabState !== state.repoTabState) persistRepoTabState(savedTabState);
             // Remember the last concrete (non-virtual) workspace so the scope
             // switcher can keep showing / switch back to it while a virtual scope
-            // (My Work / My Life) is active. Virtual and null selections preserve
-            // the previous remembered id.
-            const lastWorkspaceRepoId = action.id && !isVirtualWorkspaceId(action.id)
+            // (My Work / My Life / a repo group) is active. Virtual, repo-group,
+            // and null selections preserve the previous remembered id.
+            const lastWorkspaceRepoId = action.id && !isVirtualWorkspaceId(action.id) && !isRepoGroupWorkspaceId(action.id)
                 ? action.id
                 : state.lastWorkspaceRepoId;
             return { ...state, selectedRepoId: action.id, lastWorkspaceRepoId, repoTabState: savedTabState, activeRepoSubTab: restoredTab, notePathState: savedNoteState, selectedNotePath: restoredNotePath, selectedWorkflowName: null, selectedWorkflowProcessId: null };

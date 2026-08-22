@@ -17,6 +17,7 @@ const mockDeleteRepoGroup = vi.fn().mockResolvedValue(undefined);
 let mockQueueState: any = { repoQueueMap: {} };
 let mockUnseen: Record<string, number> = {};
 let mockWorkspaces: any[] = [];
+let mockSelectedRepoId: string | null = null;
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
@@ -27,7 +28,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     }),
 }));
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
-    useApp: () => ({ state: { workspaces: mockWorkspaces }, dispatch: vi.fn() }),
+    useApp: () => ({ state: { workspaces: mockWorkspaces, selectedRepoId: mockSelectedRepoId }, dispatch: vi.fn() }),
 }));
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({ state: mockQueueState, dispatch: vi.fn() }),
@@ -86,6 +87,7 @@ beforeEach(() => {
     mockQueueState = { repoQueueMap: {} };
     mockUnseen = {};
     mockWorkspaces = [];
+    mockSelectedRepoId = null;
 });
 
 function openPicker(repos: any[], selected: any) {
@@ -380,6 +382,25 @@ describe('WorkspaceIdentityChip repo groups (repo-group AC-01/AC-04)', () => {
         const rows = screen.getAllByTestId('repo-group-item');
         expect(rows).toHaveLength(1);
         expect(rows[0].textContent).toContain('Platform');
+    });
+
+    it('selects the group workspace on row click and closes the picker (AC-02)', () => {
+        mockWorkspaces = [groupWs('group-platform', 'Platform')];
+        openPicker([repo('a', 'shortcuts', SHORTCUTS)], undefined);
+
+        fireEvent.click(screen.getByTestId('repo-group-item'));
+        expect(mockSelectClone).toHaveBeenCalledWith('group-platform');
+        expect(screen.queryByTestId('remote-dropdown')).toBeNull();
+    });
+
+    it('marks the selected group row active', () => {
+        mockWorkspaces = [groupWs('group-platform', 'Platform'), groupWs('group-tools', 'Tools')];
+        mockSelectedRepoId = 'group-platform';
+        openPicker([repo('a', 'shortcuts', SHORTCUTS)], undefined);
+
+        const rows = screen.getAllByTestId('repo-group-item');
+        expect(rows.find(r => r.getAttribute('data-remote-key') === 'group-platform')!.getAttribute('data-active')).toBe('true');
+        expect(rows.find(r => r.getAttribute('data-remote-key') === 'group-tools')!.getAttribute('data-active')).toBe('false');
     });
 
     it('opens the create dialog from the "New repo group…" footer action', () => {

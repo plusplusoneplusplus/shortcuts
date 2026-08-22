@@ -1563,7 +1563,23 @@ Enabled by default; desktop-only; takes effect on reload.
   (`repo-group-delete-confirm-btn`) then calls `DELETE /api/repo-groups/:id`
   (deregister only — the group's data dir stays on disk). REST wrappers live in
   `repos/repoGroupService.ts` (plain `getSpaCocClient().request`, not coc-client
-  contracts). Group rows do not navigate yet (group view lands with AC-02).
+  contracts). Clicking a group row navigates to the group workspace via
+  `useShellNavigation().selectClone` (rows mark `data-active` when selected).
+- **Repo-group virtual workspace view.** Selecting a `group-<slug>` id renders
+  `repos/RepoGroupView.tsx` (branch in `ReposView`, recognized by id PREFIX via
+  `isRepoGroupWorkspaceId` — unlike My Work / My Life's id-equality checks, and
+  with no feature flag). The view exposes ONLY a Workspace (chat, key `chats`,
+  `RepoChatTab`) tab and a Notes tab (`NotesView`, notes root = the group's own
+  workspace dir) — all git-dependent tabs are absent by construction.
+  `getRepoGroupHeaderConfig(workspaceId, label)` builds the per-group
+  `VirtualWorkspaceHeaderConfig` (`testIdPrefix: 'repo-group'`, `defaultTab:
+  'chats'`, no actions); TopBar picks it for the `VirtualWorkspaceShellHeader`
+  (label = registered workspace name, id fallback while loading), classic
+  shell/mobile render `VirtualWorkspaceInlineHeader` in-body. Group selections
+  never overwrite `lastWorkspaceRepoId` (AppContext guard), and
+  `ScopeSlideSwitcher` treats an active group as a segment-less virtual scope
+  (`data-active-scope="group"`, no thumb, workspace-segment body switches back
+  to the remembered repo).
 
 **Remote workspace aggregation** (gated by `features.remoteShell`): when the flag
 is ON, `ReposContext.fetchRepos` also calls `aggregateRemoteWorkspaces()`

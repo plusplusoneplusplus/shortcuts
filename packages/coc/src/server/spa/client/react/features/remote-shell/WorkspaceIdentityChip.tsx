@@ -464,15 +464,22 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
                     <>
                         <PickerSection label="Repo groups" />
                         {filteredRepoGroupWorkspaces.map(ws => (
-                            // Row click intentionally does nothing yet: switching the
-                            // dashboard to a group workspace lands with the group view
-                            // (AC-02); until then only the ⋮ menu edits/deletes.
+                            // Row click switches the dashboard to the group's virtual
+                            // workspace (RepoGroupView) through the same target-aware
+                            // navigation repos use; the ⋮ menu edits/deletes. (AC-02)
                             <PickerRow
                                 key={String(ws.id)}
                                 testId="repo-group-item"
                                 remoteKey={String(ws.id)}
+                                active={appState.selectedRepoId === String(ws.id)}
                                 name={String(ws.name ?? ws.id)}
                                 sublabel="Repo group"
+                                onClick={() => {
+                                    selectClone(String(ws.id));
+                                    close();
+                                    setShowAll(false);
+                                    setQuery('');
+                                }}
                                 badges={<RepoGroupGlyph />}
                                 rowMenu={
                                     <button
