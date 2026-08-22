@@ -4,147 +4,63 @@
  * Left panel: GitPanelHeader + scenario banner + scrollable commit list
  * (UNPUSHED + HISTORY sections).
  * Right panel: detail view for the selected commit (metadata, files, diff).
- * Auto-selects the most recent commit on load.
  * Falls back to stacked vertical layout on narrow viewports (<1024px).
  *
- * Branch-range data is fetched here and passed down to BranchChanges and
- * GitPanelHeader so both can display branch/ahead/behind information.
+ * This component is a composition shell. The behaviour lives in focused hooks
+ * under `./repoGitTab/`:
+ *   - `useRepoGitData`          commits, branch range, repo state, caches, refresh
+ *   - `useRepoGitSelection`     right-panel routing, URL/AppContext sync, deep links
+ *   - `useGitOperationActions`  fetch/pull/push/rewrite/conflict actions + pollers
+ *   - `useGitAutoPullController` the per-repo auto-pull timer
+ *   - `useGitSkillActions`      skill runs, Ask AI launches, queue-backed rewrites
+ *   - `buildGitContextMenuItems` the right-click menu, as a pure model
+ * and the three presentational panes (`RepoGitListPane`, `RepoGitDetailPane`,
+ * `RepoGitOverlays`). What stays here is composition: the local UI state that
+ * only the shell needs (open modals, search visibility, touch selection,
+ * context-menu position), the keyboard shortcuts, and the two layouts.
+ *
+ * The clone-routed `workspaceId` is passed explicitly into every hook, so all
+ * Git, queue and preferences traffic targets the selected clone's server (AC-07).
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import type { GitPatchApplyResponse, GitRangeBaseMode } from '@plusplusoneplusplus/coc-client';
+import type { GitPatchApplyResponse } from '@plusplusoneplusplus/coc-client';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
-import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { useCocClient } from '../../repos/cloneRouting';
-import { getCocClientForWorkspace, lookupCloneBaseUrl } from '../../repos/cloneRegistry';
+import { lookupCloneBaseUrl } from '../../repos/cloneRegistry';
 import { Spinner } from '../../ui';
-import { CommitList, isTouchOnly } from './commits/CommitList';
+import { isTouchOnly } from './commits/CommitList';
 import type { GitCommitItem } from './commits/CommitList';
-import { CommitDetail } from './commits/CommitDetail';
-import { BranchRangeOverview } from './branches/BranchRangeOverview';
-
-import { BranchChanges } from './branches/BranchChanges';
-import { FileDiffPanel } from './diff/FileDiffPanel';
-import { createCommitDiffSource, createBranchRangeDiffSource } from './diff/diffSource';
 import { GitPanelHeader } from './GitPanelHeader';
-import type { AutoPullSetting } from './GitAutoPullControl';
-import { WorkingTree } from './working-tree/WorkingTree';
-import { WorktreeList } from './working-tree/WorktreeList';
-import { WorkingTreeFileDiff } from './working-tree/WorkingTreeFileDiff';
-import { WorkingTreeAllComments } from './working-tree/WorkingTreeAllComments';
-import { BranchRangeAllComments } from './branches/BranchRangeAllComments';
-import { BranchPickerModal } from './branches/BranchPickerModal';
-import { AmendMessageModal } from './working-tree/AmendMessageModal';
-import { CrossCloneCherryPickModal } from './CrossCloneCherryPickModal';
-import { SkillContextDialog } from '../chat/SkillContextDialog';
-import { SkillBrowserDialog } from '../../queue/SkillBrowserDialog';
-import { clearCacheForHash } from './hooks/useCommitDiffCache';
-import { getBranchRangeCache, setBranchRangeCache, clearBranchRangeCache } from './hooks/useBranchRangeCache';
-import { useBranchRangeBaseMode } from './hooks/useBranchRangeBaseMode';
-import { getCommitsCache, setCommitsCache, clearCommitsCache } from './hooks/useCommitsCache';
+import { clearBranchRangeCache } from './hooks/useBranchRangeCache';
 import { useApp } from '../../contexts/AppContext';
-import { useQueue } from '../../contexts/QueueContext';
 import { useGitReviewPopOut, gitReviewPopOutKey } from '../../contexts/GitReviewPopOutContext';
 import { buildGitReviewPopOutUrl } from '../../layout/Router';
-import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
-import type { BranchRangeInfo } from './branches/BranchChanges';
 import { buildFixupGroups } from './fixup-utils';
-import { rankSkillsByRecency, MRU_SKILL_LIMIT } from './skill-menu-ranking';
-import { isGitCommitLookupEnabled, isGitCrossCloneCherryPickEnabled } from '../../utils/config';
-import type { ResolvedModalJobAiSelection } from '../../shared/ModalJobAiControls';
-import { mergeAutoProviderRoutingContext } from '../../utils/providerSelection';
+import { isGitCrossCloneCherryPickEnabled } from '../../utils/config';
 import { useCommitClassificationStatus } from './hooks/useCommitClassificationStatus';
-import { useGitOperationPoller } from './hooks/useGitOperationPoller';
-import { useAutoPullTimer } from './hooks/useAutoPullTimer';
-import { runAutoPullTick, buildAutoPullPollerCallbacks } from './autoPullTick';
 import { useScopedFindShortcut } from '../../hooks/useScopedFindShortcut';
 import { popOutOpened } from '../../utils/popOutWindow';
+import { matchCommitsByIdentity } from './repoGitTab/commitIdentity';
+import { useTransientToast } from './repoGitTab/useTransientToast';
+import { useRepoGitData } from './repoGitTab/useRepoGitData';
+import { useRepoGitSelection } from './repoGitTab/useRepoGitSelection';
+import { useGitOperationActions, rebindCommitChat } from './repoGitTab/useGitOperationActions';
+import { useGitAutoPullController } from './repoGitTab/useGitAutoPullController';
+import { useGitSkillActions } from './repoGitTab/useGitSkillActions';
+import { buildGitContextMenuItems } from './repoGitTab/gitContextMenuModel';
+import { RepoGitListPane } from './repoGitTab/RepoGitListPane';
+import { RepoGitDetailPane } from './repoGitTab/RepoGitDetailPane';
+import { RepoGitOverlays } from './repoGitTab/RepoGitOverlays';
+import type { GitContextMenuState, SkillMenuContext } from './repoGitTab/types';
 
-/** The commit-menu target a skill run applies to. Mirrors the contextMenu state shape. */
-type SkillMenuContext = {
-    type: 'commit' | 'branch-range' | 'multi-commit';
-    commit?: GitCommitItem;
-    commits?: GitCommitItem[];
-};
+export { matchCommitsByIdentity } from './repoGitTab/commitIdentity';
+export { buildBranchRangeSkillPrompt } from './repoGitTab/gitPrompts';
 
-/**
- * Best-effort rebind of commit-chat binding when a hash changes.
- * Fires and forgets — failure is silent (the old binding simply orphans).
- */
-async function rebindCommitChat(
-    workspaceId: string,
-    oldHash: string,
-    newHash: string
-): Promise<void> {
-    if (oldHash === newHash) return;
-    try {
-        await getCocClientForWorkspace(workspaceId).git.rebindCommitChatBinding(workspaceId, oldHash, newHash);
-    } catch {
-        // Best-effort — binding may not exist; ignore errors
-    }
-}
-
-/**
- * Heuristic matching of old commits to new commits after a rewrite.
- * Returns an array of { oldHash, newHash } pairs where identity matched
- * but hash changed.
- *
- * Identity key: `${subject}\0${author}\0${authorEmail}\0${date}`
- *
- * Only 1:1 matches are returned — if multiple old commits share the same
- * identity key (e.g., duplicate "fix typo" commits), none of them match
- * to avoid incorrect rebinding.
- */
-export function matchCommitsByIdentity(
-    oldCommits: GitCommitItem[],
-    newCommits: GitCommitItem[]
-): Array<{ oldHash: string; newHash: string }> {
-    const identityKey = (c: GitCommitItem) =>
-        `${c.subject}\0${c.author}\0${c.authorEmail ?? ''}\0${c.date}`;
-
-    const oldMap = new Map<string, GitCommitItem[]>();
-    for (const c of oldCommits) {
-        const key = identityKey(c);
-        const arr = oldMap.get(key) || [];
-        arr.push(c);
-        oldMap.set(key, arr);
-    }
-
-    const newMap = new Map<string, GitCommitItem[]>();
-    for (const c of newCommits) {
-        const key = identityKey(c);
-        const arr = newMap.get(key) || [];
-        arr.push(c);
-        newMap.set(key, arr);
-    }
-
-    const pairs: Array<{ oldHash: string; newHash: string }> = [];
-    for (const [key, oldArr] of oldMap) {
-        if (oldArr.length !== 1) continue;
-        const newArr = newMap.get(key);
-        if (!newArr || newArr.length !== 1) continue;
-        const oldC = oldArr[0];
-        const newC = newArr[0];
-        if (oldC.hash !== newC.hash) {
-            pairs.push({ oldHash: oldC.hash, newHash: newC.hash });
-        }
-    }
-
-    return pairs;
-}
-
-export function buildBranchRangeSkillPrompt(
-    branchRangeData: Pick<BranchRangeInfo, 'baseRef' | 'headRef'> | null | undefined,
-    branchName?: string,
-    /** Base ref reported by the server when there's no range object to read it from. */
-    resolvedBaseRef?: string | null
-): string {
-    const base = branchRangeData?.baseRef ?? resolvedBaseRef ?? 'main';
-    const head = branchRangeData?.headRef ?? branchName ?? 'HEAD';
-    return `Run the selected skill on this commit range:\n<commit-range>${base}..${head}</commit-range>`;
-}
+/** Debounce for the `git-changed` websocket event — bursts arrive per-file. */
+const GIT_CHANGED_DEBOUNCE_MS = 500;
 
 interface RepoGitTabProps {
     workspaceId: string;
@@ -174,16 +90,6 @@ interface RepoGitTabProps {
     headerToolbarContainer?: HTMLElement | null;
 }
 
-type RightPanelView =
-    | { type: 'commit'; commit: GitCommitItem }
-    | { type: 'commit-file'; hash: string; filePath: string }
-    | { type: 'branch-range' }
-    | { type: 'branch-file'; filePath: string }
-    | { type: 'working-tree-file'; filePath: string; stage: 'staged' | 'unstaged' | 'untracked' }
-    | { type: 'working-tree-comments' }
-    | { type: 'branch-range-comments' }
-    | { type: 'multi-commit'; commits: GitCommitItem[] };
-
 export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive, onActivateDetail, headerToolbarContainer }: RepoGitTabProps) {
     const isSplitWorkspace = layout === 'split-workspace';
     // Hoist the toolbar into the split panel's section header when a portal
@@ -192,8 +98,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
     // AC-07: ALL Git tab data (commit list, branch range, fetch/pull/push/reset,
     // operations, per-repo prefs, enqueue) targets the selected clone's server.
     const cloneClient = useCocClient(workspaceId);
-    const { state, dispatch } = useApp();
-    const { dispatch: queueDispatch } = useQueue();
+    const { state } = useApp();
     const { markPoppedOut } = useGitReviewPopOut();
     const { width: sidebarWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
         initialWidth: 320,
@@ -201,62 +106,10 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
         maxWidth: 600,
         storageKey: 'git-sidebar-width',
     });
-    const initialCommitHash = state.selectedGitCommitHash;
-    const initialFilePath = state.selectedGitFilePath;
-    const consumedDeepLinkRef = useRef<string | null>(initialCommitHash);
-    const [commits, setCommits] = useState<GitCommitItem[]>([]);
-    const [skip, setSkip] = useState(0);
-    const [hasMore, setHasMore] = useState(true);
-    const [isLoadingMore, setIsLoadingMore] = useState(false);
-    const [unpushedCount, setUnpushedCount] = useState(0);
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [retryKey, setRetryKey] = useState(0);
-    const [refreshError, setRefreshError] = useState<string | null>(null);
-    const [actionError, setActionError] = useState<string | null>(null);
-    const [fetching, setFetching] = useState(false);
-    const [pulling, setPulling] = useState(false);
-    const [pushing, setPushing] = useState(false);
-    const [rebasing, setRebasing] = useState(false);
-    // Lifecycle-aware pollers for async git jobs (pull/rebase/drop/reorder). Each
-    // owns its interval and clears it on unmount / repo switch (useGitOperationPoller).
-    const pullPoller = useGitOperationPoller(workspaceId);
-    const rebasePoller = useGitOperationPoller(workspaceId);
-    const dropPoller = useGitOperationPoller(workspaceId);
-    const reorderPoller = useGitOperationPoller(workspaceId);
-    const [rightPanelView, setRightPanelView] = useState<RightPanelView | null>(null);
-    const [hunkTarget, setHunkTarget] = useState<'first' | 'last' | undefined>();
-    const [workingChangesRefreshKey, setWorkingChangesRefreshKey] = useState(0);
-    const [searchQuery, setSearchQuery] = useState('');
+
+    // ── Shell-local UI state ──────────────────────────────────────────────────
     const [searchVisible, setSearchVisible] = useState(false);
-    const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const searchInputRef = useRef<HTMLInputElement>(null);
-    const panelRef = useRef<HTMLElement>(null);
-
-    // Commit lookup state (feature-gated: gitCommitLookup)
-    const [commitLookupLoading, setCommitLookupLoading] = useState(false);
-    const [commitLookupError, setCommitLookupError] = useState<string | null>(null);
-    const [openedCommit, setOpenedCommit] = useState<GitCommitItem | null>(null);
-
-    // Branch-range state (lifted from BranchChanges)
-    const [baseMode, setBaseMode] = useBranchRangeBaseMode(workspaceId);
-    const [branchRangeData, setBranchRangeData] = useState<BranchRangeInfo | null>(null);
-    const [branchRangeFiles, setBranchRangeFiles] = useState<any[]>([]);
-    /** Base ref the server resolved, kept even when there is no range to show. */
-    const [resolvedBaseRef, setResolvedBaseRef] = useState<string | null>(null);
-    const [onDefaultBranch, setOnDefaultBranch] = useState(false);
-    const [branchName, setBranchName] = useState<string>('');
-    const [ahead, setAhead] = useState(0);
-    const [behind, setBehind] = useState(0);
-
-    // Skills + context menu state
-    const [skills, setSkills] = useState<Array<{ name: string; description?: string }>>([]);
-    const [commitSkillUsageMap, setCommitSkillUsageMap] = useState<Record<string, string>>({});
-    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: 'commit' | 'branch-range' | 'multi-commit'; commit?: GitCommitItem; commits?: GitCommitItem[] } | null>(null);
-    const [skillBrowserContext, setSkillBrowserContext] = useState<SkillMenuContext | null>(null);
-    const [enqueueToast, setEnqueueToast] = useState<string | null>(null);
-    const [pendingSkillRun, setPendingSkillRun] = useState<{ skillName: string; type: 'commit' | 'multi-commit' | 'branch-range'; commit?: GitCommitItem; commits?: GitCommitItem[] } | null>(null);
+    const [contextMenu, setContextMenu] = useState<GitContextMenuState | null>(null);
     const [branchPickerOpen, setBranchPickerOpen] = useState(false);
     const [amendingCommit, setAmendingCommit] = useState<GitCommitItem | null>(null);
     const [rewordingCommit, setRewordingCommit] = useState<GitCommitItem | null>(null);
@@ -264,585 +117,145 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
     const [crossCloneCherryPickCommits, setCrossCloneCherryPickCommits] = useState<GitCommitItem[]>([]);
     const [isMobileSelecting, setIsMobileSelecting] = useState(false);
     const [mobileAnchorHash, setMobileAnchorHash] = useState<string | null>(null);
+    const searchInputRef = useRef<HTMLInputElement>(null);
+    const panelRef = useRef<HTMLElement>(null);
 
     const closeContextMenu = useCallback(() => setContextMenu(null), []);
+    const { toast, showToast, clearToast } = useTransientToast();
 
-    // Repo state (merge/rebase/cherry-pick in progress)
-    const [repoState, setRepoState] = useState<{ operation: string; conflictFiles: string[] } | null>(null);
+    // ── Controllers ───────────────────────────────────────────────────────────
+    // Selection is created first so the data hook can reconcile against it; the
+    // deep-link hydration it needs is wired back through `onInitialLoad`, and it
+    // reads commits through a ref, so there is no circular render dependency.
+    const selectionRef = useRef<ReturnType<typeof useRepoGitSelection> | null>(null);
 
-    // Last-refreshed timestamp (epoch ms) — updated after any successful git data fetch
-    const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(null);
+    const dataSelectionBridge = useMemo(() => ({
+        getView: () => selectionRef.current?.getView() ?? null,
+        setView: (view: Parameters<NonNullable<typeof selectionRef.current>['setView']>[0]) =>
+            selectionRef.current?.setView(view),
+    }), []);
 
-    // Per-repo auto-pull setting (opt-in; off by default). Read from prefs on
-    // mount / workspace change and patched back when the user picks an interval.
-    const [autoPull, setAutoPull] = useState<AutoPullSetting | undefined>(undefined);
-    // Bumped to restart the auto-pull countdown (manual pull / successful auto-pull),
-    // so the next tick is a full interval later rather than an immediate double-pull.
-    const [autoPullResetSignal, setAutoPullResetSignal] = useState(0);
+    const hydrateRef = useRef<(loaded: GitCommitItem[]) => void>(() => {});
+    const onInitialLoad = useCallback((loaded: GitCommitItem[]) => hydrateRef.current(loaded), []);
 
-    // Reorder state: pendingReorder holds the new commit order before user confirms
-    const [pendingReorder, setPendingReorder] = useState<GitCommitItem[] | null>(null);
+    const data = useRepoGitData({ workspaceId, selection: dataSelectionBridge, onInitialLoad });
+
+    const selection = useRepoGitSelection({
+        workspaceId,
+        commits: data.commits,
+        loading: data.loading,
+    });
+    selectionRef.current = selection;
+    hydrateRef.current = selection.hydrateFromInitialLoad;
+
+    const sourceWorkspace = useMemo(
+        () => state.workspaces.find((w: any) => w.id === workspaceId),
+        [state.workspaces, workspaceId],
+    );
+    const repoRoot = sourceWorkspace?.rootPath as string | undefined;
+
+    const autoPullRef = useRef<{ resetCountdown: () => void }>({ resetCountdown: () => {} });
+    const onManualPull = useCallback(() => autoPullRef.current.resetCountdown(), []);
+
+    const actions = useGitOperationActions({
+        workspaceId,
+        refreshAll: data.refreshAll,
+        showToast,
+        repoState: data.repoState,
+        commits: data.commits,
+        unpushedCount: data.unpushedCount,
+        pendingReorder: data.pendingReorder,
+        setPendingReorder: data.setPendingReorder,
+        onManualPull,
+    });
+
+    const autoPull = useGitAutoPullController({
+        workspaceId,
+        pullPoller: actions.pullPoller,
+        pulling: actions.pulling,
+        setPulling: actions.setPulling,
+        refreshAll: data.refreshAll,
+        showToast,
+    });
+    autoPullRef.current = autoPull;
+
+    const skillActions = useGitSkillActions({
+        workspaceId,
+        workspaceRootPath: repoRoot,
+        commits: data.commits,
+        unpushedCount: data.unpushedCount,
+        branchRangeData: data.branchRangeData,
+        branchName: data.branchName,
+        resolvedBaseRef: data.resolvedBaseRef,
+        repoState: data.repoState,
+        showToast,
+    });
 
     // Classification status — checked in bulk so each commit row can show a ✓ badge.
-    const visibleCommitHashes = useMemo(
-        () => (pendingReorder || commits).map(c => c.hash),
-        [pendingReorder, commits],
-    );
     const { classifiedHashes, refresh: refreshClassificationStatus } = useCommitClassificationStatus(
         workspaceId,
         workspaceId,
-        visibleCommitHashes,
+        data.visibleCommitHashes,
     );
 
-    const fetchRepoState = useCallback(() => {
-        cloneClient.git.getRepoState(workspaceId)
-            .then(data => setRepoState(data))
-            .catch(() => setRepoState(null));
-    }, [workspaceId]);
-
-    const fetchCommits = useCallback((refresh = false, skipOffset = 0, search = '') => {
-        // For the initial page with no search, check/update the client-side cache.
-        if (skipOffset === 0 && !search) {
-            if (refresh) {
-                clearCommitsCache(workspaceId);
-            } else {
-                const cached = getCommitsCache(workspaceId);
-                if (cached) {
-                    setCommits(cached.commits);
-                    setUnpushedCount(cached.unpushedCount);
-                    setHasMore(cached.hasMore);
-                    return Promise.resolve(cached.commits);
-                }
-            }
-        }
-        return cloneClient.git.listCommits(workspaceId, {
-            limit: 50,
-            skip: skipOffset > 0 ? skipOffset : undefined,
-            refresh,
-            search: search || undefined,
-        })
-            .then(data => {
-                const loaded = data.commits || [];
-                if (skipOffset > 0) {
-                    setCommits(prev => [...prev, ...loaded]);
-                } else {
-                    setCommits(loaded);
-                    setUnpushedCount(data.unpushedCount || 0);
-                    if (!search) {
-                        setCommitsCache(workspaceId, {
-                            commits: loaded,
-                            unpushedCount: data.unpushedCount || 0,
-                            hasMore: loaded.length === 50,
-                        });
-                    }
-                }
-                setHasMore(loaded.length === 50);
-                return loaded;
-            });
-    }, [workspaceId]);
-
-    // Read through a ref so switching the base mode doesn't change this callback's
-    // identity (which would re-run the whole initial-load effect and reset the
-    // right panel). The toggle passes the new mode explicitly instead.
-    const baseModeRef = useRef(baseMode);
-    baseModeRef.current = baseMode;
-
-    const fetchBranchRange = useCallback((refresh = false, modeOverride?: GitRangeBaseMode) => {
-        const mode = modeOverride ?? baseModeRef.current;
-        if (refresh) {
-            clearBranchRangeCache(workspaceId);
-        } else {
-            const cached = getBranchRangeCache(workspaceId, mode);
-            if (cached) {
-                setBranchRangeData(cached.data);
-                setBranchRangeFiles(cached.files);
-                setBranchName(cached.branchName);
-                setOnDefaultBranch(cached.onDefaultBranch);
-                setAhead(cached.ahead);
-                setBehind(cached.behind);
-                setResolvedBaseRef(cached.baseRef ?? null);
-                return Promise.resolve(cached.data);
-            }
-        }
-        return cloneClient.git.getBranchRange(workspaceId, { refresh, base: mode })
-            .then(data => {
-                if (data.onDefaultBranch) {
-                    setOnDefaultBranch(true);
-                    setBranchRangeData(null);
-                    setBranchRangeFiles([]);
-                    const resolvedBranchName = data.branchName || data.defaultBranch || '';
-                    setBranchName(resolvedBranchName);
-                    setAhead(0);
-                    setBehind(0);
-                    setResolvedBaseRef(data.baseRef ?? null);
-                    setBranchRangeCache(workspaceId, {
-                        data: null, files: [], ahead: 0, behind: 0,
-                        branchName: resolvedBranchName,
-                        onDefaultBranch: true,
-                        baseRef: data.baseRef,
-                        baseModeFallback: data.baseModeFallback,
-                    }, mode);
-                    return null as BranchRangeInfo | null;
-                } else {
-                    setOnDefaultBranch(false);
-                    const rangeInfo: BranchRangeInfo = {
-                        baseRef: data.baseRef,
-                        headRef: data.headRef,
-                        commitCount: data.commitCount,
-                        additions: data.additions,
-                        deletions: data.deletions,
-                        mergeBase: data.mergeBase,
-                        branchName: data.branchName,
-                        fileCount: Array.isArray(data.files) ? data.files.length : 0,
-                        baseMode: data.baseMode,
-                        baseModeFallback: data.baseModeFallback,
-                    };
-                    const files = Array.isArray(data.files) ? data.files : [];
-                    setBranchRangeData(rangeInfo);
-                    setBranchRangeFiles(files);
-                    setBranchName(data.branchName || data.headRef || '');
-                    setAhead(data.commitCount || 0);
-                    setBehind(data.behindCount || 0);
-                    setResolvedBaseRef(data.baseRef ?? null);
-                    setBranchRangeCache(workspaceId, {
-                        data: rangeInfo, files, ahead: data.commitCount || 0,
-                        behind: data.behindCount || 0,
-                        branchName: data.branchName || data.headRef || '',
-                        onDefaultBranch: false,
-                        baseRef: data.baseRef,
-                        baseModeFallback: data.baseModeFallback,
-                    }, mode);
-                    return rangeInfo;
-                }
-            })
-            .catch(() => {
-                setOnDefaultBranch(true);
-                setBranchRangeData(null);
-                return null as BranchRangeInfo | null;
-            });
-    }, [workspaceId]);
-
-    /** Switch the comparison base (vs default branch ⇄ unpushed) and refetch. */
-    const handleBaseModeChange = useCallback((mode: GitRangeBaseMode) => {
-        if (mode === baseModeRef.current) return;
-        setBaseMode(mode);
-        baseModeRef.current = mode;
-        void fetchBranchRange(false, mode);
-    }, [setBaseMode, fetchBranchRange]);
-
-    // Initial load
-    useEffect(() => {
-        setLoading(true);
-        setError(null);
-        setSkip(0);
-        fetchRepoState();
-        Promise.all([fetchCommits(), fetchBranchRange()])
-            .then(([loaded, rangeInfo]) => {
-                setLastRefreshedAt(Date.now());
-                if (initialCommitHash === 'branch-range') {
-                    // Restore branch-range deep link
-                    if (initialFilePath) {
-                        setRightPanelView({ type: 'branch-file', filePath: initialFilePath });
-                    } else {
-                        setRightPanelView({ type: 'branch-range' });
-                    }
-                } else {
-                    const target = initialCommitHash
-                        ? loaded.find((c: GitCommitItem) => c.hash.startsWith(initialCommitHash))
-                        : null;
-                    if (target && initialFilePath) {
-                        setRightPanelView({ type: 'commit-file', hash: target.hash, filePath: initialFilePath });
-                    } else if (target) {
-                        setRightPanelView({ type: 'commit', commit: target });
-                    } else {
-                        // Deep-link SHA not found in loaded list — attempt direct lookup if enabled
-                        if (initialCommitHash && isGitCommitLookupEnabled() && /^[0-9a-f]{7,40}$/i.test(initialCommitHash)) {
-                            setCommitLookupLoading(true);
-                            setCommitLookupError(null);
-                            cloneClient.git.getCommit(workspaceId, initialCommitHash)
-                                .then(result => {
-                                    const commit: GitCommitItem = {
-                                        hash: result.hash,
-                                        shortHash: result.shortHash,
-                                        subject: result.subject,
-                                        author: result.author,
-                                        authorEmail: result.authorEmail,
-                                        date: result.date,
-                                        parentHashes: result.parentHashes,
-                                        body: result.body,
-                                    };
-                                    setOpenedCommit(commit);
-                                    setRightPanelView({ type: 'commit', commit });
-                                })
-                                .catch(() => setCommitLookupError('Commit not found'))
-                                .finally(() => setCommitLookupLoading(false));
-                        } else {
-                            // Default to empty right panel; user must click to open something.
-                            setRightPanelView(null);
-                        }
-                    }
-                }
-            })
-            .catch(err => setError(err.message || 'Failed to load commits'))
-            .finally(() => setLoading(false));
-    }, [workspaceId, fetchCommits, fetchBranchRange, retryKey]);
-
-    // Deep-link navigation after mount: when state.selectedGitCommitHash changes
-    // (e.g. clicking a commit link from the activity tab), select the target commit.
-    useEffect(() => {
-        const hash = state.selectedGitCommitHash;
-        if (!hash || hash === 'branch-range' || loading) return;
-        if (hash === consumedDeepLinkRef.current) return;
-        consumedDeepLinkRef.current = hash;
-        const target = commits.find(c => c.hash.startsWith(hash));
-        if (!target) {
-            // Commit not in loaded list — attempt direct lookup if feature enabled
-            if (isGitCommitLookupEnabled() && /^[0-9a-f]{7,40}$/i.test(hash)) {
-                setCommitLookupLoading(true);
-                setCommitLookupError(null);
-                cloneClient.git.getCommit(workspaceId, hash)
-                    .then(result => {
-                        const commit: GitCommitItem = {
-                            hash: result.hash,
-                            shortHash: result.shortHash,
-                            subject: result.subject,
-                            author: result.author,
-                            authorEmail: result.authorEmail,
-                            date: result.date,
-                            parentHashes: result.parentHashes,
-                            body: result.body,
-                        };
-                        setOpenedCommit(commit);
-                        setRightPanelView({ type: 'commit', commit });
-                    })
-                    .catch(() => setCommitLookupError('Commit not found'))
-                    .finally(() => setCommitLookupLoading(false));
-            }
-            return;
-        }
-        const filePath = state.selectedGitFilePath;
-        if (filePath) {
-            setRightPanelView({ type: 'commit-file', hash: target.hash, filePath });
-        } else {
-            setRightPanelView({ type: 'commit', commit: target });
-        }
-    }, [state.selectedGitCommitHash, state.selectedGitFilePath, loading, commits, workspaceId]);
-
-    // Fetch skills once per workspace
-    useEffect(() => {
-        setSkills([]);
-        // AC-07: skills list loads from the selected clone's server.
-        cloneClient.request<{ skills?: string[] }>(`/workspaces/${encodeURIComponent(workspaceId)}/skills`)
-            .then(data => {
-                if (data?.skills && Array.isArray(data.skills)) {
-                    setSkills(data.skills);
-                }
-            })
-            .catch(() => {});
-    }, [workspaceId]);
-
-    // Fetch commit-scoped skill usage map + auto-pull setting per workspace
-    useEffect(() => {
-        setCommitSkillUsageMap({});
-        setAutoPull(undefined);
-        cloneClient.preferences.getRepo(workspaceId)
-            .then(prefs => {
-                if (prefs?.commitSkillUsageMap) {
-                    setCommitSkillUsageMap(prefs.commitSkillUsageMap);
-                }
-                if (prefs?.autoPull) {
-                    setAutoPull(prefs.autoPull);
-                }
-            })
-            .catch(() => {});
-    }, [workspaceId]);
-
-    // Persist an auto-pull interval change per repo, then reflect it locally so
-    // the control (and, later, the timer) pick up the new value immediately.
-    const handleAutoPullChange = useCallback((next: AutoPullSetting) => {
-        setAutoPull(next);
-        cloneClient.preferences.patchRepo(workspaceId, { autoPull: next }).catch(() => {});
-    }, [workspaceId]);
-    useEffect(() => {
-        if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-        searchDebounceRef.current = setTimeout(() => {
-            searchDebounceRef.current = null;
-            setSkip(0);
-            setCommits([]);
-            fetchCommits(false, 0, searchQuery).catch(() => {});
-        }, 300);
-        return () => {
-            if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-        };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [searchQuery, workspaceId]);
-
-    // Refresh all data (non-blocking, keeps current content visible)
-    const refreshAll = useCallback((options?: { selectHash?: string; selectFallbackToHead?: boolean }) => {
-        if (refreshing) return;
-        setRefreshing(true);
-        setRefreshError(null);
-        setActionError(null);
-        setSkip(0);
-        setWorkingChangesRefreshKey(k => k + 1);
-        fetchRepoState();
-        const prevSelectedHash = rightPanelView?.type === 'commit' ? rightPanelView.commit.hash : rightPanelView?.type === 'commit-file' ? rightPanelView.hash : null;
-        if (prevSelectedHash) {
-            clearCacheForHash(prevSelectedHash);
-        }
-        Promise.all([fetchCommits(true, 0, searchQuery), fetchBranchRange(true)])
-            .then(([loaded]) => {
-                setLastRefreshedAt(Date.now());
-                if (options?.selectHash || options?.selectFallbackToHead) {
-                    const found = options.selectHash
-                        ? loaded.find((c: GitCommitItem) => c.hash === options.selectHash)
-                        : null;
-                    setRightPanelView(found
-                        ? { type: 'commit', commit: found }
-                        : loaded.length > 0
-                            ? { type: 'commit', commit: loaded[0] }
-                            : null);
-                    return;
-                }
-                // Retain selection if the commit still exists
-                if (prevSelectedHash) {
-                    const found = loaded.find((c: GitCommitItem) => c.hash === prevSelectedHash);
-                    if (found) {
-                        // Preserve commit-file view if that's the current type
-                        if (rightPanelView?.type === 'commit-file') {
-                            // keep as-is
-                        } else {
-                            setRightPanelView({ type: 'commit', commit: found });
-                        }
-                    } else if (loaded.length > 0) {
-                        setRightPanelView({ type: 'commit', commit: loaded[0] });
-                    } else {
-                        setRightPanelView(null);
-                    }
-                } else if (rightPanelView?.type === 'branch-file' || rightPanelView?.type === 'branch-range' || rightPanelView?.type === 'working-tree-file' || rightPanelView?.type === 'working-tree-comments' || rightPanelView?.type === 'branch-range-comments') {
-                    // Keep the branch-file / branch-range / working-tree-file / working-tree-comments / branch-range-comments view as-is during refresh
-                } else if (rightPanelView === null) {
-                    // No prior selection — keep list visible (preserves mobile back state)
-                } else if (loaded.length > 0) {
-                    setRightPanelView({ type: 'commit', commit: loaded[0] });
-                }
-            })
-            .catch(err => setRefreshError(err.message || 'Refresh failed'))
-            .finally(() => setRefreshing(false));
-    }, [refreshing, rightPanelView, fetchCommits, fetchBranchRange, searchQuery]);
-
-    // Load more commits (append next page)
-    const handleLoadMore = useCallback(() => {
-        if (isLoadingMore || !hasMore) return;
-        setIsLoadingMore(true);
-        const nextSkip = skip + 50;
-        fetchCommits(false, nextSkip, searchQuery)
-            .then(() => setSkip(nextSkip))
-            .catch(() => {})
-            .finally(() => setIsLoadingMore(false));
-    }, [isLoadingMore, hasMore, skip, fetchCommits, searchQuery]);
-
-    // WebSocket: auto-refresh on git-changed events for this workspace
+    // ── WebSocket refresh ─────────────────────────────────────────────────────
+    // A `git-changed` burst is debounced into one refresh. Commits are snapshotted
+    // beforehand so a history rewrite can rebind commit-chat bindings by identity.
     const gitChangedDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const prevCommitsRef = useRef<GitCommitItem[]>([]);
+    const commitsRef = useRef(data.commits);
+    commitsRef.current = data.commits;
 
     useWebSocket({
         onMessage: useCallback((msg: any) => {
-            if (msg.type === 'git-changed' && msg.workspaceId === workspaceId) {
-                if (gitChangedDebounceRef.current) clearTimeout(gitChangedDebounceRef.current);
-                gitChangedDebounceRef.current = setTimeout(() => {
-                    gitChangedDebounceRef.current = null;
-                    // Snapshot current commits before the refresh overwrites them
-                    prevCommitsRef.current = commits;
-                    // Clear stale branch range cache so the next fetch returns current branch
-                    clearBranchRangeCache(workspaceId);
-                    // Re-fetch commits, working tree, and branch range
-                    Promise.all([
-                        fetchCommits(true, 0, searchQuery),
-                        fetchBranchRange(false),
-                    ]).then(([newCommits]) => {
-                        setLastRefreshedAt(Date.now());
-                        // Heuristic rebind: match old→new commits by identity
-                        const pairs = matchCommitsByIdentity(prevCommitsRef.current, newCommits as GitCommitItem[]);
-                        for (const { oldHash, newHash } of pairs) {
-                            rebindCommitChat(workspaceId, oldHash, newHash);
-                        }
-                        prevCommitsRef.current = [];
-                    });
-                    setWorkingChangesRefreshKey(k => k + 1);
-                }, 500);
-                // If we're tracking a pull job, re-fetch its status on git-changed
-                const pullJobId = pullPoller.activeJobId();
-                if (pullJobId) {
-                    cloneClient.git.getOperation(workspaceId, pullJobId)
-                        .then((job: any) => {
-                            if (job && job.status !== 'running') {
-                                stopPullPolling();
-                                if (job.status === 'failed') {
-                                    setActionError(job.error || 'Pull failed');
-                                }
+            if (msg.type !== 'git-changed' || msg.workspaceId !== workspaceId) return;
+            if (gitChangedDebounceRef.current) clearTimeout(gitChangedDebounceRef.current);
+            gitChangedDebounceRef.current = setTimeout(() => {
+                gitChangedDebounceRef.current = null;
+                // Snapshot current commits before the refresh overwrites them
+                prevCommitsRef.current = commitsRef.current;
+                // Clear stale branch range cache so the next fetch returns current branch
+                clearBranchRangeCache(workspaceId);
+                // Re-fetch commits, working tree, and branch range
+                Promise.all([
+                    data.fetchCommits(true, 0, data.searchQuery),
+                    data.fetchBranchRange(false),
+                ]).then(([newCommits]) => {
+                    data.markRefreshed();
+                    // Heuristic rebind: match old→new commits by identity
+                    const pairs = matchCommitsByIdentity(prevCommitsRef.current, newCommits as GitCommitItem[]);
+                    for (const { oldHash, newHash } of pairs) {
+                        rebindCommitChat(workspaceId, oldHash, newHash);
+                    }
+                    prevCommitsRef.current = [];
+                });
+                data.bumpWorkingChanges();
+            }, GIT_CHANGED_DEBOUNCE_MS);
+            // If we're tracking a pull job, re-fetch its status on git-changed
+            const pullJobId = actions.pullPoller.activeJobId();
+            if (pullJobId) {
+                cloneClient.git.getOperation(workspaceId, pullJobId)
+                    .then((job: any) => {
+                        if (job && job.status !== 'running') {
+                            actions.stopPullPolling();
+                            if (job.status === 'failed') {
+                                actions.setActionError(job.error || 'Pull failed');
                             }
-                        })
-                        .catch(() => {});
-                }
+                        }
+                    })
+                    .catch(() => {});
             }
-        }, [workspaceId, commits, fetchCommits, fetchBranchRange, searchQuery]),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        }, [workspaceId, data.fetchCommits, data.fetchBranchRange, data.searchQuery, actions.pullPoller, actions.stopPullPolling]),
     });
 
-    // Pull job polling helpers — delegate interval lifecycle to the shared poller,
-    // keep the pull-specific `pulling` flag and error handling here.
-    const stopPullPolling = useCallback(() => {
-        pullPoller.stop();
-        setPulling(false);
-    }, [pullPoller]);
-
-    const startPullPolling = useCallback((jobId: string) => {
-        setPulling(true);
-        pullPoller.start(jobId, {
-            // A missing job falls back to onSuccess → refreshAll, matching prior behavior.
-            onSuccess: () => { setPulling(false); refreshAll(); },
-            onFailure: (error) => { setPulling(false); setActionError(error || 'Pull failed'); },
-            onError: () => { setPulling(false); },
-        });
-    }, [pullPoller, refreshAll]);
-
-    // Stable refs so mount-recovery effect doesn't re-fire on callback identity changes
-    const startPullPollingRef = useRef(startPullPolling);
-    startPullPollingRef.current = startPullPolling;
-    const stopPullPollingRef = useRef(stopPullPolling);
-    stopPullPollingRef.current = stopPullPolling;
-
-    // Recover pull status on mount (page refresh recovery)
-    useEffect(() => {
-        cloneClient.git.getLatestOperation(workspaceId, { op: 'pull' })
-            .then((job: any) => {
-                if (!job) return;
-                if (job.status === 'running') {
-                    startPullPollingRef.current(job.id);
-                } else if (job.status === 'failed' && job.finishedAt) {
-                    const elapsed = Date.now() - new Date(job.finishedAt).getTime();
-                    if (elapsed < 5 * 60 * 1000) { // 5 min TTL
-                        setActionError(job.error || 'Pull failed');
-                    }
-                }
-            })
-            .catch(() => {});
-        return () => { stopPullPollingRef.current(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Never leave the debounce timer running past unmount / a workspace switch.
+    useEffect(() => () => {
+        if (gitChangedDebounceRef.current) clearTimeout(gitChangedDebounceRef.current);
+        gitChangedDebounceRef.current = null;
     }, [workspaceId]);
 
-    // ── Auto-pull (per-repo timer) ────────────────────────────────────────────
-    // Non-blocking bottom-right toast for auto-pull skips/failures. Reuses the
-    // shared enqueueToast surface; auto-dismisses so it never requires attention.
-    const showAutoPullToast = useCallback((message: string) => {
-        setEnqueueToast(message);
-        setTimeout(() => setEnqueueToast(null), 5000);
-    }, []);
-    // Restart the auto-pull countdown after a manual or successful pull.
-    const bumpAutoPullReset = useCallback(() => setAutoPullResetSignal(n => n + 1), []);
-
-    // Poll an auto-pull job: success refreshes + resets the countdown; a failed
-    // job (non-fast-forward / conflict) shows a toast instead of the action banner.
-    const startAutoPullPolling = useCallback((jobId: string) => {
-        setPulling(true);
-        pullPoller.start(jobId, buildAutoPullPollerCallbacks({
-            setInFlight: setPulling,
-            onSuccess: () => { bumpAutoPullReset(); refreshAll(); },
-            onFailure: (message) => { showAutoPullToast(message); refreshAll(); },
-        }));
-    }, [pullPoller, refreshAll, bumpAutoPullReset, showAutoPullToast]);
-
-    // One timer tick: single-flight guard + dirty pre-check + the shared pull path.
-    const handleAutoPull = useCallback(() => {
-        void runAutoPullTick({
-            isPullInFlight: () => pulling || pullPoller.isPolling(),
-            getWorkingTreeChanges: () => cloneClient.git.getWorkingTreeChanges(workspaceId),
-            pull: () => cloneClient.git.pull(workspaceId, { rebase: true, currentBranchOnly: true }),
-            onJobStarted: startAutoPullPolling,
-            onSyncSuccess: () => { bumpAutoPullReset(); refreshAll(); },
-            onSkip: showAutoPullToast,
-            setInFlight: setPulling,
-        });
-    }, [pulling, pullPoller, cloneClient, workspaceId, startAutoPullPolling, bumpAutoPullReset, refreshAll, showAutoPullToast]);
-
-    // Arm the recurring timer from the persisted per-repo setting. The hook owns
-    // interval lifecycle (re-arm on interval/workspace/reset change, cleanup on
-    // unmount); handleAutoPull decides what each tick does.
-    useAutoPullTimer({
-        workspaceId,
-        enabled: !!autoPull?.enabled,
-        intervalMinutes: autoPull?.intervalMinutes,
-        onTick: handleAutoPull,
-        resetSignal: autoPullResetSignal,
-    });
-
-    // Git action handlers
-    const handleFetch = useCallback(async () => {
-        if (fetching) return;
-        setFetching(true);
-        setActionError(null);
-        try {
-            const result = await cloneClient.git.fetch(workspaceId, { currentBranchOnly: true });
-            if (result.success === false) throw new Error(result.error || 'Fetch failed');
-            refreshAll();
-        } catch (err: any) {
-            setActionError(err.message || 'Fetch failed');
-        } finally {
-            setFetching(false);
-        }
-    }, [fetching, workspaceId, refreshAll]);
-
-    const handlePull = useCallback(async () => {
-        if (pulling) return;
-        bumpAutoPullReset(); // a manual pull restarts the auto-pull countdown
-        setPulling(true);
-        setActionError(null);
-        try {
-            const result = await cloneClient.git.pull(workspaceId, { rebase: true, currentBranchOnly: true });
-            if (result.jobId) {
-                // Async pull — start polling for job completion
-                startPullPolling(result.jobId);
-            } else if (result.success === false) {
-                throw new Error(result.error || 'Pull failed');
-            } else {
-                refreshAll();
-                setPulling(false);
-            }
-        } catch (err: any) {
-            setActionError(err.message || 'Pull failed');
-            setPulling(false);
-        }
-    }, [pulling, workspaceId, refreshAll, startPullPolling, bumpAutoPullReset]);
-
-    const handlePush = useCallback(async () => {
-        if (pushing) return;
-        setPushing(true);
-        setActionError(null);
-        try {
-            const result = await cloneClient.git.push(workspaceId);
-            if (result.success === false) throw new Error(result.error || 'Push failed');
-            refreshAll();
-        } catch (err: any) {
-            setActionError(err.message || 'Push failed');
-        } finally {
-            setPushing(false);
-        }
-    }, [pushing, workspaceId, refreshAll]);
-
-    const handlePushToCommit = useCallback(async (commit: GitCommitItem) => {
-        closeContextMenu();
-        setPushing(true);
-        setActionError(null);
-        try {
-            const result = await cloneClient.git.pushTo(workspaceId, commit.hash);
-            if (result.success === false) throw new Error(result.error || 'Push failed');
-            refreshAll();
-        } catch (err: any) {
-            setActionError(err.message || 'Push failed');
-        } finally {
-            setPushing(false);
-        }
-    }, [closeContextMenu, workspaceId, refreshAll]);
+    // ── Composed handlers ─────────────────────────────────────────────────────
 
     const handleOpenAsPopup = useCallback((commit: GitCommitItem) => {
         closeContextMenu();
@@ -853,886 +266,179 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
         }
     }, [workspaceId, closeContextMenu, markPoppedOut]);
 
-    const handleRebaseAutosquash = useCallback(async () => {
-        if (rebasing) return;
-        setRebasing(true);
-        setActionError(null);
-        try {
-            const result = await cloneClient.git.rebaseAutosquash(workspaceId);
-            if (result.jobId) {
-                // Async rebase — poll for job completion (missing job → onSuccess → refreshAll)
-                rebasePoller.start(result.jobId, {
-                    onSuccess: () => { setRebasing(false); refreshAll(); },
-                    onFailure: (error) => { setRebasing(false); setActionError(error || 'Rebase failed'); },
-                    onError: () => { setRebasing(false); },
-                });
-            } else if (result.success === false) {
-                throw new Error(result.error || 'Rebase failed');
-            } else {
-                refreshAll();
-                setRebasing(false);
-            }
-        } catch (err: any) {
-            setActionError(err.message || 'Rebase failed');
-            setRebasing(false);
-        }
-    }, [rebasing, workspaceId, refreshAll, rebasePoller]);
-
-    const handleSelect = useCallback((commit: GitCommitItem) => {
-        setRightPanelView({ type: 'commit', commit });
-        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/' + commit.hash;
-        dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: commit.hash });
-        dispatch({ type: 'CLEAR_GIT_FILE_PATH' });
-    }, [workspaceId, dispatch]);
-
-    /** Direct commit SHA lookup — used by search-input Enter and deep-link misses. */
-    const handleCommitLookup = useCallback(async (sha: string) => {
-        if (!isGitCommitLookupEnabled()) return;
-        const normalizedSha = sha.toLowerCase().trim();
-        if (!/^[0-9a-f]{7,40}$/.test(normalizedSha)) return;
-
-        // If already in the loaded list, just select it normally
-        const existing = commits.find(c => c.hash.startsWith(normalizedSha) || normalizedSha.startsWith(c.hash.slice(0, normalizedSha.length)));
-        if (existing) {
-            handleSelect(existing);
-            setOpenedCommit(null);
-            setCommitLookupError(null);
-            return;
-        }
-
-        setCommitLookupLoading(true);
-        setCommitLookupError(null);
-
-        try {
-            const result = await cloneClient.git.getCommit(workspaceId, normalizedSha);
-            const commit: GitCommitItem = {
-                hash: result.hash,
-                shortHash: result.shortHash,
-                subject: result.subject,
-                author: result.author,
-                authorEmail: result.authorEmail,
-                date: result.date,
-                parentHashes: result.parentHashes,
-                body: result.body,
-            };
-            setOpenedCommit(commit);
-            setRightPanelView({ type: 'commit', commit });
-            location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/' + commit.hash;
-            dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: commit.hash });
-            dispatch({ type: 'CLEAR_GIT_FILE_PATH' });
-        } catch {
-            // Failure: preserve current state — URL is unchanged (only set on success above)
-            setCommitLookupError('Commit not found or ambiguous SHA');
-        } finally {
-            setCommitLookupLoading(false);
-        }
-    }, [workspaceId, commits, handleSelect, dispatch]);
-
-    const handleMultiSelect = useCallback((selectedCommits: GitCommitItem[]) => {
-        if (selectedCommits.length === 0) {
-            setRightPanelView(null);
-            return;
-        }
-        if (selectedCommits.length === 1) {
-            handleSelect(selectedCommits[0]);
-            return;
-        }
-        setRightPanelView({ type: 'multi-commit', commits: selectedCommits });
-    }, [handleSelect]);
-
     const handleMobileSelectingChange = useCallback((selecting: boolean) => {
         setIsMobileSelecting(selecting);
         if (!selecting) setMobileAnchorHash(null);
     }, []);
 
     const handleSwipeAction = useCallback((action: 'review' | 'ask-ai' | 'more', commitHash: string) => {
-        const commit = commits.find(c => c.hash === commitHash);
+        const commit = data.commits.find(c => c.hash === commitHash);
         if (!commit) return;
         if (action === 'review') {
-            handleSelect(commit);
+            selection.selectCommit(commit);
         } else if (action === 'ask-ai') {
-            const initialPrompt = `Commit: ${commit.hash}${commit.subject ? ` — ${commit.subject}` : ''}`;
-            queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'ask', initialPrompt, launchMode: 'floating-chat' });
+            skillActions.askAboutCommit(commit, 'ask');
         } else if (action === 'more') {
             // Open full context menu at center of viewport
-            const x = window.innerWidth / 2;
-            const y = window.innerHeight / 2;
-            setContextMenu({ x, y, type: 'commit', commit });
+            setContextMenu({ x: window.innerWidth / 2, y: window.innerHeight / 2, type: 'commit', commit });
         }
-    }, [commits, handleSelect, queueDispatch, workspaceId]);
-
-    const selectedHashes = useMemo<ReadonlySet<string>>(() => {
-        if (rightPanelView?.type === 'multi-commit') {
-            return new Set(rightPanelView.commits.map(c => c.hash));
-        }
-        if (rightPanelView?.type === 'commit') return new Set([rightPanelView.commit.hash]);
-        if (rightPanelView?.type === 'commit-file') return new Set([rightPanelView.hash]);
-        return new Set();
-    }, [rightPanelView]);
-
-    const sourceWorkspace = useMemo(
-        () => state.workspaces.find((w: any) => w.id === workspaceId),
-        [state.workspaces, workspaceId],
-    );
-
-    const repoRoot = useMemo(() => {
-        return sourceWorkspace?.rootPath as string | undefined;
-    }, [sourceWorkspace]);
-
-    const handleFileSelect = useCallback((filePath: string) => {
-        setHunkTarget(undefined);
-        setRightPanelView({ type: 'branch-file', filePath });
-        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/branch-range/' + encodeURIComponent(filePath);
-        dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: 'branch-range' });
-        dispatch({ type: 'SET_GIT_FILE_PATH', filePath });
-    }, [workspaceId, dispatch]);
-
-    const handleNavigateToBranchFile = useCallback((filePath: string, target: 'first' | 'last') => {
-        setHunkTarget(target);
-        setRightPanelView({ type: 'branch-file', filePath });
-        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/branch-range/' + encodeURIComponent(filePath);
-        dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: 'branch-range' });
-        dispatch({ type: 'SET_GIT_FILE_PATH', filePath });
-    }, [workspaceId, dispatch]);
-
-    const handleBranchRangeSelect = useCallback(() => {
-        setRightPanelView({ type: 'branch-range' });
-        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/branch-range';
-        dispatch({ type: 'SET_GIT_COMMIT_HASH', hash: 'branch-range' });
-        dispatch({ type: 'CLEAR_GIT_FILE_PATH' });
-    }, [workspaceId, dispatch]);
-
-    const handleCommitFileSelect = useCallback((hash: string, filePath: string) => {
-        setHunkTarget(undefined);
-        setRightPanelView({ type: 'commit-file', hash, filePath });
-        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/' + hash + '/' + encodeURIComponent(filePath);
-        dispatch({ type: 'SET_GIT_FILE_PATH', filePath });
-    }, [workspaceId, dispatch]);
-
-    const handleNavigateToCommitFile = useCallback((hash: string, filePath: string, target: 'first' | 'last') => {
-        setHunkTarget(target);
-        setRightPanelView({ type: 'commit-file', hash, filePath });
-        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/git/' + hash + '/' + encodeURIComponent(filePath);
-        dispatch({ type: 'SET_GIT_FILE_PATH', filePath });
-    }, [workspaceId, dispatch]);
-
-    const handleWorkingTreeFileSelect = useCallback((filePath: string, stage: 'staged' | 'unstaged' | 'untracked') => {
-        setHunkTarget(undefined);
-        setRightPanelView({ type: 'working-tree-file', filePath, stage });
-    }, []);
-
-    const handleNavigateToWorkingTreeFile = useCallback((filePath: string, target: 'first' | 'last') => {
-        // Working tree navigation keeps the current stage
-        const currentStage = rightPanelView?.type === 'working-tree-file' ? rightPanelView.stage : 'unstaged';
-        setHunkTarget(target);
-        setRightPanelView({ type: 'working-tree-file', filePath, stage: currentStage });
-    }, [rightPanelView]);
-
-    const handleAllWorkingCommentsClick = useCallback(() => {
-        setRightPanelView({ type: 'working-tree-comments' });
-    }, []);
-
-    const handleAllBranchCommentsClick = useCallback(() => {
-        setRightPanelView({ type: 'branch-range-comments' });
-    }, []);
-
-    const handleMobileBack = useCallback(() => {
-        setRightPanelView(null);
-    }, []);
-
-    const handleHardReset = useCallback(async (commit: GitCommitItem) => {
-        closeContextMenu();
-        const shortHash = commit.hash.slice(0, 7);
-        if (!window.confirm(`Reset to ${shortHash}? This will discard all uncommitted changes.`)) return;
-        setActionError(null);
-        try {
-            const result = await cloneClient.git.reset(workspaceId, commit.hash, 'hard');
-            if (result.success === false) throw new Error(result.error || 'Reset failed');
-            refreshAll();
-        } catch (err: any) {
-            setActionError(err.message || 'Reset failed');
-        }
-    }, [closeContextMenu, workspaceId, refreshAll]);
-
-    const orderOldestFirst = useCallback((selectedCommits: GitCommitItem[]) => {
-        const indexByHash = new Map(commits.map((commit, index) => [commit.hash, index]));
-        return [...selectedCommits].sort((left, right) => {
-            const leftIndex = indexByHash.get(left.hash);
-            const rightIndex = indexByHash.get(right.hash);
-            if (leftIndex === undefined && rightIndex === undefined) return 0;
-            if (leftIndex === undefined) return 1;
-            if (rightIndex === undefined) return -1;
-            return rightIndex - leftIndex;
-        });
-    }, [commits]);
-
-    const handleOpenCherryPickToBranch = useCallback((selectedCommits: GitCommitItem[]) => {
-        closeContextMenu();
-        const orderedCommits = orderOldestFirst(selectedCommits);
-        if (orderedCommits.length === 0) return;
-        setActionError(null);
-        setCherryPickTarget({ commits: orderedCommits });
-    }, [closeContextMenu, orderOldestFirst]);
-
-    const handleCherryPickToBranch = useCallback(async (targetBranch: string) => {
-        const target = cherryPickTarget;
-        if (!target?.commits.length) return;
-        const hashes = target.commits.map(commit => commit.hash);
-        const primaryHash = hashes[0];
-        setActionError(null);
-        try {
-            const result = await cloneClient.git.cherryPick(workspaceId, primaryHash, {
-                hashes,
-                targetBranch,
-            });
-            if (result.conflicts) {
-                throw new Error(result.error || result.message || 'Cherry-pick failed; changes were aborted and branch restored.');
-            }
-            if (result.success === false) {
-                throw new Error(result.error || result.message || 'Cherry-pick failed');
-            }
-            refreshAll();
-            const toastHash = hashes.length === 1 ? target.commits[0].shortHash : `${hashes.length} commits`;
-            setEnqueueToast(`Cherry-picked ${toastHash} onto ${targetBranch}`);
-            setTimeout(() => setEnqueueToast(null), 3000);
-        } catch (error) {
-            const message = getSpaCocClientErrorMessage(error, 'Cherry-pick failed');
-            setActionError(message);
-            throw new Error(message);
-        }
-    }, [cherryPickTarget, refreshAll, workspaceId]);
-
-    const handleCherryPick = useCallback((commit: GitCommitItem) => {
-        closeContextMenu();
-        handleOpenCherryPickToBranch([commit]);
-    }, [closeContextMenu, handleOpenCherryPickToBranch]);
-
-    const handleOpenCrossCloneCherryPick = useCallback((commit: GitCommitItem) => {
-        closeContextMenu();
-        setCrossCloneCherryPickCommits([commit]);
-    }, [closeContextMenu]);
-
-    const handleOpenCrossCloneCherryPickMulti = useCallback((selectedCommits: GitCommitItem[]) => {
-        closeContextMenu();
-        const orderedCommits = orderOldestFirst(selectedCommits);
-        if (orderedCommits.length === 0) return;
-        setCrossCloneCherryPickCommits(orderedCommits);
-    }, [closeContextMenu, orderOldestFirst]);
-
-    const handleCrossCloneCherryPickApplied = useCallback((response: GitPatchApplyResponse) => {
-        refreshAll();
-        const target = response.targetWorkspace.name || response.targetWorkspace.id;
-        const commitHash = response.newCommitHash || response.targetHead;
-        setEnqueueToast(`Cherry-picked to ${target}${commitHash ? ` (${commitHash.slice(0, 7)})` : ''}`);
-        setTimeout(() => setEnqueueToast(null), 3000);
-    }, [refreshAll]);
-
-    const handleAmendConfirm = useCallback(async (title: string, body: string) => {
-        if (!amendingCommit) return;
-        setAmendingCommit(null);
-        setActionError(null);
-        try {
-            const result = await cloneClient.git.amend(workspaceId, title, body);
-            if (result.error) throw new Error(result.error);
-            // Rebind commit-chat if the amend produced a new hash
-            if (result.hash && result.hash !== amendingCommit.hash) {
-                rebindCommitChat(workspaceId, amendingCommit.hash, result.hash);
-            }
-            refreshAll({ selectHash: result.hash, selectFallbackToHead: true });
-            setEnqueueToast('Commit message amended.');
-            setTimeout(() => setEnqueueToast(null), 3000);
-        } catch (err: any) {
-            setActionError(err.message || 'Amend failed');
-        }
-    }, [amendingCommit, workspaceId, refreshAll]);
-
-    const handleRewordConfirm = useCallback(async (title: string) => {
-        if (!rewordingCommit) return;
-        setRewordingCommit(null);
-        setActionError(null);
-        try {
-            const result = await cloneClient.git.reword(workspaceId, rewordingCommit.hash, title);
-            if (result.error) throw new Error(result.error);
-            refreshAll();
-            setEnqueueToast('Commit title amended.');
-            setTimeout(() => setEnqueueToast(null), 3000);
-        } catch (err: any) {
-            setActionError(err.message || 'Reword failed');
-        }
-    }, [rewordingCommit, workspaceId, refreshAll]);
-
-    const handleDropCommit = useCallback(async (commit: GitCommitItem) => {
-        closeContextMenu();
-        setActionError(null);
-        try {
-            const result = await cloneClient.git.dropCommit(workspaceId, commit.hash);
-            if (result.jobId) {
-                // Async drop — poll for completion (missing job → onSuccess → refreshAll)
-                dropPoller.start(result.jobId, {
-                    onSuccess: () => refreshAll({ selectFallbackToHead: true }),
-                    onFailure: (error) => setActionError(error || 'Drop commit failed'),
-                });
-                return;
-            }
-            if (result.error) throw new Error(result.error);
-            refreshAll({ selectFallbackToHead: true });
-        } catch (err: any) {
-            setActionError(err.message || 'Drop commit failed');
-        }
-    }, [closeContextMenu, workspaceId, refreshAll, dropPoller]);
+    }, [data.commits, selection, skillActions]);
 
     const handleCommitContextMenu = useCallback((e: React.MouseEvent, commitHash: string) => {
-        if (
-            rightPanelView?.type === 'multi-commit' &&
-            rightPanelView.commits.some(c => c.hash === commitHash)
-        ) {
-            setContextMenu({ x: e.clientX, y: e.clientY, type: 'multi-commit', commits: rightPanelView.commits });
+        const view = selection.getView();
+        if (view?.type === 'multi-commit' && view.commits.some(c => c.hash === commitHash)) {
+            setContextMenu({ x: e.clientX, y: e.clientY, type: 'multi-commit', commits: view.commits });
             return;
         }
-        const commit = commits.find(c => c.hash === commitHash);
+        const commit = data.commits.find(c => c.hash === commitHash);
         if (!commit) return;
         setContextMenu({ x: e.clientX, y: e.clientY, type: 'commit', commit });
-    }, [commits, rightPanelView]);
+    }, [data.commits, selection]);
 
     const handleBranchContextMenu = useCallback((e: React.MouseEvent) => {
         setContextMenu({ x: e.clientX, y: e.clientY, type: 'branch-range' });
     }, []);
 
-    const buildBranchReferencePrompt = useCallback((): string => {
-        const branchLabel = branchRangeData?.branchName || branchRangeData?.headRef || branchName || 'current branch';
-        const baseShort = (branchRangeData?.baseRef ?? resolvedBaseRef ?? 'main').replace(/^origin\//, '');
-        const headShort = branchRangeData?.headRef ?? 'HEAD';
-        const commitCount = branchRangeData?.commitCount ?? 0;
-        const additions = branchRangeData?.additions ?? 0;
-        const deletions = branchRangeData?.deletions ?? 0;
-        const fileCount = branchRangeData?.fileCount ?? 0;
-
-        let prompt = `Branch: ${branchLabel} (${baseShort}..${headShort})\nCommits: ${commitCount}  +${additions} -${deletions}\nFiles: ${fileCount}`;
-
-        if (commits.length > 0) {
-            const commitList = commits
-                .map(c => `- ${c.shortHash} — ${c.subject}`)
-                .join('\n');
-            prompt += `\n\nCommit list:\n${commitList}`;
-        }
-
-        return prompt;
-    }, [branchRangeData, branchName, commits, resolvedBaseRef]);
-
-    const handleBranchAskAI = useCallback((mode: 'ask' | 'task') => {
-        const initialPrompt = buildBranchReferencePrompt();
-        queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode, initialPrompt, launchMode: 'floating-chat' });
-    }, [workspaceId, buildBranchReferencePrompt, queueDispatch]);
-
-    // The browse dialog outlives the context menu, so it passes back the menu
-    // state that was captured when it opened.
-    const handleEnqueueSkill = useCallback((skillName: string, capturedContext?: SkillMenuContext | null) => {
-        const source = capturedContext ?? contextMenu;
-        if (!source) return;
-        const snapshot = { ...source };
+    // Cherry-pick (same clone) — the picker collects the target branch, so the
+    // menu action only stages the (oldest-first) commits.
+    const handleOpenCherryPickToBranch = useCallback((selectedCommits: GitCommitItem[]) => {
         closeContextMenu();
+        const orderedCommits = actions.orderOldestFirst(selectedCommits);
+        if (orderedCommits.length === 0) return;
+        actions.setActionError(null);
+        setCherryPickTarget({ commits: orderedCommits });
+    }, [closeContextMenu, actions]);
 
-        setPendingSkillRun({
-            skillName,
-            type: snapshot.type,
-            commit: snapshot.commit,
-            commits: snapshot.commits,
-        });
-    }, [contextMenu, closeContextMenu]);
+    const handleCherryPickToBranch = useCallback(async (targetBranch: string) => {
+        if (!cherryPickTarget?.commits.length) return;
+        await actions.cherryPickToBranch(cherryPickTarget.commits, targetBranch);
+    }, [cherryPickTarget, actions]);
 
-    // "Browse all skills…" — capture the menu target before the menu closes, so
-    // the modal can hand it back to handleEnqueueSkill when a skill is picked.
-    const handleOpenSkillBrowser = useCallback(() => {
-        if (!contextMenu) return;
-        setSkillBrowserContext({ type: contextMenu.type, commit: contextMenu.commit, commits: contextMenu.commits });
-    }, [contextMenu]);
+    const handleOpenCrossCloneCherryPick = useCallback((selectedCommits: GitCommitItem[]) => {
+        closeContextMenu();
+        const orderedCommits = actions.orderOldestFirst(selectedCommits);
+        if (orderedCommits.length === 0) return;
+        setCrossCloneCherryPickCommits(orderedCommits);
+    }, [closeContextMenu, actions]);
+
+    const handleCrossCloneCherryPickApplied = useCallback((response: GitPatchApplyResponse) => {
+        data.refreshAll();
+        const target = response.targetWorkspace.name || response.targetWorkspace.id;
+        const commitHash = response.newCommitHash || response.targetHead;
+        showToast(`Cherry-picked to ${target}${commitHash ? ` (${commitHash.slice(0, 7)})` : ''}`);
+    }, [data.refreshAll, showToast]);
+
+    const handleAmendConfirm = useCallback((title: string, body: string) => {
+        const commit = amendingCommit;
+        if (!commit) return;
+        setAmendingCommit(null);
+        void actions.amend(commit, title, body);
+    }, [amendingCommit, actions]);
+
+    const handleRewordConfirm = useCallback((title: string) => {
+        const commit = rewordingCommit;
+        if (!commit) return;
+        setRewordingCommit(null);
+        void actions.reword(commit, title);
+    }, [rewordingCommit, actions]);
+
+    const handleHardReset = useCallback((commit: GitCommitItem) => {
+        closeContextMenu();
+        void actions.hardReset(commit);
+    }, [closeContextMenu, actions]);
+
+    const handleDropCommit = useCallback((commit: GitCommitItem) => {
+        closeContextMenu();
+        void actions.dropCommit(commit);
+    }, [closeContextMenu, actions]);
+
+    const handlePushToCommit = useCallback((commit: GitCommitItem) => {
+        closeContextMenu();
+        void actions.pushToCommit(commit);
+    }, [closeContextMenu, actions]);
+
+    const handleSquashCommits = useCallback((selectedCommits: GitCommitItem[]) => {
+        closeContextMenu();
+        void skillActions.squashCommits(selectedCommits);
+    }, [closeContextMenu, skillActions]);
+
+    const handleRunSkill = useCallback((skillName: string, target: SkillMenuContext) => {
+        closeContextMenu();
+        skillActions.startSkillRun(skillName, target);
+    }, [closeContextMenu, skillActions]);
 
     const handleSkillBrowserSelect = useCallback((skillName: string) => {
-        handleEnqueueSkill(skillName, skillBrowserContext);
-    }, [handleEnqueueSkill, skillBrowserContext]);
+        const target = skillActions.skillBrowserContext;
+        skillActions.closeSkillBrowser();
+        if (target) skillActions.startSkillRun(skillName, target);
+    }, [skillActions]);
 
-    const pendingSkillTargetSummary = useMemo(() => {
-        if (!pendingSkillRun) return '';
-        if (pendingSkillRun.type === 'commit' && pendingSkillRun.commit) {
-            return `Commit ${pendingSkillRun.commit.shortHash} — ${pendingSkillRun.commit.subject}`;
-        }
-        if (pendingSkillRun.type === 'multi-commit' && pendingSkillRun.commits?.length) {
-            return `${pendingSkillRun.commits.length} commits selected`;
-        }
-        return `Branch range: ${branchName || 'current branch'}`;
-    }, [pendingSkillRun, branchName]);
+    const handleStartMobileSelection = useCallback((commit: GitCommitItem) => {
+        setIsMobileSelecting(true);
+        setMobileAnchorHash(commit.hash);
+        selection.selectCommits([commit]);
+    }, [selection]);
 
-    const handleConfirmSkillRun = useCallback(async (userContext: string, aiSelection: ResolvedModalJobAiSelection) => {
-        if (!pendingSkillRun) return;
+    const handleExtendMobileSelection = useCallback((commit: GitCommitItem) => {
+        if (!mobileAnchorHash) return;
+        const anchorIdx = data.commits.findIndex(c => c.hash === mobileAnchorHash);
+        const targetIdx = data.commits.findIndex(c => c.hash === commit.hash);
+        if (anchorIdx === -1 || targetIdx === -1) return;
+        const [start, end] = anchorIdx <= targetIdx ? [anchorIdx, targetIdx] : [targetIdx, anchorIdx];
+        selection.selectCommits(data.commits.slice(start, end + 1));
+    }, [mobileAnchorHash, data.commits, selection]);
 
-        let promptContent: string;
-        if (pendingSkillRun.type === 'commit' && pendingSkillRun.commit) {
-            promptContent = `Run the selected skill on this commit:\n<commit>${pendingSkillRun.commit.hash}</commit>`;
-        } else if (pendingSkillRun.type === 'multi-commit' && pendingSkillRun.commits?.length) {
-            promptContent = `Run the selected skill on these commits:\n<commits>\n${pendingSkillRun.commits.map(c => c.hash).join('\n')}\n</commits>`;
-        } else {
-            promptContent = buildBranchRangeSkillPrompt(branchRangeData, branchName, resolvedBaseRef);
-        }
+    const handleBranchSwitched = useCallback((newBranch: string) => {
+        data.setBranchName(newBranch);
+        setBranchPickerOpen(false);
+        data.reloadAfterBranchSwitch();
+    }, [data]);
 
-        if (userContext) {
-            promptContent += `\n\nUser context:\n${userContext}`;
-        }
+    // ── Context menu ──────────────────────────────────────────────────────────
+    // Compute fixup groups for the context menu "Rebase autosquash" option
+    const fixupGroupsForMenu = useMemo(() => buildFixupGroups(data.commits), [data.commits]);
 
-        const ws = state.workspaces.find((w: any) => w.id === workspaceId);
-        const config = {
-            ...(aiSelection.model ? { model: aiSelection.model } : {}),
-            ...(aiSelection.reasoningEffort ? { reasoningEffort: aiSelection.reasoningEffort } : {}),
-            ...(aiSelection.effortTier ? { effortTier: aiSelection.effortTier } : {}),
-        };
-        const shortId =
-            pendingSkillRun.type === 'commit' && pendingSkillRun.commit
-                ? pendingSkillRun.commit.shortHash
-                : pendingSkillRun.type === 'multi-commit' && pendingSkillRun.commits?.length
-                    ? `${pendingSkillRun.commits.length} commits`
-                    : branchName || 'branch';
+    const contextMenuItems = useMemo(() => buildGitContextMenuItems({
+        menu: contextMenu,
+        commits: data.commits,
+        unpushedCount: data.unpushedCount,
+        fixupGroups: fixupGroupsForMenu,
+        skills: skillActions.skills,
+        skillUsageMap: skillActions.commitSkillUsageMap,
+        crossCloneCherryPickEnabled: isGitCrossCloneCherryPickEnabled(),
+        touchOnly: isTouchOnly(),
+        mobileSelecting: isMobileSelecting,
+        handlers: {
+            selectCommit: selection.selectCommit,
+            openAsPopup: handleOpenAsPopup,
+            pushToCommit: handlePushToCommit,
+            startAmend: setAmendingCommit,
+            startReword: setRewordingCommit,
+            rebaseAutosquash: () => { void actions.rebaseAutosquash(); },
+            dropCommit: handleDropCommit,
+            hardReset: handleHardReset,
+            cherryPickToBranch: handleOpenCherryPickToBranch,
+            crossCloneCherryPick: handleOpenCrossCloneCherryPick,
+            squashCommits: handleSquashCommits,
+            askAboutCommit: skillActions.askAboutCommit,
+            askAboutCommits: skillActions.askAboutCommits,
+            askAboutBranch: skillActions.askAboutBranch,
+            startMobileSelection: handleStartMobileSelection,
+            extendMobileSelection: handleExtendMobileSelection,
+            runSkill: handleRunSkill,
+            openSkillBrowser: skillActions.openSkillBrowser,
+            copyToClipboard: (text: string) => { navigator.clipboard.writeText(text); },
+            closeMenu: closeContextMenu,
+        },
+    }), [
+        contextMenu, data.commits, data.unpushedCount, fixupGroupsForMenu,
+        skillActions, isMobileSelecting, selection.selectCommit, handleOpenAsPopup,
+        handlePushToCommit, actions, handleDropCommit, handleHardReset,
+        handleOpenCherryPickToBranch, handleOpenCrossCloneCherryPick, handleSquashCommits,
+        handleStartMobileSelection, handleExtendMobileSelection, handleRunSkill, closeContextMenu,
+    ]);
 
-        await cloneClient.queue.enqueue({
-            type: 'chat',
-            priority: 'normal',
-            displayName: `Skill: ${pendingSkillRun.skillName} — ${shortId}`,
-            payload: {
-                kind: 'chat',
-                mode: 'autopilot',
-                prompt: promptContent,
-                workingDirectory: ws?.rootPath || '',
-                workspaceId,
-                ...(aiSelection.provider ? { provider: aiSelection.provider } : {}),
-                context: mergeAutoProviderRoutingContext(aiSelection, {
-                    skills: [pendingSkillRun.skillName],
-                }),
-            },
-            ...(Object.keys(config).length > 0 ? { config } : {}),
-        });
-
-        setPendingSkillRun(null);
-        setEnqueueToast(`Skill "${pendingSkillRun.skillName}" enqueued`);
-        setTimeout(() => setEnqueueToast(null), 3000);
-
-        // Record commit-scoped skill usage (best-effort) and optimistic local update
-        const skillName = pendingSkillRun.skillName;
-        setCommitSkillUsageMap(prev => ({ ...prev, [skillName]: new Date().toISOString() }));
-        cloneClient.preferences.recordCommitSkillUsage(workspaceId, skillName).catch(() => {});
-    }, [pendingSkillRun, workspaceId, branchRangeData, branchName, resolvedBaseRef, state.workspaces]);
-
-    const handleSquashCommits = useCallback(async () => {
-        if (!contextMenu || contextMenu.type !== 'multi-commit' || !contextMenu.commits?.length) return;
-        const selectedCommits = [...contextMenu.commits];
-        closeContextMenu();
-
-        if (selectedCommits.length < 2) return;
-
-        // All selected commits must be unpushed
-        const indices = selectedCommits
-            .map(c => {
-                const idx = commits.indexOf(c);
-                return idx >= 0 && idx < unpushedCount ? idx : -1;
-            })
-            .filter(i => i !== -1)
-            .sort((a, b) => a - b);
-
-        if (indices.length !== selectedCommits.length) {
-            setEnqueueToast('Squash failed: all selected commits must be unpushed');
-            setTimeout(() => setEnqueueToast(null), 5000);
-            return;
-        }
-
-        // Detect whether selected commits are contiguous
-        const isContiguous = indices.every((v, i) => i === 0 || v === indices[i - 1] + 1);
-
-        // Sort oldest-first for the prompt (unpushed list is newest-first)
-        const oldestFirst = [...selectedCommits].reverse();
-        const commitList = oldestFirst
-            .map(c => `- ${c.hash} ${c.subject}`)
-            .join('\n');
-
-        let promptContent: string;
-        if (isContiguous) {
-            promptContent = `Squash the following ${oldestFirst.length} commits into a single commit. Preserve the intent of all changes.\n\nCommits (oldest first):\n${commitList}\n\nWrite a clear combined commit message summarizing all changes.`;
-        } else {
-            // Include interleaved commits so the AI knows what to preserve
-            const minIdx = indices[0];
-            const maxIdx = indices[indices.length - 1];
-            const selectedSet = new Set(indices);
-            const interleavedList = [];
-            for (let i = minIdx; i <= maxIdx; i++) {
-                const c = commits[i];
-                const marker = selectedSet.has(i) ? '[SQUASH]' : '[KEEP]';
-                interleavedList.push(`- ${marker} ${c.hash} ${c.subject}`);
-            }
-            // Reverse to oldest-first (commits array is newest-first)
-            interleavedList.reverse();
-            const fullRange = interleavedList.join('\n');
-            promptContent = `Squash the following ${oldestFirst.length} non-contiguous commits into a single commit. The selected commits are NOT adjacent — there are interleaved commits that must be preserved.\n\nUse an appropriate strategy such as interactive rebase with reordering, or sequential cherry-pick onto a new base.\n\nFull commit range (oldest first, [SQUASH] = selected, [KEEP] = preserve):\n${fullRange}\n\nWrite a clear combined commit message summarizing all squashed changes.`;
-        }
-
-        try {
-            const ws = state.workspaces.find((w: any) => w.id === workspaceId);
-            await cloneClient.queue.enqueue({
-                type: 'chat',
-                priority: 'normal',
-                displayName: `Squash ${selectedCommits.length} commits`,
-                payload: {
-                    kind: 'chat',
-                    mode: 'autopilot',
-                    prompt: promptContent,
-                    workingDirectory: ws?.rootPath || '',
-                    workspaceId,
-                },
-            });
-            setEnqueueToast(`Squash task enqueued (${selectedCommits.length} commits)`);
-            setTimeout(() => setEnqueueToast(null), 3000);
-        } catch (err: any) {
-            setEnqueueToast(`Failed to enqueue squash: ${err.message || 'Unknown error'}`);
-            setTimeout(() => setEnqueueToast(null), 5000);
-        }
-    }, [contextMenu, commits, unpushedCount, workspaceId, state.workspaces, closeContextMenu]);
-
-    // Conflict banner handlers
-    const handleConflictResolveAI = useCallback(async () => {
-        if (!repoState || repoState.operation === 'none') return;
-        const files = repoState.conflictFiles.map(f => `- ${f}`).join('\n');
-        const continueCmd = repoState.operation === 'cherry-pick'
-            ? 'git cherry-pick --continue'
-            : repoState.operation === 'rebase'
-                ? 'git rebase --continue'
-                : 'git merge --continue';
-        const promptContent = `The repository has a ${repoState.operation} in progress with conflicts in the following files:\n<files>\n${files}\n</files>\n\nFor each conflicted file, resolve the conflict markers (<<<<<<< / ======= / >>>>>>>) by choosing the best resolution that preserves both sides' intent. Then stage the resolved files with \`git add\`. After staging all resolved files, run \`${continueCmd}\`. If new conflicts arise, repeat the resolution and continue cycle until the entire operation completes successfully.`;
-        try {
-            const ws = state.workspaces.find((w: any) => w.id === workspaceId);
-            await cloneClient.queue.enqueue({
-                type: 'chat',
-                priority: 'normal',
-                displayName: `Resolve ${repoState.operation} conflicts`,
-                payload: {
-                    kind: 'chat',
-                    mode: 'autopilot',
-                    prompt: promptContent,
-                    workingDirectory: ws?.rootPath || '',
-                    workspaceId,
-                },
-            });
-            setEnqueueToast('Conflict resolution task enqueued');
-            setTimeout(() => setEnqueueToast(null), 3000);
-        } catch (err: any) {
-            setEnqueueToast(`Failed: ${err.message || 'Unknown error'}`);
-            setTimeout(() => setEnqueueToast(null), 5000);
-        }
-    }, [repoState, workspaceId, state.workspaces]);
-
-    const handleConflictContinue = useCallback(async () => {
-        if (!repoState || repoState.operation === 'none') return;
-        const endpoint = repoState.operation === 'merge' ? 'merge-continue' : 'rebase-continue';
-        try {
-            if (endpoint === 'merge-continue') {
-                await cloneClient.git.mergeContinue(workspaceId);
-            } else {
-                await cloneClient.git.rebaseContinue(workspaceId);
-            }
-            setEnqueueToast(`${repoState.operation} continue started`);
-            setTimeout(() => setEnqueueToast(null), 3000);
-            setTimeout(refreshAll, 2000);
-        } catch (err: any) {
-            setActionError(`Continue failed: ${err.message || 'Unknown error'}`);
-        }
-    }, [repoState, workspaceId, refreshAll]);
-
-    const handleConflictAbort = useCallback(async () => {
-        if (!repoState || repoState.operation === 'none') return;
-        if (!confirm(`Abort the in-progress ${repoState.operation}? This will discard conflict resolutions.`)) return;
-        const endpoint = repoState.operation === 'merge' ? 'merge-abort' : 'rebase-abort';
-        try {
-            if (endpoint === 'merge-abort') {
-                await cloneClient.git.mergeAbort(workspaceId);
-            } else {
-                await cloneClient.git.rebaseAbort(workspaceId);
-            }
-            refreshAll();
-        } catch (err: any) {
-            setActionError(`Abort failed: ${err.message || 'Unknown error'}`);
-        }
-    }, [repoState, workspaceId, refreshAll]);
-
-    // Reorder handlers
-    const handleReorderCommits = useCallback((newOrder: GitCommitItem[]) => {
-        setPendingReorder(newOrder);
-    }, []);
-
-    const handleApplyReorder = useCallback(async () => {
-        if (!pendingReorder) return;
-        // Extract unpushed commits in the new display order, reversed to oldest-first for the API
-        const reorderedUnpushed = pendingReorder.slice(0, unpushedCount);
-        const commitHashes = [...reorderedUnpushed].reverse().map(c => c.hash);
-        try {
-            const resp = await cloneClient.git.rebaseReorder(workspaceId, commitHashes);
-            setEnqueueToast('Reorder started');
-            setTimeout(() => setEnqueueToast(null), 3000);
-            setPendingReorder(null);
-            // Poll for completion — reorder is terminal only on explicit success/failed
-            // and refreshes on both, so a missing job keeps polling.
-            if (resp?.jobId) {
-                reorderPoller.start(resp.jobId, {
-                    isComplete: (job) => job?.status === 'success' || job?.status === 'failed',
-                    onSuccess: () => refreshAll(),
-                    onFailure: (error) => { setActionError(error || 'Reorder failed'); refreshAll(); },
-                });
-            }
-        } catch (err: any) {
-            setActionError(`Reorder failed: ${err.message || 'Unknown error'}`);
-            setPendingReorder(null);
-        }
-    }, [pendingReorder, unpushedCount, workspaceId, refreshAll, reorderPoller]);
-
-    const handleCancelReorder = useCallback(() => {
-        setPendingReorder(null);
-    }, []);
-
-    // Compute fixup groups for context menu "Rebase autosquash" option
-    const fixupGroupsForMenu = useMemo(() => buildFixupGroups(commits), [commits]);
-
-    const contextMenuItems = useMemo<ContextMenuItem[]>(() => {
-        if (!contextMenu) return [];
-        const items: ContextMenuItem[] = [];
-
-        if (contextMenu.type === 'commit' && contextMenu.commit) {
-            const { commit } = contextMenu;
-            const isHead = commits.length > 0 && commits[0].hash === commit.hash;
-            items.push({
-                label: 'Copy Hash',
-                icon: '📋',
-                onClick: () => { navigator.clipboard.writeText(commit.hash); },
-            });
-            items.push({
-                label: 'Copy Row',
-                icon: '📋',
-                onClick: () => { navigator.clipboard.writeText(`${commit.shortHash} — ${commit.subject} — ${commit.author}`); },
-            });
-            items.push({
-                label: 'View Diff',
-                icon: '🔍',
-                onClick: () => { handleSelect(commit); },
-            });
-            items.push({
-                label: 'Open as Popup',
-                icon: '↗',
-                onClick: () => handleOpenAsPopup(commit),
-            });
-            // "Push to Here" — only for unpushed commits
-            const commitIndex = commits.findIndex(c => c.hash === commit.hash);
-            const isUnpushed = commitIndex >= 0 && commitIndex < unpushedCount;
-            if (isUnpushed) {
-                items.push({ label: '', separator: true, onClick: () => {} });
-                items.push({
-                    label: 'Push to Here',
-                    icon: '📤',
-                    onClick: () => handlePushToCommit(commit),
-                });
-            }
-            if (isHead) {
-                items.push({ label: '', separator: true, onClick: () => {} });
-                items.push({
-                    label: 'Amend Message\u2026',
-                    icon: '✏️',
-                    onClick: () => { closeContextMenu(); setAmendingCommit(commit); },
-                });
-            }
-            if (!isHead) {
-                items.push({ label: '', separator: true, onClick: () => {} });
-                items.push({
-                    label: 'Amend Title\u2026',
-                    icon: '✏️',
-                    onClick: () => { closeContextMenu(); setRewordingCommit(commit); },
-                });
-            }
-            // Show "Rebase autosquash from here" on target commits that have fixups
-            if (fixupGroupsForMenu.targetGroups.has(commit.hash)) {
-                items.push({ label: '', separator: true, onClick: () => {} });
-                items.push({
-                    label: 'Rebase Autosquash from Here',
-                    icon: '📦',
-                    onClick: () => { closeContextMenu(); handleRebaseAutosquash(); },
-                });
-            }
-            if (isUnpushed) {
-                items.push({
-                    label: 'Drop Commit',
-                    icon: '🗑️',
-                    onClick: () => handleDropCommit(commit),
-                });
-            }
-            items.push({ label: '', separator: true, onClick: () => {} });
-            items.push({
-                label: 'Hard Reset to Here',
-                icon: '⏪',
-                onClick: () => handleHardReset(commit),
-            });
-            items.push({
-                label: 'Cherry-pick to branch…',
-                icon: '🍒',
-                onClick: () => handleCherryPick(commit),
-            });
-            if (isGitCrossCloneCherryPickEnabled()) {
-                items.push({
-                    label: 'Cherry-pick to another clone...',
-                    icon: '🍒',
-                    onClick: () => handleOpenCrossCloneCherryPick(commit),
-                });
-            }
-            items.push({ label: '', separator: true, onClick: () => {} });
-            items.push({
-                label: 'Ask AI',
-                icon: '💡',
-                onClick: () => {
-                    const initialPrompt = `Commit: ${commit.hash}${commit.subject ? ` — ${commit.subject}` : ''}`;
-                    queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'ask', initialPrompt, launchMode: 'floating-chat' });
-                },
-            });
-            items.push({
-                label: 'Queue Task',
-                icon: '🤖',
-                onClick: () => {
-                    const initialPrompt = `Commit: ${commit.hash}${commit.subject ? ` — ${commit.subject}` : ''}`;
-                    queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'task', initialPrompt, launchMode: 'floating-chat' });
-                },
-            });
-
-            // Mobile selection items (touch devices only)
-            if (isTouchOnly()) {
-                items.push({ label: '', separator: true, onClick: () => {} });
-                if (!isMobileSelecting) {
-                    items.push({
-                        label: 'Select',
-                        icon: '☐',
-                        onClick: () => {
-                            closeContextMenu();
-                            setIsMobileSelecting(true);
-                            setMobileAnchorHash(commit.hash);
-                            handleMultiSelect([commit]);
-                        },
-                    });
-                } else {
-                    items.push({
-                        label: 'Select to here',
-                        icon: '☰',
-                        onClick: () => {
-                            closeContextMenu();
-                            if (mobileAnchorHash) {
-                                const anchorIdx = commits.findIndex(c => c.hash === mobileAnchorHash);
-                                const targetIdx = commits.findIndex(c => c.hash === commit.hash);
-                                if (anchorIdx !== -1 && targetIdx !== -1) {
-                                    const [start, end] = anchorIdx <= targetIdx ? [anchorIdx, targetIdx] : [targetIdx, anchorIdx];
-                                    handleMultiSelect(commits.slice(start, end + 1));
-                                }
-                            }
-                        },
-                    });
-                }
-            }
-        }
-
-        if (contextMenu.type === 'multi-commit' && contextMenu.commits?.length) {
-            const selectedCommits = contextMenu.commits;
-            const commitList = selectedCommits
-                .map(c => `- ${c.shortHash} — ${c.subject}`)
-                .join('\n');
-            const initialPrompt = `${selectedCommits.length} commits selected:\n${commitList}`;
-
-            items.push({
-                label: 'Copy Commits Info',
-                icon: '📋',
-                onClick: () => { navigator.clipboard.writeText(commitList); },
-            });
-            if (selectedCommits.length >= 2) {
-                items.push({
-                    label: `Squash ${selectedCommits.length} Commits`,
-                    icon: '📦',
-                    onClick: () => { void handleSquashCommits(); },
-                });
-            }
-            items.push({
-                label: 'Cherry-pick to branch…',
-                icon: '🍒',
-                onClick: () => handleOpenCherryPickToBranch(selectedCommits),
-            });
-            if (isGitCrossCloneCherryPickEnabled()) {
-                items.push({
-                    label: 'Cherry-pick to another clone...',
-                    icon: '🍒',
-                    onClick: () => handleOpenCrossCloneCherryPickMulti(selectedCommits),
-                });
-            }
-            items.push({
-                label: 'Ask AI', icon: '💡', onClick: () => {
-                    queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'ask', initialPrompt, launchMode: 'floating-chat' });
-                },
-            });
-            items.push({
-                label: 'Queue Task', icon: '🤖', onClick: () => {
-                    queueDispatch({ type: 'OPEN_DIALOG', workspaceId, mode: 'task', initialPrompt, launchMode: 'floating-chat' });
-                },
-            });
-        }
-
-        if (contextMenu.type === 'branch-range') {
-            items.push({
-                label: 'Ask AI',
-                icon: '💡',
-                onClick: () => { void handleBranchAskAI('ask'); },
-            });
-            items.push({
-                label: 'Queue Task',
-                icon: '🤖',
-                onClick: () => { void handleBranchAskAI('task'); },
-            });
-        }
-
-        if (skills.length > 0) {
-            if (items.length > 0) {
-                items.push({ label: '', separator: true, onClick: () => {} });
-            }
-            const ranked = rankSkillsByRecency(skills, commitSkillUsageMap);
-            if (ranked.length <= MRU_SKILL_LIMIT) {
-                items.push({
-                    label: 'Use Skill',
-                    icon: '⚡',
-                    onClick: () => {},
-                    children: ranked.map(skill => ({
-                        label: skill.name,
-                        onClick: () => handleEnqueueSkill(skill.name),
-                    })),
-                });
-            } else {
-                const top = ranked.slice(0, MRU_SKILL_LIMIT);
-                const restCount = ranked.length - MRU_SKILL_LIMIT;
-                items.push({
-                    label: 'Use Skill',
-                    icon: '⚡',
-                    onClick: () => {},
-                    children: [
-                        ...top.map(skill => ({
-                            label: skill.name,
-                            onClick: () => handleEnqueueSkill(skill.name),
-                        })),
-                        { label: '', separator: true, onClick: () => {} },
-                        {
-                            // A flat third-tier hover submenu is unreachable near a
-                            // screen edge with this many skills — open a searchable
-                            // modal instead.
-                            label: `Browse all skills… (${restCount} more)`,
-                            icon: '🔍',
-                            onClick: handleOpenSkillBrowser,
-                        },
-                    ],
-                });
-            }
-        }
-
-        return items;
-    }, [contextMenu, skills, commitSkillUsageMap, handleEnqueueSkill, handleOpenSkillBrowser, handleSquashCommits, handleOpenCherryPickToBranch, handleBranchAskAI, handleSelect, handleOpenAsPopup, handleHardReset, handleCherryPick, handleOpenCrossCloneCherryPick, handleOpenCrossCloneCherryPickMulti, commits, closeContextMenu, queueDispatch, workspaceId, fixupGroupsForMenu, handleRebaseAutosquash, handlePushToCommit, unpushedCount, isMobileSelecting, mobileAnchorHash, handleMultiSelect, handleDropCommit]);
+    // ── Keyboard shortcuts ────────────────────────────────────────────────────
 
     // Reveal (if hidden) + focus the commit search box. Shared by the `/`
     // panel shortcut and the Ctrl+F find shortcut.
@@ -1747,8 +453,8 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
     // Hide the search bar and clear its query.
     const hideSearch = useCallback(() => {
         setSearchVisible(false);
-        setSearchQuery('');
-    }, []);
+        data.setSearchQuery('');
+    }, [data]);
 
     // AC-02: Ctrl+F / Cmd+F reveals + focuses the (hidden-by-default) commit
     // search box, routed by keyboard focus through the shared helper. A
@@ -1769,7 +475,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
         if (isTextField) return;
         if (e.key === 'r' || e.key === 'R') {
             e.preventDefault();
-            refreshAll();
+            data.refreshAll();
             return;
         }
         if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey) {
@@ -1781,9 +487,11 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
             e.preventDefault();
             hideSearch();
         }
-    }, [refreshAll, revealSearch, hideSearch, searchVisible]);
+    }, [data, revealSearch, hideSearch, searchVisible]);
 
-    if (loading) {
+    // ── Render ────────────────────────────────────────────────────────────────
+
+    if (data.loading) {
         return (
             <div className="flex items-center justify-center py-8" data-testid="git-tab-loading">
                 <Spinner size="lg" />
@@ -1791,13 +499,13 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
         );
     }
 
-    if (error) {
+    if (data.error) {
         return (
             <div className="p-4 text-sm text-[#d32f2f] dark:text-[#f48771]" data-testid="git-tab-error">
-                <p>{error}</p>
+                <p>{data.error}</p>
                 <button
                     className="mt-2 px-3 py-1 text-xs rounded bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#333] dark:text-[#ccc] hover:opacity-80"
-                    onClick={() => setRetryKey(k => k + 1)}
+                    onClick={data.retry}
                     data-testid="git-tab-retry"
                 >
                     Retry
@@ -1806,139 +514,31 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
         );
     }
 
-    const selectedCommit = rightPanelView?.type === 'commit' ? rightPanelView.commit : rightPanelView?.type === 'commit-file' ? commits.find(c => c.hash === rightPanelView.hash) ?? null : null;
-    const selectedCommitFile = rightPanelView?.type === 'commit-file' ? { hash: rightPanelView.hash, filePath: rightPanelView.filePath } : null;
-    const selectedBranchFile = rightPanelView?.type === 'branch-file' ? rightPanelView.filePath : null;
-    const selectedWorkingTreeFile = rightPanelView?.type === 'working-tree-file' ? rightPanelView.filePath : null;
+    const view = selection.view;
+    const selectedCommitFile = view?.type === 'commit-file' ? { hash: view.hash, filePath: view.filePath } : null;
+    const selectedBranchFile = view?.type === 'branch-file' ? view.filePath : null;
+    const selectedWorkingTreeFile = view?.type === 'working-tree-file' ? view.filePath : null;
 
-    // Scenario banner. The compact ahead/behind badge in GitPanelHeader already
-    // shows the ahead count, so surfacing an "N commits ahead" row here would just
-    // duplicate the badge and waste vertical space. The banner is therefore kept
-    // only for the actionable "behind — consider pulling" warning.
-    const scenarioBanner = (() => {
-        if (onDefaultBranch) return null;
-        if (behind <= 0) return null;
-        return (
-            <div
-                className="px-4 py-1.5 text-xs border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fff3cd] dark:bg-[#3c3520] text-[#856404] dark:text-[#ffc107]"
-                data-testid="git-scenario-banner"
-            >
-                {`↓${behind} commit${behind !== 1 ? 's' : ''} behind`} — consider pulling
-            </div>
-        );
-    })();
-
-    const commitListPanel = searchQuery && commits.length === 0 ? (
-        <div className="text-sm text-[#848484] py-8 text-center px-4" data-testid="git-search-empty">
-            No commits match &ldquo;{searchQuery}&rdquo;
-        </div>
-    ) : (
-        <CommitList
-            title="History"
-            commits={pendingReorder || commits}
-            unpushedCount={searchQuery ? 0 : unpushedCount}
-            selectedHash={selectedCommit?.hash}
-            selectedHashes={selectedHashes}
-            selectedFile={selectedCommitFile}
-            initialExpandedHash={initialCommitHash ? selectedCommit?.hash : null}
-            onSelect={handleSelect}
-            onMultiSelect={handleMultiSelect}
-            onFileSelect={handleCommitFileSelect}
-            onCommitContextMenu={handleCommitContextMenu}
+    const detailPanel = (
+        <RepoGitDetailPane
             workspaceId={workspaceId}
-            reorderable={!searchQuery && unpushedCount > 1}
-            onReorder={handleReorderCommits}
+            view={view}
+            commits={data.commits}
+            unpushedCount={data.unpushedCount}
+            branchRangeData={data.branchRangeData}
+            branchRangeFiles={data.branchRangeFiles}
+            baseMode={data.baseMode}
+            onBaseModeChange={data.setBaseModeAndRefetch}
             repoRoot={repoRoot}
-            isMobileSelecting={isMobileSelecting}
-            onMobileSelectingChange={handleMobileSelectingChange}
-            onSwipeAction={handleSwipeAction}
-            classifiedHashes={classifiedHashes}
-            onDoubleClick={handleOpenAsPopup}
+            hunkTarget={selection.hunkTarget}
+            onBranchFileSelect={selection.selectBranchFile}
+            onNavigateToBranchFile={selection.navigateToBranchFile}
+            onNavigateToCommitFile={selection.navigateToCommitFile}
+            onNavigateToWorkingTreeFile={selection.navigateToWorkingTreeFile}
+            onAllBranchCommentsClick={selection.selectBranchRangeComments}
+            onBranchAskAI={skillActions.askAboutBranch}
+            onCommitClassified={refreshClassificationStatus}
         />
-    );
-
-    const detailPanel = rightPanelView?.type === 'commit' ? (
-        <CommitDetail
-            key={rightPanelView.commit.hash}
-            workspaceId={workspaceId}
-            hash={rightPanelView.commit.hash}
-            commit={rightPanelView.commit}
-            onClassified={refreshClassificationStatus}
-        />
-    ) : rightPanelView?.type === 'commit-file' ? (
-        <FileDiffPanel
-            key={`${rightPanelView.hash}-${rightPanelView.filePath}`}
-            source={createCommitDiffSource(workspaceId, rightPanelView.hash, {
-                commit: commits.find(c => c.hash === rightPanelView.hash),
-            })}
-            workspaceId={workspaceId}
-            filePath={rightPanelView.filePath}
-            onNavigateToFile={(fp, target) => handleNavigateToCommitFile(rightPanelView.hash, fp, target)}
-            initialHunkTarget={hunkTarget}
-        />
-    ) : rightPanelView?.type === 'branch-range' ? (
-        <BranchRangeOverview
-            workspaceId={workspaceId}
-            range={branchRangeData!}
-            commits={commits}
-            unpushedCount={unpushedCount}
-            files={branchRangeFiles}
-            onFileSelect={handleFileSelect}
-            onAllCommentsClick={handleAllBranchCommentsClick}
-            onAskAI={() => { void handleBranchAskAI('ask'); }}
-            onQueueTask={() => { void handleBranchAskAI('task'); }}
-            baseMode={baseMode}
-            onBaseModeChange={handleBaseModeChange}
-        />
-    ) : rightPanelView?.type === 'branch-file' ? (
-        <FileDiffPanel
-            key={rightPanelView.filePath}
-            source={createBranchRangeDiffSource(workspaceId, {
-                files: (branchRangeFiles ?? []).map((f: { path: string }) => f.path).sort(),
-                baseMode,
-            })}
-            workspaceId={workspaceId}
-            filePath={rightPanelView.filePath}
-            onNavigateToFile={handleNavigateToBranchFile}
-            initialHunkTarget={hunkTarget}
-        />
-    ) : rightPanelView?.type === 'working-tree-file' ? (
-        <WorkingTreeFileDiff
-            key={`${rightPanelView.filePath}:${rightPanelView.stage}`}
-            workspaceId={workspaceId}
-            filePath={rightPanelView.filePath}
-            stage={rightPanelView.stage}
-            repoRoot={repoRoot}
-            onNavigateToFile={handleNavigateToWorkingTreeFile}
-            initialHunkTarget={hunkTarget}
-        />
-    ) : rightPanelView?.type === 'working-tree-comments' ? (
-        <WorkingTreeAllComments workspaceId={workspaceId} />
-    ) : rightPanelView?.type === 'branch-range-comments' ? (
-        <BranchRangeAllComments
-            workspaceId={workspaceId}
-            baseRef={branchRangeData!.baseRef}
-            headRef={branchRangeData!.headRef}
-            branchLabel={branchRangeData!.branchName || branchRangeData!.headRef}
-        />
-    ) : rightPanelView?.type === 'multi-commit' ? (
-        <div className="flex flex-col h-full p-4 gap-3" data-testid="git-multi-commit-panel">
-            <div className="text-sm font-semibold text-[#1e1e1e] dark:text-[#ccc]">
-                {rightPanelView.commits.length} commits selected
-            </div>
-            <div className="flex flex-col gap-1 overflow-y-auto">
-                {rightPanelView.commits.map(c => (
-                    <div key={c.hash} className="flex items-center gap-2 text-xs py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                        <span className="font-mono text-[#0078d4] dark:text-[#3794ff] flex-shrink-0">{c.shortHash}</span>
-                        <span className="text-[#1e1e1e] dark:text-[#ccc] truncate">{c.subject}</span>
-                    </div>
-                ))}
-            </div>
-        </div>
-    ) : (
-        <div className="flex-1 flex items-center justify-center text-sm text-[#848484]" data-testid="git-detail-empty">
-            Select a commit to view details
-        </div>
     );
 
     // Toolbar (branch pill + fetch/pull/push + refresh). Rendered inline at the
@@ -1948,23 +548,23 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
     // last-clicked and steal the shared detail pane from the chat.
     const panelHeader = (
         <GitPanelHeader
-            branch={branchName || 'HEAD'}
-            ahead={ahead}
-            behind={behind}
-            refreshing={refreshing}
-            onRefresh={refreshAll}
+            branch={data.branchName || 'HEAD'}
+            ahead={data.ahead}
+            behind={data.behind}
+            refreshing={data.refreshing}
+            onRefresh={data.refreshAll}
             onBranchClick={() => setBranchPickerOpen(true)}
-            onFetch={handleFetch}
-            onPull={handlePull}
-            onPush={handlePush}
-            onRebaseAutosquash={handleRebaseAutosquash}
-            fetching={fetching}
-            pulling={pulling}
-            pushing={pushing}
-            rebasing={rebasing}
-            autoPull={autoPull}
-            onAutoPullChange={handleAutoPullChange}
-            lastRefreshedAt={lastRefreshedAt}
+            onFetch={actions.fetch}
+            onPull={actions.pull}
+            onPush={actions.push}
+            onRebaseAutosquash={actions.rebaseAutosquash}
+            fetching={actions.fetching}
+            pulling={actions.pulling}
+            pushing={actions.pushing}
+            rebasing={actions.rebasing}
+            autoPull={autoPull.autoPull}
+            onAutoPullChange={autoPull.setAutoPull}
+            lastRefreshedAt={data.lastRefreshedAt}
             compact={headerHoisted}
         />
     );
@@ -1972,385 +572,134 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
         ? createPortal(panelHeader, headerToolbarContainer)
         : null;
 
-    // Left panel — commit list + working tree + branch changes, including the
-    // GitPanelHeader fetch/pull/push actions and inline stage/commit. Reused
-    // verbatim by both the standalone layout and the split-workspace list slot;
-    // only the wrapper classes differ (the split shell owns width/dividers, so no
-    // per-panel width style or mobile hide-toggle there — AC-05 parity via reuse).
     const listPane = (
-            <aside
-                ref={panelRef}
-                className={isSplitWorkspace
-                    ? 'w-full flex-1 min-h-0 overflow-y-auto bg-[#f3f3f3] dark:bg-[#252526]'
-                    : `w-full lg:shrink-0 overflow-y-auto border-b lg:border-b-0 lg:border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]${rightPanelView ? ' hidden lg:block' : ''}`}
-                data-testid="git-commit-list-panel"
-                onKeyDown={handlePanelKeyDown}
-            >
-                {!isSplitWorkspace && (
-                    <style>{`@media (min-width: 1024px) { [data-testid="git-commit-list-panel"] { width: ${sidebarWidth}px !important; } }`}</style>
-                )}
-                {!headerHoisted && panelHeader}
-                {/* Search input (hidden by default; revealed by Ctrl+F or `/`).
-                    Kept mounted whenever a query is set so filtered results stay
-                    visible even if the bar was toggled. Filter-bar style: subtle
-                    background card containing a bordered search box. */}
-                {(searchVisible || searchQuery) && (
-                <div
-                    className={`${isSplitWorkspace ? 'px-2 py-1' : 'px-2.5 py-1.5'} border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#252526]`}
-                    data-testid="git-search-bar"
-                >
-                    <div className={`flex items-center gap-1.5 px-2 py-[3px] rounded-md border bg-white dark:bg-[#2d2d2d] focus-within:border-[#0078d4] focus-within:ring-2 focus-within:ring-[#0078d4]/20 ${searchQuery ? 'border-[#0078d4]' : 'border-[#d0d0d0] dark:border-[#3c3c3c]'}`}>
-                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="shrink-0 text-[#999] dark:text-[#888]" aria-hidden="true">
-                            <path d="M6.5 1a5.5 5.5 0 1 0 3.547 9.714l3.37 3.369a.75.75 0 1 0 1.06-1.06l-3.369-3.37A5.5 5.5 0 0 0 6.5 1zm-4 5.5a4 4 0 1 1 8 0 4 4 0 0 1-8 0z" fill="currentColor"/>
-                        </svg>
-                        <input
-                            ref={searchInputRef}
-                            type="text"
-                            value={searchQuery}
-                            onChange={e => setSearchQuery(e.target.value)}
-                            onKeyDown={e => {
-                                if (e.key === 'Escape') {
-                                    e.preventDefault();
-                                    // AC-02: Escape hides + clears the search bar.
-                                    searchInputRef.current?.blur();
-                                    hideSearch();
-                                    return;
-                                }
-                                // SHA lookup on Enter (feature-gated)
-                                if (e.key === 'Enter' && isGitCommitLookupEnabled() && /^[0-9a-f]{7,40}$/i.test(searchQuery.trim())) {
-                                    e.preventDefault();
-                                    void handleCommitLookup(searchQuery.trim());
-                                }
-                            }}
-                            placeholder={isSplitWorkspace ? 'Search commits…' : 'Search subject, hash, author, path…'}
-                            className={`flex-1 bg-transparent outline-none leading-5 text-[#1e1e1e] dark:text-[#cccccc] placeholder:text-[#999] min-w-0 py-px ${isSplitWorkspace ? 'text-[12px]' : 'text-[13px]'}`}
-                            data-testid="git-search-input"
-                            aria-label="Search commits by subject, hash, author, or path"
-                        />
-                        {searchQuery ? (
-                            <>
-                                {isGitCommitLookupEnabled() && /^[0-9a-f]{7,40}$/i.test(searchQuery.trim()) && (
-                                    commitLookupLoading ? (
-                                        <span
-                                            className="shrink-0 text-[11px] text-[#848484] dark:text-[#888] leading-none pr-1 whitespace-nowrap animate-pulse"
-                                            data-testid="git-commit-lookup-loading"
-                                        >
-                                            Looking up…
-                                        </span>
-                                    ) : (
-                                        <span
-                                            className="shrink-0 text-[11px] text-[#0078d4] dark:text-[#3794ff] leading-none pr-1 whitespace-nowrap"
-                                            data-testid="git-commit-lookup-hint"
-                                        >
-                                            ↵ open commit
-                                        </span>
-                                    )
-                                )}
-                                <button
-                                    onClick={() => { hideSearch(); setCommitLookupError(null); }}
-                                    className="shrink-0 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] leading-none px-1"
-                                    data-testid="git-search-clear"
-                                    aria-label="Clear search"
-                                    type="button"
-                                >
-                                    ×
-                                </button>
-                            </>
-                        ) : (
-                            <span
-                                className="shrink-0 inline-flex items-center justify-center min-w-[16px] h-[18px] px-1 font-mono text-[11px] leading-none text-[#999] dark:text-[#888] border border-[#d0d0d0] dark:border-[#3c3c3c] rounded bg-[#f5f5f5] dark:bg-[#252526]"
-                                aria-hidden="true"
-                                data-testid="git-search-kbd"
-                                title="Press / to focus search"
-                            >
-                                /
-                            </span>
-                        )}
-                    </div>
-                </div>
-                )}
-                {scenarioBanner}
-                {refreshError && (
-                    <div className="px-4 py-1.5 text-xs text-[#d32f2f] dark:text-[#f48771] bg-[#fdecea] dark:bg-[#3c2020] border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex items-start justify-between gap-2" data-testid="git-refresh-error">
-                        <span>{refreshError}</span>
-                        <button
-                            onClick={() => setRefreshError(null)}
-                            className="text-[#d32f2f] dark:text-[#f48771] hover:opacity-70 leading-none shrink-0"
-                            aria-label="Dismiss error"
-                            data-testid="git-refresh-error-dismiss"
-                            type="button"
-                        >
-                            ×
-                        </button>
-                    </div>
-                )}
-                {actionError && (
-                    <div className="px-4 py-1.5 text-xs text-[#d32f2f] dark:text-[#f48771] bg-[#fdecea] dark:bg-[#3c2020] border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex items-start justify-between gap-2" data-testid="git-action-error">
-                        <span>{actionError}</span>
-                        <button
-                            onClick={() => setActionError(null)}
-                            className="text-[#d32f2f] dark:text-[#f48771] hover:opacity-70 leading-none shrink-0"
-                            aria-label="Dismiss error"
-                            data-testid="git-action-error-dismiss"
-                            type="button"
-                        >
-                            ×
-                        </button>
-                    </div>
-                )}
-                <div
-                    className={`repo-sections grid ${isSplitWorkspace ? 'gap-1 px-1.5 py-1' : 'gap-2 px-2 py-2'} border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526]`}
-                    data-testid="git-repo-sections"
-                >
-                    <BranchChanges
-                        workspaceId={workspaceId}
-                        branchRangeData={branchRangeData}
-                        initialFiles={branchRangeFiles}
-                        onDefaultBranch={onDefaultBranch}
-                        onFileSelect={handleFileSelect}
-                        selectedFile={selectedBranchFile}
-                        onBranchContextMenu={handleBranchContextMenu}
-                        onBranchRangeSelect={handleBranchRangeSelect}
-                        compact={isSplitWorkspace}
-                        baseMode={baseMode}
-                    />
-                    <WorkingTree
-                        workspaceId={workspaceId}
-                        onRefresh={refreshAll}
-                        onFileSelect={handleWorkingTreeFileSelect}
-                        selectedFilePath={selectedWorkingTreeFile}
-                        refreshKey={workingChangesRefreshKey}
-                        onAllCommentsClick={handleAllWorkingCommentsClick}
-                        compact={isSplitWorkspace}
-                    />
-                    <WorktreeList
-                        workspaceId={workspaceId}
-                        refreshKey={workingChangesRefreshKey}
-                        compact={isSplitWorkspace}
-                    />
-                </div>
-                {repoState && repoState.operation !== 'none' && (
-                    <div
-                        className="mx-2 my-2 p-3 rounded border border-[#e5a100] dark:border-[#cca700] bg-[#fff3cd] dark:bg-[#3d3522] text-xs"
-                        data-testid="conflict-banner"
-                    >
-                        <div className="font-semibold text-[#856404] dark:text-[#e5c07b] mb-1">
-                            ⚠️ {repoState.operation.charAt(0).toUpperCase() + repoState.operation.slice(1)} in progress
-                            {repoState.conflictFiles.length > 0 && ` — ${repoState.conflictFiles.length} conflict file${repoState.conflictFiles.length !== 1 ? 's' : ''}`}
-                        </div>
-                        <div className="flex gap-2 mt-2 flex-wrap">
-                            <button
-                                onClick={handleConflictResolveAI}
-                                className="px-2 py-1 rounded text-xs font-medium bg-[#007acc] text-white hover:bg-[#005fa3]"
-                                data-testid="conflict-resolve-ai-btn"
-                            >
-                                Resolve with AI ⚡
-                            </button>
-                            <button
-                                onClick={handleConflictContinue}
-                                className="px-2 py-1 rounded text-xs font-medium bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#333] dark:text-[#ccc] hover:bg-[#ccc] dark:hover:bg-[#555]"
-                                data-testid="conflict-continue-btn"
-                            >
-                                Continue
-                            </button>
-                            <button
-                                onClick={handleConflictAbort}
-                                className="px-2 py-1 rounded text-xs font-medium bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#d32f2f] hover:bg-[#ccc] dark:hover:bg-[#555]"
-                                data-testid="conflict-abort-btn"
-                            >
-                                Abort
-                            </button>
-                        </div>
-                    </div>
-                )}
-                {pendingReorder && (
-                    <div
-                        className="mx-2 my-2 p-3 rounded border border-[#0078d4] dark:border-[#3794ff] bg-[#e8f0fe] dark:bg-[#1a2744] text-xs flex items-center justify-between"
-                        data-testid="reorder-confirmation-bar"
-                    >
-                        <span className="text-[#333] dark:text-[#ccc]">
-                            Reorder {unpushedCount} unpushed commit{unpushedCount !== 1 ? 's' : ''}?
-                        </span>
-                        <div className="flex gap-2">
-                            <button
-                                onClick={handleApplyReorder}
-                                className="px-2 py-1 rounded text-xs font-medium bg-[#007acc] text-white hover:bg-[#005fa3]"
-                                data-testid="reorder-apply-btn"
-                            >
-                                Apply
-                            </button>
-                            <button
-                                onClick={handleCancelReorder}
-                                className="px-2 py-1 rounded text-xs font-medium bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#333] dark:text-[#ccc] hover:bg-[#ccc] dark:hover:bg-[#555]"
-                                data-testid="reorder-cancel-btn"
-                            >
-                                Cancel
-                            </button>
-                        </div>
-                    </div>
-                )}
-                {commitLookupError && (
-                    <div className="px-4 py-1.5 text-xs text-[#d32f2f] dark:text-[#f48771] bg-[#fdecea] dark:bg-[#3c2020] border-b border-[#e0e0e0] dark:border-[#3c3c3c] flex items-center justify-between" data-testid="git-commit-lookup-error">
-                        <span>{commitLookupError}</span>
-                        <button
-                            onClick={() => setCommitLookupError(null)}
-                            className="ml-2 text-[#d32f2f] dark:text-[#f48771] hover:opacity-70 leading-none"
-                            aria-label="Dismiss error"
-                            data-testid="git-commit-lookup-error-dismiss"
-                            type="button"
-                        >
-                            ×
-                        </button>
-                    </div>
-                )}
-                {openedCommit && (
-                    <div className="border-b border-[#e0e0e0] dark:border-[#3c3c3c]" data-testid="git-opened-commit-section">
-                        <div className="px-2.5 pt-1.5 pb-0.5 text-[10px] font-semibold text-[#0078d4] dark:text-[#3794ff] tracking-wide uppercase">
-                            Opened commit
-                        </div>
-                        <div
-                            role="button"
-                            tabIndex={0}
-                            className={`flex items-center gap-2 px-2.5 py-2 text-[13px] cursor-pointer select-none hover:bg-[#e8f0fe] dark:hover:bg-[#1a2744] focus:outline-none focus:bg-[#e8f0fe] dark:focus:bg-[#1a2744]${selectedHashes.has(openedCommit.hash) ? ' bg-[#e8f0fe] dark:bg-[#1a2744] border-l-2 border-[#0078d4]' : ''}`}
-                            onClick={() => handleSelect(openedCommit)}
-                            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelect(openedCommit); } }}
-                            data-testid="git-opened-commit-row"
-                        >
-                            <span className="font-mono text-[11px] text-[#0078d4] dark:text-[#3794ff] shrink-0">{openedCommit.shortHash}</span>
-                            <span className="flex-1 truncate text-[#1e1e1e] dark:text-[#ccc]">{openedCommit.subject}</span>
-                            <span className="shrink-0 text-[10px] px-1 py-px rounded border border-[#0078d4]/40 text-[#0078d4] dark:text-[#3794ff] bg-[#0078d4]/5 leading-tight">by ID</span>
-                        </div>
-                    </div>
-                )}
-                {commitListPanel}
-                {hasMore && (
-                    <div className="px-4 py-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">
-                        <button
-                            onClick={handleLoadMore}
-                            disabled={isLoadingMore}
-                            className="w-full text-xs text-[#848484] dark:text-[#858585] hover:text-[#3c3c3c] dark:hover:text-[#cccccc] disabled:opacity-50 disabled:cursor-not-allowed py-1"
-                            data-testid="git-load-more-btn"
-                        >
-                            {isLoadingMore ? 'Loading…' : 'Load more'}
-                        </button>
-                    </div>
-                )}
-            </aside>
+        <RepoGitListPane
+            workspaceId={workspaceId}
+            isSplitWorkspace={isSplitWorkspace}
+            headerHoisted={headerHoisted}
+            sidebarWidth={sidebarWidth}
+            detailOpen={!!view}
+            panelRef={panelRef}
+            onPanelKeyDown={handlePanelKeyDown}
+            header={panelHeader}
+            searchVisible={searchVisible}
+            searchQuery={data.searchQuery}
+            searchInputRef={searchInputRef}
+            onSearchQueryChange={data.setSearchQuery}
+            onHideSearch={hideSearch}
+            onCommitLookup={sha => { void selection.lookupCommit(sha); }}
+            commitLookupLoading={selection.commitLookupLoading}
+            commitLookupError={selection.commitLookupError}
+            onDismissCommitLookupError={selection.clearCommitLookupError}
+            behind={data.behind}
+            onDefaultBranch={data.onDefaultBranch}
+            refreshError={data.refreshError}
+            onDismissRefreshError={() => data.setRefreshError(null)}
+            actionError={actions.actionError}
+            onDismissActionError={() => actions.setActionError(null)}
+            branchRangeData={data.branchRangeData}
+            branchRangeFiles={data.branchRangeFiles}
+            baseMode={data.baseMode}
+            selectedBranchFile={selectedBranchFile}
+            onBranchFileSelect={selection.selectBranchFile}
+            onBranchContextMenu={handleBranchContextMenu}
+            onBranchRangeSelect={selection.selectBranchRange}
+            workingChangesRefreshKey={data.workingChangesRefreshKey}
+            onRefresh={data.refreshAll}
+            selectedWorkingTreeFile={selectedWorkingTreeFile}
+            onWorkingTreeFileSelect={selection.selectWorkingTreeFile}
+            onAllWorkingCommentsClick={selection.selectWorkingTreeComments}
+            repoState={data.repoState}
+            onConflictResolveAI={() => { void skillActions.resolveConflictsWithAI(); }}
+            onConflictContinue={() => { void actions.conflictContinue(); }}
+            onConflictAbort={() => { void actions.conflictAbort(); }}
+            pendingReorder={data.pendingReorder}
+            onApplyReorder={() => { void actions.applyReorder(); }}
+            onCancelReorder={actions.cancelReorder}
+            openedCommit={selection.openedCommit}
+            commits={data.commits}
+            unpushedCount={data.unpushedCount}
+            selectedCommit={selection.selectedCommit}
+            selectedHashes={selection.selectedHashes}
+            selectedCommitFile={selectedCommitFile}
+            initialCommitHash={selection.initialCommitHash}
+            onSelect={selection.selectCommit}
+            onMultiSelect={selection.selectCommits}
+            onCommitFileSelect={selection.selectCommitFile}
+            onCommitContextMenu={handleCommitContextMenu}
+            onReorder={data.setPendingReorder}
+            repoRoot={repoRoot}
+            isMobileSelecting={isMobileSelecting}
+            onMobileSelectingChange={handleMobileSelectingChange}
+            onSwipeAction={handleSwipeAction}
+            classifiedHashes={classifiedHashes}
+            onOpenAsPopup={handleOpenAsPopup}
+            hasMore={data.hasMore}
+            isLoadingMore={data.isLoadingMore}
+            onLoadMore={data.loadMore}
+        />
     );
 
     // Right panel — detail for the selected commit / file / working-tree entry.
     // In split-workspace mode this same subtree is portaled into the shared
     // detail region instead (AC-04) so chat + git never show two detail panes.
     const detailMain = (
-            <main className={`flex-1 min-w-0 min-h-0 overflow-hidden bg-white dark:bg-[#1e1e1e] flex flex-col${!rightPanelView ? ' hidden lg:flex' : ''}`} data-testid="git-detail-panel">
-                {/* Mobile back button */}
-                {rightPanelView && (
-                    <div className="lg:hidden shrink-0 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="git-mobile-back">
-                        <button
-                            onClick={handleMobileBack}
-                            className="text-xs text-[#0078d4] dark:text-[#3794ff] flex items-center gap-1 hover:underline"
-                            data-testid="git-mobile-back-btn"
-                        >
-                            ← Back to list
-                        </button>
-                    </div>
-                )}
-                <div className="flex-1 min-h-0 overflow-hidden">
-                    {detailPanel}
+        <main className={`flex-1 min-w-0 min-h-0 overflow-hidden bg-white dark:bg-[#1e1e1e] flex flex-col${!view ? ' hidden lg:flex' : ''}`} data-testid="git-detail-panel">
+            {/* Mobile back button */}
+            {view && (
+                <div className="lg:hidden shrink-0 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="git-mobile-back">
+                    <button
+                        onClick={selection.clearSelection}
+                        className="text-xs text-[#0078d4] dark:text-[#3794ff] flex items-center gap-1 hover:underline"
+                        data-testid="git-mobile-back-btn"
+                    >
+                        ← Back to list
+                    </button>
                 </div>
-            </main>
+            )}
+            <div className="flex-1 min-h-0 overflow-hidden">
+                {detailPanel}
+            </div>
+        </main>
     );
 
     // Modals / toasts / context menus — overlays that must render in BOTH the
     // standalone and split-workspace layouts (portals/fixed positioning, so they
     // are layout-agnostic).
     const overlays = (
-        <>
-        {contextMenu && contextMenuItems.length > 0 && (
-            <ContextMenu
-                position={{ x: contextMenu.x, y: contextMenu.y }}
-                items={contextMenuItems}
-                onClose={closeContextMenu}
-            />
-        )}
-        {enqueueToast && (
-            <div
-                className="fixed bottom-4 right-4 z-[10010] px-4 py-2.5 rounded-md shadow-lg text-xs text-white bg-[#0078d4] dark:bg-[#1a6bbf] max-w-xs flex items-center gap-2"
-                data-testid="enqueue-toast"
-            >
-                <span className="flex-1">{enqueueToast}</span>
-                <button
-                    onClick={() => setEnqueueToast(null)}
-                    data-testid="enqueue-toast-close"
-                    aria-label="Close notification"
-                    className="ml-2 text-white/80 hover:text-white text-sm leading-none"
-                >
-                    ×
-                </button>
-            </div>
-        )}
-        <SkillBrowserDialog
-            open={!!skillBrowserContext}
-            skills={skills}
-            onSelect={handleSkillBrowserSelect}
-            onClose={() => setSkillBrowserContext(null)}
-        />
-        <SkillContextDialog
-            open={!!pendingSkillRun}
+        <RepoGitOverlays
             workspaceId={workspaceId}
-            skillName={pendingSkillRun?.skillName ?? ''}
-            targetSummary={pendingSkillTargetSummary}
-            onClose={() => setPendingSkillRun(null)}
-            onConfirm={handleConfirmSkillRun}
-        />
-        <BranchPickerModal
-            workspaceId={workspaceId}
-            currentBranch={branchName || 'HEAD'}
-            isOpen={branchPickerOpen}
-            onClose={() => setBranchPickerOpen(false)}
-            onSwitched={(newBranch) => {
-                setBranchName(newBranch);
-                setBranchPickerOpen(false);
-                setSkip(0);
-                fetchBranchRange(true);
-                fetchCommits(true);
-            }}
-        />
-        <BranchPickerModal
-            workspaceId={workspaceId}
-            currentBranch={branchName || 'HEAD'}
-            isOpen={cherryPickTarget !== null}
-            onClose={() => setCherryPickTarget(null)}
-            onSelected={handleCherryPickToBranch}
-            title="Cherry-pick to branch"
-            busyLabel="Cherry-picking…"
-            errorLabel="Cherry-pick failed"
-        />
-        {amendingCommit && (
-            <AmendMessageModal
-                commit={amendingCommit}
-                onConfirm={handleAmendConfirm}
-                onCancel={() => setAmendingCommit(null)}
-            />
-        )}
-        {rewordingCommit && (
-            <AmendMessageModal
-                commit={rewordingCommit}
-                titleOnly
-                onConfirm={(title) => handleRewordConfirm(title)}
-                onCancel={() => setRewordingCommit(null)}
-            />
-        )}
-        <CrossCloneCherryPickModal
-            open={crossCloneCherryPickCommits.length > 0}
-            sourceWorkspaceId={workspaceId}
+            branchName={data.branchName}
+            contextMenu={contextMenu}
+            contextMenuItems={contextMenuItems}
+            onCloseContextMenu={closeContextMenu}
+            toast={toast}
+            onDismissToast={clearToast}
+            skills={skillActions.skills}
+            skillBrowserOpen={!!skillActions.skillBrowserContext}
+            onSkillBrowserSelect={handleSkillBrowserSelect}
+            onCloseSkillBrowser={skillActions.closeSkillBrowser}
+            pendingSkillName={skillActions.pendingSkillRun?.skillName ?? null}
+            pendingSkillTargetSummary={skillActions.pendingSkillTargetSummary}
+            onCancelSkillRun={skillActions.cancelSkillRun}
+            onConfirmSkillRun={skillActions.confirmSkillRun}
+            branchPickerOpen={branchPickerOpen}
+            onCloseBranchPicker={() => setBranchPickerOpen(false)}
+            onBranchSwitched={handleBranchSwitched}
+            cherryPickOpen={cherryPickTarget !== null}
+            onCloseCherryPick={() => setCherryPickTarget(null)}
+            onCherryPickToBranch={handleCherryPickToBranch}
+            amendingCommit={amendingCommit}
+            onAmendConfirm={handleAmendConfirm}
+            onCancelAmend={() => setAmendingCommit(null)}
+            rewordingCommit={rewordingCommit}
+            onRewordConfirm={handleRewordConfirm}
+            onCancelReword={() => setRewordingCommit(null)}
+            crossCloneCommits={crossCloneCherryPickCommits}
             sourceWorkspace={sourceWorkspace}
-            sourceBranch={branchName || undefined}
-            commits={crossCloneCherryPickCommits}
-            onClose={() => setCrossCloneCherryPickCommits([])}
-            onApplied={handleCrossCloneCherryPickApplied}
+            onCloseCrossClone={() => setCrossCloneCherryPickCommits([])}
+            onCrossCloneApplied={handleCrossCloneCherryPickApplied}
         />
-        </>
     );
 
     // Split-workspace layout (behind the `splitWorkspacePanel` flag): render ONLY

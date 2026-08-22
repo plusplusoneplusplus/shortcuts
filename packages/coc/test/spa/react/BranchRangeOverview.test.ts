@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
+import { readRepoGitTabSource } from '../helpers/repo-git-tab-source';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -171,7 +172,7 @@ describe('RepoGitTab — BranchRangeOverview integration', () => {
     let source: string;
 
     beforeAll(() => {
-        source = fs.readFileSync(REPO_GIT_TAB_PATH, 'utf-8');
+        source = readRepoGitTabSource();
     });
 
     it('imports BranchRangeOverview', () => {
@@ -179,15 +180,15 @@ describe('RepoGitTab — BranchRangeOverview integration', () => {
     });
 
     it('renders BranchRangeOverview for branch-range view type', () => {
-        expect(source).toContain("rightPanelView?.type === 'branch-range'");
+        expect(source).toContain("view?.type === 'branch-range'");
         expect(source).toContain('<BranchRangeOverview');
     });
 
     it('does NOT render CommitDetail for branch-range view type', () => {
         // CommitDetail is still used for commit view, but not branch-range
         const branchRangeSection = source.slice(
-            source.indexOf("rightPanelView?.type === 'branch-range'"),
-            source.indexOf("rightPanelView?.type === 'branch-file'")
+            source.indexOf("view?.type === 'branch-range'"),
+            source.indexOf("view?.type === 'branch-file'")
         );
         expect(branchRangeSection).not.toContain('<CommitDetail');
     });
@@ -209,7 +210,7 @@ describe('RepoGitTab — BranchRangeOverview integration', () => {
     });
 
     it('defaults to empty right panel (no auto-selection on initial load)', () => {
-        expect(source).toContain("setRightPanelView(null)");
+        expect(source).toContain("setView(null)");
         expect(source).not.toContain("rangeInfo && rangeInfo.commitCount > 0");
     });
 
@@ -218,7 +219,13 @@ describe('RepoGitTab — BranchRangeOverview integration', () => {
     });
 
     it('preserves branch-range view during refresh', () => {
-        expect(source).toMatch(/branch-range.*working-tree-file|working-tree-file.*branch-range/);
+        // Both are listed as refresh-stable in the pure selection model, so a
+        // refresh leaves them alone instead of retargeting to a commit.
+        const stableStart = source.indexOf('REFRESH_STABLE_VIEWS: ReadonlySet');
+        const setStart = source.indexOf('new Set([', stableStart);
+        const stableBlock = source.slice(setStart, source.indexOf(']);', setStart));
+        expect(stableBlock).toContain("'branch-range'");
+        expect(stableBlock).toContain("'working-tree-file'");
     });
 
     it('passes onAskAI to BranchRangeOverview in branch-range view', () => {
