@@ -127,7 +127,11 @@ interface ConversationTurnBubbleProps {
     /** Delete a Quick Ask side-note. */
     onDeleteSidenote?: (id: string) => void;
     /** Copy a side-note's answer to the clipboard. */
-    onCopySidenote?: (note: ClientSideNote) => void;
+    onCopySidenote?: (note: ClientSideNote, text?: string) => void;
+    /** Ask a follow-up on an answered side-note (enables the popover reply row). */
+    onFollowUpSidenote?: (id: string, question: string) => void;
+    /** Re-run one turn of a side-note thread after a failure. */
+    onRetrySidenoteTurn?: (id: string, turnIndex: number) => void;
     /**
      * AI provider that produced the assistant turns (`copilot`, `codex`, or
      * `claude`). Controls the round avatar's color so it matches the
@@ -1084,7 +1088,7 @@ function InterruptedTurnBanner({ reason, onContinue }: { reason?: string; onCont
     );
 }
 
-export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, noteEdits, processId, openNotePath, provider, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, noteEdits, processId, openNotePath, provider, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote, onFollowUpSidenote, onRetrySidenoteTurn }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const sidenoteContentRef = useRef<HTMLDivElement>(null);
     const quickAskSidenotesEnabled = useQuickAskSidenotesEnabled();
@@ -1827,7 +1831,9 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                             onAsk={(sel, question) => onCreateSidenote?.(sel, question)}
                             onRetry={id => onRetrySidenote?.(id)}
                             onDelete={id => onDeleteSidenote?.(id)}
-                            onCopy={note => onCopySidenote?.(note)}
+                            onCopy={(note, text) => onCopySidenote?.(note, text)}
+                            onFollowUp={onFollowUpSidenote}
+                            onRetryTurn={onRetrySidenoteTurn}
                             onAttachContext={onAttachContext}
                         />
                     )}

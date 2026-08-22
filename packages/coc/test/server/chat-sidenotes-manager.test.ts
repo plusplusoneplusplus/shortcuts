@@ -5,8 +5,10 @@ import * as path from 'path';
 import {
     ChatSideNotesManager,
     MAX_SIDENOTES_PER_PROCESS,
+    MAX_TURNS_PER_SIDENOTE,
     buildSideNoteLabel,
     fingerprintSelection,
+    threadTurns,
 } from '../../src/server/processes/chat-sidenotes/chat-sidenotes-manager';
 
 describe('ChatSideNotesManager', () => {
@@ -127,5 +129,90 @@ describe('fingerprintSelection', () => {
     });
     it('differs for different text', () => {
         expect(fingerprintSelection('a')).not.toBe(fingerprintSelection('b'));
+    });
+});
+
+describe('threadTurns', () => {
+    const note = (overrides: Record<string, unknown>) => ({
+        id: 'n1', processId: 'p1', turnIndex: 0,
+        anchor: { selectedText: 's', contextBefore: '', contextAfter: '', fingerprint: '' },
+        answer: 'one-shot answer', label: 's', createdAt: '',
+        ...overrides,
+    }) as any;
+
+    it('synthesizes turn 0 for a note written before follow-ups existed', () => {
+        expect(threadTurns(note({ question: 'why?' }))).toEqual([
+            { question: 'why?', answer: 'one-shot answer' },
+        ]);
+    });
+
+    it('treats an empty turns array as no thread', () => {
+        expect(threadTurns(note({ turns: [] }))).toHaveLength(1);
+    });
+
+    it('returns the persisted thread when present', () => {
+        const turns = [{ answer: 'a' }, { question: 'q', answer: 'b' }];
+        expect(threadTurns(note({ turns }))).toEqual(turns);
+    });
+});
+
+describe('ChatSideNotesManager.appendTurn', () => {
+    let dataDir: string;
+    let manager: ChatSideNotesManager;
+    const wsId = 'ws-test';
+    const processId = 'queue_abc-123';
+
+    beforeEach(() => {
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-sidenotes-turns-'));
+        manager = new ChatSideNotesManager(dataDir);
+    });
+    afterEach(() => { fs.rmSync(dataDir, { recursive: true, force: true }); });
+
+    async function seed() {
+        return manager.add(wsId, processId, {
+            turnIndex: 0,
+            anchor: { selectedText: 'Daly formula', contextBefore: '', contextAfter: '', fingerprint: '' },
+            question: 'what is it?',
+            answer: 'A metric formula.',
+            label: 'Daly formula',
+        } as any);
+    }
+
+    it('seeds the thread from question/answer and appends the new turn', async () => {
+        const created = await seed();
+        const updated = await manager.appendTurn(wsId, processId, created.id, { question: 'why?', answer: 'Because.' });
+        expect(updated!.turns).toEqual([
+            { question: 'what is it?', answer: 'A metric formula.' },
+            { question: 'why?', answer: 'Because.' },
+        ]);
+        // Persisted, and the other fields are untouched.
+        const [reloaded] = await manager.list(wsId, processId);
+        expect(reloaded.turns).toHaveLength(2);
+        expect(reloaded.answer).toBe('A metric formula.');
+        expect(reloaded.createdAt).toBe(created.createdAt);
+    });
+
+    it('leaves sibling notes alone', async () => {
+        const first = await seed();
+        const second = await seed();
+        await manager.appendTurn(wsId, processId, first.id, { question: 'q', answer: 'a' });
+        const notes = await manager.list(wsId, processId);
+        expect(notes.find(n => n.id === first.id)!.turns).toHaveLength(2);
+        expect(notes.find(n => n.id === second.id)!.turns).toBeUndefined();
+    });
+
+    it('returns null for an unknown id', async () => {
+        await seed();
+        expect(await manager.appendTurn(wsId, processId, 'missing', { answer: 'a' })).toBeNull();
+    });
+
+    it('returns null once the thread is at the turn cap', async () => {
+        const created = await seed();
+        for (let i = 0; i < MAX_TURNS_PER_SIDENOTE - 1; i++) {
+            expect(await manager.appendTurn(wsId, processId, created.id, { question: `q${i}`, answer: `a${i}` })).not.toBeNull();
+        }
+        expect(await manager.appendTurn(wsId, processId, created.id, { question: 'x', answer: 'y' })).toBeNull();
+        const [reloaded] = await manager.list(wsId, processId);
+        expect(reloaded.turns).toHaveLength(MAX_TURNS_PER_SIDENOTE);
     });
 });

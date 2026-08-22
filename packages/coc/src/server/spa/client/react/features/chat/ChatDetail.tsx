@@ -2543,7 +2543,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         onCreateSidenote={quickAsk.createSidenote}
                         onRetrySidenote={quickAsk.retrySidenote}
                         onDeleteSidenote={quickAsk.deleteSidenote}
-                        onCopySidenote={(note) => { try { void navigator.clipboard?.writeText(note.answer); } catch { /* ignore */ } }}
+                        onCopySidenote={(note, text) => { try { void navigator.clipboard?.writeText(text ?? note.answer); } catch { /* ignore */ } }}
+                        onFollowUpSidenote={quickAsk.followUpSidenote}
+                        onRetrySidenoteTurn={quickAsk.retrySidenoteTurn}
                         postConversationContent={planReviewCards}
                         isCompacting={isCompacting}
                         compactInstructions={compactInstructions}

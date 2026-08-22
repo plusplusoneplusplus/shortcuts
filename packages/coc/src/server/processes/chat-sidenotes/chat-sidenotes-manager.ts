@@ -22,6 +22,13 @@ export const CHAT_SIDENOTES_DIR_NAME = 'chat-sidenotes';
 export const MAX_SIDENOTES_PER_PROCESS = 200;
 
 /**
+ * Soft cap on turns in one side-note's follow-up thread. Turn 0 is the original
+ * ask, so this allows 9 follow-ups. Mirrors the client-side thread cap and the
+ * stateless answer route's `MAX_HISTORY_TURNS`.
+ */
+export const MAX_TURNS_PER_SIDENOTE = 10;
+
+/**
  * Anchor context for a side-note selection. Mirrors the task-comment anchor so
  * the same fuzzy relocation strategy can be applied later if a turn re-renders.
  */
@@ -34,6 +41,16 @@ export interface ChatSideNoteAnchor {
     contextAfter: string;
     /** Stable content fingerprint of the selected text. */
     fingerprint: string;
+}
+
+/**
+ * One question/answer turn of a side-note's follow-up thread.
+ */
+export interface ChatSideNoteTurn {
+    /** The question asked on that turn (absent on turn 0's default explain-this). */
+    question?: string;
+    /** AI markdown answer for that turn. */
+    answer: string;
 }
 
 /**
@@ -56,6 +73,13 @@ export interface ChatSideNote {
     label: string;
     /** Model used for the lookup, if resolved. */
     model?: string;
+    /**
+     * The full follow-up thread, present once at least one follow-up has been
+     * answered. Turn 0 mirrors `question`/`answer`, which stay authoritative for
+     * one-shot notes written before follow-ups existed (and for the chip label /
+     * inline preview). Absent → the note is a single turn.
+     */
+    turns?: ChatSideNoteTurn[];
     /** ISO timestamp when created. */
     createdAt: string;
 }
@@ -79,6 +103,15 @@ export function fingerprintSelection(selectedText: string): string {
         .update(selectedText.replace(/\s+/g, ' ').trim())
         .digest('hex')
         .slice(0, 16);
+}
+
+/**
+ * The note's thread as an array — its persisted `turns` when present, else the
+ * single implicit turn 0 built from `question`/`answer`.
+ */
+export function threadTurns(note: ChatSideNote): ChatSideNoteTurn[] {
+    if (Array.isArray(note.turns) && note.turns.length > 0) {return note.turns;}
+    return [{ question: note.question, answer: note.answer }];
 }
 
 /**
@@ -150,6 +183,30 @@ export class ChatSideNotesManager {
         }
         await this.writeAll(workspaceId, processId, next);
         return created;
+    }
+
+    /**
+     * Append an answered follow-up turn to a side-note's thread.
+     *
+     * The thread is seeded from `question`/`answer` on first use, so a note
+     * created before follow-ups existed grows a well-formed `turns` array.
+     * Returns the updated note, or null when the id is unknown or the thread is
+     * already at {@link MAX_TURNS_PER_SIDENOTE}.
+     */
+    async appendTurn(
+        workspaceId: string,
+        processId: string,
+        id: string,
+        turn: ChatSideNoteTurn,
+    ): Promise<ChatSideNote | null> {
+        const existing = await this.list(workspaceId, processId);
+        const target = existing.find(n => n.id === id);
+        if (!target) {return null;}
+        const turns = threadTurns(target);
+        if (turns.length >= MAX_TURNS_PER_SIDENOTE) {return null;}
+        const updated: ChatSideNote = { ...target, turns: [...turns, turn] };
+        await this.writeAll(workspaceId, processId, existing.map(n => (n.id === id ? updated : n)));
+        return updated;
     }
 
     /** Delete a single side-note by id. Returns true when a note was removed. */

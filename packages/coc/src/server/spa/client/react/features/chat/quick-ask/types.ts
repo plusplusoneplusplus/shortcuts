@@ -11,6 +11,12 @@ export interface QuickAskAnchor {
     fingerprint: string;
 }
 
+/** One persisted question/answer turn of a side-note's follow-up thread. */
+export interface ChatSideNoteTurn {
+    question?: string;
+    answer: string;
+}
+
 /** A persisted side-note as returned by the server. */
 export interface ChatSideNote {
     id: string;
@@ -21,6 +27,12 @@ export interface ChatSideNote {
     answer: string;
     label: string;
     model?: string;
+    /**
+     * Persisted follow-up thread, present once a follow-up has been answered.
+     * Turn 0 mirrors `question`/`answer`, which stay authoritative for one-shot
+     * notes. Absent → a single-turn note.
+     */
+    turns?: ChatSideNoteTurn[];
     createdAt: string;
 }
 
@@ -33,7 +45,19 @@ export interface ClientSideNote extends ChatSideNote {
     status: 'asking' | 'ready' | 'error';
     /** Error text when `status === 'error'`. */
     error?: string;
+    /**
+     * Live view of the follow-up thread, including turns that are still in
+     * flight or failed (which are never persisted). Derived from `turns` on
+     * hydrate, so it is always non-empty for a `ready` note.
+     */
+    thread?: QuickAskTurn[];
 }
+
+/**
+ * Soft cap on turns in one Quick Ask thread. Turn 0 is the original ask, so
+ * this allows 9 follow-ups. Mirrors the server's `MAX_TURNS_PER_SIDENOTE`.
+ */
+export const MAX_QUICK_ASK_TURNS = 10;
 
 /**
  * One turn of a Quick Ask thread (multi-turn follow-up, notes/paper surfaces).

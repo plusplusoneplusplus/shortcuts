@@ -31,7 +31,8 @@ import {
     scrollElementIntoView,
 } from './sidenoteHighlight';
 import { clearInlineChips, injectInlineChip } from './sidenoteInlineChips';
-import type { ClientSideNote, QuickAskSelection } from './types';
+import type { ClientSideNote, QuickAskSelection, QuickAskTurn } from './types';
+import { MAX_QUICK_ASK_TURNS } from './types';
 import './sidenoteHighlight.css';
 
 export interface QuickAskTurnLayerProps {
@@ -46,7 +47,16 @@ export interface QuickAskTurnLayerProps {
     onAsk: (selection: QuickAskSelection, question?: string) => void;
     onRetry: (id: string) => void;
     onDelete: (id: string) => void;
-    onCopy: (note: ClientSideNote) => void;
+    /** `text` carries the whole thread transcript for a multi-turn side-note. */
+    onCopy: (note: ClientSideNote, text?: string) => void;
+    /**
+     * Ask a follow-up on an answered side-note. When supplied, the answer
+     * popover becomes a multi-turn thread with a reply row (same control the
+     * notes and PDF surfaces use); when absent it stays a one-shot answer.
+     */
+    onFollowUp?: (id: string, question: string) => void;
+    /** Re-run one turn of a thread after a failure (index 0 = the original ask). */
+    onRetryTurn?: (id: string, turnIndex: number) => void;
     /**
      * Attach the current selection as chat context. When supplied, the selection
      * pill gains a "📎 Attach" action beside "✨ Ask AI".
@@ -86,6 +96,8 @@ export function QuickAskTurnLayer({
     onRetry,
     onDelete,
     onCopy,
+    onFollowUp,
+    onRetryTurn,
     onAttachContext,
 }: QuickAskTurnLayerProps) {
     const [selection, setSelection] = useState<QuickAskSelection | null>(null);
@@ -322,6 +334,12 @@ export function QuickAskTurnLayer({
     }, [containerRef]);
 
     const openNote = open ? notes.find(n => n.id === open.id) ?? null : null;
+    // Multi-turn thread for the open note — only when the host wired follow-ups
+    // AND the note has an answer to follow up on. A still-asking or failed note
+    // keeps the one-shot popover (there is nothing to reply to yet).
+    const openThread: QuickAskTurn[] | null = onFollowUp && openNote && openNote.status === 'ready'
+        ? openNote.thread ?? [{ question: openNote.question, answer: openNote.answer, status: 'ready' }]
+        : null;
     // Footer is the fallback home: notes that didn't resolve inline (plus the
     // transient asking/error states, which are never placed inline).
     const footerNotes = notes.filter(n => !locatedIds.has(n.id));
@@ -398,6 +416,14 @@ export function QuickAskTurnLayer({
                     onCopy={onCopy}
                     onRetry={onRetry}
                     onDelete={onDelete}
+                    reply={openThread ? {
+                        turns: openThread,
+                        onSend: question => onFollowUp!(openNote.id, question),
+                        onRetry: turnIndex => onRetryTurn?.(openNote.id, turnIndex),
+                        disabled: openThread.some(t => t.status === 'asking'),
+                        atCap: openThread.length >= MAX_QUICK_ASK_TURNS,
+                        maxTurns: MAX_QUICK_ASK_TURNS,
+                    } : undefined}
                 />
             )}
         </>

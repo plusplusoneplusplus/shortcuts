@@ -141,7 +141,9 @@ export interface ConversationAreaProps {
     /** Delete a Quick Ask side-note. */
     onDeleteSidenote?: (id: string) => void;
     /** Copy a side-note's answer to the clipboard. */
-    onCopySidenote?: (note: ClientSideNote) => void;
+    onCopySidenote?: (note: ClientSideNote, text?: string) => void;
+    onFollowUpSidenote?: (id: string, question: string) => void;
+    onRetrySidenoteTurn?: (id: string, turnIndex: number) => void;
     /** Additional cards that should remain reachable via the main conversation scroll area. */
     postConversationContent?: ReactNode;
     /**
@@ -211,6 +213,8 @@ export function ConversationArea({
     onRetrySidenote,
     onDeleteSidenote,
     onCopySidenote,
+    onFollowUpSidenote,
+    onRetrySidenoteTurn,
     postConversationContent,
     isCompacting,
     compactInstructions,
@@ -461,6 +465,8 @@ export function ConversationArea({
                                                     onRetrySidenote={onRetrySidenote}
                                                     onDeleteSidenote={onDeleteSidenote}
                                                     onCopySidenote={onCopySidenote}
+                                                    onFollowUpSidenote={onFollowUpSidenote}
+                                                    onRetrySidenoteTurn={onRetrySidenoteTurn}
                                                 />
                                             </div>
                                         </div>
