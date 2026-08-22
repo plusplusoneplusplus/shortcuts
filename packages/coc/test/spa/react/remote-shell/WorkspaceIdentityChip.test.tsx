@@ -13,8 +13,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 const mockSelectClone = vi.fn();
 const mockFetchRepos = vi.fn().mockResolvedValue(undefined);
 const mockRemoveWorkspace = vi.fn().mockResolvedValue(undefined);
+const mockDeleteRepoGroup = vi.fn().mockResolvedValue(undefined);
 let mockQueueState: any = { repoQueueMap: {} };
 let mockUnseen: Record<string, number> = {};
+let mockWorkspaces: any[] = [];
+let mockSelectedRepoId: string | null = null;
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
@@ -23,6 +26,9 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
             patchGlobal: vi.fn().mockResolvedValue({}),
         },
     }),
+}));
+vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
+    useApp: () => ({ state: { workspaces: mockWorkspaces, selectedRepoId: mockSelectedRepoId }, dispatch: vi.fn() }),
 }));
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({ state: mockQueueState, dispatch: vi.fn() }),
@@ -44,6 +50,14 @@ vi.mock('../../../../src/server/spa/client/react/repos/CloneRepoDialog', () => (
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/repositoryService', () => ({
     removeWorkspace: (...args: unknown[]) => mockRemoveWorkspace(...args),
+}));
+vi.mock('../../../../src/server/spa/client/react/repos/RepoGroupDialog', () => ({
+    RepoGroupDialog: ({ open, groupId }: { open: boolean; groupId?: string | null }) => (
+        open ? <div data-testid="repo-group-dialog" data-group-id={groupId ?? ''} /> : null
+    ),
+}));
+vi.mock('../../../../src/server/spa/client/react/repos/repoGroupService', () => ({
+    deleteRepoGroup: (...args: unknown[]) => mockDeleteRepoGroup(...args),
 }));
 
 import { resolveRepoCopyPath, WorkspaceIdentityChip } from '../../../../src/server/spa/client/react/features/remote-shell/WorkspaceIdentityChip';
@@ -69,8 +83,11 @@ beforeEach(() => {
     mockSelectClone.mockReset();
     mockFetchRepos.mockClear();
     mockRemoveWorkspace.mockReset().mockResolvedValue(undefined);
+    mockDeleteRepoGroup.mockReset().mockResolvedValue(undefined);
     mockQueueState = { repoQueueMap: {} };
     mockUnseen = {};
+    mockWorkspaces = [];
+    mockSelectedRepoId = null;
 });
 
 function openPicker(repos: any[], selected: any) {
@@ -315,5 +332,125 @@ describe('WorkspaceIdentityChip group row — WSL pill (AC-03)', () => {
         const row = groupRowFor('shortcuts')!;
         expect(row.querySelector('[data-testid="wsl-badge"]')).toBeTruthy();
         expect(row.textContent).toContain('2');
+    });
+});
+
+describe('WorkspaceIdentityChip repo groups (repo-group AC-01/AC-04)', () => {
+    const groupWs = (id: string, name: string) => ({ id, name, rootPath: `/data/repos/${id}`, virtual: true });
+
+    function groupRowMenuFor(name: string): HTMLElement | undefined {
+        return screen.queryAllByTestId('repo-group-row-menu')
+            .find(btn => btn.getAttribute('aria-label')?.includes(name));
+    }
+
+    function menuItem(label: string): HTMLElement | undefined {
+        return screen.queryAllByRole('menuitem').find(el => el.textContent?.includes(label));
+    }
+
+    it('renders a Repo groups section with a distinct icon for group workspaces only', () => {
+        // Groups come from the FULL AppContext workspace list (they are virtual,
+        // so ReposContext filters them out of `repos`); plain and other virtual
+        // workspaces never render as group rows.
+        mockWorkspaces = [
+            groupWs('group-platform', 'Platform'),
+            { id: 'a', name: 'shortcuts', rootPath: '/r/a' },
+            { id: 'my_work', name: 'My Work', virtual: true },
+        ];
+        openPicker([repo('a', 'shortcuts', SHORTCUTS)], undefined);
+
+        const rows = screen.getAllByTestId('repo-group-item');
+        expect(rows).toHaveLength(1);
+        expect(rows[0].textContent).toContain('Platform');
+        expect(rows[0].getAttribute('data-remote-key')).toBe('group-platform');
+        expect(screen.getByTestId('remote-dropdown').textContent).toContain('Repo groups');
+        expect(rows[0].parentElement!.querySelector('[data-testid="repo-group-icon"]')).toBeTruthy();
+    });
+
+    it('renders no Repo groups section when no group workspaces exist', () => {
+        mockWorkspaces = [{ id: 'a', name: 'shortcuts', rootPath: '/r/a' }];
+        openPicker([repo('a', 'shortcuts', SHORTCUTS)], undefined);
+
+        expect(screen.queryAllByTestId('repo-group-item')).toHaveLength(0);
+        expect(screen.getByTestId('remote-dropdown').textContent).not.toContain('Repo groups');
+    });
+
+    it('filters group rows by the search query', () => {
+        mockWorkspaces = [groupWs('group-platform', 'Platform'), groupWs('group-tools', 'Tools')];
+        openPicker([repo('a', 'shortcuts', SHORTCUTS)], undefined);
+
+        fireEvent.change(screen.getByTestId('remote-search-input'), { target: { value: 'plat' } });
+        const rows = screen.getAllByTestId('repo-group-item');
+        expect(rows).toHaveLength(1);
+        expect(rows[0].textContent).toContain('Platform');
+    });
+
+    it('selects the group workspace on row click and closes the picker (AC-02)', () => {
+        mockWorkspaces = [groupWs('group-platform', 'Platform')];
+        openPicker([repo('a', 'shortcuts', SHORTCUTS)], undefined);
+
+        fireEvent.click(screen.getByTestId('repo-group-item'));
+        expect(mockSelectClone).toHaveBeenCalledWith('group-platform');
+        expect(screen.queryByTestId('remote-dropdown')).toBeNull();
+    });
+
+    it('marks the selected group row active', () => {
+        mockWorkspaces = [groupWs('group-platform', 'Platform'), groupWs('group-tools', 'Tools')];
+        mockSelectedRepoId = 'group-platform';
+        openPicker([repo('a', 'shortcuts', SHORTCUTS)], undefined);
+
+        const rows = screen.getAllByTestId('repo-group-item');
+        expect(rows.find(r => r.getAttribute('data-remote-key') === 'group-platform')!.getAttribute('data-active')).toBe('true');
+        expect(rows.find(r => r.getAttribute('data-remote-key') === 'group-tools')!.getAttribute('data-active')).toBe('false');
+    });
+
+    it('opens the create dialog from the "New repo group…" footer action', () => {
+        openPicker([repo('a', 'shortcuts', SHORTCUTS)], undefined);
+
+        fireEvent.click(screen.getByTestId('remote-new-repo-group-option'));
+        const dialog = screen.getByTestId('repo-group-dialog');
+        expect(dialog.getAttribute('data-group-id')).toBe('');
+        expect(screen.queryByTestId('remote-dropdown')).toBeNull();
+    });
+
+    it('opens the edit dialog for the group from its row menu', () => {
+        mockWorkspaces = [groupWs('group-platform', 'Platform')];
+        openPicker([repo('a', 'shortcuts', SHORTCUTS)], undefined);
+
+        fireEvent.click(groupRowMenuFor('Platform')!);
+        fireEvent.click(menuItem('Edit group')!);
+        expect(screen.getByTestId('repo-group-dialog').getAttribute('data-group-id')).toBe('group-platform');
+    });
+
+    it('deletes the group after confirmation, refetches and toasts (AC-04)', async () => {
+        mockWorkspaces = [groupWs('group-platform', 'Platform')];
+        openPicker([repo('a', 'shortcuts', SHORTCUTS)], undefined);
+
+        fireEvent.click(groupRowMenuFor('Platform')!);
+        fireEvent.click(menuItem('Delete group')!);
+
+        const dialog = screen.getByTestId('dialog-overlay');
+        expect(dialog.textContent).toContain('Delete repo group?');
+        expect(dialog.textContent).toContain('Platform');
+        expect(dialog.textContent).toContain('stays on disk');
+        expect(mockDeleteRepoGroup).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByTestId('repo-group-delete-confirm-btn'));
+        await waitFor(() => expect(mockDeleteRepoGroup).toHaveBeenCalledWith('group-platform'));
+        await waitFor(() => expect(mockFetchRepos).toHaveBeenCalled());
+        await waitFor(() => expect(screen.getByText('Deleted group Platform')).toBeTruthy());
+        expect(screen.queryByTestId('repo-group-delete-confirm-btn')).toBeNull();
+    });
+
+    it('keeps the group and toasts when deletion fails', async () => {
+        mockDeleteRepoGroup.mockRejectedValue(new Error('boom'));
+        mockWorkspaces = [groupWs('group-platform', 'Platform')];
+        openPicker([repo('a', 'shortcuts', SHORTCUTS)], undefined);
+
+        fireEvent.click(groupRowMenuFor('Platform')!);
+        fireEvent.click(menuItem('Delete group')!);
+        fireEvent.click(screen.getByTestId('repo-group-delete-confirm-btn'));
+
+        await waitFor(() => expect(screen.getByText('Failed to delete group Platform')).toBeTruthy());
+        expect(screen.getByTestId('repo-group-delete-confirm-btn')).toBeTruthy();
     });
 });
