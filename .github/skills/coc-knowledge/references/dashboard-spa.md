@@ -1114,10 +1114,14 @@ commands and generic assistant prose remain ignored.
 
 Live unanswered `ask_user` batches remain owned by
 `ChatDetail`/`ConversationArea` through `processDetails.pendingAskUser` and
-`AskUserInline`. Each live question card has a compact response-type dropdown
-with Answer, Skip / not applicable, and Need more context choices; the deferred
-choice marks that question complete for batch submission and reveals an optional
-short note field. Unsubmitted live-batch drafts are saved in browser
+`AskUserInline`. The form is laid out for density: a single header row carries
+the title, the question count, and the Submit/Skip actions (there is no separate
+footer row), option rows put the label and a truncated description on one line
+with the full description in the row's `title` tooltip, and a one-question batch
+drops the nested per-question card so only the outer card frames it. Each live
+question card has a borderless response-type dropdown (boxed on hover) with
+Answer, Skip, and Need context choices; the deferred choice marks that question
+complete for batch submission and reveals an optional short note field. Unsubmitted live-batch drafts are saved in browser
 localStorage scoped by process id and batch id, restored after navigation or
 refresh for the same batch, and cleared on accepted submission, skip-all,
 process cancellation, or replacement by a newer batch id. For Ralph
