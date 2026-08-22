@@ -1549,6 +1549,21 @@ Enabled by default; desktop-only; takes effect on reload.
   (the remote picker's Add-repository footer + remote sub-tabs; the virtual picker's
   identity chip + navigation-only rows). Offline is surfaced per-repo in the virtual
   picker only; group rows show the aggregate status dot instead.
+- **Repo groups in the picker.** `WorkspaceIdentityChip` renders a "Repo groups"
+  `PickerSection` (rows `repo-group-item`, stacked-layers icon `repo-group-icon`)
+  from the FULL AppContext workspace list filtered by
+  `isRepoGroupWorkspaceId(id)` (`repos/virtualWorkspaceIds.ts`, prefix `group-`)
+  — `repos` can't be the source because ReposContext strips virtual workspaces.
+  The footer gains a "New repo group…" action (`remote-new-repo-group-option`)
+  opening `repos/RepoGroupDialog.tsx` (create/edit: name + checkbox multi-select
+  of registered LOCAL repos only — remote checkouts and free-form paths are never
+  offered; edit prefills from `GET /api/repo-groups/:id` and badges stale members
+  `path missing` / `removed`). Each group row's ⋮ menu (`repo-group-row-menu`)
+  offers Edit group / Delete group; delete confirms via a Dialog
+  (`repo-group-delete-confirm-btn`) then calls `DELETE /api/repo-groups/:id`
+  (deregister only — the group's data dir stays on disk). REST wrappers live in
+  `repos/repoGroupService.ts` (plain `getSpaCocClient().request`, not coc-client
+  contracts). Group rows do not navigate yet (group view lands with AC-02).
 
 **Remote workspace aggregation** (gated by `features.remoteShell`): when the flag
 is ON, `ReposContext.fetchRepos` also calls `aggregateRemoteWorkspaces()`

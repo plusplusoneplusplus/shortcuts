@@ -20,3 +20,18 @@ export const VIRTUAL_WORKSPACE_IDS: ReadonlySet<string> = new Set([
 export function isVirtualWorkspaceId(id: string | null | undefined): boolean {
     return typeof id === 'string' && VIRTUAL_WORKSPACE_IDS.has(id);
 }
+
+/**
+ * Repo-group virtual workspaces are recognizable by id shape alone — the server
+ * mints them as `group-<slug>` (see `server/workspaces/repo-group-workspace.ts`,
+ * the single source of truth for the pattern) — so no registry lookup is needed
+ * client-side.
+ */
+export const REPO_GROUP_WORKSPACE_ID_PREFIX = 'group-';
+
+const REPO_GROUP_ID_PATTERN = /^group-[a-z0-9][a-z0-9-]*$/;
+
+/** True when the id names a repo-group virtual workspace. */
+export function isRepoGroupWorkspaceId(id: string | null | undefined): boolean {
+    return typeof id === 'string' && REPO_GROUP_ID_PATTERN.test(id);
+}
