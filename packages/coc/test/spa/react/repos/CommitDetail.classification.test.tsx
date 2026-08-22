@@ -195,6 +195,15 @@ describe('CommitDetail — classification toolbar (AC-05)', () => {
         await renderDetail();
         expect(screen.getByTestId('commit-classify-model-picker-chip')).toBeTruthy();
     });
+
+    it('keeps the view toggle, hunk nav and panel buttons on the same row as the classify controls', async () => {
+        await renderDetail();
+        const bar = screen.getByTestId('commit-classify-bar');
+        for (const id of ['commit-classify-button', 'commit-reviewed-count', 'toggle-comments-btn', 'toggle-chat-btn', 'commit-popout-btn']) {
+            expect(bar.contains(screen.getByTestId(id))).toBe(true);
+        }
+        expect(bar.querySelector('[data-testid="diff-view-toggle"], [data-testid="diff-view-unified"]')).toBeTruthy();
+    });
 });
 
 describe('CommitDetail — classification filter bar (AC-05)', () => {
