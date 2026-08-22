@@ -6,7 +6,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import React from 'react';
-import { InteractiveTable, isNumericColumn, tableToCsv } from '../../../../src/server/spa/client/react/shared/InteractiveTable';
+import { InteractiveTable, isNumericColumn, tableToCsv, computeColumnWeights } from '../../../../src/server/spa/client/react/shared/InteractiveTable';
 
 // ---------------------------------------------------------------------------
 // Pure function tests
@@ -58,6 +58,73 @@ describe('tableToCsv', () => {
     it('strips HTML from cell values', () => {
         const csv = tableToCsv(['A'], [['<strong>bold</strong>']]);
         expect(csv).toBe('A\nbold');
+    });
+});
+
+describe('computeColumnWeights', () => {
+    const sum = (w: number[]) => w.reduce((a, b) => a + b, 0);
+
+    it('gives the short column a smaller share than the long one', () => {
+        const w = computeColumnWeights(
+            ['Module', 'Owns'],
+            [
+                ['src/server/spa/client.tsx', 'Serves the dashboard SPA and its static assets'],
+                ['src/server/routes/api.ts', 'REST endpoints for processes, memory and search'],
+            ]
+        );
+        expect(w[0]).toBeLessThan(w[1]);
+        expect(sum(w)).toBeCloseTo(100, 5);
+    });
+
+    it('lets a header longer than every cell drive the weight', () => {
+        const w = computeColumnWeights(['A', 'Description'], [['x', 'y'], ['x', 'y']]);
+        // The "Description" header is 11 chars against a 1-char header, so the
+        // second column stays wide instead of collapsing to the floor.
+        expect(w[1]).toBeGreaterThan(w[0]);
+        expect(w[1]).toBeGreaterThan(50);
+        expect(sum(w)).toBeCloseTo(100, 5);
+    });
+
+    it('does not let one outlier row dominate (p90, not max)', () => {
+        const short = Array.from({ length: 20 }, () => ['a', 'b']);
+        const withOutlier = short.map(r => [...r]);
+        withOutlier[0] = ['a', 'z'.repeat(500)];
+
+        const base = computeColumnWeights(['A', 'B'], short);
+        const outlier = computeColumnWeights(['A', 'B'], withOutlier);
+        expect(outlier[1]).toBeCloseTo(base[1], 5);
+    });
+
+    it('clamps an extreme ratio to the 8% floor and 70% ceiling', () => {
+        const w = computeColumnWeights(['A', 'B'], [['ab', 'z'.repeat(400)]]);
+        expect(w[0]).toBeCloseTo(30, 5);
+        expect(w[1]).toBeCloseTo(70, 5);
+        expect(sum(w)).toBeCloseTo(100, 5);
+    });
+
+    it('holds the 8% floor for a tiny column among many wide ones', () => {
+        const headers = ['A', 'B', 'C', 'D', 'E'];
+        const rows = [['x', 'y'.repeat(200), 'y'.repeat(200), 'y'.repeat(200), 'y'.repeat(200)]];
+        const w = computeColumnWeights(headers, rows);
+        expect(w[0]).toBeCloseTo(8, 5);
+        expect(sum(w)).toBeCloseTo(100, 5);
+    });
+
+    it('falls back to an even split for degenerate input', () => {
+        expect(computeColumnWeights([], [])).toEqual([]);
+        expect(computeColumnWeights(['Only'], [])).toEqual([100]);
+        expect(computeColumnWeights(['A', 'B'], [])).toEqual([50, 50]);
+        expect(computeColumnWeights(['', ''], [['', '']])).toEqual([50, 50]);
+    });
+
+    it('handles a single column with content', () => {
+        expect(computeColumnWeights(['Name'], [['Alice'], ['Bob']])).toEqual([100]);
+    });
+
+    it('strips HTML before counting characters', () => {
+        const plain = computeColumnWeights(['A', 'B'], [['x', 'abcdefghij']]);
+        const tagged = computeColumnWeights(['A', 'B'], [['<code>x</code>', '<em>abcdefghij</em>']]);
+        expect(tagged).toEqual(plain);
     });
 });
 
@@ -371,7 +438,7 @@ describe('InteractiveTable', () => {
             expect(nameCells()).toEqual(before);
         });
 
-        it('keeps auto table layout until a column is actually resized', () => {
+        it('leaves widths to the colgroup until a column is actually resized', () => {
             const { container } = render(<InteractiveTable {...defaultProps} />);
             const table = container.querySelector('table');
             expect(table?.classList.contains('interactive-md-table')).toBe(true);
@@ -380,6 +447,70 @@ describe('InteractiveTable', () => {
             // No inline table width either — that is only set from the summed
             // column widths once the columns have been seeded.
             expect(table?.getAttribute('style')).toBeNull();
+        });
+
+        it('swaps the colgroup for explicit px widths once a drag seeds sizes', () => {
+            // jsdom lays nothing out, so the seeding pass needs real widths.
+            const spy = vi
+                .spyOn(HTMLTableCellElement.prototype, 'getBoundingClientRect')
+                .mockReturnValue({ width: 140, height: 20 } as DOMRect);
+            try {
+                const { container } = render(<InteractiveTable {...defaultProps} />);
+                expect(container.querySelector('colgroup')).toBeTruthy();
+
+                fireEvent.pointerEnter(screen.getByTestId('interactive-table-resizer-col_0'));
+
+                expect(container.querySelector('colgroup')).toBeNull();
+                const table = container.querySelector('table');
+                expect(table?.classList.contains('interactive-md-table-resized')).toBe(true);
+                const ths = Array.from(container.querySelectorAll('thead th')) as HTMLElement[];
+                expect(ths.map(th => th.style.width)).toEqual(['140px', '140px']);
+                expect((table as HTMLElement).style.width).toBe('280px');
+            } finally {
+                spy.mockRestore();
+            }
+        });
+    });
+
+    describe('content-proportional column widths', () => {
+        it('emits one percentage-width <col> per column', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            const cols = Array.from(container.querySelectorAll('colgroup col')) as HTMLElement[];
+            expect(cols.length).toBe(defaultProps.headers.length);
+            expect(cols.map(c => c.getAttribute('data-col-id'))).toEqual(['col_0', 'col_1']);
+            for (const col of cols) {
+                expect(col.style.width).toMatch(/^\d+(\.\d+)?%$/);
+            }
+            const total = cols.reduce((a, c) => a + parseFloat(c.style.width), 0);
+            expect(total).toBeCloseTo(100, 1);
+        });
+
+        it('gives the wider column a bigger share', () => {
+            const { container } = render(
+                <InteractiveTable
+                    headers={['Module', 'Owns']}
+                    alignments={['left', 'left']}
+                    rows={[
+                        ['client.tsx', 'Serves the dashboard SPA and its static assets'],
+                        ['api.ts', 'REST endpoints for processes, memory and search'],
+                    ]}
+                    originalMarkdown=""
+                    tableKey="widths"
+                />
+            );
+            const cols = Array.from(container.querySelectorAll('colgroup col')) as HTMLElement[];
+            expect(parseFloat(cols[0].style.width)).toBeLessThan(parseFloat(cols[1].style.width));
+        });
+
+        it('drops the <col> for a hidden column', () => {
+            const { container } = render(<InteractiveTable {...defaultProps} />);
+            fireEvent.click(screen.getByTitle('Toggle column visibility'));
+            const checkboxes = within(screen.getByTestId('col-picker')).getAllByRole('checkbox');
+            fireEvent.click(checkboxes[0]);
+
+            const cols = Array.from(container.querySelectorAll('colgroup col'));
+            expect(cols.length).toBe(1);
+            expect(cols[0].getAttribute('data-col-id')).toBe('col_1');
         });
     });
 

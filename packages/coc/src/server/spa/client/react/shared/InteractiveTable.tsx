@@ -60,6 +60,104 @@ export function isNumericColumn(cells: string[]): boolean {
     return nonEmpty > 0;
 }
 
+// ---------------------------------------------------------------------------
+// Column widths
+// ---------------------------------------------------------------------------
+
+/** Smallest share of the table any single column may take, in percent. */
+const MIN_COLUMN_SHARE = 8;
+
+/** Largest share of the table any single column may take, in percent. */
+const MAX_COLUMN_SHARE = 70;
+
+/**
+ * Length at the given percentile of a sorted-ascending list. Used instead of the
+ * maximum so a single unusually long row does not decide the column's width.
+ */
+function percentile(sorted: number[], p: number): number {
+    if (sorted.length === 0) return 0;
+    const idx = Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1);
+    return sorted[Math.max(0, idx)];
+}
+
+/**
+ * Derive each column's share of the table width from the length of the text it
+ * holds, as percentages summing to 100.
+ *
+ * The ratio comes straight from the strings already in props — no DOM
+ * measurement, so no forced reflow and nothing that only works in a real
+ * browser. Character count is a rough stand-in for rendered width in a
+ * proportional font, which is enough to tell "narrower" from "wider"; the user
+ * can still drag a column that lands off.
+ */
+export function computeColumnWeights(headers: string[], rows: string[][]): number[] {
+    const colCount = headers.length;
+    if (colCount === 0) return [];
+
+    const even = 100 / colCount;
+    const raw: number[] = [];
+    for (let col = 0; col < colCount; col++) {
+        const cellLengths = rows
+            .map(r => stripHtml(r[col] ?? '').length)
+            .sort((a, b) => a - b);
+        raw.push(Math.max(stripHtml(headers[col] ?? '').length, percentile(cellLengths, 90)));
+    }
+
+    const total = raw.reduce((a, b) => a + b, 0);
+    if (total <= 0) return raw.map(() => even);
+
+    const shares = raw.map(w => (w / total) * 100);
+
+    // The clamp has to give way when an even split already sits outside it —
+    // a single column cannot stay under 70%, and 13+ columns cannot each clear 8%.
+    const minShare = Math.min(MIN_COLUMN_SHARE, even);
+    const maxShare = Math.max(MAX_COLUMN_SHARE, even);
+
+    // Pin the worst offender, then hand what is left to the columns still free
+    // to move, and look again. Doing one at a time keeps the total at 100: a
+    // column that was only under the floor because a neighbour was hogging the
+    // width gets pulled back up by the redistribution instead of being pinned.
+    const clamped = new Array<boolean>(colCount).fill(false);
+    for (let pass = 0; pass < colCount; pass++) {
+        let worst = -1;
+        let worstBy = 0;
+        for (let col = 0; col < colCount; col++) {
+            if (clamped[col]) continue;
+            const over = shares[col] - maxShare;
+            const under = minShare - shares[col];
+            const by = Math.max(over, under);
+            if (by > worstBy) {
+                worstBy = by;
+                worst = col;
+            }
+        }
+        if (worst < 0) break;
+
+        shares[worst] = shares[worst] > maxShare ? maxShare : minShare;
+        clamped[worst] = true;
+
+        let fixedTotal = 0;
+        let freeTotal = 0;
+        let freeCount = 0;
+        for (let col = 0; col < colCount; col++) {
+            if (clamped[col]) fixedTotal += shares[col];
+            else {
+                freeTotal += shares[col];
+                freeCount++;
+            }
+        }
+        if (freeCount === 0) break;
+
+        const remaining = 100 - fixedTotal;
+        for (let col = 0; col < colCount; col++) {
+            if (clamped[col]) continue;
+            shares[col] = freeTotal > 0 ? (shares[col] / freeTotal) * remaining : remaining / freeCount;
+        }
+    }
+
+    return shares;
+}
+
 /** Parse a cell value to a number (strip HTML + commas). Returns NaN for non-numeric. */
 function parseNumeric(html: string): number {
     const text = stripHtml(html).replace(/,/g, '');
@@ -193,9 +291,9 @@ export function InteractiveTable({
 
     /**
      * Before the first drag, capture every column's laid-out width so the table
-     * can switch to `table-layout: fixed` without the other columns jumping.
-     * A no-op once seeded, or when nothing has been laid out yet (e.g. jsdom,
-     * where every measured width is 0).
+     * can swap the <colgroup> percentages for explicit pixels without the other
+     * columns jumping. A no-op once seeded, or when nothing has been laid out
+     * yet (e.g. jsdom, where every measured width is 0).
      */
     const seedColumnSizes = useCallback(() => {
         if (Object.keys(columnSizingRef.current).length > 0) return;
@@ -360,8 +458,12 @@ export function InteractiveTable({
 
     const filteredRowCount = table.getFilteredRowModel().rows.length;
 
+    // Share of the table each column gets before any drag, derived from the
+    // length of the text it holds.
+    const columnWeights = useMemo(() => computeColumnWeights(headers, rows), [headers, rows]);
+
     // Explicit widths only kick in once the user has actually dragged a handle;
-    // until then the table keeps its auto layout.
+    // until then the <colgroup> percentages decide the ratio.
     const hasSizedColumns = Object.keys(columnSizing).length > 0;
 
     // Count visible columns for "prevent hiding all" logic
@@ -467,6 +569,29 @@ export function InteractiveTable({
                     // the widths are seeded — before any drag has happened.
                     style={hasSizedColumns ? { width: table.getTotalSize() } : undefined}
                 >
+                    {/* Before the first drag the ratio comes from the content.
+                        Hidden columns are skipped so each <col> lines up with a
+                        rendered cell; once dragged, the explicit px widths on
+                        the <th> take over and this goes away. */}
+                    {!hasSizedColumns && (
+                        <colgroup>
+                            {table.getVisibleLeafColumns().map(col => {
+                                const idx = colIds.indexOf(col.id);
+                                const weight = idx >= 0 ? columnWeights[idx] : undefined;
+                                return (
+                                    <col
+                                        key={col.id}
+                                        data-col-id={col.id}
+                                        style={
+                                            weight === undefined
+                                                ? undefined
+                                                : { width: `${weight.toFixed(2)}%` }
+                                        }
+                                    />
+                                );
+                            })}
+                        </colgroup>
+                    )}
                     <thead>
                         {table.getHeaderGroups().map(headerGroup => (
                             <tr key={headerGroup.id}>
@@ -568,11 +693,10 @@ export function InteractiveTable({
                                             }`}
                                             title={plain === '' ? undefined : plain}
                                         >
-                                            {/* The cap that keeps one long column from pushing the
-                                                rest off-screen has to live on an inner block: a
-                                                `max-width` on the <td> itself is ignored by the
-                                                auto table layout, which floors every column at its
-                                                nowrap min-content width. */}
+                                            {/* The <td> is exactly as wide as its column under
+                                                fixed layout; the inner block carries the clipping
+                                                so an over-long value ellipsizes cleanly instead of
+                                                bleeding past the cell padding. */}
                                             <span className="interactive-table-cell-text">
                                                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
                                             </span>
