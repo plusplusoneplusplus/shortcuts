@@ -158,6 +158,57 @@ describe('Dialog', () => {
         expect(screen.queryByTestId('dialog-close-btn')).toBeNull();
     });
 
+    // Regression: the admin dialog needs an edge-to-edge panel, but the frame
+    // must stay opt-in so every other dialog keeps its border + padding.
+    describe('borderless (opt-in edge-to-edge panel)', () => {
+        function panelOf(): HTMLElement {
+            const overlay = screen.getByTestId('dialog-overlay');
+            return overlay.querySelector(':scope > div') as HTMLElement;
+        }
+
+        it('default desktop panel keeps its border and padding', () => {
+            render(<Dialog open={true} onClose={vi.fn()}>Body</Dialog>);
+            const cls = panelOf().className;
+            expect(cls).toContain('border');
+            expect(cls).toContain('p-6');
+        });
+
+        it('dense default panel keeps its border and tight padding', () => {
+            render(<Dialog open={true} onClose={vi.fn()} dense>Body</Dialog>);
+            const cls = panelOf().className;
+            expect(cls).toContain('border');
+            expect(cls).toContain('p-3');
+        });
+
+        it('borderless drops the border and all inner padding/gap', () => {
+            render(<Dialog open={true} onClose={vi.fn()} borderless>Body</Dialog>);
+            const cls = panelOf().className;
+            expect(cls).not.toMatch(/\bborder\b/);
+            expect(cls).not.toMatch(/\bp-3\b|\bp-6\b/);
+            expect(cls).not.toMatch(/\bgap-2\b|\bgap-4\b/);
+        });
+
+        it('borderless keeps the rounded corners, shadow and clipping', () => {
+            render(<Dialog open={true} onClose={vi.fn()} borderless>Body</Dialog>);
+            const cls = panelOf().className;
+            expect(cls).toContain('rounded-lg');
+            expect(cls).toContain('shadow-xl');
+            expect(cls).toContain('overflow-hidden');
+        });
+
+        it('borderless keeps the dimmed overlay backdrop', () => {
+            render(<Dialog open={true} onClose={vi.fn()} borderless>Body</Dialog>);
+            expect(screen.getByTestId('dialog-overlay').className).toContain('bg-black/40');
+        });
+
+        it('borderless still closes on Escape', () => {
+            const onClose = vi.fn();
+            render(<Dialog open={true} onClose={onClose} borderless>Body</Dialog>);
+            fireEvent.keyDown(document, { key: 'Escape' });
+            expect(onClose).toHaveBeenCalled();
+        });
+    });
+
     it('renderHeader suppresses built-in minimize button', () => {
         const onMinimize = vi.fn();
         render(

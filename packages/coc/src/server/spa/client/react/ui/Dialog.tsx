@@ -31,9 +31,16 @@ export interface DialogProps {
      * full-window PDF popup) that want maximum room for the actual content.
      */
     dense?: boolean;
+    /**
+     * When true (desktop only), the panel drops its 1px border and all inner
+     * padding/gap so the child fills the rounded panel edge-to-edge, like a
+     * native settings window. Opt-in: every other dialog keeps the framed look.
+     * Rounded corners + `overflow-hidden` still clip the content.
+     */
+    borderless?: boolean;
 }
 
-export function Dialog({ open, onClose, onMinimize, title, children, footer, className, id, disableClose, renderHeader, hidden, dense }: DialogProps) {
+export function Dialog({ open, onClose, onMinimize, title, children, footer, className, id, disableClose, renderHeader, hidden, dense, borderless }: DialogProps) {
     const { isMobile } = useBreakpoint();
     const portalContainer = usePortalContainer(open);
 
@@ -54,8 +61,11 @@ export function Dialog({ open, onClose, onMinimize, title, children, footer, cla
         ? 'fixed inset-0 z-[10002] bg-white dark:bg-[#252526]'
         : 'fixed inset-0 z-[10002] flex items-center justify-center bg-black/40 dark:bg-black/60';
 
-    const desktopBase = 'relative w-full max-h-[90vh] overflow-hidden rounded-lg bg-white dark:bg-[#252526] border border-[#c8c8c8] dark:border-[#555555] shadow-xl flex flex-col';
-    const desktopSpacing = dense ? 'p-3 gap-2' : 'p-6 gap-4';
+    const desktopBase = cn(
+        'relative w-full max-h-[90vh] overflow-hidden rounded-lg bg-white dark:bg-[#252526] shadow-xl flex flex-col',
+        !borderless && 'border border-[#c8c8c8] dark:border-[#555555]',
+    );
+    const desktopSpacing = borderless ? undefined : (dense ? 'p-3 gap-2' : 'p-6 gap-4');
     const panelClass = isMobile
         ? 'w-full h-full flex flex-col p-4 overflow-hidden'
         : cn(
