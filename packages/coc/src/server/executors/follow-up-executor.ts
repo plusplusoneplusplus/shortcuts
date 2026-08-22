@@ -66,6 +66,7 @@ import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { buildChatTurnContext } from './chat-turn-context-builder';
 import type { ChatTurnContext } from './chat-turn-context-builder';
 import { resolveChatMcpServersForWorkspace } from './mcp-tool-enforcement';
+import { resolveRepoGroupChatContext, appendRepoGroupContext } from '../workspaces/repo-group-chat-context';
 import { updateForEachGenerationMetadataFromAssistantTurn } from '../for-each/for-each-generation-metadata';
 import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduce/map-reduce-generation-metadata';
 // ============================================================================
@@ -444,10 +445,17 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
             this.persistSystemPromptAsync(processId, 'chat', systemMessage?.content);
 
-            const followUpMessage = prependSelectedSkillsDirective(
-                message,
-                selectedSkillNames,
-                resolveSelectedSkillReferences(selectedSkillNames, skillDirectories, disabledSkills),
+            // Repo-group workspaces: append the live-member listing to the
+            // outgoing message and grant member roots as additional working
+            // directories, matching the first-turn dispatch path.
+            const repoGroupContext = await resolveRepoGroupChatContext(this.store, this.dataDir, wsId);
+            const followUpMessage = appendRepoGroupContext(
+                prependSelectedSkillsDirective(
+                    message,
+                    selectedSkillNames,
+                    resolveSelectedSkillReferences(selectedSkillNames, skillDirectories, disabledSkills),
+                ),
+                repoGroupContext,
             );
             const agentMode = toAgentMode(currentMode);
 
@@ -515,6 +523,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 ...(policy.modelId ? { model: policy.modelId } : {}),
                 mode: agentMode,
                 workingDirectory,
+                ...(repoGroupContext ? { additionalDirectories: repoGroupContext.additionalDirectories } : {}),
                 signal: turnAbort.signal,
                 ...(policy.reasoningEffort ? { reasoningEffort: policy.reasoningEffort } : {}),
                 ...(contextTier ? { contextTier } : {}),
