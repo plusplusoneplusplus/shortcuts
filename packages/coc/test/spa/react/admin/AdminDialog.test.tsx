@@ -10,6 +10,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { fireEvent } from '@testing-library/react';
 import { AdminDialog } from '../../../../src/server/spa/client/react/admin/AdminDialog';
 import { mockViewport } from '../../helpers/viewport-mock';
 import { renderWithProviders } from '../../react/test-utils';
@@ -97,6 +98,78 @@ describe('AdminDialog scrollability regression', () => {
         expect(scrollContainer).not.toBeNull();
         expect(scrollContainer.className).toContain('overflow-y-auto');
 
+        unmount();
+    });
+});
+
+// Regression: the admin dialog must stay borderless and edge-to-edge, with the
+// × floating over the panel instead of taking a header row. Reverting either
+// puts back the 1px frame / padding gap this feature removed.
+describe('AdminDialog borderless frame', () => {
+    function panel(): HTMLElement {
+        const overlay = document.getElementById('admin-dialog') as HTMLElement;
+        return overlay.querySelector(':scope > div') as HTMLElement;
+    }
+
+    it('panel has no border and no inner padding/gap', () => {
+        mockViewport(1280);
+        const { unmount } = renderWithProviders(<AdminDialog open={true} onClose={vi.fn()} />);
+        const cls = panel().className;
+        expect(cls).not.toMatch(/\bborder\b/);
+        expect(cls).not.toMatch(/\bp-3\b|\bp-6\b/);
+        expect(cls).not.toMatch(/\bgap-2\b|\bgap-4\b/);
+        unmount();
+    });
+
+    it('panel keeps rounded corners, shadow and overflow clipping', () => {
+        mockViewport(1280);
+        const { unmount } = renderWithProviders(<AdminDialog open={true} onClose={vi.fn()} />);
+        const cls = panel().className;
+        expect(cls).toContain('rounded-lg');
+        expect(cls).toContain('shadow-xl');
+        expect(cls).toContain('overflow-hidden');
+        unmount();
+    });
+
+    it('close button floats absolutely in the top-right corner, not in a header row', () => {
+        mockViewport(1280);
+        const { unmount } = renderWithProviders(<AdminDialog open={true} onClose={vi.fn()} />);
+        const btn = document.querySelector('[data-testid="dialog-close-btn"]') as HTMLElement;
+        expect(btn).not.toBeNull();
+        // Directly under the panel (no header strip wrapper consuming height)
+        expect(btn.parentElement).toBe(panel());
+        expect(btn.className).toContain('absolute');
+        expect(btn.className).toContain('top-2');
+        expect(btn.className).toContain('right-2');
+        unmount();
+    });
+
+    it('close button stays legible over admin content (own background, above the sticky topbar)', () => {
+        mockViewport(1280);
+        const { unmount } = renderWithProviders(<AdminDialog open={true} onClose={vi.fn()} />);
+        const cls = (document.querySelector('[data-testid="dialog-close-btn"]') as HTMLElement).className;
+        expect(cls).toMatch(/bg-white\//);
+        expect(cls).toMatch(/dark:bg-black\//);
+        // `.ar-topbar` is sticky with z-index 10, so the × must sit above it.
+        expect(cls).toContain('z-20');
+        unmount();
+    });
+
+    it('clicking × closes the dialog', () => {
+        mockViewport(1280);
+        const onClose = vi.fn();
+        const { unmount } = renderWithProviders(<AdminDialog open={true} onClose={onClose} />);
+        fireEvent.click(document.querySelector('[data-testid="dialog-close-btn"]') as HTMLElement);
+        expect(onClose).toHaveBeenCalledTimes(1);
+        unmount();
+    });
+
+    it('Escape closes the dialog', () => {
+        mockViewport(1280);
+        const onClose = vi.fn();
+        const { unmount } = renderWithProviders(<AdminDialog open={true} onClose={onClose} />);
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(onClose).toHaveBeenCalled();
         unmount();
     });
 });
