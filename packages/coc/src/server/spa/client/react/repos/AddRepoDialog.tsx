@@ -14,6 +14,7 @@ import {
     registerWorkspace,
     updateWorkspace,
 } from './repositoryService';
+import { describeServerFailure, useServerSelection } from './useServerSelection';
 import { isContainerMode, setCurrentAgentId, getCurrentAgentId } from '../utils/config';
 import { useContainerAgents } from '../contexts/ContainerAgentContext';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
@@ -40,6 +41,13 @@ interface AddRepoDialogProps {
     editId?: string | null;
     repos: RepoData[];
     onSuccess: () => void;
+    /**
+     * Server to pre-select when the dialog is launched from a remote context
+     * (the remote picker's "Add specific repository"). Omitted = Local.
+     */
+    serverId?: string;
+    /** That server's base URL, so it is targetable before the list loads. */
+    baseUrl?: string;
 }
 
 interface BrowserEntry {
@@ -81,12 +89,16 @@ function getPathPlaceholder(): string {
     return '/path/to/repo';
 }
 
-export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRepoDialogProps) {
+export function AddRepoDialog({ open, onClose, editId, repos, onSuccess, serverId, baseUrl }: AddRepoDialogProps) {
     const isEdit = !!editId;
     const editRepo = isEdit ? repos.find(r => r.workspace.id === editId) : null;
     const pathPlaceholder = getPathPlaceholder();
     const { agents } = useContainerAgents();
     const availableAgents = agents;
+    // Editing never moves a workspace between servers, so the dropdown is
+    // create-mode only and edit mode always talks to the page origin.
+    const server = useServerSelection(open && !isEdit, serverId, baseUrl);
+    const selectedServer = server.selected;
 
     const [selectedAgentId, setSelectedAgentId] = useState('');
     const [path, setPath] = useState('');
@@ -130,13 +142,20 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
         setBrowserError(null);
     }, [open, isEdit, editRepo]);
 
-    const navigateTo = useCallback(async (dir: string) => {
+    const navigateTo = useCallback(async (dir: string, targetServerId?: string) => {
+        // The server is passed explicitly when it just changed, since this
+        // callback still closes over the previous selection at that moment.
+        const target = server.resolveServer(targetServerId ?? server.serverId);
+        // Container agents and remote servers are two different ways to reach
+        // another filesystem and do not compose: a remote pick bypasses the
+        // agent-id dance entirely.
+        const isLocalTarget = !target.baseUrl;
         setBrowserLoading(true);
         setBrowserError(null);
         const prevAgentId = getCurrentAgentId();
         try {
-            if (isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
-            const data = await browseWorkspaceFolders(dir) as BrowserResponse;
+            if (isLocalTarget && isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
+            const data = await browseWorkspaceFolders(dir, target.baseUrl) as BrowserResponse;
             setBrowserPath(data.path);
             setBrowserParent(data.parent || null);
             setBrowserEntries(data.entries || []);
@@ -151,7 +170,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
             const isAuthError = (errStatus === 401 || errStatus === 403)
                 || /unexpected.*token|not valid json|authentication required/i.test(errMsg);
             console.warn('[AddRepoDialog] Browse error:', { errStatus, errMsg, isAuthError, err });
-            if (isAuthError && isContainerMode() && selectedAgentId) {
+            if (isLocalTarget && isAuthError && isContainerMode() && selectedAgentId) {
                 const agent = availableAgents.find(a => a.id === selectedAgentId);
                 if (agent?.address) {
                     // Open browse-helper on the agent domain (same-origin, so auth cookies work).
@@ -193,13 +212,30 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
                     setBrowserError('Authentication required. Please authenticate with this agent first.');
                 }
             } else {
-                setBrowserError('Unable to browse this path');
+                setBrowserError(describeServerFailure('Unable to browse this path', target));
             }
         } finally {
             setCurrentAgentId(prevAgentId);
         }
         setBrowserLoading(false);
-    }, [selectedAgentId, availableAgents]);
+    }, [selectedAgentId, availableAgents, server]);
+
+    // A path only means something on the server it came from, so switching
+    // servers drops it and re-roots the browser at the new box's home.
+    const changeServer = useCallback((nextServerId: string) => {
+        server.selectServer(nextServerId);
+        setPath('');
+        setValidation(null);
+        setBrowserPath('');
+        setBrowserEntries([]);
+        setBrowserParent(null);
+        setBrowserDrives([]);
+        setBrowseRoots([]);
+        setBrowserError(null);
+        if (showBrowser) {
+            navigateTo('~', nextServerId);
+        }
+    }, [server, showBrowser, navigateTo]);
 
     const openBrowser = useCallback(() => {
         setShowBrowser(true);
@@ -232,9 +268,10 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
             ? resolveAutoColor(existingColors, REAL_PALETTE)
             : color;
 
+        const isLocalTarget = !selectedServer.baseUrl;
         const prevAgentId = getCurrentAgentId();
         try {
-            if (isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
+            if (isLocalTarget && isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
             if (isEdit && editId) {
                 await updateWorkspace(editId, { name: name.trim(), color: resolvedColor });
             } else {
@@ -245,7 +282,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
                     name: wsName,
                     rootPath: trimmedPath,
                     color: resolvedColor,
-                });
+                }, selectedServer.baseUrl);
 
                 // Clone detection
                 if (created?.remoteUrl) {
@@ -271,10 +308,13 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
         } catch (error) {
             setCurrentAgentId(prevAgentId);
             setValidation({
-                msg: getRepositoryApiErrorMessage(
-                    error,
-                    isEdit ? 'Failed to update repo' : 'Failed to add repo',
-                    'Network error',
+                msg: describeServerFailure(
+                    getRepositoryApiErrorMessage(
+                        error,
+                        isEdit ? 'Failed to update repo' : 'Failed to add repo',
+                        'Network error',
+                    ),
+                    selectedServer,
                 ),
                 ok: false,
             });
@@ -299,7 +339,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
         >
             <div className="flex flex-col gap-3">
                 {/* Agent selector (container mode only) */}
-                {isContainerMode() && !isEdit && (
+                {isContainerMode() && !isEdit && !selectedServer.baseUrl && (
                     <>
                         <label className="text-xs font-medium text-[#616161] dark:text-[#999]">Agent</label>
                         <select
@@ -318,6 +358,24 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess }: AddRe
                         </select>
                     </>
                 )}
+                {/* Server — which CoC registry the repo is added to */}
+                {!isEdit && (
+                    <>
+                        <label className="text-xs font-medium text-[#616161] dark:text-[#999]" htmlFor="add-repo-server-select">Server</label>
+                        <select
+                            id="add-repo-server-select"
+                            data-testid="add-repo-server-select"
+                            value={server.serverId}
+                            onChange={e => changeServer(e.target.value)}
+                            className="px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4] disabled:opacity-60"
+                        >
+                            {server.choices.map(option => (
+                                <option key={option.id} value={option.id}>{option.label}</option>
+                            ))}
+                        </select>
+                    </>
+                )}
+
                 {/* Path */}
                 <label className="text-xs font-medium text-[#616161] dark:text-[#999]">Path</label>
                 <div className="flex gap-2">

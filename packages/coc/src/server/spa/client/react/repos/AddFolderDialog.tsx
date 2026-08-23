@@ -14,6 +14,7 @@ import {
     getRepositoryApiErrorMessage,
     registerWorkspace,
 } from './repositoryService';
+import { describeServerFailure, useServerSelection } from './useServerSelection';
 import { isContainerMode, setCurrentAgentId } from '../utils/config';
 import { useContainerAgents } from '../contexts/ContainerAgentContext';
 import { CocApiError } from '@plusplusoneplusplus/coc-client';
@@ -40,6 +41,13 @@ interface AddFolderDialogProps {
     open: boolean;
     onClose: () => void;
     onAdded: () => void;
+    /**
+     * Server to pre-select when the dialog is launched from a remote context
+     * (the remote picker's "Add workspace folder"). Omitted = Local.
+     */
+    serverId?: string;
+    /** That server's base URL, so it is targetable before the list loads. */
+    baseUrl?: string;
 }
 
 type Phase = 'pick' | 'checklist' | 'adding' | 'done';
@@ -51,11 +59,13 @@ function joinBrowserPath(basePath: string, childName: string): string {
     return `${basePath}${separator}${childName}`;
 }
 
-export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps) {
+export function AddFolderDialog({ open, onClose, onAdded, serverId, baseUrl }: AddFolderDialogProps) {
     const [phase, setPhase] = useState<Phase>('pick');
     const { agents } = useContainerAgents();
     const availableAgents = agents;
     const [selectedAgentId, setSelectedAgentId] = useState('');
+    const server = useServerSelection(open, serverId, baseUrl);
+    const selectedServer = server.selected;
 
     // Browser state
     const [browserPath, setBrowserPath] = useState('');
@@ -75,6 +85,8 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
     // Adding progress state
     const [addingIdx, setAddingIdx] = useState(0);
     const [errors, setErrors] = useState<string[]>([]);
+    const [added, setAdded] = useState<string[]>([]);
+    const [notAdded, setNotAdded] = useState<string[]>([]);
     const cancelRef = useRef(false);
 
     // Reset when dialog opens
@@ -93,6 +105,8 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
             setScanning(false);
             setAddingIdx(0);
             setErrors([]);
+            setAdded([]);
+            setNotAdded([]);
             cancelRef.current = false;
             if (isContainerMode() && availableAgents.length > 0) {
                 setSelectedAgentId(availableAgents[0].id);
@@ -102,12 +116,19 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open]);
 
-    const navigateTo = useCallback(async (dir: string) => {
+    const navigateTo = useCallback(async (dir: string, targetServerId?: string) => {
+        // The server is passed explicitly when it just changed, since this
+        // callback still closes over the previous selection at that moment.
+        const target = server.resolveServer(targetServerId ?? server.serverId);
+        // Container agents and remote servers are two different ways to reach
+        // another filesystem and do not compose: a remote pick bypasses the
+        // agent-id dance entirely.
+        const isLocalTarget = !target.baseUrl;
         setBrowserLoading(true);
         setBrowserError(null);
         try {
-            if (isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
-            const data = await browseWorkspaceFolders(dir) as BrowserResponse;
+            if (isLocalTarget && isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
+            const data = await browseWorkspaceFolders(dir, target.baseUrl) as BrowserResponse;
             setBrowserPath(data.path);
             setBrowserParent(data.parent || null);
             setBrowserEntries(data.entries || []);
@@ -122,7 +143,7 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
             const isAuthError = (errStatus === 401 || errStatus === 403)
                 || /unexpected.*token|not valid json|authentication required/i.test(errMsg);
             console.warn('[AddFolderDialog] Browse error:', { errStatus, errMsg, isAuthError, err });
-            if (isAuthError && isContainerMode() && selectedAgentId) {
+            if (isLocalTarget && isAuthError && isContainerMode() && selectedAgentId) {
                 const agent = availableAgents.find(a => a.id === selectedAgentId);
                 if (agent?.address) {
                     const helperUrl = `${agent.address}/api/fs/browse-helper?path=${encodeURIComponent(dir)}`;
@@ -160,27 +181,45 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
                     setBrowserError('Authentication required. Please authenticate with this agent first.');
                 }
             } else {
-                setBrowserError('Unable to browse this path');
+                setBrowserError(describeServerFailure('Unable to browse this path', target));
             }
         }
         setBrowserLoading(false);
-    }, [selectedAgentId, availableAgents]);
+    }, [selectedAgentId, availableAgents, server]);
+
+    // A path only means something on the server it came from, so switching
+    // servers drops it, forgets any scan results, and re-roots the browser at
+    // the new box's home.
+    const changeServer = useCallback((nextServerId: string) => {
+        server.selectServer(nextServerId);
+        setBrowserPath('');
+        setBrowserEntries([]);
+        setBrowserParent(null);
+        setBrowserDrives([]);
+        setBrowseRoots([]);
+        setBrowserError(null);
+        setRepos([]);
+        setChecked(new Set());
+        setScanError(null);
+        navigateTo('~', nextServerId);
+    }, [server, navigateTo]);
 
     const handleScan = useCallback(async () => {
         if (!browserPath) return;
         setScanning(true);
         setScanError(null);
+        const target = selectedServer;
         try {
-            if (isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
-            const data = await discoverWorkspaces(browserPath) as { repos: DiscoveredRepo[] };
+            if (!target.baseUrl && isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
+            const data = await discoverWorkspaces(browserPath, target.baseUrl) as { repos: DiscoveredRepo[] };
             setRepos(data.repos);
             setChecked(new Set(data.repos.map(r => r.path)));
             setPhase('checklist');
         } catch (error: unknown) {
-            setScanError(getRepositoryApiErrorMessage(error, 'Failed to scan folder'));
+            setScanError(describeServerFailure(getRepositoryApiErrorMessage(error, 'Failed to scan folder'), target));
         }
         setScanning(false);
-    }, [browserPath]);
+    }, [browserPath, selectedAgentId, selectedServer]);
 
     const toggleCheck = (repoPath: string) => {
         setChecked(prev => {
@@ -204,28 +243,44 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
         setPhase('adding');
         setAddingIdx(0);
         setErrors([]);
+        setAdded([]);
+        setNotAdded([]);
 
+        const target = selectedServer;
         const newErrors: string[] = [];
+        const addedNames: string[] = [];
+        const notAddedNames: string[] = [];
         for (let i = 0; i < selected.length; i++) {
-            if (cancelRef.current) break;
-            setAddingIdx(i + 1);
             const repo = selected[i];
+            if (cancelRef.current) {
+                notAddedNames.push(...selected.slice(i).map(r => r.name));
+                break;
+            }
+            setAddingIdx(i + 1);
             try {
-                if (isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
+                if (!target.baseUrl && isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
                 // Id is server-authoritative (machine-scoped); the server computes
                 // the canonical workspace id from each repo path.
                 await registerWorkspace({
                     name: repo.name,
                     rootPath: repo.path,
-                });
+                }, target.baseUrl);
+                addedNames.push(repo.name);
             } catch (error) {
-                newErrors.push(`${repo.name}: ${getRepositoryApiErrorMessage(error, 'Failed', 'Network error')}`);
+                // Stop on the first failure: a registry that just rejected one
+                // repo will most likely reject the rest, and hammering it hides
+                // the real error. Successes are kept, never rolled back.
+                newErrors.push(`${repo.name}: ${describeServerFailure(getRepositoryApiErrorMessage(error, 'Failed', 'Network error'), target)}`);
+                notAddedNames.push(...selected.slice(i).map(r => r.name));
+                break;
             }
         }
 
         setErrors(newErrors);
+        setAdded(addedNames);
+        setNotAdded(notAddedNames);
         setPhase('done');
-    }, [repos, checked]);
+    }, [repos, checked, selectedAgentId, selectedServer]);
 
     const handleClose = useCallback(() => {
         cancelRef.current = true;
@@ -292,8 +347,8 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
         if (phase === 'pick') {
             return (
                 <div className="flex flex-col gap-2">
-                    {/* Agent selector (container mode only) */}
-                    {isContainerMode() && (
+                    {/* Agent selector (container mode only, Local target only) */}
+                    {isContainerMode() && !selectedServer.baseUrl && (
                         <>
                             <label className="text-xs font-medium text-[#616161] dark:text-[#999]">Agent</label>
                             <select
@@ -476,7 +531,7 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
         }
 
         // done
-        const addedCount = repos.filter(r => checked.has(r.path)).length - errors.length;
+        const addedCount = added.length;
         return (
             <div className="flex flex-col gap-2 py-2" data-testid="adding-done">
                 <div className="text-sm text-[#1e1e1e] dark:text-[#cccccc]">
@@ -486,10 +541,20 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
                         </span>
                     )}
                 </div>
+                {addedCount > 0 && (
+                    <div className="text-xs text-[#616161] dark:text-[#999]" data-testid="added-list">
+                        Added: {added.join(', ')}
+                    </div>
+                )}
                 {errors.length > 0 && (
                     <div className="text-xs text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded p-2 space-y-0.5">
                         <div className="font-medium mb-1">Failed to add {errors.length}:</div>
                         {errors.map((e, i) => <div key={i}>{e}</div>)}
+                    </div>
+                )}
+                {notAdded.length > 0 && (
+                    <div className="text-xs text-[#616161] dark:text-[#999]" data-testid="not-added-list">
+                        Not added ({notAdded.length}): {notAdded.join(', ')}
                     </div>
                 )}
             </div>
@@ -504,6 +569,23 @@ export function AddFolderDialog({ open, onClose, onAdded }: AddFolderDialogProps
             title="Add Workspace Folder"
             footer={footer}
         >
+            {/* Server — which CoC filesystem is scanned and which registry the
+                repos land in. Locked once a scan/add run is under way. */}
+            <div className="flex flex-col gap-1 mb-2">
+                <label className="text-xs font-medium text-[#616161] dark:text-[#999]" htmlFor="add-folder-server-select">Server</label>
+                <select
+                    id="add-folder-server-select"
+                    data-testid="add-folder-server-select"
+                    value={server.serverId}
+                    onChange={e => changeServer(e.target.value)}
+                    disabled={phase !== 'pick'}
+                    className="px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4] disabled:opacity-60"
+                >
+                    {server.choices.map(option => (
+                        <option key={option.id} value={option.id}>{option.label}</option>
+                    ))}
+                </select>
+            </div>
             {body}
         </Dialog>
     );
