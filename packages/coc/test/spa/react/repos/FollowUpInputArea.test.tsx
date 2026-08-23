@@ -15,6 +15,7 @@ const { tracker, mockRalphEnabled, mockForEachEnabled, mockSessionContextAttachm
     tracker: {
         calls: [] as Array<[string, number?]>,
         domValue: '',
+        onChange: undefined as undefined | ((val: string, cursorPos: number) => void),
     },
     mockRalphEnabled: { value: false },
     mockForEachEnabled: { value: false },
@@ -35,6 +36,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
                 },
                 focus: () => {},
             }), []);
+            tracker.onChange = props.onChange;
             return R.createElement('div', {
                 'data-testid': props['data-testid'],
                 onKeyDown: props.onKeyDown,
@@ -63,6 +65,8 @@ import { FollowUpInputArea } from '../../../../src/server/spa/client/react/featu
 import type { FollowUpInputAreaProps } from '../../../../src/server/spa/client/react/features/chat/FollowUpInputArea';
 import type { RichTextInputHandle } from '../../../../src/server/spa/client/react/shared/RichTextInput';
 import {
+    FILE_PATH_DRAG_KIND,
+    FILE_PATH_DRAG_MIME,
     RALPH_SESSION_CONTEXT_DRAG_KIND,
     RALPH_SESSION_CONTEXT_DRAG_MIME,
     SESSION_CONTEXT_DRAG_KIND,
@@ -78,6 +82,7 @@ afterEach(() => {
 beforeEach(() => {
     tracker.calls = [];
     tracker.domValue = '';
+    tracker.onChange = undefined;
     mockRalphEnabled.value = false;
     mockForEachEnabled.value = false;
     mockSessionContextAttachmentsEnabled.value = false;
@@ -611,5 +616,100 @@ describe('FollowUpInputArea — retry-task affordance', () => {
         const onRetryTask = vi.fn();
         render(<FollowUpInputArea {...makeProps({ onRetryTask })} />);
         expect(screen.queryByTestId('retry-task-button')).toBeNull();
+    });
+});
+
+
+function makeFilePathDataTransfer(paths: string[], workspaceId = 'ws-1') {
+    const payload = { kind: FILE_PATH_DRAG_KIND, version: 1, workspaceId, paths };
+    return {
+        types: [FILE_PATH_DRAG_MIME, 'text/plain'],
+        dropEffect: 'none',
+        getData: vi.fn((format: string) => (format === FILE_PATH_DRAG_MIME ? JSON.stringify(payload) : paths.join('\n'))),
+    };
+}
+
+describe('FollowUpInputArea — Explorer file-path drops (AC-02/AC-03)', () => {
+    it('inserts the backticked path at the tracked caret with one trailing space', async () => {
+        render(<FollowUpInputArea {...makeProps()} />);
+        await act(async () => { await Promise.resolve(); });
+
+        // Simulate the user having typed, leaving the caret after "explain ".
+        tracker.domValue = 'explain hello';
+        await act(async () => { tracker.onChange?.('explain hello', 8); });
+        tracker.calls = [];
+
+        fireEvent.drop(screen.getByTestId('chat-input-bar'), {
+            dataTransfer: makeFilePathDataTransfer(['packages/coc/src/foo.ts']),
+        });
+
+        expect(tracker.calls).toEqual([['explain `packages/coc/src/foo.ts` hello', 34]]);
+        expect(screen.queryByTestId('follow-up-session-context-error')).toBeNull();
+    });
+
+    it('appends at the end when the composer was never focused', async () => {
+        render(<FollowUpInputArea {...makeProps({ followUpInput: 'explain ' })} />);
+        await act(async () => { await Promise.resolve(); });
+        tracker.domValue = 'explain ';
+        tracker.calls = [];
+
+        fireEvent.drop(screen.getByTestId('chat-input-bar'), {
+            dataTransfer: makeFilePathDataTransfer(['docs/a.md']),
+        });
+
+        expect(tracker.calls).toEqual([['explain `docs/a.md` ', 20]]);
+    });
+
+    it('joins multiple dragged paths, each individually backticked', async () => {
+        render(<FollowUpInputArea {...makeProps()} />);
+        await act(async () => { await Promise.resolve(); });
+        tracker.calls = [];
+
+        fireEvent.drop(screen.getByTestId('chat-input-bar'), {
+            dataTransfer: makeFilePathDataTransfer(['a.ts', 'b.ts']),
+        });
+
+        expect(tracker.calls[0][0]).toBe('`a.ts` `b.ts` ');
+    });
+
+    it('never shows the unsupported-payload error for a file-path drop, even with attachments disabled', async () => {
+        mockSessionContextAttachmentsEnabled.value = false;
+        const onAttachSessionContext = vi.fn();
+        render(<FollowUpInputArea {...makeProps({ onAttachSessionContext })} />);
+        await act(async () => { await Promise.resolve(); });
+
+        fireEvent.drop(screen.getByTestId('chat-input-bar'), {
+            dataTransfer: makeFilePathDataTransfer(['a.ts']),
+        });
+
+        expect(screen.queryByTestId('follow-up-session-context-error')).toBeNull();
+        expect(onAttachSessionContext).not.toHaveBeenCalled();
+    });
+
+    it('shows the drop hint while a file-path drag is over the composer', async () => {
+        mockSessionContextAttachmentsEnabled.value = false;
+        render(<FollowUpInputArea {...makeProps()} />);
+        await act(async () => { await Promise.resolve(); });
+
+        const dataTransfer = makeFilePathDataTransfer(['a.ts']);
+        fireEvent.dragEnter(screen.getByTestId('chat-input-bar'), { dataTransfer });
+
+        expect(dataTransfer.dropEffect).toBe('copy');
+        expect(screen.getByTestId('session-context-drop-hint')).toBeTruthy();
+
+        fireEvent.dragLeave(screen.getByTestId('chat-input-bar'), { dataTransfer });
+        expect(screen.queryByTestId('session-context-drop-hint')).toBeNull();
+    });
+
+    it('leaves an OS file drop (no CoC payload) to the existing attachment path', async () => {
+        render(<FollowUpInputArea {...makeProps()} />);
+        await act(async () => { await Promise.resolve(); });
+        tracker.calls = [];
+
+        fireEvent.drop(screen.getByTestId('chat-input-bar'), {
+            dataTransfer: { types: ['Files'], dropEffect: 'none', getData: vi.fn(() => '') },
+        });
+
+        expect(tracker.calls).toEqual([]);
     });
 });

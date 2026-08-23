@@ -7,6 +7,7 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { createRouter } from '../../src/server/shared/router';
 import type { Route } from '../../src/server/types';
 import { registerChatSidenotesRoutes, type SideNoteAIInvoke } from '../../src/server/processes/chat-sidenotes/chat-sidenotes-handler';
+import { MAX_TURNS_PER_SIDENOTE } from '../../src/server/processes/chat-sidenotes/chat-sidenotes-manager';
 
 const KNOWN_PROCESS = 'queue_p1';
 
@@ -153,5 +154,110 @@ describe('chat side-notes routes', () => {
 
         const missing = await req(s.baseUrl, 'DELETE', `/api/processes/${KNOWN_PROCESS}/sidenotes/${id}?workspace=ws-1`);
         expect(missing.status).toBe(404);
+    });
+});
+
+describe('chat side-note follow-up route', () => {
+    const servers: Array<{ close: () => Promise<void> }> = [];
+    afterEach(async () => { await Promise.all(servers.splice(0).map(s => s.close())); });
+
+    const listPath = `/api/processes/${KNOWN_PROCESS}/sidenotes?workspace=ws-1`;
+    const createBody = { turnIndex: 1, selectedText: 'causal conv1d', contextBefore: 'a short ', contextAfter: ' kernel' };
+    const followUpPath = (id: string) =>
+        `/api/processes/${KNOWN_PROCESS}/sidenotes/${encodeURIComponent(id)}/follow-up?workspace=ws-1`;
+
+    /** Create one side-note and return its id plus the prompts the AI saw. */
+    async function seed(opts: { answers?: string[] } = {}) {
+        const prompts: string[] = [];
+        const answers = opts.answers ?? [];
+        let call = 0;
+        const s = await startServer({
+            invokeAI: async (prompt: string) => {
+                prompts.push(prompt);
+                return { success: true, response: answers[call++] ?? `answer ${call}` };
+            },
+        });
+        servers.push(s);
+        const created = await req(s.baseUrl, 'POST', listPath, createBody);
+        return { s, prompts, id: created.body.sidenote.id as string };
+    }
+
+    it('answers a follow-up, appends it to the thread, and persists it', async () => {
+        const { s, id } = await seed({ answers: ['first answer', 'second answer'] });
+
+        const res = await req(s.baseUrl, 'POST', followUpPath(id), { question: 'why kernel width 4?' });
+        expect(res.status).toBe(200);
+        expect(res.body.sidenote.turns).toEqual([
+            { question: undefined, answer: 'first answer' },
+            { question: 'why kernel width 4?', answer: 'second answer' },
+        ]);
+        // Turn 0's mirror fields stay authoritative for the chip/preview.
+        expect(res.body.sidenote.answer).toBe('first answer');
+
+        // Survives a reload: the thread is on disk, not just in the response.
+        const listed = await req(s.baseUrl, 'GET', listPath);
+        expect(listed.body.sidenotes[0].turns).toHaveLength(2);
+    });
+
+    it('grounds the follow-up on the prior turns and the original selection', async () => {
+        const { s, prompts, id } = await seed({ answers: ['first answer'] });
+        await req(s.baseUrl, 'POST', followUpPath(id), { question: 'why kernel width 4?' });
+
+        const followUpPrompt = prompts[1];
+        expect(followUpPrompt).toContain('Conversation so far:');
+        expect(followUpPrompt).toContain('A: first answer');
+        expect(followUpPrompt).toContain('why kernel width 4?');
+        // Original selection stays the grounding anchor.
+        expect(followUpPrompt).toContain('⟦causal conv1d⟧');
+    });
+
+    it('rejects an empty question, an unknown note, and a bad workspace', async () => {
+        const { s, id } = await seed();
+        expect((await req(s.baseUrl, 'POST', followUpPath(id), { question: '   ' })).status).toBe(400);
+        expect((await req(s.baseUrl, 'POST', followUpPath(id), {})).status).toBe(400);
+        expect((await req(s.baseUrl, 'POST', followUpPath('nope'), { question: 'hi' })).status).toBe(404);
+        expect((await req(
+            s.baseUrl,
+            'POST',
+            `/api/processes/${KNOWN_PROCESS}/sidenotes/${id}/follow-up`,
+            { question: 'hi' },
+        )).status).toBe(400);
+    });
+
+    it('stops accepting follow-ups at the turn cap', async () => {
+        const { s, id } = await seed();
+        // Turn 0 already exists, so 9 follow-ups fill the 10-turn thread.
+        for (let i = 0; i < MAX_TURNS_PER_SIDENOTE - 1; i++) {
+            const ok = await req(s.baseUrl, 'POST', followUpPath(id), { question: `q${i}` });
+            expect(ok.status).toBe(200);
+        }
+        const overflow = await req(s.baseUrl, 'POST', followUpPath(id), { question: 'one too many' });
+        expect(overflow.status).toBe(409);
+    });
+
+    it('surfaces AI failures without touching the persisted thread', async () => {
+        const s = await startServer({
+            invokeAI: (() => {
+                let call = 0;
+                return async () => (call++ === 0
+                    ? { success: true as const, response: 'first answer' }
+                    : { success: false as const, error: 'CLI missing', unavailable: true });
+            })(),
+        });
+        servers.push(s);
+        const created = await req(s.baseUrl, 'POST', listPath, createBody);
+        const id = created.body.sidenote.id;
+
+        const failed = await req(s.baseUrl, 'POST', followUpPath(id), { question: 'why?' });
+        expect(failed.status).toBe(503);
+
+        const listed = await req(s.baseUrl, 'GET', listPath);
+        expect(listed.body.sidenotes[0].turns).toBeUndefined();
+    });
+
+    it('returns 404 for the follow-up route when the feature is disabled', async () => {
+        const s = await startServer({ enabled: false });
+        servers.push(s);
+        expect((await req(s.baseUrl, 'POST', followUpPath('any'), { question: 'hi' })).status).toBe(404);
     });
 });

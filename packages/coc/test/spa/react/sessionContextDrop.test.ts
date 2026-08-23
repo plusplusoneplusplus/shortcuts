@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { AttachedContextItem } from '../../../src/server/spa/client/react/features/chat/hooks/useAttachedContext';
 import {
+    buildFilePathInsertion,
+    dataTransferHasFilePath,
     dataTransferHasSessionContext,
+    formatFilePathInsertion,
     MAX_ATTACHED_CONTEXT_ITEMS,
     MAX_SESSION_CONTEXT_ATTACHMENTS,
+    readFilePathDragPayload,
     readPointerContextDragPayload,
     readRalphSessionContextDragPayload,
     readSessionContextDragPayload,
@@ -12,6 +16,9 @@ import {
     validateSessionContextDrop,
 } from '../../../src/server/spa/client/react/features/chat/sessionContextDrop';
 import {
+    createFilePathDragPayload,
+    FILE_PATH_DRAG_KIND,
+    FILE_PATH_DRAG_MIME,
     GIT_COMMIT_CONTEXT_DRAG_KIND,
     GIT_RANGE_CONTEXT_DRAG_KIND,
     POINTER_CONTEXT_DRAG_MIME,
@@ -464,5 +471,78 @@ describe('sessionContextDrop', () => {
         });
 
         expect(result).toBeNull();
+    });
+});
+
+describe('file-path drop payload', () => {
+    const filePathTransfer = (raw: unknown) => ({
+        types: [FILE_PATH_DRAG_MIME],
+        getData: (format: string) => format === FILE_PATH_DRAG_MIME
+            ? (typeof raw === 'string' ? raw : JSON.stringify(raw))
+            : '',
+    }) as unknown as DataTransfer;
+
+    it('round-trips a payload written by the Explorer drag source', () => {
+        const written: Record<string, string> = {};
+        const payload = createFilePathDragPayload('ws-1', ['packages/coc/src/foo.ts'])!;
+        // Mirror what writeFilePathDragData puts on the real DataTransfer.
+        written[FILE_PATH_DRAG_MIME] = JSON.stringify(payload);
+        const dataTransfer = {
+            types: Object.keys(written),
+            getData: (format: string) => written[format] ?? '',
+        } as unknown as DataTransfer;
+
+        expect(dataTransferHasFilePath(dataTransfer)).toBe(true);
+        expect(readFilePathDragPayload(dataTransfer)).toEqual(payload);
+    });
+
+    it('rejects malformed, wrong-kind, wrong-version, and empty payloads', () => {
+        expect(readFilePathDragPayload(filePathTransfer('{not json'))).toBeNull();
+        expect(readFilePathDragPayload(filePathTransfer({ kind: 'coc.session-context', version: 1, workspaceId: 'ws-1', paths: ['a'] }))).toBeNull();
+        expect(readFilePathDragPayload(filePathTransfer({ kind: FILE_PATH_DRAG_KIND, version: 2, workspaceId: 'ws-1', paths: ['a'] }))).toBeNull();
+        expect(readFilePathDragPayload(filePathTransfer({ kind: FILE_PATH_DRAG_KIND, version: 1, workspaceId: 'ws-1', paths: [] }))).toBeNull();
+        expect(readFilePathDragPayload(filePathTransfer({ kind: FILE_PATH_DRAG_KIND, version: 1, paths: ['a'] }))).toBeNull();
+        expect(readFilePathDragPayload(filePathTransfer({ kind: FILE_PATH_DRAG_KIND, version: 1, workspaceId: 'ws-1', paths: 'a' }))).toBeNull();
+    });
+
+    it('accepts a path from another workspace as-is', () => {
+        const payload = readFilePathDragPayload(filePathTransfer(createFilePathDragPayload('ws-other', ['docs/x.md'])));
+        expect(payload).toEqual({ kind: FILE_PATH_DRAG_KIND, version: 1, workspaceId: 'ws-other', paths: ['docs/x.md'] });
+    });
+
+    it('is not confused with a session-context drag in either direction', () => {
+        const sessionTransfer = makeDataTransfer(makePayload());
+        expect(dataTransferHasFilePath(sessionTransfer)).toBe(false);
+        expect(readFilePathDragPayload(sessionTransfer)).toBeNull();
+
+        const fileTransfer = filePathTransfer(createFilePathDragPayload('ws-1', ['a.ts']));
+        expect(dataTransferHasSessionContext(fileTransfer)).toBe(false);
+        expect(readSessionContextDropPayload(fileTransfer)).toBeNull();
+    });
+
+    it('formats paths as backticks joined by a space, with one trailing space', () => {
+        expect(formatFilePathInsertion(['a.ts'])).toBe('`a.ts` ');
+        expect(formatFilePathInsertion(['a.ts', 'docs'])).toBe('`a.ts` `docs` ');
+    });
+
+    it('splices the insertion at the caret and reports the caret after it', () => {
+        expect(buildFilePathInsertion('explain ', 8, ['a.ts'])).toEqual({
+            text: 'explain `a.ts` ',
+            cursorPos: 15,
+        });
+        expect(buildFilePathInsertion('ab', 1, ['a.ts'])).toEqual({
+            text: 'a`a.ts` b',
+            cursorPos: 8,
+        });
+        expect(buildFilePathInsertion('', 0, ['a.ts'])).toEqual({
+            text: '`a.ts` ',
+            cursorPos: 7,
+        });
+    });
+
+    it('appends at the end when the tracked caret is missing or out of range', () => {
+        expect(buildFilePathInsertion('explain', null, ['a.ts']).text).toBe('explain`a.ts` ');
+        expect(buildFilePathInsertion('explain', 999, ['a.ts']).text).toBe('explain`a.ts` ');
+        expect(buildFilePathInsertion('explain', -1, ['a.ts']).text).toBe('explain`a.ts` ');
     });
 });

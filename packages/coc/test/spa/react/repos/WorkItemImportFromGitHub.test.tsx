@@ -163,7 +163,13 @@ describe('Import from remote work item placement', () => {
         expect(screen.getByTestId('remote-provider-filter-github')).toBeTruthy();
         expect(screen.queryByTestId('remote-provider-filter-all')).toBeNull();
         expect(screen.queryByTestId('remote-provider-filter-azure-boards')).toBeNull();
-        expect(mocks.tree.mock.calls.map(call => call[1]?.tracker)).toContain('github-backed');
+        // The tree fetch only fires once the async sync-status response commits and
+        // widens effectiveTrackerKinds, so it lands in a passive effect that can run
+        // after the DOM mutation `findByRole` above woke up on. Poll for it instead of
+        // reading mock.calls synchronously.
+        await waitFor(() => {
+            expect(mocks.tree.mock.calls.map(call => call[1]?.tracker)).toContain('github-backed');
+        });
         expect(mocks.tree.mock.calls.map(call => call[1]?.tracker)).not.toContain('azure-boards-backed');
         await waitFor(() => {
             expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
@@ -255,7 +261,11 @@ describe('Import from remote work item placement', () => {
         expect(screen.queryByTestId('remote-provider-filter-all')).toBeNull();
         expect(screen.queryByTestId('remote-provider-filter-github')).toBeNull();
         expect(mocks.syncStatus).toHaveBeenCalledWith('local_ws-test', { workspaceId: 'ws-test' });
-        expect(mocks.tree.mock.calls.map(call => call[1]?.tracker)).toContain('azure-boards-backed');
+        // Same passive-effect lag as the GitHub case above: the widened tracker kinds
+        // reach the tree fetch a turn after the status message disappears.
+        await waitFor(() => {
+            expect(mocks.tree.mock.calls.map(call => call[1]?.tracker)).toContain('azure-boards-backed');
+        });
         expect(mocks.tree.mock.calls.map(call => call[1]?.tracker)).not.toContain('github-backed');
     });
 

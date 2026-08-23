@@ -248,6 +248,8 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
 
 import { InitialChatComposer, NewChatArea } from '../../../../src/server/spa/client/react/features/chat/NewChatArea';
 import {
+    FILE_PATH_DRAG_KIND,
+    FILE_PATH_DRAG_MIME,
     GIT_COMMIT_CONTEXT_DRAG_KIND,
     RALPH_SESSION_CONTEXT_DRAG_KIND,
     RALPH_SESSION_CONTEXT_DRAG_MIME,
@@ -2679,5 +2681,72 @@ describe('NewChatArea — chat style', () => {
 
         expect(within(toolbar).queryByTestId('model-picker-chip')).toBeNull();
         expectPrecedes(effort, style);
+    });
+});
+
+
+function makeFilePathDataTransfer(paths: string[], workspaceId = 'ws-1') {
+    const payload = { kind: FILE_PATH_DRAG_KIND, version: 1, workspaceId, paths };
+    return {
+        types: [FILE_PATH_DRAG_MIME, 'text/plain'],
+        dropEffect: 'none',
+        getData: vi.fn((format: string) => (format === FILE_PATH_DRAG_MIME ? JSON.stringify(payload) : paths.join('\n'))),
+    };
+}
+
+describe('NewChatArea — Explorer file-path drops (AC-02/AC-03)', () => {
+    it('inserts the backticked path at the caret with one trailing space', async () => {
+        render(<NewChatArea workspaceId="ws-1" />);
+        await act(async () => {});
+
+        const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'explain hello', selectionStart: 8 } });
+
+        fireEvent.drop(screen.getByTestId('chat-input-stack'), {
+            dataTransfer: makeFilePathDataTransfer(['packages/coc/src/foo.ts']),
+        });
+
+        expect(input.value).toBe('explain `packages/coc/src/foo.ts` hello');
+        expect(screen.queryByTestId('new-chat-session-context-error')).toBeNull();
+    });
+
+    it('appends at the end when the composer was never focused', async () => {
+        render(<NewChatArea workspaceId="ws-1" />);
+        await act(async () => {});
+
+        fireEvent.drop(screen.getByTestId('chat-input-stack'), {
+            dataTransfer: makeFilePathDataTransfer(['docs/a.md', 'docs/b.md']),
+        });
+
+        const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+        expect(input.value).toBe('`docs/a.md` `docs/b.md` ');
+    });
+
+    it('does not attach context or show an unsupported-payload error for a file-path drop', async () => {
+        mockSessionContextAttachmentsEnabled.value = false;
+        render(<NewChatArea workspaceId="ws-1" />);
+        await act(async () => {});
+
+        fireEvent.drop(screen.getByTestId('chat-input-stack'), {
+            dataTransfer: makeFilePathDataTransfer(['a.ts']),
+        });
+
+        expect(screen.queryByTestId('attached-session-context-chip')).toBeNull();
+        expect(screen.queryByTestId('new-chat-session-context-error')).toBeNull();
+    });
+
+    it('shows the drop hint while a file-path drag is over the composer', async () => {
+        mockSessionContextAttachmentsEnabled.value = false;
+        render(<NewChatArea workspaceId="ws-1" />);
+        await act(async () => {});
+
+        const dataTransfer = makeFilePathDataTransfer(['a.ts']);
+        fireEvent.dragEnter(screen.getByTestId('chat-input-stack'), { dataTransfer });
+
+        expect(dataTransfer.dropEffect).toBe('copy');
+        expect(screen.getByTestId('session-context-drop-hint')).toBeTruthy();
+
+        fireEvent.dragLeave(screen.getByTestId('chat-input-stack'), { dataTransfer });
+        expect(screen.queryByTestId('session-context-drop-hint')).toBeNull();
     });
 });

@@ -236,4 +236,22 @@ describe('TreeNode', () => {
             expect(handleClickBlock).toContain('onFileOpen?.(entry)');
         });
     });
+
+    describe('drag source', () => {
+        it('marks the row draggable', () => {
+            expect(source).toContain('draggable');
+            expect(source).toContain('onDragStart={handleDragStart}');
+        });
+
+        it('writes the file-path drag payload rather than inventing its own format', () => {
+            expect(source).toContain("from '../../chat/sessionContextDrag'");
+            expect(source).toContain('createFilePathDragPayload(workspaceId, [entry.path])');
+            expect(source).toContain('writeFilePathDragData(e.dataTransfer, payload)');
+        });
+
+        it('adds no drop target, so the tree cannot reorder or move files', () => {
+            expect(source).not.toContain('onDrop=');
+            expect(source).not.toContain('onDragOver=');
+        });
+    });
 });

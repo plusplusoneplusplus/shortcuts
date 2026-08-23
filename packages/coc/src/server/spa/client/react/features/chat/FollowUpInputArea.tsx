@@ -42,12 +42,16 @@ import type { ChatAttachment } from '../../types/attachments';
 import { getPrewarmDebounceMs, isForEachEnabled, isRalphEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
 import type { SessionContextAttachmentDragPayload } from './sessionContextDrag';
 import {
+    buildFilePathInsertion,
     dataTransferHasAnyData,
+    dataTransferHasFilePath,
     dataTransferHasSessionContext,
+    readFilePathDragPayload,
     readSessionContextDropPayload,
     useConversationRetrievalCapability,
     validateSessionContextDrop,
 } from './sessionContextDrop';
+import { findComposerEditable, textOffsetFromPoint } from './filePathDropCaret';
 import type { RalphGrillSetup } from '../../../../../ralph/grill-planning';
 import { RalphGrillSetupPanel } from './RalphGrillSetupPanel';
 import type { ConcreteChatProvider } from '../../utils/providerSelection';
@@ -389,6 +393,9 @@ export function FollowUpInputArea({
 
     // ── Inline ghost-text autocomplete ──
     const [followUpCursorPos, setFollowUpCursorPos] = useState(0);
+    // False until the editor has reported a caret, so a drop onto a composer
+    // that was never focused appends instead of inserting at offset 0.
+    const followUpCursorTouchedRef = useRef(false);
     const promptAutocompleteEnabled = usePromptAutocompleteEnabled();
     const autocomplete = usePromptAutocomplete({
         text: followUpInput,
@@ -542,6 +549,7 @@ export function FollowUpInputArea({
     function handleEditorChange(val: string, cursorPos: number) {
         setFollowUpInput(val);
         setFollowUpCursorPos(cursorPos);
+        followUpCursorTouchedRef.current = true;
         if (modelCommand?.modelMenuVisible) {
             modelCommand.setModelFilter(val);
         } else {
@@ -581,7 +589,10 @@ export function FollowUpInputArea({
     }
 
     function handleSessionContextDragEnter(e: React.DragEvent<HTMLElement>) {
-        if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        // A file-path drag is a plain text insert, so it is accepted regardless
+        // of the session-context attachments flag.
+        if (!dataTransferHasFilePath(e.dataTransfer)
+            && (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer))) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
         sessionContextDragDepthRef.current += 1;
@@ -589,21 +600,53 @@ export function FollowUpInputArea({
     }
 
     function handleSessionContextDragOver(e: React.DragEvent<HTMLElement>) {
-        if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        // A file-path drag is a plain text insert, so it is accepted regardless
+        // of the session-context attachments flag.
+        if (!dataTransferHasFilePath(e.dataTransfer)
+            && (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer))) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
         setSessionContextDragActive(true);
     }
 
     function handleSessionContextDragLeave(e: React.DragEvent<HTMLElement>) {
-        if (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer)) return;
+        // A file-path drag is a plain text insert, so it is accepted regardless
+        // of the session-context attachments flag.
+        if (!dataTransferHasFilePath(e.dataTransfer)
+            && (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer))) return;
         sessionContextDragDepthRef.current = Math.max(0, sessionContextDragDepthRef.current - 1);
         if (sessionContextDragDepthRef.current === 0) {
             setSessionContextDragActive(false);
         }
     }
 
+    /**
+     * Insert the dragged Explorer paths at the caret. Returns true when the
+     * drop was a file-path drop, so the session-context path (including its
+     * unsupported-payload error) never sees it.
+     */
+    function handleFilePathDrop(e: React.DragEvent<HTMLElement>): boolean {
+        if (!dataTransferHasFilePath(e.dataTransfer)) return false;
+        e.preventDefault();
+        resetSessionContextDragState();
+        const payload = readFilePathDragPayload(e.dataTransfer);
+        if (!payload) return true;
+        const current = richTextRef.current?.getValue() ?? followUpInput;
+        const editable = findComposerEditable(e.currentTarget);
+        const fromPoint = textOffsetFromPoint(editable, e.clientX, e.clientY);
+        const fallback = followUpCursorTouchedRef.current ? followUpCursorPos : current.length;
+        const next = buildFilePathInsertion(current, fromPoint ?? fallback, payload.paths);
+        skipNextSyncRef.current = true;
+        setFollowUpInput(next.text);
+        richTextRef.current?.setValue(next.text, next.cursorPos);
+        setFollowUpCursorPos(next.cursorPos);
+        followUpCursorTouchedRef.current = true;
+        richTextRef.current?.focus();
+        return true;
+    }
+
     function handleSessionContextDrop(e: React.DragEvent<HTMLElement>) {
+        if (handleFilePathDrop(e)) return;
         if (!sessionContextAttachmentsEnabled) return;
         if (!dataTransferHasSessionContext(e.dataTransfer)) {
             if (dataTransferHasAnyData(e.dataTransfer)) {

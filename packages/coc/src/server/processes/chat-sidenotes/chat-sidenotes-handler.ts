@@ -8,6 +8,7 @@
  * Endpoints (all guarded behind the admin `features.quickAskSidenotes` flag):
  *   GET    /api/processes/:processId/sidenotes            — list (hydrate on open)
  *   POST   /api/processes/:processId/sidenotes            — create (runs the lookup)
+ *   POST   /api/processes/:processId/sidenotes/:id/follow-up — ask a follow-up
  *   DELETE /api/processes/:processId/sidenotes/:id        — delete one
  *
  * The workspace is supplied via `?workspace=` (the SPA always knows it); the
@@ -23,10 +24,13 @@ import { sendJSON, sendError, parseQueryParams } from '../../core/api-handler';
 import { parseBodyOrReject } from '../../shared/handler-utils';
 import { isValidWorkspaceId } from '../../tasks/comments/base-comments-manager';
 import { resolveDefaultModel } from '../../preferences/repository';
+import type { ChatSideNote } from './chat-sidenotes-manager';
 import {
     ChatSideNotesManager,
+    MAX_TURNS_PER_SIDENOTE,
     buildSideNoteLabel,
     fingerprintSelection,
+    threadTurns,
 } from './chat-sidenotes-manager';
 import { buildSideNotePrompt } from './chat-sidenotes-prompt';
 import { invokeSideNoteAI } from './chat-sidenotes-ai';
@@ -38,6 +42,7 @@ const MAX_CONTEXT_STORE_CHARS = 400;
 
 const LIST_PATTERN = /^\/api\/processes\/([^/]+)\/sidenotes$/;
 const ITEM_PATTERN = /^\/api\/processes\/([^/]+)\/sidenotes\/([^/]+)$/;
+const FOLLOW_UP_PATTERN = /^\/api\/processes\/([^/]+)\/sidenotes\/([^/]+)\/follow-up$/;
 
 /** Injectable AI invoker signature (overridable in tests). */
 export type SideNoteAIInvoke = (
@@ -168,6 +173,71 @@ export function registerChatSidenotesRoutes(opts: ChatSideNotesRouteOptions): vo
                 sendJSON(res, 201, { sidenote: created });
             } catch {
                 sendError(res, 500, 'Failed to persist side-note');
+            }
+        },
+    });
+
+    // POST /api/processes/:processId/sidenotes/:id/follow-up
+    //
+    // Ask a follow-up on an existing side-note. Stateful counterpart to the
+    // stateless notes/PDF follow-up path: the prior turns are read from disk
+    // (so the client only sends the new question) and the answered turn is
+    // appended to the note's persisted thread, which is what makes a chat
+    // follow-up survive a reload.
+    routes.push({
+        method: 'POST',
+        pattern: FOLLOW_UP_PATTERN,
+        handler: async (req, res, match) => {
+            if (!getEnabled()) {return sendError(res, 404, 'Quick Ask side-notes are disabled');}
+            const processId = decodeURIComponent(match![1]);
+            const id = decodeURIComponent(match![2]);
+            const workspaceId = parseQueryParams(req.url || '/').workspaceId;
+            if (!workspaceId || !isValidWorkspaceId(workspaceId)) {
+                return sendError(res, 400, 'Missing or invalid workspaceId');
+            }
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) {return;}
+
+            const question = typeof body.question === 'string' ? body.question.trim() : '';
+            if (!question) {return sendError(res, 400, 'Missing question');}
+
+            let existing: ChatSideNote | undefined;
+            try {
+                existing = (await manager.list(workspaceId, processId)).find(n => n.id === id);
+            } catch {
+                return sendError(res, 500, 'Failed to read side-note');
+            }
+            if (!existing) {return sendError(res, 404, 'Side-note not found');}
+
+            const history = threadTurns(existing);
+            if (history.length >= MAX_TURNS_PER_SIDENOTE) {
+                return sendError(res, 409, 'Follow-up limit reached');
+            }
+
+            const model = resolveDefaultModel(dataDir, workspaceId, 'quickAsk');
+            const prompt = buildSideNotePrompt({
+                selectedText: existing.anchor.selectedText,
+                contextBefore: existing.anchor.contextBefore,
+                contextAfter: existing.anchor.contextAfter,
+                question,
+                history,
+            });
+
+            const aiResult = await invokeAI(prompt, model);
+            if (!aiResult.success) {
+                return sendError(res, aiResult.unavailable ? 503 : 502, aiResult.error);
+            }
+
+            try {
+                const updated = await manager.appendTurn(workspaceId, processId, id, {
+                    question,
+                    answer: aiResult.response,
+                });
+                // Deleted (or filled up) while the lookup was in flight.
+                if (!updated) {return sendError(res, 404, 'Side-note not found');}
+                sendJSON(res, 200, { sidenote: updated });
+            } catch {
+                sendError(res, 500, 'Failed to persist follow-up');
             }
         },
     });

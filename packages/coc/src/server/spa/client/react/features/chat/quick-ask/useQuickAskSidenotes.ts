@@ -18,7 +18,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuickAskSidenotesEnabled } from '../../../hooks/feature-flags/useQuickAskSidenotesEnabled';
 import { requestForWorkspace } from '../../../repos/cloneRegistry';
 import { deriveContext } from './quick-ask-selection';
-import type { ChatSideNote, ClientSideNote, QuickAskSelection } from './types';
+import type { ChatSideNote, ClientSideNote, QuickAskSelection, QuickAskTurn } from './types';
+import { MAX_QUICK_ASK_TURNS } from './types';
 
 export interface UseQuickAskSidenotesResult {
     /** Whether the feature is active for this process. */
@@ -31,6 +32,41 @@ export interface UseQuickAskSidenotesResult {
     retrySidenote: (id: string) => void;
     /** Remove a side-note (persisted ones are deleted server-side). */
     deleteSidenote: (id: string) => void;
+    /**
+     * Ask a follow-up on an answered side-note. The new turn is appended
+     * optimistically and persisted server-side on success, so the thread
+     * survives a reload. A no-op past {@link MAX_QUICK_ASK_TURNS}.
+     */
+    followUpSidenote: (id: string, question: string) => void;
+    /**
+     * Re-run one turn of a thread after a failure. Turn 0 re-runs the original
+     * lookup; later turns re-ask that turn's follow-up question in place.
+     */
+    retrySidenoteTurn: (id: string, turnIndex: number) => void;
+}
+
+/** Live thread for a server note: its persisted turns, else the implicit turn 0. */
+function threadFor(note: ChatSideNote): QuickAskTurn[] {
+    if (Array.isArray(note.turns) && note.turns.length > 0) {
+        return note.turns.map(t => ({ question: t.question, answer: t.answer, status: 'ready' as const }));
+    }
+    return [{ question: note.question, answer: note.answer, status: 'ready' as const }];
+}
+
+/** Immutably patch turn `turnIndex` of note `id`'s thread. */
+function patchThread(
+    items: ClientSideNote[],
+    id: string,
+    turnIndex: number,
+    patch: Partial<QuickAskTurn>,
+): ClientSideNote[] {
+    return items.map(p => {
+        if (p.id !== id || !p.thread?.[turnIndex]) {return p;}
+        return {
+            ...p,
+            thread: p.thread.map((t, i) => (i === turnIndex ? { ...t, ...patch } : t)),
+        };
+    });
 }
 
 function newId(): string {
@@ -75,7 +111,11 @@ export function useQuickAskSidenotes(
         requestForWorkspace<{ sidenotes?: ChatSideNote[] }>(workspaceId, basePath)
             .then(data => {
                 if (cancelled || !Array.isArray(data?.sidenotes)) {return;}
-                const ready: ClientSideNote[] = data.sidenotes.map(n => ({ ...n, status: 'ready' as const }));
+                const ready: ClientSideNote[] = data.sidenotes.map(n => ({
+                    ...n,
+                    status: 'ready' as const,
+                    thread: threadFor(n),
+                }));
                 setItems(prev => {
                     // Keep any optimistic items the user created before hydration resolved.
                     const optimistic = prev.filter(p => p.status !== 'ready');
@@ -102,7 +142,11 @@ export function useQuickAskSidenotes(
         })
             .then(data => {
                 if (!data?.sidenote) {throw new Error('Malformed response');}
-                setItems(prev => prev.map(p => (p.id === draft.id ? { ...data.sidenote!, status: 'ready' as const } : p)));
+                setItems(prev => prev.map(p => (
+                    p.id === draft.id
+                        ? { ...data.sidenote!, status: 'ready' as const, thread: threadFor(data.sidenote!) }
+                        : p
+                )));
             })
             .catch(() => {
                 setItems(prev => prev.map(p => (
@@ -160,5 +204,72 @@ export function useQuickAskSidenotes(
         }
     }, [enabled, processId, workspaceId]);
 
-    return { enabled, items, createSidenote, retrySidenote, deleteSidenote };
+    // POST one follow-up turn and reconcile it into `thread[turnIndex]`. The
+    // server owns the history (it re-reads the persisted thread), so the request
+    // carries only the new question. On success the whole note is replaced by the
+    // server's copy — whose `turns` now include this answer — while any later
+    // in-flight turns of the local thread are preserved.
+    const postFollowUp = useCallback((id: string, question: string, turnIndex: number) => {
+        if (!enabled) {return;}
+        const path = `/api/processes/${encodeURIComponent(processId!)}/sidenotes/${encodeURIComponent(id)}/follow-up?workspace=${encodeURIComponent(workspaceId!)}`;
+        requestForWorkspace<{ sidenote?: ChatSideNote }>(workspaceId, path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question }),
+        })
+            .then(data => {
+                if (!data?.sidenote) {throw new Error('Malformed response');}
+                setItems(prev => prev.map(p => {
+                    if (p.id !== id) {return p;}
+                    const persisted = threadFor(data.sidenote!);
+                    // Persisted turns win; any local tail the server hasn't seen
+                    // yet (a still-in-flight turn) is kept after them.
+                    const local = p.thread ?? [];
+                    return {
+                        ...data.sidenote!,
+                        status: 'ready' as const,
+                        thread: [...persisted, ...local.slice(persisted.length)],
+                    };
+                }));
+            })
+            .catch(() => {
+                setItems(prev => patchThread(prev, id, turnIndex, { status: 'error', error: 'Lookup failed' }));
+            });
+    }, [enabled, processId, workspaceId]);
+
+    const followUpSidenote = useCallback((id: string, question: string) => {
+        if (!enabled) {return;}
+        const trimmed = question.trim();
+        if (!trimmed) {return;}
+        const target = itemsRef.current.find(p => p.id === id);
+        if (!target || target.status !== 'ready') {return;}
+        const thread = target.thread ?? threadFor(target);
+        if (thread.length >= MAX_QUICK_ASK_TURNS) {return;}
+        const turnIndex = thread.length;
+        const next: QuickAskTurn[] = [...thread, { question: trimmed, answer: '', status: 'asking' }];
+        setItems(prev => prev.map(p => (p.id === id ? { ...p, thread: next } : p)));
+        postFollowUp(id, trimmed, turnIndex);
+    }, [enabled, postFollowUp]);
+
+    const retrySidenoteTurn = useCallback((id: string, turnIndex: number) => {
+        if (!enabled) {return;}
+        // Turn 0 is the original lookup — a failed one was never persisted, so it
+        // re-runs through the create path rather than the follow-up route.
+        if (turnIndex === 0) {return retrySidenote(id);}
+        const target = itemsRef.current.find(p => p.id === id);
+        const turn = target?.thread?.[turnIndex];
+        if (!turn?.question) {return;}
+        setItems(prev => patchThread(prev, id, turnIndex, { status: 'asking', error: undefined }));
+        postFollowUp(id, turn.question, turnIndex);
+    }, [enabled, retrySidenote, postFollowUp]);
+
+    return {
+        enabled,
+        items,
+        createSidenote,
+        retrySidenote,
+        deleteSidenote,
+        followUpSidenote,
+        retrySidenoteTurn,
+    };
 }

@@ -938,6 +938,12 @@ test.describe('Cancelled Task', () => {
             await expect(page.locator('[data-testid="activity-chat-input"]'))
                 .toHaveAttribute('contenteditable', 'true', { timeout: 5_000 });
             await expect(page.locator('[data-testid="activity-chat-send-btn"]')).toBeEnabled();
+
+            // The SPA keeps polling this process while the page is open, so a
+            // route.fetch() can still be in flight when the test ends and rejects
+            // with "Test ended" — reported as an error outside any test, which
+            // fails the whole shard. Drain the handlers first.
+            await page.unrouteAll({ behavior: 'ignoreErrors' }).catch(() => {});
         } finally {
             cleanup();
         }
