@@ -4,6 +4,8 @@ import * as childProcess from 'child_process';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import type { WorkspaceInfo, ProcessStore } from '@plusplusoneplusplus/forge';
+import { loadNativeFileIndex } from '@plusplusoneplusplus/coc-native';
+import type { NativeFileIndex, NativeFileIndexAddon } from '@plusplusoneplusplus/coc-native';
 
 const execFileAsync = promisify(execFile);
 import type { RepoInfo, TreeEntry, TreeListResult, FileSearchResult, SearchFilesResult } from './types';
@@ -31,6 +33,13 @@ export interface RepoTreeServiceOptions {
      * background. Default: 10000 ms.
      */
     fileListCacheTtlMs?: number;
+
+    /**
+     * The native file-index addon, or `null` to force the JavaScript path.
+     * Defaults to whatever `@plusplusoneplusplus/coc-native` resolves on this
+     * platform, which is `null` when no prebuilt binary exists.
+     */
+    nativeFileIndex?: NativeFileIndexAddon | null;
 }
 
 /** A cached whole-repo file listing. */
@@ -39,6 +48,16 @@ interface CachedFileList {
     truncated: boolean;
     /** Epoch ms at which this entry was produced. */
     at: number;
+}
+
+/** A native index kept warm for one repo + showIgnored combination. */
+interface NativeIndexEntry {
+    /** Resolves once the initial parallel walk finishes. */
+    index: Promise<NativeFileIndex>;
+    /** Epoch ms of the last completed build or refresh. */
+    at: number;
+    /** In-flight background refresh, so only one runs per entry. */
+    refreshing?: Promise<void>;
 }
 
 /** Extension → MIME type map for common file types. */
@@ -231,6 +250,14 @@ export class RepoTreeService {
     /** In-flight refreshes, so concurrent callers share one walk per key. */
     private readonly fileListRefreshes = new Map<string, Promise<CachedFileList>>();
 
+    /**
+     * The native addon, or null on platforms without a prebuilt binary. When
+     * null every path below falls back to the ripgrep/walk implementation.
+     */
+    private readonly native: NativeFileIndexAddon | null;
+    /** Live native indexes, keyed the same way as {@link fileListCache}. */
+    private readonly nativeIndexes = new Map<string, NativeIndexEntry>();
+
     private static rgAvailable: boolean | undefined;
 
     private static async checkRipgrepAvailable(): Promise<boolean> {
@@ -359,6 +386,88 @@ export class RepoTreeService {
         this.fileListMaxEntries = options?.fileListMaxEntries ?? options?.maxEntries ?? 50000;
         this.fileListCacheTtlMs = options?.fileListCacheTtlMs ?? 10000;
         this.store = store;
+        this.native =
+            options?.nativeFileIndex !== undefined ? options.nativeFileIndex : loadNativeFileIndex();
+    }
+
+    /**
+     * The native index for a repo + showIgnored combination, built on first use
+     * and kept warm afterwards.
+     *
+     * Unlike the JavaScript listing this is never capped: the path list stays in
+     * this process, so `fileListMaxEntries` only bounds what the `/files`
+     * response carries, not what search can find.
+     */
+    private nativeIndexFor(key: string, repoRoot: string, showIgnored: boolean): NativeIndexEntry {
+        const existing = this.nativeIndexes.get(key);
+        if (existing) {
+            this.maybeRefreshNativeIndex(existing);
+            return existing;
+        }
+
+        const entry: NativeIndexEntry = {
+            at: Date.now(),
+            index: this.native!.buildFileIndex(repoRoot, { includeIgnored: showIgnored }),
+        };
+        entry.index.then(
+            () => {
+                entry.at = Date.now();
+            },
+            () => {
+                // A failed walk must not be cached, or the repo stays broken
+                // until the process restarts.
+                if (this.nativeIndexes.get(key) === entry) this.nativeIndexes.delete(key);
+            },
+        );
+        this.nativeIndexes.set(key, entry);
+        return entry;
+    }
+
+    /**
+     * Re-walk in the background once the entry is older than the TTL. Callers
+     * keep reading the current snapshot meanwhile — files appear from agents,
+     * git and installs without going through {@link writeBlob}, so an index
+     * cannot be trusted forever.
+     */
+    private maybeRefreshNativeIndex(entry: NativeIndexEntry): void {
+        if (entry.refreshing) return;
+        if (Date.now() - entry.at < this.fileListCacheTtlMs) return;
+        void this.refreshNativeIndex(entry);
+    }
+
+    /**
+     * Re-walk this entry, queueing behind any refresh already in flight.
+     *
+     * Queueing rather than skipping matters for {@link writeBlob}: a caller that
+     * awaits this has to get a walk that started *after* its write, not one that
+     * was already running and cannot have seen it.
+     */
+    private refreshNativeIndex(entry: NativeIndexEntry): Promise<void> {
+        const next = (entry.refreshing ?? Promise.resolve())
+            .then(() => entry.index)
+            .then(index => index.refresh())
+            .then(() => {
+                entry.at = Date.now();
+            })
+            .catch(() => {
+                // Keep serving the previous snapshot; the next call retries.
+            });
+        entry.refreshing = next;
+        void next.then(() => {
+            if (entry.refreshing === next) entry.refreshing = undefined;
+        });
+        return next;
+    }
+
+    /** Native index entries for a repo, or for every repo when none is given. */
+    private nativeEntriesFor(repoId?: string): NativeIndexEntry[] {
+        if (repoId === undefined) return [...this.nativeIndexes.values()];
+        const entries: NativeIndexEntry[] = [];
+        for (const showIgnored of [true, false]) {
+            const entry = this.nativeIndexes.get(RepoTreeService.fileListKey(repoId, showIgnored));
+            if (entry) entries.push(entry);
+        }
+        return entries;
     }
 
     /** Cache key for a whole-repo file listing. */
@@ -369,15 +478,30 @@ export class RepoTreeService {
     /**
      * Drop cached whole-repo file listings.
      * Called after writes; pass a repoId to scope the invalidation to one repo.
+     *
+     * A native index is refreshed rather than dropped: re-walking in parallel is
+     * cheap, and discarding it would make the next keystroke pay for a full
+     * rebuild.
      */
     invalidateFileListCache(repoId?: string): void {
+        void this.invalidateFileListCacheAndWait(repoId);
+    }
+
+    /**
+     * {@link invalidateFileListCache}, but resolving only once native indexes
+     * have finished re-walking — so a caller that just wrote a file can promise
+     * the file is searchable by the time it returns.
+     */
+    private invalidateFileListCacheAndWait(repoId?: string): Promise<void> {
         if (repoId === undefined) {
             this.fileListCache.clear();
-            return;
+        } else {
+            for (const showIgnored of [true, false]) {
+                this.fileListCache.delete(RepoTreeService.fileListKey(repoId, showIgnored));
+            }
         }
-        for (const showIgnored of [true, false]) {
-            this.fileListCache.delete(RepoTreeService.fileListKey(repoId, showIgnored));
-        }
+        const refreshes = this.nativeEntriesFor(repoId).map(entry => this.refreshNativeIndex(entry));
+        return Promise.all(refreshes).then(() => undefined);
     }
 
     /**
@@ -601,6 +725,17 @@ export class RepoTreeService {
         // otherwise recomputed (a full ripgrep walk) on every keystroke.
         if (normalizedRel === '.' || normalizedRel === '') {
             const key = RepoTreeService.fileListKey(repoId, showIgnored);
+
+            if (this.native) {
+                const index = await this.nativeIndexFor(key, repoRoot, showIgnored).index;
+                // The cap applies to the response payload only — the index keeps
+                // every path so search still reaches them.
+                return {
+                    files: index.files(0, this.fileListMaxEntries),
+                    truncated: index.len() > this.fileListMaxEntries,
+                };
+            }
+
             const cached = this.fileListCache.get(key);
             if (cached) {
                 if (Date.now() - cached.at >= this.fileListCacheTtlMs) {
@@ -760,7 +895,7 @@ export class RepoTreeService {
         await fs.promises.writeFile(absPath, content, 'utf-8');
 
         // A write may have created a file that is not in the cached listing.
-        this.invalidateFileListCache(repoId);
+        await this.invalidateFileListCacheAndWait(repoId);
     }
 
     /**
@@ -787,10 +922,21 @@ export class RepoTreeService {
     ): Promise<SearchFilesResult> {
         const rawLimit = options?.limit ?? 50;
         const limit = Math.min(Math.max(rawLimit, 1), 200);
+        const showIgnored = options?.showIgnored ?? false;
 
-        const { files, truncated } = await this.listFilesRecursive(repoId, '.', {
-            showIgnored: options?.showIgnored ?? false,
-        });
+        if (this.native) {
+            const repoRoot = await this.resolveRepoRoot(repoId);
+            if (!repoRoot) {
+                throw new Error(`Repo not found: ${repoId}`);
+            }
+            const key = RepoTreeService.fileListKey(repoId, showIgnored);
+            const index = await this.nativeIndexFor(key, repoRoot, showIgnored).index;
+            const results: FileSearchResult[] = await index.search(query, limit);
+            // Nothing was dropped on the way in, so no result is missing.
+            return { results, truncated: false };
+        }
+
+        const { files, truncated } = await this.listFilesRecursive(repoId, '.', { showIgnored });
 
         const results: FileSearchResult[] = rankFuzzyMatches(query, files, limit);
         return { results, truncated };

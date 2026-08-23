@@ -205,6 +205,7 @@ jobs:
 
   coc-test:
     runs-on: ${{ matrix.os }}
+    needs: [coc-native]
 
     strategy:
       fail-fast: false
@@ -258,9 +259,23 @@ jobs:
         run: npm run build
         working-directory: packages/coc-connector
 
+      - name: Build coc-native package
+        run: npm run build
+        working-directory: packages/coc-native
+
       - name: Build coc SPA client bundle
         run: npm run build:client
         working-directory: packages/coc
+
+      # The tree-service suite runs both modes: fallback always, and the real
+      # addon whenever this platform's binary is available. Fallback must stay
+      # green even when the native job is skipped or its artifact is missing.
+      - name: Download the addon for the real-addon lane
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: coc-native-${{ matrix.os }}
+          path: packages/coc-native
 
       - name: Run coc tests (shard ${{ matrix.shard }}/5)
         if: matrix.os != 'ubuntu-latest'
@@ -686,6 +701,19 @@ jobs:
           echo "✗ Server failed to respond within 90s"
           docker logs coc
           exit 1
+
+      # The release build injects prebuilt binaries and asserts loaded==true;
+      # here the field only has to be present and well-formed, so a change that
+      # drops it from /api/health fails before it reaches a release.
+      - name: Assert /api/health reports the file-index mode
+        run: |
+          curl -sf http://127.0.0.1:4111/api/health \
+            | node -e 'const h=JSON.parse(require("fs").readFileSync(0,"utf8"));
+                       if (typeof h.nativeFileIndex?.loaded !== "boolean") {
+                         console.error("✗ /api/health is missing nativeFileIndex.loaded");
+                         process.exit(1);
+                       }
+                       console.log("native file index loaded:", h.nativeFileIndex.loaded);'
 
       - name: Assert the server is NOT reachable off-loopback
         run: |
