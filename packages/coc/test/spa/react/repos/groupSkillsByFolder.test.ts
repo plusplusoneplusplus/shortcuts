@@ -56,6 +56,29 @@ describe('groupSkillsByFolder', () => {
         expect(groups[0].isRemovable).toBe(true);
     });
 
+    it('groups repo-group member skills per member repo, in server order, ahead of extras', () => {
+        const skills: Skill[] = [
+            { name: 'alpha', source: 'repo-group-member', folderPath: '/a/.github/skills', sourceRepoId: 'ws-a', folderLabel: 'Repo A' },
+            { name: 'beta', source: 'repo-group-member', folderPath: '/b/.github/skills', sourceRepoId: 'ws-b', folderLabel: 'Repo B' },
+            { name: 'linked', source: 'linked-repo', folderPath: '/other/.github/skills', sourceRepoId: 'ws-other' },
+        ];
+        const repoById = new Map([
+            ['ws-a', { id: 'ws-a', name: 'Repo A', rootPath: '/a' }],
+        ]);
+        const groups = groupSkillsByFolder(skills, repoById);
+        expect(groups.map(g => g.key)).toEqual([
+            'repo-group-member:/a/.github/skills',
+            'repo-group-member:/b/.github/skills',
+            '/other/.github/skills',
+        ]);
+        expect(groups[0].label).toBe('📂 Repo A');
+        expect(groups[0].repoId).toBe('ws-a');
+        expect(groups[0].isRemovable).toBe(false);
+        // Falls back to the folderLabel the server attached when the repo is unknown to the UI.
+        expect(groups[1].label).toBe('📂 Repo B');
+        expect(groups[1].isRemovable).toBe(false);
+    });
+
     it('groups extra-folder skills by folderPath with path as label', () => {
         const skills: Skill[] = [
             { name: 'extra', source: 'extra-folder', folderPath: '/custom/path' },

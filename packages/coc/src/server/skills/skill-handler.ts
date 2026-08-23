@@ -31,6 +31,7 @@ import {
     expandHomePath,
     expandSkillFolderCandidates,
     resolveDefaultOneDriveSkillDirs,
+    resolveRepoGroupMemberSkillRoots,
     type SkillFolderOptions,
 } from '../executors/skill-config-resolver';
 import type { Route } from '../types';
@@ -175,8 +176,8 @@ export interface SkillInfo {
     references?: string[];
     scripts?: string[];
     relativePath?: string;
-    source?: 'global' | 'repo' | 'bundled' | 'linked-repo' | 'extra-folder' | 'global-extra-folder';
-    /** Workspace ID of the repo this skill was loaded from (only set when source = 'linked-repo'). */
+    source?: 'global' | 'repo' | 'bundled' | 'linked-repo' | 'repo-group-member' | 'extra-folder' | 'global-extra-folder';
+    /** Workspace ID of the repo this skill was loaded from (source = 'linked-repo' or 'repo-group-member'). */
     sourceRepoId?: string;
     /** Absolute path of the directory containing this skill. */
     folderPath?: string;
@@ -416,7 +417,29 @@ export async function loadSkillsForWorkspace(
         skill.source = 'repo';
         skill.folderPath = sourceInstallPath;
     }
-    const localNames = new Set(localSkills.map(s => s.name));
+
+    // A repo-group workspace has an empty virtual root, so it inherits each live
+    // member repo's `.github/skills` in the slot the repo-local folder occupies —
+    // same ordering as `resolveSkillConfig`/`resolveEffectiveSkillPaths`. Returns
+    // an empty list for every ordinary workspace, so this is a no-op there.
+    const memberSkills: SkillInfo[] = [];
+    const memberNames = new Set<string>();
+    for (const member of await resolveRepoGroupMemberSkillRoots(store, dataDir, id)) {
+        const memberInstallPath = getSkillsInstallPath(member.rootPath);
+        const memberSourcePath = getSkillsSourcePath(member.rootPath);
+        for (const skill of listInstalledSkills(memberInstallPath)) {
+            if (memberNames.has(skill.name)) continue;
+            skill.source = 'repo-group-member';
+            skill.sourceRepoId = member.workspaceId;
+            skill.folderPath = memberSourcePath;
+            if (member.name) skill.folderLabel = member.name;
+            memberSkills.push(skill);
+            memberNames.add(skill.name);
+        }
+    }
+
+    // Member skills win name collisions against every lower-precedence source.
+    const localNames = new Set([...memberNames, ...localSkills.map(s => s.name)]);
 
     const globalSkills: SkillInfo[] = [];
     if (dataDir) {
@@ -517,7 +540,7 @@ export async function loadSkillsForWorkspace(
         }
     }
 
-    let skills = dedupByName([...localSkills, ...globalSkills, ...globalExtraSkills, ...extraSkills, ...oneDriveSkills]);
+    let skills = dedupByName([...memberSkills, ...localSkills, ...globalSkills, ...globalExtraSkills, ...extraSkills, ...oneDriveSkills]);
     if (dataDir) {
         try {
             const repoPrefsPath = getRepoDataPath(dataDir, id, 'preferences.json');

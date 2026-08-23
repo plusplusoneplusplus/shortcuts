@@ -3,6 +3,8 @@ export type SkillSource =
   | 'repo'
   | 'bundled'
   | 'linked-repo'
+  /** Skill loaded from a repo-group member's `.github/skills`, inherited by the group. */
+  | 'repo-group-member'
   | 'extra-folder'
   /** Skill loaded from a configured global extra folder (`skills.globalExtraFolders`). */
   | 'global-extra-folder';
@@ -18,6 +20,7 @@ export interface SkillInfo {
   scripts?: string[];
   relativePath?: string;
   source?: SkillSource;
+  /** Workspace ID of the repo this skill came from (`linked-repo` / `repo-group-member`). */
   sourceRepoId?: string;
   folderPath?: string;
   folderLabel?: string;
