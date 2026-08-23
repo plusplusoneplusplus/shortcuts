@@ -3,6 +3,8 @@ export type SkillSource =
   | 'repo'
   | 'bundled'
   | 'linked-repo'
+  /** Skill loaded from a repo-group member's `.github/skills`, inherited by the group. */
+  | 'repo-group-member'
   | 'extra-folder'
   /** Skill loaded from a configured global extra folder (`skills.globalExtraFolders`). */
   | 'global-extra-folder';
@@ -18,6 +20,7 @@ export interface SkillInfo {
   scripts?: string[];
   relativePath?: string;
   source?: SkillSource;
+  /** Workspace ID of the repo this skill came from (`linked-repo` / `repo-group-member`). */
   sourceRepoId?: string;
   folderPath?: string;
   folderLabel?: string;
@@ -107,6 +110,8 @@ export interface MergedSkillsResponse {
 /** Origin of an effective skill-search-order path; drives the UI source badge. */
 export type EffectiveSkillPathSource =
   | 'repo'
+  /** A repo-group member repo's `.github/skills`, inherited by the group workspace. */
+  | 'repo-group-member'
   | 'managed-global'
   | 'auto-detected'
   | 'configured'
@@ -134,6 +139,10 @@ export interface EffectiveSkillPath {
   skillCount?: number;
   /** Optional human-readable note (e.g. why a declared folder was skipped). */
   note?: string;
+  /** Member repo workspace id the path was inherited from (`repo-group-member` only). */
+  sourceRepoId?: string;
+  /** Member repo display name the path was inherited from (`repo-group-member` only). */
+  sourceRepoName?: string;
 }
 
 /**

@@ -21,6 +21,7 @@ import {
     translatePathForExecution,
 } from '@plusplusoneplusplus/forge';
 import { getEffectiveEnDevExtraSkillFolders } from '../endev/endev-detector';
+import { isRepoGroupWorkspaceId, resolveRepoGroupMembers } from '../workspaces/repo-group-workspace';
 
 /** Conventional subfolders probed under a user-supplied skill container. */
 export const SKILL_ROOT_SUBDIRS = ['.github/skills', 'skills'] as const;
@@ -114,6 +115,47 @@ export async function resolveDefaultOneDriveSkillDirs(homedir: string): Promise<
     return candidates;
 }
 
+/**
+ * A repo-group member repo whose `.github/skills` folder the group inherits.
+ * Only live members appear; stale ones (workspace removed / path missing)
+ * contribute nothing.
+ */
+export interface RepoGroupMemberSkillRoot {
+    /** Member repo workspace ID. */
+    workspaceId: string;
+    /** Member repo display name, for attributing the inherited folder. */
+    name?: string;
+    /** Member repo checkout root (the container, not the skill folder itself). */
+    rootPath: string;
+}
+
+/**
+ * Resolve the member repos a repo-group workspace inherits skill folders from.
+ *
+ * Returns an empty array for every non-group workspace, so callers can invoke
+ * this unconditionally without changing existing behavior. Only
+ * `<rootPath>/.github/skills` is ever inherited — the member root itself and
+ * `<rootPath>/skills` are deliberately not probed, because a checkout root is
+ * not a skill container.
+ */
+export async function resolveRepoGroupMemberSkillRoots(
+    store: ProcessStore,
+    dataDir: string | undefined,
+    workspaceId: string | undefined,
+): Promise<RepoGroupMemberSkillRoot[]> {
+    if (!workspaceId || !isRepoGroupWorkspaceId(workspaceId)) return [];
+    const effectiveDataDir = dataDir ?? path.join(os.homedir(), '.coc');
+    try {
+        const members = await resolveRepoGroupMembers(effectiveDataDir, store, workspaceId);
+        return members
+            .filter(m => !m.stale && typeof m.rootPath === 'string' && m.rootPath.length > 0)
+            .map(m => ({ workspaceId: m.workspaceId, name: m.name, rootPath: m.rootPath as string }));
+    } catch {
+        // Non-fatal: a group with an unreadable membership file inherits nothing.
+        return [];
+    }
+}
+
 export async function resolveSkillConfig(
     store: ProcessStore,
     dataDir: string | undefined,
@@ -177,6 +219,18 @@ export async function resolveSkillConfig(
                 : hostPath);
         } catch {
             // Non-fatal: skip skill folders that the active session namespace cannot access
+        }
+    }
+
+    // Repo-group members inherit each live member's `.github/skills`, taking the
+    // slot the (empty, virtual) group root's repo-local folder would occupy.
+    for (const member of await resolveRepoGroupMemberSkillRoots(store, dataDir, workspaceId)) {
+        try {
+            const memberSkillsDir = resolvePathInExecutionContext(member.rootPath, DEFAULT_SKILLS_SETTINGS.installPath);
+            const hostMemberSkillsDir = resolvePathForHostFilesystem(member.rootPath, DEFAULT_SKILLS_SETTINGS.installPath);
+            await tryAddSkillDirectory(memberSkillsDir, hostMemberSkillsDir);
+        } catch {
+            // Non-fatal: skip a member whose path cannot be translated for this session.
         }
     }
 
@@ -279,7 +333,7 @@ export async function resolveSkillConfig(
  */
 export interface EffectiveSkillPathEntry {
     /** Where the path comes from; drives the UI source badge. */
-    source: 'repo' | 'managed-global' | 'auto-detected' | 'configured' | 'repo-extra' | 'bundled';
+    source: 'repo' | 'repo-group-member' | 'managed-global' | 'auto-detected' | 'configured' | 'repo-extra' | 'bundled';
     /** Whether the path applies globally or only to a specific workspace. */
     scope: 'global' | 'workspace';
     /** Availability of the path; drives the UI status badge. */
@@ -290,6 +344,10 @@ export interface EffectiveSkillPathEntry {
     skillCount?: number;
     /** Optional human-readable note (e.g. why a declared folder was skipped). */
     note?: string;
+    /** Member repo workspace id the path was inherited from (`repo-group-member` only). */
+    sourceRepoId?: string;
+    /** Member repo display name the path was inherited from (`repo-group-member` only). */
+    sourceRepoName?: string;
 }
 
 /** Inputs for {@link resolveEffectiveSkillPaths}. */
@@ -298,6 +356,12 @@ export interface ResolveEffectiveSkillPathsArgs {
     dataDir?: string;
     /** Home directory used for OneDrive/CloudStorage detection. Defaults to `os.homedir()`. */
     homedir?: string;
+    /**
+     * Live repo-group members whose `.github/skills` the workspace inherits, in
+     * group member order. Callers resolve these with
+     * {@link resolveRepoGroupMemberSkillRoots}; non-group workspaces pass nothing.
+     */
+    repoGroupMembers?: RepoGroupMemberSkillRoot[];
     /** Active workspace root; when set, repo-local + per-repo extra folders are included (scope: workspace). */
     workspaceRootPath?: string;
     /** Per-repo extra skill folders for the active workspace (already resolved from workspace config). */
@@ -376,7 +440,7 @@ async function describeSkillFolderCandidates(
  * Enumerate the agent's effective skill search order as structured diagnostic
  * data, in priority order:
  *
- *   repo-local → managed global → configured global extra → per-repo extra →
+ *   repo-group members → repo-local → managed global → configured global extra → per-repo extra →
  *   auto-detected OneDrive/CloudStorage → bundled
  *
  * Global-scoped sources are always included; workspace-scoped sources
@@ -391,6 +455,22 @@ export async function resolveEffectiveSkillPaths(
 ): Promise<EffectiveSkillPathEntry[]> {
     const homedir = args.homedir ?? os.homedir();
     const entries: EffectiveSkillPathEntry[] = [];
+
+    // 0. Repo-group member `.github/skills` (workspace-scoped). These take the
+    // slot the group's own (virtual, empty) repo-local folder would occupy, so
+    // this ordering matches resolveSkillConfig.
+    for (const member of args.repoGroupMembers ?? []) {
+        try {
+            const hostPath = resolvePathForHostFilesystem(member.rootPath, DEFAULT_SKILLS_SETTINGS.installPath);
+            entries.push({
+                ...(await describeSkillDir(hostPath, 'repo-group-member', 'workspace')),
+                sourceRepoId: member.workspaceId,
+                ...(member.name ? { sourceRepoName: member.name } : {}),
+            });
+        } catch {
+            // Non-fatal: skip a member whose path cannot be translated.
+        }
+    }
 
     // 1. Repo-local .github/skills (workspace-scoped).
     if (args.workspaceRootPath) {

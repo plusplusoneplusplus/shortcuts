@@ -34,6 +34,31 @@ describe('skills-ui-model', () => {
         expect(sources[3]).toMatchObject({ removable: true, repoId: 'linked', repoColor: '#abc' });
     });
 
+    it('rails a repo-group member folder as a non-removable linked source and filters to it', () => {
+        const groupSkills: Skill[] = [
+            { name: 'alpha', source: 'repo-group-member', sourceRepoId: 'ws-a', folderPath: 'C:\\a\\.github\\skills', folderLabel: 'Repo A' },
+            { name: 'global', source: 'global', folderPath: 'C:\\data\\skills' },
+        ];
+        const sources = buildSkillsSources(groupSkills, groupSkillsByFolder(groupSkills, repos), repos);
+        const member = sources.find(source => source.name === 'Repo A');
+
+        expect(member).toMatchObject({ kind: 'linked', count: 1, removable: false, repoId: 'ws-a' });
+        expect(getSkillSourcePresentation(groupSkills[0], repos)).toEqual({
+            kind: 'linked',
+            sourceLabel: 'Repo A',
+            sourcePillLabel: 'Repo A',
+            hideDelete: true,
+        });
+        expect(filterWorkspaceSkills({
+            skills: groupSkills,
+            sources,
+            activeSource: member!.id,
+            status: 'all',
+            searchQuery: '',
+            disabledSkills: [],
+        }).map(skill => skill.name)).toEqual(['alpha']);
+    });
+
     it('combines source, status, and text filters without mutating the input', () => {
         const sources = buildSkillsSources(skills, groupSkillsByFolder(skills, repos), repos);
         const original = [...skills];

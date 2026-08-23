@@ -26,6 +26,7 @@ const SOURCE_BADGES: Record<EffectiveSkillPathSource, { label: string; className
     'configured': { label: 'Configured', className: 'bg-[#8b5cf6]/15 text-[#8b5cf6]' },
     'auto-detected': { label: 'Auto-detected', className: 'bg-[#0ca678]/15 text-[#0ca678]' },
     'repo': { label: 'Repo', className: 'bg-[#d9822b]/15 text-[#d9822b]' },
+    'repo-group-member': { label: 'Group member', className: 'bg-[#d9822b]/15 text-[#d9822b]' },
     'repo-extra': { label: 'Repo', className: 'bg-[#d9822b]/15 text-[#d9822b]' },
     'bundled': { label: 'Bundled', className: 'bg-[#6b7280]/15 text-[#6b7280]' },
 };
@@ -236,6 +237,11 @@ export function SkillsConfigPanel() {
                             >
                                 <StatusBadge status={p.status} />
                                 <code className="flex-1 break-all text-[#1e1e1e] dark:text-[#cccccc]">{p.path}</code>
+                                {p.source === 'repo-group-member' && (p.sourceRepoName || p.sourceRepoId) && (
+                                    <span className="text-[#848484] whitespace-nowrap" title={p.sourceRepoId}>
+                                        from {p.sourceRepoName || p.sourceRepoId}
+                                    </span>
+                                )}
                                 {typeof p.skillCount === 'number' && (
                                     <span className="text-[#848484] whitespace-nowrap">
                                         {p.skillCount} skill{p.skillCount === 1 ? '' : 's'}

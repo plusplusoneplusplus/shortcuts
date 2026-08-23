@@ -8,6 +8,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { registerGlobalSkillRoutes } from '../../src/server/skills/global-skill-handler';
+import { createRepoGroup } from '../../src/server/workspaces/repo-group-workspace';
 import { skillCache } from '../../src/server/skills/skill-handler';
 import { loadConfigFile, writeConfigFile } from '../../src/config';
 import { createMockProcessStore } from './helpers/mock-process-store';
@@ -453,6 +454,70 @@ describe('registerGlobalSkillRoutes', () => {
             const repoIdx = body.paths.findIndex((p: any) => p.source === 'repo');
             const managedIdx = body.paths.findIndex((p: any) => p.source === 'managed-global');
             expect(repoIdx).toBeLessThan(managedIdx);
+        });
+
+        it('reports each live repo-group member .github/skills for a group id (AC-02)', async () => {
+            const memberA = fs.mkdtempSync(path.join(os.tmpdir(), 'group-member-a-'));
+            const memberB = fs.mkdtempSync(path.join(os.tmpdir(), 'group-member-b-'));
+            try {
+                const skillsA = path.join(memberA, '.github', 'skills', 'alpha');
+                fs.mkdirSync(skillsA, { recursive: true });
+                fs.writeFileSync(path.join(skillsA, 'SKILL.md'), '# alpha\nDesc');
+                // memberB has no .github/skills at all.
+
+                const groupStore = createMockProcessStore({
+                    initialWorkspaces: [
+                        { id: 'ws-member-a', name: 'Member A', rootPath: memberA } as WorkspaceInfo,
+                        { id: 'ws-member-b', name: 'Member B', rootPath: memberB } as WorkspaceInfo,
+                    ],
+                });
+                const group = await createRepoGroup(dataDir, groupStore, {
+                    name: 'Team',
+                    members: ['ws-member-a', 'ws-member-b'],
+                });
+
+                const groupRoutes: Route[] = [];
+                registerGlobalSkillRoutes(groupRoutes, groupStore, dataDir, {
+                    loadConfigFile,
+                    writeConfigFile,
+                    getConfigFilePath: () => configPath,
+                });
+
+                const { statusCode, body } = await dispatchRoute(
+                    groupRoutes, 'GET', `/api/skills/effective-paths?workspaceId=${group.id}`
+                );
+                expect(statusCode).toBe(200);
+                expect(body.workspaceId).toBe(group.id);
+
+                const members = body.paths.filter((p: any) => p.source === 'repo-group-member');
+                expect(members).toHaveLength(2);
+                expect(members[0]).toMatchObject({
+                    path: path.join(memberA, '.github', 'skills'),
+                    scope: 'workspace',
+                    status: 'available',
+                    skillCount: 1,
+                    sourceRepoId: 'ws-member-a',
+                    sourceRepoName: 'Member A',
+                });
+                expect(members[1]).toMatchObject({
+                    path: path.join(memberB, '.github', 'skills'),
+                    status: 'missing',
+                    sourceRepoId: 'ws-member-b',
+                });
+                // Members come before the managed global directory.
+                expect(body.paths.findIndex((p: any) => p.source === 'repo-group-member'))
+                    .toBeLessThan(body.paths.findIndex((p: any) => p.source === 'managed-global'));
+            } finally {
+                fs.rmSync(memberA, { recursive: true, force: true });
+                fs.rmSync(memberB, { recursive: true, force: true });
+            }
+        });
+
+        it('reports no repo-group-member paths for an ordinary workspace', async () => {
+            const { body } = await dispatchRoute(
+                routes, 'GET', `/api/skills/effective-paths?workspaceId=${workspaceId}`
+            );
+            expect(body.paths.some((p: any) => p.source === 'repo-group-member')).toBe(false);
         });
 
         it('falls back to global-only for an unknown workspace id', async () => {

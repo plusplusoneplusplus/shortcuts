@@ -16,7 +16,7 @@ export interface SkillFolderGroup {
     key: string;
     label: string;
     folderPath: string;
-    source: 'global' | 'repo' | 'linked-repo' | 'extra-folder' | 'global-extra-folder';
+    source: 'global' | 'repo' | 'repo-group-member' | 'linked-repo' | 'extra-folder' | 'global-extra-folder';
     skills: Skill[];
     repoId?: string;
     isRemovable: boolean;
@@ -95,6 +95,30 @@ export function groupSkillsByFolder(
             folderPath: repoSkills[0].folderPath ?? '',
             source: 'repo',
             skills: repoSkills,
+            isRemovable: false,
+        });
+    }
+
+    // Repo-group member folders sit in the repo-local slot: one group per member
+    // repo, ordered by first appearance (the server already emits them in
+    // membership order), labelled with the member repo's name.
+    const memberSkills = skills.filter(skill => skill.source === 'repo-group-member');
+    const memberByFolder = new Map<string, Skill[]>();
+    for (const skill of memberSkills) {
+        const folderPath = skill.folderPath ?? skill.sourceRepoId ?? '';
+        memberByFolder.set(folderPath, [...(memberByFolder.get(folderPath) ?? []), skill]);
+    }
+    for (const [folderPath, folderSkills] of memberByFolder) {
+        const first = folderSkills[0];
+        const repoId = first.sourceRepoId;
+        const repoName = (repoId ? repoById.get(repoId)?.name : undefined) ?? first.folderLabel;
+        groups.push({
+            key: `repo-group-member:${folderPath}`,
+            label: repoName ? `📂 ${repoName}` : `📂 ${folderPath}`,
+            folderPath,
+            source: 'repo-group-member',
+            skills: folderSkills,
+            repoId,
             isRemovable: false,
         });
     }
@@ -181,15 +205,15 @@ export function buildSkillsSources(
             });
             continue;
         }
-        if (group.source === 'linked-repo') {
+        if (group.source === 'linked-repo' || group.source === 'repo-group-member') {
             const repo = group.repoId ? repoById.get(group.repoId) : undefined;
             sources.push({
                 id: `group:${group.key}`,
                 kind: 'linked',
-                name: repo?.name ?? group.folderPath,
+                name: repo?.name ?? group.skills[0]?.folderLabel ?? group.folderPath,
                 path: group.folderPath,
                 count: group.skills.length,
-                removable: true,
+                removable: group.source === 'linked-repo',
                 repoColor: repo?.color,
                 repoId: group.repoId,
                 folderPath: group.folderPath,
@@ -212,7 +236,7 @@ export function buildSkillsSources(
 
 export function getSkillSourceKind(skill: Skill): SourceKind {
     if (skill.source === 'global') {return 'global';}
-    if (skill.source === 'linked-repo') {return 'linked';}
+    if (skill.source === 'linked-repo' || skill.source === 'repo-group-member') {return 'linked';}
     if (skill.source === 'extra-folder' || skill.source === 'global-extra-folder') {return 'extra';}
     return 'repo';
 }
@@ -331,8 +355,10 @@ export function getSkillSourcePresentation(
         const repo = skill.sourceRepoId ? repoById.get(skill.sourceRepoId) : undefined;
         return {
             kind,
-            sourceLabel: repo?.name ?? skill.folderPath ?? 'linked',
-            sourcePillLabel: repo?.name ?? 'Linked',
+            // `folderLabel` carries the member repo name for repo-group members the
+            // UI has no workspace summary for.
+            sourceLabel: repo?.name ?? skill.folderLabel ?? skill.folderPath ?? 'linked',
+            sourcePillLabel: repo?.name ?? skill.folderLabel ?? 'Linked',
             hideDelete: true,
         };
     }
