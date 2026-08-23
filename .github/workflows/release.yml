@@ -93,10 +93,10 @@ jobs:
             triple: linux-x64-gnu
           - runner: ubuntu-24.04-arm
             triple: linux-arm64-gnu
+          # The macOS app ships as an arm64-only .dmg, so an Intel Mac
+          # prebuilt would have no consumer.
           - runner: macos-latest
             triple: darwin-arm64
-          - runner: macos-13
-            triple: darwin-x64
           - runner: windows-latest
             triple: win32-x64-msvc
     steps:
@@ -202,7 +202,6 @@ jobs:
         run: |
           node scripts/stage-native-binaries.mjs packages/coc-native/artifacts
           test -f packages/coc-native/prebuilt/darwin-arm64/coc-native.darwin-arm64.node
-          test -f packages/coc-native/prebuilt/darwin-x64/coc-native.darwin-x64.node
 
       - name: Build macOS distributables
         run: npm run dist:mac
