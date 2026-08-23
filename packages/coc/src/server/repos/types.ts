@@ -42,6 +42,12 @@ export interface FileSearchResult {
     path: string;
     /** Higher = better match. */
     score: number;
+    /**
+     * Positions in `path` that matched the query, ascending, as JavaScript
+     * string indices. Clients highlight exactly these characters instead of
+     * re-deriving the match, so highlight and score cannot disagree.
+     */
+    indices: number[];
 }
 
 /** Result of a fuzzy file search across a repo. */

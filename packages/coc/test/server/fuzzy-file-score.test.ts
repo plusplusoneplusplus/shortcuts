@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { fuzzyFileScore, rankFuzzyMatches } from '../../src/server/shared/fuzzy-file-score';
+import { fuzzyFileMatch, fuzzyFileScore, rankFuzzyMatches } from '../../src/server/shared/fuzzy-file-score';
 
 describe('fuzzyFileScore', () => {
     it('matches an exact substring', () => {
@@ -72,6 +72,41 @@ describe('fuzzyFileScore', () => {
     it('handles an empty path', () => {
         expect(fuzzyFileScore('a', '')).toBe(0);
     });
+
+    it('folds case for ASCII only', () => {
+        // Documented deviation from toLowerCase(), required for parity with the
+        // native scorer and to keep match indices aligned with the path.
+        expect(fuzzyFileScore('café', 'src/café.ts')).toBeGreaterThan(0);
+        expect(fuzzyFileScore('café', 'src/CAFÉ.ts')).toBe(0);
+        expect(fuzzyFileScore('caf', 'src/CAFÉ.ts')).toBeGreaterThan(0);
+    });
+});
+
+describe('fuzzyFileMatch', () => {
+    it('reports the matched positions in ascending order', () => {
+        const match = fuzzyFileMatch('idx', 'src/index.ts');
+        expect(match).not.toBeNull();
+        expect(match!.indices).toEqual([4, 6, 8]);
+        expect(match!.indices.map(i => 'src/index.ts'[i]).join('')).toBe('idx');
+    });
+
+    it('indices are string indices even for non-ASCII paths', () => {
+        const path = 'docs/café/x.ts';
+        const match = fuzzyFileMatch('cafx', path);
+        expect(match!.indices.map(i => path[i]).join('')).toBe('cafx');
+    });
+
+    it('returns null instead of a zero score when nothing matches', () => {
+        expect(fuzzyFileMatch('zzz', 'src/index.ts')).toBeNull();
+        expect(fuzzyFileMatch('', 'src/index.ts')).toBeNull();
+        expect(fuzzyFileMatch('abcdefghijklmnopqrstuvwxyz0123456789', 'a.ts')).toBeNull();
+    });
+
+    it('agrees with fuzzyFileScore', () => {
+        for (const path of ['src/index.ts', 'README.md', 'test/index.test.ts']) {
+            expect(fuzzyFileMatch('index', path)?.score ?? 0).toBe(fuzzyFileScore('index', path));
+        }
+    });
 });
 
 describe('rankFuzzyMatches', () => {
@@ -124,6 +159,12 @@ describe('rankFuzzyMatches', () => {
     it('scores every path the same way fuzzyFileScore does', () => {
         for (const match of rankFuzzyMatches('index', PATHS, 10)) {
             expect(match.score).toBe(fuzzyFileScore('index', match.path));
+        }
+    });
+
+    it('carries match indices for every result', () => {
+        for (const match of rankFuzzyMatches('index', PATHS, 10)) {
+            expect(match.indices.map(i => match.path[i].toLowerCase()).join('')).toBe('index');
         }
     });
 });

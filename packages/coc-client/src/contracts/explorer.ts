@@ -28,6 +28,11 @@ export interface ExplorerFilesResponse {
 export interface ExplorerSearchResult {
   path: string;
   score: number;
+  /**
+   * Positions in `path` that matched the query, ascending, as JavaScript string
+   * indices. Present so callers highlight the same characters the scorer used.
+   */
+  indices: number[];
 }
 
 export interface ExplorerSearchResponse {
