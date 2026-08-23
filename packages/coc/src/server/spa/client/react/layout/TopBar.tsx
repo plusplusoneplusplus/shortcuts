@@ -31,6 +31,7 @@ import { useSplitWorkspacePanelEnabled } from '../hooks/feature-flags/useSplitWo
 import { MY_WORK_WORKSPACE_ID, getMyWorkHeaderConfig } from '../repos/MyWorkView';
 import { MY_LIFE_WORKSPACE_ID, MY_LIFE_HEADER_CONFIG } from '../repos/MyLifeView';
 import { getRepoGroupHeaderConfig } from '../repos/RepoGroupView';
+import { resolveRepoGroupName } from '../repos/repoGroupName';
 import { isRepoGroupWorkspaceId } from '../repos/virtualWorkspaceIds';
 import { useMyWorkEnabled } from '../hooks/feature-flags/useMyWorkEnabled';
 import { useMyWorkTodayViewEnabled } from '../hooks/feature-flags/useMyWorkTodayViewEnabled';
@@ -64,7 +65,7 @@ export interface TopBarProps {
 export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     const { state, dispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
-    const { repos, unseenCounts, fetchRepos } = useRepos();
+    const { repos, unseenCounts, fetchRepos, remoteGroupWorkspaces } = useRepos();
     const { navigateToWorkspace } = useWorkspaceNavigation();
     const { breakpoint } = useBreakpoint();
     const isMobile = breakpoint === 'mobile';
@@ -154,14 +155,14 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
 
     // Repo-group virtual workspaces are recognized by id prefix (not id equality
     // like My Work / My Life — many groups may exist). The header label is the
-    // registered workspace name, falling back to the id while workspaces load.
+    // registered workspace name — local list for a local group, aggregated remote
+    // groups for a remote one — falling back to the id while those lists load.
     // Groups have no feature flag: they only exist when the user created one.
     const groupHeaderConfig = useMemo(() => {
         if (!isOnReposTab || !isRepoGroupWorkspaceId(state.selectedRepoId)) return null;
         const id = state.selectedRepoId!;
-        const ws = (state.workspaces ?? []).find((w: any) => String(w?.id) === id);
-        return getRepoGroupHeaderConfig(id, String(ws?.name ?? id));
-    }, [isOnReposTab, state.selectedRepoId, state.workspaces]);
+        return getRepoGroupHeaderConfig(id, resolveRepoGroupName(id, state.workspaces, remoteGroupWorkspaces));
+    }, [isOnReposTab, state.selectedRepoId, state.workspaces, remoteGroupWorkspaces]);
 
     // Virtual workspaces (My Work / My Life / repo groups) have no real repo, so
     // they never hit `showRemoteHeader`. Give them the same single-row shell via

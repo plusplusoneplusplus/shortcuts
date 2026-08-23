@@ -15,9 +15,13 @@ const mockDispatch = vi.fn();
 let mockAppState: any = {};
 let mockRemoteShellEnabled = false;
 let mockBreakpoint = 'desktop';
+let mockRemoteGroupWorkspaces: any[] = [];
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: mockAppState, dispatch: mockDispatch }),
+}));
+vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({
+    useReposOptional: () => ({ remoteGroupWorkspaces: mockRemoteGroupWorkspaces }),
 }));
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({ state: { selectedTaskIdByRepo: {} } }),
@@ -63,6 +67,7 @@ beforeEach(() => {
     mockDispatch.mockReset();
     mockRemoteShellEnabled = false;
     mockBreakpoint = 'desktop';
+    mockRemoteGroupWorkspaces = [];
     mockAppState = {
         activeRepoSubTab: 'chats',
         selectedNotePath: null,
@@ -102,6 +107,15 @@ describe('RepoGroupView', () => {
     it('shows the group name from the workspace registry in the header', () => {
         render(<RepoGroupView workspaceId={GROUP_ID} />);
         expect(screen.getByTestId('repo-group-header').textContent).toContain('Frontend');
+    });
+
+    it('labels a remote group from the aggregated remote groups, not its raw id', () => {
+        mockAppState.workspaces = [{ id: 'r1', name: 'shortcuts', rootPath: '/r/r1' }];
+        mockRemoteGroupWorkspaces = [{ id: 'group-svc', name: 'Services', remote: { serverLabel: 'Devbox' } }];
+        render(<RepoGroupView workspaceId="group-svc" />);
+        const header = screen.getByTestId('repo-group-header').textContent ?? '';
+        expect(header).toContain('Services');
+        expect(header).not.toContain('group-svc');
     });
 
     it('falls back to the workspace id while the group is not in the registry yet', () => {
