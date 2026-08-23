@@ -608,7 +608,8 @@ describe('AddRepoDialog', () => {
         fireEvent.click(entry);
 
         await waitFor(() => expect(repositoryServiceMocks.browseWorkspaceFolders).toHaveBeenCalledTimes(2));
-        expect(repositoryServiceMocks.browseWorkspaceFolders).toHaveBeenNthCalledWith(2, 'D:\\projects\\my-repo');
+        // Second arg is the target server's base URL — undefined for Local.
+        expect(repositoryServiceMocks.browseWorkspaceFolders).toHaveBeenNthCalledWith(2, 'D:\\projects\\my-repo', undefined);
     });
 
     it('renders browse roots and navigates to WSL home from the browser', async () => {
@@ -644,7 +645,7 @@ describe('AddRepoDialog', () => {
         fireEvent.click(wslButton);
 
         await waitFor(() => expect(repositoryServiceMocks.browseWorkspaceFolders).toHaveBeenCalledTimes(2));
-        expect(repositoryServiceMocks.browseWorkspaceFolders).toHaveBeenNthCalledWith(2, wslHome);
+        expect(repositoryServiceMocks.browseWorkspaceFolders).toHaveBeenNthCalledWith(2, wslHome, undefined);
     });
 });
 

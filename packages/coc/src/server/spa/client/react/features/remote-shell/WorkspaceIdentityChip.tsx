@@ -159,6 +159,17 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
     }, [groups, repos, cloneId]);
     const activeGroupKey = activeGroup ? groupKey(activeGroup) : null;
     const activeSummary = activeGroup ? summarizeRemote(activeGroup, cloneStatus, unseenCounts) : null;
+
+    // The picker's add-repository actions target the server the chip is showing:
+    // opened on a remote workspace they add to THAT box, not the local one.
+    const addTargetServer = useMemo(() => {
+        const remote = (repo?.workspace as { remote?: { serverId?: unknown; baseUrl?: unknown } } | undefined)?.remote;
+        if (typeof remote?.serverId !== 'string' || !remote.serverId) return null;
+        return {
+            serverId: remote.serverId,
+            baseUrl: typeof remote.baseUrl === 'string' ? remote.baseUrl : undefined,
+        };
+    }, [repo]);
     const { recentGroups, remainingGroups, recordUse } = useRecentRemotes(groups);
 
     useEffect(() => {
@@ -543,6 +554,8 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
             <AddRepoDialog
                 open={addRepoOpen}
                 onClose={() => setAddRepoOpen(false)}
+                serverId={addTargetServer?.serverId}
+                baseUrl={addTargetServer?.baseUrl}
                 repos={repos}
                 onSuccess={() => { setAddRepoOpen(false); fetchRepos(); }}
             />
