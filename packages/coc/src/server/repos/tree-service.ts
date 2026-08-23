@@ -305,6 +305,18 @@ export class RepoTreeService {
         return new Set([...rgResult, ...dirIgnored]);
     }
 
+    /** argv for the `rg --files` whole-repo listing. */
+    private static buildRipgrepArgs(repoRoot: string, showIgnored: boolean): string[] {
+        const args = ['--files', '--hidden'];
+        if (showIgnored) {
+            // `--no-ignore` also disables rg's own `.git` exclusion, so re-apply
+            // it explicitly to stay in step with the native and JS walkers.
+            args.push('--no-ignore', '--glob', '!.git/');
+        }
+        args.push('--', repoRoot);
+        return args;
+    }
+
     private async listFilesWithRipgrep(
         repoRoot: string,
         options?: { showIgnored?: boolean; maxEntries?: number },
@@ -313,9 +325,7 @@ export class RepoTreeService {
         if (!available) return null;
 
         const maxEntries = options?.maxEntries ?? 5000;
-        const args = ['--files', '--hidden'];
-        if (options?.showIgnored) args.push('--no-ignore');
-        args.push('--', repoRoot);
+        const args = RepoTreeService.buildRipgrepArgs(repoRoot, options?.showIgnored ?? false);
 
         let stdout: string;
         try {
@@ -646,13 +656,17 @@ export class RepoTreeService {
                 }
             }
 
+            // `.git` is never a useful file-index entry, and its object database
+            // would crowd out real source files against maxEntries. Excluded
+            // unconditionally here, in the native walker, and in the rg path.
+            let filtered = resolved.filter(e => !(e.isDir && e.name === '.git'));
+
             // Gitignore filtering
-            let filtered = resolved;
             if (!showIgnored) {
-                const entryInfos = resolved.map(e => ({ name: e.name, isDir: e.isDir }));
+                const entryInfos = filtered.map(e => ({ name: e.name, isDir: e.isDir }));
                 const ignoredNames = await RepoTreeService.getIgnoredNames(repoRoot, dir, entryInfos);
                 if (ignoredNames.size > 0) {
-                    filtered = resolved.filter(e => !ignoredNames.has(e.name));
+                    filtered = filtered.filter(e => !ignoredNames.has(e.name));
                 }
             }
 

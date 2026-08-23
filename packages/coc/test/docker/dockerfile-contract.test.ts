@@ -114,6 +114,17 @@ describe('Dockerfile contract', () => {
         }
     });
 
+    it('carries release-injected native file-index binaries into the image', () => {
+        const lines = dockerignore.split('\n').map((l) => l.trim());
+        // Compiled Rust output is local-only; the prebuilt binaries are not.
+        expect(lines).toContain('packages/coc-native/rust/target');
+        expect(lines).not.toContain('packages/coc-native/prebuilt');
+        // The build stage's `COPY . .` picks them up, and the runtime stage
+        // copies packages/ across, so no Rust toolchain runs in any stage.
+        expect(dockerfile).not.toMatch(/\bcargo\b/);
+        expect(dockerfile).toMatch(/^COPY --from=build \/src\/packages \.\/packages$/m);
+    });
+
     it('.dockerignore keeps the build lean without dropping build inputs', () => {
         const lines = dockerignore.split('\n').map((l) => l.trim());
         for (const required of ['node_modules', 'packages/*/node_modules', 'packages/*/dist', '.git', '.github', 'packages/coc/src/server/spa/client/dist']) {

@@ -405,3 +405,71 @@ describe('RepoTreeService.listFilesRecursive rg fast-path', () => {
         expect(rgCalled).toBe(false);
     });
 });
+
+// ── .git exclusion across the file-index walkers ──────────────────────────────
+
+describe('file-index walkers always skip .git', () => {
+    function walkFilesOf(svc: RepoTreeService) {
+        return (svc as any).walkFiles.bind(svc) as (
+            repoRoot: string,
+            absRoot: string,
+            showIgnored: boolean,
+            maxEntries: number,
+        ) => Promise<{ files: string[]; truncated: boolean }>;
+    }
+
+    function seedRepoWithGitDir() {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, '.gitignore'), 'build/\n');
+        fs.mkdirSync(path.join(repoDir, '.git', 'objects', 'ab'), { recursive: true });
+        fs.writeFileSync(path.join(repoDir, '.git', 'HEAD'), 'ref: refs/heads/main\n');
+        fs.writeFileSync(path.join(repoDir, '.git', 'config'), '[core]\n');
+        fs.writeFileSync(path.join(repoDir, '.git', 'objects', 'ab', '1f3c'), 'x');
+        fs.mkdirSync(path.join(repoDir, 'build'), { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'build', 'out.js'), 'x');
+        fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'src', 'index.ts'), 'export {}');
+    }
+
+    it('walkFiles omits .git with showIgnored=false', async () => {
+        seedRepoWithGitDir();
+        const svc = new RepoTreeService(dataDir);
+        const { files } = await walkFilesOf(svc)(repoDir, repoDir, false, 5000);
+        expect(files.every(f => !f.startsWith('.git/'))).toBe(true);
+        expect(files).toContain('src/index.ts');
+    });
+
+    it('walkFiles omits .git with showIgnored=true but still lists ignored files', async () => {
+        seedRepoWithGitDir();
+        const svc = new RepoTreeService(dataDir);
+        const { files } = await walkFilesOf(svc)(repoDir, repoDir, true, 5000);
+        expect(files).toContain('src/index.ts');
+        // showIgnored means "show gitignored files"...
+        expect(files).toContain('build/out.js');
+        // ...not "show git's internal object database".
+        expect(files.filter(f => f.startsWith('.git/'))).toEqual([]);
+    });
+
+    it('listFilesWithRipgrep argv excludes .git when --no-ignore is used', () => {
+        const build = (RepoTreeService as any).buildRipgrepArgs as (
+            repoRoot: string,
+            showIgnored: boolean,
+        ) => string[];
+
+        const plain = build('/repo', false);
+        expect(plain).toEqual(['--files', '--hidden', '--', '/repo']);
+
+        const ignored = build('/repo', true);
+        expect(ignored).toEqual([
+            '--files',
+            '--hidden',
+            '--no-ignore',
+            '--glob',
+            '!.git/',
+            '--',
+            '/repo',
+        ]);
+        // The glob must come before the `--` separator or rg treats it as a path.
+        expect(ignored.indexOf('--glob')).toBeLessThan(ignored.indexOf('--'));
+    });
+});
