@@ -10,7 +10,7 @@ const ci = readFileSync(path.join(workflowDir, "ci.yml"), "utf8");
 
 test("release workflow can push the server image to ghcr.io", () => {
     assert.match(release, /^permissions:\n(?:  .*\n)*  packages: write$/m);
-    assert.match(release, /^  build-docker:\n    needs: dependency-security$/m);
+    assert.match(release, /^  build-docker:\n    needs: \[[^\]]*\bdependency-security\b[^\]]*\]$/m);
     assert.match(release, /uses: docker\/login-action@v\d+\n\s+with:\n\s+registry: ghcr\.io/);
     assert.match(release, /images: \$\{\{ steps\.image\.outputs\.name \}\}/);
     assert.match(release, /echo "name=ghcr\.io\/\$\{OWNER\}\/coc" >> "\$GITHUB_OUTPUT"/);
@@ -27,6 +27,12 @@ test("release image is multi-arch, tagged by semver, and `latest` only for stabl
 test("a docker failure does not block the desktop release and vice versa", () => {
     assert.match(release, /^  create-release:\n    needs: \[build-mac, build-win\]$/m);
     assert.doesNotMatch(release, /needs: \[[^\]]*build-docker[^\]]*\]/);
+    // The other direction. build-docker may share an upstream with the
+    // installers — build-native produces the binaries both of them stage — but
+    // it must never queue behind the installers themselves.
+    const dockerNeeds = /^  build-docker:\n    needs: (.+)$/m.exec(release);
+    assert.ok(dockerNeeds, "build-docker has no needs: line");
+    assert.doesNotMatch(dockerNeeds[1], /build-mac|build-win/);
 });
 
 test("release notes tell users to run the image with host networking, not -p", () => {

@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Compile the Rust addon and regenerate the TypeScript view of it.
  *
@@ -14,6 +13,13 @@
  * on disk (locally built, then `prebuilt/`) rather than through napi-rs's
  * per-platform npm packages, and `npm run build` stays plain `tsc` over the
  * committed `native-bindings.ts` so the TypeScript build never needs cargo.
+ *
+ * No hashbang on purpose. `build-native.test.ts` imports these helpers, and
+ * Vitest inlines a project-local `.mjs` without an esbuild pass — Vite only
+ * skips a leading `#!` with the LF-only regex `/^#!.*\n/`. On a CRLF checkout
+ * that misses and the `#!` lands inside the module wrapper, so the suite dies
+ * at import. This file is run as `node scripts/build-native.mjs` and is not
+ * executable, so the hashbang bought nothing.
  */
 
 import { execFileSync } from 'node:child_process';

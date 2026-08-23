@@ -114,6 +114,33 @@ describe('the committed bindings', () => {
     });
 });
 
+describe('the .mjs modules these tests import', () => {
+    // Vitest inlines a project-local `.mjs` and, unlike a `.ts`, never runs it
+    // through esbuild first. Vite skips a leading hashbang with `/^#!.*\n/`,
+    // which is LF-only, so on a CRLF checkout — every Windows runner — the
+    // regex misses and `#!` ends up inside the module wrapper. The suite then
+    // dies at import with "SyntaxError: Invalid or unexpected token" before a
+    // single test runs. `.gitattributes` pins these files to LF; this keeps
+    // them hashbang-free whatever a clone's autocrlf happens to be.
+    const testDir = path.join(PACKAGE_ROOT, 'test');
+    const imported = fs
+        .readdirSync(testDir)
+        .filter(entry => entry.endsWith('.test.ts'))
+        .flatMap(entry => [
+            ...fs.readFileSync(path.join(testDir, entry), 'utf-8').matchAll(/from '(\.[^']*\.mjs)'/g),
+        ])
+        .map(match => path.resolve(testDir, match[1]));
+
+    it('start with no hashbang, which Vite only strips from an LF file', () => {
+        // Self-check: a scan that silently found nothing would pass forever.
+        expect(imported).toContain(path.join(PACKAGE_ROOT, 'scripts', 'build-native.mjs'));
+        for (const file of imported) {
+            const relative = path.relative(PACKAGE_ROOT, file);
+            expect(fs.readFileSync(file, 'utf-8').startsWith('#!'), `${relative} starts with a hashbang`).toBe(false);
+        }
+    });
+});
+
 describe('the built binary', () => {
     it('leaves no napi JS binding shim beside the package', () => {
         // `napi build` writes an index.js that resolves per-platform npm
