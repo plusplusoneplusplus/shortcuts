@@ -40,11 +40,20 @@ vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => (
 vi.mock('../../../../src/server/spa/client/react/features/remote-shell/useShellNavigation', () => ({
     useShellNavigation: () => ({ selectClone: mockSelectClone, switchSubTab: vi.fn() }),
 }));
+// Both doubles echo the server pre-selection props back as data attributes so the
+// chip -> dialog wiring is assertable. Passing them through raw (no `?? ''`) keeps
+// "prop was undefined" distinguishable from "prop was an empty string": React drops
+// an undefined attribute entirely, so getAttribute() returns null.
+type AddDialogProps = { open: boolean; serverId?: string; baseUrl?: string };
 vi.mock('../../../../src/server/spa/client/react/repos/AddFolderDialog', () => ({
-    AddFolderDialog: ({ open }: { open: boolean }) => (open ? <div data-testid="add-folder-dialog" /> : null),
+    AddFolderDialog: ({ open, serverId, baseUrl }: AddDialogProps) => (
+        open ? <div data-testid="add-folder-dialog" data-server-id={serverId} data-base-url={baseUrl} /> : null
+    ),
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/AddRepoDialog', () => ({
-    AddRepoDialog: ({ open }: { open: boolean }) => (open ? <div data-testid="add-repo-dialog" /> : null),
+    AddRepoDialog: ({ open, serverId, baseUrl }: AddDialogProps) => (
+        open ? <div data-testid="add-repo-dialog" data-server-id={serverId} data-base-url={baseUrl} /> : null
+    ),
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/CloneRepoDialog', () => ({
     CloneRepoDialog: ({ open }: { open: boolean }) => (open ? <div data-testid="clone-repo-dialog" /> : null),
@@ -600,5 +609,55 @@ describe('WorkspaceIdentityChip repo groups (repo-group AC-01/AC-04)', () => {
         // No ⋮ for the offline group; the local one keeps its menu.
         expect(groupRowMenuFor('Devbox Services')).toBeUndefined();
         expect(groupRowMenuFor('Platform')).toBeTruthy();
+    });
+});
+
+describe('WorkspaceIdentityChip add-repository server pre-selection (AC-02.1 / AC-03.1)', () => {
+    const DEV_BOX = 'http://127.0.0.1:4000';
+
+    // A workspace on a remote CoC: same `remote` marker repoGrouping/repoPickerModel read.
+    const devBoxRepo = () => ({
+        workspace: {
+            id: 'r-remote', name: 'shortcuts', color: '#0078d4', remoteUrl: SHORTCUTS,
+            rootPath: '/remote/r-remote',
+            remote: { serverId: 'dev-box', baseUrl: DEV_BOX, serverLabel: 'Dev Box', connection: 'online', queue: 'idle' },
+        },
+        gitInfo: { isGitRepo: true, branch: 'main', dirty: false, remoteUrl: SHORTCUTS },
+    });
+
+    it('passes the active remote workspace\'s server to Add specific repository', () => {
+        const selected = devBoxRepo();
+        openPicker([selected], selected);
+
+        fireEvent.click(screen.getByTestId('remote-add-repo-option'));
+        const dialog = screen.getByTestId('add-repo-dialog');
+        expect(dialog.getAttribute('data-server-id')).toBe('dev-box');
+        expect(dialog.getAttribute('data-base-url')).toBe(DEV_BOX);
+    });
+
+    it('passes the active remote workspace\'s server to Add workspace folder', () => {
+        const selected = devBoxRepo();
+        openPicker([selected], selected);
+
+        fireEvent.click(screen.getByTestId('remote-add-folder-option'));
+        const dialog = screen.getByTestId('add-folder-dialog');
+        expect(dialog.getAttribute('data-server-id')).toBe('dev-box');
+        expect(dialog.getAttribute('data-base-url')).toBe(DEV_BOX);
+    });
+
+    it('leaves both dialogs on the Local default for a purely local workspace', () => {
+        const local = repo('a', 'shortcuts', SHORTCUTS);
+        openPicker([local], local);
+        fireEvent.click(screen.getByTestId('remote-add-repo-option'));
+        const repoDialog = screen.getByTestId('add-repo-dialog');
+        expect(repoDialog.getAttribute('data-server-id')).toBeNull();
+        expect(repoDialog.getAttribute('data-base-url')).toBeNull();
+
+        cleanup();
+        openPicker([local], local);
+        fireEvent.click(screen.getByTestId('remote-add-folder-option'));
+        const folderDialog = screen.getByTestId('add-folder-dialog');
+        expect(folderDialog.getAttribute('data-server-id')).toBeNull();
+        expect(folderDialog.getAttribute('data-base-url')).toBeNull();
     });
 });
