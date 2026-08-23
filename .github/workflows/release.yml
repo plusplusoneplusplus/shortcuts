@@ -409,9 +409,13 @@ jobs:
     needs: [build-mac, build-win]
     runs-on: ubuntu-latest
     steps:
-      - name: Download all build artifacts
+      # Installers only. The coc-native-* artifacts are the raw N-API
+      # binaries the build jobs hand to electron-builder — they are already
+      # packed inside each installer and are not a public download.
+      - name: Download installer artifacts
         uses: actions/download-artifact@v4
         with:
+          pattern: coc-{mac,win}
           path: artifacts
           merge-multiple: true
 
@@ -423,7 +427,10 @@ jobs:
           OWNER: ${{ github.repository_owner }}
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
-          mapfile -t files < <(find artifacts -type f | sort)
+          # Ship the CoC installers only: no loose .node binaries, and no
+          # CoCContainer build (an internal variant, not a public download).
+          mapfile -t files < <(find artifacts -type f \( -name '*.dmg' -o -name '*.exe' \) \
+            ! -name 'CoCContainer*' ! -name '*.node' | sort)
           if [ "${#files[@]}" -eq 0 ]; then
             echo "::error::No artifacts were downloaded for the release."
             exit 1
@@ -468,9 +475,6 @@ jobs:
 
           ### Windows — CoC
           Run \`CoC.Setup.${VERSION}.exe\`. SmartScreen may warn about an unknown publisher — choose **More info → Run anyway**. This installer is also unsigned for now.
-
-          ### Windows — CoCContainer
-          Run \`CoCContainer.Setup.${VERSION}.exe\` to install the multi-agent aggregation dashboard. SmartScreen may show the same unsigned-publisher warning.
 
           ### Docker (server only, Linux amd64/arm64)
           \`\`\`
