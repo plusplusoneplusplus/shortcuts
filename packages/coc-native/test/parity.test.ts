@@ -17,9 +17,11 @@ import * as path from 'path';
 import { describe, expect, it } from 'vitest';
 
 import { rankFuzzyMatches } from '../../coc/src/server/shared/fuzzy-file-score';
-import { addon, makeRandom } from './helpers';
+import { addon, disabled, makeRandom } from './helpers';
 
-const suite = addon ? describe : describe.skip;
+// `helpers` already threw if a binary was expected and missing; only the
+// COC_NATIVE=0 opt-out leaves nothing to compare against.
+const suite = disabled ? describe.skip : describe;
 
 const SEGMENTS = [
     'src', 'test', 'lib', 'dist', 'packages', 'server', 'client', 'index', 'utils', 'Repo',

@@ -1,7 +1,10 @@
 /**
  * Capability-layer tests: the file index is one capability of the addon, so it
- * has to report itself unavailable when the addon is missing *or* when a loaded
+ * has to fail on its own terms when the addon is missing *or* when a loaded
  * binary predates the capability — without the loader knowing it exists.
+ *
+ * Both are hard failures. Only `COC_NATIVE=0` yields `null`, and the status
+ * accessor has to describe every one of these states without throwing.
  */
 
 import * as fs from 'fs';
@@ -10,7 +13,7 @@ import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { loadNativeFileIndex, nativeFileIndexStatus } from '../src/file-index';
-import { resetNativeAddonCache } from '../src/loader';
+import { NativeAddonLoadError, resetNativeAddonCache } from '../src/loader';
 
 const ENV_KEYS = ['COC_NATIVE', 'COC_NATIVE_PATH'] as const;
 let saved: Record<string, string | undefined>;
@@ -49,9 +52,11 @@ it('exposes the capability when the addon provides it', async () => {
 });
 
 describe('when the capability is missing', () => {
-    it('returns null even though the binary itself loaded', () => {
+    it('throws even though the binary itself loaded', () => {
         const file = useAddon('module.exports = { someOtherCapability: () => 1 };');
-        expect(loadNativeFileIndex()).toBeNull();
+        expect(() => loadNativeFileIndex()).toThrow(NativeAddonLoadError);
+        expect(() => loadNativeFileIndex()).toThrow('does not export a file index');
+        // The status accessor still describes it, rather than throwing too.
         expect(nativeFileIndexStatus()).toEqual({
             loaded: false,
             binaryPath: file,
@@ -59,14 +64,41 @@ describe('when the capability is missing', () => {
         });
     });
 
+    it('names the binary and the fix', () => {
+        const file = useAddon('module.exports = { someOtherCapability: () => 1 };');
+        let message = '';
+        try {
+            loadNativeFileIndex();
+        } catch (err) {
+            message = (err as Error).message;
+        }
+        expect(message).toContain(file);
+        expect(message).toContain('npm run build:native -w packages/coc-native');
+        expect(message).toContain('COC_NATIVE=0');
+    });
+
     it('is not fooled by a non-callable export of the right name', () => {
         useAddon('module.exports = { buildFileIndex: "nope" };');
-        expect(loadNativeFileIndex()).toBeNull();
+        expect(() => loadNativeFileIndex()).toThrow(NativeAddonLoadError);
         expect(nativeFileIndexStatus().loaded).toBe(false);
     });
 });
 
-it('passes the addon-level reason through when nothing loaded', () => {
+describe('when no binary loaded', () => {
+    it('propagates the loader failure rather than degrading', () => {
+        process.env.COC_NATIVE_PATH = path.join(dir, 'absent.node');
+        expect(() => loadNativeFileIndex()).toThrow(NativeAddonLoadError);
+    });
+
+    it('still reports a status, so /api/health keeps working', () => {
+        process.env.COC_NATIVE_PATH = path.join(dir, 'absent.node');
+        const status = nativeFileIndexStatus();
+        expect(status.loaded).toBe(false);
+        expect(typeof status.reason).toBe('string');
+    });
+});
+
+it('returns null for the COC_NATIVE=0 opt-out, passing the reason through', () => {
     process.env.COC_NATIVE = '0';
     expect(loadNativeFileIndex()).toBeNull();
     expect(nativeFileIndexStatus()).toEqual({ loaded: false, reason: 'disabled by COC_NATIVE=0' });

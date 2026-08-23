@@ -4,7 +4,11 @@ Rust/N-API native capabilities for the CoC server. The package is a home for any
 
 **The file index must agree with its fallbacks.** `RepoTreeService` has three whole-repo walkers — the Rust `file_index::walk`, its JS `walkFiles`, and the `rg --files` path — and they must produce the same set. `.git` is excluded by all three regardless of `includeIgnored`/`showIgnored`, which deliberately differs from `rg --no-ignore`; changing one walker's filtering means changing all three.
 
-**Optional by construction.** Every consumer must handle the capability being absent — the addon is missing on a platform with no prebuilt binary, and an older binary can lack a capability a newer server knows about. Each capability accessor returns `null` in both cases; `RepoTreeService`, for instance, falls back to its ripgrep/directory-walk path.
+**Required, not optional.** A binary that is missing, will not load, or lacks the capability a newer server expects is a hard failure: `loadNativeAddon()` and each `loadNative<X>()` throw `NativeAddonLoadError`, naming the expected triple, every path tried and the fix. Failing at startup beats silently serving a slower, subtly different implementation for the life of the process.
+
+`COC_NATIVE=0` is the sole opt-out — the loaders return `null` for it, and only then does a consumer take its JavaScript path. It is how a machine with no Rust toolchain and no prebuilt binary runs the server on purpose.
+
+The `*Status()` accessors never throw, because `/api/health` reports them and has to be able to describe a failed load rather than become one.
 
 ## Layout
 
@@ -23,11 +27,11 @@ In order, from `loader.ts`:
 1. `COC_NATIVE_PATH` — an explicit path, for tests and unusual packaging.
 2. `packages/coc-native/coc-native.<triple>.node` — a locally built binary.
 3. `packages/coc-native/prebuilt/<triple>/` — injected by CI/release (gitignored).
-4. `null` — the JavaScript fallback takes over.
+4. nothing found — `NativeAddonLoadError`.
 
-`COC_NATIVE=0` forces the fallback. Triples are `linux-<arch>-gnu`, `win32-<arch>-msvc`, `darwin-<arch>`. Resolution is cached; `resetNativeAddonCache()` clears it for tests.
+`COC_NATIVE=0` short-circuits all of the above and yields `null`. Triples are `linux-<arch>-gnu`, `win32-<arch>-msvc`, `darwin-<arch>`; release CI publishes `linux-x64-gnu`, `linux-arm64-gnu`, `darwin-arm64`, `darwin-x64`, `win32-x64-msvc`. Resolution is cached, so the same error object is rethrown on every call; `resetNativeAddonCache()` clears it for tests.
 
-`nativeAddonStatus()` reports whether the *binary* loaded; a capability's own status (`nativeFileIndexStatus()`) additionally reports `loaded: false` when the binary loaded but lacks that capability, which is what `/api/health` surfaces.
+`nativeAddonStatus()` reports whether the *binary* loaded; a capability's own status (`nativeFileIndexStatus()`) additionally reports `loaded: false` when the binary loaded but lacks that capability. Both are `{ loaded, binaryPath?, reason? }`, never throw, and are what `/api/health` surfaces — `loaded: false` covers disabled, missing, unloadable and capability-less alike.
 
 N-API binaries are ABI-stable, so one binary per platform works under both Node 24 and Electron — there is no `electron-rebuild` step, unlike better-sqlite3.
 
@@ -47,5 +51,5 @@ Changing either scorer means changing both, and the parity test is what tells yo
 - `npm run build -w packages/coc-native` — tsc only. Must run before `coc` compiles, which resolves workspace deps from built `dist`.
 - `npm run build:native -w packages/coc-native` — compiles the addon. Needs a Rust toolchain; nothing else in the repo does.
 - `cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core` — the whole logic layer.
-- `npm run test:run -w packages/coc-native` — loader and capability-resolution tests (no binary needed), plus the N-API boundary suite (marshalling, async contract, error propagation, concurrency, lifetime) and parity. The binary-backed suites skip with a loud warning when nothing is built, so they stay meaningful without a toolchain.
+- `npm run test:run -w packages/coc-native` — loader and capability-resolution tests (no binary needed), plus the N-API boundary suite (marshalling, async contract, error propagation, concurrency, lifetime) and parity. The binary-backed suites **fail** when nothing is built; they skip only under `COC_NATIVE=0`, so a botched native build cannot pass for a green run.
 - `cargo fmt`/`cargo clippy` run in the `coc-native` CI job. `rust/rustfmt.toml` widens `use_small_heuristics` to match the density of the surrounding TypeScript.

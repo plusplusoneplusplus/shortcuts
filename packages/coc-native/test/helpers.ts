@@ -1,25 +1,34 @@
 /**
  * Shared setup for the boundary suite.
  *
- * These tests exercise the real compiled addon. When no binary is present (a
- * machine without a Rust toolchain, or a CI job that skipped the native build)
- * they skip loudly rather than silently passing, so a broken build cannot look
- * like a green run.
+ * These tests exercise the real compiled addon, which is required rather than
+ * optional: a missing or broken binary fails this module at import, so a
+ * botched native build cannot be mistaken for a green run.
+ *
+ * `COC_NATIVE=0` is the one case that skips instead. That is an operator
+ * deliberately running without the addon, and there is then nothing for a
+ * boundary test to exercise.
  */
 
-import { loadNativeFileIndex, nativeFileIndexStatus } from '../src/file-index';
+import { loadNativeFileIndex } from '../src/file-index';
 import type { NativeFileIndexAddon } from '../src/file-index';
 import { resetNativeAddonCache } from '../src/loader';
 
 resetNativeAddonCache();
 
+/** True when the addon was deliberately turned off for this run. */
+export const disabled = process.env.COC_NATIVE === '0';
+
+// Deliberately unguarded: loadNativeFileIndex() throws when a binary was
+// expected and could not be loaded, and that error — naming the triple, the
+// paths tried and the fix — is exactly what the runner should print.
 export const addon: NativeFileIndexAddon | null = loadNativeFileIndex();
 
-if (!addon) {
+if (disabled) {
     // eslint-disable-next-line no-console
     console.warn(
-        `[coc-native] SKIPPING boundary tests — addon not loaded: ${nativeFileIndexStatus().reason}. ` +
-            'Run `npm run build:native -w packages/coc-native` to build it.',
+        '[coc-native] SKIPPING boundary tests — COC_NATIVE=0 disables the addon. ' +
+            'Unset it to exercise the real binary.',
     );
 }
 

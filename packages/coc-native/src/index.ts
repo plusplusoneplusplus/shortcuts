@@ -1,16 +1,24 @@
 /**
  * Native (Rust/N-API) capabilities for the CoC server.
  *
- * The addon is optional by construction: {@link loadNativeAddon} returns `null`
- * on a platform with no prebuilt binary, and every capability accessor returns
- * `null` when the binary lacks it, so callers fall back to JavaScript. Loading
- * is capability-agnostic — a new capability adds a module beside `file-index`
- * and nothing else.
+ * The addon is required, not optional: {@link loadNativeAddon} and every
+ * capability accessor throw {@link NativeAddonLoadError} when a binary is
+ * missing, will not load, or lacks the capability, so a packaging mistake
+ * surfaces at startup instead of as a silently slower server.
+ *
+ * `COC_NATIVE=0` is the one exception — the accessors return `null` for it, so
+ * an operator can deliberately run the JavaScript path on a machine with no
+ * Rust toolchain. The `*Status` accessors never throw and report every one of
+ * these states, which is what `/api/health` surfaces.
+ *
+ * Loading is capability-agnostic — a new capability adds a module beside
+ * `file-index` and nothing else.
  */
 
 export {
     loadNativeAddon,
     nativeAddonStatus,
+    NativeAddonLoadError,
     nativeBinaryCandidates,
     nativeBinaryName,
     nativeTriple,

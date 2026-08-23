@@ -8,10 +8,12 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { addon } from './helpers';
+import { addon, disabled } from './helpers';
 import type { NativeFileIndex } from '../src/file-index';
 
-const suite = addon ? describe : describe.skip;
+// `helpers` already threw if a binary was expected and missing, so reaching
+// here with no addon means COC_NATIVE=0 and nothing to exercise.
+const suite = disabled ? describe.skip : describe;
 
 let root: string;
 

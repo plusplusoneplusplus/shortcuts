@@ -7,7 +7,7 @@
  * reports the capability unavailable when a binary predates it.
  */
 
-import { loadNativeAddon, nativeAddonStatus } from './loader';
+import { loadNativeAddon, nativeAddonStatus, NativeAddonLoadError } from './loader';
 import type { NativeAddonStatus } from './types';
 
 /** Options for building or refreshing a native file index. */
@@ -54,22 +54,42 @@ function isFileIndexAddon(addon: unknown): addon is NativeFileIndexAddon {
     return typeof (addon as NativeFileIndexAddon | null)?.buildFileIndex === 'function';
 }
 
-/** The file-index capability, or `null` when it is unavailable. */
+/**
+ * The file-index capability.
+ *
+ * Throws {@link NativeAddonLoadError} when no binary could be loaded, and when
+ * a binary loaded but predates the capability — from a caller's point of view
+ * both are the same unusable state, and both are a build or packaging problem
+ * rather than a platform the addon does not cover.
+ *
+ * Returns `null` only for `COC_NATIVE=0`, the deliberate opt-out, which is how
+ * a machine with no Rust toolchain runs the JavaScript path on purpose.
+ */
 export function loadNativeFileIndex(): NativeFileIndexAddon | null {
     const addon = loadNativeAddon();
-    return isFileIndexAddon(addon) ? addon : null;
+    if (addon === null) return null;
+    if (isFileIndexAddon(addon)) return addon;
+    const { binaryPath } = nativeAddonStatus();
+    throw new NativeAddonLoadError(
+        `@plusplusoneplusplus/coc-native: ${binaryPath} loaded but does not export a file index.\n` +
+            'The binary predates the file-index capability — rebuild it with ' +
+            '`npm run build:native -w packages/coc-native`, or set COC_NATIVE=0 to run without it.',
+    );
 }
 
 /**
  * Whether the file index is usable, and why not when it is not.
  *
- * A binary that loaded but does not export `buildFileIndex` is not usable, so
- * this reports `loaded: false` where {@link nativeAddonStatus} reports the
- * binary itself as loaded.
+ * Never throws, unlike {@link loadNativeFileIndex} — `/api/health` reports this
+ * verbatim, so it has to survive exactly the failures it needs to describe.
+ * `loaded: false` covers every unusable state: disabled, no binary, a binary
+ * that would not load, and a binary that loaded without this capability.
  */
 export function nativeFileIndexStatus(): NativeAddonStatus {
     const status = nativeAddonStatus();
-    if (!status.loaded || isFileIndexAddon(loadNativeAddon())) return status;
+    if (!status.loaded) return status;
+    // The addon resolved, so this cannot throw; it only re-reads the cache.
+    if (isFileIndexAddon(loadNativeAddon())) return status;
     return {
         loaded: false,
         binaryPath: status.binaryPath,

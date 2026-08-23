@@ -1,7 +1,8 @@
 /**
  * Loader tests. These never need a compiled binary — the point is that a
- * missing, broken or disabled addon degrades to `null` instead of throwing,
- * and that resolution says nothing about which capabilities the binary has.
+ * missing or broken addon is a hard, well-explained failure, that
+ * `COC_NATIVE=0` stays an opt-out that yields `null` rather than throwing, and
+ * that resolution says nothing about which capabilities the binary has.
  */
 
 import * as fs from 'fs';
@@ -11,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
     loadNativeAddon,
+    NativeAddonLoadError,
     nativeAddonStatus,
     nativeBinaryCandidates,
     nativeBinaryName,
@@ -68,7 +70,7 @@ describe('binary naming', () => {
 });
 
 describe('loading', () => {
-    it('returns null and explains itself when disabled', () => {
+    it('returns null, without throwing, when explicitly disabled', () => {
         process.env.COC_NATIVE = '0';
         expect(loadNativeAddon()).toBeNull();
         expect(nativeAddonStatus()).toEqual({
@@ -77,32 +79,57 @@ describe('loading', () => {
         });
     });
 
-    it('returns null when the override path does not exist', () => {
-        process.env.COC_NATIVE_PATH = path.join(os.tmpdir(), 'coc-native-absent.node');
-        expect(loadNativeAddon()).toBeNull();
-        expect(nativeAddonStatus().loaded).toBe(false);
-        expect(nativeAddonStatus().reason).toContain('no prebuilt binary');
+    it('throws when the override path does not exist', () => {
+        const missing = path.join(os.tmpdir(), 'coc-native-absent.node');
+        process.env.COC_NATIVE_PATH = missing;
+        expect(() => loadNativeAddon()).toThrow(NativeAddonLoadError);
+        // The override is the only path tried, so it is the only one named.
+        expect(() => loadNativeAddon()).toThrow(missing);
     });
 
-    it('returns null, without throwing, when the binary is not loadable', () => {
+    it('throws when the binary exists but is not loadable, keeping the cause', () => {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-loader-'));
         try {
             const broken = path.join(dir, 'broken.node');
             fs.writeFileSync(broken, 'not an addon');
             process.env.COC_NATIVE_PATH = broken;
-            expect(loadNativeAddon()).toBeNull();
-            expect(nativeAddonStatus().reason).toContain('failed to load');
+
+            let caught: unknown;
+            try {
+                loadNativeAddon();
+            } catch (err) {
+                caught = err;
+            }
+            expect(caught).toBeInstanceOf(NativeAddonLoadError);
+            expect((caught as Error).message).toContain(`failed to load ${broken}`);
+            // The underlying require() failure survives, both as text and as a cause.
+            expect((caught as Error).message).toContain('Caused by:');
+            expect((caught as Error).cause).toBeInstanceOf(Error);
         } finally {
             fs.rmSync(dir, { recursive: true, force: true });
         }
+    });
+
+    it('throws a message naming the triple, the paths tried and the fix', () => {
+        // No override and no binary in a scratch root: the default candidate list.
+        process.env.COC_NATIVE_PATH = path.join(os.tmpdir(), 'coc-native-absent.node');
+        let message = '';
+        try {
+            loadNativeAddon();
+        } catch (err) {
+            message = (err as Error).message;
+        }
+        expect(message).toContain('@plusplusoneplusplus/coc-native');
+        expect(message).toContain(nativeTriple());
+        expect(message).toContain('npm run build:native -w packages/coc-native');
+        expect(message).toContain('COC_NATIVE=0');
     });
 
     it('rejects a module that is not an object', () => {
         const { dir, file } = writeModule('module.exports = function notAnAddon() {};');
         try {
             process.env.COC_NATIVE_PATH = file;
-            expect(loadNativeAddon()).toBeNull();
-            expect(nativeAddonStatus().reason).toContain('is not a native addon module');
+            expect(() => loadNativeAddon()).toThrow('is not a native addon module');
         } finally {
             fs.rmSync(dir, { recursive: true, force: true });
         }
@@ -127,5 +154,45 @@ describe('loading', () => {
         expect(nativeAddonStatus().reason).toBe('disabled by COC_NATIVE=0');
         resetNativeAddonCache();
         expect(nativeAddonStatus().reason).not.toBe('disabled by COC_NATIVE=0');
+    });
+
+    it('raises the same failure on every call, not just the first', () => {
+        process.env.COC_NATIVE_PATH = path.join(os.tmpdir(), 'coc-native-absent.node');
+        const first = (() => {
+            try {
+                loadNativeAddon();
+            } catch (err) {
+                return err;
+            }
+        })();
+        expect(() => loadNativeAddon()).toThrow(NativeAddonLoadError);
+        // Cached, so it is literally the same error object.
+        expect(() => loadNativeAddon()).toThrowError(first as Error);
+    });
+});
+
+describe('status', () => {
+    it('reports a failed load instead of throwing, so /api/health survives it', () => {
+        const missing = path.join(os.tmpdir(), 'coc-native-absent.node');
+        process.env.COC_NATIVE_PATH = missing;
+        const status = nativeAddonStatus();
+        expect(status.loaded).toBe(false);
+        expect(status.reason).toContain('no native binary');
+        expect(status.binaryPath).toBeUndefined();
+    });
+
+    it('reports the reason for an unloadable binary without throwing', () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-loader-'));
+        try {
+            const broken = path.join(dir, 'broken.node');
+            fs.writeFileSync(broken, 'not an addon');
+            process.env.COC_NATIVE_PATH = broken;
+            expect(nativeAddonStatus()).toEqual({
+                loaded: false,
+                reason: `failed to load ${broken}`,
+            });
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
     });
 });

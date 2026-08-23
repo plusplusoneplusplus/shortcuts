@@ -267,11 +267,11 @@ jobs:
         run: npm run build:client
         working-directory: packages/coc
 
-      # The tree-service suite runs both modes: fallback always, and the real
-      # addon whenever this platform's binary is available. Fallback must stay
-      # green even when the native job is skipped or its artifact is missing.
-      - name: Download the addon for the real-addon lane
-        continue-on-error: true
+      # The addon is required, not best-effort: RepoTreeService loads it in its
+      # constructor and throws when it cannot, so the suite needs the binary the
+      # coc-native job built. The tree-service suite still runs both modes, but
+      # the fallback lane is now reached by injecting null, not by its absence.
+      - name: Download the addon
         uses: actions/download-artifact@v4
         with:
           name: coc-native-${{ matrix.os }}

@@ -36,8 +36,11 @@ export interface RepoTreeServiceOptions {
 
     /**
      * The native file-index addon, or `null` to force the JavaScript path.
-     * Defaults to whatever `@plusplusoneplusplus/coc-native` resolves on this
-     * platform, which is `null` when no prebuilt binary exists.
+     *
+     * Defaults to `loadNativeFileIndex()`, which throws when no binary could be
+     * loaded — the addon is required rather than best-effort. It yields `null`
+     * only under `COC_NATIVE=0`, so the JavaScript path is reached either by
+     * that opt-out or by passing `null` here, never by a silent load failure.
      */
     nativeFileIndex?: NativeFileIndexAddon | null;
 }
@@ -251,8 +254,10 @@ export class RepoTreeService {
     private readonly fileListRefreshes = new Map<string, Promise<CachedFileList>>();
 
     /**
-     * The native addon, or null on platforms without a prebuilt binary. When
-     * null every path below falls back to the ripgrep/walk implementation.
+     * The native addon, or null when it was deliberately disabled — by
+     * `COC_NATIVE=0` or an explicit `nativeFileIndex: null`. Only then does any
+     * path below fall back to the ripgrep/walk implementation; a binary that
+     * should have loaded and did not throws out of the constructor instead.
      */
     private readonly native: NativeFileIndexAddon | null;
     /** Live native indexes, keyed the same way as {@link fileListCache}. */
@@ -398,7 +403,12 @@ export class RepoTreeService {
      * this process, so `fileListMaxEntries` only bounds what the `/files`
      * response carries, not what search can find.
      */
-    private nativeIndexFor(key: string, repoRoot: string, showIgnored: boolean): NativeIndexEntry {
+    private nativeIndexFor(
+        native: NativeFileIndexAddon,
+        key: string,
+        repoRoot: string,
+        showIgnored: boolean,
+    ): NativeIndexEntry {
         const existing = this.nativeIndexes.get(key);
         if (existing) {
             this.maybeRefreshNativeIndex(existing);
@@ -407,7 +417,7 @@ export class RepoTreeService {
 
         const entry: NativeIndexEntry = {
             at: Date.now(),
-            index: this.native!.buildFileIndex(repoRoot, { includeIgnored: showIgnored }),
+            index: native.buildFileIndex(repoRoot, { includeIgnored: showIgnored }),
         };
         entry.index.then(
             () => {
@@ -726,8 +736,9 @@ export class RepoTreeService {
         if (normalizedRel === '.' || normalizedRel === '') {
             const key = RepoTreeService.fileListKey(repoId, showIgnored);
 
-            if (this.native) {
-                const index = await this.nativeIndexFor(key, repoRoot, showIgnored).index;
+            const native = this.native;
+            if (native) {
+                const index = await this.nativeIndexFor(native, key, repoRoot, showIgnored).index;
                 // The cap applies to the response payload only — the index keeps
                 // every path so search still reaches them.
                 return {
@@ -924,13 +935,14 @@ export class RepoTreeService {
         const limit = Math.min(Math.max(rawLimit, 1), 200);
         const showIgnored = options?.showIgnored ?? false;
 
-        if (this.native) {
+        const native = this.native;
+        if (native) {
             const repoRoot = await this.resolveRepoRoot(repoId);
             if (!repoRoot) {
                 throw new Error(`Repo not found: ${repoId}`);
             }
             const key = RepoTreeService.fileListKey(repoId, showIgnored);
-            const index = await this.nativeIndexFor(key, repoRoot, showIgnored).index;
+            const index = await this.nativeIndexFor(native, key, repoRoot, showIgnored).index;
             const results: FileSearchResult[] = await index.search(query, limit);
             // Nothing was dropped on the way in, so no result is missing.
             return { results, truncated: false };

@@ -6,8 +6,9 @@
  * That is the whole safety argument for shipping a native fast path: a machine
  * without a binary must not behave differently, only slower.
  *
- * The native lane skips (loudly) when no binary is built, so this suite stays
- * meaningful on a machine with no Rust toolchain.
+ * The addon is required, so a missing or broken binary fails this module at
+ * import rather than quietly dropping the native lane. Only `COC_NATIVE=0` —
+ * an operator deliberately running without it — leaves the fallback lane alone.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -20,11 +21,14 @@ import { loadNativeFileIndex, nativeFileIndexStatus } from '@plusplusoneplusplus
 import type { NativeFileIndexAddon } from '@plusplusoneplusplus/coc-native';
 import { RepoTreeService } from '../../src/server/repos/tree-service';
 
+// Unguarded on purpose: this throws when a binary was expected and could not
+// be loaded, and that message is what the runner should print. It returns null
+// only under COC_NATIVE=0.
 const NATIVE = loadNativeFileIndex();
 if (!NATIVE) {
     // eslint-disable-next-line no-console
     console.warn(
-        `[coc] native file index not loaded (${nativeFileIndexStatus().reason}); ` +
+        `[coc] native file index disabled (${nativeFileIndexStatus().reason}); ` +
             'running the fallback lane only.',
     );
 }
