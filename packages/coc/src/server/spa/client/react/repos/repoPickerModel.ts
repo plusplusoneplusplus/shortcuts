@@ -5,7 +5,7 @@
  * headless hook and the presentational rows can reuse one source of truth.
  */
 
-import type { RepoData } from './repoGrouping';
+import { isRemoteRepo, type RepoData } from './repoGrouping';
 
 /**
  * Resolve a remote repo's server display name from its AC-01 `remote` marker,
@@ -83,4 +83,21 @@ export function getGroupWsl(group: { repos: RepoData[] }): RepoWslInfo | null {
         }
     }
     return { distro };
+}
+
+/**
+ * Server display names of a group's remote clones, deduped and alphabetically
+ * ordered; empty when the group is local-only.
+ *
+ * Unlike WSL's all-or-nothing rule this is deliberately **any**-semantics: the
+ * question the picker answers is "does this collection reach out to another CoC
+ * server at all?", so a single remote clone among local ones is enough to mark
+ * the row. The names feed the marker's hover/accessible text only.
+ */
+export function getGroupRemoteServers(group: { repos: RepoData[] }): string[] {
+    const names = new Set<string>();
+    for (const repo of group?.repos ?? []) {
+        if (isRemoteRepo(repo)) names.add(getServerName(repo));
+    }
+    return [...names].sort((a, b) => a.localeCompare(b));
 }

@@ -335,6 +335,73 @@ describe('WorkspaceIdentityChip group row — WSL pill (AC-03)', () => {
     });
 });
 
+describe('WorkspaceIdentityChip group row — remote-server marker', () => {
+    const aggregatedRepo = (id: string, name: string, remoteUrl: string, serverLabel = 'devbox') => ({
+        workspace: {
+            id, name, color: '#0078d4', remoteUrl, rootPath: `/remote/${id}`,
+            baseUrl: 'http://127.0.0.1:4000',
+            remote: { serverId: 'srv-1', serverLabel, connection: 'online', queue: 'idle' },
+        },
+        gitInfo: { isGitRepo: true, branch: 'main', dirty: false, remoteUrl },
+    });
+
+    function groupRowFor(name: string): HTMLElement | undefined {
+        return screen.queryAllByTestId('remote-dropdown-item')
+            .find(row => row.textContent?.includes(name));
+    }
+
+    it('marks a group that has one remote clone among local ones', () => {
+        const repos = [repo('a', 'shortcuts', SHORTCUTS), aggregatedRepo('b', 'shortcuts-2', SHORTCUTS)];
+        openPicker(repos, repos[0]);
+
+        const badge = groupRowFor('shortcuts')!.querySelector('[data-testid="remote-server-badge"]')!;
+        expect(badge).toBeTruthy();
+        expect(badge.getAttribute('aria-label')).toBe('Includes a repo from remote server devbox');
+    });
+
+    it('marks a remote-only group', () => {
+        const repos = [aggregatedRepo('a', 'shortcuts', SHORTCUTS)];
+        openPicker(repos, repos[0]);
+
+        expect(screen.getAllByTestId('remote-server-badge')).toHaveLength(1);
+    });
+
+    it('shows no marker on a local-only group', () => {
+        const repos = [repo('a', 'shortcuts', SHORTCUTS), repo('f', 'forge', FORGE)];
+        openPicker(repos, repos[0]);
+
+        expect(screen.queryAllByTestId('remote-server-badge')).toHaveLength(0);
+    });
+
+    it('marks only the group that owns the remote clone', () => {
+        const repos = [repo('a', 'shortcuts', SHORTCUTS), aggregatedRepo('f', 'forge', FORGE)];
+        openPicker(repos, repos[0]);
+
+        expect(groupRowFor('shortcuts')!.querySelector('[data-testid="remote-server-badge"]')).toBeNull();
+        expect(groupRowFor('forge')!.querySelector('[data-testid="remote-server-badge"]')).toBeTruthy();
+    });
+
+    it('lists every distinct server behind a group in the marker label', () => {
+        const repos = [
+            aggregatedRepo('a', 'shortcuts', SHORTCUTS, 'zeta'),
+            aggregatedRepo('b', 'shortcuts-2', SHORTCUTS, 'alpha'),
+        ];
+        openPicker(repos, repos[0]);
+
+        const badge = groupRowFor('shortcuts')!.querySelector('[data-testid="remote-server-badge"]')!;
+        expect(badge.getAttribute('aria-label')).toBe('Includes a repo from remote server alpha, zeta');
+    });
+
+    it('keeps the clone-count badge alongside the marker', () => {
+        const repos = [repo('a', 'shortcuts', SHORTCUTS), aggregatedRepo('b', 'shortcuts-2', SHORTCUTS)];
+        openPicker(repos, repos[0]);
+
+        const row = groupRowFor('shortcuts')!;
+        expect(row.querySelector('[data-testid="remote-server-badge"]')).toBeTruthy();
+        expect(row.textContent).toContain('2');
+    });
+});
+
 describe('WorkspaceIdentityChip repo groups (repo-group AC-01/AC-04)', () => {
     const groupWs = (id: string, name: string) => ({ id, name, rootPath: `/data/repos/${id}`, virtual: true });
 

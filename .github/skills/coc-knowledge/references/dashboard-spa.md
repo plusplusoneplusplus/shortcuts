@@ -1549,7 +1549,13 @@ Enabled by default; desktop-only; takes effect on reload.
   / `PickerRow` / `PickerEmpty` primitives) and one interaction hook
   `useDropdownPopover` (open state + outside-click + Escape-close-and-refocus-trigger
   + search auto-focus). Row helpers `getServerName` / `isRepoOffline` / `shortPath`
-  live in `repos/repoPickerModel.ts`. The two callers keep their genuine differences
+  live in `repos/repoPickerModel.ts`, alongside the group markers `getGroupWsl`
+  (all-or-nothing `WSL` pill) and `getGroupRemoteServers` (any-semantics: the
+  deduped, sorted server names behind a group's remote clones, empty when
+  local-only). The latter drives `RemoteServerBadge` — a tiny cloud glyph
+  (`remote-server-badge`) on group rows whose collection includes at least one
+  clone served by another CoC server; server names stay in the hover/accessible
+  label, never in row text. The two callers keep their genuine differences
   (the remote picker's Add-repository footer + remote sub-tabs; the virtual picker's
   identity chip + navigation-only rows). Offline is surfaced per-repo in the virtual
   picker only; group rows show the aggregate status dot instead.

@@ -19,13 +19,14 @@ import { deleteRepoGroup } from '../../repos/repoGroupService';
 import { isRepoGroupWorkspaceId } from '../../repos/virtualWorkspaceIds';
 import { getRepoSelectionId, isRepoSelected } from '../../repos/cloneIdentity';
 import { groupKey, groupReposByRemote, type RepoData, type RepoGroup } from '../../repos/repoGrouping';
-import { getGroupWsl } from '../../repos/repoPickerModel';
+import { getGroupRemoteServers, getGroupWsl } from '../../repos/repoPickerModel';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import { Dialog } from '../../ui/Dialog';
 import { ToastContainer, useToast } from '../../ui/Toast';
 import { copyToClipboard } from '../../utils/format';
 import { computeCloneStatusMap, describeRemoveBlock, summarizeRemote } from './shellModel';
 import { RemoteProviderBadge } from './RemoteProviderBadge';
+import { RemoteServerBadge } from './RemoteServerBadge';
 import { useDropdownPopover } from './useDropdownPopover';
 import { WslBadge } from './WslBadge';
 import { PickerEmpty, PickerRow, PickerSection, RepoPickerPopover } from './RepoPickerPopover';
@@ -273,6 +274,9 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
         // it is WSL-hosted; a mixed group stays unmarked and the per-clone rows
         // carry the distinction. (AC-03)
         const groupWsl = getGroupWsl(group);
+        // Any-semantics, unlike the WSL pill: one remote clone is enough to mark
+        // the collection as reaching another CoC server.
+        const remoteServers = getGroupRemoteServers(group);
         return (
             <PickerRow
                 key={key}
@@ -301,6 +305,7 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
                 ) : undefined}
                 badges={
                     <>
+                        {remoteServers.length > 0 && <RemoteServerBadge servers={remoteServers} />}
                         {groupWsl && <WslBadge distro={groupWsl.distro} />}
                         {summary.cloneCount > 1 && (
                             <span className="inline-flex items-center gap-0.5 h-[16px] px-1.5 rounded-full text-[10px] font-semibold leading-none bg-black/[0.06] dark:bg-white/[0.10] text-[#555] dark:text-[#bbb]">
