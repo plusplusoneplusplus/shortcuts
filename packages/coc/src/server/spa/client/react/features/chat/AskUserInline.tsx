@@ -37,6 +37,21 @@ interface QuestionState {
 }
 
 const CUSTOM_OPTION_VALUE = '__ask_user_custom__';
+
+/**
+ * Compact option rows: the label and its description share one line, and the
+ * description truncates (full text stays available via the row's title
+ * tooltip) so a long option list stays scannable instead of spanning the card.
+ */
+const OPTION_ROW_CLASS = 'flex items-baseline gap-2 cursor-pointer group rounded px-1.5 py-[3px] hover:bg-black/[0.03] dark:hover:bg-white/5';
+const OPTION_ROW_SELECTED_CLASS = 'bg-[#0078d4]/10';
+const OPTION_INPUT_CLASS = 'h-3 w-3 shrink-0 self-center accent-[#0078d4]';
+const OPTION_LABEL_CLASS = 'shrink-0 text-[13px] leading-5 text-[#1e1e1e] dark:text-[#cccccc] group-hover:text-[#0078d4]';
+const OPTION_DESCRIPTION_CLASS = 'min-w-0 truncate text-[11px] leading-5 text-[#848484] ask-user-markdown ask-user-markdown--description';
+
+function optionRowClass(selected: boolean): string {
+    return selected ? `${OPTION_ROW_CLASS} ${OPTION_ROW_SELECTED_CLASS}` : OPTION_ROW_CLASS;
+}
 type RalphGrillPlanningSummary = NonNullable<NonNullable<AskUserQuestion['ralphGrill']>['planning']>;
 
 interface QuestionGroup {
@@ -162,7 +177,7 @@ function PlanningCard({ planning }: { planning: RalphGrillPlanningSummary }) {
     const emptyCount = planning.agentOutcomes.filter(outcome => outcome.status === 'empty').length;
     const warningCount = planning.warnings.length;
     return (
-        <div className="mb-4 rounded-md border border-purple-200 bg-purple-50/80 p-3 text-xs text-purple-900 dark:border-purple-500/30 dark:bg-purple-500/10 dark:text-purple-100" data-testid="ralph-grill-planning-card">
+        <div className="mb-2 rounded-md border border-purple-200 bg-purple-50/80 p-3 text-xs text-purple-900 dark:border-purple-500/30 dark:bg-purple-500/10 dark:text-purple-100" data-testid="ralph-grill-planning-card">
             <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                     <div className="font-semibold">Question planning</div>
@@ -231,6 +246,9 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
     const [submitting, setSubmitting] = useState(false);
     const planning = planningSummaryFor(batch);
     const questionGroups = groupQuestions(batch.questions);
+    // A one-question batch is already framed by the outer card, so the nested
+    // border/padding is pure noise; keep it only when questions need separating.
+    const nestQuestionCards = batch.questions.length > 1;
 
     const updateQuestion = useCallback((questionId: string, patch: Partial<QuestionState>) => {
         setAnswers(prev => ({ ...prev, [questionId]: { ...prev[questionId], ...patch } }));
@@ -273,22 +291,38 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
     }, [answers, batch.batchId, batch.questions, onAnswered, processId, cloneClient]);
 
     return (
-        <div className="mx-2 my-3 rounded-lg border border-[#0078d4]/30 bg-[#f0f6ff] dark:bg-[#1a2332] p-4 shadow-sm" data-testid="ask-user-inline">
-            <div className="flex items-start gap-2 mb-4">
-                <span className="text-lg">🤖</span>
-                <div>
-                    <p className="text-sm text-[#1e1e1e] dark:text-[#e0e0e0] font-semibold">The AI needs your input</p>
-                    <p className="text-xs text-[#848484] mt-0.5">
-                        {batch.questions.length === 1 ? 'Answer or skip this question.' : `Answer or skip these ${batch.questions.length} questions.`}
-                    </p>
-                </div>
+        <div className="mx-2 my-3 rounded-md border border-[#0078d4]/30 bg-[#f0f6ff] dark:bg-[#1a2332] px-2.5 py-2 shadow-sm" data-testid="ask-user-inline">
+            <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-xs">🤖</span>
+                <p className="text-xs font-semibold text-[#1e1e1e] dark:text-[#e0e0e0]">The AI needs your input</p>
+                <p className="text-[11px] text-[#848484]">
+                    {batch.questions.length === 1 ? '1 question' : `${batch.questions.length} questions`}
+                </p>
+                <div className="flex-1" />
+                {submitting && <p className="text-[11px] text-[#848484]">Submitting...</p>}
+                <button
+                    onClick={() => void submitAll(false)}
+                    disabled={submitting || !canSubmitAll}
+                    className="px-2.5 py-1 text-xs font-medium rounded bg-[#0078d4] text-white hover:bg-[#106ebe] disabled:opacity-50 transition-colors"
+                    data-testid="ask-user-submit-all-btn"
+                >
+                    {batch.questions.length === 1 ? 'Submit' : 'Submit all'}
+                </button>
+                <button
+                    onClick={() => void submitAll(true)}
+                    disabled={submitting}
+                    className="px-1.5 py-1 text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors"
+                    data-testid="ask-user-skip-all-btn"
+                >
+                    {batch.questions.length === 1 ? 'Skip' : 'Skip all'}
+                </button>
             </div>
 
             {planning && <PlanningCard planning={planning} />}
 
-            <div className="space-y-4">
+            <div className="space-y-2">
                 {questionGroups.map(group => (
-                    <div key={group.key} className="space-y-2" data-testid="ask-user-question-group">
+                    <div key={group.key} className="space-y-1" data-testid="ask-user-question-group">
                         {group.label && (
                             <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-purple-700 dark:text-purple-200" data-testid="ask-user-question-group-label">
                                 <span className="h-px flex-1 bg-purple-200 dark:bg-purple-500/30" />
@@ -302,9 +336,15 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                             const isCustomSelected = question.type === 'select' && state.value === CUSTOM_OPTION_VALUE;
                             const inputDisabled = submitting || state.disposition !== 'answer';
                             return (
-                                <div key={question.questionId} className="rounded-md border border-[#d4d4d4]/70 dark:border-[#3e3e3e] bg-white/70 dark:bg-[#1e1e1e]/60 p-3" data-testid="ask-user-question">
-                                    <div className="flex items-start justify-between gap-3 mb-3">
-                                        <div className="text-sm text-[#1e1e1e] dark:text-[#e0e0e0] font-medium flex items-start gap-1 min-w-0">
+                                <div
+                                    key={question.questionId}
+                                    className={nestQuestionCards
+                                        ? 'rounded border border-[#d4d4d4]/70 dark:border-[#3e3e3e] bg-white/70 dark:bg-[#1e1e1e]/60 px-2 py-1.5'
+                                        : ''}
+                                    data-testid="ask-user-question"
+                                >
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="text-[13px] leading-5 text-[#1e1e1e] dark:text-[#e0e0e0] flex items-start gap-1.5 min-w-0">
                                             <span className="text-[#848484] shrink-0">{questionIndex + 1}.</span>
                                             <div className="min-w-0 flex-1">
                                                 <AskUserMarkdown
@@ -321,21 +361,21 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                                                 value={state.disposition}
                                                 onChange={e => updateQuestion(question.questionId, { disposition: e.target.value as AskUserQuestionDisposition })}
                                                 disabled={submitting}
-                                                className="max-w-[11rem] rounded border border-[#d4d4d4] dark:border-[#3e3e3e] bg-white dark:bg-[#252526] px-2 py-1 text-xs text-[#4b5563] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
+                                                className="max-w-[9rem] cursor-pointer rounded border border-transparent bg-transparent px-1 py-0 text-[11px] text-[#848484] hover:border-[#d4d4d4] hover:text-[#1e1e1e] dark:hover:border-[#3e3e3e] dark:hover:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
                                                 data-testid="ask-user-question-disposition"
                                             >
                                                 <option value="answer">Answer</option>
-                                                <option value="skip">Skip / not applicable</option>
-                                                <option value="needs-context">Need more context</option>
+                                                <option value="skip">Skip</option>
+                                                <option value="needs-context">Need context</option>
                                             </select>
                                         </label>
                                     </div>
 
                             {state.disposition === 'skip' ? (
-                                <p className="text-xs text-[#848484]">This question will be skipped.</p>
+                                <p className="mt-1 ml-4 text-[11px] text-[#848484]">This question will be skipped.</p>
                             ) : state.disposition === 'needs-context' ? (
-                                <div className="space-y-2">
-                                    <p className="text-xs text-[#848484]">
+                                <div className="mt-1 ml-4 space-y-1">
+                                    <p className="text-[11px] text-[#848484]">
                                         The AI should explain the missing context and re-ask this question if it is still needed.
                                     </p>
                                     <input
@@ -345,16 +385,20 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                                         disabled={submitting}
                                         maxLength={300}
                                         placeholder="Optional note about what context you need..."
-                                        className="w-full px-3 py-1.5 text-sm rounded border border-[#d4d4d4] dark:border-[#3e3e3e] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
+                                        className="w-full px-2 py-1 text-[13px] rounded border border-[#d4d4d4] dark:border-[#3e3e3e] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
                                         data-testid="ask-user-deferred-note-input"
                                     />
                                 </div>
                             ) : (
                                 <>
                                     {question.type === 'select' && question.options && (
-                                        <div className="space-y-2 mb-3">
+                                        <div className="mt-1 ml-4">
                                             {question.options.map(opt => (
-                                                <label key={opt.value} className="flex items-start gap-2 cursor-pointer group">
+                                                <label
+                                                    key={opt.value}
+                                                    title={opt.description}
+                                                    className={optionRowClass(state.value === opt.value)}
+                                                >
                                                     <input
                                                         type="radio"
                                                         name={`ask-user-${question.questionId}`}
@@ -362,26 +406,25 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                                                         checked={state.value === opt.value}
                                                         onChange={() => updateQuestion(question.questionId, { value: opt.value })}
                                                         disabled={inputDisabled}
-                                                        className="mt-0.5 accent-[#0078d4]"
+                                                        className={OPTION_INPUT_CLASS}
                                                     />
-                                                    <div>
+                                                    <AskUserMarkdown
+                                                        inline
+                                                        markdown={opt.label}
+                                                        className={OPTION_LABEL_CLASS}
+                                                        data-testid="ask-user-option-label"
+                                                    />
+                                                    {opt.description && (
                                                         <AskUserMarkdown
                                                             inline
-                                                            markdown={opt.label}
-                                                            className="text-sm text-[#1e1e1e] dark:text-[#cccccc] group-hover:text-[#0078d4]"
-                                                            data-testid="ask-user-option-label"
+                                                            markdown={opt.description}
+                                                            className={OPTION_DESCRIPTION_CLASS}
+                                                            data-testid="ask-user-option-description"
                                                         />
-                                                        {opt.description && (
-                                                            <AskUserMarkdown
-                                                                markdown={opt.description}
-                                                                className="text-xs text-[#848484] mt-0.5 ask-user-markdown ask-user-markdown--description"
-                                                                data-testid="ask-user-option-description"
-                                                            />
-                                                        )}
-                                                    </div>
+                                                    )}
                                                 </label>
                                             ))}
-                                            <label className="flex items-start gap-2 cursor-pointer group">
+                                            <label className={optionRowClass(isCustomSelected)}>
                                                 <input
                                                     type="radio"
                                                     name={`ask-user-${question.questionId}`}
@@ -389,35 +432,37 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                                                     checked={isCustomSelected}
                                                     onChange={() => updateQuestion(question.questionId, { value: CUSTOM_OPTION_VALUE })}
                                                     disabled={inputDisabled}
-                                                    className="mt-0.5 accent-[#0078d4]"
+                                                    className={OPTION_INPUT_CLASS}
                                                     data-testid="ask-user-custom-radio"
                                                 />
-                                                <div className="flex-1">
-                                                    <span className="text-sm text-[#1e1e1e] dark:text-[#cccccc] group-hover:text-[#0078d4]">Something else...</span>
-                                                    {isCustomSelected && (
-                                                        <input
-                                                            type="text"
-                                                            value={state.customText}
-                                                            onChange={e => updateQuestion(question.questionId, { customText: e.target.value })}
-                                                            disabled={inputDisabled}
-                                                            placeholder="Type your answer..."
-                                                            autoFocus
-                                                            className="mt-1 w-full px-3 py-1.5 text-sm rounded border border-[#d4d4d4] dark:border-[#3e3e3e] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
-                                                            onKeyDown={e => {
-                                                                if (e.key === 'Enter' && canSubmitAll) void submitAll();
-                                                            }}
-                                                            data-testid="ask-user-custom-input"
-                                                        />
-                                                    )}
-                                                </div>
+                                                <span className={OPTION_LABEL_CLASS}>Something else...</span>
                                             </label>
+                                            {isCustomSelected && (
+                                                <input
+                                                    type="text"
+                                                    value={state.customText}
+                                                    onChange={e => updateQuestion(question.questionId, { customText: e.target.value })}
+                                                    disabled={inputDisabled}
+                                                    placeholder="Type your answer..."
+                                                    autoFocus
+                                                    className="mt-1 w-full px-2 py-1 text-[13px] rounded border border-[#d4d4d4] dark:border-[#3e3e3e] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
+                                                    onKeyDown={e => {
+                                                        if (e.key === 'Enter' && canSubmitAll) void submitAll();
+                                                    }}
+                                                    data-testid="ask-user-custom-input"
+                                                />
+                                            )}
                                         </div>
                                     )}
 
                                     {question.type === 'multi-select' && question.options && (
-                                        <div className="space-y-2 mb-3">
+                                        <div className="mt-1 ml-4">
                                             {question.options.map(opt => (
-                                                <label key={opt.value} className="flex items-start gap-2 cursor-pointer group">
+                                                <label
+                                                    key={opt.value}
+                                                    title={opt.description}
+                                                    className={optionRowClass(Array.isArray(state.value) && state.value.includes(opt.value))}
+                                                >
                                                     <input
                                                         type="checkbox"
                                                         value={opt.value}
@@ -432,23 +477,22 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                                                             updateQuestion(question.questionId, { value: arr });
                                                         }}
                                                         disabled={inputDisabled}
-                                                        className="mt-0.5 accent-[#0078d4]"
+                                                        className={OPTION_INPUT_CLASS}
                                                     />
-                                                    <div>
+                                                    <AskUserMarkdown
+                                                        inline
+                                                        markdown={opt.label}
+                                                        className={OPTION_LABEL_CLASS}
+                                                        data-testid="ask-user-option-label"
+                                                    />
+                                                    {opt.description && (
                                                         <AskUserMarkdown
                                                             inline
-                                                            markdown={opt.label}
-                                                            className="text-sm text-[#1e1e1e] dark:text-[#cccccc] group-hover:text-[#0078d4]"
-                                                            data-testid="ask-user-option-label"
+                                                            markdown={opt.description}
+                                                            className={OPTION_DESCRIPTION_CLASS}
+                                                            data-testid="ask-user-option-description"
                                                         />
-                                                        {opt.description && (
-                                                            <AskUserMarkdown
-                                                                markdown={opt.description}
-                                                                className="text-xs text-[#848484] mt-0.5 ask-user-markdown ask-user-markdown--description"
-                                                                data-testid="ask-user-option-description"
-                                                            />
-                                                        )}
-                                                    </div>
+                                                    )}
                                                 </label>
                                             ))}
                                         </div>
@@ -461,7 +505,7 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                                             onChange={e => updateQuestion(question.questionId, { value: e.target.value })}
                                             disabled={inputDisabled}
                                             placeholder="Type your answer..."
-                                            className="w-full px-3 py-1.5 text-sm rounded border border-[#d4d4d4] dark:border-[#3e3e3e] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
+                                            className="mt-1 w-full px-2 py-1 text-[13px] rounded border border-[#d4d4d4] dark:border-[#3e3e3e] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] focus:outline-none focus:ring-2 focus:ring-[#0078d4]"
                                             onKeyDown={e => {
                                                 if (e.key === 'Enter' && canSubmitAll) void submitAll();
                                             }}
@@ -470,8 +514,8 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                                     )}
 
                                     {(question.type === 'yes-no' || question.type === 'confirm') && (
-                                        <div className="flex items-center gap-3">
-                                            <label className="flex items-center gap-2 text-sm text-[#1e1e1e] dark:text-[#cccccc] cursor-pointer">
+                                        <div className="mt-1 ml-4 flex items-center gap-3">
+                                            <label className="flex items-center gap-2 text-[13px] leading-5 text-[#1e1e1e] dark:text-[#cccccc] cursor-pointer">
                                                 <input
                                                     type="radio"
                                                     name={`ask-user-${question.questionId}`}
@@ -483,7 +527,7 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                                                 />
                                                 {question.type === 'yes-no' ? 'Yes' : 'Confirm'}
                                             </label>
-                                            <label className="flex items-center gap-2 text-sm text-[#1e1e1e] dark:text-[#cccccc] cursor-pointer">
+                                            <label className="flex items-center gap-2 text-[13px] leading-5 text-[#1e1e1e] dark:text-[#cccccc] cursor-pointer">
                                                 <input
                                                     type="radio"
                                                     name={`ask-user-${question.questionId}`}
@@ -504,26 +548,6 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                         })}
                     </div>
                 ))}
-            </div>
-
-            <div className="flex items-center gap-2 mt-4">
-                <button
-                    onClick={() => void submitAll(false)}
-                    disabled={submitting || !canSubmitAll}
-                    className="px-4 py-1.5 text-sm font-medium rounded bg-[#0078d4] text-white hover:bg-[#106ebe] disabled:opacity-50 transition-colors"
-                    data-testid="ask-user-submit-all-btn"
-                >
-                    Submit all
-                </button>
-                <button
-                    onClick={() => void submitAll(true)}
-                    disabled={submitting}
-                    className="px-3 py-1.5 text-sm text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors"
-                    data-testid="ask-user-skip-all-btn"
-                >
-                    Skip all
-                </button>
-                {submitting && <p className="text-xs text-[#848484]">Submitting...</p>}
             </div>
         </div>
     );

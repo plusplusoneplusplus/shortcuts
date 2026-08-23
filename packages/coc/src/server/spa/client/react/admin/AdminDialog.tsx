@@ -6,7 +6,8 @@
  * Open/close is driven by the hash via `useAdminDialogRoute`.
  *
  * `AdminPanel` brings its own chrome (brand, nav rail, breadcrumb), so the
- * built-in Dialog header is replaced by a bare × row — no duplicate title.
+ * dialog opts into `borderless`: no frame, no inner padding, and the ×
+ * floats over the top-right corner instead of taking a header row.
  */
 
 import { Dialog } from '../ui/Dialog';
@@ -25,19 +26,17 @@ export function AdminDialog({ open, onClose }: AdminDialogProps) {
             onClose={onClose}
             className="admin-dialog-panel max-w-[1100px] h-[85vh]"
             id="admin-dialog"
-            dense
+            borderless
             renderHeader={() => (
-                <div className="flex items-center justify-end">
-                    <button
-                        data-testid="dialog-close-btn"
-                        className="text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] text-lg leading-none px-1"
-                        onClick={onClose}
-                        aria-label="Close"
-                        title="Close"
-                    >
-                        ×
-                    </button>
-                </div>
+                <button
+                    data-testid="dialog-close-btn"
+                    className="absolute top-2 right-2 z-20 flex h-7 w-7 items-center justify-center rounded-md bg-white/70 dark:bg-black/40 text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/5 dark:hover:bg-white/10 text-lg leading-none backdrop-blur-sm"
+                    onClick={onClose}
+                    aria-label="Close"
+                    title="Close"
+                >
+                    ×
+                </button>
             )}
         >
             <AdminPanel />

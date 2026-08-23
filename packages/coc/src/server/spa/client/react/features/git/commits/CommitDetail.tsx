@@ -357,7 +357,7 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
                 </>
             )}
             {/* Classification toolbar — mirrors commit popout layout */}
-            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#2a2a2a]" data-testid="commit-classify-bar">
+            <div className="sticky top-0 z-10 flex items-center gap-2 px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#2a2a2a]" data-testid="commit-classify-bar">
                 <ClassifyDiffAiControls
                     selection={aiSelection}
                     disabled={classification.state.status === 'loading'}
@@ -420,6 +420,37 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
                         {classification.state.error}
                     </span>
                 )}
+                {/* Hunk nav + view toggle + panel buttons */}
+                <div className={`flex items-center${fileList.length > 0 ? '' : ' ml-auto'}`}>
+                    <HunkNavButtons onPrev={() => viewerRef.current?.scrollToPrevHunk()} onNext={() => viewerRef.current?.scrollToNextHunk()} />
+                    <DiffViewToggle mode={viewMode} onChange={setViewMode} />
+                    <button
+                        onClick={() => setSidebarOpen(o => !o)}
+                        title="Toggle comments"
+                        className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                        data-testid="toggle-comments-btn"
+                    >
+                        💬 {allCommitComments.length > 0 ? allCommitComments.length : ''}
+                    </button>
+                    <button
+                        onClick={toggleChat}
+                        title="Toggle AI chat"
+                        className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                        data-testid="toggle-chat-btn"
+                    >
+                        🤖
+                    </button>
+                    {!isPopOut && hash && (
+                        <button
+                            onClick={handlePopOut}
+                            title="Open in new window"
+                            className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                            data-testid="commit-popout-btn"
+                        >
+                            ↗️
+                        </button>
+                    )}
+                </div>
             </div>
             {/* Classification filter bar — visible when classification results are ready */}
             {classification.state.status === 'ready' && (
@@ -447,37 +478,6 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
                     })}
                 </div>
             )}
-            {/* Toolbar for hunk nav + toggle */}
-            <div className="sticky top-0 z-10 px-4 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] flex items-center justify-end">
-                <HunkNavButtons onPrev={() => viewerRef.current?.scrollToPrevHunk()} onNext={() => viewerRef.current?.scrollToNextHunk()} />
-                <DiffViewToggle mode={viewMode} onChange={setViewMode} />
-                <button
-                    onClick={() => setSidebarOpen(o => !o)}
-                    title="Toggle comments"
-                    className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
-                    data-testid="toggle-comments-btn"
-                >
-                    💬 {allCommitComments.length > 0 ? allCommitComments.length : ''}
-                </button>
-                <button
-                    onClick={toggleChat}
-                    title="Toggle AI chat"
-                    className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
-                    data-testid="toggle-chat-btn"
-                >
-                    🤖
-                </button>
-                {!isPopOut && hash && (
-                    <button
-                        onClick={handlePopOut}
-                        title="Open in new window"
-                        className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
-                        data-testid="commit-popout-btn"
-                    >
-                        ↗️
-                    </button>
-                )}
-            </div>
 
             {/* Diff view + sidebar */}
             <div className="relative flex flex-1 min-h-0">

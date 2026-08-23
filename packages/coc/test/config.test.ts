@@ -1309,7 +1309,7 @@ timeout: 300
                     "autoAgentProviderRouting": false,
                     "autoMemoryPromotion": true,
                     "canvasHostApis": false,
-                    "chatStyleSelector": false,
+                    "chatStyleSelector": true,
                     "commitChatLens": true,
                     "commitChatLensDormantMode": "ghost",
                     "focusedDiff": true,

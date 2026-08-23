@@ -157,14 +157,15 @@ test.describe('Kusto result table (real browser)', () => {
         const overflow = await nameCell.evaluate(el => getComputedStyle(el).textOverflow);
         expect(whiteSpace).toBe('nowrap');
         expect(overflow).toBe('ellipsis');
-        // Clipped, not stretched: the text block stops at the 320px default cap
-        // and is genuinely ellipsised (rendered width < the text's own width).
+        // Clipped, not stretched: the column width caps the text block, and the
+        // value is genuinely ellipsised (rendered width < the text's own width).
         const text = nameCell.locator('.interactive-table-cell-text');
         const metrics = await text.evaluate(el => ({
             width: el.getBoundingClientRect().width,
             scrollWidth: el.scrollWidth,
+            cellWidth: (el.parentElement as HTMLElement).getBoundingClientRect().width,
         }));
-        expect(metrics.width).toBeLessThanOrEqual(321);
+        expect(metrics.width).toBeLessThanOrEqual(metrics.cellWidth + 1);
         expect(metrics.scrollWidth).toBeGreaterThan(metrics.width + 20);
         const nameBox = await nameCell.boundingBox();
         expect(nameBox!.height).toBeLessThan(30);

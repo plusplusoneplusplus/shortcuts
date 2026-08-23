@@ -12,6 +12,11 @@
  *   counter, and goal
  * - Each task is one iteration; the loop is driven by RALPH_NEXT / RALPH_COMPLETE signals
  *
+ * A ralph-mode task is not always an iteration — final-check and PR-submit tasks
+ * ride the same executor. `getRalphTaskKind` (ralph/task-kind.ts) tells them
+ * apart; only `'iteration'` gets its prompt rebuilt, the other kinds arrive with
+ * a purpose-built prompt that must reach the model unchanged.
+ *
  * Per-iteration history lives in `progress.md`, with an agent-owned `context.md`
  * map beside it, under
  *   `~/.coc/repos/<workspaceId>/ralph-sessions/<sessionId>/`
@@ -34,6 +39,7 @@ import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-exe
 import { ChatBaseExecutor } from './chat-base-executor';
 import { buildChatTurnContext } from './chat-turn-context-builder';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
+import { getRalphTaskKind } from '../ralph/task-kind';
 import { buildRalphIterationPrompt } from '@plusplusoneplusplus/coc-workflow/ralph';
 import { buildSourceLocationMarkdownLinkSystemMessage } from './prompt-builder';
 
@@ -66,11 +72,12 @@ export class RalphExecutor extends ChatBaseExecutor {
         const payload = task.payload as unknown as ChatPayload;
         const ralphCtx = payload.context?.ralph;
 
-        const isFinalCheck = !!ralphCtx?.finalCheck;
+        const kind = getRalphTaskKind(ralphCtx);
+        const isIteration = kind === 'iteration';
         const progressPath = this.resolveProgressPath(payload.workspaceId, ralphCtx?.sessionId);
-        const contextPath = isFinalCheck
-            ? undefined
-            : this.resolveContextPath(payload.workspaceId, ralphCtx?.sessionId);
+        const contextPath = isIteration
+            ? this.resolveContextPath(payload.workspaceId, ralphCtx?.sessionId)
+            : undefined;
 
         const processId = toQueueProcessId(task.id);
         const cronDeps = this.buildCronToolDeps(processId);
@@ -93,25 +100,27 @@ export class RalphExecutor extends ChatBaseExecutor {
         // framing lives in the user message (AC-01, AC-02).
         const systemMessage = await systemMessageBuilder()
             .appendGlobalSystemPrompt(this.resolveGlobalSystemPrompt())
-            .withRepoInstructions(workingDirectory, isFinalCheck ? 'ask' : 'ralph')
+            // Final-check is read-only; iterations and submits both need write
+            // access (submit pushes a branch and opens the PR).
+            .withRepoInstructions(workingDirectory, kind === 'final-check' ? 'ask' : 'ralph')
             .append(buildSourceLocationMarkdownLinkSystemMessage(payload.provider ?? this.provider)?.content)
             .appendMemoryV2(ctx.memoryV2)
             .appendToolGuidance(ctx.toolGuidance)
             .build();
 
-        // Build a fresh user prompt on every execution so the iteration counter
-        // and progress path are always current (the bridge re-enqueues with the
-        // original stored prompt; overriding here ensures correctness for every
-        // iteration).
-        const effectivePrompt = isFinalCheck
-            ? prompt
-            : buildRalphIterationPrompt({
+        // Only iterations get their prompt rewritten, so the counter and the
+        // context-map pointer are current on every execution. Final-check and
+        // submit arrive with a purpose-built prompt — pass it through verbatim,
+        // or they end up running an iteration instead of their own job.
+        const effectivePrompt = isIteration
+            ? buildRalphIterationPrompt({
                 originalGoal: ralphCtx?.originalGoal,
                 progressPath,
                 contextPath,
                 currentIteration: ralphCtx?.currentIteration,
                 maxIterations: ralphCtx?.maxIterations,
-            });
+            })
+            : prompt;
 
         return {
             agentMode: 'autopilot' as AgentMode,

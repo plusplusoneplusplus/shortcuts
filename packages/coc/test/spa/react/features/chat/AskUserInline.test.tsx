@@ -642,4 +642,129 @@ describe('AskUserInline', () => {
             expect((window as unknown as { __pwn2?: unknown }).__pwn2).toBeUndefined();
         });
     });
+
+    describe('compact layout', () => {
+        it('puts submit/skip in the header above the questions, not in a trailing footer', () => {
+            render(
+                <AskUserInline batch={makeBatch()} processId="proc-1" onAnswered={vi.fn()} />,
+            );
+
+            const submit = screen.getByTestId('ask-user-submit-all-btn');
+            const skip = screen.getByTestId('ask-user-skip-all-btn');
+            const question = screen.getByTestId('ask-user-question');
+
+            // DOCUMENT_POSITION_FOLLOWING === 4: the question comes after the buttons.
+            expect(submit.compareDocumentPosition(question) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+            expect(skip.compareDocumentPosition(question) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        });
+
+        it('labels the actions for a single question and pluralizes for a batch', () => {
+            const { unmount } = render(
+                <AskUserInline batch={makeBatch()} processId="proc-1" onAnswered={vi.fn()} />,
+            );
+            expect(screen.getByTestId('ask-user-submit-all-btn')).toHaveTextContent('Submit');
+            expect(screen.getByTestId('ask-user-submit-all-btn')).not.toHaveTextContent('Submit all');
+            expect(screen.getByTestId('ask-user-skip-all-btn')).toHaveTextContent('Skip');
+            expect(screen.getByTestId('ask-user-inline')).toHaveTextContent('1 question');
+            unmount();
+
+            render(
+                <AskUserInline
+                    batch={makeBatch([
+                        makeQuestion({ batchSize: 2 }),
+                        makeQuestion({ questionId: 'q-2', question: 'Why?', type: 'text', options: undefined, index: 1, batchSize: 2 }),
+                    ])}
+                    processId="proc-2"
+                    onAnswered={vi.fn()}
+                />,
+            );
+            expect(screen.getByTestId('ask-user-submit-all-btn')).toHaveTextContent('Submit all');
+            expect(screen.getByTestId('ask-user-skip-all-btn')).toHaveTextContent('Skip all');
+            expect(screen.getByTestId('ask-user-inline')).toHaveTextContent('2 questions');
+        });
+
+        it('drops the nested question card for a single question but keeps it for a batch', () => {
+            const { unmount } = render(
+                <AskUserInline batch={makeBatch()} processId="proc-1" onAnswered={vi.fn()} />,
+            );
+            expect(screen.getByTestId('ask-user-question').className).toBe('');
+            unmount();
+
+            render(
+                <AskUserInline
+                    batch={makeBatch([
+                        makeQuestion({ batchSize: 2 }),
+                        makeQuestion({ questionId: 'q-2', question: 'Why?', type: 'text', options: undefined, index: 1, batchSize: 2 }),
+                    ])}
+                    processId="proc-2"
+                    onAnswered={vi.fn()}
+                />,
+            );
+            for (const card of screen.getAllByTestId('ask-user-question')) {
+                expect(card.className).toContain('border');
+            }
+        });
+
+        it('renders the option description inline on the option row with the full text as a tooltip', () => {
+            const description = 'User creates a named group and checks member repos from the registered workspace list';
+            render(
+                <AskUserInline
+                    batch={makeBatch([
+                        makeQuestion({ options: [{ value: 'manual', label: 'Manual creation', description }] }),
+                    ])}
+                    processId="proc-1"
+                    onAnswered={vi.fn()}
+                />,
+            );
+
+            const desc = screen.getByTestId('ask-user-option-description');
+            // Inline (a <span>, not a block <div>) so it shares the row with the label.
+            expect(desc.tagName).toBe('SPAN');
+            expect(desc.querySelector('p')).toBeNull();
+            expect(desc.className).toContain('truncate');
+
+            const label = screen.getByTestId('ask-user-option-label');
+            const row = label.closest('label');
+            expect(row).not.toBeNull();
+            expect(row).toContainElement(desc);
+            // Truncation hides overflow, so the full text must stay reachable on hover.
+            expect(row!.getAttribute('title')).toBe(description);
+        });
+
+        it('renders multi-select option descriptions inline too', () => {
+            render(
+                <AskUserInline
+                    batch={makeBatch([
+                        makeQuestion({
+                            type: 'multi-select',
+                            options: [{ value: 'a', label: 'Alpha', description: 'the first one' }],
+                        }),
+                    ])}
+                    processId="proc-1"
+                    onAnswered={vi.fn()}
+                />,
+            );
+            const desc = screen.getByTestId('ask-user-option-description');
+            expect(desc.tagName).toBe('SPAN');
+            expect(screen.getByTestId('ask-user-option-label').closest('label')!.getAttribute('title')).toBe('the first one');
+        });
+
+        it('still submits normally through the compact header controls', async () => {
+            const onAnswered = vi.fn();
+            render(
+                <AskUserInline batch={makeBatch()} processId="proc-1" onAnswered={onAnswered} />,
+            );
+
+            fireEvent.click(screen.getByDisplayValue('blue'));
+            fireEvent.click(screen.getByTestId('ask-user-submit-all-btn'));
+
+            await waitFor(() => {
+                expect(mocks.processes.askUserResponse).toHaveBeenCalledWith('proc-1', {
+                    batchId: 'batch-1',
+                    answers: [{ questionId: 'q-1', answer: 'blue' }],
+                });
+            });
+            expect(onAnswered).toHaveBeenCalled();
+        });
+    });
 });

@@ -249,6 +249,13 @@ all have their own `references/*.md`.
   `RalphExecutor` must use validation-only system instructions whenever
   `context.ralph.finalCheck` is present. Do not route final checks through the
   normal implementation-loop system prompt.
+- **Ralph task kind** is derived only through `getRalphTaskKind(ctx)`
+  (`src/server/ralph/task-kind.ts`), which returns
+  `'iteration' | 'final-check' | 'submit'`. `RalphExecutor` rebuilds the user
+  prompt from `buildRalphIterationPrompt` for `'iteration'` **only**; every
+  other kind arrives with a purpose-built prompt that must reach the model
+  verbatim. Adding a new kind means extending the helper, not adding another
+  `ralphCtx.<marker>` check at a call site.
 - **Ralph PR-submit tasks** (`context.ralph.submit` present) must never be
   routed through iteration orchestration: the bridge hands them to
   `orchestrateSubmitCompletion` (`src/server/ralph/orchestrate-submit.ts`),
@@ -425,7 +432,9 @@ all have their own `references/*.md`.
   bare name, error class/errno only — never canvas content or absolute paths);
   do not go back to a bare `catch {}`.
 - **Chat style selector** (live admin flag `features.chatStyleSelector`, default
-  off, runtime flag `chatStyleSelectorEnabled`) adds a `Style: Default|Human|
+  on — `absentFallback: false`, so a legacy partial config that lacks the key
+  still reads off — runtime flag `chatStyleSelectorEnabled`) adds a
+  `Style: Default|Human|
   Direct|Analytical|Structured` chip beside Effort in the new-chat and follow-up
   composers. The style instruction is prepended to the **user message**, never
   injected into the system message. Style changes only how a response is
