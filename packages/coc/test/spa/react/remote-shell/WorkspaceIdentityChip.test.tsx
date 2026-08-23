@@ -18,6 +18,7 @@ let mockQueueState: any = { repoQueueMap: {} };
 let mockUnseen: Record<string, number> = {};
 let mockWorkspaces: any[] = [];
 let mockSelectedRepoId: string | null = null;
+let mockRemoteGroupWorkspaces: any[] = [];
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
@@ -34,7 +35,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
     useQueue: () => ({ state: mockQueueState, dispatch: vi.fn() }),
 }));
 vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => ({
-    useRepos: () => ({ repos: [], unseenCounts: mockUnseen, fetchRepos: mockFetchRepos }),
+    useRepos: () => ({ repos: [], unseenCounts: mockUnseen, fetchRepos: mockFetchRepos, remoteGroupWorkspaces: mockRemoteGroupWorkspaces }),
 }));
 vi.mock('../../../../src/server/spa/client/react/features/remote-shell/useShellNavigation', () => ({
     useShellNavigation: () => ({ selectClone: mockSelectClone, switchSubTab: vi.fn() }),
@@ -52,8 +53,8 @@ vi.mock('../../../../src/server/spa/client/react/repos/repositoryService', () =>
     removeWorkspace: (...args: unknown[]) => mockRemoveWorkspace(...args),
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/RepoGroupDialog', () => ({
-    RepoGroupDialog: ({ open, groupId }: { open: boolean; groupId?: string | null }) => (
-        open ? <div data-testid="repo-group-dialog" data-group-id={groupId ?? ''} /> : null
+    RepoGroupDialog: ({ open, groupId, groupBaseUrl }: { open: boolean; groupId?: string | null; groupBaseUrl?: string }) => (
+        open ? <div data-testid="repo-group-dialog" data-group-id={groupId ?? ''} data-group-base-url={groupBaseUrl ?? ''} /> : null
     ),
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/repoGroupService', () => ({
@@ -88,6 +89,7 @@ beforeEach(() => {
     mockUnseen = {};
     mockWorkspaces = [];
     mockSelectedRepoId = null;
+    mockRemoteGroupWorkspaces = [];
 });
 
 function openPicker(repos: any[], selected: any) {
@@ -335,8 +337,92 @@ describe('WorkspaceIdentityChip group row — WSL pill (AC-03)', () => {
     });
 });
 
+describe('WorkspaceIdentityChip group row — remote-server marker', () => {
+    const aggregatedRepo = (id: string, name: string, remoteUrl: string, serverLabel = 'devbox') => ({
+        workspace: {
+            id, name, color: '#0078d4', remoteUrl, rootPath: `/remote/${id}`,
+            baseUrl: 'http://127.0.0.1:4000',
+            remote: { serverId: 'srv-1', serverLabel, connection: 'online', queue: 'idle' },
+        },
+        gitInfo: { isGitRepo: true, branch: 'main', dirty: false, remoteUrl },
+    });
+
+    function groupRowFor(name: string): HTMLElement | undefined {
+        return screen.queryAllByTestId('remote-dropdown-item')
+            .find(row => row.textContent?.includes(name));
+    }
+
+    it('marks a group that has one remote clone among local ones', () => {
+        const repos = [repo('a', 'shortcuts', SHORTCUTS), aggregatedRepo('b', 'shortcuts-2', SHORTCUTS)];
+        openPicker(repos, repos[0]);
+
+        const badge = groupRowFor('shortcuts')!.querySelector('[data-testid="remote-server-badge"]')!;
+        expect(badge).toBeTruthy();
+        expect(badge.getAttribute('aria-label')).toBe('Includes a repo from remote server devbox');
+    });
+
+    it('marks a remote-only group', () => {
+        const repos = [aggregatedRepo('a', 'shortcuts', SHORTCUTS)];
+        openPicker(repos, repos[0]);
+
+        expect(screen.getAllByTestId('remote-server-badge')).toHaveLength(1);
+    });
+
+    it('shows no marker on a local-only group', () => {
+        const repos = [repo('a', 'shortcuts', SHORTCUTS), repo('f', 'forge', FORGE)];
+        openPicker(repos, repos[0]);
+
+        expect(screen.queryAllByTestId('remote-server-badge')).toHaveLength(0);
+    });
+
+    it('marks only the group that owns the remote clone', () => {
+        const repos = [repo('a', 'shortcuts', SHORTCUTS), aggregatedRepo('f', 'forge', FORGE)];
+        openPicker(repos, repos[0]);
+
+        expect(groupRowFor('shortcuts')!.querySelector('[data-testid="remote-server-badge"]')).toBeNull();
+        expect(groupRowFor('forge')!.querySelector('[data-testid="remote-server-badge"]')).toBeTruthy();
+    });
+
+    it('lists every distinct server behind a group in the marker label', () => {
+        const repos = [
+            aggregatedRepo('a', 'shortcuts', SHORTCUTS, 'zeta'),
+            aggregatedRepo('b', 'shortcuts-2', SHORTCUTS, 'alpha'),
+        ];
+        openPicker(repos, repos[0]);
+
+        const badge = groupRowFor('shortcuts')!.querySelector('[data-testid="remote-server-badge"]')!;
+        expect(badge.getAttribute('aria-label')).toBe('Includes a repo from remote server alpha, zeta');
+    });
+
+    it('keeps the clone-count badge alongside the marker', () => {
+        const repos = [repo('a', 'shortcuts', SHORTCUTS), aggregatedRepo('b', 'shortcuts-2', SHORTCUTS)];
+        openPicker(repos, repos[0]);
+
+        const row = groupRowFor('shortcuts')!;
+        expect(row.querySelector('[data-testid="remote-server-badge"]')).toBeTruthy();
+        expect(row.textContent).toContain('2');
+    });
+});
+
 describe('WorkspaceIdentityChip repo groups (repo-group AC-01/AC-04)', () => {
     const groupWs = (id: string, name: string) => ({ id, name, rootPath: `/data/repos/${id}`, virtual: true });
+
+    /** A repo group contributed by a remote CoC server (AC-02/AC-04). */
+    const remoteGroupWs = (id: string, name: string, offline = false) => ({
+        id,
+        name,
+        rootPath: `/home/dev/.coc/repos/${id}`,
+        virtual: true,
+        baseUrl: 'http://127.0.0.1:4000',
+        remote: {
+            baseUrl: 'http://127.0.0.1:4000',
+            serverId: 'srv-1',
+            serverLabel: 'devbox',
+            offline,
+            connection: offline ? 'offline' : 'online',
+            queue: 'idle',
+        },
+    });
 
     function groupRowMenuFor(name: string): HTMLElement | undefined {
         return screen.queryAllByTestId('repo-group-row-menu')
@@ -435,7 +521,7 @@ describe('WorkspaceIdentityChip repo groups (repo-group AC-01/AC-04)', () => {
         expect(mockDeleteRepoGroup).not.toHaveBeenCalled();
 
         fireEvent.click(screen.getByTestId('repo-group-delete-confirm-btn'));
-        await waitFor(() => expect(mockDeleteRepoGroup).toHaveBeenCalledWith('group-platform'));
+        await waitFor(() => expect(mockDeleteRepoGroup).toHaveBeenCalledWith('group-platform', undefined));
         await waitFor(() => expect(mockFetchRepos).toHaveBeenCalled());
         await waitFor(() => expect(screen.getByText('Deleted group Platform')).toBeTruthy());
         expect(screen.queryByTestId('repo-group-delete-confirm-btn')).toBeNull();
@@ -452,5 +538,67 @@ describe('WorkspaceIdentityChip repo groups (repo-group AC-01/AC-04)', () => {
 
         await waitFor(() => expect(screen.getByText('Failed to delete group Platform')).toBeTruthy());
         expect(screen.getByTestId('repo-group-delete-confirm-btn')).toBeTruthy();
+    });
+
+    // ── Remote-server groups (AC-02 / AC-04) ──────────────────────────────
+
+    it('lists a remote server\'s groups alongside local ones, badged with the server', () => {
+        mockWorkspaces = [groupWs('group-platform', 'Platform')];
+        mockRemoteGroupWorkspaces = [remoteGroupWs('group-devbox-svc', 'Devbox Services')];
+        openPicker([repo('a', 'shortcuts', SHORTCUTS)], undefined);
+
+        const names = screen.queryAllByTestId('repo-group-item').map(el => el.textContent);
+        expect(names.some(t => t?.includes('Platform'))).toBe(true);
+        const remoteRow = screen.queryAllByTestId('repo-group-item')
+            .find(el => el.textContent?.includes('Devbox Services'));
+        expect(remoteRow).toBeTruthy();
+        // The server name is on the row, and only the remote row carries the badge.
+        expect(remoteRow!.textContent).toContain('devbox');
+        expect(screen.queryAllByTestId('repo-group-server-badge')).toHaveLength(1);
+    });
+
+    it('selects a remote group by its own workspace id (clone-registry routing)', () => {
+        mockRemoteGroupWorkspaces = [remoteGroupWs('group-devbox-svc', 'Devbox Services')];
+        openPicker([repo('a', 'shortcuts', SHORTCUTS)], undefined);
+
+        const remoteRow = screen.queryAllByTestId('repo-group-item')
+            .find(el => el.textContent?.includes('Devbox Services'))!;
+        fireEvent.click(remoteRow);
+        expect(mockSelectClone).toHaveBeenCalledWith('group-devbox-svc');
+    });
+
+    it('proxies edit and delete of a remote group to its server base URL', async () => {
+        mockRemoteGroupWorkspaces = [remoteGroupWs('group-devbox-svc', 'Devbox Services')];
+        openPicker([repo('a', 'shortcuts', SHORTCUTS)], undefined);
+
+        fireEvent.click(groupRowMenuFor('Devbox Services')!);
+        fireEvent.click(menuItem('Edit group')!);
+        const dialog = screen.getByTestId('repo-group-dialog');
+        expect(dialog.getAttribute('data-group-id')).toBe('group-devbox-svc');
+        expect(dialog.getAttribute('data-group-base-url')).toBe('http://127.0.0.1:4000');
+
+        // Reopen the picker (the edit action closed it) and delete instead.
+        cleanup();
+        openPicker([repo('a', 'shortcuts', SHORTCUTS)], undefined);
+        fireEvent.click(groupRowMenuFor('Devbox Services')!);
+        fireEvent.click(menuItem('Delete group')!);
+        fireEvent.click(screen.getByTestId('repo-group-delete-confirm-btn'));
+        await waitFor(() => expect(mockDeleteRepoGroup)
+            .toHaveBeenCalledWith('group-devbox-svc', 'http://127.0.0.1:4000'));
+    });
+
+    it('renders an offline server\'s groups greyed and read-only (AC-04)', () => {
+        mockWorkspaces = [groupWs('group-platform', 'Platform')];
+        mockRemoteGroupWorkspaces = [remoteGroupWs('group-devbox-svc', 'Devbox Services', true)];
+        openPicker([repo('a', 'shortcuts', SHORTCUTS)], undefined);
+
+        const remoteRow = screen.queryAllByTestId('repo-group-item')
+            .find(el => el.textContent?.includes('Devbox Services')) as HTMLButtonElement;
+        expect(remoteRow).toBeTruthy();
+        expect(remoteRow.disabled).toBe(true);
+        expect(remoteRow.textContent).toContain('offline');
+        // No ⋮ for the offline group; the local one keeps its menu.
+        expect(groupRowMenuFor('Devbox Services')).toBeUndefined();
+        expect(groupRowMenuFor('Platform')).toBeTruthy();
     });
 });

@@ -444,7 +444,7 @@ describe('aggregateRemoteWorkspaces — feature flag', () => {
         const result = await aggregateRemoteWorkspaces();
         expect(serversList).not.toHaveBeenCalled();
         expect(constructedBaseUrls).toHaveLength(0);
-        expect(result).toEqual({ sources: [], workspaces: [], gitInfo: {}, workflows: {}, warnings: [] });
+        expect(result).toEqual({ sources: [], workspaces: [], groupWorkspaces: [], gitInfo: {}, workflows: {}, warnings: [] });
     });
 
     it('returns an empty aggregate when the registry list fails', async () => {
@@ -636,5 +636,64 @@ describe('aggregateRemoteWorkspaces — remote workspace snapshot', () => {
         serversList.mockRejectedValue(new Error('registry down'));
         await aggregateRemoteWorkspaces();
         expect(getRemoteWorkspacesSnapshot()).toEqual([]);
+    });
+});
+
+// ── Remote repo groups (AC-02 / AC-04) ───────────────────────────────────────
+
+describe('aggregateRemoteWorkspaces — remote repo groups', () => {
+    it('keeps group-* virtual workspaces out of the repo list and in groupWorkspaces', async () => {
+        serversList.mockResolvedValue([onlineServer('srv-1', 'Devbox', 'http://127.0.0.1:4000')]);
+        remoteResponses.set('http://127.0.0.1:4000', {
+            workspaces: [
+                ws('w1'),
+                ws('group-svc', 'Services', { virtual: true } as Partial<WorkspaceInfo>),
+                // A non-group virtual workspace stays filtered out as before.
+                ws('my_work', 'My Work', { virtual: true } as Partial<WorkspaceInfo>),
+            ],
+        });
+
+        const result = await aggregateRemoteWorkspaces();
+
+        expect(result.workspaces.map(w => w.id)).toEqual(['w1']);
+        expect(result.groupWorkspaces.map(w => w.id)).toEqual(['group-svc']);
+        expect(result.groupWorkspaces[0].remote.serverLabel).toBe('Devbox');
+        expect(result.groupWorkspaces[0].baseUrl).toBe('http://127.0.0.1:4000');
+        expect(result.groupWorkspaces[0].remote.offline).toBe(false);
+        // Groups get no git-info/workflow fetch — only the repo row does.
+        expect(Object.keys(result.workflows)).not.toContain('group-svc');
+    });
+
+    it('routes a remote group id to its server base URL through the clone registry', async () => {
+        serversList.mockResolvedValue([onlineServer('srv-1', 'Devbox', 'http://127.0.0.1:4000')]);
+        remoteResponses.set('http://127.0.0.1:4000', {
+            workspaces: [ws('w1'), ws('group-svc', 'Services', { virtual: true } as Partial<WorkspaceInfo>)],
+        });
+
+        await aggregateRemoteWorkspaces();
+
+        expect(lookupCloneBaseUrl({ workspaceId: 'group-svc' })).toBe('http://127.0.0.1:4000');
+        expect(lookupCloneBaseUrl({ cloneKey: buildRemoteCloneKey('srv-1', 'group-svc') }))
+            .toBe('http://127.0.0.1:4000');
+    });
+
+    it('replays an offline server\'s groups from cache, flagged offline (AC-04)', async () => {
+        serversList.mockResolvedValue([onlineServer('srv-1', 'Devbox', 'http://127.0.0.1:4000')]);
+        remoteResponses.set('http://127.0.0.1:4000', {
+            workspaces: [ws('w1'), ws('group-svc', 'Services', { virtual: true } as Partial<WorkspaceInfo>)],
+        });
+        await aggregateRemoteWorkspaces();
+        // The cache must carry the group, or it would vanish the moment the
+        // server drops off.
+        expect(loadRemoteWorkspaceCache()['srv-1'].workspaces.map(w => w.id)).toEqual(['w1', 'group-svc']);
+
+        serversList.mockResolvedValue([offlineServer('srv-1', 'Devbox', 'http://127.0.0.1:4000')]);
+        const offlineResult = await aggregateRemoteWorkspaces();
+
+        expect(offlineResult.workspaces.map(w => w.id)).toEqual(['w1']);
+        expect(offlineResult.groupWorkspaces.map(w => w.id)).toEqual(['group-svc']);
+        expect(offlineResult.groupWorkspaces[0].remote.offline).toBe(true);
+        // Still routable, so an offline-selected group resolves to its last-known server.
+        expect(lookupCloneBaseUrl({ workspaceId: 'group-svc' })).toBe('http://127.0.0.1:4000');
     });
 });

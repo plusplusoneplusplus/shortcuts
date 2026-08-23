@@ -37,6 +37,7 @@ import {
     saveRemoteWorkspaceCacheEntry,
 } from './remoteWorkspaceCache';
 import { buildRemoteCloneKey } from './cloneIdentity';
+import { isRepoGroupWorkspaceId } from './virtualWorkspaceIds';
 
 /**
  * Remote server connection state, mirrored from the registry's runtime status.
@@ -108,6 +109,13 @@ export interface RemoteWorkspaceSource {
     /** Whether the contributed workspaces are live (online) or cached (offline). */
     online: boolean;
     workspaces: RemoteWorkspaceInfo[];
+    /**
+     * The server's repo-group virtual workspaces (`group-<slug>`), tagged the same
+     * way but kept OUT of `workspaces` so they never reach the repo grid — a group
+     * is a picker entry, not a repository. The dashboard lists them in the picker's
+     * "Repo groups" section with this server's badge. (AC-02)
+     */
+    groupWorkspaces: RemoteWorkspaceInfo[];
     /** git-info keyed by remote workspace id; empty for offline (cached) sources. */
     gitInfo: RemoteGitInfoMap;
     /** Workflow lists keyed by remote workspace id; empty for offline sources. */
@@ -118,6 +126,8 @@ export interface AggregatedRemoteWorkspaces {
     sources: RemoteWorkspaceSource[];
     /** Flat list of all tagged remote workspaces across every source. */
     workspaces: RemoteWorkspaceInfo[];
+    /** Flat list of every server's tagged repo-group virtual workspaces. (AC-02) */
+    groupWorkspaces: RemoteWorkspaceInfo[];
     /** Merged git-info across all online sources, keyed by remote workspace id. */
     gitInfo: RemoteGitInfoMap;
     /** Merged workflow lists across all online sources, keyed by workspace id and clone key. */
@@ -129,6 +139,7 @@ export interface AggregatedRemoteWorkspaces {
 const EMPTY_AGGREGATE: AggregatedRemoteWorkspaces = {
     sources: [],
     workspaces: [],
+    groupWorkspaces: [],
     gitInfo: {},
     workflows: {},
     warnings: [],
@@ -240,6 +251,30 @@ function normalizeWorkspacesResponse(response: WorkspacesResponse | WorkspaceInf
     return Array.isArray(response?.workspaces) ? response.workspaces : [];
 }
 
+/**
+ * Split a server's raw workspace list into the repo rows the grid shows and the
+ * repo-group virtual workspaces the picker shows.
+ *
+ * Every other virtual workspace (the global workspace, My Work / My Life) is
+ * dropped as before — only `group-<slug>` is rescued, because a remote group has
+ * to be selectable in the dashboard's "Repo groups" section. (AC-02)
+ */
+export function splitRemoteWorkspaces(workspaces: WorkspaceInfo[]): {
+    repos: WorkspaceInfo[];
+    groups: WorkspaceInfo[];
+} {
+    const repos: WorkspaceInfo[] = [];
+    const groups: WorkspaceInfo[] = [];
+    for (const workspace of workspaces) {
+        if (isRepoGroupWorkspaceId(workspace.id)) {
+            groups.push(workspace);
+        } else if (!workspace.virtual) {
+            repos.push(workspace);
+        }
+    }
+    return { repos, groups };
+}
+
 /** Build an offline source from the last-known cache for a server, or null when nothing is cached. */
 function offlineSourceFromCache(
     server: RemoteServer,
@@ -254,12 +289,16 @@ function offlineSourceFromCache(
     // Preserve the real connection state so the dot can show CONNECTING (not just
     // OFFLINE) while a server is still coming up. No live queue for cached rows.
     const connection: RemoteConnectionStatus = server.status ?? 'offline';
+    // Cached entries carry the server's repo groups too, so an offline server's
+    // groups stay visible (greyed + read-only) instead of vanishing. (AC-04)
+    const { repos, groups } = splitRemoteWorkspaces(cached.workspaces);
     return {
         serverId: server.id,
         serverLabel: server.label || server.id,
         baseUrl,
         online: false,
-        workspaces: tagRemoteWorkspaces(server, baseUrl, cached.workspaces, true, { connection }),
+        workspaces: tagRemoteWorkspaces(server, baseUrl, repos, true, { connection }),
+        groupWorkspaces: tagRemoteWorkspaces(server, baseUrl, groups, true, { connection }),
         gitInfo: {},
         workflows: {},
     };
@@ -279,7 +318,10 @@ async function loadOnlineSource(
     try {
         const remoteClient = new CocClient({ baseUrl, fetch, timeoutMs: 15_000 });
         const rawWorkspaces = normalizeWorkspacesResponse(await remoteClient.workspaces.list());
-        const visible = rawWorkspaces.filter(ws => !ws.virtual);
+        // Repo-group virtual workspaces are kept aside: they get no git-info,
+        // no workflow summary and no queue row, but they DO get tagged + cached
+        // so the picker can list and route them. (AC-02)
+        const { repos: visible, groups: groupRows } = splitRemoteWorkspaces(rawWorkspaces);
         const gitInfo: RemoteGitInfoMap = visible.length > 0
             ? (await remoteClient.workspaces.gitInfoBatch(visible.map(ws => ws.id), { trigger: 'remote-topology-load' })).results ?? {}
             : {};
@@ -307,7 +349,7 @@ async function loadOnlineSource(
         }
 
         // Persist the raw (untagged) list so a later offline load can re-tag it.
-        saveRemoteWorkspaceCacheEntry(server.id, { baseUrl, workspaces: visible });
+        saveRemoteWorkspaceCacheEntry(server.id, { baseUrl, workspaces: [...visible, ...groupRows] });
 
         return {
             source: {
@@ -318,6 +360,9 @@ async function loadOnlineSource(
                 workspaces: tagRemoteWorkspaces(server, baseUrl, visible, false, {
                     connection: 'online',
                     queueByWorkspace,
+                }),
+                groupWorkspaces: tagRemoteWorkspaces(server, baseUrl, groupRows, false, {
+                    connection: 'online',
                 }),
                 gitInfo,
                 workflows,
@@ -374,10 +419,12 @@ export async function aggregateRemoteWorkspaces(): Promise<AggregatedRemoteWorks
     const warnings = results.flatMap(result => (result.warning ? [result.warning] : []));
 
     const workspaces: RemoteWorkspaceInfo[] = [];
+    const groupWorkspaces: RemoteWorkspaceInfo[] = [];
     const gitInfo: RemoteGitInfoMap = {};
     const workflows: RemoteWorkflowsMap = {};
     for (const source of sources) {
         workspaces.push(...source.workspaces);
+        groupWorkspaces.push(...(source.groupWorkspaces ?? []));
         for (const workspace of source.workspaces) {
             const cloneKey = workspace.remote.cloneKey ?? buildRemoteCloneKey(workspace.remote.serverId, workspace.id);
             if (Object.prototype.hasOwnProperty.call(source.workflows, workspace.id)) {
@@ -399,7 +446,10 @@ export async function aggregateRemoteWorkspaces(): Promise<AggregatedRemoteWorks
     // covering online AND cached/offline remote rows (an offline-selected clone
     // still resolves to its last-known baseUrl rather than silently hitting the
     // local server).
-    registerCloneBaseUrls(workspaces.map(ws => ({
+    // Remote GROUPS are registered alongside repos so every workspace-scoped
+    // request made from a remote group's view (chat list, submission, tabs) routes
+    // to the server the group lives on. (AC-02/AC-03)
+    registerCloneBaseUrls([...workspaces, ...groupWorkspaces].map(ws => ({
         workspaceId: ws.id,
         serverId: ws.remote.serverId,
         cloneKey: ws.remote.cloneKey,
@@ -409,5 +459,5 @@ export async function aggregateRemoteWorkspaces(): Promise<AggregatedRemoteWorks
     // Publish the same list for non-React resolution (see the snapshot doc above).
     remoteWorkspaceSnapshot = workspaces;
 
-    return { sources, workspaces, gitInfo, workflows, warnings };
+    return { sources, workspaces, groupWorkspaces, gitInfo, workflows, warnings };
 }

@@ -12,8 +12,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { useEffect } from 'react';
 
+let mockRemoteGroupWorkspaces: any[] = [];
 vi.mock('../../../src/server/spa/client/react/contexts/ReposContext', () => ({
-    useRepos: () => ({ repos: [], unseenCounts: {}, fetchRepos: vi.fn(), loading: false }),
+    useRepos: () => ({ repos: [], unseenCounts: {}, fetchRepos: vi.fn(), loading: false, remoteGroupWorkspaces: mockRemoteGroupWorkspaces }),
     ReposProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 vi.mock('../../../src/server/spa/client/react/hooks/useApi', () => ({
@@ -41,7 +42,7 @@ import { TopBar } from '../../../src/server/spa/client/react/layout/TopBar';
 
 const GROUP_ID = 'group-frontend';
 
-function SeedGroupSelection({ withName }: { withName: boolean }) {
+function SeedGroupSelection({ withName, groupId = GROUP_ID }: { withName: boolean; groupId?: string }) {
     const { dispatch } = useApp();
     useEffect(() => {
         if (withName) {
@@ -54,17 +55,17 @@ function SeedGroupSelection({ withName }: { withName: boolean }) {
             });
         }
         dispatch({ type: 'SET_ACTIVE_TAB', tab: 'repos' });
-        dispatch({ type: 'SET_SELECTED_REPO', id: GROUP_ID });
-    }, [dispatch, withName]);
+        dispatch({ type: 'SET_SELECTED_REPO', id: groupId });
+    }, [dispatch, withName, groupId]);
     return null;
 }
 
-function renderTopBarWithGroup(withName = true) {
+function renderTopBarWithGroup(withName = true, groupId = GROUP_ID) {
     return render(
         <AppProvider>
             <NotificationProvider>
                 <ThemeProvider>
-                    <SeedGroupSelection withName={withName} />
+                    <SeedGroupSelection withName={withName} groupId={groupId} />
                     <TopBar />
                 </ThemeProvider>
             </NotificationProvider>
@@ -73,6 +74,7 @@ function renderTopBarWithGroup(withName = true) {
 }
 
 beforeEach(() => {
+    mockRemoteGroupWorkspaces = [];
     location.hash = '';
     Object.defineProperty(window, 'matchMedia', {
         writable: true,
@@ -108,6 +110,14 @@ describe('TopBar — repo-group virtual header', () => {
     it('labels the header with the registered group name', () => {
         renderTopBarWithGroup();
         expect(screen.getByTestId('virtual-workspace-shell-header').textContent).toContain('Frontend');
+    });
+
+    it('labels a remote group from the aggregated remote groups, not its raw id', () => {
+        mockRemoteGroupWorkspaces = [{ id: 'group-svc', name: 'Services', remote: { serverLabel: 'Devbox' } }];
+        renderTopBarWithGroup(true, 'group-svc');
+        const header = screen.getByTestId('virtual-workspace-shell-header').textContent ?? '';
+        expect(header).toContain('Services');
+        expect(header).not.toContain('group-svc');
     });
 
     it('falls back to the group id while the workspace list has not loaded', () => {

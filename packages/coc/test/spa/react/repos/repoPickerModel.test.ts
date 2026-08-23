@@ -3,7 +3,7 @@
  * of VirtualWorkspaceShellHeader so both remote dropdowns render identical rows.
  */
 import { describe, expect, it } from 'vitest';
-import { getGroupWsl, getRepoWsl, getServerName, isRepoOffline, shortPath } from '../../../../src/server/spa/client/react/repos/repoPickerModel';
+import { getGroupRemoteServers, getGroupWsl, getRepoWsl, getServerName, isRepoOffline, shortPath } from '../../../../src/server/spa/client/react/repos/repoPickerModel';
 import type { RepoData } from '../../../../src/server/spa/client/react/repos/repoGrouping';
 
 function remoteRepo(remote: Record<string, unknown> | null, baseUrl?: string): RepoData {
@@ -106,5 +106,44 @@ describe('getGroupWsl (AC-03 all-or-nothing rule)', () => {
 
     it('does not mark an empty group', () => {
         expect(getGroupWsl({ repos: [] })).toBeNull();
+    });
+});
+
+describe('getGroupRemoteServers (any-semantics)', () => {
+    const local = (id: string): RepoData => ({ workspace: { id, name: id } } as unknown as RepoData);
+    const remote = (id: string, serverLabel: string): RepoData => ({
+        workspace: { id, name: id, baseUrl: `http://${serverLabel}:4000`, remote: { serverId: serverLabel, serverLabel } },
+    } as unknown as RepoData);
+
+    it('is empty for a local-only group', () => {
+        expect(getGroupRemoteServers({ repos: [local('a'), local('b')] })).toEqual([]);
+    });
+
+    it('is empty for a group with no clones', () => {
+        expect(getGroupRemoteServers({ repos: [] })).toEqual([]);
+    });
+
+    it('marks a mixed group off a single remote clone', () => {
+        expect(getGroupRemoteServers({ repos: [local('a'), remote('b', 'devbox')] })).toEqual(['devbox']);
+    });
+
+    it('dedupes and sorts server names across clones', () => {
+        const group = { repos: [remote('a', 'zeta'), remote('b', 'alpha'), remote('c', 'zeta')] };
+        expect(getGroupRemoteServers(group)).toEqual(['alpha', 'zeta']);
+    });
+
+    it('falls back to the server id / baseUrl naming used by getServerName', () => {
+        const noLabel = { workspace: { id: 'x', baseUrl: 'http://host:4000', remote: { serverId: 'srv-9' } } } as unknown as RepoData;
+        expect(getGroupRemoteServers({ repos: [noLabel] })).toEqual(['srv-9']);
+    });
+
+    it('ignores a partial remote marker that is not an aggregated clone', () => {
+        // `remote` without a top-level `baseUrl` is not a remote checkout.
+        const partial = { workspace: { id: 'p', remote: { serverLabel: 'devbox' } } } as unknown as RepoData;
+        expect(getGroupRemoteServers({ repos: [partial] })).toEqual([]);
+    });
+
+    it('tolerates a missing group', () => {
+        expect(getGroupRemoteServers(undefined as unknown as { repos: RepoData[] })).toEqual([]);
     });
 });

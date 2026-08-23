@@ -19,13 +19,14 @@ import { deleteRepoGroup } from '../../repos/repoGroupService';
 import { isRepoGroupWorkspaceId } from '../../repos/virtualWorkspaceIds';
 import { getRepoSelectionId, isRepoSelected } from '../../repos/cloneIdentity';
 import { groupKey, groupReposByRemote, type RepoData, type RepoGroup } from '../../repos/repoGrouping';
-import { getGroupWsl } from '../../repos/repoPickerModel';
+import { getGroupRemoteServers, getGroupWsl } from '../../repos/repoPickerModel';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import { Dialog } from '../../ui/Dialog';
 import { ToastContainer, useToast } from '../../ui/Toast';
 import { copyToClipboard } from '../../utils/format';
 import { computeCloneStatusMap, describeRemoveBlock, summarizeRemote } from './shellModel';
 import { RemoteProviderBadge } from './RemoteProviderBadge';
+import { RemoteServerBadge } from './RemoteServerBadge';
 import { useDropdownPopover } from './useDropdownPopover';
 import { WslBadge } from './WslBadge';
 import { PickerEmpty, PickerRow, PickerSection, RepoPickerPopover } from './RepoPickerPopover';
@@ -129,7 +130,7 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
     const cloneId = repo ? getRepoSelectionId(repo) : '';
     const { state: queueState } = useQueue();
     const { state: appState } = useApp();
-    const { fetchRepos, unseenCounts } = useRepos();
+    const { fetchRepos, unseenCounts, remoteGroupWorkspaces } = useRepos();
     const { selectClone } = useShellNavigation();
     const { toasts, addToast, removeToast } = useToast();
 
@@ -140,7 +141,7 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
     const [cloneOpen, setCloneOpen] = useState(false);
     const [rowMenu, setRowMenu] = useState<{ repo: RepoData; x: number; y: number } | null>(null);
     const [groupMenu, setGroupMenu] = useState<{ workspace: any; x: number; y: number } | null>(null);
-    const [groupDialog, setGroupDialog] = useState<{ groupId: string | null } | null>(null);
+    const [groupDialog, setGroupDialog] = useState<{ groupId: string | null; baseUrl?: string } | null>(null);
     const [groupDeleteTarget, setGroupDeleteTarget] = useState<any | null>(null);
     const [groupDeleting, setGroupDeleting] = useState(false);
     const rootRef = useRef<HTMLDivElement>(null);
@@ -217,10 +218,15 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
     // Repo-group virtual workspaces come from the full AppContext workspace
     // list — `repos` only carries non-virtual workspaces (ReposContext filters
     // them for the grid), so groups would never surface from it.
-    const repoGroupWorkspaces = useMemo(
-        () => ((appState.workspaces ?? []) as any[]).filter(ws => isRepoGroupWorkspaceId(ws?.id)),
-        [appState.workspaces],
-    );
+    // Remote servers contribute their own groups through the aggregation, which
+    // keeps them out of `repos` (a group is not a repository card). Merging them
+    // here is what puts a remote group in the same "Repo groups" section as a
+    // local one, tagged with its server. (AC-02)
+    const repoGroupWorkspaces = useMemo(() => {
+        const local = ((appState.workspaces ?? []) as any[]).filter(ws => isRepoGroupWorkspaceId(ws?.id));
+        const remote = ((remoteGroupWorkspaces ?? []) as any[]).filter(ws => isRepoGroupWorkspaceId(ws?.id));
+        return remote.length > 0 ? [...local, ...remote] : local;
+    }, [appState.workspaces, remoteGroupWorkspaces]);
     const filteredRepoGroupWorkspaces = useMemo(() => {
         const q = query.trim().toLowerCase();
         if (!q) return repoGroupWorkspaces;
@@ -231,7 +237,7 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
     const doDeleteGroup = useCallback(async (groupWs: any) => {
         setGroupDeleting(true);
         try {
-            await deleteRepoGroup(String(groupWs.id));
+            await deleteRepoGroup(String(groupWs.id), groupWs?.remote?.baseUrl);
             setGroupDeleteTarget(null);
             await fetchRepos();
             addToast(`Deleted group ${groupWs.name ?? groupWs.id}`, 'success');
@@ -245,7 +251,7 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
     const buildGroupMenuItems = useCallback((groupWs: any): ContextMenuItem[] => [{
         label: 'Edit group',
         icon: '✎',
-        onClick: () => { setGroupMenu(null); close(); setGroupDialog({ groupId: String(groupWs.id) }); },
+        onClick: () => { setGroupMenu(null); close(); setGroupDialog({ groupId: String(groupWs.id), baseUrl: groupWs?.remote?.baseUrl }); },
     }, {
         label: 'Delete group',
         icon: 'X',
@@ -273,6 +279,9 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
         // it is WSL-hosted; a mixed group stays unmarked and the per-clone rows
         // carry the distinction. (AC-03)
         const groupWsl = getGroupWsl(group);
+        // Any-semantics, unlike the WSL pill: one remote clone is enough to mark
+        // the collection as reaching another CoC server.
+        const remoteServers = getGroupRemoteServers(group);
         return (
             <PickerRow
                 key={key}
@@ -301,6 +310,7 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
                 ) : undefined}
                 badges={
                     <>
+                        {remoteServers.length > 0 && <RemoteServerBadge servers={remoteServers} />}
                         {groupWsl && <WslBadge distro={groupWsl.distro} />}
                         {summary.cloneCount > 1 && (
                             <span className="inline-flex items-center gap-0.5 h-[16px] px-1.5 rounded-full text-[10px] font-semibold leading-none bg-black/[0.06] dark:bg-white/[0.10] text-[#555] dark:text-[#bbb]">
@@ -463,42 +473,64 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
                 {filteredRepoGroupWorkspaces.length > 0 && (
                     <>
                         <PickerSection label="Repo groups" />
-                        {filteredRepoGroupWorkspaces.map(ws => (
-                            // Row click switches the dashboard to the group's virtual
-                            // workspace (RepoGroupView) through the same target-aware
-                            // navigation repos use; the ⋮ menu edits/deletes. (AC-02)
-                            <PickerRow
-                                key={String(ws.id)}
-                                testId="repo-group-item"
-                                remoteKey={String(ws.id)}
-                                active={appState.selectedRepoId === String(ws.id)}
-                                name={String(ws.name ?? ws.id)}
-                                sublabel="Repo group"
-                                onClick={() => {
-                                    selectClone(String(ws.id));
-                                    close();
-                                    setShowAll(false);
-                                    setQuery('');
-                                }}
-                                badges={<RepoGroupGlyph />}
-                                rowMenu={
-                                    <button
-                                        data-testid="repo-group-row-menu"
-                                        data-remote-key={String(ws.id)}
-                                        aria-label={`More actions for ${ws.name ?? ws.id}`}
-                                        title="More actions"
-                                        onClick={e => {
-                                            e.stopPropagation();
-                                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                                            setGroupMenu({ workspace: ws, x: rect.left, y: rect.bottom });
-                                        }}
-                                        className="flex-shrink-0 inline-flex items-center justify-center w-6 h-6 mr-1 rounded text-[#848484] dark:text-[#777] hover:bg-black/[0.06] dark:hover:bg-white/[0.10]"
-                                    >
-                                        <KebabGlyph />
-                                    </button>
-                                }
-                            />
-                        ))}
+                        {filteredRepoGroupWorkspaces.map(ws => {
+                            // A remote group carries the aggregation's marker; a local
+                            // one has none. `offline` follows the contributing server,
+                            // and an offline group is read-only — no ⋮ menu, so Edit and
+                            // Delete are simply unavailable until it reconnects. (AC-04)
+                            const remote = ws?.remote as { serverLabel?: string; offline?: boolean } | undefined;
+                            const offline = !!remote?.offline;
+                            return (
+                                // Row click switches the dashboard to the group's virtual
+                                // workspace (RepoGroupView) through the same target-aware
+                                // navigation repos use; for a remote group the clone
+                                // registry already maps its id to the owning server's
+                                // baseUrl, so every request from the view routes there.
+                                // The ⋮ menu edits/deletes on that same server. (AC-02)
+                                <PickerRow
+                                    key={String(ws.id)}
+                                    testId="repo-group-item"
+                                    remoteKey={String(ws.id)}
+                                    active={appState.selectedRepoId === String(ws.id)}
+                                    name={String(ws.name ?? ws.id)}
+                                    sublabel={remote ? `Repo group · ${remote.serverLabel ?? 'remote'}${offline ? ' (offline)' : ''}` : 'Repo group'}
+                                    offline={offline}
+                                    onClick={() => {
+                                        selectClone(String(ws.id));
+                                        close();
+                                        setShowAll(false);
+                                        setQuery('');
+                                    }}
+                                    badges={
+                                        <>
+                                            <RepoGroupGlyph />
+                                            {remote && (
+                                                <RemoteServerBadge
+                                                    testId="repo-group-server-badge"
+                                                    servers={remote.serverLabel ? [remote.serverLabel] : []}
+                                                />
+                                            )}
+                                        </>
+                                    }
+                                    rowMenu={offline ? undefined : (
+                                        <button
+                                            data-testid="repo-group-row-menu"
+                                            data-remote-key={String(ws.id)}
+                                            aria-label={`More actions for ${ws.name ?? ws.id}`}
+                                            title="More actions"
+                                            onClick={e => {
+                                                e.stopPropagation();
+                                                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                                setGroupMenu({ workspace: ws, x: rect.left, y: rect.bottom });
+                                            }}
+                                            className="flex-shrink-0 inline-flex items-center justify-center w-6 h-6 mr-1 rounded text-[#848484] dark:text-[#777] hover:bg-black/[0.06] dark:hover:bg-white/[0.10]"
+                                        >
+                                            <KebabGlyph />
+                                        </button>
+                                    )}
+                                />
+                            );
+                        })}
                     </>
                 )}
             </RepoPickerPopover>
@@ -522,6 +554,7 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
             <RepoGroupDialog
                 open={!!groupDialog}
                 groupId={groupDialog?.groupId ?? null}
+                groupBaseUrl={groupDialog?.baseUrl}
                 repos={repos}
                 onClose={() => setGroupDialog(null)}
                 onSaved={() => { setGroupDialog(null); fetchRepos(); }}

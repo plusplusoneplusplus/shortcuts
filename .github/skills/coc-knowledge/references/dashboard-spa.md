@@ -1549,7 +1549,13 @@ Enabled by default; desktop-only; takes effect on reload.
   / `PickerRow` / `PickerEmpty` primitives) and one interaction hook
   `useDropdownPopover` (open state + outside-click + Escape-close-and-refocus-trigger
   + search auto-focus). Row helpers `getServerName` / `isRepoOffline` / `shortPath`
-  live in `repos/repoPickerModel.ts`. The two callers keep their genuine differences
+  live in `repos/repoPickerModel.ts`, alongside the group markers `getGroupWsl`
+  (all-or-nothing `WSL` pill) and `getGroupRemoteServers` (any-semantics: the
+  deduped, sorted server names behind a group's remote clones, empty when
+  local-only). The latter drives `RemoteServerBadge` — a tiny cloud glyph
+  (`remote-server-badge`) on group rows whose collection includes at least one
+  clone served by another CoC server; server names stay in the hover/accessible
+  label, never in row text. The two callers keep their genuine differences
   (the remote picker's Add-repository footer + remote sub-tabs; the virtual picker's
   identity chip + navigation-only rows). Offline is surfaced per-repo in the virtual
   picker only; group rows show the aggregate status dot instead.
@@ -1559,16 +1565,33 @@ Enabled by default; desktop-only; takes effect on reload.
   `isRepoGroupWorkspaceId(id)` (`repos/virtualWorkspaceIds.ts`, prefix `group-`)
   — `repos` can't be the source because ReposContext strips virtual workspaces.
   The footer gains a "New repo group…" action (`remote-new-repo-group-option`)
-  opening `repos/RepoGroupDialog.tsx` (create/edit: name + checkbox multi-select
-  of registered LOCAL repos only — remote checkouts and free-form paths are never
-  offered; edit prefills from `GET /api/repo-groups/:id` and badges stale members
-  `path missing` / `removed`). Each group row's ⋮ menu (`repo-group-row-menu`)
-  offers Edit group / Delete group; delete confirms via a Dialog
-  (`repo-group-delete-confirm-btn`) then calls `DELETE /api/repo-groups/:id`
-  (deregister only — the group's data dir stays on disk). REST wrappers live in
-  `repos/repoGroupService.ts` (plain `getSpaCocClient().request`, not coc-client
-  contracts). Clicking a group row navigates to the group workspace via
-  `useShellNavigation().selectClone` (rows mark `data-active` when selected).
+  opening `repos/RepoGroupDialog.tsx` (create/edit: name + a Server dropdown +
+  checkbox multi-select of that server's registered repos; free-form paths are
+  never offered; edit prefills from `GET /api/repo-groups/:id` and badges stale
+  members `path missing` / `removed`). Each group row's ⋮ menu
+  (`repo-group-row-menu`) offers Edit group / Delete group; delete confirms via a
+  Dialog (`repo-group-delete-confirm-btn`) then calls `DELETE /api/repo-groups/:id`
+  (deregister only — the group's data dir stays on disk). Clicking a group row
+  navigates to the group workspace via `useShellNavigation().selectClone` (rows
+  mark `data-active` when selected).
+- **Repo groups on a remote server.** A group lives in exactly ONE server's
+  registry — the local dashboard's, or an online ssh/devtunnel CoC server's — and
+  its members are always ids from that same server. `repos/repoGroupService.ts`
+  wraps the REST surface with an optional trailing `baseUrl` routed through
+  `getCocClientFor(baseUrl)` (omitted ⇒ the local origin client), so the dashboard
+  talks to the remote's `/api/repo-groups` at its `effectiveUrl` directly — there
+  is no server-side proxy route, and the remote's own `normalizeMembers`
+  validation stays the source of truth (its errors surface inline in the dialog).
+  `listRepoGroupServerOptions()` builds the dialog's Server dropdown
+  (`repo-group-server-select`) from `/api/servers`: `Local` plus every remote
+  whose runtime status is `online` with an `effectiveUrl` — offline servers are
+  never offered, and an unreachable registry degrades to Local-only. Switching
+  server clears the checked members (their ids mean nothing in the new registry),
+  and the dropdown is DISABLED while editing because a group's server is fixed at
+  creation. `RepoGroupDialog` takes `groupBaseUrl` for the group under edit so
+  load and save both route to its owner. A 404 from create/save is reworded to
+  "This server doesn't support repo groups." — a remote predating the feature has
+  no such route, and there is no GET-list endpoint to probe it with.
 - **Repo-group virtual workspace view.** Selecting a `group-<slug>` id renders
   `repos/RepoGroupView.tsx` (branch in `ReposView`, recognized by id PREFIX via
   `isRepoGroupWorkspaceId` — unlike My Work / My Life's id-equality checks, and

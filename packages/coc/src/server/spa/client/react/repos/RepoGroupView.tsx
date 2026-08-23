@@ -18,6 +18,8 @@ import { RepoChatTab } from '../features/chat/RepoChatTab';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useApp } from '../contexts/AppContext';
+import { useReposOptional } from '../contexts/ReposContext';
+import { resolveRepoGroupName } from './repoGroupName';
 import { VirtualWorkspaceInlineHeader } from '../features/remote-shell/VirtualWorkspaceInlineHeader';
 import type { VirtualWorkspaceHeaderConfig } from '../features/remote-shell/virtualWorkspaceHeader';
 
@@ -59,12 +61,14 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
     // (`VirtualWorkspaceShellHeader`); render the in-body header everywhere else.
     const headerInTopBar = remoteShell && !isMobile;
 
-    // Group name comes from the registered workspace; the id is a readable
-    // fallback while the workspace list is still loading.
-    const groupName = useMemo(() => {
-        const ws = (state.workspaces ?? []).find((w: any) => String(w?.id) === workspaceId);
-        return String(ws?.name ?? workspaceId);
-    }, [state.workspaces, workspaceId]);
+    // Group name comes from the registered workspace — the local list for a local
+    // group, the aggregated remote groups for one that lives on a remote server.
+    // The id is a readable fallback while those lists are still loading.
+    const remoteGroups = useReposOptional()?.remoteGroupWorkspaces;
+    const groupName = useMemo(
+        () => resolveRepoGroupName(workspaceId, state.workspaces, remoteGroups),
+        [state.workspaces, remoteGroups, workspaceId]
+    );
     const headerConfig = useMemo(() => getRepoGroupHeaderConfig(workspaceId, groupName), [workspaceId, groupName]);
 
     // Landing tab when the current sub-tab is not one of the group's tabs (e.g.

@@ -54,7 +54,7 @@ import { setActiveCloneForRouting } from '../repos/cloneRegistry';
 import { getCocClientFor } from '../api/cocClient';
 
 import type { RepoData } from '../repos/repoGrouping';
-import type { AggregatedRemoteWorkspaces } from '../repos/remoteWorkspaceAggregation';
+import type { AggregatedRemoteWorkspaces, RemoteWorkspaceInfo } from '../repos/remoteWorkspaceAggregation';
 
 type GitInfoBatchTrigger = 'initial-topology-load' | 'topology-change' | 'reconnect' | 'manual-refresh';
 
@@ -65,6 +65,13 @@ export interface ReposContextValue {
     loading: boolean;
     /** Non-fatal remote aggregation failures from the latest repository refresh. */
     remoteWarnings?: string[];
+    /**
+     * Repo-group virtual workspaces contributed by remote CoC servers, tagged with
+     * their server marker. Kept separate from `repos` because a group is a picker
+     * entry, not a repository card; the workspace picker merges these with the
+     * local groups from `AppContext.workspaces`. (AC-02)
+     */
+    remoteGroupWorkspaces: RemoteWorkspaceInfo[];
     fetchRepos: () => Promise<void>;
     unseenCounts: Record<string, number>;
     refreshUnseenCounts: (wsIds: string[]) => Promise<void>;
@@ -105,6 +112,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
     const [repos, setRepos] = useState<RepoData[]>([]);
     const [loading, setLoading] = useState(true);
     const [remoteWarnings, setRemoteWarnings] = useState<string[]>([]);
+    const [remoteGroupWorkspaces, setRemoteGroupWorkspaces] = useState<RemoteWorkspaceInfo[]>([]);
 
     const selectedRepoIdRef = useRef<string | null>(null);
 
@@ -168,6 +176,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
                 aggregateRemoteWorkspaces().catch((error: unknown): AggregatedRemoteWorkspaces => ({
                     sources: [],
                     workspaces: [],
+                    groupWorkspaces: [],
                     gitInfo: {},
                     workflows: {},
                     warnings: [
@@ -178,6 +187,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
                 })),
             ]);
             setRemoteWarnings(remoteAggregate.warnings);
+            setRemoteGroupWorkspaces(remoteAggregate.groupWorkspaces ?? []);
             if (!Array.isArray(workspaces)) {
                 setRepos([]);
                 setLoading(false);
@@ -509,8 +519,8 @@ export function ReposProvider({ children }: { children: ReactNode }) {
     }, [appState.selectedRepoId, repos]);
 
     const value = useMemo<ReposContextValue>(
-        () => ({ repos, loading, remoteWarnings, fetchRepos, unseenCounts, refreshUnseenCounts }),
-        [repos, loading, remoteWarnings, fetchRepos, unseenCounts, refreshUnseenCounts]
+        () => ({ repos, loading, remoteWarnings, remoteGroupWorkspaces, fetchRepos, unseenCounts, refreshUnseenCounts }),
+        [repos, loading, remoteWarnings, remoteGroupWorkspaces, fetchRepos, unseenCounts, refreshUnseenCounts]
     );
 
     return <ReposContext.Provider value={value}>{children}</ReposContext.Provider>;
