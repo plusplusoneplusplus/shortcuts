@@ -6,6 +6,7 @@ packages/*/node_modules
 packages/*/dist
 packages/coc/src/server/spa/client/dist
 packages/coc-desktop/release
+packages/coc-native/rust/target
 .git
 .github
 coverage

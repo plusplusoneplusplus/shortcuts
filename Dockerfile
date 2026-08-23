@@ -40,8 +40,14 @@ COPY packages/coc-desktop/package.json     packages/coc-desktop/
 COPY packages/deep-wiki/package.json       packages/deep-wiki/
 COPY packages/coccontainer/package.json    packages/coccontainer/
 COPY packages/coc-connector/package.json   packages/coc-connector/
+COPY packages/coc-native/package.json      packages/coc-native/
 RUN --mount=type=cache,target=/root/.npm npm ci
 COPY . .
+# The release workflow drops prebuilt N-API binaries into
+# packages/coc-native/prebuilt/<triple>/ before building, and `COPY . .` carries
+# them through to the runtime image. Nothing is compiled here: building Rust
+# inside the qemu-emulated arm64 stage would be an order of magnitude slower.
+# Without them the server falls back to the JavaScript file index.
 # .git is not in the build context; pass the commit in so /api/health reports it.
 ARG BUILD_COMMIT=unknown
 ENV COC_BUILD_COMMIT=${BUILD_COMMIT}
@@ -68,6 +74,7 @@ COPY packages/coc-desktop/package.json     packages/coc-desktop/
 COPY packages/deep-wiki/package.json       packages/deep-wiki/
 COPY packages/coccontainer/package.json    packages/coccontainer/
 COPY packages/coc-connector/package.json   packages/coc-connector/
+COPY packages/coc-native/package.json      packages/coc-native/
 # Production deps only; optional deps (agent CLI binaries, node-pty) are kept.
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
 

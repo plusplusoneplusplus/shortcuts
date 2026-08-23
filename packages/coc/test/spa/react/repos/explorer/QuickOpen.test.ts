@@ -27,8 +27,9 @@ describe('QuickOpen component', () => {
             expect(source).not.toContain('export function fuzzyMatch');
         });
 
-        it('exports highlightFuzzy function', () => {
-            expect(source).toContain('export function highlightFuzzy');
+        it('exports the index-driven highlight helpers', () => {
+            expect(source).toContain('export function highlightMatches');
+            expect(source).toContain('export function splitIndices');
         });
 
         it('exports QuickOpenProps interface', () => {
@@ -64,13 +65,19 @@ describe('QuickOpen component', () => {
             expect(source).toContain('setLoading');
         });
 
-        it('fetches the path list once per open', () => {
-            expect(source).toContain('explorerApi.listFiles(workspaceId');
+        it('does not fetch the whole path list', () => {
+            // Multi-megabyte payloads on every open are the bottleneck this
+            // dialog exists to avoid.
+            expect(source).not.toContain('explorerApi.listFiles(');
         });
 
-        it('does not call the per-keystroke search endpoint', () => {
+        it('searches on the server per keystroke', () => {
+            expect(source).toContain('explorerApi.searchFiles(workspaceId, trimmed');
+        });
+
+        it('legacy: kept for the removed local-matching mode', () => {
             // Matching happens in the browser; /search stays for other callers.
-            expect(source).not.toContain('explorerApi.searchFiles(');
+            expect(source).toContain('explorerApi.searchFiles(');
         });
 
         it('caps rendered results', () => {
@@ -83,41 +90,44 @@ describe('QuickOpen component', () => {
             expect(source).toContain("const [query, setQuery] = useState('')");
         });
 
-        it('holds the fetched path list in state', () => {
-            expect(source).toContain("const [allFiles, setAllFiles] = useState<string[]>([])");
+        it('holds the server results in state', () => {
+            expect(source).toContain('const [results, setResults] = useState<ExplorerSearchResult[]>([])');
         });
 
-        it('derives results with the shared scorer', () => {
-            expect(source).toContain("from '../../../../../../shared/fuzzy-file-score'");
-            expect(source).toContain('rankFuzzyMatches(trimmed, allFiles, RESULT_LIMIT)');
+        it('renders the server ranking as-is', () => {
+            // No client-side re-ranking: the server already applied the shared
+            // scorer, so re-scoring here could only disagree with it.
+            expect(source).not.toContain('rankFuzzyMatches');
+            expect(source).toContain('setResults(data.results);');
         });
 
-        it('memoizes results so matching reruns only on query or file-list change', () => {
-            expect(source).toContain('useMemo(');
-            expect(source).toContain('}, [query, allFiles]);');
+        it('re-searches when the query or workspace changes', () => {
+            expect(source).toContain('}, [query, open, workspaceId]);');
         });
 
-        it('shows an empty list when the query is empty', () => {
-            expect(source).toContain('if (!trimmed) return [];');
+        it('shows an empty list, and issues no request, when the query is empty', () => {
+            expect(source).toContain('if (!trimmed) {');
+            expect(source).toContain('setResults([]);');
         });
     });
 
-    describe('no debounce, cancellable fetch', () => {
-        it('has no debounce timer — matching is local and synchronous', () => {
-            expect(source).not.toContain('debounceRef');
-            expect(source).not.toContain(', 200)');
+    describe('debounced, cancellable search', () => {
+        it('debounces keystrokes before hitting the server', () => {
+            expect(source).toContain('debounceRef');
+            expect(source).toContain('SEARCH_DEBOUNCE_MS');
         });
 
-        it('uses AbortController to cancel the in-flight list fetch', () => {
+        it('uses AbortController to cancel the in-flight search', () => {
             expect(source).toContain('AbortController');
+            expect(source).toContain('abortRef.current?.abort();');
         });
 
         it('checks abort.signal.aborted before updating state', () => {
             expect(source).toContain('abort.signal.aborted');
         });
 
-        it('aborts the fetch when the dialog closes', () => {
-            expect(source).toContain('return () => abort.abort();');
+        it('clears the pending timer on cleanup', () => {
+            expect(source).toContain('if (debounceRef.current) clearTimeout(debounceRef.current);');
         });
     });
 
@@ -171,9 +181,9 @@ describe('QuickOpen component', () => {
             expect(source).toContain('data-testid="quick-open-no-results"');
         });
 
-        it('shows the loading state only before the first list arrives', () => {
-            expect(source).toContain('Loading files');
-            expect(source).toContain('loading && results.length === 0 && allFiles.length === 0');
+        it('shows the loading state only before the first results arrive', () => {
+            expect(source).toContain('Searching files');
+            expect(source).toContain('loading && results.length === 0');
         });
 
         it('shows result count in footer', () => {
@@ -201,15 +211,17 @@ describe('QuickOpen component', () => {
 
     describe('result display', () => {
         it('shows file name prominently', () => {
-            expect(source).toContain('fileName(filePath)');
+            expect(source).toContain('fileName(result.path)');
         });
 
         it('shows directory path in subdued style', () => {
-            expect(source).toContain('dirName(filePath)');
+            expect(source).toContain('dirName(result.path)');
         });
 
-        it('uses highlightFuzzy for match highlighting', () => {
-            expect(source).toContain('highlightFuzzy(query, fileName(filePath))');
+        it('highlights the positions the server scored, in both segments', () => {
+            expect(source).toContain('splitIndices(result.path, result.indices');
+            expect(source).toContain('highlightMatches(fileName(result.path), matched.name)');
+            expect(source).toContain('highlightMatches(dirName(result.path), matched.dir)');
         });
 
         it('has file icon for each result', () => {

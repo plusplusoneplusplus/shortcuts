@@ -46,7 +46,10 @@ beforeEach(() => {
     dataDir = path.join(tmpDir, 'data');
     repoDir = path.join(tmpDir, 'repo');
     fs.mkdirSync(dataDir, { recursive: true });
-    service = new RepoTreeService(dataDir);
+    // The whole suite exercises the JavaScript path; the native addon is
+    // covered separately in repo-tree-service-native.test.ts, which asserts the
+    // two produce the same responses.
+    service = new RepoTreeService(dataDir, { nativeFileIndex: null });
 });
 
 afterEach(() => {
@@ -133,7 +136,7 @@ describe('RepoTreeService.listDirectory', () => {
         for (let i = 0; i < 10; i++) {
             fs.writeFileSync(path.join(repoDir, `file-${String(i).padStart(2, '0')}.txt`), '');
         }
-        const smallService = new RepoTreeService(dataDir, { maxEntries: 3 });
+        const smallService = new RepoTreeService(dataDir, { nativeFileIndex: null, maxEntries: 3 });
         const result = await smallService.listDirectory(REPO_ID, '.');
         expect(result.entries).toHaveLength(3);
         expect(result.truncated).toBe(true);
@@ -261,7 +264,7 @@ describe('RepoTreeService.resolveRepoRoot', () => {
         const store = {
             getWorkspaces: async () => [{ id: REPO_ID, name: REPO_NAME, rootPath: repoDir }],
         };
-        const svc = new RepoTreeService(dataDir, undefined, store as never);
+        const svc = new RepoTreeService(dataDir, { nativeFileIndex: null }, store as never);
         expect(await svc.resolveRepoRoot(REPO_ID)).toBe(repoDir);
     });
 
@@ -341,7 +344,11 @@ describe('RepoTreeService whole-repo file list cache', () => {
     }
 
     function newService(options?: { fileListCacheTtlMs?: number }) {
-        return new RepoTreeService(dataDir, { fileListCacheTtlMs: 60_000, ...options });
+        return new RepoTreeService(dataDir, {
+            fileListCacheTtlMs: 60_000,
+            nativeFileIndex: null,
+            ...options,
+        });
     }
 
     it('serves a repeat listing from cache without picking up new files', async () => {
@@ -465,6 +472,21 @@ describe('RepoTreeService whole-repo file list cache', () => {
         expect(shown.files).toContain('ignored.ts');
     });
 
+    it('excludes the .git directory from the walk', async () => {
+        seedDefaultRepo();
+        fs.mkdirSync(path.join(repoDir, '.git', 'hooks'), { recursive: true });
+        fs.writeFileSync(path.join(repoDir, '.git', 'HEAD'), 'ref: refs/heads/main\n');
+        fs.writeFileSync(path.join(repoDir, '.git', 'hooks', 'pre-commit.sample'), 'x');
+        fs.writeFileSync(path.join(repoDir, 'kept.ts'), 'x');
+        const svc = newService();
+
+        // ripgrep excludes .git even under --hidden, so the fallback walk must
+        // too, or the listing depends on whether rg happens to be installed.
+        const { files } = await svc.listFilesRecursive(REPO_ID, '.', { showIgnored: false });
+        expect(files).toContain('kept.ts');
+        expect(files.some(f => f.startsWith('.git/'))).toBe(false);
+    });
+
     it('does not cache sub-directory listings', async () => {
         seedDefaultRepo();
         fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
@@ -548,7 +570,7 @@ describe('RepoTreeService whole-repo file list cap', () => {
         }
         // Default maxEntries is 5000 for directories; the whole-repo list must not
         // inherit a cap that would hide most of a large repo from file search.
-        const svc = new RepoTreeService(dataDir);
+        const svc = new RepoTreeService(dataDir, { nativeFileIndex: null });
         const result = await svc.listFilesRecursive(REPO_ID, '.', { showIgnored: true });
         expect(result.files.length).toBe(20);
         expect(result.truncated).toBe(false);
@@ -559,7 +581,7 @@ describe('RepoTreeService whole-repo file list cap', () => {
         for (let i = 0; i < 10; i++) {
             fs.writeFileSync(path.join(repoDir, `file${i}.ts`), 'x');
         }
-        const svc = new RepoTreeService(dataDir, { maxEntries: 3 });
+        const svc = new RepoTreeService(dataDir, { nativeFileIndex: null, maxEntries: 3 });
         const result = await svc.listFilesRecursive(REPO_ID, '.', { showIgnored: true });
         expect(result.files.length).toBe(3);
         expect(result.truncated).toBe(true);
@@ -570,7 +592,7 @@ describe('RepoTreeService whole-repo file list cap', () => {
         for (let i = 0; i < 10; i++) {
             fs.writeFileSync(path.join(repoDir, `file${i}.ts`), 'x');
         }
-        const svc = new RepoTreeService(dataDir, { maxEntries: 3, fileListMaxEntries: 8 });
+        const svc = new RepoTreeService(dataDir, { nativeFileIndex: null, maxEntries: 3, fileListMaxEntries: 8 });
         const result = await svc.listFilesRecursive(REPO_ID, '.', { showIgnored: true });
         expect(result.files.length).toBe(8);
         expect(result.truncated).toBe(true);
@@ -860,7 +882,7 @@ describe('RepoTreeService.listFilesRecursive', () => {
         for (let i = 0; i < 10; i++) {
             fs.writeFileSync(path.join(repoDir, `file-${String(i).padStart(2, '0')}.txt`), '');
         }
-        const smallService = new RepoTreeService(dataDir, { maxEntries: 3 });
+        const smallService = new RepoTreeService(dataDir, { nativeFileIndex: null, maxEntries: 3 });
         const result = await smallService.listFilesRecursive(REPO_ID, '.');
         expect(result.files).toHaveLength(3);
         expect(result.truncated).toBe(true);
@@ -1010,7 +1032,7 @@ describe('RepoTreeService.searchFiles', () => {
         for (let i = 0; i < 10; i++) {
             fs.writeFileSync(path.join(repoDir, `file${i}.ts`), '');
         }
-        const smallService = new RepoTreeService(dataDir, { maxEntries: 3 });
+        const smallService = new RepoTreeService(dataDir, { nativeFileIndex: null, maxEntries: 3 });
         const result = await smallService.searchFiles(REPO_ID, 'file');
         expect(result.truncated).toBe(true);
     });
@@ -1026,7 +1048,7 @@ describe('RepoTreeService with ProcessStore', () => {
                 { id: REPO_ID, name: REPO_NAME, rootPath: repoDir },
             ],
         } as any;
-        const svc = new RepoTreeService(dataDir, undefined, fakeStore);
+        const svc = new RepoTreeService(dataDir, { nativeFileIndex: null }, fakeStore);
         const repo = await svc.resolveRepo(REPO_ID);
         expect(repo).toBeDefined();
         expect(repo!.id).toBe(REPO_ID);
@@ -1040,7 +1062,7 @@ describe('RepoTreeService with ProcessStore', () => {
                 { id: REPO_ID, name: REPO_NAME, rootPath: repoDir },
             ],
         } as any;
-        const svc = new RepoTreeService(dataDir, undefined, fakeStore);
+        const svc = new RepoTreeService(dataDir, { nativeFileIndex: null }, fakeStore);
         const repos = await svc.listRepos();
         expect(repos).toHaveLength(1);
         expect(repos[0].id).toBe(REPO_ID);
@@ -1052,7 +1074,7 @@ describe('RepoTreeService with ProcessStore', () => {
                 { id: 'other-id', name: 'other', rootPath: '/tmp/other' },
             ],
         } as any;
-        const svc = new RepoTreeService(dataDir, undefined, fakeStore);
+        const svc = new RepoTreeService(dataDir, { nativeFileIndex: null }, fakeStore);
         const repo = await svc.resolveRepo(REPO_ID);
         expect(repo).toBeUndefined();
     });
@@ -1066,7 +1088,7 @@ describe('RepoTreeService with ProcessStore', () => {
                 { id: REPO_ID, name: REPO_NAME, rootPath: repoDir },
             ],
         } as any;
-        const svc = new RepoTreeService(dataDir, undefined, fakeStore);
+        const svc = new RepoTreeService(dataDir, { nativeFileIndex: null }, fakeStore);
         // Should find the store repo, not the disk one
         const storeRepo = await svc.resolveRepo(REPO_ID);
         expect(storeRepo).toBeDefined();
@@ -1076,7 +1098,7 @@ describe('RepoTreeService with ProcessStore', () => {
 
     it('falls back to workspaces.json when no store is provided', async () => {
         seedDefaultRepo();
-        const svc = new RepoTreeService(dataDir);
+        const svc = new RepoTreeService(dataDir, { nativeFileIndex: null });
         const repo = await svc.resolveRepo(REPO_ID);
         expect(repo).toBeDefined();
         expect(repo!.id).toBe(REPO_ID);

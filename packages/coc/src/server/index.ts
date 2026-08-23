@@ -20,6 +20,7 @@ import { getBundleETag } from './spa/html-template';
 import { generateIconSvg } from './spa/icon-template';
 import type { ExecutionServerOptions, ExecutionServer, ServerCloseOptions } from './types';
 import type { Route } from './types';
+import { nativeFileIndexStatus } from '@plusplusoneplusplus/coc-native';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ModelInfo } from '@plusplusoneplusplus/forge';
 import { sdkServiceRegistry, SDK_PROVIDER_COPILOT, SDK_PROVIDER_CODEX, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_OPENCODE, modelMetadataStore, registerCodexSDKService, registerClaudeSDKService, registerOpenCodeSDKService } from '@plusplusoneplusplus/forge';
@@ -833,6 +834,17 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     }
 
     await new Promise<void>((resolve, reject) => { server.on('error', reject); server.listen(port, host, resolve); });
+    // Say which file-search path is active. Falling back to JavaScript is
+    // supported but much slower on large repos, so it must be visible in the
+    // logs rather than something you discover from a user complaint.
+    {
+        const native = nativeFileIndexStatus();
+        process.stderr.write(
+            native.loaded
+                ? `native file index: loaded (${native.binaryPath})\n`
+                : `native file index: unavailable, using JavaScript fallback (${native.reason})\n`,
+        );
+    }
     try {
         void remoteServerConnector.connectConfigured(remoteServerStore.list());
         void remoteServerSshConnector.connectConfigured(remoteServerStore.list());

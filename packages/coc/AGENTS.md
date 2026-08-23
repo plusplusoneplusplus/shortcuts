@@ -31,6 +31,24 @@ all have their own `references/*.md`.
 
 ## Local Invariants
 
+- **File search has two interchangeable backends.** `RepoTreeService` uses the
+  Rust index from `@plusplusoneplusplus/coc-native` when a binary is available
+  for the platform, and its ripgrep/directory-walk path otherwise; the choice is
+  the `nativeFileIndex` constructor option (`null` forces the fallback) and
+  `/api/health` plus a startup log line report which one is live. Both paths
+  must produce identical responses —
+  `test/server/repo-tree-service-native.test.ts` runs the behavioural tests
+  twice and compares, and `test/server/repo-tree-service.test.ts` pins the
+  fallback path by passing `nativeFileIndex: null` everywhere. The shared scorer
+  in `src/server/shared/fuzzy-file-score.ts` is the reference implementation the
+  Rust port must match; see
+  [packages/coc-native/AGENTS.md](../coc-native/AGENTS.md) before changing
+  either. `searchFiles` is uncapped under the native path (the list never leaves
+  the process); `fileListMaxEntries` bounds only the `/files` response payload.
+- **QuickOpen searches on the server.** The `Ctrl+P` dialog fetches nothing on
+  open, debounces keystrokes, and highlights using the `indices` the server's
+  scorer returned — never by re-deriving the match in the browser, which used to
+  let highlight and ranking disagree.
 - **Server Vitest tests** live under `packages/coc/test/server/`. Any
   server change should add or update tests there.
 - **Docker image contract tests** live under `packages/coc/test/docker/`

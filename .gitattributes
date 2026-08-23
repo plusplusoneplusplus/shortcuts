@@ -1,3 +1,8 @@
 # Shell scripts baked into the Docker image must stay LF even on Windows checkouts.
 Dockerfile text eol=lf
 docker/** text eol=lf
+
+# Vitest inlines a project-local .mjs verbatim — no esbuild pass — and Vite
+# only skips a leading hashbang with the LF-only regex `/^#!.*\n/`. A CRLF
+# checkout therefore breaks any .mjs a test imports.
+*.mjs text eol=lf

@@ -1727,6 +1727,15 @@ the input:
   `PullRequestsTab` (list/suggestions/roster/classification), and
   `NativeCliSessionsPanel` (native CLI session list + detail, which read the
   host machine's session store off `workspace.rootPath`).
+- **`QuickOpen` (Ctrl+P) searches on the server.** It fetches nothing when the
+  dialog opens, debounces keystrokes (`SEARCH_DEBOUNCE_MS`, 40 ms) into a single
+  aborted-on-change `explorerApi.searchFiles` call, and renders the server's
+  ranking as-is. Highlighting uses the `indices` each result carries — the
+  positions the scorer actually matched — via `splitIndices` + `highlightMatches`,
+  so the highlight cannot disagree with the ranking. Do not reintroduce a bulk
+  `listFiles` fetch or client-side `rankFuzzyMatches`: on a large repo the path
+  list is multiple megabytes and matching it on the render thread stalls typing.
+  `ExactOpen` already used the same server-search shape.
 - Non-React services that take a `workspaceId` resolve via
   `getCocClientForWorkspace(workspaceId)`: `explorerApi.*`, `notesApi.*`, and the
   recent-skills hook `useRecentSkills` (per-workspace preferences get/patch).

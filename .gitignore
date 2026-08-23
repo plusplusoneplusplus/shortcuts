@@ -141,3 +141,13 @@ esbuild-check.css
 # Claude worktrees
 .claude/worktrees/
 .claude/scheduled_tasks.lock
+
+# Native file index (Rust) — build output and CI-injected binaries
+packages/coc-native/rust/target/
+packages/coc-native/prebuilt/
+packages/coc-native/*.node
+# @napi-rs/cli byproducts: its per-platform npm resolution shim (unused — the
+# loader resolves from disk) and the scratch file it writes type defs to. The
+# build script deletes both; this is the net for a run that died mid-flight.
+packages/coc-native/index.js
+packages/coc-native/.napi-dts-*.d.ts
