@@ -21,7 +21,7 @@ import { handleAPIError, notFound, badRequest } from '../errors';
 import { loadConfigFile, writeConfigFile, getConfigFilePath, type CLIConfig } from '../../config';
 import { sortSkillsByUsage, listInstalledSkills, getSkillDetail, skillCache, loadSkillsForWorkspace, filterVisibleSkillsForWorkspace } from './skill-handler';
 import { createSkillRouteHandlers } from './skill-route-handlers';
-import { resolveEffectiveSkillPaths } from '../executors/skill-config-resolver';
+import { resolveEffectiveSkillPaths, resolveRepoGroupMemberSkillRoots } from '../executors/skill-config-resolver';
 import { getEffectiveEnDevExtraSkillFolders } from '../endev/endev-detector';
 import type { Route } from '../types';
 
@@ -297,9 +297,14 @@ export function registerGlobalSkillRoutes(
                 }
             }
 
+            // Repo-group workspaces inherit each live member's `.github/skills`;
+            // non-group ids resolve to an empty list.
+            const repoGroupMembers = await resolveRepoGroupMemberSkillRoots(store, dataDir, requestedWorkspaceId);
+
             const paths = await resolveEffectiveSkillPaths({
                 dataDir,
                 workspaceRootPath,
+                repoGroupMembers,
                 extraSkillFolders,
                 globalExtraFolders: folderCfg.globalExtraFolders,
                 autoDetectDefaultFolders: folderCfg.autoDetectDefaultFolders,

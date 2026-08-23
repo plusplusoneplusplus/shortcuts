@@ -333,7 +333,7 @@ export async function resolveSkillConfig(
  */
 export interface EffectiveSkillPathEntry {
     /** Where the path comes from; drives the UI source badge. */
-    source: 'repo' | 'managed-global' | 'auto-detected' | 'configured' | 'repo-extra' | 'bundled';
+    source: 'repo' | 'repo-group-member' | 'managed-global' | 'auto-detected' | 'configured' | 'repo-extra' | 'bundled';
     /** Whether the path applies globally or only to a specific workspace. */
     scope: 'global' | 'workspace';
     /** Availability of the path; drives the UI status badge. */
@@ -344,6 +344,10 @@ export interface EffectiveSkillPathEntry {
     skillCount?: number;
     /** Optional human-readable note (e.g. why a declared folder was skipped). */
     note?: string;
+    /** Member repo workspace id the path was inherited from (`repo-group-member` only). */
+    sourceRepoId?: string;
+    /** Member repo display name the path was inherited from (`repo-group-member` only). */
+    sourceRepoName?: string;
 }
 
 /** Inputs for {@link resolveEffectiveSkillPaths}. */
@@ -352,6 +356,12 @@ export interface ResolveEffectiveSkillPathsArgs {
     dataDir?: string;
     /** Home directory used for OneDrive/CloudStorage detection. Defaults to `os.homedir()`. */
     homedir?: string;
+    /**
+     * Live repo-group members whose `.github/skills` the workspace inherits, in
+     * group member order. Callers resolve these with
+     * {@link resolveRepoGroupMemberSkillRoots}; non-group workspaces pass nothing.
+     */
+    repoGroupMembers?: RepoGroupMemberSkillRoot[];
     /** Active workspace root; when set, repo-local + per-repo extra folders are included (scope: workspace). */
     workspaceRootPath?: string;
     /** Per-repo extra skill folders for the active workspace (already resolved from workspace config). */
@@ -430,7 +440,7 @@ async function describeSkillFolderCandidates(
  * Enumerate the agent's effective skill search order as structured diagnostic
  * data, in priority order:
  *
- *   repo-local → managed global → configured global extra → per-repo extra →
+ *   repo-group members → repo-local → managed global → configured global extra → per-repo extra →
  *   auto-detected OneDrive/CloudStorage → bundled
  *
  * Global-scoped sources are always included; workspace-scoped sources
@@ -445,6 +455,22 @@ export async function resolveEffectiveSkillPaths(
 ): Promise<EffectiveSkillPathEntry[]> {
     const homedir = args.homedir ?? os.homedir();
     const entries: EffectiveSkillPathEntry[] = [];
+
+    // 0. Repo-group member `.github/skills` (workspace-scoped). These take the
+    // slot the group's own (virtual, empty) repo-local folder would occupy, so
+    // this ordering matches resolveSkillConfig.
+    for (const member of args.repoGroupMembers ?? []) {
+        try {
+            const hostPath = resolvePathForHostFilesystem(member.rootPath, DEFAULT_SKILLS_SETTINGS.installPath);
+            entries.push({
+                ...(await describeSkillDir(hostPath, 'repo-group-member', 'workspace')),
+                sourceRepoId: member.workspaceId,
+                ...(member.name ? { sourceRepoName: member.name } : {}),
+            });
+        } catch {
+            // Non-fatal: skip a member whose path cannot be translated.
+        }
+    }
 
     // 1. Repo-local .github/skills (workspace-scoped).
     if (args.workspaceRootPath) {

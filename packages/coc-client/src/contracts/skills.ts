@@ -107,6 +107,8 @@ export interface MergedSkillsResponse {
 /** Origin of an effective skill-search-order path; drives the UI source badge. */
 export type EffectiveSkillPathSource =
   | 'repo'
+  /** A repo-group member repo's `.github/skills`, inherited by the group workspace. */
+  | 'repo-group-member'
   | 'managed-global'
   | 'auto-detected'
   | 'configured'
@@ -134,6 +136,10 @@ export interface EffectiveSkillPath {
   skillCount?: number;
   /** Optional human-readable note (e.g. why a declared folder was skipped). */
   note?: string;
+  /** Member repo workspace id the path was inherited from (`repo-group-member` only). */
+  sourceRepoId?: string;
+  /** Member repo display name the path was inherited from (`repo-group-member` only). */
+  sourceRepoName?: string;
 }
 
 /**
