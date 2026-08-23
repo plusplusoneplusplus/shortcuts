@@ -21,7 +21,7 @@ import {
     type WorkspacesResponse,
 } from '@plusplusoneplusplus/coc-client';
 import { getCocClientForWorkspace } from './cloneRegistry';
-import { getSpaCocClient } from '../api/cocClient';
+import { getCocClientFor, getSpaCocClient } from '../api/cocClient';
 import { isContainerMode, getRawApiBase } from '../utils/config';
 import { CocClient } from '@plusplusoneplusplus/coc-client';
 
@@ -43,8 +43,16 @@ export async function listWorkspaces(): Promise<WorkspaceInfo[]> {
     return normalizeWorkspacesResponse(response);
 }
 
-export function registerWorkspace(request: RegisterWorkspaceRequest): Promise<WorkspaceInfo> {
-    return getSpaCocClient().workspaces.register(request);
+/**
+ * Register a workspace in a CoC server's registry.
+ *
+ * `baseUrl` omitted → the page-origin server, exactly as before. Pass an online
+ * remote server's `effectiveUrl` to register on THAT box instead: the remote
+ * resolves `rootPath` against its own filesystem and computes the workspace id
+ * itself, so ids stay server-authoritative.
+ */
+export function registerWorkspace(request: RegisterWorkspaceRequest, baseUrl?: string): Promise<WorkspaceInfo> {
+    return getCocClientFor(baseUrl).workspaces.register(request);
 }
 
 export function updateWorkspace(workspaceId: string, updates: Partial<Omit<WorkspaceInfo, 'id'>>): Promise<{ workspace: WorkspaceInfo }> {
@@ -63,12 +71,21 @@ export function removeWorkspace(workspaceId: string): Promise<void> {
     return getCocClientForWorkspace(workspaceId).workspaces.delete(workspaceId);
 }
 
-export function discoverWorkspaces(path: string): Promise<DiscoverWorkspacesResponse> {
-    return getSpaCocClient().workspaces.discover(path);
+/**
+ * Scan a directory's direct children for git repos. `path` and the results are
+ * resolved on whichever server `baseUrl` points at (page origin when omitted).
+ */
+export function discoverWorkspaces(path: string, baseUrl?: string): Promise<DiscoverWorkspacesResponse> {
+    return getCocClientFor(baseUrl).workspaces.discover(path);
 }
 
-export function browseWorkspaceFolders(path: string): Promise<BrowseWorkspaceFoldersResponse> {
-    return getSpaCocClient().workspaces.browseFolders(path);
+/**
+ * List a directory's subfolders. Like {@link discoverWorkspaces}, `path` is
+ * interpreted by the target server, so `~` expands to the REMOTE box's home
+ * when a remote `baseUrl` is given.
+ */
+export function browseWorkspaceFolders(path: string, baseUrl?: string): Promise<BrowseWorkspaceFoldersResponse> {
+    return getCocClientFor(baseUrl).workspaces.browseFolders(path);
 }
 
 export interface CloneRepositoryRequest {
