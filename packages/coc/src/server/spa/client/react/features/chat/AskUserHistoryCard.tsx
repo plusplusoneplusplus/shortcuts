@@ -168,42 +168,43 @@ export function AskUserHistoryCard({ toolCall }: { toolCall: AskUserHistoryToolC
         : answeredCount > 0
             ? 'Answered'
             : 'Resolved';
+    const nestQuestionCards = questions.length > 1;
 
     return (
         <div
-            className="mx-0 my-2 rounded-lg border border-[#0078d4]/25 bg-[#f8fbff] dark:bg-[#17202b] p-3 shadow-sm"
+            className="mx-0 my-1.5 rounded-md border border-[#0078d4]/25 bg-[#f8fbff] dark:bg-[#17202b] px-2.5 py-2 shadow-sm"
             data-testid="ask-user-history-card"
         >
-            <div className="flex items-start gap-2 mb-3">
-                <span className="text-base font-semibold text-[#0969da] dark:text-[#79c0ff]" aria-hidden="true">Q</span>
-                <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                        <p className="text-sm text-[#1e1e1e] dark:text-[#e0e0e0] font-semibold">Asked user</p>
-                        <span
-                            className="rounded-full bg-[#dbeafe] dark:bg-[#17324d] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[#0969da] dark:text-[#79c0ff]"
-                            data-testid="ask-user-history-status"
-                        >
-                            {statusLabel}
-                        </span>
-                    </div>
-                    <p className="text-xs text-[#848484] mt-0.5">
-                        {questions.length === 1 ? 'Question and response from this run.' : `${questions.length} questions and responses from this run.`}
-                    </p>
-                </div>
+            <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-xs font-semibold text-[#0969da] dark:text-[#79c0ff]" aria-hidden="true">Q</span>
+                <p className="text-xs font-semibold text-[#1e1e1e] dark:text-[#e0e0e0]">Asked user</p>
+                <span
+                    className="rounded-full bg-[#dbeafe] dark:bg-[#17324d] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[#0969da] dark:text-[#79c0ff]"
+                    data-testid="ask-user-history-status"
+                >
+                    {statusLabel}
+                </span>
+                <p className="text-[11px] text-[#848484]">
+                    {questions.length === 1 ? '1 question' : `${questions.length} questions`}
+                </p>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-1.5">
                 {questions.map((question, index) => {
                     const answer = answerForQuestion(question, index, answers);
                     const skipped = answer?.skipped === true;
                     const deferred = answer?.deferred === true || answer?.reason === 'needs-context';
+                    const chosenValues = skipped || deferred ? [] : Array.isArray(answer?.answer) ? answer.answer : [answer?.answer];
+                    const chosen = new Set(chosenValues.filter((value): value is string => typeof value === 'string'));
                     return (
                         <div
                             key={question.questionId ?? `${toolCall.id ?? 'ask-user'}-${index}`}
-                            className="rounded-md border border-[#d4d4d4]/70 dark:border-[#3e3e3e] bg-white/75 dark:bg-[#1e1e1e]/65 p-3"
+                            className={nestQuestionCards
+                                ? 'rounded border border-[#d4d4d4]/70 dark:border-[#3e3e3e] bg-white/75 dark:bg-[#1e1e1e]/65 px-2 py-1.5'
+                                : ''}
                             data-testid="ask-user-history-question"
                         >
-                            <div className="flex items-start gap-1.5 text-sm font-medium text-[#1e1e1e] dark:text-[#e0e0e0]">
+                            <div className="flex items-start gap-1.5 text-[13px] leading-5 text-[#1e1e1e] dark:text-[#e0e0e0]">
                                 {questions.length > 1 && <span className="shrink-0 text-[#848484]">{index + 1}.</span>}
                                 <AskUserMarkdown
                                     markdown={question.question}
@@ -213,29 +214,27 @@ export function AskUserHistoryCard({ toolCall }: { toolCall: AskUserHistoryToolC
                             </div>
 
                             {question.options && question.options.length > 0 && (
-                                <div className="mt-2 text-xs text-[#848484]" data-testid="ask-user-history-options">
-                                    <span className="font-medium uppercase tracking-wide">Options</span>
-                                    <div className="mt-1 flex flex-wrap gap-1.5">
-                                        {question.options.map(option => (
-                                            <span
-                                                key={option.value}
-                                                className="rounded-full border border-[#d4d4d4] dark:border-[#3e3e3e] px-2 py-0.5 text-[#4b5563] dark:text-[#b8b8b8]"
-                                                title={option.description}
-                                            >
-                                                <AskUserMarkdown inline markdown={option.label} />
-                                            </span>
-                                        ))}
-                                    </div>
+                                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-[#848484]" data-testid="ask-user-history-options">
+                                    <span className="text-[10px] font-medium uppercase tracking-wide">Options</span>
+                                    {question.options.map(option => (
+                                        <span
+                                            key={option.value}
+                                            className={`rounded-full border border-[#d4d4d4] dark:border-[#3e3e3e] px-1.5 py-0 text-[11px] leading-5 text-[#4b5563] dark:text-[#b8b8b8]${chosen.has(option.value) ? ' bg-[#0078d4]/10' : ''}`}
+                                            title={option.description}
+                                        >
+                                            <AskUserMarkdown inline markdown={option.label} />
+                                        </span>
+                                    ))}
                                 </div>
                             )}
 
                             <div
-                                className="mt-3 flex items-start gap-2 rounded-md bg-[#f3f4f6] dark:bg-[#252526] px-2.5 py-2 text-sm"
+                                className="mt-1 flex items-start gap-2 rounded-md bg-[#f3f4f6] dark:bg-[#252526] px-2 py-1 text-[13px]"
                                 data-testid="ask-user-history-answer"
                                 data-skipped={skipped ? 'true' : 'false'}
                                 data-deferred={deferred ? 'true' : 'false'}
                             >
-                                <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-[#6b7280] dark:text-[#9aa0a6]">
+                                <span className="shrink-0 text-[10px] leading-5 font-semibold uppercase tracking-wide text-[#6b7280] dark:text-[#9aa0a6]">
                                     {skipped ? 'Skipped' : deferred ? 'Need context' : 'Answer'}
                                 </span>
                                 <div className="min-w-0 whitespace-pre-wrap break-words text-[#1e1e1e] dark:text-[#cccccc]">
@@ -243,7 +242,7 @@ export function AskUserHistoryCard({ toolCall }: { toolCall: AskUserHistoryToolC
                                         {skipped ? 'Question skipped' : deferred ? 'Need more context' : formatAnswer(question, answer?.answer)}
                                     </span>
                                     {deferred && answer?.note && (
-                                        <p className="mt-1 text-xs text-[#6b7280] dark:text-[#9aa0a6]" data-testid="ask-user-history-deferred-note">
+                                        <p className="mt-1 text-[11px] text-[#6b7280] dark:text-[#9aa0a6]" data-testid="ask-user-history-deferred-note">
                                             Note: {answer.note}
                                         </p>
                                     )}

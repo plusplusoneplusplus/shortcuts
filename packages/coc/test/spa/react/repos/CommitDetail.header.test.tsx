@@ -185,6 +185,16 @@ describe('CommitDetail — commit info header', () => {
         expect(parentsEl.textContent).toContain('bbb1111');
     });
 
+    it('lays author, date, hash and parents out on a single row', async () => {
+        await renderDetail({ commit: makeCommit({ parentHashes: ['aaa1111222233334444555566667777888899990'] }) });
+        const row = screen.getByTestId('commit-info-meta-row');
+        expect(row.className).toContain('flex-wrap');
+        expect(row.className).not.toContain('flex-col');
+        for (const id of ['commit-info-author', 'commit-info-date', 'commit-info-hash', 'commit-info-parents']) {
+            expect(screen.getByTestId(id).parentElement).toBe(row);
+        }
+    });
+
     it('hides parents section when parentHashes is empty', async () => {
         await renderDetail({ commit: makeCommit({ parentHashes: [] }) });
         expect(screen.queryByTestId('commit-info-parents')).toBeNull();
