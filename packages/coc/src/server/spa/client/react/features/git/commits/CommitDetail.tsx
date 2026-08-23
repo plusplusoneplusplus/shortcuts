@@ -325,13 +325,13 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
                             <div className="text-sm font-semibold text-[#1e1e1e] dark:text-[#ccc] mb-1.5 break-words" data-testid="commit-info-subject">
                                 {commit.subject}
                             </div>
-                            <div className="flex flex-col gap-0.5 text-[11px] text-[#616161] dark:text-[#999]">
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-[#616161] dark:text-[#999]" data-testid="commit-info-meta-row">
                                 <div data-testid="commit-info-author">
                                     <span className="font-semibold text-[#1e1e1e] dark:text-[#ccc]">{commit.author}</span>
                                     {commit.authorEmail && <span className="ml-1">&lt;{commit.authorEmail}&gt;</span>}
                                 </div>
-                                <div data-testid="commit-info-date">{formattedDate}</div>
-                                <div className="flex items-center gap-1" data-testid="commit-info-hash">
+                                <div className="whitespace-nowrap" data-testid="commit-info-date">{formattedDate}</div>
+                                <div className="flex items-center gap-1 whitespace-nowrap" data-testid="commit-info-hash">
                                     <span className="font-mono text-[#0078d4] dark:text-[#3794ff]">{commit.hash.substring(0, 8)}</span>
                                     <button
                                         onClick={handleCopyHash}
@@ -342,7 +342,7 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
                                     </button>
                                 </div>
                                 {commit.parentHashes.length > 0 && (
-                                    <div className="font-mono text-[10px]" data-testid="commit-info-parents">
+                                    <div className="font-mono text-[10px] whitespace-nowrap" data-testid="commit-info-parents">
                                         Parents: {commit.parentHashes.map(p => p.substring(0, 7)).join(', ')}
                                     </div>
                                 )}
