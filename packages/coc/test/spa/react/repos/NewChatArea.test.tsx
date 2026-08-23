@@ -8,7 +8,7 @@ import React from 'react';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled, mockForEachEnabled, mockMapReduceEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig, mockAgentProvidersResponse, mockEffortLevelsEnabled, mockEffortTiers, mockChatStyleEnabled, mockRepoPrefs, mockPatchRepo } = vi.hoisted(() => ({
+const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockEnqueueBaseUrls, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled, mockForEachEnabled, mockMapReduceEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig, mockAgentProvidersResponse, mockEffortLevelsEnabled, mockEffortTiers, mockChatStyleEnabled, mockRepoPrefs, mockPatchRepo } = vi.hoisted(() => ({
     mockQueueDispatch: vi.fn(),
     mockAppState: {
         workspaces: [{ id: 'ws-1', rootPath: '/home/user/repo' }],
@@ -17,6 +17,8 @@ const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockModelCo
     mockFetch: vi.fn(),
     mockAppDispatch: vi.fn(),
     mockEnqueueTask: vi.fn(),
+    /** Base URL of the client each enqueue went through (undefined = local origin). */
+    mockEnqueueBaseUrls: [] as (string | undefined)[],
     mockModelCommand: {
         modelMenuVisible: false,
         modelFilter: '',
@@ -130,8 +132,15 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
 }));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => {
-    const makeClient = () => ({
-        queue: { enqueue: mockEnqueueTask },
+    const makeClient = (baseUrl?: string) => ({
+        queue: {
+            // Record which server each enqueue went to so remote-routing tests can
+            // assert the chat landed on the clone's own host, not the page origin.
+            enqueue: (body: any) => {
+                mockEnqueueBaseUrls.push(baseUrl);
+                return mockEnqueueTask(body);
+            },
+        },
         preferences: {
             patchGlobal: vi.fn().mockResolvedValue({}),
             getRepo: vi.fn().mockImplementation(() => Promise.resolve(mockRepoPrefs.value)),
@@ -143,10 +152,10 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => {
             getEffortTiers: vi.fn().mockImplementation(() => Promise.resolve({ effortTiers: mockEffortTiers.value })) },
     });
     return {
-        getSpaCocClient: makeClient,
+        getSpaCocClient: () => makeClient(undefined),
         // Remote-clone paths route through getCocClientFor(baseUrl); serve the
         // same fake client so a registered remote workspace can render.
-        getCocClientFor: makeClient,
+        getCocClientFor: (baseUrl?: string) => makeClient(baseUrl),
         getSpaCocClientErrorMessage: (err: any, fallback: string) =>
             (err instanceof Error ? err.message : undefined) || fallback,
     };
@@ -381,6 +390,7 @@ beforeEach(() => {
     globalThis.fetch = mockFetch;
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({}) });
     resetCloneRegistryForTests();
+    mockEnqueueBaseUrls.length = 0;
     __resetChatStyleSelectorFlagCache();
 });
 
@@ -649,6 +659,47 @@ describe('NewChatArea', () => {
             id: 'queue_new-task-42',
             repoId: 'ws-1',
         });
+    });
+
+    // AC-03 (remote-server repo groups): a chat started from a REMOTE group's
+    // view must be enqueued on the server that owns the group, so that server's
+    // resolveRepoGroupChatContext can inject the member paths (which only exist
+    // there). Routing comes entirely from the clone registry entry the remote
+    // workspace aggregation writes for the `group-*` id — no group-specific code.
+    it('enqueues a remote group chat on the group\'s own server', async () => {
+        registerCloneBaseUrls([
+            { workspaceId: 'group-svc', baseUrl: 'http://127.0.0.1:4000', serverId: 'srv-1' },
+        ]);
+        mockAppState.workspaces = [
+            { id: 'ws-1', rootPath: '/home/user/repo' },
+            { id: 'group-svc', name: 'Services' },
+        ];
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'remote-task-1' } });
+
+        render(<NewChatArea workspaceId="group-svc" />);
+        fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'list the repos' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+        });
+
+        expect(mockEnqueueTask).toHaveBeenCalledTimes(1);
+        expect(mockEnqueueBaseUrls).toEqual(['http://127.0.0.1:4000']);
+        expect(mockEnqueueTask.mock.calls[0][0].payload.workspaceId).toBe('group-svc');
+    });
+
+    it('enqueues a local group chat on the page origin', async () => {
+        mockAppState.workspaces = [{ id: 'group-local', name: 'Local group' }];
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'local-task-1' } });
+
+        render(<NewChatArea workspaceId="group-local" />);
+        fireEvent.change(screen.getByTestId('new-chat-input'), { target: { value: 'hello' } });
+
+        await act(async () => {
+            fireEvent.click(screen.getByTestId('new-chat-send-btn'));
+        });
+
+        expect(mockEnqueueBaseUrls).toEqual([undefined]);
     });
 
     it('shows error when enqueue fails', async () => {
