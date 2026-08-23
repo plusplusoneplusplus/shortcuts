@@ -34,3 +34,13 @@ test("release workflow does not build a macOS x64 native binary", () => {
     assert.doesNotMatch(workflow, /macos-13/);
     assert.match(workflow, /triple: darwin-arm64/);
 });
+
+// The release page ships installers only. The coc-native-* artifacts are the
+// raw N-API binaries the build jobs feed to electron-builder (already packed
+// inside each installer), and CoCContainer is an internal variant.
+test("release attaches only the CoC installers", () => {
+    assert.match(workflow, /pattern: coc-\{mac,win\}/);
+    assert.match(workflow, /find artifacts -type f \\\( -name '\*\.dmg' -o -name '\*\.exe' \\\)/);
+    assert.match(workflow, /! -name 'CoCContainer\*' ! -name '\*\.node'/);
+    assert.doesNotMatch(workflow, /### Windows — CoCContainer/);
+});
