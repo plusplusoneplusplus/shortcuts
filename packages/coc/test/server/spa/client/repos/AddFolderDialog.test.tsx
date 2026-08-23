@@ -65,7 +65,7 @@ describe('AddFolderDialog', () => {
         render(<AddFolderDialog open onClose={vi.fn()} onAdded={vi.fn()} />);
 
         await waitFor(() => {
-            expect(repositoryServiceMocks.browseWorkspaceFolders).toHaveBeenCalledWith('~');
+            expect(repositoryServiceMocks.browseWorkspaceFolders).toHaveBeenCalledWith('~', undefined);
         });
         expect(screen.getByTestId('folder-browser')).toBeTruthy();
         // The waitFor above only proves the call was made; the breadcrumb still
@@ -98,27 +98,29 @@ describe('AddFolderDialog', () => {
         await waitFor(() => {
             expect(repositoryServiceMocks.registerWorkspace).toHaveBeenCalledTimes(2);
         });
+        // Local target → the trailing baseUrl argument is undefined.
         expect(repositoryServiceMocks.registerWorkspace).toHaveBeenNthCalledWith(1, expect.objectContaining({
             name: 'repo-a',
             rootPath: '/workspace-root/repo-a',
-        }));
+        }), undefined);
         expect(repositoryServiceMocks.registerWorkspace).toHaveBeenNthCalledWith(2, expect.objectContaining({
             name: 'repo-b',
             rootPath: '/workspace-root/repo-b',
-        }));
+        }), undefined);
         expect(await screen.findByTestId('adding-done')).toHaveTextContent('Added 2 repositories');
     });
 
-    it('shows per-repository registration errors without aborting the batch', async () => {
+    it('stops the batch at the first failure and reports added vs not added', async () => {
         repositoryServiceMocks.discoverWorkspaces.mockResolvedValueOnce({
             repos: [
                 { path: '/workspace-root/repo-a', name: 'repo-a' },
                 { path: '/workspace-root/repo-b', name: 'repo-b' },
+                { path: '/workspace-root/repo-c', name: 'repo-c' },
             ],
         });
         repositoryServiceMocks.registerWorkspace
-            .mockRejectedValueOnce(new Error('Already registered'))
-            .mockResolvedValueOnce({});
+            .mockResolvedValueOnce({})
+            .mockRejectedValueOnce(new Error('Already registered'));
 
         render(<AddFolderDialog open onClose={vi.fn()} onAdded={vi.fn()} />);
 
@@ -130,10 +132,13 @@ describe('AddFolderDialog', () => {
             fireEvent.click(await screen.findByTestId('add-selected-btn'));
         });
 
-        await waitFor(() => {
-            expect(repositoryServiceMocks.registerWorkspace).toHaveBeenCalledTimes(2);
-        });
-        expect(await screen.findByTestId('adding-done')).toHaveTextContent('Added 1 repository');
-        expect(screen.getByText('repo-a: Already registered')).toBeTruthy();
+        const done = await screen.findByTestId('adding-done');
+        // repo-c is never attempted — the loop stops at repo-b.
+        expect(repositoryServiceMocks.registerWorkspace).toHaveBeenCalledTimes(2);
+        expect(done).toHaveTextContent('Added 1 repository');
+        // The successful add is kept, not rolled back.
+        expect(screen.getByTestId('added-list')).toHaveTextContent('Added: repo-a');
+        expect(screen.getByText('repo-b: Already registered')).toBeTruthy();
+        expect(screen.getByTestId('not-added-list')).toHaveTextContent('Not added (2): repo-b, repo-c');
     });
 });

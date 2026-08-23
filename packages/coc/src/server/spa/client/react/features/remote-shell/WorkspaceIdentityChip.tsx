@@ -549,6 +549,8 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
             <AddFolderDialog
                 open={addFolderOpen}
                 onClose={() => setAddFolderOpen(false)}
+                serverId={addTargetServer?.serverId}
+                baseUrl={addTargetServer?.baseUrl}
                 onAdded={() => { setAddFolderOpen(false); fetchRepos(); }}
             />
             <AddRepoDialog
