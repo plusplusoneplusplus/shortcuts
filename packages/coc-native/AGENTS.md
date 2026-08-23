@@ -15,10 +15,23 @@ The `*Status()` accessors never throw, because `/api/health` reports them and ha
 - `rust/core/` — `coc-native-core`: the logic layer, `pub mod <capability>` per capability (`file_index`: walker, scorer, index and its top-N search). No N-API dependency, so `cargo test -p coc-native-core` runs it all without Node. All Rust unit tests live here, named `tests/<capability>_*.rs`.
 - `rust/napi/` — `coc-native`: a thin `cdylib` wrapper, one `src/<capability>.rs` per capability registering its own classes and functions. Everything that touches the filesystem or scans a large structure returns an `AsyncTask`, so work happens on a libuv worker and the event loop is never blocked. It has no tests: the crate links against Node's symbols, so a test binary would not link.
 - `src/loader.ts` — resolves and loads the binary. Deliberately capability-agnostic: it validates only that the module loaded, never which exports it has.
-- `src/<capability>.ts` — one module per capability (`file-index.ts`): its types, a type guard over the loaded module, `loadNative<X>()` and `nativeXStatus()`.
-- `scripts/build-native.mjs` — `npm run build:native`. Runs `cargo build --release` and copies the cdylib to `coc-native.<triple>.node`. Deliberately not `@napi-rs/cli`: the loader resolves binaries from disk rather than per-platform npm packages, so the CLI would only add a dependency.
+- `src/native-bindings.ts` — **generated, do not edit.** The `#[napi]` type surface as TypeScript, produced by `npm run build:native`.
+- `src/<capability>.ts` — one module per capability (`file-index.ts`): aliases of the generated types, a type guard over the loaded module, `loadNative<X>()` and `nativeXStatus()`.
+- `scripts/build-native.mjs` — `npm run build:native`. Drives `@napi-rs/cli` to compile the addon *and* emit the type surface, then rewrites the header. The CLI is used for the build only; the loader still resolves binaries from disk rather than through napi-rs's per-platform npm packages.
 
 Adding a capability means a `rust/core/src/<name>/` module, a `rust/napi/src/<name>.rs` registered in `rust/napi/src/lib.rs`, and a `src/<name>.ts` re-exported from `src/index.ts`. The loader does not change.
+
+## Generated types
+
+`src/native-bindings.ts` is derived from the `#[napi]` macros during compilation — the Rust is the single source of truth for the addon's shape, and `file-index.ts` aliases it (`export type NativeFileMatch = Bindings.FileMatch`) rather than restating it.
+
+It is **committed on purpose**: `npm run build` is plain `tsc`, so the TypeScript build must never need cargo. CI regenerates it in the `coc-native` job and fails on a `git diff`, which is what removes the drift risk. After changing any `#[napi]` item, run `npm run build:native -w packages/coc-native` and commit the result.
+
+A `.ts` and not a `.d.ts`: an input `.d.ts` under `src/` is not emitted to `dist/`, which would leave `dist/file-index.d.ts` importing a module that does not exist for consumers. Declarations only, so it emits no runtime code.
+
+Doc comments flow from the Rust, so write the explanation there. Anything the Rust cannot express — why the `indices` are UTF-16 offsets and what depends on that — belongs on the alias in `file-index.ts`.
+
+The proc macro only emits type definitions while the crate actually compiles, so the build script cleans the thin `coc-native` wrapper crate first (the slow `coc-native-core` stays cached) and refuses to write an empty result over the committed file.
 
 ## Binary resolution
 
@@ -49,7 +62,7 @@ Changing either scorer means changing both, and the parity test is what tells yo
 ## Build / test
 
 - `npm run build -w packages/coc-native` — tsc only. Must run before `coc` compiles, which resolves workspace deps from built `dist`.
-- `npm run build:native -w packages/coc-native` — compiles the addon. Needs a Rust toolchain; nothing else in the repo does.
+- `npm run build:native -w packages/coc-native` — compiles the addon and regenerates `src/native-bindings.ts`. Needs a Rust toolchain; nothing else in the repo does.
 - `cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core` — the whole logic layer.
 - `npm run test:run -w packages/coc-native` — loader and capability-resolution tests (no binary needed), plus the N-API boundary suite (marshalling, async contract, error propagation, concurrency, lifetime) and parity. The binary-backed suites **fail** when nothing is built; they skip only under `COC_NATIVE=0`, so a botched native build cannot pass for a green run.
 - `cargo fmt`/`cargo clippy` run in the `coc-native` CI job. `rust/rustfmt.toml` widens `use_small_heuristics` to match the density of the surrounding TypeScript.

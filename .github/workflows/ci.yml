@@ -192,6 +192,19 @@ jobs:
       - name: Build the addon
         run: npm run build:native -w packages/coc-native
 
+      # src/native-bindings.ts is generated from the `#[napi]` macros but has to
+      # be committed, because `npm run build` is plain tsc and must work with no
+      # Rust toolchain. The build above just regenerated it, so a diff here means
+      # the committed copy no longer matches the Rust.
+      - name: Check the generated bindings are current
+        shell: bash
+        run: |
+          if ! git diff --exit-code -- packages/coc-native/src/native-bindings.ts; then
+            echo "::error::packages/coc-native/src/native-bindings.ts is stale."
+            echo "Run \`npm run build:native -w packages/coc-native\` and commit the result."
+            exit 1
+          fi
+
       - name: Run N-API boundary and parity tests
         run: npm run test:run -w packages/coc-native
 

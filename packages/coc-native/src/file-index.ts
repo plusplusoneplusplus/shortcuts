@@ -4,49 +4,51 @@
  *
  * One capability of the addon, not the whole of it. The loader resolves the
  * binary; this module narrows the loaded module to the exports it needs and
- * reports the capability unavailable when a binary predates it.
+ * fails when a binary predates it.
+ *
+ * The shapes below are aliases of `native-bindings.ts`, which is generated from
+ * the `#[napi]` items in `rust/napi/src/file_index.rs`. Restating them by hand
+ * is what let them drift; anything a reader needs to know beyond what the Rust
+ * says belongs in the doc comments here.
  */
 
 import { loadNativeAddon, nativeAddonStatus, NativeAddonLoadError } from './loader';
+import type * as Bindings from './native-bindings';
 import type { NativeAddonStatus } from './types';
 
 /** Options for building or refreshing a native file index. */
-export interface NativeBuildOptions {
-    /** Include gitignored files — the explorer's `showIgnored` flag. */
-    includeIgnored?: boolean;
-    /** Safety cap on indexed paths. Omit for no cap. */
-    maxEntries?: number;
-}
+export type NativeBuildOptions = Bindings.BuildOptions;
 
-/** A scored path returned by {@link NativeFileIndex.search}. */
-export interface NativeFileMatch {
-    path: string;
-    score: number;
-    /**
-     * Matched positions within `path`, ascending, as JavaScript string indices.
-     * The client highlights exactly these characters, so highlight and score
-     * can never disagree.
-     */
-    indices: number[];
-}
+/**
+ * A scored path returned by {@link NativeFileIndex.search}.
+ *
+ * `indices` are UTF-16 offsets — JavaScript string indices — into `path`,
+ * ascending. The client highlights exactly those characters, so highlight and
+ * score can never disagree. That is also why the Rust scorer folds case as
+ * ASCII rather than with full Unicode rules, which can change a string's
+ * length and misalign these offsets.
+ */
+export type NativeFileMatch = Bindings.FileMatch;
 
-/** An in-memory, gitignore-aware index of one repository's file paths. */
-export interface NativeFileIndex {
-    /** Number of indexed paths. */
-    len(): number;
-    /** True when the walk hit the configured `maxEntries` cap. */
-    truncated(): boolean;
-    /** A window of the raw path list, in index order. */
-    files(offset: number, limit: number): string[];
-    /** Best `limit` matches for `query`, best first. */
-    search(query: string, limit: number): Promise<NativeFileMatch[]>;
-    /** Re-walk the root and atomically swap in the new path list. */
-    refresh(): Promise<void>;
-}
+/**
+ * An in-memory, gitignore-aware index of one repository's file paths.
+ *
+ * Every method that walks the tree or scans the path list resolves a real
+ * promise backed by an `AsyncTask`, so the work lands on a libuv worker and
+ * never blocks the event loop. `search` returns the best `limit` matches,
+ * best first.
+ */
+export type NativeFileIndex = Bindings.FileIndex;
 
-/** The slice of the addon that this capability needs. */
+/**
+ * The slice of the addon that this capability needs.
+ *
+ * A structural slice rather than the whole module: the loader is
+ * capability-agnostic, so this is what distinguishes a binary that can serve
+ * the file index from one that merely loaded.
+ */
 export interface NativeFileIndexAddon {
-    buildFileIndex(root: string, options?: NativeBuildOptions): Promise<NativeFileIndex>;
+    buildFileIndex: typeof Bindings.buildFileIndex;
 }
 
 /** Whether the loaded module actually exposes the file index. */

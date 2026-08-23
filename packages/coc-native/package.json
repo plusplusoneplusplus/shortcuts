@@ -2,6 +2,9 @@
   "name": "@plusplusoneplusplus/coc-native",
   "version": "0.1.0",
   "description": "Native (Rust/N-API) capabilities for the CoC server — a capability-agnostic addon loader plus the gitignore-aware file index powering quick-open search",
+  "napi": {
+    "name": "coc-native"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -20,6 +23,7 @@
   },
   "dependencies": {},
   "devDependencies": {
+    "@napi-rs/cli": "^2.18.4",
     "@types/node": "^20.0.0",
     "@vitest/coverage-v8": "^4.1.10",
     "typescript": "^5.3.0",
