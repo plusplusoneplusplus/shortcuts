@@ -26,3 +26,11 @@ test("release workflow heredoc content stays inside the YAML run block", () => {
     assert.doesNotMatch(workflow, /^## Install/m);
     assert.doesNotMatch(workflow, /^EOF$/m);
 });
+
+// The macOS app ships as an arm64-only .dmg, so a darwin-x64 prebuilt has no
+// consumer — building one only burns a macos-13 runner on every release.
+test("release workflow does not build a macOS x64 native binary", () => {
+    assert.doesNotMatch(workflow, /darwin-x64/);
+    assert.doesNotMatch(workflow, /macos-13/);
+    assert.match(workflow, /triple: darwin-arm64/);
+});

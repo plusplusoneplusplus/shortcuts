@@ -42,7 +42,7 @@ In order, from `loader.ts`:
 3. `packages/coc-native/prebuilt/<triple>/` — injected by CI/release (gitignored).
 4. nothing found — `NativeAddonLoadError`.
 
-`COC_NATIVE=0` short-circuits all of the above and yields `null`. Triples are `linux-<arch>-gnu`, `win32-<arch>-msvc`, `darwin-<arch>`; release CI publishes `linux-x64-gnu`, `linux-arm64-gnu`, `darwin-arm64`, `darwin-x64`, `win32-x64-msvc`. Resolution is cached, so the same error object is rethrown on every call; `resetNativeAddonCache()` clears it for tests.
+`COC_NATIVE=0` short-circuits all of the above and yields `null`. Triples are `linux-<arch>-gnu`, `win32-<arch>-msvc`, `darwin-<arch>`; release CI publishes `linux-x64-gnu`, `linux-arm64-gnu`, `darwin-arm64`, `win32-x64-msvc` (no `darwin-x64` — the macOS app is arm64-only). Resolution is cached, so the same error object is rethrown on every call; `resetNativeAddonCache()` clears it for tests.
 
 `nativeAddonStatus()` reports whether the *binary* loaded; a capability's own status (`nativeFileIndexStatus()`) additionally reports `loaded: false` when the binary loaded but lacks that capability. Both are `{ loaded, binaryPath?, reason? }`, never throw, and are what `/api/health` surfaces — `loaded: false` covers disabled, missing, unloadable and capability-less alike.
 
