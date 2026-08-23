@@ -45,6 +45,10 @@ all have their own `references/*.md`.
   [packages/coc-native/AGENTS.md](../coc-native/AGENTS.md) before changing
   either. `searchFiles` is uncapped under the native path (the list never leaves
   the process); `fileListMaxEntries` bounds only the `/files` response payload.
+- **QuickOpen searches on the server.** The `Ctrl+P` dialog fetches nothing on
+  open, debounces keystrokes, and highlights using the `indices` the server's
+  scorer returned — never by re-deriving the match in the browser, which used to
+  let highlight and ranking disagree.
 - **Server Vitest tests** live under `packages/coc/test/server/`. Any
   server change should add or update tests there.
 - **Docker image contract tests** live under `packages/coc/test/docker/`

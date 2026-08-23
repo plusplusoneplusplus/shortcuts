@@ -1,18 +1,28 @@
 /**
  * QuickOpen — command-palette-style file finder dialog.
- * Fetches the repo's path list once per open and fuzzy-matches in the browser,
- * so keystrokes cost no network round-trip.
+ *
+ * Searches on the server, debounced, and renders only the top matches. The repo
+ * path list never crosses the network — in a large repo that list is multiple
+ * megabytes, and matching it on the render thread stalls typing.
+ *
  * Portal-rendered to document.body.
  */
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom';
+import type { ExplorerSearchResult } from '@plusplusoneplusplus/coc-client';
 import { cn } from '../../../ui/cn';
-import { rankFuzzyMatches } from '../../../../../../shared/fuzzy-file-score';
 import { explorerApi } from './explorerApi';
 
-/** Maximum results rendered for a query. */
+/** Maximum results requested and rendered for a query. */
 const RESULT_LIMIT = 50;
+
+/**
+ * How long typing must pause before a search is issued. Short enough to feel
+ * immediate on a localhost round-trip, long enough that a fast typist issues one
+ * request instead of one per character.
+ */
+const SEARCH_DEBOUNCE_MS = 40;
 
 export interface QuickOpenProps {
     workspaceId: string;
@@ -21,26 +31,45 @@ export interface QuickOpenProps {
     onFileSelect: (filePath: string) => void;
 }
 
-/** Highlight matched characters in the file path. */
-export function highlightFuzzy(query: string, target: string): (string | JSX.Element)[] {
-    if (!query) return [target];
-    const q = query.toLowerCase();
+/**
+ * Emphasise the characters at `indices` in `target`.
+ *
+ * The indices come from the scorer that produced the result, so the highlight
+ * always shows the match the ranking was based on — re-deriving it here used to
+ * let the two disagree.
+ */
+export function highlightMatches(target: string, indices: readonly number[]): (string | JSX.Element)[] {
+    if (indices.length === 0) return [target];
+    const marked = new Set(indices);
     const parts: (string | JSX.Element)[] = [];
-    let qi = 0;
     let buf = '';
     let keyIdx = 0;
 
-    for (let ti = 0; ti < target.length; ti++) {
-        if (qi < q.length && target[ti].toLowerCase() === q[qi]) {
+    for (let i = 0; i < target.length; i++) {
+        if (marked.has(i)) {
             if (buf) { parts.push(buf); buf = ''; }
-            parts.push(<span key={keyIdx++} className="text-[#0078d4] dark:text-[#3794ff] font-semibold">{target[ti]}</span>);
-            qi++;
+            parts.push(<span key={keyIdx++} className="text-[#0078d4] dark:text-[#3794ff] font-semibold">{target[i]}</span>);
         } else {
-            buf += target[ti];
+            buf += target[i];
         }
     }
     if (buf) parts.push(buf);
     return parts;
+}
+
+/**
+ * Split a result's match indices into the directory part and the file-name
+ * part, rebased on each, so both segments highlight correctly.
+ */
+export function splitIndices(filePath: string, indices: readonly number[]): { dir: number[]; name: number[] } {
+    const nameStart = filePath.length - fileName(filePath).length;
+    const dir: number[] = [];
+    const name: number[] = [];
+    for (const index of indices) {
+        if (index < dirName(filePath).length) dir.push(index);
+        else if (index >= nameStart) name.push(index - nameStart);
+    }
+    return { dir, name };
 }
 
 /** Extract file name from a path. */
@@ -57,51 +86,66 @@ function dirName(p: string): string {
 
 export function QuickOpen({ workspaceId, open, onClose, onFileSelect }: QuickOpenProps) {
     const [query, setQuery] = useState('');
-    const [allFiles, setAllFiles] = useState<string[]>([]);
+    const [results, setResults] = useState<ExplorerSearchResult[]>([]);
     const [loading, setLoading] = useState(false);
     const [highlightIndex, setHighlightIndex] = useState(0);
     const inputRef = useRef<HTMLInputElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
     const abortRef = useRef<AbortController | null>(null);
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Fetch the path list once per open, then match locally on every keystroke.
-    // The server caches this listing, so reopening is cheap.
+    // Start each open from a clean slate; nothing is fetched until the first
+    // keystroke, so opening the dialog costs no network at all.
     useEffect(() => {
         if (!open) return;
         setQuery('');
+        setResults([]);
         setHighlightIndex(0);
-
-        const abort = new AbortController();
-        abortRef.current = abort;
-        setLoading(true);
-        explorerApi.listFiles(workspaceId, { signal: abort.signal })
-            .then((data: { files: string[]; truncated: boolean }) => {
-                if (abort.signal.aborted) return;
-                setAllFiles(data.files);
-            })
-            .catch(() => {
-                if (abort.signal.aborted) return;
-                setAllFiles([]);
-            })
-            .finally(() => {
-                if (!abort.signal.aborted) setLoading(false);
-            });
-
-        return () => abort.abort();
     }, [open, workspaceId]);
+
+    // Search on the server, debounced, one in-flight request at a time.
+    useEffect(() => {
+        if (!open) return;
+
+        const trimmed = query.trim();
+        if (!trimmed) {
+            abortRef.current?.abort();
+            setResults([]);
+            setLoading(false);
+            return;
+        }
+
+        debounceRef.current = setTimeout(() => {
+            abortRef.current?.abort();
+            const abort = new AbortController();
+            abortRef.current = abort;
+            setLoading(true);
+            explorerApi.searchFiles(workspaceId, trimmed, { limit: RESULT_LIMIT, signal: abort.signal })
+                .then(data => {
+                    if (abort.signal.aborted) return;
+                    setResults(data.results);
+                })
+                .catch(() => {
+                    if (abort.signal.aborted) return;
+                    setResults([]);
+                })
+                .finally(() => {
+                    if (!abort.signal.aborted) setLoading(false);
+                });
+        }, SEARCH_DEBOUNCE_MS);
+
+        return () => {
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+        };
+    }, [query, open, workspaceId]);
 
     // Cleanup on unmount
     useEffect(() => {
         return () => {
+            if (debounceRef.current) clearTimeout(debounceRef.current);
             if (abortRef.current) abortRef.current.abort();
         };
     }, []);
-
-    const results = useMemo(() => {
-        const trimmed = query.trim();
-        if (!trimmed) return [];
-        return rankFuzzyMatches(trimmed, allFiles, RESULT_LIMIT).map(m => m.path);
-    }, [query, allFiles]);
 
     // Auto-focus input when opened
     useEffect(() => {
@@ -136,7 +180,7 @@ export function QuickOpen({ workspaceId, open, onClose, onFileSelect }: QuickOpe
         } else if (e.key === 'Enter') {
             e.preventDefault();
             if (results[highlightIndex]) {
-                handleSelect(results[highlightIndex]);
+                handleSelect(results[highlightIndex].path);
             }
         } else if (e.key === 'Escape') {
             e.preventDefault();
@@ -195,41 +239,45 @@ export function QuickOpen({ workspaceId, open, onClose, onFileSelect }: QuickOpe
                     className="flex-1 overflow-y-auto"
                     data-testid="quick-open-results"
                 >
-                    {/* Only blank out while the very first list is loading — once
-                        results exist they stay rendered, so typing never flickers. */}
-                    {loading && results.length === 0 && allFiles.length === 0 ? (
+                    {/* Only blank out while the first search of a query is in
+                        flight — once results exist they stay rendered, so typing
+                        never flickers. */}
+                    {loading && results.length === 0 ? (
                         <div className="flex items-center justify-center py-4 text-sm text-[#848484]">
-                            Loading files…
+                            Searching files…
                         </div>
                     ) : results.length === 0 ? (
                         <div className="flex items-center justify-center py-4 text-sm text-[#848484]" data-testid="quick-open-no-results">
                             No matching files
                         </div>
                     ) : (
-                        results.map((filePath, idx) => (
-                            <div
-                                key={filePath}
-                                className={cn(
-                                    'flex items-center px-3 py-1.5 cursor-pointer text-sm',
-                                    idx === highlightIndex
-                                        ? 'bg-[#0078d4]/10 dark:bg-[#0078d4]/20'
-                                        : 'hover:bg-[#f5f5f5] dark:hover:bg-[#2a2d2e]',
-                                )}
-                                onClick={() => handleSelect(filePath)}
-                                onMouseEnter={() => setHighlightIndex(idx)}
-                                data-testid={`quick-open-item-${idx}`}
-                            >
-                                <span className="text-xs mr-2 opacity-60">📄</span>
-                                <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">
-                                    {highlightFuzzy(query, fileName(filePath))}
-                                </span>
-                                {dirName(filePath) && (
-                                    <span className="ml-2 text-xs text-[#848484] truncate flex-shrink-0">
-                                        {dirName(filePath)}
+                        results.map((result, idx) => {
+                            const matched = splitIndices(result.path, result.indices ?? []);
+                            return (
+                                <div
+                                    key={result.path}
+                                    className={cn(
+                                        'flex items-center px-3 py-1.5 cursor-pointer text-sm',
+                                        idx === highlightIndex
+                                            ? 'bg-[#0078d4]/10 dark:bg-[#0078d4]/20'
+                                            : 'hover:bg-[#f5f5f5] dark:hover:bg-[#2a2d2e]',
+                                    )}
+                                    onClick={() => handleSelect(result.path)}
+                                    onMouseEnter={() => setHighlightIndex(idx)}
+                                    data-testid={`quick-open-item-${idx}`}
+                                >
+                                    <span className="text-xs mr-2 opacity-60">📄</span>
+                                    <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc] truncate">
+                                        {highlightMatches(fileName(result.path), matched.name)}
                                     </span>
-                                )}
-                            </div>
-                        ))
+                                    {dirName(result.path) && (
+                                        <span className="ml-2 text-xs text-[#848484] truncate flex-shrink-0">
+                                            {highlightMatches(dirName(result.path), matched.dir)}
+                                        </span>
+                                    )}
+                                </div>
+                            );
+                        })
                     )}
                 </div>
 
