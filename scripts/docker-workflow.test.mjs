@@ -45,7 +45,9 @@ test("ci builds the image (no push) and smoke-tests health, loopback-only bind, 
     const job = ci.slice(ci.indexOf("  docker-build-smoke:"), ci.indexOf("\n  ci:\n"));
     assert.match(job, /uses: docker\/build-push-action@v\d+\n\s+with:\n\s+context: \.\n\s+load: true/);
     assert.doesNotMatch(job, /push: true/);
-    assert.match(job, /docker run -d --name coc --network host coc:ci --host 127\.0\.0\.1 --port 4111/);
+    // `[^\n]*` leaves room for flags like -e COC_NATIVE=0 without letting
+    // the host-network and loopback-bind arguments drift.
+    assert.match(job, /docker run -d --name coc --network host [^\n]*coc:ci --host 127\.0\.0\.1 --port 4111/);
     assert.match(job, /curl -sf http:\/\/127\.0\.0\.1:4111\/api\/health/);
     assert.match(job, /grep -qi " 0100007F:100F " \/proc\/net\/tcp/);
     assert.match(job, /docker stop -t \d+ coc\n[\s\S]*ExitCode/);

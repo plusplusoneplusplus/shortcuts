@@ -500,9 +500,15 @@ jobs:
         run: npm run build
         working-directory: packages/coc
 
+      # The fixture boots the server in-process, and RepoTreeService now throws
+      # when no addon loaded. Nothing builds one here, so take the supported
+      # opt-out: these specs drive the UI, and the fallback search path answers
+      # them identically. coc-test is where the addon's own lane is covered.
       - name: Run Playwright E2E tests (shard ${{ matrix.shard }}/4)
         run: npx playwright test --config test/e2e/playwright.config.ts --shard=${{ matrix.shard }}/4
         working-directory: packages/coc
+        env:
+          COC_NATIVE: '0'
 
       - name: Upload test results
         if: ${{ !cancelled() }}
@@ -547,8 +553,14 @@ jobs:
       - name: Build packages
         run: npm run build:packages
 
+      # A plain checkout has no binary and no Rust toolchain, which the loader
+      # treats as fatal. This job asks one question — does `coc serve` come up
+      # and answer /api/health — so it runs the way the docs tell such a machine
+      # to run.
       - name: Start coc serve and verify health
         shell: bash
+        env:
+          COC_NATIVE: '0'
         run: |
           # Pipe from sleep to keep stdin open (prevents Windows readline 'close' shutdown)
           sleep 120 | node packages/coc/dist/index.js serve --no-open --port 4111 &
@@ -674,7 +686,7 @@ jobs:
           node-version: 24.x
 
       - name: Run workflow policy tests
-        run: node --test scripts/release-workflow.test.mjs scripts/ci-npm-audit.test.mjs scripts/workflow-actions.test.mjs scripts/docker-workflow.test.mjs
+        run: node --test scripts/release-workflow.test.mjs scripts/ci-npm-audit.test.mjs scripts/workflow-actions.test.mjs scripts/docker-workflow.test.mjs scripts/native-addon-workflow.test.mjs
 
   # Guards the server image (Dockerfile + docker/entrypoint.sh) against rotting
   # between releases: real linux/amd64 build (no push), then health, the
@@ -703,7 +715,10 @@ jobs:
 
       - name: Start container (host network, loopback bind) and verify health
         run: |
-          docker run -d --name coc --network host coc:ci --host 127.0.0.1 --port 4111 --data-dir /data/.coc
+          # No prebuilt binaries are staged into the CI image (the release job
+          # does that), so the loader would refuse to start. Opting out keeps
+          # this job about the image itself.
+          docker run -d --name coc --network host -e COC_NATIVE=0 coc:ci --host 127.0.0.1 --port 4111 --data-dir /data/.coc
           for i in $(seq 1 90); do
             if curl -sf http://127.0.0.1:4111/api/health > /dev/null 2>&1; then
               echo "✓ Server healthy after ${i}s"
@@ -716,8 +731,9 @@ jobs:
           exit 1
 
       # The release build injects prebuilt binaries and asserts loaded==true;
-      # here the field only has to be present and well-formed, so a change that
-      # drops it from /api/health fails before it reaches a release.
+      # this container runs with COC_NATIVE=0, so the field only has to be
+      # present and well-formed — a change that drops it from /api/health then
+      # fails here, before it reaches a release.
       - name: Assert /api/health reports the file-index mode
         run: |
           curl -sf http://127.0.0.1:4111/api/health \
@@ -758,7 +774,7 @@ jobs:
 
       - name: Sidecar pattern smoke (same netns reaches loopback)
         run: |
-          docker run -d --name coc2 coc:ci            # default bridge, no ports, loopback bind
+          docker run -d --name coc2 -e COC_NATIVE=0 coc:ci   # default bridge, no ports, loopback bind
           docker run --rm --network container:coc2 curlimages/curl:latest \
             sh -c 'for i in $(seq 1 90); do curl -sf http://127.0.0.1:4000/api/health && exit 0; sleep 1; done; exit 1' \
             || { docker logs coc2; exit 1; }
