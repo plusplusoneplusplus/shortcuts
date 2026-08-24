@@ -84,7 +84,10 @@ being rewritten in place. These rules exist to stop that.
    what makes `git diff` on these files reviewable.
 5. **400-line file cap.** A reference file over ~400 lines, or covering more than one
    product surface, gets split into a subdirectory (see `references/spa/` for the
-   pattern) with one index row per new file.
+   pattern) with one index row per new file. `rest-api.md` is the one deliberate
+   exception: it is a single-endpoint lookup table, and splitting it by domain would
+   mean knowing which file an endpoint lives in before you can find it. Keep it whole,
+   and keep its rows one line each.
 
 Run `scripts/audit-paths.sh` quarterly to find backticked source paths that no longer
 resolve.
