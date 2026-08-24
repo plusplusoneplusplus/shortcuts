@@ -308,6 +308,47 @@ describe('FileProcessStore.appendConversationTurn', () => {
         expect(updated!.conversationTurns![0].content).toContain('Context compacted');
     });
 
+    it('round-trips compactionSummary through serialization (AC-04)', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p-compaction-summary'));
+
+        // Deliberately long so we also prove nothing truncates the summary.
+        const summary = '## Summary\n\n' + 'The user asked about the process store. '.repeat(400);
+
+        await store.appendConversationTurn('p-compaction-summary', (idx) => ({
+            role: 'assistant',
+            content: 'Context compacted — removed 3 messages, freed ~120 tokens',
+            timestamp: new Date(),
+            turnIndex: idx,
+            timeline: [],
+            displayOnly: true,
+            compactionSummary: summary,
+        }));
+
+        const reloaded = new FileProcessStore({ dataDir: tmpDir });
+        const updated = await reloaded.getProcess('p-compaction-summary');
+        expect(updated!.conversationTurns![0].compactionSummary).toBe(summary);
+        expect(updated!.conversationTurns![0].displayOnly).toBe(true);
+    });
+
+    it('leaves compactionSummary undefined when the turn carries none (AC-03)', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        await store.addProcess(makeProcess('p-no-summary'));
+
+        await store.appendConversationTurn('p-no-summary', (idx) => ({
+            role: 'assistant',
+            content: 'Context compacted — removed 3 messages, freed ~120 tokens',
+            timestamp: new Date(),
+            turnIndex: idx,
+            timeline: [],
+            displayOnly: true,
+        }));
+
+        const reloaded = new FileProcessStore({ dataDir: tmpDir });
+        const updated = await reloaded.getProcess('p-no-summary');
+        expect(updated!.conversationTurns![0].compactionSummary).toBeUndefined();
+    });
+
     describe('lastEventAt tracking', () => {
         it('addProcess sets lastEventAt to startTime', async () => {
             const store = new FileProcessStore({ dataDir: tmpDir });

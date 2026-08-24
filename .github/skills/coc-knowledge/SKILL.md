@@ -27,9 +27,11 @@ It consists of three packages (`coc`, `forge`, `deep-wiki`) plus a shared client
 | MCP Settings | [mcp-settings.md](references/mcp-settings.md) | Workspace MCP merge (global + workspace), allow-list, secrets boundary |
 | EnDev xDPU | [endev.md](references/endev.md) | Workspace eligibility cache, REST status/revalidate, skill surfacing |
 | CoC Service (Windows) | [coc-service.md](references/coc-service.md) | `Manage-CoCService.ps1` Task Scheduler service, devtunnel integration, logs |
-| Ralph | [ralph.md](references/ralph.md) | Iterative execution session journal, writer protocol, size cap, promote-to-ralph endpoint |
+| Ralph | [ralph.md](references/ralph.md) | Session journal format, writer protocol, size cap, iteration prompt, manual-verification guard |
+| Ralph · Launch | [ralph-launch.md](references/ralph-launch.md) | Direct goal launch, worktree execution mode, promote-to-ralph, grilling-phase prompt injection |
+| Ralph · Lifecycle | [ralph-lifecycle.md](references/ralph-lifecycle.md) | Resume stuck sessions, continue completed ones, submit commits as a PR, schedules, final checks |
 | Cron | [cron.md](references/cron.md) | Recurring follow-ups, executor, circuit breakers, REST API, dashboard integration |
-| Memory System | [memory-system.md](references/memory-system.md) | Bounded memory, capture mode, candidate ranking, promotion, recall index |
+| Memory System | [memory-system.md](references/memory-system.md) | Memory V2 stores, per-scope enablement, snapshot/recall limits, REST routes |
 | LLM Tools | [llm-tools.md](references/llm-tools.md) | Tool registry, per-invocation factories, permissions, web search |
 | SDK Wrapper | [sdk-wrapper.md](references/sdk-wrapper.md) | `coc-agent-sdk` package: Copilot + Codex providers, `ISDKService`, `SDKServiceRegistry`, session lifecycle, streaming state machine, MCP config, model registry |
 | Process Store | [process-store.md](references/process-store.md) | SQLite schema, FTS5 search, seen-state, pin/archive, prompt autocomplete |
@@ -37,13 +39,58 @@ It consists of three packages (`coc`, `forge`, `deep-wiki`) plus a shared client
 | Deep Wiki | [deep-wiki.md](references/deep-wiki.md) | Six-phase pipeline, caching, themes, CLI commands, core concepts |
 | REST API | [rest-api.md](references/rest-api.md) | Endpoint catalog organized by domain |
 | Streaming & Real-Time | [streaming-architecture.md](references/streaming-architecture.md) | SSE, WebSocket, ProcessStore event channels, container relay |
-| Dashboard SPA | [dashboard-spa.md](references/dashboard-spa.md) | React component tree, hooks, contexts, feature modules |
+| Dashboard SPA · Shell | [spa/shell.md](references/spa/shell.md) | Entry point, module tree, routing, contexts, hooks, pop-outs, feature flags, coc-client |
+| Dashboard SPA · Chat shell | [spa/chat.md](references/spa/chat.md) | Composer gating, review chat lens, chat list and task-group engine |
+| Dashboard SPA · Conversation | [spa/chat-conversation.md](references/spa/chat-conversation.md) | Turn bubbles, chat header, metadata popover, implement-plan card, agents view, tool calls, Quick Ask side-notes |
+| Dashboard SPA · Composer | [spa/chat-composer.md](references/spa/chat-composer.md) | Input area toolbars, attachments, provider/mode/effort/style selectors, Ralph launch |
+| Dashboard SPA · Canvas | [spa/canvas.md](references/spa/canvas.md) | Canvas panel, extension bridge v2, Kusto canvases, SVG sanitizer, source canvas |
+| Dashboard SPA · Work Items | [spa/work-items.md](references/spa/work-items.md) | Hierarchy tree, Local/Remote trackers, detail form, workflow + AI authoring gates |
+| Dashboard SPA · Git & PRs | [spa/git-and-prs.md](references/spa/git-and-prs.md) | Git tab controllers, branch range, cherry-pick, worktrees, classify-diff, composer PR chips, PR tab |
+| Dashboard SPA · Notes | [spa/notes.md](references/spa/notes.md) | Notes roots, editor toolbar, inline colors, find & replace, Notes Chat |
+| Dashboard SPA · Top Bar & Admin | [spa/top-bar-and-admin.md](references/spa/top-bar-and-admin.md) | Top bar cluster, admin overlay dialog, Skills Config, AI Provider page & quota |
+| Dashboard SPA · Remote shell | [spa/remote-shell.md](references/spa/remote-shell.md) | Shell headers, scope switcher, repo groups, remote workspace aggregation, sub-tab taxonomy |
+| Dashboard SPA · Clone routing | [spa/clone-routing.md](references/spa/clone-routing.md) | `getCocClientFor`, the clone registry, and the per-feature wiring that keeps remote calls off the local server |
+| Dashboard SPA · Routes | [spa/routes.md](references/spa/routes.md) | Onboarding, My Work Today, Activity, Dreams, CLI Sessions, Memory |
 | Prompt Autocomplete | [prompt-autocomplete.md](references/prompt-autocomplete.md) | Inline ghost-text, AI/history modes, caching, REST API, privacy |
 | Chat Prompt History | [chat-prompt-history.md](references/chat-prompt-history.md) | Up/Down arrow navigation, workspace-scoped history, REST API |
-| Wiki Serving | [wiki-serving.md](references/wiki-serving.md) | WikiManager, TF-IDF context retrieval, AI Q&A sessions, file watching |
+| Wiki Serving | [wiki-serving.md](references/wiki-serving.md) | Architecture, module map, object lifecycle, `WikiManager`/`WikiData`/`ContextBuilder` API |
+| Wiki Serving · API | [wiki-serving-api.md](references/wiki-serving-api.md) | Ask/Explore/Generate/Admin routes, TF-IDF retrieval, conversation sessions, file watching |
 | Remote Servers | [remote-servers.md](references/remote-servers.md) | DevTunnel integration, connection lifecycle, server registry |
 | Task Comments | [task-comments.md](references/task-comments.md) | Inline commenting, categories, anchoring, AI prompt generation |
 | Notes Sync | [sync.md](references/sync.md) | Git-backed My Work/My Life sync, AI conflict resolution, periodic scheduling |
+
+## Writing Rules
+
+These are constraints on anyone editing this knowledge base, including automated
+refreshes. The KB grew from 4009 to 7484 lines in three months without a single new
+file being created, because entries were appended as change descriptions instead of
+being rewritten in place. These rules exist to stop that.
+
+1. **Present tense only, current state only.** Describe what the code does now. Never
+   write "no longer", "used to", "previously", "legacy", "instead of the old", or
+   "there is no". If behavior changed, rewrite the passage — do not append a
+   correction to it. The one exception: when a live feature flag still selects an
+   older path, state it as a present-tense conditional ("with `commitChatLens` off,
+   commit review uses the `coc.commitChat.open` visibility key"), not as history.
+2. **One topic, one home.** Before adding a passage, grep the target file for the key
+   identifier and for near-duplicate headings. If the topic already has a section,
+   edit that section. Cross-reference from elsewhere; never describe it twice.
+3. **Architecture, not release notes.** Keep module boundaries, data flow, invariants,
+   storage keys, API shapes, and non-obvious constraints. Cut pixel-level and
+   copy-level behavior — which control is hover-revealed, whether a banner renders,
+   exact button wording. Nothing guards those, so they go stale silently.
+4. **No walls of text.** Cap paragraphs at ~80 words and give every topic a `###`
+   heading. This is what makes a duplicate visible to the next person appending, and
+   what makes `git diff` on these files reviewable.
+5. **400-line file cap.** A reference file over ~400 lines, or covering more than one
+   product surface, gets split into a subdirectory (see `references/spa/` for the
+   pattern) with one index row per new file. `rest-api.md` is the one deliberate
+   exception: it is a single-endpoint lookup table, and splitting it by domain would
+   mean knowing which file an endpoint lives in before you can find it. Keep it whole,
+   and keep its rows one line each.
+
+Run `scripts/audit-paths.sh` quarterly to find backticked source paths that no longer
+resolve.
 
 ## Key Invariants
 

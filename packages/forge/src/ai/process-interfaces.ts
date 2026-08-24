@@ -67,6 +67,13 @@ export interface ProcessCompactionState {
     messagesRemoved?: number;
     /** Tokens freed by the summary (success only). */
     tokensRemoved?: number;
+    /**
+     * Summary text the provider produced for the most recent compaction
+     * (success only). Mirrors the `compactionSummary` stored on the appended
+     * display-only result turn; absent when the provider produced none (Codex
+     * keeps its summary inside the rewritten rollout instead).
+     */
+    summary?: string;
     /** Error message (failure only). */
     error?: string;
 }
@@ -206,6 +213,13 @@ export interface ConversationTurn {
      * `buildConversationHistoryContext`.
      */
     displayOnly?: boolean;
+    /**
+     * Full summary text the provider generated for a `/compact` run, stored on
+     * the display-only compaction result turn so the chat can reveal it behind
+     * a disclosure. Absent when the provider produced no summary (e.g. Codex,
+     * whose summary lives in the rewritten rollout).
+     */
+    compactionSummary?: string;
     /** Model override used for this turn (set on user turns when /model was active) */
     model?: string;
     /** Chat mode used for this turn (e.g. 'ask' | 'plan' | 'autopilot'), set on user turns when mode override was active */
@@ -258,6 +272,13 @@ export interface SerializedConversationTurn {
     pasteExternalized?: boolean;
     /** True for display-only turns (e.g. the `/compact` result notice) excluded from model prompt history. */
     displayOnly?: boolean;
+    /**
+     * Full summary text the provider generated for a `/compact` run, stored on
+     * the display-only compaction result turn so the chat can reveal it behind
+     * a disclosure. Absent when the provider produced no summary (e.g. Codex,
+     * whose summary lives in the rewritten rollout).
+     */
+    compactionSummary?: string;
     /** Model override used for this turn (set on user turns when /model was active) */
     model?: string;
     /** Chat mode used for this turn (e.g. 'ask' | 'plan' | 'autopilot'), set on user turns when mode override was active */

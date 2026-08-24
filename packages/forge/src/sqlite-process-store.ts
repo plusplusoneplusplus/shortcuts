@@ -142,6 +142,7 @@ interface TurnRow {
     archived: number;
     sdk_event_id: string | null;
     display_only: number;
+    compaction_summary: string | null;
 }
 
 interface PromptAutocompleteHistoryRow {
@@ -475,6 +476,7 @@ function turnToRow(turn: ConversationTurn, processId: string): Record<string, un
         mode: turn.mode ?? null,
         sdk_event_id: turn.sdkEventId ?? null,
         display_only: boolToInt(turn.displayOnly),
+        compaction_summary: turn.compactionSummary ?? null,
         deleted_at: dateToIso(turn.deletedAt),
         pinned_at: dateToIso(turn.pinnedAt),
         archived: boolToInt(turn.archived),
@@ -527,6 +529,7 @@ function rowToTurn(row: TurnRow): ConversationTurn {
         tokenUsage: jsonParse<TokenUsage>(row.token_usage),
         pasteExternalized: intToBool(row.paste_externalized),
         displayOnly: intToBool(row.display_only),
+        ...(row.compaction_summary ? { compactionSummary: row.compaction_summary } : {}),
         ...(row.model ? { model: row.model } : {}),
         ...(row.mode ? { mode: row.mode } : {}),
         ...(row.sdk_event_id ? { sdkEventId: row.sdk_event_id } : {}),
@@ -659,11 +662,13 @@ export class SqliteProcessStore implements ProcessStore {
             INSERT INTO conversation_turns (
                 process_id, turn_index, role, content, timestamp, streaming,
                 interrupted, interruption_reason, tool_calls, timeline, images, historical, suggestions,
-                token_usage, paste_externalized, model, mode, sdk_event_id, display_only
+                token_usage, paste_externalized, model, mode, sdk_event_id, display_only,
+                compaction_summary
             ) VALUES (
                 @process_id, @turn_index, @role, @content, @timestamp, @streaming,
                 @interrupted, @interruption_reason, @tool_calls, @timeline, @images, @historical, @suggestions,
-                @token_usage, @paste_externalized, @model, @mode, @sdk_event_id, @display_only
+                @token_usage, @paste_externalized, @model, @mode, @sdk_event_id, @display_only,
+                @compaction_summary
             )
         `);
 
@@ -823,11 +828,11 @@ export class SqliteProcessStore implements ProcessStore {
                 INSERT INTO conversation_turns
                   (process_id, turn_index, role, content, timestamp, streaming,
                    interrupted, interruption_reason, tool_calls, timeline, images, historical, suggestions,
-                   token_usage, paste_externalized, model, mode, display_only)
+                   token_usage, paste_externalized, model, mode, display_only, compaction_summary)
                 SELECT
                   ?, turn_index, role, content, timestamp, 0,
                   interrupted, interruption_reason, tool_calls, timeline, images, 1, suggestions,
-                  token_usage, paste_externalized, model, mode, display_only
+                  token_usage, paste_externalized, model, mode, display_only, compaction_summary
                 FROM conversation_turns
                 WHERE process_id = ?
                   AND deleted_at IS NULL
@@ -1292,6 +1297,7 @@ export class SqliteProcessStore implements ProcessStore {
                     mode: null,
                     sdk_event_id: null,
                     display_only: 0,
+                    compaction_summary: null,
                 });
             }
         });

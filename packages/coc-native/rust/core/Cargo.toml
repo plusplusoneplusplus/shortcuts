@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Native primitives for the CoC server: one self-contained module per capability, starting with the quick-open file index"
+description = "Native primitives for the CoC server: one self-contained module per capability, starting with a generic repo file index"
 
 [dependencies]
 ignore = "0.4"

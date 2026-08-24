@@ -1,9 +1,10 @@
-//! N-API bindings for the quick-open file index.
+//! N-API bindings for the quick-open file index: thin `AsyncTask` wrappers
+//! around core's `repo_index::RepoIndex`, which owns the refresh/swap state.
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
-use coc_native_core::file_index::{IndexState, WalkOptions};
+use coc_native_core::repo_index::{FuzzyMatcher, RepoIndex, WalkOptions};
 use napi::bindgen_prelude::{AsyncTask, Error, Result, Status, Task};
 use napi::Env;
 use napi_derive::napi;
@@ -30,11 +31,7 @@ pub struct FileMatch {
 /// An in-memory, gitignore-aware index of one repository's file paths.
 #[napi]
 pub struct FileIndex {
-    root: PathBuf,
-    options: WalkOptions,
-    /// The current snapshot. Refresh swaps the `Arc` wholesale, so a search
-    /// holds either the old list or the new one and never sees a torn state.
-    state: Arc<RwLock<Arc<IndexState>>>,
+    index: RepoIndex,
 }
 
 fn walk_options(options: Option<BuildOptions>) -> WalkOptions {
@@ -55,26 +52,20 @@ pub struct BuildTask {
 }
 
 impl Task for BuildTask {
-    type Output = IndexState;
+    type Output = RepoIndex;
     type JsValue = FileIndex;
 
     fn compute(&mut self) -> Result<Self::Output> {
-        IndexState::build(&self.root, &self.options).map_err(|e| to_napi_error(&self.root, e))
+        RepoIndex::build(self.root.clone(), self.options).map_err(|e| to_napi_error(&self.root, e))
     }
 
     fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
-        Ok(FileIndex {
-            root: self.root.clone(),
-            options: self.options,
-            state: Arc::new(RwLock::new(Arc::new(output))),
-        })
+        Ok(FileIndex { index: output })
     }
 }
 
 pub struct RefreshTask {
-    root: PathBuf,
-    options: WalkOptions,
-    state: Arc<RwLock<Arc<IndexState>>>,
+    index: RepoIndex,
 }
 
 impl Task for RefreshTask {
@@ -82,15 +73,7 @@ impl Task for RefreshTask {
     type JsValue = ();
 
     fn compute(&mut self) -> Result<Self::Output> {
-        let rebuilt = IndexState::build(&self.root, &self.options)
-            .map_err(|e| to_napi_error(&self.root, e))?;
-        // Swap under the shortest possible write lock; readers cloned their Arc
-        // before this point and keep reading the old snapshot safely.
-        let mut slot = self.state.write().map_err(|_| {
-            Error::new(Status::GenericFailure, "file index lock poisoned".to_owned())
-        })?;
-        *slot = Arc::new(rebuilt);
-        Ok(())
+        self.index.refresh().map_err(|e| to_napi_error(self.index.root(), e))
     }
 
     fn resolve(&mut self, _env: Env, _output: Self::Output) -> Result<Self::JsValue> {
@@ -99,7 +82,7 @@ impl Task for RefreshTask {
 }
 
 pub struct SearchTask {
-    snapshot: Arc<IndexState>,
+    matcher: Arc<FuzzyMatcher>,
     query: String,
     limit: u32,
 }
@@ -109,12 +92,13 @@ impl Task for SearchTask {
     type JsValue = Vec<FileMatch>;
 
     fn compute(&mut self) -> Result<Self::Output> {
+        let snapshot = self.matcher.snapshot();
         Ok(self
-            .snapshot
+            .matcher
             .search(&self.query, self.limit as usize)
             .into_iter()
             .map(|hit| FileMatch {
-                path: self.snapshot.path_at(hit.index).to_owned(),
+                path: snapshot.path_at(hit.index).to_owned(),
                 score: hit.score,
                 indices: hit.indices,
             })
@@ -138,40 +122,30 @@ impl FileIndex {
     #[napi]
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> u32 {
-        self.snapshot().len() as u32
+        self.index.snapshot().len() as u32
     }
 
     /// True when the walk hit the configured `maxEntries` cap.
     #[napi]
     pub fn truncated(&self) -> bool {
-        self.snapshot().truncated()
+        self.index.snapshot().truncated()
     }
 
     /// A window of the raw path list, in index order.
     #[napi]
     pub fn files(&self, offset: u32, limit: u32) -> Vec<String> {
-        self.snapshot().files(offset as usize, limit as usize)
+        self.index.snapshot().files(offset as usize, limit as usize)
     }
 
     /// Score every indexed path and resolve with the best `limit` matches.
     #[napi(ts_return_type = "Promise<FileMatch[]>")]
     pub fn search(&self, query: String, limit: u32) -> AsyncTask<SearchTask> {
-        AsyncTask::new(SearchTask { snapshot: self.snapshot(), query, limit })
+        AsyncTask::new(SearchTask { matcher: self.index.searcher(), query, limit })
     }
 
     /// Re-walk the root and atomically swap in the new path list.
     #[napi(ts_return_type = "Promise<void>")]
     pub fn refresh(&self) -> AsyncTask<RefreshTask> {
-        AsyncTask::new(RefreshTask {
-            root: self.root.clone(),
-            options: self.options,
-            state: Arc::clone(&self.state),
-        })
-    }
-
-    fn snapshot(&self) -> Arc<IndexState> {
-        // A poisoned lock still holds a valid snapshot — the write side only
-        // panics between a successful walk and the swap, which cannot happen.
-        Arc::clone(&self.state.read().unwrap_or_else(|e| e.into_inner()))
+        AsyncTask::new(RefreshTask { index: self.index.clone() })
     }
 }

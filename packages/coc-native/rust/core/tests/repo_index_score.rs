@@ -1,7 +1,7 @@
 //! Scorer tests mirroring `packages/coc/test/server/fuzzy-file-score.test.ts`,
 //! so both suites assert the same table and drift shows up on either side.
 
-use coc_native_core::file_index::score::{score_units, Query};
+use coc_native_core::repo_index::score::{score_units, Query};
 
 /// Score through the same narrowing the index does: ASCII paths as bytes.
 fn score(query: &str, path: &str) -> u32 {
@@ -18,7 +18,7 @@ fn score(query: &str, path: &str) -> u32 {
         }
     } else {
         let target: Vec<u16> =
-            path.encode_utf16().map(coc_native_core::file_index::score::lower_unit).collect();
+            path.encode_utf16().map(coc_native_core::repo_index::score::lower_unit).collect();
         score_units(&q.wide, &target, &mut indices)
     }
 }
@@ -27,7 +27,7 @@ fn matched_indices(query: &str, path: &str) -> Vec<u32> {
     let q = Query::new(query);
     let mut indices = Vec::new();
     let target: Vec<u16> =
-        path.encode_utf16().map(coc_native_core::file_index::score::lower_unit).collect();
+        path.encode_utf16().map(coc_native_core::repo_index::score::lower_unit).collect();
     score_units(&q.wide, &target, &mut indices);
     indices
 }

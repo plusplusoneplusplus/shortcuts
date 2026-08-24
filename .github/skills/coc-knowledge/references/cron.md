@@ -1,43 +1,30 @@
 # Cron Subsystem
 
-Recurring follow-up messages within a conversation. Inspired by Claude Code's cron mode — where the AI can schedule itself to revisit a task on a cadence without human intervention.
+Recurring follow-up messages within a conversation: the AI schedules itself to revisit a task on a cadence without human intervention.
 
-**Feature flag:** `cron.enabled` in `~/.coc/config.yaml` (default `false`). When disabled, infrastructure is not constructed, REST routes are not registered, LLM tools (`scheduleWakeup`, `cron`) are filtered out, the bundled `/cron` skill is not auto-installed, and dashboard UI elements (badge, panel, slash-command) are hidden.
+**Feature flag:** `cron.enabled` in `~/.coc/config.yaml` (default `false`). See [Feature gating](#feature-gating).
 
 ## Concepts
 
 | Concept | Description |
 |---------|-------------|
 | **Cron** | A recurring timer that sends follow-up messages into the same conversation (`processId`) at a fixed interval until cancelled, expired, or auto-paused. |
-| **Wakeup** | A one-shot delayed follow-up. Lighter than a cron — fires once after a delay. |
-| **Tick** | A single firing of a cron. Each tick enqueues a follow-up task via `TaskQueueManager`. |
+| **Wakeup** | A one-shot delayed follow-up — fires once after a delay, then terminal. |
+| **Tick** | One firing of a cron; enqueues a follow-up task via `TaskQueueManager`. |
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│  LLM Tool Layer                                                      │
-│  (llm-tools/cron-tools.ts)                                           │
-│  cron (create · cancel · list) · scheduleWakeup                           │
-└──────────────┬───────────────────────────────────────────────────────┘
-               │ creates/cancels CronEntry
-┌──────────────▼───────────────────────────────────────────────────────┐
-│  CronStore (cron/cron-store.ts)                                     │
-│  SQLite CRUD — `crons` table in processes.db                         │
-│  Prepared statements, MAX_ACTIVE_CRONS=50 limit enforced on insert   │
-└──────────────┬───────────────────────────────────────────────────────┘
-               │ read/write
-┌──────────────▼───────────────────────────────────────────────────────┐
-│  CronExecutor (cron/cron-executor.ts)                               │
-│  Arms timers via ScheduleTimerRegistry                               │
-│  On tick: checks TTL, circuit breakers, process status, inflight     │
-│  guard → enqueues follow-up via TaskQueueManager                     │
-└──────────────┬───────────────────────────────────────────────────────┘
-               │ timer events
-┌──────────────▼───────────────────────────────────────────────────────┐
-│  ScheduleTimerRegistry (schedule/schedule-timer-registry.ts)         │
-│  Low-level setTimeout wrapper with cancel/set API                    │
-└──────────────────────────────────────────────────────────────────────┘
+llm-tools/cron-tools.ts — cron (create · cancel · list) · scheduleWakeup
+   │ creates/cancels entries
+CronStore (cron/cron-store.ts) — `crons` table in processes.db
+   prepared statements; MAX_ACTIVE_CRONS=50 enforced on insert
+   │
+CronExecutor (cron/cron-executor.ts) — arms timers, and on tick checks TTL,
+   circuit breakers, process status, inflight guard → TaskQueueManager
+   │
+ScheduleTimerRegistry (schedule/schedule-timer-registry.ts)
+   setTimeout wrapper with cancel/set API; shared with wakeups and triggers
 ```
 
 ## Source Files
@@ -47,15 +34,15 @@ Recurring follow-up messages within a conversation. Inspired by Claude Code's cr
 | `packages/coc/src/server/cron/cron-types.ts` | `CronEntry`, `CronStatus`, `CronChangeEvent`, constants |
 | `packages/coc/src/server/cron/cron-store.ts` | SQLite persistence (CRUD, `ensureTable`, prepared statements) |
 | `packages/coc/src/server/cron/cron-executor.ts` | Timer lifecycle, tick handler, circuit breakers, shutdown |
-| `packages/coc/src/server/cron/cron-handler.ts` | REST API routes (workspace-scoped and server-wide) |
+| `packages/coc/src/server/cron/cron-handler.ts` | REST routes (workspace-scoped and server-wide) |
 | `packages/coc/src/server/cron/wakeup-types.ts` | `WakeupEntry`, `WakeupStatus`, `WakeupChangeEvent`, retention constant |
-| `packages/coc/src/server/cron/wakeup-store.ts` | Durable one-shot wakeup SQLite persistence (CRUD, `markFired`/`markFailed`/`cancel`, prune) |
+| `packages/coc/src/server/cron/wakeup-store.ts` | Wakeup persistence (CRUD, `markFired`/`markFailed`/`cancel`, prune) |
 | `packages/coc/src/server/cron/wakeup-executor.ts` | Wakeup arm/fire lifecycle, startup re-arm, overdue immediate fire, terminal marking |
 | `packages/coc/src/server/cron/enqueue-wakeup.ts` | `createEnqueueWakeup` command — persists a pending record, then arms it |
-| `packages/coc/src/server/llm-tools/cron-tools.ts` | LLM tool factories (`cron` with create/cancel/list actions, `scheduleWakeup`) |
-| `packages/forge/resources/bundled-skills/cron/SKILL.md` | Bundled `/cron` skill — teaches the AI interval parsing, mode selection, user confirmation |
-| `packages/coc/src/server/spa/client/react/features/chat/CronBadge.tsx` | Dashboard header badge showing non-cancelled cron count |
-| `packages/coc/src/server/spa/client/react/features/chat/CronManagementPanel.tsx` | Dashboard panel for listing/pausing/resuming/cancelling crons |
+| `packages/coc/src/server/llm-tools/cron-tools.ts` | LLM tool factories (`cron`, `scheduleWakeup`), `parseDuration()` |
+| `packages/forge/resources/bundled-skills/cron/SKILL.md` | Bundled `/cron` skill — interval parsing, mode selection, user confirmation |
+| `.../spa/client/react/features/chat/CronBadge.tsx` | Header badge: non-cancelled cron count |
+| `.../spa/client/react/features/chat/CronManagementPanel.tsx` | List/pause/resume/cancel panel |
 
 ## Data Model
 
@@ -65,133 +52,72 @@ Recurring follow-up messages within a conversation. Inspired by Claude Code's cr
 interface CronEntry {
     id: string;                  // e.g. "cron_a1b2c3d4e5f6"
     processId: string;           // conversation this cron fires into
-    description: string;         // human-readable purpose
-    intervalMs: number;          // fixed interval between ticks
+    description: string;
+    intervalMs: number;
     status: CronStatus;          // 'active' | 'paused' | 'cancelled' | 'expired'
-    createdAt: string;           // ISO timestamp
-    lastTickAt: string | null;   // last successful tick
-    nextTickAt: string | null;   // next scheduled tick (null if not active)
-    tickCount: number;           // ticks executed so far
+    createdAt: string;           // ISO
+    lastTickAt: string | null;
+    nextTickAt: string | null;   // null if not active
+    tickCount: number;
     consecutiveFailures: number; // resets on success
     expiresAt: string;           // TTL expiry (default 3 days)
-    pausedReason: string | null; // why the cron was paused
+    pausedReason: string | null;
     prompt: string;              // follow-up message sent each tick
     model: string | null;        // optional model override
 }
 ```
 
-### SQLite Schema (`crons` table in `processes.db`)
-
-```sql
-CREATE TABLE IF NOT EXISTS crons (
-    id                    TEXT PRIMARY KEY,
-    process_id            TEXT NOT NULL,
-    description           TEXT NOT NULL DEFAULT '',
-    interval_ms           INTEGER NOT NULL,
-    status                TEXT NOT NULL DEFAULT 'active',
-    created_at            TEXT NOT NULL,
-    last_tick_at          TEXT,
-    next_tick_at          TEXT,
-    tick_count            INTEGER NOT NULL DEFAULT 0,
-    consecutive_failures  INTEGER NOT NULL DEFAULT 0,
-    expires_at            TEXT NOT NULL,
-    paused_reason         TEXT,
-    prompt                TEXT NOT NULL DEFAULT '',
-    model                 TEXT
-);
-CREATE INDEX idx_crons_process_id ON crons(process_id);
-CREATE INDEX idx_crons_status ON crons(status);
-```
-
-The table is created by forge's `initializeDatabase`. Fresh installs create `crons`
-directly; databases created before the rename carried a `loops` table, which
-schema migration **V26** renames to `crons` (`ALTER TABLE loops RENAME TO crons`,
-re-creating the indexes under `idx_crons_*`).
+`crons` table in `processes.db`, created by forge's `initializeDatabase`: columns `id` PK, `process_id`, `description`, `interval_ms`, `status`, `created_at`, `last_tick_at`, `next_tick_at`, `tick_count`, `consecutive_failures`, `expires_at`, `paused_reason`, `prompt`, `model`; indexes `idx_crons_process_id`, `idx_crons_status`. Schema migration **V26** renames a `loops` table to `crons` and re-creates the indexes under `idx_crons_*`.
 
 ### WakeupEntry (durable one-shot)
 
-Wakeups are the one-shot, durable counterpart to crons: `scheduleWakeup`
-persists a single future follow-up that fires exactly once and is terminal
-afterwards. They share the `ScheduleTimerRegistry` and `processes.db` handle
-with crons but keep their own table, store, and executor — no recurrence or
-failure-count policy leaks between the two.
+Wakeups are the one-shot, durable counterpart to crons. They share the `ScheduleTimerRegistry` and `processes.db` handle with crons but keep their own table, store, and executor, so no recurrence or failure-count policy leaks between the two.
 
 ```typescript
 interface WakeupEntry {
     id: string;                  // e.g. "wakeup_a1b2c3d4e5f6"
-    processId: string;           // conversation this wakeup fires into
-    prompt: string;              // follow-up message
-    model: string | null;        // optional model override
+    processId: string;
+    prompt: string;
+    model: string | null;
     status: WakeupStatus;        // 'pending' | 'fired' | 'failed' | 'cancelled'
-    createdAt: string;           // ISO timestamp
+    createdAt: string;           // ISO
     firesAt: string;             // absolute ISO fire time
     firedAt: string | null;      // terminal transition time (fired/failed)
     failureReason: string | null;// message when status === 'failed'
-    workspaceId?: string;        // repo, persisted at creation
+    workspaceId?: string;        // persisted at creation
 }
 ```
 
-```sql
-CREATE TABLE IF NOT EXISTS wakeups (
-    id              TEXT PRIMARY KEY,
-    process_id      TEXT NOT NULL,
-    prompt          TEXT NOT NULL DEFAULT '',
-    model           TEXT,
-    status          TEXT NOT NULL DEFAULT 'pending',
-    created_at      TEXT NOT NULL,
-    fires_at        TEXT NOT NULL,
-    fired_at        TEXT,
-    failure_reason  TEXT,
-    workspace_id    TEXT
-);
-CREATE INDEX idx_wakeups_process_id ON wakeups(process_id);
-CREATE INDEX idx_wakeups_status ON wakeups(status);
-CREATE INDEX idx_wakeups_workspace_id ON wakeups(workspace_id);
-```
+`wakeups` table: `id` PK, `process_id`, `prompt`, `model`, `status`, `created_at`, `fires_at`, `fired_at`, `failure_reason`, `workspace_id`; indexes `idx_wakeups_process_id`, `idx_wakeups_status`, `idx_wakeups_workspace_id`.
 
 ## LLM Tools
 
-### `scheduleWakeup` (always available when `cron.enabled`)
+### `scheduleWakeup` (available whenever `cron.enabled`)
 
-One-shot delayed follow-up. Registered in `LLM_TOOL_REGISTRY`. **Durable:** the
-tool's `enqueueWakeup` command (`createEnqueueWakeup`) inserts a pending
-`WakeupEntry` (absolute `firesAt`) into the `wakeups` table **before** arming
-its one-shot timer, so a server restart re-arms it from the store instead of
-dropping it. The returned `wakeupId`/`firesAt` are the persisted values.
+One-shot delayed follow-up, registered in `LLM_TOOL_REGISTRY`. **Durable:** `createEnqueueWakeup` inserts a pending `WakeupEntry` (absolute `firesAt`) **before** arming the timer, so a restart re-arms it from the store. The returned `wakeupId`/`firesAt` are the persisted values.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `prompt` | `string` | ✅ | Follow-up prompt to send after delay |
-| `delay` | `string \| number` | ✅ | Delay (e.g. `"5s"`, `"30s"`, `"5m"`, `"1h"`, or ms). Min 1s |
-| `model` | `string` | ❌ | Model override for the follow-up |
+| `prompt` | `string` | ✅ | Follow-up prompt |
+| `delay` | `string \| number` | ✅ | `"5s"`, `"30s"`, `"5m"`, `"1h"`, or ms. Min 1s |
+| `model` | `string` | ❌ | Model override |
 
-### `cron` (skill-gated — requires `/cron` skill)
+### `cron` (skill-gated — requires the `/cron` skill)
 
-Single merged tool dispatched by a required `action` parameter (`create` | `cancel` | `list`), created by `createCronTool()`.
+A single merged tool from `createCronTool()`, dispatched by a required `action`. Missing per-action fields return an error naming the required parameters.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `action` | `string` | ✅ | `"create"`, `"cancel"`, or `"list"` |
 | `description` | `string` | create | Human-readable purpose |
-| `interval` | `string \| number` | create | Interval between ticks. Min 10s. First tick fires after one full interval |
-| `prompt` | `string` | create | Follow-up prompt sent each tick |
-| `model` | `string` | ❌ | create: model override for ticks |
-| `ttl` | `string` | ❌ | create: time-to-live (e.g. `"3d"`, `"12h"`). Default 3 days |
-| `cronId` | `string` | cancel | Cron ID to cancel |
-| `status` | `string` | ❌ | list: filter `"active"`, `"paused"`, `"cancelled"`, `"expired"` |
+| `interval` | `string \| number` | create | Min 10s. First tick fires after one full interval |
+| `prompt` | `string` | create | Follow-up sent each tick |
+| `model` | `string` | ❌ | create: model override |
+| `ttl` | `string` | ❌ | create: e.g. `"3d"`, `"12h"`. Default 3 days |
+| `cronId` | `string` | cancel | Cron to cancel |
+| `status` | `string` | ❌ | list: filter by `CronStatus` |
 
-Missing per-action fields return an error naming the required parameters.
-
-## Duration Parsing
-
-`parseDuration()` in `cron-tools.ts` handles human-friendly strings:
-
-- `"30s"`, `"5sec"`, `"2seconds"` → milliseconds
-- `"5m"`, `"5min"`, `"5minutes"` → milliseconds
-- `"2h"`, `"2hr"`, `"2hours"` → milliseconds
-- `"1d"`, `"1day"` → milliseconds
-- `"500"` (raw number) → 500 ms
-- Supports decimals: `"1.5h"` → 5,400,000 ms
+`parseDuration()` accepts `"30s"`/`"5sec"`/`"2seconds"`, `"5m"`/`"5min"`/`"5minutes"`, `"2h"`/`"2hr"`/`"2hours"`, `"1d"`/`"1day"`, decimals (`"1.5h"`), and raw numbers as milliseconds.
 
 ## Circuit Breakers & Safety Limits
 
@@ -199,121 +125,62 @@ Missing per-action fields return an error naming the required parameters.
 |-------|-------|----------|
 | Max consecutive failures | 3 | Cron auto-pauses with reason |
 | Default TTL | 3 days | Cron expires |
-| Max consecutive wakeups/process | 100 | Cron auto-pauses (resets on manual user message) |
-| Max active crons/server | 50 | Insert rejected with error |
+| Max consecutive wakeups/process | 100 | Cron auto-pauses (resets on a manual user message) |
+| Max active crons/server | 50 | Insert rejected |
 | Min cron interval | 10 seconds | Create rejected |
 | Min wakeup delay | 1 second | Create rejected |
 
 ## Tick Execution Flow
 
-1. `ScheduleTimerRegistry` fires the callback for a cron ID.
-2. `CronExecutor.onTick(cronId)` is called.
-3. Guard checks: status must be `active`.
-4. TTL check → expire if past `expiresAt`.
-5. Per-process wakeup limit check (100 max).
-6. Concurrency guard: skip if process already has an in-flight tick.
-7. Process status check: auto-pause if process is `cancelled`/`failed`; skip if `running`.
-8. Enqueue follow-up via `TaskQueueManager` with `turnSource: { source: 'cron', cronId }`.
-9. On completion callback (`onTickComplete`): increment `tickCount`, reset failures, schedule next tick. On failure: increment `consecutiveFailures`, auto-pause at threshold.
-
-## Tick Completion Wiring
-
-`ProcessLifecycleRunner` invokes the `onCronTickComplete(cronId, success)`
-lifecycle option after a cron-originated follow-up (`context.source === 'cron'`
-with string `context.cronId`) finishes. The queue-executor-bridge routes this
-call to `CronExecutor.onTickComplete()`, which advances `tickCount` /
-`lastTickAt`, clears the in-flight guard, and re-arms the next timer.
-
-Bookkeeping errors are logged but never mask the follow-up's actual
-success/failure result.
+1. `ScheduleTimerRegistry` fires the callback for a cron ID; `CronExecutor.onTick(cronId)` runs.
+2. Guards, in order: status must be `active`; TTL check (expire if past `expiresAt`); per-process wakeup limit (100); concurrency guard (skip if the process has an in-flight tick); process status (auto-pause if `cancelled`/`failed`, skip if `running`).
+3. Enqueue the follow-up via `TaskQueueManager` with `turnSource: { source: 'cron', cronId }`.
+4. `ProcessLifecycleRunner` invokes the `onCronTickComplete(cronId, success)` lifecycle option once a cron-originated follow-up (`context.source === 'cron'` with a string `context.cronId`) finishes. The queue-executor-bridge routes it to `CronExecutor.onTickComplete()`, which advances `tickCount`/`lastTickAt`, resets `consecutiveFailures` on success (auto-pausing at the threshold on failure), clears the in-flight guard, and re-arms the next timer. Bookkeeping errors are logged but never mask the follow-up's own result.
 
 ## Wakeup Execution Flow
 
-Wakeups do **not** go through the queue/tick-completion path above; the
-`WakeupExecutor` owns them end-to-end:
+Wakeups bypass the queue/tick-completion path; `WakeupExecutor` owns them end to end.
 
-1. `createEnqueueWakeup` inserts a `pending` `WakeupEntry` (absolute `firesAt`),
-   then calls `WakeupExecutor.arm()`.
-2. `arm()` registers a one-shot timer keyed `wakeup:<id>` in the shared
-   `ScheduleTimerRegistry`. The delay is `firesAt - now`, clamped to `0` for
-   overdue values. The key is not owned by the per-turn executor session, so a
-   wakeup scheduled mid-turn survives turn-end teardown.
-3. On fire, `resolveFollowUpMode` runs and `executeFollowUp` is invoked directly
-   (bridge) with `turnSource: { source: 'wakeup', wakeupId }`.
-4. Terminal marking: success → `markFired` (status `fired`); a thrown error →
-   `markFailed` with the message persisted in `failure_reason` (status
-   `failed`) plus a structured `logger.error`. Wakeups never recur.
+1. `createEnqueueWakeup` inserts a `pending` entry, then calls `WakeupExecutor.arm()`.
+2. `arm()` registers a one-shot timer keyed `wakeup:<id>` in the shared `ScheduleTimerRegistry`, with delay `firesAt - now` clamped to `0` for overdue values. The key is not owned by the per-turn executor session, so a wakeup scheduled mid-turn survives turn-end teardown.
+3. On fire, `resolveFollowUpMode` runs and `executeFollowUp` is invoked directly (bridge) with `turnSource: { source: 'wakeup', wakeupId }`.
+4. Terminal marking: success → `markFired`; a thrown error → `markFailed` with the message persisted in `failure_reason`, plus a structured `logger.error`. Wakeups never recur.
 
-**Restart recovery.** `createCronInfrastructure` constructs the `WakeupStore` +
-`WakeupExecutor`, prunes terminal rows older than `WAKEUP_RETENTION_MS` (7 days),
-then calls `wakeupExecutor.armAll()` — re-arming every pending wakeup from its
-persisted `firesAt`; overdue ones fire immediately. State changes broadcast via
-the optional `wakeup-scheduled|fired|failed|cancelled` WebSocket events.
+**Restart recovery.** `createCronInfrastructure` constructs the `WakeupStore` + `WakeupExecutor`, prunes terminal rows older than `WAKEUP_RETENTION_MS` (7 days), then calls `wakeupExecutor.armAll()`, re-arming every pending wakeup from its persisted `firesAt`; overdue ones fire immediately. State changes broadcast via optional `wakeup-scheduled|fired|failed|cancelled` WebSocket events.
 
 ## Follow-Up Mode Resolution
 
-`resolveFollowUpMode(store, processId, explicit?)` in
-`executors/follow-up-mode.ts` is the single source of truth for "what mode
-does this follow-up run in?".
-
-- Every programmatic follow-up enqueue site (cron ticks, wakeup timer,
-  requeue) must call it and set `payload.mode`.
-- `validateAndParseTask` only defaults `payload.mode` to `autopilot` for new
-  chats (no `processId`); REST follow-ups must supply mode.
-- `FollowUpExecutor.executeFollowUp` requires `mode` and logs a fail-loud
-  warning + defaults to `'ask'` if missing.
+`resolveFollowUpMode(store, processId, explicit?)` in `executors/follow-up-mode.ts` is the single source of truth for the mode a follow-up runs in. Every programmatic enqueue site (cron ticks, wakeup timer, requeue) must call it and set `payload.mode`. `validateAndParseTask` defaults `payload.mode` to `autopilot` only for new chats (no `processId`); REST follow-ups must supply mode. `FollowUpExecutor.executeFollowUp` requires `mode` and logs a fail-loud warning plus defaults to `'ask'` if it is missing.
 
 ## REST API
 
-### Workspace-scoped
+Workspace-scoped:
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/workspaces/:id/crons` | List crons for workspace |
-| `GET` | `/api/workspaces/:id/crons/:cronId` | Get single cron |
-| `PATCH` | `/api/workspaces/:id/crons/:cronId` | Update cron fields (description, prompt, intervalMs, model) |
-| `DELETE` | `/api/workspaces/:id/crons/:cronId` | Cancel & soft-delete cron |
-| `POST` | `/api/workspaces/:id/crons/:cronId/pause` | Pause cron (body: `{ reason? }`) |
-| `POST` | `/api/workspaces/:id/crons/:cronId/resume` | Resume paused cron |
+- `GET /api/workspaces/:id/crons` — list for workspace
+- `GET /api/workspaces/:id/crons/:cronId` — single cron
+- `PATCH /api/workspaces/:id/crons/:cronId` — update `description`, `prompt`, `intervalMs`, `model`
+- `DELETE /api/workspaces/:id/crons/:cronId` — cancel & soft-delete
+- `POST /api/workspaces/:id/crons/:cronId/pause` — body `{ reason? }`
+- `POST /api/workspaces/:id/crons/:cronId/resume`
 
-**Workspace ownership boundary:** every item-level route resolves the cron via `resolveCronForWorkspace` (in `cron-handler.ts`, shared logging in `shared/automation-scope.ts`), which returns the record only when its `workspaceId` matches the route workspace — a cron from another workspace is a non-enumerating `404` (with a structured server-side warning). Legacy rows without a persisted `workspaceId` derive ownership from their process via the context `resolveWorkspaceId(processId)` resolver and are backfilled on first match. The server-wide `/api/crons` routes are unscoped by design.
+Server-wide (unscoped by design): `GET /api/crons`, `GET /api/crons/:cronId`.
 
-### Server-wide
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/crons` | List all crons server-wide |
-| `GET` | `/api/crons/:cronId` | Get a cron by ID |
+**Workspace ownership boundary:** every item-level route resolves the cron via `resolveCronForWorkspace` (in `cron-handler.ts`, shared logging in `shared/automation-scope.ts`), which returns the record only when its `workspaceId` matches the route workspace — a cron from another workspace is a non-enumerating `404` with a structured server-side warning. Rows without a persisted `workspaceId` derive ownership from their process via the context `resolveWorkspaceId(processId)` resolver and are backfilled on first match.
 
 ## Dashboard Integration
 
-- **`CronBadge`** — Header badge showing non-cancelled cron count. Visible only when `cronEnabled`.
-- **`CronManagementPanel`** — Panel listing all crons with pause/resume/cancel actions. Each active cron shows its next scheduled tick time (relative, e.g. "Next: in 24h") derived from `nextTickAt`, alongside tick count and last-tick time.
-- **Turn source badge** — `ConversationTurnBubble` shows a visual indicator when a turn was generated by a cron tick or wakeup (via `turnSource` field on `ConversationTurn`).
-- **`/cron` slash command** — Auto-installs the `/cron` skill and activates cron tools for the session.
+`CronBadge` (header count of non-cancelled crons) and `CronManagementPanel` (list with pause/resume/cancel; each active cron shows its next tick relative to `nextTickAt`, plus tick count and last-tick time) render only when `cronEnabled`. `ConversationTurnBubble` shows a turn-source indicator for turns generated by a cron tick or wakeup, read from `turnSource` on `ConversationTurn`. The `/cron` slash command auto-installs the `/cron` skill and activates cron tools for the session.
 
 ## Server Lifecycle
 
-- **Startup:** If `cron.enabled`, `CronStore` and `CronExecutor` are constructed. `executor.armAll()` restores timers for all active crons from the database.
-- **Shutdown:** `executor.shutdownAll()` disarms in-memory timers without changing persisted cron state. Active crons remain `active` and are re-armed on the next startup from their persisted `nextTickAt`; overdue ticks fire immediately.
-- **Config toggle:** `cron.enabled` is editable at runtime via the admin API (`PUT /api/admin/config`). A server restart is required for the change to take effect (infrastructure is only constructed at startup).
+- **Startup:** if `cron.enabled`, `CronStore` and `CronExecutor` are constructed and `executor.armAll()` restores timers for all active crons.
+- **Shutdown:** `executor.shutdownAll()` disarms in-memory timers without changing persisted state. Active crons stay `active` and re-arm on next startup from `nextTickAt`; overdue ticks fire immediately.
+- **Config toggle:** `cron.enabled` is editable at runtime via `PUT /api/admin/config`, but infrastructure is constructed only at startup, so a restart is required for the change to take effect.
 
-## Feature Gating Summary
+## Feature Gating
 
-When `cron.enabled = false`:
-- `CronStore` and `CronExecutor` are not constructed.
-- Cron REST routes are not registered.
-- `scheduleWakeup` is filtered from `LLM_TOOL_REGISTRY` by `getEffectiveLlmToolRegistry()`.
-- `/cron` skill is not in the default auto-install list.
-- Dashboard `CronBadge` and `CronManagementPanel` are hidden.
-- `/cron` slash command is not shown in autocomplete.
+When `cron.enabled = false`: `CronStore`/`CronExecutor` are not constructed, cron REST routes are not registered, `scheduleWakeup` is filtered out of `LLM_TOOL_REGISTRY` by `getEffectiveLlmToolRegistry()`, the `/cron` skill is not in the default auto-install list and its slash command is hidden from autocomplete, and `CronBadge`/`CronManagementPanel` are hidden.
 
 ## Relationship to Schedules
 
-Crons are **separate** from the schedule subsystem. They share `ScheduleTimerRegistry` for timing — it is generic over its key type, so crons, wakeups, and triggers key by their own globally unique IDs (`string`) while `ScheduleManager` keys by a branded `(repoId, scheduleId)` runtime key. Crons have their own:
-- Type (`CronEntry` vs schedule run entries)
-- Persistence (`crons` table vs schedule tables)
-- Executor (`CronExecutor` vs schedule executor)
-- REST routes (workspace-scoped at `/crons` vs `/schedules`)
-
-Schedules are cron-based recurring tasks that create new processes. Crons are interval-based recurring follow-ups within an existing conversation.
+Crons are separate from the schedule subsystem. They share only `ScheduleTimerRegistry`, which is generic over its key type: crons, wakeups, and triggers key by their own globally unique `string` IDs, while `ScheduleManager` keys by a branded `(repoId, scheduleId)` runtime key. Crons have their own type (`CronEntry`), persistence (`crons` table), executor, and routes (`/crons` vs `/schedules`). Schedules are cron-expression recurring tasks that create new processes; crons are interval-based recurring follow-ups inside an existing conversation.

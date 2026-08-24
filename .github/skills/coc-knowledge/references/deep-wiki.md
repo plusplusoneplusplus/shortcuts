@@ -1,68 +1,51 @@
 # Deep Wiki
 
-CLI tool that auto-generates comprehensive wikis for any codebase using a six-phase AI pipeline, with optional theme-based article generation.
-
-Published as `@plusplusoneplusplus/deep-wiki`. Depends on `@plusplusoneplusplus/forge`, `@plusplusoneplusplus/coc-agent-sdk`, and `@plusplusoneplusplus/coc-workflow` at runtime so the bundled CLI can externalize Forge and its runtime dependency chain safely. Requires Node.js ≥ 24.
-
-Location: `packages/deep-wiki/`
+CLI in `packages/deep-wiki/`, published as `@plusplusoneplusplus/deep-wiki`, generating a wiki
+for any codebase through a six-phase AI pipeline plus optional theme articles. Requires Node.js
+≥ 24 and depends at runtime on `@plusplusoneplusplus/forge`,
+`@plusplusoneplusplus/coc-agent-sdk`, and `@plusplusoneplusplus/coc-workflow` so the bundled CLI
+can externalize Forge and its dependency chain. The CoC server serves the output directory — see
+[wiki-serving.md](wiki-serving.md).
 
 ## CLI Commands
 
 ```bash
-deep-wiki seeds <repo>      # Generate theme seeds (Phase 0)
-deep-wiki discover <repo>   # Phase 1 only → ComponentGraph JSON
-deep-wiki generate <repo>   # Full six-phase pipeline
+deep-wiki seeds <repo>         # Generate theme seeds (Phase 0)
+deep-wiki discover <repo>      # Phase 1 only → ComponentGraph JSON
+deep-wiki generate <repo>      # Full six-phase pipeline
 deep-wiki theme <repo> [name]  # Cross-cutting theme articles
-deep-wiki init              # Template config file
+deep-wiki init                 # Template config file
 ```
 
-### Key Flags
-
-`--output`, `--model`, `--concurrency`, `--timeout`, `--depth` (shallow/normal/deep), `--seeds` (auto or file), `--phase` (start from N), `--force`, `--use-cache`, `--skip-website`, `--no-cluster`, `--theme` (light/dark/auto)
+Flags: `--output`, `--model`, `--concurrency`, `--timeout`, `--depth` (shallow/normal/deep),
+`--seeds` (auto or file), `--phase` (start from N), `--force`, `--use-cache`,
+`--skip-website`, `--no-cluster`, `--theme` (light/dark/auto).
 
 ## Six-Phase Pipeline
 
-### Phase 0: Seeds (Optional)
-- AI + MCP tools scans repo to identify key themes/domains
-- Heuristic fallback: top-level directory names
-- Output: `ThemeSeed[]` with theme, description, hints
-- Supports JSON and CSV seed file formats
-
-### Phase 1: Discovery
-- Single AI session with MCP tools (grep, glob, view)
-- Large repos (3000+ files): multi-round or iterative breadth-first using seeds
-- Output: `ComponentGraph` with `ProjectInfo`, `ComponentInfo[]`, `CategoryInfo[]`, optional `DomainInfo[]`
-- Intermediate results cached for crash recovery
-
-### Phase 2: Consolidation
-- Rule-based: merges components in same directory
-- AI-assisted: semantic grouping of related components
-- Skip with `--no-cluster`
-
-### Phase 3: Analysis
-- Per-component deep analysis with MCP tools and concurrency control
-- Incremental: only re-analyzes components whose files changed (git-hash caching)
-- Output: `ComponentAnalysis[]` with API surface, patterns, integration points
-
-### Phase 4: Writing
-- Per-component article generation from analysis
-- Reduce/synthesis for overview and cross-cutting articles
-- File writer outputs markdown organized by domain/category
-
-### Phase 5: Website
-- Static HTML with navigation, themes (light/dark/auto)
-- Mermaid diagram zoom/pan support
-- Customizable CSS and client-side JavaScript
+- **0 · Seeds** (optional) — AI + MCP tools scan for key themes/domains, falling back to
+  top-level directory names. Outputs `ThemeSeed[]` (theme, description, hints); seed files are
+  JSON or CSV.
+- **1 · Discovery** — one AI session with MCP tools (grep, glob, view); 3000+-file repos use
+  multi-round or iterative breadth-first discovery seeded by Phase 0. Outputs `ComponentGraph`
+  (`ProjectInfo`, `ComponentInfo[]`, `CategoryInfo[]`, optional `DomainInfo[]`), caching
+  intermediates for crash recovery.
+- **2 · Consolidation** — rule-based merge of same-directory components plus AI semantic
+  grouping; skipped by `--no-cluster`.
+- **3 · Analysis** — per-component analysis with MCP tools under concurrency control; git-hash
+  caching re-analyzes only changed components. Outputs `ComponentAnalysis[]`.
+- **4 · Writing** — per-component articles plus reduce/synthesis for overview and cross-cutting
+  articles; the file writer organizes markdown by domain/category.
+- **5 · Website** — static HTML with navigation, light/dark/auto themes, Mermaid zoom/pan, and
+  customizable CSS/client JS.
 
 ## Core Concepts
 
 | Concept | Level | Description |
 |---------|-------|-------------|
-| **Component** | Smallest unit | A code directory/unit with specific purpose. Always present. |
-| **Domain** | Structural grouping | Top-level directory regions. Only for large repos (3000+ files). |
-| **Theme** | Cross-cutting | User-defined concerns spanning multiple components. |
-
-### Hierarchy
+| **Component** | Smallest unit | A code directory/unit with a specific purpose. Always present |
+| **Domain** | Structural grouping | Top-level directory regions; large repos (3000+ files) only |
+| **Theme** | Cross-cutting | User-defined concerns spanning multiple components |
 
 ```
 ComponentGraph
@@ -76,24 +59,19 @@ ComponentGraph
 
 ## Theme Pipeline
 
-`deep-wiki theme` runs: Probe → Outline → Analysis → Articles → File Writing & Wiki Integration → optional Website Regeneration.
-
-Modules in `src/theme/`:
-- `coverage-checker.ts` — loads `module-graph.json`, identifies gaps
-- `theme-probe.ts` — single-theme probe using iterative discovery
-- `outline-generator.ts` — structured outline (sub-articles list)
-- `theme-analysis.ts` — cross-cutting concern analysis
-- `article-generator.ts` — individual article generation
-- `file-writer.ts` — writes to wiki output directory
-- `wiki-integrator.ts` — updates `module-graph.json`, adds cross-links
+`deep-wiki theme` runs Probe → Outline → Analysis → Articles → File Writing & Wiki Integration →
+optional Website Regeneration. Modules in `src/theme/`: `coverage-checker.ts` (loads
+`module-graph.json`, finds gaps), `theme-probe.ts` (iterative single-theme probe),
+`outline-generator.ts` (sub-article outline), `theme-analysis.ts`, `article-generator.ts`,
+`file-writer.ts` (writes into the wiki output directory), and `wiki-integrator.ts` (updates
+`module-graph.json`, adds cross-links).
 
 ## Caching
 
-- Git HEAD hash-based invalidation
-- Per-phase: seeds, discovery, consolidation, analysis, articles
-- Shared cache utilities: atomic writes (temp + rename), generic read with validation, batch scan
-- Incremental re-analysis: only changed components
-- `--force` bypasses all; `--use-cache` ignores hash; `--phase N` skips earlier phases
+Invalidation keys off the git HEAD hash, per phase (seeds, discovery, consolidation, analysis,
+articles). Shared cache utilities provide atomic writes (temp + rename), generic read with
+validation, and batch scan; analysis is incremental over changed components. `--force` bypasses
+all caches, `--use-cache` ignores the hash, `--phase N` skips earlier phases.
 
 ## Key Types
 
@@ -130,24 +108,9 @@ interface ComponentAnalysis {
 
 ## Package Structure
 
-```
-packages/deep-wiki/
-├── src/
-│   ├── index.ts, cli.ts, types.ts, schemas.ts
-│   ├── ai-invoker.ts, logger.ts, usage-tracker.ts, config-loader.ts
-│   ├── commands/       # CLI commands + phase runners
-│   ├── seeds/          # Theme seed generation
-│   ├── discovery/      # Component graph discovery
-│   ├── consolidation/  # Component merging
-│   ├── analysis/       # Per-component analysis
-│   ├── writing/        # Article generation + website
-│   ├── theme/          # Cross-cutting theme articles
-│   ├── utils/          # Error handling, git, AI parsing
-│   ├── rendering/      # Mermaid zoom/pan
-│   └── cache/          # Per-phase caching
-└── test/               # 64 Vitest test files
-```
-
-## Testing
-
-64 Vitest test files covering all phases, theme module, cache, commands, rendering. Run with `npm run test:run` in `packages/deep-wiki/`.
+`packages/deep-wiki/src/` holds `index.ts`, `cli.ts`, `types.ts`, `schemas.ts`,
+`ai-invoker.ts`, `logger.ts`, `usage-tracker.ts`, `config-loader.ts`, and one directory per
+stage: `commands/` (CLI + phase runners), `seeds/`, `discovery/`, `consolidation/`,
+`analysis/`, `writing/` (articles + website), `theme/`, `utils/` (errors, git, AI parsing),
+`rendering/` (Mermaid zoom/pan), and `cache/`. Vitest tests live in
+`packages/deep-wiki/test/`; run `npm run test:run` in that package.

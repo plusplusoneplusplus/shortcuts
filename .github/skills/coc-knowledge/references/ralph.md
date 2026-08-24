@@ -1,20 +1,18 @@
 # Ralph
 
-Ralph is a CoC server feature for iterative AI execution with a small
-file-backed session journal. The session store lives in
+Ralph is a CoC server feature for iterative AI execution backed by a small
+file-based session journal. The session store is
 `packages/coc/src/server/ralph/ralph-session-store.ts`.
-Portable Ralph contracts and pure helpers live in
-`@plusplusoneplusplus/coc-workflow/ralph`, including session/final-check record
-types, signal parsing, progress-section parsing/formatting, iteration prompt
-building, final-check prompt building, final-check result parsing,
-final-check progress-section formatting, and pure iteration/final-check
-action-decision intents. The CoC server owns all side effects: queue tasks,
-process metadata, WebSocket events, repo-scoped path resolution, and filesystem
-persistence.
+
+Portable contracts and pure helpers live in `@plusplusoneplusplus/coc-workflow/ralph`:
+session/final-check/submit record types, signal parsing, progress-section
+parsing/formatting, iteration/final-check/submit prompt builders, result parsers, and
+pure action-decision intents. The CoC server owns all side effects — queue tasks,
+process metadata, WebSocket events, repo-scoped path resolution, filesystem writes.
 
 ## Session Journal
 
-Each Ralph session owns a journal directory under the repo data directory:
+Each session owns a journal directory under the repo data directory:
 
 ```text
 ~/.coc/repos/<workspaceId>/ralph-sessions/<sessionId>/
@@ -23,25 +21,22 @@ Each Ralph session owns a journal directory under the repo data directory:
   context.md      # agent-owned living context map, created by the agent
 ```
 
-`session.json` is a `RalphSessionRecord` from
-`@plusplusoneplusplus/coc-workflow/ralph` (re-exported by
-`packages/coc/src/server/ralph/types.ts` for CoC compatibility). It includes `sessionId`,
-`workspaceId`, `originalGoal`, `maxIterations`, `currentIteration`, `phase`
-(`executing`, `complete`, or `failed`), `startedAt`, and an `iterations[]`
-array. Each iteration records at least `iteration`, `signal`, `startedAt`, and
-optionally `processId` and `completedAt`. Non-worktree sessions also carry an
-optional `baselineSha` — the checkout's HEAD captured at session creation
-(`captureRalphBaselineSha` in `packages/coc/src/server/ralph/capture-baseline-sha.ts`,
-best-effort: absent when no directory is known or git fails) so later
-automation can compute the session's `baselineSha..HEAD` commit range.
-`initSession` only applies it on first creation, so continue/resume/new-loop
-never overwrite it; worktree sessions record `worktree.baseSha` instead. All
-five creation paths capture it: ralph-launch, ralph-start, promote-to-ralph,
-work-item Ralph runs (reusing `headBefore` when supplied), and Ralph schedules
-(only when `schedule.params.workingDirectory` is set).
+`session.json` is a `RalphSessionRecord` (re-exported for CoC by
+`packages/coc/src/server/ralph/types.ts`): `sessionId`, `workspaceId`, `originalGoal`,
+`maxIterations`, `currentIteration`, `phase` (`executing` | `complete` | `failed`),
+`startedAt`, and `iterations[]` (each with `iteration`, `signal`, `startedAt`, optional
+`processId`/`completedAt`), plus optional `worktree`, `finalChecks`, and `submits[]`.
 
-`progress.md` starts with a small header from `initSession(...)`. Every
-iteration appends a Markdown block:
+Non-worktree sessions also carry optional `baselineSha` — the checkout HEAD captured at
+creation by `captureRalphBaselineSha` (`capture-baseline-sha.ts`, best-effort: absent
+when no directory is known or git fails) so automation can compute `baselineSha..HEAD`.
+`initSession` applies it on first creation only, so continue/resume/new-loop never
+overwrite it; worktree sessions record `worktree.baseSha` instead. All five creation
+paths capture it: ralph-launch, ralph-start, promote-to-ralph, work-item Ralph runs
+(reusing `headBefore` when supplied), and Ralph schedules (only when
+`schedule.params.workingDirectory` is set).
+
+`progress.md` starts with a header from `initSession(...)`. Each iteration appends:
 
 ```text
 ## Iteration <N> - <SIGNAL> - <ISO_TIMESTAMP>
@@ -51,533 +46,86 @@ Remaining: <what still has to happen, or "none">
 Findings: <what was newly learned this iteration>
 ```
 
-`SIGNAL` is one of `RALPH_NEXT`, `RALPH_COMPLETE`, or `NONE`. Response parsing
-recognizes standalone signal tokens and valid adjacent signal-token runs such as
-`RALPH_COMPLETERALPH_COMPLETE`, while rejecting arbitrary suffixes such as
-`RALPH_NEXTEND`. The writer uses an em dash in generated headings; the parser
-also accepts a plain hyphen separator. The progress-section parser only
-recognizes iteration headings and stores the section body opaquely, so labels
-such as `Files:`, `Decisions:`, `Remaining:`, and `Findings:` do not affect
-signal extraction.
+`SIGNAL` is `RALPH_NEXT`, `RALPH_COMPLETE`, or `NONE`. Parsing accepts standalone signal
+tokens and valid adjacent runs (`RALPH_COMPLETERALPH_COMPLETE`) but rejects arbitrary
+suffixes (`RALPH_NEXTEND`). The writer emits an em dash separator in headings; the parser
+also accepts a plain hyphen. The section parser recognizes only iteration headings and
+stores the body opaquely, so the `Files:`/`Decisions:`/`Remaining:`/`Findings:` labels do
+not affect signal extraction.
 
-`context.md` is a sibling file owned by the Ralph agent. The store resolves its
-path with `getContextPath(...)` and reads it with `readContext(...)` for
-diagnostics and tests; a missing file reads as an empty string. The server does
-not create, derive, parse, compact, or rewrite `context.md`. Ralph iteration
-prompts surface the path so the agent reads it before `progress.md` and rewrites
-it at the end of each iteration as a concise, current codebase map.
+`context.md` is owned by the agent. The store resolves it with `getContextPath(...)` and
+reads it with `readContext(...)` for diagnostics and tests; a missing file reads as an
+empty string. The server never creates, derives, parses, compacts, or rewrites it.
 
 ## Writer Protocol
 
-The Ralph executor is the only writer. It must:
+The Ralph executor is the only writer. It calls `initSession(workspaceId, sessionId, ...)`
+once at session start (idempotent), then per iteration `appendProgressSection(...)` with
+the iteration number, exit signal, timestamp, and AI summary body, and
+`updateSessionRecord(...)` to bump `currentIteration`, append to `iterations[]`, and set
+`phase` on terminal signals.
 
-1. Call `RalphSessionStore.initSession(workspaceId, sessionId, ...)` once when
-   the session starts. The call is idempotent.
-2. After each iteration, call `appendProgressSection(...)` with the iteration
-   number, exit signal, timestamp, and AI-produced summary body.
-3. After each iteration, call `updateSessionRecord(...)` to bump
-   `currentIteration`, append to `iterations[]`, and update `phase` for
-   terminal signals.
+After every successful `session.json` write the store notifies a module-level,
+dataDir-keyed listener (`registerRalphSessionChangeListener`). The server registers one
+listener at startup that projects the record into the generic task-group registry
+(`syncRalphSessionToTaskGroup`): groupId = sessionId, type `ralph`, children = iterations
+(role `iteration`) and final checks (role `final-check`). Iteration and final-check queue
+tasks also carry `payload.context.taskGroup` alongside `context.ralph`.
+`listSessionIds(workspaceId)` enumerates persisted session directories for registry
+backfill. Listener errors are swallowed so registry sync never breaks persistence.
 
-After every successful `session.json` write (`initSession` and
-`updateSessionRecord`), the store notifies a module-level, dataDir-keyed
-session-change listener (`registerRalphSessionChangeListener`). The server
-registers one listener at startup that projects the record into the generic
-task-group registry (`syncRalphSessionToTaskGroup`): groupId = sessionId,
-type `ralph`, children = iterations (role `iteration`) and final checks (role
-`final-check`). Iteration and final-check queue tasks also carry the generic
-`payload.context.taskGroup` tag alongside `context.ralph`.
-`listSessionIds(workspaceId)` enumerates persisted session directories (used
-by the registry backfill). Listener errors are swallowed — registry sync never
-breaks session persistence.
-
-Readers, including REST handlers and the SPA `useRalphSessionView` hook, treat
-`session.json` and `progress.md` as source of truth and never mutate them. The
-session read route also returns raw text for every direct file in the session
-folder as `files: { name, content }[]`, sorted alphabetically by filename, plus
-optional transient `resumeDefaults` recovered from the latest iteration process
-for stuck-session Resume controls, plus `hasInFlightTask` (computed via
-`findInFlightRalphTask`) telling the SPA whether a queued/running Ralph task
-still backs the session. A missing journal is surfaced as `null` or
-empty state. A partially written `session.json` is tolerated as `null`; the next
-mutator pass rewrites it.
+Readers — REST handlers and the SPA `useRalphSessionView` hook — treat `session.json` and
+`progress.md` as source of truth and never mutate them. The session read route also
+returns raw text for every direct file in the session folder as
+`files: { name, content }[]` sorted by filename, plus optional transient `resumeDefaults`
+recovered from the latest iteration process, plus `hasInFlightTask` (from
+`findInFlightRalphTask`). A missing journal surfaces as `null` or empty state; a partially
+written `session.json` is tolerated as `null` and rewritten by the next mutator.
 
 ## Size Cap
 
-`appendProgressSection(...)` enforces a defensive 10 MB hard cap on
-`progress.md`. If the file exceeds the cap, the store keeps only the last
-approximately 500 KB of content and prepends a `# Ralph Session (truncated)`
-banner with the original byte size.
-
-The cap is intentionally lossy. There is no compaction pass or historical
-archive, so runaway sessions remain bounded at the cost of older journal
-content.
+`appendProgressSection(...)` enforces a defensive 10 MB hard cap on `progress.md`. Past
+the cap the store keeps roughly the last 500 KB and prepends a
+`# Ralph Session (truncated)` banner with the original byte size. The cap is intentionally
+lossy: no compaction pass and no archive, so runaway sessions stay bounded at the cost of
+older journal content.
 
 ## Per-Iteration User Prompt
 
-Each iteration's user prompt is built by `buildRalphIterationPrompt(...)` from
-`@plusplusoneplusplus/coc-workflow/ralph` (with a CoC compatibility re-export in
-`packages/coc/src/server/ralph/iteration-prompt.ts`). The prompt begins with the
-`ultra-ralph` execution-section skill pointer, then surfaces durable session
-state by path only: `Progress journal: <progress.md>`, optional
-`Context map: <context.md>` with read-first/rewrite-at-end instructions, and the
-iteration counter. The `originalGoal` is embedded last in a `<goal>` block.
+`buildRalphIterationPrompt(...)` (portable; CoC re-export in
+`packages/coc/src/server/ralph/iteration-prompt.ts`) builds each iteration's user prompt.
+It opens with the `ultra-ralph` execution-section skill pointer, then surfaces durable
+state **by path only** — `Progress journal: <progress.md>`, optional
+`Context map: <context.md>` with read-first/rewrite-at-end instructions, and the iteration
+counter — and embeds `originalGoal` last in a `<goal>` block. The agent reads the files
+itself; content is never injected.
 
-The prompt never injects `progress.md` or `context.md` content. The agent reads
-those files from the surfaced paths. The prompt must not name repository-specific
-implementation skills, set `context.skills`, or begin with `<available_skills>`,
-`<additional_tool_instructions>`, or `<skill-context`, since the retriever skips
-messages with those prefixes when locating the user query.
+The prompt must not name repository-specific implementation skills, set `context.skills`,
+or begin with `<available_skills>`, `<additional_tool_instructions>`, or `<skill-context`,
+since the retriever skips messages with those prefixes when locating the user query.
 
-See `docs/spec-slices.md` for the full slice template, decision-tagging
-convention, and ready-for-Ralph checklist that the bundled `grill-me` skill
-produces.
+See `docs/spec-slices.md` for the slice template, decision-tagging convention, and
+ready-for-Ralph checklist the bundled `grill-me` skill produces.
 
 ## Manual Verification Only Guard
 
-`RALPH_NEXT` means concrete autonomous implementation or validation work remains.
-When a below-cap iteration emits `RALPH_NEXT` but its `Remaining:` progress is
-explicitly manual-verification-only, final-check-only, blocked on unavailable
-credentials, or otherwise user-only, the portable Ralph decision helper classifies
-it as `manualVerificationOnly`. The CoC adapter records the iteration as
-complete with `terminalReason='MANUAL_VERIFICATION_ONLY'`, does not enqueue
-another implementation iteration, and enters the same final-check enqueue path as
-`RALPH_COMPLETE`. The dashboard labels this durable session state as
+`RALPH_NEXT` means concrete autonomous implementation or validation work remains. When a
+below-cap iteration emits `RALPH_NEXT` but its `Remaining:` text is explicitly
+manual-verification-only, final-check-only, blocked on unavailable credentials, or
+otherwise user-only, the portable decision helper classifies it as
+`manualVerificationOnly`. The CoC adapter records the iteration complete with
+`terminalReason='MANUAL_VERIFICATION_ONLY'`, enqueues no further iteration, and enters the
+same final-check enqueue path as `RALPH_COMPLETE`. The dashboard labels this state
 "Manual verification needed"; it is not resumable via Continue loop.
 
-The bundled `ultra-ralph` execution instructions require agents to emit
-`RALPH_COMPLETE` directly when all autonomous code, test, build, documentation,
-and automatable validation work is done, even if manual demos, product review, or
-human-only verification still need user follow-up. The server-side guard is only
-a safety net for stale or non-compliant `RALPH_NEXT` responses.
+The bundled `ultra-ralph` instructions require agents to emit `RALPH_COMPLETE` directly
+once all autonomous code, test, build, documentation, and automatable validation work is
+done, even if manual demos or human-only verification remain. The server guard is only a
+safety net for non-compliant `RALPH_NEXT` responses.
 
-## Direct Goal Launch
+## Related files
 
-`POST /api/ralph-launch` (`packages/coc/src/server/routes/ralph-launch-routes.ts`)
-starts an execution-phase Ralph session directly from an already-written goal
-spec. The SPA `shared/RalphLaunchDialog.tsx` is shared by goal-file launches
-from Notes and direct-goal launches from New Chat. Notes render a read-only
-preview with modal-owned `ModalJobAiControls`; New Chat renders an editable
-review dialog prefilled from the composer and passes its current
-workspace-scoped provider/model/reasoning-effort selection into the launch. The
-New Chat direct-goal path sends goal text only: attachments and images block
-confirmation, no grilling chat is enqueued, and the pasted goal is not saved as
-a note. The dialog includes the shared Ralph execution repository selector from
-`shared/RalphExecutionRepoSelector.tsx`; it lists registered local workspaces and
-online remote-CoC workspaces, shows remote load warnings without blocking local
-launches, and posts `/api/ralph-launch` to the selected target server with that
-target's `workspaceId`. `folderPath` is the source/context folder for the goal
-spec, while `workingDirectory` is an optional explicit execution directory; both
-are sent only when the selected target is the source workspace/server. When they
-are omitted, the multi-repo queue router resolves the execution root from
-`workspaceId`. The route validates optional `provider` and `reasoningEffort`
-inputs and carries them, alongside optional `config.model`, onto the first
-queued Ralph execution task.
-
-`POST /api/processes/:id/ralph-start`
-(`packages/coc/src/server/routes/queue-ralph-routes.ts`) starts execution from
-a completed grilling-phase session. The SPA `features/chat/RalphStartPanel.tsx`
-uses the same execution repository selector and `ModalJobAiControls` as direct
-launch. If the selected target is the same workspace/server as the completed
-grilling process, it posts to `/api/processes/:id/ralph-start` so the
-grilling-phase Ralph session is reused. If the selected target differs, it posts
-the reviewed `goalSpec` to that target server's `/api/ralph-launch` endpoint and
-mints a fresh execution session. Any launch that hits `/api/ralph-launch` (direct
-launch, or a grilling-phase launch into a different/remote target) persists a
-`ralphLaunchedSession` pointer onto the source chat's process metadata so the
-panel's closed banner can recover and render that session's live executing/
-complete status on reopen and reload. The start route validates the resolved provider
-plus optional `config.model`/`config.reasoningEffort` overrides and applies them
-only to the first queued execution task.
-
-Work Item execution can also start a Ralph loop through
-`POST /api/workspaces/:workspaceId/work-items/:itemId/execute` with
-`executionMode='ralph'`. That path is gated by `workItems.workflow.enabled` and
-limited to local-only `work-item` and `goal` items. Local-only Goals default to
-Ralph when the mode is omitted; Work Items default to one-shot execution. The
-executor initializes the repo-scoped Ralph journal, enqueues the first iteration
-with the standard Ralph task shape, preserves the top-level `payload.workItemId`
-for Work Item completion hooks, and records `ralphSessionId`, selected content
-version, execution mode, skills, and AI settings in the Work Item execution
-history.
-
-## Worktree Execution Mode
-
-Ralph launches can opt into running inside an isolated per-run Git worktree so
-autonomous coding never touches the workspace's current checkout. The mode is
-gated by the disabled-by-default `features.gitWorktreeExecution` flag; when off,
-every path below is bypassed and behavior is unchanged.
-
-The opt-in travels as `worktree: { enabled: true, baseRef? }` on
-`POST /api/ralph-launch`, `POST /api/processes/:id/ralph-start`, and the Work
-Item `execute` route with `executionMode='ralph'`. The shared helper
-`packages/coc/src/server/ralph/ralph-worktree-launch.ts`
-(`createRalphLaunchWorktree` + `attachWorktreeToRalphSession`) flag-gates,
-resolves the **target server's own** workspace checkout root
-(`processStore.getWorkspaces().find(id).rootPath` — the server always creates the
-worktree for its own repo; remoteness is a client routing concern gated by the
-runtime capability flag), and calls `GitWorktreeService.createWorktree` **before**
-`initSession`/enqueue so a Git failure (bad `baseRef`, non-Git folder) aborts the
-launch before the first iteration is queued and before any session state changes.
-Default base is the checkout's current `HEAD`; a supplied `baseRef` must resolve
-locally. Uncommitted source changes are excluded and surfaced as a warning.
-
-The resolved `WorktreeMetadata` is persisted onto the Ralph session record
-(`RalphSessionRecord.worktree`), carried in the dependency-free `coc-workflow`
-package as the structural mirror `RalphWorktreeMetadata`. The first iteration's
-task is enqueued with `payload.workingDirectory` set to the worktree path; the
-queue-executor bridge threads that directory into every later iteration and the
-final check automatically. Resume/continue/new-loop recover it through
-`recoverIterationPaths` in `ralph-route-utils.ts`, which **prefers**
-`record.worktree.path` when `status === 'active'` so a stuck or extended session
-keeps running in the worktree rather than falling back to the source checkout.
-
-Cleanup is manual and non-destructive — see the worktree routes in
-[rest-api.md](rest-api.md#git-worktrees) and the chip/list UI in
-[dashboard-spa.md](dashboard-spa.md); the worktree is preserved after the session
-completes until the user explicitly removes it, and the generated branch is never
-deleted.
-
-## Promote Ask-Mode Chat to Ralph
-
-A completed ask-mode chat can be promoted to a Ralph session in place via
-`POST /api/processes/:id/promote-to-ralph`
-(`packages/coc/src/server/routes/ralph-promote-routes.ts`).
-
-The endpoint:
-
-1. Attaches a `grilling`-phase Ralph context to the existing process.
-2. When the user typed guidance (`extraGuidance`), persists it as a
-   `displayOnly: true` **user** turn so it renders as their own message bubble
-   just before the synthesized `## Goal` turn. `displayOnly` keeps it out of
-   model replay history (`buildConversationHistoryContext`) — the same guidance
-   is already embedded in the synthesis prompt, so replaying it would
-   double-count it. Best-effort: a failed append does not fail the promotion,
-   and empty/whitespace guidance appends no turn.
-3. Enqueues a synthesis follow-up turn with `mode=ask`,
-   `context.skills=['grill-me']`, `context.ralph.phase='grilling'`, carrying
-   the prompt produced by `buildRalphSynthesisPrompt`
-   (`packages/coc/src/server/ralph/synthesis-prompt.ts`).
-
-The SPA shows a **"Promote to Ralph"** pill in the follow-up area for eligible
-chats and calls this endpoint via `coc-client`'s `processes.promoteToRalph`
-helper.
-
-### Grilling-Phase Prompt Injection
-
-During the `grilling` phase, `chat-base-executor` prepends a directive to the
-**user message** (never the system message) via `buildRalphGrillSuffix(...)`
-(`packages/coc/src/server/executors/chat-base-executor.ts`). It carries the
-`ultra-ralph` grill-section pointer, the `## Goal` machine contract, and — when
-an `AutoFolderContext` resolves — an explicit goal-file save-location directive
-pointing at the repo's `notes/Plans` root (`~/.coc/repos/<workspaceId>/notes/Plans/`)
-with a `*.goal.md` filename. This keeps the goal file out of the repository
-working tree and lets the Notes/scratchpad UI open and edit it (`isGoalFile`
-detects `*.goal.md`). The generic bundled `grill-me` skill stays host-agnostic:
-it defers to whatever save location the host supplies and only falls back to a
-working-directory-relative `Plans/<area>/<feature>/` when none is given.
-
-The disabled-by-default `features.ralphMultiAgentGrill` gate is editable from
-Admin -> Configure -> Features and enables multi-agent grilling only when the
-task context also carries `context.ralph.grill.enabled=true`. The SPA exposes a
-"Question planning setup" card on New Chat Ralph grilling and promoted ask-mode
-Ralph sessions while the flag is enabled; the card lets users choose Light,
-Standard (default), or Deep depth. When effort levels are enabled, each role
-inherits the composer's concrete provider and selected effort tier by default,
-with optional per-role provider plus effort-tier overrides behind collapsed role
-rows; the compact summary shows the inherited defaults and override count. The
-panel resolves each role's provider/tier client-side to concrete `model`,
-`reasoningEffort`, and `effortTier` fields; providers without tier mode use that
-provider's own default model and reasoning-effort preference. When effort levels
-are disabled, the card shows depth only and all roles inherit the composer AI
-settings.
-Promotion requests accept an optional `grill` payload, sanitize it on the
-server, and mirror it into `metadata.ralph.grill` plus the queued synthesis task
-context. The planning engine lives in the
-`packages/coc/src/server/ralph/grill-*.ts` module family, with
-`grill-planning.ts` as the facade that owns round orchestration and re-exports
-the public API: `grill-planning-types` (contracts), `grill-agent-config`
-(role/depth definitions), `grill-setup` (setup normalization and provenance),
-`grill-progress`, `grill-prompts`, `grill-response-parser`,
-`grill-question-consolidator` (pure dedupe/conflict), `grill-agent-runner` (SDK
-invocation), `grill-termination`, `grill-process-state`, `grill-plan-prompt`,
-and `grill-ask-user-metadata`. Together they define the depth role
-sets, per-agent provider/tier selection shape, provenance labels (`Role Agent ·
-provider/tier` when a tier applies, falling back to `Role Agent ·
-provider/model`), context normalization, strict JSON candidate-question parsing,
-and the preflight runner that invokes one SDK request per selected grill agent
-before the main grilling turn. Each agent uses its own resolved model and
-reasoning effort, falling back to the enclosing task defaults only when the
-agent does not specify them. Successful first-round runs record the SDK
-`sessionId` returned by that role agent; failed or unavailable agents record no
-session ID. On later grilling turns, the executor passes the retained
-`ProcessSessionState.ralphGrill` state back into the planner, and role agents
-with stored session IDs are resumed with the user's latest answers instead of a
-fresh original-request prompt. The executor folds each plan into in-memory
-`ProcessSessionState` as `ralphGrill` state, preserving `roundsRun`, per-role
-status/session IDs, cumulative selected user-facing questions, and compact
-warnings across chat-turn cleanup for the same process. Failed, unavailable, or
-first-round empty agents produce warnings and do not block the main consolidated
-grilling turn. If an SDK resume returns a different session ID, the planner
-treats native history as unavailable, retries that role as a fresh agent seeded
-with the accumulated original request, user answer turns, and already asked
-questions, and adds a compact reduced-fidelity warning to the planning/progress
-metadata. Planning/progress metadata includes the current round number and
-three-round cap so the live and consolidated question-planning cards can show
-"Round N of up to 3". Empty responses from resumed agents are treated as "no more
-follow-ups" signals; when all resumed agents are empty, when the user sends a
-compact stop signal such as "enough", or when the named three-round cap is
-already reached, the planner returns a terminal result and the executor removes
-the `ask_user` tool from that main turn so synthesis proceeds without another
-question batch. The planner
-consolidates candidate questions before the main turn: exact duplicates and
-conservative semantic duplicates merge with combined provenance, recognized
-conflicts become one select-style decision question, and follow-up-round
-candidates that exact- or semantic-match the cumulative already-asked question
-set are dropped so the user never sees a repeated question. Duplicate-only agent
-contributions are reported as compact warnings, and the selected question set
-plus consolidation summary are appended to the main user prompt. The appended
-coverage-summary requirement includes a rounds-run line. While those
-isolated agents run, the executor emits transient `ralph-grill-planning` SSE
-progress so the SPA can show an immediate "Question planning" status card; raw
-candidate-question state is not persisted for that interim UI. When the model
-emits the consolidated `ask_user` batch, the executor enriches the persisted/SSE
-question payloads with the preflight planning summary, per-question provenance,
-and consolidation metadata. `AskUserInline` renders that metadata as a compact
-"Question planning" card, grouped role sections, provenance chips, and
-reduced-coverage warnings while preserving the normal single-form
-answer/skip/defer submission flow. Because the provenance chip is rendered from
-attached metadata, the grilling prompt instructs the model not to embed the
-provenance label in the visible question text; it is kept only in the final
-`## Agent Coverage Summary`. The main grilling prompt carries an explicit
-final-goal contract requiring a `## Agent Coverage Summary` section with the
-selected depth, provider/tier or provider/model used per agent,
-warnings/reduced-coverage notes, and dedupe/conflict outcomes, plus the normal
-autonomy-ready AC/Definition-of-Done, constraints, out-of-scope, and references
-sections. When the flag is off or the context lacks an enabled grill setup,
-existing single-agent grilling prompts and plain `ask_user` rendering remain
-unchanged.
-
-Work Item Goal grilling passes `context.workItemGoalGrilling`, which makes
-`buildRalphGrillSuffix(...)` omit the Notes goal-file directive and tell the
-model to emit the final `## Goal` spec in chat for immutable Work Item content
-versioning instead. When that bound grilling chat completes and the durable Work
-Items workflow flag is still enabled, the queue completion hook extracts the
-final `## Goal` block from the assistant turn and saves it on the local-only
-Goal as the next AI-authored immutable content version, moving draft/planning
-Goals to `readyToExecute`.
-
-## Resume Routes
-
-Session resume endpoints share infrastructure in
-`packages/coc/src/server/routes/ralph-route-utils.ts`.
-`/continue`, `/new-loop`, and `/resume` all use it for in-flight Ralph task
-scans, `additionalIterations` validation/default resolution, resume hard caps,
-and best-effort recovery of `workingDirectory` / `folderPath` from the latest
-iteration process. Final-check gap-fix loops use the same additional-iteration
-resolver so per-repo `maxRalphIterations` fallback stays consistent.
-
-### Resume Stuck Executing Sessions
-
-`POST /api/workspaces/:workspaceId/ralph-sessions/:sessionId/resume`
-(`packages/coc/src/server/routes/ralph-resume-routes.ts`) handles sessions
-stuck in `phase=executing` with no in-flight task — the typical outcome when
-the last iteration's task failed/was cancelled or the server crashed mid-loop.
-
-Eligibility: `phase === 'executing'` AND `currentIteration < maxIterations`
-AND no queued/running task for this `sessionId`.
-
-The endpoint appends a resume marker to `progress.md` (via
-`appendResumeMarker`) and enqueues iteration `currentIteration + 1` without
-changing `maxIterations`. If the session has reached its cap, the endpoint
-returns 409 directing the user to `/continue` instead.
-
-The request body may include the same per-task AI controls accepted by
-`/api/processes/:id/ralph-start` and `/api/ralph-launch`: optional `provider`,
-`config.model`, `config.reasoningEffort`, `config.effortTier`, and
-`autoProviderRouting`. Explicit values apply only to the newly enqueued resumed
-iteration. Omitted values continue to use the recovered prior
-provider/model/reasoning-effort when recoverable, except that an explicit
-`effortTier` suppresses recovered model/reasoning-effort so tier expansion can
-select the resumed iteration's concrete model and effort.
-
-The SPA `RalphWorkflowPane` shows a "Resume" button (amber) when it detects
-a stuck executing session: `phase === 'executing'` and the read route's
-`hasInFlightTask === false`. Gating on the server-computed in-flight signal
-rather than the iteration counter covers a first-iteration cancellation
-(`currentIteration === 0`, `iterations === []`) without falsely offering Resume
-on a freshly launched session whose first iteration is still running; the
-`=== false` check keeps Resume hidden when an older/remote server omits the
-field. Its confirmation panel renders shared `ModalJobAiControls`
-initialized from `resumeDefaults` when available; unchanged recovered defaults
-are omitted from the request so the route preserves prior settings, while
-changed or unrecovered defaults are sent through `resumeRalphSession()`.
-`coc-client` exposes `resumeRalphSession()`.
-
-### Continue a Completed Session
-
-`POST /api/workspaces/:workspaceId/ralph-sessions/:sessionId/continue`
-(`packages/coc/src/server/routes/ralph-continue-routes.ts`) extends a completed
-session (`terminalReason` `CAP_REACHED` or `NO_SIGNAL`) by `additionalIterations`
-and enqueues iteration `currentIteration + 1` on the same `sessionId`.
-
-Its request body accepts the same per-task AI controls as `/resume`: optional
-`provider`, `config.model`, `config.reasoningEffort`, `config.effortTier`, and
-`autoProviderRouting`, validated by the shared `parseRalphAiSelection`. The
-override/recovery merge is identical to resume — explicit values win, omitted
-values fall back to the recovered prior provider/model/reasoning-effort, and an
-explicit `effortTier` suppresses recovered model/reasoning-effort.
-
-The SPA `RalphWorkflowPane` "Continue loop" confirmation panel renders the same
-`ModalJobAiControls` (initialized from `resumeDefaults`); unchanged recovered
-defaults are omitted, changed/unrecovered selections are forwarded through
-`continueRalphSession()`. `coc-client` exposes `continueRalphSession()` taking a
-`RalphContinueRequest`.
-
-### Submit Session Commits as a PR
-
-`POST /api/workspaces/:workspaceId/ralph-sessions/:sessionId/submit-pr`
-(`packages/coc/src/server/routes/ralph-submit-routes.ts`) publishes a completed
-session's commits as a GitHub pull request by enqueuing an autopilot submit job
-attached to the session (same attached-job pattern as final-check). It takes no
-request body. Allowed for ANY `phase === 'complete'` session regardless of
-`terminalReason`; guards return 409 when the session is not complete, when a
-Ralph task for the session is in flight (`findInFlightRalphTask`), or when a
-prior submit is still `queued`/`running`; 404 for an unknown session. Repeat
-submits after a terminal submit are allowed and increment `submitIndex`.
-Response: `{ submitted: true, sessionId, taskId, submitIndex }`.
-
-Each submit persists a `RalphSubmitRecord` (`submitIndex`, `taskId`,
-`processId`, `startedAt`, `completedAt`, `status`
-`queued|running|completed|failed`, `prUrl`, `prNumber`, `commitShas`, `error`)
-in a `submits[]` array on the session record via
-`RalphSessionStore.upsertSubmitRecord(...)`; legacy records without `submits`
-parse fine. The record type is portable
-(`@plusplusoneplusplus/coc-workflow/ralph`, re-exported by coc's
-`server/ralph/types.ts` barrel).
-
-Task construction and guards live in
-`packages/coc/src/server/ralph/enqueue-submit.ts` (mirrors
-`enqueue-final-check.ts`): `buildSubmitTaskPayload` enqueues a `mode='ralph'`
-chat with `context.ralph.submit = { kind: 'submit-pr', submitIndex }` and
-taskGroup role `submit-pr`, deliberately carrying no provider/model selection so
-workspace defaults apply. The prompt comes from the portable
-`buildRalphSubmitPrompt` (`@plusplusoneplusplus/coc-workflow/ralph`,
-`submit-prompt.ts`): determine commits via `baselineSha..HEAD` when the session
-has a baseline, else via a startedAt/completedAt time window cross-checked
-against `progress.md`; whole-session scope (all loops including gap-fix); invoke
-the `submit-commits-as-pr` skill with an explicit comma-separated SHA list; PR
-title/body from the goal plus a progress-journal summary, auto-merge on, not
-draft; never resolve cherry-pick conflicts (the skill aborts); end with a
-`RALPH_SUBMIT_RESULT` JSON block
-`{ status: 'submitted'|'failed', prUrl?, prNumber?, commitShas?, error? }`.
-
-On task completion the queue bridge routes `context.ralph.submit` completions to
-`handleSubmitCompletion` →
-`packages/coc/src/server/ralph/orchestrate-submit.ts`
-(`orchestrateSubmitCompletion`), which records the `processId`, parses the
-response with the tolerant portable `parseRalphSubmitResult`
-(`submit-result-parser.ts`, modeled on `parseFinalCheckResult`), and updates the
-persisted submit record: `submitted` → `completed` with
-`prUrl`/`prNumber`/`commitShas`; `failed` → `failed` with the agent's `error`;
-missing/malformed block → `failed` with `error: 'unparseable'`. `completedAt` is
-set on terminal updates and `upsertSubmitRecord` preserves the original
-`startedAt` on patches. A submit completion never enqueues further work. Server
-code never switches git branches — the only branch manipulation happens inside
-the submit skill's script.
-
-`coc-client` exposes `workspaces.submitRalphPr(workspaceId, sessionId)`
-(contract types in `src/contracts/workspaces.ts`, implementation next to
-`continueRalphSession` in `src/domains/workspaces.ts`): an empty-body POST to
-the submit-pr route returning the typed `RalphSubmitPrResponse`. The client
-`RalphSessionRecord` mirrors `baselineSha?` and `submits?: RalphSubmitRecord[]`
-so the dashboard can render submit nodes from the session read response.
-
-In the dashboard SPA, `RalphWorkflowPane` shows a `Submit PR` action in the
-header meta row for ANY `phase === 'complete'` session (any terminal reason).
-One click — no confirmation dialog — calls `workspaces.submitRalphPr` on the
-selected clone's server (container override `onSubmitPr` refreshes the view);
-the button is disabled while any submit record is `queued`/`running` or while
-the request is in flight, and an inline error surfaces a rejected request
-(e.g. a 409 guard). Each `RalphSubmitRecord` renders a `RalphSubmitNode`
-("PR submit #N") appended after all iteration/final-check timeline items in
-`submitIndex` order: completed nodes link the `prUrl` in a new tab, failed
-nodes show the `error` text, and a node with a recorded `processId` is
-clickable to open the submit chat (wired to the host process-id callback like
-final-check nodes). `useRalphSessionView` keeps polling a complete session
-while a submit is `queued`/`running` so node status updates live.
-
-## Scheduled Ralph Runs
-
-Prompt schedules with `mode='ralph'` seed a repo-scoped Ralph session before
-enqueueing the first iteration. The queued task carries `context.scheduleId`,
-`context.scheduleRunId`, and `context.ralph.sessionId`; continuation, final-check,
-and gap-fix tasks preserve the schedule context so the originating schedule run
-can stay active for the whole Ralph session.
-
-The queue bridge exposes an internal `ralphSessionComplete` callback in addition
-to broadcasting the dashboard WebSocket event. `ScheduleExecutor` uses that
-callback to finalize scheduled Ralph runs only when the session reaches a
-terminal reason. Queue failures or terminal final-check failure reasons mark the
-schedule run failed; clean, capped, or normal terminal reasons complete it.
-
-## Final Check Automation
-
-`orchestrateFinalCheck(...)` in
-`packages/coc/src/server/ralph/orchestrate-final-check.ts` applies the portable
-action intents returned by `decideRalphFinalCheckActions(...)` from
-`@plusplusoneplusplus/coc-workflow/ralph`: it appends the final-check result to
-`progress.md`, reads the session once, and persists a `RalphFinalCheckRecord`
-with shared base fields (`loopIndex`, `sourceIteration`, `taskId`, `processId`,
-`startedAt`, `completedAt`) plus outcome-specific metadata. The queue bridge
-similarly applies `decideRalphIterationActions(...)` intents for recording
-iterations, queueing continuations/final checks, and broadcasting terminal
-completion; CoC remains the only owner of queue payloads, process metadata,
-repo-scoped paths, WebSocket events, and filesystem writes.
-
-`decideRalphIterationActions(...)` derives an effective signal: when the response
-text carries no inline `RALPH_*` token, it recovers the agent's intent from the
-journal section the agent wrote for the current iteration. `orchestrate-iteration`
-supplies that section via `recentProgressSections`, which carry `iteration`,
-`signal`, and `body` and always include the current iteration's section (not just
-the trailing `-3` window). The recovered signal drives control flow and is the
-value recorded to `session.json`/`progress.md`, so a dropped `RALPH_COMPLETE`
-still enqueues final-check and a dropped `RALPH_NEXT` still continues the loop. An
-inline token stays authoritative when present (even if it disagrees with the
-journal); `NO_SIGNAL` stays terminal only when neither source carries a signal.
-
-All three Ralph task kinds — iteration, final-check and PR-submit — ride the same
-`RalphExecutor` and are told apart by `getRalphTaskKind(ctx)`
-(`packages/coc/src/server/ralph/task-kind.ts`), which reads `context.ralph` and
-returns `'iteration' | 'final-check' | 'submit'`. The executor rebuilds the user
-prompt from `buildRalphIterationPrompt` for `'iteration'` only; final-check and
-submit prompts (built at enqueue time by `buildFinalCheckPrompt` /
-`buildRalphSubmitPrompt`) pass through verbatim and get no context-map pointer.
-Repo instructions are `'ask'` for final-check and `'ralph'` for the other two —
-submit needs write access to push the branch and open the PR. `agentMode` is
-`'autopilot'` for every kind. The queue bridge routes completions off the same
-helper.
-
-Final-check tasks are still queued as Ralph chat tasks and still use autopilot
-capability, but `RalphExecutor` switches to validation-only system instructions
-when `context.ralph.finalCheck` is present. Those instructions allow inspection
-and read-only validation commands, forbid file edits/commits/state-changing
-tools, and require a `RALPH_FINAL_CHECK_RESULT` response instead of
-`RALPH_NEXT`/`RALPH_COMPLETE`.
-
-Terminal paths broadcast `ralph-session-complete`: clean checks use
-`reason='signal'`, cap-reached checks use `reason='cap'`, parse failures use
-`reason='final-check-failed'`, final-check setup failures use
-`reason='final-check-enqueue-failed'` or `reason='final-check-session-missing'`,
-gap-loop creation failures use `reason='final-check-gap-loop-start-failed'`,
-and gap-loop enqueue failures use `reason='final-check-gap-enqueue-failed'`. A
-successful gap-fix enqueue does not broadcast completion because the next loop
-continues the session.
-
-The SPA `RalphWorkflowPane` timeline surfaces these `RalphFinalCheckRecord`
-entries as distinct `Final check #<checkIndex>` nodes placed after their
-`sourceIteration`, and labels the gap-fix loop divider `Gap fix loop <N>` when a
-record reports `gapLoopStarted`/`gapLoopIndex`. This is display/navigation only —
-it reads already-persisted `finalChecks` from the session read route and adds no
-new persistence. The `coc-client` `RalphFinalCheckStatus` contract includes the
-persisted `queued` state.
+- [ralph-launch.md](ralph-launch.md) — goal launch, worktree execution mode, promoting an
+  ask-mode chat, grilling-phase prompt injection.
+- [ralph-lifecycle.md](ralph-lifecycle.md) — resume, continue, submit-as-PR, scheduled
+  runs, final-check automation.

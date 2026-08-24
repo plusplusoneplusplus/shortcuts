@@ -15,6 +15,7 @@ const mockDispatch = vi.fn();
 let mockAppState: any = { selectedRepoId: 'a', activeTab: 'repos', activeRepoSubTab: 'chats', notePathState: {} };
 let mockQueueState: any = { repoQueueMap: {} };
 let mockRepos: any[] = [];
+let mockRemoteGroupWorkspaces: any[] = [];
 let mockMyWorkEnabled = true;
 let mockMyLifeEnabled = true;
 
@@ -33,7 +34,7 @@ vi.mock('../../../src/server/spa/client/react/contexts/QueueContext', () => ({
     useQueue: () => ({ state: mockQueueState, dispatch: vi.fn() }),
 }));
 vi.mock('../../../src/server/spa/client/react/contexts/ReposContext', () => ({
-    useRepos: () => ({ repos: mockRepos, unseenCounts: {}, fetchRepos: vi.fn() }),
+    useRepos: () => ({ repos: mockRepos, unseenCounts: {}, fetchRepos: vi.fn(), remoteGroupWorkspaces: mockRemoteGroupWorkspaces }),
 }));
 vi.mock('../../../src/server/spa/client/react/hooks/feature-flags/useMyWorkEnabled', () => ({
     useMyWorkEnabled: () => mockMyWorkEnabled,
@@ -71,9 +72,10 @@ beforeEach(() => {
     mockSelectClone.mockReset();
     mockSwitchSubTab.mockReset();
     mockDispatch.mockReset();
-    mockAppState = { selectedRepoId: 'a', activeTab: 'repos', activeRepoSubTab: 'chats', notePathState: {} };
+    mockAppState = { selectedRepoId: 'a', activeTab: 'repos', activeRepoSubTab: 'chats', notePathState: {}, workspaces: [] };
     mockQueueState = { repoQueueMap: {} };
     mockRepos = [repo('a', 'shortcuts', SHORTCUTS), repo('b', 'shortcuts-2', SHORTCUTS), repo('c', 'forge', FORGE)];
+    mockRemoteGroupWorkspaces = [];
     mockMyWorkEnabled = true;
     mockMyLifeEnabled = true;
     location.hash = '';
@@ -120,26 +122,33 @@ describe('ScopeSlideSwitcher — segments and active scope', () => {
         expect(screen.getByTestId('scope-switcher').getAttribute('data-active-scope')).toBe('workspace');
     });
 
-    it('treats a selected repo group as a virtual scope: no segment active, no thumb target', () => {
-        // A repo group has no segment of its own — the workspace segment shows
-        // the remembered repo but must not read as active. (repo-group AC-02)
-        mockAppState = { ...mockAppState, selectedRepoId: 'group-frontend' };
+    it('treats a selected repo group as a scope owning the workspace segment', () => {
+        // The group takes the workspace segment over rather than leaving it on
+        // the remembered repo: the segment reads as selected, so the thumb sits
+        // under it, and the container still reports the distinct `group` scope.
+        mockAppState = { ...mockAppState, selectedRepoId: 'group-frontend', workspaces: [{ id: 'group-frontend', name: 'frontend' }] };
         render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
 
         expect(screen.getByTestId('scope-switcher').getAttribute('data-active-scope')).toBe('group');
-        expect(segment('workspace')!.getAttribute('aria-selected')).toBe('false');
+        expect(segment('workspace')!.getAttribute('aria-selected')).toBe('true');
         expect(segment('work')!.getAttribute('aria-selected')).toBe('false');
         expect(segment('life')!.getAttribute('aria-selected')).toBe('false');
     });
 
-    it('clicking the workspace chip body switches back to the remembered repo while a group is active', () => {
-        mockAppState = { ...mockAppState, selectedRepoId: 'group-frontend' };
+    it('does not switch back to the remembered repo from the chip body while a group is active', () => {
+        // The pill now reads the group's name, so a body click navigating to the
+        // remembered repo would contradict its own label — the chip is a single
+        // picker trigger again, with no switch-back split button.
+        mockAppState = { ...mockAppState, selectedRepoId: 'group-frontend', workspaces: [{ id: 'group-frontend', name: 'frontend' }] };
         render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
 
+        expect(screen.queryByTestId('remote-chip-chevron')).toBeNull();
         fireEvent.click(screen.getByTestId('remote-chip'));
 
-        expect(mockSelectClone).toHaveBeenCalledWith('a');
-        expect(screen.queryByTestId('remote-dropdown')).toBeNull();
+        expect(mockSelectClone).not.toHaveBeenCalled();
+        // The chevron affordance is folded back into the chip, which opens the
+        // picker — group scope switches through there instead.
+        expect(screen.getByTestId('remote-dropdown')).toBeTruthy();
     });
 
     it('gates the work and life segments on their feature flags', () => {
@@ -390,6 +399,82 @@ describe('ScopeSlideSwitcher — pop-out trigger (AC-01/04)', () => {
         // The My Work segment still switches scope in the main window.
         fireEvent.click(segment('work')!);
         expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_SELECTED_REPO', id: MY_WORK_WORKSPACE_ID });
+    });
+});
+
+// The workspace identity pill shows the *repo group* while a repo-group virtual
+// workspace is the active scope, instead of the repo remembered underneath.
+describe('ScopeSlideSwitcher — repo-group identity in the workspace pill', () => {
+    const withGroup = (extra: Record<string, unknown> = {}) => {
+        mockAppState = { ...mockAppState, selectedRepoId: 'group-ai-repos', ...extra };
+    };
+
+    it('shows a LOCAL group\'s registered name and the group marker', () => {
+        withGroup({ workspaces: [{ id: 'group-ai-repos', name: 'ai-repos' }] });
+        render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
+
+        const chip = screen.getByTestId('remote-chip');
+        expect(chip.textContent).toContain('ai-repos');
+        expect(chip.textContent).not.toContain('shortcuts');
+        expect(screen.getByTestId('remote-chip-group-icon').textContent).toBe('🗂️');
+        expect(chip.getAttribute('data-repo-group-id')).toBe('group-ai-repos');
+    });
+
+    it('shows a REMOTE group\'s name, which never reaches the local workspace list', () => {
+        withGroup({ workspaces: [] });
+        mockRemoteGroupWorkspaces = [{ id: 'group-ai-repos', name: 'ai-repos', remote: { serverLabel: 'devbox' } }];
+        render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
+
+        expect(screen.getByTestId('remote-chip').textContent).toContain('ai-repos');
+    });
+
+    it('falls back to the raw group id while the workspace lists are still loading', () => {
+        withGroup({ workspaces: undefined });
+        render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
+
+        expect(screen.getByTestId('remote-chip').textContent).toContain('group-ai-repos');
+    });
+
+    it('leaks nothing from the remembered repo: no clone badge, no provider badge, neutral dot', () => {
+        // mockRepos[0]/[1] share a remote, so the remembered repo would otherwise
+        // render `⧉2` and its own health color under the group's label.
+        withGroup({ workspaces: [{ id: 'group-ai-repos', name: 'ai-repos' }] });
+        render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
+
+        const chip = screen.getByTestId('remote-chip');
+        expect(chip.textContent).not.toContain('2');
+        expect(screen.queryByTestId('remote-provider-badge')).toBeNull();
+        const dot = chip.querySelector('span[style]') as HTMLElement;
+        expect(dot.style.background).toBe('rgb(132, 132, 132)');
+    });
+
+    it('keeps the repo identity untouched when a normal repo is selected again', () => {
+        render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
+
+        const chip = screen.getByTestId('remote-chip');
+        expect(chip.textContent).toContain('shortcuts');
+        expect(chip.getAttribute('data-repo-group-id')).toBeNull();
+        expect(screen.queryByTestId('remote-chip-group-icon')).toBeNull();
+    });
+
+    it('leaves data-remote-key alone — that is the git-remote clustering, not the group', () => {
+        withGroup({ workspaces: [{ id: 'group-ai-repos', name: 'ai-repos' }] });
+        render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
+
+        expect(screen.getByTestId('remote-chip').getAttribute('data-remote-key')).not.toContain('group-');
+    });
+
+    it('pops out the group, not the repo remembered underneath', () => {
+        const openSpy = vi.fn().mockReturnValue({ focus: vi.fn() });
+        vi.stubGlobal('open', openSpy);
+        withGroup({ workspaces: [{ id: 'group-ai-repos', name: 'ai-repos' }] });
+        render(<ScopeSlideSwitcher repo={mockRepos[0]} repos={mockRepos} />);
+
+        const icon = screen.getAllByTestId('scope-segment-popout')
+            .find(el => el.getAttribute('data-workspace-id') === 'group-ai-repos')!;
+        fireEvent.click(icon);
+
+        expect(String(openSpy.mock.calls[0][0])).toContain('window=group-ai-repos');
     });
 });
 

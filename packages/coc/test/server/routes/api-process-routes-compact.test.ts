@@ -266,6 +266,7 @@ describe('POST /api/processes/:id/compact', () => {
             priorStatus: 'completed',
             messagesRemoved: 7,
             tokensRemoved: 4200,
+            summary: 'Summary of the conversation so far.',
         });
         expect(typeof (after?.metadata as any)?.compaction?.completedAt).toBe('string');
 
@@ -279,6 +280,98 @@ describe('POST /api/processes/:id/compact', () => {
         expect(resultTurn.role).toBe('assistant');
         expect(resultTurn.displayOnly).toBe(true);
         expect(resultTurn.content).toBe('Context compacted — removed 7 messages, freed ~4200 tokens');
+        // AC-01: the provider's summary is persisted verbatim as a sibling field
+        // on the same turn — the counts line itself is untouched.
+        expect((resultTurn as any).compactionSummary).toBe('Summary of the conversation so far.');
+    });
+
+    it('stores the summary verbatim without truncating it', async () => {
+        await store.addProcess({
+            id: 'proc-long-summary',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'hello',
+            sdkSessionId: 'sdk-long-summary',
+            metadata: { type: 'chat', provider: 'copilot', workspaceId: 'ws-test' },
+        });
+
+        const longSummary = `# Recap\n\n${'The user asked about compaction. '.repeat(500)}`;
+        mockCompactSession.mockResolvedValue({
+            success: true,
+            tokensRemoved: 4200,
+            messagesRemoved: 7,
+            summaryContent: longSummary,
+        });
+
+        const res = await request(baseUrl, '/api/processes/proc-long-summary/compact', {
+            method: 'POST',
+            body: '{}',
+        });
+
+        expect(res.status).toBe(200);
+        const after = store.processes.get('proc-long-summary');
+        const turn = (after?.conversationTurns ?? [])[0] as any;
+        expect(turn.compactionSummary).toBe(longSummary);
+        expect((after?.metadata as any)?.compaction?.summary).toBe(longSummary);
+    });
+
+    it('stores no summary when the provider produced none (codex path)', async () => {
+        await store.addProcess({
+            id: 'proc-no-summary',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'hello',
+            sdkSessionId: 'sdk-no-summary',
+            metadata: { type: 'chat', provider: 'codex', workspaceId: 'ws-test' },
+        });
+
+        // Codex omits summaryContent by design — its summary lives in the
+        // rewritten rollout, so the result turn must carry no summary at all.
+        mockCompactSession.mockResolvedValue({ success: true, tokensRemoved: 4200, messagesRemoved: 7 });
+
+        const res = await request(baseUrl, '/api/processes/proc-no-summary/compact', {
+            method: 'POST',
+            body: '{}',
+        });
+
+        expect(res.status).toBe(200);
+        const after = store.processes.get('proc-no-summary');
+        const turn = (after?.conversationTurns ?? [])[0] as any;
+        expect(turn.displayOnly).toBe(true);
+        expect(turn.compactionSummary).toBeUndefined();
+        expect((after?.metadata as any)?.compaction?.summary).toBeUndefined();
+    });
+
+    it('ignores a whitespace-only summary', async () => {
+        await store.addProcess({
+            id: 'proc-blank-summary',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'hello',
+            sdkSessionId: 'sdk-blank-summary',
+            metadata: { type: 'chat', provider: 'copilot', workspaceId: 'ws-test' },
+        });
+
+        mockCompactSession.mockResolvedValue({
+            success: true,
+            tokensRemoved: 10,
+            messagesRemoved: 1,
+            summaryContent: '   \n  ',
+        });
+
+        const res = await request(baseUrl, '/api/processes/proc-blank-summary/compact', {
+            method: 'POST',
+            body: '{}',
+        });
+
+        expect(res.status).toBe(200);
+        const after = store.processes.get('proc-blank-summary');
+        const turn = (after?.conversationTurns ?? [])[0] as any;
+        expect(turn.compactionSummary).toBeUndefined();
+        expect((after?.metadata as any)?.compaction?.summary).toBeUndefined();
     });
 
     it('does not append a result turn when compaction fails', async () => {

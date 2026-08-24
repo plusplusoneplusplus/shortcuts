@@ -760,6 +760,14 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 const result = await sdkService.compactSession(proc.sdkSessionId, customInstructions);
                 const messagesRemoved = result?.messagesRemoved ?? 0;
                 const tokensRemoved = result?.tokensRemoved ?? 0;
+                // Summary text the provider generated for this compaction, kept
+                // verbatim (no truncation) so the chat can reveal it behind the
+                // "Show summary" disclosure. Providers that produce none (Codex
+                // keeps its summary in the rewritten rollout) leave it undefined
+                // and the disclosure is simply not rendered.
+                const summaryContent = typeof result?.summaryContent === 'string' && result.summaryContent.trim()
+                    ? result.summaryContent
+                    : undefined;
                 // ── Refresh the stored context-window usage (AC-05) ──
                 // Without this the meter stays frozen at the pre-compaction
                 // number until the next turn ends, contradicting the "freed ~N
@@ -793,6 +801,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                     ...(customInstructions ? { customInstructions } : {}),
                     messagesRemoved,
                     tokensRemoved,
+                    ...(summaryContent ? { summary: summaryContent } : {}),
                 }, usage);
                 // ── Persist a display-only result turn (AC-03) ──
                 // Append (never rewrite/remove) a visible assistant-style turn so
@@ -808,6 +817,9 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                     turnIndex,
                     timeline: [],
                     displayOnly: true,
+                    // Stored per-turn (not only in `metadata.compaction`) so a
+                    // second `/compact` cannot erase the first summary.
+                    ...(summaryContent ? { compactionSummary: summaryContent } : {}),
                 }));
                 return result;
             } catch (err: any) {

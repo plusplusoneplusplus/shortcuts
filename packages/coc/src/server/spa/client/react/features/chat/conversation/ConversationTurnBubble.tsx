@@ -38,6 +38,7 @@ import { detectCommitsByToolCallId, type DetectedCommit } from './commitDetectio
 import { CommitStrip } from './CommitStrip';
 import { NoteEditCard } from './NoteEditCard';
 import { ScriptTerminalBlock } from './ScriptTerminalBlock';
+import { CompactionSummaryDisclosure } from './CompactionSummaryDisclosure';
 import { parseScriptOutput, describeScriptExit } from './scriptOutputParser';
 import { getProviderAvatarClasses, type ChatProvider } from '../ProviderBadge';
 import { AskUserHistoryCard, hasAskUserHistory } from '../AskUserHistoryCard';
@@ -1798,6 +1799,9 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                         flushContent();
                         return nodes;
                     })()}
+                    {!isUser && turn.compactionSummary && (
+                        <CompactionSummaryDisclosure summary={turn.compactionSummary} wsId={wsId} />
+                    )}
                     {/* Note edit cards for AI turns that modified a note */}
                     {!isUser && noteEdits && processId && wsId && (() => {
                         const editsForTurn = noteEdits.filter(

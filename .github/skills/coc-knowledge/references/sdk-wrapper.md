@@ -1,222 +1,266 @@
 # CoC Agent SDK (`coc-agent-sdk`)
 
-Provider-agnostic AI agent SDK for CoC. Manages AI session lifecycle, MCP server configuration, model registry and metadata, reasoning-effort resolution, folder trust, and provider quota snapshots where the backend exposes them. Supports **Copilot** (via `@github/copilot-sdk`), **Codex** (via the optional `@openai/codex-sdk` plus the bundled `@openai/codex` CLI for quota/model catalog RPCs), **Claude** (via the optional `@anthropic-ai/claude-agent-sdk`), and **OpenCode** (via the optional `@opencode-ai/sdk`) backends through a common `ISDKService` interface.
+Provider-agnostic AI agent SDK for CoC. Manages AI session lifecycle, MCP server configuration, model registry and metadata, reasoning-effort resolution, folder trust, and provider quota snapshots where the backend exposes them. Backends behind one `ISDKService` interface: **Copilot** (`@github/copilot-sdk`), **Codex** (optional `@openai/codex-sdk` plus the bundled `@openai/codex` CLI for quota/model-catalog RPCs), **Claude** (optional `@anthropic-ai/claude-agent-sdk`), and **OpenCode** (optional `@opencode-ai/sdk`).
 
-Package: `@plusplusoneplusplus/coc-agent-sdk`  
+Package: `@plusplusoneplusplus/coc-agent-sdk`
 Location: `packages/coc-agent-sdk/src/`
-
-> **Forge relationship:** `packages/forge/src/copilot-sdk-wrapper/` has been removed. All forge source files import directly from `@plusplusoneplusplus/coc-agent-sdk`.
+Forge imports directly from this package.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
 | `copilot-sdk-service.ts` | `CopilotSDKService` facade singleton — Copilot backend |
-| `codex-sdk-service.ts` | `CodexSDKService` — optional Codex backend (`@openai/codex-sdk`) |
-| `claude-sdk-service.ts` | `ClaudeSDKService` — optional Claude backend (`@anthropic-ai/claude-agent-sdk`) |
-| `opencode-sdk-service.ts` | `OpenCodeSDKService` — optional OpenCode backend (`@opencode-ai/sdk`). Server-backed adapter: starts/connects to a local opencode HTTP server. No warm client (per-turn server requests). `softAbortSession` delegates to `abortSession`; `steerSession` returns false. |
-| `sdk-service-interface.ts` | `ISDKService` provider-agnostic contract |
+| `codex-sdk-service.ts` | `CodexSDKService` — optional Codex backend |
+| `claude-sdk-service.ts` | `ClaudeSDKService` — optional Claude backend |
+| `opencode-sdk-service.ts` | `OpenCodeSDKService` — server-backed adapter starting/connecting to a local opencode HTTP server. No warm client (per-turn server requests). `softAbortSession` delegates to `abortSession`; `steerSession` returns false. |
+| `sdk-service-interface.ts` | `ISDKService` provider-agnostic contract; `TransformOptions`/`TransformResult` |
 | `sdk-service-registry.ts` | `SDKServiceRegistry` — named-provider registry |
-| `testing/` | Shared vitest-free `ISDKService` mock (`createMockSDKService` + presets); exposed via `./testing` subpath export |
+| `testing/` | Shared vitest-free `ISDKService` mock (`createMockSDKService` + presets); `./testing` subpath export |
 | `request-runner.ts` | `sendMessage`/`transform` execution: session creation, MCP wiring, permission handler, streaming routing |
-| `stream-error-guard.ts` | `StreamErrorGuard` + `isStreamDestroyedError()`/`isConnectionDisposedError()` helpers |
+| `stream-error-guard.ts` | `StreamErrorGuard` + `isStreamDestroyedError()`/`isConnectionDisposedError()` |
 | `session-manager.ts` | Active session tracking and cancellation |
-| `streaming-session.ts` | Streaming orchestrator (`StreamingSession.run()`) — state machine, timers, telemetry |
+| `streaming-session.ts` | Streaming orchestrator (`StreamingSession.run()`) |
 | `streaming-state-machine.ts` | Pure state machine: `Idle → Streaming → Settled \| Cancelled` |
-| `session-timer-manager.ts` | Timer management: overall timeout, idle timeout, turn-end grace |
+| `session-timer-manager.ts` | Overall timeout, idle timeout, turn-end grace |
 | `session-telemetry.ts` | Token usage accumulation, tool-call tracking |
-| `sdk-client-factory.ts` | Per-request `CopilotClient` spawning: working-directory validation, folder trust, Copilot CLI resolution (`resolveCopilotCli`: `index.js` or native platform binary) |
+| `sdk-client-factory.ts` | Per-request `CopilotClient` spawning: cwd validation, folder trust, `resolveCopilotCli` |
 | `sdk-loader.ts` | SDK binary discovery + ESM import workaround |
 | `sdk-esm-loader.ts` | Dynamic ESM import helper (webpack-safe `new Function` indirection) |
-| `types.ts` | Shared types: `SendMessageOptions`, MCP configs, permissions, tools, token usage |
-| `model-registry.ts` | Single source of truth for supported AI models |
-| `provider-model-resolver.ts` | Provider-aware model override validation/coercion (`resolveModelForProvider`) |
+| `types.ts` | `SendMessageOptions`, MCP configs, permissions, tool contract, token usage |
+| `model-registry.ts` | Single source of truth for supported (user-selectable) AI models |
+| `provider-model-resolver.ts` | `resolveModelForProvider` — provider-aware override validation/coercion |
 | `model-metadata-store.ts` | Runtime model metadata cache with SDK polling |
-| `model-reasoning.ts` | Metadata-aware model/reasoning resolver; variant IDs with `capabilities.family` sent as base model + reasoning effort |
-| `model-context-tier.ts` | Copilot context-tier resolver: `getCopilotContextTierForModel`/`getCopilotLongContextPromptLimit` derive `"long_context"` strictly from tiered billing metadata (`billing.tokenPrices.longContext.contextMax`, camelCase or snake_case) |
-| `claude-model-catalog.ts` | `findClaudeCatalogModel` — bridges configured Claude model ids (CLI aliases, dotted marketing ids, dashed CLI ids, provider-default sentinels) to Claude CLI catalog entries via exact, dashed-normalized, and family (id/name/description) matching |
-| `effort-tier-defaults.ts` | Hardcoded per-provider effort-tier defaults (`very-low`/`low`/`medium`/`high` → model + reasoning effort) and stored-config merge helper; Copilot defaults are Luna/Terra/Opus/Sol all pinned to `xhigh`, and Claude tiers reference CLI catalog aliases (`haiku`/`sonnet`/`opus`/`fable`, with `high` → `fable`), with no pinned effort for Haiku |
-| `mcp-config-loader.ts` | Loads/merges MCP config from `~/.copilot/mcp-config.json`, workspace `.vscode/mcp.json`, and explicit request options |
+| `model-reasoning.ts` | Metadata-aware model/reasoning resolver |
+| `model-context-tier.ts` | `getCopilotContextTierForModel` / `getCopilotLongContextPromptLimit` |
+| `claude-model-catalog.ts` | `findClaudeCatalogModel` — maps configured Claude ids (CLI aliases, dotted, dashed, provider-default sentinels) to CLI catalog entries via exact, dashed-normalized, and family (id/name/description) matching |
+| `effort-tier-defaults.ts` | Per-provider effort-tier defaults (`very-low`/`low`/`medium`/`high` → model + reasoning effort) + stored-config merge. Copilot: Luna/Terra/Opus/Sol all pinned to `xhigh`. Claude: CLI aliases `haiku`/`sonnet`/`opus`/`fable` (`high` → `fable`), no pinned effort for Haiku. |
+| `mcp-config-loader.ts` | Loads/merges MCP config from `~/.copilot/mcp-config.json`, workspace `.vscode/mcp.json`, request options |
 | `trusted-folder.ts` | Pre-registers working directories in `~/.copilot/config.json` |
-| `image-converter.ts` | Image file detection plus data-URL/base64 conversion helpers |
+| `image-converter.ts` | Image detection + data-URL/base64 conversion |
 | `tool-call.ts` | `ToolCall`, `ToolCallStatus`, `ToolCallPermissionRequest`, serialization types |
-| `model-info.ts` | `ModelInfo` type (id, name, description, tier, …) |
-| `logger.ts` | `initSDKLogger` / `resetSDKLogger` / `getSDKLogger` — pino logger lifecycle |
-| `internal/exec-utils.ts` | Internal: async `execFileAsync` helper |
-| `internal/path-security.ts` | Internal: path traversal validation |
-| `internal/path-utils.ts` | Internal: path resolution utilities |
-| `internal/workspace-execution.ts` | Internal: workspace execution helpers |
-| `llm-tools/coc-tool-runtime.ts` | `CocToolRuntime` — provider-neutral runtime over a per-invocation `Tool<any>[]` bundle (`listTools`/`callTool`, result normalization, disposable) |
-| `llm-tools/bridge-server.ts` | `CocToolBridgeServer` + `cocToolBridgeServer` singleton — loopback IPC channel hosting per-invocation runtimes for the MCP bridge |
-| `llm-tools/bridge.ts` | `coc-llm-tools-mcp` — standalone hand-rolled stdio MCP server (child process) proxying `tools/list`/`tools/call` to the parent loopback endpoint |
-| `llm-tools/mcp-config.ts` | `buildCocLlmToolsMcpConfig()` + bridge-path resolution + server-name/env constants |
+| `model-info.ts` | `ModelInfo` (id, name, description, tier, …) |
+| `logger.ts` | `initSDKLogger` / `resetSDKLogger` / `getSDKLogger` |
+| `internal/` | `exec-utils.ts` (`execFileAsync`), `path-security.ts` (traversal validation), `path-utils.ts`, `workspace-execution.ts` |
+| `llm-tools/coc-tool-runtime.ts` | `CocToolRuntime` — provider-neutral runtime over a per-invocation `Tool<any>[]` |
+| `llm-tools/bridge-server.ts` | `CocToolBridgeServer` + `cocToolBridgeServer` singleton — loopback IPC channel |
+| `llm-tools/bridge.ts` | `coc-llm-tools-mcp` — standalone stdio MCP server (child process) |
+| `llm-tools/mcp-config.ts` | `buildCocLlmToolsMcpConfig()` + bridge-path resolution + name/env constants |
 | `index.ts` | Public API surface |
 
 ## SDKServiceRegistry
 
-Replaces the `CopilotSDKService.getInstance()` singleton pattern. Providers register under a string key; callers look up by key.
+Providers register under a string key; callers look up by key. `sdkServiceRegistry` is the module-level singleton. `CopilotSDKService.getInstance()` re-registers itself if absent from the registry.
 
 ```ts
-// Well-known keys:
 COPILOT_PROVIDER  / SDK_PROVIDER_COPILOT  = 'copilot'
 CODEX_PROVIDER    / SDK_PROVIDER_CODEX    = 'codex'
 CLAUDE_PROVIDER   / SDK_PROVIDER_CLAUDE   = 'claude'
 OPENCODE_PROVIDER / SDK_PROVIDER_OPENCODE = 'opencode'
 
-// Registration (done once during provider init):
-sdkServiceRegistry.register(SDK_PROVIDER_COPILOT,  new CopilotSDKService());
-sdkServiceRegistry.register(SDK_PROVIDER_CODEX,    new CodexSDKService());
+sdkServiceRegistry.register(SDK_PROVIDER_COPILOT, new CopilotSDKService());
+sdkServiceRegistry.register(SDK_PROVIDER_CODEX,   new CodexSDKService());
 registerClaudeSDKService();
 registerOpenCodeSDKService();
 
-// Lookup:
 const svc = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
 ```
 
-`sdkServiceRegistry` is the module-level singleton. `CopilotSDKService.getInstance()` still exists for compatibility and re-registers itself if absent from the registry.
-
 ## CopilotSDKService Architecture
 
-`CopilotSDKService` is a **facade singleton**. All logic lives in collaborators:
+A **facade singleton**; all logic lives in collaborators: `SdkLoader` (binary discovery/loading), `createSdkClient` (client spawning), `RequestRunner` (sendMessage/transform), `SessionManager` (tracking/abort), `StreamingStateMachine`, `SessionTimerManager`, `SessionTelemetry`, `StreamErrorGuard`, `fetchModelsFromClient` (model listing).
 
-| Concern | Collaborator |
-|---------|-------------|
-| SDK binary discovery + loading | `SdkLoader` |
-| Client spawning | `createSdkClient` |
-| sendMessage / transform logic | `RequestRunner` |
-| Session tracking / abort | `SessionManager` |
-| Streaming state machine | `StreamingStateMachine` |
-| Streaming timers | `SessionTimerManager` |
-| Streaming telemetry | `SessionTelemetry` |
-| Stream-error process guard | `StreamErrorGuard` |
-| Model listing | `fetchModelsFromClient` |
+### Per-session client isolation
 
-### Singleton + Per-Session Client Isolation
+Each `sendMessage()` spawns its **own `CopilotClient`** child process — no shared client, so concurrent tasks with different working directories cannot interfere.
 
-Each `sendMessage()` call creates its **own `CopilotClient`** child process — no shared client. Concurrent tasks with different working directories cannot interfere.
+### Copilot CLI spawn resolution
 
-**Copilot CLI spawn resolution** (`sdk-client-factory.ts`): when the caller supplies no `connection`, `resolveCopilotCli()` locates the CLI, rewriting `app.asar` paths to `app.asar.unpacked`. Two layouts exist: `@github/copilot` <= 1.0.61 ships an `index.js` JS entry; >= 1.0.62 ships only a thin `npm-loader.js` plus a native executable in `@github/copilot-<platform>-<arch>`. With `index.js` under Electron, the connection is overridden to `<node runtime> index.js` (system node preferred, else the Electron binary in Node mode via `ELECTRON_RUN_AS_NODE=1`); under plain Node the copilot-sdk's own default handles `index.js` and is left alone. With the native layout the unpacked binary is spawned **directly** (`forStdio({ path: binary, args: [] })`; the SDK appends `--headless --stdio …` itself) — under Electron *and* plain Node, because the copilot-sdk's bundled-CLI default requires `index.js` and cannot start the CLI at all with the new layout. The resolved spawn (`mode: system-node | electron-node | native-binary`) is recorded and appended to `getAccountQuota` errors for diagnosis.
+`sdk-client-factory.ts`: with no caller `connection`, `resolveCopilotCli()` locates the CLI, rewriting `app.asar` paths to `app.asar.unpacked`. Two layouts: `@github/copilot` <= 1.0.61 ships an `index.js` entry; >= 1.0.62 ships a thin `npm-loader.js` plus a native executable in `@github/copilot-<platform>-<arch>`.
 
-Copilot streaming tool telemetry is normalized through `SessionTelemetry` into the shared `ToolCall` / `ToolEvent` contract. `parentToolCallId` is preserved from either the start or terminal SDK event; if the terminal event supplies or corrects the parent, the stored `ToolCall` is updated too. This keeps Copilot-backed sub-agent descendants reconstructable from both live timelines and persisted `toolCalls`.
+- `index.js` under Electron: connection is overridden to `<node runtime> index.js` (system node preferred, else the Electron binary with `ELECTRON_RUN_AS_NODE=1`). Under plain Node the copilot-sdk default handles it.
+- Native layout: the unpacked binary is spawned **directly** (`forStdio({ path: binary, args: [] })`; the SDK appends `--headless --stdio …`), under both Electron and plain Node, since the SDK's bundled-CLI default requires `index.js`.
 
-### One-shot `transform` primitive
+The resolved spawn mode (`system-node | electron-node | native-binary`) is recorded and appended to `getAccountQuota` errors.
 
-`ISDKService.transform(input, options?)` is the provider-agnostic primitive for isolated, single-shot text transformations (e.g. chat-title generation, PR ranking). Contract:
+### Copilot tool telemetry
 
-- **Signature:** `transform(input: string, options?: TransformOptions): Promise<TransformResult>`.
-- **Structured result:** returns `{ success, text, error?, effectiveModel?, tokenUsage? }` — it does **not** throw on provider failure; callers branch on `success` and may verify `effectiveModel`.
-- **Fresh & isolated:** one provider request per call. No session resume, no caller-visible session/thread reuse, no session cache, no `sendFollowUp`-style continuation.
-- **Safe defaults:** `loadDefaultMcpConfig` defaults to `false` (no MCP/tools) and `onPermissionRequest` defaults to `denyAllPermissions`; both are overridable via `TransformOptions`.
-- **No model default:** the SDK owns no transform model. The caller passes `options.model`; omitting it falls back to the provider default. Product policy (model choice, prompt construction, sanitization) stays in the calling layer.
+`SessionTelemetry` normalizes streaming tool events into the shared `ToolCall` / `ToolEvent` contract. `parentToolCallId` is preserved from either the start or terminal SDK event; a terminal event supplying or correcting the parent updates the stored `ToolCall`, keeping sub-agent descendants reconstructable from both live timelines and persisted `toolCalls`.
 
-`TransformOptions` / `TransformResult` live in `sdk-service-interface.ts` and are re-exported through forge.
+## One-shot `transform` primitive
 
-#### Production callers
+`ISDKService.transform(input: string, options?: TransformOptions): Promise<TransformResult>` is the provider-agnostic primitive for isolated single-shot text transformations.
 
-| Caller | Model | Notes |
-| --- | --- | --- |
-| `TitleGenerationService` (`coc/src/server/executors/title-generator.ts`) | `gpt-5.4-mini` (`TITLE_GENERATION_MODEL`) | `generateTitle()` and `prewarm()` route through `transform`. Relies on the safe isolation defaults (no MCP/tools, denied permissions); throws on `!success` and on `effectiveModel` mismatch so a silent provider fallback never persists a title under the wrong model. |
-| PR suggestion ranking (`coc/src/server/repos/pr-suggestions.ts`) | `gpt-4.1` | `rankAndCacheSuggestions` calls `transform` with a 30s timeout and throws on `!success` to preserve its contract. |
+- **Structured result:** `{ success, text, error?, effectiveModel?, tokenUsage? }` — never throws on provider failure; callers branch on `success`.
+- **Fresh & isolated:** one provider request per call. No session resume, no session cache, no caller-visible thread reuse, no continuation.
+- **Safe defaults:** `loadDefaultMcpConfig` defaults to `false` (no MCP/tools) and `onPermissionRequest` to `denyAllPermissions`; both overridable.
+- **No model default:** the caller passes `options.model`; omitting it uses the provider default. Model choice, prompt construction and sanitization are product policy in the calling layer.
 
-Model choice is product policy and stays in these callers — neither model is in `MODEL_REGISTRY`, which lists only user-selectable models.
+Production callers: `TitleGenerationService` (`coc/src/server/executors/title-generator.ts`) uses `gpt-5.4-mini` (`TITLE_GENERATION_MODEL`) for `generateTitle()`/`prewarm()`, throwing on `!success` and on `effectiveModel` mismatch so a silent provider fallback never persists a title under the wrong model. PR suggestion ranking (`coc/src/server/repos/pr-suggestions.ts`) uses `gpt-4.1` with a 30s timeout and throws on `!success`. Neither model is in `MODEL_REGISTRY`.
+
+## Strict session resume
+
+`SendMessageOptions.sessionId` resumes the stored SDK session; on failure the adapter starts a fresh session and reports the replacement ID through `onSessionCreated`. With `strictSessionResume: true`, resume failure returns `success: false`, fires no `onSessionCreated`, and creates no session. CoC uses strict resume for stopped-chat continuations queued from `/api/processes/:id/message`, passing the cancelled turn's `sdkSessionId` via `ChatPayload.resumeSessionId`. On failure the executor records `metadata.stoppedChatResume = { resumable: false, reason: 'strict-resume-failed', ... }` and later `/message` requests reject with `409 SESSION_NOT_RESUMABLE`.
 
 ## CodexSDKService Architecture
 
-`CodexSDKService` implements `ISDKService` backed by the **optional** `@openai/codex-sdk` peer dependency. When the package is not installed, `isAvailable()` returns `{ available: false }` and `sendMessage()` returns an error result rather than throwing.
+Backed by the **optional** `@openai/codex-sdk` peer dependency. When absent, `isAvailable()` returns `{ available: false }` and `sendMessage()` returns an error result rather than throwing. No SDK module loads until the first `isAvailable()`/`sendMessage()`.
 
-Codex quota and model catalog lookups spawn the `@openai/codex` CLI that ships as a dependency of `@openai/codex-sdk`; the bin path is resolved at runtime relative to `coc-agent-sdk`, not from `PATH`, so globally installed Codex binaries do not silently change the app-server protocol version. Both invocations go through `resolveCodexSpawn()`, which prefers the unpacked native binary (`resolveCodexExecutablePath()` → `app.asar.unpacked/@openai/codex-<platform>/…/bin/codex`) spawned **directly**; in packaged desktop builds `process.execPath` is the Electron binary and the `@openai/codex/bin/codex.js` launcher resolves inside `app.asar`, so the Node-launcher route fails to start. It falls back to `<node> codex.js` for a normal CLI / global install and dev-from-source.
+**Thread ↔ session mapping:** every CoC session ID maps to exactly one Codex thread, created on the first `sendMessage()` for the session and removed on abort or dispose.
 
-`getAccountQuota()` starts `codex app-server --listen stdio://` directly and issues the `account/rateLimits/read` RPC over that child process's stdin/stdout channel (handshake: `initialize` → `initialized` → read on `id: 2`, 10s timeout), capturing the child's stderr so an early exit reports its real reason (wrong runtime, an `app.asar` path, missing auth) instead of a bare "exited before returning rate limits". It does not use `app-server daemon start` / `app-server proxy`, because daemon start requires the installer-managed standalone Codex path under `~/.codex/packages/standalone/current/codex` even when a Homebrew or npm Codex binary is available. `mapCodexRateLimitsToQuota` surfaces **both** rolling windows of each limit entry: `primary` (the ~5-hour window) and `secondary` (the weekly window) become separate snapshots keyed `five_hour` / `seven_day`, matching Claude's keys so the dashboard renders the same "5h" / "Weekly" labels. A window is skipped when absent or carrying a non-numeric `usedPercent` (Codex may return a `null` secondary), so a missing weekly window yields no `seven_day` snapshot. When the response breaks usage out across multiple limit ids (`rateLimitsByLimitId` with >1 entry), the window keys are prefixed with the limit id (e.g. `codex-pro_five_hour`) to keep them distinct.
-
-`compactSession()` compacts a Codex thread's history in place. The high-level `@openai/codex-sdk` has no compact API, so it reuses the same app-server stdio channel as the quota path (via a shared `runAppServerRpc` helper): after the `initialize`/`initialized` handshake it issues `thread/resume` (id 1) — **not** `thread/read` — to load the persisted thread from the rollout store into the freshly-spawned app-server (a bare `thread/read` on a thread this app-server process never resumed fails with "thread not found"), then `thread/compact/start` (id 2, params `{ threadId }`) which rewrites the rollout JSONL in place under the same thread id and runs a model summarization turn asynchronously. It waits (method-based, not id-based) for completion — a `thread/compacted` notification, or a forward-compatible `context_compaction` `item/completed` for the same thread — while tracking `thread/tokenUsage/updated` frames (`tokenUsage.total.totalTokens`, a nested camelCase object). The first observed total is the pre-compaction baseline (emitted by resume), the last is the reduced total; `tokensRemoved` is `max(0, first − last)` (0 when unavailable, never negative), and `messagesRemoved` is always 0 (not derivable from the frames, same convention as Claude). Because the rewrite keeps the thread id, CoC's `resumeThread(sessionId)` follow-ups automatically carry the compacted history — no session-id remap. The timeout is a dedicated `CODEX_COMPACT_TIMEOUT_MS` (default 120s, overridable via `COC_CODEX_COMPACT_TIMEOUT_MS` for tests), far longer than the quota path's 10s since compaction runs a real turn. `customInstructions` is **ignored** for Codex (the protocol's `ThreadCompactStartParams` carries only `threadId`) and logged as a warning rather than failing the compaction. A `-32601` (method not found) on `thread/compact/start` throws `CompactUnsupportedError` (capability gate for older CLIs); an unknown thread fails fast at `thread/read`.
-
-`CompactResult` also carries an optional `contextUsage: Partial<TokenUsage>` — context-window usage measured AFTER compaction rewrote the transcript — which the compact route persists so the SPA meter drops immediately instead of at the next turn's end. Fidelity differs per provider: Copilot maps `HistoryCompactResult.contextWindow` (`@experimental`, absent on older SDK builds) field-for-field onto all five token fields; Claude probes `handle.getContextUsage()` in the success branch **before** `inputGate.close()` (closing the gate tears the subprocess down and rejects in-flight control requests) and falls back to `{ currentTokens: boundary.post_tokens }` when the handle exposes no probe or it times out; Codex reports `{ currentTokens: <last tokenUsage frame total> }`, the same number it already tracks for `tokensRemoved`. The field is omitted whenever nothing was measured, which routes the caller onto its subtraction fallback.
-
-Codex SDK thread options do not expose Copilot's native `skillDirectories` or `disabledSkills` fields. CoC maps resolved skill directories (and any caller-supplied `additionalDirectories`) to Codex `additionalDirectories` so external/global skill folders are available to the Codex process, and always appends `~/.coc` (CoC data/skills dir) so out-of-repo data and skill files remain reachable. The `~/.coc` entry is only added when not already present (compared case-insensitively on Windows); caller-supplied paths are preserved verbatim. For explicitly selected skills, CoC keeps prompts path-based by adding the resolved `SKILL.md` file paths to the `<selected_skills>` directive rather than inlining skill bodies.
-
-Codex permission mode is mapped at the provider boundary with `approvalPolicy: 'never'` for every SDK agent mode. Interactive/ask mode, omitted mode, autopilot, and lower-level SDK `plan` mode all use `sandboxMode: 'danger-full-access'` with network access enabled so Codex can read skill files and other allowed roots even on hosts where the restricted workspace-write sandbox cannot initialize. Ask-mode write constraints are enforced by CoC's read-only system prompt (plan file, attached note, `.goal.md` specs). The CoC server normalizes legacy chat `mode='plan'` to Ask before calling the SDK, so regular CoC chat execution does not send Codex SDK requests with agent mode `plan`.
-
-Codex image attachments are passed at the provider boundary as `@openai/codex-sdk` structured `local_image` inputs. When `SendMessageOptions.attachments` includes file attachments with supported raster image extensions (`png`, `jpg`/`jpeg`, `gif`, `webp`), `CodexSDKService` sends an input array containing the prompt text plus `{ type: 'local_image', path }` entries in attachment order. Directories, non-images, and SVGs are ignored so text-only behavior is preserved.
-
-Codex token usage is mapped from `turn.completed.usage` into the shared `TokenUsage` result shape when the SDK reports it. The adapter fills per-turn totals only: `inputTokens`, `outputTokens`, `cacheReadTokens` from `cached_input_tokens`, `cacheWriteTokens: 0`, `totalTokens`, and `turnCount`. Codex has no provider-native USD field; Forge estimates USD from the shared Copilot pricing table and populates native-first display cost fields for stats/read models. The context-window fields (`tokenLimit`, `currentTokens`) are populated from a two-source model: `addCodexUsage` seeds a fallback from the static `MODEL_REGISTRY` context window (`tokenLimit`) plus a per-turn `input_tokens + output_tokens` occupancy snapshot (`currentTokens`), and after the stream loop settles `enrichCodexContextUsage` overwrites both with the provider's real numbers read from the thread's rollout `token_count` event (`codex-rollout-usage.ts`: `readCodexRolloutContextUsage` tail-reads the last ≤64 KB of `~/.codex/sessions/YYYY/MM/DD/rollout-*-<threadId>.jsonl`, mapping `last_token_usage.total_tokens` → `currentTokens` and `model_context_window` → `tokenLimit`). The registry values survive only when the rollout read yields nothing (registry-unknown model + no rollout → both fields stay absent so the meter hides). The sessions root is overridable via `COC_CODEX_SESSIONS_DIR` (test seam); resolved paths are cached per thread in `rolloutPathByThread` so follow-up turns skip the directory walk. The read is display-metadata only — any failure warn-logs and keeps the fallback. The breakdown fields (`systemTokens`, `toolDefinitionsTokens`, `conversationTokens`) remain absent because Codex provides no breakdown and none is fabricated.
-
-Codex stream items are normalized into the shared `ToolCall` shape before they reach CoC process storage. `command_execution`/`commandExecution` becomes `shell`; `file_change`/`fileChange` becomes `apply_patch`; `mcp_tool_call`/`mcpToolCall` becomes the MCP tool name; `web_search`/`webSearch` becomes `web_search`; `dynamicToolCall` keeps the dynamic tool name unless it is an agent start/wait operation; and `collabAgentToolCall` maps Codex collaboration sub-agent operations onto the dashboard's existing `task` and `read_agent` vocabulary. The adapter handles `item.started`, `item.updated`, and `item.completed`; terminal updates complete a stored tool call even when the final state arrives before a distinct completion event. For file changes, `CodexSDKService` snapshots dirty worktree files before the turn starts and enriches completed file-change parameters with a best-effort unified `diff` when a workspace git root is available. Clean files diff against `HEAD`, paths dirty before the turn diff against their pre-turn worktree snapshot, and later changes to the same path diff against the previous captured snapshot. Codex may report file-change paths as either repo-relative paths or absolute paths under the workspace git root; absolute paths outside the git root are ignored for diff enrichment. Diff enrichment is display metadata only; failures fall back to the original `{ changes }` file list without failing the Codex turn.
-
-**Thread ↔ session mapping:** Every CoC session ID maps to exactly one Codex thread. The mapping is created on the first `sendMessage()` call for a session and removed on abort or dispose.
-
-**Authentication:** CoC does not own a Codex auth store or `/api/codex-auth/*` routes. Codex authentication is handled by the Codex SDK/CLI; hosts may still inject an optional `CodexAuthChecker` if they need a preflight gate before loading the SDK.
+**Authentication** is owned by the Codex SDK/CLI — CoC has no Codex auth store and no `/api/codex-auth/*` routes. Hosts may inject an optional `CodexAuthChecker` preflight gate:
 
 ```ts
-registerCodexSDKService();            // registers under SDK_PROVIDER_CODEX with SDK/CLI-owned auth
-// Optional host preflight gate:
+registerCodexSDKService();            // SDK/CLI-owned auth
 const svc = new CodexSDKService();
 svc.setAuthChecker(() => ({ authenticated: true }));
 sdkServiceRegistry.register(SDK_PROVIDER_CODEX, svc);
 ```
 
-**Lazy loading:** No SDK module is loaded until the first `isAvailable()` or `sendMessage()` call.
+### CLI spawn resolution
 
-**CoC LLM tools:** when `options.tools` is present, a per-request `Codex` client is built with `config.mcp_servers.coc_llm_tools` pointing at the stdio bridge (see *CoC LLM Tools over MCP*). Captured tool calls from this first-party MCP server store the actual tool input directly in `args` (for example `args.questions` for `ask_user`) so process timelines match the Copilot and Claude display contract; external MCP tool calls retain `{ server, arguments }` metadata. Codex sub-agent spawn calls store `task` args with `agent_type: "codex"`, `agent_id`/`agent_ids`, prompt/model metadata, and agent state; Codex wait calls store `read_agent` args with `agent_id`, `wait: true`, and the latest agent state so existing dashboard grouping and nesting logic applies.
+Quota and model-catalog lookups spawn the `@openai/codex` CLI shipped as a dependency of `@openai/codex-sdk`; the bin path resolves at runtime relative to `coc-agent-sdk`, not from `PATH`, so a global Codex cannot silently change the app-server protocol version. `resolveCodexSpawn()` prefers the unpacked native binary (`resolveCodexExecutablePath()` → `app.asar.unpacked/@openai/codex-<platform>/…/bin/codex`) spawned **directly**, because in packaged desktop builds `process.execPath` is Electron and `@openai/codex/bin/codex.js` resolves inside `app.asar`. Falls back to `<node> codex.js` for normal CLI/global installs and dev-from-source.
 
-## Strict session resume
+### Quota
 
-`SendMessageOptions.sessionId` normally preserves the legacy Copilot behavior: the adapter first asks the provider to resume the stored SDK session and, if that resume fails, starts a fresh session and reports the replacement ID through `onSessionCreated`. Callers that must not lose provider-native continuity set `strictSessionResume: true`; in that mode resume failure returns `success: false`, `onSessionCreated` is not fired for a fallback session, and no fresh session is created. CoC uses strict resume for stopped-chat continuations queued from `/api/processes/:id/message`, passing the cancelled turn's saved `sdkSessionId` through `ChatPayload.resumeSessionId` to the follow-up executor. If strict resume fails, the executor records `metadata.stoppedChatResume = { resumable: false, reason: 'strict-resume-failed', ... }`; later `/message` requests reject with `409 SESSION_NOT_RESUMABLE` rather than retrying or falling back to a fresh provider session.
+`getAccountQuota()` starts `codex app-server --listen stdio://` directly and issues `account/rateLimits/read` over that child's stdio (handshake `initialize` → `initialized` → read on `id: 2`, 10s timeout), capturing stderr so an early exit reports its real reason. It avoids `app-server daemon start` / `proxy`, which require the installer-managed standalone path under `~/.codex/packages/standalone/current/codex`.
+
+`mapCodexRateLimitsToQuota` surfaces **both** rolling windows per limit entry: `primary` (~5h) and `secondary` (weekly) become snapshots keyed `five_hour` / `seven_day`, matching Claude's keys so the dashboard renders the same "5h"/"Weekly" labels. A window is skipped when absent or carrying a non-numeric `usedPercent`. With >1 entry in `rateLimitsByLimitId`, keys are prefixed by limit id (e.g. `codex-pro_five_hour`).
+
+### Compaction
+
+`compactSession()` compacts a thread in place over the same app-server stdio channel (shared `runAppServerRpc` helper). After the handshake it issues `thread/resume` (id 1) — **not** `thread/read`, which fails "thread not found" on a thread this app-server process never resumed — then `thread/compact/start` (id 2, `{ threadId }`), which rewrites the rollout JSONL under the same thread id and summarizes asynchronously.
+
+Completion is awaited method-based, not id-based: a `thread/compacted` notification or a forward-compatible `context_compaction` `item/completed` for the thread. `thread/tokenUsage/updated` frames are tracked via `tokenUsage.total.totalTokens`; the first total (emitted by resume) is the baseline, the last the reduced total. `tokensRemoved = max(0, first − last)`; `messagesRemoved` is always 0. The surviving thread id means `resumeThread(sessionId)` follow-ups carry compacted history with no session-id remap. Timeout `CODEX_COMPACT_TIMEOUT_MS` (120s, `COC_CODEX_COMPACT_TIMEOUT_MS` override). `customInstructions` is **ignored** (`ThreadCompactStartParams` carries only `threadId`) and warn-logged. A `-32601` on `thread/compact/start` throws `CompactUnsupportedError`.
+
+### CompactResult.contextUsage
+
+`CompactResult` carries an optional `contextUsage: Partial<TokenUsage>` — context usage measured AFTER the rewrite — persisted by the compact route so the SPA meter drops immediately. Per provider: Copilot maps `HistoryCompactResult.contextWindow` (`@experimental`) onto all five token fields; Claude probes `handle.getContextUsage()` **before** `inputGate.close()` (closing the gate rejects in-flight control requests) and falls back to `{ currentTokens: boundary.post_tokens }`; Codex reports `{ currentTokens: <last tokenUsage frame total> }`. Omitted when nothing was measured, routing the caller onto its subtraction fallback.
+
+### Skills and directories
+
+Codex thread options expose no `skillDirectories`/`disabledSkills`. CoC maps resolved skill directories and caller `additionalDirectories` to Codex `additionalDirectories`, always appending `~/.coc` (only when not already present, compared case-insensitively on Windows); caller paths are preserved verbatim. Selected skills stay path-based: resolved `SKILL.md` paths go into the `<selected_skills>` directive rather than inlined bodies.
+
+### Permissions
+
+Every SDK agent mode maps to `approvalPolicy: 'never'` and `sandboxMode: 'danger-full-access'` with network enabled, so Codex can read skill files and other allowed roots on hosts where the restricted workspace-write sandbox cannot initialize. Ask-mode write constraints are enforced by CoC's read-only system prompt (plan file, attached note, `.goal.md` specs). The server normalizes chat `mode='plan'` to Ask before calling the SDK.
+
+### Attachments
+
+When `SendMessageOptions.attachments` includes files with supported raster extensions (`png`, `jpg`/`jpeg`, `gif`, `webp`), the adapter sends an input array of the prompt text plus `{ type: 'local_image', path }` entries in attachment order. Directories, non-images, and SVGs are ignored.
+
+### Token usage
+
+Mapped from `turn.completed.usage` into the shared `TokenUsage` shape: `inputTokens`, `outputTokens`, `cacheReadTokens` from `cached_input_tokens`, `cacheWriteTokens: 0`, `totalTokens`, `turnCount`. Codex has no native USD field; Forge estimates USD from the shared Copilot pricing table and populates native-first display cost fields.
+
+Context-window fields are two-source. `addCodexUsage` seeds a fallback from the static `MODEL_REGISTRY` context window (`tokenLimit`) plus a per-turn `input_tokens + output_tokens` snapshot (`currentTokens`); after the stream settles, `enrichCodexContextUsage` overwrites both from the rollout `token_count` event (`codex-rollout-usage.ts`: `readCodexRolloutContextUsage` tail-reads the last ≤64 KB of `~/.codex/sessions/YYYY/MM/DD/rollout-*-<threadId>.jsonl`, mapping `last_token_usage.total_tokens` → `currentTokens`, `model_context_window` → `tokenLimit`). Registry values survive only when the rollout read yields nothing; registry-unknown model + no rollout leaves both absent so the meter hides. Sessions root overridable via `COC_CODEX_SESSIONS_DIR`; paths cached per thread in `rolloutPathByThread`. Display metadata only. Breakdown fields (`systemTokens`, `toolDefinitionsTokens`, `conversationTokens`) stay absent.
+
+### Tool-call normalization
+
+Stream items are normalized into the shared `ToolCall` shape before reaching CoC process storage: `command_execution`/`commandExecution` → `shell`; `file_change`/`fileChange` → `apply_patch`; `mcp_tool_call`/`mcpToolCall` → the MCP tool name; `web_search`/`webSearch` → `web_search`; `dynamicToolCall` keeps the dynamic tool name unless it is an agent start/wait; `collabAgentToolCall` maps onto the dashboard's `task` / `read_agent` vocabulary. `item.started`, `item.updated`, and `item.completed` are all handled; a terminal update completes a stored call even without a distinct completion event.
+
+For file changes the adapter snapshots dirty worktree files before the turn and enriches completed parameters with a best-effort unified `diff` when a workspace git root exists: clean files diff against `HEAD`, pre-dirty paths against their pre-turn snapshot, later changes against the previous snapshot. Paths may be repo-relative or absolute under the git root; absolute paths outside it are ignored. Display metadata only; failures fall back to `{ changes }`.
 
 ## ClaudeSDKService Architecture
 
-`ClaudeSDKService` implements `ISDKService` backed by the **optional** `@anthropic-ai/claude-agent-sdk` peer dependency. It lazy-loads the SDK's `query` export, streams Claude messages into the common invocation result shape, and reports `{ available: false }` with install guidance when the package cannot be imported.
+Backed by the **optional** `@anthropic-ai/claude-agent-sdk` peer dependency. It lazy-loads the SDK's `query` export, streams Claude messages into the common invocation result shape, and reports `{ available: false }` with install guidance when the import fails.
 
-Every turn is driven in **streaming-input mode**: `buildClaudeInputChannel` builds an `AsyncIterable` prompt that yields one initial user message (plain-string content for text, base64 image blocks when attachments are present) and then stays open until an explicit `close()` EOFs it. Single-shot string prompts EOF stdin immediately, so the SDK applies an end-of-session grace deadline (~5s) and kills any longer-running background task — dropping the model re-invocation. Holding stdin open keeps the session active so long background tasks (Bash `run_in_background`, native `Agent`/`Task` subagents, `backgroundTasks()`) complete and the SDK re-invokes the model. `sendMessage()` tracks in-flight background tasks from the `type:'system'` task stream (`applyClaudeTaskInflight`: increment on `task_started`, decrement on terminal `task_notification` keyed by `task_id`; `task_updated`/`task_progress` are informational and ignored). After each `result` it settles only when the in-flight set is empty (EOF stdin → session ends); otherwise it keeps stdin open and keeps iterating, accumulating the re-invocation turns' text and summing token usage across turns into one combined `IInvocationResult`. Settlement is gated on a **terminal signal** for the turn, recorded by either a terminal assistant frame (nested `message.stop_reason: 'end_turn'`) or a `result` that deferred settle. The signal is held (not acted on immediately) and can only settle once the in-flight background set is empty — re-checked after each `task_notification`/`task_updated` drain — so an early terminal frame never cuts off background work, and `tool_use`/`max_tokens`/refusal stop reasons are never treated as terminal-success. The two signals differ in what happens at the drain: `end_turn` is final for the whole turn and settles immediately, while a `result` is final only for its own turn (the SDK re-invokes the model after a background task reports), so the drain arms a quiet window (`CLAUDE_POST_DRAIN_SETTLE_GRACE_MS`, 30s) that any further frame cancels — only genuine silence settles. This is what keeps a turn from hanging when the last background task drains after a `result` with no re-invocation and no `session_state_changed: idle` frame following. A wall-clock drain cap (`CLAUDE_BACKGROUND_DRAIN_TIMEOUT_MS`, 60 min, overridable via `COC_CLAUDE_BACKGROUND_DRAIN_TIMEOUT_MS` and lowered by a smaller caller `timeoutMs`) is armed **only** while stdin is held open for drain, so a no-background turn closes at its first `result` and never arms a timer; a wedged task (no terminal notification at all) is bounded by the cap, which closes stdin and aborts. The cap is sized for a full-suite background test sweep while staying well under `StaleTaskDetector`'s ~6h05m force-fail. Any abort (caller signal, `abortSession()`, or the cap) closes the input channel so the loop never blocks on the next message with stdin still open.
+### Streaming-input mode and background drain
 
-Claude consumes CoC-authored `SendMessageOptions.systemMessage` through the Claude Agent SDK's unified `systemPrompt` query option (the SDK's >= 0.1 surface; the legacy `appendSystemPrompt`/`customSystemPrompt` option names are silently ignored by `query()` and must not be used): `mode: "append"` maps to `systemPrompt: { type: 'preset', preset: 'claude_code', append: content }` (Claude Code's default agentic prompt plus CoC instructions), `mode: "replace"` maps to `systemPrompt: content` (custom string), and blank or absent content omits the field entirely (the SDK then runs with an empty system prompt). CoC executor-built content such as ask-mode read-only instructions, repo `.github/coc` instructions, Memory/tool guidance, note permissions, and save-location directives stays in the system-prompt channel rather than being duplicated in the user prompt. Resumed Claude follow-ups still pass the persisted transcript ID via `options.resume` while sending the current CoC system prompt for that turn.
+Every turn runs in streaming-input mode: `buildClaudeInputChannel` builds an `AsyncIterable` prompt yielding one initial user message (plain string for text, base64 image blocks with attachments) and staying open until an explicit `close()` EOFs it. A single-shot string prompt EOFs stdin immediately, so the SDK applies a ~5s end-of-session grace and kills longer background work; holding stdin open lets Bash `run_in_background`, native `Agent`/`Task` subagents, and `backgroundTasks()` finish and the SDK re-invoke the model.
 
-Provider SDK option mappings are treated as provider contracts, not just internal adapter transforms. For prompt delivery, permissions, MCP wiring, resume/session IDs, model selection, and reasoning effort, confirm the installed provider SDK's accepted option surface and keep regression coverage anchored at the SDK boundary: assert the query options delivered to the provider, the initialized request/transcript shape, stream events, or sanitized diagnostics that prove the option was actually received. Wrapper-only argument assertions are insufficient for provider-owned option names because unsupported keys can be ignored without a CoC-side error.
+`applyClaudeTaskInflight` tracks in-flight background tasks from the `type:'system'` stream: increment on `task_started`, decrement on terminal `task_notification` keyed by `task_id`; `task_updated`/`task_progress` are informational. After each `result` the turn settles only when the set is empty; otherwise stdin stays open and iteration continues, accumulating re-invocation text and summing token usage into one combined `IInvocationResult`.
 
-Unsuccessful Claude `result` stream messages are warn-logged through the SDK logger before returning failure. Thrown SDK exceptions from `sendMessage()` are error-logged before returning the same user-facing error string. Diagnostic objects are allowlisted/sanitized: result subtype/error flags, provider session ID, timing/turn metadata, Claude terminal/API reason fields, exception name/message/safe stack/cause summary, requested/effective model, cwd, permission mode, MCP configured state, MCP server names, and latest in-call rate-limit status/type/utilization/reset/overage metadata may appear; prompt text, custom system prompt text, credentials, image payloads, tool results, and arbitrary Claude transcript content are not logged.
+Settlement is gated on a **terminal signal** — a terminal assistant frame (nested `message.stop_reason: 'end_turn'`) or a `result` that deferred settle. The signal is held until the in-flight set is empty (re-checked after each `task_notification`/`task_updated` drain), so an early terminal frame never cuts off background work, and `tool_use`/`max_tokens`/refusal stop reasons are never terminal-success. `end_turn` settles immediately; a `result` is final only for its own turn, so the drain arms a quiet window (`CLAUDE_POST_DRAIN_SETTLE_GRACE_MS`, 30s) that any further frame cancels — only silence settles. This prevents a hang when the last task drains after a `result` with no re-invocation and no `session_state_changed: idle`.
 
-Claude token usage is mapped from successful `result.usage` messages into the shared `TokenUsage` result shape. The adapter fills `inputTokens`, `outputTokens`, `cacheReadTokens` from `cache_read_input_tokens`, `cacheWriteTokens` from `cache_creation_input_tokens`, `totalTokens`, native `actualUsdCost` from `total_cost_usd`, `duration`, and `turnCount`. The legacy `cost` field is reserved for provider-reported non-USD units such as Copilot premium request units and must not be displayed as USD. Forge's cost layer resolves displayed USD as `actualUsdCost ?? estimatedUsdCost` and records `displayedUsdCost` plus its source on usage stats and conversation estimates; its pricing lookup normalizes provider model IDs such as Claude CLI hyphenated/datetime/reasoning-suffixed IDs and Codex dated/suffixed IDs onto existing Copilot pricing-table entries before declaring pricing unavailable. When the query handle exposes `getContextUsage()`, the adapter enriches `TokenUsage` with `tokenLimit` (mapped from the effective `maxTokens`, never `rawMaxTokens`)/`currentTokens` and structured context breakdown fields (`systemTokens`, `toolDefinitionsTokens`, `conversationTokens`), even when Claude reports only a context-window snapshot and no per-turn token totals. The snapshot is fetched once per turn at turn end — right before the streaming-input gate closes, while the SDK subprocess is still alive to answer the control request. Fetching after the message loop ends races the subprocess teardown (which rejects pending control requests), so the meter would never populate; the adapter therefore captures usage at each settle point (`result` with no background work, `session_state_changed: idle`, or a held terminal signal released once no background work is pending) before closing the gate. A timeout guard (`CLAUDE_CONTEXT_USAGE_TIMEOUT_MS`, default 5s, overridable via the `COC_CLAUDE_CONTEXT_USAGE_TIMEOUT_MS` env var — primarily for tests) keeps a hung control request from stalling turn settlement; timeouts and failures are logged at warn level and degrade gracefully so a completed Claude response still succeeds with the result-level totals.
+A wall-clock drain cap (`CLAUDE_BACKGROUND_DRAIN_TIMEOUT_MS`, 60 min, `COC_CLAUDE_BACKGROUND_DRAIN_TIMEOUT_MS` override, lowered by a smaller caller `timeoutMs`) is armed **only** while stdin is held for drain, so a no-background turn closes at its first `result` and arms no timer; a wedged task is bounded by the cap, which closes stdin and aborts. It stays well under `StaleTaskDetector`'s ~6h05m force-fail. Any abort (caller signal, `abortSession()`, or the cap) closes the input channel.
 
-Claude Agent SDK does **not** expose a direct quota RPC equivalent to Copilot `account.getQuota` or Codex `account/rateLimits/read`. On **every platform**, `ClaudeSDKService.getAccountQuota()` reads Claude's OAuth credentials fresh on every call and calls `https://api.anthropic.com/api/oauth/usage` so dashboard quota refreshes use fresh direct Anthropic usage data rather than stale SDK event caches. Credentials are resolved by `resolveClaudeCredentialsRaw` in priority order: (a) `$CLAUDE_CREDENTIALS_FILE` when set — used exclusively, the Keychain is never consulted in this case; (b) `~/.claude/.credentials.json` when present (resolved via `path.join(os.homedir(), …)`, so it works on Windows too); (c) on macOS only, the Keychain via `readKeychainCredentials`, which shells out to `security find-generic-password -s "Claude Code-credentials" -w` with an argument array (no shell interpolation) and returns `undefined` on any failure (binary absent — as on Linux/Windows — non-zero exit, or empty output). The Keychain reader's `execFileSync` dependency is injectable so unit tests never invoke the real `security` binary. The access token is extracted via `extractClaudeAccessToken`, which prefers the Claude Code CLI nested shape (`claudeAiOauth.accessToken`, written by `claude login`) and falls back to the flat `access_token` field used by the lower-level `@anthropic-ai/sdk` store. The OAuth response maps `five_hour` and `seven_day` utilization windows into quota snapshots; missing/expired credentials, failed network calls, non-2xx responses, or malformed JSON return `{ quotaSnapshots: {} }`. CoC never refreshes or writes credentials back — it relies on normal Claude Agent SDK session activity to keep the Keychain/file token renewed.
+### System prompt
 
-Platform routing differs only in how the OAuth result is combined with cached SDK-side signals:
+`SendMessageOptions.systemMessage` is delivered through the SDK's unified `systemPrompt` query option (the >= 0.1 surface; the option names `appendSystemPrompt`/`customSystemPrompt` are silently ignored by `query()` and must not be used). `mode: "append"` → `systemPrompt: { type: 'preset', preset: 'claude_code', append: content }`; `mode: "replace"` → `systemPrompt: content`; blank/absent content omits the field entirely. Executor content (ask-mode read-only instructions, repo `.github/coc` instructions, Memory/tool guidance, note permissions, save-location directives) stays in this channel, not the user prompt. Resumed follow-ups pass the persisted transcript ID via `options.resume` while still sending the current turn's system prompt.
 
-- **Linux and macOS** return the OAuth result unconditionally.
-- **Windows** tries the OAuth path first (reading the same on-disk `~/.claude/.credentials.json` that `claude login` writes); if it yields no snapshots — e.g. the token lives only in Windows Credential Manager, which has no reader here — it falls through to the cached SDK-side signals below.
+### Provider option contracts
 
-The cached-signal fallback (Windows only, when OAuth is empty) is, in priority order:
+Provider SDK option mappings are contracts, not internal adapter transforms. For prompt delivery, permissions, MCP wiring, resume/session IDs, model selection, and reasoning effort, confirm the installed SDK's accepted option surface and anchor coverage at the SDK boundary (delivered query options, initialized request/transcript shape, stream events, sanitized diagnostics). Wrapper-only argument assertions are insufficient: unsupported keys are ignored without a CoC-side error.
 
-1. The most recent structured `rate_limit_event` emitted during a Claude session (concrete per-limit usage, mapped via `mapClaudeRateLimitInfoToQuota`).
-2. A synthesized "subscription active, well under all thresholds" snapshot derived from `accountInfo()` (mapped via `mapClaudeAccountInfoToQuota`, keyed by `subscriptionType` like `Claude Pro` / `Claude Max` / `team` / `enterprise`, falling back to a non-`firstParty` `apiProvider` such as `bedrock` / `vertex`, then to `subscription`). Used when no rate-limit event has fired yet.
+### Logging and diagnostics
 
-If neither the OAuth path nor a cached signal is available the result is `{ quotaSnapshots: {} }`.
+Unsuccessful `result` messages warn-log through the SDK logger before returning failure; thrown SDK exceptions error-log before returning the same user-facing string. Diagnostics are allowlisted: result subtype/error flags, provider session ID, timing/turn metadata, terminal/API reason fields, exception name/message/safe stack/cause summary, requested/effective model, cwd, permission mode, MCP configured state and server names, latest in-call rate-limit status/type/utilization/reset/overage. Prompt and system-prompt text, credentials, image payloads, tool results, and transcript content are never logged.
 
-`accountInfo()` is cached as a side-effect of every real `sendMessage()` call: after obtaining the query handle, `ClaudeSDKService` fires `handle.accountInfo?.()` as a fire-and-forget promise that writes to `lastAccountInfo` on resolution. No separate probe subprocess is spawned.
+### Token usage
 
-Claude session persistence uses the Claude Code SDK transcript session ID. New `sendMessage()` calls pass a generated UUID as `options.sessionId`, persist any `session_id` emitted by the SDK stream, and follow-up calls pass the stored ID as `options.resume` so Claude Code reloads the prior transcript. `forkSession()` delegates to the SDK's `forkSession` export and returns the forked session ID.
+Mapped from successful `result.usage`: `inputTokens`, `outputTokens`, `cacheReadTokens` from `cache_read_input_tokens`, `cacheWriteTokens` from `cache_creation_input_tokens`, `totalTokens`, native `actualUsdCost` from `total_cost_usd`, `duration`, `turnCount`. The `cost` field is reserved for provider-reported non-USD units such as Copilot premium request units and must not be displayed as USD. Forge's cost layer resolves displayed USD as `actualUsdCost ?? estimatedUsdCost` and records `displayedUsdCost` plus its source; its pricing lookup normalizes Claude CLI hyphenated/datetime/reasoning-suffixed IDs and Codex dated/suffixed IDs onto Copilot pricing-table entries before declaring pricing unavailable.
 
-Claude Code expects hyphenated model IDs for version aliases (for example, `claude-sonnet-4-6`). `ClaudeSDKService` normalizes CoC's shared dotted Claude registry IDs (`claude-sonnet-4.6`, `claude-haiku-4.5`, `claude-opus-4.6`) to that Claude Code form before passing `options.model` to the SDK. Non-Claude model IDs and `claude-provider-default` are omitted so Claude Code can use its configured default.
+When the query handle exposes `getContextUsage()`, `TokenUsage` gains `tokenLimit` (from the effective `maxTokens`, never `rawMaxTokens`), `currentTokens`, and breakdown fields (`systemTokens`, `toolDefinitionsTokens`, `conversationTokens`) — even when Claude reports only a context snapshot and no per-turn totals. It is fetched once per turn at each settle point (`result` with no background work, `session_state_changed: idle`, or a released held terminal signal) **before** the streaming-input gate closes, while the subprocess can still answer control requests; fetching after the message loop races teardown. `CLAUDE_CONTEXT_USAGE_TIMEOUT_MS` (5s, `COC_CLAUDE_CONTEXT_USAGE_TIMEOUT_MS` override) guards a hung request; failures warn-log and degrade to result-level totals.
+
+### Quota
+
+The Claude Agent SDK exposes no direct quota RPC. On **every platform**, `getAccountQuota()` reads OAuth credentials fresh per call and hits `https://api.anthropic.com/api/oauth/usage`, so dashboard refreshes use fresh data rather than cached SDK events. `resolveClaudeCredentialsRaw` priority:
+
+1. `$CLAUDE_CREDENTIALS_FILE` when set — used exclusively; the Keychain is not consulted.
+2. `~/.claude/.credentials.json` (resolved via `path.join(os.homedir(), …)`, so Windows works).
+3. macOS only: the Keychain via `readKeychainCredentials`, running `security find-generic-password -s "Claude Code-credentials" -w` with an argument array (no shell interpolation), returning `undefined` on any failure. Its `execFileSync` dependency is injectable so tests never invoke the real binary.
+
+`extractClaudeAccessToken` prefers the CLI nested shape (`claudeAiOauth.accessToken`, written by `claude login`) and falls back to the flat `access_token` used by `@anthropic-ai/sdk`. The response maps `five_hour` and `seven_day` utilization windows into snapshots; missing/expired credentials, failed or non-2xx calls, and malformed JSON return `{ quotaSnapshots: {} }`. CoC never refreshes or writes credentials back.
+
+Linux and macOS return the OAuth result unconditionally. **Windows** tries OAuth first and, if it yields no snapshots (the token may live only in Windows Credential Manager, which has no reader here), falls through to cached SDK signals: (1) the most recent structured `rate_limit_event` from a session (`mapClaudeRateLimitInfoToQuota`); (2) a synthesized "subscription active, well under all thresholds" snapshot from `accountInfo()` (`mapClaudeAccountInfoToQuota`, keyed by `subscriptionType` such as `Claude Pro`/`Claude Max`/`team`/`enterprise`, falling back to a non-`firstParty` `apiProvider` like `bedrock`/`vertex`, then `subscription`). With neither, `{ quotaSnapshots: {} }`.
+
+`accountInfo()` is cached as a side effect of every real `sendMessage()`: after obtaining the query handle the service fires `handle.accountInfo?.()` fire-and-forget, writing `lastAccountInfo` on resolution. No probe subprocess is spawned.
+
+### Session persistence
+
+Persistence uses the Claude Code SDK transcript session ID. New `sendMessage()` calls pass a generated UUID as `options.sessionId` and persist any `session_id` emitted by the stream; follow-ups pass the stored ID as `options.resume`. `forkSession()` delegates to the SDK's `forkSession` export and returns the forked session ID.
+
+### Permissions
+
+SDK `autopilot` → `permissionMode: 'bypassPermissions'` plus `allowDangerouslySkipPermissions: true`; SDK `plan` → `permissionMode: 'plan'`; all other modes (interactive/ask/undefined) → `permissionMode: 'acceptEdits'`. The CoC server normalizes chat `mode='plan'` to Ask before calling the SDK, so regular chat runs interactive/ask semantics and can create directories and write files in allowed working directories without prompting.
+
+`acceptEdits` only auto-accepts file edits, so ask-mode turns append `ASK_MODE_AUTO_APPROVED_TOOLS` (`Bash`, `WebFetch`, `WebSearch`) to `allowedTools` as bare tool names (matching every use); otherwise those tools hit a permission prompt nothing can answer (headless, no `canUseTool`) and fail the turn. Autopilot skips the list — `bypassPermissions` covers it. The SDK's `system`/`permission_denied` frame warn-logs as `event: 'claude_tool_permission_denied'` with `toolName`, `toolUseId`, `permissionMode`, and decision reason (never `tool_input` or the rejection body); observational only, never failing the turn. The deliberate `AskUserQuestion` deny-rule denial logs at `debug`.
+
+### Image attachments
+
+Detection is content-based: `evaluateClaudeImageFile` sniffs magic numbers, so any readable PNG/JPEG/GIF/WebP is forwarded even with a wrong or missing extension (extension is a fallback only when bytes are unrecognized). With at least one qualifying image the initial streaming user message carries a block array of prompt text plus base64 image blocks; text-only turns use plain-string `content`. Recognizable but unsupported formats (HEIC/HEIF, AVIF, BMP, TIFF, ICO) are skipped with a sanitized `unsupported-format` diagnostic; SVGs, non-images, directories, missing files, and files over the shared conversion limit are ignored. Upstream, `attachment-utils.saveAttachmentsToTempFiles` normalizes each image temp file's extension to its decoded MIME type for extension-based consumers such as Codex.
+
+### Additional directories
+
+`resolveAdditionalDirectories` widens filesystem scope via the SDK's `additionalDirectories` option, always granting `~/.coc` and `os.tmpdir()` so out-of-repo skill files and temp artifacts stay readable beyond the per-request `workingDirectory`/`cwd`. Caller-supplied `SendMessageOptions.additionalDirectories` are merged; all entries are resolved absolute and de-duplicated (case-insensitively on Windows).
+
+### AskUserQuestion suppression
+
+When CoC's `ask_user` is present, `resolveClaudeDisallowedTools` adds the built-in `AskUserQuestion` to `options.disallowedTools`. `ask_user` replaces it under a different name, so the SDK's `overridesBuiltInTool` flag (same-named built-ins only) cannot suppress it, and CoC wires none of the host callbacks (`onUserDialog`/`onElicitation`/`canUseTool`) it needs — an `AskUserQuestion` call would auto-fail before the user could answer.
+
+### Tool-call capture
+
+Assistant `tool_use` blocks are start events; user `tool_result` / `tool_use_result` payloads are terminal. Stored calls keep the original input in `args` and the actual output in `result`/`error` — never synthesized from input JSON. Built-in sub-agent starts (`Agent`/`Task`) normalize to CoC's `task` shape with `subagent_type` → `agent_type` and terminal metadata (`agentId`, `agentType`, status, output file, prompt/description) merged into `args`. Waits (`TaskOutput`) normalize to `read_agent` with `agent_id`, `wait`, timeout metadata. Assistant messages from inside a sub-agent preserve `parent_tool_use_id` as `parentToolCallId` for nested timeline rendering.
 
 ## Provider-Aware Model Resolution
 
-`resolveModelForProvider(provider, requestedModel)` is the shared boundary helper for provider-bound chat flows. It keeps model overrides only when they are valid for the selected provider (`gpt-*` for Codex, Claude IDs/family aliases for Claude, Copilot-compatible IDs for Copilot). Provider-default aliases such as `default`, `provider-default`, `codex-default`, and `claude-provider-default` resolve to `undefined`, which means "let the provider choose its default". Invalid cross-provider overrides are coerced to `undefined` and the CoC server logs a warning before persisting turns or process metadata.
+`resolveModelForProvider(provider, requestedModel)` is the shared boundary helper for provider-bound chat flows. It keeps overrides only when valid for the selected provider (`gpt-*` for Codex, Claude IDs/family aliases for Claude, Copilot-compatible IDs for Copilot). Provider-default aliases (`default`, `provider-default`, `codex-default`, `claude-provider-default`) resolve to `undefined` = "let the provider choose". Invalid cross-provider overrides coerce to `undefined` and the server logs a warning before persisting turns or process metadata.
 
-All SDK `sendMessage()` implementations return `effectiveModel?: string` in `IInvocationResult` / `SDKInvocationResult`. CoC records that effective model on assistant turns and reconciles `metadata.model` to it; an omitted `effectiveModel` means the provider default was used. This prevents dashboard records from showing a stale selected model that the provider did not actually run.
+All `sendMessage()` implementations return `effectiveModel?: string` in `IInvocationResult` / `SDKInvocationResult`. CoC records it on assistant turns and reconciles `metadata.model` to it; omission means the provider default was used. This prevents dashboard records showing a selected model the provider did not run.
 
-`ClaudeSDKService` forwards `SendMessageOptions.reasoningEffort` to the SDK query's `effort` option (`normalizeClaudeEffort`). CoC's `ReasoningEffort` (`low`/`medium`/`high`/`xhigh`) is a subset of the SDK's `EffortLevel`, so recognized values pass through case-insensitively; the SDK silently downgrades a level the selected model does not support. Unrecognized or absent values — including `max`, which CoC does not yet surface — omit `effort` so Claude's adaptive thinking decides.
+### Per-request model order
 
-Claude model catalog discovery spawns the Claude Code CLI in `stream-json` protocol mode and sends a single `control_request` initialize message, then maps `response.response.models` into `IModelInfo`. The CLI advertises short alias ids (`default`, `opus`, `haiku`); each model's `supportedEffortLevels` is filtered to CoC's reasoning-effort vocabulary (`low`/`medium`/`high`/`xhigh`; `max` dropped) and surfaced as `IModelInfo.supportedReasoningEfforts`, which drives the admin model-catalog REASONING column and effort-tier dropdowns; a model with no advertised levels (e.g. Haiku) omits the field. The CLI's model `description` (e.g. "Sonnet 4.6 · Best for everyday tasks" on the `default` alias) is mapped to `IModelInfo.description` so `findClaudeCatalogModel` can family-match configured ids that are not exact catalog ids. The resolver prefers the platform-specific native binary bundled beside `@anthropic-ai/claude-agent-sdk` and falls back to `claude` on `PATH`. Discovery uses `--setting-sources=` and `--tools ''` to avoid loading user/project/local settings or tools; malformed output, spawn errors, timeouts, or protocol changes fall back to the curated Claude model list, whose Sonnet/Opus entries advertise conservative `supportedReasoningEfforts` so effort-tier validation still resolves offline.
+1. Explicit `task.config.model`
+2. `PerRepoPreferences.defaultModels[mode]` (per-mode override)
+3. `PerRepoPreferences.defaultModel` (repo-wide default)
+4. CLI default (`undefined`)
 
-Executor-side reasoning-effort validation (`chat-base-executor.getModelMetadataForReasoning`) resolves non-Copilot model metadata from the provider's own `listModels()` catalog (cached per provider). For Claude it matches via `findClaudeCatalogModel`, so tier models (`haiku`/`sonnet`/`opus`), legacy dashed/dotted ids, and provider-default turns (no model → the catalog's `default` entry) all resolve supported efforts instead of failing with `Unsupported reasoning effort … Supported efforts: unknown`.
+Variant models with a `capabilities.family` base are sent to the SDK as base model + resolved reasoning effort (`model-reasoning.ts`).
 
-Claude Code permission mode is mapped at the provider boundary: SDK `autopilot` sends `permissionMode: 'bypassPermissions'` plus `allowDangerouslySkipPermissions: true`, SDK `plan` sends `permissionMode: 'plan'`, and all other modes (interactive/ask/undefined) send `permissionMode: 'acceptEdits'`. The CoC server normalizes legacy chat `mode='plan'` to Ask before calling the SDK, so regular CoC chat execution uses interactive/ask semantics. This ensures ask-mode sessions can create directories and write files within allowed working directories without blocking on permission prompts. `acceptEdits` only auto-accepts file edits, so ask-mode turns additionally append `ASK_MODE_AUTO_APPROVED_TOOLS` (`Bash`, `WebFetch`, `WebSearch`) to `allowedTools` — bare tool names, which match every use of the tool. Without that, those tools would hit a permission prompt that nothing can answer (headless, no `canUseTool` callback) and fail the turn. Autopilot does not get this list; `bypassPermissions` already covers it. Auto-denials are no longer silent: the SDK's `system`/`permission_denied` frame is logged as a structured warn (`event: 'claude_tool_permission_denied'`, with `toolName`, `toolUseId`, `permissionMode`, and the decision reason — never `tool_input` or the rejection body, which can carry prompt content), so an allowlist gap is greppable on first occurrence instead of surfacing only as a generic failed tool call. The logging is purely observational and never fails the turn; the deliberate `AskUserQuestion` deny-rule denial logs at `debug` instead.
+### Claude reasoning effort
 
-Claude image attachments are converted at the provider boundary. Detection is content-based: `evaluateClaudeImageFile` sniffs each file's magic number, so any readable PNG/JPEG/GIF/WebP is forwarded even when its temp filename carries a wrong or missing extension (a supported extension is only a fallback when the bytes are not a recognized signature). When at least one image qualifies, the initial streaming user message carries a block array of the prompt text plus base64 image blocks (a text-only turn instead uses a plain-string `content`). Files whose bytes are a recognizable but unsupported image format (HEIC/HEIF, AVIF, BMP, TIFF, ICO) are skipped with a sanitized `unsupported-format` diagnostic instead of vanishing silently; SVGs, non-images, directories, missing files, and files over the shared image conversion limit are ignored so text-only behavior is preserved. Upstream, `attachment-utils.saveAttachmentsToTempFiles` also normalizes each image temp file's extension to its decoded MIME type, so extension-based consumers (e.g. the Codex provider) receive correctly-named files.
+`ClaudeSDKService` forwards `SendMessageOptions.reasoningEffort` to the query's `effort` option (`normalizeClaudeEffort`). CoC's `ReasoningEffort` (`low`/`medium`/`high`/`xhigh`) is a subset of the SDK's `EffortLevel`, so recognized values pass through case-insensitively and the SDK silently downgrades unsupported levels. Unrecognized or absent values — including `max`, which CoC does not surface — omit `effort` so Claude's adaptive thinking decides.
 
-`ClaudeSDKService` widens the agent's filesystem permission scope via the SDK's `additionalDirectories` option (`resolveAdditionalDirectories`). It always grants access to `~/.coc` (CoC data/skills dir) and the system temp directory (`os.tmpdir()`) so out-of-repo skill files and temp artifacts remain readable beyond the per-request `workingDirectory`/`cwd`. Any caller-supplied `SendMessageOptions.additionalDirectories` are merged in; all entries are resolved to absolute paths and de-duplicated (case-insensitively on Windows).
+### Claude model catalog discovery
 
-`ClaudeSDKService` wires CoC LLM tools and any caller-provided `mcpServers` into `query({ options: { mcpServers } })`; CoC tools ride a stdio bridge entry (`coc_llm_tools`, `alwaysLoad: true`), are pre-approved via `options.allowedTools` (`mcp__coc_llm_tools__<tool>`) so Claude Code never prompts for them, and bridged `tool_use` names are de-namespaced (see *CoC LLM Tools over MCP*). When the CoC `ask_user` tool is present, `resolveClaudeDisallowedTools` adds the native built-in `AskUserQuestion` to `options.disallowedTools`: CoC's `ask_user` replaces it but has a different name (so the SDK's `overridesBuiltInTool` flag, which only overrides a same-named built-in, cannot suppress it), and CoC wires none of the host callbacks (`onUserDialog`/`onElicitation`/`canUseTool`) the native tool needs — so an `AskUserQuestion` call would auto-fail before the user could answer. Blocking it steers the model to the serviceable `ask_user`.
+Discovery spawns the Claude Code CLI in `stream-json` protocol mode, sends one `control_request` initialize message, and maps `response.response.models` into `IModelInfo`. The CLI advertises short alias ids (`default`, `opus`, `haiku`). `supportedEffortLevels` is filtered to CoC's vocabulary (`low`/`medium`/`high`/`xhigh`; `max` dropped) and surfaced as `IModelInfo.supportedReasoningEfforts`, driving the admin catalog REASONING column and effort-tier dropdowns; a model with no advertised levels (e.g. Haiku) omits the field. The CLI `description` maps to `IModelInfo.description` so `findClaudeCatalogModel` can family-match non-exact ids. The resolver prefers the native binary bundled beside `@anthropic-ai/claude-agent-sdk`, else `claude` on `PATH`, and passes `--setting-sources=` and `--tools ''` to skip user/project/local settings and tools. Malformed output, spawn errors, timeouts, or protocol changes fall back to the curated model list, whose Sonnet/Opus entries advertise conservative `supportedReasoningEfforts` so effort-tier validation resolves offline.
 
-Claude tool-call capture treats assistant `tool_use` blocks as start events and user `tool_result` / `tool_use_result` payloads as terminal events. Stored tool calls keep the original input parameters in `args` and preserve the actual tool output in `result` or `error`; the adapter does not synthesize completion results from tool input JSON. Built-in Claude sub-agent starts (`Agent`/`Task`) are normalized to CoC's `task` tool shape, with `subagent_type` copied to `agent_type` and terminal agent metadata (`agentId`, `agentType`, status, output file, prompt/description) merged back into `args` when Claude reports it. Claude background-agent waits (`TaskOutput`) are normalized to `read_agent`, including `agent_id`, `wait`, and timeout metadata. Assistant messages emitted from inside a Claude sub-agent preserve `parent_tool_use_id` as `parentToolCallId`, so nested child tools render under the parent task in process timelines.
+Executor-side validation (`chat-base-executor.getModelMetadataForReasoning`) resolves non-Copilot model metadata from the provider's own `listModels()` catalog (cached per provider). For Claude it matches via `findClaudeCatalogModel`, so tier models (`haiku`/`sonnet`/`opus`), dashed/dotted ids, and provider-default turns (no model → the catalog's `default` entry) all resolve supported efforts instead of failing with `Unsupported reasoning effort … Supported efforts: unknown`.
+
+### Claude model ID normalization
+
+Claude Code expects hyphenated IDs for version aliases (e.g. `claude-sonnet-4-6`). `ClaudeSDKService` normalizes CoC's dotted registry IDs (`claude-sonnet-4.6`, `claude-haiku-4.5`, `claude-opus-4.6`) before passing `options.model`. Non-Claude IDs and `claude-provider-default` are omitted so Claude Code uses its configured default.
 
 ## RequestRunner — sendMessage() Flow (Copilot)
 
@@ -225,30 +269,34 @@ Claude tool-call capture treats assistant `tool_use` blocks as start events and 
 2. createClient(cwd) → spawn fresh child process
 3. Build ISessionOptions (model, streaming, tools, contextTier, MCP config, permissions)
 4. Session creation or resume (falls back to create on resume failure)
-5. session.setModel(model, { reasoningEffort, contextTier }) after session creation
+5. session.setModel(model, { reasoningEffort, contextTier })
 6. onSessionCreated callback fires
 7. Attach AbortSignal listener for cancellation
 8. sessionManager.track(session)
-9. Route: streaming (timeoutMs>120s or onStreamingChunk) vs race-safe non-streaming send+idle wait (not the SDK's `sendAndWait`, whose `session.error` handler can reject its internal promise before a catch is attached — an unhandled rejection on slow hosts; falls back to `sendAndWait` only for sessions lacking `on`/`send`)
+9. Route: streaming (timeoutMs>120s or onStreamingChunk) vs race-safe non-streaming send+idle wait
 10. Empty-response handling (turnCount>0 = success)
 11. FINALLY: remove abort listener, untrack + session.disconnect + client.stop
 ```
 
-`SendMessageOptions.contextTier` (`"default" | "long_context"`) selects the Copilot context-window tier. It rides the same session-options object on create and resume; in the delayed model-switch path (model + reasoningEffort both present) it moves to `session.setModel(model, { reasoningEffort, contextTier })` alongside the model. Callers must only set it for Copilot models whose catalog metadata advertises a long-context tier — `getCopilotContextTierForModel` (`model-context-tier.ts`) derives it strictly from `billing.tokenPrices.longContext.contextMax` (camelCase or snake_case runtime shape), never from model names or `max_context_window_tokens`. Passing `long_context` without metadata support can leave the session on normal limits while reporting a long-context selection.
+Step 9 avoids the SDK's `sendAndWait`, whose `session.error` handler can reject its internal promise before a catch is attached (unhandled rejection on slow hosts); `sendAndWait` is used only for sessions lacking `on`/`send`.
+
+### Context tier
+
+`SendMessageOptions.contextTier` (`"default" | "long_context"`) selects the Copilot context-window tier. It rides the session-options object on create and resume; in the delayed model-switch path (model + reasoningEffort both present) it moves to `session.setModel(model, { reasoningEffort, contextTier })`. Set it only for models whose catalog metadata advertises a long-context tier — `getCopilotContextTierForModel` (`model-context-tier.ts`) derives it strictly from `billing.tokenPrices.longContext.contextMax` (camelCase or snake_case), never from model names or `max_context_window_tokens`. Passing `long_context` without metadata support can leave the session on normal limits while reporting long-context.
 
 ## Streaming Internals
 
 `StreamingSession.run()` manages:
-- **Dual timeout:** `timeoutMs` (wall clock) and `idleTimeoutMs` (inactivity) — first to fire kills session
+- **Dual timeout:** `timeoutMs` (wall clock) and `idleTimeoutMs` (inactivity) — first to fire kills the session
 - **Completion detection:** `session.idle` → `turn_end` → 2s grace timer
-- **Multi-turn MCP loops:** `turn_start` cancels grace timer for continued processing
-- **Background tasks:** Settlement deferred until `backgroundTasks` field drains to zero
+- **Multi-turn MCP loops:** `turn_start` cancels the grace timer
+- **Background tasks:** settlement deferred until `backgroundTasks` drains to zero
 
-State machine transitions: `Idle → Streaming → Settled | Cancelled`
+State machine: `Idle → Streaming → Settled | Cancelled`.
 
 ## Stream Error Guard
 
-Installed once when SDK module loads. Absorbs `ERR_STREAM_DESTROYED` errors via `uncaughtException` and `unhandledRejection` process listeners. `dispose()` removes guard synchronously.
+Installed once when the SDK module loads. Absorbs `ERR_STREAM_DESTROYED` via `uncaughtException` and `unhandledRejection` process listeners. `dispose()` removes the guard synchronously.
 
 ## MCP Configuration
 
@@ -261,123 +309,60 @@ loadDefaultMcpConfig: false              →  skips global/workspace files
 forceReload: true                        →  bypasses the path-keyed config cache
 ```
 
-Workspace MCP loading is resolved from the per-request `workingDirectory`, not
-the process current directory, so concurrent repos do not share MCP state. VS
-Code workspace config uses a top-level `servers` map, which is normalized into
-the `mcpServers` shape before passing configuration to the SDK.
-Config load results include source-scoped `success`/`error` metadata so callers
-can continue with valid sources when another source is malformed.
+Workspace MCP loading resolves from the per-request `workingDirectory`, not the process cwd, so concurrent repos do not share MCP state. VS Code workspace config uses a top-level `servers` map, normalized into `mcpServers` before reaching the SDK. Load results carry source-scoped `success`/`error` metadata so callers can continue with valid sources when another is malformed.
 
 ## CoC LLM Tools over MCP (provider parity)
 
-CoC LLM tools are assembled in the coc package as `Tool<any>[]`
-(via `buildChatToolBundle()` / `applyLlmToolPreferences()`) and passed to every
-provider through `SendMessageOptions.tools`. Copilot consumes them natively; Codex
-and Claude consume the **same already-filtered array** through a provider-neutral
-MCP bridge so features like `ask_user`, conversation search, work-item/bug
-creation, wakeups/crons, Tavily, comments, and memory tools work uniformly.
+CoC LLM tools are assembled in the coc package as `Tool<any>[]` (`buildChatToolBundle()` / `applyLlmToolPreferences()`) and passed to every provider via `SendMessageOptions.tools`. Copilot consumes them natively; Codex and Claude consume the **same already-filtered array** through a provider-neutral MCP bridge, so `ask_user`, conversation search, work-item/bug creation, wakeups/crons, Tavily, comments, and memory tools work uniformly.
 
-The tool contract (`Tool`, `ToolHandler`, `ToolInvocation`, `ToolResultObject`,
-`ZodSchema`) is owned natively by `coc-agent-sdk/src/types.ts`, not aliased from a
-provider SDK — keeping the runtime + bridge free of any compile-time dependency on
-`@github/copilot-sdk`. `defineTool()` is a local pure data-merge. A compile-time
-guard in `types.ts` asserts the native contract stays structurally interchangeable
-with the Copilot SDK's, since the Copilot path assigns the same bundle to the SDK's
-`SessionConfig.tools` (`request-runner.ts`). Matching the SDK (>= 1.0.0),
-`Tool.handler` is optional (declaration-only tools); every CoC-authored tool
-supplies one, and `CocToolRuntime.callTool` returns an error result for a
-handler-less tool instead of throwing. CoC's local `defineTool()` still requires
-a handler.
+The tool contract (`Tool`, `ToolHandler`, `ToolInvocation`, `ToolResultObject`, `ZodSchema`) is owned natively by `coc-agent-sdk/src/types.ts`, keeping runtime + bridge free of a compile-time dependency on `@github/copilot-sdk`. `defineTool()` is a local pure data-merge. A compile-time guard in `types.ts` asserts the native contract stays structurally interchangeable with the Copilot SDK's, since the Copilot path assigns the same bundle to `SessionConfig.tools` (`request-runner.ts`). Matching the SDK (>= 1.0.0), `Tool.handler` is optional (declaration-only tools); `CocToolRuntime.callTool` returns an error result for a handler-less tool instead of throwing, while local `defineTool()` still requires one.
 
-Pipeline (all in `coc-agent-sdk/src/llm-tools/`):
-1. `CocToolRuntime` wraps the per-invocation `Tool<any>[]` → `listTools()` (JSON-schema
-   descriptors) + `callTool()` (invokes the original in-process handler, normalizes
-   results to MCP `CallToolResult`). Exposes exactly the tools it is given, so
-   per-repo preference filtering upstream means only enabled tools surface.
-2. `CocToolBridgeServer` (`cocToolBridgeServer` singleton) registers each runtime
-   under a random bearer token on a lazily-started `127.0.0.1` HTTP server and
-   serves `POST /list` / `POST /call`. `/call` awaits `callTool` with no server-side
-   timeout, so blocking tools (`ask_user`) keep the request open until the SPA
-   answers — preserving blocking/resume across the process boundary. Reference-
-   counted: torn down when the last runtime unregisters (no idle server, no caching).
-3. `bridge.ts` (`coc-llm-tools-mcp`) is a dependency-free hand-rolled MCP **stdio**
-   server spawned as a child by the provider's MCP client. It reads
-   `COC_LLM_TOOLS_ENDPOINT` / `COC_LLM_TOOLS_TOKEN` from env and proxies
-   `initialize`/`tools/list`/`tools/call` to the loopback endpoint.
-4. `buildCocLlmToolsMcpConfig()` emits the `{ command, args, env }` stdio spec; bridge
-   path resolves to the dist-adjacent `bridge.js`, overridable via
-   `setCocLlmToolsBridgePath()` / `COC_LLM_TOOLS_BRIDGE_PATH` for bundled hosts.
-   `command` defaults to `process.execPath`. When the host runs on an Electron
-   binary (`process.versions.electron` set — the CoC desktop server is forked as
-   Electron's Node via `ELECTRON_RUN_AS_NODE=1`, so `process.execPath` is the
-   Electron executable) and the launcher is that binary, the emitted `env` also
-   carries `ELECTRON_RUN_AS_NODE=1`. Without it the bridge child boots Electron's
-   GUI runtime, never answers the MCP stdio handshake, and the provider silently
-   drops all CoC tools. This must be an explicit `env` entry because Codex
-   sanitizes inherited env for MCP server children (Claude inherits it, but that
-   is incidental); plain-Node hosts are unaffected.
+### Pipeline (`coc-agent-sdk/src/llm-tools/`)
 
-Provider wiring (per request, only when `options.tools` is non-empty; disposed in
-`finally`):
-- **Copilot:** native `SendMessageOptions.tools` (unchanged; no bridge).
-- **Codex:** a fresh `Codex` client is built with
-  `config.mcp_servers.coc_llm_tools = { command, args, env, enabled_tools }`, where
-  `enabled_tools` is the de-duplicated set of CoC LLM tool names passed into the
-  current request. Bridged calls arrive as `mcp_tool_call` items and report bare
-  tool names via existing normalization.
-- **Claude:** the stdio bridge entry is injected into `query({ options: { mcpServers } })`
-  under `coc_llm_tools` with `alwaysLoad: true`; caller-provided `mcpServers` are
-  also forwarded (normalized to Claude's shape). Each bridged tool is added to
-  `options.allowedTools` as `mcp__coc_llm_tools__<tool>` so Claude Code does not
-  prompt for (or block) CoC's own first-party tools — parity with Copilot, which
-  runs the same bundle without permission prompts. `tool_use` blocks named
-  `mcp__coc_llm_tools__<tool>` are de-namespaced to `<tool>` so `onToolEvent` /
-  tool-call capture / the timeline see the bare CoC tool name.
+1. `CocToolRuntime` wraps the per-invocation `Tool<any>[]` → `listTools()` (JSON-schema descriptors) + `callTool()` (invokes the original in-process handler, normalizes results to MCP `CallToolResult`). It exposes exactly the tools given, so upstream per-repo filtering means only enabled tools surface.
+2. `CocToolBridgeServer` (`cocToolBridgeServer` singleton) registers each runtime under a random bearer token on a lazily-started `127.0.0.1` HTTP server serving `POST /list` / `POST /call`. `/call` awaits `callTool` with no server-side timeout, so blocking tools (`ask_user`) keep the request open until the SPA answers. Reference-counted: torn down when the last runtime unregisters.
+3. `bridge.ts` (`coc-llm-tools-mcp`) is a dependency-free hand-rolled MCP **stdio** server spawned as a child by the provider's MCP client. It reads `COC_LLM_TOOLS_ENDPOINT` / `COC_LLM_TOOLS_TOKEN` from env and proxies `initialize`/`tools/list`/`tools/call` to the loopback endpoint.
+4. `buildCocLlmToolsMcpConfig()` emits the `{ command, args, env }` stdio spec. The bridge path resolves to the dist-adjacent `bridge.js`, overridable via `setCocLlmToolsBridgePath()` / `COC_LLM_TOOLS_BRIDGE_PATH`; `command` defaults to `process.execPath`. When the host runs on an Electron binary (`process.versions.electron` set — the desktop server is forked as Electron's Node via `ELECTRON_RUN_AS_NODE=1`) and the launcher is that binary, the emitted `env` also carries `ELECTRON_RUN_AS_NODE=1`; without it the bridge child boots Electron's GUI runtime, never answers the stdio handshake, and the provider silently drops all CoC tools. It must be an explicit `env` entry because Codex sanitizes inherited env for MCP children; plain-Node hosts are unaffected.
 
-## Model Resolution
+### Provider wiring
 
-Resolution order for per-request model:
-1. Explicit `task.config.model`
-2. `PerRepoPreferences.defaultModels[mode]` (per-mode override)
-3. `PerRepoPreferences.defaultModel` (repo-wide default)
-4. CLI default (`undefined`)
+Per request, only when `options.tools` is non-empty; disposed in `finally`.
 
-Variant models with `capabilities.family` base are sent to SDK as base model + resolved reasoning effort.
+- **Copilot:** native `SendMessageOptions.tools`; no bridge.
+- **Codex:** a fresh `Codex` client is built with `config.mcp_servers.coc_llm_tools = { command, args, env, enabled_tools }`, `enabled_tools` being the de-duplicated set of CoC tool names in the request. Bridged calls arrive as `mcp_tool_call` items reporting bare tool names. First-party calls store the actual tool input directly in `args` (e.g. `args.questions` for `ask_user`) to match the Copilot/Claude display contract; external MCP calls retain `{ server, arguments }`. Sub-agent spawns store `task` args with `agent_type: "codex"`, `agent_id`/`agent_ids`, prompt/model metadata and agent state; waits store `read_agent` args with `agent_id`, `wait: true`, and latest agent state.
+- **Claude:** the stdio bridge entry is injected into `query({ options: { mcpServers } })` under `coc_llm_tools` with `alwaysLoad: true`; caller `mcpServers` are forwarded normalized to Claude's shape. Each bridged tool is added to `options.allowedTools` as `mcp__coc_llm_tools__<tool>` so Claude Code never prompts for CoC's first-party tools. `tool_use` blocks with that name are de-namespaced to `<tool>` so `onToolEvent`, tool-call capture, and the timeline see the bare name.
 
 ## Logger Lifecycle
 
-`coc-agent-sdk` uses a pino logger injected by the host application:
-
 ```ts
 import { initSDKLogger, resetSDKLogger } from '@plusplusoneplusplus/coc-agent-sdk';
-initSDKLogger(pinoInstance);   // call once at startup
-resetSDKLogger();              // call in tests to restore no-op logger
+initSDKLogger(pinoInstance);   // once at startup
+resetSDKLogger();              // in tests, restores the no-op logger
 ```
 
-Without a call to `initSDKLogger`, all internal SDK log statements are silently discarded.
+Without `initSDKLogger`, all internal SDK log statements are silently discarded.
 
 ## Warm-client registry (session prewarming)
 
-`WarmClientRegistry` (`warm-client-registry.ts`) keeps a provider client process alive between turns, keyed by `makeWarmKey(provider, warmKey)`, for a short idle TTL (`COC_WARM_CLIENT_TTL_MS`; `<= 0` disables warming). CoC passes the conversation process id as `warmKey`; `workingDirectory` remains client construction/per-turn execution context and is not part of the registry key. Per-key status: `cold` (absent) → `warming` (factory in flight) → `warm` (parked, idle TTL ticking) → `active` (≥1 turn in flight). Copilot and Codex route warm-scoped `sendMessage`/`prewarm` through it; Claude cannot stay warm and never enters it. If a caller sets `keepWarm: true` without `warmKey`, Copilot/Codex log a warning and run the turn cold rather than falling back to cwd-scoped warming.
+`WarmClientRegistry` (`warm-client-registry.ts`) keeps a provider client process alive between turns, keyed by `makeWarmKey(provider, warmKey)`, for an idle TTL (`COC_WARM_CLIENT_TTL_MS`; `<= 0` disables warming). CoC passes the conversation process id as `warmKey`; `workingDirectory` is construction / per-turn execution context and is **not** part of the key. Status: `cold` (absent) → `warming` (factory in flight) → `warm` (parked, TTL ticking) → `active` (≥1 turn in flight). Copilot and Codex route warm-scoped `sendMessage`/`prewarm` through it; Claude never enters it. `keepWarm: true` without `warmKey` logs a warning and runs the turn cold.
 
-Status surfaces two ways, both off the same canonical `currentStatus(key)` calc so they never disagree:
-- **Push:** `onStateChange` → `WarmStatusBroadcaster` → `ISDKService.onWarmStatusChange(listener)` (the CoC `WarmStatusBridge` subscribes here and fans transitions onto process SSE streams).
-- **Read:** `WarmClientRegistry.getStatus(key)` → `ISDKService.getWarmStatus(options)` — the synchronous snapshot side. Copilot/Codex compute their `makeWarmKey(...)` and return `getStatus`; Claude omits the method. CoC's warm-only SSE stream calls this (via the bridge) to send an initial `warm_status` frame on connect.
+Status surfaces two ways, both off the same canonical `currentStatus(key)` calc:
+- **Push:** `onStateChange` → `WarmStatusBroadcaster` → `ISDKService.onWarmStatusChange(listener)` (CoC's `WarmStatusBridge` subscribes and fans transitions onto process SSE streams).
+- **Read:** `WarmClientRegistry.getStatus(key)` → `ISDKService.getWarmStatus(options)`. Copilot/Codex compute their `makeWarmKey(...)` and return `getStatus`; Claude omits the method. CoC's warm-only SSE stream calls this to send an initial `warm_status` frame on connect.
 
-`prewarm({ warmKey, workingDirectory })` warms without creating a session (idempotent, no-op while active or when warming is disabled, best-effort); a real send with the same `warmKey` arriving mid-warm attaches to the same in-flight warming. A fresh SDK session is still created/resumed/disconnected per turn via the existing `sdkSessionId` flow — no provider session objects are cached. `cleanup()`/`dispose()` evict every warm client so no child process outlives the service.
+`prewarm({ warmKey, workingDirectory })` warms without creating a session (idempotent, no-op while active or warming-disabled, best-effort); a real send with the same `warmKey` mid-warm attaches to the in-flight warming. SDK sessions are still created/resumed/disconnected per turn via the `sdkSessionId` flow — no provider session objects are cached. `cleanup()`/`dispose()` evict every warm client.
 
 ## Cleanup
 
-- `cleanup()` (async): aborts all sessions, removes stream error guard, nulls sdkModule
-- `dispose()`: sets `disposed = true`, removes guard synchronously, fires `cleanup()` fire-and-forget
-- `resetCopilotSDKService()`: disposes and nulls singleton (test helper)
+- `cleanup()` (async): aborts all sessions, removes the stream error guard, nulls `sdkModule`
+- `dispose()`: sets `disposed = true`, removes the guard synchronously, fires `cleanup()` fire-and-forget
+- `resetCopilotSDKService()`: disposes and nulls the singleton (test helper)
 
 ## Testing Notes
 
-- **Shared ISDKService mock** in `packages/coc-agent-sdk/src/testing/` — vitest-free, exposed via `@plusplusoneplusplus/coc-agent-sdk/testing` subpath export. Factories: `createMockSDKService`, `createUnavailableMock`, `createStreamingMock`, `createFailingMock`, `createMockBridge`, `createExpiredSessionBridge`. Accepts an injectable mock-fn factory (`fn` parameter); consumers pass `vi.fn` for vitest spy assertions.
-- `packages/coc/test/helpers/mock-sdk-service.ts` is a thin wrapper that binds `vi.fn` and re-exports from the shared mock.
-- Lower-level mock helpers in `packages/coc-agent-sdk/test/helpers/mock-sdk.ts` (MockCopilotClient — different layer, not migrated).
-- 580+ tests in `packages/coc-agent-sdk/test/`
-- Set `serviceAny.sdkModule` and `serviceAny.availabilityCache` to bypass real SDK
-- Unit tests cover: session-manager, streaming-session, sdk-loader, sdk-client-factory, stream-error-guard, request-runner, logger, codex-sdk-service
-- Provider SDK option mappings should be tested at the provider boundary. Use SDK module fakes, protocol fixtures, transcript/request assertions, stream-event assertions, or sanitized log assertions that observe the option after CoC hands it to the provider SDK; do not rely only on wrapper/adapter argument assertions for provider-owned option names.
+- **Shared `ISDKService` mock** in `packages/coc-agent-sdk/src/testing/` — vitest-free, exposed via the `@plusplusoneplusplus/coc-agent-sdk/testing` subpath. Factories: `createMockSDKService`, `createUnavailableMock`, `createStreamingMock`, `createFailingMock`, `createMockBridge`, `createExpiredSessionBridge`. Accepts an injectable mock-fn factory (`fn`); consumers pass `vi.fn` for spy assertions.
+- `packages/coc/test/helpers/mock-sdk-service.ts` is a thin wrapper binding `vi.fn` and re-exporting the shared mock.
+- Lower-level mock helpers in `packages/coc-agent-sdk/test/helpers/mock-sdk.ts` (`MockCopilotClient` — a different layer).
+- 580+ tests in `packages/coc-agent-sdk/test/`, covering session-manager, streaming-session, sdk-loader, sdk-client-factory, stream-error-guard, request-runner, logger, codex-sdk-service.
+- Set `serviceAny.sdkModule` and `serviceAny.availabilityCache` to bypass the real SDK.
+- Test provider SDK option mappings at the provider boundary: SDK module fakes, protocol fixtures, transcript/request assertions, stream-event assertions, or sanitized log assertions. Do not rely only on wrapper/adapter argument assertions for provider-owned option names.
