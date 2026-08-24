@@ -20,8 +20,9 @@ type TestWorkspace = {
     remote?: Record<string, unknown>;
 };
 
-const { treeMock, remoteTreeMock, getSpaCocClientMock, getCocClientForMock, workspacesRef, reposRef } = vi.hoisted(() => ({
+const { treeMock, previewMock, remoteTreeMock, getSpaCocClientMock, getCocClientForMock, workspacesRef, reposRef } = vi.hoisted(() => ({
     treeMock: vi.fn(),
+    previewMock: vi.fn(),
     remoteTreeMock: vi.fn(),
     getSpaCocClientMock: vi.fn(),
     getCocClientForMock: vi.fn(),
@@ -74,10 +75,14 @@ const CHILD_ENTRIES = [
 
 beforeEach(() => {
     treeMock.mockReset();
+    previewMock.mockReset();
     remoteTreeMock.mockReset();
     getSpaCocClientMock.mockReset();
     getCocClientForMock.mockReset();
-    getSpaCocClientMock.mockReturnValue({ explorer: { tree: treeMock } });
+    getSpaCocClientMock.mockReturnValue({
+        explorer: { tree: treeMock },
+        tasks: { previewWorkspaceFile: previewMock },
+    });
     getCocClientForMock.mockReturnValue({ explorer: { tree: remoteTreeMock } });
     resetCloneRegistryForTests();
     workspacesRef.current = [{ id: 'ws1', rootPath: '/home/u/proj' }];
@@ -168,6 +173,43 @@ describe('useSourceCanvasTree — root load', () => {
         expect(result.current.resolvedPath).toBe('/home/u/proj/src/managers');
         expect(result.current.relativePath).toBe('src/managers');
         expect(treeMock).toHaveBeenCalledWith('ws1', { path: 'src/managers' });
+    });
+
+    it('probes a relative group folder then routes root and lazy children to the member', async () => {
+        workspacesRef.current = [
+            { id: 'group-ml', rootPath: '/home/u/.coc/repos/group-ml' },
+            { id: 'ws-nixl', rootPath: '/home/u/projects/nixl' },
+        ];
+        previewMock.mockResolvedValue({
+            type: 'directory',
+            path: '/home/u/projects/nixl/src/plugins',
+            resolvedWorkspaceId: 'ws-nixl',
+        });
+        const groupEntries = [
+            { name: 'sub', type: 'dir' as const, path: 'src/plugins/sub' },
+        ];
+        treeMock
+            .mockResolvedValueOnce({ entries: groupEntries, truncated: false })
+            .mockResolvedValueOnce({ entries: CHILD_ENTRIES, truncated: false });
+
+        const { result } = renderHook(() => useSourceCanvasTree({
+            fullPath: 'src/plugins',
+            wsId: 'group-ml',
+            kind: 'dir',
+        }));
+
+        await waitFor(() => expect(result.current.status).toBe('success'));
+        expect(previewMock).toHaveBeenCalledWith('group-ml', 'src/plugins');
+        expect(treeMock).toHaveBeenCalledWith('ws-nixl', { path: 'src/plugins' });
+        expect(result.current.wsId).toBe('ws-nixl');
+        expect(result.current.workspaceRootPath).toBe('/home/u/projects/nixl');
+        expect(result.current.resolvedPath).toBe('/home/u/projects/nixl/src/plugins');
+
+        act(() => { result.current.toggle('src/plugins/sub'); });
+        await waitFor(() => expect(
+            result.current.childrenMap.get('src/plugins/sub'),
+        ).toEqual(CHILD_ENTRIES));
+        expect(treeMock).toHaveBeenLastCalledWith('ws-nixl', { path: 'src/plugins/sub' });
     });
 
     it('resolves a relative folder path against the source file directory', async () => {

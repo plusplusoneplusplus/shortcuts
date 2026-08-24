@@ -646,6 +646,27 @@ describe('source-canvas routing for chat AI-response file-path links (AC-03)', (
         expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
     });
 
+    it('opens a group-chat Markdown href in the read-only source viewer', async () => {
+        document.body.innerHTML = `
+            <div class="chat-message assistant" data-ws-id="group-ml">
+                <span class="md-link" data-href="docs/guide.md">
+                    <span class="md-link-text">guide</span>
+                </span>
+            </div>
+        `;
+
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink('.md-link-text');
+
+        const call = eventCalls(dispatchSpy, 'coc-open-source-canvas')[0];
+        expect(call[0].detail).toEqual(expect.objectContaining({
+            filePath: 'docs/guide.md',
+            wsId: 'group-ml',
+        }));
+        expect(call[0].detail.kind).toBeUndefined();
+        expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
+    });
+
     it('flag ON but link in a chat USER message → keeps floating dialog (AI response only)', async () => {
         const fullPath = '/repo/src/foo.ts';
         document.body.innerHTML = `

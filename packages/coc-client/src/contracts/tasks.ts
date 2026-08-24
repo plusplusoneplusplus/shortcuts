@@ -130,6 +130,8 @@ export interface WriteTaskContentResponse {
 export interface FilePreviewResponse {
   type?: 'file' | 'directory' | 'image' | 'image-too-large' | string;
   path?: string;
+  /** Workspace that owns the resolved path; differs from the requested workspace for repo-group member previews. */
+  resolvedWorkspaceId?: string;
   dirName?: string;
   fileName?: string;
   entries?: Array<{ name: string; isDirectory: boolean }>;

@@ -29,6 +29,66 @@ describe('resolveSourceCanvasTarget', () => {
         expect(r).toEqual({ wsId: 'ws-explicit', path: '/anywhere/foo.ts' });
     });
 
+    it('re-routes a group-hinted absolute path to the owning member workspace', () => {
+        const r = resolveSourceCanvasTarget(
+            { fullPath: '/repos/nixl/src/hf3fs_utils.cpp', wsId: 'group-ml' },
+            [
+                { id: 'group-ml', rootPath: '/home/u/.coc/repos/group-ml' },
+                { id: 'ws-nixl', rootPath: '/repos/nixl' },
+            ],
+        );
+
+        expect(r).toEqual({
+            wsId: 'ws-nixl',
+            path: '/repos/nixl/src/hf3fs_utils.cpp',
+        });
+    });
+
+    it('applies the owning-root rule to non-group workspace hints', () => {
+        const r = resolveSourceCanvasTarget(
+            { fullPath: '/repos/current/src/index.ts', wsId: 'ws-old' },
+            [
+                { id: 'ws-old', rootPath: '/repos/old-clone' },
+                { id: 'ws-current', rootPath: '/repos/current' },
+            ],
+        );
+
+        expect(r).toEqual({
+            wsId: 'ws-current',
+            path: '/repos/current/src/index.ts',
+        });
+    });
+
+    it('keeps a group hint for an absolute path inside the group root', () => {
+        const r = resolveSourceCanvasTarget(
+            {
+                fullPath: '/home/u/.coc/repos/group-ml/notes/plan.md',
+                wsId: 'group-ml',
+            },
+            [
+                { id: 'group-ml', rootPath: '/home/u/.coc/repos/group-ml' },
+                { id: 'ws-nixl', rootPath: '/repos/nixl' },
+            ],
+        );
+
+        expect(r).toEqual({
+            wsId: 'group-ml',
+            path: '/home/u/.coc/repos/group-ml/notes/plan.md',
+        });
+    });
+
+    it('keeps a group hint when no known workspace contains the absolute path', () => {
+        const r = resolveSourceCanvasTarget(
+            { fullPath: '/outside/repo/file.ts', wsId: 'group-ml' },
+            [
+                { id: 'group-ml', rootPath: '/home/u/.coc/repos/group-ml' },
+                { id: 'ws-nixl', rootPath: '/repos/nixl' },
+            ],
+        );
+
+        expect(r).toEqual({ wsId: 'group-ml', path: '/outside/repo/file.ts' });
+    });
+
     it('picks the workspace with the longest matching rootPath prefix', () => {
         const r = resolveSourceCanvasTarget(
             { fullPath: '/home/u/proj/packages/coc/src/foo.ts' },
@@ -112,6 +172,20 @@ describe('resolveSourceCanvasTarget', () => {
         expect(r).toEqual({
             wsId: 'ws-pkg',
             path: '/home/u/proj/packages/coc/src/foo.ts',
+        });
+    });
+
+    it('leaves a repo-group relative path unanchored for ordered server probing', () => {
+        const r = resolveSourceCanvasTarget(
+            { fullPath: 'src/plugins/hf3fs/hf3fs_utils.cpp', wsId: 'group-ml' },
+            [
+                { id: 'group-ml', rootPath: '/home/u/.coc/repos/group-ml' },
+                { id: 'ws-nixl', rootPath: '/home/u/projects/nixl' },
+            ],
+        );
+        expect(r).toEqual({
+            wsId: 'group-ml',
+            path: 'src/plugins/hf3fs/hf3fs_utils.cpp',
         });
     });
 

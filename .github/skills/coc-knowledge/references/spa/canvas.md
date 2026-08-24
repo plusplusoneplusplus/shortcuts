@@ -184,9 +184,12 @@ and normalizes the URL to `#repos/<workspace>/<chat-tab>/<id>` (see [routes.md](
 
 ### Path resolution
 
-The resolver picks the explicit workspace hint when present, otherwise the longest matching
-workspace root, resolving relative paths against `sourceFilePath` or the selected workspace
-root before calling the workspace file preview API.
+The resolver keeps an explicit workspace hint when its root contains the resolved absolute
+path. When the hinted root does not contain the path, the longest matching known workspace
+root wins; if no root matches, the hint remains the fallback. This routes absolute member-repo
+paths from repo-group chats to the owning workspace. Relative paths resolve against
+`sourceFilePath`; otherwise ordinary workspace refs anchor at the workspace root while
+repo-group refs stay relative for the preview endpoint's ordered live-member probe.
 
 WSL workspaces on a Windows host have a `\\wsl$\<distro>\...` root. `react/utils/path-resolution.ts`
 keeps that UNC prefix through relative resolution and tilde expansion, and the resolver
@@ -196,7 +199,10 @@ server-side through `resolveRequestedFilePath` (`server/tasks/tasks-handler-util
 
 `useSourceCanvasContent` folds remote-server workspaces (which live in the repos list, not
 `state.workspaces`) into the resolver's workspace set and fetches the preview through
-`getCocClientForWorkspace(wsId)`.
+`getCocClientForWorkspace(wsId)`. It adopts the response `path` and `resolvedWorkspaceId`,
+then derives the owning member root for the panel header, copy path, and clone-routed Reveal
+action. Shared React and delegated hover previews use the same resolver. Group-scoped
+Markdown links open in the read-only viewer so member probing never widens a write route.
 
 ### File switcher
 
@@ -206,7 +212,8 @@ excluded, normalized workspace/path identities de-duplicated, latest line/range 
 newest-first. Selecting one replaces the active canvas with that candidate's workspace and
 line/range. **The candidate list is never written to browser or disk storage.**
 
-The folder explorer uses the same resolver but converts the resolved absolute folder to a
-workspace-relative tree path before calling `explorer.tree` — the workspace root is sent as
-`.` while outside-root paths stay absolute, so the server-side repo guard can reject them
-clearly.
+The folder explorer uses the same resolver. A relative group folder first goes through the
+preview endpoint to obtain its absolute member path and `resolvedWorkspaceId`; the root and
+all lazy child calls then use that member's clone-routed `explorer.tree` client and
+repo-relative paths. The workspace root is sent as `.`, while outside-root paths stay
+absolute so the server guard can reject them clearly.

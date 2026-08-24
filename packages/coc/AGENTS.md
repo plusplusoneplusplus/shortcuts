@@ -219,11 +219,30 @@ all have their own `references/*.md`.
   the id, so a missed route silently reads and writes the WRONG server's
   preference file instead of 404ing.
 - **File-path hover previews** (`react/shared/file-path/file-path-preview.ts`)
-  take the workspace from the link's own `data-ws-id` and route the preview to
-  that clone. The `rootPath`-prefix match over the workspace list is a fallback
-  for links without one and sees the LOCAL server only — on its own it resolves a
-  remote clone to `workspaces[0]`, an arbitrary unrelated repo. The preview cache
-  key is workspace-scoped for the same reason.
+  and `react/shared/FilePreview.tsx` use `resolveSourceCanvasTarget` over local
+  plus remote workspaces and route through `getCocClientForWorkspace`. A hinted
+  workspace loses to the longest root owner when it does not contain an absolute
+  path; relative group refs keep the group id for ordered server probing. Preview
+  cache keys include a workspace identity and path.
+- **Source-canvas workspace routing** keeps an explicit workspace hint only when
+  its root contains the resolved absolute path. If another known workspace owns
+  the path by longest-prefix match, `source-canvas/resolve.ts` routes the preview
+  and folder tree to that workspace; an unmatched path keeps the original hint.
+  Relative group refs stay unanchored until the preview endpoint returns the
+  absolute `path` and owning `resolvedWorkspaceId`. Content, header/copy/reveal,
+  tree roots, lazy children, hover previews, and app-level Markdown link handling
+  carry that member ownership forward. Group Markdown links stay read-only.
+- **Repo-group file preview reads** may reach the virtual group root, existing
+  trusted read-only roots, the group task root, and any live registered member
+  root. A relative group request probes live member roots in `group.json` order
+  and uses the first existing candidate; candidates must stay inside their
+  member root, and a miss reports every attempted path. Successful previews
+  return the resolved absolute `path` and `resolvedWorkspaceId`, using the
+  owning member id for member files. `resolveRepoGroupReadRoots` in
+  `server/tasks/tasks-handler-utils.ts` preserves membership order and omits
+  members removed from the registry or missing on disk; non-group workspaces get
+  no extra roots. This allowance is for
+  `GET /workspaces/:id/files/preview` only and must not be reused by write routes.
 - **WSL file links.** On a Windows host a WSL workspace has a
   `\\wsl$\<distro>\...` `rootPath`. `react/utils/path-resolution.ts` keeps that
   UNC prefix intact (`isAbsolutePath`, `resolveRelativePath`, `deriveHomeDir`),

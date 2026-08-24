@@ -153,6 +153,36 @@ describe('useSourceCanvasContent', () => {
         });
     });
 
+    it('adopts the member workspace and absolute path returned for a relative group ref', async () => {
+        workspacesRef.current = [
+            { id: 'group-ml', rootPath: '/home/u/.coc/repos/group-ml' },
+            { id: 'ws-nixl', rootPath: '/home/u/projects/nixl' },
+        ];
+        previewMock.mockResolvedValue({
+            content: 'member content',
+            language: 'cpp',
+            path: '/home/u/projects/nixl/src/plugins/hf3fs/hf3fs_utils.cpp',
+            resolvedWorkspaceId: 'ws-nixl',
+        });
+
+        const { result } = renderHook(() => useSourceCanvasContent({
+            fullPath: 'src/plugins/hf3fs/hf3fs_utils.cpp',
+            wsId: 'group-ml',
+        }));
+
+        await waitFor(() => expect(result.current.status).toBe('success'));
+        expect(previewMock).toHaveBeenCalledWith(
+            'group-ml',
+            'src/plugins/hf3fs/hf3fs_utils.cpp',
+            { lines: 0 },
+        );
+        expect(result.current.resolvedPath).toBe(
+            '/home/u/projects/nixl/src/plugins/hf3fs/hf3fs_utils.cpp',
+        );
+        expect(result.current.resolvedWorkspaceId).toBe('ws-nixl');
+        expect(result.current.workspaceRootPath).toBe('/home/u/projects/nixl');
+    });
+
     // Regression: a chat link clicked in a REMOTE conversation carries the remote
     // workspace id. That workspace lives only in the repos list (not
     // `state.workspaces`), so before the fix resolution failed with "No workspace

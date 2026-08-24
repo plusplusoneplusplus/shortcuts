@@ -9,12 +9,16 @@
 
 import { useState, useRef, useCallback, useEffect, type ReactNode } from 'react';
 import ReactDOM from 'react-dom';
-import { useApp } from '../contexts/AppContext';
 import { renderMarkdownToHtml } from '../../diff/markdown-renderer';
 import { getLanguageFromFileName, highlightBlock } from '../features/git/hooks/useSyntaxHighlight';
 import { Spinner } from '../ui/Spinner';
-import { cn } from '../ui/cn';
-import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
+import { getSpaCocClientErrorMessage } from '../api/cocClient';
+import { getCocClientForWorkspace } from '../repos/cloneRegistry';
+import { useWorkspacesWithRemote } from '../repos/workspacesWithRemote';
+import {
+    isSourceCanvasResolveError,
+    resolveSourceCanvasTarget,
+} from '../features/chat/source-canvas/resolve';
 
 interface FilePreviewResponse {
     type?: 'file';
@@ -87,7 +91,7 @@ export interface FilePreviewProps {
 }
 
 export function FilePreview({ filePath, wsId, children }: FilePreviewProps) {
-    const { state } = useApp();
+    const workspaces = useWorkspacesWithRemote();
     const [visible, setVisible] = useState(false);
     const [loading, setLoading] = useState(false);
     const [preview, setPreview] = useState<PreviewResponseData | null>(null);
@@ -99,54 +103,48 @@ export function FilePreview({ filePath, wsId, children }: FilePreviewProps) {
     const cacheRef = useRef<Map<string, CacheEntry>>(new Map());
     const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const resolveWsId = useCallback((): string | null => {
-        if (wsId) return wsId;
-        // Longest-prefix match on workspace rootPath
-        let best: { id: string; len: number } | null = null;
-        for (const ws of state.workspaces) {
-            if (ws.rootPath && filePath.startsWith(ws.rootPath)) {
-                const len = ws.rootPath.length;
-                if (!best || len > best.len) best = { id: ws.id, len };
-            }
-        }
-        return best?.id ?? state.workspaces[0]?.id ?? null;
-    }, [wsId, filePath, state.workspaces]);
+    const resolveTarget = useCallback(() => resolveSourceCanvasTarget(
+        { fullPath: filePath, wsId },
+        workspaces,
+    ), [wsId, filePath, workspaces]);
 
     const fetchPreview = useCallback(async () => {
+        const resolved = resolveTarget();
+        if (isSourceCanvasResolveError(resolved)) {
+            setError(resolved.error);
+            return;
+        }
+
         const cache = cacheRef.current;
-        const cached = cache.get(filePath);
+        const cacheKey = `${resolved.wsId}::${resolved.path}`;
+        const cached = cache.get(cacheKey);
         if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
             setPreview(cached.data);
             setError(cached.error);
             return;
         }
 
-        const resolvedWsId = resolveWsId();
-        if (!resolvedWsId) {
-            setError('No workspace available');
-            return;
-        }
-
         setLoading(true);
         try {
-            const data = await getSpaCocClient().tasks.previewWorkspaceFile(resolvedWsId, filePath) as PreviewResponseData;
+            const data = await getCocClientForWorkspace(resolved.wsId)
+                .tasks.previewWorkspaceFile(resolved.wsId, resolved.path) as PreviewResponseData;
             // Evict oldest if at capacity
             if (cache.size >= MAX_CACHE_ENTRIES) {
                 const oldest = cache.keys().next().value;
                 if (oldest) cache.delete(oldest);
             }
-            cache.set(filePath, { data, error: null, timestamp: Date.now() });
+            cache.set(cacheKey, { data, error: null, timestamp: Date.now() });
             setPreview(data);
             setError(null);
         } catch (err) {
             const msg = getSpaCocClientErrorMessage(err, 'Failed to load preview');
-            cacheRef.current.set(filePath, { data: null, error: msg, timestamp: Date.now() });
+            cacheRef.current.set(cacheKey, { data: null, error: msg, timestamp: Date.now() });
             setError(msg);
             setPreview(null);
         } finally {
             setLoading(false);
         }
-    }, [filePath, resolveWsId]);
+    }, [resolveTarget]);
 
     const handleMouseEnter = useCallback(() => {
         if (isMobile()) return;

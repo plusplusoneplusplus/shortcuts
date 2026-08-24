@@ -180,6 +180,26 @@ describe('resolveMarkdownReviewTarget', () => {
         );
         expect(target?.wsId).toBe('child');
     });
+
+    it('reroutes a group-hinted absolute Markdown path to its member workspace', () => {
+        const target = resolveMarkdownReviewTarget(
+            {
+                filePath: '/home/u/projects/nixl/docs/guide.md',
+                wsId: 'group-ml',
+            },
+            [
+                { id: 'group-ml', rootPath: '/home/u/.coc/repos/group-ml' },
+                { id: 'ws-nixl', rootPath: '/home/u/projects/nixl' },
+            ],
+        );
+        expect(target).toEqual({
+            wsId: 'ws-nixl',
+            filePath: '/home/u/projects/nixl/docs/guide.md',
+            displayPath: '/home/u/projects/nixl/docs/guide.md',
+            fetchMode: 'auto',
+            taskRootPath: undefined,
+        });
+    });
 });
 
 describe('resolveMarkdownReviewTarget — WSL workspaces', () => {

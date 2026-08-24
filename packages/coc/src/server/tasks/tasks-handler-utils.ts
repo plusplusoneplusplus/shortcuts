@@ -6,8 +6,9 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { scanDocumentsRecursively, scanFoldersRecursively, groupTaskDocuments, isWithinDirectory, getWslUncRoot } from '@plusplusoneplusplus/forge';
-import type { TasksViewerSettings, TaskFolder } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, TasksViewerSettings, TaskFolder } from '@plusplusoneplusplus/forge';
 import { getRepoDataPath } from '../paths';
+import { isRepoGroupWorkspaceId, resolveRepoGroupMembers } from '../workspaces/repo-group-workspace';
 
 /**
  * Directories outside the workspace that are trusted for **read-only** access.
@@ -56,6 +57,32 @@ export function resolveRequestedFilePath(
         }
     }
     return p.resolve(filePath);
+}
+
+export interface RepoGroupReadRoot {
+    workspaceId: string;
+    rootPath: string;
+}
+
+/**
+ * Resolve the ordered live member roots that a repo-group read may access.
+ * Non-group workspaces and stale members contribute no roots.
+ */
+export async function resolveRepoGroupReadRoots(
+    dataDir: string,
+    store: ProcessStore,
+    workspaceId: string,
+): Promise<RepoGroupReadRoot[]> {
+    if (!isRepoGroupWorkspaceId(workspaceId)) {
+        return [];
+    }
+
+    const members = await resolveRepoGroupMembers(dataDir, store, workspaceId);
+    return members.flatMap(member => (
+        !member.stale && member.rootPath
+            ? [{ workspaceId: member.workspaceId, rootPath: path.resolve(member.rootPath) }]
+            : []
+    ));
 }
 
 // ============================================================================

@@ -17,8 +17,9 @@ import { isWithinDirectory } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from '../core/api-handler';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import type { Route } from '../types';
+import { isRepoGroupWorkspaceId } from '../workspaces/repo-group-workspace';
 import { resolveTaskRoot } from './task-root-resolver';
-import { isWithinTrustedReadOnlyDir, resolveRequestedFilePath, DEFAULT_SETTINGS, readTasksSettings, writeTasksSettings } from './tasks-handler-utils';
+import { isWithinTrustedReadOnlyDir, resolveRepoGroupReadRoots, resolveRequestedFilePath, DEFAULT_SETTINGS, readTasksSettings, writeTasksSettings } from './tasks-handler-utils';
 import { taskCache } from './task-cache';
 import { getRepoDataPath } from '../paths';
 
@@ -139,9 +140,54 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
             // Resolve and validate path is within workspace, a trusted read-only directory, or the task root.
             // Relative paths resolve against the workspace root (mirrors resolveAllowedHtmlPath), not process.cwd().
             const wsRoot = path.resolve(ws.rootPath);
-            const resolvedPath = resolveRequestedFilePath(filePath, wsRoot);
             const taskRoot = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id });
-            if (!isWithinDirectory(resolvedPath, wsRoot) && !isWithinTrustedReadOnlyDir(resolvedPath, dataDir) && !isWithinDirectory(resolvedPath, taskRoot.absolutePath)) {
+            const repoGroupReadRoots = await resolveRepoGroupReadRoots(dataDir, store, ws.id);
+            const requestedPathIsAbsolute = path.isAbsolute(filePath);
+            const absoluteMemberTarget = requestedPathIsAbsolute
+                ? repoGroupReadRoots
+                    .map(member => ({
+                        member,
+                        path: resolveRequestedFilePath(filePath, member.rootPath),
+                    }))
+                    .filter(candidate => isWithinDirectory(candidate.path, candidate.member.rootPath))
+                    .sort((a, b) => b.member.rootPath.length - a.member.rootPath.length)[0]
+                : undefined;
+            let resolvedPath = absoluteMemberTarget?.path ?? resolveRequestedFilePath(filePath, wsRoot);
+            let resolvedWorkspaceId = absoluteMemberTarget?.member.workspaceId ?? ws.id;
+
+            if (isRepoGroupWorkspaceId(ws.id) && !requestedPathIsAbsolute) {
+                const candidates = repoGroupReadRoots.map(member => ({
+                    member,
+                    path: resolveRequestedFilePath(filePath, member.rootPath),
+                }));
+                if (candidates.some(candidate => !isWithinDirectory(candidate.path, candidate.member.rootPath))) {
+                    return sendError(res, 403, 'Access denied: path is outside repo-group member workspaces');
+                }
+
+                let resolvedMember: typeof candidates[number] | undefined;
+                for (const candidate of candidates) {
+                    try {
+                        await fs.promises.stat(candidate.path);
+                        resolvedMember = candidate;
+                        break;
+                    } catch (err: any) {
+                        if (err?.code !== 'ENOENT' && err?.code !== 'ENOTDIR') {
+                            return sendError(res, 500, 'Failed to resolve repo-group file: ' + (err?.message || 'Unknown error'));
+                        }
+                    }
+                }
+                if (!resolvedMember) {
+                    const attempted = candidates.map(candidate => candidate.path).join(', ') || '(no live members)';
+                    return sendError(res, 404, `File not found in repo-group members. Tried: ${attempted}`);
+                }
+                resolvedPath = resolvedMember.path;
+                resolvedWorkspaceId = resolvedMember.member.workspaceId;
+            }
+
+            const isWithinRepoGroupMember = repoGroupReadRoots.some(member => (
+                isWithinDirectory(resolvedPath, member.rootPath)
+            ));
+            if (!isWithinDirectory(resolvedPath, wsRoot) && !isWithinRepoGroupMember && !isWithinTrustedReadOnlyDir(resolvedPath, dataDir) && !isWithinDirectory(resolvedPath, taskRoot.absolutePath)) {
                 return sendError(res, 403, 'Access denied: path is outside workspace');
             }
 
@@ -169,6 +215,7 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                     return sendJSON(res, 200, {
                         type: 'directory',
                         path: resolvedPath,
+                        resolvedWorkspaceId,
                         dirName,
                         entries,
                         totalEntries,
@@ -199,6 +246,8 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                     if (stat.size > MAX_IMAGE_SIZE) {
                         return sendJSON(res, 200, {
                             type: 'image-too-large' as const,
+                            path: resolvedPath,
+                            resolvedWorkspaceId,
                             fileName: path.basename(resolvedPath),
                             size: stat.size,
                         });
@@ -207,6 +256,7 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                     return sendJSON(res, 200, {
                         type: 'image' as const,
                         path: resolvedPath,
+                        resolvedWorkspaceId,
                         fileName: path.basename(resolvedPath),
                         mimeType: imageMime,
                         content: buffer.toString('base64'),
@@ -259,6 +309,7 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                 sendJSON(res, 200, {
                     type: 'file',
                     path: resolvedPath,
+                    resolvedWorkspaceId,
                     fileName,
                     lines,
                     totalLines: allLines.length,
