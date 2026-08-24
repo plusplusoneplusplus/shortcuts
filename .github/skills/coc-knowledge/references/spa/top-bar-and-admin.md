@@ -560,3 +560,38 @@ When `features.splitWorkspacePanel` is enabled, both `RepoDetail` and the
 remote-shell `WorkspaceTabsCluster` pass the flag into `computeVisibleSubTabs`,
 so the clone-scoped standalone Git tab is hidden and the chat tab label becomes
 Workspace while Git remains available inside `SplitWorkspacePanel`.
+## AI Provider page
+
+The Admin AI Provider page's Provider routing subtab exposes the single `features.autoAgentProviderRouting` toggle. When enabled, Auto becomes the default for omitted-provider chats, tasks, and API-created work; explicit provider selections and follow-ups keep their provider. The same subtab lets admins reorder provider rules, toggle each rule, edit normal minimum remaining quota percentages, toggle and edit weekly guard thresholds, choose a fallback provider, and preview the concrete provider selected by the shared Auto router using the current availability state plus cached quota response. The Default Provider buttons only select concrete providers (`copilot`, `codex`, `claude`) for the non-Auto fallback path. The Refresh quota button force-refreshes the provider quota cache and updates the preview. When Auto is disabled, the rule editor is hidden behind an Auto-disabled message.
+
+The Admin AI Provider page's `ProviderEffortTiersSection` uses the same tier order (`Very Low`, `Low`, `Medium`, `High`) when editing provider defaults. Rows sourced from hardcoded provider defaults are prefilled and marked with a `Default` badge; saving persists only rows explicitly changed from those defaults, and clearing an override reverts that row to its provider default.
+
+Framework-free quota math lives in `@plusplusoneplusplus/coc-client`'s
+`quota.ts`: it clamps remaining and used display percentages, splits finite and
+unlimited pools, and selects the tightest finite quota across one provider or
+across enabled providers. `shared/quotaUtils.ts`
+re-exports that public math while keeping dashboard-only quota-window labels and
+risk classes. Known provider windows label `five_hour` as `5h` and
+`seven_day` as `Weekly`; unknown ids are converted to readable text. The Admin
+provider routing table uses those helpers for quota cells: Codex and Claude
+finite `quotaTypes[]` snapshots render as compact per-window rows with a
+readable quota-window label, remaining percentage, used/entitlement caption,
+and remaining-usage bar. Copilot finite quotas render as the single
+tightest-limit row used by the legacy quota cell. The page-level quota-risk
+summary uses the tightest finite quota across all providers. When the non-container
+Admin AI Provider tab is active, `AdminPanel` loads
+`admin.getAgentProvidersQuota()` without `force` so the page displays the
+server's cached quota snapshot after refresh or tab entry; the page's Refresh
+quota button still calls the force path. The desktop
+top-bar `AgentProviderQuotaIndicator` uses the same helpers to fill a circular
+gauge to the most-constrained enabled provider's used percentage and to render a
+NotificationBell-style dropdown. The dropdown lists one row per enabled
+provider; each row's gauge and risk badge are driven by that provider's tightest
+finite quota window, while the body lists every finite quota window (e.g. both
+`5h` and `Weekly`) with its used/entitlement caption and a minute-level UTC reset
+timestamp (`YYYY-MM-DD HH:MM`) plus a remaining-time countdown (`Xd Yh left` for
+multi-day windows, `Xh Ym left` otherwise, or `due` once elapsed). It also
+shows an unlimited badge for all-unlimited providers, provider-level errors, a
+last-updated line,
+a force-refresh button that calls `admin.getAgentProvidersQuota({ force: true })`,
+and an `#admin/agents` link to the AI Provider page.

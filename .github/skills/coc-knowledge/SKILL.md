@@ -38,7 +38,10 @@ It consists of three packages (`coc`, `forge`, `deep-wiki`) plus a shared client
 | REST API | [rest-api.md](references/rest-api.md) | Endpoint catalog organized by domain |
 | Streaming & Real-Time | [streaming-architecture.md](references/streaming-architecture.md) | SSE, WebSocket, ProcessStore event channels, container relay |
 | Dashboard SPA · Shell | [spa/shell.md](references/spa/shell.md) | Entry point, module tree, routing, contexts, hooks, pop-outs, feature flags, coc-client |
-| Dashboard SPA · Chat | [spa/chat.md](references/spa/chat.md) | Conversation rendering, chat lens, chat list grouping, tool calls, input area, canvas |
+| Dashboard SPA · Chat shell | [spa/chat.md](references/spa/chat.md) | Composer gating, review chat lens, chat list and task-group engine |
+| Dashboard SPA · Conversation | [spa/chat-conversation.md](references/spa/chat-conversation.md) | Turn bubbles, chat header, metadata popover, implement-plan card, agents view, tool calls |
+| Dashboard SPA · Composer | [spa/chat-composer.md](references/spa/chat-composer.md) | Input area toolbars, attachments, provider/mode/effort/style selectors, Ralph launch |
+| Dashboard SPA · Canvas | [spa/canvas.md](references/spa/canvas.md) | Canvas panel, extension bridge v2, Kusto canvases, SVG sanitizer, source canvas |
 | Dashboard SPA · Work Items | [spa/work-items.md](references/spa/work-items.md) | Hierarchy tree, Local/Remote trackers, detail form, workflow + AI authoring gates |
 | Dashboard SPA · Git & PRs | [spa/git-and-prs.md](references/spa/git-and-prs.md) | Composer PR chips, CI auto-fix triggers, classify-diff, worktree controls, PR tab |
 | Dashboard SPA · Notes | [spa/notes.md](references/spa/notes.md) | Notes roots, editor toolbar, inline colors, find & replace, Notes Chat |
