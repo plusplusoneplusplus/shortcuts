@@ -311,6 +311,36 @@ describe('Notes Multi-Root — read endpoints', { timeout: 30_000 }, () => {
             );
             expect(res.status).toBe(400);
         });
+
+        it('returns an empty non-truncated response for a configured missing root', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+            configureRoots(['missing-notes']);
+
+            const res = await request(
+                `${srv.url}/api/workspaces/${wsId}/notes/search?q=test&root=missing-notes`,
+            );
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.body)).toEqual({ results: [], truncated: false });
+        });
+
+        it('rejects encoded parent, absolute, drive, and UNC root attempts', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv);
+
+            for (const invalidRoot of [
+                '../outside',
+                '..\\outside',
+                '/absolute/outside',
+                'C:\\outside',
+                '\\\\server\\share',
+            ]) {
+                const res = await request(
+                    `${srv.url}/api/workspaces/${wsId}/notes/search?q=test&root=${encodeURIComponent(invalidRoot)}`,
+                );
+                expect(res.status, invalidRoot).toBe(400);
+            }
+        });
     });
 });
 
@@ -546,6 +576,10 @@ describe('Notes Multi-Root — write endpoints', { timeout: 30_000 }, () => {
                     `${srv.url}/api/workspaces/${otherWsId}/notes/content?path=shared.md&root=${encodeURIComponent(primaryEntry.rootId)}`,
                 );
                 expect(crossWorkspace.status).toBe(400);
+                const crossWorkspaceSearch = await request(
+                    `${srv.url}/api/workspaces/${otherWsId}/notes/search?q=first%20workspace&root=${encodeURIComponent(primaryEntry.rootId)}`,
+                );
+                expect(crossWorkspaceSearch.status).toBe(400);
                 expect(fs.readFileSync(path.join(otherPrimaryRoot, 'shared.md'), 'utf-8')).toBe('second workspace');
 
                 fs.rmSync(primaryRoot, { recursive: true });
@@ -553,6 +587,10 @@ describe('Notes Multi-Root — write endpoints', { timeout: 30_000 }, () => {
                     `${srv.url}/api/workspaces/${wsId}/notes/content?path=shared.md&root=${encodeURIComponent(primaryEntry.rootId)}`,
                 );
                 expect(stale.status).toBe(400);
+                const staleSearch = await request(
+                    `${srv.url}/api/workspaces/${wsId}/notes/search?q=first%20workspace&root=${encodeURIComponent(primaryEntry.rootId)}`,
+                );
+                expect(staleSearch.status).toBe(400);
             } finally {
                 await safeRm(otherWorkspaceDir);
             }

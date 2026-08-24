@@ -95,6 +95,8 @@ all have their own `references/*.md`.
   `src/server/notes/notes-search-service.ts`. The server validates the required
   `coc-native` Notes capability during composition, then the shared service
   lazily creates one index and recursive watcher per `(workspaceId, rootId)`.
+  `GET /api/workspaces/:id/notes/search` resolves and authorizes its root before
+  calling this service and returns the native bounded response directly.
   Physical paths never identify or share an index. Watcher changes are
   debounced into bounded incremental refreshes; ambiguous paths, directory or
   rename events, watcher errors, and oversized batches request a full native

@@ -254,7 +254,7 @@ export interface RegisterRoutesOptions {
     setSendMessage?: (fn: SendMessageFn) => void;
     setSendToConversationRuntime?: (runtime: SendToConversationRuntimeOptions) => void;
     /** Shared native Notes index lifecycle, validated by the composition root. */
-    notesSearchService?: NotesSearchService;
+    notesSearchService: NotesSearchService;
 }
 
 export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; agentProvidersQuotaCache?: AgentProvidersQuotaCache; quotaPauseWatcher?: QuotaPauseWatcher; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler } {
@@ -559,7 +559,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         });
     });
     registerTaskWriteRoutes(routes, store, dataDir);
-    registerNotesRoutes(routes, store, dataDir, opts.resolvedConfig, opts.notesSearchService);
+    registerNotesRoutes(routes, store, dataDir, opts.notesSearchService);
     registerNotesWriteRoutes(routes, store, dataDir);
     registerNotesCommentsRoutes(routes, store, dataDir, bridge);
     registerNotesImageRoutes(routes, store, dataDir);

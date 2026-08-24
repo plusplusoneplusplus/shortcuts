@@ -154,6 +154,7 @@ function makeOpts(overrides: Partial<RegisterRoutesOptions> = {}): RegisterRoute
         resolvedAiService: {} as any,
         getWsServer: () => wsServer,
         queuePersistence: makeQueuePersistence(),
+        notesSearchService: { search: vi.fn() } as any,
         runtimeConfigService: {
             config: {
                 codex: { enabled: false },
@@ -183,6 +184,45 @@ describe('registerAllRoutes', () => {
         registerAllRoutes(routes, makeOpts());
         // There should be many routes registered (well over 30)
         expect(routes.length).toBeGreaterThan(30);
+    });
+
+    it('routes authorized Notes searches through the required scoped service', async () => {
+        const routes: Route[] = [];
+        const store = makeStore();
+        vi.mocked(store.getWorkspaces).mockResolvedValue([{
+            id: 'workspace-1',
+            name: 'Workspace One',
+            rootPath: '/tmp/workspace-1',
+        }]);
+        const search = vi.fn().mockResolvedValue({
+            results: [{ path: 'note.md', matches: [{ line: 1, text: 'needle' }] }],
+            truncated: false,
+        });
+        registerAllRoutes(routes, makeOpts({
+            store,
+            dataDir: tmpDir,
+            notesSearchService: { search } as any,
+        }));
+        const found = findRoute(routes, 'GET', '/api/workspaces/workspace-1/notes/search');
+        expect(found).toBeDefined();
+
+        const res = fakeRes();
+        await found!.route.handler({
+            url: '/api/workspaces/workspace-1/notes/search?q=needle',
+        } as any, res, found!.match);
+
+        expect(search).toHaveBeenCalledWith({
+            workspaceId: 'workspace-1',
+            rootId: 'default',
+            absolutePath: path.join(tmpDir, 'repos', 'workspace-1', 'notes'),
+            isDefault: true,
+            isTaskDerived: false,
+        }, 'needle');
+        expect(res.statusCode).toBe(200);
+        expect(JSON.parse(res.body)).toEqual({
+            results: [{ path: 'note.md', matches: [{ line: 1, text: 'needle' }] }],
+            truncated: false,
+        });
     });
 
     it('returns { wikiManager } as a defined object (wiki routes always registered)', () => {
