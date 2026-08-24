@@ -24,7 +24,7 @@ An npm workspaces monorepo of published Node packages. This file owns the cross-
 
 ### coc-native
 
-One module per capability on both sides (`rust/core/src/<name>/`, `rust/napi/src/<name>.rs`, `src/<name>.ts`). It ships the file index behind quick-open search: an `ignore`-crate parallel gitignore-aware walk plus a fuzzy path scorer ported from `packages/coc/src/server/shared/fuzzy-file-score.ts`.
+One module per capability on both sides (`rust/core/src/<name>/`, `rust/napi/src/<name>.rs`, `src/<name>.ts`). It ships the file index behind quick-open search: an `ignore`-crate parallel gitignore-aware walk plus a fuzzy path scorer ported from `packages/coc/src/server/shared/fuzzy-file-score.ts`. The Rust logic crate also owns the Notes content snapshot, including Markdown-only recursive indexing, Unicode lowercase caches, bounded matching, and the external-root symlink policy.
 
 The addon is required, not optional. `loadNativeAddon()` covers the binary and `loadNativeFileIndex()` the capability; both throw `NativeAddonLoadError` (naming the expected triple, paths tried, and the fix) when a binary is missing, unloadable, or predates the capability. `COC_NATIVE=0` is the only opt-out — the loaders return `null` and `RepoTreeService` takes its ripgrep/directory-walk path; `COC_NATIVE_PATH` overrides resolution. `nativeAddonStatus()`/`nativeFileIndexStatus()` never throw and return `{ loaded, binaryPath?, reason? }`, which `/api/health` reports.
 
