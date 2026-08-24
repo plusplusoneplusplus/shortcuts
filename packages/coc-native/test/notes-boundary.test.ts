@@ -113,6 +113,141 @@ suite('Notes build and search marshalling', () => {
     });
 });
 
+suite('Notes refresh marshalling and consistency', () => {
+    it('incrementally adds, modifies, and deletes files from a bounded batch', async () => {
+        const changing = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-notes-changes-'));
+        try {
+            write(changing, 'stable.md', 'old-token');
+            const index = await notesAddon!.buildNotesIndex(changing, {});
+
+            write(changing, 'stable.md', 'modified-token');
+            write(changing, 'nested/added.md', 'added-token');
+            const refreshing = index.refreshChanged(['stable.md', 'nested/added.md']);
+            expect(refreshing).toBeInstanceOf(Promise);
+            await refreshing;
+            expect((await index.search('modified-token')).results[0].path).toBe('stable.md');
+            expect((await index.search('added-token')).results[0].path).toBe('nested/added.md');
+            expect((await index.search('old-token')).results).toEqual([]);
+
+            fs.rmSync(path.join(changing, 'nested/added.md'));
+            await index.refreshChanged(['nested/added.md']);
+            expect((await index.search('added-token')).results).toEqual([]);
+        } finally {
+            fs.rmSync(changing, { recursive: true, force: true });
+        }
+    });
+
+    it('full refresh recovers directory rename sequences', async () => {
+        const changing = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-notes-rename-'));
+        try {
+            write(changing, 'before/note.md', 'rename-token');
+            const index = await notesAddon!.buildNotesIndex(changing, {});
+            fs.renameSync(path.join(changing, 'before'), path.join(changing, 'after'));
+
+            const refreshing = index.refresh();
+            expect(refreshing).toBeInstanceOf(Promise);
+            await refreshing;
+            expect((await index.search('rename-token')).results).toEqual([
+                {
+                    path: 'after/note.md',
+                    matches: [{ line: 1, text: 'rename-token' }],
+                },
+            ]);
+        } finally {
+            fs.rmSync(changing, { recursive: true, force: true });
+        }
+    });
+
+    it('retains the last complete snapshot when incremental refresh fails', async () => {
+        const changing = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-notes-retention-'));
+        try {
+            write(changing, 'stable.md', 'stable-token');
+            const index = await notesAddon!.buildNotesIndex(changing, {});
+
+            await expect(index.refreshChanged(['../escape.md'])).rejects.toThrow(
+                /root-relative changed path/,
+            );
+            await expect(index.refreshChanged(['.'])).rejects.toThrow(/root-relative changed path/);
+            expect((await index.search('stable-token')).results[0].path).toBe('stable.md');
+
+            fs.rmSync(changing, { recursive: true, force: true });
+            fs.writeFileSync(changing, 'not a directory');
+            await expect(index.refresh()).rejects.toThrow(/failed to refresh Notes index/);
+            expect((await index.search('stable-token')).results[0].path).toBe('stable.md');
+        } finally {
+            fs.rmSync(changing, { recursive: true, force: true });
+        }
+    });
+
+    it('serializes concurrent incremental batches so changes are not lost', async () => {
+        const changing = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-notes-queued-'));
+        try {
+            const index = await notesAddon!.buildNotesIndex(changing, {});
+            write(changing, 'first.md', 'first-token');
+            write(changing, 'second.md', 'second-token');
+
+            await Promise.all([
+                index.refreshChanged(['first.md']),
+                index.refreshChanged(['second.md']),
+            ]);
+            expect((await index.search('first-token')).results[0].path).toBe('first.md');
+            expect((await index.search('second-token')).results[0].path).toBe('second.md');
+        } finally {
+            fs.rmSync(changing, { recursive: true, force: true });
+        }
+    });
+
+    it('searches racing incremental refresh see a complete old or new snapshot', async () => {
+        const changing = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-notes-race-'));
+        try {
+            const changedPaths = Array.from({ length: 20 }, (_, index) => `note-${index}.md`);
+            for (const relative of changedPaths) write(changing, relative, 'old generation');
+            const index = await notesAddon!.buildNotesIndex(changing, {});
+            for (const relative of changedPaths) write(changing, relative, 'new generation');
+
+            const refreshing = index.refreshChanged(changedPaths);
+            const searches = Array.from({ length: 30 }, () => index.search('generation'));
+            const [, ...responses] = await Promise.all([refreshing, ...searches]);
+
+            for (const response of responses) {
+                expect(response.results).toHaveLength(20);
+                const lines = response.results.map(result => result.matches[0].text);
+                expect(
+                    lines.every(line => line === 'old generation') ||
+                        lines.every(line => line === 'new generation'),
+                ).toBe(true);
+            }
+        } finally {
+            fs.rmSync(changing, { recursive: true, force: true });
+        }
+    });
+
+    it('searches racing full refresh see a complete old or new snapshot', async () => {
+        const changing = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-notes-full-race-'));
+        try {
+            const paths = Array.from({ length: 20 }, (_, index) => `note-${index}.md`);
+            for (const relative of paths) write(changing, relative, 'old full generation');
+            const index = await notesAddon!.buildNotesIndex(changing, {});
+            for (const relative of paths) write(changing, relative, 'new full generation');
+
+            const refreshing = index.refresh();
+            const searches = Array.from({ length: 30 }, () => index.search('full generation'));
+            const [, ...responses] = await Promise.all([refreshing, ...searches]);
+
+            for (const response of responses) {
+                expect(response.results).toHaveLength(20);
+                const lines = response.results.map(result => result.matches[0].text);
+                expect(
+                    lines.every(line => line === 'old full generation') ||
+                        lines.every(line => line === 'new full generation'),
+                ).toBe(true);
+            }
+        } finally {
+            fs.rmSync(changing, { recursive: true, force: true });
+        }
+    });
+});
+
 suite('Notes async contract', () => {
     it('build work does not block a queued Node timer', async () => {
         const big = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-notes-async-build-'));
@@ -150,6 +285,37 @@ suite('Notes async contract', () => {
             await new Promise<void>(resolve => setTimeout(resolve, 0));
             expect(resolved).toBe(false);
             await expect(searching).resolves.toEqual({ results: [], truncated: false });
+        } finally {
+            fs.rmSync(big, { recursive: true, force: true });
+        }
+    });
+
+    it('full and incremental refresh work do not block a queued Node timer', async () => {
+        const big = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-notes-async-refresh-'));
+        try {
+            const content = Array.from({ length: 2_000 }, (_, index) => `line ${index}`).join('\n');
+            const changedPaths = Array.from({ length: 300 }, (_, index) =>
+                `folder-${index % 20}/note-${index}.md`,
+            );
+            for (const relative of changedPaths) write(big, relative, content);
+            const index = await notesAddon!.buildNotesIndex(big, {});
+
+            let fullResolved = false;
+            const fullRefresh = index.refresh().then(() => {
+                fullResolved = true;
+            });
+            await new Promise<void>(resolve => setTimeout(resolve, 0));
+            expect(fullResolved).toBe(false);
+            await fullRefresh;
+
+            for (const relative of changedPaths) write(big, relative, `${content}\nchanged`);
+            let incrementalResolved = false;
+            const incrementalRefresh = index.refreshChanged(changedPaths).then(() => {
+                incrementalResolved = true;
+            });
+            await new Promise<void>(resolve => setTimeout(resolve, 0));
+            expect(incrementalResolved).toBe(false);
+            await incrementalRefresh;
         } finally {
             fs.rmSync(big, { recursive: true, force: true });
         }

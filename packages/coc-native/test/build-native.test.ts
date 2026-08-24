@@ -101,6 +101,8 @@ describe('the committed bindings', () => {
         expect(source).toContain('export interface NotesSearchResponse');
         expect(source).toContain('export declare class NotesIndex');
         expect(source).toContain('export declare function buildNotesIndex');
+        expect(source).toContain('refresh(): Promise<void>');
+        expect(source).toContain('refreshChanged(changedPaths: Array<string>): Promise<void>');
     });
 
     it('carries the UTF-16 offset contract through from the Rust', () => {

@@ -56,10 +56,10 @@ fn build_options(options: Option<NotesIndexBuildOptions>) -> CoreNotesIndexOptio
     }
 }
 
-fn to_napi_error(root: &Path, error: std::io::Error) -> Error {
+fn to_napi_error(operation: &str, root: &Path, error: std::io::Error) -> Error {
     Error::new(
         Status::GenericFailure,
-        format!("failed to build Notes index for {}: {error}", root.display()),
+        format!("failed to {operation} Notes index for {}: {error}", root.display()),
     )
 }
 
@@ -94,11 +94,48 @@ impl Task for BuildNotesIndexTask {
 
     fn compute(&mut self) -> Result<Self::Output> {
         CoreNotesIndex::build(self.root.clone(), self.options)
-            .map_err(|error| to_napi_error(&self.root, error))
+            .map_err(|error| to_napi_error("build", &self.root, error))
     }
 
     fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
         Ok(NotesIndex { index: output })
+    }
+}
+
+pub struct RefreshNotesIndexTask {
+    index: CoreNotesIndex,
+}
+
+impl Task for RefreshNotesIndexTask {
+    type Output = ();
+    type JsValue = ();
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        self.index.refresh().map_err(|error| to_napi_error("refresh", self.index.root(), error))
+    }
+
+    fn resolve(&mut self, _env: Env, _output: Self::Output) -> Result<Self::JsValue> {
+        Ok(())
+    }
+}
+
+pub struct RefreshChangedNotesIndexTask {
+    index: CoreNotesIndex,
+    changed_paths: Vec<String>,
+}
+
+impl Task for RefreshChangedNotesIndexTask {
+    type Output = ();
+    type JsValue = ();
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        self.index
+            .refresh_changed(&self.changed_paths)
+            .map_err(|error| to_napi_error("incrementally refresh", self.index.root(), error))
+    }
+
+    fn resolve(&mut self, _env: Env, _output: Self::Output) -> Result<Self::JsValue> {
+        Ok(())
     }
 }
 
@@ -139,5 +176,23 @@ impl NotesIndex {
     #[napi(ts_return_type = "Promise<NotesSearchResponse>")]
     pub fn search(&self, query: String) -> AsyncTask<SearchNotesTask> {
         AsyncTask::new(SearchNotesTask { index: self.index.clone(), query })
+    }
+
+    /// Rebuild the complete root and atomically replace the searchable
+    /// snapshot. A failed rebuild retains the last complete snapshot.
+    #[napi(ts_return_type = "Promise<void>")]
+    pub fn refresh(&self) -> AsyncTask<RefreshNotesIndexTask> {
+        AsyncTask::new(RefreshNotesIndexTask { index: self.index.clone() })
+    }
+
+    /// Apply at most 1,024 normalized, root-relative changed file paths and
+    /// atomically replace the searchable snapshot. Missing files are removed;
+    /// existing lowercase-Markdown files are upserted from disk.
+    #[napi(ts_return_type = "Promise<void>")]
+    pub fn refresh_changed(
+        &self,
+        changed_paths: Vec<String>,
+    ) -> AsyncTask<RefreshChangedNotesIndexTask> {
+        AsyncTask::new(RefreshChangedNotesIndexTask { index: self.index.clone(), changed_paths })
     }
 }

@@ -2,9 +2,11 @@
 
 use std::fs;
 use std::path::Path;
+use std::sync::{Arc, Barrier};
+use std::thread;
 
 use coc_native_core::notes_index::{
-    NotesIndex, NotesIndexOptions, MAX_MATCHING_FILES, MAX_TOTAL_MATCHES,
+    NotesIndex, NotesIndexOptions, MAX_CHANGED_PATHS, MAX_MATCHING_FILES, MAX_TOTAL_MATCHES,
 };
 
 fn write(root: &Path, relative: &str, contents: &str) {
@@ -184,4 +186,194 @@ fn invalid_utf8_content_matches_node_utf8_replacement_semantics() {
 
     let response = build(root.path()).search("� after");
     assert_eq!(response.results[0].matches[0].text, "before � after");
+}
+
+#[test]
+fn incremental_refresh_adds_modifies_and_deletes_markdown_files() {
+    let root = tempfile::tempdir().unwrap();
+    write(root.path(), "existing.md", "old-token");
+    let index = build(root.path());
+
+    write(root.path(), "nested/added.md", "added-token");
+    index.refresh_changed(&["nested/added.md".to_owned()]).unwrap();
+    assert_eq!(index.search("added-token").results[0].path, "nested/added.md");
+
+    write(root.path(), "existing.md", "modified-token");
+    index.refresh_changed(&["existing.md".to_owned()]).unwrap();
+    assert!(index.search("old-token").results.is_empty());
+    assert_eq!(index.search("modified-token").results[0].path, "existing.md");
+
+    fs::remove_file(root.path().join("nested/added.md")).unwrap();
+    index.refresh_changed(&["nested/added.md".to_owned()]).unwrap();
+    assert!(index.search("added-token").results.is_empty());
+}
+
+#[test]
+fn incremental_batches_normalize_windows_separators_and_preserve_walk_order() {
+    let root = tempfile::tempdir().unwrap();
+    let index = build(root.path());
+    write(root.path(), "a/inside.md", "batch-token");
+    write(root.path(), "a.md", "batch-token");
+    write(root.path(), "ignored.MD", "batch-token");
+
+    index
+        .refresh_changed(&[
+            "ignored.MD".to_owned(),
+            "a.md".to_owned(),
+            "a\\inside.md".to_owned(),
+            "a.md".to_owned(),
+        ])
+        .unwrap();
+
+    assert_eq!(
+        index
+            .search("batch-token")
+            .results
+            .into_iter()
+            .map(|result| result.path)
+            .collect::<Vec<_>>(),
+        vec!["a/inside.md", "a.md"]
+    );
+}
+
+#[test]
+fn full_refresh_recovers_from_directory_renames() {
+    let root = tempfile::tempdir().unwrap();
+    write(root.path(), "before/note.md", "rename-token");
+    let index = build(root.path());
+
+    fs::rename(root.path().join("before"), root.path().join("after")).unwrap();
+    index.refresh().unwrap();
+
+    let response = index.search("rename-token");
+    assert_eq!(response.results.len(), 1);
+    assert_eq!(response.results[0].path, "after/note.md");
+}
+
+#[test]
+fn incremental_refresh_converges_file_rename_batches() {
+    let root = tempfile::tempdir().unwrap();
+    write(root.path(), "before.md", "rename-token");
+    let index = build(root.path());
+
+    fs::rename(root.path().join("before.md"), root.path().join("after.md")).unwrap();
+    index.refresh_changed(&["before.md".to_owned(), "after.md".to_owned()]).unwrap();
+
+    let response = index.search("rename-token");
+    assert_eq!(response.results.len(), 1);
+    assert_eq!(response.results[0].path, "after.md");
+}
+
+#[test]
+fn failed_incremental_refresh_retains_the_last_complete_snapshot() {
+    let parent = tempfile::tempdir().unwrap();
+    let root = parent.path().join("notes");
+    write(&root, "stable.md", "stable-token");
+    let index = build(&root);
+
+    fs::remove_dir_all(&root).unwrap();
+    fs::write(&root, "not a directory").unwrap();
+    assert!(index.refresh_changed(&["stable.md".to_owned()]).is_err());
+    assert!(index.refresh().is_err());
+
+    assert_eq!(index.document_count(), 1);
+    assert_eq!(index.search("stable-token").results[0].path, "stable.md");
+}
+
+#[test]
+fn unsafe_oversized_and_directory_batches_require_recovery() {
+    let root = tempfile::tempdir().unwrap();
+    write(root.path(), "stable.md", "stable-token");
+    write(root.path(), "folder/note.md", "folder-token");
+    let index = build(root.path());
+
+    assert!(index.refresh_changed(&["../escape.md".to_owned()]).is_err());
+    assert!(index.refresh_changed(&["folder".to_owned()]).is_err());
+    let oversized = vec!["stable.md".to_owned(); MAX_CHANGED_PATHS + 1];
+    assert!(index.refresh_changed(&oversized).is_err());
+
+    assert_eq!(index.document_count(), 2);
+    assert_eq!(index.search("stable-token").results[0].path, "stable.md");
+}
+
+#[test]
+fn concurrent_incremental_refreshes_do_not_lose_completed_batches() {
+    let root = tempfile::tempdir().unwrap();
+    let index = build(root.path());
+    write(root.path(), "first.md", "first-token");
+    write(root.path(), "second.md", "second-token");
+
+    let first = index.clone();
+    let first_refresh = thread::spawn(move || {
+        first.refresh_changed(&["first.md".to_owned()]).unwrap();
+    });
+    let second = index.clone();
+    let second_refresh = thread::spawn(move || {
+        second.refresh_changed(&["second.md".to_owned()]).unwrap();
+    });
+    first_refresh.join().unwrap();
+    second_refresh.join().unwrap();
+
+    assert_eq!(index.document_count(), 2);
+    assert_eq!(index.search("first-token").results[0].path, "first.md");
+    assert_eq!(index.search("second-token").results[0].path, "second.md");
+}
+
+#[test]
+fn searches_during_refresh_see_complete_old_or_new_snapshots() {
+    let root = tempfile::tempdir().unwrap();
+    for number in 0..20 {
+        write(root.path(), &format!("note-{number:02}.md"), "old generation");
+    }
+    let index = build(root.path());
+    for number in 0..20 {
+        write(root.path(), &format!("note-{number:02}.md"), "new generation");
+    }
+
+    let barrier = Arc::new(Barrier::new(2));
+    let refreshing_index = index.clone();
+    let refreshing_barrier = Arc::clone(&barrier);
+    let refreshing = thread::spawn(move || {
+        let paths = (0..20).map(|number| format!("note-{number:02}.md")).collect::<Vec<_>>();
+        refreshing_barrier.wait();
+        refreshing_index.refresh_changed(&paths).unwrap();
+    });
+
+    barrier.wait();
+    for _ in 0..200 {
+        let response = index.search("generation");
+        assert_eq!(response.results.len(), 20);
+        let lines = response
+            .results
+            .iter()
+            .map(|result| result.matches[0].text.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            lines.iter().all(|line| *line == "old generation")
+                || lines.iter().all(|line| *line == "new generation")
+        );
+    }
+    refreshing.join().unwrap();
+    assert!(index
+        .search("generation")
+        .results
+        .iter()
+        .all(|result| result.matches[0].text == "new generation"));
+}
+
+#[cfg(unix)]
+#[test]
+fn incremental_refresh_preserves_the_skip_symlinks_policy() {
+    let parent = tempfile::tempdir().unwrap();
+    let root = parent.path().join("root");
+    let outside = parent.path().join("outside");
+    fs::create_dir_all(&root).unwrap();
+    write(&outside, "secret.md", "outside-token");
+    let index = NotesIndex::build(root.clone(), NotesIndexOptions { skip_symlinks: true }).unwrap();
+
+    std::os::unix::fs::symlink(outside.join("secret.md"), root.join("linked.md")).unwrap();
+    index.refresh_changed(&["linked.md".to_owned()]).unwrap();
+
+    assert!(index.search("outside-token").results.is_empty());
+    assert!(index.search("linked").results.is_empty());
 }

@@ -24,7 +24,9 @@ An npm workspaces monorepo of published Node packages. This file owns the cross-
 
 ### coc-native
 
-One module per capability on both sides (`rust/core/src/<name>/`, `rust/napi/src/<name>.rs`, `src/<name>.ts`). The file index behind quick-open search combines an `ignore`-crate parallel gitignore-aware walk with a fuzzy path scorer ported from `packages/coc/src/server/shared/fuzzy-file-score.ts`. The Notes index exposes asynchronous initial build and bounded search over an immutable Markdown-content snapshot with Unicode lowercase caches and a root-specific symlink policy.
+One module per capability lives on the Rust core, N-API, and TypeScript sides. The file index behind quick-open search combines an `ignore`-crate parallel gitignore-aware walk with a fuzzy path scorer ported from `packages/coc/src/server/shared/fuzzy-file-score.ts`.
+
+The Notes index exposes asynchronous initial build, bounded search, full rebuild, and batches of at most 1,024 root-relative incremental upserts/removals over immutable Markdown-content snapshots. Refresh writers serialize per index, build from the last complete snapshot, and atomically swap only on success, so searches during refresh see a complete old or new state. Each root retains its Unicode lowercase cache and symlink policy.
 
 `loadNativeAddon()` covers the binary; `loadNativeFileIndex()` and `loadNativeNotesIndex()` validate their own capability exports. Missing, unloadable, or capability-stale binaries raise `NativeAddonLoadError` with the expected triple, paths tried, and rebuild guidance. `COC_NATIVE=0` lets `RepoTreeService` use its ripgrep/directory-walk path, but it remains a fatal state for the native-only Notes capability. `COC_NATIVE_PATH` overrides resolution. Status accessors never throw and return `{ loaded, binaryPath?, reason? }`.
 

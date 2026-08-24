@@ -80,4 +80,15 @@ export declare class NotesIndex {
    * files and 100 total filename/content matches.
    */
   search(query: string): Promise<NotesSearchResponse>
+  /**
+   * Rebuild the complete root and atomically replace the searchable
+   * snapshot. A failed rebuild retains the last complete snapshot.
+   */
+  refresh(): Promise<void>
+  /**
+   * Apply at most 1,024 normalized, root-relative changed file paths and
+   * atomically replace the searchable snapshot. Missing files are removed;
+   * existing lowercase-Markdown files are upserted from disk.
+   */
+  refreshChanged(changedPaths: Array<string>): Promise<void>
 }

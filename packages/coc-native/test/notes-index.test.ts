@@ -38,7 +38,7 @@ function useAddon(source: string): string {
 
 it('exposes the capability when the addon provides it', async () => {
     useAddon(
-        'module.exports = { buildNotesIndex: async () => ({ search: async () => ({ results: [], truncated: false }) }) };',
+        'class NotesIndex { async search() { return { results: [], truncated: false }; } async refresh() {} async refreshChanged() {} } module.exports = { NotesIndex, buildNotesIndex: async () => new NotesIndex() };',
     );
     const api = loadNativeNotesIndex();
     const index = await api.buildNotesIndex('/notes');
@@ -66,6 +66,15 @@ describe('when the capability is missing', () => {
     it('is not fooled by a non-callable export of the right name', () => {
         useAddon('module.exports = { buildNotesIndex: true };');
         expect(() => loadNativeNotesIndex()).toThrow(NativeAddonLoadError);
+        expect(nativeNotesIndexStatus().loaded).toBe(false);
+    });
+
+    it('rejects a stale Notes binary whose handles lack refresh operations', () => {
+        useAddon(
+            'class NotesIndex { async search() { return { results: [], truncated: false }; } } module.exports = { NotesIndex, buildNotesIndex: async () => new NotesIndex() };',
+        );
+        expect(() => loadNativeNotesIndex()).toThrow(NativeAddonLoadError);
+        expect(() => loadNativeNotesIndex()).toThrow('predates the Notes-index capability');
         expect(nativeNotesIndexStatus().loaded).toBe(false);
     });
 });

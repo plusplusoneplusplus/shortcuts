@@ -29,20 +29,28 @@ export type NativeNotesSearchResponse = Bindings.NotesSearchResponse;
 /**
  * An in-memory content index for one already-authorized Notes root.
  *
- * Initial build and search both resolve real promises backed by N-API
- * `AsyncTask` operations, so recursive filesystem work and in-memory scans run
- * on libuv workers rather than Node's event-loop thread.
+ * Initial build, full and incremental refresh, and search all resolve real
+ * promises backed by N-API `AsyncTask` operations, so filesystem work and
+ * in-memory scans run on libuv workers rather than Node's event-loop thread.
  */
 export type NativeNotesIndex = Bindings.NotesIndex;
 
 /** The exact addon slice required by production Notes search. */
 export interface NativeNotesIndexAddon {
     buildNotesIndex: typeof Bindings.buildNotesIndex;
+    NotesIndex: typeof Bindings.NotesIndex;
 }
 
 /** Whether the loaded module actually exposes the Notes content index. */
 function isNotesIndexAddon(addon: unknown): addon is NativeNotesIndexAddon {
-    return typeof (addon as NativeNotesIndexAddon | null)?.buildNotesIndex === 'function';
+    const candidate = addon as NativeNotesIndexAddon | null;
+    return (
+        typeof candidate?.buildNotesIndex === 'function' &&
+        typeof candidate.NotesIndex === 'function' &&
+        typeof candidate.NotesIndex.prototype.search === 'function' &&
+        typeof candidate.NotesIndex.prototype.refresh === 'function' &&
+        typeof candidate.NotesIndex.prototype.refreshChanged === 'function'
+    );
 }
 
 /**
