@@ -53,7 +53,8 @@ It consists of three packages (`coc`, `forge`, `deep-wiki`) plus a shared client
 | Dashboard SPA · Routes | [spa/routes.md](references/spa/routes.md) | Onboarding, My Work Today, Activity, Dreams, CLI Sessions, Memory |
 | Prompt Autocomplete | [prompt-autocomplete.md](references/prompt-autocomplete.md) | Inline ghost-text, AI/history modes, caching, REST API, privacy |
 | Chat Prompt History | [chat-prompt-history.md](references/chat-prompt-history.md) | Up/Down arrow navigation, workspace-scoped history, REST API |
-| Wiki Serving | [wiki-serving.md](references/wiki-serving.md) | WikiManager, TF-IDF context retrieval, AI Q&A sessions, file watching |
+| Wiki Serving | [wiki-serving.md](references/wiki-serving.md) | Architecture, module map, object lifecycle, `WikiManager`/`WikiData`/`ContextBuilder` API |
+| Wiki Serving · API | [wiki-serving-api.md](references/wiki-serving-api.md) | Ask/Explore/Generate/Admin routes, TF-IDF retrieval, conversation sessions, file watching |
 | Remote Servers | [remote-servers.md](references/remote-servers.md) | DevTunnel integration, connection lifecycle, server registry |
 | Task Comments | [task-comments.md](references/task-comments.md) | Inline commenting, categories, anchoring, AI prompt generation |
 | Notes Sync | [sync.md](references/sync.md) | Git-backed My Work/My Life sync, AI conflict resolution, periodic scheduling |

@@ -54,7 +54,7 @@ Adding a `skills.*` field touches FOUR spots (all non-admin, hand-written): the 
 - `resolveEffectiveSkillPaths(...)` — read-only diagnostic behind `GET /api/skills/effective-paths`; keeps declared-but-missing sources so the UI can explain them (auto-detected folders surface only when their OneDrive root exists).
 - `loadSkillsForWorkspace(...)` (in `packages/coc/src/server/skills/skill-handler.ts`) — UI listing behind `GET /api/workspaces/:id/skills` and `/skills/all`; tags configured-folder skills `source: 'global-extra-folder'`, loads both OneDrive conventions from the shared helper, and applies the same folder settings to list, cache refresh, file, and detail reads. Folder-source config writes clear cached workspace skill lists.
 
-Keep the order identical across all three if you touch one. See [rest-api.md](rest-api.md) for the endpoints and [dashboard-spa.md](dashboard-spa.md) for the Skills Config panel UI.
+Keep the order identical across all three if you touch one. See [rest-api.md](rest-api.md) for the endpoints and [spa/top-bar-and-admin.md](spa/top-bar-and-admin.md) for the Skills Config panel UI.
 
 ## Admin UI Styling
 

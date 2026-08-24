@@ -88,7 +88,7 @@ keeps running in the worktree rather than falling back to the source checkout.
 
 Cleanup is manual and non-destructive — see the worktree routes in
 [rest-api.md](rest-api.md#git-worktrees) and the chip/list UI in
-[dashboard-spa.md](dashboard-spa.md); the worktree is preserved after the session
+[spa/git-and-prs.md](spa/git-and-prs.md); the worktree is preserved after the session
 completes until the user explicitly removes it, and the generated branch is never
 deleted.
 

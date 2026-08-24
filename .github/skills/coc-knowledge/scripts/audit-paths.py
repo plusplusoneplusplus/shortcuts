@@ -34,6 +34,9 @@ for path in tracked:
     for i in range(len(parts)):
         suffixes.add("/".join(parts[i:]))
 
+# Relative markdown links between KB files must resolve on disk.
+MD_LINK = re.compile(r"\]\((\.{0,2}/?[A-Za-z0-9_./-]+\.md)(?:#[^)]*)?\)")
+
 missing = []
 for md in sorted(kb.rglob("*.md")):
     for lineno, line in enumerate(md.read_text(encoding="utf-8").split("\n"), 1):
@@ -42,6 +45,10 @@ for md in sorted(kb.rglob("*.md")):
             if frag in suffixes or "*" in frag or frag in GENERATED:
                 continue
             missing.append((md.relative_to(root), lineno, ref))
+        for link in MD_LINK.findall(line):
+            if (md.parent / link).resolve().exists():
+                continue
+            missing.append((md.relative_to(root), lineno, link))
 
 for path, lineno, ref in missing:
     print(f"MISSING  {path}:{lineno}  {ref}")
