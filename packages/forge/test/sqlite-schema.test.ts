@@ -106,7 +106,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(26);
+        expect(SCHEMA_VERSION).toBe(27);
     });
 
     it('creates context-window breakdown columns on processes', () => {
@@ -1054,6 +1054,81 @@ describe('sqlite-schema', () => {
         });
     });
 
+    describe('V26 → V27 migration (compaction_summary on conversation_turns)', () => {
+        it('fresh DB includes compaction_summary column on conversation_turns', () => {
+            initializeDatabase(db);
+
+            const cols = db.prepare("PRAGMA table_info(conversation_turns)").all() as Array<{ name: string }>;
+            expect(cols.map(c => c.name)).toContain('compaction_summary');
+        });
+
+        it('adds compaction_summary to an existing V26 database without data loss', () => {
+            // Simulate a V26 conversation_turns table that lacks compaction_summary
+            db.exec(`
+                CREATE TABLE processes (
+                    id                    TEXT PRIMARY KEY,
+                    workspace_id          TEXT NOT NULL,
+                    type                  TEXT,
+                    status                TEXT NOT NULL,
+                    start_time            TEXT NOT NULL,
+                    parent_process_id     TEXT,
+                    sdk_session_id        TEXT,
+                    archived              INTEGER DEFAULT 0,
+                    last_event_at         TEXT
+                );
+
+                CREATE TABLE conversation_turns (
+                    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                    process_id        TEXT NOT NULL REFERENCES processes(id) ON DELETE CASCADE,
+                    turn_index        INTEGER NOT NULL,
+                    role              TEXT NOT NULL,
+                    content           TEXT,
+                    timestamp         TEXT NOT NULL,
+                    streaming         INTEGER DEFAULT 0,
+                    tool_calls        TEXT,
+                    timeline          TEXT,
+                    model             TEXT,
+                    mode              TEXT,
+                    sdk_event_id      TEXT,
+                    display_only      INTEGER DEFAULT 0,
+                    UNIQUE(process_id, turn_index)
+                );
+            `);
+            db.prepare(`
+                INSERT INTO processes (id, workspace_id, status, start_time)
+                VALUES ('p-v26', 'ws1', 'completed', '2026-01-01T00:00:00.000Z')
+            `).run();
+            db.prepare(`
+                INSERT INTO conversation_turns (process_id, turn_index, role, content, timestamp, display_only)
+                VALUES ('p-v26', 0, 'assistant', 'Context compacted', '2026-01-01T00:00:01.000Z', 1)
+            `).run();
+            db.pragma('user_version = 26');
+
+            initializeDatabase(db);
+
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+
+            const cols = db.prepare("PRAGMA table_info(conversation_turns)").all() as Array<{ name: string }>;
+            expect(cols.map(c => c.name)).toContain('compaction_summary');
+
+            // Existing turn preserved; the new column migrates to NULL (no backfill).
+            const row = db.prepare(`
+                SELECT content, display_only, compaction_summary FROM conversation_turns WHERE process_id = 'p-v26'
+            `).get() as any;
+            expect(row.content).toBe('Context compacted');
+            expect(row.display_only).toBe(1);
+            expect(row.compaction_summary).toBeNull();
+
+            // New column is writable.
+            db.prepare('UPDATE conversation_turns SET compaction_summary = ? WHERE process_id = ? AND turn_index = ?')
+                .run('## Summary\n\nWe discussed the store.', 'p-v26', 0);
+            const updated = db.prepare(`
+                SELECT compaction_summary FROM conversation_turns WHERE process_id = 'p-v26'
+            `).get() as any;
+            expect(updated.compaction_summary).toBe('## Summary\n\nWe discussed the store.');
+        });
+    });
+
     describe('V25 → V26 migration (rename loops → crons)', () => {
         it('fresh DB has a crons table and no legacy loops table', () => {
             initializeDatabase(db);
@@ -1103,7 +1178,7 @@ describe('sqlite-schema', () => {
 
             // Version stamped to current.
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(26);
+            expect(SCHEMA_VERSION).toBe(27);
 
             // crons exists, loops is gone.
             const tables = db
