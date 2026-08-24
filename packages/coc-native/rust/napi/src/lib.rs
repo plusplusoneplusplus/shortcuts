@@ -9,5 +9,9 @@
 //! The logic lives in `coc-native-core`; everything here is marshalling.
 
 #![deny(clippy::all)]
+// `cargo clippy --workspace --all-targets` builds this cdylib as a test crate,
+// where the N-API proc macro's exported entry points look unused to rustc.
+#![cfg_attr(test, allow(dead_code))]
 
 mod file_index;
+mod notes_index;

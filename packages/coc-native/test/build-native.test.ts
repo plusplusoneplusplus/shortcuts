@@ -94,6 +94,15 @@ describe('the committed bindings', () => {
         expect(source).toContain('export declare function buildFileIndex');
     });
 
+    it('declares the whole Notes-index surface the capability re-exports', () => {
+        expect(source).toContain('export interface NotesIndexBuildOptions');
+        expect(source).toContain('export interface NotesMatch');
+        expect(source).toContain('export interface NotesSearchResult');
+        expect(source).toContain('export interface NotesSearchResponse');
+        expect(source).toContain('export declare class NotesIndex');
+        expect(source).toContain('export declare function buildNotesIndex');
+    });
+
     it('carries the UTF-16 offset contract through from the Rust', () => {
         // Highlighting depends on these being JavaScript string indices; the
         // Rust doc comment is the source of that claim.

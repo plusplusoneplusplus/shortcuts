@@ -194,12 +194,16 @@ fn walk_directory(
     options: NotesIndexOptions,
     documents: &mut Vec<IndexedDocument>,
 ) {
-    let entries = match fs::read_dir(directory) {
-        Ok(entries) => entries,
+    let mut entries = match fs::read_dir(directory) {
+        Ok(entries) => entries.flatten().collect::<Vec<_>>(),
         Err(_) => return,
     };
+    // Node's `fs.readdir` is backed by libuv's sorted scandir result. Sort by
+    // the platform-native filename representation so snapshot order, cap
+    // boundaries, and result order stay aligned on Unix and Windows.
+    entries.sort_unstable_by_key(|entry| entry.file_name());
 
-    for entry in entries.flatten() {
+    for entry in entries {
         let file_type = match entry.file_type() {
             Ok(file_type) => file_type,
             Err(_) => continue,

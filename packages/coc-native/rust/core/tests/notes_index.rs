@@ -99,6 +99,22 @@ fn nested_response_paths_always_use_forward_slashes() {
 }
 
 #[test]
+fn walks_each_directory_in_filename_order_like_node_readdir() {
+    let root = tempfile::tempdir().unwrap();
+    write(root.path(), "z-last.md", "order-token");
+    write(root.path(), "nested/middle.md", "order-token");
+    write(root.path(), "a-first.md", "order-token");
+
+    let paths = build(root.path())
+        .search("order-token")
+        .results
+        .into_iter()
+        .map(|result| result.path)
+        .collect::<Vec<_>>();
+    assert_eq!(paths, vec!["a-first.md", "nested/middle.md", "z-last.md"]);
+}
+
+#[test]
 fn matching_file_cap_is_bounded_and_exact_cap_is_truncated() {
     let root = tempfile::tempdir().unwrap();
     for index in 0..MAX_MATCHING_FILES {

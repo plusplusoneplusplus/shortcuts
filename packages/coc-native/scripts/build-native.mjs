@@ -67,7 +67,7 @@ export function renderBindings(generated) {
  * build must not need a Rust toolchain. CI regenerates this and fails on a
  * diff, which is what keeps it honest.
  *
- * Declarations only — this emits no runtime code. \`file-index.ts\` re-exports
+ * Declarations only — this emits no runtime code. Capability modules re-export
  * these under the package's own names; the real implementations come from the
  * binary the loader resolves.
  */
@@ -117,10 +117,14 @@ function main() {
         // A cached crate never reruns the proc macro and so emits no type defs.
         // Writing that emptiness over the committed file would quietly delete
         // the package's whole type surface, so refuse it.
-        if (!generated.includes('buildFileIndex')) {
+        const missingExports = ['buildFileIndex', 'buildNotesIndex'].filter(
+            exportName => !generated.includes(exportName),
+        );
+        if (missingExports.length > 0) {
             throw new Error(
-                'napi build produced no type definitions — the crate was not recompiled, ' +
-                    `so the \`#[napi]\` macros never ran. Try \`cargo clean --manifest-path ${cargoCwd}/Cargo.toml\`.`,
+                `napi build omitted required type definitions (${missingExports.join(', ')}) — ` +
+                    'the crate may not have been recompiled, so the `#[napi]` macros never ran. ' +
+                    `Try \`cargo clean --manifest-path ${cargoCwd}/Cargo.toml\`.`,
             );
         }
 
@@ -135,8 +139,8 @@ function main() {
         }
     }
 
-    console.log(`native file index: built ${path.relative(packageRoot, destination)}`);
-    console.log(`native file index: generated ${BINDINGS_FILE}`);
+    console.log(`native addon: built ${path.relative(packageRoot, destination)}`);
+    console.log(`native addon: generated ${BINDINGS_FILE}`);
 }
 
 /** Resolve the napi CLI from wherever npm hoisted it. */
