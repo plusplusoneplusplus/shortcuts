@@ -114,21 +114,56 @@ Feed it:
 - **(a)** The current skill content (SKILL.md + all references/*.md)
 - **(b)** The collected conversation excerpts from Step 6
 
-The AI produces three buckets:
+The AI produces four buckets:
 
 | Bucket | Meaning |
 |--------|---------|
 | 🆕 **NEW** | Facts, patterns, commands, or constraints not in the skill yet |
-| ✏️ **UPDATE** | Existing entries that were refined or corrected in practice |
-| 🗑️ **REMOVE** | Entries shown to be wrong, deprecated, or never used |
+| ✏️ **UPDATE** | A **full rewrite** of the existing passage in present tense, stating only current behavior |
+| 🗑️ **REMOVE** | Entries that are wrong, **superseded, duplicated, or changelog-grade** |
+| 🔍 **REVIEW** | Existing claims spot-checked against the source that no longer hold |
 
-Every item must cite which process title and ID it came from.
+Every NEW, UPDATE, and REMOVE item must cite which process title and ID it came from.
+REVIEW items cite the source file they were checked against instead.
+
+**UPDATE means replace, not append.** The proposed text must be a self-contained
+rewrite of the whole passage that reads as if written fresh today. Never propose a
+qualifier tacked onto the end ("this no longer applies when…", "as of the latest
+change…") — that is what turned a 4000-line KB into a 7500-line one. If a passage is
+half right, rewrite both halves.
+
+**REMOVE is not just for wrong entries.** Almost nothing in a mature KB is outright
+wrong; it is stale in shape rather than in fact. Propose a removal when an entry is:
+
+- **Superseded** — a newer passage elsewhere describes the same thing better.
+- **Duplicated** — the same identifier or topic is described in more than one place.
+- **Changelog-grade** — it records a single UI or copy decision ("does not render a
+  success banner", "the hover-revealed remove control") rather than a module boundary,
+  data flow, invariant, storage key, API shape, or non-obvious constraint. Nothing
+  tests these, so they go stale silently.
+
+### REVIEW — spot-check for decay
+
+Before proposing anything, pick **5 random existing claims** from each reference file
+the proposal touches, weighted toward the oldest passages, and check each against the
+current source (read the cited file, grep the cited identifier). Report every claim
+that no longer holds, with the file and line that disproves it.
+
+This is the only step that catches decay. Conversation mining can only ever find what
+was *discussed*; a claim nobody has touched in six months is exactly the one most
+likely to be wrong and least likely to come up in a chat.
+
+Run the KB's own path audit as part of this step when the target skill ships one:
+
+```bash
+.github/skills/coc-knowledge/scripts/audit-paths.sh
+```
 
 ## Step 8 — Show Proposal
 
 Render the proposal per [references/diff-format.md](references/diff-format.md).
 
-If all three buckets are empty: print `"No actionable changes found."`, advance the cursor (Step 11), and stop.
+If all four buckets are empty: print `"No actionable changes found."`, advance the cursor (Step 11), and stop.
 
 Otherwise, print the full proposal and wait for the user's decision.
 
@@ -144,9 +179,28 @@ Ask: **"Apply these changes? [yes / edit / skip]"**
 
 ## Step 10 — Apply
 
-Edit skill files in-place (`SKILL.md` and/or relevant `references/*.md`).
+**Check the target file's size before writing to it.** For each reference file the
+proposal touches:
+
+```bash
+wc -l .github/skills/<skill>/references/<file>.md
+```
+
+If the file is at or over **400 lines**, do not append. Split it first: group its
+sections by product surface, move each group into `references/<area>/<surface>.md`,
+and replace the single Architecture Index row with one row per new file. Then apply
+the proposal to whichever new file owns the topic. A file that is already over the cap
+gets split even when the current proposal is small — that is the only moment anyone
+looks at it.
+
+Under the cap, edit in place (`SKILL.md` and/or the relevant `references/*.md`),
+rewriting passages rather than appending to them.
 
 If a proposed addition belongs in a new reference file, create it and add a link in SKILL.md.
+
+Applied text must satisfy the target skill's writing rules: present tense only, no
+history, one topic in one place, paragraphs under ~80 words, every topic under a `###`
+heading.
 
 Only project skills under `.github/skills/` may be edited. Never modify bundled skills under `packages/forge/resources/bundled-skills/`.
 

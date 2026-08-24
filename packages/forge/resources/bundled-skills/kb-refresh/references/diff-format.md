@@ -1,6 +1,6 @@
 # Proposal Display Format
 
-Render the distillation results using the layout below. Show all three sections in order, even if a section is empty (print "None." under it).
+Render the distillation results using the layout below. Show all four sections in order, even if a section is empty (print "None." under it).
 
 ---
 
@@ -31,9 +31,9 @@ Render the distillation results using the layout below. Show all three sections 
 <old text>
 ```
 
-**Proposed:**
+**Proposed (full rewrite, not an addendum):**
 ```
-<new text>
+<new text — the complete replacement passage>
 ```
 
 ---
@@ -49,7 +49,24 @@ Render the distillation results using the layout below. Show all three sections 
 <text to remove>
 ```
 
-**Reason:** \<why it's obsolete\>
+**Reason:** wrong | superseded | duplicated | changelog-grade — \<detail\>
+
+---
+
+## 🔍 Review Findings (N)
+
+### \<item title\>
+
+> Checked against `packages/coc/src/...`
+
+**Claim** in `references/foo.md` line ~N:
+```
+<existing text>
+```
+
+**Finding:** \<what the source actually shows, with file:line\>
+
+**Suggested action:** rewrite | remove
 
 ---
 
@@ -58,5 +75,5 @@ Render the distillation results using the layout below. Show all three sections 
 After all sections, print a one-line summary:
 
 ```
-Proposal: X new, Y updates, Z removals.
+Proposal: X new, Y updates, Z removals, W review findings (M claims spot-checked).
 ```
