@@ -366,7 +366,122 @@ describe('File Preview API', () => {
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
             expect(body.path).toBe(memberFile);
+            expect(body.resolvedWorkspaceId).toBe(memberId);
             expect(body.content).toBe('export const member = true;\n');
+        });
+
+        it('probes live members in order for a relative path and resolves the second match', async () => {
+            const srv = await startServer();
+            const firstDir = createExternalDir('.file-preview-first-member-');
+            const secondDir = createExternalDir('.file-preview-second-member-');
+            const firstId = await registerWorkspace(srv, firstDir, 'preview-first-member');
+            const secondId = await registerWorkspace(srv, secondDir, 'preview-second-member');
+            const groupId = await createRepoGroup(srv, [firstId, secondId]);
+            const relativePath = path.join('src', 'shared.ts');
+            const secondFile = path.join(secondDir, relativePath);
+            fs.mkdirSync(path.dirname(secondFile), { recursive: true });
+            fs.writeFileSync(secondFile, 'export const owner = "second";\n', 'utf-8');
+
+            const res = await request(
+                `${srv.url}/api/workspaces/${groupId}/files/preview?path=${encodeURIComponent(relativePath)}&lines=0`
+            );
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.path).toBe(secondFile);
+            expect(body.resolvedWorkspaceId).toBe(secondId);
+            expect(body.content).toBe('export const owner = "second";\n');
+        });
+
+        it('uses the first live member when a relative path exists in multiple members', async () => {
+            const srv = await startServer();
+            const firstDir = createExternalDir('.file-preview-first-match-');
+            const secondDir = createExternalDir('.file-preview-second-match-');
+            const firstId = await registerWorkspace(srv, firstDir, 'preview-first-match');
+            const secondId = await registerWorkspace(srv, secondDir, 'preview-second-match');
+            const groupId = await createRepoGroup(srv, [firstId, secondId]);
+            const relativePath = path.join('src', 'shared.ts');
+            for (const [root, owner] of [[firstDir, 'first'], [secondDir, 'second']] as const) {
+                const memberFile = path.join(root, relativePath);
+                fs.mkdirSync(path.dirname(memberFile), { recursive: true });
+                fs.writeFileSync(memberFile, `export const owner = "${owner}";\n`, 'utf-8');
+            }
+
+            const res = await request(
+                `${srv.url}/api/workspaces/${groupId}/files/preview?path=${encodeURIComponent(relativePath)}&lines=0`
+            );
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.path).toBe(path.join(firstDir, relativePath));
+            expect(body.resolvedWorkspaceId).toBe(firstId);
+            expect(body.content).toBe('export const owner = "first";\n');
+        });
+
+        it('skips a removed member while probing a relative path', async () => {
+            const srv = await startServer();
+            const removedDir = createExternalDir('.file-preview-removed-first-match-');
+            const liveDir = createExternalDir('.file-preview-live-second-match-');
+            const removedId = await registerWorkspace(srv, removedDir, 'preview-removed-first-match');
+            const liveId = await registerWorkspace(srv, liveDir, 'preview-live-second-match');
+            const groupId = await createRepoGroup(srv, [removedId, liveId]);
+            const relativePath = path.join('src', 'shared.ts');
+            for (const [root, owner] of [[removedDir, 'removed'], [liveDir, 'live']] as const) {
+                const memberFile = path.join(root, relativePath);
+                fs.mkdirSync(path.dirname(memberFile), { recursive: true });
+                fs.writeFileSync(memberFile, `export const owner = "${owner}";\n`, 'utf-8');
+            }
+            const removeRes = await request(`${srv.url}/api/workspaces/${removedId}`, { method: 'DELETE' });
+            expect(removeRes.status).toBe(204);
+
+            const res = await request(
+                `${srv.url}/api/workspaces/${groupId}/files/preview?path=${encodeURIComponent(relativePath)}&lines=0`
+            );
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.path).toBe(path.join(liveDir, relativePath));
+            expect(body.resolvedWorkspaceId).toBe(liveId);
+            expect(body.content).toBe('export const owner = "live";\n');
+        });
+
+        it('lists every attempted live-member candidate when a relative path is missing', async () => {
+            const srv = await startServer();
+            const firstDir = createExternalDir('.file-preview-first-miss-');
+            const secondDir = createExternalDir('.file-preview-second-miss-');
+            const firstId = await registerWorkspace(srv, firstDir, 'preview-first-miss');
+            const secondId = await registerWorkspace(srv, secondDir, 'preview-second-miss');
+            const groupId = await createRepoGroup(srv, [firstId, secondId]);
+            const relativePath = path.join('src', 'missing.ts');
+
+            const res = await request(
+                `${srv.url}/api/workspaces/${groupId}/files/preview?path=${encodeURIComponent(relativePath)}`
+            );
+
+            expect(res.status).toBe(404);
+            const error = JSON.parse(res.body).error as string;
+            const firstCandidate = path.join(firstDir, relativePath);
+            const secondCandidate = path.join(secondDir, relativePath);
+            expect(error).toContain(firstCandidate);
+            expect(error).toContain(secondCandidate);
+            expect(error.indexOf(firstCandidate)).toBeLessThan(error.indexOf(secondCandidate));
+        });
+
+        it('does not let a relative group path escape a member root', async () => {
+            const srv = await startServer();
+            const containerDir = createExternalDir('.file-preview-member-container-');
+            const memberDir = path.join(containerDir, 'member');
+            fs.mkdirSync(memberDir);
+            const memberId = await registerWorkspace(srv, memberDir, 'preview-contained-member');
+            const groupId = await createRepoGroup(srv, [memberId]);
+            fs.writeFileSync(path.join(containerDir, 'secret.ts'), 'secret\n', 'utf-8');
+
+            const res = await request(
+                `${srv.url}/api/workspaces/${groupId}/files/preview?path=${encodeURIComponent(path.join('..', 'secret.ts'))}`
+            );
+
+            expect(res.status).toBe(403);
+            expect(JSON.parse(res.body).error).toContain('outside repo-group member workspaces');
         });
 
         it('rejects a path inside a member whose root is missing', async () => {

@@ -103,7 +103,7 @@ Chat canvas side panel, gated by `canvas.enabled` (default on). Markdown or code
 | GET | `/api/fs/browse` | Browse local directories for repo path selection |
 | GET | `/api/fs/browse-helper` | Same-origin helper page for container-mode directory browsing |
 | GET | `/api/fs/blob?path=<absolute>` | Read one file under CoC trusted data dirs (`~/.copilot`, server data dir, OS temp) or any registered workspace/repo root; arbitrary paths rejected |
-| GET | `/api/workspaces/:id/files/preview?path=<path>` | Read a bounded text/image/directory preview. Relative paths anchor at the workspace root. A repo-group workspace also accepts absolute paths inside live registered member roots; removed or missing-path members are skipped. Non-group scope and all write routes remain workspace-scoped |
+| GET | `/api/workspaces/:id/files/preview?path=<path>` | Read a bounded text/image/directory preview with resolved absolute `path` and `resolvedWorkspaceId`. Regular relative paths anchor at the workspace root. A repo-group accepts absolute paths inside live registered member roots and probes a relative path under each live member root in membership order, selecting the first existing contained candidate; a miss lists attempted paths. Removed or missing-path members are skipped. Non-group scope and all write routes remain workspace-scoped |
 
 ## Git
 
