@@ -1,6 +1,6 @@
 # Server Architecture
 
-Standalone Node.js CLI for executing YAML-based AI workflows. Depends on `@plusplusoneplusplus/coc-workflow` for pure workflow compilation/execution and `@plusplusoneplusplus/forge` for runtime/process/queue utilities. Published as `@plusplusoneplusplus/coc`. Requires Node.js ≥ 24.
+Internals of `packages/coc/`: a Node.js CLI that executes YAML workflows and serves the AI Execution Dashboard. Published as `@plusplusoneplusplus/coc`; depends on `@plusplusoneplusplus/coc-workflow` (workflow compilation/execution) and `@plusplusoneplusplus/forge` (runtime/process/queue utilities). Package layout, build order, and release commands live in [monorepo.md](monorepo.md).
 
 ## CLI Commands
 
@@ -34,13 +34,7 @@ coc wipe-data               # Clear all stored data
 
 ### `serve` Options
 
-| Flag | Description |
-|------|-------------|
-| `-p, --port <number>` | Port number (default: 4000) |
-| `-H, --host <string>` | Bind address (default: localhost) |
-| `-d, --data-dir <path>` | Data directory (default: ~/.coc) |
-| `--no-open` | Don't auto-open browser |
-| `--theme <theme>` | UI theme: `auto`, `light`, `dark` |
+`-p/--port`, `-H/--host`, `-d/--data-dir`, and `--theme` override the corresponding `serve.*` config keys below; `--no-open` suppresses the browser launch.
 
 ## Source Layout
 
@@ -48,16 +42,8 @@ coc wipe-data               # Clear all stored data
 src/
 ├── index.ts              # Entry point (bin)
 ├── cli.ts                # Commander program setup
-├── commands/
-│   ├── run.ts            # Execute workflow
-│   ├── validate.ts       # Validate YAML
-│   ├── list.ts           # List packages
-│   ├── serve.ts          # Start server
-│   ├── wipe-data.ts      # Clear stored data
-│   ├── skills.ts         # Skills management
-│   ├── queue.ts          # Queue submit/list/cancel/status CLI commands
-│   └── options-resolver.ts  # Shared option resolution
-├── server/               # HTTP/WebSocket server (see module layout below)
+├── commands/             # One module per CLI command + options-resolver.ts
+├── server/               # HTTP/WebSocket server (module layout below)
 ├── ai-invoker.ts         # AI invoker factory
 ├── logger.ts             # Console logger
 ├── output-formatter.ts   # Result formatting
@@ -68,67 +54,59 @@ src/
 
 ## Server Module Layout
 
-The `src/server/` tree is grouped by feature domain. Cross-cutting plumbing stays at the root.
+`src/server/` is grouped by feature domain; cross-cutting plumbing stays at the root.
 
 | Directory | Purpose |
 |-----------|---------|
 | `core/` | api-handler, attachment-utils, image-utils, hostname-utils, build-info |
-| `streaming/` | WebSocket (ProcessWebSocketServer), SSE per-process streaming |
+| `streaming/` | `ProcessWebSocketServer` and per-process SSE (see [streaming-architecture.md](streaming-architecture.md)) |
 | `logging/` | pino-backed logger, in-memory ring buffer, /api/logs routes |
 | `admin/` | admin-handler, db-browser (read-only SQLite), heap-monitor, stats |
-| `workspaces/` | global-workspace, my-work, my-life, repo-group, workspace-summary. `repo-group-workspace.ts` is the repo-group store: a group is a virtual workspace (`group-<slug>` ID, root `~/.coc/repos/<groupId>/`) whose `group.json` holds `{ name, members: [workspaceId...] }` referencing already-registered non-virtual repo workspaces only; member names/paths are resolved from the registry at read time (removed-workspace or missing-path members come back marked stale), and deleting a group deregisters the workspace but leaves its directory on disk. `repo-group-handler.ts` exposes the store as `/api/repo-groups` CRUD routes (wired in `routes/index.ts` with a `getWsServer` topology broadcaster and an `onGroupRegistered` hook that registers the new group with the queue bridge and schedule manager). `repo-group-chat-context.ts` builds the dispatch-time chat context for group workspaces: `resolveRepoGroupChatContext` returns a `<repo_group_context>` prompt block listing each live member's name + absolute path plus the matching `additionalDirectories` list (stale members silently skipped; `undefined` when no live members); both `ChatBaseExecutor.execute` and `FollowUpExecutor.executeFollowUp` append the block to the outgoing prompt (not persisted to the transcript) and pass the paths in `SendMessageOptions.additionalDirectories` |
+| `workspaces/` | global-workspace, my-work, my-life, repo-group, workspace-summary. In `repo-group-workspace.ts` a group is a virtual workspace (`group-<slug>` ID, root `~/.coc/repos/<groupId>/`) whose `group.json` holds `{ name, members: [workspaceId...] }` naming registered non-virtual repo workspaces only; names/paths resolve from the registry at read time, and removed or missing-path members come back stale. `repo-group-handler.ts` serves `/api/repo-groups` CRUD, wired in `routes/index.ts` with a `getWsServer` topology broadcaster and an `onGroupRegistered` hook registering the group with the queue bridge and schedule manager. `resolveRepoGroupChatContext` (`repo-group-chat-context.ts`) returns a `<repo_group_context>` block of each live member's name + absolute path; `ChatBaseExecutor.execute` and `FollowUpExecutor.executeFollowUp` append it to the prompt unpersisted and pass the paths in `SendMessageOptions.additionalDirectories` |
 | `processes/` | in-memory store, output-file-manager, stale-task-detector, pin/archive, seen-state, turn-actions, history, resume |
 | `queue/` | queue-handler, executor-bridge, multi-repo-router, image-blob-store, partitioner |
-| `schedule/` | cron-utils, schedule-handler/manager/executor, run-persistence, async yaml-persistence, repo-schedule-loader/overrides. User schedules are stored as per-entry YAML files under each repo data directory, JSON schedule files migrate during schedule infrastructure initialization, and writes/deletes serialize per repo. Repo-defined schedule reloads use async filesystem scans, serialize per repo, and preserve the previous loaded repo schedules when a scan fails. Schedule run records stay `running` after enqueue and finalize from queue terminal events; scheduled Ralph runs finalize from the full `ralphSessionComplete` lifecycle, including final checks and gap-fix loops. Overlapping timer fires are recorded as `missed` and the next timer is armed after the active run finishes. Schedule runtime state (timers, in-flight runs, run history) is keyed by `(repoId, scheduleId)` via `schedule-runtime-key.ts`, not by the bare schedule ID, because repo schedules derive deterministic `repo:<stem>` IDs that repeat across clones; `getRunHistory`/`isRunning`/`serializeSchedule` all take `repoId`, and `isAnyRepoRunning` is the only cross-repo lookup. REST body validation lives in `schedule-request-parser.ts` and queue payload construction in `schedule-task-builder.ts` as pure functions. |
+| `schedule/` | cron-utils, schedule-handler/manager/executor, run-persistence, async yaml-persistence, repo-schedule-loader/overrides, plus pure `schedule-request-parser.ts` (REST body validation) and `schedule-task-builder.ts` (queue payload). User schedules are per-entry YAML under each repo data directory (`schedules.json` migrates at init); writes/deletes and async repo-schedule reload scans serialize per repo, and a failed scan keeps the previously loaded set. Run records stay `running` after enqueue and finalize from queue terminal events; scheduled Ralph runs finalize from the full `ralphSessionComplete` lifecycle. Overlapping fires record `missed` and rearm after the active run. Runtime state keys on `(repoId, scheduleId)` via `schedule-runtime-key.ts` because repo schedules derive deterministic `repo:<stem>` IDs that repeat across clones; `isAnyRepoRunning` is the only cross-repo lookup |
 | `tasks/` | task-types, cache, watcher, migration, root-resolver, generation, read/write handlers, comments/ |
-| `notes/` | read/write/comments/AI/file-preview/image/edits handlers, git/ sub-module, and workspace-scoped multi-root resolution. The roots API combines the managed root, user-configured Notes roots, and existing canonical task directories discovered from repo-scoped tasks, `.vscode/tasks`, and task `folderPaths`; task identities are opaque, protected, read-time-derived values rather than Notes preferences. `notes-path-safety.ts` enforces cross-platform lexical and canonical-symlink containment for every non-default-root file, folder, comment-sidecar, order, and image operation. |
+| `notes/` | read/write/comments/AI/file-preview/image/edits handlers, `git/` sub-module, workspace-scoped multi-root resolution. The roots API combines the managed root, user-configured Notes roots, and canonical task directories discovered from repo-scoped tasks, `.vscode/tasks`, and task `folderPaths`; task identities are opaque read-time-derived values, not Notes preferences. `notes-path-safety.ts` enforces lexical and canonical-symlink containment for every non-default-root file, folder, comment-sidecar, order, and image operation |
 | `workflows/` | constants, utils, watcher, read/write handlers |
 | `templates/` | template-watcher, CRUD handler, replicate-apply |
-| `skills/` | skill-handler, route-handlers, global-skill-handler, instruction-handler. Manual global and per-repo extra folders are read-only containers probed in base → `.github/skills` → `skills` order; UI listing, file reads, runtime resolution, and effective-path diagnostics use the same candidate roots |
+| `skills/` | skill-handler, route-handlers, global-skill-handler, instruction-handler. Manual global and per-repo extra folders are read-only containers probed base → `.github/skills` → `skills`; listing, file reads, runtime resolution, and effective-path diagnostics use the same candidate roots |
 | `prompts/` | prompt-handler, prompt-utils |
 | `servers/` | Remote CoC server registry, DevTunnel connector |
-| `git/` | git-cache, git-info-cache, repo-utils, plus the git operation kernel behind `api-git-branch-routes.ts`: `GitOperationRunner` (job-ID minting, the already-running 409 guard, `GitOpsStore` create/settle, mutable-cache invalidation, `broadcastGitChanged`), `GitPatchTransferService` + `git-patch-transfer-metadata.ts` (patch export/apply, provenance sanitizing that strips POSIX/Windows/UNC local paths), `GitRebaseReorderService` (autopilot prompt, queue subscription, terminal handling for completed/failed/cancelled/removed plus an optional timeout), and `git-request-validators.ts` (hash/field validation and the 409 dirty/conflict mapper). Validators and services throw `APIError`s that `createRoute` renders, so route handlers stay thin. The four `/api/workspaces/:id/git/branch-range*` routes accept `?base=default-branch\|upstream` (unknown values fall back to `default-branch`) and pass it to `GitRangeService.detectCommitRange`; `upstream` diffs against the branch's `@{upstream}` so only unpushed commits show, falling back to the default branch with `baseModeFallback` when there is none. Branch-range cache keys are `{wsId}:branch-range:{baseMode}` so the modes never serve each other's data, while `invalidateMutable(wsId)` still clears both on refresh |
-| `storage/` | storage-migration, startup migrations, directory-history-importer, export/import/wiper, and `snapshot/` (per-domain snapshot modules + declarative registry, with `storage-snapshot-domains.ts` as a compatibility barrel) that keep admin backup, restore, and wipe behavior aligned across processes, workspaces, wikis, queues, image blobs, preferences, schedules, and git-op cleanup. Schedule snapshot logic (YAML + `schedule_runs` rows) lives in `schedule/schedule-snapshot-repository.ts` |
+| `git/` | git-cache, git-info-cache, repo-utils, plus the operation kernel behind `api-git-branch-routes.ts`: `GitOperationRunner` (job-ID minting, already-running 409 guard, `GitOpsStore` create/settle, mutable-cache invalidation, `broadcastGitChanged`), `GitPatchTransferService` + `git-patch-transfer-metadata.ts` (patch export/apply, provenance sanitizing that strips POSIX/Windows/UNC local paths), `GitRebaseReorderService` (autopilot prompt, queue subscription, terminal handling), `git-request-validators.ts` (hash/field validation, 409 dirty/conflict mapper). All throw `APIError`s that `createRoute` renders. `GitRangeService.detectCommitRange` takes the `base=default-branch\|upstream` mode of the `/api/workspaces/:id/git/branch-range*` routes (see [rest-api.md](rest-api.md)); cache keys are `{wsId}:branch-range:{baseMode}` so the modes never serve each other's data, and `invalidateMutable(wsId)` clears both |
+| `storage/` | storage-migration, startup migrations, directory-history-importer, export/import/wiper, and `snapshot/` (per-domain modules + declarative registry; `storage-snapshot-domains.ts` is a compatibility barrel) aligning admin backup/restore/wipe across processes, workspaces, wikis, queues, image blobs, preferences, schedules, and git-op cleanup. Schedule snapshots (YAML + `schedule_runs` rows) live in `schedule/schedule-snapshot-repository.ts` |
 | `llm-tools/` | AI tool factories (see [llm-tools.md](llm-tools.md)) |
-| `kusto/` | Kusto query canvas server domain: `kusto-exec.ts` (server-side KQL execution via `azure-kusto-data` SDK + `AzureCliCredential`; the default factory caches the authenticated client per `clusterUrl` for the process lifetime via `createCachedClientFactory`, while injected test factories bypass the cache; magic `mock:`-prefixed queries (case-insensitive) are served from inline data — `mock:<JSON {columns,rows}>`, `mock:error[: msg]`, `mock:big[: N]` — without a cluster or `az login`, skipping the SDK and flowing through the same coercion + truncation as a real run) and `kusto-service.ts` (`runKustoCanvas` execute/truncate/persist orchestration). Shared by the `POST /canvases/:id/run` route and the `kusto_query` tool; gated by `kusto.enabled` |
-| `executors/` | AI chat execution layer (see Executors section below) |
+| `kusto/` | `kusto-exec.ts` runs KQL via `azure-kusto-data` + `AzureCliCredential`, caching the authenticated client per `clusterUrl` for the process lifetime (`createCachedClientFactory`; injected test factories bypass it). Case-insensitive `mock:` queries (`mock:<JSON {columns,rows}>`, `mock:error[: msg]`, `mock:big[: N]`) resolve inline without a cluster or `az login`, through the same coercion + truncation. `kusto-service.ts` holds `runKustoCanvas` (execute/truncate/persist), shared by `POST /canvases/:id/run` and the `kusto_query` tool; gated by `kusto.enabled` |
+| `executors/` | AI chat execution layer (see Executors below) |
 | `infrastructure/` | Server bootstrap (composition root) |
 | `routes/` | Centralized route registration |
 | `providers/` | Provider abstraction for AI/PRs |
 | `repos/` | Repository management endpoints |
-| `work-items/` | Work-items REST + executors, plus the command services the routes delegate to: `work-item-commands.ts` (create/update), `work-item-execution-command.ts`, `work-item-pr-submission-command.ts`, `work-item-ai-review-command.ts`, `work-item-comment-resolution-command.ts`, and `work-item-from-chat-command.ts`. Shared request parsing lives in `work-item-execution-settings.ts` (provider/model/reasoning-effort/effort-tier/auto-routing/execution-mode) and shared context, the explicit `storageRepoId` vs `commandRepoId` scope pair, git runner injection, and cache/broadcast settlement live in `work-item-execution-shared.ts`. Commands throw `APIError`s that the routes render, so handlers stay thin |
-| `preferences/` | Server preferences subsystem: schemas/types, repo-scoped/global JSON repositories, pure PATCH/import merge policy, sync/work-item live effects, and HTTP route registration. `preferences-handler.ts` is a compatibility barrel for older imports |
-| `dreams/` | Workspace-scoped dream card/run types, deterministic candidate prefiltering, eligible conversation source selection, process-lifecycle-backed read-only analyzer/critic validation, lifecycle storage with provider/model/timeout run attribution and analyzer/critic process links, durable dedup/coverage history, queue-backed visible `dream-run` manual/idle orchestration with quiet-window readiness checks, periodic opt-in idle scheduling, and workspace Dreams REST routes |
+| `work-items/` | Work-items REST + executors and their command services: `work-item-commands.ts` (create/update), `work-item-execution-command.ts`, `work-item-pr-submission-command.ts`, `work-item-ai-review-command.ts`, `work-item-comment-resolution-command.ts`, `work-item-from-chat-command.ts`. `work-item-execution-settings.ts` parses provider/model/reasoning-effort/effort-tier/auto-routing/execution-mode; `work-item-execution-shared.ts` holds shared context, the explicit `storageRepoId` vs `commandRepoId` scope pair, git runner injection, and cache/broadcast settlement |
+| `preferences/` | Schemas/types, repo-scoped and global JSON repositories, pure PATCH/import merge policy, sync/work-item live effects, route registration. `preferences-handler.ts` is a compatibility barrel |
+| `dreams/` | Workspace-scoped card/run types, deterministic candidate prefiltering, eligible conversation source selection, process-lifecycle-backed read-only analyzer/critic validation, lifecycle storage with provider/model/timeout attribution and analyzer/critic process links, durable dedup/coverage history, queue-backed visible `dream-run` orchestration with quiet-window readiness checks, opt-in idle scheduling, Dreams REST routes |
 | `wiki/` | Wiki integration (manager, data, routes, context-builder, conversation-sessions) |
 | `terminal/` | WebSocket-based PTY (session-manager, routes, ws-server) |
 | `memory/` | Memory config, bounded-memory REST, repo-memory, promote, background-review |
 | `ralph/` | Iterative execution sessions and file-backed journal (see [ralph.md](ralph.md)) |
-| `for-each/` | Dedicated For Each run records, item-plan validation, file-backed repo-scoped draft/approval storage, and sequential child-chat orchestration |
-| `map-reduce/` | Dedicated Map Reduce plan generation, run records, map-plan validation, reduce-step state, per-run parallelism configuration, file-backed repo-scoped draft/approval/execution storage with parallel map claiming, and child-chat orchestration that auto-chains reduce after successful map completion |
-| `native-copilot-sessions/` | Read-only native session services. Copilot reads the server user's native GitHub Copilot CLI SQLite store (`~/.copilot/session-store.db`) with short-lived read-only connections, workspace scoping by native `cwd`/`repository`, parameterized FTS text search, and typed `db-missing`/`db-invalid` unavailable states. Codex and Claude filesystem providers scan `~/.codex/sessions` rollout JSONL and `~/.claude/projects/<dash-encoded-cwd>` transcript JSONL with `readFileSync`/`existsSync`, mtime-keyed metadata, workspace scoping by transcript `cwd` (Claude requires every recorded transcript `cwd` to stay under the workspace root), duplicate native IDs collapsed to the newest transcript for stable deep links, substring text search, and typed `store-missing`/`store-invalid` unavailable states. CoC never writes to native CLI stores. Provider identity, labels, store hints, search strategy, and `available`/`planned` status live in one shared descriptor registry (`NATIVE_CLI_PROVIDER_DESCRIPTORS` in `@plusplusoneplusplus/coc-client`); `native-cli-provider-registry.ts` builds the served provider map from it and throws at startup if an `available` descriptor has no factory or disagrees with its declared search strategy, so the dashboard tab list and the server registry cannot drift. `native-transcript-index.ts` owns the LRU, stat-keyed (path + mtime + size) metadata cache for file-backed stores so warm list requests stat only, and a single request reads a transcript once for both metadata and substring search. Transcript parsers are split per provider under `parsers/` (`claude-transcript-parser.ts`, `codex-rollout-parser.ts`) over a shared `transcript-parser-core.ts`, re-exported by the `cli-session-parsers.ts` barrel. Provider identity, labels, store hints, search strategy, and `available`/`planned` status live in one shared descriptor registry (`NATIVE_CLI_PROVIDER_DESCRIPTORS` in `@plusplusoneplusplus/coc-client`); `native-cli-provider-registry.ts` builds the served provider map from it and throws at startup if an `available` descriptor has no factory or disagrees with its declared search strategy, so the dashboard tab list and the server registry cannot drift. `native-transcript-index.ts` owns the LRU, stat-keyed (path + mtime + size) metadata cache for file-backed stores so warm list requests stat only, and a single request reads a transcript once for both metadata and substring search. Transcript parsers are split per provider under `parsers/` (`claude-transcript-parser.ts`, `codex-rollout-parser.ts`) over a shared `transcript-parser-core.ts`, re-exported by the `cli-session-parsers.ts` barrel |
+| `for-each/` | For Each run records, item-plan validation, file-backed repo-scoped draft/approval storage, sequential child-chat orchestration |
+| `map-reduce/` | Plan generation, run records, map-plan validation, reduce-step state, per-run parallelism config, file-backed repo-scoped draft/approval/execution storage with parallel map claiming, and child-chat orchestration that auto-chains reduce after successful map |
+| `native-copilot-sessions/` | Read-only native session services; CoC never writes to native CLI stores. Copilot reads `~/.copilot/session-store.db` over short-lived read-only connections, scoping by native `cwd`/`repository`, with parameterized FTS search and typed `db-missing`/`db-invalid` states. Codex and Claude filesystem providers scan `~/.codex/sessions` rollout JSONL and `~/.claude/projects/<dash-encoded-cwd>` transcript JSONL, scoping by transcript `cwd` (Claude requires every recorded `cwd` under the workspace root), collapsing duplicate native IDs to the newest transcript, with substring search and typed `store-missing`/`store-invalid` states. `NATIVE_CLI_PROVIDER_DESCRIPTORS` (in `@plusplusoneplusplus/coc-client`) is the single source of provider identity, labels, store hints, search strategy, and `available`/`planned` status; `native-cli-provider-registry.ts` builds the served map from it and throws at startup when an `available` descriptor lacks a factory or contradicts its search strategy, so dashboard tabs and the server registry cannot drift. `native-transcript-index.ts` holds an LRU stat-keyed (path + mtime + size) metadata cache so warm lists only stat. Parsers sit per provider under `parsers/` (`claude-transcript-parser.ts`, `codex-rollout-parser.ts`) over `transcript-parser-core.ts`, re-exported by `cli-session-parsers.ts` |
 | `models/` | Model registry endpoints |
-| `agent-providers/` | Agent-provider quota cache, provider status routes, SDK install helpers, and the pure Auto provider router that evaluates configured priority, availability, normal quota thresholds, weekly guards, fallback, and selection warnings before callers expand effort tiers. Queue/fresh-terminal defaults, explicit SPA Auto requests (`context.autoProviderRouting.requested`), direct Ralph, For Each, and work-item enqueue surfaces use the shared quota cache and refresh it only when missing or stale. |
+| `agent-providers/` | Quota cache, provider status routes, SDK install helpers, and the pure Auto router evaluating configured priority, availability, quota thresholds, weekly guards, fallback, and selection warnings before callers expand effort tiers. Queue/fresh-terminal defaults, explicit SPA Auto requests (`context.autoProviderRouting.requested`), Ralph, For Each, and work-item enqueue share the quota cache, refreshing only when missing or stale |
 | `messaging/` | Teams bot integration: manager, command router, per-user state |
 | `spa/` | Dashboard SPA (HTML template, React client) |
-| `dashboard/` | Server-side dashboard state helpers, including recent active-workspace tracking and interval-based proactive background refresh for warm active-workspace caches. |
+| `dashboard/` | Server-side dashboard state helpers: recent active-workspace tracking and interval-based proactive refresh of warm active-workspace caches |
 
 ## Executors
-
-The `executors/` directory contains the AI chat execution layer:
 
 | File | Purpose |
 |------|---------|
 | `base-executor.ts` | Abstract base: streaming, throttling, tool-event capture |
 | `chat-base-executor.ts` | Abstract chat executor: AI call lifecycle, memory/options helpers |
-| `chat-executor.ts` | Ask-mode executor (interactive) |
-| `autopilot-executor.ts` | Autopilot-mode executor |
-| `follow-up-executor.ts` | Follow-up message executor |
-| `note-chat-executor.ts` | Note chat executor |
-| `note-create-executor.ts` | Note create executor |
-| `commit-chat-executor.ts` | Commit chat executor |
+| `chat-executor.ts`, `autopilot-executor.ts`, `follow-up-executor.ts` | Ask-mode (interactive), Autopilot-mode, and follow-up message executors |
+| `note-chat-executor.ts`, `note-create-executor.ts`, `commit-chat-executor.ts`, `workflow-executor.ts`, `shell-executor.ts` | Note chat, note create, commit chat, workflow, and shell-script executors |
 | `classification-executor.ts` | Diff classification executor; runs with interactive Ask-mode semantics and injects `saveClassification` for persisted hunk results |
-| `workflow-executor.ts` | Workflow execution executor |
-| `shell-executor.ts` | Shell script executor |
 | `process-lifecycle-runner.ts` | Full process lifecycle + pending-message draining |
 | `prompt-builder.ts` | System message, memory context, skill injection |
 | `chat-tool-builder.ts` | Common chat tool bundle assembly |
@@ -139,17 +117,27 @@ The `executors/` directory contains the AI chat execution layer:
 | `chat-turn-settlement.ts` | Turn completion: cumulative tokens, token-usage event, note snapshots |
 | `memory-v2-addon.ts` | Wires Memory V2 facts/recall and the memory tools into chat executors |
 
-CoC chat tasks use Ask, Autopilot, or Ralph modes. Copilot and Claude chat-system prompts include a concise source-location formatting directive so cited code locations render as Markdown file links with line/range suffixes; Codex omits this CoC-side directive. Diff classification jobs are queued as first-class `pr-classification` tasks or legacy classify-diff chat tasks, but `ClassificationExecutor` runs them with interactive Ask-mode semantics while preserving the `saveClassification` tool side effect for result persistence. PR classify-diff trigger/poll routes are origin-scoped (`/api/origins/:originId/classify-diff`) and require a concrete workspace for enqueue/provider context; repo-scoped classify-diff remains for commit and branch-range classifications only. The process-lifecycle runner persists `mode: 'ask'` in `pr-classification` process metadata (chat payloads still record their normalized payload mode) so mode-less classification records are not mislabelled Autopilot by UI fallbacks. Pull Requests Team auto-classification reuses the generic classify-diff enqueue path as low-priority background work, building PR identifiers as `prNumber:headSha`, capping each trigger at 10 new enqueues, and skipping ready/running entries through the existing classification store and pending-marker self-healing; the Pull Requests tab's manual "Classify now" action uses the same bounded server helper. Legacy stored or incoming chat payloads with `mode='plan'` are normalized to Ask before dispatch, metadata persistence, schedule execution, and follow-up execution; the server does not route CoC chat work through a dedicated Plan executor. Follow-up execution resolves the final provider/session/default model before applying per-turn reasoning effort; unsupported per-turn efforts are omitted with a warning so stale UI tier selections do not fail an existing chat, while persisted/default effort validation remains strict.
+### Modes and classification
 
-First turns (`ChatBaseExecutor.execute`) and continuations (`FollowUpExecutor.executeFollowUp`) share one turn pipeline rather than each assembling their own. `buildChatTurnSystemMessage` fixes the system-message block order (mode → global prompt → For Each/Map Reduce → repo instructions → chat style → source-location → memory → tool guidance → auto-folder → note file); callers only decide whether a block applies by passing `undefined`. `resolveChatTurnPolicy` owns model resolution (explicit → per-repo default for the turn's slot → provider default), reasoning-effort precedence (per-turn → provider-scoped persisted → legacy Copilot-only global → SDK default), and the Copilot-only long-context tier, which is derived solely from tiered billing metadata. Each path injects its own warning wording and its own reaction to an unsupported effort: a first turn fails, a follow-up drops only a per-turn override and continues. `chat-turn-settlement.ts` owns cumulative token roll-up (counters accumulate, session gauges take the latest reading, optional cost/duration stay undefined until reported), the turn-end `token-usage` event, and note-edit snapshots.
+Chat tasks run in Ask, Autopilot, or Ralph mode. Payloads carrying `mode='plan'` normalize to Ask before dispatch, metadata persistence, schedule execution, and follow-up execution; there is no Plan executor. Copilot and Claude chat-system prompts carry a source-location formatting directive so cited code locations render as Markdown file links with line/range suffixes; Codex omits it.
 
-`BaseExecutor` owns process-local execution state through `ProcessSessionRegistry`, not through ad hoc fields in concrete executors. It also provides the shared streaming-chunk handler and `capturePartialTurn()`, which both chat paths use to persist an interrupted assistant turn. The registry separates streaming buffers/throttle/finalization, serialized turn writes, pending follow-up suggestions, live ask-user handles, and cross-turn Ralph grill state. `cleanupSession()` clears per-turn streaming, suggestions, ask-user handles, and write-chain state while retaining only explicit Ralph grill state for later grilling turns. Chat and follow-up executors set and clear ask-user handles through registry methods; follow-up cleanup also clears persisted `pendingAskUser` records.
+Diff classification is queued as a first-class `pr-classification` task or a classify-diff chat task; `ClassificationExecutor` runs both with Ask-mode semantics and the `saveClassification` side effect, and `process-lifecycle-runner` persists `mode: 'ask'` in `pr-classification` metadata so mode-less records are not mislabelled Autopilot. PR classify-diff trigger/poll routes are origin-scoped (`/api/origins/:originId/classify-diff`) and need a concrete workspace for enqueue/provider context; repo-scoped classify-diff serves commit and branch-range classifications. Team auto-classification reuses the same enqueue path as low-priority background work (see [spa/git-and-prs.md](spa/git-and-prs.md)).
 
-`createQueueExecutorBridge()` creates the underlying `QueueExecutor` with `autoStart: false`, wires the bridge with both queue manager and queue executor references, then calls `executor.start()` only when the caller requested auto-start. `autoStart: false` remains manual. Queue-control methods that require a fully wired queue runtime fail fast if the bridge has a queue manager but no queue executor reference.
+### Shared turn pipeline
+
+First turns (`ChatBaseExecutor.execute`) and continuations (`FollowUpExecutor.executeFollowUp`) share one pipeline. `buildChatTurnSystemMessage` fixes block order (mode → global prompt → For Each/Map Reduce → repo instructions → chat style → source-location → memory → tool guidance → auto-folder → note file); callers only pass `undefined` to skip a block.
+
+`resolveChatTurnPolicy` owns model resolution (explicit → per-repo default for the turn's slot → provider default), reasoning-effort precedence (per-turn → provider-scoped persisted → Copilot-only global → SDK default), and the Copilot-only long-context tier derived from tiered billing metadata. On an unsupported effort a first turn fails while a follow-up drops only the per-turn override and continues; persisted/default effort validation stays strict. Follow-ups resolve provider/session/default model before applying per-turn effort.
+
+`chat-turn-settlement.ts` owns cumulative token roll-up (counters accumulate, session gauges take the latest reading, cost/duration stay undefined until reported), the turn-end `token-usage` event, and note-edit snapshots.
+
+`BaseExecutor` holds process-local execution state in `ProcessSessionRegistry` plus the shared streaming-chunk handler and `capturePartialTurn()`, which both chat paths use to persist an interrupted assistant turn. The registry separates streaming buffers/throttle/finalization, serialized turn writes, pending follow-up suggestions, live ask-user handles, and cross-turn Ralph grill state; `cleanupSession()` clears all but the Ralph grill state. Follow-up cleanup also clears persisted `pendingAskUser` records.
+
+`createQueueExecutorBridge()` builds the `QueueExecutor` with `autoStart: false`, wires both queue manager and queue executor references, then calls `executor.start()` only if the caller asked for auto-start. Queue-control methods needing a fully wired runtime fail fast when the bridge has a queue manager but no queue executor reference.
 
 ## Configuration
 
-Configuration file: `~/.coc/config.yaml` (legacy fallback: `~/.coc.yaml`). CLI flags > config file > defaults.
+Configuration file: `~/.coc/config.yaml` (fallback `~/.coc.yaml`). Precedence: CLI flags > config file > defaults. Admin-editable settings, the `features.*` flag table, `dreams.*`, `pullRequests.*`, `forEach`/`mapReduce`, and the `agentProviderRouting.auto` profile are documented in [admin-config.md](admin-config.md).
 
 ```yaml
 model: gpt-4
@@ -158,7 +146,7 @@ output: table
 approvePermissions: false
 mcpConfig: ~/.copilot/mcp-config.json  # global MCP; repo .vscode/mcp.json is also loaded per workspace
 timeout: 1800
-defaultProvider: copilot  # concrete default for new chats/tasks when payload.provider is omitted and Auto is not explicitly requested
+defaultProvider: copilot  # concrete default when payload.provider is omitted and Auto is not requested
 
 serve:
   port: 4000
@@ -184,93 +172,38 @@ workflows:
 triggers:
   enabled: true
 
-pullRequests:
-  enabled: true
-  suggestions: false
-  autoClassifyTeam: false
-
-forEach:
-  enabled: false
-
-mapReduce:
-  enabled: false
-
-dreams:
-  enabled: false
-  idleCheckIntervalMs: 300000
-  minIdleMs: 900000
-  confidenceThreshold: 0.85
-  maxCandidates: 8
-  conversationLimit: 20
-  timeoutMs: 3600000
-
 codex:
   enabled: false
 
 claude:
   enabled: false
-
-features:
-  autoAgentProviderRouting: false  # enables Auto for omitted-provider default paths
-  ralphMultiAgentGrill: false      # gated multi-agent Ralph grilling setup and agent preflight
-  nativeCliSessions: false         # read-only CLI Sessions tab over native Copilot, Codex, and Claude stores
-
-agentProviderRouting:
-  auto:
-    rules:
-      - provider: claude
-        enabled: true
-        minimumRemainingPercent: 25
-        weeklyGuard:
-          enabled: true
-          minimumRemainingPercent: 25
-      - provider: codex
-        enabled: true
-        minimumRemainingPercent: 25
-        weeklyGuard:
-          enabled: true
-          minimumRemainingPercent: 25
-      - provider: copilot
-        enabled: true
-        minimumRemainingPercent: 10
-        weeklyGuard:
-          enabled: true
-          minimumRemainingPercent: 10
-    fallbackProvider: copilot
 ```
 
 Exit codes: 0=success, 1=error, 2=config, 3=AI unavailable, 130=SIGINT.
 
 ## Server Startup
 
-1. Model metadata store warmed before listening (so executors can resolve reasoning effort)
-2. Auto-migrations: workspace registry JSON → SQLite, file-based process history → SQLite, and legacy physical `ws-*` workspace IDs → raw-hostname-scoped `ws-v2-*` IDs with repo data directories moved when conflict-free
-3. Chat/follow-up executors initialize model metadata on demand if task starts before cache warm
-4. Variant models with `capabilities.family` base preserved in process metadata but sent to SDK as base model + reasoning effort
-5. Copilot long-context tier resolved automatically at the provider boundary: chat and follow-up executors pass `contextTier: "long_context"` only when the resolved Copilot model's catalog metadata advertises `billing.tokenPrices.longContext.contextMax` (via `getCopilotContextTierForModel`); the field is omitted for Copilot models without that metadata and never sent for Codex/Claude. Static fallback models carry no long-context metadata, so a failed catalog fetch disables long context for that run
-6. `defaultProvider` is the concrete fallback provider when Auto routing is disabled; when `features.autoAgentProviderRouting` is true, omitted-provider default paths use `agentProviderRouting.auto`, chat payloads with `payload.provider` override it, explicit Auto requests carry `context.autoProviderRouting.requested`, while follow-ups use the provider recorded on the original process
-7. Effort-tier expansion is provider-specific, so an Auto chat task defers it. `resolveEffortTierConfig` (enqueue) keeps the launched tier on `config.afterEffortTier` but seeds no `config.model`/`config.reasoningEffort` when Auto routing is requested and no concrete provider is set; `applyEffortTierForProvider` (`process-lifecycle-runner`) resolves the tier once `resolveExecutionProvider` picks the provider, before `resolveModelForProvider` validates it. Tasks with an explicit provider (including dream-runs, which resolve Auto eagerly at enqueue) and any caller-supplied `config.model` are seeded at enqueue as before. The executor reads admin tier config through `LifecycleRunnerOptions.getEffortTiersForProvider`, wired via `bridge.setEffortTiersForProvider`; without it the hardcoded defaults apply
+1. The model metadata store warms before listening so executors can resolve reasoning effort; chat/follow-up executors initialize it on demand if a task starts first.
+2. Auto-migrations run: workspace registry JSON → SQLite, file-based process history → SQLite, and physical `ws-*` workspace IDs → raw-hostname-scoped `ws-v2-*` IDs, moving repo data directories when conflict-free.
+3. Variant models with a `capabilities.family` base keep the variant in process metadata but reach the SDK as base model + reasoning effort.
+4. The Copilot long-context tier resolves at the provider boundary: executors pass `contextTier: "long_context"` only when the resolved Copilot model's catalog metadata advertises `billing.tokenPrices.longContext.contextMax` (`getCopilotContextTierForModel`), never for Codex/Claude. Static fallback models carry no such metadata, so a failed catalog fetch disables long context for that run.
+5. Provider selection: `defaultProvider` is the concrete fallback while Auto routing is off; with `features.autoAgentProviderRouting` true, omitted-provider paths route through `agentProviderRouting.auto`. `payload.provider` overrides both, explicit Auto requests carry `context.autoProviderRouting.requested`, and follow-ups reuse the provider on the original process.
+6. Effort-tier expansion is provider-specific, so an Auto chat task defers it. `resolveEffortTierConfig` (enqueue) records the launched tier on `config.afterEffortTier` but seeds no `config.model`/`config.reasoningEffort` when Auto is requested with no concrete provider; `applyEffortTierForProvider` (`process-lifecycle-runner`) resolves the tier once `resolveExecutionProvider` picks one, before `resolveModelForProvider` validates it. Explicit-provider tasks (dream-runs resolve Auto eagerly at enqueue) and caller-supplied `config.model` are seeded at enqueue. Admin tier config reaches the executor via `LifecycleRunnerOptions.getEffortTiersForProvider`, wired by `bridge.setEffortTiersForProvider`; without it the hardcoded defaults apply.
 
 ## Storage Layout
 
-**Global (`~/.coc/`):**
-- `config.yaml` — server configuration
-- `processes.db` — SQLite process store (schema v8)
-- `preferences.json` — global UI preferences
-- `memory/system/MEMORY.md` — system-level bounded memory
-- `skills/` — global skill definitions
+**Global (`~/.coc/`):** `config.yaml` (server configuration), `processes.db` (SQLite process store, schema v8), `preferences.json` (global UI preferences), `memory/system/MEMORY.md` (system-level bounded memory), `skills/` (global skill definitions).
 
 **Per-repo (`~/.coc/repos/<workspaceId>/`) and per-origin (`~/.coc/repos/<originId>/`):**
-- `queues.json`, `schedules/<scheduleId>.yaml`, legacy `schedules.json` migration source, `git-ops.json`, `preferences.json`
-- `recent-opened-pull-requests/index.json`, `pr-coworker-roster/index.json`, `review-progress/<prId>.json`, `classifications/<prId>_<headSha>.json(.pending)`, `pr-review-history.json`, and `pr-suggestions-cache.json` under canonical origin directories — Pull Requests tab recent-opened entries, Team roster entries, reviewer progress, focused-diff classification result/pending state, review-history cache, and AI-ranked suggestions shared by same-origin clones; legacy workspace/repo tuple files migrate into the origin files on first access
-- `work-items/` under canonical origin directories (`~/.coc/repos/<originId>/work-items/`) — Work Item JSON files, index, counter, and plan versions shared by same-origin clones; workspace directories migrate into the origin directory on first store access
+- `queues.json`, `schedules/<scheduleId>.yaml` (`schedules.json` is a migration source), `git-ops.json`, `preferences.json`
+- Under canonical origin directories, shared by same-origin clones: `recent-opened-pull-requests/index.json`, `pr-coworker-roster/index.json` (Team roster), `review-progress/<prId>.json`, `classifications/<prId>_<headSha>.json(.pending)` (focused-diff classification result/pending state), `pr-review-history.json`, `pr-suggestions-cache.json` (AI-ranked suggestions), and `work-items/` (Work Item JSON, index, counter, plan versions). Workspace/repo-scoped equivalents migrate into the origin directory on first access.
 - `tasks/` — task and plan files
 - `outputs/` — AI conversation output markdown
 - `memory/MEMORY.md` — per-repo bounded memory
-- `dreams/cards.json`, `dreams/runs.json` — reviewable dream cards, hidden candidate/terminal history, completed-run source coverage, and analyzer/critic process links for workspace-local dedup/incremental selection
-- `ralph-sessions/<sessionId>/` — Ralph `session.json` metadata and `progress.md` journal
-- `for-each-runs/<runId>/` — For Each `run.json` metadata and `items.json` reviewed item plan/state
-- `map-reduce-runs/<runId>/` — Map Reduce `run.json` metadata, `items.json` reviewed map item plan/state, and `reduce-step.json` tracked reduce-step state
+- `dreams/cards.json`, `dreams/runs.json` — reviewable cards, hidden candidate/terminal history, completed-run source coverage, analyzer/critic process links
+- `ralph-sessions/<sessionId>/` — `session.json` metadata and `progress.md` journal
+- `for-each-runs/<runId>/` — `run.json` metadata and `items.json` reviewed item plan/state
+- `map-reduce-runs/<runId>/` — `run.json` metadata, `items.json` map item plan/state, `reduce-step.json`
 - `paste-context/` — temp files for large pasted content
 
 Use `getRepoDataPath(dataDir, workspaceId, filename)` for all per-repo path construction.
