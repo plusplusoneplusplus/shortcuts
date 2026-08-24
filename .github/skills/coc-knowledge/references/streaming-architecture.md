@@ -218,7 +218,7 @@ Container receives WebSocket JSON from agent and re-serves to its browser:
 | `packages/coc/src/server/infrastructure/watcher-infrastructure.ts` | File watchers → wsServer |
 | `packages/coc/src/server/container-link/container-client.ts` | Agent-side WS client (call-home) |
 | `packages/coc/src/server/container-link/protocol.ts` | Protocol message types |
-| `packages/coccontainer/src/inbound/inbound-agent-manager.ts` | Container-side WS handler |
+| `packages/coccontainer/src/inbound/agent-manager.ts` | Container-side WS handler (`AgentManager`) |
 | `packages/coc/src/server/spa/client/react/hooks/useWebSocket.ts` | SPA WebSocket hook |
 | `packages/coc/src/server/spa/client/react/features/chat/hooks/useChatSSE.ts` | SPA SSE hook |
 
@@ -230,5 +230,5 @@ When a container link is active, broadcast events are forwarded via `wsServer.on
 2. The same serialized data is passed to registered `onBroadcast` listeners
 3. In `server/index.ts`, the container link subscribes: `wsServer.onBroadcast(data => containerLink.forwardEvent(data))`
 4. `ContainerLinkClient.forwardEvent()` wraps the data in `{type:"event", payload:{data}}` and sends over the call-home WebSocket
-5. Container's `InboundAgentManager` receives the `event` message and emits `agent-event`
+5. Container's `AgentManager` receives the `event` message and emits `agent-event`
 6. Container relays to its browser WebSocket clients via `wsRelay.emit('message', ...)`

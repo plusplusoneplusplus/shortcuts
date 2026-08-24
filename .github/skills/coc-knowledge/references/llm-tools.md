@@ -71,13 +71,16 @@ context and `ask_user` blocking are preserved across the bridge. See
 [sdk-wrapper.md](sdk-wrapper.md) → *CoC LLM Tools over MCP*. No executor changes are
 needed — providers opt in based on `options.tools`.
 
-## Memory Read Tools
+## Memory Tools
 
-`memory-read-tools.ts` provides opt-in read-side tools:
-- `memory_search` — BM25 search over bounded memory entries
-- `memory_get` — exact entry by id or ordinal
-- Gated by `boundedMemory.readTools.enabled` (disabled by default)
-- Repo-scoped only, uses `MemoryRecallIndex`
+`memory-v2-tools.ts` provides the two memory tools, built per invocation from
+`MemoryV2ToolDeps`:
+- `createMemoryStoreFactTool(deps)` → `save_memory`
+- `createMemoryRecallTool(deps)` → `recall_memory`
+
+They are wired by `buildMemoryV2Addon()` and gated per scope by
+`memoryV2.enabled` (global and workspace preferences are independent). See
+[memory-system.md](memory-system.md).
 
 ## Key Patterns
 

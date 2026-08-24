@@ -1,128 +1,135 @@
 # Memory System
 
-Bounded, file-backed persistence layer that lets AI chat sessions learn from past interactions. Durable facts are captured through the Memory V2 tools (`save_memory` / `recall_memory`) and a frozen snapshot is injected into subsequent prompts.
+SQLite-backed durable facts and episodes that let AI chat sessions learn from past
+interactions. Facts are written through the `save_memory` tool, retrieved through
+`recall_memory`, and a frozen high-importance snapshot is injected into the system
+prompt for prefix-cache stability.
 
-## Storage Layout
+The implementation is the `@plusplusoneplusplus/coc-memory` package; `packages/coc`
+owns the executor addon, the REST routes, and the dashboard UI.
 
-- Per-repo: `~/.coc/repos/<workspaceId>/memory/MEMORY.md`
-- System: `~/.coc/memory/system/MEMORY.md`
-- `MemoryLevel` = `'repo' | 'system' | 'git-remote' | 'both'`
-- Memory V2 global store: `~/.coc/memory/global/`
-- Memory V2 isolated workspace store: `~/.coc/repos/<workspaceId>/memory/`
+## Storage layout
 
-## Core Components (`packages/forge/src/memory/`)
+| Scope | Location | Gate |
+|---|---|---|
+| Global | `~/.coc/<GLOBAL_MEMORY_SUBDIR>/` | `globalPrefs.memoryV2.enabled` |
+| Workspace | `~/.coc/repos/<workspaceId>/<WORKSPACE_MEMORY_SUBDIR>/` | `repoPrefs.memoryV2.enabled` |
 
-| File | Export | Role |
-|------|--------|------|
-| `types.ts` | `MemoryStore`, `MemoryConfig`, `MemoryLevel` | Core type definitions and store interface |
-| `bounded-memory-types.ts` | `BoundedMemoryStoreOptions`, `MemoryMutationResult`, `ENTRY_DELIMITER`, `DEFAULT_CHAR_LIMIT` | Types and constants for bounded memory |
-| `bounded-memory-store.ts` | `BoundedMemoryStore` | File-backed store with add/replace/remove, appendEntries (promotion), normalized duplicate checks, substring matching, char limits, `§` delimiters, mkdir-based file locking |
-| `memory-security-scanner.ts` | `scanMemoryContent`, `redactSensitiveValues`, `SECURITY_PATTERNS_DESCRIPTION` | Compatibility re-exports of the canonical scanner in `@plusplusoneplusplus/coc-memory` (`safety-scanner.ts`). Blocks prompt injection, exfiltration, SSH persistence, CoC-env access, credential literals (API keys, Bearer/Basic tokens, password assignments, connection strings), and invisible Unicode. Do not fork the patterns here — extend the canonical module |
-| `memory-prompt-builder.ts` | `MemoryPromptBuilder`, `MEMORY_GUIDANCE` | Frozen snapshot builder: reads store at construction, renders `═══`-separated blocks with usage headers |
-| `memory-candidate-store.ts` | `MemoryCandidateStore` | SQLite candidate lifecycle: pending/promoted/dropped/ignored statuses, signal counts, provenance, explicit intent |
-| `memory-candidate-ranking.ts` | `rankMemoryCandidates` | Pure deterministic ranking: frequency, relevance, diversity, recency, consolidation, explicit intent |
-| `repo-hash.ts` | `computeRepoHash` | Stable 16-char hex hash for repository paths |
+The two scopes are **independent**, not alternatives — both can be on, and the addon
+reads facts from every enabled scope. `createMemoryStores(dir)`
+(`coc-memory/src/store-impl/store-factory.ts`) creates the directory and opens
+`facts.db` and `episodes.db` inside it, returning a handle with a `close()`.
 
-## Usage Pattern
+## coc-memory package
 
-```typescript
-import { MemoryPromptBuilder, BoundedMemoryStore } from 'forge';
+`packages/coc-memory/src/`:
 
-const repoStore = new BoundedMemoryStore({ filePath: '~/.coc/repos/<id>/memory/MEMORY.md' });
-const sysStore = new BoundedMemoryStore({ filePath: '~/.coc/memory/system/MEMORY.md' });
-await repoStore.load();
-const builder = new MemoryPromptBuilder({ store: repoStore, systemStore: sysStore });
-const block = builder.getSystemPromptBlock(); // inject into system prompt
+| Module | Role |
+|---|---|
+| `types.ts` | `MemoryFact`, `MemoryEpisode`, `MemoryScope`, `MemoryFactStatus`, search/filter types, and the `GLOBAL_MEMORY_SUBDIR` / `WORKSPACE_MEMORY_SUBDIR` constants |
+| `store-interface.ts` | `IMemoryFactStore`, `IMemoryEpisodeStore`, `MemoryStoreHandle` |
+| `store-impl/` | `SqliteFactStore`, `SqliteEpisodeStore`, and `createMemoryStores` |
+| `hybrid-search.ts` | `HybridSearchEngine` — the recall query path |
+| `embedding-provider.ts`, `embedding-indexer.ts`, `vector-ranker.ts` | Embedding abstraction and vector ranking behind the hybrid search |
+| `safety-scanner.ts` | **Canonical** `scanMemoryContent`, `redactSensitiveValues`, `SECURITY_PATTERNS_DESCRIPTION` |
+| `capture-service.ts`, `extraction-contract.ts` | Capture pipeline and the `IMemoryExtractor` contract |
+| `scope-resolver.ts` | Scope resolution helpers |
+
+`packages/forge/src/memory/` keeps only what forge itself needs: `types.ts`
+(`RepoInfo`, `GitRemoteInfo`, `MemoryLevel`), `repo-hash.ts` (`computeRepoHash`, a
+stable 16-char hex hash for repository paths), `base-file-store.ts`, and
+`memory-security-scanner.ts` — compatibility re-exports of the canonical scanner.
+**Do not fork the threat patterns into forge; extend `safety-scanner.ts`.** It blocks
+prompt injection, exfiltration, SSH persistence, CoC-env access, credential literals
+(API keys, Bearer/Basic tokens, password assignments, connection strings), and
+invisible Unicode.
+
+## Facts and episodes
+
+A fact carries scope (`global` or `workspace`), status (`active`, `review`,
+`rejected`, `archived`), importance, confidence, tags, source metadata, and optional
+source process and turn links. An episode summarizes a completed interaction and links
+back to its source process or Ralph context.
+
+## Executor integration
+
+`buildMemoryV2Addon(dataDir, workspaceId, query?, processId?)` in
+`executors/memory-v2-addon.ts` returns a `MemoryV2Addon`:
+
+```ts
+{
+  systemMessageSuffix: string | undefined,  // frozen snapshot + per-turn recall block
+  tools: Tool<any>[],                       // save_memory + recall_memory
+  suffix: string,                           // tool guidance for the system message
+  excludedBuiltinTools: string[],           // Copilot built-ins to suppress
+  dispose: () => void,                      // closes open stores; idempotent
+}
 ```
 
-Memory writes are handled by the Memory V2 tools (`save_memory` / `recall_memory`); see the Memory V2 section below.
+It reads `readGlobalPreferences(dataDir)` and `readRepoPreferences(dataDir,
+workspaceId)`, opens a store per enabled scope, lists `status: 'active'` facts up to
+`frozenSnapshotLimit` (default 10) from each, and — when `query` is non-empty — runs a
+`HybridSearchEngine` search up to `recallLimit` (default 5) for the per-turn recall
+block. Passing no `query` yields the frozen snapshot only. Both limits read
+`globalPrefs` first, then `repoPrefs`, then the default.
 
-## Capture Mode
+It returns a frozen `EMPTY_ADDON` when `dataDir` or `workspaceId` is missing, when
+neither scope is enabled, or when **any** error occurs during store initialization or
+fact retrieval — memory never fails a turn.
 
-In capture mode, `add` operations append durable candidate rows in `memory/raw-memory.db` instead of mutating `MEMORY.md` directly. Candidates are scored based on:
-- `explicitMemoryIntent` — user explicitly asked to remember
-- `writeFrequency` — how often similar facts are written
-- Signal counts and provenance tracking
+### Turn assembly
 
-Duplicate normalized facts strengthen the same candidate via signal counts.
+`buildChatTurnContext()` in `executors/chat-turn-context-builder.ts` is the preferred
+integration point for every executor path. It is the single assembly point for tools,
+tool guidance, Memory V2, SDK built-in exclusions, ask-user handles, and disposal, and
+calls `buildMemoryV2Addon()` internally — callers never wire the addon themselves.
 
-## Candidate Ranking
+It returns `excludedTools: ['vote_memory', 'store_memory']` when Memory V2 is active,
+suppressing the Copilot SDK built-ins that would otherwise compete with `save_memory`.
+`includeMemoryV2: false` opts out explicitly. Consumers:
+`ChatBaseExecutor.buildStandardModeOptions`, `RalphExecutor.buildModeOptions`,
+`FollowUpExecutor.executeFollowUp`, and `AutopilotExecutor.buildModeOptions` (which
+opts out).
 
-`rankMemoryCandidates` uses deterministic policy:
-1. Frequency signal (how often the fact appears)
-2. Relevance signal (explicit memory intent satisfies this)
-3. Diversity sanity check (minimal)
-4. Recency (newer candidates preferred)
-5. Consolidation (conceptual tag grouping)
+## Tools
 
-## Promotion Pipeline
+`llm-tools/memory-v2-tools.ts` exports `createMemoryStoreFactTool(deps)` and
+`createMemoryRecallTool(deps)`, taking `MemoryV2ToolDeps`. Writes go through tools, not
+a follow-up prompt.
 
-Promotion runs through:
-1. Manual repo memory API/UI action
-2. Explicit `memory-promote` queue tasks
-3. Opt-in per-repo auto-promotion (disabled by default)
+## REST surface
 
-Auto-promotion requires both `features.autoMemoryPromotion` AND `boundedMemory.autoPromote.mode` enabled. Threshold mode enqueues one low-priority `memory-promote` task when pending candidates reach configured count.
+`registerMemoryV2Routes(routes, dataDir, store?)` in `server/memory/memory-v2-routes.ts`
+registers:
 
-`memory-promote` tasks:
-- Acquire `memory/promote.lock`
-- Rank pending candidates with forge's ranking policy
-- Optional AI normalization (disabled by default)
-- Append selected clean fact text to `MEMORY.md` (no rewrite)
-- Use normalized content hashes to skip already-covered facts
-- Finalize each candidate as promoted/dropped/ignored/pending
+| Method | Pattern |
+|---|---|
+| GET | `/api/memory/v2/scopes` |
+| GET, POST | `/api/workspaces/:id/memory/v2/facts` |
+| PATCH, DELETE | `/api/workspaces/:id/memory/v2/facts/:factId` |
+| GET | `/api/workspaces/:id/memory/v2/review` |
+| POST | `/api/workspaces/:id/memory/v2/review/:factId/approve` |
+| POST | `/api/workspaces/:id/memory/v2/review/:factId/reject` |
+| GET | `/api/workspaces/:id/memory/v2/episodes` |
+| GET | `/api/workspaces/:id/memory/v2/export` |
+| DELETE | `/api/workspaces/:id/memory/v2/wipe` |
 
-## Recall Index
+`server/memory/memory-config-handler.ts` and `server/memory/memory-routes.ts` sit
+alongside it. The shared `@plusplusoneplusplus/coc-client` package exposes the matching
+typed `MemoryV2Client` as `coc.memoryV2`.
 
-`MemoryRecallIndex` (SQLite-backed FTS5) enables relevant memory retrieval:
-- Syncs clean `MEMORY.md` entries into `memory_recall_entries`
-- BM25 search for relevant entries given a user prompt
-- Always keeps protected entries
-- Records recall events/counts for future promotion signals
+## Dashboard
 
-## Memory V2
+The Memory route renders `MemoryV2Panel` with Facts, Review, and Episodes tabs, calling
+the `memoryV2` domain client for listing and searching facts, create/edit/delete,
+approve/reject of review facts, listing episodes, JSON export, and wiping the active
+scope.
 
-Memory V2 stores durable facts and compact episodes in SQLite via the `@plusplusoneplusplus/coc-memory` package. Facts have scope (`global` or `workspace`), status (`active`, `review`, `rejected`, `archived`), importance, confidence, tags, source metadata, and optional source process/turn links. Episodes summarize completed interactions and link back to their source process/Ralph context.
+## Key design decisions
 
-Workspace preferences control the runtime scope:
-- `memoryV2.enabled` gates all Memory V2 prompt injection, tools, and REST routes.
-- `memoryV2.isolated` selects the per-workspace store under `~/.coc/repos/<workspaceId>/memory/`; otherwise the workspace uses the shared global store under `~/.coc/memory/global/`.
-- `memoryV2.frozenSnapshotLimit` and `memoryV2.recallLimit` tune prompt snapshot and recall behavior.
-
-The dashboard Memory route uses `MemoryV2Panel` with Facts, Review, and Episodes tabs. It calls `@plusplusoneplusplus/coc-client` through the `memoryV2` domain client for listing/searching facts, creating/editing/deleting facts, approving/rejecting review facts, listing episodes, exporting JSON, and wiping the active scope.
-
-## Server Integration (`packages/coc/src/server/`)
-
-`buildBoundedMemoryAddon()` in `executors/bounded-memory-addon.ts`:
-- Creates per-request repo/system `BoundedMemoryStore` instances
-- Builds `MemoryPromptBuilder` snapshot for system prompt injection
-- Creates AI-callable write-side `memory` tool
-- Gated by `PerRepoPreferences.boundedMemory.enabled` (opt-in per repo)
-
-`buildMemoryReadToolsAddon()` creates opt-in read-side tools:
-- `memory_search` — FTS5 search over bounded memory entries
-- `memory_get` — exact entry resolution by id or ordinal
-- Gated by `boundedMemory.readTools.enabled` (disabled by default)
-
-`buildMemoryV2Addon()` in `executors/memory-v2-addon.ts`:
-- Resolves global vs isolated workspace scope from `PerRepoPreferences.memoryV2`
-- Opens Memory V2 fact/episode stores for each request and closes them after use
-- Builds frozen fact snapshots and recall blocks for prompt injection
-- Registers Memory V2 write/capture tools (`save_memory`, `recall_memory`)
-- Returns the empty addon when dataDir, workspaceId, or `memoryV2.enabled` is missing
-
-`buildChatTurnContext()` in `executors/chat-turn-context-builder.ts` (preferred integration point for all executor paths):
-- Single assembly point for tools, toolGuidance, Memory V2, SDK built-in exclusions, ask-user handles, and disposal
-- Calls `buildMemoryV2Addon()` internally; callers do not coordinate addon wiring separately
-- Returns `excludedTools: ['vote_memory', 'store_memory']` when Memory V2 is active (suppresses Copilot SDK built-ins)
-- Accepts `includeMemoryV2: false` for explicit opt-out (e.g. `AutopilotExecutor`)
-- Used by `ChatBaseExecutor.buildStandardModeOptions`, `RalphExecutor.buildModeOptions`, `FollowUpExecutor.executeFollowUp`, and `AutopilotExecutor.buildModeOptions`
-
-`registerMemoryV2Routes()` in `server/memory/memory-v2-routes.ts` exposes workspace-scoped Memory V2 REST endpoints under `/api/workspaces/:id/memory/v2/*`. The shared `@plusplusoneplusplus/coc-client` package exposes the matching typed `MemoryV2Client` as `coc.memoryV2`.
-
-## Key Design Decisions
-
-- Memory is **caller-side opt-in** — the AI invoker is never modified
-- Memory writes use **tools** (`save_memory` / `recall_memory` via `defineTool`), not a follow-up prompt
-- `MemoryPromptBuilder` preserves LLM prefix cache stability (frozen snapshot)
-- `appendEntries()` is the trusted promotion path; `setEntries()` is explicit rewrite
+- Memory is **caller-side opt-in** — the AI invoker is never modified.
+- Writes use **tools** (`save_memory` / `recall_memory` via `defineTool`).
+- The frozen snapshot is built once per turn to preserve LLM prefix-cache stability;
+  only the recall block varies with the prompt.
+- Every failure path returns the empty addon rather than propagating, so a corrupt or
+  locked store degrades to no memory instead of a failed turn.
