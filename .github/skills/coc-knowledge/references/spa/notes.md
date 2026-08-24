@@ -1,54 +1,117 @@
 # Dashboard SPA — Notes
 
-The Notes view inherits the same `features.commitChatLens` source of truth for its AI chat surface. `NotesView` uses `useReviewChatPresentation()` with a workspace-scoped `notes` target, preserving the legacy workspace-scoped notes chat open key while Lens is disabled and using the shared target-scoped Lens open/pin/minimize keys when Lens is enabled. The notes area shows no separate Lens indicator; no notes-specific Lens setting is stored or exposed. Note-producing SPA flows that originate from notes/chat UI (notes chat edits, AI note creation, and bulk chat summaries) attach `context.lensChat = { inherited: true, source: 'features.commitChatLens' }` only while the shared Lens flag is enabled, so the process metadata records inherited Lens routing without adding persistent notes-specific state.
+The Notes view, its collection roots, the rich editor, and Notes Chat.
 
-The Notes collection selector loads workspace-routed managed, user-configured,
-and task-derived roots through `useNotesRoots`. Task-derived rows use the
-server-provided `isProtected` marker to show a lock and stay outside modifier,
-range, and bulk-removal selection; opening a protected row remains a normal
-read/write collection switch. Refresh reloads both the selected tree and the
-derived collection list, so newly created task directories appear and removed
-directories disappear without persisted Notes configuration. If the active
-root disappears, Notes selects the managed root, clears the file selection and
-route, and persists that fallback. Root and tree request generations are scoped
-to the current workspace and root so late responses from a prior workspace
-cannot replace the active selector or tree. File, folder, search, comment, and
-image actions carry the active root identity. Notes Chat and AI page creation
-remain managed-root-only and render disabled with an explanation in every
-non-default collection. `NotesSidebar` persists expanded folder paths and the
-tree scroll position in `localStorage`, scoped by both workspace and root under
+## AI chat surface
+
+Notes inherits `features.commitChatLens` as the single source of truth for its AI chat
+surface. `NotesView` uses `useReviewChatPresentation()` with a workspace-scoped `notes`
+target: with Lens enabled it uses the shared target-scoped open/pin/minimize keys, and
+with Lens disabled it uses the workspace-scoped notes chat open key. The notes area
+shows no separate Lens indicator, and no notes-specific Lens setting is stored or
+exposed.
+
+Note-producing SPA flows that originate in notes or chat UI — notes chat edits, AI note
+creation, bulk chat summaries — attach
+`context.lensChat = { inherited: true, source: 'features.commitChatLens' }` only while
+the shared flag is enabled, so process metadata records inherited Lens routing without
+adding persistent notes-specific state.
+
+## Collection roots
+
+The collection selector loads workspace-routed managed, user-configured, and
+task-derived roots through `useNotesRoots`. Task-derived rows use the server-provided
+`isProtected` marker to show a lock and stay outside modifier, range, and bulk-removal
+selection; opening a protected row is a normal read/write collection switch.
+
+Refresh reloads both the selected tree and the derived collection list, so new task
+directories appear and removed ones disappear without persisted Notes configuration. If
+the active root disappears, Notes selects the managed root, clears the file selection
+and route, and persists that fallback.
+
+**Root and tree request generations are scoped to the current workspace and root**, so a
+late response from a prior workspace cannot replace the active selector or tree. File,
+folder, search, comment, and image actions all carry the active root identity.
+
+Notes Chat and AI page creation are managed-root-only and render disabled with an
+explanation in every other collection.
+
+`NotesSidebar` persists expanded folder paths and tree scroll position in
+`localStorage`, scoped by workspace **and** root, under
 `coc-notes-expanded-<workspaceId>-<rootId>` and
-`coc-notes-scroll-<workspaceId>-<rootId>`. Scope changes hydrate their own tree
-state without writing the read value, and the scroll position restores only
-after the scoped tree is ready.
+`coc-notes-scroll-<workspaceId>-<rootId>`. Scope changes hydrate their own tree state
+without writing the read value, and scroll position restores only after the scoped tree
+is ready.
 
-Links in the rich note editor display their destination URL and the
-platform-specific modifier-click instruction in a native hover hint. The hint
-is applied only to the live anchor DOM so it does not become part of the saved
-Markdown, and the write is idempotent (skipped when the title already matches)
-so ProseMirror's DOMObserver never enters a redraw loop while hovering. The
-`filePathRef` marked extension never tokenizes inside a link label
-(`lexer.state.inLink`), so a `[URL](URL)` label stays one plain anchor instead
-of gaining a `file-ref-link` chip. `FilePreviewTooltip` dismisses itself when
-its anchor is detached or measures an all-zero rect, clamps its 360px card to
-the viewport width, and flips above the anchor near the bottom edge.
+## Rich editor basics
 
-The Notes rich editor highlights only its 16 explicitly registered Lowlight
-grammars. Unsupported fenced-code labels such as `text` and `plaintext` render
-as plain code while retaining the original label for Markdown round-trip, even
-when another SPA import registered that language in the process-wide
-Highlight.js instance.
+### Links and file references
 
-The shared Markdown math tokenizer accepts digit-led inline formulas such as
-`$2MNK$` when their next unescaped dollar is a valid closer. If that next dollar
-is not a valid closer, the digit-led opener stays literal so currency before a
-later formula does not merge with it. Inline dollar matches also stop at a
-Markdown backtick so prose currency cannot close on a dollar inside an inline
-code span.
+Links display their destination URL and the platform-specific modifier-click
+instruction in a native hover hint. The hint is applied only to the **live anchor DOM**
+so it never becomes part of the saved Markdown, and the write is idempotent (skipped
+when the title already matches) so ProseMirror's DOMObserver never enters a redraw loop
+while hovering.
 
-Notes Chat renders one compact 32px header (`NotesChatHeader.tsx`, next to `NoteChatPanel.tsx`) across Lens, pinned side-panel, and embedded (mobile or Lens-disabled) presentations and in both empty and active-conversation states. The header shows a Notes Chat identity mark, a muted context label (current note title in per-note scope or workspace display name from `resolveWorkspaceName` in per-workspace scope, truncated with the full value on hover), the independently centered compact pill `NotesChatScopeToggle` segmented control (This note / Workspace; defaults to `per-note` / "This note" when no persisted scope exists through `useNotesChat`'s `defaultScope`), and presentation-specific window actions: minimize + pin in `'lens'`, unpin in `'side-panel'`, neither in `'embedded'`, and close in every presentation. "New chat" resets the active scope while leaving the old process recoverable in history; it lives in `ChatHeaderOverflowMenu` and renders only when a chat exists. When the active chat is bound to a note, a compact 📎 path-reference button (`data-testid="notes-chat-path-ref"`) appears before the overflow menu, with the full prepended note path in its tooltip and `aria-label`. If the selected note diverges from the chat-bound note, the button tints amber (`data-switched="true"`) and the tooltip reads "Attached to <note> — Start New Chat to switch." `NoteContextBanner.tsx` uses that same `isSwitched` value, computed once in `NoteChatPanel`, to render a slim amber one-line warning only in the divergent case; it renders nothing in the common matching case.
+The `filePathRef` marked extension never tokenizes inside a link label
+(`lexer.state.inLink`), so a `[URL](URL)` label stays one plain anchor instead of
+gaining a `file-ref-link` chip. `FilePreviewTooltip` dismisses itself when its anchor is
+detached or measures an all-zero rect, clamps its 360px card to the viewport width, and
+flips above the anchor near the bottom edge.
 
-The displayed note reference is paired with the active chat task in `useNotesChat`. `createChat` seeds the pair from the returned task ID while the process is still queued, and `ChatDetail` reports every accepted `processDetails` snapshot from its existing clone-routed load and refresh paths through `onProcessLoaded`. `useNotesChat` reads the persisted `metadata.queueTaskId`, `metadata.notePath`, and `metadata.noteTitle` from that snapshot and ignores any task ID that is no longer active. Context from another task therefore renders as `null` during note or scope changes instead of producing another chat's attachment label or warning, including when an older load finishes late. Note context is not read from or written to a workspace-wide localStorage value, and resolving it adds no process request beyond the normal `ChatDetail` flow.
+### Code highlighting
+
+The editor highlights only its 16 explicitly registered Lowlight grammars. Unsupported
+fenced-code labels such as `text` and `plaintext` render as plain code while retaining
+the original label for Markdown round-trip — even when another SPA import registered
+that language in the process-wide Highlight.js instance.
+
+### Inline math
+
+The shared Markdown math tokenizer accepts digit-led inline formulas such as `$2MNK$`
+when their next unescaped dollar is a valid closer. If that dollar is not a valid
+closer, the digit-led opener stays literal, so currency before a later formula does not
+merge with it. Inline dollar matches also stop at a Markdown backtick, so prose currency
+cannot close on a dollar inside an inline code span.
+
+## Notes Chat
+
+`NotesChatHeader.tsx` (beside `NoteChatPanel.tsx`) renders one compact 32px header
+across Lens, pinned side-panel, and embedded (mobile or Lens-disabled) presentations, in
+both empty and active-conversation states. It carries a Notes Chat identity mark, a
+muted context label (current note title in per-note scope, or the workspace display name
+from `resolveWorkspaceName` in per-workspace scope, truncated with the full value on
+hover), and the independently centered `NotesChatScopeToggle` pill (This note /
+Workspace), which defaults to `per-note` through `useNotesChat`'s `defaultScope` when no
+scope is persisted.
+
+Window actions are presentation-specific: minimize + pin in `'lens'`, unpin in
+`'side-panel'`, neither in `'embedded'`, and close everywhere. "New chat" resets the
+active scope while leaving the old process recoverable in history; it lives in
+`ChatHeaderOverflowMenu` and renders only when a chat exists.
+
+### Note binding
+
+When the active chat is bound to a note, a compact 📎 path-reference button
+(`data-testid="notes-chat-path-ref"`) appears before the overflow menu, with the full
+prepended note path in its tooltip and `aria-label`. If the selected note diverges from
+the chat-bound note the button tints amber (`data-switched="true"`) and the tooltip
+reads "Attached to <note> — Start New Chat to switch." `NoteContextBanner.tsx` uses that
+same `isSwitched` value — computed once in `NoteChatPanel` — to render a slim amber
+one-line warning only in the divergent case.
+
+The displayed note reference is **paired with the active chat task** in `useNotesChat`.
+`createChat` seeds the pair from the returned task ID while the process is still queued,
+and `ChatDetail` reports every accepted `processDetails` snapshot from its clone-routed
+load and refresh paths through `onProcessLoaded`. `useNotesChat` reads the persisted
+`metadata.queueTaskId`, `metadata.notePath`, and `metadata.noteTitle` from that snapshot
+and ignores any task ID that is no longer active.
+
+That pairing is why context from another task renders as `null` during note or scope
+changes instead of showing another chat's attachment label or warning, including when an
+older load finishes late. Note context is never read from or written to a
+workspace-wide localStorage value, and resolving it adds no process request beyond the
+normal `ChatDetail` flow.
 
 ## Notes editor toolbar structure
 
