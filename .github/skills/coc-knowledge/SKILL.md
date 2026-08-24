@@ -45,7 +45,9 @@ It consists of three packages (`coc`, `forge`, `deep-wiki`) plus a shared client
 | Dashboard SPA · Work Items | [spa/work-items.md](references/spa/work-items.md) | Hierarchy tree, Local/Remote trackers, detail form, workflow + AI authoring gates |
 | Dashboard SPA · Git & PRs | [spa/git-and-prs.md](references/spa/git-and-prs.md) | Composer PR chips, CI auto-fix triggers, classify-diff, worktree controls, PR tab |
 | Dashboard SPA · Notes | [spa/notes.md](references/spa/notes.md) | Notes roots, editor toolbar, inline colors, find & replace, Notes Chat |
-| Dashboard SPA · Top Bar & Admin | [spa/top-bar-and-admin.md](references/spa/top-bar-and-admin.md) | Top bar cluster, admin overlay dialog, Skills Config, remote-first shell |
+| Dashboard SPA · Top Bar & Admin | [spa/top-bar-and-admin.md](references/spa/top-bar-and-admin.md) | Top bar cluster, admin overlay dialog, Skills Config, AI Provider page & quota |
+| Dashboard SPA · Remote shell | [spa/remote-shell.md](references/spa/remote-shell.md) | Shell headers, scope switcher, repo groups, remote workspace aggregation, sub-tab taxonomy |
+| Dashboard SPA · Clone routing | [spa/clone-routing.md](references/spa/clone-routing.md) | `getCocClientFor`, the clone registry, and the per-feature wiring that keeps remote calls off the local server |
 | Dashboard SPA · Routes | [spa/routes.md](references/spa/routes.md) | Onboarding, My Work Today, Activity, Dreams, CLI Sessions, Memory |
 | Prompt Autocomplete | [prompt-autocomplete.md](references/prompt-autocomplete.md) | Inline ghost-text, AI/history modes, caching, REST API, privacy |
 | Chat Prompt History | [chat-prompt-history.md](references/chat-prompt-history.md) | Up/Down arrow navigation, workspace-scoped history, REST API |
