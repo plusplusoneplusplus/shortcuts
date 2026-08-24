@@ -45,6 +45,36 @@ It consists of three packages (`coc`, `forge`, `deep-wiki`) plus a shared client
 | Task Comments | [task-comments.md](references/task-comments.md) | Inline commenting, categories, anchoring, AI prompt generation |
 | Notes Sync | [sync.md](references/sync.md) | Git-backed My Work/My Life sync, AI conflict resolution, periodic scheduling |
 
+## Writing Rules
+
+These are constraints on anyone editing this knowledge base, including automated
+refreshes. The KB grew from 4009 to 7484 lines in three months without a single new
+file being created, because entries were appended as change descriptions instead of
+being rewritten in place. These rules exist to stop that.
+
+1. **Present tense only, current state only.** Describe what the code does now. Never
+   write "no longer", "used to", "previously", "legacy", "instead of the old", or
+   "there is no". If behavior changed, rewrite the passage — do not append a
+   correction to it. The one exception: when a live feature flag still selects an
+   older path, state it as a present-tense conditional ("with `commitChatLens` off,
+   commit review uses the `coc.commitChat.open` visibility key"), not as history.
+2. **One topic, one home.** Before adding a passage, grep the target file for the key
+   identifier and for near-duplicate headings. If the topic already has a section,
+   edit that section. Cross-reference from elsewhere; never describe it twice.
+3. **Architecture, not release notes.** Keep module boundaries, data flow, invariants,
+   storage keys, API shapes, and non-obvious constraints. Cut pixel-level and
+   copy-level behavior — which control is hover-revealed, whether a banner renders,
+   exact button wording. Nothing guards those, so they go stale silently.
+4. **No walls of text.** Cap paragraphs at ~80 words and give every topic a `###`
+   heading. This is what makes a duplicate visible to the next person appending, and
+   what makes `git diff` on these files reviewable.
+5. **400-line file cap.** A reference file over ~400 lines, or covering more than one
+   product surface, gets split into a subdirectory (see `references/spa/` for the
+   pattern) with one index row per new file.
+
+Run `scripts/audit-paths.sh` quarterly to find backticked source paths that no longer
+resolve.
+
 ## Key Invariants
 
 - **Multi-repo required** — never design a feature that breaks multi-repo scenarios
