@@ -2,7 +2,7 @@
 
 Rust/N-API native capabilities for the CoC server. The package is a home for any CPU- or filesystem-bound work worth moving out of Node: one binary, one module per capability on both the Rust and the TypeScript side. Today it ships one capability — the file index behind quick-open search (`Ctrl+P`) — but nothing in the loader, the crate layout or the build is scoped to it.
 
-**The file index must agree with its fallbacks.** `RepoTreeService` has three whole-repo walkers — the Rust `file_index::walk`, its JS `walkFiles`, and the `rg --files` path — and they must produce the same set. `.git` is excluded by all three regardless of `includeIgnored`/`showIgnored`, which deliberately differs from `rg --no-ignore`; changing one walker's filtering means changing all three.
+**The file index must agree with its fallbacks.** `RepoTreeService` has three whole-repo walkers — the Rust `repo_index::walk`, its JS `walkFiles`, and the `rg --files` path — and they must produce the same set. `.git` is excluded by all three regardless of `includeIgnored`/`showIgnored`, which deliberately differs from `rg --no-ignore`; changing one walker's filtering means changing all three.
 
 **Required, not optional.** A binary that is missing, will not load, or lacks the capability a newer server expects is a hard failure: `loadNativeAddon()` and each `loadNative<X>()` throw `NativeAddonLoadError`, naming the expected triple, every path tried and the fix. Failing at startup beats silently serving a slower, subtly different implementation for the life of the process.
 
@@ -12,8 +12,8 @@ The `*Status()` accessors never throw, because `/api/health` reports them and ha
 
 ## Layout
 
-- `rust/core/` — `coc-native-core`: the logic layer, `pub mod <capability>` per capability (`file_index`: walker, scorer, index and its top-N search). No N-API dependency, so `cargo test -p coc-native-core` runs it all without Node. All Rust unit tests live here, named `tests/<capability>_*.rs`.
-- `rust/napi/` — `coc-native`: a thin `cdylib` wrapper, one `src/<capability>.rs` per capability registering its own classes and functions. Everything that touches the filesystem or scans a large structure returns an `AsyncTask`, so work happens on a libuv worker and the event loop is never blocked. It has no tests: the crate links against Node's symbols, so a test binary would not link.
+- `rust/core/` — `coc-native-core`: the logic layer, `pub mod <capability>` per capability (`repo_index`: `walk` walker, `score` scorer, `snapshot` immutable file list, `fuzzy` matcher with the lowercase cache, and `RepoIndex` in `mod.rs` — the build/refresh state machine that swaps `Arc<FuzzyMatcher>` snapshots atomically). No N-API dependency, so `cargo test -p coc-native-core` runs it all without Node. All Rust unit tests live here, named `tests/<capability>_*.rs`.
+- `rust/napi/` — `coc-native`: a thin `cdylib` wrapper, one `src/<capability>.rs` per capability registering its own classes and functions (`file_index.rs` keeps the shipped JS names — `FileIndex`, `buildFileIndex` — while wrapping core's `repo_index`). Everything that touches the filesystem or scans a large structure returns an `AsyncTask`, so work happens on a libuv worker and the event loop is never blocked. It has no tests: the crate links against Node's symbols, so a test binary would not link.
 - `src/loader.ts` — resolves and loads the binary. Deliberately capability-agnostic: it validates only that the module loaded, never which exports it has.
 - `src/native-bindings.ts` — **generated, do not edit.** The `#[napi]` type surface as TypeScript, produced by `npm run build:native`.
 - `src/<capability>.ts` — one module per capability (`file-index.ts`): aliases of the generated types, a type guard over the loaded module, `loadNative<X>()` and `nativeXStatus()`.
@@ -50,7 +50,7 @@ N-API binaries are ABI-stable, so one binary per platform works under both Node 
 
 ## Scorer parity
 
-The Rust scorer (`file_index::score`) is a line-for-line port of `packages/coc/src/server/shared/fuzzy-file-score.ts` and **must** rank identically: the server answers `/search` from whichever one is available, and the SPA falls back to the TypeScript one. `test/parity.test.ts` is the CI gate on that, running random paths and queries through both.
+The Rust scorer (`repo_index::score`) is a line-for-line port of `packages/coc/src/server/shared/fuzzy-file-score.ts` and **must** rank identically: the server answers `/search` from whichever one is available, and the SPA falls back to the TypeScript one. `test/parity.test.ts` is the CI gate on that, running random paths and queries through both.
 
 Two deliberate deviations from plain JavaScript semantics, matched on both sides:
 

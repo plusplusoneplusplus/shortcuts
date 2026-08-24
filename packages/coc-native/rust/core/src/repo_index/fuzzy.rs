@@ -1,14 +1,13 @@
-//! The in-memory path index and its top-N search.
+//! Fuzzy top-N path search over a snapshot.
 
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
-use std::io;
-use std::path::Path;
+use std::sync::Arc;
 
 use rayon::prelude::*;
 
 use super::score::{lower_unit, score_units, Query};
-use super::walk::{walk, WalkOptions};
+use super::snapshot::Snapshot;
 
 /// A path's lowercased form, kept in the narrowest representation that still
 /// indexes like a JavaScript string.
@@ -18,28 +17,21 @@ enum LowerPath {
     Wide(Box<[u16]>),
 }
 
-/// An immutable snapshot of a repository's file list.
+/// Fuzzy top-N search over one snapshot's paths.
 ///
-/// `FileIndex` holds this behind an `Arc` and swaps the whole snapshot on
-/// refresh, so a search either sees the old list or the new one — never a torn
-/// mix of the two.
-pub struct IndexState {
-    paths: Vec<String>,
+/// Owns the lowercased copy of every path, built eagerly on construction so
+/// no search pays that cost. The matcher carries its snapshot, so hit indices
+/// always resolve against the same path list they were scored on.
+pub struct FuzzyMatcher {
+    snapshot: Arc<Snapshot>,
     lower: Vec<LowerPath>,
-    truncated: bool,
 }
 
-impl IndexState {
-    /// Build a snapshot by walking `root`.
-    pub fn build(root: &Path, options: &WalkOptions) -> io::Result<Self> {
-        let (paths, truncated) = walk(root, options)?;
-        Ok(Self::from_paths(paths, truncated))
-    }
-
-    /// Build a snapshot from an explicit path list — the shape the parity and
-    /// scoring tests need, and how `walk` results are turned into an index.
-    pub fn from_paths(paths: Vec<String>, truncated: bool) -> Self {
-        let lower = paths
+impl FuzzyMatcher {
+    /// Build the lowercase cache over `snapshot`'s paths.
+    pub fn new(snapshot: Arc<Snapshot>) -> Self {
+        let lower = snapshot
+            .paths()
             .iter()
             .map(|path| {
                 if path.is_ascii() {
@@ -51,28 +43,12 @@ impl IndexState {
                 }
             })
             .collect();
-        Self { paths, lower, truncated }
+        Self { snapshot, lower }
     }
 
-    pub fn len(&self) -> usize {
-        self.paths.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.paths.is_empty()
-    }
-
-    pub fn truncated(&self) -> bool {
-        self.truncated
-    }
-
-    /// A window of the raw path list, in index order.
-    pub fn files(&self, offset: usize, limit: usize) -> Vec<String> {
-        if offset >= self.paths.len() || limit == 0 {
-            return Vec::new();
-        }
-        let end = offset.saturating_add(limit).min(self.paths.len());
-        self.paths[offset..end].to_vec()
+    /// The snapshot this matcher scores against.
+    pub fn snapshot(&self) -> &Arc<Snapshot> {
+        &self.snapshot
     }
 
     /// Score every path and return the best `limit` matches, best first.
@@ -81,7 +57,7 @@ impl IndexState {
     /// `rankFuzzyMatches` relies on.
     pub fn search(&self, query: &str, limit: usize) -> Vec<Hit> {
         let query = Query::new(query);
-        if query.is_empty() || limit == 0 || self.paths.is_empty() {
+        if query.is_empty() || limit == 0 || self.lower.is_empty() {
             return Vec::new();
         }
 
@@ -148,7 +124,7 @@ fn push_capped(heap: &mut BinaryHeap<Hit>, hit: Hit, limit: usize) {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Hit {
     pub score: u32,
-    /// Position in the index's path list, used for stable tie-breaking.
+    /// Position in the snapshot's path list, used for stable tie-breaking.
     pub index: u32,
     /// Matched UTF-16 offsets within the path, ascending.
     pub indices: Vec<u32>,
@@ -164,12 +140,5 @@ impl Ord for Hit {
 impl PartialOrd for Hit {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
-    }
-}
-
-impl IndexState {
-    /// Resolve a hit back to its path.
-    pub fn path_at(&self, index: u32) -> &str {
-        &self.paths[index as usize]
     }
 }

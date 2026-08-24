@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::Path;
 
-use coc_native_core::file_index::walk::{walk, WalkOptions};
+use coc_native_core::repo_index::walk::{walk, WalkOptions};
 
 fn write(root: &Path, relative: &str, contents: &str) {
     let target = root.join(relative);

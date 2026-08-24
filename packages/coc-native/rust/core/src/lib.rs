@@ -7,4 +7,4 @@
 //! without a JavaScript runtime. The addon in `../napi` wraps these modules,
 //! one thin N-API module per capability.
 
-pub mod file_index;
+pub mod repo_index;
