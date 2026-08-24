@@ -27,7 +27,9 @@ It consists of three packages (`coc`, `forge`, `deep-wiki`) plus a shared client
 | MCP Settings | [mcp-settings.md](references/mcp-settings.md) | Workspace MCP merge (global + workspace), allow-list, secrets boundary |
 | EnDev xDPU | [endev.md](references/endev.md) | Workspace eligibility cache, REST status/revalidate, skill surfacing |
 | CoC Service (Windows) | [coc-service.md](references/coc-service.md) | `Manage-CoCService.ps1` Task Scheduler service, devtunnel integration, logs |
-| Ralph | [ralph.md](references/ralph.md) | Iterative execution session journal, writer protocol, size cap, promote-to-ralph endpoint |
+| Ralph | [ralph.md](references/ralph.md) | Session journal format, writer protocol, size cap, iteration prompt, manual-verification guard |
+| Ralph · Launch | [ralph-launch.md](references/ralph-launch.md) | Direct goal launch, worktree execution mode, promote-to-ralph, grilling-phase prompt injection |
+| Ralph · Lifecycle | [ralph-lifecycle.md](references/ralph-lifecycle.md) | Resume stuck sessions, continue completed ones, submit commits as a PR, schedules, final checks |
 | Cron | [cron.md](references/cron.md) | Recurring follow-ups, executor, circuit breakers, REST API, dashboard integration |
 | Memory System | [memory-system.md](references/memory-system.md) | Bounded memory, capture mode, candidate ranking, promotion, recall index |
 | LLM Tools | [llm-tools.md](references/llm-tools.md) | Tool registry, per-invocation factories, permissions, web search |
