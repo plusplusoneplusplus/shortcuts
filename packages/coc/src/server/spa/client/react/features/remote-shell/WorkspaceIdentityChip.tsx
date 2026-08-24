@@ -45,6 +45,18 @@ export interface WorkspaceIdentityChipProps {
      * scope), the whole chip toggles the picker as before. (AC-02)
      */
     onSwitchBack?: () => void;
+    /**
+     * When set, the chip shows a *repo-group virtual workspace*'s identity
+     * (🗂️ + group name) instead of the repo's: neutral status dot, no provider
+     * badge and no `⧉N` clone badge, since none of those describe the group —
+     * they belong to whatever repo happens to be remembered underneath. The
+     * chevron/picker is unchanged.
+     *
+     * Note this is a repo-*group virtual workspace*, unrelated to the `RepoGroup`
+     * git-remote clustering that `activeGroupKey` / `data-remote-key` refer to;
+     * the group id therefore gets its own `data-repo-group-id` attribute.
+     */
+    groupIdentity?: { id: string; name: string };
 }
 
 function Chevron() {
@@ -126,7 +138,7 @@ function groupMatchesSearch(group: RepoGroup, query: string): boolean {
         || group.repos.some(repo => String(repo.workspace.name ?? '').toLowerCase().includes(q));
 }
 
-export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceIdentityChipProps) {
+export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity }: WorkspaceIdentityChipProps) {
     const cloneId = repo ? getRepoSelectionId(repo) : '';
     const { state: queueState } = useQueue();
     const { state: appState } = useApp();
@@ -344,20 +356,34 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
         );
     };
 
-    const displayName = activeSummary?.name ?? (repo?.workspace.name ?? 'Select repository');
-    const chipTitle = activeGroup?.label ?? (repo?.workspace.name ?? 'Select repository');
+    const displayName = groupIdentity
+        ? groupIdentity.name
+        : (activeSummary?.name ?? (repo?.workspace.name ?? 'Select repository'));
+    const chipTitle = groupIdentity
+        ? groupIdentity.name
+        : (activeGroup?.label ?? (repo?.workspace.name ?? 'Select repository'));
     // The dot + provider badge + name + `⧉N` cluster, shared by the single-button
     // (workspace active) and split (virtual scope active) layouts.
+    //
+    // In group mode every repo-derived part is dropped rather than reused: the
+    // remembered repo's health color, its provider and its clone count would all
+    // read as facts about the group. The chip has no member data of its own, so
+    // it shows a neutral dot and the 🗂️ marker every other repo-group surface
+    // (`getRepoGroupHeaderConfig`, the inline and shell headers) already uses.
     const identityInner = (
         <>
-            <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ background: activeSummary?.color ?? '#848484' }} aria-hidden />
-            <RemoteProviderBadge
-                normalizedUrl={activeGroup?.normalizedUrl}
-                testId="remote-provider-badge"
-                className="hidden xl:inline-flex items-center text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#848484] dark:text-[#777]"
-            />
+            <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ background: groupIdentity ? '#848484' : (activeSummary?.color ?? '#848484') }} aria-hidden />
+            {groupIdentity ? (
+                <span data-testid="remote-chip-group-icon" aria-hidden>🗂️</span>
+            ) : (
+                <RemoteProviderBadge
+                    normalizedUrl={activeGroup?.normalizedUrl}
+                    testId="remote-provider-badge"
+                    className="hidden xl:inline-flex items-center text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#848484] dark:text-[#777]"
+                />
+            )}
             <span className="truncate">{displayName}</span>
-            {activeSummary && activeSummary.cloneCount > 1 && (
+            {!groupIdentity && activeSummary && activeSummary.cloneCount > 1 && (
                 <span className="hidden lg:inline-flex items-center gap-0.5 h-[16px] px-1.5 rounded-full text-[10px] font-semibold leading-none bg-black/[0.06] dark:bg-white/[0.10] text-[#555] dark:text-[#bbb]">
                     <CloneGlyph />
                     {activeSummary.cloneCount}
@@ -375,6 +401,7 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
                     <button
                         data-testid="remote-chip"
                         data-remote-key={activeGroupKey ?? ''}
+                        data-repo-group-id={groupIdentity?.id}
                         title={`Switch to ${chipTitle}`}
                         aria-label={`Switch to ${displayName}`}
                         onClick={onSwitchBack}
@@ -400,6 +427,7 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack }: WorkspaceId
                     ref={triggerRef}
                     data-testid="remote-chip"
                     data-remote-key={activeGroupKey ?? ''}
+                    data-repo-group-id={groupIdentity?.id}
                     aria-haspopup="menu"
                     aria-expanded={open}
                     title={chipTitle}

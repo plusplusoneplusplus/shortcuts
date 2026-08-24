@@ -1524,7 +1524,12 @@ Enabled by default; desktop-only; takes effect on reload.
   `data-scope="work|life|workspace"`, animated thumb measured via refs +
   `ResizeObserver`). The workspace segment embeds `WorkspaceIdentityChip` —
   the identity pill (status dot, provider badge, remote name, `⧉N` clone badge,
-  chevron → `RepoPickerPopover` + add/clone dialogs) extracted from
+  chevron → `RepoPickerPopover` + add/clone dialogs). Its optional
+  `groupIdentity={{ id, name }}` prop swaps that repo identity for a repo-group
+  virtual workspace's: 🗂️ + group name, neutral dot, no provider badge, no `⧉N`
+  (none of which describe the group), plus `data-repo-group-id` — kept separate
+  from `data-remote-key`, which means the git-remote `RepoGroup` clustering. The
+  chip was extracted from
   `RemoteScopeCluster`, which now renders that chip itself unless its
   `hideIdentity` prop is set (`RemoteShellHeader` and
   `VirtualWorkspaceShellHeader` forward `hideIdentity` so identity renders
@@ -1608,9 +1613,14 @@ Enabled by default; desktop-only; takes effect on reload.
   (label = registered workspace name, id fallback while loading), classic
   shell/mobile render `VirtualWorkspaceInlineHeader` in-body. Group selections
   never overwrite `lastWorkspaceRepoId` (AppContext guard), and
-  `ScopeSlideSwitcher` treats an active group as a segment-less virtual scope
-  (`data-active-scope="group"`, no thumb, workspace-segment body switches back
-  to the remembered repo).
+  `ScopeSlideSwitcher` gives an active group the workspace segment
+  (`data-active-scope="group"`, `aria-selected`, thumb under it in a distinct
+  green accent). It resolves the label with `resolveRepoGroupName(selectedRepoId,
+  state.workspaces, remoteGroupWorkspaces)` and passes it as the chip's
+  `groupIdentity`; the derivation stays in the switcher because it is gated on
+  the repos tab. Pop-out / right-click target the group, and no switch-back is
+  offered while a group is active — the pill reads the group's name, so the
+  chevron's picker is the way out.
 
 **Remote workspace aggregation** (gated by `features.remoteShell`): when the flag
 is ON, `ReposContext.fetchRepos` also calls `aggregateRemoteWorkspaces()`

@@ -8,8 +8,9 @@
  * `features.scopeSwitcher`; the scope-bound content clusters (WI/PR tabs, clone
  * tabs, virtual sub-tabs + actions) stay in their headers, to the right.
  */
-import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
+import { useRepos } from '../../contexts/ReposContext';
 import { ToastContext } from '../../contexts/ToastContext';
 import { openScopePopOut } from '../scope-window/scopeWindow';
 import { useMyWorkEnabled } from '../../hooks/feature-flags/useMyWorkEnabled';
@@ -18,6 +19,7 @@ import { useScopeNavigation } from '../../hooks/useScopeNavigation';
 import { MY_WORK_WORKSPACE_ID } from '../../repos/MyWorkView';
 import { MY_LIFE_WORKSPACE_ID } from '../../repos/MyLifeView';
 import { isRepoGroupWorkspaceId } from '../../repos/virtualWorkspaceIds';
+import { resolveRepoGroupName } from '../../repos/repoGroupName';
 import { getRepoSelectionId } from '../../repos/cloneIdentity';
 import type { RepoData } from '../../repos/repoGrouping';
 import { useShellNavigation } from './useShellNavigation';
@@ -30,14 +32,19 @@ export interface ScopeSlideSwitcherProps {
 
 type ScopeKey = 'work' | 'life' | 'workspace';
 
-const SCOPE_ACCENTS: Record<ScopeKey, string> = {
+// `group` has no segment of its own — it borrows the workspace segment, so it
+// needs an accent distinct from work's blue and life's purple to stay readable
+// as "a repo group, not the repo underneath".
+const SCOPE_ACCENTS: Record<ScopeKey | 'group', string> = {
     work: '#0969da',
     life: '#8957e5',
     workspace: '#656d76',
+    group: '#1a7f37',
 };
 
 export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
     const { state } = useApp();
+    const { remoteGroupWorkspaces } = useRepos();
     const myWorkEnabled = useMyWorkEnabled();
     const myLifeEnabled = useMyLifeEnabled();
     const { goToMyWork, goToMyLife } = useScopeNavigation();
@@ -98,9 +105,17 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
     );
 
     const isOnReposTab = state.activeTab === 'repos';
-    // A repo group is a virtual scope without its own segment: no segment gets
-    // the thumb, and the workspace segment shows the remembered repo, inactive.
+    // A repo group is a virtual scope without its own segment: it takes over the
+    // workspace segment, which shows the group's identity and reads as selected.
     const groupScopeActive = isOnReposTab && isRepoGroupWorkspaceId(state.selectedRepoId);
+    // Resolved here rather than inside the chip: `groupScopeActive` is gated on
+    // the repos tab, and a chip deriving the group from `selectedRepoId` itself
+    // would lose that gate and label the pill with a group on other tabs.
+    const groupIdentity = useMemo(() => {
+        if (!groupScopeActive) return undefined;
+        const id = state.selectedRepoId!;
+        return { id, name: resolveRepoGroupName(id, state.workspaces, remoteGroupWorkspaces) };
+    }, [groupScopeActive, state.selectedRepoId, state.workspaces, remoteGroupWorkspaces]);
     const activeScope: ScopeKey =
         myWorkEnabled && isOnReposTab && state.selectedRepoId === MY_WORK_WORKSPACE_ID
             ? 'work'
@@ -108,8 +123,8 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
                 ? 'life'
                 : 'workspace';
 
-    // When a virtual scope (My Work / My Life / a repo group) is active, the
-    // workspace segment shows the remembered workspace but is *inactive*.
+    // When My Work / My Life is active, the workspace segment shows the
+    // remembered workspace but is *inactive*.
     // Clicking its body switches back to that workspace, re-selecting it as the
     // active scope (restoring the last-viewed note path exactly like selecting a
     // workspace normally does via `selectClone`). The chevron keeps opening the
@@ -117,22 +132,30 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
     const switchBackToWorkspace = useCallback(() => {
         if (repo) selectClone(getRepoSelectionId(repo));
     }, [repo, selectClone]);
-    const onSwitchBack = (activeScope !== 'workspace' || groupScopeActive) && repo ? switchBackToWorkspace : undefined;
+    // Deliberately NOT offered while a group is active: the pill then reads the
+    // group's name, so a body click silently navigating to the remembered repo
+    // would contradict its own label. Group scope switches through the chevron's
+    // picker instead.
+    const onSwitchBack = activeScope !== 'workspace' && repo ? switchBackToWorkspace : undefined;
+
+    // Pop-out / right-click follow whatever identity the segment is showing, so a
+    // group-labelled pill never opens a window on the repo remembered under it.
+    const segmentTarget = groupIdentity
+        ? { id: groupIdentity.id, label: groupIdentity.name }
+        : (repo ? { id: getRepoSelectionId(repo), label: getRepoDisplayLabel(repo) } : null);
 
     const containerRef = useRef<HTMLDivElement>(null);
     const segmentRefs = useRef<Partial<Record<ScopeKey, HTMLElement | null>>>({});
     const [thumb, setThumb] = useState<{ left: number; width: number } | null>(null);
 
     const measure = useCallback(() => {
-        // A repo-group scope has no segment of its own — hide the thumb entirely
-        // rather than falsely highlighting the workspace segment.
-        const el = groupScopeActive ? null : segmentRefs.current[activeScope];
+        const el = segmentRefs.current[activeScope];
         if (!el) {
             setThumb(null);
             return;
         }
         setThumb({ left: el.offsetLeft, width: el.offsetWidth });
-    }, [activeScope, groupScopeActive]);
+    }, [activeScope]);
 
     // Re-measure on scope change / segment set change, and on any size change of
     // the container or a segment (the workspace chip's width follows the remote
@@ -200,7 +223,7 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
                     aria-hidden
                     data-testid="scope-switcher-thumb"
                     className="absolute top-[3px] bottom-[3px] rounded-md transition-[left,width] duration-300 ease-out pointer-events-none"
-                    style={{ left: thumb.left, width: thumb.width, background: `${SCOPE_ACCENTS[activeScope]}26` }}
+                    style={{ left: thumb.left, width: thumb.width, background: `${SCOPE_ACCENTS[groupScopeActive ? 'group' : activeScope]}26` }}
                 />
             )}
             {myWorkEnabled && renderVirtualSegment('work', 'my-work-toggle', '💼', 'My Work', goToMyWork, MY_WORK_WORKSPACE_ID)}
@@ -210,14 +233,14 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
             <div
                 ref={el => { segmentRefs.current.workspace = el; }}
                 role="tab"
-                aria-selected={activeScope === 'workspace' && !groupScopeActive}
+                aria-selected={activeScope === 'workspace'}
                 data-testid="scope-segment"
                 data-scope="workspace"
                 className="group relative flex items-center min-w-0"
-                onContextMenu={repo ? e => openScopeMenu(e, getRepoSelectionId(repo), getRepoDisplayLabel(repo)) : undefined}
+                onContextMenu={segmentTarget ? e => openScopeMenu(e, segmentTarget.id, segmentTarget.label) : undefined}
             >
-                <WorkspaceIdentityChip repo={repo} repos={repos} onSwitchBack={onSwitchBack} />
-                {repo && renderPopOutIcon(getRepoSelectionId(repo), getRepoDisplayLabel(repo))}
+                <WorkspaceIdentityChip repo={repo} repos={repos} onSwitchBack={onSwitchBack} groupIdentity={groupIdentity} />
+                {segmentTarget && renderPopOutIcon(segmentTarget.id, segmentTarget.label)}
             </div>
             {menu && (
                 <div

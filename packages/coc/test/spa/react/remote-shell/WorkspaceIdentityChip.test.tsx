@@ -661,3 +661,86 @@ describe('WorkspaceIdentityChip add-repository server pre-selection (AC-02.1 / A
         expect(folderDialog.getAttribute('data-base-url')).toBeNull();
     });
 });
+
+// `groupIdentity` makes the pill describe a repo-group virtual workspace instead
+// of the repo passed as `repo` (which stays the remembered/underlying one).
+describe('WorkspaceIdentityChip group identity mode', () => {
+    const GROUP = { id: 'group-ai-repos', name: 'ai-repos' };
+
+    const renderGroupChip = (repos: any[], selected: any) =>
+        render(<WorkspaceIdentityChip repo={selected} repos={repos as any} groupIdentity={GROUP} />);
+
+    it('shows the group name and the 🗂️ marker instead of the repo identity', () => {
+        const repos = [repo('a', 'shortcuts', SHORTCUTS)];
+        renderGroupChip(repos, repos[0]);
+
+        const chip = screen.getByTestId('remote-chip');
+        expect(chip.textContent).toContain('ai-repos');
+        expect(chip.textContent).not.toContain('shortcuts');
+        expect(screen.getByTestId('remote-chip-group-icon').textContent).toBe('🗂️');
+        expect(chip.getAttribute('title')).toBe('ai-repos');
+    });
+
+    it('suppresses the ⧉N clone badge that belongs to the remembered repo', () => {
+        // Two clones of one remote → the repo-mode chip would render `⧉2`.
+        const repos = [repo('a', 'shortcuts', SHORTCUTS), repo('b', 'shortcuts-2', SHORTCUTS)];
+        renderGroupChip(repos, repos[0]);
+
+        expect(screen.getByTestId('remote-chip').textContent).not.toContain('2');
+    });
+
+    it('uses a neutral status dot rather than the remembered repo\'s health color', () => {
+        // Same repo, both modes: repo mode paints the dot with the workspace's
+        // own color (#0078d4), group mode must not inherit it.
+        const repos = [repo('a', 'shortcuts', SHORTCUTS)];
+        const dotColor = () =>
+            (screen.getByTestId('remote-chip').querySelector('span[style]') as HTMLElement).style.background;
+
+        render(<WorkspaceIdentityChip repo={repos[0]} repos={repos as any} />);
+        expect(dotColor()).toBe('rgb(0, 120, 212)');
+
+        cleanup();
+        renderGroupChip(repos, repos[0]);
+        expect(dotColor()).toBe('rgb(132, 132, 132)');
+    });
+
+    it('exposes the group id on its own attribute, leaving data-remote-key to the git remote', () => {
+        const repos = [repo('a', 'shortcuts', SHORTCUTS)];
+        renderGroupChip(repos, repos[0]);
+
+        const chip = screen.getByTestId('remote-chip');
+        expect(chip.getAttribute('data-repo-group-id')).toBe('group-ai-repos');
+        expect(chip.getAttribute('data-remote-key')).not.toContain('group-');
+    });
+
+    it('keeps the chevron/picker working in group mode', () => {
+        const repos = [repo('a', 'shortcuts', SHORTCUTS), repo('f', 'forge', FORGE)];
+        renderGroupChip(repos, repos[0]);
+
+        fireEvent.click(screen.getByTestId('remote-chip'));
+        expect(screen.getByTestId('remote-dropdown')).toBeTruthy();
+    });
+
+    it('applies group identity to the split-button layout too', () => {
+        const repos = [repo('a', 'shortcuts', SHORTCUTS), repo('b', 'shortcuts-2', SHORTCUTS)];
+        render(<WorkspaceIdentityChip repo={repos[0]} repos={repos as any} groupIdentity={GROUP} onSwitchBack={vi.fn()} />);
+
+        const chip = screen.getByTestId('remote-chip');
+        expect(chip.textContent).toContain('ai-repos');
+        expect(chip.textContent).not.toContain('shortcuts');
+        expect(chip.textContent).not.toContain('2');
+        expect(chip.getAttribute('data-repo-group-id')).toBe('group-ai-repos');
+        expect(screen.getByTestId('remote-chip-chevron')).toBeTruthy();
+    });
+
+    it('leaves repo identity untouched when groupIdentity is absent', () => {
+        const repos = [repo('a', 'shortcuts', SHORTCUTS), repo('b', 'shortcuts-2', SHORTCUTS)];
+        render(<WorkspaceIdentityChip repo={repos[0]} repos={repos as any} />);
+
+        const chip = screen.getByTestId('remote-chip');
+        expect(chip.textContent).toContain('shortcuts');
+        expect(chip.textContent).toContain('2');
+        expect(chip.getAttribute('data-repo-group-id')).toBeNull();
+        expect(screen.queryByTestId('remote-chip-group-icon')).toBeNull();
+    });
+});
