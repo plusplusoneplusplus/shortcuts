@@ -29,6 +29,10 @@ export interface SourceCanvasContentState {
     language: string;
     /** The path actually fetched/attempted — for the header + error message. */
     resolvedPath: string;
+    /** Workspace that owns the server-resolved path. */
+    resolvedWorkspaceId?: string;
+    /** Root of the owning workspace, used for repo-relative display paths. */
+    workspaceRootPath?: string;
     /** Failure reason (error). */
     error: string;
 }
@@ -100,12 +104,25 @@ export function useSourceCanvasContent(
                 if (cancelled) {
                     return;
                 }
-                const r = res as { content?: unknown; lines?: unknown; language?: unknown };
+                const r = res as {
+                    content?: unknown;
+                    lines?: unknown;
+                    language?: unknown;
+                    path?: unknown;
+                    resolvedWorkspaceId?: unknown;
+                };
+                const resolvedPath = typeof r.path === 'string' ? r.path : resolved.path;
+                const resolvedWorkspaceId = typeof r.resolvedWorkspaceId === 'string'
+                    ? r.resolvedWorkspaceId
+                    : resolved.wsId;
+                const owningWorkspace = workspaces.find((ws) => ws.id === resolvedWorkspaceId);
                 setContent({
                     status: 'success',
                     content: extractContent(r),
                     language: typeof r.language === 'string' ? r.language : '',
-                    resolvedPath: resolved.path,
+                    resolvedPath,
+                    resolvedWorkspaceId,
+                    workspaceRootPath: owningWorkspace?.rootPath || undefined,
                     error: '',
                 });
             })

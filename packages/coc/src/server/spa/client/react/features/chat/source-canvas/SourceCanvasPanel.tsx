@@ -12,7 +12,7 @@
  * chrome only.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import { Spinner } from '../../../ui/Spinner';
 import { SourceCanvasBody } from './SourceCanvasBody';
 import { SourceCanvasTreeBody } from './SourceCanvasTreeBody';
@@ -290,7 +290,19 @@ export function SourceCanvasPanel({
     onClose,
 }: SourceCanvasPanelProps) {
     const { fullPath, displayPath } = fileRef;
-    const path = displayPath || getSourceCanvasDisplayPath(fullPath, workspaceRootPath);
+    const serverResolvedPath = fileRef.kind === 'dir'
+        ? tree?.resolvedPath
+        : content?.resolvedPath;
+    const effectiveFullPath = serverResolvedPath || fullPath;
+    const effectiveWsId = fileRef.kind === 'dir'
+        ? tree?.wsId || wsId
+        : content?.resolvedWorkspaceId || wsId;
+    const effectiveWorkspaceRootPath = fileRef.kind === 'dir'
+        ? tree?.workspaceRootPath || workspaceRootPath
+        : content?.workspaceRootPath || workspaceRootPath;
+    const path = serverResolvedPath
+        ? getSourceCanvasDisplayPath(effectiveFullPath, effectiveWorkspaceRootPath)
+        : displayPath || getSourceCanvasDisplayPath(effectiveFullPath, effectiveWorkspaceRootPath);
     const fileName = basename(path);
     const [copied, setCopied] = useState(false);
     const hasFileSwitcher = fileRef.kind !== 'note'
@@ -300,18 +312,20 @@ export function SourceCanvasPanel({
     const handleCopy = useCallback(() => {
         const clip = navigator.clipboard;
         if (!clip?.writeText) { return; }
-        void clip.writeText(fullPath)
+        void clip.writeText(effectiveFullPath)
             .then(() => {
                 setCopied(true);
                 setTimeout(() => setCopied(false), 1500);
             })
             .catch(() => { /* clipboard unavailable */ });
-    }, [fullPath]);
+    }, [effectiveFullPath]);
 
     const handleReveal = useCallback(() => {
-        if (!wsId) { return; }
-        getSpaCocClient().explorer.reveal(wsId, fullPath).catch(() => { /* ignore */ });
-    }, [wsId, fullPath]);
+        if (!effectiveWsId) { return; }
+        getCocClientForWorkspace(effectiveWsId)
+            .explorer.reveal(effectiveWsId, effectiveFullPath)
+            .catch(() => { /* ignore */ });
+    }, [effectiveWsId, effectiveFullPath]);
 
     return (
         <div
@@ -322,8 +336,8 @@ export function SourceCanvasPanel({
                 {hasFileSwitcher && onNavigate ? (
                     <SourceCanvasFileSwitcher
                         fileRef={fileRef}
-                        wsId={wsId}
-                        workspaceRootPath={workspaceRootPath}
+                        wsId={effectiveWsId}
+                        workspaceRootPath={effectiveWorkspaceRootPath}
                         sourceFiles={sourceFiles}
                         onNavigate={onNavigate}
                     />
@@ -346,7 +360,7 @@ export function SourceCanvasPanel({
                         <span
                             className="text-[11px] text-[#848484] truncate min-w-0 text-left"
                             dir="rtl"
-                            title={fullPath}
+                            title={effectiveFullPath}
                             data-testid="source-canvas-path"
                         >
                             <bdi>{path}</bdi>
@@ -368,7 +382,7 @@ export function SourceCanvasPanel({
                         type="button"
                         data-testid="source-canvas-reveal-btn"
                         onClick={handleReveal}
-                        disabled={!wsId}
+                        disabled={!effectiveWsId}
                         className={`${headerBtnClass} disabled:opacity-40 disabled:cursor-default`}
                         aria-label="Reveal in Explorer"
                         title="Reveal in Explorer"

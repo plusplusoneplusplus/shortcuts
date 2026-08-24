@@ -25,6 +25,7 @@ import type { ExplorerTreeEntry } from '@plusplusoneplusplus/coc-client';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import { useWorkspacesWithRemote } from '../../../repos/workspacesWithRemote';
 import { getSpaCocClientErrorMessage } from '../../../api/cocClient';
+import { isAbsolutePath } from '../../../utils/path-resolution';
 import {
     resolveSourceCanvasTarget,
     isSourceCanvasResolveError,
@@ -45,6 +46,8 @@ export interface SourceCanvasTreeState {
     relativePath: string;
     /** The workspace id the tree is fetched from (routes navigation + expansion). */
     wsId: string;
+    /** Root of the workspace that owns the resolved folder. */
+    workspaceRootPath?: string;
     /** True when the API capped the root listing (`truncated: true`). */
     truncated: boolean;
     /** Root failure reason (error). */
@@ -67,6 +70,7 @@ interface RootState {
     resolvedPath: string;
     relativePath: string;
     wsId: string;
+    workspaceRootPath?: string;
     truncated: boolean;
     error: string;
 }
@@ -139,51 +143,89 @@ export function useSourceCanvasTree(
             return;
         }
 
-        // `explorer.tree` is repo-relative; convert the resolved absolute path
-        // back to a workspace-relative path. When the path sits inside the chosen
-        // workspace root this strips the prefix; otherwise it falls back to the
-        // resolved path and the server's traversal guard surfaces a clear error.
-        const workspace = workspaces.find((ws) => ws.id === resolved.wsId);
-        const relativePath = getSourceCanvasWorkspaceRelativePath(resolved.path, workspace?.rootPath);
-
         setRoot({
             ...LOADING_ROOT,
             resolvedPath: resolved.path,
-            relativePath,
             wsId: resolved.wsId,
         });
 
-        // Route through the clone registry so a remote workspace's tree is fetched
-        // from its own server; local ids fall through to the default client.
-        getCocClientForWorkspace(resolved.wsId)
-            .explorer.tree(resolved.wsId, { path: relativePath })
-            .then((res) => {
+        const loadRoot = async () => {
+            let resolvedPath = resolved.path;
+            let resolvedWorkspaceId = resolved.wsId;
+
+            try {
+                // A relative group ref cannot be sent to the repo-tree route:
+                // only the preview endpoint knows the live member order and can
+                // stat each candidate. Resolve ownership there, then route the
+                // root and every lazy child request through the owning member.
+                if (resolvedWorkspaceId.startsWith('group-') && !isAbsolutePath(resolvedPath)) {
+                    const preview = await getCocClientForWorkspace(resolvedWorkspaceId)
+                        .tasks.previewWorkspaceFile(resolvedWorkspaceId, resolvedPath);
+                    if (gen !== genRef.current) {
+                        return;
+                    }
+                    if (typeof preview.path !== 'string' || typeof preview.resolvedWorkspaceId !== 'string') {
+                        throw new Error('Preview did not identify the owning workspace');
+                    }
+                    resolvedPath = preview.path;
+                    resolvedWorkspaceId = preview.resolvedWorkspaceId;
+                }
+
+                // `explorer.tree` is repo-relative; convert the server-resolved
+                // absolute path against the MEMBER root before listing it.
+                const workspace = workspaces.find((ws) => ws.id === resolvedWorkspaceId);
+                const relativePath = getSourceCanvasWorkspaceRelativePath(
+                    resolvedPath,
+                    workspace?.rootPath,
+                );
+
+                setRoot({
+                    ...LOADING_ROOT,
+                    resolvedPath,
+                    relativePath,
+                    wsId: resolvedWorkspaceId,
+                    workspaceRootPath: workspace?.rootPath || undefined,
+                });
+
+                // Route through the clone registry so a remote workspace's tree
+                // comes from its own server; local ids use the default client.
+                const res = await getCocClientForWorkspace(resolvedWorkspaceId)
+                    .explorer.tree(resolvedWorkspaceId, { path: relativePath });
                 if (gen !== genRef.current) {
                     return;
                 }
                 setRoot({
                     status: 'success',
                     rootEntries: Array.isArray(res.entries) ? res.entries : [],
-                    resolvedPath: resolved.path,
+                    resolvedPath,
                     relativePath,
-                    wsId: resolved.wsId,
+                    wsId: resolvedWorkspaceId,
+                    workspaceRootPath: workspace?.rootPath || undefined,
                     truncated: res.truncated === true,
                     error: '',
                 });
-            })
-            .catch((err) => {
+            } catch (err) {
                 if (gen !== genRef.current) {
                     return;
                 }
+                const workspace = workspaces.find((ws) => ws.id === resolvedWorkspaceId);
+                const relativePath = getSourceCanvasWorkspaceRelativePath(
+                    resolvedPath,
+                    workspace?.rootPath,
+                );
                 setRoot({
                     ...LOADING_ROOT,
                     status: 'error',
-                    resolvedPath: resolved.path,
+                    resolvedPath,
                     relativePath,
-                    wsId: resolved.wsId,
+                    wsId: resolvedWorkspaceId,
+                    workspaceRootPath: workspace?.rootPath || undefined,
                     error: getSpaCocClientErrorMessage(err, 'Failed to load folder'),
                 });
-            });
+            }
+        };
+
+        void loadRoot();
     }, [fullPath, sourceFilePath, wsHint, workspaces]);
 
     const fetchChildren = useCallback((path: string) => {
@@ -268,6 +310,7 @@ export function useSourceCanvasTree(
         resolvedPath: root.resolvedPath,
         relativePath: root.relativePath,
         wsId: root.wsId,
+        workspaceRootPath: root.workspaceRootPath,
         truncated: root.truncated,
         error: root.error,
         childrenMap,

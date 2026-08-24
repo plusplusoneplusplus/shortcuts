@@ -13,8 +13,8 @@ const { revealMock, writeTextMock } = vi.hoisted(() => ({
     writeTextMock: vi.fn(() => Promise.resolve()),
 }));
 
-vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({ explorer: { reveal: revealMock } }),
+vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
+    getCocClientForWorkspace: () => ({ explorer: { reveal: revealMock } }),
 }));
 
 // Stub the editable note body so the panel test stays focused on the body-mode
@@ -252,6 +252,40 @@ describe('SourceCanvasPanel', () => {
         );
         fireEvent.click(getByTestId('source-canvas-reveal-btn'));
         expect(revealMock).toHaveBeenCalledWith('ws1', '/home/u/proj/src/foo.ts');
+    });
+
+    it('uses the server-resolved member workspace for header, copy, and reveal', async () => {
+        const resolvedPath = '/home/u/projects/nixl/src/plugins/hf3fs/hf3fs_utils.cpp';
+        const { getByTestId } = render(
+            <SourceCanvasPanel
+                fileRef={{
+                    fullPath: 'src/plugins/hf3fs/hf3fs_utils.cpp',
+                    wsId: 'group-ml',
+                }}
+                wsId="group-ml"
+                workspaceRootPath="/home/u/.coc/repos/group-ml"
+                content={{
+                    status: 'success',
+                    content: 'int main() {}',
+                    language: 'cpp',
+                    resolvedPath,
+                    resolvedWorkspaceId: 'ws-nixl',
+                    workspaceRootPath: '/home/u/projects/nixl',
+                    error: '',
+                }}
+                onClose={() => {}}
+            />,
+        );
+
+        expect(getByTestId('source-canvas-path').textContent).toBe(
+            'src/plugins/hf3fs/hf3fs_utils.cpp',
+        );
+        expect(getByTestId('source-canvas-path').getAttribute('title')).toBe(resolvedPath);
+
+        fireEvent.click(getByTestId('source-canvas-copy-btn'));
+        await waitFor(() => expect(writeTextMock).toHaveBeenCalledWith(resolvedPath));
+        fireEvent.click(getByTestId('source-canvas-reveal-btn'));
+        expect(revealMock).toHaveBeenCalledWith('ws-nixl', resolvedPath);
     });
 
     it('reveal button is disabled (and no-ops) without a workspace id', () => {

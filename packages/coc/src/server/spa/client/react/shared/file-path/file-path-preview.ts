@@ -10,6 +10,11 @@ import { getLinkHandlersConfig } from '../../hooks/useLinkHandlers';
 import { openLink } from '../../utils/link-handler';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
+import { withRemoteWorkspaces } from '../../repos/workspacesWithRemote';
+import {
+    isSourceCanvasResolveError,
+    resolveSourceCanvasTarget,
+} from '../../features/chat/source-canvas/resolve';
 import { SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS } from '../../featureFlags';
 import {
     isExternalFileReferenceHref,
@@ -56,7 +61,9 @@ interface ImageTooLargeResponse {
     size: number;
 }
 
-type PreviewResponse = FilePreviewResponse | DirectoryPreviewResponse | ImagePreviewResponse | ImageTooLargeResponse;
+type PreviewResponse = (
+    FilePreviewResponse | DirectoryPreviewResponse | ImagePreviewResponse | ImageTooLargeResponse
+) & { resolvedWorkspaceId?: string };
 
 interface CacheEntry {
     data: PreviewResponse | null;
@@ -183,7 +190,7 @@ async function fetchWorkspaces(): Promise<WorkspaceInfo[]> {
             workspacesLoading = null;
         });
 
-    const workspaces = await workspacesLoading;
+    const workspaces = withRemoteWorkspaces(await workspacesLoading);
     workspacesCache = workspaces;
     workspacesFetchedAt = Date.now();
     return workspaces;
@@ -193,47 +200,28 @@ function normalizePath(p: string): string {
     return toForwardSlashes(p).toLowerCase();
 }
 
-async function resolveWorkspaceId(filePath: string): Promise<string | null> {
-    const workspaces = await fetchWorkspaces();
-    if (workspaces.length === 0) return null;
-
-    const normalizedFile = normalizePath(filePath);
-    let best: WorkspaceInfo | null = null;
-    for (const ws of workspaces) {
-        const root = ws.rootPath;
-        if (root && normalizedFile.startsWith(normalizePath(root))) {
-            if (!best || root.length > (best.rootPath?.length || 0)) {
-                best = ws;
-            }
-        }
-    }
-
-    return best?.id || workspaces[0]?.id || null;
-}
-
 /**
- * `knownWsId` is the link's own `data-ws-id`, and it wins over the rootPath
- * heuristic below: `resolveWorkspaceId` only sees the LOCAL server's workspace
- * list, so for a remote clone it either finds nothing or falls through to
- * `workspaces[0]` and previews an arbitrary unrelated local repo. The heuristic
- * stays as the fallback for links that carry no workspace id.
+ * Resolve through the same target helper as the docked canvas. A group hint
+ * loses to the member that owns an absolute path, while a relative group ref
+ * stays relative so the server can probe live members in stored order.
  */
 async function fetchPreview(path: string, knownWsId?: string): Promise<PreviewResponse> {
-    // Always resolve: it warms `workspacesCache` for the rootPath lookup below.
-    const resolved = await resolveWorkspaceId(path);
-    const wsId = knownWsId || resolved;
-    if (!wsId) {
-        throw new Error('No workspace available');
+    const workspaces = await fetchWorkspaces();
+    const target = resolveSourceCanvasTarget(
+        { fullPath: path, wsId: knownWsId },
+        workspaces,
+    );
+    if (isSourceCanvasResolveError(target)) {
+        throw new Error(target.error);
     }
 
-    // Cache rootPath for task file detection in renderPreview. A remote clone is
-    // absent from the local list, so this falls back to '' (heuristic disabled)
-    // rather than an unrelated local repo's root.
-    const ws = (workspacesCache || []).find(w => w.id === wsId);
-    lastResolvedRootPath = ws?.rootPath ? normalizePath(ws.rootPath) : '';
-
     try {
-        return await getCocClientForWorkspace(wsId).tasks.previewWorkspaceFile(wsId, path) as PreviewResponse;
+        const preview = await getCocClientForWorkspace(target.wsId)
+            .tasks.previewWorkspaceFile(target.wsId, target.path) as PreviewResponse;
+        const ownerId = preview.resolvedWorkspaceId || target.wsId;
+        const owner = workspaces.find((ws) => ws.id === ownerId);
+        lastResolvedRootPath = owner?.rootPath ? normalizePath(owner.rootPath) : '';
+        return preview;
     } catch (err) {
         throw new Error(getSpaCocClientErrorMessage(err, 'Failed to load preview'));
     }
@@ -308,6 +296,17 @@ function openFileReference(sourceEl: HTMLElement, ref: FileReference): void {
     if (SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS) {
         if (isSourceCanvasDirectoryPath(ref.filePath) && sourceEl.closest('.chat-message.assistant')) {
             dispatchOpenSourceCanvas(ref, 'dir');
+            return;
+        }
+        if (
+            isSourceCanvasNotePath(ref.filePath)
+            && ref.wsId?.startsWith('group-')
+            && sourceEl.closest('.chat-message.assistant')
+        ) {
+            // Repo-group access widens only the read-only preview route. Keep a
+            // group-scoped Markdown ref in the source viewer so the server can
+            // probe members without granting group-scoped write access.
+            dispatchOpenSourceCanvas(ref);
             return;
         }
         if (isSourceCanvasNotePath(ref.filePath) && sourceEl.closest('.chat-message')) {

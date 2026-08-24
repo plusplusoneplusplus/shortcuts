@@ -279,16 +279,15 @@ describe('remote-clone routing sweep', () => {
         }
     });
 
-    it('file-path hover previews use the link\'s own workspace id, routed to its clone', () => {
+    it('file-path hover previews resolve ownership and route to the selected clone', () => {
         const preview = read('shared/file-path/file-path-preview.ts');
-        expect(preview).toContain('getCocClientForWorkspace(wsId).tasks.previewWorkspaceFile(wsId, path)');
-        // The link's data-ws-id wins over the local-only rootPath heuristic, which
-        // for a remote clone previewed an arbitrary unrelated local repo via
-        // `workspaces[0]?.id`.
+        expect(preview).toContain('withRemoteWorkspaces(await workspacesLoading)');
+        expect(preview).toContain('resolveSourceCanvasTarget(');
+        expect(preview).toContain('getCocClientForWorkspace(target.wsId)');
+        expect(preview).toContain('.tasks.previewWorkspaceFile(target.wsId, target.path)');
         expect(preview).toContain('fetchPreview(fullPath, linkWsId)');
-        expect(preview).toContain('const wsId = knownWsId || resolved;');
-        // The workspace list itself is a local-server call by design (it only
-        // backs the fallback heuristic), so getSpaCocClient stays for that one.
+        // The default client lists local workspaces, while remote rows fold in
+        // from the aggregation snapshot before path ownership is resolved.
         expect(preview).not.toContain('getSpaCocClient().tasks');
     });
 });

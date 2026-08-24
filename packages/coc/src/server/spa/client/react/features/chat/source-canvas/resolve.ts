@@ -4,7 +4,8 @@
  * Given a clicked file reference and the known workspaces, decide which
  * workspace to fetch from and which path to fetch:
  *  - relative paths are resolved against the directory of `sourceFilePath`;
- *  - workspace-relative paths are resolved against the selected workspace root;
+ *  - workspace-relative paths are resolved against the selected workspace root,
+ *    except repo-group refs, which stay relative for ordered server probing;
  *  - the workspace is chosen by longest-prefix `rootPath` match (mirroring
  *    `FilePreview` and the App-level md-link handler), unless an explicit
  *    `wsId` hint owns the resolved path, and falls back to the first workspace.
@@ -35,7 +36,7 @@ export interface SourceCanvasWorkspace {
 export interface SourceCanvasTarget {
     /** Workspace id to fetch from. */
     wsId: string;
-    /** Absolute path to fetch through the preview API. */
+    /** Path to fetch through the preview API (relative only for repo-group probing). */
     path: string;
 }
 
@@ -214,9 +215,13 @@ export function resolveSourceCanvasTarget(
         return { error: 'No workspace available', attemptedPath: path };
     }
 
-    // 3. The preview API requires an absolute path; anchor workspace-relative
-    // chat refs at the chosen workspace root before fetching.
+    // 3. Anchor ordinary workspace-relative refs at the chosen workspace root.
+    // Repo-group refs deliberately stay relative: only the server can probe the
+    // live members in stored order and report which workspace owns the result.
     if (!isAbsolutePath(path)) {
+        if (fileRef.wsId?.startsWith('group-')) {
+            return { wsId, path };
+        }
         const root = workspace?.rootPath ? trimTrailingSlashes(workspace.rootPath) : '';
         if (!root) {
             return { error: 'No workspace root available', attemptedPath: path };

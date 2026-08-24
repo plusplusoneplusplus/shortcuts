@@ -175,6 +175,20 @@ describe('resolveSourceCanvasTarget', () => {
         });
     });
 
+    it('leaves a repo-group relative path unanchored for ordered server probing', () => {
+        const r = resolveSourceCanvasTarget(
+            { fullPath: 'src/plugins/hf3fs/hf3fs_utils.cpp', wsId: 'group-ml' },
+            [
+                { id: 'group-ml', rootPath: '/home/u/.coc/repos/group-ml' },
+                { id: 'ws-nixl', rootPath: '/home/u/projects/nixl' },
+            ],
+        );
+        expect(r).toEqual({
+            wsId: 'group-ml',
+            path: 'src/plugins/hf3fs/hf3fs_utils.cpp',
+        });
+    });
+
     it('resolves a workspace-relative path against the first workspace root without a hint', () => {
         const r = resolveSourceCanvasTarget({ fullPath: 'src/foo.ts' }, WS);
         expect(r).toEqual({

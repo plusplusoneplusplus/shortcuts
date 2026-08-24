@@ -159,9 +159,18 @@ export function resolveMarkdownReviewTarget(
                     : normalizePath(hintedWorkspace.rootPath || '').replace(/\/+$/, '');
                 absPath = base ? resolveRelativePath(base, absPath) : absPath;
             }
-            const taskRelativePath = toTaskRelativePath(absPath, hintedWorkspace.rootPath || '');
+            // Match the read-only source resolver's ownership rule: an absolute
+            // path outside the hinted root belongs to the longest matching
+            // workspace. This lets app-level Markdown links from a repo-group
+            // chat open against the member workspace rather than the virtual
+            // group root. Unmatched paths retain the explicit hint.
+            const owningWorkspace = isAbsolutePath(absPath)
+                ? resolveWorkspaceForPath(absPath, workspaces || [])
+                : null;
+            const targetWorkspace = owningWorkspace ?? hintedWorkspace;
+            const taskRelativePath = toTaskRelativePath(absPath, targetWorkspace.rootPath || '');
             return {
-                wsId: hintedWorkspace.id,
+                wsId: targetWorkspace.id,
                 filePath: taskRelativePath ?? absPath,
                 displayPath: absPath,
                 fetchMode: taskRelativePath !== null ? 'tasks' : 'auto',

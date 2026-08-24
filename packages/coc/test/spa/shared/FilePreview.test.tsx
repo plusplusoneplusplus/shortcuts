@@ -13,7 +13,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
-import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { useEffect } from 'react';
+import { AppProvider, useApp } from '../../../src/server/spa/client/react/contexts/AppContext';
 import { FilePreview } from '../../../src/server/spa/client/react/shared/FilePreview';
 
 // ── Mocks ──────────────────────────────────────────────────────────────
@@ -32,9 +33,22 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
-function renderFilePreview(props?: Partial<{ filePath: string; wsId: string }>) {
+function WorkspaceSeeder({ workspaces }: { workspaces: Array<{ id: string; rootPath: string }> }) {
+    const { dispatch } = useApp();
+    useEffect(() => {
+        dispatch({ type: 'WORKSPACES_LOADED', workspaces });
+    }, [dispatch, workspaces]);
+    return null;
+}
+
+function renderFilePreview(props?: Partial<{
+    filePath: string;
+    wsId: string;
+    workspaces: Array<{ id: string; rootPath: string }>;
+}>) {
     return render(
         <AppProvider>
+            {props?.workspaces && <WorkspaceSeeder workspaces={props.workspaces} />}
             <FilePreview
                 filePath={props?.filePath ?? '/workspace/src/app.ts'}
                 wsId={props?.wsId ?? 'ws-1'}
@@ -94,6 +108,29 @@ describe('FilePreview', () => {
         it('does not render tooltip initially', () => {
             renderFilePreview();
             expect(document.querySelector('.file-preview-lines')).toBeNull();
+        });
+
+        it('reroutes a group-hinted member path through the owning workspace', async () => {
+            mockPreviewResponse({
+                path: '/home/u/projects/nixl/src/app.ts',
+            });
+            renderFilePreview({
+                filePath: '/home/u/projects/nixl/src/app.ts',
+                wsId: 'group-ml',
+                workspaces: [
+                    { id: 'group-ml', rootPath: '/home/u/.coc/repos/group-ml' },
+                    { id: 'ws-nixl', rootPath: '/home/u/projects/nixl' },
+                ],
+            });
+
+            await act(async () => {
+                fireEvent.mouseEnter(screen.getByTestId('trigger'));
+            });
+            await waitFor(() => expect(document.querySelector('.file-preview-lines')).not.toBeNull());
+
+            const previewCall = mockFetch.mock.calls.find((call: unknown[]) =>
+                String(call[0]).includes('/files/preview'));
+            expect(String(previewCall?.[0])).toContain('/api/workspaces/ws-nixl/files/preview');
         });
     });
 
