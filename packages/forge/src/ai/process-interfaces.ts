@@ -67,6 +67,13 @@ export interface ProcessCompactionState {
     messagesRemoved?: number;
     /** Tokens freed by the summary (success only). */
     tokensRemoved?: number;
+    /**
+     * Summary text the provider produced for the most recent compaction
+     * (success only). Mirrors the `compactionSummary` stored on the appended
+     * display-only result turn; absent when the provider produced none (Codex
+     * keeps its summary inside the rewritten rollout instead).
+     */
+    summary?: string;
     /** Error message (failure only). */
     error?: string;
 }
