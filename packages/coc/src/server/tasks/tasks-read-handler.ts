@@ -18,7 +18,7 @@ import { sendJSON, sendError } from '../core/api-handler';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import type { Route } from '../types';
 import { resolveTaskRoot } from './task-root-resolver';
-import { isWithinTrustedReadOnlyDir, resolveRequestedFilePath, DEFAULT_SETTINGS, readTasksSettings, writeTasksSettings } from './tasks-handler-utils';
+import { isWithinTrustedReadOnlyDir, resolveRepoGroupReadRoots, resolveRequestedFilePath, DEFAULT_SETTINGS, readTasksSettings, writeTasksSettings } from './tasks-handler-utils';
 import { taskCache } from './task-cache';
 import { getRepoDataPath } from '../paths';
 
@@ -141,7 +141,11 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
             const wsRoot = path.resolve(ws.rootPath);
             const resolvedPath = resolveRequestedFilePath(filePath, wsRoot);
             const taskRoot = resolveTaskRoot({ dataDir, rootPath: ws.rootPath, workspaceId: ws.id });
-            if (!isWithinDirectory(resolvedPath, wsRoot) && !isWithinTrustedReadOnlyDir(resolvedPath, dataDir) && !isWithinDirectory(resolvedPath, taskRoot.absolutePath)) {
+            const repoGroupReadRoots = await resolveRepoGroupReadRoots(dataDir, store, ws.id);
+            const isWithinRepoGroupMember = repoGroupReadRoots.some(member => (
+                isWithinDirectory(resolvedPath, member.rootPath)
+            ));
+            if (!isWithinDirectory(resolvedPath, wsRoot) && !isWithinRepoGroupMember && !isWithinTrustedReadOnlyDir(resolvedPath, dataDir) && !isWithinDirectory(resolvedPath, taskRoot.absolutePath)) {
                 return sendError(res, 403, 'Access denied: path is outside workspace');
             }
 

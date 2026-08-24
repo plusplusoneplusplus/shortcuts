@@ -228,6 +228,13 @@ all have their own `references/*.md`.
   its root contains the resolved absolute path. If another known workspace owns
   the path by longest-prefix match, `source-canvas/resolve.ts` routes the preview
   and folder tree to that workspace; an unmatched path keeps the original hint.
+- **Repo-group file preview reads** may reach the virtual group root, existing
+  trusted read-only roots, the group task root, and any live registered member
+  root. `resolveRepoGroupReadRoots` in `server/tasks/tasks-handler-utils.ts`
+  preserves membership order and omits members removed from the registry or
+  missing on disk; non-group workspaces get no extra roots. This allowance is
+  for `GET /workspaces/:id/files/preview` only and must not be reused by write
+  routes.
 - **WSL file links.** On a Windows host a WSL workspace has a
   `\\wsl$\<distro>\...` `rootPath`. `react/utils/path-resolution.ts` keeps that
   UNC prefix intact (`isAbsolutePath`, `resolveRelativePath`, `deriveHomeDir`),

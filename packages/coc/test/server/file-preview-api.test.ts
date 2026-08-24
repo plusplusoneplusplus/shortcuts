@@ -66,10 +66,12 @@ describe('File Preview API', () => {
     let server: ExecutionServer | undefined;
     let dataDir: string;
     let workspaceDir: string;
+    let externalDirs: string[];
 
     beforeEach(() => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'file-preview-test-'));
         workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'file-preview-ws-'));
+        externalDirs = [];
     });
 
     afterEach(async () => {
@@ -79,6 +81,9 @@ describe('File Preview API', () => {
         }
         fs.rmSync(dataDir, { recursive: true, force: true });
         fs.rmSync(workspaceDir, { recursive: true, force: true });
+        for (const dir of externalDirs) {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
     });
 
     async function startServer(): Promise<ExecutionServer> {
@@ -87,8 +92,7 @@ describe('File Preview API', () => {
         return server;
     }
 
-    async function registerWorkspace(srv: ExecutionServer, rootPath: string): Promise<string> {
-        const id = 'test-ws-' + Date.now();
+    async function registerWorkspace(srv: ExecutionServer, rootPath: string, id = 'test-ws-' + Date.now()): Promise<string> {
         const res = await postJSON(`${srv.url}/api/workspaces`, {
             id,
             name: 'Test Workspace',
@@ -96,6 +100,21 @@ describe('File Preview API', () => {
         });
         expect(res.status).toBe(201);
         return id;
+    }
+
+    async function createRepoGroup(srv: ExecutionServer, members: string[]): Promise<string> {
+        const res = await postJSON(`${srv.url}/api/repo-groups`, {
+            name: 'Preview Group',
+            members,
+        });
+        expect(res.status).toBe(201);
+        return JSON.parse(res.body).workspace.id;
+    }
+
+    function createExternalDir(prefix: string): string {
+        const dir = fs.mkdtempSync(path.join(os.homedir(), prefix));
+        externalDirs.push(dir);
+        return dir;
     }
 
     function createFile(relativePath: string, content: string): string {
@@ -323,6 +342,97 @@ describe('File Preview API', () => {
             expect(res.status).toBe(403);
             const body = JSON.parse(res.body);
             expect(body.error).toContain('outside workspace');
+        });
+    });
+
+    // ========================================================================
+    // Repo-group member paths
+    // ========================================================================
+
+    describe('GET /api/workspaces/:id/files/preview — Repo-group members', () => {
+        it('allows an absolute path inside a live member workspace', async () => {
+            const srv = await startServer();
+            const memberDir = createExternalDir('.file-preview-live-member-');
+            const memberId = await registerWorkspace(srv, memberDir, 'preview-live-member');
+            const groupId = await createRepoGroup(srv, [memberId]);
+            const memberFile = path.join(memberDir, 'src', 'member.ts');
+            fs.mkdirSync(path.dirname(memberFile), { recursive: true });
+            fs.writeFileSync(memberFile, 'export const member = true;\n', 'utf-8');
+
+            const res = await request(
+                `${srv.url}/api/workspaces/${groupId}/files/preview?path=${encodeURIComponent(memberFile)}&lines=0`
+            );
+
+            expect(res.status).toBe(200);
+            const body = JSON.parse(res.body);
+            expect(body.path).toBe(memberFile);
+            expect(body.content).toBe('export const member = true;\n');
+        });
+
+        it('rejects a path inside a member whose root is missing', async () => {
+            const srv = await startServer();
+            const memberDir = createExternalDir('.file-preview-missing-member-');
+            const memberId = await registerWorkspace(srv, memberDir, 'preview-missing-member');
+            const groupId = await createRepoGroup(srv, [memberId]);
+            fs.rmSync(memberDir, { recursive: true, force: true });
+
+            const res = await request(
+                `${srv.url}/api/workspaces/${groupId}/files/preview?path=${encodeURIComponent(path.join(memberDir, 'secret.ts'))}`
+            );
+
+            expect(res.status).toBe(403);
+            expect(JSON.parse(res.body).error).toContain('outside workspace');
+        });
+
+        it('rejects a path inside a member removed from the workspace registry', async () => {
+            const srv = await startServer();
+            const memberDir = createExternalDir('.file-preview-removed-member-');
+            const memberId = await registerWorkspace(srv, memberDir, 'preview-removed-member');
+            const groupId = await createRepoGroup(srv, [memberId]);
+            const memberFile = path.join(memberDir, 'secret.ts');
+            fs.writeFileSync(memberFile, 'secret\n', 'utf-8');
+            const removeRes = await request(`${srv.url}/api/workspaces/${memberId}`, { method: 'DELETE' });
+            expect(removeRes.status).toBe(204);
+
+            const res = await request(
+                `${srv.url}/api/workspaces/${groupId}/files/preview?path=${encodeURIComponent(memberFile)}`
+            );
+
+            expect(res.status).toBe(403);
+            expect(JSON.parse(res.body).error).toContain('outside workspace');
+        });
+
+        it('rejects a path outside the group root and every member root', async () => {
+            const srv = await startServer();
+            const memberDir = createExternalDir('.file-preview-member-');
+            const outsideDir = createExternalDir('.file-preview-outsider-');
+            const memberId = await registerWorkspace(srv, memberDir, 'preview-member');
+            const groupId = await createRepoGroup(srv, [memberId]);
+            const outsideFile = path.join(outsideDir, 'outside.ts');
+            fs.writeFileSync(outsideFile, 'outside\n', 'utf-8');
+
+            const res = await request(
+                `${srv.url}/api/workspaces/${groupId}/files/preview?path=${encodeURIComponent(outsideFile)}`
+            );
+
+            expect(res.status).toBe(403);
+            expect(JSON.parse(res.body).error).toContain('outside workspace');
+        });
+
+        it('does not widen read access for a non-group workspace', async () => {
+            const srv = await startServer();
+            const workspaceRoot = createExternalDir('.file-preview-regular-workspace-');
+            const outsideDir = createExternalDir('.file-preview-regular-outside-');
+            const wsId = await registerWorkspace(srv, workspaceRoot, 'preview-regular-workspace');
+            const outsideFile = path.join(outsideDir, 'outside.ts');
+            fs.writeFileSync(outsideFile, 'outside\n', 'utf-8');
+
+            const res = await request(
+                `${srv.url}/api/workspaces/${wsId}/files/preview?path=${encodeURIComponent(outsideFile)}`
+            );
+
+            expect(res.status).toBe(403);
+            expect(JSON.parse(res.body).error).toContain('outside workspace');
         });
     });
 
