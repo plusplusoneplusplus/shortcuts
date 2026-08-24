@@ -616,6 +616,28 @@ export class FileProcessStore implements ProcessStore {
         turnIndex: number,
         sdkEventId: string,
     ): Promise<void> {
+        await this.patchUserTurn(processId, turnIndex, { sdkEventId });
+    }
+
+    /**
+     * Atomically persist the injected repo-group member listing on a user turn.
+     * Only updates `role: 'user'` turns; a mismatched index or non-user turn is a
+     * safe no-op.
+     */
+    async updateTurnRepoGroupContext(
+        processId: string,
+        turnIndex: number,
+        repoGroupContext: string,
+    ): Promise<void> {
+        await this.patchUserTurn(processId, turnIndex, { repoGroupContext });
+    }
+
+    /** Shared write path for the narrow per-field user-turn updates above. */
+    private async patchUserTurn(
+        processId: string,
+        turnIndex: number,
+        patch: Partial<ConversationTurn>,
+    ): Promise<void> {
         let updatedProcess: AIProcess | undefined;
 
         await this.enqueueWrite(async () => {
@@ -631,7 +653,7 @@ export class FileProcessStore implements ProcessStore {
             if (turns[turnIndex].role !== 'user') { return; }
 
             const updatedTurns = turns.map((turn, i) =>
-                i === turnIndex ? { ...turn, sdkEventId } : turn
+                i === turnIndex ? { ...turn, ...patch } : turn
             );
 
             const merged: AIProcess = { ...existing, conversationTurns: updatedTurns };

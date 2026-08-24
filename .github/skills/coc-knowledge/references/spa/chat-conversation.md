@@ -19,6 +19,12 @@ escaped and never injected); the raw toggle shows literal source. Turns with
 `pasteExternalized: true` keep the typed prompt visible and render the payload as an
 in-bubble card, with no extra persisted display state.
 
+In a repo-group chat, a user turn carrying `repoGroupContext` hangs a collapsed "Repo
+group context" toggle (`RepoGroupContextDisclosure`) under its content, revealing the
+`<repo_group_context>` block that dispatch appended to the outgoing prompt — verbatim,
+preformatted, stale members already dropped. The message text itself is unchanged, and a
+turn without the field shows no toggle.
+
 Interrupted assistant turns keep their partial transcript and tool timeline. Continue and
 retry send a generated raw follow-up through the normal path — never replaying preserved
 partial content into the prompt, and never including composer draft, paste, context, or

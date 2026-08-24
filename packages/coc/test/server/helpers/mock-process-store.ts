@@ -199,6 +199,15 @@ export function createMockProcessStore(options?: MockProcessStoreOptions): MockP
             const updatedTurns = turns.map((turn: ConversationTurn, i: number) => i === turnIndex ? { ...turn, sdkEventId } : turn);
             processes.set(processId, { ...existing, conversationTurns: updatedTurns });
         }),
+        updateTurnRepoGroupContext: vi.fn(async (processId: string, turnIndex: number, repoGroupContext: string) => {
+            const existing = processes.get(processId);
+            if (!existing) return;
+            const turns = existing.conversationTurns ?? [];
+            if (turnIndex < 0 || turnIndex >= turns.length) return;
+            if (turns[turnIndex].role !== 'user') return;
+            const updatedTurns = turns.map((turn: ConversationTurn, i: number) => i === turnIndex ? { ...turn, repoGroupContext } : turn);
+            processes.set(processId, { ...existing, conversationTurns: updatedTurns });
+        }),
         truncateConversationTurns: vi.fn(async (processId: string, fromTurnIndex: number) => {
             const existing = processes.get(processId);
             if (!existing) return undefined;

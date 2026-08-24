@@ -121,6 +121,8 @@ export interface ClientConversationTurn {
     displayOnly?: boolean;
     /** Full provider-generated summary for a `/compact` result turn, revealed behind a disclosure. */
     compactionSummary?: string;
+    /** Verbatim repo-group member listing injected into this user turn's prompt, revealed behind a disclosure. */
+    repoGroupContext?: string;
     /** Model override used for this turn (set on user turns when /model was active) */
     model?: string;
     /** Chat mode used for this turn (set on user turns when mode override was active) */

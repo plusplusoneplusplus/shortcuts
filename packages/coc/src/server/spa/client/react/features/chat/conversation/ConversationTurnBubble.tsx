@@ -39,6 +39,7 @@ import { CommitStrip } from './CommitStrip';
 import { NoteEditCard } from './NoteEditCard';
 import { ScriptTerminalBlock } from './ScriptTerminalBlock';
 import { CompactionSummaryDisclosure } from './CompactionSummaryDisclosure';
+import { RepoGroupContextDisclosure } from './RepoGroupContextDisclosure';
 import { parseScriptOutput, describeScriptExit } from './scriptOutputParser';
 import { getProviderAvatarClasses, type ChatProvider } from '../ProviderBadge';
 import { AskUserHistoryCard, hasAskUserHistory } from '../AskUserHistoryCard';
@@ -1706,6 +1707,9 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                         >
                             ⚠ Failed to load images · Retry
                         </button>
+                    )}
+                    {isUser && turn.repoGroupContext && (
+                        <RepoGroupContextDisclosure context={turn.repoGroupContext} />
                     )}
                     {!isUser && !turn.isError && showRaw && (
                         <div className="raw-content-view rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#ffffff] dark:bg-[#1e1e1e] overflow-auto max-h-[600px]">

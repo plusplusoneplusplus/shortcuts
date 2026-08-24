@@ -7,8 +7,11 @@
  * so autopilot can read/edit member repos without permission friction. Stale
  * members (workspace removed or path missing on disk) are silently skipped.
  *
- * The block rides the prompt sent to the SDK — it is not persisted into the
- * conversation transcript.
+ * The block rides the prompt sent to the SDK — it is never spliced into the
+ * persisted user message. It is instead recorded verbatim on that user turn's
+ * `repoGroupContext` field (see `persistRepoGroupContextOnUserTurn`) so the
+ * chat can reveal what the model was told without polluting the transcript or
+ * the history replayed back to the model on later turns.
  */
 
 import * as os from 'os';
@@ -49,6 +52,35 @@ export async function resolveRepoGroupChatContext(
         promptBlock: tagBlock(REPO_GROUP_CONTEXT_TAG, `Repo group "${group.name}" members:\n${listing}`),
         additionalDirectories: live.map(m => m.rootPath as string),
     };
+}
+
+/**
+ * Record the injected block on the process's most recent user turn so the chat
+ * UI can disclose it. Resolves the turn index from a fresh store read — the
+ * user turn is written by the dispatch route (or the process-creation path)
+ * before the executor computes the context, and cron/wakeup follow-ups append
+ * theirs mid-execution.
+ *
+ * Best-effort and never throws: visibility must not be able to fail a turn.
+ */
+export async function persistRepoGroupContextOnUserTurn(
+    store: ProcessStore,
+    processId: string,
+    context: RepoGroupChatContext | undefined,
+): Promise<void> {
+    if (!context) return;
+    try {
+        const process = await store.getProcess(processId);
+        const turns = process?.conversationTurns ?? [];
+        for (let i = turns.length - 1; i >= 0; i--) {
+            if (turns[i].role === 'user') {
+                await store.updateTurnRepoGroupContext?.(processId, i, context.promptBlock);
+                return;
+            }
+        }
+    } catch {
+        // Ignore — the block still reaches the model either way.
+    }
 }
 
 /** Append the context block to a prompt; identity when there is no context. */

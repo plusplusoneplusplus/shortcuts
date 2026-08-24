@@ -444,133 +444,133 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity
                 dropdownTestId="remote-dropdown"
                 searchTestId="remote-search-input"
                 searchRef={searchRef}
-                searchPlaceholder="Search remotes"
+                searchPlaceholder="Search remotes and groups"
                 query={query}
                 onQueryChange={setQuery}
                 footer={
-                    <>
-                        {!query.trim() && showAllCount > 0 && (
-                            <button
-                                data-testid="remote-show-all-btn"
-                                role="menuitem"
-                                onClick={() => setShowAll(v => !v)}
-                                className="mt-1 w-full flex items-center justify-between px-2 py-1.5 rounded-md text-[12px] font-semibold text-[#656d76] dark:text-[#999] hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
-                            >
-                                <span>{showAll ? 'Hide all' : `Show all (${showAllCount})`}</span>
-                                <Chevron />
-                            </button>
-                        )}
-
-                        <div className="mt-1 pt-1 border-t border-[#eaeef2] dark:border-[#3c3c3c]">
-                            <div className="px-2 pb-1 text-[10px] font-bold uppercase tracking-[0.07em] text-[#848484] dark:text-[#777]">Add repository</div>
-                            <button
-                                data-testid="remote-add-folder-option"
-                                role="menuitem"
-                                className="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10"
-                                onClick={() => { close(); setAddFolderOpen(true); }}
-                            >
-                                <PlusIcon />
-                                Add workspace folder
-                            </button>
-                            <button
-                                data-testid="remote-add-repo-option"
-                                role="menuitem"
-                                className="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10"
-                                onClick={() => { close(); setAddRepoOpen(true); }}
-                            >
-                                <PlusIcon />
-                                Add specific repository
-                            </button>
-                            <button
-                                data-testid="remote-clone-repo-option"
-                                role="menuitem"
-                                className="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10"
-                                onClick={() => { close(); setCloneOpen(true); }}
-                            >
-                                <CloneGlyph />
-                                Clone repository
-                            </button>
-                            <button
-                                data-testid="remote-new-repo-group-option"
-                                role="menuitem"
-                                className="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10"
-                                onClick={() => { close(); setGroupDialog({ groupId: null }); }}
-                            >
-                                <RepoGroupGlyph />
-                                New repo group…
-                            </button>
-                        </div>
-                    </>
+                    <div className="mt-1 pt-1 border-t border-[#eaeef2] dark:border-[#3c3c3c]">
+                        <div className="px-2 pb-1 text-[10px] font-bold uppercase tracking-[0.07em] text-[#848484] dark:text-[#777]">Add repository</div>
+                        <button
+                            data-testid="remote-add-folder-option"
+                            role="menuitem"
+                            className="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10"
+                            onClick={() => { close(); setAddFolderOpen(true); }}
+                        >
+                            <PlusIcon />
+                            Add workspace folder
+                        </button>
+                        <button
+                            data-testid="remote-add-repo-option"
+                            role="menuitem"
+                            className="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10"
+                            onClick={() => { close(); setAddRepoOpen(true); }}
+                        >
+                            <PlusIcon />
+                            Add specific repository
+                        </button>
+                        <button
+                            data-testid="remote-clone-repo-option"
+                            role="menuitem"
+                            className="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10"
+                            onClick={() => { close(); setCloneOpen(true); }}
+                        >
+                            <CloneGlyph />
+                            Clone repository
+                        </button>
+                        <button
+                            data-testid="remote-new-repo-group-option"
+                            role="menuitem"
+                            className="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10"
+                            onClick={() => { close(); setGroupDialog({ groupId: null }); }}
+                        >
+                            <RepoGroupGlyph />
+                            New repo group…
+                        </button>
+                    </div>
                 }
             >
+                <PickerSection label="Repo groups" />
+                {filteredRepoGroupWorkspaces.length > 0 ? (
+                    filteredRepoGroupWorkspaces.map(ws => {
+                        // A remote group carries the aggregation's marker; a local
+                        // one has none. `offline` follows the contributing server,
+                        // and an offline group is read-only — no ⋮ menu, so Edit and
+                        // Delete are simply unavailable until it reconnects. (AC-04)
+                        const remote = ws?.remote as { serverLabel?: string; offline?: boolean } | undefined;
+                        const offline = !!remote?.offline;
+                        return (
+                            // Row click switches the dashboard to the group's virtual
+                            // workspace (RepoGroupView) through the same target-aware
+                            // navigation repos use; for a remote group the clone
+                            // registry already maps its id to the owning server's
+                            // baseUrl, so every request from the view routes there.
+                            // The ⋮ menu edits/deletes on that same server. (AC-02)
+                            <PickerRow
+                                key={String(ws.id)}
+                                testId="repo-group-item"
+                                remoteKey={String(ws.id)}
+                                active={appState.selectedRepoId === String(ws.id)}
+                                name={String(ws.name ?? ws.id)}
+                                sublabel={remote ? `Repo group · ${remote.serverLabel ?? 'remote'}${offline ? ' (offline)' : ''}` : 'Repo group'}
+                                offline={offline}
+                                onClick={() => {
+                                    selectClone(String(ws.id));
+                                    close();
+                                    setShowAll(false);
+                                    setQuery('');
+                                }}
+                                badges={
+                                    <>
+                                        <RepoGroupGlyph />
+                                        {remote && (
+                                            <RemoteServerBadge
+                                                testId="repo-group-server-badge"
+                                                servers={remote.serverLabel ? [remote.serverLabel] : []}
+                                            />
+                                        )}
+                                    </>
+                                }
+                                rowMenu={offline ? undefined : (
+                                    <button
+                                        data-testid="repo-group-row-menu"
+                                        data-remote-key={String(ws.id)}
+                                        aria-label={`More actions for ${ws.name ?? ws.id}`}
+                                        title="More actions"
+                                        onClick={e => {
+                                            e.stopPropagation();
+                                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                            setGroupMenu({ workspace: ws, x: rect.left, y: rect.bottom });
+                                        }}
+                                        className="flex-shrink-0 inline-flex items-center justify-center w-6 h-6 mr-1 rounded text-[#848484] dark:text-[#777] hover:bg-black/[0.06] dark:hover:bg-white/[0.10]"
+                                    >
+                                        <KebabGlyph />
+                                    </button>
+                                )}
+                            />
+                        );
+                    })
+                ) : (
+                    <PickerEmpty>No repo groups</PickerEmpty>
+                )}
+
+                <div className="mt-1 border-t border-[#eaeef2] dark:border-[#3c3c3c]" />
+
                 <PickerSection label={query.trim() ? 'Search results' : 'Recent remotes'} />
                 {filteredGroups.length > 0 ? (
                     filteredGroups.map(group => renderGroupRow(group))
                 ) : (
                     <PickerEmpty>No remotes found</PickerEmpty>
                 )}
-                {filteredRepoGroupWorkspaces.length > 0 && (
-                    <>
-                        <PickerSection label="Repo groups" />
-                        {filteredRepoGroupWorkspaces.map(ws => {
-                            // A remote group carries the aggregation's marker; a local
-                            // one has none. `offline` follows the contributing server,
-                            // and an offline group is read-only — no ⋮ menu, so Edit and
-                            // Delete are simply unavailable until it reconnects. (AC-04)
-                            const remote = ws?.remote as { serverLabel?: string; offline?: boolean } | undefined;
-                            const offline = !!remote?.offline;
-                            return (
-                                // Row click switches the dashboard to the group's virtual
-                                // workspace (RepoGroupView) through the same target-aware
-                                // navigation repos use; for a remote group the clone
-                                // registry already maps its id to the owning server's
-                                // baseUrl, so every request from the view routes there.
-                                // The ⋮ menu edits/deletes on that same server. (AC-02)
-                                <PickerRow
-                                    key={String(ws.id)}
-                                    testId="repo-group-item"
-                                    remoteKey={String(ws.id)}
-                                    active={appState.selectedRepoId === String(ws.id)}
-                                    name={String(ws.name ?? ws.id)}
-                                    sublabel={remote ? `Repo group · ${remote.serverLabel ?? 'remote'}${offline ? ' (offline)' : ''}` : 'Repo group'}
-                                    offline={offline}
-                                    onClick={() => {
-                                        selectClone(String(ws.id));
-                                        close();
-                                        setShowAll(false);
-                                        setQuery('');
-                                    }}
-                                    badges={
-                                        <>
-                                            <RepoGroupGlyph />
-                                            {remote && (
-                                                <RemoteServerBadge
-                                                    testId="repo-group-server-badge"
-                                                    servers={remote.serverLabel ? [remote.serverLabel] : []}
-                                                />
-                                            )}
-                                        </>
-                                    }
-                                    rowMenu={offline ? undefined : (
-                                        <button
-                                            data-testid="repo-group-row-menu"
-                                            data-remote-key={String(ws.id)}
-                                            aria-label={`More actions for ${ws.name ?? ws.id}`}
-                                            title="More actions"
-                                            onClick={e => {
-                                                e.stopPropagation();
-                                                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                                                setGroupMenu({ workspace: ws, x: rect.left, y: rect.bottom });
-                                            }}
-                                            className="flex-shrink-0 inline-flex items-center justify-center w-6 h-6 mr-1 rounded text-[#848484] dark:text-[#777] hover:bg-black/[0.06] dark:hover:bg-white/[0.10]"
-                                        >
-                                            <KebabGlyph />
-                                        </button>
-                                    )}
-                                />
-                            );
-                        })}
-                    </>
+                {!query.trim() && showAllCount > 0 && (
+                    <button
+                        data-testid="remote-show-all-btn"
+                        role="menuitem"
+                        onClick={() => setShowAll(v => !v)}
+                        className="mt-1 w-full flex items-center justify-between px-2 py-1.5 rounded-md text-[12px] font-semibold text-[#656d76] dark:text-[#999] hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                    >
+                        <span>{showAll ? 'Hide all' : `Show all (${showAllCount})`}</span>
+                        <Chevron />
+                    </button>
                 )}
             </RepoPickerPopover>
 

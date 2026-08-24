@@ -566,6 +566,23 @@ export interface ProcessStore {
     ): Promise<void>;
 
     /**
+     * Atomically persist the repo-group member listing that was injected into a
+     * user turn's outgoing prompt. Stored verbatim (the `<repo_group_context>`
+     * block) so the chat can reveal exactly what the model was told, with stale
+     * members already dropped. Only updates `role: 'user'` turns — a mismatched
+     * index or non-user turn is a safe no-op.
+     *
+     * @param processId - Target process ID.
+     * @param turnIndex - Array index of the user turn to update.
+     * @param repoGroupContext - The injected block, verbatim.
+     */
+    updateTurnRepoGroupContext(
+        processId: string,
+        turnIndex: number,
+        repoGroupContext: string,
+    ): Promise<void>;
+
+    /**
      * Hard-delete every conversation turn at or after `fromTurnIndex` (a
      * destructive rewind/truncate). The matched rows are permanently removed —
      * not soft-deleted — so the CoC conversation ends up consistent with the SDK

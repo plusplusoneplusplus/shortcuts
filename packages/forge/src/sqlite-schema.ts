@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 27;
+export const SCHEMA_VERSION = 28;
 
 /**
  * Read the current schema version from the database.
@@ -96,6 +96,7 @@ export function initializeDatabase(db: Database.Database): void {
                 sdk_event_id      TEXT,
                 display_only      INTEGER DEFAULT 0,
                 compaction_summary TEXT,
+                repo_group_context TEXT,
                 UNIQUE(process_id, turn_index)
             )
         `);
@@ -516,6 +517,9 @@ export function initializeDatabase(db: Database.Database): void {
         if (versionBefore < 27) {
             migrateV26toV27(db);
         }
+        if (versionBefore < 28) {
+            migrateV27toV28(db);
+        }
 
         // Stamp the schema version
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
@@ -875,6 +879,15 @@ function migrateV25toV26(db: Database.Database): void {
  */
 function migrateV26toV27(db: Database.Database): void {
     ensureColumn(db, 'conversation_turns', 'compaction_summary', 'TEXT');
+}
+
+/**
+ * V27 -> V28: add `repo_group_context` to `conversation_turns` — the verbatim
+ * repo-group member listing injected into that user turn's prompt, so the chat
+ * can reveal it behind a disclosure. Existing rows stay NULL.
+ */
+function migrateV27toV28(db: Database.Database): void {
+    ensureColumn(db, 'conversation_turns', 'repo_group_context', 'TEXT');
 }
 
 /**

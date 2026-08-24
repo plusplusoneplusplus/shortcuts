@@ -461,12 +461,13 @@ describe('WorkspaceIdentityChip repo groups (repo-group AC-01/AC-04)', () => {
         expect(rows[0].parentElement!.querySelector('[data-testid="repo-group-icon"]')).toBeTruthy();
     });
 
-    it('renders no Repo groups section when no group workspaces exist', () => {
+    it('keeps the Repo groups section visible with an empty state when no groups exist', () => {
         mockWorkspaces = [{ id: 'a', name: 'shortcuts', rootPath: '/r/a' }];
         openPicker([repo('a', 'shortcuts', SHORTCUTS)], undefined);
 
         expect(screen.queryAllByTestId('repo-group-item')).toHaveLength(0);
-        expect(screen.getByTestId('remote-dropdown').textContent).not.toContain('Repo groups');
+        expect(screen.getByTestId('remote-dropdown').textContent).toContain('Repo groups');
+        expect(screen.getByText('No repo groups')).toBeTruthy();
     });
 
     it('filters group rows by the search query', () => {
@@ -742,5 +743,81 @@ describe('WorkspaceIdentityChip group identity mode', () => {
         expect(chip.textContent).toContain('2');
         expect(chip.getAttribute('data-repo-group-id')).toBeNull();
         expect(screen.queryByTestId('remote-chip-group-icon')).toBeNull();
+    });
+});
+
+describe('WorkspaceIdentityChip picker layout', () => {
+    const groupWs = (id: string, name: string) => ({ id, name, rootPath: `/data/repos/${id}`, virtual: true });
+
+    /** Document order of the two section headers inside the popover body. */
+    function sectionLabels(): string[] {
+        const dropdown = screen.getByTestId('remote-dropdown');
+        return Array.from(dropdown.querySelectorAll('div'))
+            .map(el => (el.textContent ?? '').trim())
+            .filter(text => text === 'Repo groups' || text === 'Recent remotes' || text === 'Search results');
+    }
+
+    it('renders the Repo groups section above the recent-remotes section', () => {
+        mockWorkspaces = [groupWs('group-platform', 'Platform')];
+        openPicker([repo('a', 'shortcuts', SHORTCUTS)], undefined);
+
+        expect(sectionLabels()).toEqual(['Repo groups', 'Recent remotes']);
+    });
+
+    it('keeps the groups section first when the section is empty', () => {
+        mockWorkspaces = [{ id: 'a', name: 'shortcuts', rootPath: '/r/a' }];
+        openPicker([repo('a', 'shortcuts', SHORTCUTS)], undefined);
+
+        expect(sectionLabels()).toEqual(['Repo groups', 'Recent remotes']);
+    });
+
+    it('keeps the Search results label on the recent section while searching', () => {
+        mockWorkspaces = [groupWs('group-platform', 'Platform')];
+        openPicker([repo('a', 'shortcuts', SHORTCUTS)], undefined);
+
+        fireEvent.change(screen.getByTestId('remote-search-input'), { target: { value: 'short' } });
+        expect(sectionLabels()).toEqual(['Repo groups', 'Search results']);
+    });
+
+    it('renders Show all beneath the remote rows, not in the add-repository footer', () => {
+        mockWorkspaces = [groupWs('group-platform', 'Platform')];
+        const repos = [
+            repo('a', 'shortcuts', SHORTCUTS),
+            repo('c', 'forge', FORGE),
+            repo('d', 'api', 'https://github.com/acme/api.git'),
+            repo('e', 'web', 'https://github.com/acme/web.git'),
+            repo('f', 'cli', 'https://github.com/acme/cli.git'),
+        ];
+        openPicker(repos, repos[0]);
+
+        const showAll = screen.getByTestId('remote-show-all-btn');
+        const lastRow = screen.getAllByTestId('remote-dropdown-item').slice(-1)[0];
+        const addFolder = screen.getByTestId('remote-add-folder-option');
+        // Show all sits after every remote row and before the Add repository block.
+        expect(lastRow.compareDocumentPosition(showAll) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(showAll.compareDocumentPosition(addFolder) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(addFolder.parentElement!.contains(showAll)).toBe(false);
+    });
+
+    it('toggles the remote list from the relocated Show all button', () => {
+        const repos = [
+            repo('a', 'shortcuts', SHORTCUTS),
+            repo('c', 'forge', FORGE),
+            repo('d', 'api', 'https://github.com/acme/api.git'),
+            repo('e', 'web', 'https://github.com/acme/web.git'),
+            repo('f', 'cli', 'https://github.com/acme/cli.git'),
+        ];
+        openPicker(repos, repos[0]);
+
+        const collapsed = screen.getAllByTestId('remote-dropdown-item').length;
+        fireEvent.click(screen.getByTestId('remote-show-all-btn'));
+        expect(screen.getAllByTestId('remote-dropdown-item').length).toBeGreaterThan(collapsed);
+        expect(screen.getByTestId('remote-show-all-btn').textContent).toContain('Hide all');
+    });
+
+    it('labels the search input for remotes and groups', () => {
+        openPicker([repo('a', 'shortcuts', SHORTCUTS)], undefined);
+
+        expect(screen.getByTestId('remote-search-input').getAttribute('placeholder')).toBe('Search remotes and groups');
     });
 });

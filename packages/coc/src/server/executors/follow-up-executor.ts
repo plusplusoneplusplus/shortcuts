@@ -66,7 +66,7 @@ import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { buildChatTurnContext } from './chat-turn-context-builder';
 import type { ChatTurnContext } from './chat-turn-context-builder';
 import { resolveChatMcpServersForWorkspace } from './mcp-tool-enforcement';
-import { resolveRepoGroupChatContext, appendRepoGroupContext } from '../workspaces/repo-group-chat-context';
+import { resolveRepoGroupChatContext, appendRepoGroupContext, persistRepoGroupContextOnUserTurn } from '../workspaces/repo-group-chat-context';
 import { updateForEachGenerationMetadataFromAssistantTurn } from '../for-each/for-each-generation-metadata';
 import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduce/map-reduce-generation-metadata';
 // ============================================================================
@@ -457,6 +457,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 ),
                 repoGroupContext,
             );
+            await persistRepoGroupContextOnUserTurn(this.store, processId, repoGroupContext);
             const agentMode = toAgentMode(currentMode);
 
             const historySystemMessage: SystemMessageConfig | undefined = historyContext
