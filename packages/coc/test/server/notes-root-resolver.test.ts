@@ -18,6 +18,7 @@ describe('resolveNotesRoot', () => {
         expect(isRootResolveError(result)).toBe(false);
         if (!isRootResolveError(result)) {
             expect(result.isDefault).toBe(true);
+            expect(result.isTaskDerived).toBe(false);
             expect(result.rootId).toBe(DEFAULT_ROOT_ID);
             // Should contain 'notes' in the path
             expect(result.absolutePath).toContain('notes');
@@ -38,6 +39,7 @@ describe('resolveNotesRoot', () => {
         expect(isRootResolveError(result)).toBe(false);
         if (!isRootResolveError(result)) {
             expect(result.isDefault).toBe(false);
+            expect(result.isTaskDerived).toBe(false);
             expect(result.rootId).toBe('docs/notes');
             expect(result.absolutePath).toBe(path.resolve(workspaceRoot, 'docs/notes'));
         }
@@ -96,6 +98,7 @@ describe('resolveNotesRoot', () => {
             if (!isRootResolveError(current)) {
                 expect(current.absolutePath).toBe(fs.realpathSync.native(getRepoDataPath(tempDir, 'current', 'tasks')));
                 expect(current.rootId).toBe(taskRoot.rootId);
+                expect(current.isTaskDerived).toBe(true);
             }
 
             const other = resolveNotesRoot(tempDir, 'other', otherWorkspaceRoot, taskRoot.rootId, []);
@@ -138,6 +141,7 @@ describe('resolveNotesRoot', () => {
             if (!isRootResolveError(result)) {
                 expect(result.rootId).toBe(taskRoot.rootId);
                 expect(result.absolutePath).toBe(fs.realpathSync.native(shared));
+                expect(result.isTaskDerived).toBe(true);
             }
         } finally {
             fs.rmSync(tempDir, { recursive: true, force: true });

@@ -126,6 +126,32 @@ describe('createWatcherInfrastructure', () => {
         expect(unwatchNotes).toHaveBeenCalledWith('ws-gone');
     });
 
+    it('evicts native Notes search state when a workspace is removed', async () => {
+        const store = createMockProcessStore();
+        const wsServer = makeMockWsServer();
+        const bridge = makeMockBridge();
+        const notesSearchService = { activateWorkspace: vi.fn(), evictWorkspace: vi.fn() };
+
+        await createWatcherInfrastructure(store, dataDir, wsServer, bridge, notesSearchService);
+        await store.removeWorkspace!('ws-gone');
+
+        expect(notesSearchService.evictWorkspace).toHaveBeenCalledWith('ws-gone');
+    });
+
+    it('reactivates native Notes search state when a workspace is registered', async () => {
+        const store = createMockProcessStore();
+        const wsServer = makeMockWsServer();
+        const bridge = makeMockBridge();
+        const notesSearchService = { activateWorkspace: vi.fn(), evictWorkspace: vi.fn() };
+        const rootPath = makeTempDir();
+        tmpDirs.push(rootPath);
+
+        await createWatcherInfrastructure(store, dataDir, wsServer, bridge, notesSearchService);
+        await store.registerWorkspace!({ id: 'ws-returned', rootPath, name: 'returned' } as any);
+
+        expect(notesSearchService.activateWorkspace).toHaveBeenCalledWith('ws-returned');
+    });
+
     it('delegates to original store.registerWorkspace before wiring watchers', async () => {
         const store = createMockProcessStore();
         const originalRegister = store.registerWorkspace as ReturnType<typeof vi.fn>;

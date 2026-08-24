@@ -20,7 +20,7 @@ import { getBundleETag } from './spa/html-template';
 import { generateIconSvg } from './spa/icon-template';
 import type { ExecutionServerOptions, ExecutionServer, ServerCloseOptions } from './types';
 import type { Route } from './types';
-import { nativeFileIndexStatus } from '@plusplusoneplusplus/coc-native';
+import { loadNativeNotesIndex, nativeFileIndexStatus } from '@plusplusoneplusplus/coc-native';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ModelInfo } from '@plusplusoneplusplus/forge';
 import { sdkServiceRegistry, SDK_PROVIDER_COPILOT, SDK_PROVIDER_CODEX, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_OPENCODE, modelMetadataStore, registerCodexSDKService, registerClaudeSDKService, registerOpenCodeSDKService } from '@plusplusoneplusplus/forge';
@@ -68,6 +68,8 @@ import { SyncEngine } from './sync/sync-engine';
 import { DEFAULT_SYNC_INTERVAL_MINUTES } from './sync/sync-constants';
 import { ContainerLinkClient } from './container-link/container-client';
 import { registerContainerLinkRoutes } from './container-link/container-link-routes';
+import { NotesSearchService } from './notes/notes-search-service';
+import { onRepoPreferencesChanged } from './preferences/repository';
 
 // ============================================================================
 // Close Handler Builder
@@ -87,6 +89,8 @@ interface CloseHandlerDeps {
     pipelineWatcher: { closeAll(): void };
     templateWatcher: { closeAll(): void };
     notesWatcher: { closeAll(): void };
+    notesSearchService: { dispose(): void };
+    notesSearchPreferencesDispose: () => void;
     wikiManager: { disposeAll(): void } | undefined;
     scheduleManager: { dispose(): void };
     scheduleInfraDispose: () => void;
@@ -128,6 +132,8 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         pipelineWatcher.closeAll();
         templateWatcher.closeAll();
         notesWatcher.closeAll();
+        deps.notesSearchPreferencesDispose();
+        deps.notesSearchService.dispose();
         wikiManager?.disposeAll();
         scheduleManager.dispose();
         deps.scheduleInfraDispose();
@@ -194,6 +200,17 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     const dataDir = options.dataDir ?? path.join(os.homedir(), '.coc');
     const store = options.store ?? createStubStore();
     fs.mkdirSync(dataDir, { recursive: true });
+
+    // Notes content search is native-only. Validate the complete capability at
+    // composition time, while each root's filesystem build remains lazy until
+    // the service receives its first search for that scope.
+    const notesSearchService = new NotesSearchService({ nativeAddon: loadNativeNotesIndex() });
+    const notesSearchPreferencesDispose = onRepoPreferencesChanged(({ workspaceId, preferences }) => {
+        notesSearchService.reconcileConfiguredRoots(
+            workspaceId,
+            preferences.additionalNotesRoots ?? [],
+        );
+    });
 
     const runtimeConfigService = new RuntimeConfigService({ configPath: options.configPath, fileConfig: options.fileConfig });
 
@@ -732,6 +749,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         setEnqueueChat: (fn) => { enqueueChatCapability = fn; },
         setSendMessage: (fn) => { sendMessageCapability = fn; },
         setSendToConversationRuntime: (runtime) => { sendToConversationRuntime = runtime; },
+        notesSearchService,
     });
     // Restore auto-commit timers for all workspaces that had it enabled
     notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });
@@ -825,7 +843,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     wsServer = createWebSocketInfrastructure(server, store, bridge, registry, scheduleManager, terminalInfra?.terminalWsServer);
     const { taskWatcher, pipelineWatcher, templateWatcher, notesWatcher } =
-        await createWatcherInfrastructure(store, dataDir, wsServer, bridge);
+        await createWatcherInfrastructure(store, dataDir, wsServer, bridge, notesSearchService);
 
     try {
         await modelMetadataStore.initialize(resolvedAiService as unknown as { listModels(): Promise<ModelInfo[]> });
@@ -913,6 +931,8 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         server, store, wsServer, port: actualPort, host, url,
         close: buildCloseHandler({
             staleDetector, outputPruner, heapMonitor, taskWatcher, pipelineWatcher, templateWatcher, notesWatcher,
+            notesSearchService,
+            notesSearchPreferencesDispose,
             wikiManager, scheduleManager, scheduleInfraDispose, notesGitTimerManager, bridge, queuePersistence, wsServer,
             terminalWsServer: terminalInfra?.terminalWsServer,
             terminalSessionManager: terminalInfra?.terminalSessionManager,
@@ -1071,6 +1091,8 @@ export type { HeapSnapshot, HeapMonitorConfig } from './admin/heap-monitor';
 /** @internal */ export type { WorkflowsChangedCallback } from './workflows/workflow-watcher';
 /** @internal */ export { TemplateWatcher } from './templates/template-watcher';
 /** @internal */ export type { TemplatesChangedCallback } from './templates/template-watcher';
+/** @internal */ export { NotesSearchService } from './notes/notes-search-service';
+/** @internal */ export type { NotesSearchScope, NotesSearchServiceOptions } from './notes/notes-search-service';
 
 // ============================================================================
 // @internal — Route registration (called by registerAllRoutes only)

@@ -23,6 +23,7 @@ import { getRepoDataPath } from '../paths';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
+import type { NotesSearchService } from '../notes/notes-search-service';
 
 // ============================================================================
 // Types
@@ -54,6 +55,7 @@ export async function createWatcherInfrastructure(
     dataDir: string,
     wsServer: ProcessWebSocketServer,
     bridge: MultiRepoQueueRouter,
+    notesSearchService?: Pick<NotesSearchService, 'activateWorkspace' | 'evictWorkspace'>,
 ): Promise<WatcherInfrastructure> {
     const taskWatcher = new TaskWatcher((workspaceId) => {
         taskCache.invalidateWorkspace(workspaceId);
@@ -101,6 +103,7 @@ export async function createWatcherInfrastructure(
         pipelineWatcher.watchWorkspace(workspace.id, workspace.rootPath);
         templateWatcher.watchWorkspace(workspace.id, workspace.rootPath);
         notesWatcher.watchWorkspace(workspace.id, getRepoDataPath(dataDir, workspace.id, 'notes'));
+        notesSearchService?.activateWorkspace(workspace.id);
         bridge.registerRepoId(workspace.id, workspace.rootPath);
     };
 
@@ -109,6 +112,7 @@ export async function createWatcherInfrastructure(
         pipelineWatcher.unwatchWorkspace(id);
         templateWatcher.unwatchWorkspace(id);
         notesWatcher.unwatchWorkspace(id);
+        notesSearchService?.evictWorkspace(id);
         return originalRemove(id);
     };
 

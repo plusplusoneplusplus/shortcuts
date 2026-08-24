@@ -91,6 +91,18 @@ all have their own `references/*.md`.
   task-derived rows out of Notes root removal selection, refresh discovery with
   the tree, clear the selected file when a root disappears or the workspace
   changes, and discard late root/tree responses from stale workspace scopes.
+- **Native Notes search lifecycle** lives in
+  `src/server/notes/notes-search-service.ts`. The server validates the required
+  `coc-native` Notes capability during composition, then the shared service
+  lazily creates one index and recursive watcher per `(workspaceId, rootId)`.
+  Physical paths never identify or share an index. Watcher changes are
+  debounced into bounded incremental refreshes; ambiguous paths, directory or
+  rename events, watcher errors, and oversized batches request a full native
+  refresh. Refresh failures keep the last complete snapshot and retry on a
+  later change. Preference writes evict removed configured roots, workspace
+  removal evicts that workspace, and server close disposes every watcher and
+  rejects new service work. Keep `resolveNotesRoot` authorization ahead of
+  every service search.
 - **Notes sidecars** (comments, paper annotations) get their path and their
   access check from `notes/notes-sidecar-resolver.ts` — never from an ad-hoc
   check in a handler. It allows a note under the workspace data dir,

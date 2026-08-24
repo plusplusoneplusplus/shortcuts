@@ -153,6 +153,7 @@ import type { ContainerAgentInfo } from '../container-sessions/container-session
 import type { ResolveDefaultProviderOptions } from './queue-shared';
 import { ActiveWorkspaceTracker } from '../dashboard/active-workspace-tracker';
 import { ActiveWorkspaceBackgroundRefresher } from '../dashboard/active-workspace-background-refresher';
+import type { NotesSearchService } from '../notes/notes-search-service';
 
 /** Collect git commits made between headBefore and current HEAD. Non-fatal — returns [] on error. */
 function collectWorkItemCommits(
@@ -252,6 +253,8 @@ export interface RegisterRoutesOptions {
      */
     setSendMessage?: (fn: SendMessageFn) => void;
     setSendToConversationRuntime?: (runtime: SendToConversationRuntimeOptions) => void;
+    /** Shared native Notes index lifecycle, validated by the composition root. */
+    notesSearchService?: NotesSearchService;
 }
 
 export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; agentProvidersQuotaCache?: AgentProvidersQuotaCache; quotaPauseWatcher?: QuotaPauseWatcher; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler } {
@@ -556,7 +559,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         });
     });
     registerTaskWriteRoutes(routes, store, dataDir);
-    registerNotesRoutes(routes, store, dataDir, opts.resolvedConfig);
+    registerNotesRoutes(routes, store, dataDir, opts.resolvedConfig, opts.notesSearchService);
     registerNotesWriteRoutes(routes, store, dataDir);
     registerNotesCommentsRoutes(routes, store, dataDir, bridge);
     registerNotesImageRoutes(routes, store, dataDir);

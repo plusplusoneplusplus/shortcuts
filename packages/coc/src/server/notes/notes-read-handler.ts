@@ -24,6 +24,7 @@ import { SYSTEM_FOLDER_NAMES } from './notes-constants';
 import { resolveNotesRoot, isRootResolveError } from './notes-root-resolver';
 import { resolveSafeNotesPath, isNotesPathSafetyError } from './notes-path-safety';
 import { readRepoPreferences } from '../preferences-handler';
+import type { NotesSearchService } from './notes-search-service';
 
 // ============================================================================
 // Types
@@ -221,6 +222,7 @@ export function registerNotesRoutes(
     store: ProcessStore,
     dataDir: string,
     resolvedConfig?: ResolvedCLIConfig,
+    _notesSearchService?: NotesSearchService,
 ): void {
 
     // ------------------------------------------------------------------
