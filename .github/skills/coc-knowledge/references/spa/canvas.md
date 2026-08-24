@@ -184,9 +184,11 @@ and normalizes the URL to `#repos/<workspace>/<chat-tab>/<id>` (see [routes.md](
 
 ### Path resolution
 
-The resolver picks the explicit workspace hint when present, otherwise the longest matching
-workspace root, resolving relative paths against `sourceFilePath` or the selected workspace
-root before calling the workspace file preview API.
+The resolver keeps an explicit workspace hint when its root contains the resolved absolute
+path. When the hinted root does not contain the path, the longest matching known workspace
+root wins; if no root matches, the hint remains the fallback. This routes absolute member-repo
+paths from repo-group chats to the owning workspace. Relative paths resolve against
+`sourceFilePath` or the selected workspace root before calling the workspace file preview API.
 
 WSL workspaces on a Windows host have a `\\wsl$\<distro>\...` root. `react/utils/path-resolution.ts`
 keeps that UNC prefix through relative resolution and tilde expansion, and the resolver

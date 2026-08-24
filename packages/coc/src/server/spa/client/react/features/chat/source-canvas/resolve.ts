@@ -6,8 +6,8 @@
  *  - relative paths are resolved against the directory of `sourceFilePath`;
  *  - workspace-relative paths are resolved against the selected workspace root;
  *  - the workspace is chosen by longest-prefix `rootPath` match (mirroring
- *    `FilePreview` and the App-level md-link handler), honoring an explicit
- *    `wsId` hint when present and falling back to the first workspace.
+ *    `FilePreview` and the App-level md-link handler), unless an explicit
+ *    `wsId` hint owns the resolved path, and falls back to the first workspace.
  *
  * Returns either a resolvable `{ wsId, path }` target or an error carrying the
  * path we attempted — so the canvas can still open with a clear
@@ -186,13 +186,29 @@ export function resolveSourceCanvasTarget(
         path = toWslUncPathForWorkspaces(path, workspaces, hintedWorkspace) ?? path;
     }
 
-    // 2. Pick a workspace: explicit hint → longest rootPath prefix → first.
+    // 2. Pick a workspace. An explicit hint remains authoritative when its root
+    // contains the resolved path. When it does not, prefer the longest matching
+    // known root (notably a live member repo beneath a repo-group chat hint).
+    // If nothing matches, preserve the hinted/fallback behavior.
     const matchedWorkspace = isAbsolutePath(path)
         ? findBestWorkspaceForPath(path, workspaces)
         : undefined;
     const fallbackWorkspace = fileRef.wsId ? undefined : workspaces[0];
-    const workspace = hintedWorkspace ?? matchedWorkspace ?? fallbackWorkspace;
-    const wsId = fileRef.wsId ?? workspace?.id;
+    const hintedWorkspaceOwnsPath = !!(
+        hintedWorkspace?.rootPath
+        && isAbsolutePath(path)
+        && isSameOrWithinRoot(path, hintedWorkspace.rootPath)
+    );
+    const reroutedWorkspace = (
+        hintedWorkspace
+        && matchedWorkspace
+        && !hintedWorkspaceOwnsPath
+    ) ? matchedWorkspace : undefined;
+    const workspace = reroutedWorkspace
+        ?? hintedWorkspace
+        ?? matchedWorkspace
+        ?? fallbackWorkspace;
+    const wsId = reroutedWorkspace?.id ?? fileRef.wsId ?? workspace?.id;
 
     if (!wsId) {
         return { error: 'No workspace available', attemptedPath: path };

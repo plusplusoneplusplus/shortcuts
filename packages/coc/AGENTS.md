@@ -224,6 +224,10 @@ all have their own `references/*.md`.
   for links without one and sees the LOCAL server only — on its own it resolves a
   remote clone to `workspaces[0]`, an arbitrary unrelated repo. The preview cache
   key is workspace-scoped for the same reason.
+- **Source-canvas workspace routing** keeps an explicit workspace hint only when
+  its root contains the resolved absolute path. If another known workspace owns
+  the path by longest-prefix match, `source-canvas/resolve.ts` routes the preview
+  and folder tree to that workspace; an unmatched path keeps the original hint.
 - **WSL file links.** On a Windows host a WSL workspace has a
   `\\wsl$\<distro>\...` `rootPath`. `react/utils/path-resolution.ts` keeps that
   UNC prefix intact (`isAbsolutePath`, `resolveRelativePath`, `deriveHomeDir`),
