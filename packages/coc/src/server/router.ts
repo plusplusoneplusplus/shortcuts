@@ -13,7 +13,7 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { isWithinDirectory } from '@plusplusoneplusplus/forge';
-import { nativeFileIndexStatus } from '@plusplusoneplusplus/coc-native';
+import { nativeFileIndexStatus, nativeNotesIndexStatus } from '@plusplusoneplusplus/coc-native';
 import type { Route } from './types';
 import {
     createRouter,
@@ -134,6 +134,9 @@ export function createRequestHandler(
                     // test loudly instead of degrading silently to the slow
                     // JavaScript file-search path in production.
                     nativeFileIndex: nativeFileIndexStatus(),
+                    // Notes search has no JavaScript fallback. This remains a
+                    // separate capability status so stale binaries are visible.
+                    nativeNotesIndex: nativeNotesIndexStatus(),
                 });
             },
         },

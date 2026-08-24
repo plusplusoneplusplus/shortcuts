@@ -17,6 +17,8 @@ describe('HealthClient mock server contract', () => {
         status: 'ok',
         uptime: 42.5,
         processCount: 3,
+        nativeFileIndex: { loaded: true, binaryPath: '/native/current.node' },
+        nativeNotesIndex: { loaded: true, binaryPath: '/native/current.node' },
       },
     });
     const client = createClient(mock);
@@ -25,6 +27,8 @@ describe('HealthClient mock server contract', () => {
       status: 'ok',
       uptime: 42.5,
       processCount: 3,
+      nativeFileIndex: { loaded: true, binaryPath: '/native/current.node' },
+      nativeNotesIndex: { loaded: true, binaryPath: '/native/current.node' },
     });
 
     expect(mock.requests).toHaveLength(1);

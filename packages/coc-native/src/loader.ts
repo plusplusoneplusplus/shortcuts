@@ -18,8 +18,8 @@
  *
  * The one exception is `COC_NATIVE=0`, which is an operator deliberately
  * turning the addon off rather than a failure to load it. That returns `null`
- * so callers can take their JavaScript path, and it is the supported way to run
- * on a machine with no Rust toolchain and no prebuilt binary.
+ * so capabilities with a JavaScript path can opt out. Native-only capabilities
+ * such as Notes content search reject that state.
  */
 
 import * as fs from 'fs';
@@ -86,7 +86,10 @@ function remedy(triple: string): string {
     const platformNote = released
         ? 'A prebuilt binary is published for this platform, so this is a packaging or install problem.'
         : `No prebuilt binary is published for ${triple} — the released triples are ${RELEASED_TRIPLES.join(', ')}.`;
-    return `${platformNote}\n${build}, or set COC_NATIVE=0 to run without the native addon.`;
+    return (
+        `${platformNote}\n${build}. COC_NATIVE=0 is valid only for consumers whose capabilities ` +
+        'have a JavaScript fallback; production Notes content search still requires the addon.'
+    );
 }
 
 /** A load failure phrased for whoever has to fix it. */

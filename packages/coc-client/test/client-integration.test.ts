@@ -460,7 +460,13 @@ function typeCheckPublicSurface(): string {
       mergeBase: 'abc123',
       fileCount: 1,
     };
-    const health: HealthResponse = { status: 'ok', uptime: 1, processCount: 0 };
+    const health: HealthResponse = {
+      status: 'ok',
+      uptime: 1,
+      processCount: 0,
+      nativeFileIndex: { loaded: true },
+      nativeNotesIndex: { loaded: true },
+    };
     const memoryConfig: MemoryConfig = { storageDir: 'C:\\\\memory', backend: 'file' };
     const mapReduceRun: MapReduceRun = {
       runId: 'map-reduce-run-1',

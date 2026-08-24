@@ -7,6 +7,17 @@
 
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import * as http from 'http';
+
+const nativeStatuses = vi.hoisted(() => ({
+    file: vi.fn(() => ({ loaded: true, binaryPath: '/native/current.node' })),
+    notes: vi.fn(() => ({ loaded: false, binaryPath: '/native/stale.node', reason: 'missing Notes capability' })),
+}));
+
+vi.mock('@plusplusoneplusplus/coc-native', () => ({
+    nativeFileIndexStatus: nativeStatuses.file,
+    nativeNotesIndexStatus: nativeStatuses.notes,
+}));
+
 import { createRequestHandler } from '../../src/server/router';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { Route } from '../../src/server/types';
@@ -83,6 +94,14 @@ describe('GET /api/health', () => {
         expect(body.status).toBe('ok');
         expect(body.processCount).toBe(42);
         expect(typeof body.uptime).toBe('number');
+        expect(body.nativeFileIndex).toEqual({ loaded: true, binaryPath: '/native/current.node' });
+        expect(body.nativeNotesIndex).toEqual({
+            loaded: false,
+            binaryPath: '/native/stale.node',
+            reason: 'missing Notes capability',
+        });
+        expect(nativeStatuses.file).toHaveBeenCalledOnce();
+        expect(nativeStatuses.notes).toHaveBeenCalledOnce();
     });
 
     it('calls getProcessCount instead of getAllProcesses', async () => {

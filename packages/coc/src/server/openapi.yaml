@@ -1028,7 +1028,7 @@ components:
 
     HealthResponse:
       type: object
-      required: [status, uptime, processCount]
+      required: [status, uptime, processCount, nativeFileIndex, nativeNotesIndex]
       properties:
         status:
           type: string
@@ -1040,6 +1040,27 @@ components:
         processCount:
           type: integer
           description: Total number of stored processes
+        nativeFileIndex:
+          allOf:
+            - $ref: '#/components/schemas/NativeCapabilityStatus'
+          description: Native quick-open file-index status; unavailable file indexing uses the JavaScript fallback.
+        nativeNotesIndex:
+          allOf:
+            - $ref: '#/components/schemas/NativeCapabilityStatus'
+          description: Required native Notes content-index status.
+
+    NativeCapabilityStatus:
+      type: object
+      required: [loaded]
+      properties:
+        loaded:
+          type: boolean
+        binaryPath:
+          type: string
+          description: Loaded native binary path, when available.
+        reason:
+          type: string
+          description: Why the capability is unavailable.
 
     HeapSnapshot:
       type: object

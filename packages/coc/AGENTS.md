@@ -35,7 +35,8 @@ all have their own `references/*.md`.
   Rust index from `@plusplusoneplusplus/coc-native` when a binary is available
   for the platform, and its ripgrep/directory-walk path otherwise; the choice is
   the `nativeFileIndex` constructor option (`null` forces the fallback) and
-  `/api/health` plus a startup log line report which one is live. Both paths
+  `/api/health` plus a startup log line report which one is live; the same
+  diagnostics report the required native Notes index separately. Both paths
   must produce identical responses —
   `test/server/repo-tree-service-native.test.ts` runs the behavioural tests
   twice and compares, and `test/server/repo-tree-service.test.ts` pins the
