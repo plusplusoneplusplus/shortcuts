@@ -31,7 +31,7 @@ It consists of three packages (`coc`, `forge`, `deep-wiki`) plus a shared client
 | Ralph · Launch | [ralph-launch.md](references/ralph-launch.md) | Direct goal launch, worktree execution mode, promote-to-ralph, grilling-phase prompt injection |
 | Ralph · Lifecycle | [ralph-lifecycle.md](references/ralph-lifecycle.md) | Resume stuck sessions, continue completed ones, submit commits as a PR, schedules, final checks |
 | Cron | [cron.md](references/cron.md) | Recurring follow-ups, executor, circuit breakers, REST API, dashboard integration |
-| Memory System | [memory-system.md](references/memory-system.md) | Bounded memory, capture mode, candidate ranking, promotion, recall index |
+| Memory System | [memory-system.md](references/memory-system.md) | Memory V2 stores, per-scope enablement, snapshot/recall limits, REST routes |
 | LLM Tools | [llm-tools.md](references/llm-tools.md) | Tool registry, per-invocation factories, permissions, web search |
 | SDK Wrapper | [sdk-wrapper.md](references/sdk-wrapper.md) | `coc-agent-sdk` package: Copilot + Codex providers, `ISDKService`, `SDKServiceRegistry`, session lifecycle, streaming state machine, MCP config, model registry |
 | Process Store | [process-store.md](references/process-store.md) | SQLite schema, FTS5 search, seen-state, pin/archive, prompt autocomplete |

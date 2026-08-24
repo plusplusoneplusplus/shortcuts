@@ -218,7 +218,7 @@ function registerWikiRoutes(
 ): WikiManager
 ```
 
-Registers all wiki HTTP routes onto the CoC server's `Route[]` table and returns the `WikiManager` for external use. If a `ProcessStore` is provided, restores previously persisted wikis asynchronously on startup.
+Registers all wiki HTTP routes onto the CoC server's `Route[]` table and returns the `WikiManager` for external use. If a `ProcessStore` is provided, restores persisted wikis asynchronously on startup.
 
 ---
 

@@ -171,7 +171,7 @@ Wikis can be registered in three ways:
 | Source | Timing | Description |
 |--------|--------|-------------|
 | `WikiRouteOptions.wikis` | Synchronous at server start | Explicit map of `wikiId → { wikiDir, repoPath? }` |
-| `ProcessStore.getWikis()` | Async best-effort at startup | Previously persisted wikis restored from `~/.coc/` |
+| `ProcessStore.getWikis()` | Async best-effort at startup | Persisted wikis restored from `~/.coc/` |
 | `POST /api/wikis` | Runtime | Dynamic registration via REST (handled in parent api-handler) |
 
 When restoring from `ProcessStore`, the handler skips wikis already registered from explicit options and silently ignores entries whose `component-graph.json` no longer exists on disk.
