@@ -22,7 +22,7 @@ function turn(partial: Partial<ClientConversationTurn>): ClientConversationTurn 
 }
 
 describe('collectToolCallsFromTurns', () => {
-    it('flattens tool calls from timeline and legacy toolCalls, deduped by id', () => {
+    it('flattens tool calls from timeline and legacy toolCalls, deduped by id within each turn', () => {
         const turns: ClientConversationTurn[] = [
             turn({
                 timeline: [
@@ -103,6 +103,42 @@ describe('gatherDetectedPrsFromTurns', () => {
         const detected = gatherDetectedPrsFromTurns([make('t1'), make('t2')]);
         expect(detected).toHaveLength(1);
         expect(detected[0].number).toBe(7);
+    });
+
+    it('detects a wrapper-created PR when a later assistant turn reuses a tool-call id', () => {
+        const turns: ClientConversationTurn[] = [
+            turn({
+                toolCalls: [
+                    toolCall({
+                        id: 'item_1',
+                        toolName: 'view',
+                        args: { path: '.github/skills/submit-commits-as-pr/SKILL.md' },
+                        result: 'Submit commits as a pull request.',
+                    }),
+                ],
+            }),
+            turn({
+                toolCalls: [
+                    toolCall({
+                        id: 'item_1',
+                        toolName: 'bash',
+                        args: {
+                            command: 'python .github/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py start abc123',
+                        },
+                        result: 'JSON: {"pr_url": "https://github.com/plusplusoneplusplus/shortcuts/pull/642", "status": "done"}',
+                    }),
+                ],
+            }),
+        ];
+
+        expect(gatherDetectedPrsFromTurns(turns)).toEqual([
+            expect.objectContaining({
+                provider: 'github',
+                number: 642,
+                url: 'https://github.com/plusplusoneplusplus/shortcuts/pull/642',
+                toolCallId: 'item_1',
+            }),
+        ]);
     });
 
     it('ignores read-only PR commands (gh pr view)', () => {
