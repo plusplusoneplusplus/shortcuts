@@ -357,3 +357,61 @@ Ralph launch panel. It detects direct create/write/edit paths, `apply_patch` add
 files, and conservative shell `mv`/`move` destinations from command arguments
 (including `bash -c`/`bash -lc` wrappers). It never infers created files from
 arbitrary shell output.
+
+## Quick Ask side-notes
+
+Gated by the live server flag `features.quickAskSidenotes`. Selecting text in an
+assistant turn's `MarkdownView` raises a floating pill (`Cmd/Ctrl+J` is the keyboard
+alternative); the answer attaches a 💡 bubble to that message's Side notes row and opens
+a compact popover.
+
+Components live under `features/chat/quick-ask/` — `useQuickAskSidenotes`, the selection
+and anchoring helpers, `QuickAskPill`, `QuickAskSidenotePopover`, and
+`QuickAskTurnLayer` — with data plumbed from `ChatDetail` through `ConversationArea` to
+`ConversationTurnBubble`.
+
+### Threads
+
+Once answered, the popover is a multi-turn thread: `QuickAskTurnLayer` passes
+`QuickAskSidenotePopover`'s `reply` control (turns plus an `Ask a follow-up…` row)
+whenever the host wires `onFollowUp`, matching the notes and PDF surfaces. Follow-ups go
+through `useQuickAskSidenotes.followUpSidenote(id, question)` →
+`POST /api/processes/:id/sidenotes/:noteId/follow-up`, which persists the turn so the
+thread survives a reload. `retrySidenoteTurn(id, turnIndex)` re-runs a failed turn, with
+index 0 falling back to the original lookup.
+
+The live thread is `ClientSideNote.thread`, derived from the persisted `turns` on
+hydrate. A follow-up in flight marks only its own turn `asking`, so the chip never flips
+to a spinner. The cap is `MAX_QUICK_ASK_TURNS` (10).
+
+### The pill
+
+`QuickAskPill` is a split pill: **✨ Ask AI** expands into the inline question input, and
+— when `QuickAskTurnLayer` receives `onAttachContext` — a divider plus **📎 Attach**,
+which sends the selected text to
+`useAttachedContext().add(turnIndex, 'assistant', snippet)` and dismisses the pill.
+`ChatDetail` wraps that `add` in `handleAttachContext`, which also focuses the composer
+(`richTextRef.current?.focus()`) so the user can type immediately; the same wrapper
+serves the right-click menu path.
+
+Because the whole layer mounts only under `features.quickAskSidenotes`, the Attach pill
+is hidden when that flag is off — the right-click **Attach as context** menu item is the
+flag-independent path.
+
+### Notes editor mirror
+
+The rich Notes editor uses the same selection controls and answer endpoint through
+`NoteQuickAskLayer`. A successful answer is stored in the note's `[^qa-<id>]` reference
+plus JSON definition format. New definitions optionally persist the exact selected text
+and its surrounding prefix/suffix; `{"a":"..."}` and `{"q":"...","a":"..."}` payloads
+stay byte-stable.
+
+`SidenoteRefExtension` keeps the payload on the inline ✨ atom and resolves it into a
+presentation-only `note-quick-ask-anchor` ProseMirror decoration — a 2px dotted blue
+underline that can span inline formatting **without entering the Markdown**. Repeated
+text is disambiguated with context and chip position, unresolved edited anchors omit
+only the underline, and deleting the chip removes its decoration and serialized
+definition.
+
+The persistence extension stays registered when the flag is off so saved side-notes
+survive edits; only creation and popover controls go inactive.

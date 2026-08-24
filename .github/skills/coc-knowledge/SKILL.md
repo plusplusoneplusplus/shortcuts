@@ -39,11 +39,11 @@ It consists of three packages (`coc`, `forge`, `deep-wiki`) plus a shared client
 | Streaming & Real-Time | [streaming-architecture.md](references/streaming-architecture.md) | SSE, WebSocket, ProcessStore event channels, container relay |
 | Dashboard SPA · Shell | [spa/shell.md](references/spa/shell.md) | Entry point, module tree, routing, contexts, hooks, pop-outs, feature flags, coc-client |
 | Dashboard SPA · Chat shell | [spa/chat.md](references/spa/chat.md) | Composer gating, review chat lens, chat list and task-group engine |
-| Dashboard SPA · Conversation | [spa/chat-conversation.md](references/spa/chat-conversation.md) | Turn bubbles, chat header, metadata popover, implement-plan card, agents view, tool calls |
+| Dashboard SPA · Conversation | [spa/chat-conversation.md](references/spa/chat-conversation.md) | Turn bubbles, chat header, metadata popover, implement-plan card, agents view, tool calls, Quick Ask side-notes |
 | Dashboard SPA · Composer | [spa/chat-composer.md](references/spa/chat-composer.md) | Input area toolbars, attachments, provider/mode/effort/style selectors, Ralph launch |
 | Dashboard SPA · Canvas | [spa/canvas.md](references/spa/canvas.md) | Canvas panel, extension bridge v2, Kusto canvases, SVG sanitizer, source canvas |
 | Dashboard SPA · Work Items | [spa/work-items.md](references/spa/work-items.md) | Hierarchy tree, Local/Remote trackers, detail form, workflow + AI authoring gates |
-| Dashboard SPA · Git & PRs | [spa/git-and-prs.md](references/spa/git-and-prs.md) | Composer PR chips, CI auto-fix triggers, classify-diff, worktree controls, PR tab |
+| Dashboard SPA · Git & PRs | [spa/git-and-prs.md](references/spa/git-and-prs.md) | Git tab controllers, branch range, cherry-pick, worktrees, classify-diff, composer PR chips, PR tab |
 | Dashboard SPA · Notes | [spa/notes.md](references/spa/notes.md) | Notes roots, editor toolbar, inline colors, find & replace, Notes Chat |
 | Dashboard SPA · Top Bar & Admin | [spa/top-bar-and-admin.md](references/spa/top-bar-and-admin.md) | Top bar cluster, admin overlay dialog, Skills Config, AI Provider page & quota |
 | Dashboard SPA · Remote shell | [spa/remote-shell.md](references/spa/remote-shell.md) | Shell headers, scope switcher, repo groups, remote workspace aggregation, sub-tab taxonomy |
