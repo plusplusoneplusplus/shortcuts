@@ -220,6 +220,14 @@ export interface ConversationTurn {
      * whose summary lives in the rewritten rollout).
      */
     compactionSummary?: string;
+    /**
+     * Verbatim repo-group member listing injected into this user turn's
+     * outgoing prompt (the `<repo_group_context>` block). Persisted so the chat
+     * can reveal exactly which member repos the model was told about — stale
+     * members already dropped. Absent on assistant turns, on non-group
+     * workspaces, and on turns recorded before the field existed.
+     */
+    repoGroupContext?: string;
     /** Model override used for this turn (set on user turns when /model was active) */
     model?: string;
     /** Chat mode used for this turn (e.g. 'ask' | 'plan' | 'autopilot'), set on user turns when mode override was active */
@@ -279,6 +287,14 @@ export interface SerializedConversationTurn {
      * whose summary lives in the rewritten rollout).
      */
     compactionSummary?: string;
+    /**
+     * Verbatim repo-group member listing injected into this user turn's
+     * outgoing prompt (the `<repo_group_context>` block). Persisted so the chat
+     * can reveal exactly which member repos the model was told about — stale
+     * members already dropped. Absent on assistant turns, on non-group
+     * workspaces, and on turns recorded before the field existed.
+     */
+    repoGroupContext?: string;
     /** Model override used for this turn (set on user turns when /model was active) */
     model?: string;
     /** Chat mode used for this turn (e.g. 'ask' | 'plan' | 'autopilot'), set on user turns when mode override was active */
