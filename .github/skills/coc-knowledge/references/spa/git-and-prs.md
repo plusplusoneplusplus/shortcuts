@@ -139,7 +139,9 @@ unwrapped and scanned; the `submit_commits_as_pr.py` wrapper's line-start
 `JSON: {... "pr_url": "...", "status": "done"}` line, recognized even when surfaced by
 a later `grep`/`tail` of persisted stdout (original output is often truncated under a
 large git dump); and a known wrapper command whose untruncated result echoes a creating
-command, or output with no command metadata.
+command, or output with no command metadata. Timeline and flat `toolCalls` records are
+de-duplicated by tool-call id within each turn; separate turns remain distinct because
+providers may restart tool-call ids on each assistant turn.
 
 ### Chip contents
 

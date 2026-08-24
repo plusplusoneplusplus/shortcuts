@@ -48,29 +48,32 @@ export interface PrAssociation {
 /**
  * Flattens every tool call across the loaded turns, preferring the structured
  * `timeline[].toolCall` entries and falling back to the legacy flat
- * `turn.toolCalls`. De-duplicates by tool-call id, keeping the most complete
- * record (the one carrying a `result`) so a tool that shows up as both
- * `tool-start` and `tool-complete` is scanned once with its output.
+ * `turn.toolCalls`. Within each turn, de-duplicates by tool-call id, keeping the
+ * most complete record (the one carrying a `result`) so a tool that shows up as
+ * both `tool-start` and `tool-complete` is scanned once with its output. Tool
+ * call ids may be reused by separate assistant turns, so they remain distinct.
  */
 export function collectToolCallsFromTurns(turns: readonly ClientConversationTurn[] | undefined): ClientToolCall[] {
-    const byId = new Map<string, ClientToolCall>();
-    const order: string[] = [];
-    const consider = (tc: ClientToolCall | undefined): void => {
-        if (!tc || !tc.id) return;
-        const prev = byId.get(tc.id);
-        if (!prev) {
-            byId.set(tc.id, tc);
-            order.push(tc.id);
-            return;
-        }
-        // Prefer the record that carries output.
-        if (!prev.result && tc.result) byId.set(tc.id, tc);
-    };
+    const collected: ClientToolCall[] = [];
     for (const turn of turns ?? []) {
+        const byId = new Map<string, ClientToolCall>();
+        const order: string[] = [];
+        const consider = (tc: ClientToolCall | undefined): void => {
+            if (!tc || !tc.id) return;
+            const prev = byId.get(tc.id);
+            if (!prev) {
+                byId.set(tc.id, tc);
+                order.push(tc.id);
+                return;
+            }
+            // Prefer the record that carries output.
+            if (!prev.result && tc.result) byId.set(tc.id, tc);
+        };
         for (const item of turn.timeline ?? []) consider(item.toolCall);
         for (const tc of turn.toolCalls ?? []) consider(tc);
+        collected.push(...order.map(id => byId.get(id)!));
     }
-    return order.map(id => byId.get(id)!);
+    return collected;
 }
 
 /**
