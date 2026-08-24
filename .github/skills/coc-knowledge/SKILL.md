@@ -37,7 +37,13 @@ It consists of three packages (`coc`, `forge`, `deep-wiki`) plus a shared client
 | Deep Wiki | [deep-wiki.md](references/deep-wiki.md) | Six-phase pipeline, caching, themes, CLI commands, core concepts |
 | REST API | [rest-api.md](references/rest-api.md) | Endpoint catalog organized by domain |
 | Streaming & Real-Time | [streaming-architecture.md](references/streaming-architecture.md) | SSE, WebSocket, ProcessStore event channels, container relay |
-| Dashboard SPA | [dashboard-spa.md](references/dashboard-spa.md) | React component tree, hooks, contexts, feature modules |
+| Dashboard SPA · Shell | [spa/shell.md](references/spa/shell.md) | Entry point, module tree, routing, contexts, hooks, pop-outs, feature flags, coc-client |
+| Dashboard SPA · Chat | [spa/chat.md](references/spa/chat.md) | Conversation rendering, chat lens, chat list grouping, tool calls, input area, canvas |
+| Dashboard SPA · Work Items | [spa/work-items.md](references/spa/work-items.md) | Hierarchy tree, Local/Remote trackers, detail form, workflow + AI authoring gates |
+| Dashboard SPA · Git & PRs | [spa/git-and-prs.md](references/spa/git-and-prs.md) | Composer PR chips, CI auto-fix triggers, classify-diff, worktree controls, PR tab |
+| Dashboard SPA · Notes | [spa/notes.md](references/spa/notes.md) | Notes roots, editor toolbar, inline colors, find & replace, Notes Chat |
+| Dashboard SPA · Top Bar & Admin | [spa/top-bar-and-admin.md](references/spa/top-bar-and-admin.md) | Top bar cluster, admin overlay dialog, Skills Config, remote-first shell |
+| Dashboard SPA · Routes | [spa/routes.md](references/spa/routes.md) | Onboarding, My Work Today, Activity, Dreams, CLI Sessions, Memory |
 | Prompt Autocomplete | [prompt-autocomplete.md](references/prompt-autocomplete.md) | Inline ghost-text, AI/history modes, caching, REST API, privacy |
 | Chat Prompt History | [chat-prompt-history.md](references/chat-prompt-history.md) | Up/Down arrow navigation, workspace-scoped history, REST API |
 | Wiki Serving | [wiki-serving.md](references/wiki-serving.md) | WikiManager, TF-IDF context retrieval, AI Q&A sessions, file watching |
