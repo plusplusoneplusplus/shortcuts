@@ -107,6 +107,29 @@ function errorMessage(reason: unknown): string {
     return message || 'Failed to load directory';
 }
 
+/**
+ * Scroll offset that puts a row at the vertical middle of the tree's scroll
+ * container, clamped to the scrollable range. Split out from the DOM so the
+ * centring maths can be checked without laying out a real tree.
+ *
+ * `rowOffset` is the row's top measured against the container's *content* box
+ * (i.e. already including the container's current scrollTop).
+ */
+export function computeCenterScrollTop(
+    rowOffset: number,
+    rowHeight: number,
+    viewportHeight: number,
+    maxScrollTop: number,
+): number {
+    const ideal = rowOffset + rowHeight / 2 - viewportHeight / 2;
+    return Math.max(0, Math.min(ideal, Math.max(0, maxScrollTop)));
+}
+
+/** Quote a repo-relative path for use inside a `[data-testid="…"]` selector. */
+function testIdSelector(path: string): string {
+    return `[data-testid="tree-node-${path.replace(/["\\]/g, '\\$&')}"]`;
+}
+
 /** True when `path` is `root` itself or nested below it. */
 function isAtOrUnder(path: string, root: string): boolean {
     return path === root || path.startsWith(`${root}/`);
@@ -190,6 +213,12 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
 
     // Exact Open state (Ctrl+O)
     const [exactOpenVisible, setExactOpenVisible] = useState(false);
+
+    // Reveal Open File: the handler expands ancestors, then hands the path that
+    // should end up centred to the effect below. Centring has to wait for the
+    // newly expanded rows to commit, so it cannot happen inside the handler.
+    const [revealTarget, setRevealTarget] = useState<string | null>(null);
+    const treeScrollRef = useRef<HTMLDivElement>(null);
 
     // Fetch root entries on mount — but skip it when the root listing is already
     // cached in-memory for this workspace (AC-02): a switch-back reuses the cache
@@ -356,6 +385,76 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
 
         return items;
     }, [expandedPaths, handleToggle]);
+
+    /** Collapse All — clears expansion only; selection, preview and filter stay put. */
+    const handleCollapseAll = useCallback(() => {
+        setExpandedPaths(new Set());
+    }, []);
+
+    /**
+     * Reveal Open File — expand every ancestor of the file in the preview pane and
+     * centre its row. The tree is lazy-loaded, so each ancestor whose children are
+     * not cached yet is fetched here and merged through `handleChildrenLoaded`,
+     * which both keeps the shared cache authoritative and stops TreeNode from
+     * re-fetching the same directory as it renders.
+     *
+     * Distinct from `explorerApi.reveal`, which reveals a path in the OS file
+     * manager; this is purely client-side tree navigation.
+     */
+    const handleRevealOpenFile = useCallback(async () => {
+        const target = previewFile?.path;
+        // A trusted absolute path is outside the repo tree — it has no row to reveal.
+        if (!target || target.startsWith(TRUSTED_PATH_PREFIX)) return;
+
+        setError(null);
+        const ancestors = getAncestorPaths(target);
+        const known = new Set(childrenMap.keys());
+        const toExpand: string[] = [];
+        // A level that fails to load stops the walk: its own row still exists (its
+        // parent is expanded and loaded), so that is the deepest thing to centre.
+        let failedAt: string | null = null;
+
+        for (const dir of ancestors) {
+            if (!known.has(dir)) {
+                try {
+                    const data = await explorerApi.tree(workspaceId, { path: dir });
+                    handleChildrenLoaded(dir, data.entries);
+                    known.add(dir);
+                } catch (err) {
+                    setError(errorMessage(err));
+                    failedAt = dir;
+                    break;
+                }
+            }
+            toExpand.push(dir);
+        }
+
+        if (toExpand.length > 0) {
+            setExpandedPaths(prev => new Set([...prev, ...toExpand]));
+        }
+        setSelectedPath(target);
+        setRevealTarget(failedAt ?? target);
+    }, [previewFile, childrenMap, workspaceId, handleChildrenLoaded]);
+
+    // Centre the revealed row once the expansion above has rendered. Runs against
+    // the tree's own scroll container so nothing outside the sidebar moves.
+    useEffect(() => {
+        if (!revealTarget) return;
+        const container = treeScrollRef.current;
+        const row = container?.querySelector<HTMLElement>(testIdSelector(revealTarget));
+        if (container && row) {
+            const containerRect = container.getBoundingClientRect();
+            const rowRect = row.getBoundingClientRect();
+            const rowOffset = rowRect.top - containerRect.top + container.scrollTop;
+            container.scrollTop = computeCenterScrollTop(
+                rowOffset,
+                rowRect.height,
+                container.clientHeight,
+                container.scrollHeight - container.clientHeight,
+            );
+        }
+        setRevealTarget(null);
+    }, [revealTarget]);
 
     /**
      * Refresh re-fetches the root listing plus every currently expanded directory
@@ -582,16 +681,36 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                 <style>{`@media (min-width: 1024px) { [data-testid="explorer-sidebar"] { width: ${sidebarWidth}px !important; } }`}</style>
                 <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
                     <span className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">Files</span>
-                    <button
-                        className="text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors disabled:opacity-50"
-                        onClick={handleRefresh}
-                        title="Refresh"
-                        disabled={refreshing}
-                        aria-busy={refreshing}
-                        data-testid="explorer-refresh-btn"
-                    >
-                        ↻
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            className="text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors disabled:opacity-50"
+                            onClick={handleCollapseAll}
+                            title="Collapse all"
+                            disabled={expandedPaths.size === 0}
+                            data-testid="explorer-collapse-all-btn"
+                        >
+                            ⊟
+                        </button>
+                        <button
+                            className="text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors disabled:opacity-50"
+                            onClick={handleRevealOpenFile}
+                            title="Reveal open file"
+                            disabled={!previewFile}
+                            data-testid="explorer-reveal-file-btn"
+                        >
+                            ⊙
+                        </button>
+                        <button
+                            className="text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors disabled:opacity-50"
+                            onClick={handleRefresh}
+                            title="Refresh"
+                            disabled={refreshing}
+                            aria-busy={refreshing}
+                            data-testid="explorer-refresh-btn"
+                        >
+                            ↻
+                        </button>
+                    </div>
                 </div>
                 {error && (
                     <div
@@ -629,6 +748,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                     onChildrenLoaded={handleChildrenLoaded}
                     onContextMenu={handleTreeContextMenu}
                     filterQuery={searchQuery}
+                    scrollRef={treeScrollRef}
                 />
             </aside>
 

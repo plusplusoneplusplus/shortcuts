@@ -166,8 +166,13 @@ describe('ExplorerPanel', () => {
         });
 
         it('does not blank the cached tree data on refresh', () => {
-            expect(source).not.toContain('setChildrenMap(new Map())');
-            expect(source).not.toContain('setExpandedPaths(new Set())');
+            // Scoped to handleRefresh's own body: Collapse All legitimately calls
+            // `setExpandedPaths(new Set())`, and that must not read as a regression here.
+            const start = source.indexOf('const handleRefresh = useCallback(');
+            expect(start).toBeGreaterThan(-1);
+            const handler = source.slice(start, source.indexOf('}, [workspaceId, expandedPaths]);', start));
+            expect(handler).not.toContain('setChildrenMap(new Map())');
+            expect(handler).not.toContain('setExpandedPaths(new Set())');
         });
 
         it('re-fetches the root plus every expanded directory in parallel', () => {
