@@ -283,9 +283,10 @@ fn walk_directory(
         Ok(entries) => entries.flatten().collect::<Vec<_>>(),
         Err(_) => return,
     };
-    // Node's `fs.readdir` is backed by libuv's sorted scandir result. Sort by
-    // the platform-native filename representation so snapshot order, cap
-    // boundaries, and result order stay aligned on Unix and Windows.
+    // `read_dir` hands back filesystem order, which differs per platform —
+    // NTFS enumerates case-insensitively, so `bytes.md` precedes `Needle.md`
+    // there. Sort by the raw filename bytes instead, so snapshot order, cap
+    // boundaries, and result order are the same on every host.
     entries.sort_unstable_by_key(|entry| entry.file_name());
 
     for entry in entries {

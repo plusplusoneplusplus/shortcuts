@@ -101,11 +101,15 @@ fn nested_response_paths_always_use_forward_slashes() {
 }
 
 #[test]
-fn walks_each_directory_in_filename_order_like_node_readdir() {
+fn walks_each_directory_in_case_sensitive_filename_byte_order() {
     let root = tempfile::tempdir().unwrap();
     write(root.path(), "z-last.md", "order-token");
     write(root.path(), "nested/middle.md", "order-token");
     write(root.path(), "a-first.md", "order-token");
+    // Uppercase sorts ahead of lowercase by byte. A case-insensitive order —
+    // what NTFS hands back from `read_dir` — would put this file after
+    // `a-first.md`, so the assertion pins the sort rather than the host.
+    write(root.path(), "Needle.md", "order-token");
 
     let paths = build(root.path())
         .search("order-token")
@@ -113,7 +117,7 @@ fn walks_each_directory_in_filename_order_like_node_readdir() {
         .into_iter()
         .map(|result| result.path)
         .collect::<Vec<_>>();
-    assert_eq!(paths, vec!["a-first.md", "nested/middle.md", "z-last.md"]);
+    assert_eq!(paths, vec!["Needle.md", "a-first.md", "nested/middle.md", "z-last.md"]);
 }
 
 #[test]
