@@ -856,16 +856,16 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     }
 
     await new Promise<void>((resolve, reject) => { server.on('error', reject); server.listen(port, host, resolve); });
-    // Say which native search capabilities are active. File search can use its
-    // JavaScript fallback; Notes search is required and was validated before
-    // composition, but reporting it separately exposes stale packaging.
+    // Say which native search capabilities are active. Both are required and
+    // were validated before composition; reporting them separately is what
+    // exposes stale packaging.
     {
         const nativeFileIndex = nativeFileIndexStatus();
         const nativeNotesIndex = nativeNotesIndexStatus();
         process.stderr.write(
             nativeFileIndex.loaded
                 ? `native file index: loaded (${nativeFileIndex.binaryPath})\n`
-                : `native file index: unavailable, using JavaScript fallback (${nativeFileIndex.reason})\n`,
+                : `native file index: unavailable (${nativeFileIndex.reason})\n`,
         );
         process.stderr.write(
             nativeNotesIndex.loaded

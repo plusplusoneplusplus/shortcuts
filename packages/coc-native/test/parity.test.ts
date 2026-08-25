@@ -1,11 +1,10 @@
 /**
  * Rust ↔ TypeScript ranking parity.
  *
- * The server answers `/search` with the native scorer when the addon is present
- * and the TypeScript one when it is not, and the SPA falls back to the same
- * TypeScript scorer. If the two ever disagree, results reorder depending on
- * which machine served them — so this is a CI gate on every platform that
- * builds a binary, not a nice-to-have.
+ * `/search` is answered by the native scorer alone. The TypeScript one is the
+ * reference implementation it was ported from, and this test is what keeps the
+ * port honest — a CI gate on every platform that builds a binary, not a
+ * nice-to-have.
  *
  * The TypeScript scorer is imported straight from the coc package source so
  * there is exactly one reference implementation to drift from.
@@ -17,11 +16,7 @@ import * as path from 'path';
 import { describe, expect, it } from 'vitest';
 
 import { rankFuzzyMatches } from '../../coc/src/server/shared/fuzzy-file-score';
-import { addon, disabled, makeRandom } from './helpers';
-
-// `helpers` already threw if a binary was expected and missing; only the
-// COC_NATIVE=0 opt-out leaves nothing to compare against.
-const suite = disabled ? describe.skip : describe;
+import { addon, makeRandom } from './helpers';
 
 const SEGMENTS = [
     'src', 'test', 'lib', 'dist', 'packages', 'server', 'client', 'index', 'utils', 'Repo',
@@ -81,11 +76,11 @@ async function nativeIndexOf(paths: string[]) {
             // another; whichever loses is simply not part of this run's list.
         }
     }
-    const index = await addon!.buildFileIndex(root, { includeIgnored: true });
+    const index = await addon.buildFileIndex(root, { includeIgnored: true });
     return { root, index, created };
 }
 
-suite('native and TypeScript scorers rank identically', () => {
+describe('native and TypeScript scorers rank identically', () => {
     it('agrees on scores, order and match indices for random paths and queries', async () => {
         const random = makeRandom(0x5eed);
         const paths = randomPaths(random, 400);

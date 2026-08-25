@@ -85,9 +85,13 @@ it('propagates missing and unloadable addon failures', () => {
     expect(nativeNotesIndexStatus().loaded).toBe(false);
 });
 
-it('treats COC_NATIVE=0 as a fatal Notes capability error', () => {
+// Regression: COC_NATIVE=0 used to be a distinct, disabled-not-missing state
+// that this capability reported as its own error. It is now inert.
+it('ignores COC_NATIVE=0 — the addon has no opt-out', () => {
     process.env.COC_NATIVE = '0';
-    expect(() => loadNativeNotesIndex()).toThrow(NativeAddonLoadError);
-    expect(() => loadNativeNotesIndex()).toThrow('disabled by COC_NATIVE=0');
-    expect(nativeNotesIndexStatus()).toEqual({ loaded: false, reason: 'disabled by COC_NATIVE=0' });
+    const file = useAddon(
+        'class NotesIndex { async search() { return { results: [], truncated: false }; } async refresh() {} async refreshChanged() {} } module.exports = { NotesIndex, buildNotesIndex: async () => new NotesIndex() };',
+    );
+    expect(loadNativeNotesIndex()).toBeDefined();
+    expect(nativeNotesIndexStatus()).toEqual({ loaded: true, binaryPath: file });
 });

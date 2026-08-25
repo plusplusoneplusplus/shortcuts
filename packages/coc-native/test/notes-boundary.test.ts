@@ -5,9 +5,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { disabled, notesAddon } from './helpers';
+import { notesAddon } from './helpers';
 
-const suite = disabled ? describe.skip : describe;
 let root: string;
 
 function write(base: string, relative: string, contents: string): void {
@@ -28,9 +27,9 @@ afterAll(() => {
     if (root) fs.rmSync(root, { recursive: true, force: true });
 });
 
-suite('Notes build and search marshalling', () => {
+describe('Notes build and search marshalling', () => {
     it('returns the exact bounded REST response shape', async () => {
-        const building = notesAddon!.buildNotesIndex(root, {});
+        const building = notesAddon.buildNotesIndex(root, {});
         expect(building).toBeInstanceOf(Promise);
         const index = await building;
 
@@ -51,7 +50,7 @@ suite('Notes build and search marshalling', () => {
     });
 
     it('puts a filename match before original content lines', async () => {
-        const index = await notesAddon!.buildNotesIndex(root);
+        const index = await notesAddon.buildNotesIndex(root);
         expect(await index.search('needle')).toEqual({
             results: [
                 {
@@ -64,7 +63,7 @@ suite('Notes build and search marshalling', () => {
     });
 
     it('uses JavaScript-compatible Unicode lowercasing', async () => {
-        const index = await notesAddon!.buildNotesIndex(root, {});
+        const index = await notesAddon.buildNotesIndex(root, {});
         expect((await index.search('İST')).results[0].matches[0]).toEqual({
             line: 1,
             text: 'İSTANBUL',
@@ -76,7 +75,7 @@ suite('Notes build and search marshalling', () => {
     });
 
     it('builds a missing root as an empty, non-truncated index', async () => {
-        const index = await notesAddon!.buildNotesIndex(path.join(root, 'missing'), {});
+        const index = await notesAddon.buildNotesIndex(path.join(root, 'missing'), {});
         expect(await index.search('anything')).toEqual({ results: [], truncated: false });
     });
 
@@ -86,7 +85,7 @@ suite('Notes build and search marshalling', () => {
             for (let index = 0; index < 60; index++) {
                 write(cappedRoot, `needle-${String(index).padStart(2, '0')}.md`, 'unrelated');
             }
-            const index = await notesAddon!.buildNotesIndex(cappedRoot, {});
+            const index = await notesAddon.buildNotesIndex(cappedRoot, {});
             const response = await index.search('needle');
             expect(response.results).toHaveLength(50);
             expect(response.results.flatMap(result => result.matches)).toHaveLength(50);
@@ -100,7 +99,7 @@ suite('Notes build and search marshalling', () => {
         const cappedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-notes-match-cap-'));
         try {
             write(cappedRoot, 'needle.md', Array.from({ length: 120 }, () => 'needle').join('\n'));
-            const index = await notesAddon!.buildNotesIndex(cappedRoot, {});
+            const index = await notesAddon.buildNotesIndex(cappedRoot, {});
             const response = await index.search('needle');
             expect(response.results).toHaveLength(1);
             expect(response.results[0].matches).toHaveLength(100);
@@ -113,12 +112,12 @@ suite('Notes build and search marshalling', () => {
     });
 });
 
-suite('Notes refresh marshalling and consistency', () => {
+describe('Notes refresh marshalling and consistency', () => {
     it('incrementally adds, modifies, and deletes files from a bounded batch', async () => {
         const changing = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-notes-changes-'));
         try {
             write(changing, 'stable.md', 'old-token');
-            const index = await notesAddon!.buildNotesIndex(changing, {});
+            const index = await notesAddon.buildNotesIndex(changing, {});
 
             write(changing, 'stable.md', 'modified-token');
             write(changing, 'nested/added.md', 'added-token');
@@ -141,7 +140,7 @@ suite('Notes refresh marshalling and consistency', () => {
         const changing = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-notes-rename-'));
         try {
             write(changing, 'before/note.md', 'rename-token');
-            const index = await notesAddon!.buildNotesIndex(changing, {});
+            const index = await notesAddon.buildNotesIndex(changing, {});
             fs.renameSync(path.join(changing, 'before'), path.join(changing, 'after'));
 
             const refreshing = index.refresh();
@@ -162,7 +161,7 @@ suite('Notes refresh marshalling and consistency', () => {
         const changing = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-notes-retention-'));
         try {
             write(changing, 'stable.md', 'stable-token');
-            const index = await notesAddon!.buildNotesIndex(changing, {});
+            const index = await notesAddon.buildNotesIndex(changing, {});
 
             await expect(index.refreshChanged(['../escape.md'])).rejects.toThrow(
                 /root-relative changed path/,
@@ -182,7 +181,7 @@ suite('Notes refresh marshalling and consistency', () => {
     it('serializes concurrent incremental batches so changes are not lost', async () => {
         const changing = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-notes-queued-'));
         try {
-            const index = await notesAddon!.buildNotesIndex(changing, {});
+            const index = await notesAddon.buildNotesIndex(changing, {});
             write(changing, 'first.md', 'first-token');
             write(changing, 'second.md', 'second-token');
 
@@ -202,7 +201,7 @@ suite('Notes refresh marshalling and consistency', () => {
         try {
             const changedPaths = Array.from({ length: 20 }, (_, index) => `note-${index}.md`);
             for (const relative of changedPaths) write(changing, relative, 'old generation');
-            const index = await notesAddon!.buildNotesIndex(changing, {});
+            const index = await notesAddon.buildNotesIndex(changing, {});
             for (const relative of changedPaths) write(changing, relative, 'new generation');
 
             const refreshing = index.refreshChanged(changedPaths);
@@ -227,7 +226,7 @@ suite('Notes refresh marshalling and consistency', () => {
         try {
             const paths = Array.from({ length: 20 }, (_, index) => `note-${index}.md`);
             for (const relative of paths) write(changing, relative, 'old full generation');
-            const index = await notesAddon!.buildNotesIndex(changing, {});
+            const index = await notesAddon.buildNotesIndex(changing, {});
             for (const relative of paths) write(changing, relative, 'new full generation');
 
             const refreshing = index.refresh();
@@ -264,7 +263,7 @@ async function drainMicrotasks(): Promise<void> {
     for (let tick = 0; tick < 16; tick++) await Promise.resolve();
 }
 
-suite('Notes async contract', () => {
+describe('Notes async contract', () => {
     it('observes work that the JS thread itself finished', async () => {
         // Pins the teeth of the assertions below: this is the synchronous
         // shape they rule out, and the drain has to catch it.
@@ -285,7 +284,7 @@ suite('Notes async contract', () => {
             }
 
             let resolved = false;
-            const building = notesAddon!.buildNotesIndex(big, {}).then(index => {
+            const building = notesAddon.buildNotesIndex(big, {}).then(index => {
                 resolved = true;
                 return index;
             });
@@ -302,7 +301,7 @@ suite('Notes async contract', () => {
         try {
             const content = Array.from({ length: 25_000 }, (_, index) => `ordinary line ${index}`).join('\n');
             for (let index = 0; index < 40; index++) write(big, `note-${index}.md`, content);
-            const index = await notesAddon!.buildNotesIndex(big, {});
+            const index = await notesAddon.buildNotesIndex(big, {});
 
             let resolved = false;
             const searching = index.search('not-present-anywhere').then(response => {
@@ -325,7 +324,7 @@ suite('Notes async contract', () => {
                 `folder-${index % 20}/note-${index}.md`,
             );
             for (const relative of changedPaths) write(big, relative, content);
-            const index = await notesAddon!.buildNotesIndex(big, {});
+            const index = await notesAddon.buildNotesIndex(big, {});
 
             let fullResolved = false;
             const fullRefresh = index.refresh().then(() => {
@@ -349,9 +348,9 @@ suite('Notes async contract', () => {
     });
 });
 
-suite('Notes build errors and symlink policy', () => {
+describe('Notes build errors and symlink policy', () => {
     it('propagates an initial build error with the root path', async () => {
-        await expect(notesAddon!.buildNotesIndex(path.join(root, 'plain.txt'), {})).rejects.toThrow(
+        await expect(notesAddon.buildNotesIndex(path.join(root, 'plain.txt'), {})).rejects.toThrow(
             /plain\.txt/,
         );
     });
@@ -366,7 +365,7 @@ suite('Notes build errors and symlink policy', () => {
             fs.symlinkSync(path.join(outside, 'secret.md'), path.join(safeRoot, 'file-link.md'));
             fs.symlinkSync(outside, path.join(safeRoot, 'directory-link'), 'dir');
 
-            const index = await notesAddon!.buildNotesIndex(safeRoot, { skipSymlinks: true });
+            const index = await notesAddon.buildNotesIndex(safeRoot, { skipSymlinks: true });
             expect((await index.search('outside-token')).results).toEqual([]);
             expect((await index.search('file-link')).results).toEqual([]);
         } finally {

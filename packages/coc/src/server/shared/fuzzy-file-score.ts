@@ -1,13 +1,13 @@
 /**
- * Fuzzy file-path scoring shared by the repo file-search endpoint and the SPA
- * file-finder dialogs, so server-ranked and client-ranked results agree.
+ * The reference implementation of fuzzy file-path scoring — a parity oracle,
+ * not a runtime path.
  *
- * This is also the reference implementation for the Rust scorer in
- * `packages/coc-native`: the two must rank identically, because the server
- * answers `/search` from whichever one is available. A property test in
- * `packages/coc-native/test/parity.test.ts` pins that agreement.
+ * Nothing ranks with this any more: `/search` is answered by the Rust scorer in
+ * `packages/coc-native`, which is mandatory. This is the readable statement of
+ * what that scorer is supposed to do, and the property test in
+ * `packages/coc-native/test/parity.test.ts` holds the two to it.
  *
- * Dependency-free by design — this module is bundled into the browser client.
+ * Dependency-free by design, so a test on either side can import it directly.
  */
 
 /** Characters after which a match is treated as starting a new path/word segment. */

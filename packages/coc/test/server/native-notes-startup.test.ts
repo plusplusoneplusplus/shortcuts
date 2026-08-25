@@ -64,7 +64,6 @@ describe('native Notes capability at server startup', () => {
         await expectStartupFailure(
             'no native binary',
             'Build it with `npm run build:native -w packages/coc-native`',
-            'production Notes content search still requires the addon',
         );
     });
 
@@ -74,17 +73,7 @@ describe('native Notes capability at server startup', () => {
         await expectStartupFailure(
             `failed to load ${addonPath}`,
             'Caused by:',
-            'production Notes content search still requires the addon',
-        );
-    });
-
-    it('fails composition when COC_NATIVE=0 disables the required capability', async () => {
-        process.env.COC_NATIVE = '0';
-
-        await expectStartupFailure(
-            'Notes content search requires the native Notes index',
-            'disabled by COC_NATIVE=0',
-            'Unset COC_NATIVE',
+            'npm run build:native -w packages/coc-native',
         );
     });
 

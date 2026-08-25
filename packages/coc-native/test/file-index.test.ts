@@ -3,8 +3,8 @@
  * has to fail on its own terms when the addon is missing *or* when a loaded
  * binary predates the capability — without the loader knowing it exists.
  *
- * Both are hard failures. Only `COC_NATIVE=0` yields `null`, and the status
- * accessor has to describe every one of these states without throwing.
+ * Both are hard failures with no opt-out, and the status accessor has to
+ * describe every one of these states without throwing.
  */
 
 import * as fs from 'fs';
@@ -74,7 +74,8 @@ describe('when the capability is missing', () => {
         }
         expect(message).toContain(file);
         expect(message).toContain('npm run build:native -w packages/coc-native');
-        expect(message).toContain('COC_NATIVE=0');
+        // The opt-out is gone, so the rebuild is the only remedy worth naming.
+        expect(message).not.toContain('COC_NATIVE=0');
     });
 
     it('is not fooled by a non-callable export of the right name', () => {
@@ -98,8 +99,11 @@ describe('when no binary loaded', () => {
     });
 });
 
-it('returns null for the COC_NATIVE=0 opt-out, passing the reason through', () => {
+// Regression: this capability used to return `null` under COC_NATIVE=0, which
+// is what let RepoTreeService silently serve a different implementation.
+it('never returns null — COC_NATIVE=0 is not an opt-out', () => {
     process.env.COC_NATIVE = '0';
-    expect(loadNativeFileIndex()).toBeNull();
-    expect(nativeFileIndexStatus()).toEqual({ loaded: false, reason: 'disabled by COC_NATIVE=0' });
+    const file = useAddon('module.exports = { buildFileIndex: () => 1 };');
+    expect(loadNativeFileIndex()).not.toBeNull();
+    expect(nativeFileIndexStatus()).toEqual({ loaded: true, binaryPath: file });
 });

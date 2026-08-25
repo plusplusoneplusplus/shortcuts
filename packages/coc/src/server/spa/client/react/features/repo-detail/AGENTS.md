@@ -62,11 +62,11 @@ effect. Do not reintroduce a tracked flag or swallow the fetch rejection.
 
 ## Quick Open file search
 
-`explorer/QuickOpen.tsx` fetches the repo path list once per dialog open
-(`explorerApi.listFiles`) and fuzzy-matches in the browser, so keystrokes cost no
-round-trip and need no debounce. Scoring lives in `server/shared/fuzzy-file-score.ts`,
-shared with the `/api/repos/:repoId/search` endpoint so both rank identically —
-edit the shared module, not a local copy. Results stay rendered while the query
+`explorer/QuickOpen.tsx` debounces keystrokes and asks
+`/api/repos/:repoId/search` per query, then highlights using the `indices` the
+server returned rather than re-deriving the match locally. Ranking happens in the
+Rust scorer only; `server/shared/fuzzy-file-score.ts` is its reference
+implementation, not a second runtime path. Results stay rendered while the query
 changes; only the first load shows `Loading files…`.
 
 `ExactOpen.tsx` and `ExplorerPanel.tsx` still call `/search` per query. That endpoint

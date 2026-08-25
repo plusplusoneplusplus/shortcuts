@@ -130,12 +130,11 @@ export function createRequestHandler(
                     status: 'ok',
                     uptime: process.uptime(),
                     processCount,
-                    // Surfaced so a packaging mistake fails the release smoke
-                    // test loudly instead of degrading silently to the slow
-                    // JavaScript file-search path in production.
+                    // Both capabilities are required, and both are surfaced so
+                    // a packaging mistake fails the release smoke test loudly.
+                    // Separate statuses keep a stale binary — one that loaded
+                    // but predates a capability — visible.
                     nativeFileIndex: nativeFileIndexStatus(),
-                    // Notes search has no JavaScript fallback. This remains a
-                    // separate capability status so stale binaries are visible.
                     nativeNotesIndex: nativeNotesIndexStatus(),
                 });
             },

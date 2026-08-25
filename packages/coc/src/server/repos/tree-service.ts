@@ -9,7 +9,6 @@ import type { NativeFileIndex, NativeFileIndexAddon } from '@plusplusoneplusplus
 
 const execFileAsync = promisify(execFile);
 import type { RepoInfo, TreeEntry, TreeListResult, FileSearchResult, SearchFilesResult } from './types';
-import { fuzzyFileScore, rankFuzzyMatches } from '../shared/fuzzy-file-score';
 
 export interface RepoTreeServiceOptions {
     /**
@@ -35,22 +34,13 @@ export interface RepoTreeServiceOptions {
     fileListCacheTtlMs?: number;
 
     /**
-     * The native file-index addon, or `null` to force the JavaScript path.
+     * The native file-index addon.
      *
      * Defaults to `loadNativeFileIndex()`, which throws when no binary could be
-     * loaded — the addon is required rather than best-effort. It yields `null`
-     * only under `COC_NATIVE=0`, so the JavaScript path is reached either by
-     * that opt-out or by passing `null` here, never by a silent load failure.
+     * loaded — the addon is required, with no JavaScript path behind it. Tests
+     * inject a stub here; there is no way to ask for a non-native listing.
      */
-    nativeFileIndex?: NativeFileIndexAddon | null;
-}
-
-/** A cached whole-repo file listing. */
-interface CachedFileList {
-    files: string[];
-    truncated: boolean;
-    /** Epoch ms at which this entry was produced. */
-    at: number;
+    nativeFileIndex?: NativeFileIndexAddon;
 }
 
 /** A native index kept warm for one repo + showIgnored combination. */
@@ -248,19 +238,9 @@ export class RepoTreeService {
     private readonly dataDir: string;
     private readonly store?: ProcessStore;
 
-    /** Whole-repo file listings, keyed by repoId + showIgnored. */
-    private readonly fileListCache = new Map<string, CachedFileList>();
-    /** In-flight refreshes, so concurrent callers share one walk per key. */
-    private readonly fileListRefreshes = new Map<string, Promise<CachedFileList>>();
-
-    /**
-     * The native addon, or null when it was deliberately disabled — by
-     * `COC_NATIVE=0` or an explicit `nativeFileIndex: null`. Only then does any
-     * path below fall back to the ripgrep/walk implementation; a binary that
-     * should have loaded and did not throws out of the constructor instead.
-     */
-    private readonly native: NativeFileIndexAddon | null;
-    /** Live native indexes, keyed the same way as {@link fileListCache}. */
+    /** The native addon backing every whole-repo listing and file search. */
+    private readonly native: NativeFileIndexAddon;
+    /** Live native indexes, keyed by repoId + showIgnored. */
     private readonly nativeIndexes = new Map<string, NativeIndexEntry>();
 
     private static rgAvailable: boolean | undefined;
@@ -337,78 +317,24 @@ export class RepoTreeService {
         return new Set([...rgResult, ...dirIgnored]);
     }
 
-    /** argv for the `rg --files` whole-repo listing. */
-    private static buildRipgrepArgs(repoRoot: string, showIgnored: boolean): string[] {
-        const args = ['--files', '--hidden'];
-        if (showIgnored) {
-            // `--no-ignore` also disables rg's own `.git` exclusion, so re-apply
-            // it explicitly to stay in step with the native and JS walkers.
-            args.push('--no-ignore', '--glob', '!.git/');
-        }
-        args.push('--', repoRoot);
-        return args;
-    }
-
-    private async listFilesWithRipgrep(
-        repoRoot: string,
-        options?: { showIgnored?: boolean; maxEntries?: number },
-    ): Promise<{ files: string[]; truncated: boolean } | null> {
-        const available = await RepoTreeService.checkRipgrepAvailable();
-        if (!available) return null;
-
-        const maxEntries = options?.maxEntries ?? 5000;
-        const args = RepoTreeService.buildRipgrepArgs(repoRoot, options?.showIgnored ?? false);
-
-        let stdout: string;
-        try {
-            const result = await execFileAsync('rg', args, {
-                encoding: 'utf-8',
-                maxBuffer: 50 * 1024 * 1024,
-            });
-            stdout = result.stdout;
-        } catch (err: any) {
-            // exit code 1 = no files found (valid empty result)
-            if (err.code === 1) {
-                return { files: [], truncated: false };
-            }
-            // exit code 2 or other = real error, fall back to existing walk
-            return null;
-        }
-
-        const allFiles = stdout
-            .split('\n')
-            .map((l: string) => l.trim())
-            .filter(Boolean)
-            .map((absPath: string) => path.relative(repoRoot, absPath).split(path.sep).join('/'));
-
-        const truncated = allFiles.length > maxEntries;
-        return { files: allFiles.slice(0, maxEntries), truncated };
-    }
-
     constructor(dataDir: string, options?: RepoTreeServiceOptions, store?: ProcessStore) {
         this.dataDir = dataDir;
         this.maxEntries = options?.maxEntries ?? 5000;
         this.fileListMaxEntries = options?.fileListMaxEntries ?? options?.maxEntries ?? 50000;
         this.fileListCacheTtlMs = options?.fileListCacheTtlMs ?? 10000;
         this.store = store;
-        this.native =
-            options?.nativeFileIndex !== undefined ? options.nativeFileIndex : loadNativeFileIndex();
+        this.native = options?.nativeFileIndex ?? loadNativeFileIndex();
     }
 
     /**
      * The native index for a repo + showIgnored combination, built on first use
      * and kept warm afterwards.
      *
-     * Unlike the JavaScript listing this is never capped: the path list stays in
-     * this process, so `fileListMaxEntries` only bounds what the `/files`
-     * response carries, not what search can find.
+     * The index itself is never capped: the path list stays in this process, so
+     * `fileListMaxEntries` only bounds what the `/files` response carries, not
+     * what search can find.
      */
-    private nativeIndexFor(
-        native: NativeFileIndexAddon,
-        key: string,
-        repoRoot: string,
-        showIgnored: boolean,
-    ): NativeIndexEntry {
+    private nativeIndexFor(key: string, repoRoot: string, showIgnored: boolean): NativeIndexEntry {
         const existing = this.nativeIndexes.get(key);
         if (existing) {
             this.maybeRefreshNativeIndex(existing);
@@ -417,7 +343,7 @@ export class RepoTreeService {
 
         const entry: NativeIndexEntry = {
             at: Date.now(),
-            index: native.buildFileIndex(repoRoot, { includeIgnored: showIgnored }),
+            index: this.native.buildFileIndex(repoRoot, { includeIgnored: showIgnored }),
         };
         entry.index.then(
             () => {
@@ -503,54 +429,8 @@ export class RepoTreeService {
      * the file is searchable by the time it returns.
      */
     private invalidateFileListCacheAndWait(repoId?: string): Promise<void> {
-        if (repoId === undefined) {
-            this.fileListCache.clear();
-        } else {
-            for (const showIgnored of [true, false]) {
-                this.fileListCache.delete(RepoTreeService.fileListKey(repoId, showIgnored));
-            }
-        }
         const refreshes = this.nativeEntriesFor(repoId).map(entry => this.refreshNativeIndex(entry));
         return Promise.all(refreshes).then(() => undefined);
-    }
-
-    /**
-     * Recompute a repo's file listing and store it in the cache.
-     * Concurrent callers share one in-flight computation per key.
-     */
-    private refreshFileList(
-        key: string,
-        repoRoot: string,
-        showIgnored: boolean,
-    ): Promise<CachedFileList> {
-        const existing = this.fileListRefreshes.get(key);
-        if (existing) return existing;
-
-        const promise = this.computeRootFileList(repoRoot, showIgnored)
-            .then(result => {
-                const entry: CachedFileList = { ...result, at: Date.now() };
-                this.fileListCache.set(key, entry);
-                return entry;
-            })
-            .finally(() => {
-                this.fileListRefreshes.delete(key);
-            });
-
-        this.fileListRefreshes.set(key, promise);
-        return promise;
-    }
-
-    /** Uncached whole-repo listing: ripgrep when available, directory walk otherwise. */
-    private async computeRootFileList(
-        repoRoot: string,
-        showIgnored: boolean,
-    ): Promise<{ files: string[]; truncated: boolean }> {
-        const rgResult = await this.listFilesWithRipgrep(repoRoot, {
-            showIgnored,
-            maxEntries: this.fileListMaxEntries,
-        });
-        if (rgResult) return rgResult;
-        return this.walkFiles(repoRoot, repoRoot, showIgnored, this.fileListMaxEntries);
     }
 
     /**
@@ -736,29 +616,13 @@ export class RepoTreeService {
         if (normalizedRel === '.' || normalizedRel === '') {
             const key = RepoTreeService.fileListKey(repoId, showIgnored);
 
-            const native = this.native;
-            if (native) {
-                const index = await this.nativeIndexFor(native, key, repoRoot, showIgnored).index;
-                // The cap applies to the response payload only — the index keeps
-                // every path so search still reaches them.
-                return {
-                    files: index.files(0, this.fileListMaxEntries),
-                    truncated: index.len() > this.fileListMaxEntries,
-                };
-            }
-
-            const cached = this.fileListCache.get(key);
-            if (cached) {
-                if (Date.now() - cached.at >= this.fileListCacheTtlMs) {
-                    // Serve the stale list now; refresh for the next caller.
-                    // Files appear from agents, git and installs without going
-                    // through writeBlob, so entries cannot be trusted forever.
-                    void this.refreshFileList(key, repoRoot, showIgnored).catch(() => {});
-                }
-                return { files: cached.files, truncated: cached.truncated };
-            }
-            const fresh = await this.refreshFileList(key, repoRoot, showIgnored);
-            return { files: fresh.files, truncated: fresh.truncated };
+            const index = await this.nativeIndexFor(key, repoRoot, showIgnored).index;
+            // The cap applies to the response payload only — the index keeps
+            // every path so search still reaches them.
+            return {
+                files: index.files(0, this.fileListMaxEntries),
+                truncated: index.len() > this.fileListMaxEntries,
+            };
         }
 
         return this.walkFiles(repoRoot, absRoot, showIgnored, this.maxEntries);
@@ -910,15 +774,6 @@ export class RepoTreeService {
     }
 
     /**
-     * Fuzzy-score a single file path against a query.
-     * Delegates to the scorer shared with the SPA file-finder dialogs.
-     * Returns 0 if not all query characters are found in order.
-     */
-    static fuzzyScore(query: string, filePath: string): number {
-        return fuzzyFileScore(query, filePath);
-    }
-
-    /**
      * Fuzzy-search all files under the repo root.
      * Returns results sorted by score descending, limited to `options.limit`.
      *
@@ -935,23 +790,15 @@ export class RepoTreeService {
         const limit = Math.min(Math.max(rawLimit, 1), 200);
         const showIgnored = options?.showIgnored ?? false;
 
-        const native = this.native;
-        if (native) {
-            const repoRoot = await this.resolveRepoRoot(repoId);
-            if (!repoRoot) {
-                throw new Error(`Repo not found: ${repoId}`);
-            }
-            const key = RepoTreeService.fileListKey(repoId, showIgnored);
-            const index = await this.nativeIndexFor(native, key, repoRoot, showIgnored).index;
-            const results: FileSearchResult[] = await index.search(query, limit);
-            // Nothing was dropped on the way in, so no result is missing.
-            return { results, truncated: false };
+        const repoRoot = await this.resolveRepoRoot(repoId);
+        if (!repoRoot) {
+            throw new Error(`Repo not found: ${repoId}`);
         }
-
-        const { files, truncated } = await this.listFilesRecursive(repoId, '.', { showIgnored });
-
-        const results: FileSearchResult[] = rankFuzzyMatches(query, files, limit);
-        return { results, truncated };
+        const key = RepoTreeService.fileListKey(repoId, showIgnored);
+        const index = await this.nativeIndexFor(key, repoRoot, showIgnored).index;
+        const results: FileSearchResult[] = await index.search(query, limit);
+        // Nothing was dropped on the way in, so no result is missing.
+        return { results, truncated: false };
     }
 
     /**

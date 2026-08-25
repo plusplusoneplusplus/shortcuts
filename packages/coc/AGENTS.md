@@ -31,21 +31,19 @@ all have their own `references/*.md`.
 
 ## Local Invariants
 
-- **File search has two interchangeable backends.** `RepoTreeService` uses the
-  Rust index from `@plusplusoneplusplus/coc-native` when a binary is available
-  for the platform, and its ripgrep/directory-walk path otherwise; the choice is
-  the `nativeFileIndex` constructor option (`null` forces the fallback) and
-  `/api/health` plus a startup log line report which one is live; the same
-  diagnostics report the required native Notes index separately. Both paths
-  must produce identical responses —
-  `test/server/repo-tree-service-native.test.ts` runs the behavioural tests
-  twice and compares, and `test/server/repo-tree-service.test.ts` pins the
-  fallback path by passing `nativeFileIndex: null` everywhere. The shared scorer
-  in `src/server/shared/fuzzy-file-score.ts` is the reference implementation the
-  Rust port must match; see
+- **File search has exactly one backend.** `RepoTreeService` answers whole-repo
+  listings and `/search` from the Rust index in `@plusplusoneplusplus/coc-native`,
+  and there is no JavaScript path behind it: a missing or unloadable binary
+  throws out of the constructor. The `nativeFileIndex` constructor option exists
+  so tests can inject a stub, not so callers can ask for a different
+  implementation. `/api/health` and a startup log line report the file index and
+  the Notes index separately, so a stale binary is visible. `walkFiles` still
+  serves per-directory listings. `src/server/shared/fuzzy-file-score.ts` no
+  longer ranks anything — it is the readable reference the Rust port must match,
+  pinned by `packages/coc-native/test/parity.test.ts`; see
   [packages/coc-native/AGENTS.md](../coc-native/AGENTS.md) before changing
-  either. `searchFiles` is uncapped under the native path (the list never leaves
-  the process); `fileListMaxEntries` bounds only the `/files` response payload.
+  either. `searchFiles` is uncapped (the path list never leaves the process);
+  `fileListMaxEntries` bounds only the `/files` response payload.
 - **QuickOpen searches on the server.** The `Ctrl+P` dialog fetches nothing on
   open, debounces keystrokes, and highlights using the `indices` the server's
   scorer returned — never by re-deriving the match in the browser, which used to

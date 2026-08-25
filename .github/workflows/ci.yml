@@ -280,9 +280,9 @@ jobs:
         run: npm run build:client
         working-directory: packages/coc
 
-      # Server composition requires the Notes capability, so the suite needs
-      # the binary the coc-native job built. File-index tests still exercise the
-      # JavaScript path explicitly by injecting null.
+      # The addon is mandatory: the server refuses to compose without the Notes
+      # capability, and RepoTreeService has no JavaScript lane to fall back to.
+      # The suite needs the binary the coc-native job built.
       - name: Download the addon
         uses: actions/download-artifact@v4
         with:

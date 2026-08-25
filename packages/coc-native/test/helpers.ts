@@ -3,11 +3,8 @@
  *
  * These tests exercise the real compiled addon, which is required rather than
  * optional: a missing or broken binary fails this module at import, so a
- * botched native build cannot be mistaken for a green run.
- *
- * `COC_NATIVE=0` is the one case that skips instead. That is an operator
- * deliberately running without the addon, and there is then nothing for a
- * boundary test to exercise.
+ * botched native build cannot be mistaken for a green run. There is no opt-out
+ * that turns these suites into skips.
  */
 
 import { loadNativeFileIndex } from '../src/file-index';
@@ -18,24 +15,13 @@ import type { NativeNotesIndexAddon } from '../src/notes-index';
 
 resetNativeAddonCache();
 
-/** True when the addon was deliberately turned off for this run. */
-export const disabled = process.env.COC_NATIVE === '0';
-
-// Deliberately unguarded: loadNativeFileIndex() throws when a binary was
-// expected and could not be loaded, and that error — naming the triple, the
-// paths tried and the fix — is exactly what the runner should print.
-export const addon: NativeFileIndexAddon | null = loadNativeFileIndex();
+// Deliberately unguarded: loadNativeFileIndex() throws when a binary could not
+// be loaded, and that error — naming the triple, the paths tried and the fix —
+// is exactly what the runner should print.
+export const addon: NativeFileIndexAddon = loadNativeFileIndex();
 
 /** The required Notes-index slice of the same compiled addon. */
-export const notesAddon: NativeNotesIndexAddon | null = disabled ? null : loadNativeNotesIndex();
-
-if (disabled) {
-    // eslint-disable-next-line no-console
-    console.warn(
-        '[coc-native] SKIPPING native boundary tests — COC_NATIVE=0 disables the addon. ' +
-            'Unset it to exercise the real binary.',
-    );
-}
+export const notesAddon: NativeNotesIndexAddon = loadNativeNotesIndex();
 
 /** Deterministic PRNG, so a parity failure reproduces from the seed alone. */
 export function makeRandom(seed: number): () => number {
