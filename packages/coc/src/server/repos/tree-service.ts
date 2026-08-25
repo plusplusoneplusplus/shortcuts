@@ -4,11 +4,20 @@ import * as childProcess from 'child_process';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import type { WorkspaceInfo, ProcessStore } from '@plusplusoneplusplus/forge';
-import { loadNativeFileIndex } from '@plusplusoneplusplus/coc-native';
-import type { NativeFileIndex, NativeFileIndexAddon } from '@plusplusoneplusplus/coc-native';
+import { loadNativeContentSearch, loadNativeFileIndex } from '@plusplusoneplusplus/coc-native';
+import type { NativeContentSearchAddon, NativeFileIndex, NativeFileIndexAddon } from '@plusplusoneplusplus/coc-native';
 
 const execFileAsync = promisify(execFile);
-import type { RepoInfo, TreeEntry, TreeListResult, FileSearchResult, SearchFilesResult } from './types';
+import type {
+    RepoInfo,
+    TreeEntry,
+    TreeListResult,
+    FileSearchResult,
+    SearchFilesResult,
+    ContentSearchOptions,
+    ContentSearchResult,
+} from './types';
+import { CONTENT_SEARCH_MAX_RESULTS } from './types';
 
 export interface RepoTreeServiceOptions {
     /**
@@ -41,6 +50,16 @@ export interface RepoTreeServiceOptions {
      * inject a stub here; there is no way to ask for a non-native listing.
      */
     nativeFileIndex?: NativeFileIndexAddon;
+
+    /**
+     * The native content-search addon.
+     *
+     * Resolved lazily on the first content search rather than in the
+     * constructor: every other route works without it, and eagerly loading
+     * would make an unrelated test that injects a stub file index need a real
+     * binary too. Tests inject a stub here.
+     */
+    nativeContentSearch?: NativeContentSearchAddon;
 }
 
 /** A native index kept warm for one repo + showIgnored combination. */
@@ -242,6 +261,13 @@ export class RepoTreeService {
     private readonly native: NativeFileIndexAddon;
     /** Live native indexes, keyed by repoId + showIgnored. */
     private readonly nativeIndexes = new Map<string, NativeIndexEntry>();
+    /**
+     * The native addon backing content search, resolved on first use.
+     *
+     * Unlike the file index there is nothing to keep warm — every query is a
+     * fresh walk — so this holds the addon itself, not per-repo state.
+     */
+    private nativeContent?: NativeContentSearchAddon;
 
     private static rgAvailable: boolean | undefined;
 
@@ -324,6 +350,7 @@ export class RepoTreeService {
         this.fileListCacheTtlMs = options?.fileListCacheTtlMs ?? 10000;
         this.store = store;
         this.native = options?.nativeFileIndex ?? loadNativeFileIndex();
+        this.nativeContent = options?.nativeContentSearch;
     }
 
     /**
@@ -799,6 +826,61 @@ export class RepoTreeService {
         const results: FileSearchResult[] = await index.search(query, limit);
         // Nothing was dropped on the way in, so no result is missing.
         return { results, truncated: false };
+    }
+
+    /**
+     * Search the contents of every non-ignored file under the repo root.
+     *
+     * Every query is a fresh parallel walk — there is no content index to keep
+     * warm and no cancellation, so the caps in `options` are the only bound on
+     * what one query costs.
+     *
+     * Rejects with a `Repo not found` error for an unregistered repo or a root
+     * that has since disappeared from disk, and passes the addon's own
+     * `InvalidArg` errors (bad regex, escaping path) through untouched so the
+     * route can turn them into 400s.
+     *
+     * @param repoId  Stable workspace ID.
+     * @param query   Literal text, or a regular expression when `options.regex`.
+     * @param options Query modes, subfolder scoping and the result cap.
+     */
+    async searchContent(
+        repoId: string,
+        query: string,
+        options?: ContentSearchOptions,
+    ): Promise<ContentSearchResult> {
+        const repoRoot = await this.resolveRepoRoot(repoId);
+        if (!repoRoot) {
+            throw new Error(`Repo not found: ${repoId}`);
+        }
+        // A registered workspace whose folder was deleted is a missing repo,
+        // not a search failure — without this the walk just returns nothing.
+        try {
+            if (!(await fs.promises.stat(repoRoot)).isDirectory()) {
+                throw new Error('not a directory');
+            }
+        } catch {
+            throw new Error(`Repo not found on disk: ${repoRoot}`);
+        }
+
+        const rawLimit = options?.limit ?? CONTENT_SEARCH_MAX_RESULTS;
+        const limit = Math.min(Math.max(rawLimit, 1), CONTENT_SEARCH_MAX_RESULTS);
+
+        // '.' is how every other repo route spells "the root", but handing it
+        // to the addon as a subfolder would prefix every result path with './'.
+        const scope = stripLeadingSeparators(options?.path ?? '').replace(/^\.(?:\/|$)/, '');
+
+        this.nativeContent ??= loadNativeContentSearch();
+        return this.nativeContent.searchContent(repoRoot, query, {
+            path: scope || undefined,
+            caseSensitive: options?.caseSensitive ?? false,
+            wholeWord: options?.wholeWord ?? false,
+            regex: options?.regex ?? false,
+            showIgnored: options?.showIgnored ?? false,
+            include: options?.include,
+            exclude: options?.exclude,
+            maxResults: limit,
+        });
     }
 
     /**

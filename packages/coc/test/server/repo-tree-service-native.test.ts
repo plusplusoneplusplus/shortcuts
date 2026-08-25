@@ -253,3 +253,78 @@ suiteIfGit('RepoTreeService — native index vs. the capped response', () => {
         expect(found.truncated).toBe(false);
     });
 });
+
+suiteIfGit('RepoTreeService.searchContent — options reaching the addon', () => {
+    /** Records what the service asked the addon for, and answers nothing. */
+    function recordingAddon() {
+        const calls: Array<{ root: string; query: string; options: unknown }> = [];
+        return {
+            calls,
+            searchContent: async (root: string, query: string, options: unknown) => {
+                calls.push({ root, query, options });
+                return { matches: [], truncated: false };
+            },
+        };
+    }
+
+    it('sends the documented defaults and the repo root, not the repo id', async () => {
+        seedRepo();
+        const addon = recordingAddon();
+        const svc = new RepoTreeService(dataDir, { nativeFileIndex: NATIVE, nativeContentSearch: addon });
+
+        await svc.searchContent(REPO_ID, 'needle');
+
+        expect(addon.calls).toHaveLength(1);
+        expect(addon.calls[0].root).toBe(repoDir);
+        expect(addon.calls[0].query).toBe('needle');
+        expect(addon.calls[0].options).toEqual({
+            path: undefined,
+            caseSensitive: false,
+            wholeWord: false,
+            regex: false,
+            showIgnored: false,
+            include: undefined,
+            exclude: undefined,
+            maxResults: 500,
+        });
+    });
+
+    it('clamps the limit into 1..500 in both directions', async () => {
+        seedRepo();
+        const addon = recordingAddon();
+        const svc = new RepoTreeService(dataDir, { nativeFileIndex: NATIVE, nativeContentSearch: addon });
+
+        await svc.searchContent(REPO_ID, 'a', { limit: 0 });
+        await svc.searchContent(REPO_ID, 'a', { limit: 100_000 });
+
+        expect(addon.calls.map(c => (c.options as { maxResults: number }).maxResults)).toEqual([1, 500]);
+    });
+
+    it('strips the "." and leading-slash spellings of the repo root from the scope', async () => {
+        seedRepo();
+        const addon = recordingAddon();
+        const svc = new RepoTreeService(dataDir, { nativeFileIndex: NATIVE, nativeContentSearch: addon });
+
+        // '.' is how the routes spell the root; passing it through would prefix
+        // every returned path with './'.
+        for (const scope of ['.', '', './src', '/src', 'src']) {
+            await svc.searchContent(REPO_ID, 'a', { path: scope });
+        }
+
+        expect(addon.calls.map(c => (c.options as { path?: string }).path))
+            .toEqual([undefined, undefined, 'src', 'src', 'src']);
+    });
+
+    it('rejects an unregistered repo and a root that vanished, without touching the addon', async () => {
+        seedRepo();
+        const addon = recordingAddon();
+        const svc = new RepoTreeService(dataDir, { nativeFileIndex: NATIVE, nativeContentSearch: addon });
+
+        await expect(svc.searchContent('no-such-repo', 'a')).rejects.toThrow(/not found/i);
+
+        fs.rmSync(repoDir, { recursive: true, force: true });
+        await expect(svc.searchContent(REPO_ID, 'a')).rejects.toThrow(/not found/i);
+
+        expect(addon.calls).toHaveLength(0);
+    });
+});

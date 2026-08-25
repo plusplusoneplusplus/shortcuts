@@ -57,3 +57,66 @@ export interface SearchFilesResult {
     /** True if the underlying file list was truncated at the cap. */
     truncated: boolean;
 }
+
+/**
+ * The hard cap on matches one content search may return.
+ *
+ * The engine has no cancellation, so the caps are the only bound on what a
+ * single query costs. A client asking for more is clamped to this, never
+ * honoured.
+ */
+export const CONTENT_SEARCH_MAX_RESULTS = 500;
+
+/** One matching line from a content search. */
+export interface ContentMatch {
+    /** Repo-relative path with `/` separators on every platform. */
+    path: string;
+    /** One-based line number. */
+    line: number;
+    /** The matching line without its trailing newline, possibly truncated. */
+    text: string;
+    /**
+     * UTF-16 offset of the match within `text` — a JavaScript string index, so
+     * a client highlighting `text.slice(startColumn, endColumn)` highlights
+     * exactly what matched.
+     */
+    startColumn: number;
+    /** UTF-16 offset one past the end of the match within `text`. */
+    endColumn: number;
+    /** Lines preceding `line`, in file order. */
+    before: string[];
+    /** Lines following `line`, in file order. */
+    after: string[];
+}
+
+/** Result of a content search across a repo. */
+export interface ContentSearchResult {
+    /** Matching lines, sorted by path then line. */
+    matches: ContentMatch[];
+    /**
+     * True when any cap was hit — the total cap, the per-file cap, or a file
+     * skipped for being too large. One flag for all three, because a caller
+     * can do nothing different about any of them beyond saying so.
+     */
+    truncated: boolean;
+}
+
+/** Query modes, scoping and caps for one content search. */
+export interface ContentSearchOptions {
+    /** Repo-relative subfolder to search. Omit for the whole repo. */
+    path?: string;
+    /** Match case exactly. Default false. */
+    caseSensitive?: boolean;
+    /** Require word boundaries around the query. Default false. */
+    wholeWord?: boolean;
+    /** Treat the query as a regular expression rather than a literal. Default false. */
+    regex?: boolean;
+    /** Search files `.gitignore` excludes — the explorer's `showIgnored` flag. */
+    showIgnored?: boolean;
+    /** Whitelist globs. When non-empty, a file matching none of them is skipped. */
+    include?: string[];
+    /** Globs whose matches are skipped. */
+    exclude?: string[];
+    /** Cap on total matches, clamped to 1..{@link CONTENT_SEARCH_MAX_RESULTS}. */
+    limit?: number;
+}

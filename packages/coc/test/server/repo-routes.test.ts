@@ -477,6 +477,204 @@ describe('GET /api/repos/:repoId/search', () => {
     });
 });
 
+describe('GET /api/repos/:repoId/search/content', () => {
+    function seedSearchableRepo(): void {
+        seedDefaultRepo();
+        initGitRepo(repoDir);
+        fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'src', 'alpha.ts'), 'const needle = 1;\nconst other = 2;\n');
+        fs.writeFileSync(path.join(repoDir, 'src', 'beta.ts'), 'export const NEEDLE = 3;\n');
+        fs.writeFileSync(path.join(repoDir, 'root.txt'), 'a needle at the root\n');
+    }
+
+    it('returns matches grouped-ready and sorted, with the matched span addressable', async () => {
+        seedSearchableRepo();
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=needle`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as any;
+        expect(typeof body.truncated).toBe('boolean');
+
+        const paths = body.matches.map((m: any) => m.path);
+        // Case-insensitive by default, so beta.ts's NEEDLE is in too.
+        expect(paths).toEqual(['root.txt', 'src/alpha.ts', 'src/beta.ts']);
+        for (const match of body.matches) {
+            expect(match.line).toBeGreaterThan(0);
+            expect(match.text.slice(match.startColumn, match.endColumn).toLowerCase()).toBe('needle');
+            expect(Array.isArray(match.before)).toBe(true);
+            expect(Array.isArray(match.after)).toBe(true);
+        }
+    });
+
+    it('returns 400 when q is missing', async () => {
+        seedDefaultRepo();
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content`);
+        expect(res.status).toBe(400);
+        const body = await res.json() as any;
+        expect(body.error).toMatch(/q/i);
+    });
+
+    it('returns 400 when q is empty', async () => {
+        seedDefaultRepo();
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=`);
+        expect(res.status).toBe(400);
+    });
+
+    it('returns 404 for an unknown repo', async () => {
+        const res = await fetch(`${baseUrl}/api/repos/nonexistent/search/content?q=needle`);
+        expect(res.status).toBe(404);
+    });
+
+    it('returns 404 when the registered repo root no longer exists on disk', async () => {
+        seedWorkspacesJson([{ id: REPO_ID, name: REPO_NAME, rootPath: path.join(tmpDir, 'deleted-repo') }]);
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=needle`);
+        expect(res.status).toBe(404);
+    });
+
+    it('rejects directory traversal in the path scope', async () => {
+        seedSearchableRepo();
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=needle&path=${encodeURIComponent('../..')}`);
+        expect(res.status).toBe(400);
+        const body = await res.json() as any;
+        expect(body.error).toMatch(/traversal/i);
+    });
+
+    it('scopes the search to a subfolder and keeps paths repo-relative', async () => {
+        seedSearchableRepo();
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=needle&path=src`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as any;
+        // Rooted at src/, but the paths a client clicks are still repo-relative
+        // and carry no './' prefix from the scope.
+        expect(body.matches.map((m: any) => m.path)).toEqual(['src/alpha.ts', 'src/beta.ts']);
+    });
+
+    it('treats path=. as the whole repo rather than a subfolder', async () => {
+        seedSearchableRepo();
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=needle&path=.`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as any;
+        expect(body.matches.map((m: any) => m.path)).toEqual(['root.txt', 'src/alpha.ts', 'src/beta.ts']);
+    });
+
+    it('honours caseSensitive', async () => {
+        seedSearchableRepo();
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=NEEDLE&caseSensitive=true`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as any;
+        expect(body.matches.map((m: any) => m.path)).toEqual(['src/beta.ts']);
+    });
+
+    it('honours wholeWord', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'words.txt'), 'needles\nneedle\n');
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=needle&wholeWord=true`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as any;
+        expect(body.matches.map((m: any) => m.line)).toEqual([2]);
+    });
+
+    it('treats the query as a literal unless regex=true', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'meta.txt'), 'a+b\naab\n');
+
+        const literal = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=${encodeURIComponent('a+b')}`);
+        expect(literal.status).toBe(200);
+        expect(((await literal.json()) as any).matches.map((m: any) => m.line)).toEqual([1]);
+
+        const asRegex = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=${encodeURIComponent('a+b')}&regex=true`);
+        expect(asRegex.status).toBe(200);
+        expect(((await asRegex.json()) as any).matches.map((m: any) => m.line)).toEqual([2]);
+    });
+
+    it('survives URL-encoded percent and plus characters in the query', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'chars.txt'), 'discount 50%+tax\n');
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=${encodeURIComponent('50%+tax')}`);
+        expect(res.status).toBe(200);
+        const body = await res.json() as any;
+        expect(body.matches).toHaveLength(1);
+        expect(body.matches[0].text.slice(body.matches[0].startColumn, body.matches[0].endColumn)).toBe('50%+tax');
+    });
+
+    it('returns 400 with the parse message for an invalid regex', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'a.txt'), 'anything\n');
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=${encodeURIComponent('(unclosed')}&regex=true`);
+        expect(res.status).toBe(400);
+        const body = await res.json() as any;
+        expect(body.error).toMatch(/invalid regular expression/i);
+    });
+
+    it('honours showIgnored', async () => {
+        seedDefaultRepo();
+        initGitRepo(repoDir);
+        fs.writeFileSync(path.join(repoDir, '.gitignore'), 'dist/\n');
+        fs.mkdirSync(path.join(repoDir, 'dist'));
+        fs.writeFileSync(path.join(repoDir, 'dist', 'bundle.js'), 'var needle = 1;\n');
+
+        const hidden = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=needle`);
+        expect(((await hidden.json()) as any).matches).toHaveLength(0);
+
+        const shown = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=needle&showIgnored=true`);
+        expect(((await shown.json()) as any).matches.map((m: any) => m.path)).toEqual(['dist/bundle.js']);
+    });
+
+    it('filters by include and exclude globs', async () => {
+        seedSearchableRepo();
+
+        const included = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=needle&include=*.ts`);
+        expect(((await included.json()) as any).matches.map((m: any) => m.path)).toEqual(['src/alpha.ts', 'src/beta.ts']);
+
+        const excluded = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=needle&exclude=${encodeURIComponent('src/beta.ts')}`);
+        expect(((await excluded.json()) as any).matches.map((m: any) => m.path)).toEqual(['root.txt', 'src/alpha.ts']);
+    });
+
+    it('accepts globs both repeated and comma-joined', async () => {
+        seedSearchableRepo();
+
+        const repeated = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=needle&exclude=*.txt&exclude=${encodeURIComponent('src/beta.ts')}`);
+        const joined = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=needle&exclude=${encodeURIComponent('*.txt,src/beta.ts')}`);
+
+        const expected = ['src/alpha.ts'];
+        expect(((await repeated.json()) as any).matches.map((m: any) => m.path)).toEqual(expected);
+        expect(((await joined.json()) as any).matches.map((m: any) => m.path)).toEqual(expected);
+    });
+
+    it('clamps limit and reports truncation when the cap bites', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'many.txt'), 'needle\n'.repeat(10));
+
+        const capped = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=needle&limit=2`);
+        expect(capped.status).toBe(200);
+        const cappedBody = await capped.json() as any;
+        expect(cappedBody.matches).toHaveLength(2);
+        expect(cappedBody.truncated).toBe(true);
+
+        // Above the hard cap is clamped down to it, never honoured.
+        const over = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=needle&limit=9999`);
+        expect(over.status).toBe(200);
+        const overBody = await over.json() as any;
+        expect(overBody.matches).toHaveLength(10);
+        expect(overBody.truncated).toBe(false);
+    });
+
+    it('returns an empty result for a query that matches nothing', async () => {
+        seedSearchableRepo();
+
+        const res = await fetch(`${baseUrl}/api/repos/${REPO_ID}/search/content?q=zzzznotpresent`);
+        expect(res.status).toBe(200);
+        expect(await res.json()).toEqual({ matches: [], truncated: false });
+    });
+});
+
 describe('GET /api/repos/:repoId/reveal', () => {
     beforeEach(() => {
         revealSpawnCalls.length = 0;

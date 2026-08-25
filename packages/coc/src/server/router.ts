@@ -13,7 +13,7 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { isWithinDirectory } from '@plusplusoneplusplus/forge';
-import { nativeFileIndexStatus, nativeNotesIndexStatus } from '@plusplusoneplusplus/coc-native';
+import { nativeContentSearchStatus, nativeFileIndexStatus, nativeNotesIndexStatus } from '@plusplusoneplusplus/coc-native';
 import type { Route } from './types';
 import {
     createRouter,
@@ -130,12 +130,13 @@ export function createRequestHandler(
                     status: 'ok',
                     uptime: process.uptime(),
                     processCount,
-                    // Both capabilities are required, and both are surfaced so
-                    // a packaging mistake fails the release smoke test loudly.
+                    // Every capability is required, and each is surfaced so a
+                    // packaging mistake fails the release smoke test loudly.
                     // Separate statuses keep a stale binary — one that loaded
                     // but predates a capability — visible.
                     nativeFileIndex: nativeFileIndexStatus(),
                     nativeNotesIndex: nativeNotesIndexStatus(),
+                    nativeContentSearch: nativeContentSearchStatus(),
                 });
             },
         },

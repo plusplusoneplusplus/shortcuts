@@ -1,5 +1,7 @@
 import type {
   ExplorerBlobResponse,
+  ExplorerContentSearchOptions,
+  ExplorerContentSearchResponse,
   ExplorerFilesOptions,
   ExplorerFilesResponse,
   ExplorerSearchOptions,
@@ -38,6 +40,23 @@ function serializeSearchOptions(query: string, options?: ExplorerSearchOptions):
   };
 }
 
+function serializeContentSearchOptions(
+  query: string,
+  options?: ExplorerContentSearchOptions,
+): CocRequestOptions['query'] {
+  return {
+    q: query,
+    path: options?.path,
+    caseSensitive: options?.caseSensitive,
+    wholeWord: options?.wholeWord,
+    regex: options?.regex,
+    showIgnored: options?.showIgnored,
+    include: options?.include,
+    exclude: options?.exclude,
+    limit: options?.limit,
+  };
+}
+
 export class ExplorerClient {
   constructor(private readonly transport: RequestAdapter) {}
 
@@ -61,6 +80,24 @@ export class ExplorerClient {
   searchFiles(repoId: string, query: string, options?: ExplorerSearchOptions & Pick<CocRequestOptions, 'signal'>): Promise<ExplorerSearchResponse> {
     return this.transport.request<ExplorerSearchResponse>(repoPath(repoId, '/search'), {
       query: serializeSearchOptions(query, options),
+      signal: options?.signal,
+    });
+  }
+
+  /**
+   * Full-text search across the repo's non-ignored file contents.
+   *
+   * Separate from {@link searchFiles}, which matches file *paths*. Pass
+   * `signal` and abandon superseded requests: results come back capped and in
+   * one response, so a stale one is indistinguishable from a fresh one.
+   */
+  searchContent(
+    repoId: string,
+    query: string,
+    options?: ExplorerContentSearchOptions & Pick<CocRequestOptions, 'signal'>,
+  ): Promise<ExplorerContentSearchResponse> {
+    return this.transport.request<ExplorerContentSearchResponse>(repoPath(repoId, '/search/content'), {
+      query: serializeContentSearchOptions(query, options),
       signal: options?.signal,
     });
   }

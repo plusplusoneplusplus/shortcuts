@@ -22,6 +22,7 @@ import type { ExecutionServerOptions, ExecutionServer, ServerCloseOptions } from
 import type { Route } from './types';
 import {
     loadNativeNotesIndex,
+    nativeContentSearchStatus,
     nativeFileIndexStatus,
     nativeNotesIndexStatus,
 } from '@plusplusoneplusplus/coc-native';
@@ -856,12 +857,13 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     }
 
     await new Promise<void>((resolve, reject) => { server.on('error', reject); server.listen(port, host, resolve); });
-    // Say which native search capabilities are active. Both are required and
+    // Say which native search capabilities are active. All are required and
     // were validated before composition; reporting them separately is what
     // exposes stale packaging.
     {
         const nativeFileIndex = nativeFileIndexStatus();
         const nativeNotesIndex = nativeNotesIndexStatus();
+        const nativeContentSearch = nativeContentSearchStatus();
         process.stderr.write(
             nativeFileIndex.loaded
                 ? `native file index: loaded (${nativeFileIndex.binaryPath})\n`
@@ -871,6 +873,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             nativeNotesIndex.loaded
                 ? `native Notes index: loaded (${nativeNotesIndex.binaryPath})\n`
                 : `native Notes index: unavailable (${nativeNotesIndex.reason})\n`,
+        );
+        process.stderr.write(
+            nativeContentSearch.loaded
+                ? `native content search: loaded (${nativeContentSearch.binaryPath})\n`
+                : `native content search: unavailable (${nativeContentSearch.reason})\n`,
         );
     }
     try {

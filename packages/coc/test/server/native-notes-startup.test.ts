@@ -90,7 +90,29 @@ describe('native Notes capability at server startup', () => {
         );
     });
 
-    it('reports the loaded Notes capability after successful startup', async () => {
+    it('reports every loaded native capability after successful startup', async () => {
+        const addonPath = useAddon(
+            'class NotesIndex { async search() { return { results: [], truncated: false }; } ' +
+                'async refresh() {} async refreshChanged() {} } ' +
+                'module.exports = { buildFileIndex: async () => ({}), NotesIndex, ' +
+                'buildNotesIndex: async () => new NotesIndex(), ' +
+                'searchContent: async () => ({ matches: [], truncated: false }) };',
+        );
+        const stderrWrites: string[] = [];
+        vi.spyOn(process.stderr, 'write').mockImplementation((chunk: string | Uint8Array) => {
+            stderrWrites.push(String(chunk));
+            return true;
+        });
+
+        server = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir: tempDir });
+
+        expect(stderrWrites.join('')).toContain(`native Notes index: loaded (${addonPath})`);
+        expect(stderrWrites.join('')).toContain(`native content search: loaded (${addonPath})`);
+    });
+
+    it('reports content search as unavailable when the binary predates it', async () => {
+        // Not a startup failure: content search is resolved on the first query,
+        // so a stale binary shows up here rather than blocking the whole server.
         const addonPath = useAddon(
             'class NotesIndex { async search() { return { results: [], truncated: false }; } ' +
                 'async refresh() {} async refreshChanged() {} } ' +
@@ -105,6 +127,8 @@ describe('native Notes capability at server startup', () => {
 
         server = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir: tempDir });
 
-        expect(stderrWrites.join('')).toContain(`native Notes index: loaded (${addonPath})`);
+        expect(stderrWrites.join('')).toContain(
+            `native content search: unavailable (${addonPath} does not export content search)`,
+        );
     });
 });
