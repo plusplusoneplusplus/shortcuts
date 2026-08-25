@@ -19,30 +19,21 @@ function jobBlock(workflow, name) {
     return lines.slice(start, end).join("\n");
 }
 
-// `RepoTreeService` loads the addon in its constructor and throws when it
-// cannot, so a job that starts the server has to either hand it a binary or say
-// out loud that it is running without one. A job with neither does not degrade
-// to the fallback — it fails to boot, which is how e2e, coc-serve-smoke and
-// docker-build-smoke all went red at once.
+// Production server composition requires the native Notes capability. Every
+// workflow job that boots it must wait for and download the platform addon;
+// COC_NATIVE=0 is valid only for consumers that explicitly support a fallback.
 const BOOTS_THE_SERVER = ["coc-test", "e2e", "coc-serve-smoke", "docker-build-smoke"];
 
-test("every job that boots the coc server supplies the addon or opts out", () => {
+test("every job that boots the coc server supplies the addon", () => {
     for (const name of BOOTS_THE_SERVER) {
         const job = jobBlock(ci, name);
-        const suppliesAddon = /name: coc-native-/.test(job);
-        const optsOut = /COC_NATIVE[=:] ?'?0'?/.test(job);
-        assert.ok(
-            suppliesAddon || optsOut,
-            `${name} neither downloads the coc-native artifact nor sets COC_NATIVE=0, so the server will refuse to start`,
-        );
+        assert.match(job, /^    needs: \[coc-native\]$/m, `${name} must wait for the coc-native build`);
+        assert.match(job, /name: coc-native-/, `${name} must download the coc-native artifact`);
+        assert.doesNotMatch(job, /COC_NATIVE[=:] ?'?0'?/, `${name} cannot disable required native Notes search`);
     }
 });
 
-test("the addon itself is still exercised, not opted out of everywhere", () => {
-    // The opt-out is convenient enough that CI could drift into using it
-    // everywhere and stop testing the native path at all. coc-test is the job
-    // that must keep running against a real binary.
+test("the cross-platform coc suite uses its matching addon", () => {
     const job = jobBlock(ci, "coc-test");
     assert.match(job, /name: coc-native-\$\{\{ matrix\.os \}\}/);
-    assert.doesNotMatch(job, /COC_NATIVE/);
 });

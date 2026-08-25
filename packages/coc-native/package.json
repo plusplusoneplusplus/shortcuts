@@ -1,7 +1,7 @@
 {
   "name": "@plusplusoneplusplus/coc-native",
   "version": "0.1.0",
-  "description": "Native (Rust/N-API) capabilities for the CoC server — a capability-agnostic addon loader plus the gitignore-aware file index powering quick-open search",
+  "description": "Rust/N-API indexes for CoC quick-open file search and bounded Notes content search",
   "napi": {
     "name": "coc-native"
   },

@@ -43,10 +43,18 @@ export interface PaginatedResponse<T> {
   hasMore?: boolean;
 }
 
+export interface NativeCapabilityStatus {
+  loaded: boolean;
+  binaryPath?: string;
+  reason?: string;
+}
+
 export interface HealthResponse {
   status: 'ok' | string;
   uptime: number;
   processCount: number;
+  nativeFileIndex: NativeCapabilityStatus;
+  nativeNotesIndex: NativeCapabilityStatus;
 }
 
 export interface OpenApiDocument extends JsonObject {}

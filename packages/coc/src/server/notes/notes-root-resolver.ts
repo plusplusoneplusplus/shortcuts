@@ -36,6 +36,8 @@ export interface ResolvedNotesRoot {
     absolutePath: string;
     /** Whether this is the default managed root (under ~/.coc). */
     isDefault: boolean;
+    /** Whether this root is a protected collection derived from task settings. */
+    isTaskDerived?: boolean;
     /** The root identifier: 'default' for the managed root, or the relative path for repo-folder roots. */
     rootId: string;
 }
@@ -99,6 +101,7 @@ export function resolveNotesRoot(
         return {
             absolutePath: getRepoDataPath(dataDir, workspaceId, 'notes'),
             isDefault: true,
+            isTaskDerived: false,
             rootId: DEFAULT_ROOT_ID,
         };
     }
@@ -114,6 +117,7 @@ export function resolveNotesRoot(
         return {
             absolutePath: requestedTaskRoot.absolutePath,
             isDefault: false,
+            isTaskDerived: true,
             rootId: requestedTaskRoot.rootId,
         };
     }
@@ -158,6 +162,7 @@ export function resolveNotesRoot(
         return {
             absolutePath: overlappingTaskRoot.absolutePath,
             isDefault: false,
+            isTaskDerived: true,
             rootId: overlappingTaskRoot.rootId,
         };
     }
@@ -165,6 +170,7 @@ export function resolveNotesRoot(
     return {
         absolutePath,
         isDefault: false,
+        isTaskDerived: false,
         rootId: normalized,
     };
 }

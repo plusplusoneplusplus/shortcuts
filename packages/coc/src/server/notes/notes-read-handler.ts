@@ -18,12 +18,12 @@ import { sendJSON, sendError } from '../core/api-handler';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import type { Route } from '../types';
 import { getRepoDataPath } from '../paths';
-import type { ResolvedCLIConfig } from '../../config';
 import { readOrderFile, applyOrder } from './notes-order';
 import { SYSTEM_FOLDER_NAMES } from './notes-constants';
 import { resolveNotesRoot, isRootResolveError } from './notes-root-resolver';
 import { resolveSafeNotesPath, isNotesPathSafetyError } from './notes-path-safety';
 import { readRepoPreferences } from '../preferences-handler';
+import type { NotesSearchService } from './notes-search-service';
 
 // ============================================================================
 // Types
@@ -35,16 +35,6 @@ interface TreeNode {
     type: 'notebook' | 'section' | 'page';
     children?: TreeNode[];
     lastModifiedAt?: string;
-}
-
-interface SearchMatch {
-    line: number;
-    text: string;
-}
-
-interface SearchResult {
-    path: string;
-    matches: SearchMatch[];
 }
 
 // ============================================================================
@@ -133,81 +123,6 @@ async function buildTree(dir: string, basePath: string, safeRoot?: string): Prom
     return nodes;
 }
 
-/**
- * Recursively search all .md files for a query string (case-insensitive).
- */
-async function searchNotes(
-    dir: string,
-    basePath: string,
-    query: string,
-    results: SearchResult[],
-    totalMatches: { count: number },
-    maxFiles: number,
-    maxMatches: number,
-    skipSymlinks = false,
-): Promise<void> {
-    let entries: fs.Dirent[];
-    try {
-        entries = await fs.promises.readdir(dir, { withFileTypes: true });
-    } catch {
-        return;
-    }
-
-    const lowerQuery = query.toLowerCase();
-
-    for (const entry of entries) {
-        if (results.length >= maxFiles || totalMatches.count >= maxMatches) {
-            return;
-        }
-        if (skipSymlinks && entry.isSymbolicLink()) {
-            continue;
-        }
-
-        const entryPath = basePath ? `${basePath}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) {
-            await searchNotes(
-                path.join(dir, entry.name),
-                entryPath,
-                query,
-                results,
-                totalMatches,
-                maxFiles,
-                maxMatches,
-                skipSymlinks,
-            );
-        } else if (entry.name.endsWith('.md')) {
-            const matches: SearchMatch[] = [];
-
-            // Search filename
-            if (entry.name.toLowerCase().includes(lowerQuery)) {
-                matches.push({ line: 0, text: entry.name });
-                totalMatches.count++;
-            }
-
-            // Search content
-            if (totalMatches.count < maxMatches) {
-                try {
-                    const content = await fs.promises.readFile(path.join(dir, entry.name), 'utf-8');
-                    const lines = content.split('\n');
-                    for (let i = 0; i < lines.length; i++) {
-                        if (totalMatches.count >= maxMatches) break;
-                        if (lines[i].toLowerCase().includes(lowerQuery)) {
-                            matches.push({ line: i + 1, text: lines[i] });
-                            totalMatches.count++;
-                        }
-                    }
-                } catch {
-                    // Skip files that can't be read
-                }
-            }
-
-            if (matches.length > 0) {
-                results.push({ path: entryPath, matches });
-            }
-        }
-    }
-}
-
 // ============================================================================
 // Route Registration
 // ============================================================================
@@ -220,7 +135,7 @@ export function registerNotesRoutes(
     routes: Route[],
     store: ProcessStore,
     dataDir: string,
-    resolvedConfig?: ResolvedCLIConfig,
+    notesSearchService: NotesSearchService,
 ): void {
 
     // ------------------------------------------------------------------
@@ -347,32 +262,19 @@ export function registerNotesRoutes(
                 return sendError(res, rootResult.statusCode, rootResult.error);
             }
 
-            const notesRoot = rootResult.absolutePath;
-
-            const MAX_FILES = 50;
-            const MAX_MATCHES = 100;
-            const results: SearchResult[] = [];
-            const totalMatches = { count: 0 };
-
             try {
-                await fs.promises.access(notesRoot);
-            } catch {
-                return sendJSON(res, 200, { results: [], truncated: false });
+                const result = await notesSearchService.search({
+                    workspaceId: ws.id,
+                    rootId: rootResult.rootId,
+                    absolutePath: rootResult.absolutePath,
+                    isDefault: rootResult.isDefault,
+                    isTaskDerived: rootResult.isTaskDerived,
+                }, query);
+                sendJSON(res, 200, result);
+            } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : 'Unknown error';
+                return sendError(res, 500, 'Failed to search notes: ' + message);
             }
-
-            await searchNotes(
-                notesRoot,
-                '',
-                query,
-                results,
-                totalMatches,
-                MAX_FILES,
-                MAX_MATCHES,
-                !rootResult.isDefault,
-            );
-
-            const truncated = results.length >= MAX_FILES || totalMatches.count >= MAX_MATCHES;
-            sendJSON(res, 200, { results, truncated });
         },
     });
 }

@@ -7,7 +7,7 @@
  * Uses port 0 (OS-assigned) for test isolation.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -16,6 +16,7 @@ import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore, getRepoDataPath } from '@plusplusoneplusplus/forge';
 import type { ExecutionServer } from '../../src/server/types';
 import { validateConfigWithSchema } from '../../src/config/schema';
+import { writeRepoPreferences } from '../../src/server/preferences-handler';
 
 // ============================================================================
 // Helpers
@@ -925,6 +926,49 @@ describe('Notes Handler', () => {
             const body = JSON.parse(res.body);
             expect(body.results.length).toBeLessThanOrEqual(50);
             expect(body.truncated).toBe(true);
+        });
+
+        it('should refresh search results after an external file change', async () => {
+            const srv = await startServer();
+            createNoteFiles({
+                'watched.md': 'before watcher refresh',
+            });
+            await registerWorkspace(srv, workspaceDir);
+
+            const initial = await request(
+                `${srv.url}/api/workspaces/${wsId}/notes/search?q=before%20watcher%20refresh`,
+            );
+            expect(initial.status).toBe(200);
+            expect(JSON.parse(initial.body).results).toEqual([
+                expect.objectContaining({ path: 'watched.md' }),
+            ]);
+
+            createNoteFiles({
+                'watched.md': 'after watcher refresh',
+            });
+
+            await vi.waitFor(async () => {
+                const refreshed = await request(
+                    `${srv.url}/api/workspaces/${wsId}/notes/search?q=after%20watcher%20refresh`,
+                );
+                expect(refreshed.status).toBe(200);
+                expect(JSON.parse(refreshed.body).results).toEqual([
+                    expect.objectContaining({ path: 'watched.md' }),
+                ]);
+            }, { timeout: 10_000, interval: 50 });
+        }, 15_000);
+
+        it('should return an explicit server error when the native index build fails', async () => {
+            const srv = await startServer();
+            await registerWorkspace(srv, workspaceDir);
+            fs.writeFileSync(path.join(workspaceDir, 'not-a-directory'), 'plain file', 'utf-8');
+            writeRepoPreferences(dataDir, wsId, { additionalNotesRoots: ['not-a-directory'] });
+
+            const res = await request(
+                `${srv.url}/api/workspaces/${wsId}/notes/search?q=test&root=not-a-directory`,
+            );
+            expect(res.status).toBe(500);
+            expect(JSON.parse(res.body).error).toContain('Failed to search notes:');
         });
 
         it('should return 400 when q query param is missing', async () => {

@@ -4,6 +4,21 @@ import test from "node:test";
 
 const workflow = readFileSync(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
 
+/** A top-level job's body, from its `  <name>:` line to the next job's. */
+function jobBlock(name) {
+    const lines = workflow.split("\n");
+    const start = lines.indexOf(`  ${name}:`);
+    assert.notEqual(start, -1, `release.yml has no job named ${name}`);
+    let end = lines.length;
+    for (let i = start + 1; i < lines.length; i++) {
+        if (/^ {2}[\w-]+:$/.test(lines[i])) {
+            end = i;
+            break;
+        }
+    }
+    return lines.slice(start, end).join("\n");
+}
+
 test("release workflow can be dispatched for an existing tag", () => {
     assert.match(workflow, /workflow_dispatch:\n\s+inputs:\n\s+tag:/);
     assert.match(workflow, /ref: \$\{\{ github\.event\.inputs\.tag \|\| github\.ref \}\}/);
@@ -33,6 +48,24 @@ test("release workflow does not build a macOS x64 native binary", () => {
     assert.doesNotMatch(workflow, /darwin-x64/);
     assert.doesNotMatch(workflow, /macos-13/);
     assert.match(workflow, /triple: darwin-arm64/);
+});
+
+test("release artifacts cannot bypass the required native addon", () => {
+    assert.doesNotMatch(workflow, /allow_native_fallback/);
+    for (const name of ["build-mac", "build-win", "build-docker"]) {
+        const job = jobBlock(name);
+        assert.match(job, /^    needs: \[dependency-security, build-native\]$/m);
+        assert.doesNotMatch(job, /needs\.build-native\.result|if: >-/);
+        assert.match(job, /Download native addon binaries/);
+        assert.match(job, /Stage native addon binaries/);
+    }
+});
+
+test("release image smoke requires both native indexes", () => {
+    const job = jobBlock("build-docker");
+    assert.match(job, /!h\.nativeFileIndex\?\.loaded \|\| !h\.nativeNotesIndex\?\.loaded/);
+    assert.match(job, /native file index: loaded/);
+    assert.match(job, /native Notes index: loaded/);
 });
 
 // The release page ships installers only. The coc-native-* artifacts are the

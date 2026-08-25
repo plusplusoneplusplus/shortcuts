@@ -16,11 +16,6 @@ on:
         description: 'Existing release tag to build, for example v3.4.8-alpha.1'
         required: true
         type: string
-      allow_native_fallback:
-        description: 'Ship even if a native file-index binary fails to build (degrades that platform to the slow JS search)'
-        required: false
-        default: false
-        type: boolean
 
 # create-release needs the injected GITHUB_TOKEN to create a GitHub Release;
 # build-docker needs it to push to ghcr.io.
@@ -63,7 +58,7 @@ jobs:
         run: bash "$GITHUB_WORKSPACE/scripts/ci-npm-audit.sh"
         working-directory: scripts/skillopt
 
-      # The Rust file-index crate ships inside the release binaries, so its
+      # The Rust native capabilities ship inside the release binaries, so their
       # dependencies get the same gate the npm graph gets.
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -79,9 +74,8 @@ jobs:
   # tests before uploading — a release binary that never executed its tests on
   # its own platform does not ship.
   #
-  # Blocking by design: silently shipping the JavaScript fallback is exactly the
-  # regression this exists to prevent. Use the allow_native_fallback dispatch
-  # input to override.
+  # Blocking by design: production Notes search cannot start without a current
+  # native addon for the target platform.
   build-native:
     needs: dependency-security
     runs-on: ${{ matrix.runner }}
@@ -146,13 +140,6 @@ jobs:
 
   build-mac:
     needs: [dependency-security, build-native]
-    # A missing native binary blocks the release unless the dispatch explicitly
-    # opts into shipping the slower JavaScript file-search fallback.
-    if: >-
-      always()
-      && needs.dependency-security.result == 'success'
-      && (needs.build-native.result == 'success'
-          || github.event.inputs.allow_native_fallback == 'true')
     runs-on: macos-latest
     steps:
       - name: Checkout code
@@ -189,15 +176,13 @@ jobs:
       # electron-builder packs packages/coc-native/prebuilt/** with the app.
       # N-API binaries are ABI-stable, so the same file works under Node and
       # Electron — no electron-rebuild step, unlike better-sqlite3.
-      - name: Download native file-index binaries
-        if: needs.build-native.result == 'success'
+      - name: Download native addon binaries
         uses: actions/download-artifact@v4
         with:
           pattern: coc-native-darwin-*
           path: packages/coc-native/artifacts
 
-      - name: Stage native file-index binaries
-        if: needs.build-native.result == 'success'
+      - name: Stage native addon binaries
         shell: bash
         run: |
           node scripts/stage-native-binaries.mjs packages/coc-native/artifacts
@@ -222,13 +207,6 @@ jobs:
   # AC-04 — Windows installer (.exe via nsis). Mirrors build-mac.
   build-win:
     needs: [dependency-security, build-native]
-    # A missing native binary blocks the release unless the dispatch explicitly
-    # opts into shipping the slower JavaScript file-search fallback.
-    if: >-
-      always()
-      && needs.dependency-security.result == 'success'
-      && (needs.build-native.result == 'success'
-          || github.event.inputs.allow_native_fallback == 'true')
     runs-on: windows-latest
     steps:
       - name: Checkout code
@@ -259,15 +237,13 @@ jobs:
       - name: Build packages
         run: npm run build
 
-      - name: Download native file-index binaries
-        if: needs.build-native.result == 'success'
+      - name: Download native addon binaries
         uses: actions/download-artifact@v4
         with:
           pattern: coc-native-win32-*
           path: packages/coc-native/artifacts
 
-      - name: Stage native file-index binaries
-        if: needs.build-native.result == 'success'
+      - name: Stage native addon binaries
         shell: bash
         run: |
           node scripts/stage-native-binaries.mjs packages/coc-native/artifacts
@@ -296,13 +272,6 @@ jobs:
   # Tags: v3.4.8 → 3.4.8, 3.4, latest; v3.4.8-alpha.1 → 3.4.8-alpha.1 only.
   build-docker:
     needs: [dependency-security, build-native]
-    # A missing native binary blocks the release unless the dispatch explicitly
-    # opts into shipping the slower JavaScript file-search fallback.
-    if: >-
-      always()
-      && needs.dependency-security.result == 'success'
-      && (needs.build-native.result == 'success'
-          || github.event.inputs.allow_native_fallback == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -327,15 +296,13 @@ jobs:
 
       # Staged into the build context, not compiled in-image: the arm64 stage is
       # qemu-emulated and building Rust there would dominate the build time.
-      - name: Download native file-index binaries
-        if: needs.build-native.result == 'success'
+      - name: Download native addon binaries
         uses: actions/download-artifact@v4
         with:
           pattern: coc-native-linux-*
           path: packages/coc-native/artifacts
 
-      - name: Stage native file-index binaries
-        if: needs.build-native.result == 'success'
+      - name: Stage native addon binaries
         shell: bash
         run: |
           node scripts/stage-native-binaries.mjs packages/coc-native/artifacts
@@ -382,10 +349,9 @@ jobs:
           cache-to: type=gha,mode=max,scope=release
           provenance: false
 
-      # A packaging mistake must fail here, not degrade silently into the slow
-      # JavaScript file search in production.
-      - name: Smoke the pushed image and assert the native file index loaded
-        if: needs.build-native.result == 'success'
+      # A packaging mistake must fail here before publishing a server image
+      # that cannot provide production Notes search.
+      - name: Smoke the pushed image and assert both native indexes loaded
         shell: bash
         run: |
           IMAGE=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
@@ -397,12 +363,16 @@ jobs:
           done
           curl -sf http://127.0.0.1:4111/api/health \
             | node -e 'const h=JSON.parse(require("fs").readFileSync(0,"utf8"));
-                       if (!h.nativeFileIndex?.loaded) {
-                         console.error("✗ native file index did not load:", h.nativeFileIndex?.reason);
+                       if (!h.nativeFileIndex?.loaded || !h.nativeNotesIndex?.loaded) {
+                         console.error("✗ native indexes did not load:", {
+                           fileIndex: h.nativeFileIndex?.reason,
+                           notesIndex: h.nativeNotesIndex?.reason,
+                         });
                          process.exit(1);
                        }
-                       console.log("✓ native file index loaded:", h.nativeFileIndex.binaryPath);'
+                       console.log("✓ native file and Notes indexes loaded:", h.nativeNotesIndex.binaryPath);'
           docker logs coc-release-smoke 2>&1 | grep -F "native file index: loaded"
+          docker logs coc-release-smoke 2>&1 | grep -F "native Notes index: loaded"
 
   # AC-05 — collect both platforms' artifacts into a single draft release.
   create-release:

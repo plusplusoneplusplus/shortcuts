@@ -13,6 +13,8 @@
 import { loadNativeFileIndex } from '../src/file-index';
 import type { NativeFileIndexAddon } from '../src/file-index';
 import { resetNativeAddonCache } from '../src/loader';
+import { loadNativeNotesIndex } from '../src/notes-index';
+import type { NativeNotesIndexAddon } from '../src/notes-index';
 
 resetNativeAddonCache();
 
@@ -24,10 +26,13 @@ export const disabled = process.env.COC_NATIVE === '0';
 // paths tried and the fix — is exactly what the runner should print.
 export const addon: NativeFileIndexAddon | null = loadNativeFileIndex();
 
+/** The required Notes-index slice of the same compiled addon. */
+export const notesAddon: NativeNotesIndexAddon | null = disabled ? null : loadNativeNotesIndex();
+
 if (disabled) {
     // eslint-disable-next-line no-console
     console.warn(
-        '[coc-native] SKIPPING boundary tests — COC_NATIVE=0 disables the addon. ' +
+        '[coc-native] SKIPPING native boundary tests — COC_NATIVE=0 disables the addon. ' +
             'Unset it to exercise the real binary.',
     );
 }

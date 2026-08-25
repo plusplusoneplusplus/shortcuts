@@ -35,7 +35,7 @@ Execution routes (`/execute`, `/api/ralph-launch`, `/api/processes/:id/ralph-sta
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/health` | `{ status, uptime, processCount, nativeFileIndex: { loaded, binaryPath?, reason? } }`; `nativeFileIndex` reports whether the Rust file index backing quick-open search loaded or the JavaScript path is active |
+| GET | `/api/health` | `{ status, uptime, processCount, nativeFileIndex, nativeNotesIndex }`; each native status is `{ loaded, binaryPath?, reason? }`. File indexing may use its JavaScript fallback; Notes content search requires its native capability at startup |
 | GET | `/api/config` | Server configuration |
 | GET | `/api/config/runtime` | Dashboard feature flags + config revision: provider flags, `defaultProvider`, `autoAgentProviderRoutingEnabled`, `pullRequestsAutoClassifyTeamEnabled`, `workItemsWorkflowEnabled`, `gitWorktreeExecutionEnabled` (also the remote-target UI's worktree-execution capability signal) |
 | GET/PUT | `/api/preferences` | Read/update global UI preferences |

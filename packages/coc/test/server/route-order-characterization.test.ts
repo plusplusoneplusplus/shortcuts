@@ -117,6 +117,7 @@ describe('registerAllRoutes - Route Order Characterization', () => {
             resolvedAiService: {} as any,
             getWsServer: () => wsServer,
             queuePersistence: makeQueuePersistence(),
+            notesSearchService: { search: vi.fn() } as any,
             aiInvoker: vi.fn(),
             runtimeConfigService: {
                 config: {

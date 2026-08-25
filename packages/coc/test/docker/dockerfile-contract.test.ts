@@ -114,7 +114,7 @@ describe('Dockerfile contract', () => {
         }
     });
 
-    it('carries release-injected native file-index binaries into the image', () => {
+    it('carries release-injected native addon binaries into the image', () => {
         const lines = dockerignore.split('\n').map((l) => l.trim());
         // Compiled Rust output is local-only; the prebuilt binaries are not.
         expect(lines).toContain('packages/coc-native/rust/target');

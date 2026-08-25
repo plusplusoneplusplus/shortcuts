@@ -6,10 +6,10 @@
  * missing, will not load, or lacks the capability, so a packaging mistake
  * surfaces at startup instead of as a silently slower server.
  *
- * `COC_NATIVE=0` is the one exception — the accessors return `null` for it, so
- * an operator can deliberately run the JavaScript path on a machine with no
- * Rust toolchain. The `*Status` accessors never throw and report every one of
- * these states, which is what `/api/health` surfaces.
+ * `COC_NATIVE=0` lets capabilities with a supported JavaScript path opt out.
+ * The native-only Notes accessor still throws for that state. The `*Status`
+ * accessors never throw and report every one of these states, which is what
+ * startup diagnostics and `/api/health` can surface.
  *
  * Loading is capability-agnostic — a new capability adds a module beside
  * `file-index` and nothing else.
@@ -33,3 +33,13 @@ export type {
     NativeFileIndexAddon,
     NativeFileMatch,
 } from './file-index';
+
+export { loadNativeNotesIndex, nativeNotesIndexStatus } from './notes-index';
+export type {
+    NativeNotesIndex,
+    NativeNotesIndexAddon,
+    NativeNotesIndexBuildOptions,
+    NativeNotesMatch,
+    NativeNotesSearchResponse,
+    NativeNotesSearchResult,
+} from './notes-index';

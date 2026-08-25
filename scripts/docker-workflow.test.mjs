@@ -43,12 +43,15 @@ test("release notes tell users to run the image with host networking, not -p", (
 test("ci builds the image (no push) and smoke-tests health, loopback-only bind, drain, sidecar path, CLI", () => {
     assert.match(ci, /^  docker-build-smoke:$/m);
     const job = ci.slice(ci.indexOf("  docker-build-smoke:"), ci.indexOf("\n  ci:\n"));
+    assert.match(job, /^    needs: \[coc-native\]$/m);
+    assert.match(job, /name: coc-native-ubuntu-latest/);
+    assert.match(job, /stage-native-binaries\.mjs packages\/coc-native\/artifacts/);
     assert.match(job, /uses: docker\/build-push-action@v\d+\n\s+with:\n\s+context: \.\n\s+load: true/);
     assert.doesNotMatch(job, /push: true/);
-    // `[^\n]*` leaves room for flags like -e COC_NATIVE=0 without letting
-    // the host-network and loopback-bind arguments drift.
     assert.match(job, /docker run -d --name coc --network host [^\n]*coc:ci --host 127\.0\.0\.1 --port 4111/);
+    assert.doesNotMatch(job, /COC_NATIVE/);
     assert.match(job, /curl -sf http:\/\/127\.0\.0\.1:4111\/api\/health/);
+    assert.match(job, /!h\.nativeFileIndex\?\.loaded \|\| !h\.nativeNotesIndex\?\.loaded/);
     assert.match(job, /grep -qi " 0100007F:100F " \/proc\/net\/tcp/);
     assert.match(job, /docker stop -t \d+ coc\n[\s\S]*ExitCode/);
     assert.match(job, /docker run --rm --network container:coc2 curlimages\/curl/);
