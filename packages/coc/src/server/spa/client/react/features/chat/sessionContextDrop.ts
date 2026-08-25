@@ -28,6 +28,8 @@ import {
     type SessionContextSourceStatus,
     type WorkItemContextDragPayload,
 } from './sessionContextDrag';
+import { toForwardSlashes } from '@plusplusoneplusplus/forge/utils/path-utils';
+import { getSourceCanvasDisplayPath } from './source-canvas/resolve';
 
 export const MAX_ATTACHED_CONTEXT_ITEMS = 3;
 export const MAX_SESSION_CONTEXT_ATTACHMENTS = MAX_ATTACHED_CONTEXT_ITEMS;
@@ -52,6 +54,12 @@ const MAX_TITLE_LENGTH = 160;
 type SessionContextDataTransfer = Pick<DataTransfer, 'getData'> & {
     types?: Iterable<string>;
     dropEffect?: DataTransfer['dropEffect'];
+};
+
+/** The slice of a DataTransfer an OS (non-CoC) file drop needs. */
+type OsFileDataTransfer = {
+    types?: Iterable<string>;
+    files?: ArrayLike<File> | null;
 };
 
 export type SessionContextDropValidation =
@@ -382,6 +390,75 @@ export function readFilePathDragPayload(dataTransfer: SessionContextDataTransfer
  */
 export function formatFilePathInsertion(paths: readonly string[]): string {
     return paths.map(path => `\`${path}\``).join(' ') + ' ';
+}
+
+/**
+ * The desktop preload's `webUtils.getPathForFile` bridge, or null outside the
+ * Electron shell. `File.path` was removed in Electron 32+, so this bridge is
+ * the only way to recover an absolute path for a file dragged in from the OS.
+ * In a plain browser there is no bridge and an OS file drop stays unsupported.
+ */
+function getDesktopFilePathBridge(): ((file: File) => string | null) | null {
+    if (typeof window === 'undefined') return null;
+    const bridge = (window as {
+        cocDesktop?: { isDesktop?: boolean; getPathForFile?: unknown };
+    }).cocDesktop;
+    if (!bridge || bridge.isDesktop !== true) return null;
+    return typeof bridge.getPathForFile === 'function'
+        ? bridge.getPathForFile as (file: File) => string | null
+        : null;
+}
+
+/**
+ * True when the drag looks like files coming from the OS file manager AND the
+ * desktop bridge can resolve their paths. During `dragover` the browser hides
+ * `dataTransfer.files`, so only the `types` list is trustworthy here — that is
+ * why this checks the "Files" type rather than the file list.
+ */
+export function dataTransferHasOsFileDrag(
+    dataTransfer: OsFileDataTransfer | null | undefined,
+): boolean {
+    if (!dataTransfer || !getDesktopFilePathBridge()) return false;
+    return Array.from(dataTransfer.types ?? []).includes('Files');
+}
+
+/**
+ * Absolute paths of the files in an OS drop, each mapped to a
+ * workspace-relative path when it lives inside `workspaceRoot` and left
+ * absolute otherwise. Returns an empty array outside the desktop shell, which
+ * is the caller's signal to leave the drop alone.
+ */
+export function readOsFileDropPaths(
+    dataTransfer: OsFileDataTransfer | null | undefined,
+    workspaceRoot?: string | null,
+): string[] {
+    const bridge = getDesktopFilePathBridge();
+    if (!bridge || !dataTransfer?.files) return [];
+    const paths: string[] = [];
+    for (const file of Array.from(dataTransfer.files)) {
+        let fullPath: string | null = null;
+        try {
+            fullPath = bridge(file);
+        } catch {
+            fullPath = null;
+        }
+        if (typeof fullPath !== 'string') continue;
+        const trimmed = fullPath.trim();
+        if (!trimmed) continue;
+        paths.push(toWorkspaceDropPath(trimmed, workspaceRoot));
+    }
+    return paths;
+}
+
+/**
+ * Inside the workspace root -> repo-relative path; outside it (or with no known
+ * root) -> the absolute path, unchanged. Both sides are normalized to forward
+ * slashes so a Windows drop inserts the same shape as macOS/Linux.
+ */
+export function toWorkspaceDropPath(fullPath: string, workspaceRoot?: string | null): string {
+    const normalizedFile = toForwardSlashes(fullPath);
+    const root = typeof workspaceRoot === 'string' ? toForwardSlashes(workspaceRoot).trim() : '';
+    return getSourceCanvasDisplayPath(normalizedFile, root || null);
 }
 
 /**
