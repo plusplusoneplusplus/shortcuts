@@ -12,6 +12,72 @@
  * binary the loader resolves.
  */
 
+/**
+ * Query modes, scoping and caps for one content search.
+ *
+ * Every field is optional; omitting all of them searches the whole repo for a
+ * case-insensitive literal with the documented caps.
+ */
+export interface SearchContentOptions {
+  /** Repo-relative subfolder to search. Omit for the whole repo. */
+  path?: string
+  /** Match case exactly. Defaults to false. */
+  caseSensitive?: boolean
+  /** Require word boundaries around the query. Defaults to false. */
+  wholeWord?: boolean
+  /** Treat the query as a regular expression rather than a literal. */
+  regex?: boolean
+  /** Search files `.gitignore` excludes — the explorer's `showIgnored` flag. */
+  showIgnored?: boolean
+  /** Whitelist globs. When non-empty, a file matching none of them is skipped. */
+  include?: Array<string>
+  /** Globs whose matches are skipped. */
+  exclude?: Array<string>
+  /** Cap on total matches. Defaults to 500. */
+  maxResults?: number
+  /** Cap on matches from any one file. Defaults to 20. */
+  maxPerFile?: number
+  /** Files larger than this are skipped. Defaults to 1 MiB. */
+  maxFileSizeBytes?: number
+  /** Lines of context on each side of a match. Defaults to 1. */
+  contextLines?: number
+}
+/** One matching line, with its position inside the line and its neighbours. */
+export interface ContentMatch {
+  /** Repo-relative path with `/` separators on every platform. */
+  path: string
+  /** One-based line number. */
+  line: number
+  /** The matching line without its trailing newline, possibly truncated. */
+  text: string
+  /**
+   * UTF-16 offset of the match within `text` — the same offset a JavaScript
+   * string index would use, so highlight and match cannot disagree.
+   */
+  startColumn: number
+  /** UTF-16 offset one past the end of the match within `text`. */
+  endColumn: number
+  /** Lines preceding `line`, in file order. */
+  before: Array<string>
+  /** Lines following `line`, in file order. */
+  after: Array<string>
+}
+/** The bounded response from one content search. */
+export interface ContentSearchResult {
+  /** Matches sorted by path, then by line. */
+  matches: Array<ContentMatch>
+  /**
+   * True when any cap bit: the total cap, a per-file cap, or a file skipped
+   * for exceeding `maxFileSizeBytes`.
+   */
+  truncated: boolean
+}
+/**
+ * Walk `root` in parallel and resolve with every line matching `query`.
+ *
+ * An empty query resolves with an empty result rather than every line.
+ */
+export declare function searchContent(root: string, query: string, options?: SearchContentOptions | undefined | null): Promise<ContentSearchResult>
 /** How to build (and later refresh) an index. */
 export interface BuildOptions {
   /** Include gitignored files — the `showIgnored` flag from the explorer. */

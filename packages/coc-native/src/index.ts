@@ -33,6 +33,14 @@ export type {
     NativeFileMatch,
 } from './file-index';
 
+export { loadNativeContentSearch, nativeContentSearchStatus } from './content-search';
+export type {
+    NativeContentMatch,
+    NativeContentSearchAddon,
+    NativeContentSearchOptions,
+    NativeContentSearchResult,
+} from './content-search';
+
 export { loadNativeNotesIndex, nativeNotesIndexStatus } from './notes-index';
 export type {
     NativeNotesIndex,

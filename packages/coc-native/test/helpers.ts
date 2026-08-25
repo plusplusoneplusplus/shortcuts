@@ -7,6 +7,8 @@
  * that turns these suites into skips.
  */
 
+import { loadNativeContentSearch } from '../src/content-search';
+import type { NativeContentSearchAddon } from '../src/content-search';
 import { loadNativeFileIndex } from '../src/file-index';
 import type { NativeFileIndexAddon } from '../src/file-index';
 import { resetNativeAddonCache } from '../src/loader';
@@ -19,6 +21,9 @@ resetNativeAddonCache();
 // be loaded, and that error — naming the triple, the paths tried and the fix —
 // is exactly what the runner should print.
 export const addon: NativeFileIndexAddon = loadNativeFileIndex();
+
+/** The required content-search slice of the same compiled addon. */
+export const contentSearchAddon: NativeContentSearchAddon = loadNativeContentSearch();
 
 /** The required Notes-index slice of the same compiled addon. */
 export const notesAddon: NativeNotesIndexAddon = loadNativeNotesIndex();
