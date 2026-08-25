@@ -54,6 +54,12 @@ describe('CrossCloneCherryPickModal', () => {
         expect(source).toContain('sourceCommit: exported.sourceCommit');
         expect(source).toContain('sourceCommits: exported.sourceCommits');
         expect(source).toContain('normalizedSourceRemoteUrl: exported.normalizedSourceRemoteUrl');
+        expect(source).toContain('sourceRepoName: exported.sourceRepoName');
+    });
+
+    it('explains a server-side repo-mismatch rejection', () => {
+        expect(source).toContain("body.code === 'repo-mismatch'");
+        expect(source).toContain('not a clone of this repository');
     });
 
     it('uses the initiating server orchestrator for remote CoC targets', () => {

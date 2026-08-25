@@ -12,9 +12,10 @@
  * Pure Node.js. Cross-platform compatible.
  */
 
-import { detectRemoteUrl, normalizeRemoteUrl } from '@plusplusoneplusplus/forge';
+import { detectRemoteUrl, isSameRepoClone, resolveRepoIdentity } from '@plusplusoneplusplus/forge';
 import type {
     BranchStatus,
+    RepoIdentity,
     GitPatchApplyResult,
     GitPatchExportResult,
     GitPatchMultiExportResult,
@@ -55,6 +56,9 @@ export interface PatchTransferResponse {
 
 const STASH_MESSAGE = 'CoC patch-transfer cherry-pick';
 
+/** Machine-readable code for "the target is not a clone of the source repository". */
+export const REPO_MISMATCH_CODE = 'repo-mismatch';
+
 export class GitPatchTransferService {
     constructor(private readonly deps: GitPatchTransferServiceDeps) {}
 
@@ -71,11 +75,13 @@ export class GitPatchTransferService {
             if (!result.success) throw notFound('Commit');
 
             const sourceCommits = result.commits.map(toGitOpCommitMetadata);
+            const identity = await this.resolveRepoIdentityFor(ws);
             return {
                 sourceWorkspace,
                 sourceCommit: sourceCommits[0],
                 sourceCommits,
-                normalizedSourceRemoteUrl: await this.resolveNormalizedRemoteUrl(ws),
+                normalizedSourceRemoteUrl: identity.normalizedOrigin,
+                sourceRepoName: identity.repoName,
                 patch: { format: 'format-patch', body: result.patch },
             };
         }
@@ -84,10 +90,12 @@ export class GitPatchTransferService {
         const result = await this.deps.branchService.exportCommitPatch(ws.rootPath, hash);
         if (!result.success) throw notFound('Commit');
 
+        const identity = await this.resolveRepoIdentityFor(ws);
         return {
             sourceWorkspace,
             sourceCommit: toGitOpCommitMetadata(result),
-            normalizedSourceRemoteUrl: await this.resolveNormalizedRemoteUrl(ws),
+            normalizedSourceRemoteUrl: identity.normalizedOrigin,
+            sourceRepoName: identity.repoName,
             patch: { format: 'format-patch', body: result.patch },
         };
     }
@@ -101,6 +109,9 @@ export class GitPatchTransferService {
         if (body?.patch?.format !== 'format-patch' || !patchBody || !patchBody.trim()) {
             throw badRequest('Missing or invalid format-patch payload');
         }
+
+        const mismatch = await this.rejectForeignRepo(ws, body);
+        if (mismatch) return mismatch;
 
         const preflight = await this.preflight(ws);
         if ('status' in preflight) return preflight;
@@ -155,6 +166,32 @@ export class GitPatchTransferService {
     }
 
     /**
+     * Refuse a patch whose source is not a clone of this workspace's repository.
+     *
+     * Runs before `preflight`, `git am`, and any stash, so a rejected request
+     * leaves the target working tree untouched. There is no override flag: a
+     * request that carries no source identity at all is rejected too, so the
+     * check can never be bypassed by omitting the field.
+     */
+    private async rejectForeignRepo(ws: WorkspaceInfo, body: any): Promise<PatchTransferResponse | null> {
+        const sourceIdentity = parseRequestSourceIdentity(body);
+        if (!sourceIdentity) {
+            return repoMismatchResponse(
+                'Patch request does not identify its source repository, so it cannot be verified as a clone of the target.',
+            );
+        }
+
+        const targetIdentity = await this.resolveRepoIdentityFor(ws);
+        if (isSameRepoClone(sourceIdentity, targetIdentity)) return null;
+
+        return repoMismatchResponse(
+            `Target workspace "${ws.name}" is not a clone of the source repository`,
+            describeRepo(sourceIdentity),
+            describeRepo(targetIdentity),
+        );
+    }
+
+    /**
      * Reject targets that cannot safely take a patch: an in-progress git
      * operation, a non-repo, or detached HEAD.
      */
@@ -189,13 +226,13 @@ export class GitPatchTransferService {
     }
 
     /**
-     * The source workspace's remote in normalized form, so the target can tell
-     * whether both sides are clones of the same repository.
+     * The workspace's repo identity, so both sides can tell whether they are
+     * clones of the same repository.
      * Backfills `workspace.remoteUrl` when it was previously unknown.
      */
-    private async resolveNormalizedRemoteUrl(ws: WorkspaceInfo): Promise<string | null> {
+    private async resolveRepoIdentityFor(ws: WorkspaceInfo): Promise<RepoIdentity> {
         const remoteUrl = await this.resolveRemoteUrl(ws);
-        return remoteUrl ? normalizeRemoteUrl(remoteUrl) || null : null;
+        return resolveRepoIdentity({ remoteUrl, name: ws.name, rootPath: ws.rootPath });
     }
 
     private async resolveRemoteUrl(ws: WorkspaceInfo): Promise<string | undefined> {
@@ -206,4 +243,38 @@ export class GitPatchTransferService {
         }
         return remoteUrl;
     }
+}
+
+/** A 400 the route emits verbatim; `code` stays machine-readable across remote hops. */
+function repoMismatchResponse(message: string, sourceRepo?: string, targetRepo?: string): PatchTransferResponse {
+    return {
+        status: 400,
+        payload: {
+            error: message,
+            code: REPO_MISMATCH_CODE,
+            ...(sourceRepo ? { sourceRepo } : {}),
+            ...(targetRepo ? { targetRepo } : {}),
+        },
+    };
+}
+
+/** Human-readable label for a repo identity, preferring the origin. */
+function describeRepo(identity: RepoIdentity): string | undefined {
+    return identity.normalizedOrigin || identity.repoName || undefined;
+}
+
+/**
+ * The source identity carried by an (untrusted) apply request.
+ *
+ * A reported origin is authoritative; otherwise the source must at least name
+ * its repository. Returns null when neither is present.
+ */
+function parseRequestSourceIdentity(body: any): RepoIdentity | null {
+    const origin = typeof body?.normalizedSourceRemoteUrl === 'string' ? body.normalizedSourceRemoteUrl.trim() : '';
+    if (origin) return resolveRepoIdentity({ remoteUrl: origin });
+
+    const repoName = typeof body?.sourceRepoName === 'string' ? body.sourceRepoName.trim() : '';
+    if (repoName) return resolveRepoIdentity({ name: repoName });
+
+    return null;
 }

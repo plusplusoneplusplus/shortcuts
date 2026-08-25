@@ -173,6 +173,7 @@ export class CherryPickTransferService {
             sourceCommit: exported.sourceCommit,
             sourceCommits,
             normalizedSourceRemoteUrl: exported.normalizedSourceRemoteUrl,
+            sourceRepoName: exported.sourceRepoName,
         };
         const applied = await callEndpoint<GitPatchApplyResponse>(
             targetEndpoint,

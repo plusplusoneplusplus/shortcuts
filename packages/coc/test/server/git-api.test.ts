@@ -462,6 +462,7 @@ describe('Git API endpoints', () => {
                     },
                 },
                 normalizedSourceRemoteUrl: 'example.com/org/repo',
+                sourceRepoName: 'repo',
                 patch: {
                     format: 'format-patch',
                     body: 'From abcdef1234567890 Mon Sep 17 00:00:00 2001\nSubject: [PATCH] Add portable patch export\n',
@@ -551,6 +552,8 @@ describe('Git API endpoints', () => {
             format: 'format-patch',
             body: 'From abcdef1234567890 Mon Sep 17 00:00:00 2001\nSubject: [PATCH] Add portable patch apply\n',
         };
+        /** Every apply must identify its source repo; this one matches the test workspace's origin. */
+        const sourceRepo = { normalizedSourceRemoteUrl: 'https://token@example.com/org/repo.git' };
 
         it('applies a patch payload and returns target branch plus new commit hash', async () => {
             mockApplyCommitPatch.mockResolvedValue({
@@ -656,7 +659,7 @@ describe('Git API endpoints', () => {
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/patch/apply`, {
                 method: 'POST',
-                body: JSON.stringify({ patch, sourceCommit: sourceCommits[0], sourceCommits }),
+                body: JSON.stringify({ patch, ...sourceRepo, sourceCommit: sourceCommits[0], sourceCommits }),
             });
 
             expect(res.status).toBe(200);
@@ -681,7 +684,7 @@ describe('Git API endpoints', () => {
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/patch/apply`, {
                 method: 'POST',
-                body: JSON.stringify({ patch, stashAndContinue: true }),
+                body: JSON.stringify({ patch, ...sourceRepo, stashAndContinue: true }),
             });
 
             expect(res.status).toBe(200);
@@ -704,7 +707,7 @@ describe('Git API endpoints', () => {
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/patch/apply`, {
                 method: 'POST',
-                body: JSON.stringify({ patch }),
+                body: JSON.stringify({ patch, ...sourceRepo }),
             });
 
             expect(res.status).toBe(409);
@@ -731,7 +734,7 @@ describe('Git API endpoints', () => {
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/patch/apply`, {
                 method: 'POST',
-                body: JSON.stringify({ patch }),
+                body: JSON.stringify({ patch, ...sourceRepo }),
             });
 
             expect(res.status).toBe(409);
@@ -757,7 +760,7 @@ describe('Git API endpoints', () => {
 
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/patch/apply`, {
                 method: 'POST',
-                body: JSON.stringify({ patch }),
+                body: JSON.stringify({ patch, ...sourceRepo }),
             });
 
             expect(res.status).toBe(409);

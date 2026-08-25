@@ -167,6 +167,7 @@ export function CrossCloneCherryPickModal({
                     sourceCommit: exported.sourceCommit,
                     sourceCommits: exported.sourceCommits ?? [exported.sourceCommit],
                     normalizedSourceRemoteUrl: exported.normalizedSourceRemoteUrl,
+                    sourceRepoName: exported.sourceRepoName,
                 });
                 setResultServerLabel(selectedTarget.server.label);
                 setResult(response);
@@ -408,6 +409,9 @@ function getApplyErrorMessage(error: unknown, commitCount = 1): string {
                 ? `Applied ${appliedCount} of ${commitCount} commits; commit ${appliedCount + 1} conflicts. `
                 : '';
             return `${progress}Cherry-pick transfer has conflicts in the target workspace. Resolve locally, then continue or abort the in-progress git am operation.`;
+        }
+        if (body.code === 'repo-mismatch') {
+            return 'The target workspace is not a clone of this repository, so the patch was rejected. Pick a clone of the same repository.';
         }
         if (body.dirty === true) {
             return 'The target workspace has uncommitted changes. Check "Stash target workspace changes before applying" to continue explicitly.';

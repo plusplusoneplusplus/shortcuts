@@ -75,6 +75,14 @@ conflicting commit on a mid-range conflict. Local targets call
 `git.exportCommitPatches` + `git.applyCommitPatch`; remote targets call the initiating
 server's `servers.cherryPickTransfer` orchestrator with `source.commitHashes`.
 
+The same-repo rule is enforced server-side too, so the API cannot be bypassed:
+`/git/patch/export` reports `normalizedSourceRemoteUrl` **and** `sourceRepoName`, and
+`/git/patch/apply` resolves the target's own identity and rejects anything that is not a
+clone of the source with `400 { error, code: 'repo-mismatch' }` before preflight, `git am`,
+or any stash. A request carrying no source identity is rejected the same way — there is no
+override flag. `cherryPickTransfer` forwards `sourceRepoName` and propagates the 400 with
+its code intact.
+
 ## Git worktree execution
 
 `features.gitWorktreeExecution` (disabled by default) adds
