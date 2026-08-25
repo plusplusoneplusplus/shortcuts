@@ -1,12 +1,11 @@
 import type { GitInfoResponse, WorkspaceInfo } from '@plusplusoneplusplus/coc-client';
 import {
-    isSameNormalizedOrigin,
     isSameRepoClone,
     resolveRepoIdentity,
 } from '@plusplusoneplusplus/forge/git/repo-identity';
 import { normalizeRemoteUrl, remoteUrlLabel } from '../../repos/repoGrouping';
 
-export type CrossCloneRemoteStatus = 'same-remote' | 'cross-remote' | 'unknown';
+export type CrossCloneRemoteStatus = 'same-remote' | 'unknown';
 
 export const LOCAL_COC_SERVER_ID = 'local';
 export const LOCAL_COC_SERVER_LABEL = 'Current CoC';
@@ -164,8 +163,10 @@ function getRemoteStatus(
     normalizedSourceRemoteUrl: string | null,
     normalizedTargetRemoteUrl: string | null,
 ): CrossCloneRemoteStatus {
+    // Targets are pre-filtered to clones of the source repository, so a target that
+    // knows its origin always matches the source origin.
     if (!normalizedSourceRemoteUrl || !normalizedTargetRemoteUrl) return 'unknown';
-    return isSameNormalizedOrigin(normalizedSourceRemoteUrl, normalizedTargetRemoteUrl) ? 'same-remote' : 'cross-remote';
+    return 'same-remote';
 }
 
 function compareGroups(a: CrossCloneCherryPickTargetGroup, b: CrossCloneCherryPickTargetGroup): number {
@@ -182,7 +183,5 @@ function compareTargets(a: CrossCloneCherryPickTarget, b: CrossCloneCherryPickTa
 }
 
 function statusRank(status: CrossCloneRemoteStatus): number {
-    if (status === 'same-remote') return 0;
-    if (status === 'cross-remote') return 1;
-    return 2;
+    return status === 'same-remote' ? 0 : 1;
 }

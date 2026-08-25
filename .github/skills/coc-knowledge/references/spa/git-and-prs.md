@@ -68,9 +68,8 @@ keeps only clones of the source repository (`isSameRepoClone` from
 `@plusplusoneplusplus/forge/git/repo-identity`: equal case-insensitive normalized
 origins, or equal repo names when either side has no remote) and hides the rest with
 no reveal toggle, groups the survivors by normalized remote URL, recommends
-same-remote clones, labels each target with its CoC server, and requires explicit
-confirmation for a cross-remote
-target and explicit opt-in to stash a dirty target. The range exports as **one
+same-remote clones, labels each target with its CoC server (badge: `Same remote` or
+`Remote unknown`), and requires explicit opt-in to stash a dirty target. The range exports as **one
 concatenated `git am` mailbox**; the modal reports the applied count and names the
 conflicting commit on a mid-range conflict. Local targets call
 `git.exportCommitPatches` + `git.applyCommitPatch`; remote targets call the initiating

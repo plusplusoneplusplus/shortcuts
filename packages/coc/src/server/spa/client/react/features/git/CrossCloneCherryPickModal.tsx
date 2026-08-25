@@ -40,7 +40,6 @@ export function CrossCloneCherryPickModal({
     const [loadingTargets, setLoadingTargets] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [selectedTargetKey, setSelectedTargetKey] = useState<string>('');
-    const [crossRemoteConfirmed, setCrossRemoteConfirmed] = useState(false);
     const [stashAndContinue, setStashAndContinue] = useState(false);
     const [applying, setApplying] = useState(false);
     const [applyError, setApplyError] = useState<string | null>(null);
@@ -56,7 +55,6 @@ export function CrossCloneCherryPickModal({
         setResult(null);
         setResultServerLabel(null);
         setSelectedTargetKey('');
-        setCrossRemoteConfirmed(false);
         setStashAndContinue(false);
         setRemoteTargetSources([]);
         setRemoteLoadWarnings([]);
@@ -146,7 +144,6 @@ export function CrossCloneCherryPickModal({
     }, [open, selectedTargetKey, targets]);
 
     useEffect(() => {
-        setCrossRemoteConfirmed(false);
         setStashAndContinue(false);
         setApplyError(null);
         setResult(null);
@@ -202,12 +199,10 @@ export function CrossCloneCherryPickModal({
 
     const sourceName = resolvedSourceWorkspace?.name || sourceWorkspaceId;
     const sourceBranchLabel = sourceGitInfo?.branch ?? sourceBranch ?? 'unknown';
-    const selectedIsCrossRemote = selectedTarget?.remoteStatus === 'cross-remote';
     const selectedIsDirty = selectedTarget?.gitInfo?.dirty === true;
     const canApply = Boolean(selectedTarget)
         && !selectedTarget?.disabledReason
         && !applying
-        && (!selectedIsCrossRemote || crossRemoteConfirmed)
         && (!selectedIsDirty || stashAndContinue);
 
     return (
@@ -349,19 +344,6 @@ export function CrossCloneCherryPickModal({
                     </section>
                 )}
 
-                {selectedTarget?.remoteStatus === 'cross-remote' && (
-                    <label className="rounded border border-[#f1d18a] dark:border-[#5a4218] bg-[#fff8e1] dark:bg-[#2a210f] p-3 text-sm text-[#5f4200] dark:text-[#ffdf91] flex gap-2">
-                        <input
-                            type="checkbox"
-                            checked={crossRemoteConfirmed}
-                            onChange={event => setCrossRemoteConfirmed(event.target.checked)}
-                        />
-                        <span>
-                            I understand the source and target remotes differ, and I want to apply this patch to the selected cross-remote workspace.
-                        </span>
-                    </label>
-                )}
-
                 {selectedTarget?.gitInfo?.dirty && (
                     <label className="rounded border border-[#f1d18a] dark:border-[#5a4218] bg-[#fff8e1] dark:bg-[#2a210f] p-3 text-sm text-[#5f4200] dark:text-[#ffdf91] flex gap-2">
                         <input
@@ -393,14 +375,11 @@ export function CrossCloneCherryPickModal({
 }
 
 function remoteStatusLabel(status: CrossCloneCherryPickTarget['remoteStatus']): string {
-    if (status === 'same-remote') return 'Same remote';
-    if (status === 'cross-remote') return 'Cross remote';
-    return 'Remote unknown';
+    return status === 'same-remote' ? 'Same remote' : 'Remote unknown';
 }
 
 function remoteBadgeClass(status: CrossCloneCherryPickTarget['remoteStatus']): string {
     if (status === 'same-remote') return 'rounded bg-[#e6f4ea] dark:bg-[#183a24] px-1.5 py-0.5 text-[10px] text-[#16825d] dark:text-[#7ee787]';
-    if (status === 'cross-remote') return 'rounded bg-[#fff4ce] dark:bg-[#332a12] px-1.5 py-0.5 text-[10px] text-[#8a5a00] dark:text-[#ffdf91]';
     return 'rounded bg-[#eeeeee] dark:bg-[#333] px-1.5 py-0.5 text-[10px] text-[#616161] dark:text-[#aaa]';
 }
 

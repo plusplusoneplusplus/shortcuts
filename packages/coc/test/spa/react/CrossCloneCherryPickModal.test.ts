@@ -76,10 +76,21 @@ describe('CrossCloneCherryPickModal', () => {
         expect(source).toContain('Server: {selectedTarget.server.label}');
     });
 
-    it('requires explicit confirmation for cross-remote targets before applying', () => {
-        expect(source).toContain("selectedTarget?.remoteStatus === 'cross-remote'");
-        expect(source).toContain('crossRemoteConfirmed');
-        expect(source).toContain('source and target remotes differ');
+    it('has no cross-remote acknowledgement because targets are filtered to same-repo clones', () => {
+        expect(source).not.toContain('cross-remote');
+        expect(source).not.toContain('crossRemoteConfirmed');
+        expect(source).not.toContain('source and target remotes differ');
+        expect(source).not.toContain('Cross remote');
+    });
+
+    it('gates apply on the target being selectable and the stash opt-in only', () => {
+        expect(source).toContain('const canApply = Boolean(selectedTarget)');
+        expect(source).toContain('!selectedTarget?.disabledReason');
+        expect(source).toContain('(!selectedIsDirty || stashAndContinue)');
+    });
+
+    it('keeps a same-remote / remote-unknown badge', () => {
+        expect(source).toContain("status === 'same-remote' ? 'Same remote' : 'Remote unknown'");
     });
 
     it('requires explicit stash opt-in for dirty targets', () => {

@@ -189,4 +189,24 @@ describe('buildCrossCloneCherryPickTargetGroups', () => {
         expect(new Set(targets.map(target => target.key)).size).toBe(3);
         expect(targets.every(target => target.remoteStatus === 'same-remote')).toBe(true);
     });
+    it('reports only same-remote or unknown status, never cross-remote', () => {
+        const groups = buildCrossCloneCherryPickTargetGroups(
+            'source',
+            null,
+            [
+                workspace('source', 'Repo'),
+                workspace('sibling', 'Repo'),
+                workspace('unrelated', 'Other'),
+            ],
+            {
+                sibling: gitInfo(),
+                unrelated: gitInfo(),
+            },
+        );
+
+        const targets = groups.flatMap(group => group.targets);
+        expect(targets.map(target => target.workspace.id)).toEqual(['sibling']);
+        expect(groups.map(group => group.remoteStatus)).toEqual(['unknown']);
+        expect(targets.every(target => target.remoteStatus === 'unknown')).toBe(true);
+    });
 });
