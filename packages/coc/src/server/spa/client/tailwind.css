@@ -2984,6 +2984,11 @@
 
 /* Ask-user inline questions render real <strong>, <ol>, <code>, etc. via marked.
    Provide tight prose styling so the bordered question card stays compact. */
+/* Long words, URLs and code spans must wrap instead of pushing the question
+   card's content past its border. */
+.ask-user-markdown { min-width: 0; overflow-wrap: anywhere; }
+.ask-user-markdown pre { max-width: 100%; }
+.ask-user-markdown img { max-width: 100%; height: auto; }
 .ask-user-markdown > :first-child { margin-top: 0; }
 .ask-user-markdown > :last-child { margin-bottom: 0; }
 .ask-user-markdown p { margin: 0.25rem 0; line-height: 1.5; }

@@ -39,15 +39,16 @@ interface QuestionState {
 const CUSTOM_OPTION_VALUE = '__ask_user_custom__';
 
 /**
- * Compact option rows: the label and its description share one line, and the
- * description truncates (full text stays available via the row's title
- * tooltip) so a long option list stays scannable instead of spanning the card.
+ * Compact option rows: the label and its description share one line, and both
+ * truncate (full text stays available via the row's title tooltip) so a long
+ * option never renders past the card's border. The description carries a large
+ * shrink factor so it collapses first and the label stays readable.
  */
-const OPTION_ROW_CLASS = 'flex items-baseline gap-2 cursor-pointer group rounded px-1.5 py-[3px] hover:bg-black/[0.03] dark:hover:bg-white/5';
+const OPTION_ROW_CLASS = 'flex w-full min-w-0 items-baseline gap-2 cursor-pointer group rounded px-1.5 py-[3px] hover:bg-black/[0.03] dark:hover:bg-white/5';
 const OPTION_ROW_SELECTED_CLASS = 'bg-[#0078d4]/10';
 const OPTION_INPUT_CLASS = 'h-3 w-3 shrink-0 self-center accent-[#0078d4]';
-const OPTION_LABEL_CLASS = 'shrink-0 text-[13px] leading-5 text-[#1e1e1e] dark:text-[#cccccc] group-hover:text-[#0078d4]';
-const OPTION_DESCRIPTION_CLASS = 'min-w-0 truncate text-[11px] leading-5 text-[#848484] ask-user-markdown ask-user-markdown--description';
+const OPTION_LABEL_CLASS = 'min-w-0 truncate text-[13px] leading-5 text-[#1e1e1e] dark:text-[#cccccc] group-hover:text-[#0078d4]';
+const OPTION_DESCRIPTION_CLASS = 'min-w-0 shrink-[9999] truncate text-[11px] leading-5 text-[#848484] ask-user-markdown ask-user-markdown--description';
 
 function optionRowClass(selected: boolean): string {
     return selected ? `${OPTION_ROW_CLASS} ${OPTION_ROW_SELECTED_CLASS}` : OPTION_ROW_CLASS;
@@ -291,8 +292,8 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
     }, [answers, batch.batchId, batch.questions, onAnswered, processId, cloneClient]);
 
     return (
-        <div className="mx-2 my-3 rounded-md border border-[#0078d4]/30 bg-[#f0f6ff] dark:bg-[#1a2332] px-2.5 py-2 shadow-sm" data-testid="ask-user-inline">
-            <div className="flex items-center gap-2 mb-1.5">
+        <div className="mx-2 my-3 overflow-hidden rounded-md border border-[#0078d4]/30 bg-[#f0f6ff] dark:bg-[#1a2332] px-2.5 py-2 shadow-sm" data-testid="ask-user-inline">
+            <div className="flex flex-wrap items-center gap-2 mb-1.5">
                 <span className="text-xs">🤖</span>
                 <p className="text-xs font-semibold text-[#1e1e1e] dark:text-[#e0e0e0]">The AI needs your input</p>
                 <p className="text-[11px] text-[#848484]">
@@ -392,7 +393,7 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                             ) : (
                                 <>
                                     {question.type === 'select' && question.options && (
-                                        <div className="mt-1 ml-4">
+                                        <div className="mt-1 ml-4 min-w-0">
                                             {question.options.map(opt => (
                                                 <label
                                                     key={opt.value}
@@ -456,7 +457,7 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                                     )}
 
                                     {question.type === 'multi-select' && question.options && (
-                                        <div className="mt-1 ml-4">
+                                        <div className="mt-1 ml-4 min-w-0">
                                             {question.options.map(opt => (
                                                 <label
                                                     key={opt.value}
