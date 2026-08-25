@@ -2,14 +2,19 @@
  * AC-03 — repo-group member context injection at chat dispatch.
  *
  * Both dispatch paths — first turns (ChatBaseExecutor.execute) and follow-ups
- * (FollowUpExecutor.executeFollowUp) — must append the live-member listing to
- * the outgoing prompt and pass the same member root paths via
- * `additionalDirectories`. Non-group workspaces are untouched, and stale
- * members are silently skipped.
+ * (FollowUpExecutor.executeFollowUp) — pass the live member root paths via
+ * `additionalDirectories` on EVERY turn. Non-group workspaces are untouched,
+ * and stale members are silently skipped everywhere.
  *
- * Both paths also record the injected block verbatim on the user turn
- * (`repoGroupContext`) so the chat UI can disclose it — the persisted message
- * text itself stays exactly what the user typed.
+ * The member listing appended to the prompt has a different cadence: it is
+ * session state, so the first turn sends it and follow-ups re-send it only when
+ * the session cannot already have it — no resumable session, never injected,
+ * the membership listing drifted, or a compaction may have summarized it away.
+ *
+ * Turns that do carry the block record it verbatim (`repoGroupContext`) so the
+ * chat UI can disclose it; turns that do not record nothing, so the disclosure
+ * never over-claims. The persisted message text is always exactly what the user
+ * typed.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -223,6 +228,11 @@ describe('repo-group chat context injection (AC-03)', () => {
     });
 
     describe('follow-up turn (FollowUpExecutor.executeFollowUp)', () => {
+        /**
+         * A conversation whose first turn has NOT been injected yet — the shape
+         * of a legacy transcript, or a group chat whose first turn resolved no
+         * live members.
+         */
         function seedProcess(workspaceId: string, id = 'proc-1'): AIProcess {
             const process: AIProcess = {
                 id,
@@ -233,8 +243,8 @@ describe('repo-group chat context injection (AC-03)', () => {
                 sdkSessionId: 'sess-1',
                 workingDirectory: path.join(tmpDir, 'repos', workspaceId),
                 conversationTurns: [
-                    { role: 'user', content: 'Hello', timestamp: new Date(), turnIndex: 0, timeline: [] },
-                    { role: 'assistant', content: 'Hi', timestamp: new Date(), turnIndex: 1, timeline: [] },
+                    { role: 'user', content: 'Hello', timestamp: new Date(2026, 0, 1, 0, 0), turnIndex: 0, timeline: [] },
+                    { role: 'assistant', content: 'Hi', timestamp: new Date(2026, 0, 1, 0, 1), turnIndex: 1, timeline: [] },
                 ],
                 metadata: { type: 'chat', workspaceId, provider: 'copilot', mode: 'ask' },
             };
@@ -242,7 +252,26 @@ describe('repo-group chat context injection (AC-03)', () => {
             return process;
         }
 
-        it('appends the member block to the follow-up message and passes additionalDirectories', async () => {
+        /** Same, but the first turn already carried the current member listing. */
+        function seedInjectedProcess(workspaceId: string, id: string): AIProcess {
+            const process = seedProcess(workspaceId, id);
+            process.conversationTurns![0].repoGroupContext = expectedBlock();
+            return process;
+        }
+
+        /** The user turn the POST /message route persists before dispatch. */
+        function pushUserTurn(process: AIProcess, content = 'next question'): void {
+            const turns = process.conversationTurns!;
+            turns.push({
+                role: 'user',
+                content,
+                timestamp: new Date(2026, 0, 1, 1, turns.length),
+                turnIndex: turns.length,
+                timeline: [],
+            });
+        }
+
+        it('appends the member block when no earlier turn carried it', async () => {
             seedProcess(groupId, 'proc-group');
             const executor = new FollowUpExecutor(store, makeOptions(), tmpDir);
 
@@ -251,6 +280,79 @@ describe('repo-group chat context injection (AC-03)', () => {
             const call = sdkMocks.mockSendMessage.mock.calls[0][0];
             expect(call.prompt).toBe(`next question\n\n${expectedBlock()}`);
             expect(call.additionalDirectories).toEqual([repoA, repoB]);
+        });
+
+        it('does not re-append the block when the live session already carries it', async () => {
+            seedInjectedProcess(groupId, 'proc-group-repeat');
+            const executor = new FollowUpExecutor(store, makeOptions(), tmpDir);
+
+            await executor.executeFollowUp('proc-group-repeat', 'next question', undefined, 'ask');
+
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            expect(call.prompt).toBe('next question');
+            // additionalDirectories is a permission option, not conversation
+            // state — it must still ride every turn.
+            expect(call.additionalDirectories).toEqual([repoA, repoB]);
+        });
+
+        it('re-appends the block when there is no resumable SDK session (history rebuild)', async () => {
+            const process = seedInjectedProcess(groupId, 'proc-group-rebuild');
+            delete process.sdkSessionId;
+            const executor = new FollowUpExecutor(store, makeOptions(), tmpDir);
+
+            await executor.executeFollowUp('proc-group-rebuild', 'next question', undefined, 'ask');
+
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            expect(call.prompt).toBe(`next question\n\n${expectedBlock()}`);
+        });
+
+        it('re-appends a refreshed block when membership drifted mid-conversation', async () => {
+            seedInjectedProcess(groupId, 'proc-group-drift');
+            await store.removeWorkspace('ws-v2-bbb');
+            const executor = new FollowUpExecutor(store, makeOptions(), tmpDir);
+
+            await executor.executeFollowUp('proc-group-drift', 'next question', undefined, 'ask');
+
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            expect(call.prompt).toContain(`- Repo A: ${repoA}`);
+            expect(call.prompt).not.toContain('Repo B');
+            expect(call.additionalDirectories).toEqual([repoA]);
+        });
+
+        it('re-appends the block after a compaction result turn', async () => {
+            const process = seedInjectedProcess(groupId, 'proc-group-compacted');
+            process.conversationTurns!.push({
+                role: 'assistant',
+                content: 'Context compacted — removed 12 messages, freed ~4000 tokens',
+                timestamp: new Date(2026, 0, 1, 0, 30),
+                turnIndex: 2,
+                timeline: [],
+                displayOnly: true,
+            });
+            const executor = new FollowUpExecutor(store, makeOptions(), tmpDir);
+
+            await executor.executeFollowUp('proc-group-compacted', 'next question', undefined, 'ask');
+
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            expect(call.prompt).toBe(`next question\n\n${expectedBlock()}`);
+        });
+
+        it('re-appends the block after a compaction recorded only in process metadata', async () => {
+            const process = seedInjectedProcess(groupId, 'proc-group-compact-meta');
+            process.metadata = {
+                ...process.metadata!,
+                compaction: {
+                    state: 'completed',
+                    startedAt: new Date(2026, 0, 1, 0, 30).toISOString(),
+                    completedAt: new Date(2026, 0, 1, 0, 31).toISOString(),
+                },
+            } as AIProcess['metadata'];
+            const executor = new FollowUpExecutor(store, makeOptions(), tmpDir);
+
+            await executor.executeFollowUp('proc-group-compact-meta', 'next question', undefined, 'ask');
+
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            expect(call.prompt).toBe(`next question\n\n${expectedBlock()}`);
         });
 
         it('skips stale members on follow-ups too', async () => {
@@ -267,10 +369,7 @@ describe('repo-group chat context injection (AC-03)', () => {
 
         it('records the injected block on the newest user turn', async () => {
             const process = seedProcess(groupId, 'proc-persist');
-            // The POST /message route persists the user turn before dispatch.
-            process.conversationTurns!.push({
-                role: 'user', content: 'next question', timestamp: new Date(), turnIndex: 2, timeline: [],
-            });
+            pushUserTurn(process);
             const executor = new FollowUpExecutor(store, makeOptions(), tmpDir);
 
             await executor.executeFollowUp('proc-persist', 'next question', undefined, 'ask');
@@ -282,12 +381,37 @@ describe('repo-group chat context injection (AC-03)', () => {
             expect(turns[0].repoGroupContext).toBeUndefined();
         });
 
+        it('records nothing on a turn that did not carry the block', async () => {
+            const process = seedInjectedProcess(groupId, 'proc-persist-skipped');
+            pushUserTurn(process);
+            const executor = new FollowUpExecutor(store, makeOptions(), tmpDir);
+
+            await executor.executeFollowUp('proc-persist-skipped', 'next question', undefined, 'ask');
+
+            const turns = store.processes.get('proc-persist-skipped')!.conversationTurns!;
+            // The UI must not claim the model was told something it wasn't.
+            expect(turns[2].repoGroupContext).toBeUndefined();
+            // The original injection is still disclosed on its own turn.
+            expect(turns[0].repoGroupContext).toBe(expectedBlock());
+        });
+
+        it('records the refreshed listing on the turn that re-injected it', async () => {
+            const process = seedInjectedProcess(groupId, 'proc-persist-drift');
+            pushUserTurn(process);
+            await store.removeWorkspace('ws-v2-bbb');
+            const executor = new FollowUpExecutor(store, makeOptions(), tmpDir);
+
+            await executor.executeFollowUp('proc-persist-drift', 'next question', undefined, 'ask');
+
+            const turns = store.processes.get('proc-persist-drift')!.conversationTurns!;
+            expect(turns[2].repoGroupContext).toContain(`- Repo A: ${repoA}`);
+            expect(turns[2].repoGroupContext).not.toContain('Repo B');
+        });
+
         it('records only live members on the follow-up user turn', async () => {
             await store.removeWorkspace('ws-v2-aaa');
             const process = seedProcess(groupId, 'proc-persist-stale');
-            process.conversationTurns!.push({
-                role: 'user', content: 'next question', timestamp: new Date(), turnIndex: 2, timeline: [],
-            });
+            pushUserTurn(process);
             const executor = new FollowUpExecutor(store, makeOptions(), tmpDir);
 
             await executor.executeFollowUp('proc-persist-stale', 'next question', undefined, 'ask');
@@ -299,9 +423,7 @@ describe('repo-group chat context injection (AC-03)', () => {
 
         it('records nothing on the user turn for a non-group follow-up', async () => {
             const process = seedProcess('ws-v2-aaa', 'proc-persist-plain');
-            process.conversationTurns!.push({
-                role: 'user', content: 'next question', timestamp: new Date(), turnIndex: 2, timeline: [],
-            });
+            pushUserTurn(process);
             const executor = new FollowUpExecutor(store, makeOptions(), tmpDir);
 
             await executor.executeFollowUp('proc-persist-plain', 'next question', undefined, 'ask');

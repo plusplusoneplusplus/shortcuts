@@ -66,7 +66,7 @@ import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { buildChatTurnContext } from './chat-turn-context-builder';
 import type { ChatTurnContext } from './chat-turn-context-builder';
 import { resolveChatMcpServersForWorkspace } from './mcp-tool-enforcement';
-import { resolveRepoGroupChatContext, appendRepoGroupContext, persistRepoGroupContextOnUserTurn } from '../workspaces/repo-group-chat-context';
+import { resolveRepoGroupChatContext, appendRepoGroupContext, persistRepoGroupContextOnUserTurn, shouldInjectRepoGroupContext } from '../workspaces/repo-group-chat-context';
 import { updateForEachGenerationMetadataFromAssistantTurn } from '../for-each/for-each-generation-metadata';
 import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduce/map-reduce-generation-metadata';
 // ============================================================================
@@ -445,19 +445,33 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
             this.persistSystemPromptAsync(processId, 'chat', systemMessage?.content);
 
-            // Repo-group workspaces: append the live-member listing to the
-            // outgoing message and grant member roots as additional working
-            // directories, matching the first-turn dispatch path.
+            // Repo-group workspaces: grant member roots as additional working
+            // directories on every turn (a permission option, not conversation
+            // state), but append the live-member listing to the outgoing message
+            // only when the session does not already carry it — a first turn, a
+            // history rebuild, membership drift, or a compaction that may have
+            // summarized it away. See `shouldInjectRepoGroupContext`.
             const repoGroupContext = await resolveRepoGroupChatContext(this.store, this.dataDir, wsId);
+            const injectedRepoGroupContext = shouldInjectRepoGroupContext({
+                context: repoGroupContext,
+                turns: process.conversationTurns,
+                compaction: process.metadata?.compaction,
+                canResumeSession,
+            })
+                ? repoGroupContext
+                : undefined;
             const followUpMessage = appendRepoGroupContext(
                 prependSelectedSkillsDirective(
                     message,
                     selectedSkillNames,
                     resolveSelectedSkillReferences(selectedSkillNames, skillDirectories, disabledSkills),
                 ),
-                repoGroupContext,
+                injectedRepoGroupContext,
             );
-            await persistRepoGroupContextOnUserTurn(this.store, processId, repoGroupContext);
+            // Recorded only on turns that actually carried the block, so the
+            // chat's disclosure never claims the model was told something it
+            // was not.
+            await persistRepoGroupContextOnUserTurn(this.store, processId, injectedRepoGroupContext);
             const agentMode = toAgentMode(currentMode);
 
             const historySystemMessage: SystemMessageConfig | undefined = historyContext

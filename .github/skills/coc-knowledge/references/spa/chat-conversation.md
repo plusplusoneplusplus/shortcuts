@@ -23,7 +23,9 @@ In a repo-group chat, a user turn carrying `repoGroupContext` hangs a collapsed 
 group context" toggle (`RepoGroupContextDisclosure`) under its content, revealing the
 `<repo_group_context>` block that dispatch appended to the outgoing prompt — verbatim,
 preformatted, stale members already dropped. The message text itself is unchanged, and a
-turn without the field shows no toggle.
+turn without the field shows no toggle — the block is re-injected only at first-turn,
+history-rebuild, membership-change, and post-compaction boundaries, so most follow-up turns
+in a group chat legitimately have no toggle.
 
 Interrupted assistant turns keep their partial transcript and tool timeline. Continue and
 retry send a generated raw follow-up through the normal path — never replaying preserved

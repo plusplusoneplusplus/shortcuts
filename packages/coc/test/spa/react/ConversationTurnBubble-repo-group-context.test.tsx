@@ -6,8 +6,9 @@
  *     clicking it reveals the injected block verbatim, as preformatted text.
  *   - The turn's own message text is untouched — the block is never spliced
  *     into what the user typed.
- *   - A turn without a context (non-group chats, and every turn recorded
- *     before the field existed) renders no toggle at all.
+ *   - A turn without a context renders no toggle at all — non-group chats,
+ *     turns recorded before the field existed, and every follow-up turn that
+ *     dispatch decided did not need the block re-injected.
  */
 
 import { describe, it, expect, vi } from 'vitest';
