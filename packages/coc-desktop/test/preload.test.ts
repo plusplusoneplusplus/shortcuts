@@ -52,6 +52,7 @@ const exposeInMainWorld = vi.fn();
 const send = vi.fn();
 const on = vi.fn();
 const removeListener = vi.fn();
+const getPathForFile = vi.fn();
 
 vi.mock('electron', () => ({
     contextBridge: { exposeInMainWorld: (...args: unknown[]) => exposeInMainWorld(...args) },
@@ -59,6 +60,9 @@ vi.mock('electron', () => ({
         send: (...args: unknown[]) => send(...args),
         on: (...args: unknown[]) => on(...args),
         removeListener: (...args: unknown[]) => removeListener(...args),
+    },
+    webUtils: {
+        getPathForFile: (...args: unknown[]) => getPathForFile(...args),
     },
 }));
 
@@ -195,6 +199,25 @@ describe('preload bridge', () => {
             SCREENSHOT_ATTACH_CHANNEL,
             expect.any(Function),
         );
+    });
+
+    it('getPathForFile returns the absolute path webUtils reports', () => {
+        const file = { name: 'notes.md' } as unknown as File;
+        getPathForFile.mockReturnValue('/home/u/repo/notes.md');
+        expect(exposedApi().getPathForFile(file)).toBe('/home/u/repo/notes.md');
+        expect(getPathForFile).toHaveBeenCalledWith(file);
+    });
+
+    it('getPathForFile returns null for a File that is not backed by disk', () => {
+        const api = exposedApi();
+        // Electron hands back an empty string for a synthesized Blob/File.
+        getPathForFile.mockReturnValue('');
+        expect(api.getPathForFile({} as unknown as File)).toBeNull();
+        // …and it throws if the argument is not a real File at all.
+        getPathForFile.mockImplementation(() => {
+            throw new TypeError('not a File');
+        });
+        expect(api.getPathForFile({} as unknown as File)).toBeNull();
     });
 
     it('popout nav / navigate / openExternal / copyUrl send on the real popout channels', () => {
