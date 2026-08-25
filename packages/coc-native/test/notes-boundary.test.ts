@@ -248,8 +248,35 @@ suite('Notes refresh marshalling and consistency', () => {
     });
 });
 
+/**
+ * Drain the microtask queue without letting the event loop turn.
+ *
+ * A promise that settles here was settled by work the call itself already
+ * finished on the JS thread, because a threadpool result reaches JavaScript
+ * through a libuv callback that cannot run until the loop turns again. Racing
+ * the work against a `setTimeout(0)` instead — the earlier shape of these
+ * assertions — only holds while the work outlasts one timer tick, which is not
+ * a property of the contract: on Windows, where timer resolution is coarse and
+ * the runner is fast, an in-memory search finished first and the assertion
+ * failed on a correctly asynchronous addon.
+ */
+async function drainMicrotasks(): Promise<void> {
+    for (let tick = 0; tick < 16; tick++) await Promise.resolve();
+}
+
 suite('Notes async contract', () => {
-    it('build work does not block a queued Node timer', async () => {
+    it('observes work that the JS thread itself finished', async () => {
+        // Pins the teeth of the assertions below: this is the synchronous
+        // shape they rule out, and the drain has to catch it.
+        let resolved = false;
+        void Promise.resolve({ results: [], truncated: false }).then(() => {
+            resolved = true;
+        });
+        await drainMicrotasks();
+        expect(resolved).toBe(true);
+    });
+
+    it('does not run build work on the JS thread', async () => {
         const big = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-notes-async-build-'));
         try {
             const content = Array.from({ length: 2_000 }, (_, index) => `line ${index}`).join('\n');
@@ -262,7 +289,7 @@ suite('Notes async contract', () => {
                 resolved = true;
                 return index;
             });
-            await new Promise<void>(resolve => setTimeout(resolve, 0));
+            await drainMicrotasks();
             expect(resolved).toBe(false);
             await building;
         } finally {
@@ -270,7 +297,7 @@ suite('Notes async contract', () => {
         }
     });
 
-    it('search work does not block a queued Node timer', async () => {
+    it('does not run search work on the JS thread', async () => {
         const big = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-notes-async-search-'));
         try {
             const content = Array.from({ length: 25_000 }, (_, index) => `ordinary line ${index}`).join('\n');
@@ -282,7 +309,7 @@ suite('Notes async contract', () => {
                 resolved = true;
                 return response;
             });
-            await new Promise<void>(resolve => setTimeout(resolve, 0));
+            await drainMicrotasks();
             expect(resolved).toBe(false);
             await expect(searching).resolves.toEqual({ results: [], truncated: false });
         } finally {
@@ -290,7 +317,7 @@ suite('Notes async contract', () => {
         }
     });
 
-    it('full and incremental refresh work do not block a queued Node timer', async () => {
+    it('does not run full or incremental refresh work on the JS thread', async () => {
         const big = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-notes-async-refresh-'));
         try {
             const content = Array.from({ length: 2_000 }, (_, index) => `line ${index}`).join('\n');
@@ -304,7 +331,7 @@ suite('Notes async contract', () => {
             const fullRefresh = index.refresh().then(() => {
                 fullResolved = true;
             });
-            await new Promise<void>(resolve => setTimeout(resolve, 0));
+            await drainMicrotasks();
             expect(fullResolved).toBe(false);
             await fullRefresh;
 
@@ -313,7 +340,7 @@ suite('Notes async contract', () => {
             const incrementalRefresh = index.refreshChanged(changedPaths).then(() => {
                 incrementalResolved = true;
             });
-            await new Promise<void>(resolve => setTimeout(resolve, 0));
+            await drainMicrotasks();
             expect(incrementalResolved).toBe(false);
             await incrementalRefresh;
         } finally {
