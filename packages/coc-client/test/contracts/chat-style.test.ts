@@ -8,8 +8,8 @@ import {
 } from '../../src/contracts/common';
 
 describe('ChatStyle wire contract', () => {
-    it('lists the five stable values with Default first', () => {
-        expect(CHAT_STYLES).toEqual(['default', 'human', 'direct', 'analytical', 'structured']);
+    it('lists the four stable values with Default first', () => {
+        expect(CHAT_STYLES).toEqual(['default', 'human', 'direct', 'structured']);
     });
 
     it('starts on default', () => {
@@ -21,7 +21,6 @@ describe('ChatStyle wire contract', () => {
             default: 'Default',
             human: 'Human',
             direct: 'Direct',
-            analytical: 'Analytical',
             structured: 'Structured',
         });
     });
@@ -38,19 +37,19 @@ describe('ChatStyle wire contract', () => {
         });
 
         it('rejects unknown strings and non-strings', () => {
-            const rejected: unknown[] = ['', 'Human', 'HUMAN', 'concise', 'none', undefined, null, 0, 1, {}, [], true];
+            const rejected: unknown[] = ['', 'Human', 'HUMAN', 'concise', 'none', 'analytical', undefined, null, 0, 1, {}, [], true];
             for (const value of rejected) {
                 expect(isChatStyle(value)).toBe(false);
             }
         });
 
         it('narrows the type', () => {
-            const value: unknown = 'analytical';
+            const value: unknown = 'structured';
             if (isChatStyle(value)) {
                 const style: ChatStyle = value;
-                expect(style).toBe('analytical');
+                expect(style).toBe('structured');
             } else {
-                throw new Error('expected analytical to be a valid style');
+                throw new Error('expected structured to be a valid style');
             }
         });
     });

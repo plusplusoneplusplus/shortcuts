@@ -188,7 +188,7 @@ describe('normalizeFollowUpInput', () => {
             expect(r.ok && r.value.chatStyle).toBe('default');
         });
         it('keeps every stable value', () => {
-            for (const style of ['default', 'human', 'direct', 'analytical', 'structured']) {
+            for (const style of ['default', 'human', 'direct', 'structured']) {
                 const r = normalizeFollowUpInput({ chatStyle: style }, 'copilot');
                 expect(r.ok && r.value.chatStyle).toBe(style);
             }

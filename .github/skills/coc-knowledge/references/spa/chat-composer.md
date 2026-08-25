@@ -219,7 +219,7 @@ selectable and tooltips explain that provider and model resolve at scheduling ti
 
 `ChatStyleSelector` renders a `Style: <label>` chip after Effort in both composers when
 `features.chatStyleSelector` is on. Options come from `CHAT_STYLES` / `CHAT_STYLE_LABELS` in
-`@plusplusoneplusplus/coc-client` (`Default` first, then Human, Direct, Analytical,
+`@plusplusoneplusplus/coc-client` (`Default` first, then Human, Direct,
 Structured) — only the one-line descriptions live in the component; do not re-list the wire
 values. Every style is always selectable, with no per-provider configuration.
 

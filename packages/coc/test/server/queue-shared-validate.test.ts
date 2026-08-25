@@ -527,7 +527,7 @@ describe('validateAndParseTask – chat chatStyle', () => {
     });
 
     it('keeps every stable style value', () => {
-        for (const style of ['default', 'human', 'direct', 'analytical', 'structured']) {
+        for (const style of ['default', 'human', 'direct', 'structured']) {
             const result = validateAndParseTask({ type: 'chat', payload: { prompt: 'hello', chatStyle: style } });
             expect(result.valid).toBe(true);
             expect((result.input!.payload as any).chatStyle).toBe(style);

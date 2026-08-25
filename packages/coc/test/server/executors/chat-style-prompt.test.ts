@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildChatStyleBlock,
   prependChatStyleBlock,
+  recordedChatStyle,
 } from '../../../src/server/executors/chat-style-prompt';
 
 describe('buildChatStyleBlock', () => {
@@ -28,17 +29,6 @@ describe('buildChatStyleBlock', () => {
     );
   });
 
-  it('builds the analytical block verbatim', () => {
-    expect(buildChatStyleBlock('analytical')).toBe(
-      [
-        '<chat-style>',
-        'Selected style: Analytical.',
-        'Explain the reasoning. Surface assumptions, evidence, causes, alternatives, and tradeoffs, and say what the risks are. Give a useful summary of the reasoning and its conclusions rather than a raw transcript of your internal thinking.',
-        '</chat-style>',
-      ].join('\n')
-    );
-  });
-
   it('builds the structured block verbatim', () => {
     expect(buildChatStyleBlock('structured')).toBe(
       [
@@ -51,7 +41,7 @@ describe('buildChatStyleBlock', () => {
   });
 
   it('is exactly four lines for every real style', () => {
-    for (const style of ['human', 'direct', 'analytical', 'structured']) {
+    for (const style of ['human', 'direct', 'structured']) {
       const block = buildChatStyleBlock(style);
       expect(block).toBeDefined();
       const lines = (block as string).split('\n');
@@ -65,6 +55,7 @@ describe('buildChatStyleBlock', () => {
   it('returns undefined for default and unknown values', () => {
     expect(buildChatStyleBlock('default')).toBeUndefined();
     expect(buildChatStyleBlock('casual')).toBeUndefined();
+    expect(buildChatStyleBlock('analytical')).toBeUndefined();
     expect(buildChatStyleBlock(undefined)).toBeUndefined();
     expect(buildChatStyleBlock(null)).toBeUndefined();
     expect(buildChatStyleBlock(42)).toBeUndefined();
@@ -108,5 +99,15 @@ describe('prependChatStyleBlock', () => {
 
   it('never emits the tag when there is no block', () => {
     expect(prependChatStyleBlock('plain text', 'default')).not.toContain('<chat-style>');
+  });
+});
+
+describe('retired style values', () => {
+  it("reads a conversation stored on the retired 'analytical' style as Default", () => {
+    expect(recordedChatStyle({ chatStyle: 'analytical' })).toBe('default');
+  });
+
+  it('leaves a prompt untouched when the retired value is selected', () => {
+    expect(prependChatStyleBlock('hello', 'analytical')).toBe('hello');
   });
 });

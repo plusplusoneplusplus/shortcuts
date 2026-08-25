@@ -767,4 +767,104 @@ describe('AskUserInline', () => {
             expect(onAnswered).toHaveBeenCalled();
         });
     });
+
+    describe('overflow containment', () => {
+        const LONG_LABEL = 'Refactor the workspace registration pipeline so every clone reuses the shared credential resolver';
+        const LONG_DESCRIPTION = 'This option rewrites the resolver, migrates every caller, and backfills the persisted clone records in one pass';
+
+        it('lets a long select option label shrink and truncate instead of spilling past the card', () => {
+            render(
+                <AskUserInline
+                    batch={makeBatch([
+                        makeQuestion({ options: [{ value: 'long', label: LONG_LABEL, description: LONG_DESCRIPTION }] }),
+                    ])}
+                    processId="proc-1"
+                    onAnswered={vi.fn()}
+                />,
+            );
+
+            const label = screen.getByTestId('ask-user-option-label');
+            // shrink-0 would let the label push the row wider than the card.
+            expect(label.className).not.toContain('shrink-0');
+            expect(label.className).toContain('min-w-0');
+            expect(label.className).toContain('truncate');
+
+            // The description gives way first, so the label keeps its width as long as it can.
+            const desc = screen.getByTestId('ask-user-option-description');
+            expect(desc.className).toContain('shrink-[9999]');
+
+            const row = label.closest('label')!;
+            expect(row.className).toContain('min-w-0');
+            expect(row.className).toContain('w-full');
+            // The whole row stays hoverable for the full text.
+            expect(row.getAttribute('title')).toBe(LONG_DESCRIPTION);
+        });
+
+        it('applies the same shrink rules to multi-select option rows', () => {
+            render(
+                <AskUserInline
+                    batch={makeBatch([
+                        makeQuestion({
+                            type: 'multi-select',
+                            options: [{ value: 'long', label: LONG_LABEL, description: LONG_DESCRIPTION }],
+                        }),
+                    ])}
+                    processId="proc-1"
+                    onAnswered={vi.fn()}
+                />,
+            );
+
+            const label = screen.getByTestId('ask-user-option-label');
+            expect(label.className).not.toContain('shrink-0');
+            expect(label.className).toContain('truncate');
+            expect(label.closest('label')!.className).toContain('min-w-0');
+        });
+
+        it('keeps the option list column shrinkable inside the card', () => {
+            render(
+                <AskUserInline
+                    batch={makeBatch([makeQuestion({ options: [{ value: 'long', label: LONG_LABEL }] })])}
+                    processId="proc-1"
+                    onAnswered={vi.fn()}
+                />,
+            );
+            const optionColumn = screen.getByTestId('ask-user-option-label').closest('label')!.parentElement!;
+            expect(optionColumn.className).toContain('min-w-0');
+        });
+
+        it('clips anything that still overflows the card and wraps the header', () => {
+            render(
+                <AskUserInline
+                    batch={makeBatch([makeQuestion({ options: [{ value: 'long', label: LONG_LABEL }] })])}
+                    processId="proc-1"
+                    onAnswered={vi.fn()}
+                />,
+            );
+            const card = screen.getByTestId('ask-user-inline');
+            expect(card.className).toContain('overflow-hidden');
+            // Header controls wrap onto a second line rather than pushing out of the card.
+            const header = screen.getByText('The AI needs your input').closest('div')!;
+            expect(header.className).toContain('flex-wrap');
+        });
+
+        it('still selects a long option by click', () => {
+            render(
+                <AskUserInline
+                    batch={makeBatch([
+                        makeQuestion({
+                            options: [
+                                { value: 'long', label: LONG_LABEL, description: LONG_DESCRIPTION },
+                                { value: 'blue', label: 'Blue' },
+                            ],
+                        }),
+                    ])}
+                    processId="proc-1"
+                    onAnswered={vi.fn()}
+                />,
+            );
+            const radio = screen.getByDisplayValue('long') as HTMLInputElement;
+            fireEvent.click(radio);
+            expect(radio.checked).toBe(true);
+        });
+    });
 });

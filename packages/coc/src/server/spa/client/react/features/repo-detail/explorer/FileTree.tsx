@@ -3,7 +3,7 @@
  * Supports keyboard navigation (arrow keys, Enter/Space) and substring filtering.
  */
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, type Ref } from 'react';
 import { TreeNode } from './TreeNode';
 import { highlightMatch } from '../../../tasks/TaskSearchResults';
 import type { TreeEntry } from './types';
@@ -20,6 +20,12 @@ export interface FileTreeProps {
     onChildrenLoaded: (parentPath: string, children: TreeEntry[]) => void;
     onContextMenu?: (e: React.MouseEvent, entry: TreeEntry) => void;
     filterQuery?: string;
+    /**
+     * Handed down so the panel can drive the tree's own scroll position — the
+     * Reveal Open File button centres a row inside this container. The tree
+     * never scrolls itself through it.
+     */
+    scrollRef?: Ref<HTMLDivElement>;
 }
 
 /** Flatten the visible tree into an ordered list for keyboard navigation. */
@@ -78,7 +84,7 @@ export function filterEntries(
 
 export function FileTree({
     workspaceId, entries, selectedPath, expandedPaths, childrenMap,
-    onSelect, onToggle, onFileOpen, onChildrenLoaded, onContextMenu, filterQuery,
+    onSelect, onToggle, onFileOpen, onChildrenLoaded, onContextMenu, filterQuery, scrollRef,
 }: FileTreeProps) {
     const [focusedIndex, setFocusedIndex] = useState(-1);
 
@@ -139,6 +145,7 @@ export function FileTree({
     return (
         <div className="flex flex-col h-full text-sm" data-testid="file-tree">
             <div
+                ref={scrollRef}
                 className="flex-1 overflow-y-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0078d4]"
                 tabIndex={0}
                 onKeyDown={handleKeyDown}
