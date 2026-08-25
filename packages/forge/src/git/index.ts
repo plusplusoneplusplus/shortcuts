@@ -53,6 +53,13 @@ export { BranchService, parsePorcelainV2BranchStatus } from './branch-service';
 export { WorkingTreeService, parsePorcelain } from './working-tree-service';
 export { normalizeRemoteUrl } from './normalize-url';
 export {
+    resolveRepoIdentity,
+    isSameRepoClone,
+    isSameNormalizedOrigin,
+    type RepoIdentity,
+    type RepoIdentityInput,
+} from './repo-identity';
+export {
     getRemoteUrl,
     computeRemoteHash,
     detectRemoteUrl,

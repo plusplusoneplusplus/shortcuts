@@ -60,6 +60,7 @@
     ".": "./dist/index.js",
     "./git": "./dist/git/index.js",
     "./git/normalize-url": "./dist/git/normalize-url.js",
+    "./git/repo-identity": "./dist/git/repo-identity.js",
     "./ai": "./dist/ai/index.js",
     "./map-reduce": "./dist/map-reduce/index.js",
     "./pipeline": "./dist/pipeline/index.js",
