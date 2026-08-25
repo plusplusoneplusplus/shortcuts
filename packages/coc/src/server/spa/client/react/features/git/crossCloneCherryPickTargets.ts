@@ -1,10 +1,23 @@
 import type { GitInfoResponse, WorkspaceInfo } from '@plusplusoneplusplus/coc-client';
+import {
+    isSameRepoClone,
+    resolveRepoIdentity,
+} from '@plusplusoneplusplus/forge/git/repo-identity';
 import { normalizeRemoteUrl, remoteUrlLabel } from '../../repos/repoGrouping';
 
-export type CrossCloneRemoteStatus = 'same-remote' | 'cross-remote' | 'unknown';
+export type CrossCloneRemoteStatus = 'same-remote' | 'unknown';
 
 export const LOCAL_COC_SERVER_ID = 'local';
 export const LOCAL_COC_SERVER_LABEL = 'Current CoC';
+
+/** Identity of the workspace the commits are being cherry-picked *from*. */
+export interface CrossCloneCherryPickSource {
+    serverId: string;
+    workspaceId: string;
+    remoteUrl: string | null | undefined;
+    name?: string | null;
+    rootPath?: string | null;
+}
 
 export interface CrossCloneCherryPickServerRef {
     id: string;
@@ -54,11 +67,14 @@ export function buildCrossCloneCherryPickTargetGroups(
     workspaces: WorkspaceInfo[],
     gitInfoResults: Record<string, GitInfoResponse | null | undefined>,
 ): CrossCloneCherryPickTargetGroup[] {
+    const sourceWorkspace = workspaces.find(candidate => candidate.id === sourceWorkspaceId);
     return buildCrossCloneCherryPickTargetGroupsFromSources(
         {
             serverId: LOCAL_COC_SERVER_ID,
             workspaceId: sourceWorkspaceId,
             remoteUrl: sourceRemoteUrl,
+            name: sourceWorkspace?.name,
+            rootPath: sourceWorkspace?.rootPath,
         },
         [{
             server: {
@@ -73,10 +89,11 @@ export function buildCrossCloneCherryPickTargetGroups(
 }
 
 export function buildCrossCloneCherryPickTargetGroupsFromSources(
-    source: { serverId: string; workspaceId: string; remoteUrl: string | null | undefined },
+    source: CrossCloneCherryPickSource,
     sources: CrossCloneCherryPickWorkspaceSource[],
 ): CrossCloneCherryPickTargetGroup[] {
-    const normalizedSourceRemoteUrl = source.remoteUrl ? normalizeRemoteUrl(source.remoteUrl) || null : null;
+    const sourceIdentity = resolveRepoIdentity(source);
+    const normalizedSourceRemoteUrl = sourceIdentity.normalizedOrigin;
     const groupMap = new Map<string, CrossCloneCherryPickTargetGroup>();
 
     for (const workspaceSource of sources) {
@@ -90,7 +107,16 @@ export function buildCrossCloneCherryPickTargetGroupsFromSources(
             if (workspace.virtual) continue;
 
             const gitInfo = workspaceSource.gitInfoResults[workspace.id] ?? null;
-            const normalizedRemoteUrl = normalizeWorkspaceRemoteUrl(workspace, gitInfo);
+            const targetIdentity = resolveRepoIdentity({
+                remoteUrl: getWorkspaceRemoteUrl(workspace, gitInfo),
+                name: workspace.name,
+                rootPath: workspace.rootPath,
+            });
+            // Only clones of the source repository are offered as targets; everything
+            // else is hidden outright (no greyed-out rows, no reveal toggle).
+            if (!isSameRepoClone(sourceIdentity, targetIdentity)) continue;
+
+            const normalizedRemoteUrl = targetIdentity.normalizedOrigin;
             const remoteStatus = getRemoteStatus(normalizedSourceRemoteUrl, normalizedRemoteUrl);
             const remoteLabel = normalizedRemoteUrl ? remoteUrlLabel(normalizedRemoteUrl) : 'No remote detected';
             const target: CrossCloneCherryPickTarget = {
@@ -104,7 +130,8 @@ export function buildCrossCloneCherryPickTargetGroupsFromSources(
                 recommended: remoteStatus === 'same-remote',
                 disabledReason: gitInfo && gitInfo.isGitRepo === false ? 'Not a Git repository' : undefined,
             };
-            const groupKey = normalizedRemoteUrl ?? `${workspaceSource.server.id}:workspace:${workspace.id}`;
+            // Group on the lowercased origin so clones that differ only by case land together.
+            const groupKey = normalizedRemoteUrl?.toLowerCase() ?? `${workspaceSource.server.id}:workspace:${workspace.id}`;
             const existing = groupMap.get(groupKey);
             if (existing) {
                 existing.targets.push(target);
@@ -136,8 +163,10 @@ function getRemoteStatus(
     normalizedSourceRemoteUrl: string | null,
     normalizedTargetRemoteUrl: string | null,
 ): CrossCloneRemoteStatus {
+    // Targets are pre-filtered to clones of the source repository, so a target that
+    // knows its origin always matches the source origin.
     if (!normalizedSourceRemoteUrl || !normalizedTargetRemoteUrl) return 'unknown';
-    return normalizedSourceRemoteUrl === normalizedTargetRemoteUrl ? 'same-remote' : 'cross-remote';
+    return 'same-remote';
 }
 
 function compareGroups(a: CrossCloneCherryPickTargetGroup, b: CrossCloneCherryPickTargetGroup): number {
@@ -154,7 +183,5 @@ function compareTargets(a: CrossCloneCherryPickTarget, b: CrossCloneCherryPickTa
 }
 
 function statusRank(status: CrossCloneRemoteStatus): number {
-    if (status === 'same-remote') return 0;
-    if (status === 'cross-remote') return 1;
-    return 2;
+    return status === 'same-remote' ? 0 : 1;
 }

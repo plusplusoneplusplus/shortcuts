@@ -31,11 +31,18 @@ const TARGET_WS = {
     id: 'ws-target',
     name: 'Target Repo',
     rootPath: '/repos/target',
+    remoteUrl: 'https://github.com/org/repo.git',
 } as WorkspaceInfo;
+
+/** The source identity every apply request must carry — a clone of TARGET_WS's origin. */
+const SOURCE_IDENTITY = { normalizedSourceRemoteUrl: 'github.com/org/repo' };
 
 const CLEAN_STATE = { operation: 'none' as const };
 const MAIN_BRANCH = { name: 'main', isDetached: false };
-const PATCH_BODY = { patch: { format: 'format-patch', body: 'From abc123 Mon Sep 17\n' } };
+const PATCH_BODY = {
+    patch: { format: 'format-patch', body: 'From abc123 Mon Sep 17\n' },
+    ...SOURCE_IDENTITY,
+};
 
 function createHarness() {
     const jobs: GitOpJob[] = [];
@@ -101,6 +108,7 @@ describe('GitPatchTransferService.exportPatch', () => {
                 author: { name: 'Alice', email: 'alice@example.com', date: '2026-01-01T00:00:00Z' },
             },
             normalizedSourceRemoteUrl: null,
+            sourceRepoName: 'source repo',
             patch: { format: 'format-patch', body: 'PATCH-BODY' },
         });
     });
@@ -136,6 +144,7 @@ describe('GitPatchTransferService.exportPatch', () => {
 
         expect(payload.normalizedSourceRemoteUrl).toBeTruthy();
         expect(payload.normalizedSourceRemoteUrl).not.toContain('git@');
+        expect(payload.sourceRepoName).toBe('repo');
         expect(detectRemoteUrl).not.toHaveBeenCalled();
     });
 
@@ -236,7 +245,8 @@ describe('GitPatchTransferService.applyPatch', () => {
     });
 
     it('rejects a payload that is not a non-empty format-patch', async () => {
-        for (const body of [{}, { patch: { format: 'diff', body: 'x' } }, { patch: { format: 'format-patch', body: '   ' } }]) {
+        const bodies = [{}, { patch: { format: 'diff', body: 'x' } }, { patch: { format: 'format-patch', body: '   ' } }];
+        for (const body of bodies.map(body => ({ ...body, ...SOURCE_IDENTITY }))) {
             await expect(h.service.applyPatch(TARGET_WS, body))
                 .rejects.toMatchObject({ statusCode: 400, message: 'Missing or invalid format-patch payload' });
         }
@@ -318,5 +328,106 @@ describe('GitPatchTransferService.applyPatch', () => {
         h.branchService.applyCommitPatch.mockResolvedValue({ success: false, message: 'corrupt patch' });
         await expect(h.service.applyPatch(TARGET_WS, PATCH_BODY))
             .rejects.toMatchObject({ statusCode: 400, message: 'Patch apply failed: corrupt patch' });
+    });
+});
+
+describe('GitPatchTransferService.applyPatch repo-identity enforcement', () => {
+    let h: ReturnType<typeof createHarness>;
+
+    beforeEach(() => {
+        detectRemoteUrl.mockReset();
+        detectRemoteUrl.mockResolvedValue(undefined);
+        h = createHarness();
+    });
+
+    /** Nothing may touch the target when the request is rejected. */
+    function expectTargetUntouched(): void {
+        expect(h.branchService.applyCommitPatch).not.toHaveBeenCalled();
+        expect(h.branchService.getRepoState).not.toHaveBeenCalled();
+        expect(h.store.jobs).toHaveLength(0);
+        expect(h.broadcastGitChanged).not.toHaveBeenCalled();
+        expect(h.invalidateMutable).not.toHaveBeenCalled();
+    }
+
+    it('400s with repo-mismatch when the source is a different repository', async () => {
+        const { status, payload } = await h.service.applyPatch(TARGET_WS, {
+            ...PATCH_BODY,
+            normalizedSourceRemoteUrl: 'github.com/org/other-repo',
+        });
+
+        expect(status).toBe(400);
+        expect(payload).toEqual({
+            error: 'Target workspace "Target Repo" is not a clone of the source repository',
+            code: 'repo-mismatch',
+            sourceRepo: 'github.com/org/other-repo',
+            targetRepo: 'github.com/org/repo',
+        });
+        expectTargetUntouched();
+    });
+
+    it('400s with repo-mismatch when the request carries no source identity at all', async () => {
+        const { status, payload } = await h.service.applyPatch(TARGET_WS, {
+            patch: PATCH_BODY.patch,
+            stashAndContinue: true,
+        });
+
+        expect(status).toBe(400);
+        expect(payload).toMatchObject({ code: 'repo-mismatch' });
+        expectTargetUntouched();
+    });
+
+    it('rejects a same-named source when the origins differ', async () => {
+        const { status, payload } = await h.service.applyPatch(TARGET_WS, {
+            ...PATCH_BODY,
+            normalizedSourceRemoteUrl: 'gitlab.com/org/repo',
+            sourceRepoName: 'repo',
+        });
+
+        expect(status).toBe(400);
+        expect(payload).toMatchObject({ code: 'repo-mismatch' });
+        expectTargetUntouched();
+    });
+
+    it('accepts a source whose origin differs only in casing', async () => {
+        h.branchService.applyCommitPatch.mockResolvedValue({ success: true, headHash: 'dddd', stashed: false });
+
+        const { status } = await h.service.applyPatch(TARGET_WS, {
+            ...PATCH_BODY,
+            normalizedSourceRemoteUrl: 'GitHub.com/Org/Repo',
+        });
+
+        expect(status).toBe(200);
+        expect(h.branchService.applyCommitPatch).toHaveBeenCalled();
+    });
+
+    it('falls back to the repo name when neither side has a remote', async () => {
+        h.branchService.applyCommitPatch.mockResolvedValue({ success: true, headHash: 'dddd', stashed: false });
+        const noRemoteTarget = { ...TARGET_WS, remoteUrl: undefined, name: 'Repo' } as WorkspaceInfo;
+
+        const matched = await h.service.applyPatch(noRemoteTarget, {
+            patch: PATCH_BODY.patch,
+            normalizedSourceRemoteUrl: null,
+            sourceRepoName: 'repo',
+        });
+        expect(matched.status).toBe(200);
+
+        const mismatched = await h.service.applyPatch(noRemoteTarget, {
+            patch: PATCH_BODY.patch,
+            normalizedSourceRemoteUrl: null,
+            sourceRepoName: 'other-repo',
+        });
+        expect(mismatched.status).toBe(400);
+        expect(mismatched.payload).toMatchObject({ code: 'repo-mismatch' });
+    });
+
+    it('rejects a source with no remote whose name differs from the target with a remote', async () => {
+        const { status } = await h.service.applyPatch(TARGET_WS, {
+            patch: PATCH_BODY.patch,
+            normalizedSourceRemoteUrl: null,
+            sourceRepoName: 'unrelated',
+        });
+
+        expect(status).toBe(400);
+        expectTargetUntouched();
     });
 });

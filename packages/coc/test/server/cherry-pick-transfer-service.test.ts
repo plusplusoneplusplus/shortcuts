@@ -63,6 +63,7 @@ describe('CherryPickTransferService', () => {
             author: { name: 'Patch Author', email: 'patch-author@example.test', date: '2026-06-04T00:00:00+00:00' },
         },
         normalizedSourceRemoteUrl: 'example.test/org/repo',
+        sourceRepoName: 'repo',
         patch: { format: 'format-patch' as const, body: 'From abc123def456 Mon Sep 17 00:00:00 2001\n' },
     };
 
@@ -161,6 +162,55 @@ describe('CherryPickTransferService', () => {
             sourceCommit: patchExport.sourceCommit,
             sourceCommits: [patchExport.sourceCommit],
             normalizedSourceRemoteUrl: 'example.test/org/repo',
+            sourceRepoName: 'repo',
+        }));
+    });
+
+    it('surfaces a remote repo-mismatch rejection with its 400 and error code intact', async () => {
+        const sourceHealth = await startHealthServer('source-coc');
+        const targetHealth = await startHealthServer('target-coc');
+        servers.push(sourceHealth.server, targetHealth.server);
+        const applyError = new CocApiError({
+            status: 400,
+            statusText: 'Bad Request',
+            url: `${targetHealth.baseUrl}/api/workspaces/target-ws/git/patch/apply`,
+            message: 'Target workspace "Other Repo" is not a clone of the source repository',
+            body: {
+                error: 'Target workspace "Other Repo" is not a clone of the source repository',
+                code: 'repo-mismatch',
+                sourceRepo: 'example.test/org/repo',
+                targetRepo: 'example.test/org/other-repo',
+            },
+        });
+        const applyCommitPatch = vi.fn().mockRejectedValue(applyError);
+        const clients = new Map<string, any>([
+            [sourceHealth.baseUrl, { git: { exportCommitPatches: vi.fn().mockResolvedValue(patchExport), applyCommitPatch: vi.fn() } }],
+            [targetHealth.baseUrl, { git: { exportCommitPatches: vi.fn(), applyCommitPatch } }],
+        ]);
+        const { store, service } = createService({
+            clientFactory: baseUrl => {
+                const client = clients.get(baseUrl);
+                if (!client) throw new Error(`Unexpected client base URL: ${baseUrl}`);
+                return client;
+            },
+        });
+        const sourceServer = store.create({ kind: 'url', label: 'Source Server', url: sourceHealth.baseUrl });
+        const targetServer = store.create({ kind: 'url', label: 'Target Server', url: targetHealth.baseUrl });
+
+        await expect(service.run({
+            source: { serverId: sourceServer.id, workspaceId: 'source-ws', commitHash: 'abc123def456' },
+            target: { serverId: targetServer.id, workspaceId: 'target-ws' },
+        })).rejects.toMatchObject({
+            statusCode: 400,
+            body: {
+                error: 'Target workspace "Other Repo" is not a clone of the source repository',
+                code: 'repo-mismatch',
+                phase: 'apply',
+                server: { id: targetServer.id, label: 'Target Server' },
+            },
+        } satisfies Partial<TransferHttpError>);
+        expect(applyCommitPatch).toHaveBeenCalledWith('target-ws', expect.objectContaining({
+            sourceRepoName: 'repo',
         }));
     });
 

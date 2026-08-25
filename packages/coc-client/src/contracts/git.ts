@@ -194,6 +194,8 @@ export interface GitPatchExportResponse {
   /** Present when a range was exported; ordered oldest-first. */
   sourceCommits?: GitOpCommitMetadata[];
   normalizedSourceRemoteUrl: string | null;
+  /** Source repo name (lowercased, `.git` stripped) so a target with no detectable remote can still be matched. */
+  sourceRepoName: string;
   patch: GitFormatPatchPayload;
 }
 
@@ -205,6 +207,8 @@ export interface GitPatchApplyRequest {
   sourceCommit?: GitOpCommitMetadata;
   sourceCommits?: GitOpCommitMetadata[];
   normalizedSourceRemoteUrl?: string | null;
+  /** Source repo name; carried so the target can enforce the same-repo rule when either side has no remote. */
+  sourceRepoName?: string;
 }
 
 export interface GitPatchApplyResponse {

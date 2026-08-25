@@ -279,14 +279,43 @@ describe('git patch apply API integration', () => {
         expect(applyBody.operation.metadata.sourceCommits.map((commit: any) => commit.hash)).toEqual([olderHash, newerHash]);
     });
 
-    it('blocks dirty targets by default and applies after explicit stashAndContinue', async () => {
+    it('rejects a patch whose source is a different repository, leaving the target untouched', async () => {
         const { patch } = await exportSourcePatch();
+        const originalHead = git(targetRoot, ['rev-parse', 'HEAD']);
+
+        const res = await request(`${base()}/api/workspaces/${TARGET_WS}/git/patch/apply`, {
+            method: 'POST',
+            body: JSON.stringify({ patch, normalizedSourceRemoteUrl: 'example.test/org/unrelated' }),
+        });
+
+        expect(res.status, res.body).toBe(400);
+        expect(res.json()).toMatchObject({ code: 'repo-mismatch' });
+        expect(git(targetRoot, ['rev-parse', 'HEAD'])).toBe(originalHead);
+        expect(git(targetRoot, ['stash', 'list'])).toBe('');
+    });
+
+    it('rejects a patch that carries no source repository identity', async () => {
+        const { patch } = await exportSourcePatch();
+        const originalHead = git(targetRoot, ['rev-parse', 'HEAD']);
+
+        const res = await request(`${base()}/api/workspaces/${TARGET_WS}/git/patch/apply`, {
+            method: 'POST',
+            body: JSON.stringify({ patch }),
+        });
+
+        expect(res.status, res.body).toBe(400);
+        expect(res.json()).toMatchObject({ code: 'repo-mismatch' });
+        expect(git(targetRoot, ['rev-parse', 'HEAD'])).toBe(originalHead);
+    });
+
+    it('blocks dirty targets by default and applies after explicit stashAndContinue', async () => {
+        const { patch, normalizedSourceRemoteUrl, sourceRepoName } = await exportSourcePatch();
         const originalHead = git(targetRoot, ['rev-parse', 'HEAD']);
         await writeRepoFile(targetRoot, 'local-notes.txt', 'local dirty work\n');
 
         const blockedRes = await request(`${base()}/api/workspaces/${TARGET_WS}/git/patch/apply`, {
             method: 'POST',
-            body: JSON.stringify({ patch }),
+            body: JSON.stringify({ patch, normalizedSourceRemoteUrl, sourceRepoName }),
         });
         expect(blockedRes.status, blockedRes.body).toBe(409);
         expect(blockedRes.json().dirty).toBe(true);
@@ -294,7 +323,7 @@ describe('git patch apply API integration', () => {
 
         const stashRes = await request(`${base()}/api/workspaces/${TARGET_WS}/git/patch/apply`, {
             method: 'POST',
-            body: JSON.stringify({ patch, stashAndContinue: true }),
+            body: JSON.stringify({ patch, normalizedSourceRemoteUrl, sourceRepoName, stashAndContinue: true }),
         });
         expect(stashRes.status, stashRes.body).toBe(200);
         expect(stashRes.json().stashed).toBe(true);
@@ -303,14 +332,14 @@ describe('git patch apply API integration', () => {
     });
 
     it('returns conflict-style 409 and leaves git am state in progress on patch conflicts', async () => {
-        const { patch } = await exportSourcePatch();
+        const { patch, normalizedSourceRemoteUrl, sourceRepoName } = await exportSourcePatch();
         await writeRepoFile(targetRoot, 'shared.txt', 'target change\n');
         git(targetRoot, ['add', 'shared.txt']);
         git(targetRoot, ['commit', '-m', 'Target conflicting change']);
 
         const conflictRes = await request(`${base()}/api/workspaces/${TARGET_WS}/git/patch/apply`, {
             method: 'POST',
-            body: JSON.stringify({ patch }),
+            body: JSON.stringify({ patch, normalizedSourceRemoteUrl, sourceRepoName }),
         });
 
         expect(conflictRes.status, conflictRes.body).toBe(409);
