@@ -757,6 +757,10 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
 
             // Repo-group workspaces: append the live-member listing to the
             // prompt and grant member roots as additional working directories.
+            // Unconditional here — this path only ever opens a brand-new SDK
+            // session, which is exactly the first-turn case the follow-up path
+            // re-injects for. Follow-ups then skip it while the session stays
+            // alive and uncompacted (see `shouldInjectRepoGroupContext`).
             const repoGroupContext = await resolveRepoGroupChatContext(this.store, this.dataDir, payload.workspaceId);
             effectivePrompt = appendRepoGroupContext(effectivePrompt, repoGroupContext);
             await persistRepoGroupContextOnUserTurn(this.store, processId, repoGroupContext);

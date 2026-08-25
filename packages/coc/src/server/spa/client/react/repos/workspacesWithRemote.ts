@@ -21,7 +21,7 @@
  * unchanged, so the local flow (and memo identity) is unaffected.
  */
 import { useMemo } from 'react';
-import { useApp } from '../contexts/AppContext';
+import { useApp, useAppOptional } from '../contexts/AppContext';
 import { useReposOptional } from '../contexts/ReposContext';
 import { getRemoteWorkspacesSnapshot, isRemoteWorkspace } from './remoteWorkspaceAggregation';
 
@@ -59,4 +59,26 @@ export function useWorkspacesWithRemote(): ResolvableWorkspace[] {
             : getRemoteWorkspacesSnapshot();
         return merge(state.workspaces as ResolvableWorkspace[], remote as ResolvableWorkspace[]);
     }, [state.workspaces, reposList]);
+}
+
+/**
+ * Like `useWorkspacesWithRemote()`, but tolerates being rendered outside
+ * `<AppProvider>` (returning just the remote snapshot) so presentational leaves
+ * can look up workspace names without forcing every host to provide context.
+ */
+export function useWorkspacesWithRemoteOptional(): ResolvableWorkspace[] {
+    const app = useAppOptional();
+    const repos = useReposOptional();
+    const reposList = repos?.repos;
+    const localWorkspaces = app?.state.workspaces;
+
+    return useMemo(() => {
+        const remote = reposList
+            ? reposList.map((r) => r.workspace).filter(isRemoteWorkspace)
+            : getRemoteWorkspacesSnapshot();
+        return merge(
+            (localWorkspaces ?? []) as ResolvableWorkspace[],
+            remote as ResolvableWorkspace[],
+        );
+    }, [localWorkspaces, reposList]);
 }

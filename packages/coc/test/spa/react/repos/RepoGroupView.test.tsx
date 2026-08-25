@@ -48,13 +48,13 @@ vi.mock('../../../../src/server/spa/client/react/ui', () => ({
     cn: (...args: any[]) => args.filter(Boolean).join(' '),
 }));
 vi.mock('../../../../src/server/spa/client/react/features/chat/RepoChatTab', () => ({
-    RepoChatTab: ({ workspaceId }: { workspaceId: string }) => (
-        <div data-testid="stub-chat-tab" data-workspace={workspaceId} />
+    RepoChatTab: ({ workspaceId, dockStatusFooter }: { workspaceId: string; dockStatusFooter?: boolean }) => (
+        <div data-testid="stub-chat-tab" data-workspace={workspaceId} data-dock-footer={String(!!dockStatusFooter)} />
     ),
 }));
 vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () => ({
-    NotesView: ({ workspaceId, active }: { workspaceId: string; active: boolean }) => (
-        <div data-testid="stub-notes-view" data-workspace={workspaceId} data-active={String(active)} />
+    NotesView: ({ workspaceId, active, dockStatusFooter }: { workspaceId: string; active: boolean; dockStatusFooter?: boolean }) => (
+        <div data-testid="stub-notes-view" data-workspace={workspaceId} data-active={String(active)} data-dock-footer={String(!!dockStatusFooter)} />
     ),
 }));
 
@@ -161,5 +161,13 @@ describe('RepoGroupView', () => {
         mockBreakpoint = 'mobile';
         render(<RepoGroupView workspaceId={GROUP_ID} />);
         expect(screen.getByTestId('repo-group-header')).toBeTruthy();
+    });
+
+    it('docks the status footer inside both the Workspace and Notes tabs', () => {
+        // The group chat tab owns its own left column, so GlobalStatusDock stands
+        // down for it — the cluster has to be pinned here or it disappears.
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        expect(screen.getByTestId('stub-chat-tab').getAttribute('data-dock-footer')).toBe('true');
+        expect(screen.getByTestId('stub-notes-view').getAttribute('data-dock-footer')).toBe('true');
     });
 });

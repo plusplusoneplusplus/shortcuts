@@ -843,3 +843,12 @@ export function useApp() {
     if (!ctx) throw new Error('useApp must be used within AppProvider');
     return ctx;
 }
+
+/**
+ * The app context when mounted, else `null` — for leaf components that only want
+ * app state when it happens to be available (and are rendered standalone in tests
+ * or pop-out shells otherwise).
+ */
+export function useAppOptional() {
+    return useContext(AppContext);
+}

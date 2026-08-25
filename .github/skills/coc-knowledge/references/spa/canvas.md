@@ -212,6 +212,22 @@ excluded, normalized workspace/path identities de-duplicated, latest line/range 
 newest-first. Selecting one replaces the active canvas with that candidate's workspace and
 line/range. **The candidate list is never written to browser or disk storage.**
 
+### Repo attribution (repo-group chats)
+
+`repoAttribution.ts` labels a previewed file with its owning member repo whenever the chat
+workspace is a `group-…` id (or the resolved workspace differs from the chat's). The header
+shows a chip (`source-canvas-repo-chip`) with the member's name — falling back to its root
+basename, then its id — and a colored dot; the switcher groups options under per-repo
+headers (`source-canvas-file-group-<wsId>`) and marks the active row with the same accent.
+Colors come from `getRepoAccentColor`, an FNV-1a hash of the workspace id over a fixed
+VS Code-ish palette, so a repo keeps one color in both themes with no shared state.
+
+A conversation source file carries the GROUP workspace id, so the owning member is unknown
+until the preview endpoint probes the members. `SourceCanvasPanel` therefore records each
+`resolvedWorkspaceId` per file key as files get opened (memory-only, no batch round trip);
+files not opened yet sit in a neutral "Other" bucket at the bottom of the switcher. Plain
+single-repo chats show no chip and keep the flat switcher list.
+
 The folder explorer uses the same resolver. A relative group folder first goes through the
 preview endpoint to obtain its absolute member path and `resolvedWorkspaceId`; the root and
 all lazy child calls then use that member's clone-routed `explorer.tree` client and

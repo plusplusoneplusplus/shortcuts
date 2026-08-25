@@ -85,7 +85,7 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
             {/* Tab content */}
             <div className="flex-1 min-h-0 overflow-hidden">
                 <div style={{ display: activeTab === 'chats' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
-                    <RepoChatTab workspaceId={workspaceId} />
+                    <RepoChatTab workspaceId={workspaceId} dockStatusFooter />
                 </div>
                 <div style={{ display: activeTab === 'notes' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                     <NotesView
