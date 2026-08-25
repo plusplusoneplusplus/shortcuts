@@ -127,10 +127,12 @@ export function CrossCloneCherryPickModal({
                 serverId: LOCAL_COC_SERVER_ID,
                 workspaceId: sourceWorkspaceId,
                 remoteUrl: sourceRemoteUrl,
+                name: resolvedSourceWorkspace?.name,
+                rootPath: resolvedSourceWorkspace?.rootPath,
             },
             targetSources,
         ),
-        [sourceRemoteUrl, sourceWorkspaceId, targetSources],
+        [resolvedSourceWorkspace, sourceRemoteUrl, sourceWorkspaceId, targetSources],
     );
     const targets = useMemo(() => targetGroups.flatMap(group => group.targets), [targetGroups]);
     const selectedTarget = targets.find(target => target.key === selectedTargetKey) ?? null;
@@ -283,7 +285,7 @@ export function CrossCloneCherryPickModal({
                         </div>
                     ) : targets.length === 0 ? (
                         <div className="rounded border border-[#e0e0e0] dark:border-[#3c3c3c] p-3 text-sm text-[#616161] dark:text-[#999]">
-                            No other registered workspaces are available.
+                            No other clones of this repository were found on this CoC server or any online remote server.
                         </div>
                     ) : (
                         <div className="max-h-[320px] overflow-y-auto rounded border border-[#e0e0e0] dark:border-[#3c3c3c]" role="radiogroup" aria-label="Target workspace">

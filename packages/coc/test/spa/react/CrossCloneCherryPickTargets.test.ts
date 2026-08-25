@@ -46,14 +46,16 @@ describe('buildCrossCloneCherryPickTargetGroups', () => {
             },
         );
 
+        expect(groups).toHaveLength(1);
         expect(groups[0].remoteStatus).toBe('same-remote');
         expect(groups[0].normalizedRemoteUrl).toBe('github.com/org/repo');
         expect(groups[0].targets.map(t => t.workspace.id)).toEqual(['same-a', 'same-b']);
-        expect(groups.flatMap(g => g.targets).map(t => t.workspace.id)).not.toContain('source');
-        expect(groups[1].remoteStatus).toBe('cross-remote');
+        const ids = groups.flatMap(g => g.targets).map(t => t.workspace.id);
+        expect(ids).not.toContain('source');
+        expect(ids).not.toContain('other');
     });
 
-    it('marks cross-remote targets separately from recommended same-remote targets', () => {
+    it('hides workspaces whose origin differs from the source origin', () => {
         const groups = buildCrossCloneCherryPickTargetGroups(
             'source',
             'https://github.com/org/source.git',
@@ -63,9 +65,58 @@ describe('buildCrossCloneCherryPickTargetGroups', () => {
             { target: gitInfo() },
         );
 
+        expect(groups).toEqual([]);
+    });
+
+    it('hides same-named workspaces when the origins differ', () => {
+        const groups = buildCrossCloneCherryPickTargetGroups(
+            'source',
+            'https://github.com/org/repo.git',
+            [
+                workspace('fork', 'repo', 'https://github.com/other-org/repo.git'),
+            ],
+            { fork: gitInfo() },
+        );
+
+        expect(groups).toEqual([]);
+    });
+
+    it('groups clones whose origins differ only by case as the same remote', () => {
+        const groups = buildCrossCloneCherryPickTargetGroups(
+            'source',
+            'https://github.com/AI-Dynamo/nixl.git',
+            [
+                workspace('lower', 'nixl-lower', 'https://github.com/ai-dynamo/nixl.git'),
+                workspace('upper', 'nixl-upper', 'https://github.com/AI-Dynamo/nixl.git'),
+            ],
+            { lower: gitInfo(), upper: gitInfo() },
+        );
+
         expect(groups).toHaveLength(1);
-        expect(groups[0].remoteStatus).toBe('cross-remote');
-        expect(groups[0].targets[0].recommended).toBe(false);
+        expect(groups[0].remoteStatus).toBe('same-remote');
+        expect(groups[0].targets.map(t => t.workspace.id)).toEqual(['lower', 'upper']);
+        expect(groups[0].targets.every(t => t.recommended)).toBe(true);
+    });
+
+    it('falls back to repo-name matching when the source has no detectable remote', () => {
+        const groups = buildCrossCloneCherryPickTargetGroups(
+            'source',
+            null,
+            [
+                workspace('source', 'repo'),
+                workspace('same-name', 'Repo', 'https://github.com/org/repo.git'),
+                workspace('other-name', 'unrelated', 'https://github.com/org/unrelated.git'),
+                workspace('no-remote-same', 'repo'),
+            ],
+            {
+                'same-name': gitInfo(),
+                'other-name': gitInfo(),
+                'no-remote-same': gitInfo(),
+            },
+        );
+
+        const ids = groups.flatMap(g => g.targets).map(t => t.workspace.id).sort();
+        expect(ids).toEqual(['no-remote-same', 'same-name']);
     });
 
     it('uses existing normalized remote URL semantics across workspace and git-info remotes', () => {

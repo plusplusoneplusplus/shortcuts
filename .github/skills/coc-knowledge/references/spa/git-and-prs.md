@@ -64,8 +64,12 @@ Cross-clone (`features.gitCrossCloneCherryPick`, enabled by default):
 `CrossCloneCherryPickModal` on the single- and multi-commit menus takes `commits[]`
 ordered oldest-first via `orderOldestFirst`. It lists current-CoC registered workspaces
 plus online registered remote-CoC workspaces through typed workspace/git-info clients,
-groups targets by normalized remote URL, recommends same-remote clones, labels each
-target with its CoC server, and requires explicit confirmation for a cross-remote
+keeps only clones of the source repository (`isSameRepoClone` from
+`@plusplusoneplusplus/forge/git/repo-identity`: equal case-insensitive normalized
+origins, or equal repo names when either side has no remote) and hides the rest with
+no reveal toggle, groups the survivors by normalized remote URL, recommends
+same-remote clones, labels each target with its CoC server, and requires explicit
+confirmation for a cross-remote
 target and explicit opt-in to stash a dirty target. The range exports as **one
 concatenated `git am` mailbox**; the modal reports the applied count and names the
 conflicting commit on a mid-range conflict. Local targets call
