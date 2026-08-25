@@ -50,6 +50,23 @@ all have their own `references/*.md`.
   open, debounces keystrokes, and highlights using the `indices` the server's
   scorer returned — never by re-deriving the match in the browser, which used to
   let highlight and ranking disagree.
+- **Late-bound executor capabilities live in exactly one contract.** Cron, the
+  WebSocket server, MCP OAuth, `send_to_conversation`, the Dreams runner, the
+  global system prompt, provider routing, and the turn-performance store are
+  created after the executor graph, so they are declared as getters in
+  `src/server/executors/executor-runtime-contracts.ts` and travel as ONE
+  `ExecutorRuntimeCapabilities` object, by identity, from
+  `createQueueInfrastructure` → `CLITaskExecutorOptions.runtime` →
+  `ExecutorRegistryOptions.runtime` → `ChatModeExecutorOptions.runtime`. Never
+  re-declare a capability on a layer's own option interface, never forward it
+  field by field, and never import a capability type from a concrete executor —
+  each of those reintroduces the silent-omission bug where a feature looks
+  configured at startup but is unavailable at execution time. Static config
+  (timeouts, `dataDir`, provider default, feature toggles) stays on each layer's
+  own option bag; consumers get narrow `Pick` views
+  (`ChatExecutorRuntime`/`LifecycleRuntime`/`DreamRuntime`) so tools do not leak
+  into background executors. `test/server/executors/executor-runtime-wiring.test.ts`
+  is table-driven over every capability and fails if a hop is dropped.
 - **Server Vitest tests** live under `packages/coc/test/server/`. Any
   server change should add or update tests there.
 - **Docker image contract tests** live under `packages/coc/test/docker/`

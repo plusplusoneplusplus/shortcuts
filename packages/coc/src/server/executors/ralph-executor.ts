@@ -32,7 +32,6 @@ import * as os from 'os';
 import * as path from 'path';
 import type { AgentMode, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
-import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { systemMessageBuilder } from './system-message-builder';
 import type { ChatPayload } from '../tasks/task-types';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
@@ -47,17 +46,13 @@ import { buildSourceLocationMarkdownLinkSystemMessage } from './prompt-builder';
 // RalphExecutor
 // ============================================================================
 
-export interface RalphExecutorOptions extends ChatModeExecutorOptions {
-    getWsServer?: () => ProcessWebSocketServer | undefined;
-}
+/**
+ * No extra members: the WebSocket accessor arrives through
+ * `ChatModeExecutorOptions.runtime`.
+ */
+export type RalphExecutorOptions = ChatModeExecutorOptions;
 
 export class RalphExecutor extends ChatBaseExecutor {
-    private readonly getWsServerFn?: () => ProcessWebSocketServer | undefined;
-
-    constructor(store: ProcessStore, options: RalphExecutorOptions, dataDir?: string) {
-        super(store, options, dataDir);
-        this.getWsServerFn = options.getWsServer;
-    }
 
     /** Ralph runs back-to-back chat turns — keep the client warm between them. */
     protected override keepClientWarm(): boolean {
@@ -89,9 +84,9 @@ export class RalphExecutor extends ChatBaseExecutor {
             processId,
             query: prompt,
             followUpSuggestions: this.followUpSuggestions,
-            enqueueChat: this.getEnqueueChat?.(),
-            sendMessage: this.getSendMessage?.(),
-            sendToConversationRuntime: this.getSendToConversationRuntime?.(),
+            enqueueChat: this.runtime.getEnqueueChat?.(),
+            sendMessage: this.runtime.getSendMessage?.(),
+            sendToConversationRuntime: this.runtime.getSendToConversationRuntime?.(),
             scheduleWakeup: cronDeps.scheduleWakeup,
             cronTools: cronDeps.cronTools,
         });

@@ -2513,7 +2513,7 @@ describe('CLITaskExecutor', () => {
             const { defaultService, codexService, claudeService, resolveAiServiceForProvider } = makeProviderServices();
             const executor = new CLITaskExecutor(store, {
                 aiService: defaultService as any,
-                resolveAiServiceForProvider: resolveAiServiceForProvider as any,
+                runtime: { resolveAiServiceForProvider: resolveAiServiceForProvider as any },
             });
             seedProcess(provider);
 
@@ -2528,7 +2528,7 @@ describe('CLITaskExecutor', () => {
             const { defaultService, resolveAiServiceForProvider } = makeProviderServices();
             const executor = new CLITaskExecutor(store, {
                 aiService: defaultService as any,
-                resolveAiServiceForProvider: resolveAiServiceForProvider as any,
+                runtime: { resolveAiServiceForProvider: resolveAiServiceForProvider as any },
             });
             seedProcess();
 
@@ -2553,7 +2553,7 @@ describe('CLITaskExecutor', () => {
             const throwingResolver = vi.fn(() => { throw new Error('Codex provider is currently disabled'); });
             const executor = new CLITaskExecutor(store, {
                 aiService: defaultService as any,
-                resolveAiServiceForProvider: throwingResolver as any,
+                runtime: { resolveAiServiceForProvider: throwingResolver as any },
             });
             seedProcess('codex');
 
@@ -2567,7 +2567,7 @@ describe('CLITaskExecutor', () => {
             const { defaultService, codexService, claudeService, resolveAiServiceForProvider } = makeProviderServices();
             const executor = new CLITaskExecutor(store, {
                 aiService: defaultService as any,
-                resolveAiServiceForProvider: resolveAiServiceForProvider as any,
+                runtime: { resolveAiServiceForProvider: resolveAiServiceForProvider as any },
             });
             seedProcess(provider);
 
@@ -2583,7 +2583,7 @@ describe('CLITaskExecutor', () => {
             const { defaultService, resolveAiServiceForProvider } = makeProviderServices();
             const executor = new CLITaskExecutor(store, {
                 aiService: defaultService as any,
-                resolveAiServiceForProvider: resolveAiServiceForProvider as any,
+                runtime: { resolveAiServiceForProvider: resolveAiServiceForProvider as any },
             });
             seedProcess();
 

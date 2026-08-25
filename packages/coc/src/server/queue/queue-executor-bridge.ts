@@ -20,6 +20,8 @@ import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-us
 import { ASK_USER_RESUME_FAILED_MESSAGE, buildAskUserResumeMessage, buildPendingAskUserAnswerRecord } from '../llm-tools/ask-user-resume';
 import { buildAskUserResumeTaskInput } from '../processes/resume-pending-ask-user-answers';
 import type { DreamRunExecutor } from '../dreams/dream-runner';
+import { EMPTY_EXECUTOR_RUNTIME } from '../executors/executor-runtime-contracts';
+import type { ExecutorRuntimeCapabilities } from '../executors/executor-runtime-contracts';
 
 export const DEFAULT_FOLLOW_UP_SUGGESTIONS = { enabled: true, count: 3 } as const;
 
@@ -36,55 +38,23 @@ export interface CLITaskExecutorOptions {
     provider?: 'copilot' | 'codex' | 'claude' | 'opencode';
     /** Enables the gated multi-agent Ralph grilling prompt contract. */
     ralphMultiAgentGrillEnabled?: boolean;
-    /**
-     * Resolve an ISDKService for a given provider, checking enablement.
-     * Supplied by the server so executors can perform per-chat routing without
-     * holding a direct reference to RuntimeConfigService.
-     */
-    resolveAiServiceForProvider?: (provider: import('../tasks/task-types').ChatProvider) => ISDKService;
-    /**
-     * Live read of the admin-configured global system prompt
-     * (`chat.globalSystemPrompt`). Supplied by the server (backed by
-     * RuntimeConfigService) so executors inject it without holding a config
-     * reference. Threaded to user-facing chat executors only.
-     */
-    getGlobalSystemPrompt?: () => string | undefined;
-    /**
-     * Live read of the `features.chatStyleSelector` admin flag, checked as each
-     * new conversation starts so disabling the feature stops style injection
-     * even for an older client or an already-open composer.
-     */
-    getChatStyleSelectorEnabled?: () => boolean;
     /** Resolve Auto provider routing when a queued chat task starts execution. */
     resolveDefaultProvider?: ResolveDefaultProviderForExecution;
     /** Live read of admin-configured effort tiers, for execution-time tier resolution. */
     getEffortTiersForProvider?: GetEffortTiersForProvider;
-    getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
-    getCronInfra?: () => import('../executors/chat-base-executor').CronInfraDeps | undefined;
-    getTriggerInfra?: () => { manager: import('../triggers/trigger-manager').TriggerManager } | undefined;
-    /**
-     * Late-bound in-process enqueue capability supplied by the server/route layer
-     * (where the queue router + global state live). Powers the opt-in
-     * `send_to_conversation` tool so an agent can spawn a brand-new chat.
-     */
-    getEnqueueChat?: () => import('../llm-tools/send-to-conversation-tool').EnqueueChatFn | undefined;
-    /**
-     * Late-bound in-process follow-up delivery capability supplied by the route
-     * layer. Powers the post mode of `send_to_conversation` (posting into an
-     * existing conversation).
-     */
-    getSendMessage?: () => import('../llm-tools/send-to-conversation-tool').SendMessageFn | undefined;
-    /** Late-bound provider/tier helpers for send_to_conversation. */
-    getSendToConversationRuntime?: () => import('../llm-tools/send-to-conversation-tool').SendToConversationRuntimeOptions | undefined;
-    getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
-    /**
-     * Late-bound accessor for the turn-performance metric store. Supplied by
-     * the server after infrastructure wiring; threaded to chat executors so
-     * each settled turn records one TTFT/TPS event.
-     */
-    getTurnPerformanceStore?: () => import('../executors/turn-performance-tracker').TurnPerformanceRecorder | undefined;
     onRalphSessionComplete?: (event: RalphSessionCompleteEvent) => void;
     dreamRunExecutor?: DreamRunExecutor;
+    /**
+     * Late-bound runtime capabilities assembled once by the server composition
+     * layer (see `createQueueInfrastructure`).
+     *
+     * The bridge augments this object with the two capabilities it owns itself
+     * — the shared abort registry and the Dreams runner accessor — and then
+     * hands the result to {@link ExecutorRegistry} by identity. Nothing is
+     * copied field by field, so a capability added to the contract cannot be
+     * dropped at this hop.
+     */
+    runtime?: ExecutorRuntimeCapabilities;
 }
 export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
     maxConcurrency?: number; sharedConcurrency?: number; exclusiveConcurrency?: number;
@@ -166,13 +136,15 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     private queueExecutor?: QueueExecutor;
     private readonly executors: ExecutorRegistry;
     private readonly titleGenerationService: TitleGenerationService;
-    private readonly getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
-    private readonly getCronInfra?: () => import('../executors/chat-base-executor').CronInfraDeps | undefined;
-    private readonly getTriggerInfra?: () => { manager: import('../triggers/trigger-manager').TriggerManager } | undefined;
+    /**
+     * The capability object shared with the executor registry, held by
+     * identity. Includes the bridge-owned `processAbortControllers` and
+     * `getDreamRunExecutor`.
+     */
+    private readonly runtime: ExecutorRuntimeCapabilities;
     private readonly onRalphSessionComplete?: (event: RalphSessionCompleteEvent) => void;
     private resolveDefaultProvider?: ResolveDefaultProviderForExecution;
     private getEffortTiersForProvider?: GetEffortTiersForProvider;
-    private readonly resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
     private dreamRunExecutor?: DreamRunExecutor;
     /**
      * Per-process AbortControllers registered by chat-mode executors when a
@@ -186,12 +158,18 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         this.approvePermissions = options.approvePermissions !== false;
         this.defaultWorkingDirectory = options.workingDirectory;
         this.aiService = options.aiService ?? sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
-        this.getWsServer = options.getWsServer;
         this.onRalphSessionComplete = options.onRalphSessionComplete;
         this.resolveDefaultProvider = options.resolveDefaultProvider;
         this.getEffortTiersForProvider = options.getEffortTiersForProvider;
-        this.resolveAiServiceForProvider = options.resolveAiServiceForProvider;
         this.dreamRunExecutor = options.dreamRunExecutor;
+        // Extend the composed capability set with the two capabilities the
+        // bridge itself owns. Spreading a typed object (rather than listing
+        // members) keeps every capability from the composition layer intact.
+        this.runtime = {
+            ...(options.runtime ?? EMPTY_EXECUTOR_RUNTIME),
+            getDreamRunExecutor: () => this.dreamRunExecutor,
+            processAbortControllers: this.processAbortControllers,
+        };
         this.titleGenerationService = new TitleGenerationService({
             store,
             aiService: this.aiService,
@@ -213,6 +191,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             });
         };
         this.executors = new ExecutorRegistry(store, {
+            // Static executor configuration…
             approvePermissions: this.approvePermissions,
             defaultWorkingDirectory: this.defaultWorkingDirectory,
             aiService: this.aiService,
@@ -222,25 +201,14 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             askUser: options.askUser,
             provider: options.provider,
             ralphMultiAgentGrillEnabled: options.ralphMultiAgentGrillEnabled,
-            resolveAiServiceForProvider: options.resolveAiServiceForProvider,
-            getGlobalSystemPrompt: options.getGlobalSystemPrompt,
-            getChatStyleSelectorEnabled: options.getChatStyleSelectorEnabled,
             resolveSkillConfig: skillCfg,
+            // …bridge-scoped dependencies…
             resolveWorkspaceIdForPath: (p: string) => this.resolveWorkspaceIdForPath(p),
             onTitleNeeded: (pid: string, turns: ConversationTurn[]) => this.generateTitleIfNeeded(pid, turns),
-            getWsServer: options.getWsServer,
-            getCronInfra: options.getCronInfra,
-            getEnqueueChat: options.getEnqueueChat,
-            getSendMessage: options.getSendMessage,
-            getSendToConversationRuntime: options.getSendToConversationRuntime,
-            getMcpOauthManager: options.getMcpOauthManager,
-            getTurnPerformanceStore: options.getTurnPerformanceStore,
-            getDreamRunExecutor: () => this.dreamRunExecutor,
             cancelledTasks: this.cancelledTasks,
-            processAbortControllers: this.processAbortControllers,
+            // …and every late-bound capability, by identity.
+            runtime: this.runtime,
         });
-        this.getCronInfra = options.getCronInfra;
-        this.getTriggerInfra = options.getTriggerInfra;
     }
 
     setQueueManager(qm: TaskQueueManager): void {
@@ -378,7 +346,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             logger.debug(LogCategory.AI, `[Ralph] Failed to publish internal ralphSessionComplete event: ${err instanceof Error ? err.message : String(err)}`);
         }
         try {
-            this.getWsServer?.()?.broadcastProcessEvent({
+            this.runtime.getWsServer?.()?.broadcastProcessEvent({
                 type: 'ralph-session-complete',
                 workspaceId,
                 sessionId,
@@ -530,12 +498,12 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 onDrainPendingMessages: (processId, taskId) => this.drainPendingMessages(processId, taskId),
                 onRalphNext: (processId, completedTask, responseText) => this.enqueueRalphNextIteration(processId, completedTask, responseText),
                 onCronTickComplete: (cronId, success) => {
-                    const infra = this.getCronInfra?.();
+                    const infra = this.runtime.getCronInfra?.();
                     if (!infra) return;
                     return infra.executor.onTickComplete(cronId, success);
                 },
                 onTriggerActionComplete: (triggerId, success) => {
-                    const infra = this.getTriggerInfra?.();
+                    const infra = this.runtime.getTriggerInfra?.();
                     if (!infra) return;
                     return infra.manager.onActionComplete(triggerId, success);
                 },
@@ -564,9 +532,9 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
      */
     private getAiServiceForProcess(proc: AIProcess | null | undefined): ISDKService {
         const provider = proc?.metadata?.provider;
-        if (provider && VALID_CHAT_PROVIDERS.has(provider as ChatProvider) && this.resolveAiServiceForProvider) {
+        if (provider && VALID_CHAT_PROVIDERS.has(provider as ChatProvider) && this.runtime.resolveAiServiceForProvider) {
             try {
-                return this.resolveAiServiceForProvider(provider as ChatProvider);
+                return this.runtime.resolveAiServiceForProvider(provider as ChatProvider);
             } catch (err) {
                 getLogger().debug(LogCategory.AI, `[Bridge] Falling back to default aiService for provider '${provider}': ${err instanceof Error ? err.message : String(err)}`);
             }

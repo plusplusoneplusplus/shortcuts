@@ -21,6 +21,7 @@ import { SqliteQueuePersistence } from '../queue/sqlite-queue-persistence';
 import { defaultIsExclusive } from '../queue/queue-executor-bridge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { ExecutionServerOptions } from '../types';
+import type { ExecutorRuntimeCapabilities } from '../executors/executor-runtime-contracts';
 
 // ============================================================================
 // Types
@@ -59,7 +60,7 @@ export function createQueueInfrastructure(
     followUpSuggestions: { enabled: boolean; count: number } | undefined,
     askUser: { enabled: boolean } | undefined,
     getWsServer: () => ProcessWebSocketServer,
-    getCronInfra?: () => import('../executors/chat-base-executor').CronInfraDeps | undefined,
+    getCronInfra?: () => import('../executors/executor-runtime-contracts').CronInfraDeps | undefined,
     getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined,
     provider?: 'copilot' | 'codex' | 'claude' | 'opencode',
     resolveAiServiceForProvider?: (provider: import('../tasks/task-types').ChatProvider) => import('@plusplusoneplusplus/forge').ISDKService,
@@ -88,6 +89,24 @@ export function createQueueInfrastructure(
         isExclusive: defaultIsExclusive,
     });
 
+    // The one place the late-bound capability set is assembled. Every layer
+    // below (router → CLITaskExecutor → ExecutorRegistry → chat executors)
+    // forwards this object by identity, so adding a capability here is enough
+    // to make it reach its consumer.
+    const runtime: ExecutorRuntimeCapabilities = {
+        getWsServer,
+        getCronInfra,
+        getTriggerInfra,
+        getEnqueueChat,
+        getSendMessage,
+        getSendToConversationRuntime,
+        getMcpOauthManager,
+        getTurnPerformanceStore,
+        getGlobalSystemPrompt,
+        getChatStyleSelectorEnabled,
+        resolveAiServiceForProvider,
+    };
+
     const bridge = new MultiRepoQueueRouter(registry, store, {
         autoStart: options.queue?.autoStart !== false,
         approvePermissions: true,
@@ -96,20 +115,10 @@ export function createQueueInfrastructure(
         defaultTimeoutMs,
         followUpSuggestions,
         askUser,
-        getWsServer,
         provider,
         ralphMultiAgentGrillEnabled,
-        resolveAiServiceForProvider,
-        getGlobalSystemPrompt,
-        getChatStyleSelectorEnabled,
         initialDelayMs: options.queue?.restartPickupDelayMs,
-        getCronInfra,
-        getTriggerInfra,
-        getEnqueueChat,
-        getSendMessage,
-        getSendToConversationRuntime,
-        getMcpOauthManager,
-        getTurnPerformanceStore,
+        runtime,
     });
 
     const queuePersistence = new SqliteQueuePersistence(bridge, db, {

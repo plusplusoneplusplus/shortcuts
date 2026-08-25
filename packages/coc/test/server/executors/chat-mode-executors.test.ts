@@ -29,6 +29,7 @@ import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 import { RALPH_GRILL_MAX_ROUNDS } from '../../../src/server/ralph/grill-planning';
+import { nestRuntime, type FlatExecutorOptions } from './runtime-options-helper';
 
 // ============================================================================
 // Mocks
@@ -79,16 +80,16 @@ const sdkMocks = createMockSDKService();
 
 function makeOptions(
     store: ReturnType<typeof createMockProcessStore>,
-    overrides?: Partial<ChatModeExecutorOptions>,
+    overrides?: FlatExecutorOptions,
 ): ChatModeExecutorOptions {
-    return {
+    return nestRuntime({
         aiService: sdkMocks.service as any,
         defaultTimeoutMs: 30_000,
         followUpSuggestions: { enabled: false, count: 3 },
         resolveSkillConfig: vi.fn().mockResolvedValue({ skillDirectories: undefined, disabledSkills: undefined }),
         resolveWorkspaceIdForPath: vi.fn().mockResolvedValue('ws-id'),
         ...overrides,
-    };
+    }) as ChatModeExecutorOptions;
 }
 
 function makeChatTask(mode: 'ask' | 'autopilot', id = 'task-1'): QueuedTask {

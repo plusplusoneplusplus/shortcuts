@@ -18,7 +18,6 @@ import type {
     QueuedTask,
 } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
-import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { systemMessageBuilder } from './system-message-builder';
 import type { ChatPayload } from '../tasks/task-types';
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
@@ -30,16 +29,16 @@ import { buildSourceLocationMarkdownLinkSystemMessage } from './prompt-builder';
 // AutopilotExecutor
 // ============================================================================
 
-export interface AutopilotExecutorOptions extends ChatModeExecutorOptions {
-    getWsServer?: () => ProcessWebSocketServer | undefined;
-}
+/**
+ * No extra members: the WebSocket accessor arrives through
+ * `ChatModeExecutorOptions.runtime`.
+ */
+export type AutopilotExecutorOptions = ChatModeExecutorOptions;
 
 export class AutopilotExecutor extends ChatBaseExecutor {
-    private readonly getWsServerFn?: () => ProcessWebSocketServer | undefined;
 
     constructor(store: ProcessStore, options: AutopilotExecutorOptions, dataDir?: string) {
         super(store, options, dataDir);
-        this.getWsServerFn = options.getWsServer;
     }
 
     /** Autopilot is an interactive chat-process turn — keep the client warm. */
@@ -66,9 +65,9 @@ export class AutopilotExecutor extends ChatBaseExecutor {
             processId,
             query: prompt,
             followUpSuggestions: this.followUpSuggestions,
-            enqueueChat: this.getEnqueueChat?.(),
-            sendMessage: this.getSendMessage?.(),
-            sendToConversationRuntime: this.getSendToConversationRuntime?.(),
+            enqueueChat: this.runtime.getEnqueueChat?.(),
+            sendMessage: this.runtime.getSendMessage?.(),
+            sendToConversationRuntime: this.runtime.getSendToConversationRuntime?.(),
             scheduleWakeup: cronDeps.scheduleWakeup,
             cronTools: cronDeps.cronTools,
             includeMemoryV2: false,

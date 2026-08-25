@@ -75,6 +75,8 @@ import {
 } from '../tasks/task-types';
 import { deriveScriptTitle } from './title-generator';
 import { BaseExecutor } from './base-executor';
+import { EMPTY_EXECUTOR_RUNTIME } from './executor-runtime-contracts';
+import type { LifecycleRuntime } from './executor-runtime-contracts';
 import { updateForEachGenerationMetadataFromAssistantTurn } from '../for-each/for-each-generation-metadata';
 import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduce/map-reduce-generation-metadata';
 
@@ -384,23 +386,24 @@ export class ProcessLifecycleRunner extends BaseExecutor {
     /** Active AI provider recorded on new processes for attribution. */
     private readonly provider: 'copilot' | 'codex' | 'claude' | 'opencode';
     /**
-     * Live read of the `features.chatStyleSelector` admin flag. Checked as each
-     * new conversation starts, so turning the experiment off immediately stops
-     * style injection even for a client that still sends `chatStyle`.
+     * Late-bound capabilities this runner needs — currently only the live read
+     * of the `features.chatStyleSelector` admin flag, checked as each new
+     * conversation starts so turning the experiment off immediately stops style
+     * injection even for a client that still sends `chatStyle`.
      */
-    private readonly getChatStyleSelectorEnabled?: () => boolean;
+    private readonly runtime: LifecycleRuntime;
 
     constructor(
         store: ProcessStore,
         dataDir: string | undefined,
         onGenerateTitle: (processId: string, turns: ConversationTurn[]) => void,
         provider?: 'copilot' | 'codex' | 'claude' | 'opencode',
-        getChatStyleSelectorEnabled?: () => boolean,
+        runtime?: LifecycleRuntime,
     ) {
         super(store, dataDir);
         this.onGenerateTitle = onGenerateTitle;
         this.provider = provider ?? 'copilot';
-        this.getChatStyleSelectorEnabled = getChatStyleSelectorEnabled;
+        this.runtime = runtime ?? EMPTY_EXECUTOR_RUNTIME;
     }
 
     /**
@@ -413,7 +416,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
      * queue validation again.
      */
     private resolveNewChatStyle(payload: Record<string, unknown> | undefined): ChatStyle | undefined {
-        if (this.getChatStyleSelectorEnabled?.() !== true) {
+        if (this.runtime.getChatStyleSelectorEnabled?.() !== true) {
             return undefined;
         }
         if (!isChatStyleEligiblePayload(payload)) {

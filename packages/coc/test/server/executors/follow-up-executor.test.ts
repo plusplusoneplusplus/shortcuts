@@ -26,6 +26,7 @@ import {
 } from '../../../src/server/tasks/task-types';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
+import { nestRuntime, type FlatExecutorOptions } from './runtime-options-helper';
 
 // ============================================================================
 // Mocks
@@ -148,10 +149,10 @@ const sdkMocks = createMockSDKService();
 
 function makeExecutor(
     store: ReturnType<typeof createMockProcessStore>,
-    overrides?: Partial<ConstructorParameters<typeof FollowUpExecutor>[1]>,
+    overrides?: FlatExecutorOptions,
     dataDir?: string,
 ) {
-    return new FollowUpExecutor(store, {
+    return new FollowUpExecutor(store, nestRuntime({
         aiService: sdkMocks.service as any,
         defaultTimeoutMs: 30_000,
         followUpSuggestions: { enabled: false, count: 3 },
@@ -159,9 +160,9 @@ function makeExecutor(
         resolveSkillConfig: vi.fn().mockResolvedValue({ skillDirectories: undefined, disabledSkills: undefined }),
         // Default: always resolve to the mock service (any provider).
         // Tests needing provider-level errors can override this.
-        resolveAiServiceForProvider: (_provider) => sdkMocks.service as any,
+        resolveAiServiceForProvider: (_provider: any) => sdkMocks.service as any,
         ...overrides,
-    }, dataDir);
+    }) as ConstructorParameters<typeof FollowUpExecutor>[1], dataDir);
 }
 
 function makeProcess(overrides?: Partial<AIProcess>): AIProcess {

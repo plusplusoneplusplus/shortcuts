@@ -3,7 +3,7 @@
  * through the executor chain into buildChatToolBundle calls.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { CronInfraDeps } from '../../../src/server/executors/chat-base-executor';
+import type { CronInfraDeps } from '../../../src/server/executors/executor-runtime-contracts';
 import type { ChatToolBundleOptions } from '../../../src/server/executors/chat-tool-builder';
 import { buildChatToolBundle } from '../../../src/server/executors/chat-tool-builder';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';

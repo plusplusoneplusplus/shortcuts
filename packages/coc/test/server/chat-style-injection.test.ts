@@ -64,7 +64,7 @@ describe('chat style on the first turn of a conversation', () => {
             undefined,
             () => undefined,
             'claude',
-            () => flagEnabled,
+            { getChatStyleSelectorEnabled: () => flagEnabled },
         );
         const result = await runner.run(task, {
             cancelledTasks: new Set(),

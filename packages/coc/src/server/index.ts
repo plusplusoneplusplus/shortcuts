@@ -1018,6 +1018,15 @@ export { CLITaskExecutor, createQueueExecutorBridge, defaultIsExclusive, DEFAULT
 export type { QueueExecutorBridgeOptions, QueueExecutorBridge } from './queue/queue-executor-bridge';
 export { ExecutorRegistry } from './executors/executor-registry';
 export type { ExecutorRegistryOptions } from './executors/executor-registry';
+export { EMPTY_EXECUTOR_RUNTIME } from './executors/executor-runtime-contracts';
+export type {
+    ChatExecutorRuntime,
+    CronInfraDeps,
+    DreamRuntime,
+    ExecutorRuntimeCapabilities,
+    LifecycleRuntime,
+    TriggerInfraDeps,
+} from './executors/executor-runtime-contracts';
 export type { ITaskExecutor } from './executors/executor-types';
 export { MultiRepoQueueRouter } from './queue/multi-repo-queue-router';
 export { SqliteQueuePersistence } from './queue/sqlite-queue-persistence';

@@ -23,6 +23,8 @@ import { ProcessLifecycleRunner } from './process-lifecycle-runner';
 import { WrappedTaskExecutor } from './wrapped-task-executor';
 import type { SkillExecuteFn } from './wrapped-task-executor';
 import type { ITaskExecutor } from './executor-types';
+import type { ChatModeExecutorOptions } from './chat-base-executor';
+import type { DreamRuntime, ExecutorRuntimeCapabilities, LifecycleRuntime } from './executor-runtime-contracts';
 
 export interface ExecutorRegistryOptions {
     approvePermissions: boolean;
@@ -36,51 +38,20 @@ export interface ExecutorRegistryOptions {
     provider?: 'copilot' | 'codex' | 'claude' | 'opencode';
     /** Enables the gated multi-agent Ralph grilling prompt contract. */
     ralphMultiAgentGrillEnabled?: boolean;
-    /**
-     * Resolve an ISDKService for a given provider, checking enablement.
-     * Injected from the bridge so executors can route per-chat without
-     * receiving the RuntimeConfigService directly.
-     */
-    resolveAiServiceForProvider?: (provider: import('../tasks/task-types').ChatProvider) => ISDKService;
-    /**
-     * Live read of the admin-configured global system prompt
-     * (`chat.globalSystemPrompt`). Threaded to user-facing chat executors so
-     * the operator-wide instruction reaches every provider via `systemMessage`.
-     */
-    getGlobalSystemPrompt?: () => string | undefined;
-    /**
-     * Live read of the `features.chatStyleSelector` admin flag. Threaded to the
-     * lifecycle runner so the gate is enforced server-side as each new
-     * conversation starts.
-     */
-    getChatStyleSelectorEnabled?: () => boolean;
     resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
     onTitleNeeded: (processId: string, turns: ConversationTurn[]) => void;
-    getWsServer?: () => import('../streaming/websocket').ProcessWebSocketServer | undefined;
-    getCronInfra?: () => import('./chat-base-executor').CronInfraDeps | undefined;
-    /** Late-bound in-process enqueue capability for the `send_to_conversation` tool. */
-    getEnqueueChat?: () => import('../llm-tools/send-to-conversation-tool').EnqueueChatFn | undefined;
-    /** Late-bound follow-up delivery capability for the post mode of `send_to_conversation`. */
-    getSendMessage?: () => import('../llm-tools/send-to-conversation-tool').SendMessageFn | undefined;
-    /** Late-bound provider/tier helpers for `send_to_conversation`. */
-    getSendToConversationRuntime?: () => import('../llm-tools/send-to-conversation-tool').SendToConversationRuntimeOptions | undefined;
-    getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
-    /**
-     * Late-bound accessor for the turn-performance metric store so executors
-     * can record one TTFT/TPS event per settled turn. Optional — recording is
-     * skipped when unset.
-     */
-    getTurnPerformanceStore?: () => import('./turn-performance-tracker').TurnPerformanceRecorder | undefined;
-    getDreamRunExecutor?: () => import('../dreams/dream-runner').DreamRunExecutor | undefined;
     cancelledTasks?: Set<string>;
     /**
-     * Shared per-process AbortController registry owned by the queue bridge.
-     * Chat-mode executors register a controller per turn so the bridge's
-     * cancel path can abort an in-flight `sendMessage` even before an
-     * `sdkSessionId` is persisted.
+     * Late-bound runtime capabilities, assembled once in the composition layer
+     * and forwarded here by identity from {@link CLITaskExecutor}.
+     *
+     * Required (even though every member inside it is optional) so a caller
+     * cannot construct a registry that silently has no capabilities at all —
+     * pass {@link EMPTY_EXECUTOR_RUNTIME} to opt out explicitly. Each consumer
+     * receives a narrow view of it rather than a copy.
      */
-    processAbortControllers?: Map<string, AbortController>;
+    runtime: ExecutorRuntimeCapabilities;
 }
 
 /**
@@ -119,7 +90,11 @@ export class ExecutorRegistry {
         this.aiService = options.aiService;
         this.resolveSkillConfigFn = options.resolveSkillConfig;
 
-        const chatOpts = {
+        // Static executor configuration only. Every late-bound capability
+        // travels in `runtime`, which is shared by identity — never copied
+        // field by field — so a capability added to the contract reaches all
+        // ten executors below without touching this block.
+        const chatOpts: ChatModeExecutorOptions = {
             workingDirectory: options.defaultWorkingDirectory,
             approvePermissions: options.approvePermissions,
             aiService: options.aiService,
@@ -128,38 +103,35 @@ export class ExecutorRegistry {
             askUser: options.askUser,
             resolveSkillConfig: options.resolveSkillConfig,
             resolveWorkspaceIdForPath: options.resolveWorkspaceIdForPath,
-            getCronInfra: options.getCronInfra,
-            getEnqueueChat: options.getEnqueueChat,
-            getSendMessage: options.getSendMessage,
-            getSendToConversationRuntime: options.getSendToConversationRuntime,
-            getMcpOauthManager: options.getMcpOauthManager,
-            getTurnPerformanceStore: options.getTurnPerformanceStore,
             provider: options.provider,
             ralphMultiAgentGrillEnabled: options.ralphMultiAgentGrillEnabled,
-            resolveAiServiceForProvider: options.resolveAiServiceForProvider,
-            getGlobalSystemPrompt: options.getGlobalSystemPrompt,
-            processAbortControllers: options.processAbortControllers,
+            runtime: options.runtime,
         };
+        const getWsServer = options.runtime.getWsServer;
+
+        const lifecycleRuntime: LifecycleRuntime = options.runtime;
+        const dreamRuntime: DreamRuntime = options.runtime;
 
         this.strategyRegistry = new TaskStrategyRegistry();
         this.strategyRegistry.register('replicate-template', new ReplicateTemplateStrategy());
 
         this.workflowExecutor = new WorkflowExecutor(store, { approvePermissions: options.approvePermissions, workingDirectory: options.defaultWorkingDirectory }, options.dataDir);
-        this.followUpExecutor = new FollowUpExecutor(store, { ...chatOpts, onTitleNeeded: options.onTitleNeeded, getWsServer: options.getWsServer }, options.dataDir);
-        this.chatExecutor = new ChatExecutor(store, { ...chatOpts, getWsServer: options.getWsServer }, options.dataDir);
-        this.autopilotExecutor = new AutopilotExecutor(store, { ...chatOpts, getWsServer: options.getWsServer }, options.dataDir);
-        this.ralphExecutor = new RalphExecutor(store, { ...chatOpts, getWsServer: options.getWsServer }, options.dataDir);
+        this.followUpExecutor = new FollowUpExecutor(store, { ...chatOpts, onTitleNeeded: options.onTitleNeeded }, options.dataDir);
+        this.chatExecutor = new ChatExecutor(store, chatOpts, options.dataDir);
+        this.autopilotExecutor = new AutopilotExecutor(store, chatOpts, options.dataDir);
+        this.ralphExecutor = new RalphExecutor(store, chatOpts, options.dataDir);
         this.taskGenerationExecutor = new TaskGenerationExecutor(store, chatOpts, options.dataDir);
-        this.resolveCommentsExecutor = new ResolveCommentsExecutor(store, chatOpts, options.getWsServer, options.dataDir);
-        this.commitChatExecutor = new CommitChatExecutor(store, chatOpts, options.getWsServer, options.dataDir);
+        this.resolveCommentsExecutor = new ResolveCommentsExecutor(store, chatOpts, getWsServer, options.dataDir);
+        this.commitChatExecutor = new CommitChatExecutor(store, chatOpts, getWsServer, options.dataDir);
         this.noteChatExecutor = new NoteChatExecutor(store, chatOpts, options.dataDir);
         this.noteCreateExecutor = new NoteCreateExecutor(store, chatOpts, options.dataDir);
         this.classificationExecutor = new ClassificationExecutor(store, chatOpts, options.dataDir);
+        // Dreams gets its own narrow view of the same capability object.
         this.dreamTaskExecutor = new DreamTaskExecutor({
-            getRunner: options.getDreamRunExecutor ?? (() => undefined),
+            getRunner: dreamRuntime.getDreamRunExecutor ?? (() => undefined),
             cancelledTasks: options.cancelledTasks ?? new Set(),
         });
-        this.runner = new ProcessLifecycleRunner(store, options.dataDir, options.onTitleNeeded, options.provider, options.getChatStyleSelectorEnabled);
+        this.runner = new ProcessLifecycleRunner(store, options.dataDir, options.onTitleNeeded, options.provider, lifecycleRuntime);
     }
 
     /** Dispatch a task to the appropriate executor based on its type and payload. */

@@ -102,6 +102,7 @@ src/
 
 | File | Purpose |
 |------|---------|
+| `executor-runtime-contracts.ts` | Single home for the late-bound capability contract (`ExecutorRuntimeCapabilities`, `CronInfraDeps`, `TriggerInfraDeps`) and the narrow consumer views `ChatExecutorRuntime` / `LifecycleRuntime` / `DreamRuntime` |
 | `base-executor.ts` | Abstract base: streaming, throttling, tool-event capture |
 | `chat-base-executor.ts` | Abstract chat executor: AI call lifecycle, memory/options helpers |
 | `chat-executor.ts`, `autopilot-executor.ts`, `follow-up-executor.ts` | Ask-mode (interactive), Autopilot-mode, and follow-up message executors |
@@ -116,6 +117,37 @@ src/
 | `chat-turn-runner.ts` | Shared SDK callbacks (MCP OAuth dispatch) |
 | `chat-turn-settlement.ts` | Turn completion: cumulative tokens, token-usage event, note snapshots |
 | `memory-v2-addon.ts` | Wires Memory V2 facts/recall and the memory tools into chat executors |
+
+### Runtime capability wiring
+
+Cron, the WebSocket server, MCP OAuth, `send_to_conversation`, the Dreams
+runner, the global system prompt, provider routing, and the turn-performance
+store are all created *after* the executor graph is built, so they are exposed
+as getters rather than captured values.
+
+`createQueueInfrastructure()` assembles them once into a single
+`ExecutorRuntimeCapabilities` object. That object then travels **by identity**:
+
+```
+createQueueInfrastructure → MultiRepoQueueRouter.defaultOptions.runtime
+    → CLITaskExecutorOptions.runtime      (bridge adds processAbortControllers + getDreamRunExecutor)
+    → ExecutorRegistryOptions.runtime     (required)
+    → ChatModeExecutorOptions.runtime     (read as this.runtime.getX?.())
+    → LifecycleRuntime / DreamRuntime     (narrow Pick views)
+```
+
+Rules when adding a capability:
+
+- Declare it in `executor-runtime-contracts.ts` only — never re-declare it on a
+  layer's own option interface, and never import a capability type from a
+  concrete executor.
+- Add it to the consumer view(s) that need it; per-executor views keep tools
+  from leaking into background/internal executors.
+- Static configuration (timeouts, `dataDir`, provider default, feature toggles)
+  stays on each layer's own option bag; the capability object is capability-only
+  so it does not turn into a service locator.
+- `test/server/executors/executor-runtime-wiring.test.ts` is table-driven over
+  every capability and fails if a forwarding hop is dropped.
 
 ### Modes and classification
 

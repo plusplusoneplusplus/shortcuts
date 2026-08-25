@@ -54,6 +54,8 @@ import {
     resolveSelectedSkillReferences,
 } from './prompt-builder';
 import { computeAssistantResponseOrdinal } from './turn-performance-tracker';
+import { EMPTY_EXECUTOR_RUNTIME } from './executor-runtime-contracts';
+import type { ChatExecutorRuntime } from './executor-runtime-contracts';
 import { buildMemoryV2Addon } from './memory-v2-addon';
 import type { MemoryV2Addon } from './memory-v2-addon';
 import { resolveAutoFolderContext } from './auto-folder-utils';
@@ -127,22 +129,11 @@ Goal file: persist the final goal spec as a file at \`${root}/<chosen-folder>/<d
 // Types
 // ============================================================================
 
-/** Late-bound cron infrastructure deps (created after executor registry). */
-export interface CronInfraDeps {
-    store: import('../cron/cron-store').CronStore;
-    executor: import('../cron/cron-executor').CronExecutor;
-    /** Cron event emitter (used by LLM tools to broadcast state changes). */
-    emit?: import('../cron/cron-executor').CronEventEmit;
-    resolveWorkspaceId: (processId: string) => Promise<string | undefined>;
-    enqueueWakeup: (opts: {
-        processId: string;
-        prompt: string;
-        delayMs: number;
-        wakeupId: string;
-        model?: string;
-        workspaceId?: string;
-    }) => void;
-}
+/**
+ * Re-exported from the runtime contract module so existing importers keep
+ * working. New code should import it from `./executor-runtime-contracts`.
+ */
+export type { CronInfraDeps } from './executor-runtime-contracts';
 
 export interface ChatModeExecutorOptions {
     /** Default working directory for AI sessions */
@@ -161,56 +152,21 @@ export interface ChatModeExecutorOptions {
     resolveSkillConfig: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     /** Resolve workspace ID for a root path */
     resolveWorkspaceIdForPath: (rootPath: string) => Promise<string>;
-    /** Late-bound cron infrastructure (getter because cron infra is created after executor registry). */
-    getCronInfra?: () => CronInfraDeps | undefined;
-    /**
-     * Late-bound in-process enqueue capability (getter because the bound callback
-     * is constructed at the route layer — where the queue router + global state
-     * live — after the executor registry is created). Powers the opt-in
-     * `send_to_conversation` tool; absent → the tool is not offered.
-     */
-    getEnqueueChat?: () => import('../llm-tools/send-to-conversation-tool').EnqueueChatFn | undefined;
-    /**
-     * Late-bound in-process follow-up delivery capability (getter; bound at the
-     * route layer). Powers the post mode of `send_to_conversation` — posting
-     * `content` into an existing conversation. Absent → post mode reports the
-     * capability is unavailable.
-     */
-    getSendMessage?: () => import('../llm-tools/send-to-conversation-tool').SendMessageFn | undefined;
-    /** Late-bound provider/tier helpers for send_to_conversation. */
-    getSendToConversationRuntime?: () => import('../llm-tools/send-to-conversation-tool').SendToConversationRuntimeOptions | undefined;
-    /** Late-bound MCP OAuth manager (getter to allow optional/feature-flagged wiring). */
-    getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
     /** Active AI provider. Used to detect provider mismatches on follow-up resume. */
     provider?: 'copilot' | 'codex' | 'claude' | 'opencode';
     /** Enables the gated multi-agent Ralph grilling prompt contract. */
     ralphMultiAgentGrillEnabled?: boolean;
     /**
-     * Resolve an ISDKService for a given provider name, checking enablement and
-     * availability. Throws with a user-facing message if the provider is disabled
-     * or unavailable. Falls back to sdkServiceRegistry lookup when omitted.
+     * Late-bound runtime capabilities (cron, `send_to_conversation`, MCP OAuth,
+     * the WebSocket server, the global system prompt, provider routing, the
+     * turn-performance store and the shared abort registry).
+     *
+     * Passed by identity from the queue bridge through the executor registry,
+     * so a capability added to the contract reaches every chat executor without
+     * a per-field forwarding edit. Omitted entirely → every capability is
+     * absent and the dependent tools are simply not offered.
      */
-    resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
-    /**
-     * Live read of the admin-configured global system prompt
-     * (`chat.globalSystemPrompt`). Backed by RuntimeConfigService so edits take
-     * effect without a restart. Returns `undefined`/empty when unset. Injected
-     * into user-facing agent sessions only.
-     */
-    getGlobalSystemPrompt?: () => string | undefined;
-    /**
-     * Shared per-process AbortController registry owned by the queue bridge.
-     * The executor registers a controller when a turn starts and passes its
-     * signal into `sendMessage`, so the bridge's cancel path can abort the
-     * in-flight turn even before an `sdkSessionId` has been persisted.
-     */
-    processAbortControllers?: Map<string, AbortController>;
-    /**
-     * Late-bound accessor for the turn-performance metric store. Supplied by
-     * the server after infrastructure wiring; executors record one event per
-     * settled turn through it. Optional — recording is skipped when unset.
-     */
-    getTurnPerformanceStore?: () => import('./turn-performance-tracker').TurnPerformanceRecorder | undefined;
+    runtime?: ChatExecutorRuntime;
 }
 
 /** Return type for the AI call result. */
@@ -262,20 +218,15 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
     protected readonly askUser: { enabled: boolean };
     protected readonly resolveSkillConfigFn: (wsId: string | undefined, workDir?: string) => Promise<{ skillDirectories?: string[]; disabledSkills?: string[] }>;
     protected readonly resolveWorkspaceIdForPathFn: (rootPath: string) => Promise<string>;
-    protected readonly getCronInfra?: () => CronInfraDeps | undefined;
-    protected readonly getEnqueueChat?: () => import('../llm-tools/send-to-conversation-tool').EnqueueChatFn | undefined;
-    protected readonly getSendMessage?: () => import('../llm-tools/send-to-conversation-tool').SendMessageFn | undefined;
-    protected readonly getSendToConversationRuntime?: () => import('../llm-tools/send-to-conversation-tool').SendToConversationRuntimeOptions | undefined;
-    protected readonly getMcpOauthManager?: () => import('../mcp-oauth').McpOauthManager | undefined;
+    /**
+     * Late-bound runtime capabilities, held by identity. Always defined —
+     * {@link EMPTY_EXECUTOR_RUNTIME} when the caller supplied none — so call
+     * sites read `this.runtime.getX?.()` without a second optional hop.
+     */
+    protected readonly runtime: ChatExecutorRuntime;
     /** Active AI provider — used to guard against provider mismatches on follow-up resume. */
     protected readonly provider: 'copilot' | 'codex' | 'claude' | 'opencode';
     protected readonly ralphMultiAgentGrillEnabled: boolean;
-    /** Resolves per-task SDK service by provider, checking enablement. Optional — falls back to sdkServiceRegistry. */
-    protected readonly resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
-    /** Live read of the admin global system prompt; injected into user-facing sessions. */
-    protected readonly getGlobalSystemPromptFn?: () => string | undefined;
-    /** Shared per-process AbortController registry (owned by the queue bridge). */
-    protected readonly processAbortControllers?: Map<string, AbortController>;
     /**
      * Per-provider model-metadata cache for reasoning-effort resolution. The
      * shared `modelMetadataStore` is warmed from the default provider only, so
@@ -294,17 +245,10 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         this.askUser = options.askUser ?? { enabled: false };
         this.resolveSkillConfigFn = options.resolveSkillConfig;
         this.resolveWorkspaceIdForPathFn = options.resolveWorkspaceIdForPath;
-        this.getCronInfra = options.getCronInfra;
-        this.getEnqueueChat = options.getEnqueueChat;
-        this.getSendMessage = options.getSendMessage;
-        this.getSendToConversationRuntime = options.getSendToConversationRuntime;
-        this.getMcpOauthManager = options.getMcpOauthManager;
+        this.runtime = options.runtime ?? EMPTY_EXECUTOR_RUNTIME;
         this.provider = options.provider ?? 'copilot';
         this.ralphMultiAgentGrillEnabled = options.ralphMultiAgentGrillEnabled === true;
-        this.resolveAiServiceForProvider = options.resolveAiServiceForProvider;
-        this.getGlobalSystemPromptFn = options.getGlobalSystemPrompt;
-        this.processAbortControllers = options.processAbortControllers;
-        this.getTurnPerformanceRecorder = options.getTurnPerformanceStore;
+        this.getTurnPerformanceRecorder = this.runtime.getTurnPerformanceStore;
     }
 
     /**
@@ -315,14 +259,14 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
      */
     protected registerTurnAbortController(processId: string): AbortController {
         const controller = new AbortController();
-        this.processAbortControllers?.set(processId, controller);
+        this.runtime.processAbortControllers?.set(processId, controller);
         return controller;
     }
 
     /** Remove this turn's controller unless a newer turn has already replaced it. */
     protected releaseTurnAbortController(processId: string, controller: AbortController): void {
-        if (this.processAbortControllers?.get(processId) === controller) {
-            this.processAbortControllers.delete(processId);
+        if (this.runtime.processAbortControllers?.get(processId) === controller) {
+            this.runtime.processAbortControllers.delete(processId);
         }
     }
 
@@ -333,7 +277,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
      * `undefined` when unset so the default path is inert.
      */
     protected resolveGlobalSystemPrompt(): string | undefined {
-        return this.getGlobalSystemPromptFn?.();
+        return this.runtime.getGlobalSystemPrompt?.();
     }
 
     /**
@@ -358,8 +302,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
      * and performs live enablement + registry lookup.
      */
     protected getAiServiceForProvider(provider: ChatProvider): ISDKService {
-        if (this.resolveAiServiceForProvider) {
-            return this.resolveAiServiceForProvider(provider);
+        if (this.runtime.resolveAiServiceForProvider) {
+            return this.runtime.resolveAiServiceForProvider(provider);
         }
         // Fallback: use the default aiService injected at construction time.
         // This preserves backward compatibility for tests that inject aiService
@@ -377,7 +321,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         scheduleWakeup?: import('../llm-tools/cron-tools').WakeupToolDeps;
         cronTools?: import('../llm-tools/cron-tools').CronToolDeps;
     } {
-        const infra = this.getCronInfra?.();
+        const infra = this.runtime.getCronInfra?.();
         if (!infra) return {};
         return {
             scheduleWakeup: {
@@ -524,9 +468,9 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             processId,
             query: prompt,
             followUpSuggestions: this.followUpSuggestions,
-            enqueueChat: this.getEnqueueChat?.(),
-            sendMessage: this.getSendMessage?.(),
-            sendToConversationRuntime: this.getSendToConversationRuntime?.(),
+            enqueueChat: this.runtime.getEnqueueChat?.(),
+            sendMessage: this.runtime.getSendMessage?.(),
+            sendToConversationRuntime: this.runtime.getSendToConversationRuntime?.(),
             scheduleWakeup: cronDeps.scheduleWakeup,
             cronTools: cronDeps.cronTools,
             askUser: {
@@ -808,7 +752,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 const questionPlan = await planRalphGrillCandidateQuestions(
                     {
                         aiService: effectiveAiService,
-                        resolveAiServiceForProvider: this.resolveAiServiceForProvider,
+                        resolveAiServiceForProvider: this.runtime.resolveAiServiceForProvider,
                         resolveModelForProvider,
                     },
                     {
@@ -894,7 +838,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                     processId,
                     workspaceId: payload.workspaceId,
                     originalMessage: prompt,
-                    manager: this.getMcpOauthManager?.(),
+                    manager: this.runtime.getMcpOauthManager?.(),
                     logLabel: CHAT_EXECUTOR_LOG_LABEL,
                 }),
             };

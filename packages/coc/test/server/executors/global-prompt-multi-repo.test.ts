@@ -5,8 +5,8 @@
  * rather than per-repo:
  *
  *  1. Router propagation — `MultiRepoQueueRouter` carries the live
- *     `getGlobalSystemPrompt` callback in its `defaultOptions` and spreads it
- *     into EVERY per-repo `QueueExecutorBridge`. So all repos read the same
+ *     `getGlobalSystemPrompt` capability in its `defaultOptions.runtime` and
+ *     shares that object with EVERY per-repo `QueueExecutorBridge`. So all repos read the same
  *     callback, resolve to the same value, and pick up live admin edits without
  *     recreating any bridge.
  *
@@ -50,10 +50,16 @@ import {
     GLOBAL_SYSTEM_PROMPT_TAG,
 } from '../../../src/server/executors/system-message-builder';
 
-type CapturedOptions = { getGlobalSystemPrompt?: () => string | undefined };
+type CapturedRuntime = { getGlobalSystemPrompt?: () => string | undefined };
 
-function captureBridgeOptions(callIndex: number, spy: ReturnType<typeof vi.spyOn>): CapturedOptions {
-    return spy.mock.calls[callIndex][2] as CapturedOptions;
+/**
+ * The late-bound capabilities the router handed to one per-repo bridge.
+ * Returns the `runtime` view — the object the router shares by identity across
+ * every repo.
+ */
+function captureBridgeOptions(callIndex: number, spy: ReturnType<typeof vi.spyOn>): CapturedRuntime {
+    const options = spy.mock.calls[callIndex][2] as { runtime?: CapturedRuntime };
+    return options.runtime ?? {};
 }
 
 describe('Global system prompt — multi-repo invariants (AC-06)', () => {
@@ -72,7 +78,7 @@ describe('Global system prompt — multi-repo invariants (AC-06)', () => {
             const router = new MultiRepoQueueRouter(
                 new RepoQueueRegistry(),
                 createMockProcessStore(),
-                { autoStart: false, getGlobalSystemPrompt },
+                { autoStart: false, runtime: { getGlobalSystemPrompt } },
             );
             const spy = vi.spyOn(queueExecutorBridgeMod, 'createQueueExecutorBridge');
 
@@ -99,7 +105,7 @@ describe('Global system prompt — multi-repo invariants (AC-06)', () => {
             const router = new MultiRepoQueueRouter(
                 new RepoQueueRegistry(),
                 createMockProcessStore(),
-                { autoStart: false, getGlobalSystemPrompt: () => liveValue },
+                { autoStart: false, runtime: { getGlobalSystemPrompt: () => liveValue } },
             );
             const spy = vi.spyOn(queueExecutorBridgeMod, 'createQueueExecutorBridge');
 
@@ -148,7 +154,7 @@ describe('Global system prompt — multi-repo invariants (AC-06)', () => {
             const router = new MultiRepoQueueRouter(
                 new RepoQueueRegistry(),
                 createMockProcessStore(),
-                { autoStart: false, initialDelayMs: 30000, getGlobalSystemPrompt },
+                { autoStart: false, initialDelayMs: 30000, runtime: { getGlobalSystemPrompt } },
             );
             const spy = vi.spyOn(queueExecutorBridgeMod, 'createQueueExecutorBridge');
 

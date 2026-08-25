@@ -55,7 +55,7 @@ function createRegistry() {
         resolveSkillConfig: vi.fn().mockResolvedValue({}),
         resolveWorkspaceIdForPath: vi.fn().mockResolvedValue('ws-1'),
         onTitleNeeded: vi.fn(),
-        getWsServer: () => undefined,
+        runtime: { getWsServer: () => undefined },
     });
     return { store, registry };
 }
