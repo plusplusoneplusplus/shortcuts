@@ -487,7 +487,7 @@ all have their own `references/*.md`.
   on — `absentFallback: false`, so a legacy partial config that lacks the key
   still reads off — runtime flag `chatStyleSelectorEnabled`) adds a
   `Style: Default|Human|
-  Direct|Analytical|Structured` chip beside Effort in the new-chat and follow-up
+  Direct|Structured` chip beside Effort in the new-chat and follow-up
   composers. The style instruction is prepended to the **user message**, never
   injected into the system message. Style changes only how a response is
   written — never the provider, model, effort, tools, permission mode, or any

@@ -1137,12 +1137,17 @@ describe('buildRows – commit chat rows', () => {
 
 describe('buildRows – chat style', () => {
     it('shows the label of the style the conversation last ran with', () => {
-        const rows = buildRows({ id: 'p-style', metadata: { chatStyle: 'analytical' } });
-        expect(rows.find(r => r.label === 'Style')!.value).toBe('Analytical');
+        const rows = buildRows({ id: 'p-style', metadata: { chatStyle: 'structured' } });
+        expect(rows.find(r => r.label === 'Style')!.value).toBe('Structured');
     });
 
     it('shows Default when the conversation has no recorded style', () => {
         const rows = buildRows({ id: 'p-nostyle' });
+        expect(rows.find(r => r.label === 'Style')!.value).toBe('Default');
+    });
+
+    it('shows Default for a retired style value stored on an old conversation', () => {
+        const rows = buildRows({ id: 'p-retired', metadata: { chatStyle: 'analytical' } });
         expect(rows.find(r => r.label === 'Style')!.value).toBe('Default');
     });
 

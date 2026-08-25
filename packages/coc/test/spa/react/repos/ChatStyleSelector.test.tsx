@@ -17,8 +17,8 @@ import {
 
 describe('ChatStyleSelector', () => {
     it('shows the selected style in the trigger label', () => {
-        render(<ChatStyleSelector selectedStyle="analytical" onChange={() => {}} />);
-        expect(screen.getByTestId('chat-style-label').textContent).toBe('Style: Analytical');
+        render(<ChatStyleSelector selectedStyle="structured" onChange={() => {}} />);
+        expect(screen.getByTestId('chat-style-label').textContent).toBe('Style: Structured');
     });
 
     it('still shows "Style: Default" when nothing will be injected', () => {
@@ -43,11 +43,11 @@ describe('ChatStyleSelector', () => {
             .toBe('Choose how the response is written.');
     });
 
-    it('lists all five styles, Default first, with their one-line descriptions', () => {
+    it('lists all four styles, Default first, with their one-line descriptions', () => {
         render(<ChatStyleSelector selectedStyle={DEFAULT_CHAT_STYLE} onChange={() => {}} />);
         fireEvent.click(screen.getByTestId('chat-style-trigger-btn'));
 
-        expect(CHAT_STYLES).toEqual(['default', 'human', 'direct', 'analytical', 'structured']);
+        expect(CHAT_STYLES).toEqual(['default', 'human', 'direct', 'structured']);
         const rendered = Array.from(
             screen.getByTestId('chat-style-menu').querySelectorAll('[role="option"]'),
         ).map(el => el.getAttribute('data-testid'));

@@ -872,7 +872,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         key: 'features.chatStyleSelector', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'chatStyleSelectorEnabled',
         ui: {
             group: 'aiModes', order: 45, label: 'Chat style selector', badge: 'experimental',
-            hint: 'Adds a Style chip (Human / Direct / Analytical / Structured) beside Effort in chat composers. Style changes how the response is written — not the model, effort, tools, or permissions. Enabled by default.',
+            hint: 'Adds a Style chip (Human / Direct / Structured) beside Effort in chat composers. Style changes how the response is written — not the model, effort, tools, or permissions. Enabled by default.',
             testId: 'toggle-chat-style-selector-enabled',
         },
     }),

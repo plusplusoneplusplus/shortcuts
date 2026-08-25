@@ -23,8 +23,6 @@ const CHAT_STYLE_FOCUS_LINES: Readonly<Partial<Record<ChatStyle, string>>> = {
   direct:
     'Lead with the answer or action, then only what the user needs to act on it. '
     + 'Short sentences, plain words. Cut preamble, softening, and background they did not ask for — short, not compressed.',
-  analytical:
-    'Explain the reasoning. Surface assumptions, evidence, causes, alternatives, and tradeoffs, and say what the risks are. Give a useful summary of the reasoning and its conclusions rather than a raw transcript of your internal thinking.',
   structured:
     'Make the answer easy to scan: outcome, key points, decisions, risks, and next steps. Only organize this way when the answer benefits from it, and never pad a one-line answer into a template. Do not invent owners, dates, decisions, risks, or certainty the context does not support.',
 };

@@ -2653,7 +2653,7 @@ describe('NewChatArea — chat style', () => {
 
     it('ignores any saved repo preference — new chats never inherit a style', async () => {
         mockChatStyleEnabled.value = true;
-        mockRepoPrefs.value = { lastChatStyle: 'analytical' };
+        mockRepoPrefs.value = { lastChatStyle: 'direct' };
         render(<NewChatArea workspaceId="ws-1" />);
 
         await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
@@ -2679,9 +2679,9 @@ describe('NewChatArea — chat style', () => {
         await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
 
         fireEvent.click(screen.getByTestId('chat-style-trigger-btn'));
-        fireEvent.click(screen.getByTestId('chat-style-option-analytical'));
+        fireEvent.click(screen.getByTestId('chat-style-option-direct'));
 
-        expect((await send()).payload.chatStyle).toBe('analytical');
+        expect((await send()).payload.chatStyle).toBe('direct');
     });
 
     it('hides the chip for out-of-scope modes like Ralph', async () => {
