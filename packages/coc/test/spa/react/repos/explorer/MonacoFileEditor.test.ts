@@ -3,7 +3,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { getMonacoLanguage, EXPLORER_EDITOR_OPTIONS } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor';
+import { vi } from 'vitest';
+import { getMonacoLanguage, EXPLORER_EDITOR_OPTIONS, revealEditorLine } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor';
 
 describe('getMonacoLanguage', () => {
     it('maps TypeScript extensions', () => {
@@ -128,5 +129,40 @@ describe('EXPLORER_EDITOR_OPTIONS', () => {
             verticalScrollbarSize: 8,
             horizontalScrollbarSize: 8,
         });
+    });
+});
+
+
+describe('revealEditorLine', () => {
+    function fakeEditor() {
+        return {
+            revealLineInCenter: vi.fn(),
+            setPosition: vi.fn(),
+            setSelection: vi.fn(),
+        };
+    }
+
+    it('centres the line and places the cursor on it', () => {
+        const editor = fakeEditor();
+        revealEditorLine(editor, 17);
+        expect(editor.revealLineInCenter).toHaveBeenCalledWith(17);
+        expect(editor.setPosition).toHaveBeenCalledWith({ lineNumber: 17, column: 1 });
+        expect(editor.setSelection).toHaveBeenCalledWith({
+            startLineNumber: 17, startColumn: 1, endLineNumber: 17, endColumn: 1,
+        });
+    });
+
+    it('ignores a line number below one — Monaco lines are one-based', () => {
+        const editor = fakeEditor();
+        revealEditorLine(editor, 0);
+        revealEditorLine(editor, -3);
+        expect(editor.revealLineInCenter).not.toHaveBeenCalled();
+    });
+
+    it('ignores a non-finite line rather than throwing inside the editor', () => {
+        const editor = fakeEditor();
+        revealEditorLine(editor, Number.NaN);
+        revealEditorLine(editor, Number.POSITIVE_INFINITY);
+        expect(editor.revealLineInCenter).not.toHaveBeenCalled();
     });
 });

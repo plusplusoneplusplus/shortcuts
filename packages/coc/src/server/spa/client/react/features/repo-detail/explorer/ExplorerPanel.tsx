@@ -13,11 +13,12 @@ import { PreviewPane } from './PreviewPane';
 import { SearchBar } from './SearchBar';
 import { Breadcrumbs } from './Breadcrumbs';
 import { QuickOpen } from './QuickOpen';
+import { ContentSearchPanel } from './ContentSearchPanel';
 import { ExactOpen, TRUSTED_PATH_PREFIX, fileName as exactFileName } from './ExactOpen';
 import { ContextMenu, type ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import type { TreeEntry } from './types';
 import { explorerApi } from './explorerApi';
-import { useExplorerExpandedPaths, useExplorerSelectedPath, useExplorerPreviewFile } from './explorerStateStore';
+import { useExplorerExpandedPaths, useExplorerSelectedPath, useExplorerPreviewFile, useExplorerView } from './explorerStateStore';
 import { useExplorerRootEntries, useExplorerChildrenMap, useExplorerRootLoaded } from './explorerTreeCache';
 import { setExplorerInstanceDirty } from './explorerDirtyStore';
 
@@ -144,6 +145,39 @@ export function prunePaths(paths: Iterable<string>, removedRoots: string[]): Set
     return next;
 }
 
+/**
+ * True when `path` names a directory according to the tree data already
+ * fetched. A directory the user has opened is a key of `childrenMap`; otherwise
+ * fall back to its own entry in the parent listing. Unknown paths read as files,
+ * which is the safe answer for the caller below (it then scopes to the parent).
+ */
+export function isDirectoryPath(
+    path: string,
+    rootEntries: TreeEntry[],
+    childrenMap: Map<string, TreeEntry[]>,
+): boolean {
+    if (childrenMap.has(path)) return true;
+    const slash = path.lastIndexOf('/');
+    const siblings = slash < 0 ? rootEntries : childrenMap.get(path.slice(0, slash));
+    return siblings?.find(entry => entry.path === path)?.type === 'dir';
+}
+
+/**
+ * The directory content search is scoped to: the selection itself when it is a
+ * directory, its parent when it is a file, and the whole repo when nothing is
+ * selected or the selection sits at the root.
+ */
+export function resolveSearchScope(
+    selectedPath: string | null,
+    rootEntries: TreeEntry[],
+    childrenMap: Map<string, TreeEntry[]>,
+): string | undefined {
+    if (!selectedPath) return undefined;
+    if (isDirectoryPath(selectedPath, rootEntries, childrenMap)) return selectedPath;
+    const slash = selectedPath.lastIndexOf('/');
+    return slash < 0 ? undefined : selectedPath.slice(0, slash);
+}
+
 export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
     const { isMobile } = useBreakpoint();
     const { width: sidebarWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
@@ -190,6 +224,10 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
         () => () => setExplorerInstanceDirty(workspaceId, dirtyInstanceId, false),
         [workspaceId, dirtyInstanceId],
     );
+
+    // Which sidebar view is showing. Persisted per workspace, so the choice
+    // survives a remount; the tree's own state is untouched while Search is up.
+    const [view, setView] = useExplorerView(workspaceId);
 
     // Search state
     const [searchInput, setSearchInput] = useState('');
@@ -298,6 +336,17 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
     const handleFileOpen = useCallback((entry: TreeEntry) => {
         setPreviewFile({ path: entry.path, name: entry.name });
     }, []);
+
+    /**
+     * Open a content-search hit: show the file in the preview pane scrolled to
+     * the matching line, and move the tree selection to it so switching back to
+     * the tree lands on the same file.
+     */
+    const handleOpenMatch = useCallback((filePath: string, line: number) => {
+        const name = filePath.includes('/') ? filePath.slice(filePath.lastIndexOf('/') + 1) : filePath;
+        setSelectedPath(filePath);
+        setPreviewFile({ path: filePath, name, line });
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleQuickOpenSelect = useCallback((filePath: string) => {
         // Trusted absolute-path from ExactOpen — skip tree expansion and hash update
@@ -626,6 +675,12 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
         return () => document.removeEventListener('keydown', handler);
     }, [searchInput, onSearchClear]);
 
+    // Content search is scoped to the directory the user has selected in the tree.
+    const searchScope = useMemo(
+        () => resolveSearchScope(selectedPath, rootEntries, childrenMap),
+        [selectedPath, rootEntries, childrenMap],
+    );
+
     // Breadcrumb segments derived from selectedPath
     const breadcrumbSegments = useMemo(() => {
         if (!selectedPath) return [];
@@ -680,26 +735,47 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
             >
                 <style>{`@media (min-width: 1024px) { [data-testid="explorer-sidebar"] { width: ${sidebarWidth}px !important; } }`}</style>
                 <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
-                    <span className="text-xs font-medium text-[#1e1e1e] dark:text-[#cccccc]">Files</span>
+                    <div className="flex items-center gap-2" role="tablist" aria-label="Explorer view">
+                        {(['tree', 'search'] as const).map(target => (
+                            <button
+                                key={target}
+                                role="tab"
+                                aria-selected={view === target}
+                                onClick={() => setView(target)}
+                                className={`text-xs bg-transparent border-none p-0 cursor-pointer transition-colors ${
+                                    view === target
+                                        ? 'font-medium text-[#1e1e1e] dark:text-[#cccccc]'
+                                        : 'text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]'
+                                }`}
+                                data-testid={`explorer-view-${target}`}
+                            >
+                                {target === 'tree' ? 'Files' : 'Search'}
+                            </button>
+                        ))}
+                    </div>
                     <div className="flex items-center gap-2">
-                        <button
-                            className="text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors disabled:opacity-50"
-                            onClick={handleCollapseAll}
-                            title="Collapse all"
-                            disabled={expandedPaths.size === 0}
-                            data-testid="explorer-collapse-all-btn"
-                        >
-                            ⊟
-                        </button>
-                        <button
-                            className="text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors disabled:opacity-50"
-                            onClick={handleRevealOpenFile}
-                            title="Reveal open file"
-                            disabled={!previewFile}
-                            data-testid="explorer-reveal-file-btn"
-                        >
-                            ⊙
-                        </button>
+                        {view === 'tree' && (
+                            <>
+                                <button
+                                    className="text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors disabled:opacity-50"
+                                    onClick={handleCollapseAll}
+                                    title="Collapse all"
+                                    disabled={expandedPaths.size === 0}
+                                    data-testid="explorer-collapse-all-btn"
+                                >
+                                    ⊟
+                                </button>
+                                <button
+                                    className="text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors disabled:opacity-50"
+                                    onClick={handleRevealOpenFile}
+                                    title="Reveal open file"
+                                    disabled={!previewFile}
+                                    data-testid="explorer-reveal-file-btn"
+                                >
+                                    ⊙
+                                </button>
+                            </>
+                        )}
                         <button
                             className="text-xs text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] transition-colors disabled:opacity-50"
                             onClick={handleRefresh}
@@ -720,36 +796,46 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                         {error}
                     </div>
                 )}
-                <Breadcrumbs
-                    segments={breadcrumbSegments}
-                    onNavigate={handleBreadcrumbNavigate}
-                />
-                <SearchBar
-                    value={searchInput}
-                    onChange={onSearchChange}
-                    onClear={onSearchClear}
-                    inputRef={searchInputRef}
-                    placeholder="Filter files…"
-                />
-                {serverSearchLoading && (
-                    <div className="px-3 py-0.5 text-xs text-[#848484]" data-testid="explorer-server-search-loading">
-                        Searching…
-                    </div>
+                {view === 'search' ? (
+                    <ContentSearchPanel
+                        workspaceId={workspaceId}
+                        scopePath={searchScope}
+                        onOpenMatch={handleOpenMatch}
+                    />
+                ) : (
+                    <>
+                        <Breadcrumbs
+                            segments={breadcrumbSegments}
+                            onNavigate={handleBreadcrumbNavigate}
+                        />
+                        <SearchBar
+                            value={searchInput}
+                            onChange={onSearchChange}
+                            onClear={onSearchClear}
+                            inputRef={searchInputRef}
+                            placeholder="Filter files…"
+                        />
+                        {serverSearchLoading && (
+                            <div className="px-3 py-0.5 text-xs text-[#848484]" data-testid="explorer-server-search-loading">
+                                Searching…
+                            </div>
+                        )}
+                        <FileTree
+                            workspaceId={workspaceId}
+                            entries={rootEntries}
+                            selectedPath={selectedPath}
+                            expandedPaths={expandedPaths}
+                            childrenMap={childrenMap}
+                            onSelect={handleSelect}
+                            onToggle={handleToggle}
+                            onFileOpen={handleFileOpen}
+                            onChildrenLoaded={handleChildrenLoaded}
+                            onContextMenu={handleTreeContextMenu}
+                            filterQuery={searchQuery}
+                            scrollRef={treeScrollRef}
+                        />
+                    </>
                 )}
-                <FileTree
-                    workspaceId={workspaceId}
-                    entries={rootEntries}
-                    selectedPath={selectedPath}
-                    expandedPaths={expandedPaths}
-                    childrenMap={childrenMap}
-                    onSelect={handleSelect}
-                    onToggle={handleToggle}
-                    onFileOpen={handleFileOpen}
-                    onChildrenLoaded={handleChildrenLoaded}
-                    onContextMenu={handleTreeContextMenu}
-                    filterQuery={searchQuery}
-                    scrollRef={treeScrollRef}
-                />
             </aside>
 
             {/* Resize handle — desktop only */}
@@ -797,6 +883,7 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
                                     repoId={workspaceId}
                                     filePath={previewFile.path}
                                     fileName={previewFile.name}
+                                    revealLine={previewFile.line}
                                     onClose={isMobile ? undefined : () => setPreviewFile(null)}
                                     onDirtyChange={reportPreviewDirty}
                                 />

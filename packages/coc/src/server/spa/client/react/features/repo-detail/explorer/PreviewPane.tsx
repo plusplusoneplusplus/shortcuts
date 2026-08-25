@@ -21,6 +21,11 @@ export interface PreviewPaneProps {
     filePath: string;
     /** File name for language detection, e.g. "index.ts" */
     fileName: string;
+    /**
+     * One-based line to scroll to and highlight once the content is loaded. Set
+     * when the file is opened from a content-search hit.
+     */
+    revealLine?: number;
     /** Called when the user clicks the close button */
     onClose?: () => void;
     /** When true the editor is non-editable and save/dirty UI is suppressed. */
@@ -47,7 +52,7 @@ function formatFileSize(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function PreviewPane({ repoId, filePath, fileName, onClose, readOnly, onDirtyChange }: PreviewPaneProps) {
+export function PreviewPane({ repoId, filePath, fileName, revealLine, onClose, readOnly, onDirtyChange }: PreviewPaneProps) {
     const isTrusted = filePath.startsWith(TRUSTED_PATH_PREFIX);
     const actualPath = isTrusted ? filePath.slice(TRUSTED_PATH_PREFIX.length) : filePath;
     const effectiveReadOnly = readOnly || isTrusted;
@@ -234,6 +239,7 @@ export function PreviewPane({ repoId, filePath, fileName, onClose, readOnly, onD
                         onChange={handleEditorChange}
                         onSave={effectiveReadOnly ? undefined : handleSave}
                         readOnly={effectiveReadOnly}
+                        revealLine={revealLine}
                     />
                 </div>
             ) : null}
