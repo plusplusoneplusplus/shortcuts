@@ -234,6 +234,10 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     }),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/layout/DockedStatusFooter', () => ({
+    DockedStatusFooter: () => React.createElement('div', { 'data-testid': 'mock-docked-status-footer' }),
+}));
+
 // ── Import component under test (after mocks) ─────────────────────────
 
 import { RepoChatTab } from '../../../../src/server/spa/client/react/features/chat/RepoChatTab';
@@ -304,11 +308,11 @@ function setupFetchMock(opts: {
     });
 }
 
-async function renderTab(workspaceId = 'ws-1', mode?: 'chats' | 'tasks') {
+async function renderTab(workspaceId = 'ws-1', mode?: 'chats' | 'tasks', extraProps: Record<string, unknown> = {}) {
     let result: ReturnType<typeof renderWithProviders> | undefined;
     await act(async () => {
         result = renderWithProviders(
-            React.createElement(RepoChatTab, { workspaceId, mode }),
+            React.createElement(RepoChatTab, { workspaceId, mode, ...extraProps }),
         );
     });
     await waitFor(() => {
@@ -2242,5 +2246,37 @@ describe('RepoChatTab: split-workspace layout (portal seam)', () => {
         await renderTab();
         expect(screen.getByTestId('activity-detail-panel')).toBeTruthy();
         expect(screen.queryByTestId('activity-split-workspace-list')).toBeNull();
+    });
+});
+
+// ── Docked status footer ───────────────────────────────────────────────
+
+describe('RepoChatTab — dockStatusFooter', () => {
+    afterEach(() => {
+        localStorage.removeItem(ws1CollapsedKey);
+    });
+
+    it('pins the status cluster at the bottom of the conversation-list column', async () => {
+        setupFetchMock();
+        await renderTab('ws-1', undefined, { dockStatusFooter: true });
+        const panel = screen.getByTestId('activity-list-panel');
+        const footer = screen.getByTestId('mock-docked-status-footer');
+        expect(panel.contains(footer)).toBe(true);
+        // Last child, so it sits below the list rather than above it.
+        expect(panel.lastElementChild).toBe(footer);
+    });
+
+    it('renders no footer when the prop is absent (every existing call site)', async () => {
+        setupFetchMock();
+        await renderTab();
+        expect(screen.queryByTestId('mock-docked-status-footer')).toBeNull();
+    });
+
+    it('renders no footer while the conversation list is collapsed', async () => {
+        localStorage.setItem(ws1CollapsedKey, 'true');
+        setupFetchMock();
+        await renderTab('ws-1', undefined, { dockStatusFooter: true });
+        expect(screen.getByTestId('activity-list-collapsed')).toBeTruthy();
+        expect(screen.queryByTestId('mock-docked-status-footer')).toBeNull();
     });
 });

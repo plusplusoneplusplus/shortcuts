@@ -233,4 +233,21 @@ describe('GlobalStatusDock', () => {
         render(<GlobalStatusDock />);
         expect(screen.getByTestId('status-actions')).toBeTruthy();
     });
+
+    it("stands down on a repo group's Workspace sub-tab even with the split panel disabled", () => {
+        // RepoGroupView always mounts RepoChatTab with its own docked footer, so
+        // the global band would double-dock regardless of the flag.
+        mockSplitPanel = false;
+        mockAppState = { activeTab: 'repos', selectedRepoId: 'group-x', activeRepoSubTab: 'chats' };
+        const { container } = render(<GlobalStatusDock />);
+        expect(screen.queryByTestId('status-actions')).toBeNull();
+        expect(container.firstChild).toBeNull();
+    });
+
+    it("still renders on a repo group's non-chat sub-tab handling (notes stand-down is separate)", () => {
+        mockSplitPanel = false;
+        mockAppState = { activeTab: 'repos', selectedRepoId: 'group-x', activeRepoSubTab: 'terminal' };
+        render(<GlobalStatusDock />);
+        expect(screen.getByTestId('status-actions')).toBeTruthy();
+    });
 });

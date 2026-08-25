@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef, cloneElement } from 'react';
 import { createPortal } from 'react-dom';
+import { DockedStatusFooter } from '../../layout/DockedStatusFooter';
 import { cn } from '../../ui';
 import { useCocClient } from '../../repos/cloneRouting';
 import { isContainerMode, isForEachEnabled, isMapReduceEnabled } from '../../utils/config';
@@ -59,6 +60,13 @@ export interface RepoChatTabProps {
     detailActive?: boolean;
     /** Fired when the user clicks in the chat list, so the parent marks chat last-clicked. */
     onActivateDetail?: () => void;
+    /**
+     * Pin the shared status/action cluster to the bottom of this tab's own
+     * conversation-list column, instead of the app-wide `GlobalStatusDock`
+     * painting a partial-width band beneath it. No-ops in classic / mobile via
+     * `DockedStatusFooter`'s own gate.
+     */
+    dockStatusFooter?: boolean;
 }
 
 function getActivityTabSegment(mode: RepoChatTabProps['mode']): 'activity' | 'chats' | 'tasks' {
@@ -135,7 +143,7 @@ function loadActivityListCollapsed(storageKey: string): boolean {
     try { return localStorage.getItem(storageKey) === 'true'; } catch { return false; }
 }
 
-export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, detailContainer, detailActive, onActivateDetail }: RepoChatTabProps) {
+export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, detailContainer, detailActive, onActivateDetail, dockStatusFooter }: RepoChatTabProps) {
     const { state: queueState, dispatch: queueDispatch } = useQueue();
 
     // Per-clone client (AC-07): the Activity tab's conversation LIST + queue +
@@ -1333,6 +1341,10 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
                     data-testid="activity-list-panel"
                 >
                     {listPane}
+                    {/* Group / virtual workspaces host the status cluster here so
+                        the chat detail pane keeps full height (GlobalStatusDock
+                        stands down for this sub-tab). */}
+                    {dockStatusFooter && <DockedStatusFooter />}
                 </div>
 
                 {/* Resize handle + collapse affordance */}

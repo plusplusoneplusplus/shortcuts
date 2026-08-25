@@ -11,6 +11,8 @@
  * footer instead, so the content pane keeps full height and no partial-width
  * band is painted beneath it:
  *   - the workspace chat/activity sub-tab (`SplitWorkspacePanel` `footer`),
+ *   - a repo group's Workspace sub-tab (`RepoChatTab`'s own `dockStatusFooter`,
+ *     which a group turns on regardless of the split-panel flag),
  *   - the workspace notes sub-tab (`NotesView`'s own `NotesSidebar` footer),
  *   - the workspace settings sub-tab (`RepoSettingsTab`'s own nav footer),
  *   - the workspace pull-requests sub-tab (`PullRequestsTab`'s PR queue footer),
@@ -42,6 +44,7 @@ import { useVisibleDashboardTab } from './useVisibleDashboardTab';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
 import { useSplitWorkspacePanelEnabled } from '../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
+import { isRepoGroupWorkspaceId } from '../repos/virtualWorkspaceIds';
 
 /** Fallback width when no split sidebar is mounted (matches the panel default). */
 const DEFAULT_LEFT_COL_WIDTH = 360;
@@ -64,11 +67,16 @@ export function GlobalStatusDock({ onAdminOpen }: GlobalStatusDockProps) {
     // The workspace chat/activity sub-tab hosts the dock in its own left-column
     // footer so the chat detail pane keeps full height. Don't render a second
     // dock over that view.
-    const inPanelFooter =
-        splitWorkspacePanelEnabled &&
+    const inChatSubTab =
         visibleTab === 'repos' &&
         !!state.selectedRepoId &&
         (state.activeRepoSubTab === 'chats' || state.activeRepoSubTab === 'activity');
+    // Repo groups render `RepoChatTab` with its own docked footer regardless of
+    // the split-panel flag, so they stand down unconditionally; a regular
+    // workspace only has a footer to defer to when the split panel is on.
+    const inPanelFooter =
+        inChatSubTab &&
+        (isRepoGroupWorkspaceId(state.selectedRepoId) || splitWorkspacePanelEnabled);
     if (inPanelFooter) return null;
 
     // The notes sub-tab hosts the cluster in `NotesView`'s own left-column
