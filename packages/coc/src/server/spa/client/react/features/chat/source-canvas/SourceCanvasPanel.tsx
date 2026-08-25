@@ -6,8 +6,8 @@
  *  - `kind: 'note'` (AC-02) → the editable `SourceCanvasNoteEditor` (full
  *    `NoteEditor`, inline edit + auto-save), which loads/saves its own content.
  *
- * Renders the panel header (file name + full path, copy-path, reveal-in-explorer,
- * close) and the body region. Layout (docked column vs mobile BottomSheet) and
+ * Renders the panel header (repo chip in repo-group chats, file name + full path,
+ * copy-path, reveal-in-explorer, close) and the body region. Layout (docked column vs mobile BottomSheet) and
  * resizing are owned by the host (`ChatDetail`); this component is the inner
  * chrome only.
  */
@@ -26,6 +26,16 @@ import {
     getConversationSourceFileKey,
     type ConversationSourceFile,
 } from './conversationSourceFiles';
+import {
+    getActiveRepoAttribution,
+    getSourceFileDisplayPath,
+    groupSourceFilesByRepo,
+    isRepoGroupWorkspaceId,
+} from './repoAttribution';
+import {
+    useWorkspacesWithRemoteOptional,
+    type ResolvableWorkspace,
+} from '../../../repos/workspacesWithRemote';
 
 function basename(p: string): string {
     const normalized = p.replace(/\\/g, '/');
@@ -47,6 +57,9 @@ const EMPTY_TREE: SourceCanvasTreeState = {
     errorPaths: new Map(),
     toggle: () => {},
 };
+
+/** Attribution-off lookup: every entry falls into one unlabeled bucket. */
+const NO_REPO_ATTRIBUTION: ReadonlyMap<string, string> = new Map();
 
 const headerBtnClass =
     'shrink-0 flex items-center justify-center w-7 h-7 rounded text-[#848484] ' +
@@ -74,23 +87,42 @@ function RevealInExplorerIcon() {
 
 interface SourceCanvasFileSwitcherProps {
     fileRef: SourceCanvasFileRef;
-    wsId?: string | null;
+    /** Chat workspace id (the `group-…` id in a repo-group chat) — keys entries. */
+    chatWsId?: string | null;
     workspaceRootPath?: string | null;
     sourceFiles: readonly ConversationSourceFile[];
+    /** Owning member workspace per file key, filled in as files get opened. */
+    repoByFileKey: ReadonlyMap<string, string>;
+    /** Repo-group chat → label options by member repo; single-repo chats stay flat. */
+    showRepoAttribution: boolean;
+    /** Workspace list, for member repo names/roots. */
+    workspaces: readonly ResolvableWorkspace[];
     onNavigate: (ref: SourceCanvasFileRef) => void;
 }
 
 function SourceCanvasFileSwitcher({
     fileRef,
-    wsId,
+    chatWsId,
     workspaceRootPath,
     sourceFiles,
+    repoByFileKey,
+    showRepoAttribution,
+    workspaces,
     onNavigate,
 }: SourceCanvasFileSwitcherProps) {
     const [open, setOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const triggerRef = useRef<HTMLButtonElement>(null);
-    const activeKey = getConversationSourceFileKey(fileRef.wsId ?? wsId ?? '', fileRef.fullPath);
+    const activeKey = getConversationSourceFileKey(fileRef.wsId ?? chatWsId ?? '', fileRef.fullPath);
+    const repoGroups = groupSourceFilesByRepo(
+        sourceFiles,
+        showRepoAttribution ? repoByFileKey : NO_REPO_ATTRIBUTION,
+        workspaces,
+    );
+    // A single-repo chat (and a group chat where nothing is resolved yet) has no
+    // repo to disambiguate, so it keeps the plain flat list.
+    const showRepoHeaders = showRepoAttribution
+        && !(repoGroups.length === 1 && repoGroups[0].wsId === null);
     const activePath = fileRef.displayPath || getSourceCanvasDisplayPath(fileRef.fullPath, workspaceRootPath);
     const activeName = basename(activePath);
 
@@ -214,43 +246,68 @@ function SourceCanvasFileSwitcher({
                     aria-label="Conversation source files"
                     data-testid="source-canvas-file-switcher-menu"
                 >
-                    {sourceFiles.map((sourceFile) => {
-                        const sourceKey = getConversationSourceFileKey(sourceFile.wsId, sourceFile.fullPath);
-                        const selected = sourceKey === activeKey;
-                        const sourcePath = sourceFile.displayPath
-                            || getSourceCanvasDisplayPath(sourceFile.fullPath, workspaceRootPath);
-                        return (
-                            <button
-                                key={sourceKey}
-                                type="button"
-                                role="option"
-                                aria-selected={selected}
-                                className={`w-full flex items-center gap-2 px-2 py-1.5 text-left text-xs ${
-                                    selected
-                                        ? 'bg-[#f3f3f3] dark:bg-[#2a2d2e] text-[#1e1e1e] dark:text-[#cccccc]'
-                                        : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e]'
-                                }`}
-                                data-testid={`source-canvas-file-option-${sourceKey}`}
-                                title={sourceFile.fullPath}
-                                onClick={() => {
-                                    onNavigate(sourceFile);
-                                    setOpen(false);
-                                    triggerRef.current?.focus();
-                                }}
-                                onKeyDown={handleOptionKeyDown}
-                            >
-                                <span className="min-w-0 flex-1">
-                                    <span className="block font-medium truncate">{basename(sourcePath)}</span>
-                                    <span className="block text-[11px] text-[#848484] truncate">{sourcePath}</span>
-                                </span>
-                                {selected && (
-                                    <span className="shrink-0 text-[#0078d4] dark:text-[#3794ff]" aria-label="Active file">
-                                        ✓
-                                    </span>
-                                )}
-                            </button>
-                        );
-                    })}
+                    {repoGroups.map((group) => (
+                        <div key={group.wsId ?? '__unresolved__'} role="presentation">
+                            {showRepoHeaders && (
+                                <div
+                                    className="flex items-center gap-1.5 px-2 pt-2 pb-1 text-[10px] uppercase tracking-wide text-[#848484] border-t border-[#e0e0e0] dark:border-[#3c3c3c] first:border-t-0"
+                                    data-testid={`source-canvas-file-group-${group.wsId ?? 'unresolved'}`}
+                                    data-repo-color={group.color}
+                                >
+                                    <span
+                                        className="w-1.5 h-1.5 rounded-full shrink-0"
+                                        style={{ backgroundColor: group.color }}
+                                        aria-hidden="true"
+                                    />
+                                    <span className="truncate">{group.label}</span>
+                                </div>
+                            )}
+                            {group.files.map((sourceFile) => {
+                                const sourceKey = getConversationSourceFileKey(sourceFile.wsId, sourceFile.fullPath);
+                                const selected = sourceKey === activeKey;
+                                const sourcePath = getSourceFileDisplayPath(
+                                    sourceFile,
+                                    group.wsId,
+                                    workspaces,
+                                    workspaceRootPath,
+                                );
+                                return (
+                                    <button
+                                        key={sourceKey}
+                                        type="button"
+                                        role="option"
+                                        aria-selected={selected}
+                                        className={`w-full flex items-center gap-2 px-2 py-1.5 text-left text-xs ${
+                                            selected
+                                                ? 'bg-[#f3f3f3] dark:bg-[#2a2d2e] text-[#1e1e1e] dark:text-[#cccccc]'
+                                                : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e]'
+                                        }`}
+                                        style={selected && showRepoHeaders
+                                            ? { boxShadow: `inset 2px 0 0 ${group.color}` }
+                                            : undefined}
+                                        data-testid={`source-canvas-file-option-${sourceKey}`}
+                                        title={sourceFile.fullPath}
+                                        onClick={() => {
+                                            onNavigate(sourceFile);
+                                            setOpen(false);
+                                            triggerRef.current?.focus();
+                                        }}
+                                        onKeyDown={handleOptionKeyDown}
+                                    >
+                                        <span className="min-w-0 flex-1">
+                                            <span className="block font-medium truncate">{basename(sourcePath)}</span>
+                                            <span className="block text-[11px] text-[#848484] truncate">{sourcePath}</span>
+                                        </span>
+                                        {selected && (
+                                            <span className="shrink-0 text-[#0078d4] dark:text-[#3794ff]" aria-label="Active file">
+                                                ✓
+                                            </span>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    ))}
                 </div>
             )}
         </div>
@@ -309,6 +366,37 @@ export function SourceCanvasPanel({
         && fileRef.kind !== 'dir'
         && sourceFiles.length > 1;
 
+    // Repo attribution (repo-group chats only). A conversation source file carries
+    // the GROUP workspace id, so the owning member is unknown until the preview
+    // endpoint probes the members; remember each answer per file key so the
+    // switcher can group already-opened files without a batch round trip.
+    const workspaces = useWorkspacesWithRemoteOptional();
+    const [repoByFileKey, setRepoByFileKey] = useState<ReadonlyMap<string, string>>(
+        () => new Map(),
+    );
+    const resolvedWorkspaceId = content?.resolvedWorkspaceId;
+    const activeFileKey = getConversationSourceFileKey(
+        fileRef.wsId ?? wsId ?? '',
+        fileRef.fullPath,
+    );
+    useEffect(() => {
+        if (!resolvedWorkspaceId) { return; }
+        setRepoByFileKey((previous) => {
+            if (previous.get(activeFileKey) === resolvedWorkspaceId) { return previous; }
+            const next = new Map(previous);
+            next.set(activeFileKey, resolvedWorkspaceId);
+            return next;
+        });
+    }, [activeFileKey, resolvedWorkspaceId]);
+
+    const repoChip = fileRef.kind === 'note'
+        ? null
+        : getActiveRepoAttribution(wsId, effectiveWsId, workspaces);
+    // Attribution is repo-group-only: a plain chat's files all come from one repo.
+    const showRepoAttribution = isRepoGroupWorkspaceId(wsId)
+        || isRepoGroupWorkspaceId(fileRef.wsId)
+        || !!repoChip;
+
     const handleCopy = useCallback(() => {
         const clip = navigator.clipboard;
         if (!clip?.writeText) { return; }
@@ -333,12 +421,32 @@ export function SourceCanvasPanel({
             data-testid="source-canvas-panel"
         >
             <div className="px-3 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526] flex items-center justify-between gap-2">
+                <div className="min-w-0 flex items-center gap-1.5">
+                {repoChip && (
+                    <span
+                        className="shrink-0 max-w-[45%] flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-[#616161] dark:text-[#a6a6a6] bg-black/[0.05] dark:bg-white/[0.08]"
+                        data-testid="source-canvas-repo-chip"
+                        data-repo-ws-id={repoChip.wsId}
+                        data-repo-color={repoChip.color}
+                        title={`Repo: ${repoChip.label}`}
+                    >
+                        <span
+                            className="w-1.5 h-1.5 rounded-full shrink-0"
+                            style={{ backgroundColor: repoChip.color }}
+                            aria-hidden="true"
+                        />
+                        <span className="truncate">{repoChip.label}</span>
+                    </span>
+                )}
                 {hasFileSwitcher && onNavigate ? (
                     <SourceCanvasFileSwitcher
                         fileRef={fileRef}
-                        wsId={effectiveWsId}
+                        chatWsId={wsId}
                         workspaceRootPath={effectiveWorkspaceRootPath}
                         sourceFiles={sourceFiles}
+                        repoByFileKey={repoByFileKey}
+                        showRepoAttribution={showRepoAttribution}
+                        workspaces={workspaces}
                         onNavigate={onNavigate}
                     />
                 ) : (
@@ -367,6 +475,7 @@ export function SourceCanvasPanel({
                         </span>
                     </div>
                 )}
+                </div>
                 <div className="flex items-center gap-0.5 shrink-0">
                     <button
                         type="button"

@@ -46,3 +46,11 @@ export {
     useConversationSourceFiles,
 } from './conversationSourceFiles';
 export type { ConversationSourceFile } from './conversationSourceFiles';
+export {
+    getActiveRepoAttribution,
+    getRepoAccentColor,
+    getRepoLabel,
+    groupSourceFilesByRepo,
+    isRepoGroupWorkspaceId,
+} from './repoAttribution';
+export type { SourceFileRepoGroup } from './repoAttribution';

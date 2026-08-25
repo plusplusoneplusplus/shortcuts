@@ -17,6 +17,16 @@ vi.mock('../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
     getCocClientForWorkspace: () => ({ explorer: { reveal: revealMock } }),
 }));
 
+// Repo attribution reads workspace names/roots; the panel is rendered here without
+// AppProvider, so stand in for the live workspace list.
+vi.mock('../../../src/server/spa/client/react/repos/workspacesWithRemote', () => ({
+    useWorkspacesWithRemoteOptional: () => [
+        { id: 'ws-vllm', name: 'vllm', rootPath: '/home/u/projects/vllm' },
+        { id: 'ws-nixl', rootPath: '/home/u/projects/nixl' },
+        { id: 'ws1', name: 'proj', rootPath: '/home/u/proj' },
+    ],
+}));
+
 // Stub the editable note body so the panel test stays focused on the body-mode
 // branch (kind: 'note' → editable editor; code → read-only viewer) without
 // pulling in the full NoteEditor / TipTap stack.
@@ -296,6 +306,141 @@ describe('SourceCanvasPanel', () => {
         expect(btn.disabled).toBe(true);
         fireEvent.click(btn);
         expect(revealMock).not.toHaveBeenCalled();
+    });
+
+    // --- Repo attribution in repo-group chats ---
+
+    const groupFileRef = { fullPath: 'vllm/v1/engine/core.py', wsId: 'group-ml' };
+    const successContent = (resolvedWorkspaceId: string, resolvedPath: string) => ({
+        status: 'success' as const,
+        content: 'x = 1\n',
+        language: 'python',
+        resolvedPath,
+        resolvedWorkspaceId,
+        error: '',
+    });
+
+    it('hides the repo chip in a single-repo chat', () => {
+        const { queryByTestId } = render(
+            <SourceCanvasPanel
+                fileRef={fileRef}
+                wsId="ws1"
+                content={successContent('ws1', '/home/u/proj/src/foo.ts')}
+                onClose={() => {}}
+            />,
+        );
+        expect(queryByTestId('source-canvas-repo-chip')).toBeNull();
+    });
+
+    it('shows the owning member repo as a header chip in a repo-group chat', () => {
+        const { getByTestId } = render(
+            <SourceCanvasPanel
+                fileRef={groupFileRef}
+                wsId="group-ml"
+                content={successContent('ws-vllm', '/home/u/projects/vllm/v1/engine/core.py')}
+                onClose={() => {}}
+            />,
+        );
+        const chip = getByTestId('source-canvas-repo-chip');
+        expect(chip.textContent).toBe('vllm');
+        expect(chip.getAttribute('data-repo-ws-id')).toBe('ws-vllm');
+        // The dot uses the stable per-workspace accent.
+        const dot = chip.querySelector('span[style]') as HTMLElement;
+        expect(dot.style.backgroundColor).toBeTruthy();
+        // Header file name/path stay untouched.
+        expect(getByTestId('source-canvas-filename').textContent).toBe('core.py');
+    });
+
+    it('omits the repo chip until the group member is resolved', () => {
+        const { queryByTestId } = render(
+            <SourceCanvasPanel
+                fileRef={groupFileRef}
+                wsId="group-ml"
+                content={{
+                    status: 'loading',
+                    content: '',
+                    language: '',
+                    resolvedPath: '',
+                    error: '',
+                }}
+                onClose={() => {}}
+            />,
+        );
+        expect(queryByTestId('source-canvas-repo-chip')).toBeNull();
+    });
+
+    it('groups switcher options by member repo, with opened-yet-unresolved files last', () => {
+        const coreFile = { fullPath: 'vllm/v1/engine/core.py', wsId: 'group-ml', kind: 'code' as const };
+        const nixlFile = { fullPath: 'src/plugins/hf3fs/utils.cpp', wsId: 'group-ml', kind: 'code' as const };
+        const unopened = { fullPath: 'vllm/core/scheduler.py', wsId: 'group-ml', kind: 'code' as const };
+        const sourceFiles = [coreFile, nixlFile, unopened];
+        const onNavigate = vi.fn();
+
+        const { getByTestId, queryByTestId, getAllByRole, rerender } = render(
+            <SourceCanvasPanel
+                fileRef={coreFile}
+                wsId="group-ml"
+                sourceFiles={sourceFiles}
+                onNavigate={onNavigate}
+                content={successContent('ws-vllm', '/home/u/projects/vllm/v1/engine/core.py')}
+                onClose={() => {}}
+            />,
+        );
+
+        // Only one repo resolved so far → the other files sit in the neutral bucket.
+        fireEvent.click(getByTestId('source-canvas-file-switcher-trigger'));
+        expect(getByTestId('source-canvas-file-group-ws-vllm').textContent).toBe('vllm');
+        expect(getByTestId('source-canvas-file-group-unresolved').textContent).toBe('Other');
+        fireEvent.click(getByTestId('source-canvas-file-switcher-trigger'));
+
+        // Opening the nixl file records its owning member lazily.
+        rerender(
+            <SourceCanvasPanel
+                fileRef={nixlFile}
+                wsId="group-ml"
+                sourceFiles={sourceFiles}
+                onNavigate={onNavigate}
+                content={successContent('ws-nixl', '/home/u/projects/nixl/src/plugins/hf3fs/utils.cpp')}
+                onClose={() => {}}
+            />,
+        );
+
+        fireEvent.click(getByTestId('source-canvas-file-switcher-trigger'));
+        expect(getByTestId('source-canvas-file-group-ws-vllm')).toBeTruthy();
+        expect(getByTestId('source-canvas-file-group-ws-nixl').textContent).toBe('nixl');
+        expect(getByTestId('source-canvas-file-group-unresolved')).toBeTruthy();
+
+        // All files remain selectable, and the active row carries its repo accent.
+        const options = getAllByRole('option');
+        expect(options).toHaveLength(3);
+        const active = options.find((o) => o.getAttribute('aria-selected') === 'true')!;
+        expect(active.textContent).toContain('utils.cpp');
+        expect(active.getAttribute('style')).toContain('inset 2px 0 0');
+        expect(queryByTestId('source-canvas-repo-chip')?.textContent).toBe('nixl');
+
+        fireEvent.click(options[0]);
+        expect(onNavigate).toHaveBeenCalledWith(coreFile);
+    });
+
+    it('keeps a flat switcher list (no repo headers) in a single-repo chat', () => {
+        const sourceFiles = [
+            { fullPath: '/home/u/proj/lib/foo.ts', wsId: 'ws1', kind: 'code' as const },
+            { fullPath: '/home/u/proj/src/foo.ts', wsId: 'ws1', kind: 'code' as const },
+        ];
+        const { getByTestId, queryByTestId, getAllByRole } = render(
+            <SourceCanvasPanel
+                fileRef={sourceFiles[1]}
+                wsId="ws1"
+                sourceFiles={sourceFiles}
+                onNavigate={() => {}}
+                content={successContent('ws1', '/home/u/proj/src/foo.ts')}
+                onClose={() => {}}
+            />,
+        );
+        fireEvent.click(getByTestId('source-canvas-file-switcher-trigger'));
+        expect(getAllByRole('option')).toHaveLength(2);
+        expect(queryByTestId('source-canvas-file-group-ws1')).toBeNull();
+        expect(queryByTestId('source-canvas-file-group-unresolved')).toBeNull();
     });
 
     // --- AC-06: body load/error/success states ---
