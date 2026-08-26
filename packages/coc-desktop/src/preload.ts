@@ -8,7 +8,7 @@
  * added by later acceptance criteria as the main process grows them.
  */
 
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 // The preload runs SANDBOXED (Electron sandboxes preloads by default since v20):
 // its `require` can only load the 'electron' builtin, and a relative import —
@@ -86,6 +86,25 @@ const api = {
         electron: process.versions.electron,
         chrome: process.versions.chrome,
         node: process.versions.node,
+    },
+    /**
+     * Absolute on-disk path of a `File` pulled off a drag-and-drop
+     * `DataTransfer`, so the SPA composer can turn an OS file drop into a
+     * backticked path insertion. Electron 32 removed the old `File.path`
+     * property, so `webUtils.getPathForFile` is the only way to recover it —
+     * and it works right here in the preload, no IPC round-trip needed.
+     *
+     * Returns null when the File did not come from disk (a synthesized Blob,
+     * a paste of image bytes) so callers can skip it instead of inserting an
+     * empty path.
+     */
+    getPathForFile: (file: File): string | null => {
+        try {
+            const filePath = webUtils.getPathForFile(file);
+            return filePath ? filePath : null;
+        } catch {
+            return null;
+        }
     },
     /**
      * Find-in-page bridge, used from two renderers: the SPA page calls

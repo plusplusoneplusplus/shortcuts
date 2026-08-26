@@ -2658,6 +2658,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     )}
                     {isVerticalScratchpad && !isPending && !noSessionForFollowUp && !readOnly && effectiveNav.kind !== 'agent' && (
                         <FollowUpInputArea
+                            workspaceRoot={workspaceRootPath || undefined}
                             richTextRef={richTextRef}
                             inputDisabled={inputDisabled}
                             sending={sending}
@@ -2800,6 +2801,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             )}
             {!isVerticalScratchpad && !isPending && !noSessionForFollowUp && !readOnly && effectiveNav.kind !== 'agent' && (!isMobileScratchpad || scratchpad.activeMobileTab === 'chat') && (
                 <FollowUpInputArea
+                    workspaceRoot={workspaceRootPath || undefined}
                     richTextRef={richTextRef}
                     inputDisabled={inputDisabled}
                     sending={sending}

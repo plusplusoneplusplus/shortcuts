@@ -45,8 +45,10 @@ import {
     buildFilePathInsertion,
     dataTransferHasAnyData,
     dataTransferHasFilePath,
+    dataTransferHasOsFileDrag,
     dataTransferHasSessionContext,
     readFilePathDragPayload,
+    readOsFileDropPaths,
     readSessionContextDropPayload,
     useConversationRetrievalCapability,
     validateSessionContextDrop,
@@ -150,6 +152,11 @@ export interface FollowUpInputAreaProps {
     allowedModes?: ChatMode[];
     /** Working directory the chat operates in. Drives the cwd chip in the toolbar's meta strip. */
     workingDirectory?: string;
+    /**
+     * Absolute root of the workspace this chat belongs to. Used to shorten an
+     * OS file drop to a repo-relative path; falls back to `workingDirectory`.
+     */
+    workspaceRoot?: string;
     /** Total context window size in tokens. Drives the ctx fuel gauge. */
     sessionTokenLimit?: number;
     /** Tokens currently occupying the context. Drives the ctx fuel gauge fill + percent. */
@@ -263,6 +270,7 @@ export function FollowUpInputArea({
     hideModeSelector = false,
     allowedModes,
     workingDirectory,
+    workspaceRoot,
     sessionTokenLimit,
     sessionCurrentTokens,
     sessionSystemTokens,
@@ -592,6 +600,7 @@ export function FollowUpInputArea({
         // A file-path drag is a plain text insert, so it is accepted regardless
         // of the session-context attachments flag.
         if (!dataTransferHasFilePath(e.dataTransfer)
+            && !dataTransferHasOsFileDrag(e.dataTransfer)
             && (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer))) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
@@ -603,6 +612,7 @@ export function FollowUpInputArea({
         // A file-path drag is a plain text insert, so it is accepted regardless
         // of the session-context attachments flag.
         if (!dataTransferHasFilePath(e.dataTransfer)
+            && !dataTransferHasOsFileDrag(e.dataTransfer)
             && (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer))) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
@@ -613,6 +623,7 @@ export function FollowUpInputArea({
         // A file-path drag is a plain text insert, so it is accepted regardless
         // of the session-context attachments flag.
         if (!dataTransferHasFilePath(e.dataTransfer)
+            && !dataTransferHasOsFileDrag(e.dataTransfer)
             && (!sessionContextAttachmentsEnabled || !dataTransferHasSessionContext(e.dataTransfer))) return;
         sessionContextDragDepthRef.current = Math.max(0, sessionContextDragDepthRef.current - 1);
         if (sessionContextDragDepthRef.current === 0) {
@@ -626,16 +637,28 @@ export function FollowUpInputArea({
      * unsupported-payload error) never sees it.
      */
     function handleFilePathDrop(e: React.DragEvent<HTMLElement>): boolean {
-        if (!dataTransferHasFilePath(e.dataTransfer)) return false;
+        // The internal CoC file-path MIME wins; an OS file drop (desktop only)
+        // is the fallback, checked before the unsupported-drop error below.
+        let paths: readonly string[] | null = null;
+        if (dataTransferHasFilePath(e.dataTransfer)) {
+            paths = readFilePathDragPayload(e.dataTransfer)?.paths ?? null;
+        } else if (dataTransferHasOsFileDrag(e.dataTransfer)) {
+            const osPaths = readOsFileDropPaths(e.dataTransfer, workspaceRoot ?? workingDirectory);
+            // No resolvable path (browser SPA, or a non-disk File) — leave the
+            // drop to whoever else wants it.
+            if (osPaths.length === 0) return false;
+            paths = osPaths;
+        } else {
+            return false;
+        }
         e.preventDefault();
         resetSessionContextDragState();
-        const payload = readFilePathDragPayload(e.dataTransfer);
-        if (!payload) return true;
+        if (!paths || paths.length === 0) return true;
         const current = richTextRef.current?.getValue() ?? followUpInput;
         const editable = findComposerEditable(e.currentTarget);
         const fromPoint = textOffsetFromPoint(editable, e.clientX, e.clientY);
         const fallback = followUpCursorTouchedRef.current ? followUpCursorPos : current.length;
-        const next = buildFilePathInsertion(current, fromPoint ?? fallback, payload.paths);
+        const next = buildFilePathInsertion(current, fromPoint ?? fallback, paths);
         skipNextSyncRef.current = true;
         setFollowUpInput(next.text);
         richTextRef.current?.setValue(next.text, next.cursorPos);
