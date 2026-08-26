@@ -111,18 +111,40 @@ describe('fuzzyFileMatch', () => {
     });
 });
 
+describe('fuzzyFileMatch alignment', () => {
+    it('slides the match onto the literal run rather than the leftmost one', () => {
+        // Greedy-forward alone consumes 'p' from "packages" and 'r' from
+        // "forge", then scrapes up "ompt"; the backward pass finds the literal.
+        const path = 'packages/forge/src/ai/prompt-builder.ts';
+        const match = fuzzyFileMatch('prompt', path)!;
+        expect(match.indices).toEqual([22, 23, 24, 25, 26, 27]);
+        expect(path.slice(22, 28)).toBe('prompt');
+    });
+
+    it('handles the degenerate one-character window', () => {
+        // sidx === eidx - 1: the backward pass has a single position to consider.
+        expect(fuzzyFileMatch('x', 'index.ts')!.indices).toEqual([4]);
+        expect(fuzzyFileMatch('s', 'index.ts')!.indices).toEqual([7]);
+    });
+
+    it('handles a query as long as the target', () => {
+        expect(fuzzyFileMatch('abc', 'abc')!.indices).toEqual([0, 1, 2]);
+    });
+});
+
 describe('fuzzyFileMatch tiering', () => {
     it('puts a basename match in tier 2 and a path-only match in tier 1', () => {
         expect(fuzzyFileMatch('index', 'src/index.ts')!.tier).toBe(2);
         expect(fuzzyFileMatch('srcindex', 'src/index.ts')!.tier).toBe(1);
     });
 
-    it('points tier-2 indices inside the basename', () => {
+    it('points tier-2 indices inside the basename, as one contiguous run', () => {
         const path = 'packages/forge/src/ai/prompt-builder.ts';
-        const match = fuzzyFileMatch('builder', path)!;
+        const match = fuzzyFileMatch('prompt', path)!;
         expect(match.tier).toBe(2);
         const nameStart = path.lastIndexOf('/') + 1;
         expect(match.indices.every(i => i >= nameStart)).toBe(true);
+        expect(match.indices).toEqual([22, 23, 24, 25, 26, 27]);
     });
 
     it('drops a query containing a separator to tier 1', () => {

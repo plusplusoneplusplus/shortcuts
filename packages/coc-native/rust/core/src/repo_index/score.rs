@@ -1,9 +1,10 @@
 //! Fuzzy path scorer, ported line-for-line from
 //! `packages/coc/src/server/shared/fuzzy-file-score.ts`.
 //!
-//! Ranking parity with the TypeScript scorer is a hard requirement: the SPA
-//! falls back to the TS implementation whenever the native addon is absent, and
-//! both must produce the same ordering for the same input list.
+//! Ranking parity with the TypeScript scorer is a hard requirement. Nothing
+//! ranks with the TS scorer any more — `tree-service.ts` makes this addon
+//! mandatory — but it is the readable statement of what this is supposed to do,
+//! and `packages/coc-native/test/parity.test.ts` holds the two to it.
 //!
 //! Two deliberate deviations from JavaScript semantics, both pinned by tests:
 //!
@@ -59,9 +60,20 @@ pub fn lower_unit(unit: u16) -> u16 {
 /// better. Matched positions are appended to `indices`, which is left empty on a
 /// zero score.
 ///
-/// `target_len` is passed separately because the shortness bonus in the TS
-/// scorer uses the *original* path length, which equals the lowercased length
-/// under ASCII folding but is clearer stated explicitly.
+/// Three linear passes, borrowed from fzf's `FuzzyMatchV1`:
+///
+/// 1. **Forward** — consume the query greedily left to right, recording the
+///    first matched offset and one past the last.
+/// 2. **Backward** — walk that window right to left consuming the query in
+///    reverse; where the query runs out is the tightened start. This is what
+///    slides `prompt` off the `p` of `packages` and the `r` of `forge` and onto
+///    the literal `prompt` further along the path.
+/// 3. **Score** — walk the tight window forward, collecting indices and bonuses.
+///
+/// A heuristic, not an optimal alignment: two linear passes rather than an
+/// O(n*m) dynamic-programming matrix. Some alignments stay sub-optimal by
+/// design — that is a known trade, not a bug to "fix" into a matrix without
+/// measuring the cost first.
 pub fn score_units<T: Unit>(query: &[T], target: &[T], indices: &mut Vec<u32>) -> u32 {
     indices.clear();
     if query.is_empty() {
@@ -71,38 +83,64 @@ pub fn score_units<T: Unit>(query: &[T], target: &[T], indices: &mut Vec<u32>) -
         return 0;
     }
 
+    // Forward: the leftmost match, which bounds the window the rest works in.
     let mut qi = 0usize;
+    let mut sidx: Option<usize> = None;
+    let mut eidx: Option<usize> = None;
+    for ti in 0..target.len() {
+        if target[ti] == query[qi] {
+            if sidx.is_none() {
+                sidx = Some(ti);
+            }
+            qi += 1;
+            if qi == query.len() {
+                eidx = Some(ti + 1);
+                break;
+            }
+        }
+    }
+    let (Some(mut sidx), Some(eidx)) = (sidx, eidx) else {
+        return 0;
+    };
+
+    // Backward: tighten the start to the rightmost one that still matches.
+    let mut qi = query.len();
+    for ti in (sidx..eidx).rev() {
+        if target[ti] == query[qi - 1] {
+            qi -= 1;
+            if qi == 0 {
+                sidx = ti;
+                break;
+            }
+        }
+    }
+
     let mut score = 0u32;
     let mut prev_match: i64 = -1;
-
-    for ti in 0..target.len() {
-        if qi >= query.len() {
+    let mut qj = 0usize;
+    for ti in sidx..eidx {
+        if qj >= query.len() {
             break;
         }
-        // Bail out as soon as too few units remain to complete the match.
-        if target.len() - ti < query.len() - qi {
-            indices.clear();
-            return 0;
+        if target[ti] != query[qj] {
+            continue;
         }
-
-        if target[ti] == query[qi] {
-            if ti as i64 == prev_match + 1 {
-                score += 2;
-            }
-            if ti == 0 || is_boundary(target[ti - 1].as_u32()) {
-                score += 3;
-            }
-            score += 1;
-            prev_match = ti as i64;
-            qi += 1;
-            indices.push(ti as u32);
+        if ti as i64 == prev_match + 1 {
+            score += 2;
         }
+        // Starting the target outranks starting a segment within it, so an
+        // exact filename prefix beats a match that merely follows a dash.
+        if ti == 0 {
+            score += 5;
+        } else if is_boundary(target[ti - 1].as_u32()) {
+            score += 3;
+        }
+        score += 1;
+        prev_match = ti as i64;
+        qj += 1;
+        indices.push(ti as u32);
     }
 
-    if qi < query.len() {
-        indices.clear();
-        return 0;
-    }
     // Shorter targets are more specific matches.
     score += 50u32.saturating_sub(target.len() as u32);
     score

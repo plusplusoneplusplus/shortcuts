@@ -104,6 +104,29 @@ fn shortness_bonus_floors_at_zero() {
 }
 
 #[test]
+fn the_backward_pass_slides_the_match_onto_the_literal_run() {
+    // Greedy-forward alone consumes `p` from "packages" and `r` from "forge",
+    // then scrapes up "ompt"; the backward pass slides the window onto the
+    // literal "prompt" at offset 22.
+    let path = "packages/forge/src/ai/prompt-builder.ts";
+    assert_eq!(matched_indices("prompt", path), vec![22, 23, 24, 25, 26, 27]);
+    assert_eq!(&path[22..28], "prompt");
+}
+
+#[test]
+fn a_single_character_query_matches_its_first_occurrence() {
+    // The degenerate window: sidx == eidx - 1, so the backward pass has one
+    // position to consider and must leave the start where it is.
+    assert_eq!(matched_indices("x", "src/index.ts"), vec![8]);
+    assert_eq!(matched_indices("s", "src/index.ts"), vec![0]);
+}
+
+#[test]
+fn a_full_length_query_matches_the_whole_target() {
+    assert_eq!(matched_indices("abc", "abc"), vec![0, 1, 2]);
+}
+
+#[test]
 fn indices_are_ascending_and_point_at_matches() {
     let path = "src/index.ts";
     let indices = matched_indices("six", path);

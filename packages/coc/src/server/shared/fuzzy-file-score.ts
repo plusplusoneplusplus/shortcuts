@@ -48,33 +48,72 @@ export interface FuzzyFileMatch {
 /**
  * The character walk: score `query` against an already-lowercased `target`.
  *
- * Every query character must appear in `target` in order, not necessarily
- * contiguously. Returns `null` when it does not match.
+ * Three linear passes, borrowed from fzf's `FuzzyMatchV1`:
+ *
+ * 1. **Forward** — consume the query greedily left to right, recording the
+ *    first matched offset and one past the last.
+ * 2. **Backward** — walk that window right to left consuming the query in
+ *    reverse; where the query runs out is the tightened start. This is what
+ *    slides `prompt` off the `p` of `packages` and the `r` of `forge` and onto
+ *    the literal `prompt` further along the path.
+ * 3. **Score** — walk the tight window forward, collecting indices and bonuses.
+ *
+ * A heuristic, not an optimal alignment: two linear passes rather than an
+ * O(n*m) dynamic-programming matrix. Some alignments stay sub-optimal by
+ * design — that is a known trade, not a bug to "fix" into a matrix without
+ * measuring the cost first.
+ *
+ * Returns `null` when the query does not match.
  */
 function matchQuality(q: string, t: string): { score: number; indices: number[] } | null {
     if (!q) return null;
     if (q.length > t.length) return null;
 
+    // Forward: the leftmost match, which bounds the window the rest works in.
     let qi = 0;
-    let score = 0;
-    let prevMatchIdx = -1;
-    const indices: number[] = [];
-
-    for (let ti = 0; ti < t.length && qi < q.length; ti++) {
-        // Bail out as soon as too few characters remain to complete the match.
-        if (t.length - ti < q.length - qi) return null;
-
+    let sidx = -1;
+    let eidx = -1;
+    for (let ti = 0; ti < t.length; ti++) {
         if (t[ti] === q[qi]) {
-            if (ti === prevMatchIdx + 1) score += 2;
-            if (ti === 0 || isBoundary(t[ti - 1])) score += 3;
-            score += 1;
-            prevMatchIdx = ti;
-            indices.push(ti);
+            if (sidx < 0) sidx = ti;
             qi++;
+            if (qi === q.length) {
+                eidx = ti + 1;
+                break;
+            }
+        }
+    }
+    if (eidx < 0) return null;
+
+    // Backward: tighten the start to the rightmost one that still matches.
+    qi = q.length - 1;
+    for (let ti = eidx - 1; ti >= sidx; ti--) {
+        if (t[ti] === q[qi]) {
+            qi--;
+            if (qi < 0) {
+                sidx = ti;
+                break;
+            }
         }
     }
 
-    if (qi < q.length) return null;
+    let score = 0;
+    let prevMatchIdx = -1;
+    let qj = 0;
+    const indices: number[] = [];
+    for (let ti = sidx; ti < eidx && qj < q.length; ti++) {
+        if (t[ti] !== q[qj]) continue;
+        if (ti === prevMatchIdx + 1) score += 2;
+        // Starting the target outranks starting a segment within it, so an
+        // exact filename prefix beats a match that merely follows a dash.
+        if (ti === 0) score += 5;
+        else if (isBoundary(t[ti - 1])) score += 3;
+        score += 1;
+        prevMatchIdx = ti;
+        indices.push(ti);
+        qj++;
+    }
+
     // Shorter targets are more specific matches.
     score += Math.max(0, 50 - t.length);
     return { score, indices };
