@@ -75,6 +75,18 @@ describe('ConversationTurnBubble — repo group context disclosure', () => {
         expect(getByTestId('repo-group-context-toggle').getAttribute('aria-expanded')).toBe('true');
     });
 
+    it('sets its own text colour in both themes rather than inheriting the bubble', () => {
+        const { getByTestId } = render(
+            <ConversationTurnBubble turn={makeUserTurn({ repoGroupContext: BLOCK })} />,
+        );
+
+        fireEvent.click(getByTestId('repo-group-context-toggle'));
+
+        const cls = getByTestId('repo-group-context-body').className;
+        expect(cls).toContain('text-[#1e1e1e]');
+        expect(cls).toContain('dark:text-[#cccccc]');
+    });
+
     it('collapses again on a second click', () => {
         const { getByTestId, queryByTestId } = render(
             <ConversationTurnBubble turn={makeUserTurn({ repoGroupContext: BLOCK })} />,

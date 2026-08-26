@@ -43,6 +43,7 @@ export function RepoGroupContextDisclosure({ context }: RepoGroupContextDisclosu
                     className={cn(
                         'mt-1.5 rounded border border-[#e0e0e0] dark:border-[#3c3c3c]',
                         'bg-[#ffffff] dark:bg-[#1e1e1e] px-3 py-2 overflow-auto max-h-[360px]',
+                        'text-[#1e1e1e] dark:text-[#cccccc]',
                         'text-[12px] leading-[1.5] whitespace-pre-wrap break-all font-mono',
                     )}
                     data-testid="repo-group-context-body"
