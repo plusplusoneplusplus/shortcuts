@@ -721,13 +721,13 @@ describe('AskUserInline', () => {
             // Inline (a <span>, not a block <div>) so it shares the row with the label.
             expect(desc.tagName).toBe('SPAN');
             expect(desc.querySelector('p')).toBeNull();
-            expect(desc.className).toContain('truncate');
+            // No truncation - the description wraps with the label instead of being cut off.
+            expect(desc.className).not.toContain('truncate');
 
             const label = screen.getByTestId('ask-user-option-label');
             const row = label.closest('label');
             expect(row).not.toBeNull();
             expect(row).toContainElement(desc);
-            // Truncation hides overflow, so the full text must stay reachable on hover.
             expect(row!.getAttribute('title')).toBe(description);
         });
 
@@ -772,7 +772,7 @@ describe('AskUserInline', () => {
         const LONG_LABEL = 'Refactor the workspace registration pipeline so every clone reuses the shared credential resolver';
         const LONG_DESCRIPTION = 'This option rewrites the resolver, migrates every caller, and backfills the persisted clone records in one pass';
 
-        it('lets a long select option label shrink and truncate instead of spilling past the card', () => {
+        it('wraps a long select option onto multiple lines instead of truncating or spilling past the card', () => {
             render(
                 <AskUserInline
                     batch={makeBatch([
@@ -787,16 +787,22 @@ describe('AskUserInline', () => {
             // shrink-0 would let the label push the row wider than the card.
             expect(label.className).not.toContain('shrink-0');
             expect(label.className).toContain('min-w-0');
-            expect(label.className).toContain('truncate');
+            // Words are never cut - the text wraps onto extra rows.
+            expect(label.className).not.toContain('truncate');
 
-            // The description gives way first, so the label keeps its width as long as it can.
             const desc = screen.getByTestId('ask-user-option-description');
-            expect(desc.className).toContain('shrink-[9999]');
+            expect(desc.className).not.toContain('truncate');
+
+            // Label and description share one shrinkable, wrapping text column.
+            const textColumn = label.parentElement!;
+            expect(textColumn).toContainElement(desc);
+            expect(textColumn.className).toContain('min-w-0');
+            expect(textColumn.className).toContain('flex-1');
+            expect(textColumn.className).toContain('[overflow-wrap:anywhere]');
 
             const row = label.closest('label')!;
             expect(row.className).toContain('min-w-0');
             expect(row.className).toContain('w-full');
-            // The whole row stays hoverable for the full text.
             expect(row.getAttribute('title')).toBe(LONG_DESCRIPTION);
         });
 
@@ -816,7 +822,8 @@ describe('AskUserInline', () => {
 
             const label = screen.getByTestId('ask-user-option-label');
             expect(label.className).not.toContain('shrink-0');
-            expect(label.className).toContain('truncate');
+            expect(label.className).not.toContain('truncate');
+            expect(label.parentElement!.className).toContain('flex-1');
             expect(label.closest('label')!.className).toContain('min-w-0');
         });
 
