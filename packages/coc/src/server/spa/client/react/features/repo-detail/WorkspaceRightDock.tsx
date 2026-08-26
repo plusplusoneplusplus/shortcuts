@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../ui';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { useViewportWidth } from '../../hooks/ui/useViewportWidth';
 import { TerminalView } from '../terminal/TerminalView';
 import { DockNotesPanel } from '../notes/dock/DockNotesPanel';
 import { ExplorerPanel } from './explorer/ExplorerPanel';
+import { confirmDiscardExplorerEditsOnSwitch } from './explorer/explorerDirtyStore';
 import {
     DOCK_INITIAL_WIDTH,
     DOCK_MIN_CHAT_WIDTH,
@@ -12,8 +13,10 @@ import {
     dockViewsForWorkspace,
     useDockOpen,
     workspaceDockOpenStorageKey,
+    workspaceDockTargetStorageKey,
     workspaceDockViewStorageKey,
     workspaceDockWidthStorageKey,
+    type DockTarget,
     type WorkspaceDockView,
 } from './WorkspaceDockToggle';
 
@@ -30,10 +33,11 @@ export {
     dockViewsForWorkspace,
     useWorkspaceDockToggle,
     workspaceDockOpenStorageKey,
+    workspaceDockTargetStorageKey,
     workspaceDockViewStorageKey,
     workspaceDockWidthStorageKey,
 } from './WorkspaceDockToggle';
-export type { WorkspaceDockView } from './WorkspaceDockToggle';
+export type { DockTarget, WorkspaceDockView } from './WorkspaceDockToggle';
 
 /**
  * WorkspaceRightDock — a VS Code-style right-side dock at the workspace level
@@ -54,8 +58,18 @@ export type { WorkspaceDockView } from './WorkspaceDockToggle';
  * keep-alive pattern RepoDetail uses for its secondary sub-tabs) rather than
  * unmounted, so switching views — or closing and reopening the dock — never
  * tears down the server-side terminal session or loses the selected note.
- * Explorer is not mounted at all in a repo group, so a group workspace never
- * pays for loading Monaco.
+ * Explorer is not mounted at all when the target has no repository root, so a
+ * repo group pointed at its own root never pays for loading Monaco.
+ *
+ * Scope vs. target. `workspaceId` is the dock's SCOPE: it owns the open / view /
+ * width / target persistence, and it is what Notes belongs to. The dock also has
+ * a TARGET — the workspace Terminal and Explorer are pointed at — which equals
+ * the scope unless the caller passes `targets`. A repo group passes its group
+ * root plus its member repos, so the header gains a picker and the panel's own
+ * state (open, active view, width) survives switching between members: only the
+ * content follows the picker. Switching targets remounts Terminal and Explorer
+ * exactly as a workspace switch already does; explorer state and pinned terminal
+ * sessions rehydrate through their existing per-workspace stores.
  *
  * Open/closed state, the active view, and the dock width persist per-workspace to
  * localStorage (AC-06). The open/close toggle lives outside the dock body: the
@@ -112,6 +126,85 @@ function useDockView(
     return [view, setView];
 }
 
+/**
+ * Stable identity for a target list, so effects can depend on "the options
+ * changed" rather than on the array reference. Includes the disabled flag —
+ * a member going stale must be able to knock the current selection off it.
+ */
+const EMPTY_TARGETS: readonly DockTarget[] = [];
+
+function targetsKeyOf(targets: readonly DockTarget[]): string {
+    return targets.map(t => `${t.workspaceId}:${t.disabled ? '1' : '0'}${t.deprioritized ? 'd' : ''}`).join(',');
+}
+
+/**
+ * Resolve the dock's target from storage: the persisted value when it is still
+ * an enabled option, otherwise the first enabled option that is not
+ * `deprioritized` (the first live repo-group member, rather than the group's
+ * near-empty own root — D-07). With no usable options (none supplied, or every
+ * one disabled) the dock targets its own scope, which is exactly today's
+ * behavior for a plain repo.
+ */
+function readTarget(storageKey: string, targets: readonly DockTarget[], scopeWorkspaceId: string): string {
+    const enabled = targets.filter(t => !t.disabled);
+    if (enabled.length === 0) return scopeWorkspaceId;
+    try {
+        const stored = localStorage.getItem(storageKey);
+        if (stored && enabled.some(t => t.workspaceId === stored)) return stored;
+    } catch {
+        /* ignore */
+    }
+    return (enabled.find(t => !t.deprioritized) ?? enabled[0]).workspaceId;
+}
+
+/**
+ * Persisted target selector — which workspace the Terminal and Explorer are
+ * pointed at. Mirrors `useDockView`: only an explicit user pick writes, and the
+ * value re-resolves from storage whenever the scope or the option list changes
+ * (so a group whose members are still loading starts on the scope and lands on
+ * the first live member once they arrive).
+ *
+ * Switching goes through `confirmDiscardExplorerEditsOnSwitch`, the same guard a
+ * whole-workspace switch gets — without it, picking another member repo would
+ * silently drop a dirty Monaco buffer in the Explorer.
+ */
+function useDockTarget(
+    storageKey: string,
+    targets: readonly DockTarget[],
+    scopeWorkspaceId: string,
+): [string, (next: string) => void] {
+    const targetsKey = targetsKeyOf(targets);
+    const [target, setTargetState] = useState<string>(() => readTarget(storageKey, targets, scopeWorkspaceId));
+    // Latest target, so `setTarget` can consult it without the confirm prompt
+    // living inside a state updater (React may call those twice).
+    const targetRef = useRef(target);
+    targetRef.current = target;
+
+    useEffect(() => {
+        const resolved = readTarget(storageKey, targets, scopeWorkspaceId);
+        targetRef.current = resolved;
+        setTargetState(resolved);
+        // `targets` is intentionally tracked via its stable key: the array is
+        // rebuilt on every render by callers that map a fetch result, and
+        // depending on the reference would re-resolve forever.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [storageKey, targetsKey, scopeWorkspaceId]);
+
+    const setTarget = useCallback((next: string) => {
+        if (next === targetRef.current) return;
+        if (!confirmDiscardExplorerEditsOnSwitch(targetRef.current, next)) return;
+        try {
+            localStorage.setItem(storageKey, next);
+        } catch {
+            /* ignore */
+        }
+        targetRef.current = next;
+        setTargetState(next);
+    }, [storageKey]);
+
+    return [target, setTarget];
+}
+
 export interface WorkspaceDockController {
     /** Whether the dock is currently open (persisted, default closed). */
     isOpen: boolean;
@@ -122,10 +215,24 @@ export interface WorkspaceDockController {
     /** Switch the active view (persisted). */
     setView: (view: WorkspaceDockView) => void;
     /**
-     * Views this workspace offers, in header-tab order — `terminal|explorer|notes`
-     * for a concrete repo, `terminal|notes` for a repo group.
+     * Views the current *target* offers, in header-tab order —
+     * `terminal|explorer|notes` for a concrete repo, `terminal|notes` when the
+     * target is a repo group's own root.
      */
     views: readonly WorkspaceDockView[];
+    /**
+     * The workspace the Terminal and Explorer are pointed at. Equal to the dock's
+     * scope (`workspaceId`) unless the caller supplied `targets` and the user
+     * picked another one — a repo group pointing the dock at a member repo.
+     */
+    target: string;
+    /**
+     * Point the dock at another target (persisted). No-ops when the current
+     * target has unsaved Explorer edits and the user declines to discard them.
+     */
+    setTarget: (target: string) => void;
+    /** The target options, in picker order; empty when the caller supplied none. */
+    targets: readonly DockTarget[];
     /**
      * Current dock width in px (persisted, default ~420). Clamped between
      * `DOCK_MIN_WIDTH` and the live viewport-relative `maxWidth`.
@@ -151,9 +258,15 @@ export interface WorkspaceDockController {
  * RepoDetail render and pass the returned controller to `WorkspaceRightDock` and
  * the header toggle.
  */
-export function useWorkspaceDock(workspaceId: string): WorkspaceDockController {
+export function useWorkspaceDock(workspaceId: string, targets?: readonly DockTarget[]): WorkspaceDockController {
     const [isOpen, toggleOpen] = useDockOpen(workspaceDockOpenStorageKey(workspaceId));
-    const views = useMemo(() => dockViewsForWorkspace(workspaceId), [workspaceId]);
+    const targetOptions = targets ?? EMPTY_TARGETS;
+    const [target, setTarget] = useDockTarget(workspaceDockTargetStorageKey(workspaceId), targetOptions, workspaceId);
+    // Views follow the TARGET, not the scope: pointing a group's dock at a member
+    // repo brings Explorer back, pointing it at the group root drops it again —
+    // all from the one existing rule. Memoized on the target string so
+    // `useDockView`'s effect does not re-resolve on every render.
+    const views = useMemo(() => dockViewsForWorkspace(target), [target]);
     const [view, setView] = useDockView(workspaceDockViewStorageKey(workspaceId), views);
     // Cap the dock relative to the live window so it can be dragged as wide as the
     // monitor allows, while always reserving DOCK_MIN_CHAT_WIDTH for the chat pane.
@@ -168,7 +281,10 @@ export function useWorkspaceDock(workspaceId: string): WorkspaceDockController {
         storageKey: workspaceDockWidthStorageKey(workspaceId),
     });
 
-    return { isOpen, toggleOpen, view, setView, views, width, maxWidth, isDragging, handleMouseDown, handleTouchStart };
+    return {
+        isOpen, toggleOpen, view, setView, views, target, setTarget, targets: targetOptions,
+        width, maxWidth, isDragging, handleMouseDown, handleTouchStart,
+    };
 }
 
 const DOCK_VIEW_TABS: readonly {
@@ -257,9 +373,63 @@ function DockViewTabs({
     );
 }
 
+/**
+ * The dock's target picker — "which repo are the Terminal and the Explorer
+ * pointed at". Rendered in the header row between the view tabs and the portaled
+ * terminal toolbar, and only when the caller supplied target options at all (a
+ * repo group); a plain repo dock has exactly one possible target and shows
+ * nothing. Disabled options (stale group members) stay listed so the reason is
+ * visible, but cannot be selected.
+ *
+ * A native `<select>` keeps this a single 35px-tall control with keyboard and
+ * screen-reader behavior for free; the label truncates rather than wrapping the
+ * header row.
+ */
+function DockTargetPicker({
+    target,
+    targets,
+    onChange,
+}: {
+    target: string;
+    targets: readonly DockTarget[];
+    onChange: (next: string) => void;
+}) {
+    return (
+        <select
+            data-testid="workspace-dock-target-picker"
+            aria-label="Terminal and explorer target repository"
+            title="Repository the terminal and explorer are pointed at"
+            value={target}
+            onChange={e => onChange(e.target.value)}
+            className={cn(
+                'ml-1 h-[22px] max-w-[160px] min-w-0 flex-shrink truncate rounded border border-transparent bg-transparent',
+                'px-1 text-[11px] text-[#616161] hover:border-[#c8c8c8] hover:text-[#1f1f1f]',
+                'focus:border-[#0078d4] focus:outline-none dark:text-[#9d9d9d] dark:hover:border-[#3c3c3c] dark:hover:text-white',
+            )}
+        >
+            {targets.map(option => (
+                <option key={option.workspaceId} value={option.workspaceId} disabled={option.disabled}>
+                    {option.label}
+                </option>
+            ))}
+        </select>
+    );
+}
+
 export interface WorkspaceRightDockProps {
+    /**
+     * The dock's *scope*: which workspace owns its open/view/width/target
+     * persistence, and which workspace Notes belongs to.
+     */
     workspaceId: string;
     dock: WorkspaceDockController;
+    /**
+     * Optional target options for the header picker. Omit for a plain repo — the
+     * dock then has no picker and targets its own scope. A repo group passes
+     * `[{ group root }, ...members]`; pass the same array to `useWorkspaceDock`
+     * so the selection resolves against it.
+     */
+    targets?: readonly DockTarget[];
 }
 
 /**
@@ -270,11 +440,19 @@ export interface WorkspaceRightDockProps {
  * `WorkspaceDockToggleButton` / RepoDetail's header) and shares one cross-tree
  * store. Callers gate this on `splitWorkspacePanel` + desktop breakpoint.
  */
-export function WorkspaceRightDock({ workspaceId, dock }: WorkspaceRightDockProps) {
-    const { isOpen, view, setView, views, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
-    // Repo groups have no single repository root, so Explorer is neither tabbed
-    // nor mounted there — a group workspace never loads Monaco.
+export function WorkspaceRightDock({ workspaceId, dock, targets }: WorkspaceRightDockProps) {
+    const {
+        isOpen, view, setView, views, target, setTarget,
+        width, maxWidth, isDragging, handleMouseDown, handleTouchStart,
+    } = dock;
+    // A target with no single repository root (a repo group's own root) has no
+    // meaningful file tree, so Explorer is neither tabbed nor mounted there —
+    // such a dock never loads Monaco.
     const explorerAvailable = views.includes('explorer');
+    // Options come from the prop when given, else from the controller, so a
+    // caller may pass them to either (RepoGroupView passes the same array to
+    // both). Absent on a plain repo → no picker at all.
+    const targetOptions = targets ?? dock.targets;
 
     // Lazily mount the views on first open so opening a workspace never eagerly
     // spawns a terminal session for a dock the user never touches. Once opened,
@@ -330,6 +508,9 @@ export function WorkspaceRightDock({ workspaceId, dock }: WorkspaceRightDockProp
                     data-testid="workspace-dock-header"
                 >
                     <DockViewTabs view={view} views={views} onChange={setView} />
+                    {targetOptions.length > 0 && (
+                        <DockTargetPicker target={target} targets={targetOptions} onChange={setTarget} />
+                    )}
                     {/* Portal target for the active terminal's toolbar (picker + new). */}
                     <div ref={setPickerSlot} className="flex min-w-0 flex-1 items-center" />
                 </div>
@@ -342,8 +523,8 @@ export function WorkspaceRightDock({ workspaceId, dock }: WorkspaceRightDockProp
                             data-testid="workspace-dock-terminal"
                         >
                             <TerminalView
-                                key={workspaceId}
-                                workspaceId={workspaceId}
+                                key={target}
+                                workspaceId={target}
                                 toolbarPortalTarget={view === 'terminal' ? pickerSlot : null}
                             />
                         </div>
@@ -353,7 +534,7 @@ export function WorkspaceRightDock({ workspaceId, dock }: WorkspaceRightDockProp
                                 style={{ display: view === 'explorer' ? undefined : 'none' }}
                                 data-testid="workspace-dock-explorer"
                             >
-                                <ExplorerPanel key={workspaceId} workspaceId={workspaceId} />
+                                <ExplorerPanel key={target} workspaceId={target} />
                             </div>
                         )}
                         <div

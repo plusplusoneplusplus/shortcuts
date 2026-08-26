@@ -303,12 +303,18 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                         <span>New</span>
                     </button>
                 )}
-                {/* Terminal + Explorer dock toggle — right of "+ New". The dock body
-                    renders in RepoDetail; this shares its open state via a cross-tree
-                    store. Only shown in the remote-first shell with a concrete clone
-                    selected (the classic shell keeps its toggle in RepoDetail's header). */}
+                {/* Terminal / Explorer / Notes dock toggle — right of "+ New". The dock
+                    body renders in RepoDetail (repo) or RepoGroupView (group); this shares
+                    its open state via a cross-tree store. Shown in the remote-first shell
+                    with a concrete clone selected, or on a repo group — whose dock scopes
+                    to the group id and points its terminal/explorer at a member repo it
+                    picks. My Work / My Life have no dock. (The classic shell keeps its
+                    toggle in RepoDetail's header.) */}
                 {showRemoteHeader && !!selectedRepo && splitWorkspacePanelEnabled && (
                     <WorkspaceDockToggleButton workspaceId={String(selectedRepo.workspace.id)} />
+                )}
+                {showVirtualHeader && splitWorkspacePanelEnabled && isRepoGroupWorkspaceId(state.selectedRepoId) && (
+                    <WorkspaceDockToggleButton workspaceId={String(state.selectedRepoId)} />
                 )}
                 {/* Status cluster — hidden here when it lives in the global
                     bottom status bar (remote-first shell, desktop). */}

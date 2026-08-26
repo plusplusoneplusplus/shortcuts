@@ -25,6 +25,11 @@ export const ALL_WORKSPACE_DOCK_VIEWS: readonly WorkspaceDockView[] = ['terminal
  * synthetic `~/.coc/repos/group-<name>` directory — so a file tree there would
  * be meaningless. Groups therefore get `Terminal | Notes`; a concrete repo keeps
  * `Terminal | Explorer | Notes`.
+ *
+ * The dock calls this with its resolved *target* (the workspace the Terminal and
+ * Explorer are pointed at), not its scope. In a repo group the target is usually
+ * a member repo, so picking one brings Explorer back; picking "Group root" falls
+ * back to `Terminal | Notes` through this same rule.
  */
 export function dockViewsForWorkspace(workspaceId: string): readonly WorkspaceDockView[] {
     return isRepoGroupWorkspaceId(workspaceId)
@@ -45,6 +50,37 @@ export function workspaceDockViewStorageKey(workspaceId: string): string {
 /** localStorage key for the dock's width, per workspace. */
 export function workspaceDockWidthStorageKey(workspaceId: string): string {
     return `split-workspace:${workspaceId}:dock-width`;
+}
+
+/**
+ * localStorage key for the dock's *target* — which workspace the Terminal and
+ * Explorer are pointed at — scoped by the dock's own workspace. Only meaningful
+ * when the caller supplies a `targets` list (a repo group offering its member
+ * repos); a plain repo dock always targets itself and never writes this key.
+ */
+export function workspaceDockTargetStorageKey(workspaceId: string): string {
+    return `split-workspace:${workspaceId}:dock-target`;
+}
+
+/**
+ * One option in the dock's target picker: a workspace the Terminal and Explorer
+ * can be pointed at, with the label to show for it. `disabled` marks an option
+ * that exists but cannot be used (a stale repo-group member whose workspace was
+ * removed, or whose root path is gone) — it is listed, greyed, and never
+ * auto-selected.
+ */
+export interface DockTarget {
+    workspaceId: string;
+    label: string;
+    disabled?: boolean;
+    /**
+     * Listed and selectable, but never chosen automatically. Set on a repo
+     * group's own root: it stays offered so a terminal can match the chat's cwd,
+     * but `~/.coc/repos/group-<slug>/` holds only `group.json`, so defaulting
+     * there would make the Explorer look broken on first open (D-07). The dock
+     * falls back to it only when there is no other enabled option.
+     */
+    deprioritized?: boolean;
 }
 
 export const DOCK_MIN_WIDTH = 280;
@@ -146,7 +182,7 @@ export function WorkspaceDockToggleButton({ workspaceId }: { workspaceId: string
             type="button"
             data-testid="workspace-dock-toggle"
             onClick={toggleOpen}
-            aria-label={isOpen ? 'Close terminal and explorer dock' : 'Open terminal and explorer dock'}
+            aria-label={isOpen ? 'Close terminal, explorer and notes dock' : 'Open terminal, explorer and notes dock'}
             aria-pressed={isOpen}
             title={isOpen ? 'Close panel' : 'Open panel'}
             className={cn(

@@ -10,16 +10,25 @@
  * In the remote-first desktop shell the header (identity + sub-tabs) lives in
  * the global TopBar (`VirtualWorkspaceShellHeader`); in the classic shell and on
  * mobile it renders here as `VirtualWorkspaceInlineHeader`.
+ *
+ * On desktop (behind `splitWorkspacePanel`) the group also gets the workspace
+ * right dock. The dock's own state scopes to the group, while its Terminal and
+ * Explorer point at a target picked in the dock header: the group root, or any
+ * live member repo. Notes stays on the group. Members come from
+ * `GET /api/repo-groups/:id`; stale ones are listed but not selectable.
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { NotesView } from '../features/notes/NotesView';
 import { RepoChatTab } from '../features/chat/RepoChatTab';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
+import { useSplitWorkspacePanelEnabled } from '../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useApp } from '../contexts/AppContext';
 import { useReposOptional } from '../contexts/ReposContext';
 import { resolveRepoGroupName } from './repoGroupName';
+import { getRepoGroup, type RepoGroupMember } from './repoGroupService';
+import { WorkspaceRightDock, useWorkspaceDock, type DockTarget } from '../features/repo-detail/WorkspaceRightDock';
 import { VirtualWorkspaceInlineHeader } from '../features/remote-shell/VirtualWorkspaceInlineHeader';
 import type { VirtualWorkspaceHeaderConfig } from '../features/remote-shell/virtualWorkspaceHeader';
 
@@ -47,6 +56,60 @@ export function getRepoGroupHeaderConfig(workspaceId: string, label: string): Vi
     };
 }
 
+/** Label suffix explaining why a member cannot be targeted; mirrors RepoGroupDialog. */
+function staleSuffix(reason: RepoGroupMember['staleReason']): string {
+    return reason === 'workspace-removed' ? ' (removed)' : ' (path missing)';
+}
+
+/** Picker label for the group's own root — the chat's cwd, terminal-only. */
+export const REPO_GROUP_ROOT_TARGET_LABEL = 'Group root';
+
+/**
+ * Turn a group's resolved membership into dock target options: the group's own
+ * root first (so a terminal can match the chat's cwd), then every member repo.
+ * A stale member stays listed — with the reason in its label — but disabled, so
+ * the dock never points a terminal at a root that is not there.
+ */
+export function repoGroupDockTargets(workspaceId: string, members: readonly RepoGroupMember[]): DockTarget[] {
+    return [
+        // Listed first so it is easy to reach, but never the automatic default —
+        // the group root holds only `group.json` (D-07).
+        { workspaceId, label: REPO_GROUP_ROOT_TARGET_LABEL, deprioritized: true },
+        ...members.map(member => ({
+            workspaceId: member.workspaceId,
+            label: (member.name || member.workspaceId) + (member.stale ? staleSuffix(member.staleReason) : ''),
+            disabled: member.stale || undefined,
+        })),
+    ];
+}
+
+/**
+ * Fetch the group's members and shape them as dock targets. Returns `undefined`
+ * while the request is in flight or when it fails, which the dock reads as "no
+ * picker" — better than flashing an empty one, and it degrades to a scope-only
+ * dock rather than an error state.
+ */
+function useRepoGroupDockTargets(workspaceId: string, baseUrl: string | undefined, enabled: boolean): DockTarget[] | undefined {
+    const [targets, setTargets] = useState<DockTarget[] | undefined>(undefined);
+    useEffect(() => {
+        if (!enabled) {
+            setTargets(undefined);
+            return;
+        }
+        let cancelled = false;
+        setTargets(undefined);
+        getRepoGroup(workspaceId, baseUrl)
+            .then(group => {
+                if (!cancelled) setTargets(repoGroupDockTargets(workspaceId, group.members ?? []));
+            })
+            .catch(() => {
+                if (!cancelled) setTargets(undefined);
+            });
+        return () => { cancelled = true; };
+    }, [workspaceId, baseUrl, enabled]);
+    return targets;
+}
+
 export interface RepoGroupViewProps {
     /** The `group-<slug>` workspace id currently selected. */
     workspaceId: string;
@@ -71,6 +134,20 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
     );
     const headerConfig = useMemo(() => getRepoGroupHeaderConfig(workspaceId, groupName), [workspaceId, groupName]);
 
+    // Right dock (Terminal / Explorer / Notes) — same gate as RepoDetail. Its
+    // state scopes to the GROUP, so switching member repos never closes or
+    // resizes it; only the terminal/explorer content follows the picker. The
+    // group detail read goes to whichever server owns the group — local for a
+    // local group, the remote's baseUrl for one aggregated from a remote server.
+    const dockAvailable = useSplitWorkspacePanelEnabled() && !isMobile;
+    const groupBaseUrl = useMemo(() => {
+        const match = (remoteGroups ?? []).find(ws => String(ws?.id ?? '') === workspaceId);
+        const url = (match as { baseUrl?: unknown } | undefined)?.baseUrl;
+        return typeof url === 'string' && url.length > 0 ? url : undefined;
+    }, [remoteGroups, workspaceId]);
+    const dockTargets = useRepoGroupDockTargets(workspaceId, groupBaseUrl, dockAvailable);
+    const dock = useWorkspaceDock(workspaceId, dockTargets);
+
     // Landing tab when the current sub-tab is not one of the group's tabs (e.g.
     // arriving from a repo's Git tab). Mirrors useVirtualWorkspaceHeader so the
     // highlighted header tab and the content pane always agree.
@@ -82,20 +159,24 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
         <div className="flex flex-col h-full" data-testid="repo-group-view" data-workspace={workspaceId}>
             {!headerInTopBar && <VirtualWorkspaceInlineHeader config={headerConfig} />}
 
-            {/* Tab content */}
-            <div className="flex-1 min-h-0 overflow-hidden">
-                <div style={{ display: activeTab === 'chats' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
-                    <RepoChatTab workspaceId={workspaceId} dockStatusFooter />
+            {/* Tab content + the right dock as the outermost-right, full-height
+                column — mirrors RepoDetail's workspace content row. */}
+            <div className="flex flex-row flex-1 min-h-0 min-w-0 overflow-hidden">
+                <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+                    <div style={{ display: activeTab === 'chats' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                        <RepoChatTab workspaceId={workspaceId} dockStatusFooter />
+                    </div>
+                    <div style={{ display: activeTab === 'notes' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
+                        <NotesView
+                            workspaceId={workspaceId}
+                            initialNotePath={state.selectedNotePath}
+                            defaultScope="per-note"
+                            active={activeTab === 'notes'}
+                            dockStatusFooter
+                        />
+                    </div>
                 </div>
-                <div style={{ display: activeTab === 'notes' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
-                    <NotesView
-                        workspaceId={workspaceId}
-                        initialNotePath={state.selectedNotePath}
-                        defaultScope="per-note"
-                        active={activeTab === 'notes'}
-                        dockStatusFooter
-                    />
-                </div>
+                {dockAvailable && <WorkspaceRightDock workspaceId={workspaceId} dock={dock} targets={dockTargets} />}
             </div>
         </div>
     );

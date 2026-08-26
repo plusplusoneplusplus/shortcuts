@@ -41,14 +41,15 @@ vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
 import {
     WorkspaceRightDock,
     useWorkspaceDock,
+    type DockTarget,
 } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceRightDock';
 
-function Harness({ workspaceId = 'ws1' }: { workspaceId?: string }) {
-    const dock = useWorkspaceDock(workspaceId);
+function Harness({ workspaceId = 'ws1', targets }: { workspaceId?: string; targets?: DockTarget[] }) {
+    const dock = useWorkspaceDock(workspaceId, targets);
     return (
         <div>
             <button data-testid="ext-toggle" onClick={dock.toggleOpen}>toggle</button>
-            <WorkspaceRightDock workspaceId={workspaceId} dock={dock} />
+            <WorkspaceRightDock workspaceId={workspaceId} dock={dock} targets={targets} />
         </div>
     );
 }
@@ -111,5 +112,26 @@ describe('WorkspaceRightDock single-row header', () => {
             fireEvent.click(within(header).getByTestId('workspace-dock-view-terminal'));
         });
         expect(within(header).getByTestId('terminal-picker-btn')).toBeTruthy();
+    });
+
+    it('keeps the target picker and the terminal toolbar in the same header row (AC-02)', () => {
+        render(<Harness workspaceId="group-ai-repos" targets={[
+            { workspaceId: 'group-ai-repos', label: 'Group root', deprioritized: true },
+            { workspaceId: 'repo-alpha', label: 'alpha' },
+        ]} />);
+        openDock();
+
+        const header = screen.getByTestId('workspace-dock-header');
+        // Tabs, picker and the portaled terminal toolbar all share the one 35px row.
+        expect(within(header).getByTestId('workspace-dock-view-switcher')).toBeTruthy();
+        expect(within(header).getByTestId('workspace-dock-target-picker')).toBeTruthy();
+        expect(within(header).getByTestId('terminal-new-btn')).toBeTruthy();
+
+        act(() => {
+            fireEvent.click(within(header).getByTestId('terminal-new-btn'));
+        });
+        expect(within(header).getByTestId('terminal-picker-btn')).toBeTruthy();
+        expect(within(header).getByTestId('workspace-dock-target-picker')).toBeTruthy();
+        expect(header.className).toContain('h-[35px]');
     });
 });
