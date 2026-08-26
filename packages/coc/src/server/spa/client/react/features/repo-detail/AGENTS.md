@@ -49,6 +49,34 @@ own server. `/chat/launch-terminal` deliberately stays on the local-origin
 store is still fed by the LOCAL websocket only, so remote-sourced rows can be
 overwritten by a local `REPO_QUEUE_UPDATED`; per-clone queue WS fan-in is the fix.
 
+## Workspace right dock
+
+`WorkspaceRightDock.tsx` hosts three views — Terminal, Explorer, and a compact
+read-only Notes panel — as underline tabs in one 35px header row. Which views a
+workspace offers comes from `dockViewsForWorkspace(workspaceId)` in
+`WorkspaceDockToggle.tsx`: a repo group (`group-<slug>`) has no single repository
+root, so it gets `terminal|notes` and never mounts `ExplorerPanel` (no Monaco
+load); a concrete repo gets `terminal|explorer|notes`.
+
+Every available view stays mounted once the dock has been opened, with the
+inactive ones hidden via `display:none`, so the PTY session, explorer tree, and
+selected note survive a view switch, a dock close, or a sub-tab change.
+
+The persisted view (`workspaceDockViewStorageKey`) is validated against the views
+available in the current workspace on read, falling back to the first one — a
+stored `explorer` must not strand a group workspace on a hidden tab. Only an
+explicit `setView` writes; mount and workspace switches never persist.
+
+`../notes/dock/DockNotesPanel.tsx` is the Notes view: search + new-note row, a
+recency-ordered flat list (`dock/dockNotes.ts` holds the pure list/query/naming
+helpers), a read-only markdown preview, and the two hand-off actions. The preview
+is deliberately read-only — the full Notes tab can be mounted at the same time,
+and sharing dirty state between two editable surfaces is out of scope.
+"Insert into chat" reaches the composer through `../chat/composerInsert.ts`, a
+window-event bridge (`ChatDetail` and `NewChatArea` subscribe via
+`useComposerInsertListener`) because the dock is a sibling column with no React
+path to the composer.
+
 ## Explorer lazy-load state
 
 `explorer/TreeNode.tsx` derives its spinner — `isDir && isExpanded && children ===
@@ -116,6 +144,12 @@ again.
 `test/spa/react/repos/explorer/TreeNode.lazyload.test.tsx` covers that behaviour
 end to end against the real tree cache (`--environment jsdom`);
 `TreeNode.test.ts` is a source-mirror test and must be updated alongside edits.
+
+`test/spa/react/workspace-right-dock/` covers the dock: `WorkspaceRightDock.test.tsx`
+(tabs, keep-alive, persistence, resize, group-vs-repo view sets),
+`DockNotesPanel.test.tsx`, `dockNotes.test.ts`, and `composerInsert.test.tsx`. The
+heavy views (TerminalView, ExplorerPanel, DockNotesPanel) are mocked by source
+path there so xterm/Monaco never load.
 
 `QuickOpen.behavior.test.tsx` asserts the one-fetch-per-open contract against a
 mocked `explorerApi` (`--environment jsdom`; stub `Element.prototype.scrollIntoView`,

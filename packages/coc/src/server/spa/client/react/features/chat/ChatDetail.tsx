@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import { useComposerInsertListener } from './composerInsert';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import type { AIProcess, CanvasSummary } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
@@ -555,6 +556,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         window.addEventListener('coc-open-source-canvas', handler as EventListener);
         return () => window.removeEventListener('coc-open-source-canvas', handler as EventListener);
     }, [openSourceCanvas]);
+
+    // "Insert into chat" from the workspace right dock's Notes panel lands here:
+    // the dock is a sibling column with no React path to this composer, so it
+    // dispatches a window event this follow-up input listens for.
+    useComposerInsertListener(workspaceId, setFollowUpInput);
 
     // Keep refs in sync with state for stale-closure-safe draft saves
     followUpInputRef.current = followUpInput;
