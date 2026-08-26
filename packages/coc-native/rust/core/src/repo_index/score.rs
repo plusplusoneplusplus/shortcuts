@@ -87,8 +87,8 @@ pub fn score_units<T: Unit>(query: &[T], target: &[T], indices: &mut Vec<u32>) -
     let mut qi = 0usize;
     let mut sidx: Option<usize> = None;
     let mut eidx: Option<usize> = None;
-    for ti in 0..target.len() {
-        if target[ti] == query[qi] {
+    for (ti, unit) in target.iter().enumerate() {
+        if *unit == query[qi] {
             if sidx.is_none() {
                 sidx = Some(ti);
             }

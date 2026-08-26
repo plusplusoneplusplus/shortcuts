@@ -147,10 +147,7 @@ fn the_prompt_regression_ranks_filenames_first() {
     let trailing: Vec<&String> = ranked[3..].iter().collect();
     assert_eq!(
         trailing,
-        vec![
-            "packages/forge/src/ai/command-types.ts",
-            "packages/coc/src/commands/wipe-data.ts",
-        ],
+        vec!["packages/forge/src/ai/command-types.ts", "packages/coc/src/commands/wipe-data.ts"],
     );
 }
 
