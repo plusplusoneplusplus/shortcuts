@@ -361,13 +361,26 @@ describe('detectPullRequestsInToolGroup', () => {
         });
     });
 
-    it('detects a wrapper PR recovered by grepping the wrapper\'s persisted stdout', () => {
+    it('detects a wrapper PR recovered by grepping THIS run\'s persisted stdout', () => {
         // Real-world repro (PR #374): the wrapper's own 269KB output was truncated
         // to a head preview — a large `git rev-list` dump — so the trailing success
         // line never reached the captured result. The model recovered it by
         // grepping the persisted stdout file, leaving a bare `JSON: {...}` success
         // line under a (non-creating, non-wrapper) grep command.
+        //
+        // The recovery is accepted only because the grepped path is the one this
+        // chat's own wrapper run named in its truncation notice.
         const pullRequests = detectPullRequestsInToolGroup([
+            {
+                id: 'tool-0',
+                toolName: 'Bash',
+                args: { command: 'python .github/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py start abc123' },
+                result: [
+                    '$ git rev-list --reverse main..HEAD',
+                    'aaaaaaa bbbbbbb ccccccc',
+                    '[output truncated — full output at /tmp/tool-results/byixuxzao.txt]',
+                ].join('\n'),
+            },
             {
                 id: 'tool-1',
                 toolName: 'Bash',
@@ -427,7 +440,10 @@ describe('detectPullRequestsInToolGroup', () => {
         expect(pullRequests).toEqual([]);
     });
 
-    it('detects PR URLs when command metadata is unavailable', () => {
+    it('ignores PR URLs when command metadata is unavailable', () => {
+        // Widest hole in the old detector: a shell tool call carrying no
+        // `command`/`script` used to attach EVERY PR URL in its output, with no
+        // evidence this chat created any of them.
         const pullRequests = detectPullRequestsInToolGroup([
             {
                 id: 'tool-1',
@@ -436,8 +452,7 @@ describe('detectPullRequestsInToolGroup', () => {
             },
         ]);
 
-        expect(pullRequests).toHaveLength(1);
-        expect(pullRequests[0].number).toBe(101);
+        expect(pullRequests).toEqual([]);
     });
 
     it('does not count known non-creation commands that mention PR URLs', () => {
@@ -501,7 +516,7 @@ describe('detectPullRequestsInToolGroup', () => {
         ]);
     });
 
-    it('detects ADO PR when command metadata is unavailable', () => {
+    it('ignores ADO PR URLs when command metadata is unavailable', () => {
         const pullRequests = detectPullRequestsInToolGroup([
             {
                 id: 'tool-1',
@@ -510,14 +525,7 @@ describe('detectPullRequestsInToolGroup', () => {
             },
         ]);
 
-        expect(pullRequests).toHaveLength(1);
-        expect(pullRequests[0]).toMatchObject({
-            number: 999,
-            provider: 'azure-devops',
-            organization: 'org',
-            project: 'project',
-            repo: 'repo',
-        });
+        expect(pullRequests).toEqual([]);
     });
 
     it('ignores az repos pr show (read-only ADO command)', () => {
@@ -690,6 +698,7 @@ describe('detectPullRequestsInToolGroup', () => {
             {
                 id: 'tool-1',
                 toolName: 'powershell',
+                args: { command: 'az repos pr create --title "feat"' },
                 result: 'https://dev.azure.com/org/My%20Project/_git/repo/pullrequest/77',
             },
         ]);
@@ -699,6 +708,232 @@ describe('detectPullRequestsInToolGroup', () => {
             number: 77,
             provider: 'azure-devops',
             project: 'My%20Project',
+        });
+    });
+
+    // --- Only PRs THIS chat created (composer PR banner) ---
+    //
+    // Every detection is written back as a `pull_request_chat_bindings` row, so a
+    // mis-detection is permanent. These cover the holes that let a PR this chat
+    // did not create reach the composer banner.
+    describe('rejects PRs this chat did not create', () => {
+        const WRAPPER_CMD =
+            'python .github/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py start abc123';
+
+        interface RejectCase {
+            name: string;
+            toolCalls: Parameters<typeof detectPullRequestsInToolGroup>[0];
+            options?: Parameters<typeof detectPullRequestsInToolGroup>[1];
+        }
+
+        const cases: RejectCase[] = [
+            {
+                name: 'shell output with no command metadata at all',
+                toolCalls: [
+                    { id: 'tool-1', toolName: 'bash', result: 'see https://github.com/org/repo/pull/12' },
+                ],
+            },
+            {
+                name: 'no-command shell output that merely quotes a PR link',
+                toolCalls: [
+                    {
+                        id: 'tool-1',
+                        toolName: 'bash',
+                        args: {},
+                        result: 'fixes https://github.com/other/repo/pull/7 and https://github.com/other/repo/pull/8',
+                    },
+                ],
+            },
+            {
+                name: 'gh pr create that failed because the PR already exists',
+                toolCalls: [
+                    {
+                        id: 'tool-1',
+                        toolName: 'bash',
+                        args: { command: 'gh pr create --base main --fill' },
+                        result: [
+                            'a pull request for branch "pr/x" into branch "main" already exists:',
+                            'https://github.com/org/repo/pull/123',
+                        ].join('\n'),
+                    },
+                ],
+            },
+            {
+                name: 'gh pr create reported as a failed tool call',
+                toolCalls: [
+                    {
+                        id: 'tool-1',
+                        toolName: 'bash',
+                        args: { command: 'gh pr create --fill' },
+                        status: 'failed',
+                        result: 'https://github.com/org/repo/pull/321',
+                    },
+                ],
+            },
+            {
+                name: 'grep of ANOTHER run’s persisted wrapper log',
+                toolCalls: [
+                    {
+                        id: 'tool-0',
+                        toolName: 'bash',
+                        args: { command: WRAPPER_CMD },
+                        result: '[output truncated — full output at /tmp/tool-results/mine.txt]',
+                    },
+                    {
+                        id: 'tool-1',
+                        toolName: 'bash',
+                        args: { command: 'grep -a "JSON:" /tmp/tool-results/someone-elses-run.txt' },
+                        result: 'JSON: {"pr_url": "https://github.com/org/repo/pull/999", "status": "done"}',
+                    },
+                ],
+            },
+            {
+                name: 'grep of a wrapper log with no wrapper run in this chat at all',
+                toolCalls: [
+                    {
+                        id: 'tool-1',
+                        toolName: 'bash',
+                        args: { command: 'tail -5 /tmp/tool-results/unrelated.txt' },
+                        result: 'JSON: {"pr_url": "https://github.com/org/repo/pull/999", "status": "done"}',
+                    },
+                ],
+            },
+            {
+                name: 'a PR in a different repo than the chat (repo scoping)',
+                toolCalls: [
+                    {
+                        id: 'tool-1',
+                        toolName: 'bash',
+                        args: { command: 'gh pr create --fill' },
+                        result: 'https://github.com/someone-else/other-repo/pull/5',
+                    },
+                ],
+                options: { remoteUrl: 'https://github.com/org/repo.git' },
+            },
+            {
+                name: 'an ADO PR in a different project than the chat (repo scoping)',
+                toolCalls: [
+                    {
+                        id: 'tool-1',
+                        toolName: 'bash',
+                        args: { command: 'az repos pr create --title "feat"' },
+                        result: 'https://dev.azure.com/contoso/OtherProject/_git/other/pullrequest/5',
+                    },
+                ],
+                options: { remoteUrl: 'https://dev.azure.com/contoso/MyProject/_git/repo' },
+            },
+        ];
+
+        for (const testCase of cases) {
+            it(`ignores ${testCase.name}`, () => {
+                expect(detectPullRequestsInToolGroup(testCase.toolCalls, testCase.options)).toEqual([]);
+            });
+        }
+    });
+
+    describe('attaches only the pull request that was actually created', () => {
+        it('takes the last PR URL from a gh pr create dump, not every URL in it', () => {
+            // `submit_commits_as_pr.py` dumps a `git rev-list`/log; PR URLs quoted
+            // in those commit messages used to ride along as separate detections.
+            const pullRequests = detectPullRequestsInToolGroup([
+                {
+                    id: 'tool-1',
+                    toolName: 'bash',
+                    args: { command: 'gh pr create --base main --fill' },
+                    result: [
+                        '$ git rev-list --reverse main..HEAD',
+                        'abc123 fix(coc): follow-up to https://github.com/org/repo/pull/10',
+                        'def456 revert of https://github.com/org/repo/pull/11',
+                        'https://github.com/org/repo/pull/12',
+                    ].join('\n'),
+                },
+            ]);
+
+            expect(pullRequests).toHaveLength(1);
+            expect(pullRequests[0]).toMatchObject({ number: 12, toolCallId: 'tool-1' });
+        });
+
+        it('takes the wrapper success line’s pr_url, not other URLs in the dump', () => {
+            const pullRequests = detectPullRequestsInToolGroup([
+                {
+                    id: 'tool-1',
+                    toolName: 'bash',
+                    args: {
+                        command:
+                            'python .github/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py start abc123',
+                    },
+                    result: [
+                        '$ git log --oneline main..HEAD',
+                        'abc123 fix: as discussed in https://github.com/org/repo/pull/10',
+                        'def456 chore: revert https://github.com/org/repo/pull/11',
+                        '$ gh pr create --base main --fill',
+                        'JSON: {"commits_count": 2, "pr_url": "https://github.com/org/repo/pull/12", "status": "done"}',
+                    ].join('\n'),
+                },
+            ]);
+
+            expect(pullRequests).toEqual<DetectedPullRequest[]>([
+                {
+                    number: 12,
+                    url: 'https://github.com/org/repo/pull/12',
+                    provider: 'github',
+                    owner: 'org',
+                    repo: 'repo',
+                    toolCallId: 'tool-1',
+                },
+            ]);
+        });
+
+        it('keeps a PR created in the chat’s own repo when repo scoping is on', () => {
+            const pullRequests = detectPullRequestsInToolGroup(
+                [
+                    {
+                        id: 'tool-1',
+                        toolName: 'bash',
+                        args: { command: 'gh pr create --fill' },
+                        status: 'completed',
+                        result: 'https://github.com/org/repo/pull/12',
+                    },
+                ],
+                // SSH remote for the same repo — normalization must still match.
+                { remoteUrl: 'git@github.com:org/repo.git' },
+            );
+
+            expect(pullRequests).toHaveLength(1);
+            expect(pullRequests[0].number).toBe(12);
+        });
+
+        it('keeps an ADO PR created in the chat’s own project when repo scoping is on', () => {
+            const pullRequests = detectPullRequestsInToolGroup(
+                [
+                    {
+                        id: 'tool-1',
+                        toolName: 'bash',
+                        args: { command: 'az repos pr create --title "feat"' },
+                        result: 'https://dev.azure.com/contoso/MyProject/_git/repo/pullrequest/380',
+                    },
+                ],
+                { remoteUrl: 'https://dev.azure.com/contoso/MyProject/_git/repo' },
+            );
+
+            expect(pullRequests).toHaveLength(1);
+            expect(pullRequests[0].number).toBe(380);
+        });
+
+        it('does not scope anything away when no remote URL is known', () => {
+            const pullRequests = detectPullRequestsInToolGroup(
+                [
+                    {
+                        id: 'tool-1',
+                        toolName: 'bash',
+                        args: { command: 'gh pr create --fill' },
+                        result: 'https://github.com/org/repo/pull/12',
+                    },
+                ],
+                { remoteUrl: null },
+            );
+
+            expect(pullRequests).toHaveLength(1);
         });
     });
 });

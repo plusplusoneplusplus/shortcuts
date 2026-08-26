@@ -224,7 +224,9 @@ export function usePrChatStatusItems(options: UsePrChatStatusItemsOptions): UseP
         () => (workspaceId ? resolveCanonicalOriginId({ workspaceId, remoteUrl: remoteUrl ?? null }) : ''),
         [workspaceId, remoteUrl],
     );
-    const detected = useMemo(() => gatherDetectedPrsFromTurns(turns), [turns]);
+    // Scope detection to the chat's own repo: a PR URL from any other repo that
+    // shows up in this chat's tool output is not this chat's PR.
+    const detected = useMemo(() => gatherDetectedPrsFromTurns(turns, remoteUrl ?? null), [turns, remoteUrl]);
     // Only re-run the fetch pipeline when the *set* of detected PRs changes,
     // not on every streaming turn update.
     const detectedKey = useMemo(() => detected.map(pr => pr.url).sort().join('|'), [detected]);

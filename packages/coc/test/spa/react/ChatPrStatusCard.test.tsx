@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
     pullRequests: {
         listChatBindingsForOrigin: vi.fn(),
         createChatBindingForOrigin: vi.fn(),
+        deleteChatBindingForOrigin: vi.fn(),
         getForOrigin: vi.fn(),
         getReviewersForOrigin: vi.fn(),
         getChecksForOrigin: vi.fn(),

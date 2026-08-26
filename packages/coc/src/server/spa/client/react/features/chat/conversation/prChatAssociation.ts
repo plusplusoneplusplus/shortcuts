@@ -79,10 +79,14 @@ export function collectToolCallsFromTurns(turns: readonly ClientConversationTurn
 /**
  * Detects every pull request created in the loaded turns by scanning their tool
  * calls with the shared {@link detectPullRequestsInToolGroup}. URLs are
- * de-duplicated across the whole conversation.
+ * de-duplicated across the whole conversation. Pass the chat workspace's
+ * `remoteUrl` to scope detections to the chat's own repo.
  */
-export function gatherDetectedPrsFromTurns(turns: readonly ClientConversationTurn[] | undefined): DetectedPullRequest[] {
-    return detectPullRequestsInToolGroup(collectToolCallsFromTurns(turns));
+export function gatherDetectedPrsFromTurns(
+    turns: readonly ClientConversationTurn[] | undefined,
+    remoteUrl?: string | null,
+): DetectedPullRequest[] {
+    return detectPullRequestsInToolGroup(collectToolCallsFromTurns(turns), { remoteUrl });
 }
 
 /** Synthesize the repo's canonical remote URL from a detected PR. */
@@ -119,10 +123,10 @@ export interface UnionAssociationsInput {
 }
 
 /**
- * Builds the union of detected PRs and persisted bindings. Detected entries are
- * keyed by their own resolved origin; bindings are keyed by the chat origin.
- * For PRs created in the chat's own repo these collapse to one association whose
- * `sources` lists both. Detected PRs with no resolvable origin are skipped.
+ * Builds the union of detected PRs and persisted bindings, both keyed by the
+ * chat's own origin, so a PR present in both collapses to one association whose
+ * `sources` lists both. Detected PRs with no resolvable origin — or one that is
+ * not the chat's own — are skipped.
  * Order is stable: detected (turn order) first, then binding-only entries.
  */
 export function unionAssociations(input: UnionAssociationsInput): PrAssociation[] {
@@ -145,7 +149,10 @@ export function unionAssociations(input: UnionAssociationsInput): PrAssociation[
 
     for (const pr of detected) {
         const originId = originIdForDetectedPr(pr, workspaceId);
-        if (!originId) continue;
+        // A detected PR from another repo is not this chat's PR: rendering it
+        // under its own synthesized origin is how a foreign PR used to get a
+        // banner (and, via `detectedPrsNeedingBinding`, nearly a binding).
+        if (!originId || originId !== chatOriginId) continue;
         const prId = String(pr.number);
         upsert(
             { key: `${originId}:${prId}`, originId, prId, number: pr.number, url: pr.url, provider: pr.provider, sources: [] },
