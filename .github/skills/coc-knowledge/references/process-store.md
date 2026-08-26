@@ -25,7 +25,7 @@ Single `processes.db` at `~/.coc/processes.db`. Schema version 22.
 | `commit_chat_bindings` | commitHash → taskId |
 | `pull_request_chat_bindings` | prId → taskId (one chat per PR per canonical origin; the `workspace_id` column stores the origin key) |
 | `work_item_chat_bindings` | workItemId → taskId (one chat per Work Item per canonical origin; `workspace_id` stores the origin key) |
-| `task_groups` | Parent/child task-group registry: one row per hierarchical run/session (type, title, normalized status, hidden flag, origin process, extra JSON) |
+| `task_groups` | Parent/child task-group registry: one row per hierarchical run/session or chat folder (type, title, normalized status, hidden flag, origin process, `parent_group_id`, extra JSON) |
 | `task_group_members` | Child links per group: role (`generation`/`item`/`reduce`/`iteration`/`final-check`/`analyzer`/`critic`), task/process IDs, `itemKey`, `memberIndex` |
 
 ### Commit chat bindings
@@ -101,6 +101,14 @@ like `reducing`, `approved`, or `grilling` ride in `extra.detailStatus`. Child t
 (linkage-only). `backfillTaskGroups` idempotently projects existing runs on server start.
 Registry writes are best-effort: failures log and never break orchestration. With the file
 backend the registry is in-memory only.
+
+`parent_group_id` (schema v29) lets a group name a containing group; it is `NULL` for every
+run-style group and for flat chat folders. Membership helpers: `unlinkChild(workspaceId,
+groupId, processId)` drops one process's links in a group, `findMembership(workspaceId,
+processId, { type })` resolves a process to its group, and `listMembershipsByProcess(
+workspaceId, { type })` returns a `processId -> groupId` map in one query. Both lookups join
+`task_groups`, so a member row whose group is gone resolves to nothing. `removeGroup` deletes
+the group and its member rows in one transaction.
 
 ## FileProcessStore
 

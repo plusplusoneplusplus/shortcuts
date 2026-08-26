@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 28;
+export const SCHEMA_VERSION = 29;
 
 /**
  * Read the current schema version from the database.
@@ -404,6 +404,7 @@ export function initializeDatabase(db: Database.Database): void {
                 status             TEXT NOT NULL DEFAULT 'draft',
                 hidden             INTEGER DEFAULT 0,
                 origin_process_id  TEXT,
+                parent_group_id    TEXT,
                 created_at         TEXT NOT NULL,
                 updated_at         TEXT NOT NULL,
                 completed_at       TEXT,
@@ -519,6 +520,9 @@ export function initializeDatabase(db: Database.Database): void {
         }
         if (versionBefore < 28) {
             migrateV27toV28(db);
+        }
+        if (versionBefore < 29) {
+            migrateV28toV29(db);
         }
 
         // Stamp the schema version
@@ -888,6 +892,17 @@ function migrateV26toV27(db: Database.Database): void {
  */
 function migrateV27toV28(db: Database.Database): void {
     ensureColumn(db, 'conversation_turns', 'repo_group_context', 'TEXT');
+}
+
+/**
+ * V28 -> V29: add `parent_group_id` to `task_groups`, so a group can name
+ * another group as its container. Chat folders ship flat (always NULL), but
+ * persisting the column now means nesting later is a UI-and-validation change
+ * rather than a migration. No backfill — NULL is correct for every existing
+ * group type.
+ */
+function migrateV28toV29(db: Database.Database): void {
+    ensureColumn(db, 'task_groups', 'parent_group_id', 'TEXT');
 }
 
 /**
