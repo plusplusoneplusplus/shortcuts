@@ -524,7 +524,10 @@ all have their own `references/*.md`.
   - Injection rule, one rule for every turn: inject when the selected style
     differs from the style last recorded on `process.metadata.chatStyle` AND is
     not `'default'`. A brand-new conversation starts recorded as `'default'`, so
-    turn 1 injects only when the user picked a real style. The recorded style is
+    turn 1 injects only when a real style was selected. That baseline stays
+    `DEFAULT_CHAT_STYLE` even when `features.defaultChatStyle` is set to a real
+    style — comparing against the configured default would make it equal to
+    itself and never inject on turn 1. The recorded style is
     updated on **every** turn including no-block ones, so Default is a real
     state, not a gap. Switching to Default injects nothing and deliberately does
     not undo an earlier style; that tradeoff is a product decision, not
@@ -543,14 +546,30 @@ all have their own `references/*.md`.
     and workflows never inject. The flag is enforced on both sides so an older
     client cannot force injection: the SPA hides the chip and omits `chatStyle`,
     and the server checks the live flag per turn.
-  - Deliberately absent: no `PerRepoPreferences.lastChatStyle` seed (new chats
-    always start on Default, there is no workspace-level style), and no
-    style-change buffering special case in `ProcessMessageDeliveryService` — the
-    style rides the user message, so no freshly built system message is needed.
+  - **Default style** (live admin flag `features.defaultChatStyle`, enum over
+    `CHAT_STYLES`, default `'default'`, runtime flag `defaultChatStyle`, shown
+    under the selector toggle via `dependsOn`) picks the style new conversations
+    start on. Server-wide, so it applies to API callers and older clients too:
+    - Composers seed from `getDefaultChatStyle()` (`utils/config.ts`) at mount
+      only, so a live admin change never yanks the chip out from under a
+      composer the user has already touched.
+    - `validateAndParseTask` leaves an omitted `chatStyle` **off** the payload
+      instead of writing `'default'` into it — absent must stay distinguishable
+      from an explicit Default pick, or the configured default gets swallowed
+      before it can be applied. `resolveNewChatStyle` then falls back to the
+      runtime capability `getDefaultChatStyle`; follow-ups take the value as the
+      third argument of `normalizeFollowUpInput`.
+    - An explicit `chatStyle: 'default'` always wins and injects nothing.
+  - Deliberately absent: no `PerRepoPreferences.lastChatStyle` seed and no
+    per-workspace or per-user style (`features.defaultChatStyle` is one
+    server-wide value), and no style-change buffering special case in
+    `ProcessMessageDeliveryService` — the style rides the user message, so no
+    freshly built system message is needed.
   - The follow-up composer's style is *derived*, not synced: `ChatDetail` keeps
     only a `chatStyleOverride` (null until the user picks) and falls back to
-    `processDetails.metadata.chatStyle`, so a late, partial, or re-fetched
-    record converges on the right value while a user pick always wins.
+    `processDetails.metadata.chatStyle` and then `getDefaultChatStyle()`, so a
+    late, partial, or re-fetched record converges on the right value while a
+    user pick always wins.
     `queuedTaskToProcess` mirrors `payload.chatStyle` into the synthetic queued
     process for the same reason it mirrors `mode` — an invalid value is dropped.
 - **Quick Ask side-notes** (live admin flag `features.quickAskSidenotes`

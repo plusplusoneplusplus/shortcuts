@@ -172,6 +172,7 @@ vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     isAutoAgentProviderRoutingEnabled: () => false,
     isEffortLevelsEnabled: () => mockConfig.effortLevelsEnabled,
     isChatStyleSelectorEnabled: () => false,
+    getDefaultChatStyle: () => 'default',
     DASHBOARD_CONFIG_UPDATED_EVENT: 'dashboard-config-updated',
     isSessionContextAttachmentsEnabled: () => mockConfig.sessionContextAttachmentsEnabled,
     getPrewarmDebounceMs: () => 500,

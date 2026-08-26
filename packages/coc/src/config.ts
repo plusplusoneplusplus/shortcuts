@@ -12,6 +12,7 @@ import * as path from 'path';
 import * as os from 'os';
 import yaml from 'js-yaml';
 import { FileProcessStore, SqliteProcessStore } from '@plusplusoneplusplus/forge';
+import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import { validateConfigWithSchema } from './config/schema';
 import { TOP_LEVEL_ADMIN_SETTING_KEYS } from './config/admin-setting-definitions';
 import {
@@ -301,6 +302,8 @@ export interface CLIConfig {
         canvasHostApis?: boolean;
         /** Style selector in chat composers. Changes presentation only. Enabled by default. */
         chatStyleSelector?: boolean;
+        /** Style new conversations start on, server-wide. `'default'` injects no style instruction. */
+        defaultChatStyle?: ChatStyle;
     };
     /** Memory promotion configuration */
     memoryPromotion?: {
@@ -642,6 +645,8 @@ export interface ResolvedCLIConfig {
         canvasHostApis: boolean;
         /** Style selector in chat composers. Changes presentation only. Enabled by default. */
         chatStyleSelector: boolean;
+        /** Style new conversations start on, server-wide. `'default'` injects no style instruction. */
+        defaultChatStyle: ChatStyle;
     };
     /** Memory promotion configuration */
     memoryPromotion: {
@@ -905,6 +910,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         gitWorktreeExecution: false,
         canvasHostApis: false,
         chatStyleSelector: true,
+        defaultChatStyle: 'default',
     },
     memoryPromotion: {
         batchSize: 50,

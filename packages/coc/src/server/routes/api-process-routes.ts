@@ -1079,7 +1079,11 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const sessionProvider: ChatProvider = proc.metadata?.provider === 'codex' || proc.metadata?.provider === 'claude' || proc.metadata?.provider === 'copilot'
                 ? proc.metadata.provider
                 : 'copilot';
-            const normalized = normalizeFollowUpInput(body, sessionProvider);
+            const normalized = normalizeFollowUpInput(
+                body,
+                sessionProvider,
+                ctx.getLiveFeatureFlags?.().defaultChatStyle,
+            );
             if (!normalized.ok) {
                 return handleAPIError(res, badRequest(normalized.error));
             }

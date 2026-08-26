@@ -22,6 +22,7 @@ export const RUNTIME_CAPABILITY_KEYS = [
     'getTurnPerformanceStore',
     'getGlobalSystemPrompt',
     'getChatStyleSelectorEnabled',
+    'getDefaultChatStyle',
     'resolveAiServiceForProvider',
     'getDreamRunExecutor',
     'processAbortControllers',

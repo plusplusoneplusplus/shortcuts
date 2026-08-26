@@ -53,6 +53,7 @@ function makeSentinelRuntime() {
         getTurnPerformanceStore: vi.fn(() => undefined),
         getGlobalSystemPrompt: vi.fn(() => undefined),
         getChatStyleSelectorEnabled: vi.fn(() => false),
+        getDefaultChatStyle: vi.fn(() => 'default'),
         resolveAiServiceForProvider: vi.fn(() => sdkMocks.service),
     };
     return sentinels as unknown as ExecutorRuntimeCapabilities & typeof sentinels;
@@ -136,6 +137,7 @@ describe('Executor runtime capability wiring', () => {
             // The base executor keeps its own alias for the recorder accessor.
             ['getTurnPerformanceStore', 'base executor recorder', p => p.chatExecutor.getTurnPerformanceRecorder],
             ['getChatStyleSelectorEnabled', 'lifecycle runner', p => p.runner.runtime.getChatStyleSelectorEnabled],
+            ['getDefaultChatStyle', 'lifecycle runner', p => p.runner.runtime.getDefaultChatStyle],
             ['getTriggerInfra', 'queue bridge', p => p.bridgeRuntime.getTriggerInfra],
         ];
 

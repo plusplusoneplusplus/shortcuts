@@ -52,6 +52,7 @@ import { createWebSocketInfrastructure } from './infrastructure/websocket-infras
 import { createWatcherInfrastructure } from './infrastructure/watcher-infrastructure';
 import { createTerminalInfrastructure } from './infrastructure/terminal-infrastructure';
 import { HeapMonitor } from './admin/heap-monitor';
+import { coerceChatStyle } from './executors/chat-style-prompt';
 import { buildRuntimeFeatures } from './config/runtime-config-handler';
 import { RuntimeConfigService } from '../config/runtime-config-service';
 import { DEFAULT_AI_TIMEOUT_MS } from '@plusplusoneplusplus/forge';
@@ -408,6 +409,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         // conversation starts, so turning the feature off immediately stops
         // prompt injection even for an older client.
         () => runtimeConfigService.config.features.chatStyleSelector === true,
+        // Live read of the server-wide default chat style. Applied to a new
+        // conversation only when the request carried no explicit style, so an
+        // API caller or an older client inherits the admin's choice.
+        () => coerceChatStyle(runtimeConfigService.config.features.defaultChatStyle),
         // Late-bound turn-performance metric store; created after queue infra.
         () => turnPerformanceInfra?.turnPerformanceStore,
     );

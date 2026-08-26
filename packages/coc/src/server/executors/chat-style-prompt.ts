@@ -87,13 +87,21 @@ export function isChatStyleEligiblePayload(payload: Record<string, unknown> | un
 }
 
 /**
+ * Narrow an untrusted value to a {@link ChatStyle}, falling back to `'default'`.
+ * Used wherever a stored or configured value reaches code that needs a concrete
+ * style — config reads, metadata reads, wire payloads.
+ */
+export function coerceChatStyle(value: unknown): ChatStyle {
+    return isChatStyle(value) ? value : DEFAULT_CHAT_STYLE;
+}
+
+/**
  * The style recorded for a conversation so far. A conversation that never
  * recorded one starts at `'default'`, which is what makes the very first turn
  * inject whenever the user picked a real style.
  */
 export function recordedChatStyle(metadata: Record<string, unknown> | undefined): ChatStyle {
-    const stored = metadata?.chatStyle;
-    return isChatStyle(stored) ? stored : DEFAULT_CHAT_STYLE;
+    return coerceChatStyle(metadata?.chatStyle);
 }
 
 /**

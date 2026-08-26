@@ -6,6 +6,7 @@
  * GET /api/config/runtime endpoint so that admin config changes take effect
  * on refresh without a server restart.
  */
+import { DEFAULT_CHAT_STYLE, isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
 
 interface DashboardConfig {
     apiBasePath: string;
@@ -79,6 +80,11 @@ interface DashboardConfig {
      * target-server capability signal exposed via GET /api/config/runtime.
      */
     chatStyleSelectorEnabled?: boolean;
+    /**
+     * Style new conversations start on, server-wide. Absent on a server that
+     * predates the setting, which reads as `'default'` (no style instruction).
+     */
+    defaultChatStyle?: ChatStyle;
     /** Whether the Effort Tiers selector (Very Low/Low/Medium/High) is enabled in the composer. Enabled by default. */
     effortLevelsEnabled?: boolean;
     /** Whether the read-only native CLI sessions tab is enabled (feature flag). */
@@ -544,6 +550,18 @@ export function isGitWorktreeExecutionEnabled(): boolean {
  */
 export function isChatStyleSelectorEnabled(): boolean {
     return getConfig().chatStyleSelectorEnabled === true;
+}
+
+/**
+ * The style new conversations start on for the active server
+ * (`features.defaultChatStyle`). `'default'` means "add no style instruction",
+ * and is also what an older server that omits the flag reads as.
+ *
+ * Used to seed a composer, never to override a pick the user already made.
+ */
+export function getDefaultChatStyle(): ChatStyle {
+    const configured = getConfig().defaultChatStyle;
+    return isChatStyle(configured) ? configured : DEFAULT_CHAT_STYLE;
 }
 
 /** Returns true when the Effort Tiers selector is enabled (replaces model picker + effort pill). */

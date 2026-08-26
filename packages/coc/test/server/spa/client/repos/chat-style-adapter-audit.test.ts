@@ -60,8 +60,11 @@ describe('chat style — InitialChatComposerSubmission adapter audit', () => {
         expect(source).toMatch(/isChatStyleSupportedMode[\s\S]{0,200}mode === 'ask' \|\| mode === 'autopilot'/);
     });
 
-    it('the composer keeps the style per-send — no preference seed, no browser key', () => {
+    // The composer seeds from the server-wide `features.defaultChatStyle` and
+    // nothing else — no repo preference, no browser key, no per-user memory.
+    it('the composer seeds only from the server default — no repo preference, no browser key', () => {
         const source = readFileSync(COMPOSER_PATH, 'utf-8');
+        expect(source).toContain('useState<ChatStyle>(getDefaultChatStyle)');
         expect(source).not.toContain('lastChatStyle');
         expect(source).not.toMatch(/localStorage\.[gs]etItem\([^)]*chat-style/);
     });

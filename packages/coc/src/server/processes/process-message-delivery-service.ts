@@ -62,8 +62,10 @@ export interface NormalizedFollowUpFields {
     /**
      * Style selected for this turn. Unlike the effort override, an unknown
      * value is a client error (HTTP 400) rather than silently dropped, so a
-     * style the user picked is never quietly ignored. An omitted field
-     * normalizes to `'default'`, which injects nothing.
+     * style the user picked is never quietly ignored. An omitted field falls
+     * back to the `defaultChatStyle` the caller passed in — the server-wide
+     * `features.defaultChatStyle`, or `'default'` when the caller has no config
+     * to read.
      */
     chatStyle: ChatStyle;
 }
@@ -81,6 +83,7 @@ export type NormalizeFollowUpResult =
 export function normalizeFollowUpInput(
     body: Record<string, unknown>,
     provider: ChatProvider,
+    defaultChatStyle: ChatStyle = DEFAULT_CHAT_STYLE,
 ): NormalizeFollowUpResult {
     // Mode: legacy `plan` is accepted as Ask; `ralph` is not a per-turn override.
     const normalizedMode = normalizeChatMode(body.mode);
@@ -113,13 +116,13 @@ export function normalizeFollowUpInput(
             ? (body.reasoningEffort as ReasoningEffort)
             : undefined;
 
-    // Per-turn chat style. Omitted means 'default' (inject nothing);
+    // Per-turn chat style. Omitted falls back to the server-wide default;
     // present-but-unknown is rejected so a client never silently gets a
     // different style than the one it asked for.
     if (body.chatStyle !== undefined && body.chatStyle !== null && !isChatStyle(body.chatStyle)) {
         return { ok: false, error: `Invalid chatStyle: must be one of ${CHAT_STYLES.join(', ')}` };
     }
-    const chatStyle: ChatStyle = isChatStyle(body.chatStyle) ? body.chatStyle : DEFAULT_CHAT_STYLE;
+    const chatStyle: ChatStyle = isChatStyle(body.chatStyle) ? body.chatStyle : defaultChatStyle;
 
     return {
         ok: true,

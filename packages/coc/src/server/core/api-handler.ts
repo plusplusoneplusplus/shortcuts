@@ -16,6 +16,7 @@ import * as url from 'url';
 import * as path from 'path';
 import * as childProcess from 'child_process';
 import * as fs from 'fs';
+import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { ProcessStore, ProcessFilter, AIProcessStatus, AIProcessType, TurnSource } from '@plusplusoneplusplus/forge';
 import { GitOpsStore, SqliteProcessStore, initializeDatabase, execGitAsync } from '@plusplusoneplusplus/forge';
 import Database from 'better-sqlite3';
@@ -238,7 +239,7 @@ export function registerApiRoutes(
     routes: Route[], store: ProcessStore, bridge?: QueueExecutorBridge,
     dataDir?: string, getWsServer?: () => ProcessWebSocketServer | undefined,
     db?: Database.Database, cronEnabled?: boolean,
-    getLiveFeatureFlags?: () => { excalidrawEnabled: boolean; canvasEnabled: boolean; kustoEnabled: boolean; chatStyleSelectorEnabled: boolean },
+    getLiveFeatureFlags?: () => { excalidrawEnabled: boolean; canvasEnabled: boolean; kustoEnabled: boolean; chatStyleSelectorEnabled: boolean; defaultChatStyle: ChatStyle },
     activeWorkspaceTracker?: ActiveWorkspaceTracker,
 ): void {
     // Wrap routes.push to automatically log API mutations (POST/PATCH/DELETE).

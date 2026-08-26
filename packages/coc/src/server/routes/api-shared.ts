@@ -6,6 +6,7 @@
  * so that shared dependencies (store, bridge, WS server) are injected rather than imported.
  */
 
+import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { GitOpsStore } from '@plusplusoneplusplus/forge';
 import type Database from 'better-sqlite3';
@@ -38,7 +39,7 @@ export interface ApiRouteContext {
      * config changes without a server restart. Falls back to startup
      * values when runtimeConfigService is not available.
      */
-    getLiveFeatureFlags?: () => { excalidrawEnabled: boolean; canvasEnabled: boolean; kustoEnabled: boolean; chatStyleSelectorEnabled: boolean };
+    getLiveFeatureFlags?: () => { excalidrawEnabled: boolean; canvasEnabled: boolean; kustoEnabled: boolean; chatStyleSelectorEnabled: boolean; defaultChatStyle: ChatStyle };
 }
 
 /** Maximum git output buffer size (50 MB) — matches forge DEFAULT_MAX_BUFFER. */

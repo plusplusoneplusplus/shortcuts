@@ -133,6 +133,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isAutoAgentProviderRoutingEnabled: () => false,
     isEffortLevelsEnabled: () => false,
     isChatStyleSelectorEnabled: () => false,
+    getDefaultChatStyle: () => 'default',
     isCommitChatLensEnabled: () => false,
     getCommitChatLensDormantMode: () => 'ghost' as const,
 }));

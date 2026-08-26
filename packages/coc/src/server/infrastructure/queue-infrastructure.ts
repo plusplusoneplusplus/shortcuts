@@ -71,6 +71,7 @@ export function createQueueInfrastructure(
     getSendMessage?: () => import('../llm-tools/send-to-conversation-tool').SendMessageFn | undefined,
     getSendToConversationRuntime?: () => import('../llm-tools/send-to-conversation-tool').SendToConversationRuntimeOptions | undefined,
     getChatStyleSelectorEnabled?: () => boolean,
+    getDefaultChatStyle?: () => import('@plusplusoneplusplus/coc-client').ChatStyle,
     getTurnPerformanceStore?: () => import('../executors/turn-performance-tracker').TurnPerformanceRecorder | undefined,
 ): QueueInfrastructure {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or create in-memory for tests.
@@ -104,6 +105,7 @@ export function createQueueInfrastructure(
         getTurnPerformanceStore,
         getGlobalSystemPrompt,
         getChatStyleSelectorEnabled,
+        getDefaultChatStyle,
         resolveAiServiceForProvider,
     };
 

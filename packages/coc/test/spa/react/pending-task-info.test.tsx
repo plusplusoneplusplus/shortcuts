@@ -37,6 +37,7 @@ vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     isCronEnabled: () => false,
     isEffortLevelsEnabled: () => false,
     isChatStyleSelectorEnabled: () => false,
+    getDefaultChatStyle: () => 'default',
     isForEachEnabled: () => false,
     getDefaultProvider: () => 'copilot' as const,
     getActiveProvider: () => 'copilot' as const,

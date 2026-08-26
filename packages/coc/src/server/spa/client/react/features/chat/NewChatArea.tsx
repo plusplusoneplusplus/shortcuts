@@ -35,12 +35,12 @@ import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
 import { useChatPromptHistory } from '../../hooks/useChatPromptHistory';
-import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isForEachEnabled, isMapReduceEnabled, isCronEnabled, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled } from '../../utils/config';
+import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isForEachEnabled, isMapReduceEnabled, isCronEnabled, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, getDefaultChatStyle } from '../../utils/config';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
 import type { EffortTierKey } from '../../hooks/useProviderEffortTiers';
 import { EffortTierSelector } from './EffortTierSelector';
 import { ChatStyleSelector } from './ChatStyleSelector';
-import { DEFAULT_CHAT_STYLE, type ChatStyle } from '@plusplusoneplusplus/coc-client';
+import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import { useChatStyleSelectorEnabled } from '../../hooks/feature-flags/useChatStyleSelectorEnabled';
 import { resolveEffortTier, resolveEffectiveTier } from '../../utils/resolveEffortTier';
 import { getDraft, setDraft, clearDraft, newChatDraftKey } from './hooks/useDraftStore';
@@ -334,9 +334,11 @@ export function InitialChatComposer({
     const [selectedProvider, setSelectedProvider] = useState<ChatProvider>(() => getSelectableComposerDefaultProvider([]));
     const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
     const [selectedEffortTier, setSelectedEffortTier] = useState<EffortTierKey>('medium');
-    // Every new chat starts on Default — there is no workspace- or user-level
-    // style preference to seed from, by design.
-    const [selectedChatStyle, setSelectedChatStyle] = useState<ChatStyle>(DEFAULT_CHAT_STYLE);
+    // Seeded from the server-wide `features.defaultChatStyle`, read once at
+    // mount so an admin change never yanks the chip out from under a composer
+    // the user has already touched. There is still no workspace- or user-level
+    // style preference, by design.
+    const [selectedChatStyle, setSelectedChatStyle] = useState<ChatStyle>(getDefaultChatStyle);
     const [ralphDirectGoalDraft, setRalphDirectGoalDraft] = useState<string | null>(null);
     const [ralphGrillSetup, setRalphGrillSetup] = useState<RalphGrillSetup>({ enabled: true, depth: 'standard', agents: [] });
     const [settingsEditorOpen, setSettingsEditorOpen] = useState(false);

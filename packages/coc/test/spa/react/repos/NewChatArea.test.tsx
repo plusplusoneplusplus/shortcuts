@@ -8,7 +8,7 @@ import React from 'react';
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockEnqueueBaseUrls, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled, mockForEachEnabled, mockMapReduceEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig, mockAgentProvidersResponse, mockEffortLevelsEnabled, mockEffortTiers, mockChatStyleEnabled, mockRepoPrefs, mockPatchRepo } = vi.hoisted(() => ({
+const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockEnqueueBaseUrls, mockModelCommand, mockSlashCommands, mockEnqueueTask, mockDraftStore, mockDefaultModelResult, mockRalphEnabled, mockForEachEnabled, mockMapReduceEnabled, mockSessionContextAttachmentsEnabled, mockGetLlmToolsConfig, mockAgentProvidersResponse, mockEffortLevelsEnabled, mockEffortTiers, mockChatStyleEnabled, mockDefaultChatStyle, mockRepoPrefs, mockPatchRepo } = vi.hoisted(() => ({
     mockQueueDispatch: vi.fn(),
     mockAppState: {
         workspaces: [{ id: 'ws-1', rootPath: '/home/user/repo' }],
@@ -59,6 +59,7 @@ const { mockQueueDispatch, mockAppState, mockFetch, mockAppDispatch, mockEnqueue
     mockSessionContextAttachmentsEnabled: { value: false },
     mockEffortLevelsEnabled: { value: false },
     mockChatStyleEnabled: { value: false },
+    mockDefaultChatStyle: { value: 'default' as string },
     mockPatchRepo: vi.fn(),
     mockRepoPrefs: { value: {} as Record<string, unknown> },
     mockEffortTiers: { value: {} as Record<string, { model: string; reasoningEffort?: string | null }> },
@@ -126,6 +127,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isAutoAgentProviderRoutingEnabled: () => false,
     isEffortLevelsEnabled: () => mockEffortLevelsEnabled.value,
     isChatStyleSelectorEnabled: () => mockChatStyleEnabled.value,
+    getDefaultChatStyle: () => mockDefaultChatStyle.value,
     DASHBOARD_CONFIG_UPDATED_EVENT: 'dashboard-config-updated',
     isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled.value,
     isGitWorktreeExecutionEnabled: () => false,
@@ -372,6 +374,7 @@ beforeEach(() => {
     mockSessionContextAttachmentsEnabled.value = false;
     mockEffortLevelsEnabled.value = false;
     mockChatStyleEnabled.value = false;
+    mockDefaultChatStyle.value = 'default';
     mockRepoPrefs.value = {};
     mockPatchRepo.mockReset();
     mockPatchRepo.mockResolvedValue({});
@@ -2647,6 +2650,41 @@ describe('NewChatArea — chat style', () => {
         mockEnqueueTask.mockResolvedValueOnce({ task: { id: 't1' } });
         render(<NewChatArea workspaceId="ws-1" />);
         await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
+
+        expect((await send()).payload.chatStyle).toBe('default');
+    });
+
+    // features.defaultChatStyle — the composer opens on the admin's choice, and
+    // the pick rides the payload so the server never has to guess.
+    it('starts a new chat on the configured server default', async () => {
+        mockChatStyleEnabled.value = true;
+        mockDefaultChatStyle.value = 'direct';
+        render(<NewChatArea workspaceId="ws-1" />);
+
+        await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
+        expect(screen.getByTestId('chat-style-selector').getAttribute('data-style-value')).toBe('direct');
+        expect(screen.getByTestId('chat-style-label').textContent).toBe('Style: Direct');
+    });
+
+    it('sends the configured server default on the payload when the chip is left alone', async () => {
+        mockChatStyleEnabled.value = true;
+        mockDefaultChatStyle.value = 'structured';
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 't1' } });
+        render(<NewChatArea workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
+
+        expect((await send()).payload.chatStyle).toBe('structured');
+    });
+
+    it('lets the user override the configured server default back to Default', async () => {
+        mockChatStyleEnabled.value = true;
+        mockDefaultChatStyle.value = 'direct';
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 't1' } });
+        render(<NewChatArea workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('chat-style-selector')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('chat-style-trigger-btn'));
+        fireEvent.click(screen.getByTestId('chat-style-option-default'));
 
         expect((await send()).payload.chatStyle).toBe('default');
     });

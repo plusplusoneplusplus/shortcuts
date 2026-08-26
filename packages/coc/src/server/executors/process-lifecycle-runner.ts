@@ -414,6 +414,12 @@ export class ProcessLifecycleRunner extends BaseExecutor {
      * `metadata.chatStyle` is left unwritten. Re-validated here because a
      * buffered or restarted task can reach this point without passing through
      * queue validation again.
+     *
+     * A payload with no `chatStyle` at all falls back to the server-wide
+     * `features.defaultChatStyle`. Queue validation deliberately leaves an
+     * omitted field off rather than writing `'default'` into it, so "the client
+     * said nothing" stays distinguishable from "the user picked Default" — the
+     * latter is an explicit `'default'` and still injects nothing.
      */
     private resolveNewChatStyle(payload: Record<string, unknown> | undefined): ChatStyle | undefined {
         if (this.runtime.getChatStyleSelectorEnabled?.() !== true) {
@@ -423,7 +429,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             return undefined;
         }
         const requested = (payload as ChatPayload | undefined)?.chatStyle;
-        return isChatStyle(requested) ? requested : DEFAULT_CHAT_STYLE;
+        return isChatStyle(requested)
+            ? requested
+            : (this.runtime.getDefaultChatStyle?.() ?? DEFAULT_CHAT_STYLE);
     }
 
     /**
@@ -559,9 +567,10 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         // feature is off or this task type is out of scope, in which case no
         // block is injected and no style is recorded.
         const taskChatStyle = this.resolveNewChatStyle(task.payload);
-        // A new conversation has recorded nothing yet, so its starting style is
-        // 'default' — which is exactly why turn 1 injects whenever the user
-        // picked a real style, and stays silent when they did not.
+        // A new conversation has recorded nothing yet, so the baseline it is
+        // compared against is 'default' — NOT the configured default. Using the
+        // configured default here would make it compare equal to itself, so a
+        // server configured to start on Direct would never inject on turn 1.
         const injectChatStyle = taskChatStyle !== undefined
             && shouldInjectChatStyle(taskChatStyle, DEFAULT_CHAT_STYLE);
         const prompt = injectChatStyle ? prependChatStyleBlock(rawPrompt, taskChatStyle) : rawPrompt;

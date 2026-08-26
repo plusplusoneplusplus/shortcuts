@@ -19,6 +19,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
 import type { AIProcess, QueuedTask } from '@plusplusoneplusplus/forge';
+import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import { ProcessLifecycleRunner } from '../../src/server/executors/process-lifecycle-runner';
 import { buildChatStyleBlock } from '../../src/server/executors/chat-style-prompt';
 import { createRequestHandler, registerApiRoutes, generateDashboardHtml } from '../../src/server/index';
@@ -56,7 +57,7 @@ describe('chat style on the first turn of a conversation', () => {
         };
     }
 
-    async function runTask(task: QueuedTask, flagEnabled = true) {
+    async function runTask(task: QueuedTask, flagEnabled = true, configuredDefault?: ChatStyle) {
         const store = createMockProcessStore();
         let executedPrompt: string | undefined;
         const runner = new ProcessLifecycleRunner(
@@ -64,7 +65,10 @@ describe('chat style on the first turn of a conversation', () => {
             undefined,
             () => undefined,
             'claude',
-            { getChatStyleSelectorEnabled: () => flagEnabled },
+            {
+                getChatStyleSelectorEnabled: () => flagEnabled,
+                ...(configuredDefault ? { getDefaultChatStyle: () => configuredDefault } : {}),
+            },
         );
         const result = await runner.run(task, {
             cancelledTasks: new Set(),
@@ -98,11 +102,55 @@ describe('chat style on the first turn of a conversation', () => {
         expect(process?.metadata?.chatStyle).toBe('default');
     });
 
-    it('treats an omitted style as Default', async () => {
+    it('treats an omitted style as Default when no server default is configured', async () => {
         const { process } = await runTask(chatTask('t-omitted', undefined));
 
         expect(process?.conversationTurns?.[0]?.content).toBe('What broke the build?');
         expect(process?.metadata?.chatStyle).toBe('default');
+    });
+
+    // features.defaultChatStyle — the omitted-field path is the whole point:
+    // API callers and older clients send nothing and must still get the
+    // admin's choice, block and all, on turn 1.
+    it('applies the configured server default when the request carries no style', async () => {
+        const { process, executedPrompt } = await runTask(chatTask('t-cfg-direct', undefined), true, 'direct');
+
+        expect(process?.conversationTurns?.[0]?.content).toBe(`${DIRECT_BLOCK}\n\nWhat broke the build?`);
+        expect(executedPrompt).toBe(`${DIRECT_BLOCK}\n\nWhat broke the build?`);
+        expect(process?.metadata?.chatStyle).toBe('direct');
+    });
+
+    it("lets an explicit 'default' beat a configured server default", async () => {
+        const { process, executedPrompt } = await runTask(chatTask('t-cfg-explicit', 'default'), true, 'direct');
+
+        expect(process?.conversationTurns?.[0]?.content).toBe('What broke the build?');
+        expect(executedPrompt).not.toContain('<chat-style>');
+        expect(process?.metadata?.chatStyle).toBe('default');
+    });
+
+    it('lets an explicit style beat a configured server default', async () => {
+        const { process } = await runTask(chatTask('t-cfg-human', 'human'), true, 'direct');
+
+        expect(process?.conversationTurns?.[0]?.content).toBe(`${HUMAN_BLOCK}\n\nWhat broke the build?`);
+        expect(process?.metadata?.chatStyle).toBe('human');
+    });
+
+    it('ignores the configured server default when the admin flag is off', async () => {
+        const { process, executedPrompt } = await runTask(chatTask('t-cfg-off', undefined), false, 'direct');
+
+        expect(executedPrompt).toBe('What broke the build?');
+        expect(process?.metadata?.chatStyle).toBeUndefined();
+    });
+
+    it('ignores the configured server default for an out-of-scope executor (Ralph)', async () => {
+        const { process, executedPrompt } = await runTask(
+            chatTask('t-cfg-ralph', undefined, { mode: 'ralph' }),
+            true,
+            'direct',
+        );
+
+        expect(executedPrompt).toBe('What broke the build?');
+        expect(process?.metadata?.chatStyle).toBeUndefined();
     });
 
     it('injects nothing and records nothing when the admin flag is off', async () => {
@@ -158,6 +206,7 @@ describe('chat style on follow-up turns', () => {
     let baseUrl: string;
     let mockBridge: QueueExecutorBridge;
     let flagEnabled: boolean;
+    let followUpDefaultChatStyle: ChatStyle;
 
     async function startServer() {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chat-style-followup-'));
@@ -170,6 +219,7 @@ describe('chat style on follow-up turns', () => {
             canvasEnabled: false,
             kustoEnabled: false,
             chatStyleSelectorEnabled: flagEnabled,
+            defaultChatStyle: followUpDefaultChatStyle,
         }));
 
         const handler = createRequestHandler({ routes, spaHtml: generateDashboardHtml(), store });
@@ -236,6 +286,7 @@ describe('chat style on follow-up turns', () => {
 
     beforeEach(() => {
         flagEnabled = true;
+        followUpDefaultChatStyle = 'default';
     });
 
     afterEach(async () => {
@@ -311,6 +362,33 @@ describe('chat style on follow-up turns', () => {
 
         expect(await userTurns('p-ralph')).toEqual(['keep going']);
         expect((await store.getProcess('p-ralph'))?.metadata?.chatStyle).toBeUndefined();
+    });
+
+    // A follow-up with no chatStyle field lands on the configured server
+    // default, so a client that never learned about the selector still tracks
+    // whatever the admin picked.
+    it('falls back to the configured server default when a follow-up omits the style', async () => {
+        followUpDefaultChatStyle = 'direct';
+        await startServer();
+        await seedProcess('p-cfg');
+
+        await sendTurn('p-cfg', 'hello');
+
+        expect(await userTurns('p-cfg')).toEqual([`${DIRECT_BLOCK}\n\nhello`]);
+        expect((await store.getProcess('p-cfg'))?.metadata?.chatStyle).toBe('direct');
+    });
+
+    it("lets an explicit 'default' follow-up beat the configured server default", async () => {
+        followUpDefaultChatStyle = 'direct';
+        await startServer();
+        await seedProcess('p-cfg-explicit');
+
+        await sendTurn('p-cfg-explicit', 'hello', 'default');
+
+        expect(await userTurns('p-cfg-explicit')).toEqual(['hello']);
+        // Unchanged from the conversation's implicit 'default' baseline, so the
+        // existing "only an actual change needs a write" rule skips the write.
+        expect((await store.getProcess('p-cfg-explicit'))?.metadata?.chatStyle).toBeUndefined();
     });
 
     it('rejects an unknown style with 400', async () => {
