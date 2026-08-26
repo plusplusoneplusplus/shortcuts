@@ -46,17 +46,12 @@ export interface FuzzyFileMatch {
 }
 
 /**
- * Score `filePath` against `query` and report which characters matched: every
- * query character must appear in `filePath` in order (not necessarily
- * contiguously).
+ * The character walk: score `query` against an already-lowercased `target`.
  *
- * Returns `null` when the query does not match, or when the query is empty.
- * Higher scores are better. Consecutive matches and matches at a path or word
- * boundary score more, and shorter paths win ties.
+ * Every query character must appear in `target` in order, not necessarily
+ * contiguously. Returns `null` when it does not match.
  */
-export function fuzzyFileMatch(query: string, filePath: string): { score: number; indices: number[] } | null {
-    const q = asciiLower(query);
-    const t = asciiLower(filePath);
+function matchQuality(q: string, t: string): { score: number; indices: number[] } | null {
     if (!q) return null;
     if (q.length > t.length) return null;
 
@@ -81,8 +76,53 @@ export function fuzzyFileMatch(query: string, filePath: string): { score: number
 
     if (qi < q.length) return null;
     // Shorter targets are more specific matches.
-    score += Math.max(0, 50 - filePath.length);
+    score += Math.max(0, 50 - t.length);
     return { score, indices };
+}
+
+/** A match plus the ranking keys that never reach the wire. */
+interface TieredMatch {
+    score: number;
+    indices: number[];
+    /** 2 when the basename matched, 1 when only the full path did. */
+    tier: number;
+    /** Length of whatever was scored: the basename in tier 2, the path in tier 1. */
+    targetLen: number;
+}
+
+/**
+ * Score `filePath` against `query` and report which characters matched: every
+ * query character must appear in `filePath` in order (not necessarily
+ * contiguously).
+ *
+ * The basename is tried first. A query that matches it lands in tier 2 and its
+ * indices are rebased onto the full path; anything else is scored against the
+ * whole path in tier 1. A query containing `/` can never match a basename, so
+ * it falls to tier 1 without a special case.
+ *
+ * Returns `null` when the query does not match, or when the query is empty.
+ * **`score` is not a ranking oracle on its own** — two results in different
+ * tiers can share one. Rank with {@link rankFuzzyMatches}.
+ */
+export function fuzzyFileMatch(query: string, filePath: string): TieredMatch | null {
+    const q = asciiLower(query);
+    if (!q) return null;
+    const t = asciiLower(filePath);
+
+    // ASCII folding never changes length, so `filePath` offsets index `t` too.
+    const nameStart = filePath.lastIndexOf('/') + 1;
+    const name = matchQuality(q, t.slice(nameStart));
+    if (name) {
+        return {
+            score: name.score,
+            indices: nameStart === 0 ? name.indices : name.indices.map(i => i + nameStart),
+            tier: 2,
+            targetLen: t.length - nameStart,
+        };
+    }
+
+    const path = matchQuality(q, t);
+    return path ? { score: path.score, indices: path.indices, tier: 1, targetLen: t.length } : null;
 }
 
 /**
@@ -94,15 +134,19 @@ export function fuzzyFileScore(query: string, filePath: string): number {
 }
 
 /**
- * Score every path and return the best `limit` matches, highest score first.
- * Ties break on path order so results are stable for a given input list.
+ * Score every path and return the best `limit` matches, best first.
+ *
+ * Ordering is a lexicographic key, not a single number: tier descending, then
+ * score descending, then path order. Ties break on path order so results are
+ * stable for a given input list.
  */
 export function rankFuzzyMatches(query: string, paths: readonly string[], limit: number): FuzzyFileMatch[] {
-    const matches: FuzzyFileMatch[] = [];
+    const matches: (FuzzyFileMatch & { tier: number })[] = [];
     for (const path of paths) {
         const match = fuzzyFileMatch(query, path);
-        if (match) matches.push({ path, score: match.score, indices: match.indices });
+        if (match) matches.push({ path, score: match.score, indices: match.indices, tier: match.tier });
     }
-    matches.sort((a, b) => b.score - a.score);
-    return limit >= 0 && limit < matches.length ? matches.slice(0, limit) : matches;
+    matches.sort((a, b) => b.tier - a.tier || b.score - a.score);
+    const ranked = matches.map(({ path, score, indices }) => ({ path, score, indices }));
+    return limit >= 0 && limit < ranked.length ? ranked.slice(0, limit) : ranked;
 }

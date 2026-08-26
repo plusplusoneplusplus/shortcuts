@@ -36,10 +36,12 @@ describe('fuzzyFileScore', () => {
         expect(fuzzyFileScore('index', 'src/INDEX.ts')).toBeGreaterThan(0);
     });
 
-    it('scores shorter targets higher for the same query', () => {
+    it('scores the basename, so a deeper copy of the same file ties', () => {
+        // Both are tier-2 matches over the identical basename, so the score is
+        // the same and the depth difference is left to the ranking comparator.
         const short = fuzzyFileScore('idx', 'index.ts');
         const long = fuzzyFileScore('idx', 'very/deep/path/to/some/index.ts');
-        expect(short).toBeGreaterThan(long);
+        expect(short).toBe(long);
     });
 
     it('scores consecutive matches higher than scattered ones', () => {
@@ -109,6 +111,32 @@ describe('fuzzyFileMatch', () => {
     });
 });
 
+describe('fuzzyFileMatch tiering', () => {
+    it('puts a basename match in tier 2 and a path-only match in tier 1', () => {
+        expect(fuzzyFileMatch('index', 'src/index.ts')!.tier).toBe(2);
+        expect(fuzzyFileMatch('srcindex', 'src/index.ts')!.tier).toBe(1);
+    });
+
+    it('points tier-2 indices inside the basename', () => {
+        const path = 'packages/forge/src/ai/prompt-builder.ts';
+        const match = fuzzyFileMatch('builder', path)!;
+        expect(match.tier).toBe(2);
+        const nameStart = path.lastIndexOf('/') + 1;
+        expect(match.indices.every(i => i >= nameStart)).toBe(true);
+    });
+
+    it('drops a query containing a separator to tier 1', () => {
+        const match = fuzzyFileMatch('explorer/quick', 'src/explorer/quick-open.ts')!;
+        expect(match.tier).toBe(1);
+        expect(match.indices.map(i => 'src/explorer/quick-open.ts'[i]).join('')).toBe('explorer/quick');
+    });
+
+    it('reports the scored target length, not the path length', () => {
+        expect(fuzzyFileMatch('index', 'src/index.ts')!.targetLen).toBe('index.ts'.length);
+        expect(fuzzyFileMatch('srcindex', 'src/index.ts')!.targetLen).toBe('src/index.ts'.length);
+    });
+});
+
 describe('rankFuzzyMatches', () => {
     const PATHS = [
         'src/index.ts',
@@ -166,5 +194,21 @@ describe('rankFuzzyMatches', () => {
         for (const match of rankFuzzyMatches('index', PATHS, 10)) {
             expect(match.indices.map(i => match.path[i].toLowerCase()).join('')).toBe('index');
         }
+    });
+
+    it('ranks every basename match above every path-only match', () => {
+        const paths = [
+            'p/r/o/m/p/t/deeply-nested-elsewhere.ts',
+            'src/prompts.ts',
+            'packages/coc/src/commands/wipe-data.ts',
+            'src/prompt-builder.ts',
+        ];
+        const ranked = rankFuzzyMatches('prompt', paths, 10).map(m => m.path);
+        const nameMatches = ranked.filter(p => fuzzyFileMatch('prompt', p)!.tier === 2);
+        const pathMatches = ranked.filter(p => fuzzyFileMatch('prompt', p)!.tier === 1);
+        expect(nameMatches).toHaveLength(2);
+        expect(pathMatches.length).toBeGreaterThan(0);
+        // No query, however many consecutive path characters it hits, can invert this.
+        expect(ranked.slice(0, nameMatches.length).sort()).toEqual(nameMatches.sort());
     });
 });

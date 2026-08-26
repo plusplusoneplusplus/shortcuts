@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use coc_native_core::repo_index::{FuzzyMatcher, Snapshot};
+use coc_native_core::repo_index::{FuzzyMatcher, Hit, Snapshot};
 
 const PATHS: [&str; 4] =
     ["src/index.ts", "src/server/repos/tree-service.ts", "README.md", "test/index.test.ts"];
@@ -29,10 +29,55 @@ fn returns_only_matching_paths() {
 }
 
 #[test]
-fn orders_results_by_descending_score() {
+fn orders_results_by_descending_score_within_a_tier() {
     let matcher = matcher_of(&PATHS);
     let hits = matcher.search("index", 10);
+    assert!(hits.iter().all(|h| h.tier == 2));
     assert!(hits.windows(2).all(|w| w[0].score >= w[1].score));
+}
+
+#[test]
+fn a_basename_match_is_tier_two_and_a_path_only_match_is_tier_one() {
+    let matcher = matcher_of(&PATHS);
+    let name = matcher.search("index", 10);
+    assert!(name.iter().all(|h| h.tier == 2), "basename matches must be tier 2");
+
+    let path = matcher.search("srcindex", 10);
+    assert_eq!(path.len(), 1);
+    assert_eq!(path[0].tier, 1);
+}
+
+#[test]
+fn every_basename_match_outranks_every_path_only_match() {
+    let matcher = matcher_of(&[
+        "p/r/o/m/p/t/deeply-nested-elsewhere.ts",
+        "src/prompts.ts",
+        "packages/coc/src/commands/wipe-data.ts",
+        "src/prompt-builder.ts",
+    ]);
+    let hits = matcher.search("prompt", 10);
+    let split = hits.iter().position(|h| h.tier == 1).unwrap();
+    assert!(split > 0, "expected at least one basename match first");
+    assert!(hits[..split].iter().all(|h| h.tier == 2));
+    assert!(hits[split..].iter().all(|h| h.tier == 1));
+}
+
+#[test]
+fn a_query_with_a_separator_falls_to_tier_one() {
+    let matcher = matcher_of(&["src/explorer/quick-open.ts"]);
+    let hits = matcher.search("explorer/quick", 10);
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].tier, 1);
+}
+
+#[test]
+fn tier_two_indices_land_inside_the_basename() {
+    let path = "packages/forge/src/ai/prompt-builder.ts";
+    let matcher = matcher_of(&[path]);
+    let hits = matcher.search("builder", 10);
+    let name_start = (path.rfind('/').unwrap() + 1) as u32;
+    assert_eq!(hits[0].tier, 2);
+    assert!(hits[0].indices.iter().all(|&i| i >= name_start));
 }
 
 #[test]
@@ -75,18 +120,19 @@ fn hits_carry_the_matched_positions() {
     assert_eq!(matched, "idx");
 }
 
-/// Naive oracle: score everything, sort by (score desc, index asc), take N.
+/// Naive oracle: score everything, sort by `Hit`'s own comparator, take N.
 fn naive_top_n(paths: &[String], query: &str, limit: usize) -> Vec<(u32, u32)> {
-    let mut all: Vec<(u32, u32)> = (0..paths.len())
+    let mut all: Vec<Hit> = (0..paths.len())
         .filter_map(|i| {
             let one =
                 FuzzyMatcher::new(Arc::new(Snapshot::from_paths(vec![paths[i].clone()], false)));
-            one.search(query, 1).first().map(|h| (h.score, i as u32))
+            one.search(query, 1).first().map(|h| Hit { index: i as u32, ..h.clone() })
         })
         .collect();
-    all.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+    // `Hit`'s ordering treats greater as worse, so ascending is best-first.
+    all.sort();
     all.truncate(limit);
-    all
+    all.into_iter().map(|h| (h.score, h.index)).collect()
 }
 
 #[test]

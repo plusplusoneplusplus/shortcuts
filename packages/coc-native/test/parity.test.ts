@@ -130,11 +130,30 @@ describe('native and TypeScript scorers rank identically', () => {
     });
 
     it('agrees on edge-case queries', async () => {
-        const paths = ['src/index.ts', 'README.md', 'a', 'café/résumé.md', 'with space/file.ts'];
+        const paths = [
+            'src/index.ts',
+            'README.md',
+            'a',
+            'café/résumé.md',
+            'with space/file.ts',
+            // The filename-vs-path ranking cases: a basename match, a deeper
+            // copy of the same name, and a path that only matches on its
+            // directories.
+            'packages/deep-wiki/src/seeds/prompts.ts',
+            'packages/forge/src/ai/prompts.ts',
+            'packages/forge/src/ai/prompt-builder.ts',
+            'packages/forge/src/utils/prompt-resolver.ts',
+            'packages/forge/src/ai/command-types.ts',
+            'packages/coc/src/commands/wipe-data.ts',
+        ];
         const { root, index } = await nativeIndexOf(paths);
         try {
             const ordered = index.files(0, index.len());
-            for (const query of ['', 'a', 'A', '/', '.', 'é', 'É', ' ', 'zzzzzzzzzzzzzzzzzzzzzzzzzz', 'srcindexts']) {
+            const queries = [
+                '', 'a', 'A', '/', '.', 'é', 'É', ' ', 'zzzzzzzzzzzzzzzzzzzzzzzzzz', 'srcindexts',
+                'prompt', 'PROMPT', 'prompts', 'promptbuilder', 'ai/prompt', 'p', 'pt',
+            ];
+            for (const query of queries) {
                 const native = await index.search(query, 50);
                 const reference = rankFuzzyMatches(query, ordered, 50);
                 expect(native.map(m => [m.path, m.score, m.indices])).toEqual(
