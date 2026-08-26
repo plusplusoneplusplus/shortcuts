@@ -296,6 +296,8 @@ export interface CLIConfig {
         splitWorkspacePanel?: boolean;
         /** Schedule management inside the chat-list "Scheduled" slide (definitions list + right-pane create/edit), retiring the Schedules tab. Enabled by default. */
         schedulesInScheduledSlide?: boolean;
+        /** User-created chat folders in the chat list (manual organizing layer over chat/task rows). Disabled by default. */
+        chatFolders?: boolean;
         /** Isolated Git worktree execution for Work Item / Ralph launches. Disabled by default. */
         gitWorktreeExecution?: boolean;
         /** Async extension-canvas capabilities and the `host.complete` model call they get. Disabled by default. */
@@ -639,6 +641,8 @@ export interface ResolvedCLIConfig {
         splitWorkspacePanel: boolean;
         /** Schedule management inside the chat-list "Scheduled" slide (definitions list + right-pane create/edit), retiring the Schedules tab. Enabled by default. */
         schedulesInScheduledSlide: boolean;
+        /** User-created chat folders in the chat list (manual organizing layer over chat/task rows). Disabled by default. */
+        chatFolders: boolean;
         /** Isolated Git worktree execution for Work Item / Ralph launches. Disabled by default. */
         gitWorktreeExecution: boolean;
         /** Async extension-canvas capabilities and the `host.complete` model call they get. Disabled by default. */
@@ -907,6 +911,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         scopeSwitcher: true,
         splitWorkspacePanel: true,
         schedulesInScheduledSlide: true,
+        chatFolders: false,
         gitWorktreeExecution: false,
         canvasHostApis: false,
         chatStyleSelector: true,

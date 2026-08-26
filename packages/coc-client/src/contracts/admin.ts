@@ -269,6 +269,8 @@ export interface RuntimeDashboardConfig {
     remoteShellEnabled: boolean;
     singleRowShellEnabled: boolean;
     splitWorkspacePanelEnabled: boolean;
+    /** Whether user-created chat folders are enabled in the chat list (feature flag, default off). */
+    chatFoldersEnabled: boolean;
     /**
      * Whether this CoC server supports isolated Git worktree execution for Work
      * Item / Ralph launches. Doubles as the remote-target capability signal.

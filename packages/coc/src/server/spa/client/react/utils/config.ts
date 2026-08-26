@@ -103,6 +103,8 @@ interface DashboardConfig {
     splitWorkspacePanelEnabled?: boolean;
     /** Whether schedule management lives in the chat-list "Scheduled" slide (definitions list + right-pane create/edit) instead of the Schedules tab. */
     schedulesInScheduledSlideEnabled?: boolean;
+    /** Whether user-created chat folders are shown in the chat list. Default false. */
+    chatFoldersEnabled?: boolean;
     /** Typing-driven client prewarm debounce (ms), resolved from env on the server. */
     prewarmDebounceMs?: number;
     /** Warm-client idle TTL (ms), resolved from env on the server. `0` means warming is disabled. */
@@ -542,6 +544,16 @@ export function isGitCrossCloneCherryPickEnabled(): boolean {
  */
 export function isGitWorktreeExecutionEnabled(): boolean {
     return getConfig().gitWorktreeExecutionEnabled === true;
+}
+
+/**
+ * Returns true when user-created chat folders are enabled (`features.chatFolders`).
+ *
+ * Gates the folder UI only — the REST routes and the schema migration always
+ * ship, so membership survives the flag being turned off and back on.
+ */
+export function isChatFoldersEnabled(): boolean {
+    return getConfig().chatFoldersEnabled === true;
 }
 
 /**

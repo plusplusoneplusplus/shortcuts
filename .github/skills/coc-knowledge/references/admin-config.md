@@ -65,6 +65,7 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 | `remoteShell` | on | Remote-first dashboard shell (desktop-only) |
 | `scopeSwitcher` | on | Needs `remoteShell`; one segmented scope switcher replacing the My Work / My Life toggles and workspace chip |
 | `splitWorkspacePanel` | on | Split Workspace view (chat list over git, one shared detail pane) replacing the Activity and Git tabs |
+| `chatFolders` | off | User-created chat folders in the chat list (tree section, drag/context-menu filing); gates UI only — the `/chat-folders` routes and the schema-29 migration ship regardless |
 | `singleRowShell` | off | Needs `remoteShell`; moves shell controls plus `+ New` into the global header |
 | `ralphMultiAgentGrill` | off | Ralph grill question-planning card, separate grill-agent calls, dedupe/provenance metadata |
 | `nativeCliSessions` | off | Read-only CLI Sessions surface over native Copilot/Codex/Claude stores |
