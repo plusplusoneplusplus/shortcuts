@@ -42,6 +42,22 @@ function basename(p: string): string {
     return normalized.split('/').pop() || p;
 }
 
+/**
+ * True when the user has an active, non-empty text selection inside `node`.
+ *
+ * The switcher rows are buttons whose labels are selectable, so a drag to copy a
+ * path ends in a click on that row. Without this guard the copy would silently
+ * navigate the panel to a different file.
+ */
+function hasTextSelectionWithin(node: Node | null): boolean {
+    if (!node) return false;
+    const selection = typeof window !== 'undefined' ? window.getSelection?.() : null;
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return false;
+    const text = selection.toString();
+    if (!text.trim()) return false;
+    return node.contains(selection.anchorNode) || node.contains(selection.focusNode);
+}
+
 /** Loading-state fallback tree used until the host wires in real state. */
 const EMPTY_TREE: SourceCanvasTreeState = {
     status: 'loading',
@@ -212,23 +228,27 @@ function SourceCanvasFileSwitcher({
             <button
                 ref={triggerRef}
                 type="button"
-                className="min-w-0 max-w-full flex items-baseline gap-1.5 rounded px-1 -mx-1 text-left hover:bg-black/[0.06] dark:hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50"
+                className="min-w-0 max-w-full flex items-baseline gap-1.5 rounded px-1 -mx-1 text-left select-text hover:bg-black/[0.06] dark:hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50"
                 data-testid="source-canvas-file-switcher-trigger"
                 aria-haspopup="listbox"
                 aria-expanded={open}
                 aria-label={`Switch source file, currently ${activeName}`}
                 title={fileRef.fullPath}
-                onClick={() => setOpen(value => !value)}
+                onClick={event => {
+                    // Selecting the path text ends in a click here; don't toggle.
+                    if (hasTextSelectionWithin(event.currentTarget)) return;
+                    setOpen(value => !value);
+                }}
                 onKeyDown={handleTriggerKeyDown}
             >
                 <span
-                    className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc] shrink-0"
+                    className="text-xs font-semibold text-[#1e1e1e] dark:text-[#cccccc] shrink-0 select-text"
                     data-testid="source-canvas-filename"
                 >
                     {activeName}
                 </span>
                 <span
-                    className="text-[11px] text-[#848484] truncate min-w-0 text-left"
+                    className="text-[11px] text-[#848484] truncate min-w-0 text-left select-text"
                     dir="rtl"
                     title={fileRef.fullPath}
                     data-testid="source-canvas-path"
@@ -277,7 +297,7 @@ function SourceCanvasFileSwitcher({
                                         type="button"
                                         role="option"
                                         aria-selected={selected}
-                                        className={`w-full flex items-center gap-2 px-2 py-1.5 text-left text-xs ${
+                                        className={`w-full flex items-center gap-2 px-2 py-1.5 text-left text-xs select-text ${
                                             selected
                                                 ? 'bg-[#f3f3f3] dark:bg-[#2a2d2e] text-[#1e1e1e] dark:text-[#cccccc]'
                                                 : 'text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f3f3f3] dark:hover:bg-[#2a2d2e]'
@@ -287,14 +307,16 @@ function SourceCanvasFileSwitcher({
                                             : undefined}
                                         data-testid={`source-canvas-file-option-${sourceKey}`}
                                         title={sourceFile.fullPath}
-                                        onClick={() => {
+                                        onClick={event => {
+                                            // A drag to copy the path lands here; keep the copy.
+                                            if (hasTextSelectionWithin(event.currentTarget)) return;
                                             onNavigate(sourceFile);
                                             setOpen(false);
                                             triggerRef.current?.focus();
                                         }}
                                         onKeyDown={handleOptionKeyDown}
                                     >
-                                        <span className="min-w-0 flex-1">
+                                        <span className="min-w-0 flex-1 select-text">
                                             <span className="block font-medium truncate">{basename(sourcePath)}</span>
                                             <span className="block text-[11px] text-[#848484] truncate">{sourcePath}</span>
                                         </span>

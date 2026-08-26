@@ -55,6 +55,15 @@ beforeEach(() => {
     });
 });
 
+/** Put a real, non-collapsed selection over `el`'s text, like a copy drag would. */
+function selectTextWithin(el: Element): void {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+}
+
 describe('SourceCanvasPanel', () => {
     const fileRef = { fullPath: '/home/u/proj/src/foo.ts', line: 42 };
 
@@ -441,6 +450,94 @@ describe('SourceCanvasPanel', () => {
         expect(getAllByRole('option')).toHaveLength(2);
         expect(queryByTestId('source-canvas-file-group-ws1')).toBeNull();
         expect(queryByTestId('source-canvas-file-group-unresolved')).toBeNull();
+    });
+
+    // --- selectable switcher text ---
+
+    it('marks the switcher trigger and options as selectable text', () => {
+        const sourceFiles = [
+            { fullPath: '/home/u/proj/lib/foo.ts', wsId: 'ws1', kind: 'code' as const },
+            { fullPath: '/home/u/proj/src/foo.ts', wsId: 'ws1', kind: 'code' as const },
+        ];
+        const { getByTestId, getAllByRole } = render(
+            <SourceCanvasPanel
+                fileRef={fileRef}
+                wsId="ws1"
+                workspaceRootPath="/home/u/proj"
+                sourceFiles={sourceFiles}
+                onNavigate={() => {}}
+                onClose={() => {}}
+            />,
+        );
+
+        const trigger = getByTestId('source-canvas-file-switcher-trigger');
+        expect(trigger.className).toContain('select-text');
+        expect(getByTestId('source-canvas-filename').className).toContain('select-text');
+        expect(getByTestId('source-canvas-path').className).toContain('select-text');
+
+        fireEvent.click(trigger);
+        for (const option of getAllByRole('option')) {
+            expect(option.className).toContain('select-text');
+        }
+    });
+
+    it('keeps a path selection instead of navigating when a switcher option is clicked', () => {
+        const onNavigate = vi.fn();
+        const sourceFiles = [
+            { fullPath: '/home/u/proj/lib/foo.ts', wsId: 'ws1', kind: 'code' as const },
+            { fullPath: '/home/u/proj/src/foo.ts', wsId: 'ws1', kind: 'code' as const },
+        ];
+        const { getByTestId, getAllByRole } = render(
+            <SourceCanvasPanel
+                fileRef={fileRef}
+                wsId="ws1"
+                workspaceRootPath="/home/u/proj"
+                sourceFiles={sourceFiles}
+                onNavigate={onNavigate}
+                onClose={() => {}}
+            />,
+        );
+
+        fireEvent.click(getByTestId('source-canvas-file-switcher-trigger'));
+        const option = getAllByRole('option')[0];
+        selectTextWithin(option);
+
+        fireEvent.click(option);
+        expect(onNavigate).not.toHaveBeenCalled();
+        expect(getByTestId('source-canvas-file-switcher-menu')).toBeTruthy();
+
+        // With the selection cleared the same click navigates as before.
+        window.getSelection()?.removeAllRanges();
+        fireEvent.click(option);
+        expect(onNavigate).toHaveBeenCalledWith(sourceFiles[0]);
+    });
+
+    it('does not toggle the switcher when the header path is being selected', () => {
+        const sourceFiles = [
+            { fullPath: '/home/u/proj/lib/foo.ts', wsId: 'ws1', kind: 'code' as const },
+            { fullPath: '/home/u/proj/src/foo.ts', wsId: 'ws1', kind: 'code' as const },
+        ];
+        const { getByTestId, queryByTestId } = render(
+            <SourceCanvasPanel
+                fileRef={fileRef}
+                wsId="ws1"
+                workspaceRootPath="/home/u/proj"
+                sourceFiles={sourceFiles}
+                onNavigate={() => {}}
+                onClose={() => {}}
+            />,
+        );
+
+        const trigger = getByTestId('source-canvas-file-switcher-trigger');
+        selectTextWithin(getByTestId('source-canvas-path'));
+
+        fireEvent.click(trigger);
+        expect(queryByTestId('source-canvas-file-switcher-menu')).toBeNull();
+        expect(trigger.getAttribute('aria-expanded')).toBe('false');
+
+        window.getSelection()?.removeAllRanges();
+        fireEvent.click(trigger);
+        expect(getByTestId('source-canvas-file-switcher-menu')).toBeTruthy();
     });
 
     // --- AC-06: body load/error/success states ---
