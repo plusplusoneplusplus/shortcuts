@@ -223,6 +223,38 @@ rather than hidden when nothing is left to archive. `ChatFolderArchiveDialog` na
 with a `message` and a `testIdPrefix`) offers a one-click unarchive and reports the pinned
 skips. The folder itself is never deleted by this — it is a container you keep reusing.
 
+**Drag and drop.** Filing by drag adds no new gesture: chat rows were already draggable for
+session-context attachment, so `chat-folder-drag.ts` writes a *second* MIME
+(`CHAT_FOLDER_MOVE_MIME`) onto the same drag and widens `effectAllowed` to `copyMove`. A
+composer keeps reading the session-context MIME and is untouched; folder targets read only
+the folder MIME. Dragging a folder row is a distinct gesture with its own
+`CHAT_FOLDER_REORDER_MIME`, since a folder may be dropped between folders but never into
+one (nesting is v2). Queued rows deliberately carry no folder payload — their gesture
+belongs to the queue's reorder drag, the same reason AC-06 left them out of the
+"Move to folder" menu.
+
+Four targets, all wired by `useChatFolderDragDrop`: a folder row files there (accent tint,
+dashed outline, a "Move into <name>" hint; a collapsed folder stays collapsed), an expanded
+folder's body files there, the gap between folder rows reorders with a 2px insertion line,
+and the date-bucket / Completed region unfiles. Every handler declines — by simply not
+calling `preventDefault`, which is what stops the browser firing a `drop` at all — unless
+the drag advertises a folder MIME, so a queue reorder drag can never highlight a folder row.
+The queue's own handlers already require `QUEUE_DRAG_MIME` and ignore a folder payload in
+turn. Note that `dataTransfer.getData()` is blocked during `dragover`: highlighting is
+decided from `types` plus this list's own dragstart bookkeeping, and the payload is parsed
+only on `drop`, where it is also re-checked against the current workspace and the *current*
+`processId -> folderId` map — a drop resolves by row id, never by index, so a list refreshing
+mid-drag is harmless. Reordering is optimistic (`reorderChatFolders` renumbers contiguously,
+`diffFolderSortIndexes` narrows the writes to the folders that actually moved) and persisted
+one PATCH per changed `sortIndex`.
+
+`useChatListDragAutoScroll` scrolls the list when the pointer nears its top or bottom edge.
+Its listeners are capture-phase, because the rows being dragged across call
+`stopPropagation`. The timer is cleared on `drop`, on `dragend` at the *document* level (an
+Esc-cancelled drag fires `dragend` on the source, which may be outside the container), and
+on unmount — a scroll timer outliving teardown surfaces as a Vitest "Unhandled Errors"
+section even when every test passes.
+
 ### Row pin/archive routing
 
 Pin and archive state come from process summaries (`pinnedAt`, `archived`) and synchronize

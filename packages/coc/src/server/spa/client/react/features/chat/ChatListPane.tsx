@@ -56,6 +56,8 @@ import { ChatFolderUndoToast } from './ChatFolderUndoToast';
 import { folderNameExists } from './chat-folder-mutations';
 import { useChatFolderMutations } from './hooks/useChatFolderMutations';
 import { useChatFolderAssignment } from './hooks/useChatFolderAssignment';
+import { useChatFolderDragDrop } from './hooks/useChatFolderDragDrop';
+import { useChatListDragAutoScroll } from './hooks/useChatListDragAutoScroll';
 import { useChatFolderArchive } from './hooks/useChatFolderArchive';
 import { buildArchiveUndoMessage, canArchiveFolder } from './chat-folder-archive';
 import {
@@ -177,6 +179,37 @@ export function taskInScope(scope: ActivityScope, task: any, hasCron: boolean): 
 }
 
 /** Get a display title for a chat task, falling back to a truncated prompt preview. */
+/**
+ * The drag image for a multi-selection drag: the primary row's title plus a
+ * count chip (AC-07). The node must be in the document when `setDragImage`
+ * snapshots it, so it is parked off-screen and the caller removes it on
+ * `dragend` — no timer is involved, because a timer outliving component
+ * teardown is exactly the failure shape this feature has to avoid.
+ */
+function createMultiSelectDragImage(
+    dataTransfer: DataTransfer,
+    label: string,
+    count: number,
+): HTMLElement | null {
+    if (typeof document === 'undefined' || typeof (dataTransfer as any)?.setDragImage !== 'function') {return null;}
+    const node = document.createElement('div');
+    node.setAttribute('data-testid', 'chat-folder-drag-image');
+    node.style.cssText = [
+        'position:fixed', 'top:-1000px', 'left:-1000px', 'pointer-events:none',
+        'padding:4px 8px', 'border-radius:4px', 'font:12px/1 sans-serif',
+        'background:#1e1e1e', 'color:#cccccc', 'white-space:nowrap',
+    ].join(';');
+    node.textContent = count > 1 ? `${label}  (${count})` : label;
+    document.body.appendChild(node);
+    try {
+        (dataTransfer as any).setDragImage(node, 12, 12);
+    } catch {
+        node.remove();
+        return null;
+    }
+    return node;
+}
+
 function getChatTitle(task: any): string {
     if (task.displayName) return task.displayName;
     const text = task.prompt || task.promptPreview || task.payload?.promptContent || task.payload?.prompt || '';
@@ -1210,6 +1243,7 @@ export function ChatListPane({
         setFolders: setChatFolders,
         refresh: refreshChatFolders,
         folderIdByProcess,
+        folders: chatFolders,
         // Undo re-files the remembered members into a brand-new folder id, so
         // the process-summary index has to be patched or the tree would keep
         // pointing every restored row at the folder that no longer exists.
@@ -1411,6 +1445,30 @@ export function ChatListPane({
     const containerRef = useRef<HTMLDivElement>(null);
     const pauseMenuRef = useRef<HTMLDivElement>(null);
 
+    // ── Folder drag and drop (AC-07) ───────────────────────────────────────
+    // The list already hosts three drags: queue reorder, queue touch-reorder,
+    // and session-context. Folder filing adds no fourth gesture — it rides the
+    // chat-row drag with a second MIME, and only the targets are new. Every
+    // handler below declines a drag that does not advertise a folder MIME, so
+    // the queued section stays a reorder-only target and its handlers, which
+    // already require `QUEUE_DRAG_MIME`, never see a folder payload they would
+    // act on.
+    const chatListAutoScroll = useChatListDragAutoScroll(containerRef, chatFoldersEnabled);
+    const folderDnd = useChatFolderDragDrop({
+        enabled: chatFoldersEnabled,
+        workspaceId,
+        folderIdByProcess,
+        moveToFolder,
+        reorderFolders: chatFolderMutations.reorderFolders,
+        onDragFinished: chatListAutoScroll.stop,
+    });
+    /** Spread onto every region a chat can be dragged out of a folder into. */
+    const unfiledDropProps = useMemo(() => (chatFoldersEnabled ? {
+        onDragOver: folderDnd.handleUnfiledDragOver,
+        onDrop: folderDnd.handleUnfiledDrop,
+        'data-drop-unfile': folderDnd.unfiledDropActive ? 'true' : undefined,
+    } : {}), [chatFoldersEnabled, folderDnd.handleUnfiledDragOver, folderDnd.handleUnfiledDrop, folderDnd.unfiledDropActive]);
+
     /**
      * Activity-tab scope segmented control: filters by task source.
      *   - 'chat'  → chat tasks that are not scheduled runs
@@ -1601,6 +1659,9 @@ export function ChatListPane({
         [running, queued, history],
     );
 
+    /** The off-screen node handed to `setDragImage`, removed on `dragend`. */
+    const chatDragImageRef = useRef<HTMLElement | null>(null);
+
     // Lookups used to bundle a multi-selection into a single drag payload (AC-02).
     const taskById = useMemo(() => {
         const map = new Map<string, any>();
@@ -1628,22 +1689,64 @@ export function ChatListPane({
     // Bundle every selected chat when a drag starts inside an active
     // multi-selection (AC-02); an unselected row carries just itself. The
     // dragged item stays first so singular readers see it as the primary.
-    const handleChatRowDragStart = useCallback((e: React.DragEvent, task: any, primaryPayload: SessionContextDragPayload) => {
+    const handleChatRowDragStart = useCallback((
+        e: React.DragEvent,
+        task: any,
+        primaryPayload: SessionContextDragPayload | null,
+        folderFilable: boolean,
+    ) => {
         const draggedId = task.id as string;
-        if (selectedHistoryIds.size > 1 && selectedHistoryIds.has(draggedId)) {
-            const selectedPayloads: SessionContextDragPayload[] = [];
-            for (const id of selectedHistoryIds) {
-                if (id === draggedId) continue;
-                const selectedTask = taskById.get(id);
-                if (!selectedTask) continue;
-                const payload = buildChatSessionContextPayload(selectedTask);
-                if (payload) selectedPayloads.push(payload);
+        const inSelection = selectedHistoryIds.size > 1 && selectedHistoryIds.has(draggedId);
+        // The dragged row stays first so singular readers see it as the primary.
+        const selectionIds = inSelection
+            ? [draggedId, ...[...selectedHistoryIds].filter(id => id !== draggedId)]
+            : [draggedId];
+
+        if (primaryPayload) {
+            if (inSelection) {
+                const selectedPayloads: SessionContextDragPayload[] = [];
+                for (const id of selectionIds) {
+                    if (id === draggedId) continue;
+                    const selectedTask = taskById.get(id);
+                    if (!selectedTask) continue;
+                    const payload = buildChatSessionContextPayload(selectedTask);
+                    if (payload) selectedPayloads.push(payload);
+                }
+                writeSessionContextDragBundle(e.dataTransfer, [primaryPayload, ...selectedPayloads]);
+            } else {
+                writeSessionContextDragData(e.dataTransfer, primaryPayload);
             }
-            writeSessionContextDragBundle(e.dataTransfer, [primaryPayload, ...selectedPayloads]);
-            return;
         }
-        writeSessionContextDragData(e.dataTransfer, primaryPayload);
-    }, [selectedHistoryIds, taskById, buildChatSessionContextPayload]);
+
+        // AC-07: the folder-move flavour rides the SAME gesture, written last so
+        // its `effectAllowed = 'copyMove'` supersedes the session-context
+        // writer's `'copy'`. A folder target then answers 'move' and a composer
+        // still answers 'copy', so the cursor tells the truth either way.
+        if (folderFilable && folderDnd.writeChatRowMoveData(e.dataTransfer, selectionIds)) {
+            if (selectionIds.length > 1) {
+                chatDragImageRef.current = createMultiSelectDragImage(
+                    e.dataTransfer,
+                    getChatTitle(task),
+                    selectionIds.length,
+                );
+            }
+        }
+        // `writeChatRowMoveData` is a stable callback, so this handler's identity
+        // tracks the selection only — a folder highlight changing mid-drag must
+        // not re-create the row renderer that depends on it.
+    }, [selectedHistoryIds, taskById, buildChatSessionContextPayload, folderDnd.writeChatRowMoveData]);
+
+    /**
+     * One end for every drag this list starts: drops the off-screen drag image,
+     * clears folder highlights, and stops the edge auto-scroll — including a
+     * drag cancelled with Esc or released outside the window, both of which
+     * still fire `dragend` on the source row.
+     */
+    const handleChatRowDragEnd = useCallback(() => {
+        chatDragImageRef.current?.remove();
+        chatDragImageRef.current = null;
+        folderDnd.handleDragEnd();
+    }, [folderDnd.handleDragEnd]);
     const filteredRunning = useMemo(() => running.filter(t => taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery)), [running, excludedTypes, searchQuery]);
     const filteredQueued = useMemo(
         () => queued.filter(t => t.kind === 'pause-marker' || (taskMatchesFilter(t, excludedTypes) && taskMatchesSearch(t, searchQuery))),
@@ -3010,6 +3113,14 @@ export function ChatListPane({
                 idSource: task.processId || (!isRunning && !isQueued) ? 'process' : 'queue-task',
             })
             : null;
+        /**
+         * Whether this row may also carry a folder-move payload (AC-07).
+         * Queued rows are excluded on purpose: their gesture belongs to the
+         * queue's reorder drag, and AC-06 already left them out of the
+         * "Move to folder" menu for the same reason.
+         */
+        const folderFilable = chatFoldersEnabled && !isQueued && !!workspaceId;
+        const rowDraggable = !!sessionContextPayload || folderFilable;
 
         return (
             <SwipeableHistoryItem
@@ -3046,8 +3157,9 @@ export function ChatListPane({
                         handleHistoryItemClick(e, task, listForRange);
                     }}
                     onContextMenu={(e) => handleTaskContextMenu(e, task.id, contextMenuKind)}
-                    draggable={!!sessionContextPayload}
-                    onDragStart={sessionContextPayload ? (e) => handleChatRowDragStart(e, task, sessionContextPayload) : undefined}
+                    draggable={rowDraggable}
+                    onDragStart={rowDraggable ? (e) => handleChatRowDragStart(e, task, sessionContextPayload, folderFilable) : undefined}
+                    onDragEnd={rowDraggable ? handleChatRowDragEnd : undefined}
                     onTouchStart={(e) => {
                         historyLongPressTaskRef.current = task.id;
                         historyLongPress.onTouchStart(e);
@@ -3259,6 +3371,8 @@ export function ChatListPane({
         cronStateByProcess,
         cronEnabled,
         sessionContextDragEnabled,
+        handleChatRowDragStart,
+        handleChatRowDragEnd,
         onSelectTask,
         historyLongPress,
         workspaceId,
@@ -3290,9 +3404,16 @@ export function ChatListPane({
                 onCommitRename={(folderId, name) => { void chatFolderMutations.commitRename(folderId, name); }}
                 onCancelRename={chatFolderMutations.cancelRename}
                 isDuplicateName={isDuplicateFolderName}
+                dropTarget={folderDnd.dropTarget}
+                draggingFolderId={folderDnd.draggingFolderId}
+                onFolderDragStart={folderDnd.handleFolderDragStart}
+                onFolderDragEnd={folderDnd.handleDragEnd}
+                onFolderDragOver={folderDnd.handleFolderDragOver}
+                onFolderDragLeave={folderDnd.handleFolderDragLeave}
+                onFolderDrop={folderDnd.handleFolderDrop}
             />
         );
-    }, [chatFoldersEnabled, showFolders, toggleFolderCollapsed, renderChatListRow, openFolderMenu, chatFolderMutations, isDuplicateFolderName, handleCommitFolderCreate, handleCancelFolderCreate]);
+    }, [chatFoldersEnabled, showFolders, toggleFolderCollapsed, renderChatListRow, openFolderMenu, chatFolderMutations, isDuplicateFolderName, handleCommitFolderCreate, handleCancelFolderCreate, folderDnd]);
 
     /**
      * The ＋folder / collapse-all toolbar pair. Rendered in both list headers
@@ -3856,9 +3977,17 @@ export function ChatListPane({
                                         { id: 'older', label: 'Older', items: olderGrouped, variant: 'plain' as const },
                                     ];
                                     const visible = sections.filter(s => s.items.length > 0);
+                                    const dateBucketIds = new Set(['today', 'week', 'older']);
                                     const rendered = visible
                                         .map(section => (
-                                            <div key={section.id} data-section={section.id}>
+                                            <div
+                                                key={section.id}
+                                                data-section={section.id}
+                                                // Dragging a chat back out onto a date bucket unfiles
+                                                // it; Running and Pinned are not unfile targets, since
+                                                // a filed row legitimately appears in both.
+                                                {...(dateBucketIds.has(section.id) ? unfiledDropProps : {})}
+                                            >
                                                 <div
                                                     className={cn(
                                                         'sticky top-0 z-[2] flex items-center justify-between px-3 py-1 border-b backdrop-blur-md backdrop-saturate-150',
@@ -3903,7 +4032,6 @@ export function ChatListPane({
                                                  })}
                                             </div>
                                         ));
-                                    const dateBucketIds = new Set(['today', 'week', 'older']);
                                     const firstDateBucket = visible.findIndex(s => dateBucketIds.has(s.id));
                                     const cut = firstDateBucket === -1 ? rendered.length : firstDateBucket;
                                     return [
@@ -4552,7 +4680,7 @@ export function ChatListPane({
                 {renderFoldersSection(activityFolderRows, activityRangeRows)}
 
                 {activityCompletedEntries.length > 0 && (
-                    <div data-section="completed" className="-mx-2 md:-mx-4">
+                    <div data-section="completed" className="-mx-2 md:-mx-4" {...unfiledDropProps}>
                         <div className="sticky top-0 z-[2] flex flex-wrap items-center gap-1.5 px-3 py-1 border-b backdrop-blur-md backdrop-saturate-150 bg-white/[0.94] dark:bg-[#1e1e1e]/[0.94] border-[#e0e0e0]/80 dark:border-[#3c3c3c]/80">
                             <button
                                 type="button"

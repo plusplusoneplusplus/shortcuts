@@ -20,6 +20,7 @@ import {
     removeFolderFromList,
     type DeletedChatFolderSnapshot,
 } from '../chat-folder-mutations';
+import { diffFolderSortIndexes, reorderChatFolders } from '../chat-folder-drag';
 
 /** A delete waiting on the confirm dialog. Only non-empty folders get one. */
 export interface PendingChatFolderDelete {
@@ -35,6 +36,8 @@ export interface UseChatFolderMutationsOptions {
     refresh: () => void;
     /** `processId -> folderId`, used to snapshot membership before a delete. */
     folderIdByProcess: ReadonlyMap<string, string>;
+    /** The folder list as rendered, read at drop time by `reorderFolders`. */
+    folders: readonly ChatFolder[];
     /**
      * Patch the process-summary index so an optimistic membership change is
      * visible before the next summaries fetch lands.
@@ -58,6 +61,12 @@ export interface UseChatFolderMutationsResult {
 
     recolorFolder: (folderId: string, color: ChatFolderColor) => Promise<void>;
 
+    /**
+     * Manual folder order, driven by dragging a folder row between folders
+     * (AC-07). A drop that would not change the order issues no request.
+     */
+    reorderFolders: (draggedFolderId: string, targetFolderId: string, position: 'above' | 'below') => Promise<void>;
+
     /** Opens the confirm dialog for a non-empty folder; deletes an empty one outright. */
     requestDelete: (folderId: string, folders: readonly ChatFolder[]) => void;
     pendingDelete: PendingChatFolderDelete | null;
@@ -76,7 +85,7 @@ function processesApi(): any {
 }
 
 export function useChatFolderMutations(options: UseChatFolderMutationsOptions): UseChatFolderMutationsResult {
-    const { workspaceId, setFolders, refresh, folderIdByProcess, onProcessFoldersChanged, onError } = options;
+    const { workspaceId, setFolders, refresh, folderIdByProcess, folders, onProcessFoldersChanged, onError } = options;
 
     const [creating, setCreating] = useState(false);
     const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
@@ -86,6 +95,8 @@ export function useChatFolderMutations(options: UseChatFolderMutationsOptions): 
     // refresh between opening the menu and confirming cannot stale the snapshot.
     const folderIdByProcessRef = useRef(folderIdByProcess);
     folderIdByProcessRef.current = folderIdByProcess;
+    const foldersRef = useRef(folders);
+    foldersRef.current = folders;
 
     const fail = useCallback((message: string) => {
         onError?.(message);
@@ -148,6 +159,37 @@ export function useChatFolderMutations(options: UseChatFolderMutationsOptions): 
             await api.updateChatFolder(workspaceId, folderId, { color });
         } catch {
             fail('Could not change folder color');
+        }
+    }, [workspaceId, setFolders, fail]);
+
+    // ── Reorder (AC-07) ─────────────────────────────────────────────────────
+    /**
+     * Optimistic, then persisted one PATCH per folder whose `sortIndex` moved —
+     * usually two. `sortIndex` has no dedicated column (it lives in the group's
+     * `extra` blob), so there is no batch endpoint to reach for.
+     */
+    const reorderFolders = useCallback(async (
+        draggedFolderId: string,
+        targetFolderId: string,
+        position: 'above' | 'below',
+    ): Promise<void> => {
+        if (!workspaceId) {return;}
+        const before = [...foldersRef.current];
+        const next = reorderChatFolders(before, draggedFolderId, targetFolderId, position);
+        // A drop that lands the folder back where it started is not a request.
+        if (!next) {return;}
+        const changed = diffFolderSortIndexes(before, next);
+        if (changed.length === 0) {return;}
+        const api = processesApi();
+        if (typeof api?.updateChatFolder !== 'function') {return;}
+        setFolders(next);
+        try {
+            for (const entry of changed) {
+                await api.updateChatFolder(workspaceId, entry.id, { sortIndex: entry.sortIndex });
+            }
+        } catch {
+            setFolders(before);
+            fail('Could not reorder folders');
         }
     }, [workspaceId, setFolders, fail]);
 
@@ -230,6 +272,7 @@ export function useChatFolderMutations(options: UseChatFolderMutationsOptions): 
         cancelRename,
         commitRename,
         recolorFolder,
+        reorderFolders,
         requestDelete,
         pendingDelete,
         cancelDelete,

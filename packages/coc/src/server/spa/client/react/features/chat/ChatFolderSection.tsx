@@ -14,6 +14,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '../../ui';
 import { chatFolderColorHex, type ChatFolderRow } from './chat-folder-tree';
+import type { ChatFolderDropTarget, ChatFolderDropZone } from './chat-folder-drag';
 import {
     CHAT_FOLDER_COLORS,
     clampChatFolderNameInput,
@@ -242,6 +243,18 @@ export interface ChatFolderSectionProps {
     onCancelRename?: () => void;
     /** Drives the soft duplicate-name hint; duplicates are still allowed. */
     isDuplicateName?: (name: string, excludeId?: string) => boolean;
+
+    // ── Drag and drop (AC-07) ───────────────────────────────────────────────
+    /** The folder currently offering a drop, and what dropping would do. */
+    dropTarget?: ChatFolderDropTarget | null;
+    /** The folder row being dragged, rendered faded while it travels. */
+    draggingFolderId?: string | null;
+    /** Omitted ⇒ folder rows are not draggable and expose no drop targets. */
+    onFolderDragStart?: (folderId: string, event: React.DragEvent) => void;
+    onFolderDragEnd?: () => void;
+    onFolderDragOver?: (folderId: string, zone: ChatFolderDropZone, event: React.DragEvent) => void;
+    onFolderDragLeave?: (folderId: string, zone: ChatFolderDropZone, event: React.DragEvent) => void;
+    onFolderDrop?: (folderId: string, zone: ChatFolderDropZone, event: React.DragEvent) => void;
 }
 
 /**
@@ -263,6 +276,13 @@ export function ChatFolderSection({
     onCommitRename,
     onCancelRename,
     isDuplicateName,
+    dropTarget,
+    draggingFolderId,
+    onFolderDragStart,
+    onFolderDragEnd,
+    onFolderDragOver,
+    onFolderDragLeave,
+    onFolderDrop,
 }: ChatFolderSectionProps): React.ReactElement | null {
     // Zero folders means no section — but the create row has to have somewhere
     // to live, so an open create keeps the section mounted.
@@ -307,6 +327,13 @@ export function ChatFolderSection({
                             onCommitRename={onCommitRename}
                             onCancelRename={onCancelRename}
                             isDuplicateName={isDuplicateName}
+                            dropMode={dropTarget?.folderId === row.folder.id ? dropTarget.mode : null}
+                            dragging={draggingFolderId === row.folder.id}
+                            onFolderDragStart={onFolderDragStart}
+                            onFolderDragEnd={onFolderDragEnd}
+                            onFolderDragOver={onFolderDragOver}
+                            onFolderDragLeave={onFolderDragLeave}
+                            onFolderDrop={onFolderDrop}
                         />
                     ))}
                 </div>
@@ -325,6 +352,14 @@ interface ChatFolderTreeRowProps {
     onCommitRename?: (folderId: string, name: string) => void;
     onCancelRename?: () => void;
     isDuplicateName?: (name: string, excludeId?: string) => boolean;
+    /** What a drop right now would do to THIS folder, or null when it is not the target. */
+    dropMode?: ChatFolderDropTarget['mode'] | null;
+    dragging?: boolean;
+    onFolderDragStart?: (folderId: string, event: React.DragEvent) => void;
+    onFolderDragEnd?: () => void;
+    onFolderDragOver?: (folderId: string, zone: ChatFolderDropZone, event: React.DragEvent) => void;
+    onFolderDragLeave?: (folderId: string, zone: ChatFolderDropZone, event: React.DragEvent) => void;
+    onFolderDrop?: (folderId: string, zone: ChatFolderDropZone, event: React.DragEvent) => void;
 }
 
 function ChatFolderTreeRow({
@@ -337,17 +372,53 @@ function ChatFolderTreeRow({
     onCommitRename,
     onCancelRename,
     isDuplicateName,
+    dropMode,
+    dragging,
+    onFolderDragStart,
+    onFolderDragEnd,
+    onFolderDragOver,
+    onFolderDragLeave,
+    onFolderDrop,
 }: ChatFolderTreeRowProps): React.ReactElement {
     const { folder, members, memberCount, runningCount, isEmpty, collapsed } = row;
     const hex = chatFolderColorHex(folder.color);
     const expanded = !collapsed;
+    // A row with an open rename input must not be draggable: the drag would
+    // swallow text selection inside the input.
+    const dragEnabled = !!onFolderDragStart && !renaming;
+    const bodyDropProps = onFolderDragOver && onFolderDrop
+        ? {
+            onDragOver: (event: React.DragEvent) => onFolderDragOver(folder.id, 'body', event),
+            onDragLeave: (event: React.DragEvent) => onFolderDragLeave?.(folder.id, 'body', event),
+            onDrop: (event: React.DragEvent) => onFolderDrop(folder.id, 'body', event),
+        }
+        : {};
 
     return (
-        <div data-testid="chat-folder" data-folder-id={folder.id} data-expanded={expanded ? 'true' : 'false'}>
+        <div
+            data-testid="chat-folder"
+            data-folder-id={folder.id}
+            data-expanded={expanded ? 'true' : 'false'}
+            data-drop-mode={dropMode ?? undefined}
+        >
             <div
                 role="button"
                 tabIndex={0}
-                className="group/folder h-[24px] flex items-center gap-1.5 px-3 cursor-pointer select-none hover:bg-[#f5f5f5] dark:hover:bg-[#252526] transition-colors"
+                className={cn(
+                    'group/folder h-[24px] flex items-center gap-1.5 px-3 cursor-pointer select-none hover:bg-[#f5f5f5] dark:hover:bg-[#252526] transition-colors',
+                    dragging && 'opacity-40',
+                    // Filing here: accent tint plus a dashed outline.
+                    dropMode === 'into' && 'bg-[#0078d4]/[0.10] dark:bg-[#3794ff]/[0.14] outline outline-1 outline-dashed outline-[#0078d4] dark:outline-[#3794ff]',
+                    // Reordering: a 2px insertion line only, no row tint.
+                    dropMode === 'above' && 'border-t-2 border-t-[#0078d4] dark:border-t-[#3794ff]',
+                    dropMode === 'below' && 'border-b-2 border-b-[#0078d4] dark:border-b-[#3794ff]',
+                )}
+                draggable={dragEnabled}
+                onDragStart={dragEnabled ? event => onFolderDragStart?.(folder.id, event) : undefined}
+                onDragEnd={dragEnabled ? () => onFolderDragEnd?.() : undefined}
+                onDragOver={onFolderDragOver ? event => onFolderDragOver(folder.id, 'row', event) : undefined}
+                onDragLeave={onFolderDragLeave ? event => onFolderDragLeave(folder.id, 'row', event) : undefined}
+                onDrop={onFolderDrop ? event => onFolderDrop(folder.id, 'row', event) : undefined}
                 onClick={() => onToggleFolder(folder.id)}
                 onKeyDown={event => {
                     if (event.key === 'Enter' || event.key === ' ') {
@@ -426,18 +497,33 @@ function ChatFolderTreeRow({
                     >⋯</button>
                 )}
             </div>
+            {dropMode === 'into' && (
+                <div
+                    className="px-3 py-0.5 text-[10px] leading-none font-mono text-[#0078d4] dark:text-[#3794ff]"
+                    data-testid="chat-folder-drop-hint"
+                >
+                    {`Move into "${folder.name}"`}
+                </div>
+            )}
             {expanded && members.length > 0 && (
                 <div
                     className="flex flex-col ml-3 pl-2 border-l border-[#e0e0e0] dark:border-[#3c3c3c]"
                     data-testid="chat-folder-children"
+                    {...bodyDropProps}
                 >
                     {members.map(entry => renderMember(entry, members))}
                 </div>
             )}
             {expanded && members.length === 0 && (
                 <div
-                    className="mx-3 my-1 px-2 py-2 rounded-[4px] border border-dashed border-[#e0e0e0] dark:border-[#3c3c3c] text-[10px] leading-tight text-[#848484] dark:text-[#a0a0a0]"
+                    className={cn(
+                        'mx-3 my-1 px-2 py-2 rounded-[4px] border border-dashed text-[10px] leading-tight',
+                        dropMode === 'into'
+                            ? 'border-[#0078d4] dark:border-[#3794ff] bg-[#0078d4]/[0.08] dark:bg-[#3794ff]/[0.12] text-[#0078d4] dark:text-[#3794ff]'
+                            : 'border-[#e0e0e0] dark:border-[#3c3c3c] text-[#848484] dark:text-[#a0a0a0]',
+                    )}
                     data-testid="chat-folder-empty"
+                    {...bodyDropProps}
                 >
                     Empty — drag chats here, or start a chat in this folder.
                 </div>
