@@ -13,7 +13,7 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { isWithinDirectory } from '@plusplusoneplusplus/forge';
-import { nativeFileIndexStatus, nativeNotesIndexStatus } from '@plusplusoneplusplus/coc-native';
+import { nativeContentSearchStatus, nativeFileIndexStatus, nativeNotesIndexStatus } from '@plusplusoneplusplus/coc-native';
 import type { Route } from './types';
 import {
     createRouter,
@@ -130,13 +130,13 @@ export function createRequestHandler(
                     status: 'ok',
                     uptime: process.uptime(),
                     processCount,
-                    // Surfaced so a packaging mistake fails the release smoke
-                    // test loudly instead of degrading silently to the slow
-                    // JavaScript file-search path in production.
+                    // Every capability is required, and each is surfaced so a
+                    // packaging mistake fails the release smoke test loudly.
+                    // Separate statuses keep a stale binary — one that loaded
+                    // but predates a capability — visible.
                     nativeFileIndex: nativeFileIndexStatus(),
-                    // Notes search has no JavaScript fallback. This remains a
-                    // separate capability status so stale binaries are visible.
                     nativeNotesIndex: nativeNotesIndexStatus(),
+                    nativeContentSearch: nativeContentSearchStatus(),
                 });
             },
         },

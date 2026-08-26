@@ -47,4 +47,69 @@ describe('ExplorerClient', () => {
     expect(adapter.calls[1].options?.query).toEqual({ q: 'main ts', limit: 50, showIgnored: undefined });
     expect(adapter.calls[2].options?.query).toEqual({ path: filePath });
   });
+  it('sends every content-search mode, the scope path and the glob filters', async () => {
+    const adapter = createMockAdapter({ matches: [], truncated: false });
+    const client = new ExplorerClient(adapter);
+
+    await client.searchContent('repo/a', 'TODO(', {
+      path: 'src',
+      caseSensitive: true,
+      wholeWord: true,
+      regex: false,
+      showIgnored: true,
+      include: ['*.ts'],
+      exclude: ['*.spec.ts'],
+      limit: 100,
+    });
+
+    expect(adapter.calls).toMatchObject([
+      {
+        path: '/repos/repo%2Fa/search/content',
+        options: {
+          query: {
+            q: 'TODO(',
+            path: 'src',
+            caseSensitive: true,
+            wholeWord: true,
+            regex: false,
+            showIgnored: true,
+            include: ['*.ts'],
+            exclude: ['*.spec.ts'],
+            limit: 100,
+          },
+        },
+      },
+    ]);
+  });
+
+  it('omits unset content-search options rather than sending defaults of its own', async () => {
+    const adapter = createMockAdapter({ matches: [], truncated: false });
+    const client = new ExplorerClient(adapter);
+
+    // The server owns the defaults; sending caseSensitive=false here would
+    // make the client the second place they are written down.
+    await client.searchContent('repo-a', 'needle');
+
+    expect(adapter.calls[0].options?.query).toEqual({
+      q: 'needle',
+      path: undefined,
+      caseSensitive: undefined,
+      wholeWord: undefined,
+      regex: undefined,
+      showIgnored: undefined,
+      include: undefined,
+      exclude: undefined,
+      limit: undefined,
+    });
+  });
+
+  it('forwards an abort signal so a superseded content search can be dropped', async () => {
+    const adapter = createMockAdapter({ matches: [], truncated: false });
+    const client = new ExplorerClient(adapter);
+    const controller = new AbortController();
+
+    await client.searchContent('repo-a', 'needle', { signal: controller.signal });
+
+    expect(adapter.calls[0].options?.signal).toBe(controller.signal);
+  });
 });

@@ -21,10 +21,23 @@
  */
 
 import { useCallback, useSyncExternalStore, type Dispatch, type SetStateAction } from 'react';
+import type { ExplorerContentMatch } from '@plusplusoneplusplus/coc-client';
+import {
+    DEFAULT_CONTENT_SEARCH_MODES,
+    type ContentSearchErrorKind,
+    type ContentSearchModes,
+    type ContentSearchStatus,
+    type ExplorerView,
+} from './types';
 
 export interface ExplorerPreviewFile {
     path: string;
     name: string;
+    /**
+     * One-based line to reveal when the file opens. Set when the file is opened
+     * from a content-search hit; absent for a plain tree click.
+     */
+    line?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -44,6 +57,21 @@ export function explorerSelectedStorageKey(workspaceId: string): string {
 /** localStorage key for the open preview file (path + name), per workspace. */
 export function explorerPreviewStorageKey(workspaceId: string): string {
     return `split-workspace:${workspaceId}:explorer-preview`;
+}
+
+/** localStorage key for which sidebar view (tree or search) is showing. */
+export function explorerViewStorageKey(workspaceId: string): string {
+    return `split-workspace:${workspaceId}:explorer-view`;
+}
+
+/** localStorage key for the content-search query text, per workspace. */
+export function explorerContentQueryStorageKey(workspaceId: string): string {
+    return `split-workspace:${workspaceId}:explorer-content-query`;
+}
+
+/** localStorage key for the content-search mode toggles, per workspace. */
+export function explorerContentModesStorageKey(workspaceId: string): string {
+    return `split-workspace:${workspaceId}:explorer-content-modes`;
 }
 
 // ---------------------------------------------------------------------------
@@ -92,9 +120,49 @@ const PREVIEW_CODEC: Codec<ExplorerPreviewFile | null> = {
     parse(raw) {
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed.path === 'string' && typeof parsed.name === 'string') {
-            return { path: parsed.path, name: parsed.name };
+            return typeof parsed.line === 'number'
+                ? { path: parsed.path, name: parsed.name, line: parsed.line }
+                : { path: parsed.path, name: parsed.name };
         }
         return null;
+    },
+    serialize(value) {
+        return JSON.stringify(value);
+    },
+};
+
+const VIEW_CODEC: Codec<ExplorerView> = {
+    fallback: 'tree',
+    parse(raw) {
+        const parsed = JSON.parse(raw);
+        return parsed === 'search' ? 'search' : 'tree';
+    },
+    serialize(value) {
+        return JSON.stringify(value);
+    },
+};
+
+const QUERY_CODEC: Codec<string> = {
+    fallback: '',
+    parse(raw) {
+        const parsed = JSON.parse(raw);
+        return typeof parsed === 'string' ? parsed : '';
+    },
+    serialize(value) {
+        return JSON.stringify(value);
+    },
+};
+
+const MODES_CODEC: Codec<ContentSearchModes> = {
+    fallback: DEFAULT_CONTENT_SEARCH_MODES,
+    parse(raw) {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return DEFAULT_CONTENT_SEARCH_MODES;
+        return {
+            caseSensitive: parsed.caseSensitive === true,
+            wholeWord: parsed.wholeWord === true,
+            regex: parsed.regex === true,
+        };
     },
     serialize(value) {
         return JSON.stringify(value);
@@ -199,4 +267,120 @@ export function useExplorerSelectedPath(workspaceId: string): [string | null, Di
 /** Persisted open preview file for a workspace. */
 export function useExplorerPreviewFile(workspaceId: string): [ExplorerPreviewFile | null, Dispatch<SetStateAction<ExplorerPreviewFile | null>>] {
     return usePersistedValue(explorerPreviewStorageKey(workspaceId), PREVIEW_CODEC);
+}
+
+
+/** Persisted sidebar view (tree or search) for a workspace. */
+export function useExplorerView(workspaceId: string): [ExplorerView, Dispatch<SetStateAction<ExplorerView>>] {
+    return usePersistedValue(explorerViewStorageKey(workspaceId), VIEW_CODEC);
+}
+
+/** Persisted content-search query text for a workspace. */
+export function useExplorerContentQuery(workspaceId: string): [string, Dispatch<SetStateAction<string>>] {
+    return usePersistedValue(explorerContentQueryStorageKey(workspaceId), QUERY_CODEC);
+}
+
+/** Persisted content-search mode toggles for a workspace. */
+export function useExplorerContentModes(
+    workspaceId: string,
+): [ContentSearchModes, Dispatch<SetStateAction<ContentSearchModes>>] {
+    return usePersistedValue(explorerContentModesStorageKey(workspaceId), MODES_CODEC);
+}
+
+// ---------------------------------------------------------------------------
+// Content-search results — in-memory, per workspace.
+//
+// The query and the toggles above are persisted because they are small and a
+// reload should bring the panel back the way the user left it. The *results*
+// deliberately are not: a full 500-match payload has no business in
+// localStorage, and a reload should re-run the query against the current
+// working tree rather than replay a stale answer. They still live outside React
+// state because ExplorerPanel swaps the search view out whenever the user goes
+// back to the tree — this is what makes the results survive that round trip
+// (and only that: ExplorerPanel is mounted with `key={ws.id}`, so switching
+// repos starts from a fresh, empty entry here).
+// ---------------------------------------------------------------------------
+
+export interface ContentSearchState {
+    status: ContentSearchStatus;
+    /** Matches for `query`, sorted by path then line. */
+    matches: ExplorerContentMatch[];
+    /** True when the server hit one of its caps and the list is partial. */
+    truncated: boolean;
+    /** Human-readable failure, set only when `status` is 'error'. */
+    error: string | null;
+    /** Which kind of failure `error` describes, so the UI can place it. */
+    errorKind: ContentSearchErrorKind | null;
+    /** The query these results answer — may lag the typed query while loading. */
+    query: string;
+}
+
+/** Stable empty state; also the reference returned before any search has run. */
+export const IDLE_CONTENT_SEARCH_STATE: ContentSearchState = {
+    status: 'idle',
+    matches: [],
+    truncated: false,
+    error: null,
+    errorKind: null,
+    query: '',
+};
+
+const contentSearchStates = new Map<string, ContentSearchState>();
+const contentSearchListeners = new Map<string, Set<() => void>>();
+
+function contentSearchKey(workspaceId: string): string {
+    return `content-search::${workspaceId}`;
+}
+
+/**
+ * Content-search results for a workspace, shared across every mounted consumer.
+ * Same `[value, setValue]` shape as the persisted hooks above.
+ */
+export function useExplorerContentResults(
+    workspaceId: string,
+): [ContentSearchState, Dispatch<SetStateAction<ContentSearchState>>] {
+    const key = contentSearchKey(workspaceId);
+    const getSnapshot = useCallback(
+        () => contentSearchStates.get(key) ?? IDLE_CONTENT_SEARCH_STATE,
+        [key],
+    );
+    const value = useSyncExternalStore(
+        useCallback(listener => {
+            let set = contentSearchListeners.get(key);
+            if (!set) {
+                set = new Set();
+                contentSearchListeners.set(key, set);
+            }
+            set.add(listener);
+            return () => {
+                set!.delete(listener);
+                if (set!.size === 0) contentSearchListeners.delete(key);
+            };
+        }, [key]),
+        getSnapshot,
+        getSnapshot,
+    );
+    const setValue = useCallback<Dispatch<SetStateAction<ContentSearchState>>>(action => {
+        const current = contentSearchStates.get(key) ?? IDLE_CONTENT_SEARCH_STATE;
+        const next = typeof action === 'function'
+            ? (action as (prev: ContentSearchState) => ContentSearchState)(current)
+            : action;
+        contentSearchStates.set(key, next);
+        contentSearchListeners.get(key)?.forEach(listener => listener());
+    }, [key]);
+    return [value, setValue];
+}
+
+/**
+ * Drops cached content-search results — for one workspace, or all of them with
+ * no argument (used to isolate tests). Subscribers re-render against idle.
+ */
+export function clearExplorerContentResults(workspaceId?: string): void {
+    const keys = workspaceId === undefined
+        ? [...contentSearchStates.keys()]
+        : [contentSearchKey(workspaceId)];
+    for (const key of keys) {
+        contentSearchStates.delete(key);
+        contentSearchListeners.get(key)?.forEach(listener => listener());
+    }
 }

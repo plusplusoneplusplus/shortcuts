@@ -30,6 +30,7 @@ import { createRepoGroup } from '../../../src/server/workspaces/repo-group-works
 import { REPO_GROUP_CONTEXT_TAG } from '../../../src/server/workspaces/repo-group-chat-context';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
+import { nestRuntime, type FlatExecutorOptions } from './runtime-options-helper';
 
 // Same isolation mocks as chat-mode-executors.test.ts: keep async fs listing,
 // image temp files, task roots, and output persistence off the real disk.
@@ -72,8 +73,8 @@ describe('repo-group chat context injection (AC-03)', () => {
     let repoB: string;
     let groupId: string;
 
-    function makeOptions(overrides?: Partial<ChatModeExecutorOptions>): ChatModeExecutorOptions {
-        return {
+    function makeOptions(overrides?: FlatExecutorOptions): ChatModeExecutorOptions {
+        return nestRuntime({
             aiService: sdkMocks.service as any,
             defaultTimeoutMs: 30_000,
             followUpSuggestions: { enabled: false, count: 3 },
@@ -81,7 +82,7 @@ describe('repo-group chat context injection (AC-03)', () => {
             resolveWorkspaceIdForPath: vi.fn().mockResolvedValue(undefined),
             resolveAiServiceForProvider: () => sdkMocks.service as any,
             ...overrides,
-        };
+        }) as ChatModeExecutorOptions;
     }
 
     function makeChatTask(workspaceId: string, id = 'task-1'): QueuedTask {

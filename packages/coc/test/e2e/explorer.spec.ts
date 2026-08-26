@@ -6,6 +6,7 @@
  *   - PreviewPane: file open, dirty-indicator after edit, save button
  *   - QuickOpen: Ctrl+P overlay, filter, select file
  *   - Refresh: reloads the file tree
+ *   - Content search: Search view, grouped results, click-to-open-at-line
  *
  * Relies on existing data-testid attributes in the explorer components
  * (no new testids added):
@@ -13,7 +14,11 @@
  *   explorer-preview-pane, file-tree, tree-node-{path},
  *   preview-pane, preview-toolbar, save-btn, dirty-indicator,
  *   monaco-container, quick-open-overlay, quick-open-dialog,
- *   quick-open-input, quick-open-results, quick-open-item-{idx}
+ *   quick-open-input, quick-open-results, quick-open-item-{idx},
+ *   explorer-view-tree, explorer-view-search, content-search-panel,
+ *   content-search-input, content-search-toggle-{case,word,regex},
+ *   content-search-results, content-search-group, content-search-match,
+ *   content-search-summary, content-search-empty, content-search-regex-error
  */
 
 import * as fs from 'fs';
@@ -27,6 +32,15 @@ import type { Page } from '@playwright/test';
 // Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * A token that appears in exactly two fixture files and nowhere else, so match
+ * and group counts stay stable as the fixture grows.
+ */
+const SEARCH_NEEDLE = 'ZzQqSearchNeedle';
+
+/** 1-based line of SEARCH_NEEDLE inside src/search-fixture.ts. */
+const SEARCH_NEEDLE_LINE = 4;
+
 /** Create a repo with files for explorer testing. */
 function createExplorerRepoFixture(tmpDir: string): string {
     const repoDir = path.join(tmpDir, 'explorer-repo');
@@ -36,7 +50,32 @@ function createExplorerRepoFixture(tmpDir: string): string {
     fs.writeFileSync(path.join(repoDir, 'src', 'utils.ts'), 'export const add = (a: number, b: number) => a + b;\n');
     fs.writeFileSync(path.join(repoDir, 'docs', 'README.md'), '# Project Docs\n\nWelcome.\n');
     fs.writeFileSync(path.join(repoDir, 'README.md'), '# Root README\n');
+
+    // Content-search fixture: a token that exists nowhere else in the repo, at a
+    // known line in exactly two files. Asserting on it keeps the search tests
+    // independent of how many other files the fixture grows.
+    fs.writeFileSync(
+        path.join(repoDir, 'src', 'search-fixture.ts'),
+        [
+            '// content search fixture',
+            'export const before = 1;',
+            '',
+            `export const target = '${SEARCH_NEEDLE}';`,
+            'export const after = 2;',
+            '',
+        ].join('\n'),
+    );
+    fs.writeFileSync(
+        path.join(repoDir, 'docs', 'search-notes.md'),
+        ['# Notes', '', `The token ${SEARCH_NEEDLE} also lives here.`, ''].join('\n'),
+    );
     return repoDir;
+}
+
+/** Switch the Explorer sidebar to the Search view and wait for the panel. */
+async function gotoSearchView(page: Page): Promise<void> {
+    await page.locator('[data-testid="explorer-view-search"]').click();
+    await expect(page.locator('[data-testid="content-search-panel"]')).toBeVisible({ timeout: 5_000 });
 }
 
 /** Navigate to the repo detail and click the Explorer sub-tab. */
@@ -276,6 +315,146 @@ test.describe('ExplorerPanel – QuickOpen', () => {
             await expect(
                 page.locator('[data-testid="quick-open-results"], [data-testid="quick-open-no-results"]').first()
             ).toBeVisible({ timeout: 5_000 });
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+});
+
+// ---------------------------------------------------------------------------
+// 7. Content search view
+// ---------------------------------------------------------------------------
+
+test.describe('ExplorerPanel – Content search', () => {
+    test('E.12 switching to the Search view keeps the file tree alive', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
+        try {
+            const repoDir = createExplorerRepoFixture(tmpDir);
+            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+
+            await gotoExplorer(page, serverUrl);
+            await expect(page.locator('[data-testid="tree-node-src"]')).toBeVisible({ timeout: 8_000 });
+
+            await gotoSearchView(page);
+            await expect(page.locator('[data-testid="file-tree"]')).toHaveCount(0);
+            await expect(page.locator('[data-testid="content-search-idle"]')).toBeVisible();
+
+            // Back to the tree: the previously loaded entries are still there.
+            await page.locator('[data-testid="explorer-view-tree"]').click();
+            await expect(page.locator('[data-testid="tree-node-src"]')).toBeVisible({ timeout: 5_000 });
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('E.13 a query renders results grouped by file', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
+        try {
+            const repoDir = createExplorerRepoFixture(tmpDir);
+            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+
+            await gotoExplorer(page, serverUrl);
+            await gotoSearchView(page);
+
+            await page.locator('[data-testid="content-search-input"]').fill(SEARCH_NEEDLE);
+
+            await expect(page.locator('[data-testid="content-search-results"]')).toBeVisible({ timeout: 10_000 });
+
+            // The needle lives in exactly two fixture files, one match each.
+            const groups = page.locator('[data-testid="content-search-group"]');
+            await expect(groups).toHaveCount(2);
+            const matches = page.locator('[data-testid="content-search-match"]');
+            await expect(matches).toHaveCount(2);
+            await expect(page.locator('[data-testid="content-search-summary"]')).toContainText('2 results in 2 files');
+
+            // Each group header names its file and reports its own match count.
+            await expect(
+                page.locator('[data-testid="content-search-file-header"][data-path="src/search-fixture.ts"]')
+            ).toBeVisible();
+            await expect(
+                page.locator('[data-testid="content-search-file-header"][data-path="docs/search-notes.md"]')
+            ).toBeVisible();
+
+            // The hit is highlighted inside the rendered line.
+            await expect(
+                page.locator('[data-testid="content-search-match"][data-path="src/search-fixture.ts"] mark')
+            ).toHaveText(SEARCH_NEEDLE);
+            await expect(
+                page.locator('[data-testid="content-search-match"][data-path="src/search-fixture.ts"]')
+            ).toHaveAttribute('data-line', String(SEARCH_NEEDLE_LINE));
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('E.14 clicking a match opens the file at that line', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
+        try {
+            const repoDir = createExplorerRepoFixture(tmpDir);
+            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+
+            await gotoExplorer(page, serverUrl);
+            await gotoSearchView(page);
+
+            await page.locator('[data-testid="content-search-input"]').fill(SEARCH_NEEDLE);
+            const match = page.locator('[data-testid="content-search-match"][data-path="src/search-fixture.ts"]');
+            await expect(match).toBeVisible({ timeout: 10_000 });
+            await match.click();
+
+            // The preview opens on the clicked file …
+            await expect(page.locator('[data-testid="monaco-container"]')).toBeVisible({ timeout: 15_000 });
+            const editor = page.locator('[data-testid="monaco-container"] .monaco-editor').first();
+            await expect(editor).toBeVisible({ timeout: 15_000 });
+            await expect(editor.locator('.view-lines')).toContainText(SEARCH_NEEDLE, { timeout: 15_000 });
+
+            // … with the cursor parked on the matched line, which Monaco marks in
+            // the gutter as the active line number.
+            await expect(editor.locator('.line-numbers.active-line-number')).toHaveText(
+                String(SEARCH_NEEDLE_LINE),
+                { timeout: 15_000 },
+            );
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('E.15 a query with no matches shows the empty state', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
+        try {
+            const repoDir = createExplorerRepoFixture(tmpDir);
+            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+
+            await gotoExplorer(page, serverUrl);
+            await gotoSearchView(page);
+
+            await page.locator('[data-testid="content-search-input"]').fill('NoSuchTokenLivesInThisRepo');
+
+            await expect(page.locator('[data-testid="content-search-empty"]')).toBeVisible({ timeout: 10_000 });
+            await expect(page.locator('[data-testid="content-search-results"]')).toHaveCount(0);
+        } finally {
+            safeRmSync(tmpDir);
+        }
+    });
+
+    test('E.16 an invalid regex reports the parse error inline', async ({ page, serverUrl }) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
+        try {
+            const repoDir = createExplorerRepoFixture(tmpDir);
+            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+
+            await gotoExplorer(page, serverUrl);
+            await gotoSearchView(page);
+
+            // Literal mode first: '(' is just a character, so this is a clean miss.
+            await page.locator('[data-testid="content-search-input"]').fill('(unclosed');
+            await expect(page.locator('[data-testid="content-search-empty"]')).toBeVisible({ timeout: 10_000 });
+
+            // Turning the regex toggle on re-runs the same query immediately, and
+            // now the pattern does not parse.
+            await page.locator('[data-testid="content-search-toggle-regex"]').click();
+            const regexError = page.locator('[data-testid="content-search-regex-error"]');
+            await expect(regexError).toBeVisible({ timeout: 10_000 });
+            await expect(regexError).toContainText('regular expression');
         } finally {
             safeRmSync(tmpDir);
         }

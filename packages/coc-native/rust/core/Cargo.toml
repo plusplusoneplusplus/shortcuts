@@ -7,6 +7,9 @@ publish.workspace = true
 description = "Native primitives for CoC file-path and Notes content indexes"
 
 [dependencies]
+grep-matcher = "0.1.9"
+grep-regex = "0.1.14"
+grep-searcher = "0.1.17"
 ignore = "0.4"
 rayon = "1"
 

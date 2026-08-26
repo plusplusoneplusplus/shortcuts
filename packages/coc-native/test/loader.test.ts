@@ -1,8 +1,8 @@
 /**
  * Loader tests. These never need a compiled binary — the point is that a
- * missing or broken addon is a hard, well-explained failure, that
- * `COC_NATIVE=0` stays an opt-out that yields `null` rather than throwing, and
- * that resolution says nothing about which capabilities the binary has.
+ * missing or broken addon is a hard, well-explained failure, that there is no
+ * environment switch that turns the addon off, and that resolution says nothing
+ * about which capabilities the binary has.
  */
 
 import * as fs from 'fs';
@@ -70,13 +70,25 @@ describe('binary naming', () => {
 });
 
 describe('loading', () => {
-    it('returns null, without throwing, when explicitly disabled', () => {
+    // Regression: COC_NATIVE=0 used to short-circuit resolution and hand back
+    // `null`, which is how a load failure could pass for a deliberate opt-out.
+    it('ignores COC_NATIVE=0 — the addon has no opt-out', () => {
+        const { dir, file } = writeModule('module.exports = { somethingElse: 1 };');
+        try {
+            process.env.COC_NATIVE = '0';
+            process.env.COC_NATIVE_PATH = file;
+            expect(loadNativeAddon()).toEqual({ somethingElse: 1 });
+            expect(nativeAddonStatus()).toEqual({ loaded: true, binaryPath: file });
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it('still throws for a missing binary when COC_NATIVE=0 is set', () => {
         process.env.COC_NATIVE = '0';
-        expect(loadNativeAddon()).toBeNull();
-        expect(nativeAddonStatus()).toEqual({
-            loaded: false,
-            reason: 'disabled by COC_NATIVE=0',
-        });
+        process.env.COC_NATIVE_PATH = path.join(os.tmpdir(), 'coc-native-absent.node');
+        expect(() => loadNativeAddon()).toThrow(NativeAddonLoadError);
+        expect(nativeAddonStatus().loaded).toBe(false);
     });
 
     it('throws when the override path does not exist', () => {
@@ -122,7 +134,8 @@ describe('loading', () => {
         expect(message).toContain('@plusplusoneplusplus/coc-native');
         expect(message).toContain(nativeTriple());
         expect(message).toContain('npm run build:native -w packages/coc-native');
-        expect(message).toContain('COC_NATIVE=0');
+        // The opt-out is gone, so suggesting it would be a dead end.
+        expect(message).not.toContain('COC_NATIVE=0');
     });
 
     it('rejects a module that is not an object', () => {
@@ -147,13 +160,19 @@ describe('loading', () => {
     });
 
     it('caches the resolution until it is reset', () => {
-        process.env.COC_NATIVE = '0';
-        expect(loadNativeAddon()).toBeNull();
-        delete process.env.COC_NATIVE;
-        // Still cached — the environment is read once.
-        expect(nativeAddonStatus().reason).toBe('disabled by COC_NATIVE=0');
-        resetNativeAddonCache();
-        expect(nativeAddonStatus().reason).not.toBe('disabled by COC_NATIVE=0');
+        const missing = path.join(os.tmpdir(), 'coc-native-absent.node');
+        process.env.COC_NATIVE_PATH = missing;
+        expect(nativeAddonStatus().reason).toContain('no native binary');
+        const { dir, file } = writeModule('module.exports = { somethingElse: 1 };');
+        try {
+            process.env.COC_NATIVE_PATH = file;
+            // Still cached — the environment is read once.
+            expect(nativeAddonStatus().reason).toContain('no native binary');
+            resetNativeAddonCache();
+            expect(nativeAddonStatus()).toEqual({ loaded: true, binaryPath: file });
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
     });
 
     it('raises the same failure on every call, not just the first', () => {

@@ -5,10 +5,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { describe, expect, it } from 'vitest';
 
-import { disabled, makeRandom, notesAddon } from './helpers';
+import { makeRandom, notesAddon } from './helpers';
 import { searchNotesOracle } from './notes-index-oracle';
-
-const suite = disabled ? describe.skip : describe;
 
 function write(root: string, relative: string, contents: string | Buffer): void {
     const target = path.join(root, relative);
@@ -16,7 +14,7 @@ function write(root: string, relative: string, contents: string | Buffer): void 
     fs.writeFileSync(target, contents);
 }
 
-suite('native Notes search matches the test-only JavaScript oracle', () => {
+describe('native Notes search matches the test-only JavaScript oracle', () => {
     it('agrees on fixed behavior fixtures', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-notes-fixed-parity-'));
         try {
@@ -25,7 +23,7 @@ suite('native Notes search matches the test-only JavaScript oracle', () => {
             write(root, 'nested/ignored.MD', 'needle');
             write(root, 'nested/plain.txt', 'needle');
             write(root, 'bytes.md', Buffer.from('before \xff after', 'latin1'));
-            const index = await notesAddon!.buildNotesIndex(root, {});
+            const index = await notesAddon.buildNotesIndex(root, {});
 
             for (const query of ['needle', 'NEEDLE', 'İST', 'istanbul', 'straße', 'STRASSE', 'café', '� after', 'missing', '']) {
                 expect(await index.search(query), query).toEqual(searchNotesOracle(root, query));
@@ -53,7 +51,7 @@ suite('native Notes search matches the test-only JavaScript oracle', () => {
                 write(root, [...folders, filename].join('/'), lines.join(file % 5 === 0 ? '\r\n' : '\n'));
             }
 
-            const index = await notesAddon!.buildNotesIndex(root, {});
+            const index = await notesAddon.buildNotesIndex(root, {});
             const queries = ['alpha', 'BRAVO', 'café', 'straße', 'STRASSE', 'İST', 'istanbul', '日本', 'two words', 'x-y', 'absent'];
             for (let iteration = 0; iteration < 100; iteration++) {
                 const query = queries[Math.floor(random() * queries.length)];

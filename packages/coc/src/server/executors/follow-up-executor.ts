@@ -62,7 +62,6 @@ import {
 import type { ChatModeAIOptions, ChatModeExecutorOptions } from './chat-base-executor';
 import { ChatBaseExecutor } from './chat-base-executor';
 import { computeAssistantResponseOrdinal } from './turn-performance-tracker';
-import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { buildChatTurnContext } from './chat-turn-context-builder';
 import type { ChatTurnContext } from './chat-turn-context-builder';
 import { resolveChatMcpServersForWorkspace } from './mcp-tool-enforcement';
@@ -172,7 +171,6 @@ function resolveFollowUpReasoningSelection(options: {
 export interface FollowUpExecutorOptions extends ChatModeExecutorOptions {
     /** Fire-and-forget title generation callback (optional) */
     onTitleNeeded?: (processId: string, turns: ConversationTurn[]) => void;
-    getWsServer?: () => ProcessWebSocketServer | undefined;
 }
 
 // ============================================================================
@@ -181,12 +179,10 @@ export interface FollowUpExecutorOptions extends ChatModeExecutorOptions {
 
 export class FollowUpExecutor extends ChatBaseExecutor {
     private readonly onTitleNeeded?: (processId: string, turns: ConversationTurn[]) => void;
-    private readonly getWsServerFn?: () => ProcessWebSocketServer | undefined;
 
     constructor(store: ProcessStore, options: FollowUpExecutorOptions, dataDir?: string) {
         super(store, options, dataDir);
         this.onTitleNeeded = options.onTitleNeeded;
-        this.getWsServerFn = options.getWsServer;
     }
 
     /**
@@ -396,9 +392,9 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 processId,
                 query: message,
                 followUpSuggestions: this.followUpSuggestions,
-                enqueueChat: this.getEnqueueChat?.(),
-                sendMessage: this.getSendMessage?.(),
-                sendToConversationRuntime: this.getSendToConversationRuntime?.(),
+                enqueueChat: this.runtime.getEnqueueChat?.(),
+                sendMessage: this.runtime.getSendMessage?.(),
+                sendToConversationRuntime: this.runtime.getSendToConversationRuntime?.(),
                 scheduleWakeup: cronDeps.scheduleWakeup,
                 cronTools: cronDeps.cronTools,
                 askUser: {

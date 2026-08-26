@@ -4,7 +4,7 @@
  *
  * The loader resolves the binary; this module narrows the loaded module to the
  * Notes exports and treats every unavailable state as fatal. Production Notes
- * search has no JavaScript fallback, including when `COC_NATIVE=0` is set.
+ * search has no JavaScript fallback.
  *
  * These shapes alias `native-bindings.ts`, generated from the `#[napi]` items
  * in `rust/napi/src/notes_index.rs`.
@@ -56,20 +56,11 @@ function isNotesIndexAddon(addon: unknown): addon is NativeNotesIndexAddon {
 /**
  * Load the required Notes content-index capability.
  *
- * Throws {@link NativeAddonLoadError} for a missing, unloadable, disabled, or
- * capability-stale binary. Unlike the quick-open file index, Notes content
- * search has no production JavaScript path, so `COC_NATIVE=0` is an actionable
- * startup error rather than an opt-out for this capability.
+ * Throws {@link NativeAddonLoadError} for a missing, unloadable, or
+ * capability-stale binary.
  */
 export function loadNativeNotesIndex(): NativeNotesIndexAddon {
     const addon = loadNativeAddon();
-    if (addon === null) {
-        throw new NativeAddonLoadError(
-            '@plusplusoneplusplus/coc-native: Notes content search requires the native Notes index, ' +
-                'but the addon is disabled by COC_NATIVE=0. Unset COC_NATIVE and provide a current ' +
-                'binary built with `npm run build:native -w packages/coc-native`.',
-        );
-    }
     if (isNotesIndexAddon(addon)) return addon;
     const { binaryPath } = nativeAddonStatus();
     throw new NativeAddonLoadError(
@@ -83,7 +74,7 @@ export function loadNativeNotesIndex(): NativeNotesIndexAddon {
  * Whether the Notes content index is usable, and why not when it is not.
  *
  * Never throws so startup diagnostics and health reporting can describe every
- * unusable state, including `COC_NATIVE=0` and a capability-stale binary.
+ * unusable state, including a capability-stale binary.
  */
 export function nativeNotesIndexStatus(): NativeAddonStatus {
     const status = nativeAddonStatus();

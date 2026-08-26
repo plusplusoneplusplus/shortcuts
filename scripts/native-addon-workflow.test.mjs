@@ -19,9 +19,10 @@ function jobBlock(workflow, name) {
     return lines.slice(start, end).join("\n");
 }
 
-// Production server composition requires the native Notes capability. Every
-// workflow job that boots it must wait for and download the platform addon;
-// COC_NATIVE=0 is valid only for consumers that explicitly support a fallback.
+// The addon is mandatory — production server composition requires the native
+// Notes capability, and repo listing and file search have no JavaScript lane.
+// Every workflow job that boots the server must wait for and download the
+// platform addon, and nothing may reintroduce a COC_NATIVE=0 opt-out.
 const BOOTS_THE_SERVER = ["coc-test", "e2e", "coc-serve-smoke", "docker-build-smoke"];
 
 test("every job that boots the coc server supplies the addon", () => {
@@ -29,7 +30,7 @@ test("every job that boots the coc server supplies the addon", () => {
         const job = jobBlock(ci, name);
         assert.match(job, /^    needs: \[coc-native\]$/m, `${name} must wait for the coc-native build`);
         assert.match(job, /name: coc-native-/, `${name} must download the coc-native artifact`);
-        assert.doesNotMatch(job, /COC_NATIVE[=:] ?'?0'?/, `${name} cannot disable required native Notes search`);
+        assert.doesNotMatch(job, /COC_NATIVE[=:] ?'?0'?/, `${name} cannot disable the addon — the COC_NATIVE=0 opt-out is gone`);
     }
 });
 

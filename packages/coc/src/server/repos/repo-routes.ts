@@ -4,13 +4,14 @@
  * Registers all /api/repos/* REST endpoints for browsing
  * registered workspace repositories.
  *
- * GET  /api/repos                      — list all repos
- * GET  /api/repos/:repoId/tree         — list directory entries
- * GET  /api/repos/:repoId/files        — list all files recursively
- * GET  /api/repos/:repoId/search       — fuzzy file-path search
- * GET  /api/repos/:repoId/blob         — read file content
- * PUT  /api/repos/:repoId/blob         — write file content
- * GET  /api/repos/:repoId/reveal       — reveal file/folder in OS file manager
+ * GET  /api/repos                        — list all repos
+ * GET  /api/repos/:repoId/tree           — list directory entries
+ * GET  /api/repos/:repoId/files          — list all files recursively
+ * GET  /api/repos/:repoId/search         — fuzzy file-path search
+ * GET  /api/repos/:repoId/search/content — full-text search across file contents
+ * GET  /api/repos/:repoId/blob           — read file content
+ * PUT  /api/repos/:repoId/blob           — write file content
+ * GET  /api/repos/:repoId/reveal         — reveal file/folder in OS file manager
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
@@ -21,6 +22,7 @@ import * as child_process from 'child_process';
 import type { Route } from '../types';
 import { sendJson, send400, send404, send500, readJsonBody } from '../router';
 import { RepoTreeService } from './tree-service';
+import { CONTENT_SEARCH_MAX_RESULTS } from './types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
@@ -59,6 +61,31 @@ function parseRepoRequest(
     }
 
     return { repoId, path: resolvedPath };
+}
+
+type Query = url.UrlWithParsedQuery['query'];
+
+/** A `'true'`/`'false'` query flag. Anything but `'true'` is false. */
+function boolParam(query: Query, name: string): boolean {
+    return query[name] === 'true';
+}
+
+/**
+ * A repeatable glob parameter.
+ *
+ * Accepted both repeated (`include=a&include=b`) and comma-joined
+ * (`include=a,b`) because `buildQueryString` in coc-client serializes arrays
+ * the second way — a glob containing a literal comma is not supportable and
+ * not worth the ambiguity.
+ */
+function globParam(query: Query, name: string): string[] | undefined {
+    const raw = query[name];
+    if (raw === undefined) return undefined;
+    const values = (Array.isArray(raw) ? raw : [raw])
+        .flatMap(value => value.split(','))
+        .map(value => value.trim())
+        .filter(value => value.length > 0);
+    return values.length > 0 ? values : undefined;
 }
 
 // ============================================================================
@@ -191,6 +218,63 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                 sendJson(res, result);
             } catch (err) {
                 send500(res, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    // -- Search file contents -------------------------------------------------
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/repos\/([^/]+)\/search\/content$/,
+        handler: async (req, res, match) => {
+            try {
+                const parsedUrl = url.parse(req.url ?? '', true);
+                const parsed = parseRepoRequest(res, match, parsedUrl.query, {
+                    pathRequired: false,
+                    pathDefault: '.',
+                });
+                if (!parsed) return;
+
+                const q = typeof parsedUrl.query.q === 'string' ? parsedUrl.query.q : '';
+                if (!q) {
+                    send400(res, 'Missing required query parameter: q');
+                    return;
+                }
+
+                const repoRoot = await svc.resolveRepoRoot(parsed.repoId);
+                if (!repoRoot) {
+                    send404(res, `Unknown repo: ${parsed.repoId}`);
+                    return;
+                }
+
+                const rawLimit = parseInt(String(parsedUrl.query.limit ?? CONTENT_SEARCH_MAX_RESULTS), 10);
+                const limit = isNaN(rawLimit)
+                    ? CONTENT_SEARCH_MAX_RESULTS
+                    : Math.min(Math.max(rawLimit, 1), CONTENT_SEARCH_MAX_RESULTS);
+
+                const result = await svc.searchContent(parsed.repoId, q, {
+                    path: parsed.path,
+                    caseSensitive: boolParam(parsedUrl.query, 'caseSensitive'),
+                    wholeWord: boolParam(parsedUrl.query, 'wholeWord'),
+                    regex: boolParam(parsedUrl.query, 'regex'),
+                    showIgnored: boolParam(parsedUrl.query, 'showIgnored'),
+                    include: globParam(parsedUrl.query, 'include'),
+                    exclude: globParam(parsedUrl.query, 'exclude'),
+                    limit,
+                });
+                sendJson(res, result);
+            } catch (err) {
+                const message = err instanceof Error ? err.message : String(err);
+                // The addon reports a bad regex or an escaping path as
+                // InvalidArg — the caller's mistake, not a server failure.
+                if ((err as { code?: unknown } | null)?.code === 'InvalidArg') {
+                    send400(res, message);
+                } else if (/not found/i.test(message)) {
+                    send404(res, message);
+                } else {
+                    send500(res, message);
+                }
             }
         },
     });

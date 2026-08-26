@@ -62,16 +62,54 @@ effect. Do not reintroduce a tracked flag or swallow the fetch rejection.
 
 ## Quick Open file search
 
-`explorer/QuickOpen.tsx` fetches the repo path list once per dialog open
-(`explorerApi.listFiles`) and fuzzy-matches in the browser, so keystrokes cost no
-round-trip and need no debounce. Scoring lives in `server/shared/fuzzy-file-score.ts`,
-shared with the `/api/repos/:repoId/search` endpoint so both rank identically —
-edit the shared module, not a local copy. Results stay rendered while the query
+`explorer/QuickOpen.tsx` debounces keystrokes and asks
+`/api/repos/:repoId/search` per query, then highlights using the `indices` the
+server returned rather than re-deriving the match locally. Ranking happens in the
+Rust scorer only; `server/shared/fuzzy-file-score.ts` is its reference
+implementation, not a second runtime path. Results stay rendered while the query
 changes; only the first load shows `Loading files…`.
 
 `ExactOpen.tsx` and `ExplorerPanel.tsx` still call `/search` per query. That endpoint
 is backed by a cached repo listing (`RepoTreeService.invalidateFileListCache`), so
 its cost is a fuzzy scan, not a repo walk.
+
+## Explorer content search
+
+The Explorer sidebar has two views, not two modes: `ExplorerPanel.tsx` renders
+either the tree (Breadcrumbs + filter `SearchBar` + `FileTree`) or
+`ContentSearchPanel.tsx`, and each one's state outlives the other being shown.
+That is why the search view's state lives in `explorerStateStore` rather than in
+component state — query, toggles and the chosen view are persisted per workspace
+in localStorage; the *results* are held in a module-level in-memory map in the
+same file, because a 500-match payload does not belong in localStorage and a
+reload should re-run the query rather than replay a stale answer.
+
+`ContentSearchPanel` calls `explorerApi.searchContent` →
+`GET /api/repos/:repoId/search/content`. Two rules drive its request effect: a
+typed change waits `SEARCH_DEBOUNCE_MS` (250 ms) of quiet, while a toggle change
+re-runs the query it already has with no delay — the toggle *is* the intent and
+no keystroke is coming. Every request carries an `AbortSignal` plus a monotonic
+run id, and a response is dropped unless its run id is still the newest; without
+that guard a slow early answer paints over a fast later one. The search is scoped
+to the directory selected in the tree via `resolveSearchScope`, which walks up to
+the parent when the selection is a file.
+
+The server owns every default and every cap — the panel sends only what the user
+chose. A 400 is the route's answer for an unparseable pattern and carries the
+engine's own message, so it renders inline against the query box
+(`content-search-regex-error`); anything else is generic and retryable. Zero
+matches is the `empty` state, never an error.
+
+Clicking a match sets `previewFile` with a `line`, which threads through
+`PreviewPane` → `MonacoFileEditor.revealLine` → `revealEditorLine`. Monaco is
+revealed both on mount and from an effect keyed on `[revealLine, value]`, because
+the content arrives after the editor does and a second hit in an already-open
+file has no mount to piggyback on.
+
+`SearchBar.tsx` is shared by both views. Its `data-testid`s derive from a
+`testIdPrefix` (`<prefix>-bar` / `-input` / `-clear` / `-toggle-<id>`) whose
+default reproduces the file-filter bar's long-standing ids — do not hardcode them
+again.
 
 ## Tests
 
@@ -82,6 +120,14 @@ end to end against the real tree cache (`--environment jsdom`);
 `QuickOpen.behavior.test.tsx` asserts the one-fetch-per-open contract against a
 mocked `explorerApi` (`--environment jsdom`; stub `Element.prototype.scrollIntoView`,
 which jsdom does not implement). `QuickOpen.test.ts` is a source-mirror test.
+
+`ContentSearchPanel.test.tsx` drives the search view against a mocked
+`explorerApi` under fake timers — every UX state, the debounce, the
+toggle-re-runs-immediately rule, and the stale-response-discard guard.
+`ContentSearchResults.test.tsx` covers grouping and UTF-16 highlighting;
+`ExplorerPanel.contentsearch.test.tsx` covers the view switch and click-to-open-
+at-line. `ExplorerPanel.persist.test.ts` is a source-mirror test over
+`ExplorerPanel.tsx` imports — update it alongside edits to that import block.
 
 `test/spa/react/repos/RepoTabStrip*.test.tsx` cover the component (tabs, overflow,
 agent highlight, queue indicators). `repoTabModel.test.ts`,

@@ -16,6 +16,23 @@ export interface MonacoFileEditorProps {
     onSave?: () => void;
     /** When true the editor is non-editable and the save keybinding is suppressed. */
     readOnly?: boolean;
+    /**
+     * One-based line to scroll into view and select once the editor is ready.
+     * Applied on mount and whenever it changes, so opening a second search hit in
+     * the same file jumps to the new line.
+     */
+    revealLine?: number;
+}
+
+/** Scroll `line` (one-based) into the centre of the viewport and select it. */
+export function revealEditorLine(
+    editor: Pick<monacoEditor.IStandaloneCodeEditor, 'revealLineInCenter' | 'setPosition' | 'setSelection'>,
+    line: number,
+): void {
+    if (!Number.isFinite(line) || line < 1) return;
+    editor.revealLineInCenter(line);
+    editor.setPosition({ lineNumber: line, column: 1 });
+    editor.setSelection({ startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: 1 });
 }
 
 /** Map file extensions to Monaco language IDs. */
@@ -114,7 +131,7 @@ export const EXPLORER_EDITOR_OPTIONS: monacoEditor.IStandaloneEditorConstruction
     },
 };
 
-export function MonacoFileEditor({ value, language, onChange, onSave, readOnly }: MonacoFileEditorProps) {
+export function MonacoFileEditor({ value, language, onChange, onSave, readOnly, revealLine }: MonacoFileEditorProps) {
     const { theme } = useTheme();
     const editorRef = useRef<monacoEditor.IStandaloneCodeEditor | null>(null);
     const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -143,6 +160,8 @@ export function MonacoFileEditor({ value, language, onChange, onSave, readOnly }
     const handleMount: OnMount = useCallback((editor, monaco) => {
         editorRef.current = editor;
 
+        if (revealLine !== undefined) revealEditorLine(editor, revealLine);
+
         if (onSave && !readOnly) {
             editor.addAction({
                 id: 'file-save',
@@ -151,7 +170,17 @@ export function MonacoFileEditor({ value, language, onChange, onSave, readOnly }
                 run: () => onSave(),
             });
         }
-    }, [onSave, readOnly]);
+    }, [onSave, readOnly, revealLine]);
+
+    // A later reveal (a second search hit in the same already-open file) has no
+    // mount to piggyback on, so apply it here too. `value` is a dependency
+    // because the content arrives after the editor does: revealing a line before
+    // the model is populated would clamp to the end of an empty buffer.
+    useEffect(() => {
+        const editor = editorRef.current;
+        if (!editor || revealLine === undefined) return;
+        revealEditorLine(editor, revealLine);
+    }, [revealLine, value]);
 
     const handleChange = useCallback((newValue: string | undefined) => {
         onChange(newValue ?? '');

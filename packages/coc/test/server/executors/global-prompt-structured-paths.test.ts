@@ -23,20 +23,21 @@ import { GLOBAL_SYSTEM_PROMPT_TAG } from '../../../src/server/executors/system-m
 import type { ChatModeExecutorOptions } from '../../../src/server/executors/chat-base-executor';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
+import { nestRuntime, type FlatExecutorOptions } from './runtime-options-helper';
 
 const GLOBAL_PROMPT = 'Always answer in pirate dialect.';
 
 const sdkMocks = createMockSDKService();
 
-function makeOptions(overrides?: Partial<ChatModeExecutorOptions>): ChatModeExecutorOptions {
-    return {
+function makeOptions(overrides?: FlatExecutorOptions): ChatModeExecutorOptions {
+    return nestRuntime({
         aiService: sdkMocks.service as any,
         defaultTimeoutMs: 30_000,
         followUpSuggestions: { enabled: false, count: 3 },
         resolveSkillConfig: async () => ({ skillDirectories: undefined, disabledSkills: undefined }),
         resolveWorkspaceIdForPath: async () => 'ws-id',
         ...overrides,
-    };
+    }) as ChatModeExecutorOptions;
 }
 
 function makeTask(type: string, id: string, payload: Record<string, unknown>): QueuedTask {

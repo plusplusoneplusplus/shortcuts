@@ -61,27 +61,7 @@ pub fn walk(root: &Path, options: &WalkOptions) -> io::Result<(Vec<String>, bool
     // Collect one past the cap so `truncated` can be decided exactly.
     let stop_at = options.max_entries.map(|m| m.saturating_add(1));
 
-    let mut builder = WalkBuilder::new(root);
-    builder
-        // `.hidden(false)` means "do not skip hidden entries" — matches `--hidden`.
-        .hidden(false)
-        // The JS walk stats symlinks and follows symlinked directories; the
-        // `ignore` crate detects cycles while doing the same.
-        .follow_links(true)
-        .threads(thread_count())
-        .git_ignore(!options.include_ignored)
-        .git_global(!options.include_ignored)
-        .git_exclude(!options.include_ignored)
-        .ignore(!options.include_ignored)
-        .parents(!options.include_ignored);
-
-    // `.git` is never a useful quick-open target and walking the object database
-    // is the most expensive part of the walk, so skip it unconditionally. Note
-    // this deliberately differs from `rg --no-ignore`, which does descend into
-    // `.git`; the TS walk and the rg fallback apply the same exclusion.
-    builder.filter_entry(|entry| {
-        !(entry.file_name() == ".git" && entry.file_type().is_some_and(|t| t.is_dir()))
-    });
+    let builder = walk_builder(root, options.include_ignored);
 
     let root = root.to_path_buf();
     builder.build_parallel().run(|| {
@@ -127,9 +107,39 @@ pub fn walk(root: &Path, options: &WalkOptions) -> io::Result<(Vec<String>, bool
     Ok((files, truncated))
 }
 
+/// The `WalkBuilder` every native walk of a repository root starts from.
+///
+/// Shared so that content search scans exactly the file set the tree and path
+/// search already show — one definition of "the repo's files", not two that
+/// drift. Callers add their own sinks, overrides, and caps on top.
+pub fn walk_builder(root: &Path, include_ignored: bool) -> WalkBuilder {
+    let mut builder = WalkBuilder::new(root);
+    builder
+        // `.hidden(false)` means "do not skip hidden entries" — matches `--hidden`.
+        .hidden(false)
+        // The JS walk stats symlinks and follows symlinked directories; the
+        // `ignore` crate detects cycles while doing the same.
+        .follow_links(true)
+        .threads(thread_count())
+        .git_ignore(!include_ignored)
+        .git_global(!include_ignored)
+        .git_exclude(!include_ignored)
+        .ignore(!include_ignored)
+        .parents(!include_ignored);
+
+    // `.git` is never a useful quick-open or search target and walking the
+    // object database is the most expensive part of the walk, so skip it
+    // unconditionally. Note this deliberately differs from `rg --no-ignore`,
+    // which does descend into `.git`.
+    builder.filter_entry(|entry| {
+        !(entry.file_name() == ".git" && entry.file_type().is_some_and(|t| t.is_dir()))
+    });
+    builder
+}
+
 /// Repo-relative path as the rest of the stack expects it: `/`-separated,
 /// regardless of the host platform's separator.
-fn to_posix(path: &Path) -> String {
+pub(crate) fn to_posix(path: &Path) -> String {
     let raw = path.to_string_lossy();
     if std::path::MAIN_SEPARATOR == '/' {
         raw.into_owned()

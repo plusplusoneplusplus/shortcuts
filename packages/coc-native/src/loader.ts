@@ -11,15 +11,10 @@
  *   3. a CI/release binary in `prebuilt/<triple>/`.
  *   4. nothing — which is a fatal {@link NativeAddonLoadError}.
  *
- * The addon is required, not optional: a binary that is missing or will not
- * load is a packaging or build failure, and failing loudly at startup beats
- * silently serving a slower, subtly different implementation for the life of
- * the process.
- *
- * The one exception is `COC_NATIVE=0`, which is an operator deliberately
- * turning the addon off rather than a failure to load it. That returns `null`
- * so capabilities with a JavaScript path can opt out. Native-only capabilities
- * such as Notes content search reject that state.
+ * The addon is required, not optional, and there is no way to turn it off: a
+ * binary that is missing or will not load is a packaging or build failure, and
+ * failing loudly at first use beats silently serving a slower, subtly
+ * different implementation for the life of the process.
  */
 
 import * as fs from 'fs';
@@ -86,10 +81,7 @@ function remedy(triple: string): string {
     const platformNote = released
         ? 'A prebuilt binary is published for this platform, so this is a packaging or install problem.'
         : `No prebuilt binary is published for ${triple} — the released triples are ${RELEASED_TRIPLES.join(', ')}.`;
-    return (
-        `${platformNote}\n${build}. COC_NATIVE=0 is valid only for consumers whose capabilities ` +
-        'have a JavaScript fallback; production Notes content search still requires the addon.'
-    );
+    return `${platformNote}\n${build}.`;
 }
 
 /** A load failure phrased for whoever has to fix it. */
@@ -112,21 +104,18 @@ function failure(
     };
 }
 
-interface Resolution {
-    addon: NativeAddon | null;
-    status: NativeAddonStatus;
-    /** Set when loading failed; thrown by {@link loadNativeAddon}. */
-    error?: NativeAddonLoadError;
-}
+/**
+ * A resolved addon, or a recorded failure. The two are exclusive: every path
+ * that leaves `addon` null carries the error {@link loadNativeAddon} throws.
+ */
+type Resolution =
+    | { addon: NativeAddon; status: NativeAddonStatus; error?: undefined }
+    | { addon: null; status: NativeAddonStatus; error: NativeAddonLoadError };
 
 let cached: Resolution | undefined;
 
 /** Resolve the addon. Records failures rather than throwing, so status works. */
 function resolveAddon(): Resolution {
-    if (process.env.COC_NATIVE === '0') {
-        return { addon: null, status: { loaded: false, reason: 'disabled by COC_NATIVE=0' } };
-    }
-
     const override = process.env.COC_NATIVE_PATH;
     const candidates = override ? [override] : nativeBinaryCandidates();
 
@@ -150,11 +139,11 @@ function resolveAddon(): Resolution {
 /**
  * The loaded addon.
  *
- * Throws {@link NativeAddonLoadError} when no binary could be loaded. Returns
- * `null` only for `COC_NATIVE=0`, the deliberate opt-out. Cached, so the
- * failure is raised identically on every call.
+ * Throws {@link NativeAddonLoadError} when no binary could be loaded — there is
+ * no opt-out and no `null` return. Cached, so the failure is raised identically
+ * on every call.
  */
-export function loadNativeAddon(): NativeAddon | null {
+export function loadNativeAddon(): NativeAddon {
     cached ??= resolveAddon();
     if (cached.error) throw cached.error;
     return cached.addon;
@@ -165,8 +154,8 @@ export function loadNativeAddon(): NativeAddon | null {
  *
  * Never throws — this is the introspection path behind `/api/health`, which has
  * to be able to report a failed load rather than become one. `loaded: false`
- * means the addon is unavailable for any reason: deliberately disabled, or a
- * load failure that {@link loadNativeAddon} would throw for. Cached.
+ * means the addon is unavailable — a load failure that
+ * {@link loadNativeAddon} would throw for. Cached.
  */
 export function nativeAddonStatus(): NativeAddonStatus {
     cached ??= resolveAddon();

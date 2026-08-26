@@ -22,6 +22,7 @@ import type { ExecutionServerOptions, ExecutionServer, ServerCloseOptions } from
 import type { Route } from './types';
 import {
     loadNativeNotesIndex,
+    nativeContentSearchStatus,
     nativeFileIndexStatus,
     nativeNotesIndexStatus,
 } from '@plusplusoneplusplus/coc-native';
@@ -856,21 +857,27 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     }
 
     await new Promise<void>((resolve, reject) => { server.on('error', reject); server.listen(port, host, resolve); });
-    // Say which native search capabilities are active. File search can use its
-    // JavaScript fallback; Notes search is required and was validated before
-    // composition, but reporting it separately exposes stale packaging.
+    // Say which native search capabilities are active. All are required and
+    // were validated before composition; reporting them separately is what
+    // exposes stale packaging.
     {
         const nativeFileIndex = nativeFileIndexStatus();
         const nativeNotesIndex = nativeNotesIndexStatus();
+        const nativeContentSearch = nativeContentSearchStatus();
         process.stderr.write(
             nativeFileIndex.loaded
                 ? `native file index: loaded (${nativeFileIndex.binaryPath})\n`
-                : `native file index: unavailable, using JavaScript fallback (${nativeFileIndex.reason})\n`,
+                : `native file index: unavailable (${nativeFileIndex.reason})\n`,
         );
         process.stderr.write(
             nativeNotesIndex.loaded
                 ? `native Notes index: loaded (${nativeNotesIndex.binaryPath})\n`
                 : `native Notes index: unavailable (${nativeNotesIndex.reason})\n`,
+        );
+        process.stderr.write(
+            nativeContentSearch.loaded
+                ? `native content search: loaded (${nativeContentSearch.binaryPath})\n`
+                : `native content search: unavailable (${nativeContentSearch.reason})\n`,
         );
     }
     try {
@@ -1018,6 +1025,15 @@ export { CLITaskExecutor, createQueueExecutorBridge, defaultIsExclusive, DEFAULT
 export type { QueueExecutorBridgeOptions, QueueExecutorBridge } from './queue/queue-executor-bridge';
 export { ExecutorRegistry } from './executors/executor-registry';
 export type { ExecutorRegistryOptions } from './executors/executor-registry';
+export { EMPTY_EXECUTOR_RUNTIME } from './executors/executor-runtime-contracts';
+export type {
+    ChatExecutorRuntime,
+    CronInfraDeps,
+    DreamRuntime,
+    ExecutorRuntimeCapabilities,
+    LifecycleRuntime,
+    TriggerInfraDeps,
+} from './executors/executor-runtime-contracts';
 export type { ITaskExecutor } from './executors/executor-types';
 export { MultiRepoQueueRouter } from './queue/multi-repo-queue-router';
 export { SqliteQueuePersistence } from './queue/sqlite-queue-persistence';

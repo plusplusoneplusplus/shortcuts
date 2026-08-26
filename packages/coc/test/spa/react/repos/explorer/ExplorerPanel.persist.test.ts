@@ -22,9 +22,11 @@ describe('ExplorerPanel — persisted per-workspace state (source)', () => {
     });
 
     it('imports the per-workspace explorer state hooks', () => {
-        expect(source).toContain(
-            "import { useExplorerExpandedPaths, useExplorerSelectedPath, useExplorerPreviewFile } from './explorerStateStore'",
-        );
+        // Matched loosely so adding a hook to this import (e.g. useExplorerView)
+        // does not red this assertion; the three below are what must be there.
+        for (const hook of ['useExplorerExpandedPaths', 'useExplorerSelectedPath', 'useExplorerPreviewFile']) {
+            expect(source).toMatch(new RegExp(`import \\{[^}]*\\b${hook}\\b[^}]*\\} from './explorerStateStore'`));
+        }
     });
 
     it('backs selectedPath with the persisted store hook', () => {

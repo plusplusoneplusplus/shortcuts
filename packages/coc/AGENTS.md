@@ -31,25 +31,40 @@ all have their own `references/*.md`.
 
 ## Local Invariants
 
-- **File search has two interchangeable backends.** `RepoTreeService` uses the
-  Rust index from `@plusplusoneplusplus/coc-native` when a binary is available
-  for the platform, and its ripgrep/directory-walk path otherwise; the choice is
-  the `nativeFileIndex` constructor option (`null` forces the fallback) and
-  `/api/health` plus a startup log line report which one is live; the same
-  diagnostics report the required native Notes index separately. Both paths
-  must produce identical responses —
-  `test/server/repo-tree-service-native.test.ts` runs the behavioural tests
-  twice and compares, and `test/server/repo-tree-service.test.ts` pins the
-  fallback path by passing `nativeFileIndex: null` everywhere. The shared scorer
-  in `src/server/shared/fuzzy-file-score.ts` is the reference implementation the
-  Rust port must match; see
+- **File search has exactly one backend.** `RepoTreeService` answers whole-repo
+  listings and `/search` from the Rust index in `@plusplusoneplusplus/coc-native`,
+  and there is no JavaScript path behind it: a missing or unloadable binary
+  throws out of the constructor. The `nativeFileIndex` constructor option exists
+  so tests can inject a stub, not so callers can ask for a different
+  implementation. `/api/health` and a startup log line report the file index and
+  the Notes index separately, so a stale binary is visible. `walkFiles` still
+  serves per-directory listings. `src/server/shared/fuzzy-file-score.ts` no
+  longer ranks anything — it is the readable reference the Rust port must match,
+  pinned by `packages/coc-native/test/parity.test.ts`; see
   [packages/coc-native/AGENTS.md](../coc-native/AGENTS.md) before changing
-  either. `searchFiles` is uncapped under the native path (the list never leaves
-  the process); `fileListMaxEntries` bounds only the `/files` response payload.
+  either. `searchFiles` is uncapped (the path list never leaves the process);
+  `fileListMaxEntries` bounds only the `/files` response payload.
 - **QuickOpen searches on the server.** The `Ctrl+P` dialog fetches nothing on
   open, debounces keystrokes, and highlights using the `indices` the server's
   scorer returned — never by re-deriving the match in the browser, which used to
   let highlight and ranking disagree.
+- **Late-bound executor capabilities live in exactly one contract.** Cron, the
+  WebSocket server, MCP OAuth, `send_to_conversation`, the Dreams runner, the
+  global system prompt, provider routing, and the turn-performance store are
+  created after the executor graph, so they are declared as getters in
+  `src/server/executors/executor-runtime-contracts.ts` and travel as ONE
+  `ExecutorRuntimeCapabilities` object, by identity, from
+  `createQueueInfrastructure` → `CLITaskExecutorOptions.runtime` →
+  `ExecutorRegistryOptions.runtime` → `ChatModeExecutorOptions.runtime`. Never
+  re-declare a capability on a layer's own option interface, never forward it
+  field by field, and never import a capability type from a concrete executor —
+  each of those reintroduces the silent-omission bug where a feature looks
+  configured at startup but is unavailable at execution time. Static config
+  (timeouts, `dataDir`, provider default, feature toggles) stays on each layer's
+  own option bag; consumers get narrow `Pick` views
+  (`ChatExecutorRuntime`/`LifecycleRuntime`/`DreamRuntime`) so tools do not leak
+  into background executors. `test/server/executors/executor-runtime-wiring.test.ts`
+  is table-driven over every capability and fails if a hop is dropped.
 - **Server Vitest tests** live under `packages/coc/test/server/`. Any
   server change should add or update tests there.
 - **Docker image contract tests** live under `packages/coc/test/docker/`

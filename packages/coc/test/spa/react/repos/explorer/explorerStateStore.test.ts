@@ -16,6 +16,15 @@ import {
     useExplorerExpandedPaths,
     useExplorerSelectedPath,
     useExplorerPreviewFile,
+    explorerViewStorageKey,
+    explorerContentQueryStorageKey,
+    explorerContentModesStorageKey,
+    useExplorerView,
+    useExplorerContentQuery,
+    useExplorerContentModes,
+    useExplorerContentResults,
+    clearExplorerContentResults,
+    IDLE_CONTENT_SEARCH_STATE,
 } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerStateStore';
 
 beforeEach(() => {
@@ -134,5 +143,154 @@ describe('useExplorerPreviewFile', () => {
         localStorage.setItem(explorerPreviewStorageKey('ws-1'), JSON.stringify({ path: 5 }));
         const { result } = renderHook(() => useExplorerPreviewFile('ws-1'));
         expect(result.current[0]).toBeNull();
+    });
+});
+
+
+// ---------------------------------------------------------------------------
+// AC-04 of repo-content-search: the Search view's own persisted state, plus the
+// deliberately in-memory result cache.
+// ---------------------------------------------------------------------------
+
+describe('useExplorerView', () => {
+    beforeEach(() => localStorage.clear());
+
+    it('defaults to the tree view', () => {
+        const { result } = renderHook(() => useExplorerView('ws-1'));
+        expect(result.current[0]).toBe('tree');
+    });
+
+    it('persists the chosen view per workspace', () => {
+        const { result } = renderHook(() => useExplorerView('ws-1'));
+        act(() => result.current[1]('search'));
+        expect(JSON.parse(localStorage.getItem(explorerViewStorageKey('ws-1'))!)).toBe('search');
+        expect(renderHook(() => useExplorerView('ws-2')).result.current[0]).toBe('tree');
+    });
+
+    it('falls back to the tree view for an unrecognised stored value', () => {
+        localStorage.setItem(explorerViewStorageKey('ws-1'), JSON.stringify('nonsense'));
+        expect(renderHook(() => useExplorerView('ws-1')).result.current[0]).toBe('tree');
+    });
+});
+
+describe('useExplorerContentQuery', () => {
+    beforeEach(() => localStorage.clear());
+
+    it('starts empty and persists what is typed', () => {
+        const { result } = renderHook(() => useExplorerContentQuery('ws-1'));
+        expect(result.current[0]).toBe('');
+        act(() => result.current[1]('needle'));
+        expect(JSON.parse(localStorage.getItem(explorerContentQueryStorageKey('ws-1'))!)).toBe('needle');
+    });
+
+    it('ignores a non-string stored value', () => {
+        localStorage.setItem(explorerContentQueryStorageKey('ws-1'), JSON.stringify(7));
+        expect(renderHook(() => useExplorerContentQuery('ws-1')).result.current[0]).toBe('');
+    });
+});
+
+describe('useExplorerContentModes', () => {
+    beforeEach(() => localStorage.clear());
+
+    it('defaults to case-insensitive, not whole-word, literal', () => {
+        const { result } = renderHook(() => useExplorerContentModes('ws-1'));
+        expect(result.current[0]).toEqual({ caseSensitive: false, wholeWord: false, regex: false });
+    });
+
+    it('returns a stable reference across renders so effects do not re-fire', () => {
+        const { result, rerender } = renderHook(() => useExplorerContentModes('ws-1'));
+        const first = result.current[0];
+        rerender();
+        expect(result.current[0]).toBe(first);
+
+        act(() => result.current[1](prev => ({ ...prev, regex: true })));
+        const afterWrite = result.current[0];
+        rerender();
+        expect(result.current[0]).toBe(afterWrite);
+    });
+
+    it('persists each toggle independently', () => {
+        const { result } = renderHook(() => useExplorerContentModes('ws-1'));
+        act(() => result.current[1](prev => ({ ...prev, wholeWord: true })));
+        expect(JSON.parse(localStorage.getItem(explorerContentModesStorageKey('ws-1'))!))
+            .toEqual({ caseSensitive: false, wholeWord: true, regex: false });
+    });
+
+    it('coerces a partial or malformed stored object to explicit booleans', () => {
+        localStorage.setItem(explorerContentModesStorageKey('ws-1'), JSON.stringify({ regex: 'yes' }));
+        expect(renderHook(() => useExplorerContentModes('ws-1')).result.current[0])
+            .toEqual({ caseSensitive: false, wholeWord: false, regex: false });
+    });
+});
+
+describe('useExplorerContentResults', () => {
+    beforeEach(() => {
+        localStorage.clear();
+        clearExplorerContentResults();
+    });
+
+    it('starts idle', () => {
+        expect(renderHook(() => useExplorerContentResults('ws-1')).result.current[0])
+            .toBe(IDLE_CONTENT_SEARCH_STATE);
+    });
+
+    it('shares results across two consumers of the same workspace', () => {
+        const a = renderHook(() => useExplorerContentResults('ws-1'));
+        const b = renderHook(() => useExplorerContentResults('ws-1'));
+        act(() => a.result.current[1]({ ...IDLE_CONTENT_SEARCH_STATE, status: 'empty', query: 'x' }));
+        expect(b.result.current[0].status).toBe('empty');
+    });
+
+    it('keeps workspaces independent', () => {
+        const a = renderHook(() => useExplorerContentResults('ws-1'));
+        const b = renderHook(() => useExplorerContentResults('ws-2'));
+        act(() => a.result.current[1]({ ...IDLE_CONTENT_SEARCH_STATE, status: 'empty' }));
+        expect(b.result.current[0].status).toBe('idle');
+    });
+
+    it('never touches localStorage — a 500-match payload has no business there', () => {
+        const { result } = renderHook(() => useExplorerContentResults('ws-1'));
+        act(() => result.current[1]({ ...IDLE_CONTENT_SEARCH_STATE, status: 'empty', query: 'needle' }));
+        expect(localStorage.length).toBe(0);
+    });
+
+    it('clearExplorerContentResults resets one workspace, or all of them', () => {
+        const a = renderHook(() => useExplorerContentResults('ws-1'));
+        const b = renderHook(() => useExplorerContentResults('ws-2'));
+        act(() => a.result.current[1]({ ...IDLE_CONTENT_SEARCH_STATE, status: 'empty' }));
+        act(() => b.result.current[1]({ ...IDLE_CONTENT_SEARCH_STATE, status: 'empty' }));
+
+        act(() => clearExplorerContentResults('ws-1'));
+        expect(a.result.current[0].status).toBe('idle');
+        expect(b.result.current[0].status).toBe('empty');
+
+        act(() => clearExplorerContentResults());
+        expect(b.result.current[0].status).toBe('idle');
+    });
+});
+
+describe('useExplorerPreviewFile — reveal line', () => {
+    beforeEach(() => localStorage.clear());
+
+    it('round-trips the line a content-search hit was opened at', () => {
+        const { result } = renderHook(() => useExplorerPreviewFile('ws-1'));
+        act(() => result.current[1]({ path: 'src/app.ts', name: 'app.ts', line: 17 }));
+        expect(renderHook(() => useExplorerPreviewFile('ws-1')).result.current[0])
+            .toEqual({ path: 'src/app.ts', name: 'app.ts', line: 17 });
+    });
+
+    it('omits the line for a file opened from the tree', () => {
+        localStorage.setItem(explorerPreviewStorageKey('ws-1'), JSON.stringify({ path: 'a.ts', name: 'a.ts' }));
+        expect(renderHook(() => useExplorerPreviewFile('ws-1')).result.current[0])
+            .toEqual({ path: 'a.ts', name: 'a.ts' });
+    });
+
+    it('drops a non-numeric stored line rather than passing it to Monaco', () => {
+        localStorage.setItem(
+            explorerPreviewStorageKey('ws-1'),
+            JSON.stringify({ path: 'a.ts', name: 'a.ts', line: 'seventeen' }),
+        );
+        expect(renderHook(() => useExplorerPreviewFile('ws-1')).result.current[0])
+            .toEqual({ path: 'a.ts', name: 'a.ts' });
     });
 });
