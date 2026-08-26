@@ -329,6 +329,23 @@ describe('SqliteTaskGroupStore', () => {
         });
     });
 
+    describe('findGroupAnywhere', () => {
+        it('locates a group without knowing its workspace, narrowed by type', () => {
+            store.upsertGroup(makeGroup({ workspaceId: 'ws-2', groupId: 'folder-1', type: 'chat-folder', title: 'Auth rewrite' }));
+            store.upsertGroup(makeGroup({ workspaceId: 'ws-1', groupId: 'run-9', type: 'for-each' }));
+
+            const found = store.findGroupAnywhere('folder-1', { type: 'chat-folder' });
+            expect(found).toBeDefined();
+            expect(found!.workspaceId).toBe('ws-2');
+            expect(found!.title).toBe('Auth rewrite');
+
+            // A run group must never surface through the chat-folder lens.
+            expect(store.findGroupAnywhere('run-9', { type: 'chat-folder' })).toBeUndefined();
+            expect(store.findGroupAnywhere('run-9')!.type).toBe('for-each');
+            expect(store.findGroupAnywhere('nope', { type: 'chat-folder' })).toBeUndefined();
+        });
+    });
+
     it('survives malformed extra JSON', () => {
         store.upsertGroup(makeGroup());
         db.prepare("UPDATE task_groups SET extra = 'not-json' WHERE group_id = 'run-1'").run();

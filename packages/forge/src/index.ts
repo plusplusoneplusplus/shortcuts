@@ -345,6 +345,7 @@ export {
     TaskGroupStatus,
     ListTaskGroupsOptions,
     TASK_GROUP_STATUSES,
+    CHAT_FOLDER_GROUP_TYPE,
     isTaskGroupStatus,
 } from './task-group-store';
 export { Database, initializeDatabase, SCHEMA_VERSION, getSchemaVersion } from './sqlite-schema';

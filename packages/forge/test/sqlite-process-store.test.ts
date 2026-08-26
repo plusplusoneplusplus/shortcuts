@@ -19,6 +19,8 @@ import {
     ProcessOutputEvent,
     WorkspaceInfo,
     WikiInfo,
+    SqliteTaskGroupStore,
+    CHAT_FOLDER_GROUP_TYPE,
 } from '../src/index';
 
 let tmpDir: string;
@@ -392,6 +394,36 @@ describe('SqliteProcessStore — getProcessSummaries', () => {
         const { entries, total } = await store.getProcessSummaries!();
         expect(total).toBe(5);
         expect(entries).toHaveLength(5);
+    });
+
+    it('stamps folderId from chat-folder membership and leaves other group types alone', async () => {
+        const groups = new SqliteTaskGroupStore(store.getDatabase());
+        const stamp = '2026-08-26T10:00:00.000Z';
+        groups.upsertGroup({
+            groupId: 'folder-1', workspaceId: 'ws-test', type: CHAT_FOLDER_GROUP_TYPE,
+            title: 'Auth rewrite', status: 'draft', createdAt: stamp, updatedAt: stamp,
+        });
+        groups.upsertGroup({
+            groupId: 'run-1', workspaceId: 'ws-test', type: 'for-each',
+            status: 'running', createdAt: stamp, updatedAt: stamp,
+        });
+
+        await store.addProcess(makeProcess('filed'));
+        await store.addProcess(makeProcess('unfiled'));
+        await store.addProcess(makeProcess('in-run'));
+        await store.addProcess(makeProcess('dangling'));
+
+        groups.linkChild('ws-test', 'folder-1', { role: 'member', processId: 'filed' });
+        groups.linkChild('ws-test', 'run-1', { role: 'item', processId: 'in-run' });
+        // A member row whose folder was deleted must not yield a phantom id.
+        groups.linkChild('ws-test', 'folder-gone', { role: 'member', processId: 'dangling' });
+
+        const { entries } = await store.getProcessSummaries!({ workspaceId: 'ws-test' });
+        const byId = new Map(entries.map(entry => [entry.id, entry]));
+        expect(byId.get('filed')!.folderId).toBe('folder-1');
+        expect(byId.get('unfiled')!.folderId).toBeUndefined();
+        expect(byId.get('in-run')!.folderId).toBeUndefined();
+        expect(byId.get('dangling')!.folderId).toBeUndefined();
     });
 
     it('entries contain index-like fields without full conversation', async () => {

@@ -42,6 +42,7 @@ import type { PendingMessage } from './ai/process-interfaces';
 import type { AIBackendType } from './ai/types';
 import type { TokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
 import { initializeDatabase } from './sqlite-schema';
+import { CHAT_FOLDER_GROUP_TYPE } from './task-group-store';
 import { getLogger } from './logger';
 import { computeMessagePreview } from './utils/message-preview';
 
@@ -972,7 +973,46 @@ export class SqliteProcessStore implements ProcessStore {
             });
         }
 
+        this.stampChatFolderIds(entries);
+
         return { entries, total };
+    }
+
+    /**
+     * Denormalize chat-folder membership onto index entries so list views need
+     * no join. Runs as one extra query over the page's ids (chunked to stay
+     * under SQLite's bound-parameter limit) rather than a join on the main
+     * query, whose WHERE clause uses unqualified column names.
+     *
+     * The join against `task_groups` means a member row whose folder was
+     * deleted resolves to nothing, so a dangling row never yields a phantom
+     * folder id.
+     */
+    private stampChatFolderIds(entries: ProcessIndexEntry[]): void {
+        if (entries.length === 0) return;
+
+        const CHUNK = 400;
+        const byProcess = new Map<string, string>();
+        for (let i = 0; i < entries.length; i += CHUNK) {
+            const chunk = entries.slice(i, i + CHUNK);
+            const placeholders = chunk.map(() => '?').join(', ');
+            const rows = this.db.prepare(`
+                SELECT m.process_id, m.group_id FROM task_group_members m
+                JOIN task_groups g
+                  ON g.workspace_id = m.workspace_id AND g.group_id = m.group_id
+                WHERE g.type = ? AND m.process_id IN (${placeholders})
+                ORDER BY m.linked_at ASC, m.id ASC
+            `).all(CHAT_FOLDER_GROUP_TYPE, ...chunk.map(entry => entry.id)) as Array<{ process_id: string; group_id: string }>;
+            for (const row of rows) {
+                // Ascending order plus overwrite means the most recent link wins.
+                byProcess.set(row.process_id, row.group_id);
+            }
+        }
+
+        for (const entry of entries) {
+            const folderId = byProcess.get(entry.id);
+            if (folderId !== undefined) entry.folderId = folderId;
+        }
     }
 
     async getProcessIds(filter?: ProcessFilter): Promise<string[]> {

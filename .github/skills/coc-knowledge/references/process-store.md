@@ -108,7 +108,21 @@ groupId, processId)` drops one process's links in a group, `findMembership(works
 processId, { type })` resolves a process to its group, and `listMembershipsByProcess(
 workspaceId, { type })` returns a `processId -> groupId` map in one query. Both lookups join
 `task_groups`, so a member row whose group is gone resolves to nothing. `removeGroup` deletes
-the group and its member rows in one transaction.
+the group and its member rows in one transaction. `findGroupAnywhere(groupId, { type })`
+locates a group without knowing its workspace, so a caller can tell "no such group" apart from
+"that group lives in another workspace".
+
+### Chat Folders
+
+User-created chat folders reuse the registry as `task_groups` rows of type `chat-folder`
+(`CHAT_FOLDER_GROUP_TYPE`), one `task_group_members` row per filed process, with `color` and
+`sortIndex` in the `extra` blob. They deliberately register no client task-group descriptor —
+a folder has no run lifecycle and must never render as a run header. `getProcessSummaries`
+stamps `folderId` onto each `ProcessIndexEntry` from a single membership query, so list views
+never join themselves. REST lives in `packages/coc/src/server/processes/chat-folder-handler.ts`
+under a dedicated `/chat-folders` namespace — generic task-group mutation is never exposed over
+HTTP, so a client cannot touch a live for-each run's group record. UI is gated by the
+`features.chatFolders` flag; the routes and schema are not.
 
 ## FileProcessStore
 

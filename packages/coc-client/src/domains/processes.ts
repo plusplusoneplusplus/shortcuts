@@ -1,5 +1,12 @@
 import type {
   AIProcess,
+  ChatFolderListResponse,
+  ChatFolderResponse,
+  CreateChatFolderRequest,
+  DeleteChatFolderResponse,
+  ProcessFolderBatchResponse,
+  ProcessFolderResponse,
+  UpdateChatFolderRequest,
   AskUserResponseRequest,
   AskUserResponseResponse,
   CompactResult,
@@ -197,6 +204,50 @@ export class ProcessesClient {
 
   pinnedTurns(processId: string): Promise<PinnedTurnsResponse> {
     return this.transport.request<PinnedTurnsResponse>(`/processes/${encodePathSegment(processId)}/turns/pinned`);
+  }
+
+  listChatFolders(workspaceId: string): Promise<ChatFolderListResponse> {
+    return this.transport.request<ChatFolderListResponse>(`/workspaces/${encodePathSegment(workspaceId)}/chat-folders`);
+  }
+
+  createChatFolder(workspaceId: string, body: CreateChatFolderRequest): Promise<ChatFolderResponse> {
+    return this.transport.request<ChatFolderResponse>(`/workspaces/${encodePathSegment(workspaceId)}/chat-folders`, {
+      method: 'POST',
+      body,
+    });
+  }
+
+  updateChatFolder(workspaceId: string, folderId: string, body: UpdateChatFolderRequest): Promise<ChatFolderResponse> {
+    return this.transport.request<ChatFolderResponse>(
+      `/workspaces/${encodePathSegment(workspaceId)}/chat-folders/${encodePathSegment(folderId)}`,
+      {
+        method: 'PATCH',
+        body,
+      },
+    );
+  }
+
+  deleteChatFolder(workspaceId: string, folderId: string): Promise<DeleteChatFolderResponse> {
+    return this.transport.request<DeleteChatFolderResponse>(
+      `/workspaces/${encodePathSegment(workspaceId)}/chat-folders/${encodePathSegment(folderId)}`,
+      { method: 'DELETE' },
+    );
+  }
+
+  /** File one process into a folder, or unfile it with `null`. */
+  setProcessFolder(processId: string, folderId: string | null): Promise<ProcessFolderResponse> {
+    return this.transport.request<ProcessFolderResponse>(`/processes/${encodePathSegment(processId)}/folder`, {
+      method: 'PATCH',
+      body: { folderId },
+    });
+  }
+
+  /** File a selection of processes into a folder, or unfile them with `null`. */
+  setProcessFolderBatch(ids: string[], folderId: string | null): Promise<ProcessFolderBatchResponse> {
+    return this.transport.request<ProcessFolderBatchResponse>('/processes/folder', {
+      method: 'POST',
+      body: { ids, folderId },
+    });
   }
 
   listGroupPins(workspaceId: string): Promise<ProcessGroupPinsResponse> {

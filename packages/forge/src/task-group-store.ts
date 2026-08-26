@@ -23,6 +23,13 @@ import type Database from 'better-sqlite3';
  */
 export type TaskGroupStatus = 'draft' | 'running' | 'completed' | 'failed' | 'cancelled';
 
+/**
+ * Group type for user-created chat folders. Folders reuse the task-group
+ * tables but carry no run lifecycle, so this type deliberately has no client
+ * task-group descriptor — it must never be rendered as a run header.
+ */
+export const CHAT_FOLDER_GROUP_TYPE = 'chat-folder';
+
 export const TASK_GROUP_STATUSES: readonly TaskGroupStatus[] = ['draft', 'running', 'completed', 'failed', 'cancelled'];
 
 export function isTaskGroupStatus(value: unknown): value is TaskGroupStatus {
@@ -236,6 +243,25 @@ export class SqliteTaskGroupStore {
 
         const children = this.getChildren(workspaceId, groupId);
         return { ...rowToRecord(row), childCount: children.length, children };
+    }
+
+    /**
+     * Locate a group by ID without knowing its workspace, optionally narrowed
+     * to a group type. Chat-folder membership is written against the process's
+     * own workspace, so a caller needs this to tell "no such folder" apart from
+     * "that folder lives in another workspace" — two different HTTP statuses.
+     */
+    findGroupAnywhere(groupId: string, options?: { type?: string }): TaskGroupRecord | undefined {
+        const clauses = ['group_id = @groupId'];
+        const params: Record<string, unknown> = { groupId };
+        if (options?.type !== undefined) {
+            clauses.push('type = @type');
+            params.type = options.type;
+        }
+        const row = this.db.prepare(
+            `SELECT * FROM task_groups WHERE ${clauses.join(' AND ')} ORDER BY created_at ASC LIMIT 1`,
+        ).get(params) as TaskGroupRow | undefined;
+        return row ? rowToRecord(row) : undefined;
     }
 
     listGroups(workspaceId: string, options?: ListTaskGroupsOptions): TaskGroupSummaryRecord[] {

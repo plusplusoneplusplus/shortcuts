@@ -688,6 +688,262 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  # ── Chat folders ────────────────────────────────────────────
+
+  /api/workspaces/{id}/chat-folders:
+    get:
+      tags: [chat-folders]
+      operationId: listChatFolders
+      summary: List a workspace's chat folders
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      responses:
+        '200':
+          description: Chat folders in manual order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [folders]
+                properties:
+                  folders:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ChatFolder'
+        '404':
+          description: Unknown workspace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags: [chat-folders]
+      operationId: createChatFolder
+      summary: Create a chat folder
+      description: >-
+        The new folder is created at the top of the list (sortIndex 0); every
+        existing folder shifts down one slot.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  maxLength: 60
+                color:
+                  $ref: '#/components/schemas/ChatFolderColor'
+      responses:
+        '200':
+          description: The created folder
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatFolderResponse'
+        '400':
+          description: Empty name, name over 60 characters, or unknown color
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Unknown workspace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/workspaces/{id}/chat-folders/{folderId}:
+    patch:
+      tags: [chat-folders]
+      operationId: updateChatFolder
+      summary: Rename, recolor, or reorder a chat folder
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - name: folderId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  maxLength: 60
+                color:
+                  $ref: '#/components/schemas/ChatFolderColor'
+                sortIndex:
+                  type: number
+      responses:
+        '200':
+          description: The updated folder
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatFolderResponse'
+        '400':
+          description: Invalid name, color, or sortIndex
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Unknown workspace or folder
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [chat-folders]
+      operationId: deleteChatFolder
+      summary: Delete a chat folder
+      description: >-
+        Deletes the folder and its membership rows in one transaction. No
+        conversations are deleted; its members simply become unfiled.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+        - name: folderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Folder deleted, with the process IDs that became unfiled
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted, unfiled]
+                properties:
+                  deleted:
+                    type: boolean
+                    enum: [true]
+                  unfiled:
+                    type: array
+                    items:
+                      type: string
+        '404':
+          description: Unknown workspace or folder
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/processes/{id}/folder:
+    patch:
+      tags: [chat-folders]
+      operationId: setProcessChatFolder
+      summary: File a process into a chat folder, or unfile it
+      description: >-
+        One folder per process — any prior membership is removed first. Pass
+        `folderId: null` to unfile.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [folderId]
+              properties:
+                folderId:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          description: The process's new folder
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, folderId]
+                properties:
+                  id:
+                    type: string
+                  folderId:
+                    type: string
+                    nullable: true
+        '400':
+          description: Invalid folderId, or the folder belongs to another workspace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Unknown process or folder
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/processes/folder:
+    post:
+      tags: [chat-folders]
+      operationId: setProcessChatFolderBatch
+      summary: File a selection of processes into a chat folder, or unfile them
+      description: >-
+        IDs that no longer exist are skipped and omitted from `updated`, so a
+        stale selection still moves the rows that do exist.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids, folderId]
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                folderId:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          description: The process IDs that were moved
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [updated, folderId]
+                properties:
+                  updated:
+                    type: array
+                    items:
+                      type: string
+                  folderId:
+                    type: string
+                    nullable: true
+        '400':
+          description: Invalid ids/folderId, or the folder belongs to another workspace
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Unknown folder
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/stats/token-usage:
     get:
       operationId: getTokenUsageStats
@@ -1520,6 +1776,41 @@ components:
         archived:
           type: boolean
           description: Whether the process is archived
+        folderId:
+          type: string
+          nullable: true
+          description: Chat folder this process is filed into (null/absent = unfiled)
+
+    ChatFolderColor:
+      type: string
+      enum: [purple, green, amber, blue, red, pink]
+
+    ChatFolder:
+      type: object
+      required: [id, name, color, sortIndex, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        color:
+          $ref: '#/components/schemas/ChatFolderColor'
+        sortIndex:
+          type: number
+          description: Manual order, ascending; ties break on createdAt descending
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ChatFolderResponse:
+      type: object
+      required: [folder]
+      properties:
+        folder:
+          $ref: '#/components/schemas/ChatFolder'
 
     PinResponse:
       type: object

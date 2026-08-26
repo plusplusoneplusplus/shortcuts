@@ -45,6 +45,36 @@ describe('ProcessesClient', () => {
     expect(adapter.calls[10].options).toMatchObject({ method: 'POST', query: { workspace: 'repo/a' }, body: {} });
   });
 
+  it('serializes chat-folder CRUD and membership requests', async () => {
+    const adapter = createMockAdapter({});
+    const client = new ProcessesClient(adapter, new CocClient({ fetch: (() => Promise.resolve(new Response('{}'))) as typeof fetch }).options);
+
+    await client.listChatFolders('repo/a');
+    await client.createChatFolder('repo/a', { name: 'Auth rewrite', color: 'purple' });
+    await client.updateChatFolder('repo/a', 'folder/1', { name: 'Auth', sortIndex: 2 });
+    await client.deleteChatFolder('repo/a', 'folder/1');
+    await client.setProcessFolder('proc/1', 'folder/1');
+    await client.setProcessFolder('proc/1', null);
+    await client.setProcessFolderBatch(['p1', 'p2'], 'folder/1');
+
+    expect(adapter.calls.map(c => c.path)).toEqual([
+      '/workspaces/repo%2Fa/chat-folders',
+      '/workspaces/repo%2Fa/chat-folders',
+      '/workspaces/repo%2Fa/chat-folders/folder%2F1',
+      '/workspaces/repo%2Fa/chat-folders/folder%2F1',
+      '/processes/proc%2F1/folder',
+      '/processes/proc%2F1/folder',
+      '/processes/folder',
+    ]);
+    expect(adapter.calls[0].options?.method ?? 'GET').toBe('GET');
+    expect(adapter.calls[1].options).toMatchObject({ method: 'POST', body: { name: 'Auth rewrite', color: 'purple' } });
+    expect(adapter.calls[2].options).toMatchObject({ method: 'PATCH', body: { name: 'Auth', sortIndex: 2 } });
+    expect(adapter.calls[3].options).toMatchObject({ method: 'DELETE' });
+    expect(adapter.calls[4].options).toMatchObject({ method: 'PATCH', body: { folderId: 'folder/1' } });
+    expect(adapter.calls[5].options).toMatchObject({ method: 'PATCH', body: { folderId: null } });
+    expect(adapter.calls[6].options).toMatchObject({ method: 'POST', body: { ids: ['p1', 'p2'], folderId: 'folder/1' } });
+  });
+
   it('encodes process IDs once in detail paths and stream URLs', async () => {
     const adapter = createMockAdapter({});
     const client = new ProcessesClient(adapter, new CocClient({
