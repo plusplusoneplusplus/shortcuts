@@ -147,7 +147,9 @@ off the process-summary index that `AppContext` already carries (AC-02 stamps it
 leaves its date bucket but keeps its Running/Queued row, where it gains a truncated
 folder-name chip. A folder whose members all fall outside the current tab's scope is hidden
 there, so the count badge always matches what expanding reveals; a folder that is empty
-everywhere still renders, dimmed at count 0. Only individual process rows are filable — a
+everywhere still renders, dimmed at count 0. Archived members do not count towards
+"empty everywhere", so a folder whose chats have all been archived stays on screen at
+count 0 instead of being hidden. Only individual process rows are filable — a
 for-each / map-reduce / ralph / spawned-tree group entry never resolves to a folder. Pinned
 wins over filed: a pinned row renders in Pinned and is excluded from its folder's count.
 
@@ -208,6 +210,18 @@ whose own text matched, so the search path reads its members from
 `groupEntriesByFolder`, with the type filter and pin/archive precedence still applied.
 Collapse state is read but never written on this path, so clearing the query restores exactly
 the prior expansion.
+
+**Archiving.** Archiving is a chat *preference* (`archivedChats` on the workspace
+preferences), not a process mutation, so a membership row is never touched: an archived chat
+keeps its folder, drops out of the folder's tab-filtered count, and comes straight back on
+unarchive. The folder ⋯ menu's **Archive all chats** batch-archives every member through the
+same `archiveChats` the row menu uses; `chat-folder-archive.ts` decides which members that
+is — already-archived rows are ignored and pinned rows are skipped, because pinning
+auto-unarchives a chat and archiving one would immediately undo itself. The item is disabled
+rather than hidden when nothing is left to archive. `ChatFolderArchiveDialog` names the count
+("Archive 12 chats?") and says the folder survives; afterwards `ChatFolderUndoToast` (reused
+with a `message` and a `testIdPrefix`) offers a one-click unarchive and reports the pinned
+skips. The folder itself is never deleted by this — it is a container you keep reusing.
 
 ### Row pin/archive routing
 

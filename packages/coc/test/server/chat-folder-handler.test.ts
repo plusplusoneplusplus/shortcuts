@@ -381,6 +381,54 @@ describe('Chat Folder REST API', () => {
         });
     });
 
+    // ── Archive interaction (AC-09) ────────────────────────────────────
+
+    describe('archive endpoints leave folder membership alone', () => {
+        it('keeps the membership row through archive and unarchive', async () => {
+            const folder = await createFolder('Auth rewrite');
+            await addProcess('p1');
+            await patchJSON(`${baseUrl}/api/processes/p1/folder`, { folderId: folder.id });
+
+            expect((await patchJSON(`${baseUrl}/api/processes/p1/archive`, { archived: true })).status).toBe(200);
+            expect(groups.getChildren(wsId, folder.id).map(c => c.processId)).toEqual(['p1']);
+            expect(groups.findMembership(wsId, 'p1', { type: CHAT_FOLDER_GROUP_TYPE })!.groupId).toBe(folder.id);
+
+            expect((await patchJSON(`${baseUrl}/api/processes/p1/archive`, { archived: false })).status).toBe(200);
+            expect(groups.findMembership(wsId, 'p1', { type: CHAT_FOLDER_GROUP_TYPE })!.groupId).toBe(folder.id);
+        });
+
+        it('keeps every membership row through a batch archive of a whole folder', async () => {
+            const folder = await createFolder('Auth rewrite');
+            await addProcess('p1');
+            await addProcess('p2');
+            await postJSON(`${baseUrl}/api/processes/folder`, { ids: ['p1', 'p2'], folderId: folder.id });
+
+            const res = await postJSON(`${baseUrl}/api/processes/archive`, { ids: ['p1', 'p2'] });
+            expect(res.status).toBe(200);
+            // The folder survives the archive-all, with both members still filed.
+            expect((await listFolders()).map(f => f.id)).toContain(folder.id);
+            expect(groups.getChildren(wsId, folder.id).map(c => c.processId).sort()).toEqual(['p1', 'p2']);
+
+            const { entries } = await store.getProcessSummaries!({ workspaceId: wsId });
+            const byId = new Map(entries.map(entry => [entry.id, entry]));
+            expect(byId.get('p1')!.folderId).toBe(folder.id);
+            expect(byId.get('p2')!.folderId).toBe(folder.id);
+
+            expect((await postJSON(`${baseUrl}/api/processes/unarchive`, { ids: ['p1', 'p2'] })).status).toBe(200);
+            expect(groups.getChildren(wsId, folder.id).map(c => c.processId).sort()).toEqual(['p1', 'p2']);
+        });
+
+        it('keeps the membership row when pinning auto-unarchives a filed chat', async () => {
+            const folder = await createFolder('Auth rewrite');
+            await addProcess('p1');
+            await patchJSON(`${baseUrl}/api/processes/p1/folder`, { folderId: folder.id });
+            await patchJSON(`${baseUrl}/api/processes/p1/archive`, { archived: true });
+
+            expect((await patchJSON(`${baseUrl}/api/processes/p1/pin`, { pinned: true })).status).toBe(200);
+            expect(groups.findMembership(wsId, 'p1', { type: CHAT_FOLDER_GROUP_TYPE })!.groupId).toBe(folder.id);
+        });
+    });
+
     // ── Batch move ─────────────────────────────────────────────────────
 
     describe('POST /api/processes/folder', () => {

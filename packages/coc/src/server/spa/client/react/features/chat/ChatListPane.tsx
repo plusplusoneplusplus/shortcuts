@@ -50,11 +50,14 @@ import { getListModeConfig } from './list-mode-config';
 import { useChatFoldersEnabled } from '../../hooks/feature-flags/useChatFoldersEnabled';
 import { useChatFolders } from './hooks/useChatFolders';
 import { ChatFolderSection, ChatFolderChip } from './ChatFolderSection';
+import { ChatFolderArchiveDialog } from './ChatFolderArchiveDialog';
 import { ChatFolderDeleteDialog } from './ChatFolderDeleteDialog';
 import { ChatFolderUndoToast } from './ChatFolderUndoToast';
 import { folderNameExists } from './chat-folder-mutations';
 import { useChatFolderMutations } from './hooks/useChatFolderMutations';
 import { useChatFolderAssignment } from './hooks/useChatFolderAssignment';
+import { useChatFolderArchive } from './hooks/useChatFolderArchive';
+import { buildArchiveUndoMessage, canArchiveFolder } from './chat-folder-archive';
 import {
     anySelectionFiled,
     buildMoveToFolderLabel,
@@ -1147,6 +1150,10 @@ export function ChatListPane({
     const { cronStateByProcess, processIdsWithCrons, cronProcessCount } = useAllCrons();
     const cronEnabled = isCronEnabled();
 
+    // Pin / archive state. Read before the folder block below, which needs the
+    // archived set to keep an all-archived folder on screen at count 0 (AC-09).
+    const { pinnedChatIds, archivedChatIds, pinChat: onPinChat, unpinChat: onUnpinChat, archiveChat: onArchiveChat, unarchiveChat: onUnarchiveChat, archiveChats: onArchiveChats, unarchiveChats: onUnarchiveChats } = useChatPrefs();
+
     // ── Chat folders (AC-04) ───────────────────────────────────────────────
     // Flag-gated end to end: with `features.chatFolders` off the fetch never
     // runs, the maps stay empty, and every derivation below degrades to the
@@ -1164,7 +1171,13 @@ export function ChatListPane({
         () => (chatFoldersEnabled ? buildFolderIdByProcess(appState.processes) : new Map<string, string>()),
         [chatFoldersEnabled, appState.processes],
     );
-    const folderMemberCounts = useMemo(() => buildFolderMemberCounts(folderIdByProcess), [folderIdByProcess]);
+    // Archived members are excluded so a folder whose chats are all archived
+    // reads as "empty everywhere" and stays on screen at count 0, rather than
+    // as "has members, none on this tab" — which would hide it (AC-09).
+    const folderMemberCounts = useMemo(
+        () => buildFolderMemberCounts(folderIdByProcess, archivedChatIds),
+        [folderIdByProcess, archivedChatIds],
+    );
     const foldersById = useMemo(() => new Map(chatFolders.map(f => [f.id, f])), [chatFolders]);
     const [collapsedFolderIds, setCollapsedFolderIds] = useState<Set<string>>(() => loadCollapsedChatFolderIds(workspaceId));
     // Re-seed when the workspace changes; collapse state is per-workspace, like
@@ -1202,6 +1215,17 @@ export function ChatListPane({
         // pointing every restored row at the folder that no longer exists.
         onProcessFoldersChanged: handleProcessFoldersChanged,
         onError: handleFolderError,
+    });
+
+    // ── Folder archive (AC-09) ─────────────────────────────────────────────
+    // Archiving is a chat preference, so membership rows are untouched and an
+    // unarchived chat comes back to the folder it never left.
+    const chatFolderArchive = useChatFolderArchive({
+        folderIdByProcess,
+        pinnedChatIds,
+        archivedChatIds,
+        archiveChats: onArchiveChats,
+        unarchiveChats: onUnarchiveChats,
     });
 
     // ── Folder assignment (AC-06) ──────────────────────────────────────────
@@ -1274,12 +1298,21 @@ export function ChatListPane({
             },
             { label: '', separator: true, onClick: () => {} },
             {
+                // Disabled rather than hidden when there is nothing to archive:
+                // an empty folder, or one holding only archived or pinned rows.
+                label: 'Archive all chats',
+                icon: '📥',
+                disabled: !canArchiveFolder(chatFolderArchive.resolveTargets(folder.id)),
+                title: 'Moves every chat in this folder to Archived; the folder stays',
+                onClick: () => chatFolderArchive.requestArchiveAll(folder),
+            },
+            {
                 label: 'Delete folder',
                 icon: '🗑️',
                 onClick: () => chatFolderMutations.requestDelete(folder.id, chatFolders),
             },
         ];
-    }, [folderMenu, chatFolders, chatFolderMutations, collapseAllFolders]);
+    }, [folderMenu, chatFolders, chatFolderMutations, chatFolderArchive, collapseAllFolders]);
     /**
      * The "Move to folder ▸" block for the *row* context menu (AC-06). Sits
      * after Pin and before Archive in every branch that renders it, and returns
@@ -1485,7 +1518,6 @@ export function ChatListPane({
         };
     }, [pauseMarkerMenuIndex]);
 
-    const { pinnedChatIds, archivedChatIds, pinChat: onPinChat, unpinChat: onUnpinChat, archiveChat: onArchiveChat, unarchiveChat: onUnarchiveChat, archiveChats: onArchiveChats, unarchiveChats: onUnarchiveChats } = useChatPrefs();
     const { taskCardDensity, historyGrouping } = useDisplaySettings();
     const isDense = taskCardDensity === 'dense';
     const groupPinKeys = useMemo(
@@ -4710,6 +4742,28 @@ export function ChatListPane({
                 memberCount={chatFolderMutations.undoSnapshot.memberIds.length}
                 onUndo={() => { void chatFolderMutations.undoDelete(); }}
                 onDismiss={chatFolderMutations.dismissUndo}
+            />
+        )}
+        <ChatFolderArchiveDialog
+            open={!!chatFolderArchive.pendingArchive}
+            folderName={chatFolderArchive.pendingArchive?.folder.name ?? ''}
+            archiveCount={chatFolderArchive.pendingArchive?.targets.archivableIds.length ?? 0}
+            pinnedSkipped={chatFolderArchive.pendingArchive?.targets.pinnedSkippedIds.length ?? 0}
+            onCancel={chatFolderArchive.cancelArchive}
+            onConfirm={chatFolderArchive.confirmArchive}
+        />
+        {chatFolderArchive.undoArchive && (
+            <ChatFolderUndoToast
+                testIdPrefix="chat-folder-archive-undo"
+                folderName={chatFolderArchive.undoArchive.folderName}
+                memberCount={chatFolderArchive.undoArchive.archivedIds.length}
+                message={buildArchiveUndoMessage(
+                    chatFolderArchive.undoArchive.folderName,
+                    chatFolderArchive.undoArchive.archivedIds.length,
+                    chatFolderArchive.undoArchive.pinnedSkipped,
+                )}
+                onUndo={chatFolderArchive.performUndoArchive}
+                onDismiss={chatFolderArchive.dismissUndoArchive}
             />
         )}
         <SummarizeChatDialog

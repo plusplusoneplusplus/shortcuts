@@ -84,6 +84,48 @@ describe('buildFolderMemberCounts', () => {
         expect(counts.get('f1')).toBe(2);
         expect(counts.get('f2')).toBe(1);
     });
+
+    it('excludes archived members, so an all-archived folder reads as empty everywhere (AC-09)', () => {
+        const map = new Map([['p1', 'f1'], ['p2', 'f1'], ['p3', 'f2']]);
+        const counts = buildFolderMemberCounts(map, new Set(['p1', 'p2']));
+        expect(counts.get('f1')).toBeUndefined();
+        expect(counts.get('f2')).toBe(1);
+    });
+});
+
+describe('buildChatFolderRows with archived members (AC-09)', () => {
+    const folders = [
+        { id: 'f1', name: 'Auth rewrite', color: 'purple', sortIndex: 0, createdAt: '2026-08-26T00:00:00.000Z', updatedAt: '2026-08-26T00:00:00.000Z' },
+    ] as any[];
+    const folderIdByProcess = new Map([['p1', 'f1'], ['p2', 'f1']]);
+
+    it('keeps the folder on screen at count 0 once every member is archived', () => {
+        // Archived rows are absent from `entries` (they live in the Archived
+        // section) AND absent from the counts, so the folder is "empty
+        // everywhere" rather than "has members, none on this tab".
+        const rows = buildChatFolderRows({
+            folders,
+            entries: [],
+            folderIdByProcess,
+            folderMemberCounts: buildFolderMemberCounts(folderIdByProcess, new Set(['p1', 'p2'])),
+            collapsedIds: new Set(),
+        });
+        expect(rows).toHaveLength(1);
+        expect(rows[0].memberCount).toBe(0);
+        expect(rows[0].isEmpty).toBe(true);
+    });
+
+    it('drops only the archived member from the count while the folder still shows the rest', () => {
+        const rows = buildChatFolderRows({
+            folders,
+            entries: [{ id: 'p2', title: 'still here' }],
+            folderIdByProcess,
+            folderMemberCounts: buildFolderMemberCounts(folderIdByProcess, new Set(['p1'])),
+            collapsedIds: new Set(),
+        });
+        expect(rows[0].memberCount).toBe(1);
+        expect(rows[0].isEmpty).toBe(false);
+    });
 });
 
 describe('resolveEntryFolderId', () => {

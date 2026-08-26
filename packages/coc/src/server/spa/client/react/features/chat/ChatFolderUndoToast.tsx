@@ -1,6 +1,6 @@
 /**
  * ChatFolderUndoToast — the single-level undo offered after a folder is
- * deleted (AC-05).
+ * deleted (AC-05) or after every chat in one is archived (AC-09).
  *
  * The app's shared toast is message-only, so folder deletion gets its own
  * toast: an undo needs a button, and this one has to survive long enough to be
@@ -17,6 +17,13 @@ export interface ChatFolderUndoToastProps {
     folderName: string;
     /** Chats that were unfiled by the delete; 0 for an empty folder. */
     memberCount: number;
+    /**
+     * Overrides the composed "Deleted …" line. AC-09's archive-all reuses this
+     * toast — same 8s timer, same undo button — with its own wording.
+     */
+    message?: string;
+    /** Distinguishes the two toasts in tests; the markup is identical. */
+    testIdPrefix?: string;
     onUndo: () => void;
     onDismiss: () => void;
 }
@@ -24,6 +31,8 @@ export interface ChatFolderUndoToastProps {
 export function ChatFolderUndoToast({
     folderName,
     memberCount,
+    message,
+    testIdPrefix = 'chat-folder-undo',
     onUndo,
     onDismiss,
 }: ChatFolderUndoToastProps): React.ReactElement | null {
@@ -34,7 +43,7 @@ export function ChatFolderUndoToast({
     useEffect(() => {
         const timer = setTimeout(() => dismissRef.current(), CHAT_FOLDER_UNDO_TIMEOUT_MS);
         return () => clearTimeout(timer);
-    }, [folderName, memberCount]);
+    }, [folderName, memberCount, message]);
 
     if (typeof document === 'undefined') {return null;}
 
@@ -46,14 +55,16 @@ export function ChatFolderUndoToast({
         <div
             className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[10001] flex items-center gap-3 px-4 py-2.5 rounded-md shadow-lg bg-[#252526] text-white text-[12.5px]"
             role="status"
-            data-testid="chat-folder-undo-toast"
+            data-testid={`${testIdPrefix}-toast`}
         >
-            <span className="max-w-[280px] truncate">Deleted “{folderName}”{suffix}</span>
+            <span className="max-w-[280px] truncate">
+                {message ?? <>Deleted “{folderName}”{suffix}</>}
+            </span>
             <button
                 type="button"
                 className="shrink-0 font-semibold text-[#3794ff] hover:underline"
                 onClick={onUndo}
-                data-testid="chat-folder-undo-btn"
+                data-testid={`${testIdPrefix}-btn`}
             >
                 Undo
             </button>
@@ -62,7 +73,7 @@ export function ChatFolderUndoToast({
                 className="shrink-0 text-[#a0a0a0] hover:text-white leading-none"
                 onClick={onDismiss}
                 aria-label="Dismiss"
-                data-testid="chat-folder-undo-dismiss"
+                data-testid={`${testIdPrefix}-dismiss`}
             >✕</button>
         </div>,
         document.body,

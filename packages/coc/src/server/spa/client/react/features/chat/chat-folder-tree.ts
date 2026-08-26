@@ -81,10 +81,20 @@ export function buildFolderIdByProcess(processes: readonly any[] | undefined): M
  * ignoring the current tab's scope predicate. Used to tell "this folder is
  * empty everywhere" (render it dimmed at count 0) apart from "this folder has
  * members, none of which belong on this tab" (hide it here).
+ *
+ * `excludeProcessIds` takes the archived rows out of the count (AC-09). A
+ * folder whose every member is archived is a container you keep reusing, so it
+ * has to stay on screen at count 0 — counting archived members would instead
+ * class it as "has members, none on this tab" and hide it, leaving no way to
+ * drag anything back into it.
  */
-export function buildFolderMemberCounts(folderIdByProcess: ReadonlyMap<string, string>): Map<string, number> {
+export function buildFolderMemberCounts(
+    folderIdByProcess: ReadonlyMap<string, string>,
+    excludeProcessIds?: ReadonlySet<string>,
+): Map<string, number> {
     const counts = new Map<string, number>();
-    for (const folderId of folderIdByProcess.values()) {
+    for (const [processId, folderId] of folderIdByProcess) {
+        if (excludeProcessIds?.has(processId)) {continue;}
         counts.set(folderId, (counts.get(folderId) ?? 0) + 1);
     }
     return counts;
