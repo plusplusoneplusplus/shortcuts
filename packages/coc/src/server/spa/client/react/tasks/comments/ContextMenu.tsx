@@ -20,7 +20,36 @@ export interface ContextMenuItem {
     title?: string;
     separator?: boolean;
     children?: ContextMenuItem[];
+    /**
+     * Render a filter input at the top of this item's submenu. Used when the
+     * child list is long enough that scanning it is slower than typing.
+     */
+    filterable?: boolean;
+    /** Placeholder for the filter input. */
+    filterPlaceholder?: string;
+    /**
+     * Keep this child visible no matter what the filter query is — for escape
+     * hatches like "+ New folder…" that must not be typed away.
+     */
+    keepOnFilter?: boolean;
     onClick: () => void;
+}
+
+/**
+ * Apply a submenu filter query to a child list.
+ *
+ * A blank query is the identity. Otherwise separators drop out (they would
+ * bracket nothing) and only label matches plus `keepOnFilter` escape hatches
+ * survive.
+ */
+export function filterSubmenuItems(children: ContextMenuItem[], query: string): ContextMenuItem[] {
+    const needle = query.trim().toLowerCase();
+    if (needle.length === 0) return children;
+    return children.filter(child => {
+        if (child.separator) return false;
+        if (child.keepOnFilter) return true;
+        return child.label.toLowerCase().includes(needle);
+    });
 }
 
 export interface ContextMenuProps {
@@ -97,8 +126,13 @@ function SubmenuItem({
     const [openLeft, setOpenLeft] = useState(false);
     const [topOffset, setTopOffset] = useState(0);
     const [maxHeight, setMaxHeight] = useState<number | null>(null);
+    const [query, setQuery] = useState('');
+    // Set when the submenu was opened from the keyboard, so focus follows the
+    // arrow key instead of staying on the parent row.
+    const [focusOnOpen, setFocusOnOpen] = useState(false);
     const rowRef = useRef<HTMLDivElement>(null);
     const subRef = useRef<HTMLDivElement>(null);
+    const buttonRef = useRef<HTMLButtonElement>(null);
 
     const handleEnter = useCallback(() => {
         if (rowRef.current) {
@@ -129,6 +163,28 @@ function SubmenuItem({
         setMaxHeight(next.maxHeight);
     }, [open]);
 
+    // A submenu opened by ArrowRight hands focus to its first control — the
+    // filter input when there is one, otherwise the first item.
+    useLayoutEffect(() => {
+        if (!open || !focusOnOpen) return;
+        setFocusOnOpen(false);
+        const panel = subRef.current;
+        if (!panel) return;
+        const first = panel.querySelector<HTMLElement>('input, [role="menuitem"]:not([disabled])');
+        first?.focus();
+    }, [open, focusOnOpen]);
+
+    // Reset the filter each time the submenu closes, so reopening it shows the
+    // whole list rather than a stale query the user cannot see.
+    useEffect(() => {
+        if (!open) setQuery('');
+    }, [open]);
+
+    const closeAndRefocus = useCallback(() => {
+        setOpen(false);
+        buttonRef.current?.focus();
+    }, []);
+
     const handleLeave = useCallback((e: React.MouseEvent) => {
         const related = e.relatedTarget as Node | null;
         if (
@@ -147,6 +203,7 @@ function SubmenuItem({
             data-testid={`context-menu-item-${idx}`}
         >
             <button
+                ref={buttonRef}
                 className={`w-full text-left px-3 py-1.5 text-xs transition-colors flex items-center justify-between ${
                     item.disabled
                         ? 'text-[#a0a0a0] dark:text-[#5a5a5a] cursor-default'
@@ -157,6 +214,18 @@ function SubmenuItem({
                 aria-haspopup="true"
                 aria-expanded={open}
                 onMouseDown={(e) => e.preventDefault()}
+                onKeyDown={(e) => {
+                    if (e.key === 'ArrowRight') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setFocusOnOpen(true);
+                        setOpen(true);
+                    } else if (e.key === 'ArrowLeft') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setOpen(false);
+                    }
+                }}
                 onClick={(e) => {
                     e.stopPropagation();
                     setOpen(prev => !prev);
@@ -177,10 +246,28 @@ function SubmenuItem({
                         ...(maxHeight !== null ? { maxHeight, overflowY: 'auto' as const } : {}),
                     }}
                     onMouseLeave={handleLeave}
+                    onKeyDown={(e) => {
+                        if (e.key === 'ArrowLeft') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            closeAndRefocus();
+                        }
+                    }}
                     data-testid={`context-submenu-${idx}`}
+                    data-submenu-panel="true"
                     role="menu"
                 >
-                    {item.children.map((child, ci) => {
+                    {item.filterable && (
+                        <input
+                            className="w-full mb-1 px-2 py-1 text-xs bg-transparent border-b border-[#e0e0e0] dark:border-[#3c3c3c] text-[#1e1e1e] dark:text-[#cccccc] outline-none"
+                            placeholder={item.filterPlaceholder ?? 'Filter…'}
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            data-testid={`context-submenu-${idx}-filter`}
+                        />
+                    )}
+                    {filterSubmenuItems(item.children, item.filterable ? query : '').map((child, ci) => {
                         if (child.separator) {
                             return (
                                 <div
@@ -266,6 +353,46 @@ export function ContextMenu({ position, items, onClose }: ContextMenuProps) {
         };
     }, [onClose]);
 
+    /**
+     * Arrow / Enter navigation. Focus is scoped to whichever panel the event
+     * came from, so ArrowDown inside an open submenu walks that submenu rather
+     * than falling back into the root list.
+     */
+    const handleMenuKeyDown = useCallback((e: React.KeyboardEvent) => {
+        const root = menuRef.current;
+        if (!root) return;
+        const target = e.target as HTMLElement | null;
+
+        if (e.key === 'Enter' || e.key === ' ') {
+            // The submenu filter input owns its own Enter/Space.
+            if (target?.tagName === 'INPUT') return;
+            const active = document.activeElement as HTMLElement | null;
+            if (active?.getAttribute('role') === 'menuitem') {
+                // preventDefault stops the browser synthesising a second click.
+                e.preventDefault();
+                active.click();
+            }
+            return;
+        }
+        if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+
+        const panel = target?.closest?.('[data-submenu-panel="true"]') as HTMLElement | null;
+        const scope = panel ?? root;
+        let items = Array.from(scope.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])'));
+        if (!panel) {
+            // Root-level navigation skips items that live inside an open submenu.
+            items = items.filter(el => !el.closest('[data-submenu-panel="true"]'));
+        }
+        if (items.length === 0) return;
+        e.preventDefault();
+        const current = items.indexOf(document.activeElement as HTMLElement);
+        const delta = e.key === 'ArrowDown' ? 1 : -1;
+        const next = current === -1
+            ? (delta === 1 ? 0 : items.length - 1)
+            : (current + delta + items.length) % items.length;
+        items[next]?.focus();
+    }, []);
+
     if (isMobile) {
         const flatItems: { item: ContextMenuItem; sectionHeader?: string }[] = [];
         const flattenItems = (menuItems: ContextMenuItem[], parentLabel?: string) => {
@@ -326,6 +453,7 @@ export function ContextMenu({ position, items, onClose }: ContextMenuProps) {
             style={{ top: clamped.y, left: clamped.x }}
             data-testid="context-menu"
             role="menu"
+            onKeyDown={handleMenuKeyDown}
         >
             {items.map((item, i) => {
                 if (item.separator) {

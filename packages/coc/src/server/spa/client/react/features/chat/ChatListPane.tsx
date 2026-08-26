@@ -54,7 +54,14 @@ import { ChatFolderDeleteDialog } from './ChatFolderDeleteDialog';
 import { ChatFolderUndoToast } from './ChatFolderUndoToast';
 import { folderNameExists } from './chat-folder-mutations';
 import { useChatFolderMutations } from './hooks/useChatFolderMutations';
+import { useChatFolderAssignment } from './hooks/useChatFolderAssignment';
+import {
+    anySelectionFiled,
+    buildMoveToFolderLabel,
+    shouldShowFolderFilter,
+} from './chat-folder-assignment';
 import { CHAT_FOLDER_COLORS } from '../../../../../processes/chat-folder-validation';
+import type { ChatFolderColor } from '@plusplusoneplusplus/coc-client';
 import {
     buildChatFolderRows,
     buildFolderIdByProcess,
@@ -1168,6 +1175,18 @@ export function ChatListPane({
     }, [workspaceId]);
     const [showFolders, setShowFolders] = useState(true);
 
+    /**
+     * The one seam every optimistic membership change goes through: patch the
+     * process-summary index that `folderIdByProcess` is derived from, so a move
+     * is visible before the next summaries fetch reconciles it.
+     */
+    const handleProcessFoldersChanged = useCallback((processIds: string[], folderId: string | null) => {
+        for (const id of processIds) {
+            appDispatch({ type: 'PROCESS_UPDATED', process: { id, folderId } });
+        }
+    }, [appDispatch]);
+    const handleFolderError = useCallback((message: string) => { toastCtx?.addToast?.(message, 'error'); }, [toastCtx]);
+
     // ── Folder mutations (AC-05) ───────────────────────────────────────────
     // Create / rename / recolor / delete, with a single-level undo. The
     // inline-editing state lives in the hook so this renderer only wires it up.
@@ -1179,13 +1198,38 @@ export function ChatListPane({
         // Undo re-files the remembered members into a brand-new folder id, so
         // the process-summary index has to be patched or the tree would keep
         // pointing every restored row at the folder that no longer exists.
-        onProcessFoldersChanged: useCallback((processIds: string[], folderId: string | null) => {
-            for (const id of processIds) {
-                appDispatch({ type: 'PROCESS_UPDATED', process: { id, folderId } });
-            }
-        }, [appDispatch]),
-        onError: useCallback((message: string) => { toastCtx?.addToast?.(message, 'error'); }, [toastCtx]),
+        onProcessFoldersChanged: handleProcessFoldersChanged,
+        onError: handleFolderError,
     });
+
+    // ── Folder assignment (AC-06) ──────────────────────────────────────────
+    const { moveToFolder } = useChatFolderAssignment({
+        folderIdByProcess,
+        onProcessFoldersChanged: handleProcessFoldersChanged,
+        onError: handleFolderError,
+    });
+    /**
+     * Rows waiting on "+ New folder…" — the submenu opens the same inline create
+     * row AC-05 already owns, and the ids are filed once that row commits. A
+     * cancelled create therefore moves nothing.
+     */
+    const pendingFileIdsRef = useRef<string[]>([]);
+    const startCreateFolderAndFile = useCallback((ids: readonly string[]) => {
+        pendingFileIdsRef.current = [...ids];
+        chatFolderMutations.startCreate();
+    }, [chatFolderMutations]);
+    const handleCommitFolderCreate = useCallback(async (name: string, color: ChatFolderColor) => {
+        const ids = pendingFileIdsRef.current;
+        pendingFileIdsRef.current = [];
+        const folder = await chatFolderMutations.commitCreate(name, color);
+        if (folder && ids.length > 0) {
+            await moveToFolder(ids, folder.id);
+        }
+    }, [chatFolderMutations, moveToFolder]);
+    const handleCancelFolderCreate = useCallback(() => {
+        pendingFileIdsRef.current = [];
+        chatFolderMutations.cancelCreate();
+    }, [chatFolderMutations]);
     const isDuplicateFolderName = useCallback(
         (name: string, excludeId?: string) => folderNameExists(chatFolders, name, excludeId),
         [chatFolders],
@@ -1234,6 +1278,47 @@ export function ChatListPane({
             },
         ];
     }, [folderMenu, chatFolders, chatFolderMutations, collapseAllFolders]);
+    /**
+     * The "Move to folder ▸" block for the *row* context menu (AC-06). Sits
+     * after Pin and before Archive in every branch that renders it, and returns
+     * nothing at all when the flag is off.
+     */
+    const buildMoveToFolderItems = useCallback((ids: readonly string[]): ContextMenuItem[] => {
+        if (!chatFoldersEnabled || ids.length === 0) {return [];}
+        const children: ContextMenuItem[] = [
+            ...chatFolders.map(folder => ({
+                label: folder.name,
+                icon: '●',
+                onClick: () => { void moveToFolder(ids, folder.id); },
+            })),
+            ...(chatFolders.length > 0 ? [{ label: '', separator: true, onClick: () => {} }] : []),
+            {
+                label: '+ New folder…',
+                // The escape hatch must survive any filter query, or a user who
+                // typed a name that matches nothing would have no way to make it.
+                keepOnFilter: true,
+                onClick: () => startCreateFolderAndFile(ids),
+            },
+        ];
+        return [
+            {
+                label: buildMoveToFolderLabel(ids.length),
+                icon: '🗂️',
+                filterable: shouldShowFolderFilter(chatFolders.length),
+                filterPlaceholder: 'Filter folders…',
+                children,
+                onClick: () => { /* submenu parent */ },
+            },
+            // Mixed selections get the item as soon as ANY row is filed; it is a
+            // plain action, not a toggle, so it never has to reflect a mix.
+            ...(anySelectionFiled(ids, folderIdByProcess) ? [{
+                label: 'Remove from folder',
+                icon: '↩',
+                onClick: () => { void moveToFolder(ids, null); },
+            }] : []),
+        ];
+    }, [chatFoldersEnabled, chatFolders, folderIdByProcess, moveToFolder, startCreateFolderAndFile]);
+
     const sessionContextDragEnabled = isSessionContextAttachmentsEnabled();
 
     // AC-01: the desktop "+ New chat" button is a drop target for session-context
@@ -2585,6 +2670,7 @@ export function ChatListPane({
                 ...(groupPinAction ? [groupPinAction] : []),
                 ...(!groupPinAction && anyPinned && onUnpinChat   ? [{ label: 'Unpin',          icon: '📌', onClick: () => { ids.forEach(id => onUnpinChat!(id)); closeContextMenu(); } }] : []),
                 ...(!groupPinAction && anyUnpinned && onPinChat   ? [{ label: 'Pin to top',     icon: '📌', onClick: () => { ids.forEach(id => onPinChat!(id));   closeContextMenu(); } }] : []),
+                ...buildMoveToFolderItems(ids),
                 ...(anyUnarchived && onArchiveChats  ? [{ label: 'Archive',   icon: '📦', onClick: () => { onArchiveChats!(ids);   closeContextMenu(); } }] : []),
                 ...(anyArchived  && onUnarchiveChats ? [{ label: 'Unarchive', icon: '📤', onClick: () => { onUnarchiveChats!(ids); closeContextMenu(); } }] : []),
                 ...(ids.length <= 20 ? [{
@@ -2656,6 +2742,7 @@ export function ChatListPane({
             return [
                 ...(isPinned && onUnpinChat ? [{ label: 'Unpin', icon: '📌', onClick: () => onUnpinChat(taskId) }] : []),
                 ...(!isPinned && onPinChat ? [{ label: 'Pin to top', icon: '📌', onClick: () => onPinChat(taskId) }] : []),
+                ...buildMoveToFolderItems([taskId]),
                 { label: 'Copy metadata', icon: '📋', onClick: () => {
                     const task = running.find((t: any) => t.id === taskId);
                     if (task) void copyToClipboard(formatMetadataText(task));
@@ -2679,6 +2766,7 @@ export function ChatListPane({
                     setRenameTarget({ taskId, title: (task as any)?.customTitle || '' });
                     closeContextMenu();
                 }},
+                ...buildMoveToFolderItems([taskId]),
                 ...(isArchived && onUnarchiveChat ? [{ label: 'Unarchive', icon: '📤', onClick: () => onUnarchiveChat(taskId) }] : []),
                 ...(!isArchived && onArchiveChat ? [{ label: 'Archive', icon: '📦', onClick: () => onArchiveChat(taskId) }] : []),
                 { label: '', icon: '', separator: true, onClick: () => {} },
@@ -2706,7 +2794,7 @@ export function ChatListPane({
                 : { label: 'Freeze', icon: '❄', onClick: () => handleFreeze(taskId) },
             { label: 'Cancel', icon: '✕', onClick: () => handleCancel(taskId) },
         ];
-    }, [contextMenu, queued, running, history, unseenProcessIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat, onArchiveChats, onUnarchiveChats, onSetGroupPin, setGroupPinned, closeContextMenu, deleteChatDirect, workspaceId, onSelectTask, fetchQueue, isAutopilotPaused]);
+    }, [contextMenu, queued, running, history, unseenProcessIds, pinnedChatIds, archivedChatIds, onMarkRead, onMarkUnread, onPinChat, onUnpinChat, onArchiveChat, onUnarchiveChat, onArchiveChats, onUnarchiveChats, onSetGroupPin, setGroupPinned, closeContextMenu, deleteChatDirect, workspaceId, onSelectTask, fetchQueue, isAutopilotPaused, buildMoveToFolderItems]);
 
     /** Render a single history card (shared between flat and grouped layouts). */
     /**
@@ -3105,8 +3193,8 @@ export function ChatListPane({
                 renderMember={entry => renderChatListRow(entry, listForRange, { isGroupChild: true })}
                 onOpenFolderMenu={openFolderMenu}
                 creating={chatFolderMutations.creating}
-                onCommitCreate={(name, color) => { void chatFolderMutations.commitCreate(name, color); }}
-                onCancelCreate={chatFolderMutations.cancelCreate}
+                onCommitCreate={(name, color) => { void handleCommitFolderCreate(name, color); }}
+                onCancelCreate={handleCancelFolderCreate}
                 renamingFolderId={chatFolderMutations.renamingFolderId}
                 onStartRename={chatFolderMutations.startRename}
                 onCommitRename={(folderId, name) => { void chatFolderMutations.commitRename(folderId, name); }}
@@ -3114,7 +3202,7 @@ export function ChatListPane({
                 isDuplicateName={isDuplicateFolderName}
             />
         );
-    }, [chatFoldersEnabled, showFolders, toggleFolderCollapsed, renderChatListRow, openFolderMenu, chatFolderMutations, isDuplicateFolderName]);
+    }, [chatFoldersEnabled, showFolders, toggleFolderCollapsed, renderChatListRow, openFolderMenu, chatFolderMutations, isDuplicateFolderName, handleCommitFolderCreate, handleCancelFolderCreate]);
 
     /**
      * The ＋folder / collapse-all toolbar pair. Rendered in both list headers

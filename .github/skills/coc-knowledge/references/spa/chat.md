@@ -177,6 +177,23 @@ re-files the ids it snapshotted before the delete, dispatching `PROCESS_UPDATED`
 summary index agrees. All of it goes through `useChatFolderMutations`, whose list arithmetic
 lives in the pure `chat-folder-mutations.ts`.
 
+**Filing rows.** The chat-row context menu gains **Move to folder ▸** between Pin and
+Archive, plus **Remove from folder** when any selected row is filed. Both are built by
+`buildMoveToFolderItems` in `ChatListPane` from the pure rules in
+`chat-folder-assignment.ts` (label pluralization, the past-10 filter threshold, and the
+diff that skips rows already sitting in the target so a no-op issues no request). The write
+itself goes through `useChatFolderAssignment`, which uses `setProcessFolder` for one row and
+`setProcessFolderBatch` for several, patches the summary index optimistically with
+`PROCESS_UPDATED`, and rolls each row back individually if the request fails. The submenu's
+**+ New folder…** reuses AC-05's inline create row and files the selection once it commits,
+so a cancelled create moves nothing.
+
+`ContextMenu` grew three optional item fields for this: `filterable` (render a filter input
+at the top of a submenu), `filterPlaceholder`, and `keepOnFilter` (an item that survives any
+query — the "+ New folder…" escape hatch). It also gained arrow-key navigation: Up/Down walk
+the focused panel, ArrowRight opens a submenu and focuses its first control, ArrowLeft closes
+it and returns focus to the parent row, and Enter/Space activates the focused item.
+
 ### Row pin/archive routing
 
 Pin and archive state come from process summaries (`pinnedAt`, `archived`) and synchronize
