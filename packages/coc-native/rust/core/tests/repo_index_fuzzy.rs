@@ -101,6 +101,60 @@ fn empty_inputs_produce_no_hits() {
 }
 
 #[test]
+fn ties_break_on_target_length_then_path_length() {
+    // Every one of these is a tier-2 match with the same quality, so the whole
+    // ordering comes from the tie-breaks: shorter basename first, then shorter
+    // path between the two identically-named files.
+    let matcher = matcher_of(&[
+        "packages/deep-wiki/src/seeds/prompts.ts",
+        "packages/forge/src/ai/prompt-builder.ts",
+        "packages/forge/src/ai/prompts.ts",
+        "src/prompts.test.ts",
+    ]);
+    let hits = matcher.search("prompt", 10);
+    assert!(hits.iter().all(|h| h.tier == 2 && h.score == hits[0].score));
+    assert_eq!(
+        search(&matcher, "prompt", 10),
+        vec![
+            "packages/forge/src/ai/prompts.ts",
+            "packages/deep-wiki/src/seeds/prompts.ts",
+            "src/prompts.test.ts",
+            "packages/forge/src/ai/prompt-builder.ts",
+        ],
+    );
+}
+
+#[test]
+fn the_prompt_regression_ranks_filenames_first() {
+    // The reported bug: `command-types.ts` tied `prompt-builder.ts` on path
+    // length, and `wipe-data.ts` outranked an exact filename prefix match.
+    let matcher = matcher_of(&[
+        "packages/deep-wiki/src/seeds/prompts.ts",
+        "packages/forge/src/ai/command-types.ts",
+        "packages/forge/src/ai/prompt-builder.ts",
+        "packages/coc/src/commands/wipe-data.ts",
+        "packages/forge/src/utils/prompt-resolver.ts",
+    ]);
+    let ranked = search(&matcher, "prompt", 10);
+    assert_eq!(
+        &ranked[..3],
+        [
+            "packages/deep-wiki/src/seeds/prompts.ts",
+            "packages/forge/src/ai/prompt-builder.ts",
+            "packages/forge/src/utils/prompt-resolver.ts",
+        ],
+    );
+    let trailing: Vec<&String> = ranked[3..].iter().collect();
+    assert_eq!(
+        trailing,
+        vec![
+            "packages/forge/src/ai/command-types.ts",
+            "packages/coc/src/commands/wipe-data.ts",
+        ],
+    );
+}
+
+#[test]
 fn ties_break_on_index_order() {
     let matcher = matcher_of(&["a/x.ts", "b/x.ts", "c/x.ts"]);
     let hits = matcher.search("x", 10);

@@ -26,19 +26,30 @@ struct IndexedPath {
     /// ASCII folding never moves a separator, so this is safe to take on the
     /// lowered form.
     name_start: u32,
+    /// UTF-16 length of the whole path, the last tie-break before input order.
+    path_len: u32,
+}
+
+/// One path's ranking keys: everything `Hit::cmp` orders on except the index.
+struct Scored {
+    tier: u8,
+    score: u32,
+    /// Length of whatever was scored — the basename in tier 2, the path in
+    /// tier 1. Uniformly "a shorter target is a more specific match."
+    target_len: u32,
 }
 
 /// Score the basename first, falling back to the whole path.
 ///
-/// Returns the tier — 2 for a basename match, 1 for a path-only match, 0 for no
-/// match — alongside the score. Tier-2 indices are rebased onto the full path so
-/// the client highlights the same characters either way.
+/// Returns tier 2 for a basename match, 1 for a path-only match, 0 for no
+/// match. Tier-2 indices are rebased onto the full path so the client
+/// highlights the same characters either way.
 fn score_tiered<T: Unit>(
     query: &[T],
     target: &[T],
     name_start: usize,
     indices: &mut Vec<u32>,
-) -> (u8, u32) {
+) -> Scored {
     let score = score_units(query, &target[name_start..], indices);
     if score > 0 {
         if name_start > 0 {
@@ -46,15 +57,15 @@ fn score_tiered<T: Unit>(
                 *index += name_start as u32;
             }
         }
-        return (2, score);
+        return Scored { tier: 2, score, target_len: (target.len() - name_start) as u32 };
     }
     // A query containing `/` can never match a basename, so it lands here with
     // no separator special-case.
     let score = score_units(query, target, indices);
     if score > 0 {
-        (1, score)
+        Scored { tier: 1, score, target_len: target.len() as u32 }
     } else {
-        (0, 0)
+        Scored { tier: 0, score: 0, target_len: 0 }
     }
 }
 
@@ -86,7 +97,11 @@ impl FuzzyMatcher {
                     LowerPath::Ascii(units) => last_separator(units, b'/'),
                     LowerPath::Wide(units) => last_separator(units, u16::from(b'/')),
                 };
-                IndexedPath { lower, name_start }
+                let path_len = match &lower {
+                    LowerPath::Ascii(units) => units.len() as u32,
+                    LowerPath::Wide(units) => units.len() as u32,
+                };
+                IndexedPath { lower, name_start, path_len }
             })
             .collect();
         Self { snapshot, paths }
@@ -99,8 +114,8 @@ impl FuzzyMatcher {
 
     /// Score every path and return the best `limit` matches, best first.
     ///
-    /// Ties break on index order, matching the stable sort the TypeScript
-    /// `rankFuzzyMatches` relies on.
+    /// Ties break on scored-target length, then path length, then index order,
+    /// matching the comparator the TypeScript `rankFuzzyMatches` sorts on.
     pub fn search(&self, query: &str, limit: usize) -> Vec<Hit> {
         let query = Query::new(query);
         if query.is_empty() || limit == 0 || self.paths.is_empty() {
@@ -115,20 +130,27 @@ impl FuzzyMatcher {
                 || (BinaryHeap::<Hit>::new(), Vec::<u32>::new()),
                 |(mut heap, mut indices), (idx, entry)| {
                     let name_start = entry.name_start as usize;
-                    let (tier, score) = match &entry.lower {
+                    let scored = match &entry.lower {
                         LowerPath::Ascii(target) => match query.ascii.as_ref() {
                             Some(q) => score_tiered(q, target, name_start, &mut indices),
                             // A non-ASCII query cannot occur in an ASCII path.
-                            None => (0, 0),
+                            None => Scored { tier: 0, score: 0, target_len: 0 },
                         },
                         LowerPath::Wide(target) => {
                             score_tiered(&query.wide, target, name_start, &mut indices)
                         }
                     };
-                    if tier > 0 {
+                    if scored.tier > 0 {
                         push_capped(
                             &mut heap,
-                            Hit { tier, score, index: idx as u32, indices: indices.clone() },
+                            Hit {
+                                tier: scored.tier,
+                                score: scored.score,
+                                target_len: scored.target_len,
+                                path_len: entry.path_len,
+                                index: idx as u32,
+                                indices: indices.clone(),
+                            },
                             limit,
                         );
                     }
@@ -174,7 +196,14 @@ fn push_capped(heap: &mut BinaryHeap<Hit>, hit: Hit, limit: usize) {
 pub struct Hit {
     /// 2 when the basename matched, 1 when only the full path did.
     pub tier: u8,
+    /// Match quality alone — **not** a ranking oracle on its own, since two
+    /// hits in different tiers can share a score. Rank with `Hit`'s `Ord`.
     pub score: u32,
+    /// Length of whatever was scored: the basename in tier 2, the path in
+    /// tier 1.
+    pub target_len: u32,
+    /// UTF-16 length of the whole path.
+    pub path_len: u32,
     /// Position in the snapshot's path list, used for stable tie-breaking.
     pub index: u32,
     /// Matched UTF-16 offsets within the path, ascending.
@@ -183,11 +212,17 @@ pub struct Hit {
 
 impl Ord for Hit {
     /// Greater means *worse*, so a `BinaryHeap<Hit>` evicts from its peek.
+    ///
+    /// A lexicographic key, not a single blended number: tier, then quality,
+    /// then the shortness tie-breaks, then snapshot order. This is the same
+    /// order `rankFuzzyMatches` sorts on.
     fn cmp(&self, other: &Self) -> Ordering {
         other
             .tier
             .cmp(&self.tier)
             .then_with(|| other.score.cmp(&self.score))
+            .then_with(|| self.target_len.cmp(&other.target_len))
+            .then_with(|| self.path_len.cmp(&other.path_len))
             .then_with(|| self.index.cmp(&other.index))
     }
 }

@@ -141,8 +141,8 @@ pub fn score_units<T: Unit>(query: &[T], target: &[T], indices: &mut Vec<u32>) -
         indices.push(ti as u32);
     }
 
-    // Shorter targets are more specific matches.
-    score += 50u32.saturating_sub(target.len() as u32);
+    // No length term: how specific a target is belongs in `Hit`'s comparator,
+    // not the quality score.
     score
 }
 

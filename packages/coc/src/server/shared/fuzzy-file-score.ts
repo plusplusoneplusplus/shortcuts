@@ -114,8 +114,8 @@ function matchQuality(q: string, t: string): { score: number; indices: number[] 
         qj++;
     }
 
-    // Shorter targets are more specific matches.
-    score += Math.max(0, 50 - t.length);
+    // No length term: how specific a target is belongs in the ranking
+    // comparator, not the quality score. See `rankFuzzyMatches`.
     return { score, indices };
 }
 
@@ -175,17 +175,38 @@ export function fuzzyFileScore(query: string, filePath: string): number {
 /**
  * Score every path and return the best `limit` matches, best first.
  *
- * Ordering is a lexicographic key, not a single number: tier descending, then
- * score descending, then path order. Ties break on path order so results are
- * stable for a given input list.
+ * Ordering is a lexicographic key, not a single blended number:
+ *
+ * ```
+ * tier desc → score desc → scored target length asc → path length asc → input order
+ * ```
+ *
+ * Shortness is a tie-break rather than a term in the score, so it can never
+ * outweigh match quality the way a `50 - pathLength` bonus did. The sort is
+ * stable, so input order is the last key and results stay stable for a given
+ * input list.
  */
 export function rankFuzzyMatches(query: string, paths: readonly string[], limit: number): FuzzyFileMatch[] {
-    const matches: (FuzzyFileMatch & { tier: number })[] = [];
+    const matches: (FuzzyFileMatch & { tier: number; targetLen: number })[] = [];
     for (const path of paths) {
         const match = fuzzyFileMatch(query, path);
-        if (match) matches.push({ path, score: match.score, indices: match.indices, tier: match.tier });
+        if (match) {
+            matches.push({
+                path,
+                score: match.score,
+                indices: match.indices,
+                tier: match.tier,
+                targetLen: match.targetLen,
+            });
+        }
     }
-    matches.sort((a, b) => b.tier - a.tier || b.score - a.score);
+    matches.sort(
+        (a, b) =>
+            b.tier - a.tier ||
+            b.score - a.score ||
+            a.targetLen - b.targetLen ||
+            a.path.length - b.path.length,
+    );
     const ranked = matches.map(({ path, score, indices }) => ({ path, score, indices }));
     return limit >= 0 && limit < ranked.length ? ranked.slice(0, limit) : ranked;
 }
