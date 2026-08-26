@@ -706,9 +706,14 @@ describe('ChatListPane pinned chats', () => {
         });
 
         it('resets searchQuery and searchVisible on workspaceId change', () => {
+            // Several effects key off `[workspaceId]` (search reset, folder
+            // collapse state, …), so anchor on the search reset itself rather
+            // than on whichever `}, [workspaceId])` happens to come first.
+            const resetAt = source.indexOf("setSearchQueryRaw('')");
+            expect(resetAt).toBeGreaterThan(-1);
             const workspaceEffect = source.substring(
-                source.indexOf("}, [workspaceId])") - 200,
-                source.indexOf("}, [workspaceId])") + 1,
+                resetAt,
+                source.indexOf("}, [workspaceId])", resetAt) + 1,
             );
             expect(workspaceEffect).toContain("setSearchQueryRaw('')");
             expect(workspaceEffect).toContain('setSearchVisible(false)');

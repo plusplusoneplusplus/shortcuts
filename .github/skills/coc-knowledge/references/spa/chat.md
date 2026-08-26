@@ -133,6 +133,30 @@ a duration suffix until the executor consumes them.
 `RepoChatTab` persists the Activity chat-list collapsed state and left-panel width under
 `activity-list-collapsed-{workspaceId}` and `activity-left-panel-width-{workspaceId}`.
 
+### Chat folders
+
+Behind `features.chatFolders` (default off), a **Folders** section renders after
+Running/Queued/Pinned and before the date buckets, on every list surface — Activity,
+Chats, Tasks and a repo group's Workspace tab all go through `ChatListPane`, so
+`ChatFolderSection.tsx` is one renderer rather than four copies of the JSX. The section
+is declared as the `folders` `SectionVariant` in `list-mode-config.ts`.
+
+`chat-folder-tree.ts` holds all the bucketing rules as pure functions: `folderId` is read
+off the process-summary index that `AppContext` already carries (AC-02 stamps it onto every
+`ProcessIndexEntry`), never joined client-side against a members endpoint. A filed row
+leaves its date bucket but keeps its Running/Queued row, where it gains a truncated
+folder-name chip. A folder whose members all fall outside the current tab's scope is hidden
+there, so the count badge always matches what expanding reveals; a folder that is empty
+everywhere still renders, dimmed at count 0. Only individual process rows are filable — a
+for-each / map-reduce / ralph / spawned-tree group entry never resolves to a folder. Pinned
+wins over filed: a pinned row renders in Pinned and is excluded from its folder's count.
+
+Members reuse the existing nested-row treatment (`isGroupChild`: indent guide, muted mode
+pill, `data-group-child`) rather than a second nesting style. Collapse state is client-side
+in `chat-folder-view-state.ts`, keyed per workspace (`coc-chat-folder-collapsed:{workspaceId}`),
+default expanded. The folder list itself comes from `useChatFolders`, which only fetches
+when the flag is on.
+
 ### Row pin/archive routing
 
 Pin and archive state come from process summaries (`pinnedAt`, `archived`) and synchronize

@@ -47,6 +47,18 @@ import { isSpawnedTreeViewEnabled, loadCollapsedSpawnedRootIds, toggleCollapsedS
 import { getGroupPinKey, isPinnedGroupEntry, mergePinnedEntries, partitionPinnedGroups, type PinnedGroupEntry, type PinnedListEntry } from './group-pinning';
 import { isRalphEnabled, isCronEnabled, isSessionContextAttachmentsEnabled, isForEachEnabled, isMapReduceEnabled, isCommitChatLensEnabled } from '../../utils/config';
 import { getListModeConfig } from './list-mode-config';
+import { useChatFoldersEnabled } from '../../hooks/feature-flags/useChatFoldersEnabled';
+import { useChatFolders } from './hooks/useChatFolders';
+import { ChatFolderSection, ChatFolderChip } from './ChatFolderSection';
+import {
+    buildChatFolderRows,
+    buildFolderIdByProcess,
+    buildFolderMemberCounts,
+    partitionFiledEntries,
+    resolveEntryFolderId,
+    type ChatFolderRow,
+} from './chat-folder-tree';
+import { loadCollapsedChatFolderIds, toggleCollapsedChatFolder } from './chat-folder-view-state';
 import { useAllCrons, type ProcessCronState } from './hooks/useAllCrons';
 import { CronIcon } from './icons/CronIcon';
 import { isRalphTask } from '../../../../../tasks/task-types';
@@ -1120,6 +1132,36 @@ export function ChatListPane({
     // Fetch all crons server-wide for inline indicators and the "Scheduled" scope tab.
     const { cronStateByProcess, processIdsWithCrons, cronProcessCount } = useAllCrons();
     const cronEnabled = isCronEnabled();
+
+    // ── Chat folders (AC-04) ───────────────────────────────────────────────
+    // Flag-gated end to end: with `features.chatFolders` off the fetch never
+    // runs, the maps stay empty, and every derivation below degrades to the
+    // list exactly as it renders today.
+    const chatFoldersEnabled = useChatFoldersEnabled();
+    const { folders: chatFolders } = useChatFolders(workspaceId, chatFoldersEnabled);
+    /**
+     * `processId -> folderId`, read straight off the process-summary index that
+     * `AppContext` already holds (AC-02 stamps `folderId` onto every
+     * `ProcessIndexEntry`). The queue and history endpoints that feed the list
+     * rows do not carry the field, so this is where the client reads it — it is
+     * a field lookup, not a join against a folder-members endpoint.
+     */
+    const folderIdByProcess = useMemo(
+        () => (chatFoldersEnabled ? buildFolderIdByProcess(appState.processes) : new Map<string, string>()),
+        [chatFoldersEnabled, appState.processes],
+    );
+    const folderMemberCounts = useMemo(() => buildFolderMemberCounts(folderIdByProcess), [folderIdByProcess]);
+    const foldersById = useMemo(() => new Map(chatFolders.map(f => [f.id, f])), [chatFolders]);
+    const [collapsedFolderIds, setCollapsedFolderIds] = useState<Set<string>>(() => loadCollapsedChatFolderIds(workspaceId));
+    // Re-seed when the workspace changes; collapse state is per-workspace, like
+    // the folder set itself.
+    useEffect(() => {
+        setCollapsedFolderIds(loadCollapsedChatFolderIds(workspaceId));
+    }, [workspaceId]);
+    const toggleFolderCollapsed = useCallback((folderId: string) => {
+        setCollapsedFolderIds(prev => toggleCollapsedChatFolder(workspaceId, prev, folderId));
+    }, [workspaceId]);
+    const [showFolders, setShowFolders] = useState(true);
     const sessionContextDragEnabled = isSessionContextAttachmentsEnabled();
 
     // AC-01: the desktop "+ New chat" button is a drop target for session-context
@@ -1776,7 +1818,7 @@ export function ChatListPane({
      * session wins. We split filteredUnpinned via {@link groupByRalphSession}
      * first, then plan-group only the non-ralph residuals.
      */
-    const dateBucketedHistory = useMemo(() => {
+    const rawDateBucketedHistory = useMemo(() => {
         // Resolve the sort timestamp for any entry kind. for-each-run,
         // ralph-session, and plan-file group entries carry a precomputed timestamp
         // (already phase-aware for ralph — completed sessions use end-time,
@@ -1810,6 +1852,45 @@ export function ChatListPane({
         }
         return { today, week, older };
     }, [groupedUnpinned, visibleFilteredUnpinned, unpinnedForEachRunGroups, unpinnedMapReduceRunGroups, activeSpawnedTreeGroups, listModeConfig, historyGrouping, unseenProcessIds, activityRalphGrouping]);
+
+    /** Ids of rows currently running, for the folder row's live-run dot. */
+    const runningRowIds = useMemo(() => new Set<string>(running.map((r: any) => r.id)), [running]);
+
+    /**
+     * Folder rows for the Activity / Tasks surfaces, derived from the *unfiled*
+     * date-bucket candidates. Folder membership is computed first so the date
+     * buckets below can drop exactly the rows the folder section adopted —
+     * a row is never in both places, and never in neither.
+     */
+    const activityFolderRows = useMemo<ChatFolderRow[]>(() => {
+        if (!chatFoldersEnabled || chatFolders.length === 0) {return [];}
+        return buildChatFolderRows({
+            folders: chatFolders,
+            entries: [
+                ...rawDateBucketedHistory.today,
+                ...rawDateBucketedHistory.week,
+                ...rawDateBucketedHistory.older,
+            ],
+            folderIdByProcess,
+            folderMemberCounts,
+            collapsedIds: collapsedFolderIds,
+            runningIds: runningRowIds,
+        });
+    }, [chatFoldersEnabled, chatFolders, rawDateBucketedHistory, folderIdByProcess, folderMemberCounts, collapsedFolderIds, runningRowIds]);
+
+    const activityVisibleFolderIds = useMemo(
+        () => new Set(activityFolderRows.map(row => row.folder.id)),
+        [activityFolderRows],
+    );
+
+    const dateBucketedHistory = useMemo(() => {
+        if (activityVisibleFolderIds.size === 0) {return rawDateBucketedHistory;}
+        return {
+            today: partitionFiledEntries(rawDateBucketedHistory.today, folderIdByProcess, activityVisibleFolderIds).unfiled,
+            week: partitionFiledEntries(rawDateBucketedHistory.week, folderIdByProcess, activityVisibleFolderIds).unfiled,
+            older: partitionFiledEntries(rawDateBucketedHistory.older, folderIdByProcess, activityVisibleFolderIds).unfiled,
+        };
+    }, [rawDateBucketedHistory, folderIdByProcess, activityVisibleFolderIds]);
 
     const activityCompletedEntries = useMemo(
         () => [
@@ -1883,7 +1964,7 @@ export function ChatListPane({
     // Splits the chats list into Running / Pinned / Today / This Week / Older
     // (and a separate Archived bucket). The chatFilter chip is applied to each
     // bucket; chip counts are derived from the unfiltered list.
-    const chatGroups = useMemo(() => {
+    const rawChatGroups = useMemo(() => {
         if (activeTab !== 'chats') return null;
 
         const runningIdSet = new Set(running.map((r: any) => r.id));
@@ -1981,6 +2062,60 @@ export function ChatListPane({
         };
     }, [activeTab, running, chatAllItems, chatFilter, forEachRunGroups, mapReduceRunGroups, activeSpawnedTreeGroups, archivedSpawnedTreeGroups, groupPins, unseenProcessIds]);
 
+    /**
+     * Folder rows for the Chats surface. Same shape as the Activity path — one
+     * builder, one set of rules; only the candidate list differs, which is what
+     * makes the count badge tab-filtered by construction.
+     */
+    const chatFolderRows = useMemo<ChatFolderRow[]>(() => {
+        if (!chatFoldersEnabled || chatFolders.length === 0 || !rawChatGroups) {return [];}
+        return buildChatFolderRows({
+            folders: chatFolders,
+            entries: [...rawChatGroups.today, ...rawChatGroups.week, ...rawChatGroups.older],
+            folderIdByProcess,
+            folderMemberCounts,
+            collapsedIds: collapsedFolderIds,
+            runningIds: runningRowIds,
+        });
+    }, [chatFoldersEnabled, chatFolders, rawChatGroups, folderIdByProcess, folderMemberCounts, collapsedFolderIds, runningRowIds]);
+
+    const chatVisibleFolderIds = useMemo(
+        () => new Set(chatFolderRows.map(row => row.folder.id)),
+        [chatFolderRows],
+    );
+
+    const chatGroups = useMemo(() => {
+        if (!rawChatGroups || chatVisibleFolderIds.size === 0) {return rawChatGroups;}
+        const today = partitionFiledEntries(rawChatGroups.today, folderIdByProcess, chatVisibleFolderIds).unfiled;
+        const week = partitionFiledEntries(rawChatGroups.week, folderIdByProcess, chatVisibleFolderIds).unfiled;
+        const older = partitionFiledEntries(rawChatGroups.older, folderIdByProcess, chatVisibleFolderIds).unfiled;
+        return {
+            ...rawChatGroups,
+            today,
+            week,
+            older,
+            // Folder members are still visible rows: they belong in the flat
+            // list so shift-click spans them, and so a list whose every chat is
+            // filed does not fall through to the "no chat sessions yet" state.
+            flatVisible: [
+                ...rawChatGroups.runningChats,
+                ...rawChatGroups.pinnedChats,
+                ...chatFolderRows.filter(row => !row.collapsed).flatMap(row => row.members),
+                ...today,
+                ...week,
+                ...older,
+            ],
+        };
+    }, [rawChatGroups, folderIdByProcess, chatVisibleFolderIds, chatFolderRows]);
+
+    /** Folder members in section order — shift-click spans them like any chat row. */
+    const visibleFolderMemberRows = useMemo(
+        () => (activeTab === 'chats' ? chatFolderRows : activityFolderRows)
+            .filter(row => !row.collapsed)
+            .flatMap(row => row.members),
+        [activeTab, chatFolderRows, activityFolderRows],
+    );
+
     const applyRalphGrouping = useCallback((items: any[]): Array<RalphHistoryEntry | ForEachRunGroup | MapReduceRunGroup | SpawnedTreeEntry> => {
         const forEachEntries = items.filter((entry): entry is ForEachRunGroup => entry.kind === 'for-each-run');
         const mapReduceEntries = items.filter((entry): entry is MapReduceRunGroup => entry.kind === 'map-reduce-run');
@@ -2035,6 +2170,7 @@ export function ChatListPane({
                 [
                     ...chatGroups.runningChats,
                     ...chatGroups.pinnedChats,
+                    ...visibleFolderMemberRows,
                     ...todayGrouped,
                     ...weekGrouped,
                     ...olderGrouped,
@@ -2045,7 +2181,7 @@ export function ChatListPane({
                 collapsedSpawnedIds,
             )
             : [],
-        [chatGroups, todayGrouped, weekGrouped, olderGrouped, expandedRalphSessionIds, expandedForEachRunIds, expandedMapReduceRunIds, collapsedSpawnedIds],
+        [chatGroups, visibleFolderMemberRows, todayGrouped, weekGrouped, olderGrouped, expandedRalphSessionIds, expandedForEachRunIds, expandedMapReduceRunIds, collapsedSpawnedIds],
     );
 
     const activityRangeRows = useMemo(
@@ -2053,6 +2189,7 @@ export function ChatListPane({
             [
                 ...activityRunningEntries,
                 ...pinnedActivityEntries,
+                ...visibleFolderMemberRows,
                 ...dateBucketedHistory.today,
                 ...dateBucketedHistory.week,
                 ...dateBucketedHistory.older,
@@ -2062,7 +2199,7 @@ export function ChatListPane({
             expandedMapReduceRunIds,
             collapsedSpawnedIds,
         ),
-        [activityRunningEntries, pinnedActivityEntries, dateBucketedHistory, expandedRalphSessionIds, expandedForEachRunIds, expandedMapReduceRunIds, collapsedSpawnedIds],
+        [activityRunningEntries, pinnedActivityEntries, visibleFolderMemberRows, dateBucketedHistory, expandedRalphSessionIds, expandedForEachRunIds, expandedMapReduceRunIds, collapsedSpawnedIds],
     );
 
     const visibleHistoryRangeRows = activeTab === 'chats' ? chatRangeRows : activityRangeRows;
@@ -2544,6 +2681,12 @@ export function ChatListPane({
             || askUserCountOnTask > 0
         );
         const taskProvider = getTaskChatProvider(task);
+        // A filed row still appears in Running / Queued when it is active — it is
+        // never hidden from those sections — so it carries a folder-name chip to
+        // say where it lives. Rows rendered *inside* a folder need no chip.
+        const rowFolder = (isRunning || isQueued) && chatFoldersEnabled
+            ? foldersById.get(resolveEntryFolderId(task, folderIdByProcess) ?? '')
+            : undefined;
         const forEachGenerationPreview = getForEachGenerationPreview(task);
         const mapReduceGenerationPreview = getMapReduceGenerationPreview(task);
 
@@ -2778,6 +2921,7 @@ export function ChatListPane({
                             );
                         })()}
                     </span>
+                    {rowFolder && <ChatFolderChip name={rowFolder.name} color={rowFolder.color} />}
                     <span className={cn('flex items-center gap-1', isAwaitingInput ? 'text-amber-700 dark:text-amber-300 font-medium' : 'text-[#848484] dark:text-[#999]')}>
                         <span className="chat-row-when text-[10.5px] font-mono tabular-nums whitespace-nowrap group-hover:hidden">
                             {isRunning ? (
@@ -2847,6 +2991,9 @@ export function ChatListPane({
         unseenProcessIds,
         awaitingInputProcessIds,
         running,
+        chatFoldersEnabled,
+        foldersById,
+        folderIdByProcess,
         pinnedChatIds,
         archivedChatIds,
         selectedHistoryIds,
@@ -2866,6 +3013,27 @@ export function ChatListPane({
         historyLongPress,
         workspaceId,
     ]);
+
+    /**
+     * The Folders section, rendered from a single place for every list surface.
+     * Activity, Chats, Tasks and a repo group's Workspace tab all go through
+     * this component — one renderer, not four copies of the JSX.
+     */
+    const renderFoldersSection = useCallback((
+        rows: ChatFolderRow[],
+        listForRange: HistoryRangeInput[],
+    ): React.ReactNode => {
+        if (!chatFoldersEnabled) {return null;}
+        return (
+            <ChatFolderSection
+                rows={rows}
+                expanded={showFolders}
+                onToggleSection={() => setShowFolders(prev => !prev)}
+                onToggleFolder={toggleFolderCollapsed}
+                renderMember={entry => renderChatListRow(entry, listForRange, { isGroupChild: true })}
+            />
+        );
+    }, [chatFoldersEnabled, showFolders, toggleFolderCollapsed, renderChatListRow]);
 
     const getGroupedChildTaskStatus = useCallback((task: any): 'running' | 'queued' | 'completed' => {
         if (tabFilteredRunning.some(candidate => candidate.id === task.id || candidate.processId === task.id || candidate.id === task.processId || candidate.processId === task.processId)) {
@@ -3390,12 +3558,13 @@ export function ChatListPane({
                                     const sections = [
                                         { id: 'running', label: 'Running', items: chatGroups.runningChats, variant: 'running' as const },
                                         { id: 'pinned', label: 'Pinned', items: chatGroups.pinnedChats, variant: 'pinned' as const },
+                                        // Folders sit here — after Running/Pinned, before the date buckets.
                                         { id: 'today', label: 'Today', items: todayGrouped, variant: 'plain' as const },
                                         { id: 'week', label: 'This week', items: weekGrouped, variant: 'plain' as const },
                                         { id: 'older', label: 'Older', items: olderGrouped, variant: 'plain' as const },
                                     ];
-                                    return sections
-                                        .filter(s => s.items.length > 0)
+                                    const visible = sections.filter(s => s.items.length > 0);
+                                    const rendered = visible
                                         .map(section => (
                                             <div key={section.id} data-section={section.id}>
                                                 <div
@@ -3442,6 +3611,14 @@ export function ChatListPane({
                                                  })}
                                             </div>
                                         ));
+                                    const dateBucketIds = new Set(['today', 'week', 'older']);
+                                    const firstDateBucket = visible.findIndex(s => dateBucketIds.has(s.id));
+                                    const cut = firstDateBucket === -1 ? rendered.length : firstDateBucket;
+                                    return [
+                                        ...rendered.slice(0, cut),
+                                        <React.Fragment key="folders">{renderFoldersSection(chatFolderRows, chatRangeRows)}</React.Fragment>,
+                                        ...rendered.slice(cut),
+                                    ];
                                 })()}
 
                                 {chatGroups.flatVisible.length === 0 && !searchQuery && (
@@ -4076,6 +4253,8 @@ export function ChatListPane({
                         )}
                     </div>
                 )}
+
+                {renderFoldersSection(activityFolderRows, activityRangeRows)}
 
                 {activityCompletedEntries.length > 0 && (
                     <div data-section="completed" className="-mx-2 md:-mx-4">
