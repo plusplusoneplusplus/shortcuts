@@ -50,6 +50,11 @@ import { getListModeConfig } from './list-mode-config';
 import { useChatFoldersEnabled } from '../../hooks/feature-flags/useChatFoldersEnabled';
 import { useChatFolders } from './hooks/useChatFolders';
 import { ChatFolderSection, ChatFolderChip } from './ChatFolderSection';
+import { ChatFolderDeleteDialog } from './ChatFolderDeleteDialog';
+import { ChatFolderUndoToast } from './ChatFolderUndoToast';
+import { folderNameExists } from './chat-folder-mutations';
+import { useChatFolderMutations } from './hooks/useChatFolderMutations';
+import { CHAT_FOLDER_COLORS } from '../../../../../processes/chat-folder-validation';
 import {
     buildChatFolderRows,
     buildFolderIdByProcess,
@@ -58,7 +63,7 @@ import {
     resolveEntryFolderId,
     type ChatFolderRow,
 } from './chat-folder-tree';
-import { loadCollapsedChatFolderIds, toggleCollapsedChatFolder } from './chat-folder-view-state';
+import { collapseAllChatFolders, loadCollapsedChatFolderIds, toggleCollapsedChatFolder } from './chat-folder-view-state';
 import { useAllCrons, type ProcessCronState } from './hooks/useAllCrons';
 import { CronIcon } from './icons/CronIcon';
 import { isRalphTask } from '../../../../../tasks/task-types';
@@ -1120,7 +1125,7 @@ export function ChatListPane({
         return false;
     }, [selectedTaskId]);
 
-    const { state: appState } = useApp();
+    const { state: appState, dispatch: appDispatch } = useApp();
     /**
      * The activity tab no longer renders a type-filter dropdown — chats and
      * automations are surfaced through the scope segmented control instead.
@@ -1138,7 +1143,7 @@ export function ChatListPane({
     // runs, the maps stay empty, and every derivation below degrades to the
     // list exactly as it renders today.
     const chatFoldersEnabled = useChatFoldersEnabled();
-    const { folders: chatFolders } = useChatFolders(workspaceId, chatFoldersEnabled);
+    const { folders: chatFolders, setFolders: setChatFolders, refresh: refreshChatFolders } = useChatFolders(workspaceId, chatFoldersEnabled);
     /**
      * `processId -> folderId`, read straight off the process-summary index that
      * `AppContext` already holds (AC-02 stamps `folderId` onto every
@@ -1162,6 +1167,73 @@ export function ChatListPane({
         setCollapsedFolderIds(prev => toggleCollapsedChatFolder(workspaceId, prev, folderId));
     }, [workspaceId]);
     const [showFolders, setShowFolders] = useState(true);
+
+    // ── Folder mutations (AC-05) ───────────────────────────────────────────
+    // Create / rename / recolor / delete, with a single-level undo. The
+    // inline-editing state lives in the hook so this renderer only wires it up.
+    const chatFolderMutations = useChatFolderMutations({
+        workspaceId,
+        setFolders: setChatFolders,
+        refresh: refreshChatFolders,
+        folderIdByProcess,
+        // Undo re-files the remembered members into a brand-new folder id, so
+        // the process-summary index has to be patched or the tree would keep
+        // pointing every restored row at the folder that no longer exists.
+        onProcessFoldersChanged: useCallback((processIds: string[], folderId: string | null) => {
+            for (const id of processIds) {
+                appDispatch({ type: 'PROCESS_UPDATED', process: { id, folderId } });
+            }
+        }, [appDispatch]),
+        onError: useCallback((message: string) => { toastCtx?.addToast?.(message, 'error'); }, [toastCtx]),
+    });
+    const isDuplicateFolderName = useCallback(
+        (name: string, excludeId?: string) => folderNameExists(chatFolders, name, excludeId),
+        [chatFolders],
+    );
+    const collapseAllFolders = useCallback(() => {
+        setCollapsedFolderIds(collapseAllChatFolders(workspaceId, chatFolders.map(f => f.id)));
+    }, [workspaceId, chatFolders]);
+
+    /** The folder ⋯ menu. Kept apart from the chat-row menu: different subject, different items. */
+    const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; folderId: string } | null>(null);
+    const openFolderMenu = useCallback((folderId: string, event: React.MouseEvent) => {
+        setFolderMenu({ x: event.clientX, y: event.clientY, folderId });
+    }, []);
+    const closeFolderMenu = useCallback(() => setFolderMenu(null), []);
+    const folderMenuItems = useMemo<ContextMenuItem[]>(() => {
+        if (!folderMenu) {return [];}
+        const folder = chatFolders.find(f => f.id === folderMenu.folderId);
+        if (!folder) {return [];}
+        return [
+            {
+                label: 'Rename…',
+                icon: '✏️',
+                title: 'F2',
+                onClick: () => chatFolderMutations.startRename(folder.id),
+            },
+            {
+                label: 'Folder color',
+                icon: '🎨',
+                onClick: () => { /* submenu parent */ },
+                children: CHAT_FOLDER_COLORS.map(color => ({
+                    label: color.charAt(0).toUpperCase() + color.slice(1),
+                    icon: color === folder.color ? '●' : '○',
+                    onClick: () => { void chatFolderMutations.recolorFolder(folder.id, color); },
+                })),
+            },
+            {
+                label: 'Collapse all',
+                icon: '⇱',
+                onClick: collapseAllFolders,
+            },
+            { label: '', separator: true, onClick: () => {} },
+            {
+                label: 'Delete folder',
+                icon: '🗑️',
+                onClick: () => chatFolderMutations.requestDelete(folder.id, chatFolders),
+            },
+        ];
+    }, [folderMenu, chatFolders, chatFolderMutations, collapseAllFolders]);
     const sessionContextDragEnabled = isSessionContextAttachmentsEnabled();
 
     // AC-01: the desktop "+ New chat" button is a drop target for session-context
@@ -3031,9 +3103,48 @@ export function ChatListPane({
                 onToggleSection={() => setShowFolders(prev => !prev)}
                 onToggleFolder={toggleFolderCollapsed}
                 renderMember={entry => renderChatListRow(entry, listForRange, { isGroupChild: true })}
+                onOpenFolderMenu={openFolderMenu}
+                creating={chatFolderMutations.creating}
+                onCommitCreate={(name, color) => { void chatFolderMutations.commitCreate(name, color); }}
+                onCancelCreate={chatFolderMutations.cancelCreate}
+                renamingFolderId={chatFolderMutations.renamingFolderId}
+                onStartRename={chatFolderMutations.startRename}
+                onCommitRename={(folderId, name) => { void chatFolderMutations.commitRename(folderId, name); }}
+                onCancelRename={chatFolderMutations.cancelRename}
+                isDuplicateName={isDuplicateFolderName}
             />
         );
-    }, [chatFoldersEnabled, showFolders, toggleFolderCollapsed, renderChatListRow]);
+    }, [chatFoldersEnabled, showFolders, toggleFolderCollapsed, renderChatListRow, openFolderMenu, chatFolderMutations, isDuplicateFolderName]);
+
+    /**
+     * The ＋folder / collapse-all toolbar pair. Rendered in both list headers
+     * from one place; present whenever the flag is on, even with zero folders,
+     * because creating the first folder is exactly what the button is for.
+     */
+    const renderFolderToolbar = useCallback((): React.ReactNode => {
+        if (!chatFoldersEnabled) {return null;}
+        return (
+            <div className="flex items-center gap-1 shrink-0">
+                <button
+                    type="button"
+                    className="h-6 px-1.5 rounded-[3px] text-[12px] leading-none text-[#848484] dark:text-[#a0a0a0] hover:bg-[#f5f5f5] dark:hover:bg-[#252526] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]"
+                    onClick={() => { setShowFolders(true); chatFolderMutations.startCreate(); }}
+                    data-testid="chat-list-new-folder-btn"
+                    aria-label="New folder"
+                    title="New folder"
+                >▤+</button>
+                <button
+                    type="button"
+                    className="h-6 px-1.5 rounded-[3px] text-[12px] leading-none text-[#848484] dark:text-[#a0a0a0] hover:bg-[#f5f5f5] dark:hover:bg-[#252526] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] disabled:opacity-40"
+                    onClick={collapseAllFolders}
+                    disabled={chatFolders.length === 0}
+                    data-testid="chat-list-collapse-all-folders-btn"
+                    aria-label="Collapse all folders"
+                    title="Collapse all folders"
+                >⇱</button>
+            </div>
+        );
+    }, [chatFoldersEnabled, chatFolderMutations, collapseAllFolders, chatFolders.length]);
 
     const getGroupedChildTaskStatus = useCallback((task: any): 'running' | 'queued' | 'completed' => {
         if (tabFilteredRunning.some(candidate => candidate.id === task.id || candidate.processId === task.id || candidate.id === task.processId || candidate.processId === task.processId)) {
@@ -3419,9 +3530,12 @@ export function ChatListPane({
                             className="sticky top-0 z-10 -mx-2 md:-mx-4 px-2 md:px-4 py-1.5 md:py-2 flex flex-col gap-2 md:gap-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-white/[0.98] dark:bg-[#1e1e1e]/[0.98] backdrop-blur-md backdrop-saturate-150"
                             data-testid="chat-list-fixed-header"
                         >
-                        <Button variant="ghost" size="sm" onClick={onNewChat ?? onOpenDialog} className={cn("self-start", isMobile && "hidden")} data-testid="new-chat-btn">
-                            💬 New Chat
-                        </Button>
+                        <div className="flex items-center justify-between gap-2">
+                            <Button variant="ghost" size="sm" onClick={onNewChat ?? onOpenDialog} className={cn("self-start", isMobile && "hidden")} data-testid="new-chat-btn">
+                                💬 New Chat
+                            </Button>
+                            {renderFolderToolbar()}
+                        </div>
 
                         {/* Search bar — hidden by default; revealed with Ctrl+F / ⌘F (see the keydown handler). */}
                         {searchVisible && (
@@ -3665,6 +3779,9 @@ export function ChatListPane({
                     className="sticky top-0 z-10 -mx-2 md:-mx-4 px-2 md:px-4 py-1.5 md:py-2 flex flex-col gap-2 md:gap-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-white/[0.98] dark:bg-[#1e1e1e]/[0.98] backdrop-blur-md backdrop-saturate-150"
                     data-testid="chat-list-fixed-header"
                 >
+                {chatFoldersEnabled && (
+                    <div className="flex items-center justify-end">{renderFolderToolbar()}</div>
+                )}
                 {isPaused && (
                     <div className="rounded bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 px-3 py-1.5 text-xs flex items-center gap-2" data-testid="queue-paused-banner">
                         <span className="flex-1">
@@ -4425,6 +4542,28 @@ export function ChatListPane({
                 position={{ x: contextMenu.x, y: contextMenu.y }}
                 items={contextMenuItems}
                 onClose={closeContextMenu}
+            />
+        )}
+        {folderMenu && folderMenuItems.length > 0 && (
+            <ContextMenu
+                position={{ x: folderMenu.x, y: folderMenu.y }}
+                items={folderMenuItems}
+                onClose={closeFolderMenu}
+            />
+        )}
+        <ChatFolderDeleteDialog
+            open={!!chatFolderMutations.pendingDelete}
+            folderName={chatFolderMutations.pendingDelete?.folder.name ?? ''}
+            memberCount={chatFolderMutations.pendingDelete?.memberIds.length ?? 0}
+            onCancel={chatFolderMutations.cancelDelete}
+            onConfirm={() => { void chatFolderMutations.confirmDelete(); }}
+        />
+        {chatFolderMutations.undoSnapshot && (
+            <ChatFolderUndoToast
+                folderName={chatFolderMutations.undoSnapshot.folder.name}
+                memberCount={chatFolderMutations.undoSnapshot.memberIds.length}
+                onUndo={() => { void chatFolderMutations.undoDelete(); }}
+                onDismiss={chatFolderMutations.dismissUndo}
             />
         )}
         <SummarizeChatDialog

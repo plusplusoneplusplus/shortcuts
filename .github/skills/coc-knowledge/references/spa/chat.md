@@ -157,6 +157,26 @@ in `chat-folder-view-state.ts`, keyed per workspace (`coc-chat-folder-collapsed:
 default expanded. The folder list itself comes from `useChatFolders`, which only fetches
 when the flag is on.
 
+**Managing folders.** The ＋folder / ⇱ collapse-all pair (`chat-list-new-folder-btn`,
+`chat-list-collapse-all-folders-btn`) sits in both list headers, rendered from one
+`renderFolderToolbar` callback. ＋folder opens an inline create row at the top of the
+section — six colour swatches then a focused input; the same `ChatFolderNameEditor` serves
+rename (F2 or double-click on the name), minus the swatches. Commit rules are identical for
+both: Enter commits, Esc cancels, blur with text commits, blur while empty cancels, and
+renaming to the identical string is a no-op. Names are validated by
+`src/server/processes/chat-folder-validation.ts`, which the REST handler imports too, so the
+client can never send a name the server would reject; duplicate names are allowed and only
+raise a soft hint. The folder ⋯ menu (rename, colour submenu, collapse all, delete) is a
+second `ContextMenu` instance, separate from the chat-row menu.
+
+Deleting a folder that has members opens `ChatFolderDeleteDialog` — the app's own dialog,
+never `window.confirm`, because the point of the copy is to say that no conversations are
+deleted. An empty folder deletes with no prompt. Either way `ChatFolderUndoToast` offers a
+single-level undo; since the original `group_id` is gone, undo re-creates the folder and
+re-files the ids it snapshotted before the delete, dispatching `PROCESS_UPDATED` so the
+summary index agrees. All of it goes through `useChatFolderMutations`, whose list arithmetic
+lives in the pure `chat-folder-mutations.ts`.
+
 ### Row pin/archive routing
 
 Pin and archive state come from process summaries (`pinnedAt`, `archived`) and synchronize

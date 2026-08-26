@@ -11,9 +11,15 @@
  * a second nesting style — the list already has one visual language for "this
  * row hangs off the row above it".
  */
-import React from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '../../ui';
 import { chatFolderColorHex, type ChatFolderRow } from './chat-folder-tree';
+import {
+    CHAT_FOLDER_COLORS,
+    clampChatFolderNameInput,
+    normalizeChatFolderName,
+    type ChatFolderColor,
+} from '../../../../../processes/chat-folder-validation';
 
 /** Per-depth indent, in px. v1 renders folders at depth 0 and members at depth 1. */
 export const CHAT_FOLDER_INDENT_PX = 14;
@@ -84,6 +90,134 @@ export function ChatFolderChip({ name, color, maxChars = 14 }: ChatFolderChipPro
     );
 }
 
+// ============================================================================
+// Inline create / rename (AC-05)
+// ============================================================================
+
+export interface ChatFolderNameEditorProps {
+    /** Seed text — empty for create, the current name for rename. */
+    initialName: string;
+    /** Create shows the 6 preset swatches; rename reuses the row without them. */
+    showColorPicker: boolean;
+    initialColor?: ChatFolderColor;
+    onCommit: (name: string, color: ChatFolderColor) => void;
+    onCancel: () => void;
+    /** Drives the soft "already exists" hint. Duplicate names are still allowed. */
+    isDuplicateName?: (name: string) => boolean;
+    testId: string;
+}
+
+/**
+ * One inline editor row, shared by create and rename.
+ *
+ * Commit rules (identical for both, by decision): Enter commits, Esc cancels,
+ * blur with text commits, blur while empty cancels. Validation is the same
+ * `normalizeChatFolderName` the server runs, so the client never sends a name
+ * the server would reject.
+ */
+export function ChatFolderNameEditor({
+    initialName,
+    showColorPicker,
+    initialColor,
+    onCommit,
+    onCancel,
+    isDuplicateName,
+    testId,
+}: ChatFolderNameEditorProps): React.ReactElement {
+    const [name, setName] = useState(initialName);
+    const [color, setColor] = useState<ChatFolderColor>(initialColor ?? CHAT_FOLDER_COLORS[0]);
+    const inputRef = useRef<HTMLInputElement>(null);
+    // Esc fires before the resulting blur, and a blur with text commits — so the
+    // cancel has to suppress the blur that follows it or Esc would still save.
+    const settledRef = useRef(false);
+
+    useEffect(() => {
+        inputRef.current?.focus();
+        inputRef.current?.select();
+    }, []);
+
+    const commit = useCallback((value: string, chosen: ChatFolderColor) => {
+        if (settledRef.current) {return;}
+        settledRef.current = true;
+        const parsed = normalizeChatFolderName(value);
+        // An empty name is a cancel, not an error — the same rule the server
+        // states by rejecting it.
+        if (!parsed.ok) {onCancel(); return;}
+        onCommit(parsed.value, chosen);
+    }, [onCommit, onCancel]);
+
+    const cancel = useCallback(() => {
+        if (settledRef.current) {return;}
+        settledRef.current = true;
+        onCancel();
+    }, [onCancel]);
+
+    const duplicate = isDuplicateName?.(name) ?? false;
+
+    return (
+        <div className="px-3 py-1 flex flex-col gap-0.5" data-testid={testId}>
+            <div className="h-[24px] flex items-center gap-1.5">
+                {showColorPicker && (
+                    <div className="flex items-center gap-1 shrink-0" role="radiogroup" aria-label="Folder color">
+                        {CHAT_FOLDER_COLORS.map(preset => (
+                            <button
+                                key={preset}
+                                type="button"
+                                role="radio"
+                                aria-checked={preset === color}
+                                aria-label={preset}
+                                title={preset}
+                                className={cn(
+                                    'w-[10px] h-[10px] rounded-full shrink-0',
+                                    preset === color && 'ring-2 ring-offset-1 ring-[#0078d4] dark:ring-[#3794ff] ring-offset-white dark:ring-offset-[#1e1e1e]',
+                                )}
+                                style={{ backgroundColor: chatFolderColorHex(preset) }}
+                                // mousedown would blur the input first and commit the row.
+                                onMouseDown={event => event.preventDefault()}
+                                onClick={() => setColor(preset)}
+                                data-testid={`chat-folder-color-swatch-${preset}`}
+                            />
+                        ))}
+                    </div>
+                )}
+                <input
+                    ref={inputRef}
+                    type="text"
+                    value={name}
+                    onChange={event => setName(clampChatFolderNameInput(event.target.value))}
+                    onKeyDown={event => {
+                        if (event.key === 'Enter') {
+                            event.preventDefault();
+                            // The folder row above is a role=button that toggles on
+                            // Enter — the keystroke must not reach it.
+                            event.stopPropagation();
+                            commit(name, color);
+                        } else if (event.key === 'Escape') {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            cancel();
+                        }
+                    }}
+                    onBlur={() => {
+                        // Blur with text commits; blur while empty cancels.
+                        if (name.trim().length === 0) {cancel();} else {commit(name, color);}
+                    }}
+                    placeholder="Folder name"
+                    aria-label="Folder name"
+                    className="min-w-0 flex-1 h-[20px] rounded-[3px] border border-[#e0e0e0] dark:border-[#474749] bg-white dark:bg-[#252526] px-1.5 text-[12px] leading-none text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4] dark:focus:border-[#3794ff]"
+                    data-testid="chat-folder-name-input"
+                />
+            </div>
+            <div
+                className="pl-1 text-[10px] leading-none font-mono text-[#848484] dark:text-[#a0a0a0]"
+                data-testid={duplicate ? 'chat-folder-duplicate-hint' : 'chat-folder-editor-hint'}
+            >
+                {duplicate ? 'A folder with this name already exists' : 'Enter to save · Esc to cancel'}
+            </div>
+        </div>
+    );
+}
+
 export interface ChatFolderSectionProps {
     rows: ChatFolderRow[];
     /** Toggle a folder's collapsed state. */
@@ -93,8 +227,21 @@ export interface ChatFolderSectionProps {
     /** Section header collapse state (the whole FOLDERS section). */
     expanded: boolean;
     onToggleSection: () => void;
-    /** Opens the folder ⋯ menu. Omitted until AC-05 wires the menu up. */
+    /** Opens the folder ⋯ menu. Omitted when the caller supplies no menu. */
     onOpenFolderMenu?: (folderId: string, event: React.MouseEvent) => void;
+
+    // ── Inline create / rename (AC-05) ──────────────────────────────────────
+    /** True while the create row is open at the top of the section. */
+    creating?: boolean;
+    onCommitCreate?: (name: string, color: ChatFolderColor) => void;
+    onCancelCreate?: () => void;
+    /** The folder whose name is currently an input, if any. */
+    renamingFolderId?: string | null;
+    onStartRename?: (folderId: string) => void;
+    onCommitRename?: (folderId: string, name: string) => void;
+    onCancelRename?: () => void;
+    /** Drives the soft duplicate-name hint; duplicates are still allowed. */
+    isDuplicateName?: (name: string, excludeId?: string) => boolean;
 }
 
 /**
@@ -108,8 +255,18 @@ export function ChatFolderSection({
     expanded,
     onToggleSection,
     onOpenFolderMenu,
+    creating,
+    onCommitCreate,
+    onCancelCreate,
+    renamingFolderId,
+    onStartRename,
+    onCommitRename,
+    onCancelRename,
+    isDuplicateName,
 }: ChatFolderSectionProps): React.ReactElement | null {
-    if (rows.length === 0) {return null;}
+    // Zero folders means no section — but the create row has to have somewhere
+    // to live, so an open create keeps the section mounted.
+    if (rows.length === 0 && !creating) {return null;}
 
     return (
         <div data-section="folders" className="-mx-2 md:-mx-4">
@@ -128,6 +285,16 @@ export function ChatFolderSection({
             </button>
             {expanded && (
                 <div className="flex flex-col">
+                    {creating && onCommitCreate && onCancelCreate && (
+                        <ChatFolderNameEditor
+                            initialName=""
+                            showColorPicker
+                            onCommit={onCommitCreate}
+                            onCancel={onCancelCreate}
+                            isDuplicateName={name => isDuplicateName?.(name) ?? false}
+                            testId="chat-folder-create-row"
+                        />
+                    )}
                     {rows.map(row => (
                         <ChatFolderTreeRow
                             key={row.folder.id}
@@ -135,6 +302,11 @@ export function ChatFolderSection({
                             onToggleFolder={onToggleFolder}
                             renderMember={renderMember}
                             onOpenFolderMenu={onOpenFolderMenu}
+                            renaming={renamingFolderId === row.folder.id}
+                            onStartRename={onStartRename}
+                            onCommitRename={onCommitRename}
+                            onCancelRename={onCancelRename}
+                            isDuplicateName={isDuplicateName}
                         />
                     ))}
                 </div>
@@ -148,9 +320,24 @@ interface ChatFolderTreeRowProps {
     onToggleFolder: (folderId: string) => void;
     renderMember: (entry: any, members: any[]) => React.ReactNode;
     onOpenFolderMenu?: (folderId: string, event: React.MouseEvent) => void;
+    renaming?: boolean;
+    onStartRename?: (folderId: string) => void;
+    onCommitRename?: (folderId: string, name: string) => void;
+    onCancelRename?: () => void;
+    isDuplicateName?: (name: string, excludeId?: string) => boolean;
 }
 
-function ChatFolderTreeRow({ row, onToggleFolder, renderMember, onOpenFolderMenu }: ChatFolderTreeRowProps): React.ReactElement {
+function ChatFolderTreeRow({
+    row,
+    onToggleFolder,
+    renderMember,
+    onOpenFolderMenu,
+    renaming,
+    onStartRename,
+    onCommitRename,
+    onCancelRename,
+    isDuplicateName,
+}: ChatFolderTreeRowProps): React.ReactElement {
     const { folder, members, memberCount, runningCount, isEmpty, collapsed } = row;
     const hex = chatFolderColorHex(folder.color);
     const expanded = !collapsed;
@@ -166,6 +353,9 @@ function ChatFolderTreeRow({ row, onToggleFolder, renderMember, onOpenFolderMenu
                     if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
                         onToggleFolder(folder.id);
+                    } else if (event.key === 'F2' && onStartRename) {
+                        event.preventDefault();
+                        onStartRename(folder.id);
                     }
                 }}
                 aria-expanded={expanded}
@@ -176,17 +366,41 @@ function ChatFolderTreeRow({ row, onToggleFolder, renderMember, onOpenFolderMenu
                     {expanded ? '▼' : '▶'}
                 </span>
                 <FolderGlyph color={hex} open={expanded} />
-                <span
-                    className={cn(
-                        'min-w-0 flex-1 truncate text-[12px] leading-none',
-                        isEmpty
-                            ? 'text-[#a0a0a0] dark:text-[#6f6f6f]'
-                            : 'text-[#1e1e1e] dark:text-[#cccccc]',
-                    )}
-                    data-testid="chat-folder-name"
-                >
-                    {folder.name}
-                </span>
+                {renaming && onCommitRename && onCancelRename ? (
+                    // Same row, no dialog and no layout shift: the label becomes
+                    // an input in place.
+                    <div className="min-w-0 flex-1" onClick={event => event.stopPropagation()}>
+                        <ChatFolderNameEditor
+                            initialName={folder.name}
+                            showColorPicker={false}
+                            initialColor={folder.color as ChatFolderColor}
+                            onCommit={name => {
+                                // Renaming to the identical string is a no-op, not a request.
+                                if (name === folder.name) {onCancelRename();} else {onCommitRename(folder.id, name);}
+                            }}
+                            onCancel={onCancelRename}
+                            isDuplicateName={name => isDuplicateName?.(name, folder.id) ?? false}
+                            testId="chat-folder-rename-row"
+                        />
+                    </div>
+                ) : (
+                    <span
+                        className={cn(
+                            'min-w-0 flex-1 truncate text-[12px] leading-none',
+                            isEmpty
+                                ? 'text-[#a0a0a0] dark:text-[#6f6f6f]'
+                                : 'text-[#1e1e1e] dark:text-[#cccccc]',
+                        )}
+                        data-testid="chat-folder-name"
+                        onDoubleClick={event => {
+                            if (!onStartRename) {return;}
+                            event.stopPropagation();
+                            onStartRename(folder.id);
+                        }}
+                    >
+                        {folder.name}
+                    </span>
+                )}
                 {runningCount > 0 && (
                     <span
                         className="shrink-0 inline-flex items-center gap-1 text-[10px] leading-none font-mono tabular-nums text-[#0078d4] dark:text-[#3794ff]"
