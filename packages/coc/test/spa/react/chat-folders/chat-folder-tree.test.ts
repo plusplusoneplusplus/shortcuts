@@ -10,12 +10,16 @@ import {
     buildChatFolderRows,
     buildFolderIdByProcess,
     buildFolderMemberCounts,
+    buildSearchChatFolderRows,
     chatFolderColorHex,
+    chatFolderMatchesSearch,
+    groupEntriesByFolder,
     partitionFiledEntries,
     resolveEntryFolderId,
     sortChatFolders,
     CHAT_FOLDER_COLOR_HEX,
 } from '../../../../src/server/spa/client/react/features/chat/chat-folder-tree';
+import { taskMatchesSearch } from '../../../../src/server/spa/client/react/features/chat/ChatListPane';
 
 function folder(id: string, overrides: Record<string, any> = {}) {
     return {
@@ -210,5 +214,139 @@ describe('partitionFiledEntries', () => {
         );
         expect(filed).toHaveLength(0);
         expect(unfiled.map((e: any) => e.id)).toEqual(['b']);
+    });
+});
+
+
+/**
+ * AC-08 — search. While a query is active the tree flattens: only folders whose
+ * *name* matches survive, expanded, with every member beneath them; everything
+ * else dissolves back into the flat date buckets carrying a folder chip.
+ */
+describe('chatFolderMatchesSearch', () => {
+    it('matches a folder on its name through the list\'s own matcher', () => {
+        expect(chatFolderMatchesSearch(folder('f1', { name: 'Auth rewrite' }), 'auth', taskMatchesSearch)).toBe(true);
+        expect(chatFolderMatchesSearch(folder('f1', { name: 'Auth rewrite' }), 'AUTH', taskMatchesSearch)).toBe(true);
+        expect(chatFolderMatchesSearch(folder('f1', { name: 'Auth rewrite' }), 'perf', taskMatchesSearch)).toBe(false);
+    });
+
+    it('never matches on an empty query — an empty query means "no search"', () => {
+        expect(chatFolderMatchesSearch(folder('f1', { name: 'Auth' }), '', taskMatchesSearch)).toBe(false);
+    });
+});
+
+describe('groupEntriesByFolder', () => {
+    const folderIdByProcess = new Map([['a', 'f1'], ['b', 'f1'], ['c', 'f2'], ['z', 'gone']]);
+
+    it('buckets entries by folder, preserving the order supplied', () => {
+        const byFolder = groupEntriesByFolder(
+            [{ id: 'a' }, { id: 'c' }, { id: 'b' }, { id: 'unfiled' }],
+            folderIdByProcess,
+        );
+        expect(byFolder.get('f1')!.map((e: any) => e.id)).toEqual(['a', 'b']);
+        expect(byFolder.get('f2')!.map((e: any) => e.id)).toEqual(['c']);
+        expect(byFolder.has('unfiled')).toBe(false);
+    });
+
+    it('drops a membership pointing at a folder that no longer exists', () => {
+        const byFolder = groupEntriesByFolder([{ id: 'z' }], folderIdByProcess, new Set(['f1', 'f2']));
+        expect(byFolder.size).toBe(0);
+    });
+
+    it('never files a grouped run entry — only individual process rows are filable', () => {
+        const byFolder = groupEntriesByFolder(
+            [{ id: 'a', kind: 'ralph-session' }],
+            folderIdByProcess,
+        );
+        expect(byFolder.size).toBe(0);
+    });
+});
+
+describe('buildSearchChatFolderRows', () => {
+    const folders = [
+        folder('f1', { name: 'Auth rewrite', sortIndex: 0 }),
+        folder('f2', { name: 'Perf: chat list', sortIndex: 1 }),
+        folder('f3', { name: 'Auth follow-ups', sortIndex: 2 }),
+    ];
+    const membersByFolder = new Map<string, any[]>([
+        ['f1', [{ id: 'a', title: 'token refresh' }, { id: 'b', title: 'unrelated' }]],
+        ['f2', [{ id: 'c', title: 'virtualize rows' }]],
+    ]);
+
+    it('returns nothing without a query so the unsearched tree stays in charge', () => {
+        expect(buildSearchChatFolderRows({
+            folders,
+            query: '',
+            matches: taskMatchesSearch,
+            membersByFolder,
+        })).toEqual([]);
+    });
+
+    it('keeps only the name-matched folders — the rest of the tree flattens away', () => {
+        const rows = buildSearchChatFolderRows({
+            folders,
+            query: 'auth',
+            matches: taskMatchesSearch,
+            membersByFolder,
+        });
+        expect(rows.map(r => r.folder.id)).toEqual(['f1', 'f3']);
+    });
+
+    it('lists every member of a matched folder, not just the ones whose text matched', () => {
+        const rows = buildSearchChatFolderRows({
+            folders,
+            query: 'auth',
+            matches: taskMatchesSearch,
+            membersByFolder,
+        });
+        // "unrelated" does not contain "auth" but still shows: the folder matched.
+        expect(rows[0].members.map((m: any) => m.id)).toEqual(['a', 'b']);
+        expect(rows[0].memberCount).toBe(2);
+    });
+
+    it('renders a matched folder expanded even when it is collapsed in the tree', () => {
+        const rows = buildSearchChatFolderRows({
+            folders,
+            query: 'auth',
+            matches: taskMatchesSearch,
+            membersByFolder,
+        });
+        // No collapsedIds input at all — a name hit exists to reveal contents,
+        // and the persisted collapse set is never read or written here.
+        expect(rows.every(r => r.collapsed === false)).toBe(true);
+    });
+
+    it('keeps a matched folder that holds nothing anywhere, marked empty', () => {
+        const rows = buildSearchChatFolderRows({
+            folders,
+            query: 'follow',
+            matches: taskMatchesSearch,
+            membersByFolder,
+            folderMemberCounts: new Map([['f1', 2], ['f2', 1]]),
+        });
+        expect(rows.map(r => r.folder.id)).toEqual(['f3']);
+        expect(rows[0].memberCount).toBe(0);
+        expect(rows[0].isEmpty).toBe(true);
+    });
+
+    it('counts running members for the live-run dot', () => {
+        const rows = buildSearchChatFolderRows({
+            folders,
+            query: 'auth rewrite',
+            matches: taskMatchesSearch,
+            membersByFolder,
+            runningIds: new Set(['a']),
+        });
+        expect(rows[0].runningCount).toBe(1);
+    });
+
+    it('orders matched folders the same way the tree does', () => {
+        const rows = buildSearchChatFolderRows({
+            folders: [folders[2], folders[0]],
+            query: 'auth',
+            matches: taskMatchesSearch,
+            membersByFolder,
+        });
+        expect(rows.map(r => r.folder.id)).toEqual(['f1', 'f3']);
     });
 });

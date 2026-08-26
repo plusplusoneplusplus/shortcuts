@@ -205,3 +205,101 @@ export function partitionFiledEntries(
     }
     return { filed, unfiled };
 }
+
+/**
+ * A text matcher with the same shape as the list's own `taskMatchesSearch`.
+ * It is passed in rather than imported so this module stays free of React and
+ * of `ChatListPane` — there is exactly one matcher implementation, and the pane
+ * hands it down.
+ */
+export type ChatFolderSearchMatcher = (task: any, query: string) => boolean;
+
+/**
+ * Does a folder's *name* match the active query?
+ *
+ * The folder is shaped as a `{ title }` task and run through the list's own
+ * matcher so folder-name ranking stays consistent with chat-title ranking (AC-08).
+ */
+export function chatFolderMatchesSearch(
+    folder: Pick<ChatFolder, 'name'>,
+    query: string,
+    matches: ChatFolderSearchMatcher,
+): boolean {
+    if (!query) {return false;}
+    return matches({ title: folder.name }, query);
+}
+
+/**
+ * Bucket entries by the folder they are filed in, ignoring any search filter
+ * the caller may already have applied upstream.
+ *
+ * Search uses this with the *unfiltered* candidate rows: a folder whose name
+ * matches shows every member it has, not just the ones whose own text matched.
+ */
+export function groupEntriesByFolder(
+    entries: readonly any[],
+    folderIdByProcess: ReadonlyMap<string, string>,
+    knownFolderIds?: ReadonlySet<string>,
+): Map<string, any[]> {
+    const byFolder = new Map<string, any[]>();
+    for (const entry of entries) {
+        const folderId = resolveEntryFolderId(entry, folderIdByProcess);
+        if (!folderId) {continue;}
+        if (knownFolderIds && !knownFolderIds.has(folderId)) {continue;}
+        const bucket = byFolder.get(folderId);
+        if (bucket) {bucket.push(entry);} else {byFolder.set(folderId, [entry]);}
+    }
+    return byFolder;
+}
+
+export interface BuildSearchChatFolderRowsInput {
+    folders: readonly ChatFolder[];
+    /** The active search query. An empty query yields no rows — the caller uses the tree. */
+    query: string;
+    matches: ChatFolderSearchMatcher;
+    /** Every member of each folder, unfiltered by the query. */
+    membersByFolder: ReadonlyMap<string, any[]>;
+    /** Workspace-wide member counts, for the dimmed empty-folder state. */
+    folderMemberCounts?: ReadonlyMap<string, number>;
+    runningIds?: ReadonlySet<string>;
+}
+
+/**
+ * Build the folder rows shown *while a search is active* (AC-08).
+ *
+ * The tree flattens: only folders whose **name** matches survive, and each one
+ * renders expanded with all of its members beneath it, so typing a folder name
+ * is a fast way to pull up its contents. Every other folder dissolves — its
+ * matching members fall back into the flat date buckets carrying a folder chip,
+ * which happens for free because the caller derives its "visible folder ids"
+ * from these rows.
+ *
+ * Collapse state is deliberately *read* but never written here: rows come back
+ * expanded without touching the persisted set, so clearing the query restores
+ * exactly the prior expansion.
+ */
+export function buildSearchChatFolderRows(input: BuildSearchChatFolderRowsInput): ChatFolderRow[] {
+    const { folders, query, matches, membersByFolder } = input;
+    if (!query) {return [];}
+    const rows: ChatFolderRow[] = [];
+    for (const folder of sortChatFolders(folders)) {
+        if (!chatFolderMatchesSearch(folder, query, matches)) {continue;}
+        const members = membersByFolder.get(folder.id) ?? [];
+        let runningCount = 0;
+        if (input.runningIds) {
+            for (const member of members) {
+                if (input.runningIds.has(member?.id)) {runningCount += 1;}
+            }
+        }
+        rows.push({
+            folder,
+            members,
+            memberCount: members.length,
+            runningCount,
+            isEmpty: (input.folderMemberCounts?.get(folder.id) ?? members.length) === 0,
+            // Always expanded: a folder-name hit exists to reveal its contents.
+            collapsed: false,
+        });
+    }
+    return rows;
+}

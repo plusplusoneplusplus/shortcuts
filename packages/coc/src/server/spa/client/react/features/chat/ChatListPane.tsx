@@ -66,6 +66,8 @@ import {
     buildChatFolderRows,
     buildFolderIdByProcess,
     buildFolderMemberCounts,
+    buildSearchChatFolderRows,
+    groupEntriesByFolder,
     partitionFiledEntries,
     resolveEntryFolderId,
     type ChatFolderRow,
@@ -2013,6 +2015,33 @@ export function ChatListPane({
     /** Ids of rows currently running, for the folder row's live-run dot. */
     const runningRowIds = useMemo(() => new Set<string>(running.map((r: any) => r.id)), [running]);
 
+    /** True when a text search is narrowing the list and folders must flatten (AC-08). */
+    const folderSearchQuery = chatFoldersEnabled ? searchQuery : '';
+
+    /**
+     * Every member of every folder for the current tab, deliberately *not*
+     * filtered by the search query.
+     *
+     * A folder whose name matches the query renders expanded with all of its
+     * contents — that is the whole point of matching on folder names — so the
+     * search path cannot reuse the query-filtered candidate lists the tree is
+     * built from. The type filter, pin/archive precedence and grouped-row
+     * exclusions still apply, exactly as they do in the unsearched pipelines.
+     */
+    const searchFolderMembersByFolder = useMemo(() => {
+        if (!folderSearchQuery || chatFolders.length === 0) {return new Map<string, any[]>();}
+        const known = new Set(chatFolders.map(f => f.id));
+        const candidates = history
+            .filter((t: any) => (activeTab === 'chats' ? isChat(t) : true))
+            .filter((t: any) => taskMatchesFilter(t, excludedTypes))
+            .filter((t: any) => !runningRowIds.has(t.id))
+            .filter((t: any) => !(pinnedChatIds?.has(t.id) ?? false))
+            .filter((t: any) => !(archivedChatIds?.has(t.id) ?? false))
+            .filter((t: any) => !taskIdentityMatches(t, groupedTaskIds))
+            .sort((a: any, b: any) => resolveListEntryTimestamp(b) - resolveListEntryTimestamp(a));
+        return groupEntriesByFolder(candidates, folderIdByProcess, known);
+    }, [folderSearchQuery, chatFolders, history, activeTab, excludedTypes, runningRowIds, pinnedChatIds, archivedChatIds, groupedTaskIds, folderIdByProcess]);
+
     /**
      * Folder rows for the Activity / Tasks surfaces, derived from the *unfiled*
      * date-bucket candidates. Folder membership is computed first so the date
@@ -2021,6 +2050,20 @@ export function ChatListPane({
      */
     const activityFolderRows = useMemo<ChatFolderRow[]>(() => {
         if (!chatFoldersEnabled || chatFolders.length === 0) {return [];}
+        // While searching, the tree flattens: only name-matched folders survive,
+        // and every other folder's matching members fall back into the date
+        // buckets, which happens for free because the visible-folder-id set
+        // below is derived from these rows (AC-08).
+        if (folderSearchQuery) {
+            return buildSearchChatFolderRows({
+                folders: chatFolders,
+                query: folderSearchQuery,
+                matches: taskMatchesSearch,
+                membersByFolder: searchFolderMembersByFolder,
+                folderMemberCounts,
+                runningIds: runningRowIds,
+            });
+        }
         return buildChatFolderRows({
             folders: chatFolders,
             entries: [
@@ -2033,7 +2076,7 @@ export function ChatListPane({
             collapsedIds: collapsedFolderIds,
             runningIds: runningRowIds,
         });
-    }, [chatFoldersEnabled, chatFolders, rawDateBucketedHistory, folderIdByProcess, folderMemberCounts, collapsedFolderIds, runningRowIds]);
+    }, [chatFoldersEnabled, chatFolders, folderSearchQuery, searchFolderMembersByFolder, rawDateBucketedHistory, folderIdByProcess, folderMemberCounts, collapsedFolderIds, runningRowIds]);
 
     const activityVisibleFolderIds = useMemo(
         () => new Set(activityFolderRows.map(row => row.folder.id)),
@@ -2226,6 +2269,16 @@ export function ChatListPane({
      */
     const chatFolderRows = useMemo<ChatFolderRow[]>(() => {
         if (!chatFoldersEnabled || chatFolders.length === 0 || !rawChatGroups) {return [];}
+        if (folderSearchQuery) {
+            return buildSearchChatFolderRows({
+                folders: chatFolders,
+                query: folderSearchQuery,
+                matches: taskMatchesSearch,
+                membersByFolder: searchFolderMembersByFolder,
+                folderMemberCounts,
+                runningIds: runningRowIds,
+            });
+        }
         return buildChatFolderRows({
             folders: chatFolders,
             entries: [...rawChatGroups.today, ...rawChatGroups.week, ...rawChatGroups.older],
@@ -2234,7 +2287,7 @@ export function ChatListPane({
             collapsedIds: collapsedFolderIds,
             runningIds: runningRowIds,
         });
-    }, [chatFoldersEnabled, chatFolders, rawChatGroups, folderIdByProcess, folderMemberCounts, collapsedFolderIds, runningRowIds]);
+    }, [chatFoldersEnabled, chatFolders, folderSearchQuery, searchFolderMembersByFolder, rawChatGroups, folderIdByProcess, folderMemberCounts, collapsedFolderIds, runningRowIds]);
 
     const chatVisibleFolderIds = useMemo(
         () => new Set(chatFolderRows.map(row => row.folder.id)),
@@ -2843,8 +2896,12 @@ export function ChatListPane({
         const taskProvider = getTaskChatProvider(task);
         // A filed row still appears in Running / Queued when it is active — it is
         // never hidden from those sections — so it carries a folder-name chip to
-        // say where it lives. Rows rendered *inside* a folder need no chip.
-        const rowFolder = (isRunning || isQueued) && chatFoldersEnabled
+        // say where it lives. Search results carry one for the same reason: the
+        // tree flattens while a query is active, so the chip is the only thing
+        // left saying where a result lives (AC-08). Rows rendered *inside* a
+        // folder need no chip, and an unfiled row gets none rather than one
+        // reading "Unfiled".
+        const rowFolder = chatFoldersEnabled && !options?.isGroupChild && (isRunning || isQueued || !!folderSearchQuery)
             ? foldersById.get(resolveEntryFolderId(task, folderIdByProcess) ?? '')
             : undefined;
         const forEachGenerationPreview = getForEachGenerationPreview(task);
@@ -3152,6 +3209,7 @@ export function ChatListPane({
         awaitingInputProcessIds,
         running,
         chatFoldersEnabled,
+        folderSearchQuery,
         foldersById,
         folderIdByProcess,
         pinnedChatIds,

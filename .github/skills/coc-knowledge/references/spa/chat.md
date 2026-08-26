@@ -194,6 +194,21 @@ query — the "+ New folder…" escape hatch). It also gained arrow-key navigati
 the focused panel, ArrowRight opens a submenu and focuses its first control, ArrowLeft closes
 it and returns focus to the parent row, and Enter/Space activates the focused item.
 
+**Search.** While a query is active the tree flattens. `buildSearchChatFolderRows` replaces
+`buildChatFolderRows` and keeps only folders whose *name* matches, rendered expanded with
+every member beneath them — folder names are matched by shaping the folder as a `{ title }`
+task and running it through the list's own `taskMatchesSearch`, so there is no second
+matcher. Because the pane derives its visible-folder-id set from those rows, every other
+folder dissolves for free: `partitionFiledEntries` leaves its matching members in the flat
+date buckets, where they pick up a folder-name chip (unfiled results get none rather than
+one reading "Unfiled"). A row that matches *and* sits in a matching folder therefore renders
+once, under the folder. A name-matched folder shows all of its contents, not just the rows
+whose own text matched, so the search path reads its members from
+`searchFolderMembersByFolder` — the unfiltered candidate list, grouped by
+`groupEntriesByFolder`, with the type filter and pin/archive precedence still applied.
+Collapse state is read but never written on this path, so clearing the query restores exactly
+the prior expansion.
+
 ### Row pin/archive routing
 
 Pin and archive state come from process summaries (`pinnedAt`, `archived`) and synchronize
