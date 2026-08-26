@@ -1,25 +1,43 @@
 import { useCallback, useSyncExternalStore } from 'react';
 import { cn } from '../../ui';
+import { isRepoGroupWorkspaceId } from '../../repos/virtualWorkspaceIds';
 
 /**
- * Light-weight open/close plumbing for the workspace right dock (Terminal +
- * Explorer), split out from `WorkspaceRightDock` so consumers that only need the
- * toggle — notably the global TopBar — don't transitively pull in the heavy
- * TerminalView / ExplorerPanel (xterm / Monaco) dependency graph.
+ * Light-weight open/close plumbing for the workspace right dock (Terminal /
+ * Explorer / Notes), split out from `WorkspaceRightDock` so consumers that only
+ * need the toggle — notably the global TopBar — don't transitively pull in the
+ * heavy TerminalView / ExplorerPanel (xterm / Monaco) dependency graph.
  *
  * The open flag is backed by a cross-tree store so the toggle (RepoDetail's chrome
  * header, or the TopBar in the remote-first shell) and the dock body (RepoDetail)
  * stay in sync across separate component subtrees. See `useDockOpen`.
  */
 
-export type WorkspaceDockView = 'terminal' | 'explorer';
+export type WorkspaceDockView = 'terminal' | 'explorer' | 'notes';
+
+/** Every view the dock knows how to render, in header-tab order. */
+export const ALL_WORKSPACE_DOCK_VIEWS: readonly WorkspaceDockView[] = ['terminal', 'explorer', 'notes'];
+
+/**
+ * The dock views available for a workspace, in header-tab order.
+ *
+ * A repo-group workspace has no single repository root — its cwd is the
+ * synthetic `~/.coc/repos/group-<name>` directory — so a file tree there would
+ * be meaningless. Groups therefore get `Terminal | Notes`; a concrete repo keeps
+ * `Terminal | Explorer | Notes`.
+ */
+export function dockViewsForWorkspace(workspaceId: string): readonly WorkspaceDockView[] {
+    return isRepoGroupWorkspaceId(workspaceId)
+        ? ['terminal', 'notes']
+        : ALL_WORKSPACE_DOCK_VIEWS;
+}
 
 /** localStorage key for whether the dock is open, per workspace. */
 export function workspaceDockOpenStorageKey(workspaceId: string): string {
     return `split-workspace:${workspaceId}:dock-open`;
 }
 
-/** localStorage key for the active dock view (terminal|explorer), per workspace. */
+/** localStorage key for the active dock view (terminal|explorer|notes), per workspace. */
 export function workspaceDockViewStorageKey(workspaceId: string): string {
     return `split-workspace:${workspaceId}:dock-view`;
 }

@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useComposerInsertListener } from './composerInsert';
 import { RichTextInput } from '../../shared/RichTextInput';
 import type { RichTextInputHandle } from '../../shared/RichTextInput';
 import { AttachmentPreviews } from '../../ui/AttachmentPreviews';
@@ -311,6 +312,10 @@ export function InitialChatComposer({
     interceptSubmit,
 }: InitialChatComposerProps) {
     const [input, setInput] = useState('');
+    // "Insert into chat" from the workspace right dock's Notes panel — the dock
+    // is a sibling column with no React path here, so it dispatches a window
+    // event this composer listens for.
+    useComposerInsertListener(workspaceId, setInput);
     const [cursorPos, setCursorPos] = useState(0);
     // False until the editor has reported a caret, so a drop onto a composer
     // that was never focused appends instead of inserting at offset 0.

@@ -15,6 +15,11 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/E
         <div data-testid="mock-explorer">explorer:{workspaceId}</div>
     ),
 }));
+vi.mock('../../../../src/server/spa/client/react/features/notes/dock/DockNotesPanel', () => ({
+    DockNotesPanel: ({ workspaceId }: { workspaceId: string }) => (
+        <div data-testid="mock-notes">notes:{workspaceId}</div>
+    ),
+}));
 
 import {
     WorkspaceRightDock,
@@ -26,6 +31,7 @@ import {
     DOCK_INITIAL_WIDTH,
     DOCK_MIN_WIDTH,
     DOCK_MIN_CHAT_WIDTH,
+    dockViewsForWorkspace,
 } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceRightDock';
 
 /**
@@ -80,6 +86,7 @@ describe('WorkspaceRightDock', () => {
         expect(dockEl.getAttribute('data-open')).toBe('false');
         expect(screen.queryByTestId('mock-terminal')).toBeNull();
         expect(screen.queryByTestId('mock-explorer')).toBeNull();
+        expect(screen.queryByTestId('mock-notes')).toBeNull();
         // Default width applied to the dock body.
         expect(screen.getByTestId('workspace-dock-body').style.width).toBe(`${DOCK_INITIAL_WIDTH}px`);
     });
@@ -92,11 +99,13 @@ describe('WorkspaceRightDock', () => {
         expect(dockEl.style.display).not.toBe('none');
         expect(dockEl.getAttribute('data-open')).toBe('true');
 
-        // Both views mounted; terminal visible, explorer hidden via display:none.
+        // Every view mounted; terminal visible, the others hidden via display:none.
         expect(screen.getByTestId('mock-terminal')).toBeTruthy();
         expect(screen.getByTestId('mock-explorer')).toBeTruthy();
+        expect(screen.getByTestId('mock-notes')).toBeTruthy();
         expect(screen.getByTestId('workspace-dock-terminal').style.display).not.toBe('none');
         expect(screen.getByTestId('workspace-dock-explorer').style.display).toBe('none');
+        expect(screen.getByTestId('workspace-dock-notes').style.display).toBe('none');
     });
 
     it('switching to Explorer keeps both views mounted (only visibility flips) (AC-05)', () => {
@@ -334,5 +343,194 @@ describe('WorkspaceDockToggleButton (remote-first / TopBar)', () => {
         render(<SplitHarness workspaceId="ws-restore" />);
         expect(screen.getByTestId('workspace-dock-toggle').getAttribute('aria-pressed')).toBe('true');
         expect(screen.getByTestId('workspace-right-dock').style.display).not.toBe('none');
+    });
+});
+
+/**
+ * The dock's third view. Notes is a sibling of Terminal/Explorer inside the same
+ * keep-alive block, so the selected note and preview scroll position survive a
+ * view switch exactly like the terminal session does.
+ */
+describe('WorkspaceRightDock — Notes view', () => {
+    beforeEach(() => {
+        localStorage.clear();
+    });
+
+    it('offers a Notes tab alongside Terminal and Explorer in a repo workspace', () => {
+        render(<Harness />);
+        openDock();
+
+        const tabs = screen.getByTestId('workspace-dock-view-switcher');
+        expect(tabs.textContent).toBe('TerminalExplorerNotes');
+        expect(screen.getByTestId('workspace-dock-view-notes')).toBeTruthy();
+    });
+
+    it('switches to Notes without unmounting the other views (keep-alive)', () => {
+        render(<Harness />);
+        openDock();
+
+        act(() => {
+            fireEvent.click(screen.getByTestId('workspace-dock-view-notes'));
+        });
+
+        expect(screen.getByTestId('workspace-dock-notes').style.display).not.toBe('none');
+        expect(screen.getByTestId('workspace-dock-terminal').style.display).toBe('none');
+        expect(screen.getByTestId('workspace-dock-explorer').style.display).toBe('none');
+        // Nothing torn down — the PTY session and the explorer tree both survive.
+        expect(screen.getByTestId('mock-terminal')).toBeTruthy();
+        expect(screen.getByTestId('mock-explorer')).toBeTruthy();
+        expect(screen.getByTestId('mock-notes')).toBeTruthy();
+    });
+
+    it('marks the active tab via aria-selected', () => {
+        render(<Harness />);
+        openDock();
+        act(() => {
+            fireEvent.click(screen.getByTestId('workspace-dock-view-notes'));
+        });
+        expect(screen.getByTestId('workspace-dock-view-notes').getAttribute('aria-selected')).toBe('true');
+        expect(screen.getByTestId('workspace-dock-view-terminal').getAttribute('aria-selected')).toBe('false');
+    });
+
+    it('passes the workspace id down to the notes panel', () => {
+        render(<Harness workspaceId="ws-notes" />);
+        openDock();
+        expect(screen.getByTestId('mock-notes').textContent).toBe('notes:ws-notes');
+    });
+
+    it('round-trips the Notes view through localStorage', () => {
+        const { unmount } = render(<Harness workspaceId="ws-persist" />);
+        openDock();
+        act(() => {
+            fireEvent.click(screen.getByTestId('workspace-dock-view-notes'));
+        });
+        expect(localStorage.getItem(workspaceDockViewStorageKey('ws-persist'))).toBe('notes');
+        unmount();
+
+        render(<Harness workspaceId="ws-persist" />);
+        // Reopens straight to Notes rather than falling back to Terminal.
+        expect(screen.getByTestId('workspace-dock-notes').style.display).not.toBe('none');
+        expect(screen.getByTestId('workspace-dock-terminal').style.display).toBe('none');
+    });
+});
+
+/**
+ * A repo group has no single repository root — its cwd is the synthetic
+ * `~/.coc/repos/group-<name>` directory — so a file tree there is meaningless.
+ * The dock drops Explorer entirely in that context (tab AND mount, so a group
+ * workspace never loads Monaco).
+ */
+describe('WorkspaceRightDock — repo-group workspaces', () => {
+    beforeEach(() => {
+        localStorage.clear();
+    });
+
+    it('derives Terminal|Notes for a group id and Terminal|Explorer|Notes for a repo id', () => {
+        expect(dockViewsForWorkspace('group-ai-repos')).toEqual(['terminal', 'notes']);
+        expect(dockViewsForWorkspace('my-repo')).toEqual(['terminal', 'explorer', 'notes']);
+        // Only the server's `group-<slug>` shape counts as a group.
+        expect(dockViewsForWorkspace('group')).toEqual(['terminal', 'explorer', 'notes']);
+        expect(dockViewsForWorkspace('grouped-repo')).toEqual(['terminal', 'explorer', 'notes']);
+    });
+
+    it('shows only Terminal and Notes tabs in a group workspace', () => {
+        render(<Harness workspaceId="group-ai-repos" />);
+        openDock();
+
+        const tabs = screen.getByTestId('workspace-dock-view-switcher');
+        expect(tabs.textContent).toBe('TerminalNotes');
+        expect(screen.queryByTestId('workspace-dock-view-explorer')).toBeNull();
+        expect(screen.getByTestId('workspace-dock-view-notes')).toBeTruthy();
+    });
+
+    it('never mounts the explorer in a group workspace (no Monaco load)', () => {
+        render(<Harness workspaceId="group-ai-repos" />);
+        openDock();
+
+        expect(screen.queryByTestId('workspace-dock-explorer')).toBeNull();
+        expect(screen.queryByTestId('mock-explorer')).toBeNull();
+        expect(screen.getByTestId('mock-terminal')).toBeTruthy();
+        expect(screen.getByTestId('mock-notes')).toBeTruthy();
+    });
+
+    it('still keeps Terminal and Notes mounted across a view switch in a group', () => {
+        render(<Harness workspaceId="group-ai-repos" />);
+        openDock();
+
+        act(() => {
+            fireEvent.click(screen.getByTestId('workspace-dock-view-notes'));
+        });
+
+        expect(screen.getByTestId('workspace-dock-notes').style.display).not.toBe('none');
+        expect(screen.getByTestId('workspace-dock-terminal').style.display).toBe('none');
+        expect(screen.getByTestId('mock-terminal')).toBeTruthy();
+    });
+
+    it('keeps the explorer for a concrete repo workspace', () => {
+        render(<Harness workspaceId="my-repo" />);
+        openDock();
+        expect(screen.getByTestId('workspace-dock-view-explorer')).toBeTruthy();
+        expect(screen.getByTestId('mock-explorer')).toBeTruthy();
+    });
+});
+
+/**
+ * Persisted-view fallback: the stored view must be validated against the views
+ * available in THIS context, or a user with `explorer` persisted lands on a
+ * hidden tab (and an empty dock) the moment they open a group workspace.
+ */
+describe('WorkspaceRightDock — persisted view fallback', () => {
+    beforeEach(() => {
+        localStorage.clear();
+    });
+
+    it('falls back to Terminal when the persisted view is unavailable here', () => {
+        localStorage.setItem(workspaceDockOpenStorageKey('group-ai-repos'), '1');
+        localStorage.setItem(workspaceDockViewStorageKey('group-ai-repos'), 'explorer');
+
+        render(<Harness workspaceId="group-ai-repos" />);
+
+        // Not an empty dock: Terminal is shown, not a hidden explorer tab.
+        expect(screen.getByTestId('workspace-dock-terminal').style.display).not.toBe('none');
+        expect(screen.getByTestId('workspace-dock-notes').style.display).toBe('none');
+        expect(screen.queryByTestId('workspace-dock-explorer')).toBeNull();
+    });
+
+    it('honours a persisted Notes view in a group workspace', () => {
+        localStorage.setItem(workspaceDockOpenStorageKey('group-ai-repos'), '1');
+        localStorage.setItem(workspaceDockViewStorageKey('group-ai-repos'), 'notes');
+
+        render(<Harness workspaceId="group-ai-repos" />);
+
+        expect(screen.getByTestId('workspace-dock-notes').style.display).not.toBe('none');
+        expect(screen.getByTestId('workspace-dock-terminal').style.display).toBe('none');
+    });
+
+    it('falls back to Terminal for an unrecognised persisted value', () => {
+        localStorage.setItem(workspaceDockOpenStorageKey('ws-junk'), '1');
+        localStorage.setItem(workspaceDockViewStorageKey('ws-junk'), 'not-a-view');
+
+        render(<Harness workspaceId="ws-junk" />);
+
+        expect(screen.getByTestId('workspace-dock-terminal').style.display).not.toBe('none');
+        expect(screen.getByTestId('workspace-dock-explorer').style.display).toBe('none');
+        expect(screen.getByTestId('workspace-dock-notes').style.display).toBe('none');
+    });
+
+    it('re-resolves the view when the harness switches to a workspace without that view', () => {
+        localStorage.setItem(workspaceDockOpenStorageKey('ws-repo'), '1');
+        localStorage.setItem(workspaceDockViewStorageKey('ws-repo'), 'explorer');
+        localStorage.setItem(workspaceDockOpenStorageKey('group-ai-repos'), '1');
+        localStorage.setItem(workspaceDockViewStorageKey('group-ai-repos'), 'explorer');
+
+        const { rerender } = render(<Harness workspaceId="ws-repo" />);
+        expect(screen.getByTestId('workspace-dock-explorer').style.display).not.toBe('none');
+
+        rerender(<Harness workspaceId="group-ai-repos" />);
+
+        expect(screen.queryByTestId('workspace-dock-explorer')).toBeNull();
+        expect(screen.getByTestId('workspace-dock-terminal').style.display).not.toBe('none');
+        // The fallback is a read, not a write — the repo's own preference is untouched.
+        expect(localStorage.getItem(workspaceDockViewStorageKey('group-ai-repos'))).toBe('explorer');
     });
 });

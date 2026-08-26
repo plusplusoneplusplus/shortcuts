@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { cn } from '../../ui';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { useViewportWidth } from '../../hooks/ui/useViewportWidth';
 import { TerminalView } from '../terminal/TerminalView';
+import { DockNotesPanel } from '../notes/dock/DockNotesPanel';
 import { ExplorerPanel } from './explorer/ExplorerPanel';
 import {
     DOCK_INITIAL_WIDTH,
     DOCK_MIN_CHAT_WIDTH,
     DOCK_MIN_WIDTH,
+    dockViewsForWorkspace,
     useDockOpen,
     workspaceDockOpenStorageKey,
     workspaceDockViewStorageKey,
@@ -20,10 +22,12 @@ import {
 // straight from './WorkspaceDockToggle' to stay clear of the TerminalView /
 // ExplorerPanel (xterm / Monaco) graph that this module pulls in.
 export {
+    ALL_WORKSPACE_DOCK_VIEWS,
     DOCK_INITIAL_WIDTH,
     DOCK_MIN_CHAT_WIDTH,
     DOCK_MIN_WIDTH,
     WorkspaceDockToggleButton,
+    dockViewsForWorkspace,
     useWorkspaceDockToggle,
     workspaceDockOpenStorageKey,
     workspaceDockViewStorageKey,
@@ -33,19 +37,25 @@ export type { WorkspaceDockView } from './WorkspaceDockToggle';
 
 /**
  * WorkspaceRightDock — a VS Code-style right-side dock at the workspace level
- * (behind the `splitWorkspacePanel` flag) that hosts the existing Terminal and
- * File Explorer, switchable via compact Terminal|Explorer tabs in a single-row
- * header. The active terminal's toolbar (picker + new-terminal action) portals
- * into that same header row so the whole bar reads as one control. It lives
- * to the right of everything and stays mounted across every sub-tab (chat, git,
- * notes, work-items, …) so the running PTY session and explorer state survive a
- * sub-tab change, a dock close, or a view switch.
+ * (behind the `splitWorkspacePanel` flag) that hosts the existing Terminal, the
+ * File Explorer, and a compact read-only Notes panel, switchable via compact
+ * tabs in a single-row header. Which tabs appear depends on the workspace: a
+ * repo group has no single repository root, so it drops Explorer and shows
+ * Terminal|Notes (see `dockViewsForWorkspace`). The active terminal's toolbar
+ * (picker + new-terminal action) portals into that same header row so the whole
+ * bar reads as one control. It lives to the right of everything and stays
+ * mounted across every sub-tab (chat, git, notes, work-items, …) so the running
+ * PTY session and explorer state survive a sub-tab change, a dock close, or a
+ * view switch.
  *
- * The dock reuses `TerminalView` / `ExplorerPanel` unchanged (`{ workspaceId }`
- * only). Both views stay mounted once the dock has been opened; the inactive one
- * is hidden with `display:none` (the same keep-alive pattern RepoDetail uses for
- * its secondary sub-tabs) rather than unmounted, so switching views — or closing
- * and reopening the dock — never tears down the server-side terminal session.
+ * The dock reuses `TerminalView` / `ExplorerPanel` / `DockNotesPanel` unchanged
+ * (`{ workspaceId }` only). Every available view stays mounted once the dock has
+ * been opened; the inactive ones are hidden with `display:none` (the same
+ * keep-alive pattern RepoDetail uses for its secondary sub-tabs) rather than
+ * unmounted, so switching views — or closing and reopening the dock — never
+ * tears down the server-side terminal session or loses the selected note.
+ * Explorer is not mounted at all in a repo group, so a group workspace never
+ * pays for loading Monaco.
  *
  * Open/closed state, the active view, and the dock width persist per-workspace to
  * localStorage (AC-06). The open/close toggle lives outside the dock body: the
@@ -56,42 +66,49 @@ export type { WorkspaceDockView } from './WorkspaceDockToggle';
  * stays in sync — see `useWorkspaceDock` / `useWorkspaceDockToggle`.
  */
 
-function readView(storageKey: string): WorkspaceDockView {
+/**
+ * Read the persisted view, falling back to the first available view when the
+ * stored value is absent or names a view this workspace does not offer. Without
+ * the membership check, a user with `explorer` persisted would land on a hidden
+ * tab (and an empty dock) the moment they open a repo-group workspace.
+ */
+function readView(storageKey: string, available: readonly WorkspaceDockView[]): WorkspaceDockView {
+    const fallback = available[0] ?? 'terminal';
     try {
-        return localStorage.getItem(storageKey) === 'explorer' ? 'explorer' : 'terminal';
+        const stored = localStorage.getItem(storageKey);
+        return available.includes(stored as WorkspaceDockView) ? (stored as WorkspaceDockView) : fallback;
     } catch {
-        return 'terminal';
+        return fallback;
     }
 }
 
 /**
- * Persisted active-view selector, scoped by `storageKey`. Mirrors
- * `useCollapsedState`: only writes on an explicit user switch (never on mount or
- * on a workspace switch) and re-syncs when the key changes. Defaults to
- * `terminal` when unset.
+ * Persisted active-view selector, scoped by `storageKey` and constrained to the
+ * views `available` in this workspace. Only an explicit user switch persists
+ * (never mount, and never a workspace switch — otherwise arriving at a repo
+ * group would rewrite its stored preference with the fallback); the view
+ * re-resolves from storage whenever the workspace changes. Defaults to the first
+ * available view when unset or when the persisted view is unavailable here.
  */
-function useDockView(storageKey: string): [WorkspaceDockView, (view: WorkspaceDockView) => void] {
-    const [view, setViewState] = useState<WorkspaceDockView>(() => readView(storageKey));
-    const skipPersistRef = useRef(true);
+function useDockView(
+    storageKey: string,
+    available: readonly WorkspaceDockView[],
+): [WorkspaceDockView, (view: WorkspaceDockView) => void] {
+    const [view, setViewState] = useState<WorkspaceDockView>(() => readView(storageKey, available));
 
     useEffect(() => {
-        skipPersistRef.current = true;
-        setViewState(readView(storageKey));
-    }, [storageKey]);
+        setViewState(readView(storageKey, available));
+    }, [storageKey, available]);
 
-    useEffect(() => {
-        if (skipPersistRef.current) {
-            skipPersistRef.current = false;
-            return;
-        }
+    const setView = useCallback((next: WorkspaceDockView) => {
+        setViewState(next);
         try {
-            localStorage.setItem(storageKey, view);
+            localStorage.setItem(storageKey, next);
         } catch {
             /* ignore */
         }
-    }, [view, storageKey]);
+    }, [storageKey]);
 
-    const setView = useCallback((next: WorkspaceDockView) => setViewState(next), []);
     return [view, setView];
 }
 
@@ -104,6 +121,11 @@ export interface WorkspaceDockController {
     view: WorkspaceDockView;
     /** Switch the active view (persisted). */
     setView: (view: WorkspaceDockView) => void;
+    /**
+     * Views this workspace offers, in header-tab order — `terminal|explorer|notes`
+     * for a concrete repo, `terminal|notes` for a repo group.
+     */
+    views: readonly WorkspaceDockView[];
     /**
      * Current dock width in px (persisted, default ~420). Clamped between
      * `DOCK_MIN_WIDTH` and the live viewport-relative `maxWidth`.
@@ -131,7 +153,8 @@ export interface WorkspaceDockController {
  */
 export function useWorkspaceDock(workspaceId: string): WorkspaceDockController {
     const [isOpen, toggleOpen] = useDockOpen(workspaceDockOpenStorageKey(workspaceId));
-    const [view, setView] = useDockView(workspaceDockViewStorageKey(workspaceId));
+    const views = useMemo(() => dockViewsForWorkspace(workspaceId), [workspaceId]);
+    const [view, setView] = useDockView(workspaceDockViewStorageKey(workspaceId), views);
     // Cap the dock relative to the live window so it can be dragged as wide as the
     // monitor allows, while always reserving DOCK_MIN_CHAT_WIDTH for the chat pane.
     // The floor at DOCK_MIN_WIDTH guards the min > max inversion on narrow windows.
@@ -145,7 +168,7 @@ export function useWorkspaceDock(workspaceId: string): WorkspaceDockController {
         storageKey: workspaceDockWidthStorageKey(workspaceId),
     });
 
-    return { isOpen, toggleOpen, view, setView, width, maxWidth, isDragging, handleMouseDown, handleTouchStart };
+    return { isOpen, toggleOpen, view, setView, views, width, maxWidth, isDragging, handleMouseDown, handleTouchStart };
 }
 
 const DOCK_VIEW_TABS: readonly {
@@ -175,24 +198,40 @@ const DOCK_VIEW_TABS: readonly {
             </svg>
         ),
     },
+    {
+        value: 'notes',
+        label: 'Notes',
+        testId: 'workspace-dock-view-notes',
+        icon: (
+            <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M4 2.2h5.4L12.5 5.3v8.5H4z" />
+                <polyline points="9.2,2.4 9.2,5.5 12.3,5.5" />
+                <line x1="6" y1="8.2" x2="10.5" y2="8.2" />
+                <line x1="6" y1="10.6" x2="10.5" y2="10.6" />
+            </svg>
+        ),
+    },
 ];
 
 /**
- * Compact Terminal | Explorer tabs for the dock's single-row header. Underline
- * marks the active view; the terminal picker + new-terminal action portal into
- * the same row to the right (see WorkspaceRightDock), so the header reads as one
- * bar rather than a stack of a pill switcher over a separate terminal toolbar.
+ * Compact view tabs for the dock's single-row header, limited to the views this
+ * workspace offers (`views`). Underline marks the active view; the terminal
+ * picker + new-terminal action portal into the same row to the right (see
+ * WorkspaceRightDock), so the header reads as one bar rather than a stack of a
+ * pill switcher over a separate terminal toolbar.
  */
 function DockViewTabs({
     view,
+    views,
     onChange,
 }: {
     view: WorkspaceDockView;
+    views: readonly WorkspaceDockView[];
     onChange: (value: WorkspaceDockView) => void;
 }) {
     return (
         <div className="flex h-full flex-shrink-0 items-stretch" role="tablist" data-testid="workspace-dock-view-switcher">
-            {DOCK_VIEW_TABS.map(tab => {
+            {DOCK_VIEW_TABS.filter(tab => views.includes(tab.value)).map(tab => {
                 const active = view === tab.value;
                 return (
                     <button
@@ -232,7 +271,10 @@ export interface WorkspaceRightDockProps {
  * store. Callers gate this on `splitWorkspacePanel` + desktop breakpoint.
  */
 export function WorkspaceRightDock({ workspaceId, dock }: WorkspaceRightDockProps) {
-    const { isOpen, view, setView, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
+    const { isOpen, view, setView, views, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
+    // Repo groups have no single repository root, so Explorer is neither tabbed
+    // nor mounted there — a group workspace never loads Monaco.
+    const explorerAvailable = views.includes('explorer');
 
     // Lazily mount the views on first open so opening a workspace never eagerly
     // spawns a terminal session for a dock the user never touches. Once opened,
@@ -267,7 +309,7 @@ export function WorkspaceRightDock({ workspaceId, dock }: WorkspaceRightDockProp
                 data-testid="workspace-dock-resize-handle"
                 role="separator"
                 aria-orientation="vertical"
-                aria-label="Resize terminal / explorer dock"
+                aria-label="Resize workspace dock"
                 aria-valuemin={DOCK_MIN_WIDTH}
                 aria-valuemax={maxWidth}
                 aria-valuenow={width}
@@ -277,7 +319,7 @@ export function WorkspaceRightDock({ workspaceId, dock }: WorkspaceRightDockProp
             </div>
 
             {/* Dock body: single-row header (view tabs + portaled terminal toolbar)
-                + the two (keep-alive) views. */}
+                + the (keep-alive) views. */}
             <div
                 className="flex min-h-0 flex-col overflow-hidden"
                 style={{ width }}
@@ -287,7 +329,7 @@ export function WorkspaceRightDock({ workspaceId, dock }: WorkspaceRightDockProp
                     className="flex h-[35px] flex-shrink-0 items-center gap-1 border-b border-[#e5e5e5] pr-1 dark:border-[#333]"
                     data-testid="workspace-dock-header"
                 >
-                    <DockViewTabs view={view} onChange={setView} />
+                    <DockViewTabs view={view} views={views} onChange={setView} />
                     {/* Portal target for the active terminal's toolbar (picker + new). */}
                     <div ref={setPickerSlot} className="flex min-w-0 flex-1 items-center" />
                 </div>
@@ -305,12 +347,21 @@ export function WorkspaceRightDock({ workspaceId, dock }: WorkspaceRightDockProp
                                 toolbarPortalTarget={view === 'terminal' ? pickerSlot : null}
                             />
                         </div>
+                        {explorerAvailable && (
+                            <div
+                                className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+                                style={{ display: view === 'explorer' ? undefined : 'none' }}
+                                data-testid="workspace-dock-explorer"
+                            >
+                                <ExplorerPanel key={workspaceId} workspaceId={workspaceId} />
+                            </div>
+                        )}
                         <div
                             className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-                            style={{ display: view === 'explorer' ? undefined : 'none' }}
-                            data-testid="workspace-dock-explorer"
+                            style={{ display: view === 'notes' ? undefined : 'none' }}
+                            data-testid="workspace-dock-notes"
                         >
-                            <ExplorerPanel key={workspaceId} workspaceId={workspaceId} />
+                            <DockNotesPanel key={workspaceId} workspaceId={workspaceId} />
                         </div>
                     </>
                 )}
