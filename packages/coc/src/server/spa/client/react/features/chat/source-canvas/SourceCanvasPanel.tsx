@@ -558,9 +558,12 @@ export function SourceCanvasPanel({
                     />
                 </div>
             ) : (
-                <div className="flex-1 min-h-0 overflow-auto" data-testid="source-canvas-body">
+                /* Monaco (the code viewer) owns its own scrolling, so the host
+                   must not scroll too — otherwise there are two scrollbars and
+                   the editor's ResizeObserver never settles on a height. */
+                <div className="flex-1 min-h-0 overflow-hidden" data-testid="source-canvas-body">
                     {/* Read-only code mode: AC-06 loading / error states; AC-04
-                        success rendering (markdown vs syntax-highlighted source). */}
+                        success rendering (markdown vs the Monaco viewer). */}
                     {(!content || content.status === 'loading') && (
                         <div
                             className="flex items-center gap-2 p-4 text-xs text-[#848484]"
