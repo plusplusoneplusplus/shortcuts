@@ -27,6 +27,31 @@ vi.mock('../../../src/server/spa/client/react/features/chat/source-canvas/Source
     ),
 }));
 
+// jsdom cannot run Monaco, and the code viewer inside SourceCanvasBody mounts
+// it — stub the module the same way PreviewPane's read-only test does.
+vi.mock('../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor', () => ({
+    MonacoFileEditor: ({ value, language, readOnly, highlightRange }: any) => (
+        <div
+            data-testid="mock-monaco-editor"
+            data-language={language}
+            data-value={value}
+            data-read-only={String(!!readOnly)}
+            data-highlight-start={highlightRange ? String(highlightRange.start) : ''}
+            data-highlight-end={highlightRange ? String(highlightRange.end) : ''}
+        />
+    ),
+    getMonacoLanguage: (name: string) => {
+        const parts = String(name).split('.');
+        if (parts.length < 2) { return 'plaintext'; }
+        const map: Record<string, string> = { ts: 'typescript', js: 'javascript', md: 'markdown' };
+        return map[parts[parts.length - 1].toLowerCase()] ?? 'plaintext';
+    },
+    EXPLORER_EDITOR_OPTIONS: {},
+    revealEditorLine: () => {},
+    buildHighlightDecorations: () => [],
+    EDITOR_HIGHLIGHT_CLASS: 'source-canvas-line-highlight',
+}));
+
 // Stub the pop-out button — it pulls in App/Toast/MarkdownPopOut contexts.
 vi.mock('../../../src/server/spa/client/react/features/chat/source-canvas/SourceCanvasNotePopOutButton', () => ({
     SourceCanvasNotePopOutButton: ({ onClose }: any) => (

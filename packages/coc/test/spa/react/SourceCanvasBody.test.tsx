@@ -1,14 +1,19 @@
 /**
  * Tests for SourceCanvasBody — AC-04 content rendering + AC-05 line highlight.
  *
+ * The source path renders through the shared read-only Monaco viewer, which
+ * cannot run under jsdom — so `MonacoFileEditor` is module-mocked (the pattern
+ * from `repos/explorer/PreviewPane.readOnly.test.tsx`) and the assertions are
+ * about the props the viewer receives, not about DOM rows.
+ *
  * Covers:
  * - `.md`/`.markdown` → formatted markdown with a working Rendered ⇄ Raw toggle
  * - markdown detection via the server `language` hint (extension-agnostic)
- * - source files → syntax-highlighted lines with a line-number gutter + data-line
- * - unknown extensions → plain (un-highlighted) but still gutter'd lines
- * - AC-05: `:line` highlights + scrolls a row; `:start-end` highlights a range;
- *   no line opens at the top (no highlight, no scroll); out-of-range clamps;
- *   rendered markdown highlights the matching `.md-line` row
+ * - source files → read-only Monaco with the right language, no onSave/onChange
+ * - unknown extensions → `plaintext`
+ * - AC-05: `:line` and `:start-end` become a `highlightRange`; no line → none;
+ *   out-of-range clamps; a changed range re-applies without a remount;
+ *   rendered markdown still highlights the matching `.md-line` row
  */
 /* @vitest-environment jsdom */
 
@@ -17,6 +22,50 @@ import { render, fireEvent } from '@testing-library/react';
 import { SourceCanvasBody } from '../../../src/server/spa/client/react/features/chat/source-canvas/SourceCanvasBody';
 
 const HIGHLIGHT = 'source-canvas-line-highlight';
+
+/**
+ * jsdom cannot run Monaco. Stand in a plain element that records the props the
+ * canvas passed, so the tests assert the contract rather than the editor.
+ * `mount-id` is stable across rerenders, which is how "no remount" is proven.
+ */
+const mountState = vi.hoisted(() => ({ count: 0 }));
+vi.mock(
+    '../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor',
+    async () => {
+        const { useRef } = await import('react');
+        return {
+            MonacoFileEditor: ({ value, language, readOnly, onChange, onSave, highlightRange }: any) => {
+                const id = useRef<number | null>(null);
+                if (id.current === null) { id.current = ++mountState.count; }
+                return (
+                    <div
+                        data-testid="mock-monaco-editor"
+                        data-mount-id={String(id.current)}
+                        data-language={language}
+                        data-value={value}
+                        data-read-only={String(!!readOnly)}
+                        data-has-on-change={String(!!onChange)}
+                        data-has-on-save={String(!!onSave)}
+                        data-highlight-start={highlightRange ? String(highlightRange.start) : ''}
+                        data-highlight-end={highlightRange ? String(highlightRange.end) : ''}
+                    />
+                );
+            },
+            getMonacoLanguage: (name: string) => {
+                const parts = String(name).split('.');
+                if (parts.length < 2) { return 'plaintext'; }
+                const map: Record<string, string> = {
+                    ts: 'typescript', tsx: 'typescript', js: 'javascript', md: 'markdown', py: 'python',
+                };
+                return map[parts[parts.length - 1].toLowerCase()] ?? 'plaintext';
+            },
+            EXPLORER_EDITOR_OPTIONS: {},
+            revealEditorLine: () => {},
+            buildHighlightDecorations: () => [],
+            EDITOR_HIGHLIGHT_CLASS: 'source-canvas-line-highlight',
+        };
+    },
+);
 
 /** Build N source lines: "line 1\nline 2\n…\nline N\n". */
 function makeLines(n: number): string {
@@ -31,7 +80,7 @@ describe('SourceCanvasBody (AC-04)', () => {
                 <SourceCanvasBody fileName="README.md" content={md} />,
             );
 
-            // Default: rendered markdown (not raw source lines).
+            // Default: rendered markdown (not the code viewer).
             const body = getByTestId('source-canvas-markdown');
             expect(body.classList.contains('markdown-body')).toBe(true);
             // renderMarkdownToHtml emits styled md-line/md-h1/md-bold spans.
@@ -44,11 +93,14 @@ describe('SourceCanvasBody (AC-04)', () => {
             expect(toggle.textContent).toBe('Raw');
             expect(toggle.getAttribute('aria-pressed')).toBe('false');
 
-            // Toggle → raw source view shows the unrendered markdown lines.
+            // Toggle → raw view mounts the code viewer with the markdown source.
             fireEvent.click(toggle);
             expect(queryByTestId('source-canvas-markdown')).toBeNull();
-            const source = getByTestId('source-canvas-source');
-            expect(source.textContent).toContain('# Heading');
+            expect(getByTestId('source-canvas-source')).not.toBeNull();
+            const editor = getByTestId('mock-monaco-editor');
+            expect(editor.getAttribute('data-value')).toBe(md);
+            expect(editor.getAttribute('data-language')).toBe('markdown');
+            expect(editor.getAttribute('data-read-only')).toBe('true');
             expect(toggle.textContent).toBe('Rendered');
             expect(toggle.getAttribute('aria-pressed')).toBe('true');
 
@@ -67,50 +119,32 @@ describe('SourceCanvasBody (AC-04)', () => {
     });
 
     describe('source rendering', () => {
-        it('renders a .ts file as syntax-highlighted source with a line-number gutter', () => {
+        it('renders a .ts file in the read-only Monaco viewer with no save/change handlers', () => {
             const ts = 'const x = 1;\nfunction f() {\n  return x;\n}\n';
             const { getByTestId, queryByTestId } = render(
                 <SourceCanvasBody fileName="app.ts" content={ts} />,
             );
 
             expect(queryByTestId('source-canvas-markdown')).toBeNull();
-            const source = getByTestId('source-canvas-source');
+            // The wrapper testid is the external contract for "viewer mounted".
+            const wrapper = getByTestId('source-canvas-source');
+            const editor = getByTestId('mock-monaco-editor');
+            expect(wrapper.contains(editor)).toBe(true);
 
-            // One row per source line (trailing newline dropped → 4 lines).
-            const lines = source.querySelectorAll('.source-canvas-line');
-            expect(lines).toHaveLength(4);
-
-            // Line-number gutter is 1..N.
-            const numbers = Array.from(
-                source.querySelectorAll('.source-canvas-line-number'),
-            ).map((el) => el.textContent);
-            expect(numbers).toEqual(['1', '2', '3', '4']);
-
-            // data-line attributes track the 1-based line (for AC-05).
-            expect(lines[0].getAttribute('data-line')).toBe('1');
-            expect(lines[3].getAttribute('data-line')).toBe('4');
-
-            // highlight.js applied → hljs spans + class on the content span.
-            const firstContent = source.querySelector(
-                '.source-canvas-line-content',
-            ) as HTMLElement;
-            expect(firstContent.classList.contains('hljs')).toBe(true);
-            expect(firstContent.innerHTML).toContain('hljs-');
-            expect(source.textContent).toContain('const x = 1;');
+            expect(editor.getAttribute('data-value')).toBe(ts);
+            expect(editor.getAttribute('data-language')).toBe('typescript');
+            expect(editor.getAttribute('data-read-only')).toBe('true');
+            expect(editor.getAttribute('data-has-on-save')).toBe('false');
+            expect(editor.getAttribute('data-has-on-change')).toBe('false');
         });
 
-        it('renders an unknown extension as plain gutter lines (no hljs)', () => {
+        it('falls back to plaintext for an unknown extension', () => {
             const { getByTestId } = render(
                 <SourceCanvasBody fileName="data.unknownext" content={'alpha\nbeta\n'} />,
             );
-            const source = getByTestId('source-canvas-source');
-            expect(source.querySelectorAll('.source-canvas-line')).toHaveLength(2);
-            const firstContent = source.querySelector(
-                '.source-canvas-line-content',
-            ) as HTMLElement;
-            expect(firstContent.classList.contains('hljs')).toBe(false);
-            expect(firstContent.innerHTML).not.toContain('hljs-');
-            expect(source.textContent).toContain('alpha');
+            const editor = getByTestId('mock-monaco-editor');
+            expect(editor.getAttribute('data-language')).toBe('plaintext');
+            expect(editor.getAttribute('data-value')).toBe('alpha\nbeta\n');
         });
     });
 
@@ -129,59 +163,70 @@ describe('SourceCanvasBody (AC-04)', () => {
             delete (Element.prototype as unknown as { scrollIntoView?: unknown }).scrollIntoView;
         });
 
-        const rowsOf = (el: HTMLElement) =>
-            Array.from(el.querySelectorAll('.source-canvas-line')) as HTMLElement[];
-
-        it('highlights and scrolls to a single referenced line (foo.ts:42)', () => {
+        it('passes a single referenced line as a one-line highlight range (foo.ts:42)', () => {
             const { getByTestId } = render(
                 <SourceCanvasBody fileName="foo.ts" content={makeLines(50)} line={42} />,
             );
-            const rows = rowsOf(getByTestId('source-canvas-source'));
-
-            // Only line 42 is highlighted.
-            expect(rows[41].classList.contains(HIGHLIGHT)).toBe(true);
-            expect(rows[41].getAttribute('data-highlighted')).toBe('true');
-            expect(rows[41].getAttribute('data-line')).toBe('42');
-            expect(rows.filter((r) => r.classList.contains(HIGHLIGHT))).toHaveLength(1);
-            expect(rows[0].classList.contains(HIGHLIGHT)).toBe(false);
-
-            // The target row is scrolled into view.
-            expect(scrollIntoView).toHaveBeenCalled();
+            const editor = getByTestId('mock-monaco-editor');
+            expect(editor.getAttribute('data-highlight-start')).toBe('42');
+            expect(editor.getAttribute('data-highlight-end')).toBe('42');
         });
 
-        it('highlights an inclusive range (foo.ts:42-44)', () => {
+        it('passes an inclusive range (foo.ts:42-44)', () => {
             const { getByTestId } = render(
                 <SourceCanvasBody fileName="foo.ts" content={makeLines(50)} line={42} endLine={44} />,
             );
-            const rows = rowsOf(getByTestId('source-canvas-source'));
-
-            const highlighted = rows
-                .filter((r) => r.classList.contains(HIGHLIGHT))
-                .map((r) => r.getAttribute('data-line'));
-            expect(highlighted).toEqual(['42', '43', '44']);
-            expect(rows[40].classList.contains(HIGHLIGHT)).toBe(false); // line 41
-            expect(rows[44].classList.contains(HIGHLIGHT)).toBe(false); // line 45
-            expect(scrollIntoView).toHaveBeenCalled();
+            const editor = getByTestId('mock-monaco-editor');
+            expect(editor.getAttribute('data-highlight-start')).toBe('42');
+            expect(editor.getAttribute('data-highlight-end')).toBe('44');
         });
 
-        it('opens at the top with no highlight and no scroll when no line is given', () => {
+        it('passes no range when no line is given (opens at the top)', () => {
             const { getByTestId } = render(
                 <SourceCanvasBody fileName="foo.ts" content={makeLines(10)} />,
             );
-            const rows = rowsOf(getByTestId('source-canvas-source'));
-            expect(rows.some((r) => r.classList.contains(HIGHLIGHT))).toBe(false);
-            expect(scrollIntoView).not.toHaveBeenCalled();
+            const editor = getByTestId('mock-monaco-editor');
+            expect(editor.getAttribute('data-highlight-start')).toBe('');
+            expect(editor.getAttribute('data-highlight-end')).toBe('');
         });
 
         it('clamps an out-of-range line to the last line', () => {
             const { getByTestId } = render(
                 <SourceCanvasBody fileName="foo.ts" content={makeLines(5)} line={99} />,
             );
-            const rows = rowsOf(getByTestId('source-canvas-source'));
-            const highlighted = rows
-                .filter((r) => r.classList.contains(HIGHLIGHT))
-                .map((r) => r.getAttribute('data-line'));
-            expect(highlighted).toEqual(['5']);
+            const editor = getByTestId('mock-monaco-editor');
+            expect(editor.getAttribute('data-highlight-start')).toBe('5');
+            expect(editor.getAttribute('data-highlight-end')).toBe('5');
+        });
+
+        it('clamps an out-of-range range end to the last line', () => {
+            const { getByTestId } = render(
+                <SourceCanvasBody fileName="foo.ts" content={makeLines(5)} line={3} endLine={99} />,
+            );
+            const editor = getByTestId('mock-monaco-editor');
+            expect(editor.getAttribute('data-highlight-start')).toBe('3');
+            expect(editor.getAttribute('data-highlight-end')).toBe('5');
+        });
+
+        it('moves the range on an already-mounted editor without remounting', () => {
+            const content = makeLines(200);
+            const { getByTestId, rerender } = render(
+                <SourceCanvasBody fileName="foo.ts" content={content} line={71} endLine={78} />,
+            );
+            const mountId = getByTestId('mock-monaco-editor').getAttribute('data-mount-id');
+            expect(getByTestId('mock-monaco-editor').getAttribute('data-highlight-start')).toBe('71');
+
+            // Same file, second reference — the editor instance must survive.
+            rerender(<SourceCanvasBody fileName="foo.ts" content={content} line={120} />);
+            const editor = getByTestId('mock-monaco-editor');
+            expect(editor.getAttribute('data-mount-id')).toBe(mountId);
+            expect(editor.getAttribute('data-highlight-start')).toBe('120');
+            expect(editor.getAttribute('data-highlight-end')).toBe('120');
+
+            // Navigating to a ref with no line clears the highlight.
+            rerender(<SourceCanvasBody fileName="foo.ts" content={content} />);
+            expect(getByTestId('mock-monaco-editor').getAttribute('data-mount-id')).toBe(mountId);
+            expect(getByTestId('mock-monaco-editor').getAttribute('data-highlight-start')).toBe('');
         });
 
         it('highlights the matching .md-line row in rendered markdown', () => {
@@ -202,18 +247,17 @@ describe('SourceCanvasBody (AC-04)', () => {
             expect(scrollIntoView).toHaveBeenCalled();
         });
 
-        it('highlights the referenced line in the markdown raw view too', () => {
+        it('passes the referenced line to the markdown raw view too', () => {
             const md = '# Title\n\nAlpha line\nBravo line\n';
             const { getByTestId } = render(
                 <SourceCanvasBody fileName="notes.md" content={md} line={3} />,
             );
             // Toggle to raw source view.
             fireEvent.click(getByTestId('source-canvas-md-toggle'));
-            const rows = rowsOf(getByTestId('source-canvas-source'));
-            const highlighted = rows
-                .filter((r) => r.classList.contains(HIGHLIGHT))
-                .map((r) => r.getAttribute('data-line'));
-            expect(highlighted).toEqual(['3']);
+            const editor = getByTestId('mock-monaco-editor');
+            expect(editor.getAttribute('data-language')).toBe('markdown');
+            expect(editor.getAttribute('data-highlight-start')).toBe('3');
+            expect(editor.getAttribute('data-highlight-end')).toBe('3');
         });
     });
 });

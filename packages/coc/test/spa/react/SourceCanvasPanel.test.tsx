@@ -38,6 +38,31 @@ vi.mock('../../../src/server/spa/client/react/features/chat/source-canvas/Source
 
 // Stub the pop-out button (AC-03) — it pulls in App/Toast/MarkdownPopOut
 // contexts; its own behavior is covered in SourceCanvasNotePopOutButton.test.tsx.
+// jsdom cannot run Monaco, and the code viewer inside SourceCanvasBody mounts
+// it — stub the module the same way PreviewPane's read-only test does.
+vi.mock('../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor', () => ({
+    MonacoFileEditor: ({ value, language, readOnly, highlightRange }: any) => (
+        <div
+            data-testid="mock-monaco-editor"
+            data-language={language}
+            data-value={value}
+            data-read-only={String(!!readOnly)}
+            data-highlight-start={highlightRange ? String(highlightRange.start) : ''}
+            data-highlight-end={highlightRange ? String(highlightRange.end) : ''}
+        />
+    ),
+    getMonacoLanguage: (name: string) => {
+        const parts = String(name).split('.');
+        if (parts.length < 2) { return 'plaintext'; }
+        const map: Record<string, string> = { ts: 'typescript', js: 'javascript', md: 'markdown' };
+        return map[parts[parts.length - 1].toLowerCase()] ?? 'plaintext';
+    },
+    EXPLORER_EDITOR_OPTIONS: {},
+    revealEditorLine: () => {},
+    buildHighlightDecorations: () => [],
+    EDITOR_HIGHLIGHT_CLASS: 'source-canvas-line-highlight',
+}));
+
 vi.mock('../../../src/server/spa/client/react/features/chat/source-canvas/SourceCanvasNotePopOutButton', () => ({
     SourceCanvasNotePopOutButton: ({ onClose }: any) => (
         <button type="button" data-testid="source-canvas-popout-btn" onClick={onClose} />
@@ -54,6 +79,15 @@ beforeEach(() => {
         value: { writeText: writeTextMock },
     });
 });
+
+/** Put a real, non-collapsed selection over `el`'s text, like a copy drag would. */
+function selectTextWithin(el: Element): void {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+}
 
 describe('SourceCanvasPanel', () => {
     const fileRef = { fullPath: '/home/u/proj/src/foo.ts', line: 42 };
@@ -443,6 +477,94 @@ describe('SourceCanvasPanel', () => {
         expect(queryByTestId('source-canvas-file-group-unresolved')).toBeNull();
     });
 
+    // --- selectable switcher text ---
+
+    it('marks the switcher trigger and options as selectable text', () => {
+        const sourceFiles = [
+            { fullPath: '/home/u/proj/lib/foo.ts', wsId: 'ws1', kind: 'code' as const },
+            { fullPath: '/home/u/proj/src/foo.ts', wsId: 'ws1', kind: 'code' as const },
+        ];
+        const { getByTestId, getAllByRole } = render(
+            <SourceCanvasPanel
+                fileRef={fileRef}
+                wsId="ws1"
+                workspaceRootPath="/home/u/proj"
+                sourceFiles={sourceFiles}
+                onNavigate={() => {}}
+                onClose={() => {}}
+            />,
+        );
+
+        const trigger = getByTestId('source-canvas-file-switcher-trigger');
+        expect(trigger.className).toContain('select-text');
+        expect(getByTestId('source-canvas-filename').className).toContain('select-text');
+        expect(getByTestId('source-canvas-path').className).toContain('select-text');
+
+        fireEvent.click(trigger);
+        for (const option of getAllByRole('option')) {
+            expect(option.className).toContain('select-text');
+        }
+    });
+
+    it('keeps a path selection instead of navigating when a switcher option is clicked', () => {
+        const onNavigate = vi.fn();
+        const sourceFiles = [
+            { fullPath: '/home/u/proj/lib/foo.ts', wsId: 'ws1', kind: 'code' as const },
+            { fullPath: '/home/u/proj/src/foo.ts', wsId: 'ws1', kind: 'code' as const },
+        ];
+        const { getByTestId, getAllByRole } = render(
+            <SourceCanvasPanel
+                fileRef={fileRef}
+                wsId="ws1"
+                workspaceRootPath="/home/u/proj"
+                sourceFiles={sourceFiles}
+                onNavigate={onNavigate}
+                onClose={() => {}}
+            />,
+        );
+
+        fireEvent.click(getByTestId('source-canvas-file-switcher-trigger'));
+        const option = getAllByRole('option')[0];
+        selectTextWithin(option);
+
+        fireEvent.click(option);
+        expect(onNavigate).not.toHaveBeenCalled();
+        expect(getByTestId('source-canvas-file-switcher-menu')).toBeTruthy();
+
+        // With the selection cleared the same click navigates as before.
+        window.getSelection()?.removeAllRanges();
+        fireEvent.click(option);
+        expect(onNavigate).toHaveBeenCalledWith(sourceFiles[0]);
+    });
+
+    it('does not toggle the switcher when the header path is being selected', () => {
+        const sourceFiles = [
+            { fullPath: '/home/u/proj/lib/foo.ts', wsId: 'ws1', kind: 'code' as const },
+            { fullPath: '/home/u/proj/src/foo.ts', wsId: 'ws1', kind: 'code' as const },
+        ];
+        const { getByTestId, queryByTestId } = render(
+            <SourceCanvasPanel
+                fileRef={fileRef}
+                wsId="ws1"
+                workspaceRootPath="/home/u/proj"
+                sourceFiles={sourceFiles}
+                onNavigate={() => {}}
+                onClose={() => {}}
+            />,
+        );
+
+        const trigger = getByTestId('source-canvas-file-switcher-trigger');
+        selectTextWithin(getByTestId('source-canvas-path'));
+
+        fireEvent.click(trigger);
+        expect(queryByTestId('source-canvas-file-switcher-menu')).toBeNull();
+        expect(trigger.getAttribute('aria-expanded')).toBe('false');
+
+        window.getSelection()?.removeAllRanges();
+        fireEvent.click(trigger);
+        expect(getByTestId('source-canvas-file-switcher-menu')).toBeTruthy();
+    });
+
     // --- AC-06: body load/error/success states ---
 
     it('shows the loading state when no content is provided', () => {
@@ -487,7 +609,7 @@ describe('SourceCanvasPanel', () => {
         expect(queryByTestId('source-canvas-source')).toBeNull();
     });
 
-    it('renders the loaded source content on success (AC-04 line-gutter view)', () => {
+    it('renders the loaded source content on success (AC-04 read-only code viewer)', () => {
         const { getByTestId, queryByTestId } = render(
             <SourceCanvasPanel
                 fileRef={fileRef}
@@ -503,10 +625,12 @@ describe('SourceCanvasPanel', () => {
             />,
         );
         const source = getByTestId('source-canvas-source');
-        // .ts → syntax-highlighted source with a line-number gutter (one row).
-        expect(source.textContent).toContain('const x = 1;');
-        expect(source.querySelectorAll('.source-canvas-line')).toHaveLength(1);
-        expect(source.querySelector('.source-canvas-line-number')?.textContent).toBe('1');
+        // .ts → the read-only Monaco viewer, holding the fetched file text.
+        const editor = getByTestId('mock-monaco-editor');
+        expect(source.contains(editor)).toBe(true);
+        expect(editor.getAttribute('data-value')).toBe('const x = 1;\n');
+        expect(editor.getAttribute('data-language')).toBe('typescript');
+        expect(editor.getAttribute('data-read-only')).toBe('true');
         expect(queryByTestId('source-canvas-loading')).toBeNull();
         expect(queryByTestId('source-canvas-error')).toBeNull();
     });

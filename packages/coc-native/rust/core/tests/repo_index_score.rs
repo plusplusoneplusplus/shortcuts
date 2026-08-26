@@ -82,8 +82,28 @@ fn backslash_dot_dash_and_underscore_are_boundaries() {
 }
 
 #[test]
-fn shorter_paths_win_ties() {
-    assert!(score("idx", "index.ts") > score("idx", "very/deep/path/to/some/index.ts"));
+fn length_is_not_a_term_in_the_score() {
+    // Padding a target no longer changes its quality; shortness is a tie-break
+    // in `Hit`'s comparator instead. Only the boundary the match lands on
+    // differs here, and that is worth exactly the +5-vs-+3 start bonus.
+    assert_eq!(score("index", "index.ts"), score("index", "index.ts.bak.and.then.some.more"));
+    assert_eq!(score("index", "a/index.ts"), score("index", "very/deep/path/to/some/index.ts"));
+}
+
+#[test]
+fn a_tightened_alignment_outscores_the_greedy_one() {
+    // The real bug: both are 39-character paths, and the old length term made
+    // the scattered one tie the contiguous one.
+    assert!(
+        score("prompt", "packages/forge/src/ai/prompt-builder.ts")
+            > score("prompt", "packages/forge/src/ai/command-types.ts")
+    );
+}
+
+#[test]
+fn starting_the_target_outranks_starting_a_segment_within_it() {
+    // Both match at a boundary; only the first one starts the target.
+    assert!(score("prompt", "prompt-builder.ts") > score("prompt", "follow-prompt.ts"));
 }
 
 #[test]
@@ -98,9 +118,32 @@ fn empty_path_scores_zero() {
 }
 
 #[test]
-fn shortness_bonus_floors_at_zero() {
+fn a_very_long_path_still_scores_above_zero() {
     let long_path = format!("{}/index.ts", "a".repeat(200));
     assert!(score("index", &long_path) > 0);
+}
+
+#[test]
+fn the_backward_pass_slides_the_match_onto_the_literal_run() {
+    // Greedy-forward alone consumes `p` from "packages" and `r` from "forge",
+    // then scrapes up "ompt"; the backward pass slides the window onto the
+    // literal "prompt" at offset 22.
+    let path = "packages/forge/src/ai/prompt-builder.ts";
+    assert_eq!(matched_indices("prompt", path), vec![22, 23, 24, 25, 26, 27]);
+    assert_eq!(&path[22..28], "prompt");
+}
+
+#[test]
+fn a_single_character_query_matches_its_first_occurrence() {
+    // The degenerate window: sidx == eidx - 1, so the backward pass has one
+    // position to consider and must leave the start where it is.
+    assert_eq!(matched_indices("x", "src/index.ts"), vec![8]);
+    assert_eq!(matched_indices("s", "src/index.ts"), vec![0]);
+}
+
+#[test]
+fn a_full_length_query_matches_the_whole_target() {
+    assert_eq!(matched_indices("abc", "abc"), vec![0, 1, 2]);
 }
 
 #[test]

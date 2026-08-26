@@ -3424,7 +3424,7 @@
 }
 
 /* ── Source canvas line highlight (AC-05) ──────────────────────────────
-   Applied to a `.source-canvas-line` row (highlighted source) or a
+   Applied to a Monaco whole-line decoration (the read-only code viewer) or a
    `.md-line` row (rendered markdown) referenced by a `:line`/`:start-end`
    suffix, after the canvas auto-scrolls it into view. */
 

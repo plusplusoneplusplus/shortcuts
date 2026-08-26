@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { vi } from 'vitest';
-import { getMonacoLanguage, EXPLORER_EDITOR_OPTIONS, revealEditorLine } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor';
+import { getMonacoLanguage, EXPLORER_EDITOR_OPTIONS, revealEditorLine, buildHighlightDecorations, EDITOR_HIGHLIGHT_CLASS } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor';
 
 describe('getMonacoLanguage', () => {
     it('maps TypeScript extensions', () => {
@@ -164,5 +164,42 @@ describe('revealEditorLine', () => {
         revealEditorLine(editor, Number.NaN);
         revealEditorLine(editor, Number.POSITIVE_INFINITY);
         expect(editor.revealLineInCenter).not.toHaveBeenCalled();
+    });
+});
+
+
+describe('buildHighlightDecorations', () => {
+    it('returns no decorations when there is no range', () => {
+        expect(buildHighlightDecorations(null)).toEqual([]);
+        expect(buildHighlightDecorations(undefined)).toEqual([]);
+    });
+
+    it('highlights a single whole line when start === end', () => {
+        expect(buildHighlightDecorations({ start: 12, end: 12 })).toEqual([{
+            range: { startLineNumber: 12, startColumn: 1, endLineNumber: 12, endColumn: 1 },
+            options: { isWholeLine: true, className: EDITOR_HIGHLIGHT_CLASS },
+        }]);
+    });
+
+    it('highlights an inclusive multi-line range', () => {
+        const [decoration] = buildHighlightDecorations({ start: 71, end: 78 });
+        expect(decoration.range).toEqual({
+            startLineNumber: 71, startColumn: 1, endLineNumber: 78, endColumn: 1,
+        });
+        expect(decoration.options.isWholeLine).toBe(true);
+    });
+
+    it('reuses the source-canvas highlight class so the existing CSS applies', () => {
+        expect(EDITOR_HIGHLIGHT_CLASS).toBe('source-canvas-line-highlight');
+    });
+
+    it('collapses an end before the start down to a single line', () => {
+        const [decoration] = buildHighlightDecorations({ start: 9, end: 4 });
+        expect(decoration.range.endLineNumber).toBe(9);
+    });
+
+    it('ignores a start below one — Monaco lines are one-based', () => {
+        expect(buildHighlightDecorations({ start: 0, end: 3 })).toEqual([]);
+        expect(buildHighlightDecorations({ start: Number.NaN, end: 3 })).toEqual([]);
     });
 });
