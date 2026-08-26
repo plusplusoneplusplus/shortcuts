@@ -255,6 +255,21 @@ Esc-cancelled drag fires `dragend` on the source, which may be outside the conta
 on unmount — a scroll timer outliving teardown surfaces as a Vitest "Unhandled Errors"
 section even when every test passes.
 
+**Store backend.** Folders need a SQLite process store — the product default
+(`createProcessStore` in `src/config.ts`). Only `SqliteProcessStore.getProcessSummaries`
+denormalizes `folderId` onto index entries, and under the legacy `file` backend the
+task-group registry is a *separate* in-memory database (`TaskGroupService.fromProcessStore`),
+so the join has nothing to join against: folders still list and still accept writes, but no
+row ever renders inside one. The E2E fixture boots the file store by default, so the folder
+specs opt in with `test.use({ processStoreBackend: 'sqlite' })`.
+
+**E2E coverage.** `test/e2e/chat-folder-tree.spec.ts` walks the tree, inline create/rename
+and delete-with-undo, and filing from the row menu; `chat-folder-drag.spec.ts` covers the
+real HTML5 drag. Shared seeding lives in `test/e2e/fixtures/chat-folders-seed.ts`. Its
+`reloadActivity` helper exists because `page.goto` to the URL the page is already on is a
+same-document hash navigation that preserves React state — a persistence assertion written
+that way passes without ever reloading.
+
 ### Row pin/archive routing
 
 Pin and archive state come from process summaries (`pinnedAt`, `archived`) and synchronize

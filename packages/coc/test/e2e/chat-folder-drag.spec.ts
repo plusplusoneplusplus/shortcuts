@@ -18,47 +18,13 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
-import { request, seedWorkspace } from './fixtures/seed';
+import { seedWorkspace } from './fixtures/seed';
 import { seedPlainChat } from './fixtures/chat-groups-seed';
-import type { Page } from '@playwright/test';
+import { createChatFolder, enableChatFolders, folderMembers, gotoActivity, reloadActivity } from './fixtures/chat-folders-seed';
 
-/**
- * `features.chatFolders` defaults to false and the shared E2E server config
- * keeps it off. It is a `runtime: 'live'` flag, so this must run BEFORE the
- * page load that should see folders.
- */
-async function enableChatFolders(baseURL: string): Promise<void> {
-    const res = await request(`${baseURL}/api/admin/config`, {
-        method: 'PUT',
-        body: JSON.stringify({ 'features.chatFolders': true }),
-    });
-    if (res.status !== 200) {
-        throw new Error(`Failed to enable chat folders: ${res.status} ${res.body}`);
-    }
-}
-
-async function createFolder(baseURL: string, wsId: string, name: string): Promise<string> {
-    const res = await request(`${baseURL}/api/workspaces/${encodeURIComponent(wsId)}/chat-folders`, {
-        method: 'POST',
-        body: JSON.stringify({ name, color: 'purple' }),
-    });
-    if (res.status !== 200 && res.status !== 201) {
-        throw new Error(`Failed to create chat folder: ${res.status} ${res.body}`);
-    }
-    return JSON.parse(res.body).folder.id as string;
-}
-
-async function gotoActivity(page: Page, serverUrl: string, wsId: string): Promise<void> {
-    await page.goto(`${serverUrl}/#repos/${encodeURIComponent(wsId)}/activity`);
-    await expect(page.locator('[data-testid="activity-split-panel"]')).toBeVisible({ timeout: 10_000 });
-}
-
-/** The rows currently rendered inside a folder, by process id. */
-function folderMembers(page: Page, folderId: string) {
-    return page.locator(
-        `[data-testid="chat-folder"][data-folder-id="${folderId}"] [data-testid="chat-folder-children"] [data-task-id]`,
-    );
-}
+// See chat-folder-tree.spec.ts: `folderId` reaches the SPA only via the SQLite
+// summaries index, which is the product default.
+test.use({ processStoreBackend: 'sqlite' });
 
 test.describe('Chat folders — drag and drop (AC-07)', () => {
     let cleanup: () => void = () => {};
@@ -77,7 +43,7 @@ test.describe('Chat folders — drag and drop (AC-07)', () => {
         await seedPlainChat(serverUrl, wsId, 'proc-dnd-a', 0, 'draggable chat');
         await seedPlainChat(serverUrl, wsId, 'proc-dnd-b', 1, 'bystander chat');
         await enableChatFolders(serverUrl);
-        const folderId = await createFolder(serverUrl, wsId, 'Auth rewrite');
+        const folderId = await createChatFolder(serverUrl, wsId, 'Auth rewrite');
 
         await gotoActivity(page, serverUrl, wsId);
 
@@ -96,7 +62,7 @@ test.describe('Chat folders — drag and drop (AC-07)', () => {
 
         // Filing is a server-side membership row, not local state — so it
         // survives a full reload of the SPA.
-        await gotoActivity(page, serverUrl, wsId);
+        await reloadActivity(page);
         await expect(folderMembers(page, folderId)).toHaveCount(1, { timeout: 10_000 });
         await expect(folderMembers(page, folderId).first()).toHaveAttribute('data-task-id', 'proc-dnd-a');
         // The chat that was never dragged stays where it was.
