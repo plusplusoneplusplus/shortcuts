@@ -2,6 +2,8 @@
  * MonacoFileEditor — React wrapper around Monaco Editor for file editing.
  *
  * Provides syntax highlighting, theme syncing, and Ctrl+S save keybinding.
+ * Also serves as a read-only viewer (`readOnly`, no `onChange`/`onSave`), with
+ * optional line reveal and whole-line range highlighting.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -9,10 +11,17 @@ import Editor, { type OnMount } from '@monaco-editor/react';
 import type { editor as monacoEditor } from 'monaco-editor';
 import { useTheme } from '../../../layout/ThemeProvider';
 
+/** One-based inclusive line range to highlight (`end === start` for one line). */
+export interface EditorHighlightRange {
+    start: number;
+    end: number;
+}
+
 export interface MonacoFileEditorProps {
     value: string;
     language: string | null;
-    onChange: (value: string) => void;
+    /** Omitted by read-only viewers, which have nothing to do with edits. */
+    onChange?: (value: string) => void;
     onSave?: () => void;
     /** When true the editor is non-editable and the save keybinding is suppressed. */
     readOnly?: boolean;
@@ -22,6 +31,33 @@ export interface MonacoFileEditorProps {
      * the same file jumps to the new line.
      */
     revealLine?: number;
+    /**
+     * One-based inclusive line range to highlight as whole lines, centring the
+     * first line in the viewport. Applied on mount and whenever it changes, so
+     * opening a second `file:line` reference into an already-open file moves the
+     * highlight without a remount. Clearing it removes the decorations.
+     */
+    highlightRange?: EditorHighlightRange | null;
+}
+
+/** CSS class on the whole-line highlight decoration (styled in tailwind.css). */
+export const EDITOR_HIGHLIGHT_CLASS = 'source-canvas-line-highlight';
+
+/**
+ * Build the whole-line decorations for `range`, or an empty list when there is
+ * no range (which clears an existing decorations collection).
+ */
+export function buildHighlightDecorations(
+    range: EditorHighlightRange | null | undefined,
+): monacoEditor.IModelDeltaDecoration[] {
+    if (!range) return [];
+    const { start, end } = range;
+    if (!Number.isFinite(start) || start < 1) return [];
+    const endLine = Number.isFinite(end) && end > start ? end : start;
+    return [{
+        range: { startLineNumber: start, startColumn: 1, endLineNumber: endLine, endColumn: 1 },
+        options: { isWholeLine: true, className: EDITOR_HIGHLIGHT_CLASS },
+    }];
 }
 
 /** Scroll `line` (one-based) into the centre of the viewport and select it. */
@@ -131,9 +167,12 @@ export const EXPLORER_EDITOR_OPTIONS: monacoEditor.IStandaloneEditorConstruction
     },
 };
 
-export function MonacoFileEditor({ value, language, onChange, onSave, readOnly, revealLine }: MonacoFileEditorProps) {
+export function MonacoFileEditor({
+    value, language, onChange, onSave, readOnly, revealLine, highlightRange,
+}: MonacoFileEditorProps) {
     const { theme } = useTheme();
     const editorRef = useRef<monacoEditor.IStandaloneCodeEditor | null>(null);
+    const decorationsRef = useRef<monacoEditor.IEditorDecorationsCollection | null>(null);
     const wrapperRef = useRef<HTMLDivElement | null>(null);
     const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
 
@@ -157,10 +196,30 @@ export function MonacoFileEditor({ value, language, onChange, onSave, readOnly, 
         return () => ro.disconnect();
     }, []);
 
+    // Scalars, not the object: callers build a fresh `{ start, end }` each render,
+    // so depending on the object identity would re-apply the highlight endlessly.
+    const highlightStart = highlightRange?.start;
+    const highlightEnd = highlightRange?.end;
+
+    const applyHighlight = useCallback((editor: monacoEditor.IStandaloneCodeEditor) => {
+        const decorations = buildHighlightDecorations(
+            highlightStart === undefined ? null : { start: highlightStart, end: highlightEnd ?? highlightStart },
+        );
+        if (decorationsRef.current) {
+            decorationsRef.current.set(decorations);
+        } else if (typeof editor.createDecorationsCollection === 'function') {
+            decorationsRef.current = editor.createDecorationsCollection(decorations);
+        }
+        if (decorations.length > 0) {
+            editor.revealLineInCenter(decorations[0].range.startLineNumber);
+        }
+    }, [highlightStart, highlightEnd]);
+
     const handleMount: OnMount = useCallback((editor, monaco) => {
         editorRef.current = editor;
 
         if (revealLine !== undefined) revealEditorLine(editor, revealLine);
+        applyHighlight(editor);
 
         if (onSave && !readOnly) {
             editor.addAction({
@@ -170,7 +229,7 @@ export function MonacoFileEditor({ value, language, onChange, onSave, readOnly, 
                 run: () => onSave(),
             });
         }
-    }, [onSave, readOnly, revealLine]);
+    }, [onSave, readOnly, revealLine, applyHighlight]);
 
     // A later reveal (a second search hit in the same already-open file) has no
     // mount to piggyback on, so apply it here too. `value` is a dependency
@@ -182,8 +241,17 @@ export function MonacoFileEditor({ value, language, onChange, onSave, readOnly, 
         revealEditorLine(editor, revealLine);
     }, [revealLine, value]);
 
+    // A later range (a second `file:line` reference into the already-open file)
+    // has no mount to piggyback on. `value` is a dependency for the same reason
+    // as the reveal effect: the content arrives after the editor does.
+    useEffect(() => {
+        const editor = editorRef.current;
+        if (!editor) return;
+        applyHighlight(editor);
+    }, [applyHighlight, value]);
+
     const handleChange = useCallback((newValue: string | undefined) => {
-        onChange(newValue ?? '');
+        onChange?.(newValue ?? '');
     }, [onChange]);
 
     const monacoTheme = resolveIsDark(theme) ? 'vs-dark' : 'vs';
