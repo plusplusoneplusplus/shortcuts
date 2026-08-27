@@ -20,6 +20,7 @@
 pub mod branch;
 pub mod log;
 pub mod range;
+pub mod remote;
 pub mod status;
 
 use std::io::Read;

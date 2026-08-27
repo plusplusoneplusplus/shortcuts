@@ -119,6 +119,8 @@ export interface NativeGitAddon {
     parseGitBranchStatus: typeof Bindings.parseGitBranchStatus;
     gitBranchStatus: typeof Bindings.gitBranchStatus;
     gitListBranches: typeof Bindings.gitListBranches;
+    gitRemoteUrl: typeof Bindings.gitRemoteUrl;
+    gitDetectRemoteUrl: typeof Bindings.gitDetectRemoteUrl;
 }
 
 /**
@@ -147,6 +149,8 @@ const GIT_EXPORTS = [
     'parseGitBranchStatus',
     'gitBranchStatus',
     'gitListBranches',
+    'gitRemoteUrl',
+    'gitDetectRemoteUrl',
 ] as const;
 
 /** Whether the loaded module actually exposes the git capability. */

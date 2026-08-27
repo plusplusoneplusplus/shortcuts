@@ -415,6 +415,29 @@ export declare function gitBranchStatus(repoRoot: string): Promise<GitBranchStat
  * Windows half had to be spelled with `findstr` instead.
  */
 export declare function gitListBranches(repoRoot: string, options: GitBranchListOptions): Promise<GitBranchPage>
+/**
+ * Read `git remote get-url <remote>` from configuration, with no child
+ * process at all.
+ *
+ * Resolves with `null` when the remote is not configured or carries no URL —
+ * the two cases `get-url` reported as one non-zero exit, and the caller as one
+ * absent value. Only a path that is not a repository rejects.
+ *
+ * The bytes come back as configured: `gix` lowercases a host when it renders a
+ * parsed URL, and this string is what the sidebar's grouping key is built
+ * from, so the raw value wins wherever it and the resolved URL agree.
+ */
+export declare function gitRemoteUrl(repoRoot: string, remote: string): Promise<string | null>
+/**
+ * The repository's primary remote URL: `origin`, or the first remote by name
+ * when `origin` is not configured.
+ *
+ * One call over one opened repository, where the TypeScript spawned between
+ * one and three children to ask the same question. Resolves with `null` for a
+ * repository with no remotes; rejects only when the path is not a repository,
+ * which the caller reads as `undefined` too.
+ */
+export declare function gitDetectRemoteUrl(repoRoot: string): Promise<string | null>
 /** Filesystem policy for one resolved Notes root. */
 export interface NotesIndexBuildOptions {
   /**

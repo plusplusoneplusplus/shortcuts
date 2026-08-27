@@ -24,6 +24,7 @@ use coc_native_core::git::range::{
     parse_changed_files, parse_diff_shortstat, resolve_base_ref, upstream_branch, BaseMode,
     BaseRefResolution, DefaultBranch, DiffStats, RangeFile,
 };
+use coc_native_core::git::remote::{detect_remote_url, remote_url};
 use coc_native_core::git::status::{
     parse_porcelain, status_entries, StatusEntry, STATUS_TIMEOUT_MS,
 };
@@ -943,4 +944,66 @@ pub fn git_list_branches(
             search: options.search,
         },
     })
+}
+
+pub struct GitRemoteUrlTask {
+    repo_root: PathBuf,
+    remote: String,
+}
+
+impl Task for GitRemoteUrlTask {
+    type Output = Option<String>;
+    type JsValue = Option<String>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        remote_url(&self.repo_root, &self.remote).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+/// Read `git remote get-url <remote>` from configuration, with no child
+/// process at all.
+///
+/// Resolves with `null` when the remote is not configured or carries no URL —
+/// the two cases `get-url` reported as one non-zero exit, and the caller as one
+/// absent value. Only a path that is not a repository rejects.
+///
+/// The bytes come back as configured: `gix` lowercases a host when it renders a
+/// parsed URL, and this string is what the sidebar's grouping key is built
+/// from, so the raw value wins wherever it and the resolved URL agree.
+#[napi(ts_return_type = "Promise<string | null>")]
+pub fn git_remote_url(repo_root: String, remote: String) -> AsyncTask<GitRemoteUrlTask> {
+    AsyncTask::new(GitRemoteUrlTask { repo_root: PathBuf::from(repo_root), remote })
+}
+
+pub struct GitDetectRemoteUrlTask {
+    repo_root: PathBuf,
+}
+
+impl Task for GitDetectRemoteUrlTask {
+    type Output = Option<String>;
+    type JsValue = Option<String>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        detect_remote_url(&self.repo_root).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+/// The repository's primary remote URL: `origin`, or the first remote by name
+/// when `origin` is not configured.
+///
+/// One call over one opened repository, where the TypeScript spawned between
+/// one and three children to ask the same question. Resolves with `null` for a
+/// repository with no remotes; rejects only when the path is not a repository,
+/// which the caller reads as `undefined` too.
+#[napi(ts_return_type = "Promise<string | null>")]
+pub fn git_detect_remote_url(repo_root: String) -> AsyncTask<GitDetectRemoteUrlTask> {
+    AsyncTask::new(GitDetectRemoteUrlTask { repo_root: PathBuf::from(repo_root) })
 }

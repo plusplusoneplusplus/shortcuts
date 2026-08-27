@@ -738,3 +738,86 @@ describe('branch marshalling', () => {
         });
     });
 });
+
+describe('reading remotes', () => {
+    /** A repository of its own, so adding remotes cannot disturb the shared one. */
+    let remotes: string;
+
+    function gitIn(dir: string, ...args: string[]): string {
+        return execFileSync('git', ['-C', dir, ...args], { encoding: 'utf-8' });
+    }
+
+    beforeAll(() => {
+        remotes = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-git-remotes-')));
+        gitIn(remotes, 'init', '--initial-branch=main');
+        gitIn(remotes, 'config', 'user.email', 'ralph@example.com');
+        gitIn(remotes, 'config', 'user.name', 'Ralph');
+        gitIn(remotes, 'config', 'commit.gpgsign', 'false');
+        fs.writeFileSync(path.join(remotes, 'README.md'), 'hello\n');
+        gitIn(remotes, 'add', '.');
+        gitIn(remotes, 'commit', '-m', 'initial commit');
+    });
+
+    afterAll(() => {
+        if (remotes) fs.rmSync(remotes, { recursive: true, force: true });
+    });
+
+    afterEach(() => {
+        for (const name of gitIn(remotes, 'remote').split('\n').map(line => line.trim()).filter(Boolean)) {
+            gitIn(remotes, 'remote', 'remove', name);
+        }
+    });
+
+    it('marshals a configured URL across the boundary as a string', async () => {
+        gitIn(remotes, 'remote', 'add', 'origin', 'https://github.com/owner/repo.git');
+        await expect(gitAddon.gitRemoteUrl(remotes, 'origin')).resolves.toBe(
+            'https://github.com/owner/repo.git',
+        );
+    });
+
+    // A top-level `Option<String>` is one of the few places napi does send an
+    // explicit null rather than omitting the value, so the caller's `?? undefined`
+    // has something to act on.
+    it('marshals a missing remote as null rather than an absent value', async () => {
+        await expect(gitAddon.gitRemoteUrl(remotes, 'origin')).resolves.toBeNull();
+        await expect(gitAddon.gitDetectRemoteUrl(remotes)).resolves.toBeNull();
+    });
+
+    it('carries non-ASCII bytes through unchanged', async () => {
+        gitIn(remotes, 'remote', 'add', 'origin', 'https://example.com/équipe/dépôt.git');
+        await expect(gitAddon.gitDetectRemoteUrl(remotes)).resolves.toBe(
+            'https://example.com/équipe/dépôt.git',
+        );
+    });
+
+    it('prefers origin, then falls back to the first remote by name', async () => {
+        gitIn(remotes, 'remote', 'add', 'zeta', 'https://example.com/zeta.git');
+        gitIn(remotes, 'remote', 'add', 'alpha', 'https://example.com/alpha.git');
+        await expect(gitAddon.gitDetectRemoteUrl(remotes)).resolves.toBe('https://example.com/alpha.git');
+
+        gitIn(remotes, 'remote', 'add', 'origin', 'https://example.com/origin.git');
+        await expect(gitAddon.gitDetectRemoteUrl(remotes)).resolves.toBe('https://example.com/origin.git');
+    });
+
+    it('rejects with the `git <args> failed:` shape outside a repository', async () => {
+        const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-git-noremote-'));
+        try {
+            await expect(gitAddon.gitRemoteUrl(empty, 'origin')).rejects.toThrow(
+                /^git remote get-url origin failed: /,
+            );
+            await expect(gitAddon.gitDetectRemoteUrl(empty)).rejects.toThrow(
+                /^git remote get-url origin failed: /,
+            );
+        } finally {
+            fs.rmSync(empty, { recursive: true, force: true });
+        }
+    });
+
+    it('serves concurrent lookups against the same repository', async () => {
+        gitIn(remotes, 'remote', 'add', 'origin', 'https://github.com/owner/repo.git');
+        const answers = await Promise.all(
+            Array.from({ length: 8 }, () => gitAddon.gitDetectRemoteUrl(remotes)),
+        );
+        expect(answers).toEqual(Array(8).fill('https://github.com/owner/repo.git'));
+    });
+});

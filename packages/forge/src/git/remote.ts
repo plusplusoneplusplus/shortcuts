@@ -9,8 +9,27 @@
  */
 
 import { createHash } from 'crypto';
-import { execGit, execGitAsync } from './exec';
+import { loadNativeGit, type NativeGitAddon } from '@plusplusoneplusplus/coc-native';
+import { resolveWorkspaceExecutionContext } from '../utils/workspace-execution';
+import { execGitAsync } from './exec';
 import { normalizeRemoteUrl as normalizeRemoteUrlForGrouping } from './normalize-url';
+import { ensureGitSafeDirectoryAsync } from './safe-directory';
+
+/**
+ * The addon, plus whether this repository has to take the WSL path instead.
+ *
+ * Loading is deliberately separate from the call it serves: every reader here
+ * answers failure with a plausible-looking absence — `null`, `undefined`, "no
+ * remote" — which is exactly the shape a missing or capability-stale binary
+ * must not be able to hide behind. Calling this outside the try/catch lets a
+ * `NativeAddonLoadError` naming the rebuild reach the caller instead.
+ */
+function native(repoRoot: string): { addon: NativeGitAddon; wsl: boolean } {
+    return {
+        addon: loadNativeGit(),
+        wsl: resolveWorkspaceExecutionContext(repoRoot).kind === 'wsl',
+    };
+}
 
 export type CanonicalOriginProvider = 'github' | 'azure-devops' | 'git' | 'local';
 
@@ -60,15 +79,23 @@ export function normalizeRemoteUrl(url: string): string {
 }
 
 /**
- * Run `git remote get-url <remote>` and return the URL.
- * Returns `null` if the remote does not exist or git fails.
+ * The URL configured for `remote`, or `null` when it does not exist.
+ *
+ * Reading a remote is a configuration lookup, so the native path answers it out
+ * of the repository it opens and spawns nothing. Repos inside a WSL distro keep
+ * asking `git remote get-url` through `wsl.exe`.
  *
  * @param repoRoot Absolute path to the repository root.
  * @param remote   Remote name (default: `'origin'`).
  */
-export function getRemoteUrl(repoRoot: string, remote = 'origin'): string | null {
+export async function getRemoteUrl(repoRoot: string, remote = 'origin'): Promise<string | null> {
+    const { addon, wsl } = native(repoRoot);
     try {
-        return execGit(['remote', 'get-url', remote], repoRoot);
+        if (wsl) {
+            return await execGitAsync(['remote', 'get-url', remote], repoRoot);
+        }
+        await ensureGitSafeDirectoryAsync(repoRoot);
+        return await addon.gitRemoteUrl(repoRoot, remote);
     } catch {
         return null;
     }
@@ -212,9 +239,35 @@ export function resolveCanonicalOriginId(input: CanonicalOriginInput): string {
  * is not configured.  Returns `undefined` when the directory is not a git
  * repository or has no remotes.
  *
+ * The native path asks all of that of one opened repository, where the CLI
+ * needed between one and three children to answer the same question — and this
+ * runs on workspace discovery, on every batch git-info refresh, and on every
+ * patch transfer, so those children added up.
+ *
  * @param repoRoot Absolute path to the repository root.
  */
 export async function detectRemoteUrl(repoRoot: string): Promise<string | undefined> {
+    const { addon, wsl } = native(repoRoot);
+    if (wsl) {
+        return detectRemoteUrlViaCli(repoRoot);
+    }
+    try {
+        await ensureGitSafeDirectoryAsync(repoRoot);
+        return (await addon.gitDetectRemoteUrl(repoRoot)) ?? undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+/**
+ * Ask the same two questions through `wsl.exe`, in the same order.
+ *
+ * The WSL twin of the addon's `gitDetectRemoteUrl`. The nesting matters: the
+ * fallback to the first remote only runs when `get-url origin` *fails*, so a
+ * configured `origin` with an empty URL answers `undefined` rather than sending
+ * the lookup on to a second remote.
+ */
+async function detectRemoteUrlViaCli(repoRoot: string): Promise<string | undefined> {
     try {
         const url = await execGitAsync(['remote', 'get-url', 'origin'], repoRoot);
         return url || undefined;
