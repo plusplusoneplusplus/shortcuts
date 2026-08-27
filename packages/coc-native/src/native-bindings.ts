@@ -97,6 +97,32 @@ export interface FileMatch {
 }
 /** Walk `root` in parallel and resolve with a ready-to-search index. */
 export declare function buildFileIndex(root: string, options?: BuildOptions | undefined | null): Promise<FileIndex>
+/**
+ * Per-call overrides for one git invocation. Every field is optional;
+ * omitting all of them uses a 30 s timeout and a 50 MiB output cap.
+ */
+export interface GitExecOptions {
+  /**
+   * Bytes of stdout (and of stderr) kept before the call fails.
+   * Defaults to 50 MiB.
+   */
+  maxBuffer?: number
+  /** Milliseconds before the child is killed. Defaults to 30 000. */
+  timeout?: number
+  /**
+   * Working directory for the child. `-C` already points git at the repo, so
+   * this is rarely needed.
+   */
+  cwd?: string
+}
+/**
+ * Run `git -C <repoRoot> <args>` and resolve with its trimmed stdout.
+ *
+ * No shell is involved, so arguments containing spaces need no quoting. A
+ * non-zero exit, a timeout, or output past the buffer cap all reject with
+ * `git <args> failed: <stderr>`.
+ */
+export declare function execGit(args: Array<string>, repoRoot: string, options?: GitExecOptions | undefined | null): Promise<string>
 /** Filesystem policy for one resolved Notes root. */
 export interface NotesIndexBuildOptions {
   /**

@@ -41,6 +41,9 @@ export type {
     NativeContentSearchResult,
 } from './content-search';
 
+export { loadNativeGit, nativeGitStatus } from './git';
+export type { NativeGitAddon, NativeGitExecOptions } from './git';
+
 export { loadNativeNotesIndex, nativeNotesIndexStatus } from './notes-index';
 export type {
     NativeNotesIndex,

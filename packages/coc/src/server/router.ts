@@ -13,7 +13,12 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { isWithinDirectory } from '@plusplusoneplusplus/forge';
-import { nativeContentSearchStatus, nativeFileIndexStatus, nativeNotesIndexStatus } from '@plusplusoneplusplus/coc-native';
+import {
+    nativeContentSearchStatus,
+    nativeFileIndexStatus,
+    nativeGitStatus,
+    nativeNotesIndexStatus,
+} from '@plusplusoneplusplus/coc-native';
 import type { Route } from './types';
 import {
     createRouter,
@@ -137,6 +142,7 @@ export function createRequestHandler(
                     nativeFileIndex: nativeFileIndexStatus(),
                     nativeNotesIndex: nativeNotesIndexStatus(),
                     nativeContentSearch: nativeContentSearchStatus(),
+                    nativeGit: nativeGitStatus(),
                 });
             },
         },

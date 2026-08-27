@@ -14,6 +14,7 @@ export const REQUIRED_BUILD_WORKSPACES = [
     '@plusplusoneplusplus/coc-agent-sdk',
     '@plusplusoneplusplus/coc-workflow',
     '@plusplusoneplusplus/coc-memory',
+    '@plusplusoneplusplus/coc-native',
 ];
 
 export function buildRequiredWorkspacePackages({

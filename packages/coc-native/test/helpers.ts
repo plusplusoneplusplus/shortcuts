@@ -11,6 +11,8 @@ import { loadNativeContentSearch } from '../src/content-search';
 import type { NativeContentSearchAddon } from '../src/content-search';
 import { loadNativeFileIndex } from '../src/file-index';
 import type { NativeFileIndexAddon } from '../src/file-index';
+import { loadNativeGit } from '../src/git';
+import type { NativeGitAddon } from '../src/git';
 import { resetNativeAddonCache } from '../src/loader';
 import { loadNativeNotesIndex } from '../src/notes-index';
 import type { NativeNotesIndexAddon } from '../src/notes-index';
@@ -24,6 +26,9 @@ export const addon: NativeFileIndexAddon = loadNativeFileIndex();
 
 /** The required content-search slice of the same compiled addon. */
 export const contentSearchAddon: NativeContentSearchAddon = loadNativeContentSearch();
+
+/** The required git slice of the same compiled addon. */
+export const gitAddon: NativeGitAddon = loadNativeGit();
 
 /** The required Notes-index slice of the same compiled addon. */
 export const notesAddon: NativeNotesIndexAddon = loadNativeNotesIndex();

@@ -15,4 +15,5 @@
 
 mod content_search;
 mod file_index;
+mod git;
 mod notes_index;
