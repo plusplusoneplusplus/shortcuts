@@ -1,7 +1,10 @@
 import { execFileSync } from 'child_process';
-import { execFileAsync } from '../utils/exec-utils';
+import { loadNativeGit, type NativeGitAddon } from '@plusplusoneplusplus/coc-native';
 import { getDefaultWslDistro } from '../utils/workspace-execution';
 import { isLinuxAbsolutePath, parseWslUncPath, toForwardSlashes, trimTrailingPathSeparators } from '../utils/path-utils';
+
+/** The multi-valued global key Git for Windows checks before opening a repo. */
+const SAFE_DIRECTORY_KEY = 'safe.directory';
 
 const ensuredSafeDirectories = new Set<string>();
 const inFlightSafeDirectoryEnsures = new Map<string, Promise<void>>();
@@ -47,6 +50,12 @@ export function resolveGitSafeDirectory(repoRoot: string): string | undefined {
     return buildGitSafeDirectory('wsl$', unc.distro, unc.linuxPath);
 }
 
+/**
+ * Split `git config --get-all` output into the entries already approved.
+ *
+ * Only the sync path still needs this: the async path reads the list through
+ * the native addon, which splits and trims in Rust. It goes when `execGit` does.
+ */
 function parseSafeDirectoryList(output: string): Set<string> {
     return new Set(
         output
@@ -58,7 +67,7 @@ function parseSafeDirectoryList(output: string): Set<string> {
 
 function isSafeDirectoryConfiguredSync(safeDirectory: string): boolean {
     try {
-        const output = execFileSync('git', ['config', '--global', '--get-all', 'safe.directory'], {
+        const output = execFileSync('git', ['config', '--global', '--get-all', SAFE_DIRECTORY_KEY], {
             encoding: 'utf-8',
             windowsHide: true,
             stdio: ['ignore', 'pipe', 'ignore'],
@@ -69,12 +78,20 @@ function isSafeDirectoryConfiguredSync(safeDirectory: string): boolean {
     }
 }
 
-async function isSafeDirectoryConfiguredAsync(safeDirectory: string): Promise<boolean> {
+/**
+ * Whether the entry is already in the user's global `safe.directory` list.
+ *
+ * Every failure reads as "not configured", because git exits non-zero both for
+ * an unset key and for a global config file that does not exist yet, and the
+ * caller's next move — appending the entry — is right in either case.
+ */
+async function isSafeDirectoryConfiguredAsync(
+    addon: NativeGitAddon,
+    safeDirectory: string,
+): Promise<boolean> {
     try {
-        const { stdout } = await execFileAsync('git', ['config', '--global', '--get-all', 'safe.directory'], {
-            windowsHide: true,
-        });
-        return parseSafeDirectoryList(stdout).has(safeDirectory);
+        const configured = await addon.gitGlobalConfigGetAll(SAFE_DIRECTORY_KEY);
+        return configured.includes(safeDirectory);
     } catch {
         return false;
     }
@@ -92,7 +109,7 @@ export function ensureGitSafeDirectorySync(repoRoot: string): void {
     }
 
     if (!isSafeDirectoryConfiguredSync(safeDirectory)) {
-        execFileSync('git', ['config', '--global', '--add', 'safe.directory', safeDirectory], {
+        execFileSync('git', ['config', '--global', '--add', SAFE_DIRECTORY_KEY, safeDirectory], {
             encoding: 'utf-8',
             windowsHide: true,
             stdio: ['ignore', 'pipe', 'pipe'],
@@ -114,11 +131,17 @@ export async function ensureGitSafeDirectoryAsync(repoRoot: string): Promise<voi
         return;
     }
 
+    // Outside the promise below, and after the two early returns: on any host
+    // but Windows there is no entry to resolve and the addon is never touched,
+    // while a stale binary here has to surface as the NativeAddonLoadError that
+    // names the rebuild. The check answers every failure with "not configured",
+    // so a swallowed load error would silently append a duplicate entry on
+    // every start rather than say what is wrong.
+    const addon = loadNativeGit();
+
     const ensurePromise = (async () => {
-        if (!(await isSafeDirectoryConfiguredAsync(safeDirectory))) {
-            await execFileAsync('git', ['config', '--global', '--add', 'safe.directory', safeDirectory], {
-                windowsHide: true,
-            });
+        if (!(await isSafeDirectoryConfiguredAsync(addon, safeDirectory))) {
+            await addon.gitGlobalConfigAdd(SAFE_DIRECTORY_KEY, safeDirectory);
         }
 
         ensuredSafeDirectories.add(safeDirectory);

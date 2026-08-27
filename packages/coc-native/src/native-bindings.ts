@@ -438,6 +438,26 @@ export declare function gitRemoteUrl(repoRoot: string, remote: string): Promise<
  * which the caller reads as `undefined` too.
  */
 export declare function gitDetectRemoteUrl(repoRoot: string): Promise<string | null>
+/**
+ * Every value `git config --global --get-all <key>` prints, one per element.
+ *
+ * No repository is involved, so there is no `repoRoot` parameter: this reads
+ * the user's own config file, which is exactly what the `safe.directory` check
+ * needs — a repository-local entry is not what Git for Windows consults before
+ * agreeing to open a repo on the WSL share.
+ *
+ * Rejects with `git config --global --get-all <key> failed:` when the key is
+ * unset or the global config file does not exist; the caller reads both as
+ * "not configured".
+ */
+export declare function gitGlobalConfigGetAll(key: string, options?: GitExecOptions | undefined | null): Promise<string[]>
+/**
+ * Append a value to a multi-valued key in the global config file.
+ *
+ * `--add`, not a set: `safe.directory` is a list of every repository the user
+ * has approved, and replacing it would revoke the rest.
+ */
+export declare function gitGlobalConfigAdd(key: string, value: string, options?: GitExecOptions | undefined | null): Promise<void>
 /** Filesystem policy for one resolved Notes root. */
 export interface NotesIndexBuildOptions {
   /**

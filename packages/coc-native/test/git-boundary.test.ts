@@ -8,7 +8,7 @@ import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { gitAddon } from './helpers';
 
@@ -819,5 +819,77 @@ describe('reading remotes', () => {
             Array.from({ length: 8 }, () => gitAddon.gitDetectRemoteUrl(remotes)),
         );
         expect(answers).toEqual(Array(8).fill('https://github.com/owner/repo.git'));
+    });
+});
+
+describe('global configuration marshalling', () => {
+    // Every call points git at a temp config file through the per-call
+    // environment, so the suite never reads or writes the developer's real
+    // `~/.gitconfig` — and, because the override rides on the command rather
+    // than on `process.env`, tests here cannot leak into each other.
+    let configDir: string;
+    let options: { env: Record<string, string> };
+
+    beforeEach(() => {
+        configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-git-config-'));
+        options = { env: { GIT_CONFIG_GLOBAL: path.join(configDir, 'gitconfig') } };
+    });
+
+    afterEach(() => {
+        fs.rmSync(configDir, { recursive: true, force: true });
+    });
+
+    it('marshals a multi-valued key across the boundary as a string array', async () => {
+        await gitAddon.gitGlobalConfigAdd('safe.directory', '/first/repo', options);
+        await gitAddon.gitGlobalConfigAdd('safe.directory', '/second/repo', options);
+
+        await expect(gitAddon.gitGlobalConfigGetAll('safe.directory', options)).resolves.toEqual([
+            '/first/repo',
+            '/second/repo',
+        ]);
+    });
+
+    // The real entries are shell-hostile: a `$` and a `%(prefix)` sigil that a
+    // shell would expand into something git never sees.
+    it('carries a %(prefix) WSL entry through unchanged', async () => {
+        const entry = '%(prefix)///wsl$/Ubuntu-24.04/home/me/my repo';
+        await gitAddon.gitGlobalConfigAdd('safe.directory', entry, options);
+
+        await expect(gitAddon.gitGlobalConfigGetAll('safe.directory', options)).resolves.toEqual([
+            entry,
+        ]);
+    });
+
+    it('rejects with the `git <args> failed:` shape when the key is unset', async () => {
+        await expect(gitAddon.gitGlobalConfigGetAll('safe.directory', options)).rejects.toThrow(
+            /^git config --global --get-all safe\.directory failed: /,
+        );
+    });
+
+    it('resolves with undefined after a write', async () => {
+        await expect(
+            gitAddon.gitGlobalConfigAdd('safe.directory', '/repo', options),
+        ).resolves.toBeUndefined();
+    });
+
+    // No `repoRoot` parameter and no `-C`: this reads the user's own config,
+    // which is what Git for Windows consults before it agrees to open a repo on
+    // the WSL share.
+    it('writes to the global file, not to the repository the process sits in', async () => {
+        await gitAddon.gitGlobalConfigAdd('safe.directory', '/repo', {
+            ...options,
+            cwd: repo,
+        });
+
+        expect(fs.readFileSync(path.join(configDir, 'gitconfig'), 'utf-8')).toContain('/repo');
+        expect(() => execFileSync('git', ['-C', repo, 'config', '--local', '--get-all', 'safe.directory'])).toThrow();
+    });
+
+    it('serves concurrent reads of the same key', async () => {
+        await gitAddon.gitGlobalConfigAdd('safe.directory', '/repo', options);
+        const answers = await Promise.all(
+            Array.from({ length: 8 }, () => gitAddon.gitGlobalConfigGetAll('safe.directory', options)),
+        );
+        expect(answers).toEqual(Array(8).fill(['/repo']));
     });
 });

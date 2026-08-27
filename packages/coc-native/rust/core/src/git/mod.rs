@@ -18,6 +18,7 @@
 //! module; Rust only ever runs git on the native host.
 
 pub mod branch;
+pub mod config;
 pub mod log;
 pub mod range;
 pub mod remote;
@@ -234,6 +235,36 @@ pub fn run_git(
 ) -> Result<String, GitError> {
     let mut command = Command::new("git");
     command.arg("-C").arg(repo_root).args(args);
+    run_command(command, args, options)
+}
+
+/// Run `git <args>` with no repository attached, and return its trimmed stdout.
+///
+/// The `-C <repo_root>` prefix is the whole difference from `run_git`. A
+/// `--global` configuration read has no repository to point git at, and naming
+/// one would change which files git consults — a repository-local
+/// `safe.directory` is not the entry Git for Windows checks before it agrees to
+/// open the repository in the first place.
+///
+/// Everything else is shared: the timeout, the output cap, and the
+/// `git <args> failed: <stderr>` text a caller reads off the rejection.
+pub fn run_git_global(args: &[String], options: &GitCommandOptions) -> Result<String, GitError> {
+    let mut command = Command::new("git");
+    command.args(args);
+    run_command(command, args, options)
+}
+
+/// Spawn a prepared `git` command, drain both pipes, and render the outcome.
+///
+/// `args` is carried separately from the command because it is what the error
+/// text shows — the caller asked for `config --global --get-all safe.directory`
+/// and should read that back, not the `-C <path>` prefix that addressed the
+/// repository.
+fn run_command(
+    mut command: Command,
+    args: &[String],
+    options: &GitCommandOptions,
+) -> Result<String, GitError> {
     command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     if let Some(cwd) = &options.cwd {
         command.current_dir(cwd);

@@ -66,7 +66,9 @@ const COMPLETE_ADDON =
     'gitBranchStatus: async () => null, ' +
     'gitListBranches: async () => ({ branches: [], totalCount: 0, hasMore: false }), ' +
     'gitRemoteUrl: async () => null, ' +
-    'gitDetectRemoteUrl: async () => null };';
+    'gitDetectRemoteUrl: async () => null, ' +
+    'gitGlobalConfigGetAll: async () => [], ' +
+    'gitGlobalConfigAdd: async () => undefined };';
 
 /** Point the loader at a JavaScript stand-in for the addon. */
 function useAddon(source: string): string {
@@ -237,6 +239,33 @@ describe('when the capability is missing', () => {
                 `parseGitBranchStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
                 'gitBranchStatus: async () => null, ' +
                 'gitListBranches: async () => ({ branches: [], totalCount: 0, hasMore: false }) };',
+        );
+        expect(() => loadNativeGit()).toThrow('does not export the git capability');
+        expect(nativeGitStatus().loaded).toBe(false);
+    });
+
+    // And the slice after that: remotes present, global configuration absent.
+    it('rejects a binary built before the global-config exports', () => {
+        useAddon(
+            "module.exports = { execGit: async () => 'main', gitStatusEntries: async () => [], " +
+                'parseGitStatusPorcelain: async () => [], ' +
+                'gitLogCommits: async () => ({ commits: [], hasMore: false }), ' +
+                'gitLogCommit: async () => null, ' +
+                'gitRangeDefaultBranch: async () => null, ' +
+                'gitRangeUpstreamBranch: async () => null, ' +
+                "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
+                'gitRangeMergeBase: async () => null, ' +
+                'gitRangeCountAhead: async () => 0, ' +
+                'gitRangeChangedFiles: async () => [], ' +
+                'parseGitRangeChangedFiles: async () => [], ' +
+                'gitRangeDiffStats: async () => ({ additions: 0, deletions: 0 }), ' +
+                'parseGitDiffShortstat: async () => ({ additions: 0, deletions: 0 }), ' +
+                `gitRepositoryStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
+                `parseGitBranchStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
+                'gitBranchStatus: async () => null, ' +
+                'gitListBranches: async () => ({ branches: [], totalCount: 0, hasMore: false }), ' +
+                'gitRemoteUrl: async () => null, ' +
+                'gitDetectRemoteUrl: async () => null };',
         );
         expect(() => loadNativeGit()).toThrow('does not export the git capability');
         expect(nativeGitStatus().loaded).toBe(false);

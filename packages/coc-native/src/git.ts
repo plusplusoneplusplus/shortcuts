@@ -121,6 +121,8 @@ export interface NativeGitAddon {
     gitListBranches: typeof Bindings.gitListBranches;
     gitRemoteUrl: typeof Bindings.gitRemoteUrl;
     gitDetectRemoteUrl: typeof Bindings.gitDetectRemoteUrl;
+    gitGlobalConfigGetAll: typeof Bindings.gitGlobalConfigGetAll;
+    gitGlobalConfigAdd: typeof Bindings.gitGlobalConfigAdd;
 }
 
 /**
@@ -151,6 +153,8 @@ const GIT_EXPORTS = [
     'gitListBranches',
     'gitRemoteUrl',
     'gitDetectRemoteUrl',
+    'gitGlobalConfigGetAll',
+    'gitGlobalConfigAdd',
 ] as const;
 
 /** Whether the loaded module actually exposes the git capability. */

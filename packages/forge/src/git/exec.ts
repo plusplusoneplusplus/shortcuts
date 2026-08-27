@@ -8,7 +8,7 @@
  */
 
 import { execFileSync } from 'child_process';
-import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
+import { loadNativeGit, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 import { execFileAsync } from '../utils/exec-utils';
 import { ensureGitSafeDirectoryAsync, ensureGitSafeDirectorySync } from './safe-directory';
 import {
@@ -83,6 +83,14 @@ export async function execGitAsync(
     try {
         await ensureGitSafeDirectoryAsync(repoRoot);
     } catch (err: unknown) {
+        // The safe.directory check runs its two `git config --global` calls in
+        // the addon now, so a missing or stale binary can fail here — before
+        // the WSL dispatch that would otherwise never touch native. That is a
+        // NativeAddonLoadError naming the rebuild, and rendering it as a failed
+        // git command would hide the fix.
+        if (err instanceof NativeAddonLoadError) {
+            throw err;
+        }
         throw createGitExecError(args, err);
     }
 

@@ -5,7 +5,8 @@ use std::path::Path;
 use std::process::Command;
 
 use coc_native_core::git::{
-    run_git, GitCommandOptions, GitErrorKind, DEFAULT_MAX_BUFFER_BYTES, DEFAULT_TIMEOUT_MS,
+    run_git, run_git_global, GitCommandOptions, GitErrorKind, DEFAULT_MAX_BUFFER_BYTES,
+    DEFAULT_TIMEOUT_MS,
 };
 use tempfile::TempDir;
 
@@ -316,4 +317,27 @@ fn a_sequence_editor_drives_a_non_interactive_rebase() {
         run_git(repo.path(), &args(&["log", "--format=%s"]), &GitCommandOptions::default())
             .expect("log");
     assert_eq!(subjects.lines().collect::<Vec<_>>(), vec!["second", "initial commit"]);
+}
+
+#[test]
+fn the_global_runner_needs_no_repository() {
+    // The whole difference from `run_git` is the missing `-C <repo_root>`, and
+    // the point of it is a `--global` config read, which has no repository to
+    // be pointed at.
+    let version = run_git_global(&args(&["--version"]), &GitCommandOptions::default())
+        .expect("git --version needs no repository");
+
+    assert!(version.starts_with("git version"), "unexpected output: {version}");
+}
+
+#[test]
+fn the_global_runner_reports_the_args_it_was_given() {
+    let error = run_git_global(&args(&["not-a-subcommand"]), &GitCommandOptions::default())
+        .expect_err("an unknown subcommand should fail");
+
+    assert_eq!(error.kind, GitErrorKind::Exit(Some(1)));
+    assert!(
+        error.to_string().starts_with("git not-a-subcommand failed:"),
+        "unexpected message: {error}"
+    );
 }

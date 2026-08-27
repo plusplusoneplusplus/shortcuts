@@ -18,6 +18,7 @@ use coc_native_core::git::branch::{
     branch_status, list_branches, parse_porcelain_v2_branch_status, repository_status, BranchEntry,
     BranchPage, BranchQuery, BranchStatus, RepositoryStatus,
 };
+use coc_native_core::git::config::{global_config_add, global_config_get_all};
 use coc_native_core::git::log::{get_commit, get_commits, Commit, CommitPage};
 use coc_native_core::git::range::{
     changed_files, count_commits_ahead, default_remote_branch, diff_stats, merge_base,
@@ -1006,4 +1007,78 @@ impl Task for GitDetectRemoteUrlTask {
 #[napi(ts_return_type = "Promise<string | null>")]
 pub fn git_detect_remote_url(repo_root: String) -> AsyncTask<GitDetectRemoteUrlTask> {
     AsyncTask::new(GitDetectRemoteUrlTask { repo_root: PathBuf::from(repo_root) })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Global configuration
+// ─────────────────────────────────────────────────────────────────────────────
+
+pub struct GitGlobalConfigGetAllTask {
+    key: String,
+    options: GitCommandOptions,
+}
+
+impl Task for GitGlobalConfigGetAllTask {
+    type Output = Vec<String>;
+    type JsValue = Vec<String>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        global_config_get_all(&self.key, &self.options).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+/// Every value `git config --global --get-all <key>` prints, one per element.
+///
+/// No repository is involved, so there is no `repoRoot` parameter: this reads
+/// the user's own config file, which is exactly what the `safe.directory` check
+/// needs — a repository-local entry is not what Git for Windows consults before
+/// agreeing to open a repo on the WSL share.
+///
+/// Rejects with `git config --global --get-all <key> failed:` when the key is
+/// unset or the global config file does not exist; the caller reads both as
+/// "not configured".
+#[napi(ts_return_type = "Promise<string[]>")]
+pub fn git_global_config_get_all(
+    key: String,
+    options: Option<GitExecOptions>,
+) -> AsyncTask<GitGlobalConfigGetAllTask> {
+    let options = resolve_options(options);
+    AsyncTask::new(GitGlobalConfigGetAllTask { key, options })
+}
+
+pub struct GitGlobalConfigAddTask {
+    key: String,
+    value: String,
+    options: GitCommandOptions,
+}
+
+impl Task for GitGlobalConfigAddTask {
+    type Output = ();
+    type JsValue = ();
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        global_config_add(&self.key, &self.value, &self.options).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, _output: Self::Output) -> Result<Self::JsValue> {
+        Ok(())
+    }
+}
+
+/// Append a value to a multi-valued key in the global config file.
+///
+/// `--add`, not a set: `safe.directory` is a list of every repository the user
+/// has approved, and replacing it would revoke the rest.
+#[napi(ts_return_type = "Promise<void>")]
+pub fn git_global_config_add(
+    key: String,
+    value: String,
+    options: Option<GitExecOptions>,
+) -> AsyncTask<GitGlobalConfigAddTask> {
+    let options = resolve_options(options);
+    AsyncTask::new(GitGlobalConfigAddTask { key, value, options })
 }
