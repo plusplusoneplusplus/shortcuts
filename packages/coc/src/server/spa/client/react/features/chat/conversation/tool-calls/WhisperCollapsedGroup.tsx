@@ -14,7 +14,7 @@ import { ToolCallVariantProvider } from './ToolCallVariant';
 import { MarkdownView } from '../../../../shared/MarkdownView';
 import { detectCommitsInToolGroup } from '../commitDetection';
 import type { DetectedCommit } from '../commitDetection';
-import type { DetectedPullRequest } from '../pullRequestDetection';
+import type { DetectedPullRequest } from '@plusplusoneplusplus/forge/git/pull-request-detection';
 import type { DetectedPush } from '../pushDetection';
 import { CommitStrip } from '../CommitStrip';
 import { buildGitReviewPopOutUrl } from '../../../../layout/Router';

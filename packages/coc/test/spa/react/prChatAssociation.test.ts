@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-    collectToolCallsFromTurns,
     gatherDetectedPrsFromTurns,
     originIdForDetectedPr,
     unionAssociations,
@@ -9,7 +8,7 @@ import {
 } from '../../../src/server/spa/client/react/features/chat/conversation/prChatAssociation';
 import { resolveCanonicalOriginId } from '../../../src/server/spa/client/react/repos/originScope';
 import type { ClientConversationTurn, ClientToolCall } from '../../../src/server/spa/client/react/types/dashboard';
-import type { DetectedPullRequest } from '../../../src/server/spa/client/react/features/chat/conversation/pullRequestDetection';
+import type { DetectedPullRequest } from '@plusplusoneplusplus/forge/git/pull-request-detection';
 
 const WS = 'ws-1';
 
@@ -20,43 +19,6 @@ function toolCall(partial: Partial<ClientToolCall> & { id: string }): ClientTool
 function turn(partial: Partial<ClientConversationTurn>): ClientConversationTurn {
     return { role: 'assistant', content: '', timeline: [], ...partial };
 }
-
-describe('collectToolCallsFromTurns', () => {
-    it('flattens tool calls from timeline and legacy toolCalls, deduped by id within each turn', () => {
-        const turns: ClientConversationTurn[] = [
-            turn({
-                timeline: [
-                    { type: 'tool-start', timestamp: '1', toolCall: toolCall({ id: 'a', result: undefined }) },
-                    { type: 'tool-complete', timestamp: '2', toolCall: toolCall({ id: 'a', result: 'A output' }) },
-                ],
-            }),
-            turn({ toolCalls: [toolCall({ id: 'b', result: 'B output' })] }),
-        ];
-
-        const calls = collectToolCallsFromTurns(turns);
-        expect(calls.map(c => c.id)).toEqual(['a', 'b']);
-        // The completed record (with output) wins over the tool-start placeholder.
-        expect(calls[0].result).toBe('A output');
-        expect(calls[1].result).toBe('B output');
-    });
-
-    it('does not overwrite a result-bearing record with a later empty one', () => {
-        const turns: ClientConversationTurn[] = [
-            turn({
-                timeline: [{ type: 'tool-complete', timestamp: '1', toolCall: toolCall({ id: 'a', result: 'done' }) }],
-                toolCalls: [toolCall({ id: 'a', result: undefined })],
-            }),
-        ];
-        const calls = collectToolCallsFromTurns(turns);
-        expect(calls).toHaveLength(1);
-        expect(calls[0].result).toBe('done');
-    });
-
-    it('tolerates undefined / empty turns', () => {
-        expect(collectToolCallsFromTurns(undefined)).toEqual([]);
-        expect(collectToolCallsFromTurns([])).toEqual([]);
-    });
-});
 
 describe('gatherDetectedPrsFromTurns', () => {
     it('detects GitHub and Azure DevOps PRs across loaded turns (AC-01 DoD #3)', () => {

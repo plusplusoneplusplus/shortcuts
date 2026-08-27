@@ -133,14 +133,27 @@ no PR is associated.
 
 ### Detection and binding
 
-`usePrChatStatusItems` unions PRs detected in loaded turns (`pullRequestDetection.ts`)
-with persisted bindings looked up by `task_id`
-(`listChatBindingsForOrigin(originId, { taskId })`). It resolves each PR's canonical
-origin via `resolveCanonicalOriginId`, upserts a binding
+The detector itself is shared by the SPA and the server:
+`@plusplusoneplusplus/forge/git/pull-request-detection` (`detectPullRequestsInToolGroup`,
+`collectToolCallsFromTurns`, `syntheticRemoteUrlForDetectedPr`). It is pure
+strings/regex — no React, no DOM, no Node built-ins — so one copy serves both.
+
+`usePrChatStatusItems` unions PRs detected in loaded turns with persisted bindings
+looked up by `task_id` (`listChatBindingsForOrigin(originId, { taskId })`). It resolves
+each PR's canonical origin via `resolveCanonicalOriginId`, upserts a binding
 (`createChatBindingForOrigin`) for any freshly-detected PR so it survives reload with
 the creating turn collapsed, and fetches detail per row (`getForOrigin`) into per-row
 loading/ready/error state with retry. Union and origin logic live in the pure
 `conversation/prChatAssociation.ts`.
+
+The client path only runs while a chat is open, so it is backstopped server-side:
+`ProcessLifecycleRunner`'s `finally` calls
+`processes/bind-detected-pull-requests.ts`, which re-runs the same detector over the
+finished conversation's turns and upserts a binding. It is scoped to the workspace
+remote, keyed by the **bare** task id (no `queue_` prefix, matching what the client
+writes and reads), idempotent (`INSERT OR REPLACE`), and self-swallowing — a binding
+failure never fails the task. Stores without `getDatabase`/`getConversationTurns` (e.g.
+`FileProcessStore`) are a clean no-op.
 
 Detection requires **positive evidence that this tool call created that PR**, because
 each detection is written back as a binding and so is permanent. A tool call yields at

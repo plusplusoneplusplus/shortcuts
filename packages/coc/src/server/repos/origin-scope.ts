@@ -60,7 +60,7 @@ function trimNonEmpty(value: string | null | undefined): string | undefined {
  */
 export async function resolveWorkspaceRemoteUrl(
     workspace: OriginScopeWorkspace,
-    processStore?: Pick<ProcessStore, 'updateWorkspace'>,
+    processStore?: Partial<Pick<ProcessStore, 'updateWorkspace'>>,
 ): Promise<string | undefined> {
     const existing = trimNonEmpty(workspace.remoteUrl);
     if (existing) return existing;
@@ -80,7 +80,7 @@ export async function resolveWorkspaceRemoteUrl(
  */
 export async function resolveWorkspaceOriginId(
     workspace: OriginScopeWorkspace,
-    processStore?: Pick<ProcessStore, 'updateWorkspace'>,
+    processStore?: Partial<Pick<ProcessStore, 'updateWorkspace'>>,
 ): Promise<string> {
     const remoteUrl = await resolveWorkspaceRemoteUrl(workspace, processStore);
     return resolveCanonicalOriginId({ remoteUrl, workspaceId: workspace.id });

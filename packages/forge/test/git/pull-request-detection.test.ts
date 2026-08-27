@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+    collectToolCallsFromTurns,
     detectPullRequestsInToolGroup,
     type DetectedPullRequest,
-} from '../../../src/server/spa/client/react/features/chat/conversation/pullRequestDetection';
+    type ToolCallBearingTurn,
+    type ToolCallLike,
+} from '../../src/git/pull-request-detection';
 
 describe('detectPullRequestsInToolGroup', () => {
     it('detects a GitHub pull request URL from gh pr create output', () => {
@@ -412,7 +415,7 @@ describe('detectPullRequestsInToolGroup', () => {
                 toolName: 'bash',
                 args: { command: 'rg -n "pr_url" packages/coc/test' },
                 result: [
-                    'packages/coc/test/spa/react/pullRequestDetection.test.ts:152:    result: \'JSON: {"commits_count": 0, "pr_url": "https://github.com/org/repo/pull/371", "status": "done"}\',',
+                    'packages/forge/test/git/pull-request-detection.test.ts:152:    result: \'JSON: {"commits_count": 0, "pr_url": "https://github.com/org/repo/pull/371", "status": "done"}\',',
                     '                result: \'JSON: {"pr_url": "https://github.com/org/repo/pull/371", "status": "done"}\',',
                 ].join('\n'),
             },
@@ -431,8 +434,8 @@ describe('detectPullRequestsInToolGroup', () => {
                 },
                 result: [
                     'packages/coc/test/server/work-items/work-item-execution-routes.test.ts:720: if (command === \'gh\' && args[0] === \'pr\' && args[1] === \'create\') return { stdout: \'https://github.com/example/repo/pull/123\\n\', stderr: \'\' };',
-                    'packages/coc/test/spa/react/pullRequestDetection.test.ts:172: args: { command: \'az repos pr create --title "feat"\' },',
-                    'packages/coc/test/spa/react/pullRequestDetection.test.ts:173: result: \'https://dev.azure.com/myorg/MyProject/_git/MyRepo/pullrequest/12345\',',
+                    'packages/forge/test/git/pull-request-detection.test.ts:172: args: { command: \'az repos pr create --title "feat"\' },',
+                    'packages/forge/test/git/pull-request-detection.test.ts:173: result: \'https://dev.azure.com/myorg/MyProject/_git/MyRepo/pullrequest/12345\',',
                 ].join('\n'),
             },
         ]);
@@ -935,5 +938,60 @@ describe('detectPullRequestsInToolGroup', () => {
 
             expect(pullRequests).toHaveLength(1);
         });
+    });
+});
+
+function toolCall(partial: Partial<ToolCallLike> & { id: string }): ToolCallLike {
+    return { toolName: 'bash', args: {}, status: 'completed', ...partial };
+}
+
+describe('collectToolCallsFromTurns', () => {
+    it('flattens tool calls from timeline and legacy toolCalls, deduped by id within each turn', () => {
+        const turns: ToolCallBearingTurn[] = [
+            {
+                timeline: [
+                    { toolCall: toolCall({ id: 'a', result: undefined }) },
+                    { toolCall: toolCall({ id: 'a', result: 'A output' }) },
+                ],
+            },
+            { toolCalls: [toolCall({ id: 'b', result: 'B output' })] },
+        ];
+
+        const calls = collectToolCallsFromTurns(turns);
+        expect(calls.map(c => c.id)).toEqual(['a', 'b']);
+        // The completed record (with output) wins over the tool-start placeholder.
+        expect(calls[0].result).toBe('A output');
+        expect(calls[1].result).toBe('B output');
+    });
+
+    it('does not overwrite a result-bearing record with a later empty one', () => {
+        const calls = collectToolCallsFromTurns([
+            {
+                timeline: [{ toolCall: toolCall({ id: 'a', result: 'done' }) }],
+                toolCalls: [toolCall({ id: 'a', result: undefined })],
+            },
+        ]);
+        expect(calls).toHaveLength(1);
+        expect(calls[0].result).toBe('done');
+    });
+
+    it('keeps ids from separate turns distinct', () => {
+        const calls = collectToolCallsFromTurns([
+            { toolCalls: [toolCall({ id: 'a', result: 'first' })] },
+            { toolCalls: [toolCall({ id: 'a', result: 'second' })] },
+        ]);
+        expect(calls.map(c => c.result)).toEqual(['first', 'second']);
+    });
+
+    it('tolerates undefined / empty turns', () => {
+        expect(collectToolCallsFromTurns(undefined)).toEqual([]);
+        expect(collectToolCallsFromTurns([])).toEqual([]);
+    });
+
+    it('skips entries with no id', () => {
+        const calls = collectToolCallsFromTurns([
+            { toolCalls: [{ id: '', result: 'x' }, toolCall({ id: 'a' })] },
+        ]);
+        expect(calls.map(c => c.id)).toEqual(['a']);
     });
 });

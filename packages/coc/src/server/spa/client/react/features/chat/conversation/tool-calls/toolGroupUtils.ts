@@ -4,7 +4,7 @@
  */
 import type { DetectedCommit } from '../commitDetection';
 import { detectCommitsInToolGroup } from '../commitDetection';
-import { detectPullRequestsInToolGroup, type DetectedPullRequest } from '../pullRequestDetection';
+import { detectPullRequestsInToolGroup, type DetectedPullRequest } from '@plusplusoneplusplus/forge/git/pull-request-detection';
 import { detectPushesInToolGroup, type DetectedPush } from '../pushDetection';
 import { getApplyPatchText, parseApplyPatchFileChanges } from '../../../../utils/applyPatchParser';
 import { getCodexFileChanges, normalizeToolName } from './toolNormalization';

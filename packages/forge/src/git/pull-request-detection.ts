@@ -1,6 +1,11 @@
 /**
- * pullRequestDetection — scans PR-creation tool call results and extracts
+ * pull-request-detection — scans PR-creation tool call results and extracts
  * structured pull-request metadata.
+ *
+ * Shared by the dashboard SPA (live chip while a chat is open) and the server's
+ * task-completion binding pass (backstop for chats nobody was watching). Pure
+ * strings/regex — no React, no DOM, no Node built-ins — so it is safe in a
+ * browser bundle.
  *
  * Detection is deliberately conservative: a chat's PR banner is persisted as a
  * `pull_request_chat_bindings` row, so a mis-detection is permanent. Every
@@ -8,7 +13,7 @@
  * **that** pull request, and yields only the single URL that evidence points at
  * rather than every PR URL that happened to appear in the output.
  */
-import { normalizeRemoteUrl } from '@plusplusoneplusplus/forge/git/normalize-url';
+import { normalizeRemoteUrl } from './normalize-url';
 
 export interface DetectedPullRequest {
     number: number;
@@ -23,7 +28,11 @@ export interface DetectedPullRequest {
     toolCallId: string;
 }
 
-interface ToolCallLike {
+/**
+ * Structural shape of a tool call the detector reads. Both the SPA's
+ * `ClientToolCall` (`toolName`) and forge's `ToolCall` (`name`) satisfy it.
+ */
+export interface ToolCallLike {
     id: string;
     toolName?: string;
     name?: string;
@@ -463,4 +472,65 @@ export function detectPullRequestsInToolGroup(
     }
 
     return results;
+}
+
+/**
+ * Synthesizes the canonical remote URL of the repo a detected PR lives in, so
+ * callers can resolve its origin id with the shared `resolveCanonicalOriginId`
+ * instead of inventing a second provider→origin mapping. Returns null when the
+ * provider/fields are insufficient.
+ */
+export function syntheticRemoteUrlForDetectedPr(pr: DetectedPullRequest): string | null {
+    if (pr.provider === 'github') {
+        if (!pr.owner || !pr.repo) return null;
+        return `https://github.com/${pr.owner}/${pr.repo}`;
+    }
+    if (pr.provider === 'azure-devops') {
+        if (!pr.organization || !pr.project) return null;
+        return `https://dev.azure.com/${pr.organization}/${pr.project}`;
+    }
+    return null;
+}
+
+/**
+ * Structural shape of a conversation turn the flattener reads. Satisfied by
+ * both the SPA's `ClientConversationTurn` and forge's `ConversationTurn`, so
+ * the client and the server flatten turns with the same code.
+ */
+export interface ToolCallBearingTurn<T extends ToolCallLike = ToolCallLike> {
+    timeline?: ReadonlyArray<{ toolCall?: T }>;
+    toolCalls?: ReadonlyArray<T>;
+}
+
+/**
+ * Flattens every tool call across the given turns, preferring the structured
+ * `timeline[].toolCall` entries and falling back to the legacy flat
+ * `turn.toolCalls`. Within each turn, de-duplicates by tool-call id, keeping the
+ * most complete record (the one carrying a `result`) so a tool that shows up as
+ * both `tool-start` and `tool-complete` is scanned once with its output. Tool
+ * call ids may be reused by separate assistant turns, so they remain distinct.
+ */
+export function collectToolCallsFromTurns<T extends ToolCallLike>(
+    turns: readonly ToolCallBearingTurn<T>[] | undefined,
+): T[] {
+    const collected: T[] = [];
+    for (const turn of turns ?? []) {
+        const byId = new Map<string, T>();
+        const order: string[] = [];
+        const consider = (tc: T | undefined): void => {
+            if (!tc || !tc.id) return;
+            const prev = byId.get(tc.id);
+            if (!prev) {
+                byId.set(tc.id, tc);
+                order.push(tc.id);
+                return;
+            }
+            // Prefer the record that carries output.
+            if (!prev.result && tc.result) byId.set(tc.id, tc);
+        };
+        for (const item of turn.timeline ?? []) consider(item.toolCall);
+        for (const tc of turn.toolCalls ?? []) consider(tc);
+        collected.push(...order.map(id => byId.get(id)!));
+    }
+    return collected;
 }

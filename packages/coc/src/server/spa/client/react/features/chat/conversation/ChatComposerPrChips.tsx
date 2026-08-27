@@ -9,7 +9,7 @@
  * Dismiss hides the chip immediately *and* deletes the PR's chat binding, so a
  * PR the user says is not theirs does not come back on reload. Detection is the
  * other half of that promise: it only re-surfaces a PR this chat actually
- * created (see {@link ./pullRequestDetection}).
+ * created (see {@link detectPullRequestsInToolGroup}).
  *
  * Settled PRs fold into a single {@link ComposerPrFoldRow} so a chat that shipped
  * five commits does not out-grow the textarea it sits above — see
