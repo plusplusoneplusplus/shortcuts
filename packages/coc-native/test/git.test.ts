@@ -41,7 +41,16 @@ const COMPLETE_ADDON =
     "module.exports = { execGit: async () => 'main', gitStatusEntries: async () => [], " +
     'parseGitStatusPorcelain: async () => [], ' +
     'gitLogCommits: async () => ({ commits: [], hasMore: false }), ' +
-    'gitLogCommit: async () => null };';
+    'gitLogCommit: async () => null, ' +
+    'gitRangeDefaultBranch: async () => null, ' +
+    'gitRangeUpstreamBranch: async () => null, ' +
+    "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
+    'gitRangeMergeBase: async () => null, ' +
+    'gitRangeCountAhead: async () => 0, ' +
+    'gitRangeChangedFiles: async () => [], ' +
+    'parseGitRangeChangedFiles: async () => [], ' +
+    'gitRangeDiffStats: async () => ({ additions: 0, deletions: 0 }), ' +
+    'parseGitDiffShortstat: async () => ({ additions: 0, deletions: 0 }) };';
 
 /** Point the loader at a JavaScript stand-in for the addon. */
 function useAddon(source: string): string {
@@ -62,6 +71,22 @@ it('exposes the capability when the addon provides it', async () => {
         hasMore: false,
     });
     expect(await api.gitLogCommit('/repo', 'HEAD')).toBeNull();
+    expect(await api.gitRangeDefaultBranch('/repo')).toBeNull();
+    expect(await api.gitRangeUpstreamBranch('/repo')).toBeNull();
+    expect(await api.gitRangeResolveBaseRef('/repo', 'upstream')).toEqual({
+        baseRef: null,
+        baseMode: 'default-branch',
+        baseModeFallback: false,
+    });
+    expect(await api.gitRangeMergeBase('/repo', 'HEAD', 'origin/main')).toBeNull();
+    expect(await api.gitRangeCountAhead('/repo', 'origin/main', 'HEAD')).toBe(0);
+    expect(await api.gitRangeChangedFiles('/repo', 'origin/main', 'HEAD')).toEqual([]);
+    expect(await api.parseGitRangeChangedFiles('', '')).toEqual([]);
+    expect(await api.gitRangeDiffStats('/repo', 'origin/main', 'HEAD')).toEqual({
+        additions: 0,
+        deletions: 0,
+    });
+    expect(await api.parseGitDiffShortstat('')).toEqual({ additions: 0, deletions: 0 });
     expect(nativeGitStatus().loaded).toBe(true);
 });
 
@@ -128,6 +153,18 @@ describe('when the capability is missing', () => {
         useAddon(
             "module.exports = { execGit: async () => 'main', gitStatusEntries: async () => [], " +
                 'parseGitStatusPorcelain: async () => [] };',
+        );
+        expect(() => loadNativeGit()).toThrow('does not export the git capability');
+        expect(nativeGitStatus().loaded).toBe(false);
+    });
+
+    // And the slice after that: history reading present, commit ranges absent.
+    it('rejects a binary built before the commit-range exports', () => {
+        useAddon(
+            "module.exports = { execGit: async () => 'main', gitStatusEntries: async () => [], " +
+                'parseGitStatusPorcelain: async () => [], ' +
+                'gitLogCommits: async () => ({ commits: [], hasMore: false }), ' +
+                'gitLogCommit: async () => null };',
         );
         expect(() => loadNativeGit()).toThrow('does not export the git capability');
         expect(nativeGitStatus().loaded).toBe(false);

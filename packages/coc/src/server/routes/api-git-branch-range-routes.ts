@@ -82,7 +82,7 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
                 const range = await rangeService.detectCommitRange(ws.rootPath, { baseMode });
                 if (!range) {
                     const branchName = await rangeService.getCurrentBranch(ws.rootPath);
-                    const resolved = rangeService.resolveBaseRef(ws.rootPath, baseMode);
+                    const resolved = await rangeService.resolveBaseRef(ws.rootPath, baseMode);
                     const result = {
                         onDefaultBranch: true as const,
                         branchName,
@@ -142,7 +142,7 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
                 if (!range) {
                     return sendJSON(res, 200, { diff: '' });
                 }
-                const diff = rangeService.getRangeDiff(ws.rootPath, range.baseRef, 'HEAD');
+                const diff = await rangeService.getRangeDiff(ws.rootPath, range.baseRef, 'HEAD');
                 sendJSON(res, 200, { diff });
             } catch {
                 sendJSON(res, 200, { diff: '' });
@@ -168,7 +168,7 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
                 if (!range) {
                     return sendJSON(res, 200, { diff: '', path: filePath });
                 }
-                const diff = rangeService.getFileDiff(ws.rootPath, range.baseRef, 'HEAD', filePath);
+                const diff = await rangeService.getFileDiff(ws.rootPath, range.baseRef, 'HEAD', filePath);
                 const result = { ...truncateDiffIfNeeded(diff, full), path: filePath };
                 sendJSON(res, 200, result);
             } catch {

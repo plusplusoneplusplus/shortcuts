@@ -318,3 +318,170 @@ describe('gitLogCommit marshalling', () => {
         expect('isAheadOfRemote' in (commit as object)).toBe(false);
     });
 });
+
+// The range exports get their own repository: they need remote-tracking refs
+// and a base commit that is not HEAD, and mutating the shared one would leak
+// into every suite above.
+describe('commit-range marshalling', () => {
+    let range: string;
+    let base: string;
+
+    function rangeGit(...args: string[]): string {
+        return execFileSync('git', ['-C', range, ...args], { encoding: 'utf-8' });
+    }
+
+    beforeAll(() => {
+        range = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-git-range-')));
+        rangeGit('init', '--initial-branch=main');
+        rangeGit('config', 'user.email', 'ralph@example.com');
+        rangeGit('config', 'user.name', 'Ralph');
+        rangeGit('config', 'commit.gpgsign', 'false');
+        fs.writeFileSync(path.join(range, 'kept.md'), 'one\n');
+        rangeGit('add', '.');
+        rangeGit('commit', '-m', 'base');
+        base = rangeGit('rev-parse', 'HEAD').trim();
+
+        fs.writeFileSync(path.join(range, 'kept.md'), 'one\ntwo\n');
+        fs.writeFileSync(path.join(range, 'added.md'), 'new\n');
+        rangeGit('add', '.');
+        rangeGit('commit', '-m', 'ahead');
+
+        rangeGit('update-ref', 'refs/remotes/origin/main', base);
+    });
+
+    afterAll(() => {
+        if (range) fs.rmSync(range, { recursive: true, force: true });
+    });
+
+    it('marshals the default branch and where it was found', async () => {
+        await expect(gitAddon.gitRangeDefaultBranch(range)).resolves.toEqual({
+            name: 'origin/main',
+            fromRemote: true,
+        });
+    });
+
+    it('resolves with null when there is no default branch', async () => {
+        const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-git-nodefault-'));
+        try {
+            execFileSync('git', ['-C', bare, 'init', '--initial-branch=trunk']);
+            await expect(gitAddon.gitRangeDefaultBranch(bare)).resolves.toBeNull();
+        } finally {
+            fs.rmSync(bare, { recursive: true, force: true });
+        }
+    });
+
+    it('resolves with null for a branch with no upstream', async () => {
+        await expect(gitAddon.gitRangeUpstreamBranch(range)).resolves.toBeNull();
+    });
+
+    it('marshals a base-ref resolution', async () => {
+        await expect(gitAddon.gitRangeResolveBaseRef(range, 'default-branch')).resolves.toEqual({
+            baseRef: 'origin/main',
+            baseMode: 'default-branch',
+            baseModeFallback: false,
+        });
+    });
+
+    // Asking for `upstream` on a branch that has none reports the mode actually
+    // used, so the range view's toggle does not claim to be showing unpushed
+    // commits when it is showing everything since the default branch.
+    it('reports the fallback when upstream is asked for and absent', async () => {
+        await expect(gitAddon.gitRangeResolveBaseRef(range, 'upstream')).resolves.toEqual({
+            baseRef: 'origin/main',
+            baseMode: 'default-branch',
+            baseModeFallback: true,
+        });
+    });
+
+    // napi omits an absent `Option<String>` inside an object rather than
+    // sending null, so `baseRef` arrives as an absent property and reads as
+    // `undefined` — which is what the caller's `if (!baseRef)` already expects.
+    it('omits an absent base ref rather than sending null', async () => {
+        const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-git-nobase-'));
+        try {
+            execFileSync('git', ['-C', bare, 'init', '--initial-branch=trunk']);
+            const resolved = await gitAddon.gitRangeResolveBaseRef(bare, 'default-branch');
+            expect('baseRef' in resolved).toBe(false);
+            expect(resolved.baseRef).toBeUndefined();
+            expect(resolved.baseMode).toBe('default-branch');
+        } finally {
+            fs.rmSync(bare, { recursive: true, force: true });
+        }
+    });
+
+    it('marshals a merge base', async () => {
+        await expect(gitAddon.gitRangeMergeBase(range, 'HEAD', 'origin/main')).resolves.toBe(base);
+    });
+
+    it('resolves with null for a revision that names nothing', async () => {
+        await expect(gitAddon.gitRangeMergeBase(range, 'HEAD', 'origin/nope')).resolves.toBeNull();
+    });
+
+    it('counts the commits ahead of the base', async () => {
+        await expect(gitAddon.gitRangeCountAhead(range, 'origin/main', 'HEAD')).resolves.toBe(1);
+    });
+
+    it('marshals the changed-file list', async () => {
+        const files = await gitAddon.gitRangeChangedFiles(range, 'origin/main', 'HEAD');
+        expect(files).toEqual(
+            expect.arrayContaining([
+                { path: 'kept.md', status: 'modified', additions: 1, deletions: 0 },
+                { path: 'added.md', status: 'added', additions: 1, deletions: 0 },
+            ]),
+        );
+        // As with a status entry, an absent `oldPath` is an absent property.
+        expect(files.every(file => !('oldPath' in file))).toBe(true);
+    });
+
+    it('carries the source of a rename across the boundary', async () => {
+        const files = await gitAddon.parseGitRangeChangedFiles(
+            '0\t0\told.ts => new.ts\n',
+            'R100\told.ts\tnew.ts\n',
+        );
+        expect(files).toEqual([
+            { path: 'new.ts', status: 'renamed', additions: 0, deletions: 0, oldPath: 'old.ts' },
+        ]);
+    });
+
+    it('parses changed-file text produced elsewhere — the WSL path', async () => {
+        const files = await gitAddon.parseGitRangeChangedFiles(
+            '4\t1\tsrc/a.ts\n',
+            'M\tsrc/a.ts\n',
+        );
+        expect(files).toEqual([{ path: 'src/a.ts', status: 'modified', additions: 4, deletions: 1 }]);
+    });
+
+    it('marshals diff statistics', async () => {
+        await expect(gitAddon.gitRangeDiffStats(range, 'origin/main', 'HEAD')).resolves.toEqual({
+            additions: 2,
+            deletions: 0,
+        });
+    });
+
+    it('parses shortstat text produced elsewhere — the WSL path', async () => {
+        await expect(
+            gitAddon.parseGitDiffShortstat(' 3 files changed, 12 insertions(+), 7 deletions(-)'),
+        ).resolves.toEqual({ additions: 12, deletions: 7 });
+    });
+
+    it('rejects with the `git <args> failed:` shape when the path is not a repository', async () => {
+        const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-git-range-empty-'));
+        try {
+            await expect(gitAddon.gitRangeDefaultBranch(empty)).rejects.toThrow(
+                /^git rev-parse --verify origin\/main failed: /,
+            );
+            await expect(gitAddon.gitRangeChangedFiles(empty, 'origin/main', 'HEAD')).rejects.toThrow(
+                /^git diff --numstat origin\/main\.\.\.HEAD failed: /,
+            );
+        } finally {
+            fs.rmSync(empty, { recursive: true, force: true });
+        }
+    });
+
+    it('serves concurrent range reads of the same repository', async () => {
+        const resolved = await Promise.all(
+            Array.from({ length: 8 }, () => gitAddon.gitRangeResolveBaseRef(range, 'upstream')),
+        );
+        expect(resolved.every(one => one.baseModeFallback === true)).toBe(true);
+    });
+});

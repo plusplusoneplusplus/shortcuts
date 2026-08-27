@@ -18,6 +18,7 @@
 //! module; Rust only ever runs git on the native host.
 
 pub mod log;
+pub mod range;
 pub mod status;
 
 use std::io::Read;

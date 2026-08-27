@@ -51,6 +51,30 @@ export type NativeGitLogPage = Bindings.GitLogPage;
 /** Which slice of history to read — page size, offset and message filter. */
 export type NativeGitLogOptions = Bindings.GitLogOptions;
 
+/**
+ * The repository's default branch, and whether it came from a remote ref.
+ *
+ * `fromRemote` is not decoration: `GitRangeService` memoises the three
+ * remote-derived answers and deliberately leaves the local `main`/`master`
+ * fallbacks uncached, and this flag is the only way to tell them apart.
+ */
+export type NativeGitRangeDefaultBranch = Bindings.GitRangeDefaultBranch;
+
+/** Which ref a range is measured against, and whether that was the ref asked for. */
+export type NativeGitRangeBaseRef = Bindings.GitRangeBaseRef;
+
+/**
+ * One file in a commit range as Rust reports it.
+ *
+ * `repositoryRoot` is absent for the same reason it is on a status entry — it
+ * is the caller's own `repoRoot`, not something to rebuild in Rust — and the
+ * list arrives in git's order, because sorting it is `localeCompare`'s job.
+ */
+export type NativeGitRangeFile = Bindings.GitRangeFile;
+
+/** Added and removed line totals across a range. */
+export type NativeGitRangeDiffStats = Bindings.GitRangeDiffStats;
+
 /** The exact addon slice required to run git. */
 export interface NativeGitAddon {
     execGit: typeof Bindings.execGit;
@@ -58,6 +82,15 @@ export interface NativeGitAddon {
     parseGitStatusPorcelain: typeof Bindings.parseGitStatusPorcelain;
     gitLogCommits: typeof Bindings.gitLogCommits;
     gitLogCommit: typeof Bindings.gitLogCommit;
+    gitRangeDefaultBranch: typeof Bindings.gitRangeDefaultBranch;
+    gitRangeUpstreamBranch: typeof Bindings.gitRangeUpstreamBranch;
+    gitRangeResolveBaseRef: typeof Bindings.gitRangeResolveBaseRef;
+    gitRangeMergeBase: typeof Bindings.gitRangeMergeBase;
+    gitRangeCountAhead: typeof Bindings.gitRangeCountAhead;
+    gitRangeChangedFiles: typeof Bindings.gitRangeChangedFiles;
+    parseGitRangeChangedFiles: typeof Bindings.parseGitRangeChangedFiles;
+    gitRangeDiffStats: typeof Bindings.gitRangeDiffStats;
+    parseGitDiffShortstat: typeof Bindings.parseGitDiffShortstat;
 }
 
 /**
@@ -73,6 +106,15 @@ const GIT_EXPORTS = [
     'parseGitStatusPorcelain',
     'gitLogCommits',
     'gitLogCommit',
+    'gitRangeDefaultBranch',
+    'gitRangeUpstreamBranch',
+    'gitRangeResolveBaseRef',
+    'gitRangeMergeBase',
+    'gitRangeCountAhead',
+    'gitRangeChangedFiles',
+    'parseGitRangeChangedFiles',
+    'gitRangeDiffStats',
+    'parseGitDiffShortstat',
 ] as const;
 
 /** Whether the loaded module actually exposes the git capability. */

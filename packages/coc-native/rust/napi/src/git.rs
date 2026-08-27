@@ -14,6 +14,11 @@
 use std::path::PathBuf;
 
 use coc_native_core::git::log::{get_commit, get_commits, Commit, CommitPage};
+use coc_native_core::git::range::{
+    changed_files, count_commits_ahead, default_remote_branch, diff_stats, merge_base,
+    parse_changed_files, parse_diff_shortstat, resolve_base_ref, upstream_branch, BaseMode,
+    BaseRefResolution, DefaultBranch, DiffStats, RangeFile,
+};
 use coc_native_core::git::status::{
     parse_porcelain, status_entries, StatusEntry, STATUS_TIMEOUT_MS,
 };
@@ -324,4 +329,369 @@ impl Task for GitLogCommitTask {
 #[napi(ts_return_type = "Promise<GitLogCommit | null>")]
 pub fn git_log_commit(repo_root: String, rev: String) -> AsyncTask<GitLogCommitTask> {
     AsyncTask::new(GitLogCommitTask { repo_root: PathBuf::from(repo_root), rev })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Commit ranges
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The repository's default branch, and whether it came from a remote ref.
+///
+/// `fromRemote` is what lets the caller keep memoising exactly the answers it
+/// always memoised: the TypeScript cached `origin/main`, `origin/master` and
+/// `origin/HEAD` for a minute and deliberately left the local `main`/`master`
+/// fallbacks uncached.
+#[napi(object)]
+pub struct GitRangeDefaultBranch {
+    pub name: String,
+    pub from_remote: bool,
+}
+
+/// Which ref a range is measured against, and whether that was the ref asked for.
+#[napi(object)]
+pub struct GitRangeBaseRef {
+    /// Absent when the repository has no default branch to fall back to.
+    pub base_ref: Option<String>,
+    /// The `GitRangeBaseMode` actually used — not always the one requested.
+    pub base_mode: String,
+    /// True when `upstream` was asked for but the branch has no upstream.
+    pub base_mode_fallback: bool,
+}
+
+/// One file in a commit range, minus the `repositoryRoot` the caller owns.
+#[napi(object)]
+pub struct GitRangeFile {
+    pub path: String,
+    /// A `GitChangeStatus` string union member.
+    pub status: String,
+    pub additions: u32,
+    pub deletions: u32,
+    /// Source path of a rename or copy; absent otherwise.
+    pub old_path: Option<String>,
+}
+
+impl From<RangeFile> for GitRangeFile {
+    fn from(file: RangeFile) -> Self {
+        Self {
+            path: file.path,
+            status: file.status.as_str().to_string(),
+            additions: file.additions,
+            deletions: file.deletions,
+            old_path: file.old_path,
+        }
+    }
+}
+
+/// Added and removed line totals across a range.
+#[napi(object)]
+pub struct GitRangeDiffStats {
+    pub additions: u32,
+    pub deletions: u32,
+}
+
+impl From<DiffStats> for GitRangeDiffStats {
+    fn from(stats: DiffStats) -> Self {
+        Self { additions: stats.additions, deletions: stats.deletions }
+    }
+}
+
+pub struct GitRangeDefaultBranchTask {
+    repo_root: PathBuf,
+}
+
+impl Task for GitRangeDefaultBranchTask {
+    type Output = Option<DefaultBranch>;
+    type JsValue = Option<GitRangeDefaultBranch>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        default_remote_branch(&self.repo_root).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output.map(|branch| GitRangeDefaultBranch {
+            name: branch.name,
+            from_remote: branch.from_remote,
+        }))
+    }
+}
+
+/// Find the repository's default branch: `origin/main`, `origin/master`,
+/// whatever `origin/HEAD` points at, then local `main` or `master`.
+///
+/// Five ref lookups through `gix` where the TypeScript spawned up to five
+/// `rev-parse --verify` children. Resolves with `null` when none of them exist.
+#[napi(ts_return_type = "Promise<GitRangeDefaultBranch | null>")]
+pub fn git_range_default_branch(repo_root: String) -> AsyncTask<GitRangeDefaultBranchTask> {
+    AsyncTask::new(GitRangeDefaultBranchTask { repo_root: PathBuf::from(repo_root) })
+}
+
+pub struct GitRangeUpstreamTask {
+    repo_root: PathBuf,
+}
+
+impl Task for GitRangeUpstreamTask {
+    type Output = Option<String>;
+    type JsValue = Option<String>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        upstream_branch(&self.repo_root).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+/// The current branch's upstream, e.g. `origin/my-feature`.
+///
+/// Resolves with `null` for a branch with no upstream and for a detached HEAD,
+/// both of which the caller already read as "no tracking branch".
+#[napi(ts_return_type = "Promise<string | null>")]
+pub fn git_range_upstream_branch(repo_root: String) -> AsyncTask<GitRangeUpstreamTask> {
+    AsyncTask::new(GitRangeUpstreamTask { repo_root: PathBuf::from(repo_root) })
+}
+
+pub struct GitRangeBaseRefTask {
+    repo_root: PathBuf,
+    base_mode: BaseMode,
+}
+
+impl Task for GitRangeBaseRefTask {
+    type Output = BaseRefResolution;
+    type JsValue = GitRangeBaseRef;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        resolve_base_ref(&self.repo_root, self.base_mode).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(GitRangeBaseRef {
+            base_ref: output.base_ref,
+            base_mode: output.base_mode.as_str().to_string(),
+            base_mode_fallback: output.base_mode_fallback,
+        })
+    }
+}
+
+/// Resolve the ref a range should be measured against.
+///
+/// `baseMode` is a `GitRangeBaseMode` member; anything else reads as
+/// `default-branch`, matching what the route does with a misspelled `?base=`.
+/// Asking for `upstream` on a branch with no upstream resolves to the default
+/// branch with `baseModeFallback` set, rather than to nothing.
+#[napi(ts_return_type = "Promise<GitRangeBaseRef>")]
+pub fn git_range_resolve_base_ref(
+    repo_root: String,
+    base_mode: String,
+) -> AsyncTask<GitRangeBaseRefTask> {
+    AsyncTask::new(GitRangeBaseRefTask {
+        repo_root: PathBuf::from(repo_root),
+        base_mode: BaseMode::from_name(&base_mode),
+    })
+}
+
+pub struct GitRangeMergeBaseTask {
+    repo_root: PathBuf,
+    one: String,
+    two: String,
+}
+
+impl Task for GitRangeMergeBaseTask {
+    type Output = Option<String>;
+    type JsValue = Option<String>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        merge_base(&self.repo_root, &self.one, &self.two).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+/// The best merge base between two revisions.
+///
+/// Resolves with `null` for unrelated histories and for a revision that names
+/// nothing — both of which `git merge-base` reported by exiting non-zero, and
+/// the caller turned into a null.
+#[napi(ts_return_type = "Promise<string | null>")]
+pub fn git_range_merge_base(
+    repo_root: String,
+    one: String,
+    two: String,
+) -> AsyncTask<GitRangeMergeBaseTask> {
+    AsyncTask::new(GitRangeMergeBaseTask { repo_root: PathBuf::from(repo_root), one, two })
+}
+
+pub struct GitRangeCountAheadTask {
+    repo_root: PathBuf,
+    base_ref: String,
+    head_ref: String,
+}
+
+impl Task for GitRangeCountAheadTask {
+    type Output = u32;
+    type JsValue = u32;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        count_commits_ahead(&self.repo_root, &self.base_ref, &self.head_ref).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+/// How many commits `headRef` has that `baseRef` does not.
+///
+/// `git rev-list --count <base>..<head>` as a `gix` walk. A revision that names
+/// nothing counts zero, which is what the TypeScript's `parseInt(...) || 0`
+/// produced from the failed command.
+#[napi(ts_return_type = "Promise<number>")]
+pub fn git_range_count_ahead(
+    repo_root: String,
+    base_ref: String,
+    head_ref: String,
+) -> AsyncTask<GitRangeCountAheadTask> {
+    AsyncTask::new(GitRangeCountAheadTask {
+        repo_root: PathBuf::from(repo_root),
+        base_ref,
+        head_ref,
+    })
+}
+
+pub struct GitRangeChangedFilesTask {
+    repo_root: PathBuf,
+    base_ref: String,
+    head_ref: String,
+    options: GitCommandOptions,
+}
+
+impl Task for GitRangeChangedFilesTask {
+    type Output = Vec<RangeFile>;
+    type JsValue = Vec<GitRangeFile>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        changed_files(&self.repo_root, &self.base_ref, &self.head_ref, &self.options)
+            .map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output.into_iter().map(GitRangeFile::from).collect())
+    }
+}
+
+/// Read the files changed between two refs, in git's own order.
+///
+/// Runs `diff --numstat` and `diff --name-status -M -C` over the three-dot
+/// range and joins them, so neither output crosses the boundary as text. The
+/// list is not sorted: the caller orders it with `localeCompare`, which is not
+/// a byte comparison and is what the range view already shows.
+#[napi(ts_return_type = "Promise<GitRangeFile[]>")]
+pub fn git_range_changed_files(
+    repo_root: String,
+    base_ref: String,
+    head_ref: String,
+    options: Option<GitExecOptions>,
+) -> AsyncTask<GitRangeChangedFilesTask> {
+    AsyncTask::new(GitRangeChangedFilesTask {
+        repo_root: PathBuf::from(repo_root),
+        base_ref,
+        head_ref,
+        options: resolve_options(options),
+    })
+}
+
+pub struct ParseGitRangeChangedFilesTask {
+    numstat: String,
+    name_status: String,
+}
+
+impl Task for ParseGitRangeChangedFilesTask {
+    type Output = Vec<RangeFile>;
+    type JsValue = Vec<GitRangeFile>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        Ok(parse_changed_files(&self.numstat, &self.name_status))
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output.into_iter().map(GitRangeFile::from).collect())
+    }
+}
+
+/// Join `--numstat` and `--name-status` text that was produced somewhere else.
+///
+/// The WSL twin of {@link git_range_changed_files}, for the same reason
+/// {@link parse_git_status_porcelain} exists: a repository inside a WSL distro
+/// runs git through `wsl.exe` in TypeScript, and the parser must still be the
+/// single one in the codebase.
+#[napi(ts_return_type = "Promise<GitRangeFile[]>")]
+pub fn parse_git_range_changed_files(
+    numstat: String,
+    name_status: String,
+) -> AsyncTask<ParseGitRangeChangedFilesTask> {
+    AsyncTask::new(ParseGitRangeChangedFilesTask { numstat, name_status })
+}
+
+pub struct GitRangeDiffStatsTask {
+    repo_root: PathBuf,
+    base_ref: String,
+    head_ref: String,
+    options: GitCommandOptions,
+}
+
+impl Task for GitRangeDiffStatsTask {
+    type Output = DiffStats;
+    type JsValue = GitRangeDiffStats;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        diff_stats(&self.repo_root, &self.base_ref, &self.head_ref, &self.options)
+            .map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output.into())
+    }
+}
+
+/// Read the added and removed line totals between two refs.
+#[napi(ts_return_type = "Promise<GitRangeDiffStats>")]
+pub fn git_range_diff_stats(
+    repo_root: String,
+    base_ref: String,
+    head_ref: String,
+    options: Option<GitExecOptions>,
+) -> AsyncTask<GitRangeDiffStatsTask> {
+    AsyncTask::new(GitRangeDiffStatsTask {
+        repo_root: PathBuf::from(repo_root),
+        base_ref,
+        head_ref,
+        options: resolve_options(options),
+    })
+}
+
+pub struct ParseGitDiffShortstatTask {
+    text: String,
+}
+
+impl Task for ParseGitDiffShortstatTask {
+    type Output = DiffStats;
+    type JsValue = GitRangeDiffStats;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        Ok(parse_diff_shortstat(&self.text))
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output.into())
+    }
+}
+
+/// Parse `git diff --shortstat` text that was produced somewhere else.
+///
+/// The WSL twin of {@link git_range_diff_stats}.
+#[napi(ts_return_type = "Promise<GitRangeDiffStats>")]
+pub fn parse_git_diff_shortstat(text: String) -> AsyncTask<ParseGitDiffShortstatTask> {
+    AsyncTask::new(ParseGitDiffShortstatTask { text })
 }

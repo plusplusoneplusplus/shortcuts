@@ -75,7 +75,7 @@ The walk comes from `repo_index::walk::walk_builder`, shared with the path walk 
 
 `git::run_git` is why git no longer costs a Node child-process spawn per call: the work happens on a libuv worker, and a `Task` marshals the result back. Every non-WSL `execGitAsync` call already lands here, and the git services are porting onto it service by service.
 
-- **Reads use `gix`, mutations shell out.** `git::log` reads commit history through gitoxide and spawns nothing at all; refs and range resolution follow as each service ports. create/delete/rename/checkout/merge/rebase/cherry-pick/stash run the `git` CLI from Rust, because they are what git itself defines rather than what a library reimplements.
+- **Reads use `gix`, mutations shell out.** `git::log` reads commit history and `git::range` resolves base refs, merge bases and ahead counts through gitoxide, spawning nothing; the diff-backed reads still shell out, and more follow as each service ports. create/delete/rename/checkout/merge/rebase/cherry-pick/stash run the `git` CLI from Rust, because they are what git itself defines rather than what a library reimplements.
 - **Network and credential operations always shell out** — `push`, `pull`, `fetch`, `clone` — so credential helpers, SSH agents and 2FA keep working exactly as they do for a human at a terminal. Never through a Rust git library.
 - **`gix`, not `git2`**: the addon stays pure Rust across all four release triples, with no C build dependency. Pinned to `=0.87.0` — 0.87.1 depends on a `gix-worktree-stream` that was never published, so it cannot be resolved at all.
 - **WSL stays in TypeScript.** `forge/src/git/exec.ts` checks `resolveWorkspaceExecutionContext()` first and sends a repo inside a WSL distro through `wsl.exe` itself. Rust runs git on the native host and never learns that WSL exists, so there is one place — not two — where WSL path translation happens.
@@ -98,10 +98,21 @@ The walk comes from `repo_index::walk::walk_builder`, shared with the path walk 
 - **The page size is not an allocation size.** Callers spell "everything" as a huge number; reserving for it aborts the process.
 - Repository paths are resolved by discovery, so a path inside a working tree finds the tree that contains it — the same thing `git -C` does.
 
+### Commit ranges
+
+`git::range` answers "what is on this branch that is not on its base". `detectCommitRange` cost seven child processes for one answer; four of them were ref reads and walks, so they are `gix` now and only the three `diff` runs still spawn.
+
+- **The split is refs versus diffs.** Default-branch detection, `@{upstream}`, merge-base and the ahead count are `gix`. `--numstat`, `--name-status` and `--shortstat` shell out from Rust, because their line counts follow git's own diff drivers, `.gitattributes` and binary detection — a reimplementation that is close but not identical would render as wrong numbers in a review UI.
+- **Base-mode fallback is reported, not silent.** Asking for `upstream` on a branch with no upstream resolves to the default branch *and* sets `baseModeFallback`, so the range view's toggle cannot claim to show unpushed commits while showing everything since `main`.
+- **Sorting stays in Node.** The file list comes back in git's order; `GitRangeService` sorts it with `localeCompare`, which puts `docs/x.md` before `README.md` where a byte comparison does the opposite. Rust must not sort it "for" the caller.
+- **`from_remote` on the default branch exists for the caller's cache.** `GitRangeService` memoises the three remote-derived answers and deliberately not the local `main`/`master` fallbacks — a local fallback means the remote refs have not arrived yet.
+- **The `{old => new}` reader is a ported bug, pinned on purpose.** The TypeScript regex's second alternative matches from position 0 whenever the first cannot, so `src/{old.ts => new.ts}` yields `new.ts}` — which then misses the status map and shows as `modified`. Renames under a shared directory have always rendered that way. `rust/core/tests/git_range.rs` pins it; changing it changes what the range view shows and belongs in its own change.
+- **One parser, two callers**, as with status: the WSL path runs the two `diff` commands through `wsl.exe` in TypeScript and hands the text to `parseGitRangeChangedFiles` / `parseGitDiffShortstat`.
+
 ## Build / test
 
 - `npm run build -w packages/coc-native` — tsc only. Must run before `coc` compiles, which resolves workspace deps from built `dist`.
 - `npm run build:native -w packages/coc-native` — compiles the addon and regenerates `src/native-bindings.ts`. Needs a Rust toolchain; nothing else in the repo does.
-- `cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core` — the whole logic layer. The `git_exec`, `git_status` and `git_log` suites drive real temporary repositories, so `git` has to be on PATH; `git_log` additionally compares its output against the real `git log`.
+- `cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core` — the whole logic layer. The `git_exec`, `git_status`, `git_log` and `git_range` suites drive real temporary repositories, so `git` has to be on PATH; `git_log` and parts of `git_range` additionally compare their output against the real CLI.
 - `npm run test:run -w packages/coc-native` — loader and capability-resolution tests (no binary needed), plus the N-API boundary suites (marshalling, async build/refresh/search contracts, snapshot consistency, error propagation, concurrency, lifetime) and parity. The binary-backed suites **fail** when nothing is built — there is no skip path — so a botched native build cannot pass for a green run.
 - `cargo fmt`/`cargo clippy` run in the `coc-native` CI job. `rust/rustfmt.toml` widens `use_small_heuristics` to match the density of the surrounding TypeScript.

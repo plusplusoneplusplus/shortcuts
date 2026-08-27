@@ -48,6 +48,10 @@ export type {
     NativeGitLogCommit,
     NativeGitLogOptions,
     NativeGitLogPage,
+    NativeGitRangeBaseRef,
+    NativeGitRangeDefaultBranch,
+    NativeGitRangeDiffStats,
+    NativeGitRangeFile,
     NativeGitStatusEntry,
 } from './git';
 

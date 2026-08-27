@@ -210,6 +210,108 @@ export declare function gitLogCommits(repoRoot: string, options: GitLogOptions):
  * always treated "no such commit" as an absent value rather than a failure.
  */
 export declare function gitLogCommit(repoRoot: string, rev: string): Promise<GitLogCommit | null>
+/**
+ * The repository's default branch, and whether it came from a remote ref.
+ *
+ * `fromRemote` is what lets the caller keep memoising exactly the answers it
+ * always memoised: the TypeScript cached `origin/main`, `origin/master` and
+ * `origin/HEAD` for a minute and deliberately left the local `main`/`master`
+ * fallbacks uncached.
+ */
+export interface GitRangeDefaultBranch {
+  name: string
+  fromRemote: boolean
+}
+/** Which ref a range is measured against, and whether that was the ref asked for. */
+export interface GitRangeBaseRef {
+  /** Absent when the repository has no default branch to fall back to. */
+  baseRef?: string
+  /** The `GitRangeBaseMode` actually used — not always the one requested. */
+  baseMode: string
+  /** True when `upstream` was asked for but the branch has no upstream. */
+  baseModeFallback: boolean
+}
+/** One file in a commit range, minus the `repositoryRoot` the caller owns. */
+export interface GitRangeFile {
+  path: string
+  /** A `GitChangeStatus` string union member. */
+  status: string
+  additions: number
+  deletions: number
+  /** Source path of a rename or copy; absent otherwise. */
+  oldPath?: string
+}
+/** Added and removed line totals across a range. */
+export interface GitRangeDiffStats {
+  additions: number
+  deletions: number
+}
+/**
+ * Find the repository's default branch: `origin/main`, `origin/master`,
+ * whatever `origin/HEAD` points at, then local `main` or `master`.
+ *
+ * Five ref lookups through `gix` where the TypeScript spawned up to five
+ * `rev-parse --verify` children. Resolves with `null` when none of them exist.
+ */
+export declare function gitRangeDefaultBranch(repoRoot: string): Promise<GitRangeDefaultBranch | null>
+/**
+ * The current branch's upstream, e.g. `origin/my-feature`.
+ *
+ * Resolves with `null` for a branch with no upstream and for a detached HEAD,
+ * both of which the caller already read as "no tracking branch".
+ */
+export declare function gitRangeUpstreamBranch(repoRoot: string): Promise<string | null>
+/**
+ * Resolve the ref a range should be measured against.
+ *
+ * `baseMode` is a `GitRangeBaseMode` member; anything else reads as
+ * `default-branch`, matching what the route does with a misspelled `?base=`.
+ * Asking for `upstream` on a branch with no upstream resolves to the default
+ * branch with `baseModeFallback` set, rather than to nothing.
+ */
+export declare function gitRangeResolveBaseRef(repoRoot: string, baseMode: string): Promise<GitRangeBaseRef>
+/**
+ * The best merge base between two revisions.
+ *
+ * Resolves with `null` for unrelated histories and for a revision that names
+ * nothing — both of which `git merge-base` reported by exiting non-zero, and
+ * the caller turned into a null.
+ */
+export declare function gitRangeMergeBase(repoRoot: string, one: string, two: string): Promise<string | null>
+/**
+ * How many commits `headRef` has that `baseRef` does not.
+ *
+ * `git rev-list --count <base>..<head>` as a `gix` walk. A revision that names
+ * nothing counts zero, which is what the TypeScript's `parseInt(...) || 0`
+ * produced from the failed command.
+ */
+export declare function gitRangeCountAhead(repoRoot: string, baseRef: string, headRef: string): Promise<number>
+/**
+ * Read the files changed between two refs, in git's own order.
+ *
+ * Runs `diff --numstat` and `diff --name-status -M -C` over the three-dot
+ * range and joins them, so neither output crosses the boundary as text. The
+ * list is not sorted: the caller orders it with `localeCompare`, which is not
+ * a byte comparison and is what the range view already shows.
+ */
+export declare function gitRangeChangedFiles(repoRoot: string, baseRef: string, headRef: string, options?: GitExecOptions | undefined | null): Promise<GitRangeFile[]>
+/**
+ * Join `--numstat` and `--name-status` text that was produced somewhere else.
+ *
+ * The WSL twin of {@link git_range_changed_files}, for the same reason
+ * {@link parse_git_status_porcelain} exists: a repository inside a WSL distro
+ * runs git through `wsl.exe` in TypeScript, and the parser must still be the
+ * single one in the codebase.
+ */
+export declare function parseGitRangeChangedFiles(numstat: string, nameStatus: string): Promise<GitRangeFile[]>
+/** Read the added and removed line totals between two refs. */
+export declare function gitRangeDiffStats(repoRoot: string, baseRef: string, headRef: string, options?: GitExecOptions | undefined | null): Promise<GitRangeDiffStats>
+/**
+ * Parse `git diff --shortstat` text that was produced somewhere else.
+ *
+ * The WSL twin of {@link git_range_diff_stats}.
+ */
+export declare function parseGitDiffShortstat(text: string): Promise<GitRangeDiffStats>
 /** Filesystem policy for one resolved Notes root. */
 export interface NotesIndexBuildOptions {
   /**
