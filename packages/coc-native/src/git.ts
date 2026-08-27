@@ -75,6 +75,30 @@ export type NativeGitRangeFile = Bindings.GitRangeFile;
 /** Added and removed line totals across a range. */
 export type NativeGitRangeDiffStats = Bindings.GitRangeDiffStats;
 
+/**
+ * Repository metadata from one `git status --porcelain=v2 --branch` call.
+ *
+ * Field-for-field the `GitRepositoryStatus` the workspace list renders.
+ */
+export type NativeGitRepositoryStatus = Bindings.GitRepositoryStatus;
+
+/**
+ * The checked-out branch and its drift from upstream.
+ *
+ * `hasUncommittedChanges` is absent because the caller already knows it and
+ * merges it in; asking git a second time here would be a spawn nobody needs.
+ */
+export type NativeGitBranchStatus = Bindings.GitBranchStatus;
+
+/** One branch as the branch list renders it. */
+export type NativeGitBranchEntry = Bindings.GitBranchEntry;
+
+/** One page of the branch list, plus the total the page was cut from. */
+export type NativeGitBranchPage = Bindings.GitBranchPage;
+
+/** Which slice of the branch list to read — namespace, page and name filter. */
+export type NativeGitBranchListOptions = Bindings.GitBranchListOptions;
+
 /** The exact addon slice required to run git. */
 export interface NativeGitAddon {
     execGit: typeof Bindings.execGit;
@@ -91,6 +115,10 @@ export interface NativeGitAddon {
     parseGitRangeChangedFiles: typeof Bindings.parseGitRangeChangedFiles;
     gitRangeDiffStats: typeof Bindings.gitRangeDiffStats;
     parseGitDiffShortstat: typeof Bindings.parseGitDiffShortstat;
+    gitRepositoryStatus: typeof Bindings.gitRepositoryStatus;
+    parseGitBranchStatus: typeof Bindings.parseGitBranchStatus;
+    gitBranchStatus: typeof Bindings.gitBranchStatus;
+    gitListBranches: typeof Bindings.gitListBranches;
 }
 
 /**
@@ -115,6 +143,10 @@ const GIT_EXPORTS = [
     'parseGitRangeChangedFiles',
     'gitRangeDiffStats',
     'parseGitDiffShortstat',
+    'gitRepositoryStatus',
+    'parseGitBranchStatus',
+    'gitBranchStatus',
+    'gitListBranches',
 ] as const;
 
 /** Whether the loaded module actually exposes the git capability. */

@@ -36,6 +36,16 @@ afterEach(() => {
     resetNativeAddonCache();
 });
 
+/** The repository status both branch-status stand-ins resolve with. */
+const REPOSITORY_STATUS = {
+    branch: 'main',
+    isDetached: false,
+    dirty: false,
+    ahead: 0,
+    behind: 0,
+    unborn: false,
+};
+
 /** A stand-in exporting the whole git capability. */
 const COMPLETE_ADDON =
     "module.exports = { execGit: async () => 'main', gitStatusEntries: async () => [], " +
@@ -50,7 +60,11 @@ const COMPLETE_ADDON =
     'gitRangeChangedFiles: async () => [], ' +
     'parseGitRangeChangedFiles: async () => [], ' +
     'gitRangeDiffStats: async () => ({ additions: 0, deletions: 0 }), ' +
-    'parseGitDiffShortstat: async () => ({ additions: 0, deletions: 0 }) };';
+    'parseGitDiffShortstat: async () => ({ additions: 0, deletions: 0 }), ' +
+    `gitRepositoryStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
+    `parseGitBranchStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
+    'gitBranchStatus: async () => null, ' +
+    'gitListBranches: async () => ({ branches: [], totalCount: 0, hasMore: false }) };';
 
 /** Point the loader at a JavaScript stand-in for the addon. */
 function useAddon(source: string): string {
@@ -87,6 +101,14 @@ it('exposes the capability when the addon provides it', async () => {
         deletions: 0,
     });
     expect(await api.parseGitDiffShortstat('')).toEqual({ additions: 0, deletions: 0 });
+    expect(await api.gitRepositoryStatus('/repo')).toEqual(REPOSITORY_STATUS);
+    expect(await api.parseGitBranchStatus('')).toEqual(REPOSITORY_STATUS);
+    expect(await api.gitBranchStatus('/repo')).toBeNull();
+    expect(await api.gitListBranches('/repo', { remote: false, limit: 1, offset: 0 })).toEqual({
+        branches: [],
+        totalCount: 0,
+        hasMore: false,
+    });
     expect(nativeGitStatus().loaded).toBe(true);
 });
 
@@ -165,6 +187,27 @@ describe('when the capability is missing', () => {
                 'parseGitStatusPorcelain: async () => [], ' +
                 'gitLogCommits: async () => ({ commits: [], hasMore: false }), ' +
                 'gitLogCommit: async () => null };',
+        );
+        expect(() => loadNativeGit()).toThrow('does not export the git capability');
+        expect(nativeGitStatus().loaded).toBe(false);
+    });
+
+    // And the slice after that: ranges present, branches absent.
+    it('rejects a binary built before the branch exports', () => {
+        useAddon(
+            "module.exports = { execGit: async () => 'main', gitStatusEntries: async () => [], " +
+                'parseGitStatusPorcelain: async () => [], ' +
+                'gitLogCommits: async () => ({ commits: [], hasMore: false }), ' +
+                'gitLogCommit: async () => null, ' +
+                'gitRangeDefaultBranch: async () => null, ' +
+                'gitRangeUpstreamBranch: async () => null, ' +
+                "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
+                'gitRangeMergeBase: async () => null, ' +
+                'gitRangeCountAhead: async () => 0, ' +
+                'gitRangeChangedFiles: async () => [], ' +
+                'parseGitRangeChangedFiles: async () => [], ' +
+                'gitRangeDiffStats: async () => ({ additions: 0, deletions: 0 }), ' +
+                'parseGitDiffShortstat: async () => ({ additions: 0, deletions: 0 }) };',
         );
         expect(() => loadNativeGit()).toThrow('does not export the git capability');
         expect(nativeGitStatus().loaded).toBe(false);

@@ -1,8 +1,20 @@
 /**
- * Pure Node.js BranchService.
+ * BranchService: branch listing, switching, creating, deleting, merging,
+ * push/pull/fetch, stash, and status queries.
  *
- * Provides branch listing, switching, creating, deleting, merging,
- * push/pull/fetch, stash, and status queries using git CLI.
+ * The read half runs in the native addon. Which branch is checked out, what it
+ * tracks, how far it has drifted, and what the branch list holds are all `gix`
+ * reads now — one opened repository in place of the four to six children the
+ * Git tab used to spawn per render, and no `git branch | grep | tail | head`
+ * shell pipeline that had to be spelled twice, once with `findstr`.
+ *
+ * The write half still shells out, and always will: create, delete, merge,
+ * rebase, push, pull and fetch go through the `git` CLI so credential helpers,
+ * SSH agents and 2FA keep working.
+ *
+ * Repositories inside a WSL distro never reach the addon. They keep the
+ * `wsl.exe` path in TypeScript, and hand their output to Rust's parser rather
+ * than to a second one.
  *
  * Extracted from `src/shortcuts/git/branch-service.ts`.
  */
@@ -10,6 +22,12 @@
 import { execFileSync, execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
+import type {
+    NativeGitAddon,
+    NativeGitBranchEntry,
+    NativeGitRepositoryStatus,
+} from '@plusplusoneplusplus/coc-native';
 import { execAsync, execFileAsync } from '../utils/exec-utils';
 import { getLogger } from '../logger';
 import { ensureGitSafeDirectoryAsync, ensureGitSafeDirectorySync } from './safe-directory';
@@ -37,51 +55,50 @@ import {
 } from './types';
 
 /**
- * Parse `git status --porcelain=v2 --branch` output without inspecting file names.
- * Git emits branch metadata in `# branch.*` headers and one non-header record for
- * every staged, unstaged, conflicted, or untracked path.
+ * Clamp a caller's paging argument to what the native boundary accepts.
+ *
+ * "Everything" is spelled as a very large number by more than one caller, and
+ * a `u32` that overflows rejects at the boundary rather than returning a page.
  */
-export function parsePorcelainV2BranchStatus(output: string): GitRepositoryStatus {
-    let branch = 'HEAD';
-    let trackingBranch: string | undefined;
-    let ahead = 0;
-    let behind = 0;
-    let unborn = false;
-    let dirty = false;
-
-    for (const rawLine of output.split(/\r?\n/)) {
-        if (!rawLine) continue;
-        if (!rawLine.startsWith('# ')) {
-            dirty = true;
-            continue;
-        }
-
-        const line = rawLine.slice(2);
-        if (line.startsWith('branch.oid ')) {
-            unborn = line.slice('branch.oid '.length).trim() === '(initial)';
-        } else if (line.startsWith('branch.head ')) {
-            const head = line.slice('branch.head '.length).trim();
-            branch = head === '(detached)' ? 'HEAD' : head || 'HEAD';
-        } else if (line.startsWith('branch.upstream ')) {
-            trackingBranch = line.slice('branch.upstream '.length).trim() || undefined;
-        } else if (line.startsWith('branch.ab ')) {
-            const match = /^\+(\d+)\s+-(\d+)$/.exec(line.slice('branch.ab '.length).trim());
-            if (match) {
-                ahead = Number.parseInt(match[1], 10);
-                behind = Number.parseInt(match[2], 10);
-            }
-        }
+function toUint32(value: number): number {
+    if (!Number.isFinite(value) || value < 0) {
+        return 0;
     }
+    return Math.min(Math.floor(value), 0xffffffff);
+}
 
+/** Every branch, for the callers that do not paginate. */
+const NO_LIMIT = 0xffffffff;
+
+/**
+ * Rebuild the exported shape from what crossed the N-API boundary.
+ *
+ * napi omits an absent `Option<String>` inside an object rather than sending
+ * `null`, so the guard here is about keeping `trackingBranch` absent rather
+ * than present-and-undefined — which is what the TypeScript parser produced.
+ */
+function toGitRepositoryStatus(status: NativeGitRepositoryStatus): GitRepositoryStatus {
     return {
-        branch,
-        isDetached: branch === 'HEAD',
-        dirty,
-        ahead,
-        behind,
-        ...(trackingBranch ? { trackingBranch } : {}),
-        unborn,
+        branch: status.branch,
+        isDetached: status.isDetached,
+        dirty: status.dirty,
+        ahead: status.ahead,
+        behind: status.behind,
+        ...(status.trackingBranch ? { trackingBranch: status.trackingBranch } : {}),
+        unborn: status.unborn,
     };
+}
+
+/**
+ * Parse `git status --porcelain=v2 --branch` output without inspecting file names.
+ *
+ * The parser itself is Rust's — this is the entry point for text that some
+ * other process produced, which is what the WSL path hands it. Async because
+ * native git is async-only; the parse runs on a worker thread, since a large
+ * repository's status output runs to megabytes.
+ */
+export async function parsePorcelainV2BranchStatus(output: string): Promise<GitRepositoryStatus> {
+    return toGitRepositoryStatus(await loadNativeGit().parseGitBranchStatus(output));
 }
 
 /**
@@ -209,6 +226,23 @@ export class BranchService {
         return stdout;
     }
 
+    /**
+     * The native git capability, and whether this repository has to take the
+     * WSL path to reach git.
+     *
+     * Called outside the try/catch of every method below, the way
+     * `GitRangeService` does it: a stale binary is a `NativeAddonLoadError`
+     * naming the rebuild, and catching it as "no branches" would hide it behind
+     * an empty Git tab. The addon is loaded on the WSL path too — the commands
+     * run through `wsl.exe`, but the parsers are still Rust's.
+     */
+    private native(repoRoot: string): { addon: NativeGitAddon; wsl: boolean } {
+        return {
+            addon: loadNativeGit(),
+            wsl: resolveWorkspaceExecutionContext(repoRoot).kind === 'wsl',
+        };
+    }
+
     private quoteShellArg(value: string): string {
         if (process.platform === 'win32') {
             return `"${value.replace(/"/g, '\\"')}"`;
@@ -226,12 +260,17 @@ export class BranchService {
      * Returns null when the path is not a Git repository or Git cannot read it.
      */
     async getRepositoryStatus(repoRoot: string): Promise<GitRepositoryStatus | null> {
+        const { addon, wsl } = this.native(repoRoot);
         try {
+            await ensureGitSafeDirectoryAsync(repoRoot);
+            if (!wsl) {
+                return toGitRepositoryStatus(await addon.gitRepositoryStatus(repoRoot));
+            }
             const output = await this.execGitFileAsync(
                 ['status', '--porcelain=v2', '--branch', '--untracked-files=all'],
                 { cwd: repoRoot, timeout: 15_000 },
             );
-            return parsePorcelainV2BranchStatus(output);
+            return toGitRepositoryStatus(await addon.parseGitBranchStatus(output));
         } catch {
             return null;
         }
@@ -243,6 +282,40 @@ export class BranchService {
      * @param hasUncommittedChanges Whether there are uncommitted changes
      */
     async getBranchStatus(repoRoot: string, hasUncommittedChanges: boolean): Promise<BranchStatus | null> {
+        const { addon, wsl } = this.native(repoRoot);
+        if (wsl) {
+            return this.branchStatusViaCli(repoRoot, hasUncommittedChanges);
+        }
+
+        try {
+            await ensureGitSafeDirectoryAsync(repoRoot);
+            const status = await addon.gitBranchStatus(repoRoot);
+            if (!status) {
+                return null;
+            }
+            return {
+                name: status.name,
+                isDetached: status.isDetached,
+                ...(status.detachedHash ? { detachedHash: status.detachedHash } : {}),
+                ahead: status.ahead,
+                behind: status.behind,
+                ...(status.trackingBranch ? { trackingBranch: status.trackingBranch } : {}),
+                hasUncommittedChanges,
+            };
+        } catch (error) {
+            getLogger().error('Git', 'Failed to get branch status', error instanceof Error ? error : undefined);
+            return null;
+        }
+    }
+
+    /**
+     * Ask the four HEAD-and-upstream questions through `wsl.exe`.
+     *
+     * The WSL twin of the addon's `gitBranchStatus`, kept as the body it always
+     * was — four child processes, in the same order, degrading to the same
+     * values. Rust's tests pin the semantics both paths follow.
+     */
+    private async branchStatusViaCli(repoRoot: string, hasUncommittedChanges: boolean): Promise<BranchStatus | null> {
         try {
             const headHash = await this.getHeadHash(repoRoot);
             if (!headHash) {
@@ -411,302 +484,194 @@ export class BranchService {
     }
 
     /**
+     * Rebuild the exported shape from what crossed the N-API boundary.
+     *
+     * `remoteName` is guarded rather than assigned for the same reason
+     * `trackingBranch` is: napi omits an absent `Option<String>` inside an
+     * object, and a local branch has never carried the property at all.
+     */
+    private toGitBranch(branch: NativeGitBranchEntry): GitBranch {
+        return {
+            name: branch.name,
+            isCurrent: branch.isCurrent,
+            isRemote: branch.isRemote,
+            ...(branch.remoteName ? { remoteName: branch.remoteName } : {}),
+            lastCommitSubject: branch.lastCommitSubject,
+            lastCommitDate: branch.lastCommitDate,
+        };
+    }
+
+    /**
+     * Read a page of one branch namespace.
+     *
+     * The single entry point every public listing method goes through, native
+     * or WSL. A `limit` of zero answers a count-only question: the total comes
+     * back with no rows, which is how {@link getLocalBranchCount} and its
+     * remote twin ask theirs without also paying to describe every branch.
+     */
+    private async listBranches(
+        repoRoot: string,
+        remote: boolean,
+        options: BranchListOptions,
+    ): Promise<PaginatedBranchResult> {
+        const limit = toUint32(options.limit ?? 100);
+        const offset = toUint32(options.offset ?? 0);
+        const searchPattern = options.searchPattern || undefined;
+        const { addon, wsl } = this.native(repoRoot);
+
+        try {
+            await ensureGitSafeDirectoryAsync(repoRoot);
+            if (wsl) {
+                return await this.listBranchesViaCli(repoRoot, remote, limit, offset, searchPattern);
+            }
+            const page = await addon.gitListBranches(repoRoot, {
+                remote,
+                limit,
+                offset,
+                search: searchPattern,
+            });
+            return {
+                branches: page.branches.map(branch => this.toGitBranch(branch)),
+                totalCount: page.totalCount,
+                hasMore: page.hasMore,
+            };
+        } catch (error) {
+            getLogger().error('Git', 'Failed to list branches', error instanceof Error ? error : undefined);
+            return { branches: [], totalCount: 0, hasMore: false };
+        }
+    }
+
+    /**
+     * Read a page of one branch namespace through `wsl.exe`.
+     *
+     * The WSL twin of the addon's `gitListBranches`, and the `git branch |
+     * grep | tail | head` pipeline this service always ran on a POSIX shell.
+     * The `findstr` half of that pipeline is gone with the native path: a
+     * Windows repository that is not in a distro no longer runs a shell at all.
+     */
+    private async listBranchesViaCli(
+        repoRoot: string,
+        remote: boolean,
+        limit: number,
+        offset: number,
+        searchPattern?: string,
+    ): Promise<PaginatedBranchResult> {
+        const escapedPattern = searchPattern?.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const nameFilter = escapedPattern ? ` | grep -i "${escapedPattern}"` : '';
+
+        const countCommand = `git branch ${remote ? '-r --list' : '--list'}`;
+        const countOutput = await this.execGit(countCommand, { cwd: repoRoot, timeout: 30000 });
+        const totalCount = countOutput
+            .trim()
+            .split('\n')
+            .filter(line => line.trim() && !(remote && line.includes('HEAD')))
+            .filter(line => {
+                if (!searchPattern) return true;
+                const name = remote ? line.trim() : line.substring(2).trim();
+                return name.toLowerCase().includes(searchPattern.toLowerCase());
+            }).length;
+
+        if (totalCount === 0) {
+            return { branches: [], totalCount: 0, hasMore: false };
+        }
+
+        const format = remote
+            ? '%(refname:short)|%(subject)|%(committerdate:relative)'
+            : '%(if)%(HEAD)%(then)*%(else) %(end)|%(refname:short)|%(subject)|%(committerdate:relative)';
+        let command = `git branch ${remote ? '-r ' : ''}--format="${format}"`;
+        if (remote) {
+            command += ' | grep -v "HEAD"';
+        }
+        command += nameFilter;
+        if (offset > 0) {
+            command += ` | tail -n +${offset + 1}`;
+        }
+        command += ` | head -n ${limit}`;
+
+        const output = await this.execGit(command, { cwd: repoRoot, timeout: 30000 });
+        if (!output.trim()) {
+            return { branches: [], totalCount, hasMore: offset + limit < totalCount };
+        }
+
+        const branches = output.trim().split('\n').map(line => {
+            const parts = line.split('|');
+            const name = (remote ? parts[0] : parts[1]) || '';
+            const slashIndex = name.indexOf('/');
+            return {
+                name,
+                isCurrent: remote ? false : parts[0] === '*',
+                isRemote: remote,
+                ...(remote && slashIndex > 0 ? { remoteName: name.substring(0, slashIndex) } : {}),
+                lastCommitSubject: (remote ? parts[1] : parts[2]) || '',
+                lastCommitDate: (remote ? parts[2] : parts[3]) || '',
+            };
+        }).filter(branch => branch.name);
+
+        return { branches, totalCount, hasMore: offset + branches.length < totalCount };
+    }
+
+    /**
      * Get all local branches.
      */
-    getLocalBranches(repoRoot: string): GitBranch[] {
-        try {
-            const format = '%(if)%(HEAD)%(then)*%(else) %(end)|%(refname:short)|%(subject)|%(committerdate:relative)';
-            const output = this.execGitSync(`git branch --format="${format}"`, { cwd: repoRoot });
-
-            if (!output.trim()) {
-                return [];
-            }
-
-            return output.trim().split('\n').map(line => {
-                const parts = line.split('|');
-                const isCurrent = parts[0] === '*';
-                return {
-                    name: parts[1] || '',
-                    isCurrent,
-                    isRemote: false,
-                    lastCommitSubject: parts[2] || '',
-                    lastCommitDate: parts[3] || ''
-                };
-            }).filter(b => b.name);
-        } catch (error) {
-            getLogger().error('Git', 'Failed to get local branches', error instanceof Error ? error : undefined);
-            return [];
-        }
+    async getLocalBranches(repoRoot: string): Promise<GitBranch[]> {
+        return (await this.listBranches(repoRoot, false, { limit: NO_LIMIT })).branches;
     }
 
     /**
      * Get remote branches.
      */
-    getRemoteBranches(repoRoot: string): GitBranch[] {
-        try {
-            const format = '%(refname:short)|%(subject)|%(committerdate:relative)';
-            const output = this.execGitSync(`git branch -r --format="${format}"`, { cwd: repoRoot });
-
-            if (!output.trim()) {
-                return [];
-            }
-
-            return output.trim().split('\n')
-                .filter(line => !line.includes('HEAD'))
-                .map(line => {
-                    const parts = line.split('|');
-                    const fullName = parts[0] || '';
-                    const slashIndex = fullName.indexOf('/');
-                    const remoteName = slashIndex > 0 ? fullName.substring(0, slashIndex) : undefined;
-
-                    return {
-                        name: fullName,
-                        isCurrent: false,
-                        isRemote: true,
-                        remoteName,
-                        lastCommitSubject: parts[1] || '',
-                        lastCommitDate: parts[2] || ''
-                    };
-                }).filter(b => b.name);
-        } catch (error) {
-            getLogger().error('Git', 'Failed to get remote branches', error instanceof Error ? error : undefined);
-            return [];
-        }
+    async getRemoteBranches(repoRoot: string): Promise<GitBranch[]> {
+        return (await this.listBranches(repoRoot, true, { limit: NO_LIMIT })).branches;
     }
 
     /**
      * Get all branches (local and remote).
      */
-    getAllBranches(repoRoot: string): { local: GitBranch[]; remote: GitBranch[] } {
-        return {
-            local: this.getLocalBranches(repoRoot),
-            remote: this.getRemoteBranches(repoRoot)
-        };
+    async getAllBranches(repoRoot: string): Promise<{ local: GitBranch[]; remote: GitBranch[] }> {
+        const [local, remote] = await Promise.all([
+            this.getLocalBranches(repoRoot),
+            this.getRemoteBranches(repoRoot),
+        ]);
+        return { local, remote };
     }
 
     /**
      * Get local branch count (fast operation).
      */
-    getLocalBranchCount(repoRoot: string, searchPattern?: string): number {
-        try {
-            const command = 'git branch --list';
-            const output = this.execGitSync(command, { cwd: repoRoot });
-            if (!output.trim()) {
-                return 0;
-            }
-            let lines = output.trim().split('\n').filter(line => line.trim());
-
-            if (searchPattern) {
-                const lowerPattern = searchPattern.toLowerCase();
-                lines = lines.filter(line => {
-                    const branchName = line.substring(2).trim();
-                    return branchName.toLowerCase().includes(lowerPattern);
-                });
-            }
-
-            return lines.length;
-        } catch (error) {
-            getLogger().error('Git', 'Failed to get local branch count', error instanceof Error ? error : undefined);
-            return 0;
-        }
+    async getLocalBranchCount(repoRoot: string, searchPattern?: string): Promise<number> {
+        return (await this.listBranches(repoRoot, false, { limit: 0, searchPattern })).totalCount;
     }
 
     /**
      * Get remote branch count (fast operation).
      */
-    getRemoteBranchCount(repoRoot: string, searchPattern?: string): number {
-        try {
-            const command = 'git branch -r --list';
-            const output = this.execGitSync(command, { cwd: repoRoot });
-            if (!output.trim()) {
-                return 0;
-            }
-            let lines = output.trim().split('\n').filter(line => line.trim() && !line.includes('HEAD'));
-
-            if (searchPattern) {
-                const lowerPattern = searchPattern.toLowerCase();
-                lines = lines.filter(line => {
-                    const branchName = line.trim();
-                    return branchName.toLowerCase().includes(lowerPattern);
-                });
-            }
-
-            return lines.length;
-        } catch (error) {
-            getLogger().error('Git', 'Failed to get remote branch count', error instanceof Error ? error : undefined);
-            return 0;
-        }
+    async getRemoteBranchCount(repoRoot: string, searchPattern?: string): Promise<number> {
+        return (await this.listBranches(repoRoot, true, { limit: 0, searchPattern })).totalCount;
     }
 
     /**
      * Get local branches with pagination and search support.
      */
-    getLocalBranchesPaginated(repoRoot: string, options: BranchListOptions = {}): PaginatedBranchResult {
-        const { limit = 100, offset = 0, searchPattern } = options;
-        const useWindowsPipeline = process.platform === 'win32' && resolveWorkspaceExecutionContext(repoRoot).kind !== 'wsl';
-
-        try {
-            const totalCount = this.getLocalBranchCount(repoRoot, searchPattern);
-
-            if (totalCount === 0) {
-                return { branches: [], totalCount: 0, hasMore: false };
-            }
-
-            const format = '%(if)%(HEAD)%(then)*%(else) %(end)|%(refname:short)|%(subject)|%(committerdate:relative)';
-            let command = `git branch --format="${format}"`;
-
-            if (searchPattern) {
-                const escapedPattern = searchPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                if (useWindowsPipeline) {
-                    command += ` | findstr /i "${escapedPattern}"`;
-                } else {
-                    command += ` | grep -i "${escapedPattern}"`;
-                }
-            }
-
-            if (!useWindowsPipeline) {
-                if (offset > 0) {
-                    command += ` | tail -n +${offset + 1}`;
-                }
-                command += ` | head -n ${limit}`;
-            }
-
-            const output = this.execGitSync(command, { cwd: repoRoot, timeout: 30000 });
-
-            if (!output.trim()) {
-                return { branches: [], totalCount, hasMore: offset + limit < totalCount };
-            }
-
-            let lines = output.trim().split('\n');
-
-            if (useWindowsPipeline) {
-                if (searchPattern) {
-                    const lowerPattern = searchPattern.toLowerCase();
-                    lines = lines.filter(line => {
-                        const parts = line.split('|');
-                        const branchName = parts[1] || '';
-                        return branchName.toLowerCase().includes(lowerPattern);
-                    });
-                }
-                lines = lines.slice(offset, offset + limit);
-            }
-
-            const branches = lines.map(line => {
-                const parts = line.split('|');
-                const isCurrent = parts[0] === '*';
-                return {
-                    name: parts[1] || '',
-                    isCurrent,
-                    isRemote: false,
-                    lastCommitSubject: parts[2] || '',
-                    lastCommitDate: parts[3] || ''
-                };
-            }).filter(b => b.name);
-
-            return {
-                branches,
-                totalCount,
-                hasMore: offset + branches.length < totalCount
-            };
-        } catch (error) {
-            getLogger().error('Git', 'Failed to get paginated local branches', error instanceof Error ? error : undefined);
-            return { branches: [], totalCount: 0, hasMore: false };
-        }
+    async getLocalBranchesPaginated(repoRoot: string, options: BranchListOptions = {}): Promise<PaginatedBranchResult> {
+        return this.listBranches(repoRoot, false, options);
     }
 
     /**
      * Get remote branches with pagination and search support.
      */
-    getRemoteBranchesPaginated(repoRoot: string, options: BranchListOptions = {}): PaginatedBranchResult {
-        const { limit = 100, offset = 0, searchPattern } = options;
-        const useWindowsPipeline = process.platform === 'win32' && resolveWorkspaceExecutionContext(repoRoot).kind !== 'wsl';
-
-        try {
-            const totalCount = this.getRemoteBranchCount(repoRoot, searchPattern);
-
-            if (totalCount === 0) {
-                return { branches: [], totalCount: 0, hasMore: false };
-            }
-
-            const format = '%(refname:short)|%(subject)|%(committerdate:relative)';
-            let command = `git branch -r --format="${format}"`;
-
-            if (useWindowsPipeline) {
-                command += ' | findstr /v "HEAD"';
-                if (searchPattern) {
-                    const escapedPattern = searchPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                    command += ` | findstr /i "${escapedPattern}"`;
-                }
-            } else {
-                command += ' | grep -v "HEAD"';
-                if (searchPattern) {
-                    const escapedPattern = searchPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                    command += ` | grep -i "${escapedPattern}"`;
-                }
-                if (offset > 0) {
-                    command += ` | tail -n +${offset + 1}`;
-                }
-                command += ` | head -n ${limit}`;
-            }
-
-            const output = this.execGitSync(command, { cwd: repoRoot, timeout: 30000 });
-
-            if (!output.trim()) {
-                return { branches: [], totalCount, hasMore: offset + limit < totalCount };
-            }
-
-            let lines = output.trim().split('\n').filter(line => !line.includes('HEAD'));
-
-            if (useWindowsPipeline) {
-                if (searchPattern) {
-                    const lowerPattern = searchPattern.toLowerCase();
-                    lines = lines.filter(line => {
-                        const parts = line.split('|');
-                        const branchName = parts[0] || '';
-                        return branchName.toLowerCase().includes(lowerPattern);
-                    });
-                }
-                lines = lines.slice(offset, offset + limit);
-            }
-
-            const branches = lines.map(line => {
-                const parts = line.split('|');
-                const fullName = parts[0] || '';
-                const slashIndex = fullName.indexOf('/');
-                const remoteName = slashIndex > 0 ? fullName.substring(0, slashIndex) : undefined;
-
-                return {
-                    name: fullName,
-                    isCurrent: false,
-                    isRemote: true,
-                    remoteName,
-                    lastCommitSubject: parts[1] || '',
-                    lastCommitDate: parts[2] || ''
-                };
-            }).filter(b => b.name);
-
-            return {
-                branches,
-                totalCount,
-                hasMore: offset + branches.length < totalCount
-            };
-        } catch (error) {
-            getLogger().error('Git', 'Failed to get paginated remote branches', error instanceof Error ? error : undefined);
-            return { branches: [], totalCount: 0, hasMore: false };
-        }
+    async getRemoteBranchesPaginated(repoRoot: string, options: BranchListOptions = {}): Promise<PaginatedBranchResult> {
+        return this.listBranches(repoRoot, true, options);
     }
 
     /**
      * Search branches by name (combines local and remote).
      */
-    searchBranches(repoRoot: string, searchPattern: string, limit: number = 50): { local: GitBranch[]; remote: GitBranch[] } {
-        const localResult = this.getLocalBranchesPaginated(repoRoot, { searchPattern, limit });
-        const remoteResult = this.getRemoteBranchesPaginated(repoRoot, { searchPattern, limit });
-
-        return {
-            local: localResult.branches,
-            remote: remoteResult.branches
-        };
+    async searchBranches(repoRoot: string, searchPattern: string, limit: number = 50): Promise<{ local: GitBranch[]; remote: GitBranch[] }> {
+        const [local, remote] = await Promise.all([
+            this.getLocalBranchesPaginated(repoRoot, { searchPattern, limit }),
+            this.getRemoteBranchesPaginated(repoRoot, { searchPattern, limit }),
+        ]);
+        return { local: local.branches, remote: remote.branches };
     }
 
     /**

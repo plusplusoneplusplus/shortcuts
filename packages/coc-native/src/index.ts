@@ -44,6 +44,10 @@ export type {
 export { loadNativeGit, nativeGitStatus } from './git';
 export type {
     NativeGitAddon,
+    NativeGitBranchEntry,
+    NativeGitBranchListOptions,
+    NativeGitBranchPage,
+    NativeGitBranchStatus,
     NativeGitExecOptions,
     NativeGitLogCommit,
     NativeGitLogOptions,
@@ -52,6 +56,7 @@ export type {
     NativeGitRangeDefaultBranch,
     NativeGitRangeDiffStats,
     NativeGitRangeFile,
+    NativeGitRepositoryStatus,
     NativeGitStatusEntry,
 } from './git';
 

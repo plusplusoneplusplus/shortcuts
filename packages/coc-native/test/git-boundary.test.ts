@@ -485,3 +485,232 @@ describe('commit-range marshalling', () => {
         expect(resolved.every(one => one.baseModeFallback === true)).toBe(true);
     });
 });
+
+// The branch exports get their own repository too: they need a second branch,
+// a remote with tracking refs, and commits on both sides of an upstream.
+describe('branch marshalling', () => {
+    let work: string;
+    let origin: string;
+
+    function workGit(...args: string[]): string {
+        return execFileSync('git', ['-C', work, ...args], { encoding: 'utf-8' });
+    }
+
+    beforeAll(() => {
+        origin = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-git-origin-')));
+        for (const args of [
+            ['init', '--initial-branch=main'],
+            ['config', 'user.email', 'ralph@example.com'],
+            ['config', 'user.name', 'Ralph'],
+            ['config', 'commit.gpgsign', 'false'],
+        ]) {
+            execFileSync('git', ['-C', origin, ...args], { encoding: 'utf-8' });
+        }
+        fs.writeFileSync(path.join(origin, 'kept.md'), 'one\n');
+        execFileSync('git', ['-C', origin, 'add', '.'], { encoding: 'utf-8' });
+        execFileSync('git', ['-C', origin, 'commit', '-m', 'first'], { encoding: 'utf-8' });
+
+        work = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-git-branch-')));
+        work = path.join(work, 'clone');
+        execFileSync('git', ['clone', origin, work], { encoding: 'utf-8' });
+        workGit('config', 'user.email', 'ralph@example.com');
+        workGit('config', 'user.name', 'Ralph');
+        workGit('config', 'commit.gpgsign', 'false');
+        workGit('branch', 'feature/one');
+        workGit('branch', 'zeta');
+    });
+
+    afterAll(() => {
+        for (const dir of [origin, work]) {
+            if (dir) fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    describe('gitRepositoryStatus', () => {
+        afterEach(() => {
+            fs.rmSync(path.join(work, 'scratch.txt'), { force: true });
+        });
+
+        it('marshals branch, tracking and drift for a clean tree', async () => {
+            await expect(gitAddon.gitRepositoryStatus(work)).resolves.toEqual({
+                branch: 'main',
+                isDetached: false,
+                dirty: false,
+                ahead: 0,
+                behind: 0,
+                trackingBranch: 'origin/main',
+                unborn: false,
+            });
+        });
+
+        it('reports an untracked file as dirty', async () => {
+            fs.writeFileSync(path.join(work, 'scratch.txt'), 'scratch\n');
+            const status = await gitAddon.gitRepositoryStatus(work);
+            expect(status.dirty).toBe(true);
+        });
+
+        it('rejects with the `git <args> failed:` shape outside a repository', async () => {
+            const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-git-nostatus-'));
+            try {
+                await expect(gitAddon.gitRepositoryStatus(empty)).rejects.toThrow(
+                    /^git status --porcelain=v2 --branch --untracked-files=all failed: /,
+                );
+            } finally {
+                fs.rmSync(empty, { recursive: true, force: true });
+            }
+        });
+    });
+
+    describe('parseGitBranchStatus', () => {
+        it('parses text produced elsewhere — the WSL path', async () => {
+            await expect(
+                gitAddon.parseGitBranchStatus(
+                    '# branch.oid abc\n# branch.head trunk\n# branch.upstream origin/trunk\n# branch.ab +1 -2\n? new.txt\n',
+                ),
+            ).resolves.toEqual({
+                branch: 'trunk',
+                isDetached: false,
+                dirty: true,
+                ahead: 1,
+                behind: 2,
+                trackingBranch: 'origin/trunk',
+                unborn: false,
+            });
+        });
+
+        it('agrees with gitRepositoryStatus on the same repository', async () => {
+            const text = workGit('status', '--porcelain=v2', '--branch', '--untracked-files=all');
+            expect(await gitAddon.parseGitBranchStatus(text)).toEqual(
+                await gitAddon.gitRepositoryStatus(work),
+            );
+        });
+
+        it('leaves an absent upstream absent rather than null', async () => {
+            const status = await gitAddon.parseGitBranchStatus(
+                '# branch.oid abc\n# branch.head main\n',
+            );
+            expect('trackingBranch' in status).toBe(false);
+        });
+    });
+
+    describe('gitBranchStatus', () => {
+        it('marshals the branch, its upstream and the drift', async () => {
+            await expect(gitAddon.gitBranchStatus(work)).resolves.toEqual({
+                name: 'main',
+                isDetached: false,
+                ahead: 0,
+                behind: 0,
+                trackingBranch: 'origin/main',
+            });
+        });
+
+        it('counts commits ahead of the upstream', async () => {
+            fs.writeFileSync(path.join(work, 'ahead.txt'), 'ahead\n');
+            workGit('add', '.');
+            workGit('commit', '-m', 'ahead by one');
+            try {
+                const status = await gitAddon.gitBranchStatus(work);
+                expect(status).toMatchObject({ ahead: 1, behind: 0 });
+            } finally {
+                workGit('reset', '--hard', 'origin/main');
+            }
+        });
+
+        it('resolves with null for an unborn branch', async () => {
+            const fresh = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-git-unborn-'));
+            try {
+                execFileSync('git', ['-C', fresh, 'init', '--initial-branch=main'], {
+                    encoding: 'utf-8',
+                });
+                await expect(gitAddon.gitBranchStatus(fresh)).resolves.toBeNull();
+            } finally {
+                fs.rmSync(fresh, { recursive: true, force: true });
+            }
+        });
+
+        it('omits detachedHead fields rather than sending null', async () => {
+            const status = await gitAddon.gitBranchStatus(work);
+            expect(status && 'detachedHash' in status).toBe(false);
+        });
+    });
+
+    describe('gitListBranches', () => {
+        it('marshals a local page in git refname order', async () => {
+            const page = await gitAddon.gitListBranches(work, {
+                remote: false,
+                limit: 100,
+                offset: 0,
+            });
+            expect(page.branches.map(branch => branch.name)).toEqual([
+                'feature/one',
+                'main',
+                'zeta',
+            ]);
+            expect(page.totalCount).toBe(3);
+            expect(page.hasMore).toBe(false);
+            expect(page.branches.find(branch => branch.name === 'main')).toMatchObject({
+                isCurrent: true,
+                isRemote: false,
+                lastCommitSubject: 'first',
+            });
+        });
+
+        it('omits remoteName on a local branch rather than sending null', async () => {
+            const page = await gitAddon.gitListBranches(work, {
+                remote: false,
+                limit: 1,
+                offset: 0,
+            });
+            expect('remoteName' in page.branches[0]).toBe(false);
+        });
+
+        it('marshals a remote page with its remote name, dropping origin/HEAD', async () => {
+            const page = await gitAddon.gitListBranches(work, { remote: true, limit: 100, offset: 0 });
+            expect(page.branches.map(branch => branch.name)).toEqual(['origin/main']);
+            expect(page.branches[0]).toMatchObject({ isRemote: true, remoteName: 'origin' });
+        });
+
+        it('applies offset, limit and hasMore', async () => {
+            const page = await gitAddon.gitListBranches(work, {
+                remote: false,
+                limit: 1,
+                offset: 1,
+            });
+            expect(page.branches.map(branch => branch.name)).toEqual(['main']);
+            expect(page.totalCount).toBe(3);
+            expect(page.hasMore).toBe(true);
+        });
+
+        it('answers a count-only question with a zero limit', async () => {
+            const page = await gitAddon.gitListBranches(work, {
+                remote: false,
+                limit: 0,
+                offset: 0,
+            });
+            expect(page.branches).toEqual([]);
+            expect(page.totalCount).toBe(3);
+        });
+
+        it('filters by name, case-insensitively', async () => {
+            const page = await gitAddon.gitListBranches(work, {
+                remote: false,
+                limit: 100,
+                offset: 0,
+                search: 'FEATURE',
+            });
+            expect(page.branches.map(branch => branch.name)).toEqual(['feature/one']);
+            expect(page.totalCount).toBe(1);
+        });
+
+        it('rejects with the `git <args> failed:` shape outside a repository', async () => {
+            const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-git-nobranch-'));
+            try {
+                await expect(
+                    gitAddon.gitListBranches(empty, { remote: false, limit: 10, offset: 0 }),
+                ).rejects.toThrow(/^git branch failed: /);
+            } finally {
+                fs.rmSync(empty, { recursive: true, force: true });
+            }
+        });
+    });
+});

@@ -13,6 +13,10 @@
 
 use std::path::PathBuf;
 
+use coc_native_core::git::branch::{
+    branch_status, list_branches, parse_porcelain_v2_branch_status, repository_status, BranchEntry,
+    BranchPage, BranchQuery, BranchStatus, RepositoryStatus,
+};
 use coc_native_core::git::log::{get_commit, get_commits, Commit, CommitPage};
 use coc_native_core::git::range::{
     changed_files, count_commits_ahead, default_remote_branch, diff_stats, merge_base,
@@ -694,4 +698,242 @@ impl Task for ParseGitDiffShortstatTask {
 #[napi(ts_return_type = "Promise<GitRangeDiffStats>")]
 pub fn parse_git_diff_shortstat(text: String) -> AsyncTask<ParseGitDiffShortstatTask> {
     AsyncTask::new(ParseGitDiffShortstatTask { text })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Branches
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Repository metadata from one `git status --porcelain=v2 --branch` call.
+#[napi(object)]
+pub struct GitRepositoryStatus {
+    /// Current branch name, or `HEAD` when detached.
+    pub branch: String,
+    pub is_detached: bool,
+    /// Whether the index or working tree holds any change at all.
+    pub dirty: bool,
+    pub ahead: u32,
+    pub behind: u32,
+    /// Configured upstream branch; absent when there is none.
+    pub tracking_branch: Option<String>,
+    /// Whether the repository has no commits yet.
+    pub unborn: bool,
+}
+
+impl From<RepositoryStatus> for GitRepositoryStatus {
+    fn from(status: RepositoryStatus) -> Self {
+        Self {
+            branch: status.branch,
+            is_detached: status.is_detached,
+            dirty: status.dirty,
+            ahead: status.ahead,
+            behind: status.behind,
+            tracking_branch: status.tracking_branch,
+            unborn: status.unborn,
+        }
+    }
+}
+
+/// The checked-out branch and its drift from upstream.
+///
+/// `hasUncommittedChanges` is missing on purpose: the caller already has that
+/// answer and merges it in, rather than paying for a second status read here.
+#[napi(object)]
+pub struct GitBranchStatus {
+    /// Empty when HEAD is detached.
+    pub name: String,
+    pub is_detached: bool,
+    /// The commit HEAD points at; only present when detached.
+    pub detached_hash: Option<String>,
+    pub ahead: u32,
+    pub behind: u32,
+    /// Remote tracking branch, e.g. `origin/main`; absent when unconfigured.
+    pub tracking_branch: Option<String>,
+}
+
+impl From<BranchStatus> for GitBranchStatus {
+    fn from(status: BranchStatus) -> Self {
+        Self {
+            name: status.name,
+            is_detached: status.is_detached,
+            detached_hash: status.detached_hash,
+            ahead: status.ahead,
+            behind: status.behind,
+            tracking_branch: status.tracking_branch,
+        }
+    }
+}
+
+/// One branch as the branch list renders it.
+#[napi(object)]
+pub struct GitBranchEntry {
+    /// Short name — `main` locally, `origin/main` for a remote branch.
+    pub name: String,
+    pub is_current: bool,
+    pub is_remote: bool,
+    /// The part before the first `/` of a remote branch's name.
+    pub remote_name: Option<String>,
+    pub last_commit_subject: String,
+    /// `%(committerdate:relative)`, e.g. `3 days ago`.
+    pub last_commit_date: String,
+}
+
+impl From<BranchEntry> for GitBranchEntry {
+    fn from(branch: BranchEntry) -> Self {
+        Self {
+            name: branch.name,
+            is_current: branch.is_current,
+            is_remote: branch.is_remote,
+            remote_name: branch.remote_name,
+            last_commit_subject: branch.last_commit_subject,
+            last_commit_date: branch.last_commit_date,
+        }
+    }
+}
+
+/// One page of the branch list.
+#[napi(object)]
+pub struct GitBranchPage {
+    pub branches: Vec<GitBranchEntry>,
+    /// Matching branches in the whole repository, not just on this page.
+    pub total_count: u32,
+    pub has_more: bool,
+}
+
+/// Which slice of the branch list to read.
+#[napi(object)]
+pub struct GitBranchListOptions {
+    /// Remote branches instead of local ones.
+    pub remote: bool,
+    /// Branches to return. Zero returns the total with no rows, which is how
+    /// the count-only callers ask their question.
+    pub limit: u32,
+    pub offset: u32,
+    /// Case-insensitive substring the branch *name* must contain.
+    pub search: Option<String>,
+}
+
+pub struct GitRepositoryStatusTask {
+    repo_root: PathBuf,
+}
+
+impl Task for GitRepositoryStatusTask {
+    type Output = RepositoryStatus;
+    type JsValue = GitRepositoryStatus;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        repository_status(&self.repo_root).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output.into())
+    }
+}
+
+/// Read branch, tracking and working-tree metadata with one git command.
+///
+/// Still the CLI rather than `gix`: the answer includes whether the tree is
+/// dirty, and deciding that means the index refresh and `.gitignore` walk git
+/// already does.
+#[napi(ts_return_type = "Promise<GitRepositoryStatus>")]
+pub fn git_repository_status(repo_root: String) -> AsyncTask<GitRepositoryStatusTask> {
+    AsyncTask::new(GitRepositoryStatusTask { repo_root: PathBuf::from(repo_root) })
+}
+
+pub struct ParseGitBranchStatusTask {
+    output: String,
+}
+
+impl Task for ParseGitBranchStatusTask {
+    type Output = RepositoryStatus;
+    type JsValue = GitRepositoryStatus;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        Ok(parse_porcelain_v2_branch_status(&self.output))
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output.into())
+    }
+}
+
+/// Parse `--porcelain=v2 --branch` text produced somewhere else.
+///
+/// The WSL twin of {@link git_repository_status}: those repositories run git
+/// through `wsl.exe` in TypeScript, and this keeps the parser a single
+/// implementation rather than two that drift.
+#[napi(ts_return_type = "Promise<GitRepositoryStatus>")]
+pub fn parse_git_branch_status(output: String) -> AsyncTask<ParseGitBranchStatusTask> {
+    AsyncTask::new(ParseGitBranchStatusTask { output })
+}
+
+pub struct GitBranchStatusTask {
+    repo_root: PathBuf,
+}
+
+impl Task for GitBranchStatusTask {
+    type Output = Option<BranchStatus>;
+    type JsValue = Option<GitBranchStatus>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        branch_status(&self.repo_root).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output.map(GitBranchStatus::from))
+    }
+}
+
+/// Read the checked-out branch, its upstream, and the drift between them.
+///
+/// One opened repository in place of the four `rev-parse` / `symbolic-ref` /
+/// `rev-list` children the Git tab used to spawn for this. Resolves with `null`
+/// when HEAD names nothing — an unborn branch — which the caller has always
+/// treated as an absent status rather than a failure.
+#[napi(ts_return_type = "Promise<GitBranchStatus | null>")]
+pub fn git_branch_status(repo_root: String) -> AsyncTask<GitBranchStatusTask> {
+    AsyncTask::new(GitBranchStatusTask { repo_root: PathBuf::from(repo_root) })
+}
+
+pub struct GitListBranchesTask {
+    repo_root: PathBuf,
+    query: BranchQuery,
+}
+
+impl Task for GitListBranchesTask {
+    type Output = BranchPage;
+    type JsValue = GitBranchPage;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        list_branches(&self.repo_root, &self.query, now_seconds()).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(GitBranchPage {
+            branches: output.branches.into_iter().map(GitBranchEntry::from).collect(),
+            total_count: output.total_count,
+            has_more: output.has_more,
+        })
+    }
+}
+
+/// Read a page of the branch list, in git's own `refname` order.
+///
+/// Backed by `gix`, so a page costs no child processes — and no shell either:
+/// the TypeScript built a `git branch | grep | tail | head` pipeline whose
+/// Windows half had to be spelled with `findstr` instead.
+#[napi(ts_return_type = "Promise<GitBranchPage>")]
+pub fn git_list_branches(
+    repo_root: String,
+    options: GitBranchListOptions,
+) -> AsyncTask<GitListBranchesTask> {
+    AsyncTask::new(GitListBranchesTask {
+        repo_root: PathBuf::from(repo_root),
+        query: BranchQuery {
+            remote: options.remote,
+            limit: options.limit,
+            offset: options.offset,
+            search: options.search,
+        },
+    })
 }

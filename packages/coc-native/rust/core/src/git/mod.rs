@@ -17,6 +17,7 @@
 //! TypeScript caller routes through `wsl.exe` itself and never reaches this
 //! module; Rust only ever runs git on the native host.
 
+pub mod branch;
 pub mod log;
 pub mod range;
 pub mod status;

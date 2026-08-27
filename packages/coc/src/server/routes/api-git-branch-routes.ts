@@ -59,14 +59,15 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
             const { type, limit, offset, search: searchPattern } = query;
             const options = { limit, offset, searchPattern };
             if (type === 'local') {
-                return { local: branchService.getLocalBranchesPaginated(ws.rootPath, options) };
+                return { local: await branchService.getLocalBranchesPaginated(ws.rootPath, options) };
             } else if (type === 'remote') {
-                return { remote: branchService.getRemoteBranchesPaginated(ws.rootPath, options) };
+                return { remote: await branchService.getRemoteBranchesPaginated(ws.rootPath, options) };
             } else {
-                return {
-                    local: branchService.getLocalBranchesPaginated(ws.rootPath, options),
-                    remote: branchService.getRemoteBranchesPaginated(ws.rootPath, options),
-                };
+                const [local, remote] = await Promise.all([
+                    branchService.getLocalBranchesPaginated(ws.rootPath, options),
+                    branchService.getRemoteBranchesPaginated(ws.rootPath, options),
+                ]);
+                return { local, remote };
             }
         },
     }));
@@ -331,7 +332,7 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
             if (!hash) return void handleAPIError(res, missingFields(['hash']));
             const targetBranch = optionalTrimmedString(body.targetBranch);
             if (targetBranch) {
-                const localBranches = branchService.getLocalBranches(ws.rootPath);
+                const localBranches = await branchService.getLocalBranches(ws.rootPath);
                 if (!localBranches.some(branch => branch.name === targetBranch)) {
                     return void handleAPIError(res, badRequest('Target branch must be a local branch'));
                 }

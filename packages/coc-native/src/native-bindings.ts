@@ -312,6 +312,102 @@ export declare function gitRangeDiffStats(repoRoot: string, baseRef: string, hea
  * The WSL twin of {@link git_range_diff_stats}.
  */
 export declare function parseGitDiffShortstat(text: string): Promise<GitRangeDiffStats>
+/** Repository metadata from one `git status --porcelain=v2 --branch` call. */
+export interface GitRepositoryStatus {
+  /** Current branch name, or `HEAD` when detached. */
+  branch: string
+  isDetached: boolean
+  /** Whether the index or working tree holds any change at all. */
+  dirty: boolean
+  ahead: number
+  behind: number
+  /** Configured upstream branch; absent when there is none. */
+  trackingBranch?: string
+  /** Whether the repository has no commits yet. */
+  unborn: boolean
+}
+/**
+ * The checked-out branch and its drift from upstream.
+ *
+ * `hasUncommittedChanges` is missing on purpose: the caller already has that
+ * answer and merges it in, rather than paying for a second status read here.
+ */
+export interface GitBranchStatus {
+  /** Empty when HEAD is detached. */
+  name: string
+  isDetached: boolean
+  /** The commit HEAD points at; only present when detached. */
+  detachedHash?: string
+  ahead: number
+  behind: number
+  /** Remote tracking branch, e.g. `origin/main`; absent when unconfigured. */
+  trackingBranch?: string
+}
+/** One branch as the branch list renders it. */
+export interface GitBranchEntry {
+  /** Short name — `main` locally, `origin/main` for a remote branch. */
+  name: string
+  isCurrent: boolean
+  isRemote: boolean
+  /** The part before the first `/` of a remote branch's name. */
+  remoteName?: string
+  lastCommitSubject: string
+  /** `%(committerdate:relative)`, e.g. `3 days ago`. */
+  lastCommitDate: string
+}
+/** One page of the branch list. */
+export interface GitBranchPage {
+  branches: Array<GitBranchEntry>
+  /** Matching branches in the whole repository, not just on this page. */
+  totalCount: number
+  hasMore: boolean
+}
+/** Which slice of the branch list to read. */
+export interface GitBranchListOptions {
+  /** Remote branches instead of local ones. */
+  remote: boolean
+  /**
+   * Branches to return. Zero returns the total with no rows, which is how
+   * the count-only callers ask their question.
+   */
+  limit: number
+  offset: number
+  /** Case-insensitive substring the branch *name* must contain. */
+  search?: string
+}
+/**
+ * Read branch, tracking and working-tree metadata with one git command.
+ *
+ * Still the CLI rather than `gix`: the answer includes whether the tree is
+ * dirty, and deciding that means the index refresh and `.gitignore` walk git
+ * already does.
+ */
+export declare function gitRepositoryStatus(repoRoot: string): Promise<GitRepositoryStatus>
+/**
+ * Parse `--porcelain=v2 --branch` text produced somewhere else.
+ *
+ * The WSL twin of {@link git_repository_status}: those repositories run git
+ * through `wsl.exe` in TypeScript, and this keeps the parser a single
+ * implementation rather than two that drift.
+ */
+export declare function parseGitBranchStatus(output: string): Promise<GitRepositoryStatus>
+/**
+ * Read the checked-out branch, its upstream, and the drift between them.
+ *
+ * One opened repository in place of the four `rev-parse` / `symbolic-ref` /
+ * `rev-list` children the Git tab used to spawn for this. Resolves with `null`
+ * when HEAD names nothing — an unborn branch — which the caller has always
+ * treated as an absent status rather than a failure.
+ */
+export declare function gitBranchStatus(repoRoot: string): Promise<GitBranchStatus | null>
+/**
+ * Read a page of the branch list, in git's own `refname` order.
+ *
+ * Backed by `gix`, so a page costs no child processes — and no shell either:
+ * the TypeScript built a `git branch | grep | tail | head` pipeline whose
+ * Windows half had to be spelled with `findstr` instead.
+ */
+export declare function gitListBranches(repoRoot: string, options: GitBranchListOptions): Promise<GitBranchPage>
 /** Filesystem policy for one resolved Notes root. */
 export interface NotesIndexBuildOptions {
   /**
