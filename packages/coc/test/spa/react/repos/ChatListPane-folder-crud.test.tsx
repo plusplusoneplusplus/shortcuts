@@ -258,11 +258,12 @@ describe('ChatListPane — folder create / rename / recolor / delete (AC-05)', (
     it('opens the create row even when the workspace has no folders yet', async () => {
         listChatFolders.mockResolvedValue({ folders: [] });
         await renderPane({ history: [makeChat({ id: 'proc-a' })] });
-        // Zero folders normally means no section at all — the create row is the
-        // one thing that brings it back, or the first folder is uncreatable.
-        expect(document.querySelector('[data-section="folders"]')).toBeNull();
-        await openCreateRow();
+        // Zero folders still keeps the header, which is where ＋New folder
+        // lives — otherwise the first folder would be uncreatable.
         expect(document.querySelector('[data-section="folders"]')).not.toBeNull();
+        expect(screen.queryByTestId('chat-folder-create-row')).toBeNull();
+        await openCreateRow();
+        expect(screen.getByTestId('chat-folder-create-row')).not.toBeNull();
     });
 
     it('commits with the chosen swatch colour', async () => {
@@ -435,7 +436,7 @@ describe('ChatListPane — folder create / rename / recolor / delete (AC-05)', (
 
         expect(screen.queryByTestId('chat-folder-delete-copy')).toBeNull();
         expect(deleteChatFolder).toHaveBeenCalledWith('ws-test', 'folder-auth');
-        expect(document.querySelector('[data-section="folders"]')).toBeNull();
+        expect(screen.queryAllByTestId('chat-folder')).toHaveLength(0);
     });
 
     it('confirms before deleting a non-empty folder, naming the count and promising no data loss', async () => {
@@ -517,7 +518,7 @@ describe('ChatListPane — folder create / rename / recolor / delete (AC-05)', (
 
         expect(createChatFolder).not.toHaveBeenCalled();
         expect(screen.queryByTestId('chat-folder-undo-toast')).toBeNull();
-        expect(document.querySelector('[data-section="folders"]')).toBeNull();
+        expect(screen.queryAllByTestId('chat-folder')).toHaveLength(0);
     });
 
     // ── Collapse all ────────────────────────────────────────────────────────

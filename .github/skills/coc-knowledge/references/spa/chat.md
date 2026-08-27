@@ -159,9 +159,14 @@ in `chat-folder-view-state.ts`, keyed per workspace (`coc-chat-folder-collapsed:
 default expanded. The folder list itself comes from `useChatFolders`, which only fetches
 when the flag is on.
 
-**Managing folders.** The ＋folder / ⇱ collapse-all pair (`chat-list-new-folder-btn`,
-`chat-list-collapse-all-folders-btn`) sits in both list headers, rendered from one
-`renderFolderToolbar` callback. ＋folder opens an inline create row at the top of the
+**Managing folders.** The ＋folder / collapse-all pair (`chat-list-new-folder-btn`,
+`chat-list-collapse-all-folders-btn`) lives on the FOLDERS section header itself, left of
+the count — explorer-style hover actions (always visible on touch, revealed on hover or
+keyboard focus on pointer devices). The header is a flex row, not a button: the ▼ Folders
+toggle is a nested button so the actions are not inside it. Because the actions live there,
+the section keeps its header with an empty body when the workspace has no folders
+(`showWhenEmpty`, off while searching, where an empty tree means "no folder matched").
+＋folder opens an inline create row at the top of the
 section — six colour swatches then a focused input; the same `ChatFolderNameEditor` serves
 rename (F2 or double-click on the name), minus the swatches. Commit rules are identical for
 both: Enter commits, Esc cancels, blur with text commits, blur while empty cancels, and
