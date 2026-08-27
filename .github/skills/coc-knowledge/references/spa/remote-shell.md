@@ -136,6 +136,19 @@ are absent by construction. `getRepoGroupHeaderConfig(workspaceId, label)` suppl
 `VirtualWorkspaceHeaderConfig` (`testIdPrefix: 'repo-group'`, `defaultTab: 'chats'`, no
 actions), labeled with the registered workspace name (id fallback while loading).
 
+**Right dock.** On desktop with `splitWorkspacePanel` on, `RepoGroupView` also renders
+`features/repo-detail/WorkspaceRightDock` as the outermost-right column (same gate as
+`RepoDetail`). The dock's open/view/width/target state scopes to the **group**, while a
+`workspace-dock-target-picker` in its header row chooses which workspace its Terminal and
+Explorer point at. Options come from `getRepoGroup(groupId, baseUrl)` (baseUrl from
+`remoteGroupWorkspaces` for a remote group): the group root first — offered so a terminal
+can match the chat's cwd, but never the default, since it holds only `group.json` — then
+every member repo, with stale members listed but disabled. Notes stays on the group.
+Because available views derive from the *target*, picking a member brings Explorer back
+and picking the group root drops it. The open/close toggle is
+`WorkspaceDockToggleButton` in the TopBar next to the virtual header; My Work / My Life
+get no dock. See `features/repo-detail/AGENTS.md` for the dock's own contract.
+
 Group selections never overwrite `lastWorkspaceRepoId` (an AppContext guard).
 `ScopeSlideSwitcher` gives an active group the workspace segment
 (`data-active-scope="group"`), resolving its label with

@@ -52,20 +52,56 @@ overwritten by a local `REPO_QUEUE_UPDATED`; per-clone queue WS fan-in is the fi
 ## Workspace right dock
 
 `WorkspaceRightDock.tsx` hosts three views — Terminal, Explorer, and a compact
-read-only Notes panel — as underline tabs in one 35px header row. Which views a
-workspace offers comes from `dockViewsForWorkspace(workspaceId)` in
-`WorkspaceDockToggle.tsx`: a repo group (`group-<slug>`) has no single repository
-root, so it gets `terminal|notes` and never mounts `ExplorerPanel` (no Monaco
-load); a concrete repo gets `terminal|explorer|notes`.
+read-only Notes panel — as underline tabs in one 35px header row. The dock body
+renders from `RepoDetail.tsx` for a repo and `repos/RepoGroupView.tsx` for a repo
+group; both gate on `splitWorkspacePanel` + desktop.
+
+**Scope vs. target.** `workspaceId` is the dock's *scope*: it owns the
+`split-workspace:<id>:dock-{open,view,width,target}` keys, and it is what
+`DockNotesPanel` is keyed on. The *target* is the workspace `TerminalView` and
+`ExplorerPanel` are keyed on and pointed at. They are the same value unless the
+caller passes `targets?: readonly DockTarget[]` (`{ workspaceId, label, disabled?,
+deprioritized? }`) to both `useWorkspaceDock` and `WorkspaceRightDock`; that
+renders a `<select>` picker (`workspace-dock-target-picker`) in the header row and
+lets the user re-point the content while the panel's open/view/width stay put.
+Omitting `targets` is a strict no-op.
+
+`RepoGroupView` supplies the only targets today: `getRepoGroup(groupId, baseUrl)`
+mapped to the group root (`deprioritized` — it holds only `group.json`) plus every
+member repo, with a stale member listed `disabled` and its reason in the label.
+While that request is in flight `targets` is `undefined`, so the dock is
+scope-only rather than showing an empty picker.
+
+Which views the dock offers comes from `dockViewsForWorkspace(target)` in
+`WorkspaceDockToggle.tsx` — the *target*, not the scope. A repo-group root has no
+single repository root, so it gets `terminal|notes` and never mounts
+`ExplorerPanel` (no Monaco load); a concrete repo gets `terminal|explorer|notes`.
+Memoize that array on the target string: `useDockView`'s effect depends on it and
+a fresh array every render loops forever (shows up as a hang, not a fast failure).
 
 Every available view stays mounted once the dock has been opened, with the
 inactive ones hidden via `display:none`, so the PTY session, explorer tree, and
-selected note survive a view switch, a dock close, or a sub-tab change.
+selected note survive a view switch, a dock close, or a sub-tab change. A target
+switch deliberately remounts Terminal and Explorer — the same teardown a workspace
+switch already causes — and rehydrates through `explorerStateStore` and pinned
+terminal sessions rather than a per-target mount map.
 
-The persisted view (`workspaceDockViewStorageKey`) is validated against the views
-available in the current workspace on read, falling back to the first one — a
-stored `explorer` must not strand a group workspace on a hidden tab. Only an
-explicit `setView` writes; mount and workspace switches never persist.
+Target switches go through `confirmDiscardExplorerEditsOnSwitch` (from
+`explorer/explorerDirtyStore.ts`), so picking another member repo cannot silently
+drop a dirty Monaco buffer; declining leaves the selection and localStorage
+untouched.
+
+Persisted values are validated on read. The view (`workspaceDockViewStorageKey`)
+falls back to the first available one — a stored `explorer` must not strand a
+group root on a hidden tab. The target (`workspaceDockTargetStorageKey`) falls
+back to the first enabled non-`deprioritized` option, then the first enabled one,
+then the scope. Only explicit `setView` / `setTarget` calls write; mount and
+workspace switches never persist.
+
+The open/close toggle lives outside the body and shares a cross-tree store: the
+classic shell renders it in `RepoDetail`'s header, while the remote-first shell's
+`layout/TopBar.tsx` renders `WorkspaceDockToggleButton` for a concrete clone *or*
+a `group-*` selection under the virtual header. My Work / My Life have no dock.
 
 `../notes/dock/DockNotesPanel.tsx` is the Notes view: search + new-note row, a
 recency-ordered flat list (`dock/dockNotes.ts` holds the pure list/query/naming
@@ -147,9 +183,16 @@ end to end against the real tree cache (`--environment jsdom`);
 
 `test/spa/react/workspace-right-dock/` covers the dock: `WorkspaceRightDock.test.tsx`
 (tabs, keep-alive, persistence, resize, group-vs-repo view sets),
-`DockNotesPanel.test.tsx`, `dockNotes.test.ts`, and `composerInsert.test.tsx`. The
-heavy views (TerminalView, ExplorerPanel, DockNotesPanel) are mocked by source
-path there so xterm/Monaco never load.
+`WorkspaceDockTarget.test.tsx` (the target picker — default/fallback/persistence,
+the dirty-edit guard, what follows the picker and what does not),
+`WorkspaceDockMergedHeader.test.tsx` (single-row header, incl. picker + portaled
+terminal toolbar), `DockNotesPanel.test.tsx`, `dockNotes.test.ts`, and
+`composerInsert.test.tsx`. The heavy views (TerminalView, ExplorerPanel,
+DockNotesPanel) are mocked by source path there so xterm/Monaco never load.
+
+The group side lives in `test/spa/react/repos/RepoGroupView.dock.test.tsx`
+(flag/breakpoint gating, target mapping, remote base URL, fetch failure) and
+`test/spa/react/TopBar.repo-group.test.tsx` (the TopBar toggle for `group-*`).
 
 `QuickOpen.behavior.test.tsx` asserts the one-fetch-per-open contract against a
 mocked `explorerApi` (`--environment jsdom`; stub `Element.prototype.scrollIntoView`,

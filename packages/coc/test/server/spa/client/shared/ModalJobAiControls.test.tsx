@@ -40,6 +40,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isAutoAgentProviderRoutingEnabled: () => mocks.autoProviderRoutingEnabled,
     isEffortLevelsEnabled: () => mocks.effortLevelsEnabled,
     isChatStyleSelectorEnabled: () => false,
+    getDefaultChatStyle: () => 'default',
     DASHBOARD_CONFIG_UPDATED_EVENT: 'dashboard-config-updated',
 }));
 

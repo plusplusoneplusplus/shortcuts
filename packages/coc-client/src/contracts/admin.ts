@@ -1,3 +1,5 @@
+import type { ChatStyle } from './common';
+
 export type AdminOutputFormat = 'table' | 'json' | 'csv' | 'markdown';
 export type AdminImportMode = 'replace' | 'merge';
 export type AdminStorageBackend = 'file' | 'sqlite';
@@ -277,6 +279,11 @@ export interface RuntimeDashboardConfig {
      * remote-target capability signal; an older server omits it entirely.
      */
     chatStyleSelectorEnabled: boolean;
+    /**
+     * Style new conversations start on, server-wide (`features.defaultChatStyle`).
+     * `'default'` means "add no style instruction".
+     */
+    defaultChatStyle: ChatStyle;
     /** Typing-driven client prewarm debounce (ms), resolved from env on the server. */
     prewarmDebounceMs: number;
     /** Warm-client idle TTL (ms), resolved from env on the server. `0` means warming is disabled. */

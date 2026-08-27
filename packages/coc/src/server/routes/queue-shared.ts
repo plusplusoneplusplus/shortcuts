@@ -17,7 +17,7 @@ import type {
     StoredEffortTiersMap,
 } from '@plusplusoneplusplus/forge';
 import { getLogger, LogCategory, resolveModelForProvider } from '@plusplusoneplusplus/forge';
-import { CHAT_STYLES, DEFAULT_CHAT_STYLE, isChatStyle } from '@plusplusoneplusplus/coc-client';
+import { CHAT_STYLES, isChatStyle } from '@plusplusoneplusplus/coc-client';
 import { truncateDisplayName } from '../shared/queue-utils';
 import { TaskDefs, VALID_ENQUEUE_TYPES, VISIBLE_TASK_TYPE_LABELS, VALID_CHAT_PROVIDERS, normalizeChatMode, type ChatProvider } from '../tasks/task-types';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
@@ -393,14 +393,15 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
         }
         // Reject an unknown chat style rather than silently dropping it — a
         // client that sends garbage should hear about it. An omitted field is
-        // normalized to 'default', which injects nothing.
+        // left off entirely so the executor can apply the server-wide
+        // `features.defaultChatStyle`; writing 'default' here would swallow it.
         if (payload.chatStyle !== undefined && payload.chatStyle !== null && !isChatStyle(payload.chatStyle)) {
             return {
                 valid: false,
                 error: `Invalid chatStyle: '${payload.chatStyle}'. Valid styles: ${CHAT_STYLES.join(', ')}`,
             };
         }
-        payload.chatStyle = isChatStyle(payload.chatStyle) ? payload.chatStyle : DEFAULT_CHAT_STYLE;
+        if (!isChatStyle(payload.chatStyle)) delete payload.chatStyle;
     }
     if (taskSpec.type === TaskDefs.runScript.kind && !payload.kind) payload.kind = TaskDefs.runScript.kind;
     if (taskSpec.type === TaskDefs.runWorkflow.kind && !payload.kind) payload.kind = TaskDefs.runWorkflow.kind;

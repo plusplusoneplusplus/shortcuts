@@ -57,6 +57,15 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.revision).toBe(5);
     });
 
+    it('surfaces a configured features.defaultChatStyle to the SPA', () => {
+        const svc = createMockRuntimeConfigService({
+            features: { defaultChatStyle: 'direct' },
+        });
+        const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
+
+        expect(result.features.defaultChatStyle).toBe('direct');
+    });
+
     it('returns all feature flags with correct defaults', () => {
         const svc = createMockRuntimeConfigService();
         const result = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1');
@@ -67,6 +76,8 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.myLifeEnabled).toBe(false);
         expect(result.features.scratchpadEnabled).toBe(false);
         expect(result.features.scratchpadLayout).toBe('horizontal');
+        // Registry-driven: the enum default rides along with no per-flag plumbing.
+        expect(result.features.defaultChatStyle).toBe('default');
         expect(result.features.workflowsEnabled).toBe(false);
         expect(result.features.pullRequestsEnabled).toBe(false);
         expect(result.features.pullRequestsAutoClassifyTeamEnabled).toBe(false);

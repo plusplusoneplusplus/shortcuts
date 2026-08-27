@@ -153,6 +153,48 @@ describe('gatherDetectedPrsFromTurns', () => {
     });
 });
 
+describe('gatherDetectedPrsFromTurns repo scoping', () => {
+    const foreignTurn = turn({
+        timeline: [
+            {
+                type: 'tool-complete',
+                timestamp: '2024-01-01T00:00:00Z',
+                toolCall: toolCall({
+                    id: 'tc1',
+                    args: { command: 'gh pr create --fill' },
+                    result: 'https://github.com/someone-else/other-repo/pull/5',
+                }),
+            },
+        ],
+    });
+
+    it('drops a detected PR that is not in the chat workspace\'s repo', () => {
+        expect(gatherDetectedPrsFromTurns([foreignTurn], 'https://github.com/org/repo')).toEqual([]);
+    });
+
+    it('keeps a detected PR in the chat workspace\'s own repo', () => {
+        const ownTurn = turn({
+            timeline: [
+                {
+                    type: 'tool-complete',
+                    timestamp: '2024-01-01T00:00:00Z',
+                    toolCall: toolCall({
+                        id: 'tc1',
+                        args: { command: 'gh pr create --fill' },
+                        result: 'https://github.com/org/repo/pull/42',
+                    }),
+                },
+            ],
+        });
+        const detected = gatherDetectedPrsFromTurns([ownTurn], 'git@github.com:org/repo.git');
+        expect(detected.map(pr => pr.number)).toEqual([42]);
+    });
+
+    it('does not scope when the chat has no remote URL', () => {
+        expect(gatherDetectedPrsFromTurns([foreignTurn], null).map(pr => pr.number)).toEqual([5]);
+    });
+});
+
 describe('originIdForDetectedPr', () => {
     const github: DetectedPullRequest = { number: 1, url: 'u', provider: 'github', owner: 'org', repo: 'repo', toolCallId: 't' };
     const ado: DetectedPullRequest = {
@@ -228,6 +270,44 @@ describe('unionAssociations', () => {
             bindings: [],
             workspaceId: WS,
             chatOriginId,
+        });
+        expect(result).toEqual([]);
+    });
+
+    it('skips a detected PR from a different repo than the chat', () => {
+        // A foreign PR used to be upserted under its own synthesized origin, so a
+        // PR URL from any repo could render a banner on this chat.
+        const foreign: DetectedPullRequest = {
+            number: 5,
+            url: 'https://github.com/someone-else/other-repo/pull/5',
+            provider: 'github',
+            owner: 'someone-else',
+            repo: 'other-repo',
+            toolCallId: 't',
+        };
+        const result = unionAssociations({ detected: [foreign], bindings: [], workspaceId: WS, chatOriginId });
+        expect(result).toEqual([]);
+    });
+
+    it('skips a detected ADO PR from a different project than the chat', () => {
+        const adoChatOrigin = resolveCanonicalOriginId({
+            workspaceId: WS,
+            remoteUrl: 'https://dev.azure.com/contoso/MyProject/_git/repo',
+        });
+        const foreign: DetectedPullRequest = {
+            number: 8,
+            url: 'https://dev.azure.com/contoso/OtherProject/_git/other/pullrequest/8',
+            provider: 'azure-devops',
+            organization: 'contoso',
+            project: 'OtherProject',
+            repo: 'other',
+            toolCallId: 't',
+        };
+        const result = unionAssociations({
+            detected: [foreign],
+            bindings: [],
+            workspaceId: WS,
+            chatOriginId: adoChatOrigin,
         });
         expect(result).toEqual([]);
     });

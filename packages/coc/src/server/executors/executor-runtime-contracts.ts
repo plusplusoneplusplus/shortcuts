@@ -32,6 +32,7 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
+import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { ISDKService } from '@plusplusoneplusplus/forge';
 import type { ChatProvider } from '../tasks/task-types';
 import type { CronEventEmit, CronExecutor } from '../cron/cron-executor';
@@ -127,6 +128,12 @@ export interface ExecutorRuntimeCapabilities {
      */
     readonly getChatStyleSelectorEnabled?: () => boolean;
     /**
+     * Live read of the `features.defaultChatStyle` admin setting — the style a
+     * brand-new conversation starts on when the request carries no explicit
+     * `chatStyle` (API callers, older clients, buffered or restarted tasks).
+     */
+    readonly getDefaultChatStyle?: () => ChatStyle;
+    /**
      * Resolve an ISDKService for a provider, checking enablement and
      * availability. Lets executors route per chat without holding a
      * RuntimeConfigService reference. Throws with a user-facing message when
@@ -168,7 +175,7 @@ export type ChatExecutorRuntime = Pick<
 >;
 
 /** Capabilities visible to {@link ProcessLifecycleRunner}. */
-export type LifecycleRuntime = Pick<ExecutorRuntimeCapabilities, 'getChatStyleSelectorEnabled'>;
+export type LifecycleRuntime = Pick<ExecutorRuntimeCapabilities, 'getChatStyleSelectorEnabled' | 'getDefaultChatStyle'>;
 
 /** Capabilities visible to the Dreams task executor. */
 export type DreamRuntime = Pick<ExecutorRuntimeCapabilities, 'getDreamRunExecutor'>;

@@ -13,7 +13,7 @@ import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import type { AIProcess, CanvasSummary } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
 import { useChatStyleSelectorEnabled } from '../../hooks/feature-flags/useChatStyleSelectorEnabled';
-import { DEFAULT_CHAT_STYLE, isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
+import { isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
 import { getCocClientForWorkspace, lookupCloneBaseUrl } from '../../repos/cloneRegistry';
 import { isRemoteWorkspace } from '../../repos/remoteWorkspaceAggregation';
 import { getConversationTurns } from './conversation/chatConversationUtils';
@@ -76,7 +76,7 @@ import { MobileScratchpadTabBar } from './scratchpad/MobileScratchpadTabBar';
 import { buildScratchpadCandidates } from './scratchpad/scratchpadCandidates';
 import { resolveLoadedTaskMode } from './chatMode';
 import { normalizeChatMode } from '../../repos/modeConfig';
-import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isCronEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, isCanvasEnabled, isRemoteShellEnabled } from '../../utils/config';
+import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isCronEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, isCanvasEnabled, isRemoteShellEnabled, getDefaultChatStyle } from '../../utils/config';
 import type { ChatMode } from '../../repos/modeConfig';
 import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
@@ -246,7 +246,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const recordedChatStyle = isChatStyle((processDetails as any)?.metadata?.chatStyle)
         ? ((processDetails as any).metadata.chatStyle as ChatStyle)
         : undefined;
-    const followUpChatStyle = chatStyleOverride ?? recordedChatStyle ?? DEFAULT_CHAT_STYLE;
+    const followUpChatStyle = chatStyleOverride ?? recordedChatStyle ?? getDefaultChatStyle();
     const [ralphGrillSetup, setRalphGrillSetup] = useState<RalphGrillSetup>({ enabled: true, depth: 'standard', agents: [] });
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [sessionTokenLimit, setSessionTokenLimit] = useState<number | undefined>(undefined);

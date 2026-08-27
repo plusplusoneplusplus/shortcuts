@@ -202,6 +202,22 @@ describe('normalizeFollowUpInput', () => {
             const r = normalizeFollowUpInput({ chatStyle: 7 }, 'copilot');
             expect(r.ok).toBe(false);
         });
+        it('falls back to the caller-supplied server default when the style is omitted', () => {
+            const r = normalizeFollowUpInput({}, 'copilot', 'direct');
+            expect(r.ok && r.value.chatStyle).toBe('direct');
+        });
+        it('falls back to the server default for an explicit null too', () => {
+            const r = normalizeFollowUpInput({ chatStyle: null }, 'copilot', 'structured');
+            expect(r.ok && r.value.chatStyle).toBe('structured');
+        });
+        it("lets an explicit 'default' beat the server default", () => {
+            const r = normalizeFollowUpInput({ chatStyle: 'default' }, 'copilot', 'direct');
+            expect(r.ok && r.value.chatStyle).toBe('default');
+        });
+        it('still rejects an unknown style when a server default is configured', () => {
+            const r = normalizeFollowUpInput({ chatStyle: 'concise' }, 'copilot', 'direct');
+            expect(r.ok).toBe(false);
+        });
     });
 
     describe('optimisticId', () => {

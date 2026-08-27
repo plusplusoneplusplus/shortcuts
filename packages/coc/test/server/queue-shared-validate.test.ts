@@ -520,8 +520,23 @@ describe('validateAndParseTask – ChatPayload.provider validation', () => {
 // ============================================================================
 
 describe('validateAndParseTask – chat chatStyle', () => {
-    it('normalizes an omitted chatStyle to default', () => {
+    // Absent must stay absent: the executor applies the server-wide
+    // `features.defaultChatStyle`, and writing 'default' here would swallow it.
+    it('leaves an omitted chatStyle off the payload', () => {
         const result = validateAndParseTask({ type: 'chat', payload: { prompt: 'hello' } });
+        expect(result.valid).toBe(true);
+        expect((result.input!.payload as any).chatStyle).toBeUndefined();
+        expect('chatStyle' in (result.input!.payload as any)).toBe(false);
+    });
+
+    it('drops an explicit null chatStyle rather than recording it', () => {
+        const result = validateAndParseTask({ type: 'chat', payload: { prompt: 'hello', chatStyle: null } });
+        expect(result.valid).toBe(true);
+        expect('chatStyle' in (result.input!.payload as any)).toBe(false);
+    });
+
+    it("keeps an explicit 'default' so the user's pick still beats the configured default", () => {
+        const result = validateAndParseTask({ type: 'chat', payload: { prompt: 'hello', chatStyle: 'default' } });
         expect(result.valid).toBe(true);
         expect((result.input!.payload as any).chatStyle).toBe('default');
     });

@@ -30,6 +30,7 @@ import {
 // Hoisted tracker for mock state
 const { mockState } = vi.hoisted(() => ({
     mockState: {
+        defaultChatStyle: 'default' as string,
         sendFollowUp: vi.fn().mockResolvedValue(undefined),
         closeFollowUpStream: vi.fn(),
         onSendComplete: vi.fn(),
@@ -70,6 +71,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     getActiveProvider: () => 'copilot' as const,
     isEffortLevelsEnabled: () => mockState.effortLevelsEnabled,
     isChatStyleSelectorEnabled: () => mockState.chatStyleSelectorEnabled,
+    getDefaultChatStyle: () => mockState.defaultChatStyle,
     isSessionContextAttachmentsEnabled: () => false,
     getPrewarmDebounceMs: () => 500,
     getWarmClientTtlMs: () => 300000,
@@ -458,6 +460,7 @@ beforeEach(() => {
     fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     resetCloneRegistryForTests();
+    mockState.defaultChatStyle = 'default';
     // Reset mock state
     mockState.sendFollowUp.mockReset().mockResolvedValue(undefined);
     mockState.closeFollowUpStream.mockReset();
@@ -2598,6 +2601,34 @@ describe('ChatDetail — per-conversation chat style', () => {
         render(<Wrap><LateStyleHarness /></Wrap>);
         return { refreshRef, processCalls: () => processCalls };
     }
+
+    // features.defaultChatStyle — a conversation with nothing recorded seeds
+    // the follow-up composer from the server-wide default instead of Default.
+    it('seeds the chip from the configured server default when nothing is recorded', async () => {
+        mockState.chatStyleSelectorEnabled = true;
+        mockState.defaultChatStyle = 'direct';
+        setupStandardFetch(
+            makeTask({ status: 'completed', processId: 'proc-1' }),
+            makeProcess({ metadata: { sessionId: 'sess-1' } }),
+        );
+
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+
+        await waitFor(() => expect(selectorStyle()).toBe('direct'));
+    });
+
+    it('lets the recorded style beat the configured server default', async () => {
+        mockState.chatStyleSelectorEnabled = true;
+        mockState.defaultChatStyle = 'direct';
+        setupStandardFetch(
+            makeTask({ status: 'completed', processId: 'proc-1' }),
+            makeProcess({ metadata: { sessionId: 'sess-1', chatStyle: 'human' } }),
+        );
+
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+
+        await waitFor(() => expect(selectorStyle()).toBe('human'));
+    });
 
     it('picks up the style when it only arrives on a later process snapshot', async () => {
         mockState.chatStyleSelectorEnabled = true;

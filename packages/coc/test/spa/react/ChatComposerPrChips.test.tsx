@@ -5,9 +5,10 @@
  * wiring behind the in-composer PR chip (design 01·B). The chip stack reuses the
  * same detect + persist + fetch hook as the legacy top-of-thread card, so these
  * cover the composer-specific presentation: a detected PR renders one chip with
- * provider links, the ✕ dismisses it for the session, the +adds/−dels diff
- * surfaces from the detail's diffStats, and an empty association set renders
- * nothing.
+ * provider links, the ✕ dismisses it *and* deletes its binding (so it does not
+ * return on reload), a PR from another repo never reaches the banner, the
+ * +adds/−dels diff surfaces from the detail's diffStats, and an empty
+ * association set renders nothing.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent, waitFor, act } from '@testing-library/react';
@@ -21,6 +22,7 @@ const mocks = vi.hoisted(() => ({
         getForOrigin: vi.fn(),
         getReviewersForOrigin: vi.fn(),
         getChecksForOrigin: vi.fn(),
+        deleteChatBindingForOrigin: vi.fn(),
     },
     getCocClientForWorkspace: vi.fn(),
 }));
@@ -99,6 +101,8 @@ describe('ChatComposerPrChips / usePrChatStatusItems', () => {
         mocks.pullRequests.getForOrigin.mockReset();
         mocks.pullRequests.getReviewersForOrigin.mockReset();
         mocks.pullRequests.getChecksForOrigin.mockReset();
+        mocks.pullRequests.deleteChatBindingForOrigin.mockReset();
+        mocks.pullRequests.deleteChatBindingForOrigin.mockResolvedValue(undefined);
         mocks.pullRequests.createChatBindingForOrigin.mockResolvedValue({ prId: '42', taskId: 't1' });
         mocks.pullRequests.getReviewersForOrigin.mockResolvedValue({ reviewers: [] });
         mocks.pullRequests.getChecksForOrigin.mockResolvedValue({ checks: [] });
@@ -438,6 +442,73 @@ describe('ChatComposerPrChips / usePrChatStatusItems', () => {
         await waitFor(() => expect(mocks.pullRequests.getReviewersForOrigin).toHaveBeenCalled());
         expect(getByTestId('composer-pr-chip').getAttribute('data-state')).toBe('ready');
         expect(queryByTestId('composer-pr-chip-reviewers')).toBeNull();
+    });
+
+    it('dismissing a chip with ✕ also deletes its binding so it stays gone after reload', async () => {
+        mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: {} });
+        mocks.pullRequests.getForOrigin.mockResolvedValue({
+            number: 42,
+            title: 'Wrongly attached PR',
+            status: 'open',
+            sourceBranch: 'feat/x',
+            targetBranch: 'main',
+            createdAt: '2024-01-01T00:00:00Z',
+            url: GH_URL,
+        });
+
+        const { findByText, getByTestId, queryByTestId } = render(
+            <ChatComposerPrChips turns={[turnWithPrCreate(GH_URL)]} workspaceId="ws1" remoteUrl={GH_REMOTE} taskId="t1" />,
+        );
+
+        await findByText('Wrongly attached PR');
+        fireEvent.click(getByTestId(`composer-pr-chip-dismiss-${GH_ORIGIN}:42`));
+
+        await waitFor(() => expect(queryByTestId('composer-pr-chips')).toBeNull());
+        await waitFor(() =>
+            expect(mocks.pullRequests.deleteChatBindingForOrigin).toHaveBeenCalledWith(GH_ORIGIN, '42'),
+        );
+    });
+
+    it('a failing binding delete still leaves the chip dismissed', async () => {
+        mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: {} });
+        mocks.pullRequests.deleteChatBindingForOrigin.mockRejectedValue(new Error('offline'));
+        mocks.pullRequests.getForOrigin.mockResolvedValue({
+            number: 42,
+            title: 'Dismissable PR',
+            status: 'open',
+            sourceBranch: 'feat/x',
+            targetBranch: 'main',
+            createdAt: '2024-01-01T00:00:00Z',
+            url: GH_URL,
+        });
+
+        const { findByText, getByTestId, queryByTestId } = render(
+            <ChatComposerPrChips turns={[turnWithPrCreate(GH_URL)]} workspaceId="ws1" remoteUrl={GH_REMOTE} taskId="t1" />,
+        );
+
+        await findByText('Dismissable PR');
+        fireEvent.click(getByTestId(`composer-pr-chip-dismiss-${GH_ORIGIN}:42`));
+        await waitFor(() => expect(queryByTestId('composer-pr-chips')).toBeNull());
+    });
+
+    it('renders no chip for a PR detected from a different repo than the chat', async () => {
+        // Repo scoping: a foreign PR URL in this chat's tool output is not this
+        // chat's PR, so it never reaches the banner (nor gets bound).
+        mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: {} });
+
+        const { container } = render(
+            <ChatComposerPrChips
+                turns={[turnWithPrCreate('https://github.com/someone-else/other-repo/pull/5')]}
+                workspaceId="ws1"
+                remoteUrl={GH_REMOTE}
+                taskId="t1"
+            />,
+        );
+
+        await waitFor(() => expect(mocks.pullRequests.listChatBindingsForOrigin).toHaveBeenCalled());
+        await flushMicrotasks();
+        expect(container.querySelector('[data-testid="composer-pr-chips"]')).toBeNull();
+        expect(mocks.pullRequests.createChatBindingForOrigin).not.toHaveBeenCalled();
     });
 
     it('dismissing a chip with ✕ hides it for the session', async () => {

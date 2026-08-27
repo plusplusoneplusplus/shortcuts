@@ -142,17 +142,34 @@ the creating turn collapsed, and fetches detail per row (`getForOrigin`) into pe
 loading/ready/error state with retry. Union and origin logic live in the pure
 `conversation/prChatAssociation.ts`.
 
-Detection requires PR-**creation** evidence — read-only PR commands and connector
-lookups are ignored. Accepted: the GitHub connector's create-pull-request tool; a
-`gh pr create` / `az repos pr create` command, including inside a shell-interpreter
-wrapper (`bash -lc '…'`, `/bin/bash -c "…"`, `sh -c '…'`) whose quoted payload is
-unwrapped and scanned; the `submit_commits_as_pr.py` wrapper's line-start
-`JSON: {... "pr_url": "...", "status": "done"}` line, recognized even when surfaced by
-a later `grep`/`tail` of persisted stdout (original output is often truncated under a
-large git dump); and a known wrapper command whose untruncated result echoes a creating
-command, or output with no command metadata. Timeline and flat `toolCalls` records are
-de-duplicated by tool-call id within each turn; separate turns remain distinct because
-providers may restart tool-call ids on each assistant turn.
+Detection requires **positive evidence that this tool call created that PR**, because
+each detection is written back as a binding and so is permanent. A tool call yields at
+most **one** PR — the specific created URL, not every PR URL in its output. Read-only
+PR commands, connector lookups, unsuccessful tool calls (`status` failed/pending/…),
+and output with **no command metadata** are ignored.
+
+Accepted evidence:
+- the GitHub connector's create-pull-request tool;
+- a `gh pr create` / `az repos pr create` command, including inside a shell-interpreter
+  wrapper (`bash -lc '…'`, `/bin/bash -c "…"`, `sh -c '…'`) whose quoted payload is
+  unwrapped and scanned — the **last** PR URL in the result is the created one, and a
+  result matching `already exists:` (a failed create printing the pre-existing PR) is
+  rejected outright;
+- the `submit_commits_as_pr.py` wrapper's line-start
+  `JSON: {... "pr_url": "...", "status": "done"}` line, which contributes **only that
+  line's `pr_url`**. It is still recognized when surfaced by a later `grep`/`tail` of
+  persisted stdout (the original output is often truncated under a large git dump), but
+  only when the file being read is a path this chat's own PR-creation run named — so a
+  grep that hits another run's log cannot pin that run's PR here;
+- a known wrapper command whose untruncated result echoes a creating command.
+
+Pass `options.remoteUrl` (threaded from the chat workspace's remote through
+`gatherDetectedPrsFromTurns`) to scope detections to the chat's own
+`owner/repo` — normalized via `normalizeRemoteUrl`, so SSH and `.git` forms match.
+`unionAssociations` independently drops any detected PR whose origin is not the chat's
+own. Timeline and flat `toolCalls` records are de-duplicated by tool-call id within
+each turn; separate turns remain distinct because providers may restart tool-call ids
+on each assistant turn.
 
 ### Chip contents
 
@@ -167,8 +184,9 @@ resolves with ≥1 check), diff counts (`mapPrDetailToCardPr`'s `diffStats` via
 `parseDiffStats`, omitted with no counts), a provider link, and dismiss. Loading rows
 render a skeleton; error rows show the message plus retry.
 
-Chips order newest-first. Dismiss hides for the session; a fresh detection or binding
-re-surfaces the chip on reload.
+Chips order newest-first. Dismiss hides the chip immediately **and** issues
+`deleteChatBindingForOrigin(originId, prId)` (best-effort), so a dismissed PR does not
+return on reload.
 
 ### Folding
 
@@ -191,8 +209,8 @@ the PR numbers, and up to `FOLD_DOT_LIMIT` (4) state dots for `ComposerPrFoldRow
 
 Fold state is local to `ChatComposerPrChips`, defaults to closed, and is **not
 persisted** — it derives from PR state, not user preference. Orthogonal to dismiss:
-folding hides, dismissing removes for the session, and dismiss still works on chips
-inside an expanded fold.
+folding hides, dismissing unbinds, and dismiss still works on chips inside an expanded
+fold.
 
 ### CI auto-fix
 

@@ -39,16 +39,17 @@ interface QuestionState {
 const CUSTOM_OPTION_VALUE = '__ask_user_custom__';
 
 /**
- * Compact option rows: the label and its description share one line, and both
- * truncate (full text stays available via the row's title tooltip) so a long
- * option never renders past the card's border. The description carries a large
- * shrink factor so it collapses first and the label stays readable.
+ * Compact option rows: the label and its description flow as inline text in one
+ * shrinkable column next to the radio/checkbox. Nothing is truncated - long
+ * options wrap onto as many lines as they need while staying inside the card's
+ * border. The radio sits on the first line.
  */
-const OPTION_ROW_CLASS = 'flex w-full min-w-0 items-baseline gap-2 cursor-pointer group rounded px-1.5 py-[3px] hover:bg-black/[0.03] dark:hover:bg-white/5';
+const OPTION_ROW_CLASS = 'flex w-full min-w-0 items-start gap-2 cursor-pointer group rounded px-1.5 py-[3px] hover:bg-black/[0.03] dark:hover:bg-white/5';
 const OPTION_ROW_SELECTED_CLASS = 'bg-[#0078d4]/10';
-const OPTION_INPUT_CLASS = 'h-3 w-3 shrink-0 self-center accent-[#0078d4]';
-const OPTION_LABEL_CLASS = 'min-w-0 truncate text-[13px] leading-5 text-[#1e1e1e] dark:text-[#cccccc] group-hover:text-[#0078d4]';
-const OPTION_DESCRIPTION_CLASS = 'min-w-0 shrink-[9999] truncate text-[11px] leading-5 text-[#848484] ask-user-markdown ask-user-markdown--description';
+const OPTION_INPUT_CLASS = 'h-3 w-3 shrink-0 mt-1 accent-[#0078d4]';
+const OPTION_TEXT_CLASS = 'min-w-0 flex-1 [overflow-wrap:anywhere]';
+const OPTION_LABEL_CLASS = 'min-w-0 text-[13px] leading-5 text-[#1e1e1e] dark:text-[#cccccc] group-hover:text-[#0078d4]';
+const OPTION_DESCRIPTION_CLASS = 'min-w-0 ml-2 text-[11px] leading-5 text-[#848484] ask-user-markdown ask-user-markdown--description';
 
 function optionRowClass(selected: boolean): string {
     return selected ? `${OPTION_ROW_CLASS} ${OPTION_ROW_SELECTED_CLASS}` : OPTION_ROW_CLASS;
@@ -409,20 +410,22 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                                                         disabled={inputDisabled}
                                                         className={OPTION_INPUT_CLASS}
                                                     />
-                                                    <AskUserMarkdown
-                                                        inline
-                                                        markdown={opt.label}
-                                                        className={OPTION_LABEL_CLASS}
-                                                        data-testid="ask-user-option-label"
-                                                    />
-                                                    {opt.description && (
+                                                    <span className={OPTION_TEXT_CLASS}>
                                                         <AskUserMarkdown
                                                             inline
-                                                            markdown={opt.description}
-                                                            className={OPTION_DESCRIPTION_CLASS}
-                                                            data-testid="ask-user-option-description"
+                                                            markdown={opt.label}
+                                                            className={OPTION_LABEL_CLASS}
+                                                            data-testid="ask-user-option-label"
                                                         />
-                                                    )}
+                                                        {opt.description && (
+                                                            <AskUserMarkdown
+                                                                inline
+                                                                markdown={opt.description}
+                                                                className={OPTION_DESCRIPTION_CLASS}
+                                                                data-testid="ask-user-option-description"
+                                                            />
+                                                        )}
+                                                    </span>
                                                 </label>
                                             ))}
                                             <label className={optionRowClass(isCustomSelected)}>
@@ -436,7 +439,9 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                                                     className={OPTION_INPUT_CLASS}
                                                     data-testid="ask-user-custom-radio"
                                                 />
-                                                <span className={OPTION_LABEL_CLASS}>Something else...</span>
+                                                <span className={OPTION_TEXT_CLASS}>
+                                                    <span className={OPTION_LABEL_CLASS}>Something else...</span>
+                                                </span>
                                             </label>
                                             {isCustomSelected && (
                                                 <input
@@ -480,20 +485,22 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                                                         disabled={inputDisabled}
                                                         className={OPTION_INPUT_CLASS}
                                                     />
-                                                    <AskUserMarkdown
-                                                        inline
-                                                        markdown={opt.label}
-                                                        className={OPTION_LABEL_CLASS}
-                                                        data-testid="ask-user-option-label"
-                                                    />
-                                                    {opt.description && (
+                                                    <span className={OPTION_TEXT_CLASS}>
                                                         <AskUserMarkdown
                                                             inline
-                                                            markdown={opt.description}
-                                                            className={OPTION_DESCRIPTION_CLASS}
-                                                            data-testid="ask-user-option-description"
+                                                            markdown={opt.label}
+                                                            className={OPTION_LABEL_CLASS}
+                                                            data-testid="ask-user-option-label"
                                                         />
-                                                    )}
+                                                        {opt.description && (
+                                                            <AskUserMarkdown
+                                                                inline
+                                                                markdown={opt.description}
+                                                                className={OPTION_DESCRIPTION_CLASS}
+                                                                data-testid="ask-user-option-description"
+                                                            />
+                                                        )}
+                                                    </span>
                                                 </label>
                                             ))}
                                         </div>

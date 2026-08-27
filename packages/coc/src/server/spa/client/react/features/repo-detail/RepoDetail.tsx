@@ -562,7 +562,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                 <button
                                     type="button"
                                     onClick={dock.toggleOpen}
-                                    aria-label={dock.isOpen ? 'Close terminal and explorer dock' : 'Open terminal and explorer dock'}
+                                    aria-label={dock.isOpen ? 'Close terminal, explorer and notes dock' : 'Open terminal, explorer and notes dock'}
                                     aria-pressed={dock.isOpen}
                                     title={dock.isOpen ? 'Close panel' : 'Open panel'}
                                     data-testid="workspace-dock-toggle"

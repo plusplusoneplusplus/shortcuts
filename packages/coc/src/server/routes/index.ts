@@ -22,6 +22,7 @@ import { prepareTaskForEnqueue } from './queue-enqueue';
 import { serializeTask, enqueueViaBridge } from './queue-shared';
 import type { QueueGlobalState } from './queue-shared';
 import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
+import { coerceChatStyle } from '../executors/chat-style-prompt';
 import { ProcessMessageDeliveryService, type FollowUpMessageInput } from '../processes/process-message-delivery-service';
 import { registerTaskRoutes, registerTaskWriteRoutes } from '../tasks/tasks-handler';
 import { registerTaskGenerationRoutes } from '../tasks/task-generation-handler';
@@ -475,12 +476,14 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             canvasEnabled: opts.runtimeConfigService!.config.canvas?.enabled ?? false,
             kustoEnabled: opts.runtimeConfigService!.config.kusto?.enabled ?? false,
             chatStyleSelectorEnabled: opts.runtimeConfigService!.config.features?.chatStyleSelector === true,
+            defaultChatStyle: coerceChatStyle(opts.runtimeConfigService!.config.features?.defaultChatStyle),
         })
         : () => ({
             excalidrawEnabled: opts.resolvedConfig?.excalidraw?.enabled ?? false,
             canvasEnabled: opts.resolvedConfig?.canvas?.enabled ?? false,
             kustoEnabled: opts.resolvedConfig?.kusto?.enabled ?? false,
             chatStyleSelectorEnabled: opts.resolvedConfig?.features?.chatStyleSelector === true,
+            defaultChatStyle: coerceChatStyle(opts.resolvedConfig?.features?.defaultChatStyle),
         });
     const isKustoEnabled = (): boolean => getLiveFeatureFlags().kustoEnabled;
     // Async extension-canvas capabilities + host.complete. Live (admin toggle

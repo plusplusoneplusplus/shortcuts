@@ -9,7 +9,7 @@
  * @vitest-environment jsdom
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useEffect } from 'react';
 
 let mockRemoteGroupWorkspaces: any[] = [];
@@ -34,11 +34,26 @@ vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
 vi.mock('../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
     useRemoteShellEnabled: () => true,
 }));
+// Pin the flags the dock toggle and the other virtual workspaces are gated on,
+// so AC-06's present/absent assertions do not depend on admin config defaults.
+let mockSplitPanelEnabled = true;
+vi.mock('../../../src/server/spa/client/react/hooks/feature-flags/useSplitWorkspacePanelEnabled', () => ({
+    useSplitWorkspacePanelEnabled: () => mockSplitPanelEnabled,
+}));
+vi.mock('../../../src/server/spa/client/react/hooks/feature-flags/useMyWorkEnabled', () => ({
+    useMyWorkEnabled: () => true,
+}));
+vi.mock('../../../src/server/spa/client/react/hooks/feature-flags/useMyLifeEnabled', () => ({
+    useMyLifeEnabled: () => true,
+}));
 
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/contexts/AppContext';
 import { NotificationProvider } from '../../../src/server/spa/client/react/contexts/NotificationContext';
 import { ThemeProvider } from '../../../src/server/spa/client/react/layout/ThemeProvider';
 import { TopBar } from '../../../src/server/spa/client/react/layout/TopBar';
+import { MY_WORK_WORKSPACE_ID } from '../../../src/server/spa/client/react/repos/MyWorkView';
+import { MY_LIFE_WORKSPACE_ID } from '../../../src/server/spa/client/react/repos/MyLifeView';
+import { workspaceDockOpenStorageKey } from '../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
 
 const GROUP_ID = 'group-frontend';
 
@@ -75,6 +90,8 @@ function renderTopBarWithGroup(withName = true, groupId = GROUP_ID) {
 
 beforeEach(() => {
     mockRemoteGroupWorkspaces = [];
+    mockSplitPanelEnabled = true;
+    localStorage.clear();
     location.hash = '';
     Object.defineProperty(window, 'matchMedia', {
         writable: true,
@@ -136,5 +153,51 @@ describe('TopBar — repo-group virtual header', () => {
             </AppProvider>
         );
         expect(screen.queryByTestId('virtual-workspace-shell-header')).toBeNull();
+    });
+});
+
+/**
+ * AC-06 — the dock toggle in the TopBar. A repo group's dock body renders in
+ * RepoGroupView; the toggle sits in the TopBar next to the virtual header and
+ * shares the group-scoped cross-tree open store. My Work / My Life have no dock.
+ */
+describe('TopBar — repo-group dock toggle (AC-06)', () => {
+    it('renders the dock toggle alongside the group virtual header', () => {
+        renderTopBarWithGroup();
+        expect(screen.getByTestId('workspace-dock-toggle')).toBeTruthy();
+    });
+
+    it('toggles the group-scoped dock-open key', () => {
+        renderTopBarWithGroup();
+        const key = workspaceDockOpenStorageKey(GROUP_ID);
+        expect(localStorage.getItem(key)).toBeNull();
+
+        act(() => {
+            fireEvent.click(screen.getByTestId('workspace-dock-toggle'));
+        });
+        expect(localStorage.getItem(key)).toBe('1');
+        expect(screen.getByTestId('workspace-dock-toggle').getAttribute('aria-pressed')).toBe('true');
+
+        act(() => {
+            fireEvent.click(screen.getByTestId('workspace-dock-toggle'));
+        });
+        expect(localStorage.getItem(key)).toBe('0');
+    });
+
+    it('hides the toggle when the split-workspace flag is off', () => {
+        mockSplitPanelEnabled = false;
+        renderTopBarWithGroup();
+        expect(screen.queryByTestId('workspace-dock-toggle')).toBeNull();
+    });
+
+    it('renders no toggle for My Work or My Life', () => {
+        renderTopBarWithGroup(true, MY_WORK_WORKSPACE_ID);
+        expect(screen.getByTestId('virtual-workspace-shell-header')).toBeTruthy();
+        expect(screen.queryByTestId('workspace-dock-toggle')).toBeNull();
+        cleanup();
+
+        renderTopBarWithGroup(true, MY_LIFE_WORKSPACE_ID);
+        expect(screen.getByTestId('virtual-workspace-shell-header')).toBeTruthy();
+        expect(screen.queryByTestId('workspace-dock-toggle')).toBeNull();
     });
 });

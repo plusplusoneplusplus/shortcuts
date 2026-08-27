@@ -71,11 +71,23 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 | `arxivPaperIngest` | off | Only the Notes editor interception embedding a lone pasted arXiv link; the paper-ingest API stays callable |
 | `canvasHostApis` | off | Extension-canvas host APIs (below) |
 | `chatStyleSelector` | on | Chat Style chip (below) |
+| `defaultChatStyle` | `default` | Enum (`default`\|`human`\|`direct`\|`structured`); style new conversations start on (below) |
 | `autoAgentProviderRouting` | off | Auto provider routing; edited from Admin -> AI Provider |
 
 `features.canvasHostApis` (live) is the single gate for extension-canvas host APIs: capabilities declared `async: true` run in a terminable `worker_threads` worker with a 30s budget instead of the 1s `node:vm` path, and receive `host.complete` (max 3 one-shot model calls per run, logged with workspace/canvas/process). One flag covers both because `host.complete` exists only inside an async capability; sync capabilities are unaffected.
 
 `features.chatStyleSelector` (Admin -> Configure -> AI Execution Modes, live, `absentFallback` false, runtime flag `chatStyleSelectorEnabled`) adds a Style chip — Default / Human / Direct / Structured — beside Effort in new-chat and follow-up composers, for Ask, Autopilot, note-chat, commit-chat, and follow-ups. It controls presentation only, never provider, model, effort, tools, or permission mode. The instruction is prepended to the user message (not the system message) and stays visible in the stored turn; `Default` injects nothing, and a block is emitted only when the picked style differs from `process.metadata.chatStyle`. Enforcement is two-sided: the SPA hides the chip and omits `chatStyle`, and the server checks the live flag per turn (`getChatStyleSelectorEnabled` for new chats, `chatStyleSelectorEnabled` on the route's live flags for follow-ups).
+
+`features.defaultChatStyle` (same card, shown under the Chat style selector toggle via `dependsOn`, live, runtime flag `defaultChatStyle`) picks which style new conversations start on. It is server-wide — there is no per-workspace or per-user override. `default` keeps the historical behavior of adding no style instruction.
+
+The setting is both a SPA seed and a server-side fallback, so an API caller or an older client that sends no `chatStyle` at all still gets it:
+
+- Composers seed their chip from `getDefaultChatStyle()` (`utils/config.ts`) at mount, so an admin change never yanks the chip out from under a composer the user has already touched.
+- Queue validation (`queue-shared.ts`) leaves an omitted `chatStyle` **off** the payload rather than writing `'default'` into it — absent has to stay distinguishable from an explicit Default pick. `ProcessLifecycleRunner.resolveNewChatStyle` then applies `getDefaultChatStyle()` from the executor runtime.
+- Follow-ups pass the value into `normalizeFollowUpInput(body, provider, defaultChatStyle)`.
+- An explicit `chatStyle: 'default'` always wins and injects nothing.
+
+The injection baseline stays `DEFAULT_CHAT_STYLE`, not the configured default: a new conversation has recorded nothing, so comparing against the configured default would make it equal to itself and never inject on turn 1.
 
 ## AI Provider Routing
 
