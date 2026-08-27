@@ -819,6 +819,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.chatFolders', default: false, runtime: 'live', runtimeFlag: 'chatFoldersEnabled',
+        ui: {
+            group: 'dashboard', order: 69, label: 'Chat folders', badge: 'experimental',
+            hint: 'Adds user-created folders to the chat list: name and color a folder, file chats and task rows into it by drag or context menu, and collapse it away. Filing is manual and reversible; nothing is auto-filed. Disabled by default.',
+            testId: 'toggle-chat-folders-enabled',
+        },
+    }),
+    bool({
         key: 'features.ralphMultiAgentGrill', default: false, runtime: 'live', runtimeFlag: 'ralphMultiAgentGrillEnabled',
         ui: {
             group: 'aiModes', order: 15, label: 'Ralph Multi-Agent Grilling', badge: 'experimental',

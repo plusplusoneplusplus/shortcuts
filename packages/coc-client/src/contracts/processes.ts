@@ -249,6 +249,54 @@ export interface ProcessGroupPinResponse {
   pin: ProcessGroupPin | null;
 }
 
+/** The six preset chat-folder colors, stored by name. */
+export type ChatFolderColor = 'purple' | 'green' | 'amber' | 'blue' | 'red' | 'pink';
+
+/** A user-created chat folder — a manual organizing layer over the chat list. */
+export interface ChatFolder {
+  id: string;
+  name: string;
+  color: ChatFolderColor;
+  sortIndex: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChatFolderListResponse {
+  folders: ChatFolder[];
+}
+
+export interface ChatFolderResponse {
+  folder: ChatFolder;
+}
+
+export interface CreateChatFolderRequest {
+  name: string;
+  color?: ChatFolderColor;
+}
+
+export interface UpdateChatFolderRequest {
+  name?: string;
+  color?: ChatFolderColor;
+  sortIndex?: number;
+}
+
+export interface DeleteChatFolderResponse {
+  deleted: boolean;
+  /** Process IDs that became unfiled because their folder was deleted. */
+  unfiled: string[];
+}
+
+export interface ProcessFolderResponse {
+  id: string;
+  folderId: string | null;
+}
+
+export interface ProcessFolderBatchResponse {
+  updated: string[];
+  folderId: string | null;
+}
+
 export interface ProcessForkResponse {
   process: AIProcess;
 }

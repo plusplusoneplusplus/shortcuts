@@ -106,7 +106,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(28);
+        expect(SCHEMA_VERSION).toBe(29);
     });
 
     it('creates context-window breakdown columns on processes', () => {
@@ -1178,7 +1178,7 @@ describe('sqlite-schema', () => {
 
             // Version stamped to current.
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(28);
+            expect(SCHEMA_VERSION).toBe(29);
 
             // crons exists, loops is gone.
             const tables = db
@@ -1278,6 +1278,89 @@ describe('sqlite-schema', () => {
                 SELECT repo_group_context FROM conversation_turns WHERE process_id = 'p-v27'
             `).get() as any;
             expect(updated.repo_group_context).toBe('<repo_group_context>x</repo_group_context>');
+        });
+    });
+
+    describe('V28 → V29 migration (parent_group_id on task_groups)', () => {
+        it('fresh DB includes parent_group_id column on task_groups', () => {
+            initializeDatabase(db);
+
+            const cols = db.prepare("PRAGMA table_info(task_groups)").all() as Array<{ name: string }>;
+            expect(cols.map(c => c.name)).toContain('parent_group_id');
+        });
+
+        it('adds parent_group_id to an existing V28 database without data loss', () => {
+            db.exec(`
+                CREATE TABLE task_groups (
+                    workspace_id       TEXT NOT NULL,
+                    group_id           TEXT NOT NULL,
+                    type               TEXT NOT NULL,
+                    title              TEXT,
+                    status             TEXT NOT NULL DEFAULT 'draft',
+                    hidden             INTEGER DEFAULT 0,
+                    origin_process_id  TEXT,
+                    created_at         TEXT NOT NULL,
+                    updated_at         TEXT NOT NULL,
+                    completed_at       TEXT,
+                    extra              TEXT,
+                    PRIMARY KEY (workspace_id, group_id)
+                );
+
+                CREATE TABLE task_group_members (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    workspace_id  TEXT NOT NULL,
+                    group_id      TEXT NOT NULL,
+                    role          TEXT NOT NULL,
+                    task_id       TEXT,
+                    process_id    TEXT,
+                    item_key      TEXT,
+                    member_index  INTEGER,
+                    linked_at     TEXT NOT NULL
+                );
+            `);
+            db.prepare(`
+                INSERT INTO task_groups (workspace_id, group_id, type, title, status, created_at, updated_at)
+                VALUES ('ws1', 'run-v28', 'for-each', 'Process 3 items', 'running',
+                        '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')
+            `).run();
+            db.pragma('user_version = 28');
+
+            initializeDatabase(db);
+
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+            expect(SCHEMA_VERSION).toBe(29);
+
+            const cols = db.prepare("PRAGMA table_info(task_groups)").all() as Array<{ name: string }>;
+            expect(cols.map(c => c.name)).toContain('parent_group_id');
+
+            // No backfill: the existing run group keeps its data and gets NULL.
+            const row = db.prepare(`
+                SELECT title, type, parent_group_id FROM task_groups WHERE group_id = 'run-v28'
+            `).get() as any;
+            expect(row.title).toBe('Process 3 items');
+            expect(row.type).toBe('for-each');
+            expect(row.parent_group_id).toBeNull();
+
+            // New column is writable.
+            db.prepare('UPDATE task_groups SET parent_group_id = ? WHERE workspace_id = ? AND group_id = ?')
+                .run('folder-1', 'ws1', 'run-v28');
+            const updated = db.prepare(`
+                SELECT parent_group_id FROM task_groups WHERE group_id = 'run-v28'
+            `).get() as any;
+            expect(updated.parent_group_id).toBe('folder-1');
+        });
+
+        it('is idempotent when initializeDatabase runs twice on a V28 database', () => {
+            initializeDatabase(db);
+            db.pragma('user_version = 28');
+
+            expect(() => initializeDatabase(db)).not.toThrow();
+            expect(() => initializeDatabase(db)).not.toThrow();
+
+            const parentCols = (db.prepare("PRAGMA table_info(task_groups)").all() as Array<{ name: string }>)
+                .filter(c => c.name === 'parent_group_id');
+            expect(parentCols).toHaveLength(1);
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
         });
     });
 });

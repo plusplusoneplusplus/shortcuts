@@ -445,6 +445,30 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({ features: { chatStyleSelector: false } }).chatStyleSelectorEnabled).toBe(false);
     });
 
+    // AC-03 (chat-folders): a default-off Features toggle on the dashboard card
+    // with a live runtime flag, so the SPA can gate all folder UI while the
+    // REST routes and the schema migration ship regardless of the flag.
+    it('exposes chat folders as a default-off experimental feature', () => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.chatFolders');
+        expect(def, 'features.chatFolders must be an admin setting').toBeDefined();
+        expect(def!.value).toEqual({ kind: 'boolean' });
+        expect(def!.default, 'chat folders must default off (opt-in)').toBe(false);
+        expect(def!.runtime).toBe('live');
+        expect(def!.runtimeFlag).toBe('chatFoldersEnabled');
+        expect(def!.ui, 'chat folders must appear on the Features card').toBeDefined();
+        expect(def!.ui!.group).toBe('dashboard');
+        expect(def!.ui!.label).toBe('Chat folders');
+        expect(def!.ui!.badge).toBe('experimental');
+        expect(def!.ui!.hint).toMatch(/disabled by default/i);
+        expect(getFeatureCardSettings('dashboard').some(d => d.key === 'features.chatFolders')).toBe(true);
+        // Off in the resolved default config, off when absent from a partial
+        // config, and on only when the config file opts in.
+        expect(DEFAULT_CONFIG.features.chatFolders).toBe(false);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).chatFoldersEnabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).chatFoldersEnabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({ features: { chatFolders: true } }).chatFoldersEnabled).toBe(true);
+    });
+
     it('exposes triggers as a default-on, restart-required feature', () => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'triggers.enabled');
         expect(def, 'triggers.enabled must be an admin setting').toBeDefined();

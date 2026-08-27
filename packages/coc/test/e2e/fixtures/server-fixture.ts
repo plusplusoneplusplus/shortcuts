@@ -25,7 +25,7 @@ export { safeRmSync } from '../../helpers/safe-rm';
 
 // Import from compiled dist — Playwright doesn't transpile source TS
 const { createExecutionServer, resolveTaskRoot } = require('../../../dist/server/index');
-const { FileProcessStore } = require('@plusplusoneplusplus/forge');
+const { FileProcessStore, SqliteProcessStore } = require('@plusplusoneplusplus/forge');
 
 type ExecutionServer = Awaited<ReturnType<typeof createExecutionServer>>;
 
@@ -39,6 +39,25 @@ interface ServerContext {
     server: ExecutionServer;
     mockAI: E2EMockAIControls;
     tmpDir: string;
+}
+
+/**
+ * Per-spec server options.
+ *
+ * `processStoreBackend` picks the process store the fixture boots with. The
+ * suite default stays `file` — it is what every existing spec was written
+ * against. Pick `sqlite` (the product's own default, see
+ * `createProcessStore` in src/config.ts) for a feature that reads anything the
+ * file store cannot serve. Chat folders are the first: membership lives in the
+ * task-group tables, and only `SqliteProcessStore` denormalizes `folderId`
+ * onto process index entries. Under the file backend the task-group registry
+ * is a *separate* in-memory database (see TaskGroupService.fromProcessStore),
+ * so no join is even possible.
+ *
+ * Opt in per file with `test.use({ processStoreBackend: 'sqlite' })`.
+ */
+export interface ServerOptions {
+    processStoreBackend: 'file' | 'sqlite';
 }
 
 export interface ServerFixture {
@@ -116,8 +135,10 @@ async function patchApiResponses(page: Page): Promise<void> {
     });
 }
 
-export const test = base.extend<ServerFixture & { _context: ServerContext }>({
-    _context: async ({}, use) => {
+export const test = base.extend<ServerFixture & ServerOptions & { _context: ServerContext }>({
+    processStoreBackend: ['file', { option: true }],
+
+    _context: async ({ processStoreBackend }, use) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-e2e-'));
 
         // Write memory-config.json so memory routes use the temp dir instead of ~/.coc/memory
@@ -139,7 +160,9 @@ export const test = base.extend<ServerFixture & { _context: ServerContext }>({
             }),
         );
 
-        const store = new FileProcessStore({ dataDir: tmpDir });
+        const store = processStoreBackend === 'sqlite'
+            ? new SqliteProcessStore({ dbPath: path.join(tmpDir, 'processes.db') })
+            : new FileProcessStore({ dataDir: tmpDir });
         const mockAI = createE2EMockSDKService();
 
         // Isolate admin-config writes per-test: point `configPath` at a unique

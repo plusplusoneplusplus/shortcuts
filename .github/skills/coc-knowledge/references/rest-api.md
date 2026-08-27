@@ -153,6 +153,12 @@ Opt-in isolated-worktree execution for Work Item and Ralph runs, gated by the di
 | PATCH | `/api/processes/:id/turns/:idx/archive` | Archive a turn |
 | GET | `/api/workspaces/:id/group-pins` | Workspace-scoped parent-row group pins (Ralph session, For Each run, Map Reduce run groups), newest pin first |
 | PATCH | `/api/workspaces/:id/group-pins/:type/:groupId` | Pin/unpin a parent group row. `type` is an open string: `ralph-session`, `for-each-run`, `map-reduce-run`, or any registered task-group type; body `{ pinned: boolean }`. Updates only the group pin record, never child pin/archive metadata |
+| GET | `/api/workspaces/:id/chat-folders` | User-created chat folders, in manual order (`sortIndex` asc, ties on `createdAt` desc) |
+| POST | `/api/workspaces/:id/chat-folders` | Create a folder at the top (`sortIndex 0`; the rest shift down). Body `{ name, color? }`; `400` on an empty/over-60-char name or unknown color |
+| PATCH | `/api/workspaces/:id/chat-folders/:folderId` | Rename / recolor / reorder. Body `{ name?, color?, sortIndex? }`. A non-folder group id is `404` — run groups are not mutable here |
+| DELETE | `/api/workspaces/:id/chat-folders/:folderId` | Delete a folder; no conversations are deleted. Returns `{ deleted, unfiled }` — the process ids that became unfiled |
+| PATCH | `/api/processes/:id/folder` | File one process into a folder, or unfile with `folderId: null`. One folder per process. `400` when the folder belongs to another workspace |
+| POST | `/api/processes/folder` | Batch file/unfile. Body `{ ids, folderId }`; ids that no longer exist are skipped and omitted from `updated` |
 
 ## Quick Ask Side-notes
 

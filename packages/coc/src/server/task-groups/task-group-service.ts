@@ -29,6 +29,7 @@ import {
     type TaskGroupStatus,
     type TaskGroupSummaryRecord,
 } from '@plusplusoneplusplus/forge';
+import type { ChatFolderGroupStore } from '../processes/chat-folder-handler';
 
 export interface CreateTaskGroupInput {
     workspaceId: string;
@@ -136,6 +137,20 @@ export class TaskGroupService {
 
     removeGroup(workspaceId: string, groupId: string): boolean {
         return this.store.removeGroup(workspaceId, groupId);
+    }
+
+    /**
+     * The underlying registry, narrowed to the slice the chat-folder REST
+     * handler needs.
+     *
+     * Folder CRUD is user-facing, so it must surface real errors as HTTP
+     * statuses; the wrapper methods above deliberately swallow failures
+     * because a registry error must never break run orchestration. Handing
+     * out the narrow store keeps those two error policies apart instead of
+     * duplicating every method with a second, throwing variant.
+     */
+    getChatFolderStore(): ChatFolderGroupStore {
+        return this.store;
     }
 
     /**

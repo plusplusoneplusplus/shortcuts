@@ -103,6 +103,8 @@ vi.mock('../../../../src/server/spa/client/react/shared/useAgentProvidersQuota',
 
 // ❗ Critical: enable ralph so applyRalphGrouping actually groups.
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
+    isChatFoldersEnabled: () => false,
     isContainerMode: () => false,
     getApiBase: () => '',
     isRalphEnabled: () => true,

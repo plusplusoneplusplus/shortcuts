@@ -36,6 +36,7 @@ export type SectionVariant =
     | 'running'
     | 'queued'
     | 'pinned'
+    | 'folders'
     | 'date-bucket-today'
     | 'date-bucket-week'
     | 'date-bucket-older'
@@ -115,6 +116,7 @@ export function getListModeConfig(mode: ListMode | ActivityTabMode | undefined):
             sections: [
                 { id: 'running', label: 'Running', variant: 'running' },
                 { id: 'pinned', label: 'Pinned', variant: 'pinned' },
+                { id: 'folders', label: 'Folders', variant: 'folders' },
                 { id: 'today', label: 'Today', variant: 'date-bucket-today' },
                 { id: 'week', label: 'This week', variant: 'date-bucket-week' },
                 { id: 'older', label: 'Older', variant: 'date-bucket-older' },
@@ -139,6 +141,7 @@ export function getListModeConfig(mode: ListMode | ActivityTabMode | undefined):
                 { id: 'running', label: 'Running', variant: 'running' },
                 { id: 'queued', label: 'Queued', variant: 'queued' },
                 { id: 'pinned', label: 'Pinned', variant: 'pinned' },
+                { id: 'folders', label: 'Folders', variant: 'folders' },
                 { id: 'today', label: 'Today', variant: 'date-bucket-today' },
                 { id: 'week', label: 'This week', variant: 'date-bucket-week' },
                 { id: 'older', label: 'Older', variant: 'date-bucket-older' },
@@ -167,6 +170,7 @@ export function getListModeConfig(mode: ListMode | ActivityTabMode | undefined):
             { id: 'running', label: 'Running', variant: 'running' },
             { id: 'queued', label: 'Queued', variant: 'queued' },
             { id: 'pinned', label: 'Pinned', variant: 'pinned' },
+            { id: 'folders', label: 'Folders', variant: 'folders' },
             { id: 'today', label: 'Today', variant: 'date-bucket-today' },
             { id: 'week', label: 'This week', variant: 'date-bucket-week' },
             { id: 'older', label: 'Older', variant: 'date-bucket-older' },

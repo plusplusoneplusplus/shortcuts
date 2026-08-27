@@ -310,6 +310,12 @@ export interface ProcessIndexEntry {
     /** Whether the process is archived. */
     archived?: boolean;
     /**
+     * Chat folder this process is filed into (`task_groups.group_id` of a
+     * `chat-folder` group), or null/undefined when unfiled. Denormalized onto
+     * the index entry so list views never join membership rows themselves.
+     */
+    folderId?: string | null;
+    /**
      * Number of unanswered interactive ask-user questions currently awaiting the user.
      * Omitted (or 0) when the process is not waiting for input. Used by list/sidebar
      * views to surface an "awaiting input" indicator without loading the full process.

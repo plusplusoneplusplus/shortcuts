@@ -67,6 +67,8 @@ vi.mock('../../../src/server/spa/client/react/hooks/preferences/useDisplaySettin
     invalidateDisplaySettings: vi.fn(),
 }));
 vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
+    DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
+    isChatFoldersEnabled: () => false,
     isContainerMode: () => false,
     getApiBase: () => '/api',
     isRalphEnabled: () => false,

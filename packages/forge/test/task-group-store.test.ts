@@ -196,6 +196,156 @@ describe('SqliteTaskGroupStore', () => {
         expect(store.removeGroup('ws-1', 'run-1')).toBe(false);
     });
 
+    it('removeGroup cascades to task_group_members in one transaction', () => {
+        store.upsertGroup(makeGroup({ groupId: 'folder-1', type: 'chat-folder' }));
+        store.linkChild('ws-1', 'folder-1', { role: 'member', processId: 'p-a' });
+        store.linkChild('ws-1', 'folder-1', { role: 'member', processId: 'p-b' });
+        // A sibling group's members must survive.
+        store.upsertGroup(makeGroup({ groupId: 'folder-2', type: 'chat-folder' }));
+        store.linkChild('ws-1', 'folder-2', { role: 'member', processId: 'p-c' });
+
+        const countMembers = (groupId: string) => (db
+            .prepare('SELECT COUNT(*) AS n FROM task_group_members WHERE workspace_id = ? AND group_id = ?')
+            .get('ws-1', groupId) as { n: number }).n;
+
+        expect(store.removeGroup('ws-1', 'folder-1')).toBe(true);
+        expect(countMembers('folder-1')).toBe(0);
+        expect(countMembers('folder-2')).toBe(1);
+
+        // Rolling the enclosing transaction back must undo BOTH deletes, which
+        // only holds if removeGroup does not commit between them.
+        store.upsertGroup(makeGroup({ groupId: 'folder-3', type: 'chat-folder' }));
+        store.linkChild('ws-1', 'folder-3', { role: 'member', processId: 'p-d' });
+        const attempt = db.transaction(() => {
+            store.removeGroup('ws-1', 'folder-3');
+            throw new Error('boom');
+        });
+        expect(() => attempt()).toThrow('boom');
+        expect(store.getGroup('ws-1', 'folder-3')).toBeDefined();
+        expect(countMembers('folder-3')).toBe(1);
+    });
+
+    describe('chat-folder support', () => {
+        it('round-trips parentGroupId, defaulting to undefined', () => {
+            store.upsertGroup(makeGroup({ groupId: 'folder-1', type: 'chat-folder' }));
+            expect(store.getGroup('ws-1', 'folder-1')!.parentGroupId).toBeUndefined();
+
+            store.upsertGroup(makeGroup({ groupId: 'folder-2', type: 'chat-folder', parentGroupId: 'folder-1' }));
+            expect(store.getGroup('ws-1', 'folder-2')!.parentGroupId).toBe('folder-1');
+
+            const updated = store.updateGroup('ws-1', 'folder-2', {
+                parentGroupId: undefined,
+                title: 'Renamed',
+                updatedAt: '2026-06-11T11:00:00.000Z',
+            })!;
+            // undefined means "leave alone" for a partial update.
+            expect(updated.parentGroupId).toBe('folder-1');
+            expect(updated.title).toBe('Renamed');
+        });
+
+        it('listGroups by type keeps chat folders and run groups apart', () => {
+            store.upsertGroup(makeGroup({ groupId: 'run-1', type: 'for-each' }));
+            store.upsertGroup(makeGroup({ groupId: 'run-2', type: 'map-reduce' }));
+            store.upsertGroup(makeGroup({ groupId: 'session-1', type: 'ralph' }));
+            store.upsertGroup(makeGroup({ groupId: 'dream-1', type: 'dream' }));
+            store.upsertGroup(makeGroup({ groupId: 'folder-1', type: 'chat-folder', title: 'Auth rewrite' }));
+            store.upsertGroup(makeGroup({ groupId: 'folder-2', type: 'chat-folder', title: 'Perf' }));
+
+            const folders = store.listGroups('ws-1', { type: 'chat-folder' });
+            expect(folders.map(group => group.groupId).sort()).toEqual(['folder-1', 'folder-2']);
+
+            for (const type of ['for-each', 'map-reduce', 'ralph', 'dream']) {
+                const groups = store.listGroups('ws-1', { type });
+                expect(groups.map(group => group.groupId)).not.toContain('folder-1');
+                expect(groups.map(group => group.groupId)).not.toContain('folder-2');
+            }
+        });
+
+        it('unlinkChild removes only that process link in that folder', () => {
+            store.upsertGroup(makeGroup({ groupId: 'folder-1', type: 'chat-folder' }));
+            store.upsertGroup(makeGroup({ groupId: 'folder-2', type: 'chat-folder' }));
+            store.linkChild('ws-1', 'folder-1', { role: 'member', processId: 'p-a' });
+            store.linkChild('ws-1', 'folder-1', { role: 'member', processId: 'p-b' });
+            store.linkChild('ws-1', 'folder-2', { role: 'member', processId: 'p-c' });
+
+            expect(store.unlinkChild('ws-1', 'folder-1', 'p-a')).toBe(1);
+            expect(store.getChildren('ws-1', 'folder-1').map(child => child.processId)).toEqual(['p-b']);
+            expect(store.getChildren('ws-1', 'folder-2').map(child => child.processId)).toEqual(['p-c']);
+
+            // Unlinking something that was never filed is a no-op, not an error.
+            expect(store.unlinkChild('ws-1', 'folder-1', 'p-a')).toBe(0);
+            expect(store.unlinkChild('ws-1', 'folder-1', 'p-c')).toBe(0);
+            expect(store.unlinkChild('ws-2', 'folder-1', 'p-b')).toBe(0);
+            expect(store.getChildren('ws-1', 'folder-1')).toHaveLength(1);
+        });
+
+        it('findMembership resolves a process to its folder, scoped by type', () => {
+            store.upsertGroup(makeGroup({ groupId: 'folder-1', type: 'chat-folder' }));
+            store.upsertGroup(makeGroup({ groupId: 'run-1', type: 'for-each' }));
+            store.linkChild('ws-1', 'folder-1', { role: 'member', processId: 'p-a', linkedAt: '2026-06-11T10:00:00.000Z' });
+            store.linkChild('ws-1', 'run-1', { role: 'item', processId: 'p-a', linkedAt: '2026-06-11T10:01:00.000Z' });
+
+            expect(store.findMembership('ws-1', 'p-a', { type: 'chat-folder' })!.groupId).toBe('folder-1');
+            expect(store.findMembership('ws-1', 'p-a', { type: 'for-each' })!.groupId).toBe('run-1');
+            expect(store.findMembership('ws-1', 'p-missing', { type: 'chat-folder' })).toBeUndefined();
+            expect(store.findMembership('ws-2', 'p-a', { type: 'chat-folder' })).toBeUndefined();
+
+            // A dangling member row whose group is gone resolves to nothing
+            // rather than reporting a phantom folder.
+            store.removeGroup('ws-1', 'folder-1');
+            db.prepare(`
+                INSERT INTO task_group_members (workspace_id, group_id, role, process_id, linked_at)
+                VALUES ('ws-1', 'folder-1', 'member', 'p-a', '2026-06-11T10:00:00.000Z')
+            `).run();
+            expect(store.findMembership('ws-1', 'p-a', { type: 'chat-folder' })).toBeUndefined();
+        });
+
+        it('listMembershipsByProcess maps every filed process in one query', () => {
+            store.upsertGroup(makeGroup({ groupId: 'folder-1', type: 'chat-folder' }));
+            store.upsertGroup(makeGroup({ groupId: 'folder-2', type: 'chat-folder' }));
+            store.upsertGroup(makeGroup({ groupId: 'run-1', type: 'for-each' }));
+            store.linkChild('ws-1', 'folder-1', { role: 'member', processId: 'p-a' });
+            store.linkChild('ws-1', 'folder-2', { role: 'member', processId: 'p-b' });
+            store.linkChild('ws-1', 'run-1', { role: 'item', processId: 'p-c' });
+            // A task-only link carries no process and must not appear.
+            store.linkChild('ws-1', 'folder-1', { role: 'member', taskId: 'task-a' });
+
+            const filed = store.listMembershipsByProcess('ws-1', { type: 'chat-folder' });
+            expect([...filed.entries()].sort()).toEqual([['p-a', 'folder-1'], ['p-b', 'folder-2']]);
+            expect(filed.has('p-c')).toBe(false);
+
+            expect(store.listMembershipsByProcess('ws-2', { type: 'chat-folder' }).size).toBe(0);
+            expect(store.listMembershipsByProcess('ws-1').get('p-c')).toBe('run-1');
+        });
+
+        it('listMembershipsByProcess takes the most recent link when a process is in two folders', () => {
+            store.upsertGroup(makeGroup({ groupId: 'folder-1', type: 'chat-folder' }));
+            store.upsertGroup(makeGroup({ groupId: 'folder-2', type: 'chat-folder' }));
+            store.linkChild('ws-1', 'folder-1', { role: 'member', processId: 'p-a', linkedAt: '2026-06-11T10:00:00.000Z' });
+            store.linkChild('ws-1', 'folder-2', { role: 'member', processId: 'p-a', linkedAt: '2026-06-11T12:00:00.000Z' });
+
+            expect(store.listMembershipsByProcess('ws-1', { type: 'chat-folder' }).get('p-a')).toBe('folder-2');
+            expect(store.findMembership('ws-1', 'p-a', { type: 'chat-folder' })!.groupId).toBe('folder-2');
+        });
+    });
+
+    describe('findGroupAnywhere', () => {
+        it('locates a group without knowing its workspace, narrowed by type', () => {
+            store.upsertGroup(makeGroup({ workspaceId: 'ws-2', groupId: 'folder-1', type: 'chat-folder', title: 'Auth rewrite' }));
+            store.upsertGroup(makeGroup({ workspaceId: 'ws-1', groupId: 'run-9', type: 'for-each' }));
+
+            const found = store.findGroupAnywhere('folder-1', { type: 'chat-folder' });
+            expect(found).toBeDefined();
+            expect(found!.workspaceId).toBe('ws-2');
+            expect(found!.title).toBe('Auth rewrite');
+
+            // A run group must never surface through the chat-folder lens.
+            expect(store.findGroupAnywhere('run-9', { type: 'chat-folder' })).toBeUndefined();
+            expect(store.findGroupAnywhere('run-9')!.type).toBe('for-each');
+            expect(store.findGroupAnywhere('nope', { type: 'chat-folder' })).toBeUndefined();
+        });
+    });
+
     it('survives malformed extra JSON', () => {
         store.upsertGroup(makeGroup());
         db.prepare("UPDATE task_groups SET extra = 'not-json' WHERE group_id = 'run-1'").run();

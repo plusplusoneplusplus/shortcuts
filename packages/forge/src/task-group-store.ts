@@ -23,6 +23,13 @@ import type Database from 'better-sqlite3';
  */
 export type TaskGroupStatus = 'draft' | 'running' | 'completed' | 'failed' | 'cancelled';
 
+/**
+ * Group type for user-created chat folders. Folders reuse the task-group
+ * tables but carry no run lifecycle, so this type deliberately has no client
+ * task-group descriptor — it must never be rendered as a run header.
+ */
+export const CHAT_FOLDER_GROUP_TYPE = 'chat-folder';
+
 export const TASK_GROUP_STATUSES: readonly TaskGroupStatus[] = ['draft', 'running', 'completed', 'failed', 'cancelled'];
 
 export function isTaskGroupStatus(value: unknown): value is TaskGroupStatus {
@@ -56,6 +63,11 @@ export interface TaskGroupRecord {
     hidden?: boolean;
     /** Process ID of the visible origin chat (generation chat, grilling chat). */
     originProcessId?: string;
+    /**
+     * Containing group, for group types that nest. Always undefined for the
+     * run-style groups and for v1 chat folders, which are flat.
+     */
+    parentGroupId?: string;
     createdAt: string;
     updatedAt: string;
     completedAt?: string;
@@ -88,6 +100,7 @@ interface TaskGroupRow {
     status: string;
     hidden: number;
     origin_process_id: string | null;
+    parent_group_id: string | null;
     created_at: string;
     updated_at: string;
     completed_at: string | null;
@@ -118,6 +131,7 @@ function rowToRecord(row: TaskGroupRow): TaskGroupRecord {
     if (row.title !== null) record.title = row.title;
     if (row.hidden === 1) record.hidden = true;
     if (row.origin_process_id !== null) record.originProcessId = row.origin_process_id;
+    if (row.parent_group_id !== null) record.parentGroupId = row.parent_group_id;
     if (row.completed_at !== null) record.completedAt = row.completed_at;
     if (row.extra !== null) {
         try {
@@ -163,16 +177,17 @@ export class SqliteTaskGroupStore {
         this.db.prepare(`
             INSERT INTO task_groups
                 (workspace_id, group_id, type, title, status, hidden,
-                 origin_process_id, created_at, updated_at, completed_at, extra)
+                 origin_process_id, parent_group_id, created_at, updated_at, completed_at, extra)
             VALUES
                 (@workspace_id, @group_id, @type, @title, @status, @hidden,
-                 @origin_process_id, @created_at, @updated_at, @completed_at, @extra)
+                 @origin_process_id, @parent_group_id, @created_at, @updated_at, @completed_at, @extra)
             ON CONFLICT(workspace_id, group_id) DO UPDATE SET
                 type = excluded.type,
                 title = COALESCE(excluded.title, task_groups.title),
                 status = excluded.status,
                 hidden = excluded.hidden,
                 origin_process_id = COALESCE(excluded.origin_process_id, task_groups.origin_process_id),
+                parent_group_id = excluded.parent_group_id,
                 updated_at = excluded.updated_at,
                 completed_at = excluded.completed_at,
                 extra = COALESCE(excluded.extra, task_groups.extra)
@@ -184,6 +199,7 @@ export class SqliteTaskGroupStore {
             status: record.status,
             hidden: record.hidden ? 1 : 0,
             origin_process_id: record.originProcessId ?? null,
+            parent_group_id: record.parentGroupId ?? null,
             created_at: record.createdAt,
             updated_at: record.updatedAt,
             completed_at: record.completedAt ?? null,
@@ -199,7 +215,7 @@ export class SqliteTaskGroupStore {
     updateGroup(
         workspaceId: string,
         groupId: string,
-        updates: Partial<Pick<TaskGroupRecord, 'title' | 'status' | 'hidden' | 'originProcessId' | 'completedAt' | 'extra'>> & { updatedAt: string },
+        updates: Partial<Pick<TaskGroupRecord, 'title' | 'status' | 'hidden' | 'originProcessId' | 'parentGroupId' | 'completedAt' | 'extra'>> & { updatedAt: string },
     ): TaskGroupSummaryRecord | undefined {
         const existing = this.getGroup(workspaceId, groupId);
         if (!existing) return undefined;
@@ -210,6 +226,7 @@ export class SqliteTaskGroupStore {
             status: updates.status !== undefined ? updates.status : existing.status,
             hidden: updates.hidden !== undefined ? updates.hidden : existing.hidden,
             originProcessId: updates.originProcessId !== undefined ? updates.originProcessId : existing.originProcessId,
+            parentGroupId: updates.parentGroupId !== undefined ? updates.parentGroupId : existing.parentGroupId,
             completedAt: updates.completedAt !== undefined ? updates.completedAt : existing.completedAt,
             extra: updates.extra !== undefined ? { ...existing.extra, ...updates.extra } : existing.extra,
             updatedAt: updates.updatedAt,
@@ -226,6 +243,25 @@ export class SqliteTaskGroupStore {
 
         const children = this.getChildren(workspaceId, groupId);
         return { ...rowToRecord(row), childCount: children.length, children };
+    }
+
+    /**
+     * Locate a group by ID without knowing its workspace, optionally narrowed
+     * to a group type. Chat-folder membership is written against the process's
+     * own workspace, so a caller needs this to tell "no such folder" apart from
+     * "that folder lives in another workspace" — two different HTTP statuses.
+     */
+    findGroupAnywhere(groupId: string, options?: { type?: string }): TaskGroupRecord | undefined {
+        const clauses = ['group_id = @groupId'];
+        const params: Record<string, unknown> = { groupId };
+        if (options?.type !== undefined) {
+            clauses.push('type = @type');
+            params.type = options.type;
+        }
+        const row = this.db.prepare(
+            `SELECT * FROM task_groups WHERE ${clauses.join(' AND ')} ORDER BY created_at ASC LIMIT 1`,
+        ).get(params) as TaskGroupRow | undefined;
+        return row ? rowToRecord(row) : undefined;
     }
 
     listGroups(workspaceId: string, options?: ListTaskGroupsOptions): TaskGroupSummaryRecord[] {
@@ -340,14 +376,89 @@ export class SqliteTaskGroupStore {
         return rows.map(memberRowToLink);
     }
 
-    /** DELETE a group and its member links. Returns true when the group existed. */
-    removeGroup(workspaceId: string, groupId: string): boolean {
-        this.db.prepare(
-            'DELETE FROM task_group_members WHERE workspace_id = ? AND group_id = ?',
-        ).run(workspaceId, groupId);
+    /**
+     * DELETE the member links a process holds in one group. Returns the number
+     * of rows removed, so a caller can tell a real unfiling from a no-op.
+     */
+    unlinkChild(workspaceId: string, groupId: string, processId: string): number {
         const result = this.db.prepare(
-            'DELETE FROM task_groups WHERE workspace_id = ? AND group_id = ?',
-        ).run(workspaceId, groupId);
-        return result.changes > 0;
+            'DELETE FROM task_group_members WHERE workspace_id = ? AND group_id = ? AND process_id = ?',
+        ).run(workspaceId, groupId, processId);
+        return result.changes;
+    }
+
+    /**
+     * The group one process belongs to, optionally narrowed to a group type.
+     * When a process is linked into several matching groups the most recent
+     * link wins — callers that enforce single membership (chat folders) unlink
+     * before linking, so this only matters for malformed data.
+     */
+    findMembership(
+        workspaceId: string,
+        processId: string,
+        options?: { type?: string },
+    ): { groupId: string; link: TaskGroupChildLink } | undefined {
+        const clauses = ['m.workspace_id = @workspaceId', 'm.process_id = @processId'];
+        const params: Record<string, unknown> = { workspaceId, processId };
+        if (options?.type !== undefined) {
+            clauses.push('g.type = @type');
+            params.type = options.type;
+        }
+        const row = this.db.prepare(`
+            SELECT m.* FROM task_group_members m
+            JOIN task_groups g
+              ON g.workspace_id = m.workspace_id AND g.group_id = m.group_id
+            WHERE ${clauses.join(' AND ')}
+            ORDER BY m.linked_at DESC, m.id DESC
+            LIMIT 1
+        `).get(params) as TaskGroupMemberRow | undefined;
+        if (!row) return undefined;
+        return { groupId: row.group_id, link: memberRowToLink(row) };
+    }
+
+    /**
+     * Every process membership in a workspace as a `processId -> groupId` map,
+     * optionally narrowed to a group type. One query, so a list endpoint can
+     * stamp membership onto its rows without a per-row lookup.
+     */
+    listMembershipsByProcess(workspaceId: string, options?: { type?: string }): Map<string, string> {
+        const clauses = ['m.workspace_id = @workspaceId', 'm.process_id IS NOT NULL'];
+        const params: Record<string, unknown> = { workspaceId };
+        if (options?.type !== undefined) {
+            clauses.push('g.type = @type');
+            params.type = options.type;
+        }
+        const rows = this.db.prepare(`
+            SELECT m.process_id, m.group_id FROM task_group_members m
+            JOIN task_groups g
+              ON g.workspace_id = m.workspace_id AND g.group_id = m.group_id
+            WHERE ${clauses.join(' AND ')}
+            ORDER BY m.linked_at ASC, m.id ASC
+        `).all(params) as Array<{ process_id: string; group_id: string }>;
+
+        const byProcess = new Map<string, string>();
+        for (const row of rows) {
+            // Ascending order plus overwrite means the most recent link wins.
+            byProcess.set(row.process_id, row.group_id);
+        }
+        return byProcess;
+    }
+
+    /**
+     * DELETE a group and its member links in one transaction. Returns true when
+     * the group existed. An orphaned member row would render a phantom count,
+     * so the two deletes must not be separable.
+     */
+    removeGroup(workspaceId: string, groupId: string): boolean {
+        const remove = this.db.transaction((): boolean => {
+            this.db.prepare(
+                'DELETE FROM task_group_members WHERE workspace_id = ? AND group_id = ?',
+            ).run(workspaceId, groupId);
+            const result = this.db.prepare(
+                'DELETE FROM task_groups WHERE workspace_id = ? AND group_id = ?',
+            ).run(workspaceId, groupId);
+            return result.changes > 0;
+        });
+        return remove();
     }
 }
