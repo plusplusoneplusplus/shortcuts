@@ -36,11 +36,28 @@ export type NativeGitExecOptions = Bindings.GitExecOptions;
  */
 export type NativeGitStatusEntry = Bindings.GitStatusEntry;
 
+/**
+ * One commit as Rust reports it.
+ *
+ * Field-for-field the `GitCommit` the Git tab renders, minus `repositoryRoot`
+ * and `repositoryName`: those are `repoRoot` and `path.basename(repoRoot)`, and
+ * building paths stays in Node for the same reason it does for status entries.
+ */
+export type NativeGitLogCommit = Bindings.GitLogCommit;
+
+/** One page of history, plus whether a next page is worth asking for. */
+export type NativeGitLogPage = Bindings.GitLogPage;
+
+/** Which slice of history to read — page size, offset and message filter. */
+export type NativeGitLogOptions = Bindings.GitLogOptions;
+
 /** The exact addon slice required to run git. */
 export interface NativeGitAddon {
     execGit: typeof Bindings.execGit;
     gitStatusEntries: typeof Bindings.gitStatusEntries;
     parseGitStatusPorcelain: typeof Bindings.parseGitStatusPorcelain;
+    gitLogCommits: typeof Bindings.gitLogCommits;
+    gitLogCommit: typeof Bindings.gitLogCommit;
 }
 
 /**
@@ -50,7 +67,13 @@ export interface NativeGitAddon {
  * built before a later slice fail at load with a rebuild instruction instead of
  * at the first call with `undefined is not a function`.
  */
-const GIT_EXPORTS = ['execGit', 'gitStatusEntries', 'parseGitStatusPorcelain'] as const;
+const GIT_EXPORTS = [
+    'execGit',
+    'gitStatusEntries',
+    'parseGitStatusPorcelain',
+    'gitLogCommits',
+    'gitLogCommit',
+] as const;
 
 /** Whether the loaded module actually exposes the git capability. */
 function isGitAddon(addon: unknown): addon is NativeGitAddon {

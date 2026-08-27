@@ -39,7 +39,9 @@ afterEach(() => {
 /** A stand-in exporting the whole git capability. */
 const COMPLETE_ADDON =
     "module.exports = { execGit: async () => 'main', gitStatusEntries: async () => [], " +
-    'parseGitStatusPorcelain: async () => [] };';
+    'parseGitStatusPorcelain: async () => [], ' +
+    'gitLogCommits: async () => ({ commits: [], hasMore: false }), ' +
+    'gitLogCommit: async () => null };';
 
 /** Point the loader at a JavaScript stand-in for the addon. */
 function useAddon(source: string): string {
@@ -55,6 +57,11 @@ it('exposes the capability when the addon provides it', async () => {
     expect(await api.execGit(['branch', '--show-current'], '/repo')).toBe('main');
     expect(await api.gitStatusEntries('/repo')).toEqual([]);
     expect(await api.parseGitStatusPorcelain('')).toEqual([]);
+    expect(await api.gitLogCommits('/repo', { maxCount: 1, skip: 0 })).toEqual({
+        commits: [],
+        hasMore: false,
+    });
+    expect(await api.gitLogCommit('/repo', 'HEAD')).toBeNull();
     expect(nativeGitStatus().loaded).toBe(true);
 });
 
@@ -113,6 +120,17 @@ describe('when the capability is missing', () => {
             binaryPath: file,
             reason: `${file} does not export the git capability`,
         });
+    });
+
+    // The concrete shape of the previous slice's binary: it can run commands and
+    // read status, but knows nothing about reading history.
+    it('rejects a binary built before the commit-history exports', () => {
+        useAddon(
+            "module.exports = { execGit: async () => 'main', gitStatusEntries: async () => [], " +
+                'parseGitStatusPorcelain: async () => [] };',
+        );
+        expect(() => loadNativeGit()).toThrow('does not export the git capability');
+        expect(nativeGitStatus().loaded).toBe(false);
     });
 });
 

@@ -42,7 +42,14 @@ export type {
 } from './content-search';
 
 export { loadNativeGit, nativeGitStatus } from './git';
-export type { NativeGitAddon, NativeGitExecOptions, NativeGitStatusEntry } from './git';
+export type {
+    NativeGitAddon,
+    NativeGitExecOptions,
+    NativeGitLogCommit,
+    NativeGitLogOptions,
+    NativeGitLogPage,
+    NativeGitStatusEntry,
+} from './git';
 
 export { loadNativeNotesIndex, nativeNotesIndexStatus } from './notes-index';
 export type {

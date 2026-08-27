@@ -11,6 +11,9 @@ grep-matcher = "0.1.9"
 grep-regex = "0.1.14"
 grep-searcher = "0.1.17"
 ignore = "0.4"
+# Pinned exactly: 0.87.1 declares a dependency on gix-worktree-stream 0.36.1,
+# which was never published, so it cannot be resolved at all.
+gix = { version = "=0.87.0", default-features = false, features = ["revision", "sha1", "max-performance-safe"] }
 rayon = "1"
 
 [dev-dependencies]

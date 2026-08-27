@@ -17,6 +17,7 @@
 //! TypeScript caller routes through `wsl.exe` itself and never reaches this
 //! module; Rust only ever runs git on the native host.
 
+pub mod log;
 pub mod status;
 
 use std::io::Read;
@@ -66,6 +67,9 @@ pub enum GitErrorKind {
     MaxBuffer,
     /// The child never started — no `git` on PATH, or a `cwd` that is gone.
     Spawn,
+    /// No child was involved: a `gix`-backed read path could not open the
+    /// repository or decode an object.
+    Repository,
 }
 
 /// A failed git invocation, rendered the way the UI already expects.
@@ -90,6 +94,16 @@ impl std::fmt::Display for GitError {
 impl std::error::Error for GitError {}
 
 impl GitError {
+    /// Build an error for a failure that did not come from a child process.
+    ///
+    /// The `gix` read paths use this so their failures reach routes and the UI
+    /// wearing the same `git <args> failed: <stderr>` text as a CLI failure —
+    /// which backend produced the message is not something a caller should have
+    /// to care about.
+    pub fn from_parts(kind: GitErrorKind, args: &[String], stderr: impl Into<String>) -> Self {
+        Self::new(kind, args, stderr)
+    }
+
     fn new(kind: GitErrorKind, args: &[String], stderr: impl Into<String>) -> Self {
         Self { kind, args: args.to_vec(), stderr: stderr.into().trim().to_string() }
     }

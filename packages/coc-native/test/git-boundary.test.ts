@@ -117,6 +117,11 @@ describe('execGit concurrency', () => {
 describe('gitStatusEntries marshalling', () => {
     /** Undo whatever a test left in the working tree. */
     function reset(): void {
+        // A timed-out `git status` is killed while it is refreshing the index,
+        // and git leaves `index.lock` behind when that happens — the same state
+        // it tells a human to "remove the file manually to continue" from. Every
+        // later git command in this repo fails until it is gone.
+        fs.rmSync(path.join(repo, '.git', 'index.lock'), { force: true });
         git('reset', '--hard', 'HEAD');
         git('clean', '-fd');
     }
@@ -209,5 +214,107 @@ describe('parseGitStatusPorcelain marshalling', () => {
 
     it('returns an empty list for empty text', async () => {
         await expect(gitAddon.parseGitStatusPorcelain('')).resolves.toEqual([]);
+    });
+});
+
+describe('gitLogCommits marshalling', () => {
+    it('reads a page of history without spawning anything', async () => {
+        const page = await gitAddon.gitLogCommits(repo, { maxCount: 10, skip: 0 });
+        expect(page.hasMore).toBe(false);
+        expect(page.commits).toHaveLength(1);
+
+        const commit = page.commits[0];
+        expect(commit.hash).toMatch(/^[0-9a-f]{40}$/);
+        expect(commit.hash.startsWith(commit.shortHash)).toBe(true);
+        expect(commit.subject).toBe('initial commit');
+        expect(commit.authorName).toBe('Ralph');
+        expect(commit.authorEmail).toBe('ralph@example.com');
+        expect(commit.date).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
+        expect(commit.relativeDate).toMatch(/ago$/);
+        // A root commit has no parents, and the field is an empty string rather
+        // than absent, because `%P` printed one.
+        expect(commit.parentHashes).toBe('');
+    });
+
+    it('marshals the decoration list as an array of strings', async () => {
+        const page = await gitAddon.gitLogCommits(repo, { maxCount: 1, skip: 0 });
+        expect(page.commits[0].refs).toEqual(['HEAD -> main']);
+    });
+
+    it('reports the unpushed flag as a boolean, not as an absent property', async () => {
+        const page = await gitAddon.gitLogCommits(repo, { maxCount: 1, skip: 0 });
+        expect(page.commits[0].isAheadOfRemote).toBe(false);
+    });
+
+    it('accepts an omitted search field', async () => {
+        const page = await gitAddon.gitLogCommits(repo, { maxCount: 1, skip: 0 });
+        expect(page.commits).toHaveLength(1);
+    });
+
+    it('filters on the search field when one is given', async () => {
+        const matching = await gitAddon.gitLogCommits(repo, {
+            maxCount: 10,
+            skip: 0,
+            search: 'INITIAL',
+        });
+        expect(matching.commits).toHaveLength(1);
+
+        const missing = await gitAddon.gitLogCommits(repo, {
+            maxCount: 10,
+            skip: 0,
+            search: 'nothing matches this',
+        });
+        expect(missing.commits).toEqual([]);
+        expect(missing.hasMore).toBe(false);
+    });
+
+    it('rejects a path that is not a repository with the shared error text', async () => {
+        const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-git-empty-'));
+        try {
+            await expect(
+                gitAddon.gitLogCommits(empty, { maxCount: 1, skip: 0 }),
+            ).rejects.toThrow(/^git log failed: /);
+        } finally {
+            fs.rmSync(empty, { recursive: true, force: true });
+        }
+    });
+
+    it('runs off the event-loop thread', async () => {
+        let ticked = false;
+        setImmediate(() => {
+            ticked = true;
+        });
+        await gitAddon.gitLogCommits(repo, { maxCount: 1, skip: 0 });
+        expect(ticked).toBe(true);
+    });
+
+    it('serves concurrent pages of the same repository', async () => {
+        const pages = await Promise.all(
+            Array.from({ length: 8 }, () => gitAddon.gitLogCommits(repo, { maxCount: 1, skip: 0 })),
+        );
+        for (const page of pages) {
+            expect(page.commits[0].subject).toBe('initial commit');
+        }
+    });
+});
+
+describe('gitLogCommit marshalling', () => {
+    it('reads one commit by hash', async () => {
+        const head = git('rev-parse', 'HEAD').trim();
+        const commit = await gitAddon.gitLogCommit(repo, head);
+        expect(commit?.hash).toBe(head);
+        expect(commit?.subject).toBe('initial commit');
+    });
+
+    it('resolves with null for a revision that names nothing', async () => {
+        await expect(gitAddon.gitLogCommit(repo, 'no-such-ref')).resolves.toBeNull();
+    });
+
+    // Nobody computed it for a single commit, so the property is absent and
+    // arrives in JavaScript as `undefined` — not as `false`.
+    it('omits the unpushed flag rather than guessing at it', async () => {
+        const commit = await gitAddon.gitLogCommit(repo, 'HEAD');
+        expect(commit).not.toBeNull();
+        expect('isAheadOfRemote' in (commit as object)).toBe(false);
     });
 });

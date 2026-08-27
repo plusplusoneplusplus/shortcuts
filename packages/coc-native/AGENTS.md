@@ -75,9 +75,9 @@ The walk comes from `repo_index::walk::walk_builder`, shared with the path walk 
 
 `git::run_git` is why git no longer costs a Node child-process spawn per call: the work happens on a libuv worker, and a `Task` marshals the result back. Every non-WSL `execGitAsync` call already lands here, and the git services are porting onto it service by service.
 
-- **Reads will use `gix`, mutations shell out.** Status, log, refs and range resolution move onto gitoxide as each service ports; create/delete/rename/checkout/merge/rebase/cherry-pick/stash run the `git` CLI from Rust, because they are what git itself defines rather than what a library reimplements.
+- **Reads use `gix`, mutations shell out.** `git::log` reads commit history through gitoxide and spawns nothing at all; refs and range resolution follow as each service ports. create/delete/rename/checkout/merge/rebase/cherry-pick/stash run the `git` CLI from Rust, because they are what git itself defines rather than what a library reimplements.
 - **Network and credential operations always shell out** — `push`, `pull`, `fetch`, `clone` — so credential helpers, SSH agents and 2FA keep working exactly as they do for a human at a terminal. Never through a Rust git library.
-- **`gix`, not `git2`**: the addon stays pure Rust across all four release triples, with no C build dependency.
+- **`gix`, not `git2`**: the addon stays pure Rust across all four release triples, with no C build dependency. Pinned to `=0.87.0` — 0.87.1 depends on a `gix-worktree-stream` that was never published, so it cannot be resolved at all.
 - **WSL stays in TypeScript.** `forge/src/git/exec.ts` checks `resolveWorkspaceExecutionContext()` first and sends a repo inside a WSL distro through `wsl.exe` itself. Rust runs git on the native host and never learns that WSL exists, so there is one place — not two — where WSL path translation happens.
 - **The error text is a contract.** Failures cross the boundary as `git <args> failed: <stderr>`, because routes and the UI show that string to users verbatim. A non-zero exit, a timeout and a buffer overflow all render the same way, matching what `execFile` handed back.
 - Defaults match the helper this replaced: a 30 s timeout, a 50 MiB cap on each captured stream, and exactly one trailing line ending stripped from stdout — one, because a `git show` body can legitimately end in a blank line.
@@ -87,10 +87,21 @@ The walk comes from `repo_index::walk::walk_builder`, shared with the path walk 
 - **One parser, two callers.** `git::status::parse_porcelain` is the only porcelain parser in the codebase. A repo inside WSL runs `git status` through `wsl.exe` in TypeScript and then hands the text to `parseGitStatusPorcelain`, so the two paths cannot drift.
 - Porcelain v1 C-quotes any path holding a space or a non-ASCII byte, and nothing unquotes it — carried over verbatim from the TypeScript parser, because unquoting would change what the Git tab renders.
 
+### Reading history
+
+`git::log` replaces the three child processes a single page of commits used to cost — `git log`, `git rev-parse --abbrev-ref @{upstream}`, and a second `git log` for the unpushed set — with one opened repository.
+
+- **`--pretty=format:` is gone, so its placeholders are reimplemented.** `%aI` delegates to `gix`; `%ar` is a literal port of git's `show_date_relative`, rounding steps included; `%D` is built from the ref database. Each is easy to get *nearly* right, which is why `rust/core/tests/git_log.rs` is a differential suite: it asks the real `git log` for the same page and compares field by field. Extend that suite rather than asserting fixed strings.
+- **Decoration order is reverse ref-name order.** git prepends each ref as `for_each_ref` yields it, so it prints `origin/main` before `origin/HEAD`, and a remote branch before the local branch of the same name. `HEAD` is added last and therefore prints first, as `HEAD -> <branch>`.
+- **`%h` is what costs the time.** Every hash needs the shortest unambiguous prefix, and `gix`'s object-database lookup for that is several times slower than git's. It is ~80% of the time a page takes: a 500-commit page measures 12 ms without it and 36 ms with. The lookup serialises internally, so a `rayon` fan-out over the page measures within noise — that was tried and removed. Skipping the per-object check and trusting git's auto length is not safe either: at this repo's object count, 9-hex collisions genuinely exist, which is why git auto-sizes and then extends.
+- The net effect is that native wins at the page sizes the UI uses and loses on very large ones. Measured on a 2-core box against this repo: 2.1x at 1 commit, 1.4x at 50, parity at 200, 0.6x at 500.
+- **The page size is not an allocation size.** Callers spell "everything" as a huge number; reserving for it aborts the process.
+- Repository paths are resolved by discovery, so a path inside a working tree finds the tree that contains it — the same thing `git -C` does.
+
 ## Build / test
 
 - `npm run build -w packages/coc-native` — tsc only. Must run before `coc` compiles, which resolves workspace deps from built `dist`.
 - `npm run build:native -w packages/coc-native` — compiles the addon and regenerates `src/native-bindings.ts`. Needs a Rust toolchain; nothing else in the repo does.
-- `cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core` — the whole logic layer. The `git_exec` and `git_status` suites drive real temporary repositories, so `git` has to be on PATH.
+- `cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core` — the whole logic layer. The `git_exec`, `git_status` and `git_log` suites drive real temporary repositories, so `git` has to be on PATH; `git_log` additionally compares its output against the real `git log`.
 - `npm run test:run -w packages/coc-native` — loader and capability-resolution tests (no binary needed), plus the N-API boundary suites (marshalling, async build/refresh/search contracts, snapshot consistency, error propagation, concurrency, lifetime) and parity. The binary-backed suites **fail** when nothing is built — there is no skip path — so a botched native build cannot pass for a green run.
 - `cargo fmt`/`cargo clippy` run in the `coc-native` CI job. `rust/rustfmt.toml` widens `use_small_heuristics` to match the density of the surrounding TypeScript.

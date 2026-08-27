@@ -155,6 +155,61 @@ export declare function gitStatusEntries(repoRoot: string, options?: GitExecOpti
  * worker thread because a large repository's status output runs to megabytes.
  */
 export declare function parseGitStatusPorcelain(output: string): Promise<GitStatusEntry[]>
+/**
+ * One commit, field-for-field the `GitCommit` the Git tab renders — minus
+ * `repositoryRoot` and `repositoryName`, which the TypeScript caller fills in
+ * because building paths is `path.join`'s job and stays in Node.
+ */
+export interface GitLogCommit {
+  hash: string
+  shortHash: string
+  subject: string
+  authorName: string
+  authorEmail: string
+  /** ISO 8601 strict, in the author's own timezone offset (`%aI`). */
+  date: string
+  /** "3 days ago" (`%ar`). */
+  relativeDate: string
+  /** Space-separated parent hashes (`%P`); empty for a root commit. */
+  parentHashes: string
+  /** Decoration names (`%D`), already split and trimmed. */
+  refs: Array<string>
+  /**
+   * Whether the commit is on `HEAD` but not on its upstream. Absent when
+   * nobody asked — reading a single commit never computed it.
+   */
+  isAheadOfRemote?: boolean
+}
+/** One page of history, plus whether asking for the next one is worthwhile. */
+export interface GitLogPage {
+  commits: Array<GitLogCommit>
+  hasMore: boolean
+}
+/** Which slice of history to read — the `CommitLoadOptions` the service takes. */
+export interface GitLogOptions {
+  /** Commits per page. */
+  maxCount: number
+  /** Commits to skip before the page starts. */
+  skip: number
+  /** Case-insensitive substring the commit message must contain. */
+  search?: string
+}
+/**
+ * Read a page of commit history, newest first.
+ *
+ * Backed by `gix`, so a page costs no child processes: the walk, the ref
+ * decoration and the unpushed-commit set all come out of one open repository.
+ * An unborn branch resolves to an empty page rather than rejecting, matching
+ * what the Git tab showed for a repository with no commits.
+ */
+export declare function gitLogCommits(repoRoot: string, options: GitLogOptions): Promise<GitLogPage>
+/**
+ * Read one commit by any revision spec git would accept.
+ *
+ * Resolves with `null` for a spec that names nothing, because the caller has
+ * always treated "no such commit" as an absent value rather than a failure.
+ */
+export declare function gitLogCommit(repoRoot: string, rev: string): Promise<GitLogCommit | null>
 /** Filesystem policy for one resolved Notes root. */
 export interface NotesIndexBuildOptions {
   /**
