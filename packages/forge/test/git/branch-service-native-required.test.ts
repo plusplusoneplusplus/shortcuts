@@ -57,4 +57,18 @@ describe('BranchService without a usable addon', () => {
     it('rejects the porcelain parser the WSL path depends on', async () => {
         await expect(parsePorcelainV2BranchStatus('')).rejects.toThrow(REBUILD);
     });
+
+    it('rejects the repository state instead of reporting a clean repository', async () => {
+        await expect(service.getRepoState(repo)).rejects.toThrow(REBUILD);
+        await expect(service.hasUncommittedChanges(repo)).rejects.toThrow(REBUILD);
+    });
+
+    it('names the rebuild in the error a write operation reports', async () => {
+        // A write returns { success: false } rather than throwing, so unlike a
+        // read it cannot hide the load error behind a plausible answer — but the
+        // instruction still has to survive into the message the UI shows.
+        expect((await service.createBranch(repo, 'feature')).error).toContain(REBUILD);
+        expect((await service.mergeBranch(repo, 'main')).error).toContain(REBUILD);
+        expect((await service.push(repo)).error).toContain(REBUILD);
+    });
 });

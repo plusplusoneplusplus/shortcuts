@@ -84,8 +84,9 @@ fn set_remote_ref(repo: &Path, name: &str, target: &str) {
     git(repo, &["update-ref", &format!("refs/remotes/{name}"), target]);
 }
 
-const OPTIONS: GitCommandOptions =
-    GitCommandOptions { timeout_ms: 30_000, max_buffer_bytes: 50 * 1024 * 1024, cwd: None };
+fn options() -> GitCommandOptions {
+    GitCommandOptions::default()
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Default branch detection
@@ -556,7 +557,7 @@ fn changed_files_read_a_real_range() {
     let added = commit(dir.path(), "added.txt", "new\n", "second");
     assert_ne!(added, base);
 
-    let files = changed_files(dir.path(), "origin/main", "HEAD", &OPTIONS).expect("resolves");
+    let files = changed_files(dir.path(), "origin/main", "HEAD", &options()).expect("resolves");
     let by_path = |name: &str| {
         files.iter().find(|file| file.path == name).unwrap_or_else(|| panic!("{name} missing"))
     };
@@ -579,7 +580,7 @@ fn changed_files_read_a_real_rename() {
     git(dir.path(), &["add", "-A"]);
     git(dir.path(), &["commit", "-m", "second"]);
 
-    let files = changed_files(dir.path(), "origin/main", "HEAD", &OPTIONS).expect("resolves");
+    let files = changed_files(dir.path(), "origin/main", "HEAD", &options()).expect("resolves");
     assert_eq!(files.len(), 1);
     assert_eq!(files[0].path, "new.txt");
     assert_eq!(files[0].status, ChangeStatus::Renamed);
@@ -592,7 +593,7 @@ fn changed_files_of_an_empty_range_are_empty() {
     let head = git_stdout(dir.path(), &["rev-parse", "HEAD"]);
     set_remote_ref(dir.path(), "origin/main", &head);
 
-    assert!(changed_files(dir.path(), "origin/main", "HEAD", &OPTIONS)
+    assert!(changed_files(dir.path(), "origin/main", "HEAD", &options())
         .expect("resolves")
         .is_empty());
 }
@@ -600,7 +601,7 @@ fn changed_files_of_an_empty_range_are_empty() {
 #[test]
 fn changed_files_reject_a_revision_that_names_nothing() {
     let (dir, _) = repo_with_history();
-    let error = changed_files(dir.path(), "origin/nope", "HEAD", &OPTIONS)
+    let error = changed_files(dir.path(), "origin/nope", "HEAD", &options())
         .expect_err("git diff exits non-zero for an unknown ref");
     assert!(
         error.to_string().starts_with("git diff --numstat origin/nope...HEAD failed:"),
@@ -613,7 +614,7 @@ fn diff_stats_read_a_real_range() {
     let (dir, first) = repo_with_history();
     set_remote_ref(dir.path(), "origin/main", &first);
 
-    let stats = diff_stats(dir.path(), "origin/main", "HEAD", &OPTIONS).expect("resolves");
+    let stats = diff_stats(dir.path(), "origin/main", "HEAD", &options()).expect("resolves");
     let expected = parse_diff_shortstat(&git_stdout(
         dir.path(),
         &["diff", "--shortstat", "origin/main...HEAD"],
@@ -629,7 +630,7 @@ fn diff_stats_of_an_empty_range_are_zero() {
     set_remote_ref(dir.path(), "origin/main", &head);
 
     assert_eq!(
-        diff_stats(dir.path(), "origin/main", "HEAD", &OPTIONS).expect("resolves"),
+        diff_stats(dir.path(), "origin/main", "HEAD", &options()).expect("resolves"),
         DiffStats::default()
     );
 }

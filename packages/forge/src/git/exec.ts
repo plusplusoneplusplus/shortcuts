@@ -33,7 +33,14 @@ export interface ExecGitOptions {
 const DEFAULT_MAX_BUFFER = 50 * 1024 * 1024; // 50 MB
 const DEFAULT_TIMEOUT = 30_000;               // 30 s
 
-function createGitExecError(args: string[], err: unknown): Error {
+/**
+ * Render a failed git command the way routes and the UI already display it.
+ *
+ * Shared with `BranchService`, whose WSL path produces a Node `execFile`
+ * rejection that has to reach a caller wearing the same words as the native
+ * path's `git <args> failed: <stderr>`.
+ */
+export function createGitExecError(args: string[], err: unknown): Error {
     const stderr = (err as { stderr?: string | Buffer })?.stderr?.toString().trim() ?? '';
     return new Error(`git ${args.join(' ')} failed: ${stderr}`);
 }

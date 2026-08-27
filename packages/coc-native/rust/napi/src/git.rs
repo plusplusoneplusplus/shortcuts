@@ -11,6 +11,7 @@
 //! There is no index object here — git owns the state, and each call reads or
 //! mutates the repository directly.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use coc_native_core::git::branch::{
@@ -43,6 +44,11 @@ pub struct GitExecOptions {
     /// Working directory for the child. `-C` already points git at the repo, so
     /// this is rarely needed.
     pub cwd: Option<String>,
+    /// Environment overrides layered on top of the environment Node already
+    /// has. `GIT_TERMINAL_PROMPT`, `GIT_EDITOR` and `GIT_SEQUENCE_EDITOR` are
+    /// what callers set; `PATH`, `HOME` and `SSH_AUTH_SOCK` are inherited, so
+    /// `push` and `pull` still reach the user's credential helper and agent.
+    pub env: Option<HashMap<String, String>>,
 }
 
 /// Render a failure the way routes and the UI already display it.
@@ -98,6 +104,7 @@ fn resolve_options(options: Option<GitExecOptions>) -> GitCommandOptions {
                 .max_buffer
                 .map_or(defaults.max_buffer_bytes, |bytes| bytes as usize),
             cwd: options.cwd.map(PathBuf::from),
+            env: options.env.map(|env| env.into_iter().collect()).unwrap_or_default(),
         },
         None => defaults,
     }

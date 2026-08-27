@@ -37,7 +37,7 @@ export interface PatchTransferBranchService {
         patchBody: string,
         options?: { stashAndContinue?: boolean; stashMessage?: string },
     ): Promise<GitPatchApplyResult>;
-    getRepoState(repoRoot: string): RepoState;
+    getRepoState(repoRoot: string): Promise<RepoState>;
     hasUncommittedChanges(repoRoot: string): Promise<boolean>;
     getBranchStatus(repoRoot: string, hasUncommittedChanges: boolean): Promise<BranchStatus | null>;
 }
@@ -196,7 +196,7 @@ export class GitPatchTransferService {
      * operation, a non-repo, or detached HEAD.
      */
     private async preflight(ws: WorkspaceInfo): Promise<PatchTransferResponse | { branchStatus: BranchStatus }> {
-        const repoState = this.deps.branchService.getRepoState(ws.rootPath);
+        const repoState = await this.deps.branchService.getRepoState(ws.rootPath);
         if (repoState.operation !== 'none') {
             return {
                 status: 409,

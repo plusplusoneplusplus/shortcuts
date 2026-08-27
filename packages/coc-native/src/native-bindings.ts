@@ -114,6 +114,13 @@ export interface GitExecOptions {
    * this is rarely needed.
    */
   cwd?: string
+  /**
+   * Environment overrides layered on top of the environment Node already
+   * has. `GIT_TERMINAL_PROMPT`, `GIT_EDITOR` and `GIT_SEQUENCE_EDITOR` are
+   * what callers set; `PATH`, `HOME` and `SSH_AUTH_SOCK` are inherited, so
+   * `push` and `pull` still reach the user's credential helper and agent.
+   */
+  env?: Record<string, string>
 }
 /**
  * Run `git -C <repoRoot> <args>` and resolve with its trimmed stdout.

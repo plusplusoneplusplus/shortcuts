@@ -45,6 +45,16 @@ pub struct GitCommandOptions {
     /// so this only matters for the few commands that resolve paths relative
     /// to the process's own directory.
     pub cwd: Option<PathBuf>,
+    /// Environment overrides layered on top of the inherited environment,
+    /// applied in order so a later entry wins.
+    ///
+    /// Layered rather than replacing, because the interesting variables are
+    /// the ones nobody names here: `PATH`, `HOME`, `SSH_AUTH_SOCK` and the
+    /// credential helper's own configuration are what let `push`, `pull` and
+    /// `fetch` reach the user's agent and 2FA prompt exactly as they do when
+    /// a human runs git. Callers set `GIT_TERMINAL_PROMPT`, `GIT_EDITOR` and
+    /// `GIT_SEQUENCE_EDITOR` here.
+    pub env: Vec<(String, String)>,
 }
 
 impl Default for GitCommandOptions {
@@ -53,6 +63,7 @@ impl Default for GitCommandOptions {
             timeout_ms: DEFAULT_TIMEOUT_MS,
             max_buffer_bytes: DEFAULT_MAX_BUFFER_BYTES,
             cwd: None,
+            env: Vec::new(),
         }
     }
 }
@@ -225,6 +236,9 @@ pub fn run_git(
     command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     if let Some(cwd) = &options.cwd {
         command.current_dir(cwd);
+    }
+    for (key, value) in &options.env {
+        command.env(key, value);
     }
     hide_window(&mut command);
 

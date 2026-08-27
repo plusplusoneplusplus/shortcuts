@@ -213,3 +213,107 @@ fn cwd_overrides_the_child_working_directory() {
         .expect("a cwd elsewhere must not change which repo -C selects");
     assert_eq!(output, "initial commit");
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Environment overrides
+//
+// The mutating half of `BranchService` steers git entirely through these:
+// `GIT_TERMINAL_PROMPT` so a push fails instead of blocking on a prompt nobody
+// can answer, `GIT_EDITOR` and `GIT_SEQUENCE_EDITOR` so a rebase, an amend or
+// an `am` accepts a pre-written message and todo list without opening one.
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn env(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+    pairs.iter().map(|(key, value)| (key.to_string(), value.to_string())).collect()
+}
+
+#[test]
+fn defaults_pass_no_environment_overrides() {
+    assert!(GitCommandOptions::default().env.is_empty());
+}
+
+#[test]
+fn an_override_reaches_the_child() {
+    let repo = repo_with_commit();
+    let options = GitCommandOptions {
+        env: env(&[("GIT_AUTHOR_NAME", "Env Author"), ("GIT_AUTHOR_EMAIL", "env@example.com")]),
+        ..GitCommandOptions::default()
+    };
+    std::fs::write(repo.path().join("second.txt"), "second\n").expect("write");
+    run_git(repo.path(), &args(&["add", "."]), &options).expect("add");
+    run_git(repo.path(), &args(&["commit", "-m", "authored by the env"]), &options)
+        .expect("commit");
+
+    let author =
+        run_git(repo.path(), &args(&["log", "-1", "--format=%an <%ae>"]), &options).expect("log");
+    assert_eq!(author, "Env Author <env@example.com>");
+}
+
+#[test]
+fn the_rest_of_the_environment_is_inherited() {
+    let repo = repo_with_commit();
+    // A push over SSH finds its agent through inherited variables; nothing here
+    // names PATH, and git is still found.
+    let options = GitCommandOptions {
+        env: env(&[("GIT_TERMINAL_PROMPT", "0")]),
+        ..GitCommandOptions::default()
+    };
+    let output =
+        run_git(repo.path(), &args(&["log", "--format=%s"]), &options).expect("log should run");
+    assert_eq!(output, "initial commit");
+}
+
+#[test]
+fn a_later_entry_wins_over_an_earlier_one() {
+    let repo = repo_with_commit();
+    let options = GitCommandOptions {
+        env: env(&[("GIT_AUTHOR_NAME", "First"), ("GIT_AUTHOR_NAME", "Second")]),
+        ..GitCommandOptions::default()
+    };
+    std::fs::write(repo.path().join("second.txt"), "second\n").expect("write");
+    run_git(repo.path(), &args(&["add", "."]), &options).expect("add");
+    run_git(repo.path(), &args(&["commit", "-m", "last writer wins"]), &options).expect("commit");
+
+    let author =
+        run_git(repo.path(), &args(&["log", "-1", "--format=%an"]), &options).expect("log");
+    assert_eq!(author, "Second");
+}
+
+#[test]
+fn a_sequence_editor_drives_a_non_interactive_rebase() {
+    let repo = repo_with_commit();
+    for subject in ["second", "third"] {
+        std::fs::write(repo.path().join(format!("{subject}.txt")), "x\n").expect("write");
+        git(repo.path(), &["add", "."]);
+        git(repo.path(), &["commit", "-m", subject]);
+    }
+    let head = run_git(repo.path(), &args(&["rev-parse", "HEAD"]), &GitCommandOptions::default())
+        .expect("rev-parse");
+    let short = &head[..7];
+
+    let script = repo.path().join("seq-editor.sh");
+    std::fs::write(
+        &script,
+        format!("#!/bin/sh\nsed -i \"s/^pick {short}/drop {short}/\" \"$1\"\n"),
+    )
+    .expect("write script");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+            .expect("chmod script");
+    }
+
+    let options = GitCommandOptions {
+        timeout_ms: 600_000,
+        env: env(&[("GIT_SEQUENCE_EDITOR", script.to_str().expect("utf-8 path"))]),
+        ..GitCommandOptions::default()
+    };
+    run_git(repo.path(), &args(&["rebase", "-i", "HEAD~2"]), &options)
+        .expect("a scripted sequence editor should finish the rebase without an interactive one");
+
+    let subjects =
+        run_git(repo.path(), &args(&["log", "--format=%s"]), &GitCommandOptions::default())
+            .expect("log");
+    assert_eq!(subjects.lines().collect::<Vec<_>>(), vec!["second", "initial commit"]);
+}

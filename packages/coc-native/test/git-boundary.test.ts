@@ -104,6 +104,30 @@ describe('execGit error propagation', () => {
     });
 });
 
+describe('execGit environment overrides', () => {
+    it('layers the caller\u2019s variables onto the child', async () => {
+        const author = await gitAddon.execGit(['var', 'GIT_AUTHOR_IDENT'], repo, {
+            env: { GIT_AUTHOR_NAME: 'Env Author', GIT_AUTHOR_EMAIL: 'env@example.com' },
+        });
+        expect(author).toContain('Env Author <env@example.com>');
+    });
+
+    it('inherits everything the caller did not name', async () => {
+        // Nothing here names PATH, and git is still found — which is what keeps
+        // a credential helper and an SSH agent reachable from push and pull.
+        const subject = await gitAddon.execGit(['log', '--format=%s'], repo, {
+            env: { GIT_TERMINAL_PROMPT: '0' },
+        });
+        expect(subject).toBe('initial commit');
+    });
+
+    it('treats an omitted env the same as an empty one', async () => {
+        const withEmpty = await gitAddon.execGit(['rev-parse', 'HEAD'], repo, { env: {} });
+        const without = await gitAddon.execGit(['rev-parse', 'HEAD'], repo);
+        expect(withEmpty).toBe(without);
+    });
+});
+
 describe('execGit concurrency', () => {
     it('runs many calls against one repo without interleaving their output', async () => {
         const heads = await Promise.all(

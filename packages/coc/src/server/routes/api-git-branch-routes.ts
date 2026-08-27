@@ -415,7 +415,7 @@ export function registerGitBranchRoutes(ctx: ApiRouteContext): void {
         handler: async ({ match, res }) => {
             const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
-            return branchService.getRepoState(ws.rootPath);
+            return await branchService.getRepoState(ws.rootPath);
         },
     }));
 

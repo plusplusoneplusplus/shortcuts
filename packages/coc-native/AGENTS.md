@@ -73,7 +73,7 @@ The walk comes from `repo_index::walk::walk_builder`, shared with the path walk 
 
 ## Git
 
-`git::run_git` is why git no longer costs a Node child-process spawn per call: the work happens on a libuv worker, and a `Task` marshals the result back. Every non-WSL `execGitAsync` call already lands here, and the git services are porting onto it service by service.
+`git::run_git` is why git no longer costs a Node child-process spawn per call: the work happens on a libuv worker, and a `Task` marshals the result back. Every non-WSL `execGitAsync` call already lands here, and the git services are porting onto it service by service. It takes an argv array, an optional timeout and buffer cap, and environment overrides layered on the inherited environment.
 
 - **Reads use `gix`, mutations shell out.** `git::log` reads commit history, `git::range` resolves base refs, merge bases and ahead counts, and `git::branch` reads HEAD, upstream tracking and the branch list — all through gitoxide, spawning nothing. The diff-backed reads and `git status` still shell out, and more follow as each service ports. create/delete/rename/checkout/merge/rebase/cherry-pick/stash run the `git` CLI from Rust, because they are what git itself defines rather than what a library reimplements.
 - **Network and credential operations always shell out** — `push`, `pull`, `fetch`, `clone` — so credential helpers, SSH agents and 2FA keep working exactly as they do for a human at a terminal. Never through a Rust git library.
@@ -120,6 +120,15 @@ The walk comes from `repo_index::walk::walk_builder`, shared with the path walk 
 - **A `limit` of zero is the count-only question.** `getLocalBranchCount` and its remote twin ask for the total with no rows rather than describing every branch to throw the descriptions away.
 - **One parser, two callers**, again: the WSL path runs `git status --porcelain=v2 --branch` through `wsl.exe` and hands the text to `parseGitBranchStatus`.
 - **An upstream is only an upstream if its ref exists.** `rev-parse --abbrev-ref <branch>@{upstream}` exits non-zero for a branch configured to track a ref that was never fetched, and the caller read that as "no tracking branch". `find_upstream` checks the ref before reporting it, or a never-fetched upstream would start showing up with zero drift.
+
+### Mutations, and the environment they run in
+
+Everything `BranchService` writes — create, delete, rename, checkout, merge, rebase, cherry-pick, `am`, stash, push, pull, fetch — runs through `git::run_git` from Rust. There is no second runner: the service builds an argv array, and `execGit` spawns it. What went away is the string-building, the hand-rolled `quoteShellArg`, the `/bin/sh` and `cmd.exe` that ran each command, and the `execSync` calls that blocked the event loop while git worked. Measured on this repo (2-core arm64): a `rev-parse` that cost 2.91 ms as a blocking `execSync` costs 1.54 ms through the addon, and a 1 ms timer keeps firing throughout — 30 sequential `execSync` calls let **0** timer ticks through in 90 ms; 30 `getRepoState` calls let 45 through in 47 ms.
+
+- **`GitCommandOptions::env` layers, it does not replace.** Callers set `GIT_TERMINAL_PROMPT=0` so a push fails instead of blocking a request thread on a prompt nobody can answer, and `GIT_EDITOR` / `GIT_SEQUENCE_EDITOR` so a rebase, an amend or an `am` takes a pre-written message and todo list. Everything else — `PATH`, `HOME`, `SSH_AUTH_SOCK`, the credential helper's own configuration — is inherited, and that inheritance is the whole reason network operations shell out. Never build the child's environment from scratch.
+- **Argv, not a command string.** A branch called `feature/$(touch-pwned)&|;` and a stash message holding quotes both round-trip untouched, because no shell ever sees them. This is why the service no longer needs a platform-specific quoting helper.
+- **The long timeout is 600 s and is part of the contract.** merge, rebase, `am`, `format-patch`, push, pull and fetch carry it; everything else takes the 30 s default. A rebase of a long branch over a slow link is a slow command, not a hung one.
+- **`format-patch` output is normalised to one trailing newline.** The runner strips exactly one line ending, and `format-patch` ends with a blank line; `exportCommitPatch` re-adds one so every payload ends in exactly one `\n`, which is also the separator `exportCommitPatches` joins entries with.
 
 ## Build / test
 
