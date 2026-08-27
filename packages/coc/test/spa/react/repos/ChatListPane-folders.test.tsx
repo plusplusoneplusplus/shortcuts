@@ -192,10 +192,13 @@ describe('ChatListPane — chat folders (flag on)', () => {
         applyRuntimeConfigPatch({ chatFoldersEnabled: true });
     });
 
-    it('renders no Folders section when the workspace has no folders', async () => {
+    it('keeps an empty Folders header when the workspace has no folders, so the first folder is creatable', async () => {
         listChatFolders.mockResolvedValue({ folders: [] });
         await renderPane({ history: [makeChat({ id: 'proc-a' })] });
-        expect(document.querySelector('[data-section="folders"]')).toBeNull();
+        expect(document.querySelector('[data-section="folders"]')).not.toBeNull();
+        expect(screen.getByTestId('chat-folders-section-toggle')).not.toBeNull();
+        expect(screen.getByTestId('chat-list-new-folder-btn')).not.toBeNull();
+        expect(screen.queryAllByTestId('chat-folder')).toHaveLength(0);
     });
 
     it('renders a folder with its filed member, and pulls that member out of its date bucket', async () => {
@@ -269,7 +272,8 @@ describe('ChatListPane — chat folders (flag on)', () => {
                 makeScript({ id: 'proc-s', displayName: 'nightly script', title: 'nightly script' }),
             ],
         });
-        expect(document.querySelector('[data-section="folders"]')).toBeNull();
+        // The header stays — it owns ＋New folder — but no folder row survives.
+        expect(screen.queryAllByTestId('chat-folder')).toHaveLength(0);
         // The chat itself is out of scope on this tab, so it is not orphaned —
         // it simply is not part of the Tasks list at all.
         expect(document.body.textContent).not.toContain('token refresh');
@@ -347,6 +351,47 @@ describe('ChatListPane — chat folders across list surfaces', () => {
         { label: 'Tasks', props: { activeTab: 'tasks' } },
         { label: 'repo group Workspace tab', props: { workspaceId: 'group-demo' } },
     ];
+
+    for (const surface of surfaces) {
+        it(`puts the folder actions on the Folders header, not the sticky pane header, on the ${surface.label} surface`, async () => {
+            await renderPane({
+                ...surface.props,
+                history: [
+                    makeChat({ id: 'proc-a', displayName: 'token refresh', title: 'token refresh' }),
+                    makeScript({ id: 'proc-s', displayName: 'nightly script', title: 'nightly script' }),
+                ],
+            });
+            const section = document.querySelector('[data-section="folders"]')!;
+            const newFolder = screen.getByTestId('chat-list-new-folder-btn');
+            const collapseAll = screen.getByTestId('chat-list-collapse-all-folders-btn');
+            expect(section.contains(newFolder)).toBe(true);
+            expect(section.contains(collapseAll)).toBe(true);
+            // The old orphan row lived in the pane's sticky header; nothing
+            // folder-related is left up there.
+            const paneHeader = screen.queryByTestId('chat-list-fixed-header');
+            expect(paneHeader?.contains(newFolder) ?? false).toBe(false);
+            // Nested buttons would be invalid HTML and swallow the toggle.
+            expect(newFolder.closest('button')).toBe(newFolder);
+            expect(screen.getByTestId('chat-folders-section-toggle').contains(newFolder)).toBe(false);
+        });
+    }
+
+    it('opens the create row from the header action and expands a collapsed section', async () => {
+        await renderPane({ history: [makeChat({ id: 'proc-a', displayName: 'token refresh', title: 'token refresh' })] });
+        await act(async () => { fireEvent.click(screen.getByTestId('chat-folders-section-toggle')); });
+        expect(screen.getByTestId('chat-folders-section-toggle').getAttribute('aria-expanded')).toBe('false');
+
+        await act(async () => { fireEvent.click(screen.getByTestId('chat-list-new-folder-btn')); });
+        expect(screen.getByTestId('chat-folders-section-toggle').getAttribute('aria-expanded')).toBe('true');
+        expect(screen.getByTestId('chat-folder-create-row')).not.toBeNull();
+    });
+
+    it('disables collapse-all when the workspace has no folders to collapse', async () => {
+        listChatFolders.mockResolvedValue({ folders: [] });
+        await renderPane({ history: [makeChat({ id: 'proc-a' })] });
+        expect(screen.getByTestId('chat-list-collapse-all-folders-btn')).toHaveProperty('disabled', true);
+        expect(screen.getByTestId('chat-list-new-folder-btn')).toHaveProperty('disabled', false);
+    });
 
     for (const surface of surfaces) {
         it(`renders the Folders section on the ${surface.label} surface`, async () => {

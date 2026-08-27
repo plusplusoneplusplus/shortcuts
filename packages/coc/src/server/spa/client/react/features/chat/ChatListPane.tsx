@@ -3411,39 +3411,13 @@ export function ChatListPane({
                 onFolderDragOver={folderDnd.handleFolderDragOver}
                 onFolderDragLeave={folderDnd.handleFolderDragLeave}
                 onFolderDrop={folderDnd.handleFolderDrop}
+                onNewFolder={() => { setShowFolders(true); chatFolderMutations.startCreate(); }}
+                onCollapseAll={collapseAllFolders}
+                collapseAllDisabled={chatFolders.length === 0}
+                showWhenEmpty={!folderSearchQuery}
             />
         );
-    }, [chatFoldersEnabled, showFolders, toggleFolderCollapsed, renderChatListRow, openFolderMenu, chatFolderMutations, isDuplicateFolderName, handleCommitFolderCreate, handleCancelFolderCreate, folderDnd]);
-
-    /**
-     * The ＋folder / collapse-all toolbar pair. Rendered in both list headers
-     * from one place; present whenever the flag is on, even with zero folders,
-     * because creating the first folder is exactly what the button is for.
-     */
-    const renderFolderToolbar = useCallback((): React.ReactNode => {
-        if (!chatFoldersEnabled) {return null;}
-        return (
-            <div className="flex items-center gap-1 shrink-0">
-                <button
-                    type="button"
-                    className="h-6 px-1.5 rounded-[3px] text-[12px] leading-none text-[#848484] dark:text-[#a0a0a0] hover:bg-[#f5f5f5] dark:hover:bg-[#252526] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]"
-                    onClick={() => { setShowFolders(true); chatFolderMutations.startCreate(); }}
-                    data-testid="chat-list-new-folder-btn"
-                    aria-label="New folder"
-                    title="New folder"
-                >▤+</button>
-                <button
-                    type="button"
-                    className="h-6 px-1.5 rounded-[3px] text-[12px] leading-none text-[#848484] dark:text-[#a0a0a0] hover:bg-[#f5f5f5] dark:hover:bg-[#252526] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] disabled:opacity-40"
-                    onClick={collapseAllFolders}
-                    disabled={chatFolders.length === 0}
-                    data-testid="chat-list-collapse-all-folders-btn"
-                    aria-label="Collapse all folders"
-                    title="Collapse all folders"
-                >⇱</button>
-            </div>
-        );
-    }, [chatFoldersEnabled, chatFolderMutations, collapseAllFolders, chatFolders.length]);
+    }, [chatFoldersEnabled, showFolders, toggleFolderCollapsed, renderChatListRow, openFolderMenu, chatFolderMutations, isDuplicateFolderName, handleCommitFolderCreate, handleCancelFolderCreate, folderDnd, collapseAllFolders, chatFolders.length, folderSearchQuery]);
 
     const getGroupedChildTaskStatus = useCallback((task: any): 'running' | 'queued' | 'completed' => {
         if (tabFilteredRunning.some(candidate => candidate.id === task.id || candidate.processId === task.id || candidate.id === task.processId || candidate.processId === task.processId)) {
@@ -3833,7 +3807,6 @@ export function ChatListPane({
                             <Button variant="ghost" size="sm" onClick={onNewChat ?? onOpenDialog} className={cn("self-start", isMobile && "hidden")} data-testid="new-chat-btn">
                                 💬 New Chat
                             </Button>
-                            {renderFolderToolbar()}
                         </div>
 
                         {/* Search bar — hidden by default; revealed with Ctrl+F / ⌘F (see the keydown handler). */}
@@ -4085,9 +4058,6 @@ export function ChatListPane({
                     className="sticky top-0 z-10 -mx-2 md:-mx-4 px-2 md:px-4 py-1.5 md:py-2 flex flex-col gap-2 md:gap-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-white/[0.98] dark:bg-[#1e1e1e]/[0.98] backdrop-blur-md backdrop-saturate-150"
                     data-testid="chat-list-fixed-header"
                 >
-                {chatFoldersEnabled && (
-                    <div className="flex items-center justify-end">{renderFolderToolbar()}</div>
-                )}
                 {isPaused && (
                     <div className="rounded bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 px-3 py-1.5 text-xs flex items-center gap-2" data-testid="queue-paused-banner">
                         <span className="flex-1">

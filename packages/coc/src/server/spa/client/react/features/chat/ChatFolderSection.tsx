@@ -255,11 +255,79 @@ export interface ChatFolderSectionProps {
     onFolderDragOver?: (folderId: string, zone: ChatFolderDropZone, event: React.DragEvent) => void;
     onFolderDragLeave?: (folderId: string, zone: ChatFolderDropZone, event: React.DragEvent) => void;
     onFolderDrop?: (folderId: string, zone: ChatFolderDropZone, event: React.DragEvent) => void;
+
+    // ── Header actions ──────────────────────────────────────────────
+    /** Opens the inline create row. Omitted ⇒ no ＋folder action in the header. */
+    onNewFolder?: () => void;
+    /** Collapses every folder. Omitted ⇒ no collapse-all action in the header. */
+    onCollapseAll?: () => void;
+    /** Greys out collapse-all when there is nothing to collapse. */
+    collapseAllDisabled?: boolean;
+    /**
+     * Keep the header mounted with an empty body when there are no rows, so
+     * ＋New folder stays reachable in a workspace that has no folders yet.
+     * False while searching, where an empty tree means "no folder matched".
+     */
+    showWhenEmpty?: boolean;
+}
+
+interface FolderHeaderActionProps {
+    label: string;
+    testId: string;
+    onClick: () => void;
+    disabled?: boolean;
+    children: React.ReactNode;
 }
 
 /**
- * Render the Folders section, or nothing at all when there are no folders to
- * show — zero folders means no section, not an empty header.
+ * One header action. Explorer-style: revealed on hover or keyboard focus on a
+ * pointer device, always visible on touch, where there is no hover to reveal it.
+ */
+function FolderHeaderAction({ label, testId, onClick, disabled, children }: FolderHeaderActionProps): React.ReactElement {
+    return (
+        <button
+            type="button"
+            className={cn(
+                'inline-flex items-center justify-center h-[18px] w-[22px] rounded-[3px] transition-opacity',
+                'text-[#848484] dark:text-[#a0a0a0] hover:bg-[#e8e8e8] dark:hover:bg-[#2f2f2f] hover:text-[#1e1e1e] dark:hover:text-[#cccccc]',
+                'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100 md:group-focus-within:opacity-100',
+                disabled && 'opacity-40 md:group-hover:opacity-40 hover:bg-transparent dark:hover:bg-transparent cursor-default',
+            )}
+            onClick={event => { event.stopPropagation(); onClick(); }}
+            disabled={disabled}
+            data-testid={testId}
+            aria-label={label}
+            title={label}
+        >
+            {children}
+        </button>
+    );
+}
+
+/** ＋folder. A folder outline with a plus, at the pane's 14px icon size. */
+function NewFolderIcon(): React.ReactElement {
+    return (
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M1.6 11V3.4c0-.44.36-.8.8-.8h2.7c.24 0 .47.11.62.3l.72.9h4.06c.44 0 .8.36.8.8v1.15" />
+            <path d="M1.6 11h6.1" />
+            <path d="M10.9 7.9v4.2M8.8 10h4.2" />
+        </svg>
+    );
+}
+
+/** Collapse all. Two chevrons folding toward each other. */
+function CollapseAllIcon(): React.ReactElement {
+    return (
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M4 5.6 7 2.9l3 2.7" />
+            <path d="M4 8.4 7 11.1l3-2.7" />
+        </svg>
+    );
+}
+
+/**
+ * Render the Folders section. The header carries the section's own actions
+ * (＋new folder, collapse all) so they sit on the thing they act on.
  */
 export function ChatFolderSection({
     rows,
@@ -283,26 +351,49 @@ export function ChatFolderSection({
     onFolderDragOver,
     onFolderDragLeave,
     onFolderDrop,
+    onNewFolder,
+    onCollapseAll,
+    collapseAllDisabled,
+    showWhenEmpty,
 }: ChatFolderSectionProps): React.ReactElement | null {
-    // Zero folders means no section — but the create row has to have somewhere
-    // to live, so an open create keeps the section mounted.
-    if (rows.length === 0 && !creating) {return null;}
+    // An empty tree still keeps the header when the caller asks for it, so
+    // ＋New folder is reachable with zero folders. Otherwise — searching, or a
+    // tab where no folder applies — no rows means no section, except while a
+    // create row is open, which has to live somewhere.
+    if (rows.length === 0 && !creating && !showWhenEmpty) {return null;}
 
     return (
         <div data-section="folders" className="-mx-2 md:-mx-4">
-            <button
-                type="button"
-                className="sticky top-0 z-[2] w-full flex items-center justify-between px-3 py-1 border-b backdrop-blur-md backdrop-saturate-150 bg-white/[0.94] dark:bg-[#1e1e1e]/[0.94] border-[#e0e0e0]/80 dark:border-[#3c3c3c]/80 hover:bg-[#f5f5f5] dark:hover:bg-[#252526] transition-colors"
-                onClick={onToggleSection}
-                data-testid="chat-folders-section-toggle"
-                aria-expanded={expanded}
-            >
-                <span className="inline-flex items-center gap-1.5 text-[10px] leading-none font-mono font-semibold uppercase tracking-[0.1em] text-[#848484] dark:text-[#a0a0a0]">
-                    <span className="text-[10px]">{expanded ? '▼' : '▶'}</span>
-                    Folders
-                </span>
+            <div className="group sticky top-0 z-[2] w-full flex items-center gap-1 pr-3 border-b backdrop-blur-md backdrop-saturate-150 bg-white/[0.94] dark:bg-[#1e1e1e]/[0.94] border-[#e0e0e0]/80 dark:border-[#3c3c3c]/80 hover:bg-[#f5f5f5] dark:hover:bg-[#252526] transition-colors">
+                <button
+                    type="button"
+                    className="flex-1 min-w-0 flex items-center text-left pl-3 py-1"
+                    onClick={onToggleSection}
+                    data-testid="chat-folders-section-toggle"
+                    aria-expanded={expanded}
+                >
+                    <span className="inline-flex items-center gap-1.5 text-[10px] leading-none font-mono font-semibold uppercase tracking-[0.1em] text-[#848484] dark:text-[#a0a0a0]">
+                        <span className="text-[10px]">{expanded ? '▼' : '▶'}</span>
+                        Folders
+                    </span>
+                </button>
+                {onNewFolder && (
+                    <FolderHeaderAction label="New folder" testId="chat-list-new-folder-btn" onClick={onNewFolder}>
+                        <NewFolderIcon />
+                    </FolderHeaderAction>
+                )}
+                {onCollapseAll && (
+                    <FolderHeaderAction
+                        label="Collapse all folders"
+                        testId="chat-list-collapse-all-folders-btn"
+                        onClick={onCollapseAll}
+                        disabled={collapseAllDisabled}
+                    >
+                        <CollapseAllIcon />
+                    </FolderHeaderAction>
+                )}
                 <span className="text-[10px] leading-none font-mono tabular-nums text-[#848484] dark:text-[#a0a0a0]">{rows.length}</span>
-            </button>
+            </div>
             {expanded && (
                 <div className="flex flex-col">
                     {creating && onCommitCreate && onCancelCreate && (
