@@ -27,14 +27,35 @@ import type { NativeAddonStatus } from './types';
  */
 export type NativeGitExecOptions = Bindings.GitExecOptions;
 
+/**
+ * One working-tree change as Rust reports it.
+ *
+ * `status` and `stage` are the `GitChangeStatus` and `GitChangeStage` string
+ * unions widened to `string` by the generator; `path` is repository-relative,
+ * because turning it absolute is `path.join`'s job and stays in Node.
+ */
+export type NativeGitStatusEntry = Bindings.GitStatusEntry;
+
 /** The exact addon slice required to run git. */
 export interface NativeGitAddon {
     execGit: typeof Bindings.execGit;
+    gitStatusEntries: typeof Bindings.gitStatusEntries;
+    parseGitStatusPorcelain: typeof Bindings.parseGitStatusPorcelain;
 }
+
+/**
+ * Every function the capability is made of.
+ *
+ * Checking all of them, rather than one as a marker, is what makes a binary
+ * built before a later slice fail at load with a rebuild instruction instead of
+ * at the first call with `undefined is not a function`.
+ */
+const GIT_EXPORTS = ['execGit', 'gitStatusEntries', 'parseGitStatusPorcelain'] as const;
 
 /** Whether the loaded module actually exposes the git capability. */
 function isGitAddon(addon: unknown): addon is NativeGitAddon {
-    return typeof (addon as NativeGitAddon | null)?.execGit === 'function';
+    const candidate = addon as Record<string, unknown> | null;
+    return GIT_EXPORTS.every(name => typeof candidate?.[name] === 'function');
 }
 
 /**
@@ -49,7 +70,7 @@ export function loadNativeGit(): NativeGitAddon {
     const { binaryPath } = nativeAddonStatus();
     throw new NativeAddonLoadError(
         `@plusplusoneplusplus/coc-native: ${binaryPath} loaded but does not export the git capability.\n` +
-            'The binary predates the git capability — rebuild it with ' +
+            'The binary predates the git capability, or a part of it — rebuild it with ' +
             '`npm run build:native -w packages/coc-native`.',
     );
 }

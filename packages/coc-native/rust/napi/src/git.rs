@@ -7,7 +7,10 @@
 
 use std::path::PathBuf;
 
-use coc_native_core::git::{run_git, GitCommandOptions, GitError};
+use coc_native_core::git::status::{
+    parse_porcelain, status_entries, StatusEntry, STATUS_TIMEOUT_MS,
+};
+use coc_native_core::git::{run_git, GitCommandOptions, GitError, DEFAULT_TIMEOUT_MS};
 use napi::bindgen_prelude::{AsyncTask, Error, Result, Status, Task};
 use napi::Env;
 use napi_derive::napi;
@@ -65,8 +68,14 @@ pub fn exec_git(
     repo_root: String,
     options: Option<GitExecOptions>,
 ) -> AsyncTask<ExecGitTask> {
+    let options = resolve_options(options);
+    AsyncTask::new(ExecGitTask { repo_root: PathBuf::from(repo_root), args, options })
+}
+
+/// Fill an optional JavaScript options object in with the command defaults.
+fn resolve_options(options: Option<GitExecOptions>) -> GitCommandOptions {
     let defaults = GitCommandOptions::default();
-    let options = match options {
+    match options {
         Some(options) => GitCommandOptions {
             timeout_ms: options.timeout.map_or(defaults.timeout_ms, u64::from),
             max_buffer_bytes: options
@@ -75,6 +84,98 @@ pub fn exec_git(
             cwd: options.cwd.map(PathBuf::from),
         },
         None => defaults,
-    };
-    AsyncTask::new(ExecGitTask { repo_root: PathBuf::from(repo_root), args, options })
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Working-tree status
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// One working-tree change, with the path spelled exactly as git printed it.
+///
+/// `status` and `stage` are the `GitChangeStatus` and `GitChangeStage` string
+/// unions verbatim, so the TypeScript side casts rather than translates. The
+/// path stays repository-relative: `path.join` and `path.basename` decide what
+/// the UI shows, and their separator handling belongs in Node.
+#[napi(object)]
+pub struct GitStatusEntry {
+    pub path: String,
+    /// Source path of a rename or copy; absent otherwise.
+    pub original_path: Option<String>,
+    pub status: String,
+    pub stage: String,
+}
+
+impl From<StatusEntry> for GitStatusEntry {
+    fn from(entry: StatusEntry) -> Self {
+        Self {
+            path: entry.path,
+            original_path: entry.original_path,
+            status: entry.status.as_str().to_string(),
+            stage: entry.stage.as_str().to_string(),
+        }
+    }
+}
+
+pub struct GitStatusEntriesTask {
+    repo_root: PathBuf,
+    options: GitCommandOptions,
+}
+
+impl Task for GitStatusEntriesTask {
+    type Output = Vec<StatusEntry>;
+    type JsValue = Vec<GitStatusEntry>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        status_entries(&self.repo_root, &self.options).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output.into_iter().map(GitStatusEntry::from).collect())
+    }
+}
+
+/// Read the full working-tree change list for a repository.
+///
+/// Runs `git status --porcelain --untracked-files=all` and parses it, so the
+/// output never crosses the boundary as text. Defaults to the 15 s timeout the
+/// working-tree read path has always used, rather than the 30 s command default.
+#[napi(ts_return_type = "Promise<GitStatusEntry[]>")]
+pub fn git_status_entries(
+    repo_root: String,
+    options: Option<GitExecOptions>,
+) -> AsyncTask<GitStatusEntriesTask> {
+    let mut resolved = resolve_options(options);
+    if resolved.timeout_ms == DEFAULT_TIMEOUT_MS {
+        resolved.timeout_ms = STATUS_TIMEOUT_MS;
+    }
+    AsyncTask::new(GitStatusEntriesTask { repo_root: PathBuf::from(repo_root), options: resolved })
+}
+
+pub struct ParseGitStatusTask {
+    output: String,
+}
+
+impl Task for ParseGitStatusTask {
+    type Output = Vec<StatusEntry>;
+    type JsValue = Vec<GitStatusEntry>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        Ok(parse_porcelain(&self.output))
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output.into_iter().map(GitStatusEntry::from).collect())
+    }
+}
+
+/// Parse porcelain text that was produced somewhere else.
+///
+/// This exists for repositories inside a WSL distro: those run git through
+/// `wsl.exe` in TypeScript and never reach {@link git_status_entries}, but the
+/// parser must still be the single one in the codebase. The work stays on a
+/// worker thread because a large repository's status output runs to megabytes.
+#[napi(ts_return_type = "Promise<GitStatusEntry[]>")]
+pub fn parse_git_status_porcelain(output: String) -> AsyncTask<ParseGitStatusTask> {
+    AsyncTask::new(ParseGitStatusTask { output })
 }

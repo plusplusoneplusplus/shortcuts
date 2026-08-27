@@ -1,14 +1,16 @@
 /**
- * WorkingTreeService — working-tree mutation operations for the git module.
+ * WorkingTreeService — working-tree operations for the git module.
  *
- * Provides stage, unstage, discard, delete-untracked, and getAllChanges
- * using the git CLI (via execGit) and Node's `fs` module.
- *
- * Pure Node.js.
+ * The change list comes from the native addon: git runs on a libuv worker and
+ * the porcelain parse happens in Rust, so nothing here spawns a child process
+ * to read status. Stage, unstage, discard and delete-untracked still shell out
+ * from Node; they move in a later slice.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
+import type { NativeGitAddon, NativeGitStatusEntry } from '@plusplusoneplusplus/coc-native';
 import { execFileAsync } from '../utils/exec-utils';
 import { getLogger } from '../logger';
 import { GitChange, GitChangeStatus, GitChangeStage, GitOperationResult } from './types';
@@ -46,109 +48,68 @@ async function execGitAsync(args: string[], options: GitExecOptions): Promise<st
     return stdout;
 }
 
-/** Map a single porcelain status character to `GitChangeStatus`. */
-function charToStatus(char: string): GitChangeStatus | null {
-    switch (char) {
-        case 'M': return 'modified';
-        case 'A': return 'added';
-        case 'D': return 'deleted';
-        case 'R': return 'renamed';
-        case 'C': return 'copied';
-        case 'U': return 'conflict';
-        case '?': return 'untracked';
-        case '!': return 'ignored';
-        default:  return null;
-    }
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Porcelain parser
+// Working-tree status
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Parse `git status --porcelain` output into `GitChange[]`.
+ * `git status` arguments for the change list.
  *
- * Each porcelain line has the format:
- *   `XY path` or `XY oldpath -> newpath` (for renames/copies)
+ * `--untracked-files=all` lists every untracked file individually instead of
+ * collapsing a fully-untracked directory into a single trailing-slash entry
+ * (e.g. `Plans/`). Collapsed entries produce empty leaf names in the client's
+ * file-tree builder; per-file entries render real filenames and let the
+ * delete-untracked action operate per file.
  *
- * X = staged column, Y = unstaged column.
- * Untracked files use `??`.
+ * Only the WSL path spells them out — the native path knows them itself.
  */
-export function parsePorcelain(output: string, repoRoot: string): GitChange[] {
-    const repoName = path.basename(repoRoot);
-    const changes: GitChange[] = [];
+const STATUS_ARGS = ['status', '--porcelain', '--untracked-files=all'];
 
-    for (const rawLine of output.split('\n')) {
-        const line = rawLine.replace(/\r$/, '');
-        if (line.length < 4) continue; // must have "XY " and at least one char
+/** A status this slow is a hang the Git tab should not sit waiting on. */
+const STATUS_TIMEOUT_MS = 15_000;
 
-        const X = line[0]; // staged status
-        const Y = line[1]; // unstaged/worktree status
-        // line[2] is always a space
-        const rest = line.slice(3);
-
-        // Renames/copies: "oldpath -> newpath"
-        const arrowIdx = rest.indexOf(' -> ');
-        const filePath = arrowIdx >= 0 ? rest.slice(arrowIdx + 4) : rest;
-        const originalPath = arrowIdx >= 0 ? rest.slice(0, arrowIdx) : undefined;
-
-        const absPath = path.isAbsolute(filePath)
-            ? filePath
-            : path.join(repoRoot, filePath);
-
-        const absOriginalPath = originalPath
-            ? path.isAbsolute(originalPath) ? originalPath : path.join(repoRoot, originalPath)
-            : undefined;
-
-        // Untracked (both columns are '?')
-        if (X === '?' && Y === '?') {
-            changes.push({
-                filePath: absPath,
-                status: 'untracked',
-                stage: 'untracked',
-                repositoryRoot: repoRoot,
-                repositoryName: repoName,
-            });
-            continue;
-        }
-
-        // Ignored (both columns are '!')
-        if (X === '!' && Y === '!') {
-            continue; // skip ignored files
-        }
-
-        // Staged change (X column)
-        if (X !== ' ' && X !== '?') {
-            const status = charToStatus(X);
-            if (status) {
-                changes.push({
-                    filePath: absPath,
-                    originalPath: absOriginalPath,
-                    status,
-                    stage: 'staged',
-                    repositoryRoot: repoRoot,
-                    repositoryName: repoName,
-                });
-            }
-        }
-
-        // Unstaged / worktree change (Y column)
-        if (Y !== ' ' && Y !== '?') {
-            const status = charToStatus(Y);
-            if (status) {
-                changes.push({
-                    filePath: absPath,
-                    originalPath: absOriginalPath,
-                    status,
-                    stage: 'unstaged',
-                    repositoryRoot: repoRoot,
-                    repositoryName: repoName,
-                });
-            }
-        }
+/**
+ * Read the working tree's change list, whichever side of WSL the repo is on.
+ *
+ * The porcelain parser lives in Rust and exists exactly once. A repo inside a
+ * WSL distro still runs git through `wsl.exe` from here, then hands the text to
+ * the same parser, so the two paths cannot drift.
+ */
+async function readStatusEntries(
+    native: NativeGitAddon,
+    repoRoot: string,
+): Promise<NativeGitStatusEntry[]> {
+    const executionContext = resolveWorkspaceExecutionContext(repoRoot);
+    if (executionContext.kind === 'wsl') {
+        const execRepoRoot = translatePathForExecution(repoRoot, executionContext);
+        const stdout = await execGitAsync(['-C', execRepoRoot, ...STATUS_ARGS], {
+            cwd: repoRoot,
+            timeout: STATUS_TIMEOUT_MS,
+        });
+        return native.parseGitStatusPorcelain(stdout);
     }
+    return native.gitStatusEntries(repoRoot, { timeout: STATUS_TIMEOUT_MS });
+}
 
-    return changes;
+/**
+ * Turn a native status entry into the `GitChange` the UI consumes.
+ *
+ * Rust reports the path exactly as git printed it — repository-relative. The
+ * join back to an absolute path stays here because `path.join` and
+ * `path.basename` are what shaped every path the Git tab has ever shown, and
+ * their Windows separator handling is not worth re-deriving in Rust.
+ */
+function toGitChange(entry: NativeGitStatusEntry, repoRoot: string, repositoryName: string): GitChange {
+    const absolute = (value: string): string =>
+        path.isAbsolute(value) ? value : path.join(repoRoot, value);
+    return {
+        filePath: absolute(entry.path),
+        originalPath: entry.originalPath ? absolute(entry.originalPath) : undefined,
+        status: entry.status as GitChangeStatus,
+        stage: entry.stage as GitChangeStage,
+        repositoryRoot: repoRoot,
+        repositoryName,
+    };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -164,16 +125,15 @@ export class WorkingTreeService {
      * Get all working-tree changes (staged, unstaged, and untracked).
      */
     async getAllChanges(repoRoot: string): Promise<GitChange[]> {
+        const repositoryName = path.basename(repoRoot);
+        // Deliberately outside the try: every *git* failure here means "no
+        // changes to show", but a missing or capability-stale binary is a
+        // NativeAddonLoadError naming the rebuild, and swallowing it would
+        // render an empty Git tab for a repository full of changes.
+        const native = loadNativeGit();
         try {
-            const executionContext = resolveWorkspaceExecutionContext(repoRoot);
-            const execRepoRoot = translatePathForExecution(repoRoot, executionContext);
-            // `--untracked-files=all` lists every untracked file individually instead of
-            // collapsing a fully-untracked directory into a single trailing-slash entry
-            // (e.g. `Plans/`). Collapsed entries produce empty leaf names in the client's
-            // file-tree builder; per-file entries render real filenames and let the
-            // delete-untracked action operate per file.
-            const stdout = await execGitAsync(['-C', execRepoRoot, 'status', '--porcelain', '--untracked-files=all'], { cwd: repoRoot, timeout: 15_000 });
-            return parsePorcelain(stdout, repoRoot);
+            const entries = await readStatusEntries(native, repoRoot);
+            return entries.map(entry => toGitChange(entry, repoRoot, repositoryName));
         } catch (error) {
             getLogger().error('Git', 'getAllChanges failed', error instanceof Error ? error : undefined);
             return [];

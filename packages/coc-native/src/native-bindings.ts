@@ -123,6 +123,38 @@ export interface GitExecOptions {
  * `git <args> failed: <stderr>`.
  */
 export declare function execGit(args: Array<string>, repoRoot: string, options?: GitExecOptions | undefined | null): Promise<string>
+/**
+ * One working-tree change, with the path spelled exactly as git printed it.
+ *
+ * `status` and `stage` are the `GitChangeStatus` and `GitChangeStage` string
+ * unions verbatim, so the TypeScript side casts rather than translates. The
+ * path stays repository-relative: `path.join` and `path.basename` decide what
+ * the UI shows, and their separator handling belongs in Node.
+ */
+export interface GitStatusEntry {
+  path: string
+  /** Source path of a rename or copy; absent otherwise. */
+  originalPath?: string
+  status: string
+  stage: string
+}
+/**
+ * Read the full working-tree change list for a repository.
+ *
+ * Runs `git status --porcelain --untracked-files=all` and parses it, so the
+ * output never crosses the boundary as text. Defaults to the 15 s timeout the
+ * working-tree read path has always used, rather than the 30 s command default.
+ */
+export declare function gitStatusEntries(repoRoot: string, options?: GitExecOptions | undefined | null): Promise<GitStatusEntry[]>
+/**
+ * Parse porcelain text that was produced somewhere else.
+ *
+ * This exists for repositories inside a WSL distro: those run git through
+ * `wsl.exe` in TypeScript and never reach {@link git_status_entries}, but the
+ * parser must still be the single one in the codebase. The work stays on a
+ * worker thread because a large repository's status output runs to megabytes.
+ */
+export declare function parseGitStatusPorcelain(output: string): Promise<GitStatusEntry[]>
 /** Filesystem policy for one resolved Notes root. */
 export interface NotesIndexBuildOptions {
   /**

@@ -17,6 +17,8 @@
 //! TypeScript caller routes through `wsl.exe` itself and never reaches this
 //! module; Rust only ever runs git on the native host.
 
+pub mod status;
+
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};

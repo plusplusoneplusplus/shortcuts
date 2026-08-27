@@ -36,6 +36,11 @@ afterEach(() => {
     resetNativeAddonCache();
 });
 
+/** A stand-in exporting the whole git capability. */
+const COMPLETE_ADDON =
+    "module.exports = { execGit: async () => 'main', gitStatusEntries: async () => [], " +
+    'parseGitStatusPorcelain: async () => [] };';
+
 /** Point the loader at a JavaScript stand-in for the addon. */
 function useAddon(source: string): string {
     const file = path.join(dir, 'stub.js');
@@ -45,9 +50,11 @@ function useAddon(source: string): string {
 }
 
 it('exposes the capability when the addon provides it', async () => {
-    useAddon("module.exports = { execGit: async () => 'main' };");
+    useAddon(COMPLETE_ADDON);
     const api = loadNativeGit();
     expect(await api.execGit(['branch', '--show-current'], '/repo')).toBe('main');
+    expect(await api.gitStatusEntries('/repo')).toEqual([]);
+    expect(await api.parseGitStatusPorcelain('')).toEqual([]);
     expect(nativeGitStatus().loaded).toBe(true);
 });
 
@@ -94,6 +101,19 @@ describe('when the capability is missing', () => {
         expect(() => loadNativeGit()).toThrow(NativeAddonLoadError);
         expect(nativeGitStatus().loaded).toBe(false);
     });
+
+    // A binary from before a later slice carries some of the capability and not
+    // the rest. Half a capability has to fail at load with a rebuild
+    // instruction, not at the first call with `undefined is not a function`.
+    it('rejects a binary carrying only part of the capability', () => {
+        const file = useAddon("module.exports = { execGit: async () => 'main' };");
+        expect(() => loadNativeGit()).toThrow('does not export the git capability');
+        expect(nativeGitStatus()).toEqual({
+            loaded: false,
+            binaryPath: file,
+            reason: `${file} does not export the git capability`,
+        });
+    });
 });
 
 describe('when no binary loaded', () => {
@@ -114,7 +134,7 @@ describe('when no binary loaded', () => {
 // the child-process path this capability exists to remove.
 it('never returns null — COC_NATIVE=0 is not an opt-out', () => {
     process.env.COC_NATIVE = '0';
-    const file = useAddon('module.exports = { execGit: () => 1 };');
+    const file = useAddon(COMPLETE_ADDON);
     expect(loadNativeGit()).not.toBeNull();
     expect(nativeGitStatus()).toEqual({ loaded: true, binaryPath: file });
 });

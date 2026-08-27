@@ -82,11 +82,15 @@ The walk comes from `repo_index::walk::walk_builder`, shared with the path walk 
 - **The error text is a contract.** Failures cross the boundary as `git <args> failed: <stderr>`, because routes and the UI show that string to users verbatim. A non-zero exit, a timeout and a buffer overflow all render the same way, matching what `execFile` handed back.
 - Defaults match the helper this replaced: a 30 s timeout, a 50 MiB cap on each captured stream, and exactly one trailing line ending stripped from stdout — one, because a `git show` body can legitimately end in a blank line.
 - No shell is involved, so arguments holding spaces need no quoting and cannot be re-split.
+- **A capability guard checks every export, not one marker.** `src/git.ts` lists the git functions and requires all of them, so a binary from before a later slice fails at load with the rebuild instruction rather than at the first call with `undefined is not a function`. Add each new `#[napi]` git function to that list.
+- **Paths stay repository-relative across the boundary.** `gitStatusEntries` returns git's own spelling of a path; `path.join` and `path.basename` build the absolute path and the repository name in `working-tree-service.ts`, because their Windows separator handling is what shaped every path the Git tab has ever shown. Rust never joins a path for the UI.
+- **One parser, two callers.** `git::status::parse_porcelain` is the only porcelain parser in the codebase. A repo inside WSL runs `git status` through `wsl.exe` in TypeScript and then hands the text to `parseGitStatusPorcelain`, so the two paths cannot drift.
+- Porcelain v1 C-quotes any path holding a space or a non-ASCII byte, and nothing unquotes it — carried over verbatim from the TypeScript parser, because unquoting would change what the Git tab renders.
 
 ## Build / test
 
 - `npm run build -w packages/coc-native` — tsc only. Must run before `coc` compiles, which resolves workspace deps from built `dist`.
 - `npm run build:native -w packages/coc-native` — compiles the addon and regenerates `src/native-bindings.ts`. Needs a Rust toolchain; nothing else in the repo does.
-- `cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core` — the whole logic layer. The `git_exec` suite drives a real temporary repository, so `git` has to be on PATH.
+- `cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core` — the whole logic layer. The `git_exec` and `git_status` suites drive real temporary repositories, so `git` has to be on PATH.
 - `npm run test:run -w packages/coc-native` — loader and capability-resolution tests (no binary needed), plus the N-API boundary suites (marshalling, async build/refresh/search contracts, snapshot consistency, error propagation, concurrency, lifetime) and parity. The binary-backed suites **fail** when nothing is built — there is no skip path — so a botched native build cannot pass for a green run.
 - `cargo fmt`/`cargo clippy` run in the `coc-native` CI job. `rust/rustfmt.toml` widens `use_small_heuristics` to match the density of the surrounding TypeScript.
