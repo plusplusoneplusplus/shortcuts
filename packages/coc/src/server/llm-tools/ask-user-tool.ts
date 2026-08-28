@@ -40,7 +40,7 @@ export interface AskUserQuestion {
 }
 
 export type AskUserAnswerValue = string | string[] | boolean;
-export type AskUserResponseReason = 'user-skipped' | 'cancelled' | 'needs-context';
+export type AskUserResponseReason = 'user-skipped' | 'cancelled' | 'needs-context' | 'unavailable';
 
 export interface AskUserRalphGrillSource {
     role: string;
@@ -117,6 +117,19 @@ export interface AskUserAnswerInput {
 export interface AskUserToolDeps {
     emitQuestions: (payloads: AskUserSSEPayload[]) => void | Promise<void>;
     computeTurnIndex: () => number;
+    /**
+     * Whether a human can answer this turn. Evaluated at call time, not at
+     * registration time, so the tool schema stays constant while the behavior
+     * follows the turn. Defaults to true when omitted (existing call sites).
+     *
+     * When it returns false the handler resolves immediately with an
+     * `unavailable` response per question instead of blocking forever — a
+     * cron/wakeup tick has nobody to answer, and under Codex the MCP tool
+     * timeout is 365 days, so there is no timer to save it.
+     */
+    isInteractive?: () => boolean;
+    /** Optional debug sink for the non-interactive short-circuit. */
+    onUnavailable?: (questionCount: number) => void;
 }
 
 const NEEDS_CONTEXT_GUIDANCE =
@@ -124,6 +137,19 @@ const NEEDS_CONTEXT_GUIDANCE =
 
 function isDeferredResponse(response: AskUserAnswerInput): boolean {
     return response.deferred === true || response.reason === 'needs-context';
+}
+
+const UNAVAILABLE_GUIDANCE =
+    'No user is available to answer in this run. Proceed using your best judgment, state the assumption you made explicitly in your output, and do not call ask_user again this turn.';
+
+function unavailableResponse(questionId: string): AskUserResponse {
+    return {
+        questionId,
+        answer: null,
+        skipped: true,
+        reason: 'unavailable',
+        guidance: UNAVAILABLE_GUIDANCE,
+    };
 }
 
 function deferredResponse(questionId: string, note?: string): AskUserResponse {
@@ -163,7 +189,7 @@ export function createAskUserTool(deps: AskUserToolDeps) {
             'clarification, confirmation, or choices before proceeding. ' +
             'Do NOT use it for a simple yes/no that can be inferred from context. ' +
             'If a response has deferred=true and reason="needs-context", the user needs more context; explain and re-ask the question if still needed instead of treating it as skipped. ' +
-            'Only use in interactive Ask or Ralph contexts, never in autopilot.',
+            'Only use when a human is present to answer; never in unattended or automated runs (cron ticks, headless queue runs, background loops).',
         parameters: {
             type: 'object' as const,
             properties: {
@@ -210,6 +236,15 @@ export function createAskUserTool(deps: AskUserToolDeps) {
             if (!Array.isArray(args.questions) || args.questions.length === 0) {
                 throw new Error('ask_user requires at least one question');
             }
+            // Non-interactive turns (cron / wakeup / trigger ticks) have nobody
+            // to answer. Resolve on the same tick rather than emitting a question
+            // that can never be resolved — the turn-cleanup cancelAll only runs
+            // after the turn ends, so a blocked handler would deadlock the turn.
+            if (deps.isInteractive?.() === false) {
+                deps.onUnavailable?.(args.questions.length);
+                return args.questions.map(() => unavailableResponse(randomUUID()));
+            }
+
             const batchId = randomUUID();
             const turnIndex = deps.computeTurnIndex();
             const payloads = args.questions.map((question, index): AskUserSSEPayload => ({

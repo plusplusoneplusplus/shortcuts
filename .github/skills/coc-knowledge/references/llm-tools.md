@@ -38,7 +38,7 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | File | Tool Name | Description |
 |------|-----------|-------------|
 | `add-diff-comment-tool.ts` | `add_diff_comment` | Anchored review comments on commit diff lines. Pre-binds workspace/commit context. Persists via `DiffCommentsManager`, broadcasts via WebSocket. |
-| `ask-user-tool.ts` | `ask_user` | Structured questions (select, multi-select, yes/no, confirm, text). Blocks until the user responds. Persists the pending payload on `AIProcess.pendingAskUser` and emits an SSE event. Results distinguish answers, skips, cancellations, and `deferred: true` / `reason: "needs-context"` responses with optional notes. |
+| `ask-user-tool.ts` | `ask_user` | Structured questions (select, multi-select, yes/no, confirm, text). Blocks until the user responds. Persists the pending payload on `AIProcess.pendingAskUser` and emits an SSE event. Results distinguish answers, skips, cancellations, `deferred: true` / `reason: "needs-context"` responses with optional notes, and `reason: "unavailable"` short-circuits on non-interactive turns. |
 | `resolve-comment-tool.ts` | `resolve_comment` | Marks inline comments resolved; tracks resolved IDs in a per-invocation Map. |
 | `save-classification-tool.ts` | `saveClassification` | Persists per-hunk diff classifications for PR/commit/branch-range review. Categories: `logic`, `mechanical`, `test`, `simple`, `generated`. New `test` hunks require `testFidelityComment`, `logic` hunks require `summaryComment`; critical metadata is validated rather than dropped. |
 | `search-conversations-tool.ts` | `search_conversations` | FTS5 full-text search over past conversations. Requires a SQLite-backed `ProcessStore`. |
@@ -185,6 +185,20 @@ opt in based on `options.tools`; no executor changes are needed. See
 - **Blocking tools:** `ask_user` returns a Promise resolved externally by the SPA. A
   needs-context response is not a skip — the result tells the AI to explain the missing context
   and re-ask if still needed.
+- **Mode-invariant registration:** `ask_user` is registered for both `ask` and `autopilot`
+  chats, gated only on the global `chat.askUser.enabled` config. The tool block is serialized
+  before `system` and `messages`, so a per-mode difference would invalidate the whole
+  conversation's prefix cache when the user toggles the mode pill on a follow-up (follow-ups
+  resume the stored SDK session). `ChatBaseExecutor.buildAskUserWiring()` is the single
+  construction point for ask, autopilot, and follow-up turns.
+- **Interactivity, not mode:** `AskUserToolDeps.isInteractive` is evaluated at call time, so the
+  schema stays constant. `FollowUpExecutor` wires it to `turnSource === undefined` — a
+  machine-triggered turn (cron / wakeup / trigger) has nobody to answer, so the handler resolves
+  on the same tick with `{ skipped: true, reason: 'unavailable', guidance }` per question instead
+  of blocking. There is no timer fallback; Codex pins the MCP tool timeout to 365 days.
+  `ExecutorRegistry.getAskUserHandles()` searches the chat, follow-up, and autopilot executors.
+- **Ralph grill exception:** the grill terminal round strips `ask_user` from the already-built
+  array to end the questioning phase. It is the one path that mutates the tool block mid-turn.
 - **Ask-user answer routing:** resolvers live in each bridge's own `ExecutorRegistry`, but
   `pendingAskUser` is persisted in the single shared `ProcessStore`, so a foreign repo's bridge
   sees a matching batch with absent handles. `MultiRepoQueueRouter` therefore addresses the

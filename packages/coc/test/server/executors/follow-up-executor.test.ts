@@ -1021,7 +1021,7 @@ describe('FollowUpExecutor', () => {
         }));
     });
 
-    it('keeps ask_user disabled on autopilot follow-up turns', async () => {
+    it('enables ask_user on autopilot follow-up turns too (mode-invariant tool block)', async () => {
         const proc = makeProcess({
             id: 'proc-autopilot-user',
             metadata: { type: 'chat', workspaceId: 'ws-auto', mode: 'autopilot' },
@@ -1035,11 +1035,55 @@ describe('FollowUpExecutor', () => {
         // explicitly; the executor no longer infers it from process metadata.
         await executor.executeFollowUp('proc-autopilot-user', 'continue autonomously', undefined, 'autopilot');
 
+        // Registration must not depend on chat mode: the tool block is
+        // serialized before system/messages, so a one-tool difference between
+        // ask and autopilot invalidates the whole conversation's prefix cache
+        // when the user toggles the mode pill mid-chat.
         expect(mockBuildChatToolBundle).toHaveBeenCalledWith(expect.objectContaining({
             askUser: expect.objectContaining({
-                enabled: false,
+                enabled: true,
             }),
         }));
+    });
+
+    it('marks user-posted follow-ups as interactive', async () => {
+        const proc = makeProcess({
+            id: 'proc-interactive',
+            metadata: { type: 'chat', workspaceId: 'ws-ask', mode: 'ask' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, { askUser: { enabled: true } });
+        await executor.executeFollowUp('proc-interactive', 'a user question');
+
+        const bundleArgs = mockBuildChatToolBundle.mock.calls.at(-1)![0] as any;
+        expect(bundleArgs.askUser.deps.isInteractive()).toBe(true);
+    });
+
+    it('marks cron/wakeup-triggered follow-ups as non-interactive', async () => {
+        const proc = makeProcess({
+            id: 'proc-cron-tick',
+            metadata: { type: 'chat', workspaceId: 'ws-ask', mode: 'ask' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, { askUser: { enabled: true } });
+        await executor.executeFollowUp(
+            'proc-cron-tick',
+            'cron tick',
+            undefined,
+            'ask',
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            { source: 'cron', cronId: 'cron-1' },
+        );
+
+        // Nobody is watching a cron tick, so ask_user must short-circuit rather
+        // than block the turn forever (Codex pins the MCP tool timeout to 365d).
+        const bundleArgs = mockBuildChatToolBundle.mock.calls.at(-1)![0] as any;
+        expect(bundleArgs.askUser.deps.isInteractive()).toBe(false);
     });
 
     it('emits follow-up ask_user questions with the next assistant turn index', async () => {

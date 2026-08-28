@@ -60,6 +60,7 @@ import { buildMemoryV2Addon } from './memory-v2-addon';
 import type { MemoryV2Addon } from './memory-v2-addon';
 import { resolveAutoFolderContext } from './auto-folder-utils';
 import { buildChatTurnContext } from './chat-turn-context-builder';
+import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
 import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
 import { buildMcpOAuthHandler } from './chat-turn-runner';
@@ -443,6 +444,55 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         });
     }
 
+    /**
+     * Build the `askUser` block passed to `buildChatTurnContext`.
+     *
+     * Shared by the ask, autopilot, and follow-up paths so the `ask_user` tool
+     * is registered identically in every chat mode. That constancy is the
+     * point: the tool block is serialized before `system` and `messages`, so a
+     * one-tool difference between modes invalidates the whole conversation's
+     * prefix cache when a user toggles the mode pill mid-chat.
+     *
+     * Mode never gates registration. Only `isInteractive` varies, and it is
+     * evaluated at call time, so the schema stays byte-identical.
+     */
+    protected buildAskUserWiring(
+        processId: string,
+        opts: {
+            computeTurnIndex: () => number;
+            isInteractive?: () => boolean;
+            ralphGrillPlanningState?: { plan?: RalphGrillQuestionPlanningResult };
+        },
+    ): { enabled: boolean; deps: AskUserToolDeps } {
+        return {
+            enabled: this.askUser.enabled,
+            deps: {
+                emitQuestions: async (questionPayloads) => {
+                    const enrichedQuestionPayloads = attachRalphGrillMetadataToAskUserPayloads(
+                        questionPayloads,
+                        opts.ralphGrillPlanningState?.plan,
+                    );
+                    await this.store.updateProcess(processId, { pendingAskUser: enrichedQuestionPayloads });
+                    for (const questionPayload of enrichedQuestionPayloads) {
+                        this.store.emitProcessEvent(processId, {
+                            type: 'ask-user',
+                            askUser: questionPayload,
+                        });
+                    }
+                },
+                computeTurnIndex: opts.computeTurnIndex,
+                ...(opts.isInteractive ? { isInteractive: opts.isInteractive } : {}),
+                onUnavailable: (questionCount) => {
+                    getLogger().debug(
+                        LogCategory.AI,
+                        `[ChatModeExecutor] ask_user called on a non-interactive turn for ${processId}; ` +
+                        `resolved ${questionCount} question(s) as unavailable.`,
+                    );
+                },
+            },
+        };
+    }
+
     protected async buildStandardModeOptions(
         task: QueuedTask,
         prompt: string,
@@ -473,25 +523,10 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             sendToConversationRuntime: this.runtime.getSendToConversationRuntime?.(),
             scheduleWakeup: cronDeps.scheduleWakeup,
             cronTools: cronDeps.cronTools,
-            askUser: {
-                enabled: mode === 'ask' && this.askUser.enabled,
-                deps: {
-                    emitQuestions: async (questionPayloads) => {
-                        const enrichedQuestionPayloads = attachRalphGrillMetadataToAskUserPayloads(
-                            questionPayloads,
-                            ralphGrillPlanningState.plan,
-                        );
-                        await this.store.updateProcess(processId, { pendingAskUser: enrichedQuestionPayloads });
-                        for (const questionPayload of enrichedQuestionPayloads) {
-                            this.store.emitProcessEvent(processId, {
-                                type: 'ask-user',
-                                askUser: questionPayload,
-                            });
-                        }
-                    },
-                    computeTurnIndex: () => 1,
-                },
-            },
+            askUser: this.buildAskUserWiring(processId, {
+                computeTurnIndex: () => 1,
+                ralphGrillPlanningState,
+            }),
         });
         this.setAskUserHandles(processId, {
             answerQuestion: ctx.askUser!.answerQuestion,

@@ -10,6 +10,7 @@
  * - Follow-up with same ask mode creates fresh session (no special handling needed)
  * - Legacy plan follow-ups use ask semantics
  * - Multiple transitions: ask → autopilot → ask
+ * - The tool block stays identical across an ask → autopilot follow-up
  * - Process metadata is updated with current and previous mode
  */
 
@@ -283,6 +284,30 @@ describe('ask mode system message — follow-up transitions', () => {
         if (callArgs.systemMessage) {
             expect(callArgs.systemMessage.content).not.toContain(READ_ONLY_SYSTEM_MESSAGE);
         }
+    });
+
+    it('should keep the tool block identical across an ask → autopilot follow-up', async () => {
+        // The tool block is serialized before `system` and `messages`, so any
+        // per-mode difference invalidates the whole conversation's prefix cache
+        // on the resumed session. Two turns on the same process, mode toggled
+        // between them, must produce the same tool names.
+        const proc = createProcessWithMode('proc-tool-invariant', 'sess-1', 'ask');
+        await store.addProcess(proc);
+
+        const executor = new CLITaskExecutor(store, {
+            aiService: sdkMocks.service,
+            askUser: { enabled: true },
+        } as any);
+
+        await executor.execute(followUpTask('proc-tool-invariant', 'what is this?', 'ask'));
+        await executor.execute(followUpTask('proc-tool-invariant', 'now go do it', 'autopilot'));
+
+        const toolNames = (index: number) =>
+            ((sdkMocks.mockSendMessage.mock.calls[index][0] as any).tools ?? [])
+                .map((tool: any) => tool.name).sort();
+
+        expect(toolNames(0)).toContain('ask_user');
+        expect(toolNames(1)).toEqual(toolNames(0));
     });
 
     it('should create fresh session with read-only message when transitioning from autopilot → ask', async () => {

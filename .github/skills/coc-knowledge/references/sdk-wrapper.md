@@ -227,7 +227,7 @@ Detection is content-based: `evaluateClaudeImageFile` sniffs magic numbers, so a
 
 ### AskUserQuestion suppression
 
-When CoC's `ask_user` is present, `resolveClaudeDisallowedTools` adds the built-in `AskUserQuestion` to `options.disallowedTools`. `ask_user` replaces it under a different name, so the SDK's `overridesBuiltInTool` flag (same-named built-ins only) cannot suppress it, and CoC wires none of the host callbacks (`onUserDialog`/`onElicitation`/`canUseTool`) it needs — an `AskUserQuestion` call would auto-fail before the user could answer.
+When CoC's `ask_user` is present, `resolveClaudeDisallowedTools` (exported) adds the built-in `AskUserQuestion` to `options.disallowedTools`. It reads only `options.tools`, so CoC registering `ask_user` in every chat mode keeps the emitted array constant across a mid-chat mode switch. `ask_user` replaces it under a different name, so the SDK's `overridesBuiltInTool` flag (same-named built-ins only) cannot suppress it, and CoC wires none of the host callbacks (`onUserDialog`/`onElicitation`/`canUseTool`) it needs — an `AskUserQuestion` call would auto-fail before the user could answer.
 
 ### Tool-call capture
 

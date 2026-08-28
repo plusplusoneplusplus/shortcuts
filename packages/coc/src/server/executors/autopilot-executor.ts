@@ -70,7 +70,24 @@ export class AutopilotExecutor extends ChatBaseExecutor {
             sendToConversationRuntime: this.runtime.getSendToConversationRuntime?.(),
             scheduleWakeup: cronDeps.scheduleWakeup,
             cronTools: cronDeps.cronTools,
+            // Registered in autopilot too, so the tool block is identical to
+            // ask mode and a mid-chat mode switch does not invalidate the
+            // conversation's prefix cache. An autopilot chat open in the
+            // dashboard is attended, so the question is answerable.
+            askUser: this.buildAskUserWiring(processId, {
+                computeTurnIndex: () => 1,
+                isInteractive: () => true,
+            }),
             includeMemoryV2: false,
+        });
+        // Without this, POST /api/processes/:id/ask-user-response has nothing
+        // to resolve against and the question hangs.
+        this.setAskUserHandles(processId, {
+            answerQuestion: ctx.askUser!.answerQuestion,
+            skipQuestion: ctx.askUser!.skipQuestion,
+            answerQuestions: ctx.askUser!.answerQuestions,
+            cancelAll: ctx.askUser!.cancelAll,
+            hasPending: ctx.askUser!.hasPending,
         });
 
         const systemMessage = await systemMessageBuilder()

@@ -1,11 +1,10 @@
 /**
- * ExecutorRegistry.getAskUserHandles — followUpExecutor regression
+ * ExecutorRegistry.getAskUserHandles — cross-executor lookup
  *
- * Ask-user questions raised during a follow-up turn are owned by the
- * follow-up executor, so getAskUserHandles must search both ask-mode and
- * follow-up executors. This keeps POST /api/processes/:id/ask-user-response
- * returning 200 instead of 404 when the user answers a question in a second
- * (or later) turn.
+ * Ask-user questions can be raised on an ask-mode initial turn, an autopilot
+ * initial turn, or any follow-up turn, each owned by a different executor. So
+ * getAskUserHandles must search all three. This keeps
+ * POST /api/processes/:id/ask-user-response returning 200 instead of 404.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -98,10 +97,22 @@ describe('ExecutorRegistry.getAskUserHandles', () => {
         expect(registry.getAskUserHandles('queue_task-3')).toBe(fakeHandles);
     });
 
+    it('returns handles from autopilotExecutor when question lives there', () => {
+        const { registry } = createRegistry();
+        vi.spyOn((registry as any).chatExecutor, 'getAskUserHandles').mockReturnValue(undefined);
+        vi.spyOn((registry as any).followUpExecutor, 'getAskUserHandles').mockReturnValue(undefined);
+        vi.spyOn((registry as any).autopilotExecutor, 'getAskUserHandles').mockReturnValue(fakeHandles);
+
+        // Autopilot initial turns now register ask_user too; without this
+        // fallback the answer route 404s and the question hangs.
+        expect(registry.getAskUserHandles('queue_task-auto')).toBe(fakeHandles);
+    });
+
     it('returns undefined when no executor has a handle', () => {
         const { registry } = createRegistry();
         vi.spyOn((registry as any).chatExecutor, 'getAskUserHandles').mockReturnValue(undefined);
         vi.spyOn((registry as any).followUpExecutor, 'getAskUserHandles').mockReturnValue(undefined);
+        vi.spyOn((registry as any).autopilotExecutor, 'getAskUserHandles').mockReturnValue(undefined);
 
         expect(registry.getAskUserHandles('queue_task-none')).toBeUndefined();
     });
