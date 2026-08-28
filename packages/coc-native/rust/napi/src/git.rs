@@ -19,8 +19,8 @@ use coc_native_core::git::branch::{
     repository_status, BranchEntry, BranchPage, BranchQuery, BranchStatus, RepositoryStatus,
 };
 use coc_native_core::git::commit::{
-    commit_diff, commit_files, file_content_at_commit, file_exists_at_commit, validate_ref,
-    CommitFile, CommitFiles,
+    commit_diff, commit_files, file_bytes_at_commit, file_content_at_commit, file_exists_at_commit,
+    validate_ref, CommitFile, CommitFiles,
 };
 use coc_native_core::git::config::{global_config_add, global_config_get_all};
 use coc_native_core::git::log::{get_commit, get_commits, Commit, CommitPage};
@@ -35,7 +35,7 @@ use coc_native_core::git::status::{
     parse_porcelain, status_entries, StatusEntry, STATUS_TIMEOUT_MS,
 };
 use coc_native_core::git::{run_git, GitCommandOptions, GitError, DEFAULT_TIMEOUT_MS};
-use napi::bindgen_prelude::{AsyncTask, Error, Result, Status, Task};
+use napi::bindgen_prelude::{AsyncTask, Buffer, Error, Result, Status, Task};
 use napi::Env;
 use napi_derive::napi;
 
@@ -503,6 +503,43 @@ pub fn git_file_content_at_commit(
     path: String,
 ) -> AsyncTask<GitFileContentAtCommitTask> {
     AsyncTask::new(GitFileContentAtCommitTask { repo_root: PathBuf::from(repo_root), rev, path })
+}
+
+pub struct GitFileBytesAtCommitTask {
+    repo_root: PathBuf,
+    rev: String,
+    path: String,
+}
+
+impl Task for GitFileBytesAtCommitTask {
+    type Output = Option<Vec<u8>>;
+    type JsValue = Option<Buffer>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        file_bytes_at_commit(&self.repo_root, &self.rev, &self.path).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output.map(Buffer::from))
+    }
+}
+
+/// Read a file's stored bytes as they stood at a commit.
+///
+/// The byte-exact twin of {@link git_file_content_at_commit}, for a caller that
+/// writes the result back to disk instead of showing it. Decoding to a string
+/// first would rewrite every byte sequence that is not valid UTF-8 into U+FFFD,
+/// so an image in the notes sync mirror would come back corrupted.
+///
+/// Resolves with `null` for a missing path, a revision that names nothing, and
+/// a path that names a directory. Only a path that is not a repository rejects.
+#[napi(ts_return_type = "Promise<Buffer | null>")]
+pub fn git_file_bytes_at_commit(
+    repo_root: String,
+    rev: String,
+    path: String,
+) -> AsyncTask<GitFileBytesAtCommitTask> {
+    AsyncTask::new(GitFileBytesAtCommitTask { repo_root: PathBuf::from(repo_root), rev, path })
 }
 
 pub struct GitFileExistsAtCommitTask {

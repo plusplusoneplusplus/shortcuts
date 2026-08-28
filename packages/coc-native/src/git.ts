@@ -122,6 +122,7 @@ export interface NativeGitAddon {
     gitCommitFiles: typeof Bindings.gitCommitFiles;
     gitCommitDiff: typeof Bindings.gitCommitDiff;
     gitFileContentAtCommit: typeof Bindings.gitFileContentAtCommit;
+    gitFileBytesAtCommit: typeof Bindings.gitFileBytesAtCommit;
     gitFileExistsAtCommit: typeof Bindings.gitFileExistsAtCommit;
     gitValidateRef: typeof Bindings.gitValidateRef;
     gitRangeDefaultBranch: typeof Bindings.gitRangeDefaultBranch;
@@ -161,6 +162,7 @@ const GIT_EXPORTS = [
     'gitCommitFiles',
     'gitCommitDiff',
     'gitFileContentAtCommit',
+    'gitFileBytesAtCommit',
     'gitFileExistsAtCommit',
     'gitValidateRef',
     'gitRangeDefaultBranch',

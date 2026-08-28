@@ -13,8 +13,11 @@
 //! content with `git show <rev>:<path>` and handed back the child's stdout, so
 //! the content arrived with its trailing newline intact. Every command that now
 //! crosses the boundary loses one, which for a diff is invisible and for a
-//! file's bytes is not — so [`file_content_at_commit`] reads the blob out of
-//! the object database instead and returns exactly the bytes git stored.
+//! file's bytes is not — so [`file_bytes_at_commit`] reads the blob out of the
+//! object database instead and returns exactly the bytes git stored.
+//! [`file_content_at_commit`] is the lossy-UTF-8 view of the same read, for the
+//! callers that want a string; a caller writing the result back to disk takes
+//! the bytes.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -310,21 +313,22 @@ fn lookup_entry<'repo>(
     tree.lookup_entry(components(path)).ok()?
 }
 
-/// Read a file's content as it stood at a commit.
+/// Read a file's stored bytes as they stood at a commit.
 ///
-/// Returns the blob's bytes verbatim — trailing newline included — which is
-/// what `git show <rev>:<path>` printed and what the TypeScript handed back.
-/// Invalid UTF-8 is replaced rather than rejected, matching what Node did when
-/// it decoded the child's stdout as UTF-8.
+/// The blob verbatim: no decoding, no trailing newline removed. A caller that
+/// needs to write the result back to disk — the notes sync mirror reads a whole
+/// commit's tree this way, and it carries images as well as markdown — cannot
+/// go through a `String`, because a lossy decode rewrites every byte sequence
+/// that is not valid UTF-8 into U+FFFD and there is no way back.
 ///
 /// A path that names a directory answers `None`. `git show` prints a tree
 /// listing there, which was never file content and which no caller has ever
 /// been able to use.
-pub fn file_content_at_commit(
+pub fn file_bytes_at_commit(
     repo_root: &Path,
     rev: &str,
     path: &str,
-) -> Result<Option<String>, GitError> {
+) -> Result<Option<Vec<u8>>, GitError> {
     let spec = format!("{rev}:{path}");
     let repo = open(repo_root, &["show", &spec])?;
     let Some(entry) = lookup_entry(&repo, rev, path) else {
@@ -336,7 +340,23 @@ pub fn file_content_at_commit(
     let Ok(blob) = entry.object() else {
         return Ok(None);
     };
-    Ok(Some(String::from_utf8_lossy(&blob.data).into_owned()))
+    Ok(Some(blob.data.clone()))
+}
+
+/// Read a file's content as it stood at a commit.
+///
+/// Returns the blob's bytes verbatim — trailing newline included — which is
+/// what `git show <rev>:<path>` printed and what the TypeScript handed back.
+/// Invalid UTF-8 is replaced rather than rejected, matching what Node did when
+/// it decoded the child's stdout as UTF-8. A caller that cannot afford that
+/// replacement wants [`file_bytes_at_commit`] instead.
+pub fn file_content_at_commit(
+    repo_root: &Path,
+    rev: &str,
+    path: &str,
+) -> Result<Option<String>, GitError> {
+    Ok(file_bytes_at_commit(repo_root, rev, path)?
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned()))
 }
 
 /// Whether `<rev>:<path>` names anything at all.

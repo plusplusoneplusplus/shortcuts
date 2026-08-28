@@ -55,6 +55,7 @@ const COMPLETE_ADDON =
     'gitCommitFiles: async () => ({ parentHash: \'\', files: [] }), ' +
     "gitCommitDiff: async () => '', " +
     'gitFileContentAtCommit: async () => null, ' +
+    'gitFileBytesAtCommit: async () => null, ' +
     'gitFileExistsAtCommit: async () => false, ' +
     'gitValidateRef: async () => null, ' +
     'gitRangeDefaultBranch: async () => null, ' +
@@ -99,6 +100,7 @@ it('exposes the capability when the addon provides it', async () => {
     expect(await api.gitCommitFiles('/repo', 'HEAD')).toEqual({ parentHash: '', files: [] });
     expect(await api.gitCommitDiff('/repo', 'HEAD')).toBe('');
     expect(await api.gitFileContentAtCommit('/repo', 'HEAD', 'a.txt')).toBeNull();
+    expect(await api.gitFileBytesAtCommit('/repo', 'HEAD', 'a.txt')).toBeNull();
     expect(await api.gitFileExistsAtCommit('/repo', 'HEAD', 'a.txt')).toBe(false);
     expect(await api.gitValidateRef('/repo', 'HEAD')).toBeNull();
     expect(await api.gitRangeDefaultBranch('/repo')).toBeNull();
@@ -335,6 +337,43 @@ describe('when the capability is missing', () => {
                 `parseGitBranchStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
                 'gitBranchStatus: async () => null, ' +
                 'gitListBranches: async () => ({ branches: [], totalCount: 0, hasMore: false }), ' +
+                'gitRemoteUrl: async () => null, ' +
+                'gitDetectRemoteUrl: async () => null, ' +
+                'gitGlobalConfigGetAll: async () => [], ' +
+                'gitGlobalConfigAdd: async () => undefined, ' +
+                'gitDiscoverRepoRoot: async () => null };',
+        );
+        expect(() => loadNativeGit()).toThrow('does not export the git capability');
+        expect(nativeGitStatus().loaded).toBe(false);
+    });
+
+    // And the slice after that: commit detail present, the byte-exact blob read
+    // the notes sync mirror needs absent.
+    it('rejects a binary built before the blob-bytes export', () => {
+        useAddon(
+            "module.exports = { execGit: async () => 'main', gitStatusEntries: async () => [], " +
+                'parseGitStatusPorcelain: async () => [], ' +
+                'gitLogCommits: async () => ({ commits: [], hasMore: false }), ' +
+                'gitLogCommit: async () => null, ' +
+                'gitCommitFiles: async () => ({ parentHash: \'\', files: [] }), ' +
+                "gitCommitDiff: async () => '', " +
+                'gitFileContentAtCommit: async () => null, ' +
+                'gitFileExistsAtCommit: async () => false, ' +
+                'gitValidateRef: async () => null, ' +
+                'gitRangeDefaultBranch: async () => null, ' +
+                'gitRangeUpstreamBranch: async () => null, ' +
+                "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
+                'gitRangeMergeBase: async () => null, ' +
+                'gitRangeCountAhead: async () => 0, ' +
+                'gitRangeChangedFiles: async () => [], ' +
+                'parseGitRangeChangedFiles: async () => [], ' +
+                'gitRangeDiffStats: async () => ({ additions: 0, deletions: 0 }), ' +
+                'parseGitDiffShortstat: async () => ({ additions: 0, deletions: 0 }), ' +
+                `gitRepositoryStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
+                `parseGitBranchStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
+                'gitBranchStatus: async () => null, ' +
+                'gitListBranches: async () => ({ branches: [], totalCount: 0, hasMore: false }), ' +
+                'gitLocalBranchNames: async () => [], ' +
                 'gitRemoteUrl: async () => null, ' +
                 'gitDetectRemoteUrl: async () => null, ' +
                 'gitGlobalConfigGetAll: async () => [], ' +

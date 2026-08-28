@@ -1074,6 +1074,43 @@ describe('commit-detail marshalling', () => {
         });
     });
 
+    describe('gitFileBytesAtCommit', () => {
+        // The reason this export exists beside the string one: a lossy decode
+        // rewrites every invalid byte sequence into U+FFFD, and the notes sync
+        // mirror writes what it reads back to disk.
+        it('marshals a binary blob back byte for byte', async () => {
+            const bytes = await gitAddon.gitFileBytesAtCommit(detail, head, 'logo.bin');
+            expect(Buffer.isBuffer(bytes)).toBe(true);
+            expect([...(bytes as Buffer)]).toEqual([0, 1, 2, 3, 0x00, 0xfe]);
+        });
+
+        it('reads the same bytes the string view mangles', async () => {
+            const text = await gitAddon.gitFileContentAtCommit(detail, head, 'logo.bin');
+            expect(Buffer.from(text as string, 'utf8')).not.toEqual(
+                await gitAddon.gitFileBytesAtCommit(detail, head, 'logo.bin'),
+            );
+        });
+
+        it('keeps every trailing newline the blob holds', async () => {
+            const bytes = await gitAddon.gitFileBytesAtCommit(detail, head, 'keep.md');
+            expect((bytes as Buffer).toString('utf8')).toBe('body\n\n\n');
+        });
+
+        it('resolves with null for a missing path, a bad revision and a directory', async () => {
+            await expect(gitAddon.gitFileBytesAtCommit(detail, head, 'nope.txt')).resolves.toBeNull();
+            await expect(gitAddon.gitFileBytesAtCommit(detail, 'no-such-ref', 'keep.md')).resolves.toBeNull();
+            await expect(gitAddon.gitFileBytesAtCommit(detail, head, 'src')).resolves.toBeNull();
+        });
+
+        it('reads a path at the commit asked for, not at HEAD', async () => {
+            // `src/old.ts` was renamed away in the second commit, so this only
+            // resolves against the root commit.
+            await expect(gitAddon.gitFileBytesAtCommit(detail, head, 'src/old.ts')).resolves.toBeNull();
+            const bytes = await gitAddon.gitFileBytesAtCommit(detail, root, 'src/old.ts');
+            expect((bytes as Buffer).toString('utf8')).toBe('export const value = 1;\n');
+        });
+    });
+
     describe('gitFileExistsAtCommit', () => {
         it('answers true for a file and false for a missing one', async () => {
             await expect(gitAddon.gitFileExistsAtCommit(detail, head, 'keep.md')).resolves.toBe(true);

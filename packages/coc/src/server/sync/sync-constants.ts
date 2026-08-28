@@ -1,10 +1,10 @@
 /**
  * Side-effect-free sync constants.
  *
- * Kept separate from `sync-engine.ts` (which pulls in `child_process`/`fs` at
- * module load) so lightweight consumers — e.g. `preferences/live-effects.ts` and
- * the server bootstrap — can read the default interval without dragging the whole
- * engine (and its mockable native deps) into their import graph.
+ * Kept separate from `sync-engine.ts` (which pulls in `fs` and the native git
+ * addon at module load) so lightweight consumers — e.g.
+ * `preferences/live-effects.ts` and the server bootstrap — can read the default
+ * interval without dragging the whole engine into their import graph.
  */
 
 /**

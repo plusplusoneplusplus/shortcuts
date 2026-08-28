@@ -12,8 +12,8 @@ use std::path::Path;
 use std::process::Command;
 
 use coc_native_core::git::commit::{
-    commit_diff, commit_files, file_content_at_commit, file_exists_at_commit, parent_hash,
-    parse_commit_files, validate_ref, EMPTY_TREE_HASH,
+    commit_diff, commit_files, file_bytes_at_commit, file_content_at_commit, file_exists_at_commit,
+    parent_hash, parse_commit_files, validate_ref, EMPTY_TREE_HASH,
 };
 use coc_native_core::git::status::ChangeStatus;
 use coc_native_core::git::GitCommandOptions;
@@ -464,6 +464,102 @@ fn file_content_is_absent_for_a_directory() {
 fn file_content_fails_for_a_path_that_is_not_a_repository() {
     let dir = TempDir::new().expect("temp dir");
     let error = file_content_at_commit(dir.path(), "HEAD", "a.txt").expect_err("not a repository");
+    assert!(error.to_string().starts_with("git show"), "{error}");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// file_bytes_at_commit
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Write raw bytes, for the cases a `&str` cannot express.
+fn write_bytes(repo: &Path, name: &str, contents: &[u8]) {
+    let path = repo.join(name);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).expect("parent directory should be creatable");
+    }
+    std::fs::write(path, contents).expect("file should be writable");
+}
+
+#[test]
+fn file_bytes_match_what_git_cat_file_stored() {
+    let (dir, _, second) = repo_with_history();
+    let stored = Command::new("git")
+        .arg("-C")
+        .arg(dir.path())
+        .args(["cat-file", "blob", &format!("{second}:a.txt")])
+        .output()
+        .expect("git should be on PATH for these tests");
+    assert!(stored.status.success());
+
+    let bytes = file_bytes_at_commit(dir.path(), &second, "a.txt").expect("read");
+    assert_eq!(bytes.as_deref(), Some(stored.stdout.as_slice()));
+}
+
+#[test]
+fn file_bytes_survive_content_that_is_not_utf8() {
+    // The whole reason this export exists: the string view replaces every
+    // invalid sequence with U+FFFD, and an image cannot come back from that.
+    let dir = TempDir::new().expect("temp dir");
+    init(dir.path());
+    let raw: &[u8] = &[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0xff, 0xfe, 0x00, 0x1a];
+    write_bytes(dir.path(), "image.png", raw);
+    let hash = commit(dir.path(), "first");
+
+    assert_eq!(
+        file_bytes_at_commit(dir.path(), &hash, "image.png").expect("read").as_deref(),
+        Some(raw)
+    );
+    // And the same read through the string view is lossy, which is the point.
+    let lossy =
+        file_content_at_commit(dir.path(), &hash, "image.png").expect("read").expect("some");
+    assert_ne!(lossy.as_bytes(), raw);
+    assert!(lossy.contains('\u{fffd}'));
+}
+
+#[test]
+fn file_bytes_keep_every_trailing_newline() {
+    let dir = TempDir::new().expect("temp dir");
+    init(dir.path());
+    write(dir.path(), "note.md", "# note\n\n\n");
+    let hash = commit(dir.path(), "first");
+
+    assert_eq!(
+        file_bytes_at_commit(dir.path(), &hash, "note.md").expect("read").as_deref(),
+        Some(b"# note\n\n\n".as_slice()),
+    );
+}
+
+#[test]
+fn file_bytes_read_an_empty_file_as_an_empty_buffer() {
+    let dir = TempDir::new().expect("temp dir");
+    init(dir.path());
+    write(dir.path(), "empty.md", "");
+    let hash = commit(dir.path(), "first");
+
+    // Distinct from `None`, exactly as the string view is from `Some("")`.
+    assert_eq!(
+        file_bytes_at_commit(dir.path(), &hash, "empty.md").expect("read"),
+        Some(Vec::new()),
+    );
+}
+
+#[test]
+fn file_bytes_are_absent_for_a_missing_path_a_bad_revision_and_a_directory() {
+    let (dir, _, second) = repo_with_history();
+    assert_eq!(file_bytes_at_commit(dir.path(), &second, "nope.txt").expect("read"), None);
+    assert_eq!(file_bytes_at_commit(dir.path(), "no-such-ref", "a.txt").expect("read"), None);
+
+    let nested = TempDir::new().expect("temp dir");
+    init(nested.path());
+    write(nested.path(), "a/b.txt", "deep\n");
+    let hash = commit(nested.path(), "first");
+    assert_eq!(file_bytes_at_commit(nested.path(), &hash, "a").expect("read"), None);
+}
+
+#[test]
+fn file_bytes_fail_for_a_path_that_is_not_a_repository() {
+    let dir = TempDir::new().expect("temp dir");
+    let error = file_bytes_at_commit(dir.path(), "HEAD", "a.txt").expect_err("not a repository");
     assert!(error.to_string().starts_with("git show"), "{error}");
 }
 

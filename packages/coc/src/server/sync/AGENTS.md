@@ -22,8 +22,18 @@ baseline for a push that never landed. Preserve step ordering when editing.
   `SyncEngineOptions` contracts + `DEFAULT_LOGGER` (dependency-free).
 - `sync-git.ts` — `SyncGitRepository`: every Git command and every rule for
   interpreting Git output (usable-repo check, remote setup, remote-change probe,
-  pull-conflict parsing, tree reads, default-branch discovery, staging). The
-  highest-risk external dependency, isolated for failure-mode testing.
+  pull-conflict detection, tree reads, default-branch discovery, staging). The
+  highest-risk external dependency, isolated for failure-mode testing. The
+  commands run in the native addon through `execGitAsync`; the module starts no
+  child process of its own. Two consequences to keep in mind when editing it:
+  a conflicted pull is recognised by the unmerged entries git left in the index
+  and *not* by the "CONFLICT"/"Automatic merge failed" text, which git prints on
+  stdout and no runner keeps once a command has failed; and `readTree` reads
+  each blob out of the object database (`gitFileBytesAtCommit`), because stdout
+  loses a trailing line ending and an attached image is not text at all. Every
+  `catch` here rethrows a `NativeAddonLoadError` rather than reading it as a
+  sync outcome — `isUsable()` answering `false` deletes the mirror and re-clones
+  it.
 - `sync-mirror.ts` — `SyncMirrorCopier` + `copyDirContents`/`copyFileIfChanged`:
   change-only copy, baseline-gated mirror deletes, and `SYNC_IGNORE_NAMES`
   (`.git`, `.lock` — never copied or mirror-deleted). Both directions mirror:
@@ -64,5 +74,10 @@ baseline for a push that never landed. Preserve step ordering when editing.
   `(engine as any).transaction` / `.resolver`.
 - `test/server/sync-kernels.test.ts` — mirror / conflict-resolver / lock units.
 - `test/server/sync-reconcile.test.ts`, `sync-handler.test.ts`.
+- `test/server/sync-git-native.test.ts` — `SyncGitRepository` against real
+  repositories: byte-exact blob reads, conflicted-pull detection, clone into a
+  directory that is not a repository yet.
+- `test/server/sync-git-native-required.test.ts` — a broken addon stays loud
+  instead of reading as an idle tick or an unusable mirror.
 
-Run: `npx vitest run test/server/sync-engine.test.ts test/server/sync-kernels.test.ts test/server/sync-reconcile.test.ts test/server/sync-handler.test.ts`
+Run: `npx vitest run test/server/sync-engine.test.ts test/server/sync-kernels.test.ts test/server/sync-reconcile.test.ts test/server/sync-handler.test.ts test/server/sync-git-native.test.ts test/server/sync-git-native-required.test.ts`

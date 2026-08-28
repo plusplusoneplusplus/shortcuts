@@ -272,6 +272,18 @@ export declare function gitCommitDiff(repoRoot: string, commit: string, options?
  */
 export declare function gitFileContentAtCommit(repoRoot: string, rev: string, path: string): Promise<string | null>
 /**
+ * Read a file's stored bytes as they stood at a commit.
+ *
+ * The byte-exact twin of {@link git_file_content_at_commit}, for a caller that
+ * writes the result back to disk instead of showing it. Decoding to a string
+ * first would rewrite every byte sequence that is not valid UTF-8 into U+FFFD,
+ * so an image in the notes sync mirror would come back corrupted.
+ *
+ * Resolves with `null` for a missing path, a revision that names nothing, and
+ * a path that names a directory. Only a path that is not a repository rejects.
+ */
+export declare function gitFileBytesAtCommit(repoRoot: string, rev: string, path: string): Promise<Buffer | null>
+/**
  * Whether `<rev>:<path>` names anything at a commit.
  *
  * True for a directory as well as a file, because the `git cat-file -e` this
