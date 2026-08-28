@@ -33,6 +33,7 @@ import { resolveWarmClientTtlMs } from './warm-client-config';
 import { getSDKLogger } from './logger';
 import { dynamicImportModule } from './sdk-esm-loader';
 import { execFileAsync } from './internal/exec-utils';
+import { loadNativeGit, type NativeGitAddon } from '@plusplusoneplusplus/coc-native';
 import { CocToolRuntime } from './llm-tools/coc-tool-runtime';
 import { cocToolBridgeServer } from './llm-tools/bridge-server';
 import { buildCocLlmToolsMcpConfig, COC_LLM_TOOLS_MCP_SERVER_NAME } from './llm-tools/mcp-config';
@@ -256,6 +257,12 @@ class CodexFileChangeDiffTracker {
     private initialized = false;
     private enabled = false;
     private root = '';
+    /**
+     * The git capability, loaded once the working directory turns out to be a
+     * repository. `undefined` until then, and still `undefined` when the addon
+     * would not load — the same state a missing `git` on PATH used to produce.
+     */
+    private git: NativeGitAddon | undefined;
     private readonly rootAliases: string[] = [];
     private readonly dirtyStartSnapshots = new Map<string, CodexFileSnapshot>();
     private readonly lastSnapshots = new Map<string, CodexFileSnapshot>();
@@ -311,32 +318,28 @@ class CodexFileChangeDiffTracker {
         if (!this.cwd) return;
 
         try {
-            const { stdout } = await execFileAsync('git', ['rev-parse', '--show-toplevel'], {
-                cwd: this.cwd,
-                timeout: CODEX_DIFF_TIMEOUT_MS,
-            });
-            this.root = stdout.trim();
-            if (!this.root) return;
+            const git = loadNativeGit();
+            // `gix` discovers the root by walking up from the working directory
+            // without resolving symlinks, so this is the repository as the
+            // working directory spells it — exactly what
+            // `path.resolve(cwd, rev-parse --show-cdup)` used to produce.
+            const discovered = await git.gitDiscoverRepoRoot(path.resolve(this.cwd));
+            if (!discovered) return;
+            this.git = git;
+            // `rev-parse --show-toplevel` answered with symlinks resolved, and
+            // that spelling is what `this.root` has always held. Both spellings
+            // become aliases either way; only which one is canonical changed.
+            this.root = await fs.realpath(discovered).catch(() => discovered);
             this.addRootAlias(this.root);
-            await this.addCwdRootAlias();
+            // Matches absolute file-change paths that use a symlink spelling.
+            this.addRootAlias(discovered);
             this.enabled = true;
             await this.snapshotDirtyPaths();
         } catch {
+            // A repository that cannot be read — and an addon that will not
+            // load — both leave the diff off. Codex file-change diffs are
+            // display metadata, so the tool event stays successful without one.
             this.enabled = false;
-        }
-    }
-
-    private async addCwdRootAlias(): Promise<void> {
-        if (!this.cwd) return;
-        try {
-            const { stdout } = await execFileAsync('git', ['rev-parse', '--show-cdup'], {
-                cwd: this.cwd,
-                timeout: CODEX_DIFF_TIMEOUT_MS,
-            });
-            this.addRootAlias(path.resolve(this.cwd, stdout.trim() || '.'));
-        } catch {
-            // The canonical git root is enough for normal operation. This alias only
-            // helps match absolute file-change paths that use a symlink spelling.
         }
     }
 
@@ -349,8 +352,13 @@ class CodexFileChangeDiffTracker {
     }
 
     private async snapshotDirtyPaths(): Promise<void> {
-        const { stdout } = await execFileAsync('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all'], {
-            cwd: this.root,
+        const git = this.git;
+        if (!git) return;
+        // The NUL-separated form, not the addon's parsed `gitStatusEntries`:
+        // `--porcelain` without `-z` renders a non-ASCII path as its quoted
+        // C-string (`"caf\303\251.txt"`), which no longer names a file on
+        // disk, so those paths would silently lose their dirty-start baseline.
+        const stdout = await git.execGit(['status', '--porcelain=v1', '-z', '--untracked-files=all'], this.root, {
             timeout: CODEX_DIFF_TIMEOUT_MS,
         });
         const entries = stdout.split('\0').filter(Boolean);
@@ -375,13 +383,15 @@ class CodexFileChangeDiffTracker {
     }
 
     private async readHeadSnapshot(relPath: string): Promise<CodexFileSnapshot> {
+        const git = this.git;
+        if (!git) return { exists: false, content: '' };
         try {
-            const { stdout } = await execFileAsync('git', ['show', `HEAD:${relPath}`], {
-                cwd: this.root,
-                timeout: CODEX_DIFF_TIMEOUT_MS,
-                maxBuffer: 10 * 1024 * 1024,
-            });
-            return { exists: true, content: stdout };
+            // Straight out of the object database — no child process, and the
+            // blob's bytes verbatim, trailing newline included, which is what
+            // `git show HEAD:<path>` printed. A path that names nothing at
+            // HEAD comes back as `null` instead of a non-zero exit.
+            const content = await git.gitFileContentAtCommit(this.root, 'HEAD', relPath);
+            return content === null ? { exists: false, content: '' } : { exists: true, content };
         } catch {
             return { exists: false, content: '' };
         }

@@ -11,14 +11,25 @@ export function getNpmExecutable(platform = process.platform) {
     return platform === 'win32' ? 'npm.cmd' : 'npm';
 }
 
+/**
+ * Built in order, and the order is a dependency order rather than a list.
+ *
+ * Each package resolves its workspace dependencies from their built `dist`, so
+ * a package has to appear after everything in here that it imports — on a clean
+ * checkout the earlier `dist` directories do not exist yet, and `tsc` fails with
+ * TS2307 rather than with anything that names the ordering. `coc-native` leads
+ * because `coc-agent-sdk` imports its git capability. `prebuild.test.ts` checks
+ * the invariant against the real `package.json` files, so a new edge between
+ * two of these fails there rather than in CI.
+ */
 export const REQUIRED_BUILD_WORKSPACES = [
+    '@plusplusoneplusplus/coc-native',
     '@plusplusoneplusplus/coc-agent-sdk',
     '@plusplusoneplusplus/coc-workflow',
     '@plusplusoneplusplus/coc-memory',
     '@plusplusoneplusplus/forge',
     '@plusplusoneplusplus/coc-client',
     '@plusplusoneplusplus/coc-connector',
-    '@plusplusoneplusplus/coc-native',
 ];
 
 export function buildRequiredWorkspacePackages({
