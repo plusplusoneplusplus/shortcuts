@@ -1,5 +1,5 @@
-import { useEffect, useCallback } from 'react';
-import { useNotesChat, notesChatDraftKey } from '../hooks/useNotesChat';
+import { useEffect, useCallback, useRef, useState } from 'react';
+import { useNotesChat, notesChatDraftKey, noteSectionOf, formatNoteSwitchLink } from '../hooks/useNotesChat';
 import type { ChatScope, NotesChatAiSelection } from '../hooks/useNotesChat';
 import { ChatDetail } from '../../chat/ChatDetail';
 import { ChatPreferencesProvider } from '../../../contexts/ChatPreferencesContext';
@@ -63,7 +63,7 @@ export interface NoteChatPanelProps {
 }
 
 export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBeforeSend, defaultScope, references, onRemoveReference, onClearReferences, paperGrounding, onClearPaperGrounding, onHasChatChange, presentation = 'embedded', onMinimize, onPin, onUnpin }: NoteChatPanelProps) {
-    const { taskId, chatNoteContext, syncChatNoteContext, createChat, resetChat, scope, setScope } = useNotesChat({
+    const { taskId, chatNoteContext, syncChatNoteContext, createChat, resetChat, moveChatNote, scope, setScope } = useNotesChat({
         workspaceId,
         notePath,
         noteTitle,
@@ -77,7 +77,16 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
     const workspaceLabel = resolveWorkspaceName(workspaceId, null, appState.workspaces) ?? workspaceId;
     const workspaceRoot = appState.workspaces?.find((w: any) => w.id === workspaceId)?.rootPath;
     const noteContextLabel = noteTitle || notePath?.split('/').pop()?.replace(/\.md$/, '') || 'No note selected';
-    const headerContextLabel = scope === 'per-note' ? noteContextLabel : workspaceLabel;
+    // The section the selected note belongs to (its nearest parent folder), or
+    // null at the notes root. Drives the Section toggle segment, the section
+    // header label, and the "Use section scope" banner action.
+    const sectionPath = noteSectionOf(notePath);
+    const sectionLabel = sectionPath?.split('/').pop() ?? sectionPath;
+    const headerContextLabel = scope === 'per-note'
+        ? noteContextLabel
+        : scope === 'per-section'
+            ? (sectionLabel ?? noteContextLabel)
+            : workspaceLabel;
 
     // ── Chat-bound note reference (shared by header 📎 + switched-note banner) ─
     // `chatNoteContext` is the note the chat was bound to when created; `notePath`
@@ -86,11 +95,61 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
     // a slim warning strip below it. Computed once here so the two can't desync.
     const chatNotePath = chatNoteContext?.notePath ?? null;
     const chatNoteTitle = chatNoteContext?.noteTitle ?? null;
-    const isNoteSwitched = chatNotePath !== null && notePath !== null && notePath !== chatNotePath;
+    // Only meaningful in per-note scope. Under section scope every sibling
+    // legitimately shares the chat, so flagging each sibling click as a switch
+    // would fire the banner constantly and defeat the whole feature — the chat
+    // follows the selection instead (see the auto-move effect below).
+    const isNoteSwitched = scope === 'per-note'
+        && chatNotePath !== null && notePath !== null && notePath !== chatNotePath;
 
     useEffect(() => {
         onHasChatChange?.(!!taskId);
     }, [taskId, onHasChatChange]);
+
+    // ── Moving the chat's active note ────────────────────────────────────────
+    // Nothing is sent when the note changes: clicking a note in the sidebar is
+    // navigation, not a turn, and firing a model turn per click would burn
+    // tokens while you browse. The switch is marked pending and folded into the
+    // next message as a single `Now viewing:` line — the same shape as the
+    // creation-time note link, so a switch costs one line and no document.
+    const [pendingSwitchNotePath, setPendingSwitchNotePath] = useState<string | null>(null);
+
+    const moveChatTo = useCallback(async (targetPath: string, targetTitle?: string) => {
+        const moved = await moveChatNote(targetPath, targetTitle);
+        if (moved) setPendingSwitchNotePath(targetPath);
+        return moved;
+    }, [moveChatNote]);
+
+    // Section scope: the chat follows the selection inside its folder, with no
+    // banner and no confirmation — that is what "one chat for this folder"
+    // means. The server rejects a target outside the bound folder, so a stray
+    // selection can't retarget where the agent writes.
+    const lastAutoMovedRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (scope !== 'per-section' || !taskId || !notePath) return;
+        if (!chatNotePath || chatNotePath === notePath) return;
+        if (noteSectionOf(notePath) !== noteSectionOf(chatNotePath)) return;
+        const moveKey = `${taskId}:${notePath}`;
+        if (lastAutoMovedRef.current === moveKey) return;
+        lastAutoMovedRef.current = moveKey;
+        void moveChatTo(notePath, noteTitle);
+    }, [scope, taskId, notePath, noteTitle, chatNotePath, moveChatTo]);
+
+    // Banner actions (per-note scope only). `Continue here` keeps the task and
+    // moves it; `Use section scope` does the same and widens the scope, so the
+    // sibling you just clicked — and every other note in the folder — resolves
+    // to this chat from now on.
+    const handleContinueHere = useCallback(() => {
+        if (!notePath) return;
+        void moveChatTo(notePath, noteTitle);
+    }, [notePath, noteTitle, moveChatTo]);
+
+    const handleUseSectionScope = useCallback(() => {
+        if (!notePath || !sectionPath) return;
+        void moveChatTo(notePath, noteTitle).then(moved => {
+            if (moved) setScope('per-section');
+        });
+    }, [notePath, noteTitle, sectionPath, moveChatTo, setScope]);
 
     // ── Shared-composer adapters ─────────────────────────────────────────────
     // Notes owns only a thin submission adapter; the shared InitialChatComposer
@@ -156,22 +215,32 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
         return false;
     }, [resetChat]);
 
-    const noNoteSelected = scope === 'per-note' && !notePath;
+    // Section scope still needs a note to know which folder it is scoped to.
+    const noNoteSelected = scope !== 'per-workspace' && !notePath;
 
-    // Fold the paper grounding directive (Goal 3, AC-03) and note references into
-    // one pending prefix. The paper directive leads so the model reads the full
-    // paper before the quoted note excerpts. Undefined when neither is present.
+    // Fold the pending note switch, the paper grounding directive (Goal 3,
+    // AC-03), and note references into one pending prefix; undefined when none is
+    // present. The switch line leads — it names the note everything after it is
+    // about, so "summarize this" resolves against the newest link rather than an
+    // earlier one still sitting in the transcript. The paper directive then
+    // precedes the quoted note excerpts so the model reads the full paper first.
+    const switchPrefix = pendingSwitchNotePath
+        ? `${formatNoteSwitchLink(workspaceId, pendingSwitchNotePath)}\n\n`
+        : '';
     const referencePrefix = references && references.length > 0 ? formatNoteReferences(references) : '';
-    const combinedPrefix = `${paperGrounding ?? ''}${referencePrefix}`;
+    const combinedPrefix = `${switchPrefix}${paperGrounding ?? ''}${referencePrefix}`;
     const pendingPrefix = combinedPrefix.length > 0 ? combinedPrefix : undefined;
     const clearPendingPrefix = useCallback(() => {
         onClearReferences?.();
         onClearPaperGrounding?.();
+        setPendingSwitchNotePath(null);
     }, [onClearReferences, onClearPaperGrounding]);
 
     const emptyStateText = scope === 'per-note'
         ? 'Ask about this note…'
-        : 'Ask about your notes — one chat per workspace';
+        : scope === 'per-section'
+            ? `Ask about the notes in ${sectionLabel ?? 'this folder'} — one chat per folder`
+            : 'Ask about your notes — one chat per workspace';
 
     return (
         <div className="flex flex-col bg-[#f8f8f8] dark:bg-[#1e1e1e] overflow-hidden h-full w-full"
@@ -182,6 +251,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                 contextLabel={headerContextLabel}
                 scope={scope}
                 onScopeChange={setScope}
+                sectionAvailable={sectionPath !== null}
                 windowMode={presentation}
                 onClose={onClose}
                 onMinimize={onMinimize}
@@ -247,7 +317,23 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                             chatNotePath={chatNotePath}
                             chatNoteTitle={chatNoteTitle}
                             isSwitched={isNoteSwitched}
+                            onContinueHere={notePath ? handleContinueHere : undefined}
+                            onUseSectionScope={notePath && sectionPath ? handleUseSectionScope : undefined}
                         />
+                    )}
+                    {pendingSwitchNotePath && (
+                        <div
+                            className="border-b border-[#e0e0e0] bg-[#f3f3f3] px-3 py-1 dark:border-[#3c3c3c] dark:bg-[#252526]"
+                            data-testid="note-switch-divider"
+                        >
+                            <div className="truncate text-[10px] text-[#848484]" title={pendingSwitchNotePath}>
+                                <span aria-hidden="true">📝</span> Now viewing{' '}
+                                <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc]">
+                                    {pendingSwitchNotePath.split('/').pop()?.replace(/\.md$/, '') ?? pendingSwitchNotePath}
+                                </span>
+                                {' '}— included with your next message
+                            </div>
+                        </div>
                     )}
                     {references && references.length > 0 && (
                         <div className="px-3 pt-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">

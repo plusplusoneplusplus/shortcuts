@@ -666,6 +666,12 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 noteTitle: isChatPayload(task.payload) && hasNoteChatContext(task.payload)
                     ? task.payload.context?.noteChat?.noteTitle
                     : undefined,
+                // Denormalized so `POST /api/processes/:id/note` can enforce the
+                // scope's boundary without re-reading the queue payload: a
+                // section-scoped chat may only be retargeted within its folder.
+                noteChatScope: isChatPayload(task.payload) && hasNoteChatContext(task.payload)
+                    ? task.payload.context?.noteChat?.scope
+                    : undefined,
                 forEach: serializeForEachMetadata(task.payload),
                 mapReduce: serializeMapReduceMetadata(task.payload),
                 ralph: serializeRalphMetadata(task.payload),

@@ -247,10 +247,64 @@ describe('NotesChatHeader', () => {
 });
 
 describe('NotesChatScopeToggle', () => {
-    it('renders This note and Workspace options', () => {
-        render(<NotesChatScopeToggle scope="per-note" onScopeChange={vi.fn()} />);
+    it('renders This note, Section, and Workspace options', () => {
+        render(<NotesChatScopeToggle scope="per-note" onScopeChange={vi.fn()} sectionAvailable />);
         expect(screen.getByTestId('chat-scope-per-note')).toHaveTextContent('This note');
+        expect(screen.getByTestId('chat-scope-per-section')).toHaveTextContent('Section');
         expect(screen.getByTestId('chat-scope-per-workspace')).toHaveTextContent('Workspace');
+    });
+
+    it('places Section in the middle so the control reads as widening scope', () => {
+        render(<NotesChatScopeToggle scope="per-note" onScopeChange={vi.fn()} sectionAvailable />);
+        const labels = Array.from(screen.getByTestId('chat-scope-toggle').children)
+            .map(el => el.textContent);
+        expect(labels).toEqual(['This note', 'Section', 'Workspace']);
+    });
+
+    it('keeps the Section label static rather than naming the folder', () => {
+        // The pill is text-[10px]; a folder name would blow the layout. The
+        // folder is already named by the adjacent context label.
+        render(<NotesChatScopeToggle scope="per-section" onScopeChange={vi.fn()} sectionAvailable />);
+        expect(screen.getByTestId('chat-scope-per-section').textContent).toBe('Section');
+    });
+
+    it('marks only the active segment as pressed', () => {
+        render(<NotesChatScopeToggle scope="per-section" onScopeChange={vi.fn()} sectionAvailable />);
+        expect(screen.getByTestId('chat-scope-per-section').getAttribute('aria-pressed')).toBe('true');
+        expect(screen.getByTestId('chat-scope-per-note').getAttribute('aria-pressed')).toBe('false');
+        expect(screen.getByTestId('chat-scope-per-workspace').getAttribute('aria-pressed')).toBe('false');
+    });
+
+    it('reports per-section when the middle segment is clicked', () => {
+        const onScopeChange = vi.fn();
+        render(<NotesChatScopeToggle scope="per-note" onScopeChange={onScopeChange} sectionAvailable />);
+        fireEvent.click(screen.getByTestId('chat-scope-per-section'));
+        expect(onScopeChange).toHaveBeenCalledWith('per-section');
+    });
+
+    describe('a note with no parent folder', () => {
+        it('disables Section rather than letting it select and resolve to nothing', () => {
+            const onScopeChange = vi.fn();
+            render(<NotesChatScopeToggle scope="per-note" onScopeChange={onScopeChange} />);
+            const section = screen.getByTestId('chat-scope-per-section');
+            expect(section).toBeDisabled();
+            expect(section.getAttribute('title')).toBe("This note isn't in a folder");
+            fireEvent.click(section);
+            expect(onScopeChange).not.toHaveBeenCalled();
+        });
+
+        it('leaves the other two segments usable', () => {
+            const onScopeChange = vi.fn();
+            render(<NotesChatScopeToggle scope="per-note" onScopeChange={onScopeChange} />);
+            fireEvent.click(screen.getByTestId('chat-scope-per-workspace'));
+            expect(onScopeChange).toHaveBeenCalledWith('per-workspace');
+        });
+    });
+
+    it('explains section scope in the enabled tooltip', () => {
+        render(<NotesChatScopeToggle scope="per-note" onScopeChange={vi.fn()} sectionAvailable />);
+        expect(screen.getByTestId('chat-scope-per-section').getAttribute('title'))
+            .toBe('One chat for every note in this folder');
     });
 
     it('renders a compact pill with pill-shaped segments', () => {
@@ -263,6 +317,7 @@ describe('NotesChatScopeToggle', () => {
 
         for (const segment of [
             screen.getByTestId('chat-scope-per-note'),
+            screen.getByTestId('chat-scope-per-section'),
             screen.getByTestId('chat-scope-per-workspace'),
         ]) {
             expect(segment.className).toContain('rounded-full');

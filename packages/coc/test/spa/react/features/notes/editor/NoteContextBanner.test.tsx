@@ -8,8 +8,8 @@
  * one currently selected. The note title/path + path-reference affordance moved
  * to NotesChatHeader's 📎 button.
  */
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { NoteContextBanner } from '../../../../../../src/server/spa/client/react/features/notes/editor/NoteContextBanner';
 
 describe('NoteContextBanner (render)', () => {
@@ -28,8 +28,7 @@ describe('NoteContextBanner (render)', () => {
         );
         expect(screen.getByTestId('note-context-banner')).toBeTruthy();
         const hint = screen.getByTestId('note-anchor-hint');
-        expect(hint).toHaveTextContent('This chat is still attached to roadmap');
-        expect(hint).toHaveTextContent('Start New Chat to switch');
+        expect(hint).toHaveTextContent('This chat is about roadmap');
     });
 
     it('uses amber warning styling on the switched strip', () => {
@@ -44,7 +43,7 @@ describe('NoteContextBanner (render)', () => {
         render(
             <NoteContextBanner chatNotePath="Plans/roadmap.md" chatNoteTitle={null} isSwitched={true} />,
         );
-        expect(screen.getByTestId('note-anchor-hint')).toHaveTextContent('attached to roadmap');
+        expect(screen.getByTestId('note-anchor-hint')).toHaveTextContent('This chat is about roadmap');
     });
 
     it('does not render the removed path-reference chip', () => {
@@ -53,5 +52,54 @@ describe('NoteContextBanner (render)', () => {
         );
         expect(screen.queryByTestId('note-status-chip')).toBeNull();
         expect(screen.queryByText('📎 Path reference')).toBeNull();
+    });
+
+    describe('actions', () => {
+        it('renders neither action when no handler is supplied', () => {
+            render(<NoteContextBanner chatNotePath="Plans/roadmap.md" chatNoteTitle="roadmap" isSwitched />);
+            expect(screen.queryByTestId('note-context-continue-here')).toBeNull();
+            expect(screen.queryByTestId('note-context-use-section-scope')).toBeNull();
+        });
+
+        it('invokes onContinueHere', () => {
+            const onContinueHere = vi.fn();
+            render(
+                <NoteContextBanner
+                    chatNotePath="Plans/roadmap.md"
+                    chatNoteTitle="roadmap"
+                    isSwitched
+                    onContinueHere={onContinueHere}
+                />,
+            );
+            fireEvent.click(screen.getByTestId('note-context-continue-here'));
+            expect(onContinueHere).toHaveBeenCalledTimes(1);
+        });
+
+        it('invokes onUseSectionScope', () => {
+            const onUseSectionScope = vi.fn();
+            render(
+                <NoteContextBanner
+                    chatNotePath="Plans/roadmap.md"
+                    chatNoteTitle="roadmap"
+                    isSwitched
+                    onUseSectionScope={onUseSectionScope}
+                />,
+            );
+            fireEvent.click(screen.getByTestId('note-context-use-section-scope'));
+            expect(onUseSectionScope).toHaveBeenCalledTimes(1);
+        });
+
+        it('renders nothing at all when not switched, actions or no actions', () => {
+            const { container } = render(
+                <NoteContextBanner
+                    chatNotePath="Plans/roadmap.md"
+                    chatNoteTitle="roadmap"
+                    isSwitched={false}
+                    onContinueHere={vi.fn()}
+                    onUseSectionScope={vi.fn()}
+                />,
+            );
+            expect(container).toBeEmptyDOMElement();
+        });
     });
 });

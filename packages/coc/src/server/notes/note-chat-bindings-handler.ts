@@ -1,9 +1,12 @@
 /**
  * Note-Chat Binding REST API Routes
  *
- * Read/delete operations on note → chat task bindings. Bindings are created
- * server-side as a side effect of enqueueing a chat task whose payload carries
- * `context.noteChat.notePath`, so there is no POST/PUT endpoint here.
+ * Read/write/delete operations on note → chat task bindings. Bindings are
+ * normally created server-side as a side effect of enqueueing a chat task whose
+ * payload carries `context.noteChat.notePath`. The one case that needs an
+ * explicit write is widening an existing chat's scope — a per-note chat becoming
+ * its folder's section chat has no new enqueue to hang a binding off, so `PUT
+ * .../by-path` re-keys it.
  *
  * Workspace-scoped, following the `/api/workspaces/:id/...` pattern.
  */
@@ -11,7 +14,7 @@
 import * as url from 'url';
 import { sendJSON } from '../core/api-handler';
 import { handleAPIError, notFound, badRequest } from '../errors';
-import { resolveWorkspaceOrFail } from '../shared/handler-utils';
+import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { ApiRouteContext } from '../routes/api-shared';
 import { NoteChatBindingStore } from './note-chat-binding-store';
 
@@ -30,6 +33,20 @@ export function normalizeRelativeNotePath(input: unknown): string | null {
         if (seg === '.' || seg === '..') return null;
     }
     return segments.join('/');
+}
+
+/**
+ * Nearest-parent folder of an already-normalized note path — the key a
+ * `per-section` chat binds to. Returns null for a note sitting at the notes
+ * root, which has no section.
+ *
+ * Nearest parent, not the top-level folder: `MultiModal/sub/note.md` belongs to
+ * `MultiModal/sub`. A chat bound to `MultiModal` therefore does not pick up
+ * notes under `MultiModal/sub` — they are a section of their own.
+ */
+export function noteSectionPath(notePath: string): string | null {
+    const idx = notePath.lastIndexOf('/');
+    return idx > 0 ? notePath.slice(0, idx) : null;
 }
 
 function firstStringQuery(value: unknown): string | undefined {
@@ -79,6 +96,40 @@ export function registerNoteChatBindingRoutes(ctx: ApiRouteContext): void {
                 return handleAPIError(res, notFound('Binding'));
             }
             sendJSON(res, 200, { notePath, taskId: binding.taskId, createdAt: binding.createdAt });
+        },
+    });
+
+    // ------------------------------------------------------------------
+    // PUT /api/workspaces/:id/notes/chat-bindings/by-path?path=<notePath>
+    //
+    // Bind an EXISTING chat task to a path. The only caller is widening scope:
+    // when a per-note chat becomes its folder's section chat there is no new
+    // enqueue to create the folder-keyed row, so without this the conversation
+    // would vanish the moment the user clicked a sibling.
+    // ------------------------------------------------------------------
+    routes.push({
+        method: 'PUT',
+        pattern: /^\/api\/workspaces\/([^/]+)\/notes\/chat-bindings\/by-path$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            const query = url.parse(req.url || '', true).query;
+            const notePath = normalizeRelativeNotePath(firstStringQuery(query.path));
+            if (!notePath) {
+                return handleAPIError(res, badRequest('Missing or invalid query parameter: path'));
+            }
+
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+            const taskId = typeof body.taskId === 'string' ? body.taskId.trim() : '';
+            if (!taskId) {
+                return handleAPIError(res, badRequest('Missing or invalid field: taskId'));
+            }
+
+            bindingStore.bind(ws.id, notePath, taskId);
+            const bound = bindingStore.get(ws.id, notePath);
+            sendJSON(res, 200, { notePath, taskId, createdAt: bound?.createdAt });
         },
     });
 

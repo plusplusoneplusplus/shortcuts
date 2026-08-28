@@ -81,8 +81,11 @@ describe('NoteContextBanner', () => {
             expect(source).toContain('note-anchor-hint');
         });
 
-        it('suggests starting a new chat', () => {
-            expect(source).toContain('Start New Chat to switch');
+        it('offers a way out rather than naming the problem', () => {
+            expect(source).toContain('Continue here');
+            expect(source).toContain('Use section scope');
+            expect(source).toContain("data-testid=\"note-context-continue-here\"");
+            expect(source).toContain("data-testid=\"note-context-use-section-scope\"");
         });
     });
 

@@ -74,25 +74,96 @@ inside an inline code span.
 `NotesChatHeader.tsx` (beside `NoteChatPanel.tsx`) renders one compact header across
 the Lens, pinned side-panel, and embedded (mobile or Lens-disabled) presentations, in
 both empty and active-conversation states. It carries a Notes Chat identity mark, a
-muted context label (current note title in per-note scope, or the workspace display
-name from `resolveWorkspaceName` in per-workspace scope, truncated with the full value
-on hover), and the independently centered `NotesChatScopeToggle` pill (This note /
-Workspace), which defaults to `per-note` through `useNotesChat`'s `defaultScope` when
-no scope is persisted.
+muted context label (current note title in per-note scope, the folder name in
+per-section scope, or the workspace display name from `resolveWorkspaceName` in
+per-workspace scope, truncated with the full value on hover), and the independently
+centered `NotesChatScopeToggle` pill (This note / Section / Workspace), which defaults
+to `per-note` through `useNotesChat`'s `defaultScope` when no scope is persisted.
+
+The Section segment sits in the middle so the control reads as widening scope. Its
+label is static — the pill is `text-[10px]`, and the folder name is already carried by
+the adjacent context label. It is disabled (`title="This note isn't in a folder"`) when
+the selected note sits at the notes root and therefore has no section.
 
 Window actions are presentation-specific: minimize + pin in `'lens'`, unpin in
 `'side-panel'`, neither in `'embedded'`, and close everywhere. "New chat" resets the
 active scope while leaving the old process recoverable in history; it lives in
 `ChatHeaderOverflowMenu` and renders only when a chat exists.
 
+### Chat scope
+
+`NoteChatScope` is `'per-note' | 'per-section' | 'per-workspace'`. Bindings live in the
+`note_chat_bindings` table, keyed on a path:
+
+- `per-note` — one row per note path.
+- `per-section` — **one row keyed on the note's nearest parent folder**, so every note
+  under that folder resolves to the same chat. `MultiModal/sub/note.md` belongs to
+  `MultiModal/sub`, not `MultiModal`. A note at the notes root has no section and falls
+  back to a per-note binding.
+- `per-workspace` — no row at all; the task ID lives in
+  `coc-notes-chat-<wsId>` localStorage.
+
+`resolveNoteChatBinding` (`routes/queue-enqueue.ts`) picks the key at enqueue;
+`useNotesChat` resolves it back as `perNoteMap[folder] ?? perNoteMap[notePath]`. The
+two derivations — `noteSectionPath` server-side, `noteSectionOf` client-side — must
+agree, or a chat binds to one key and resolves from another.
+
+Because a section row is keyed on the folder itself, `NoteChatBindingStore.renamePrefix`
+and `deletePrefix` carry that row along with the note rows under it; the `folder/%`
+sweep alone would never match it.
+
+Draft keys and the `/new` reset follow the same key: `notesChatDraftKey` returns
+`notes-chat:<ws>:section:<folder>` under section scope, so a half-typed message survives
+clicking a sibling.
+
+Widening a per-note chat to section scope has no new enqueue to hang a binding off, so
+`useNotesChat`'s `setScope` (`changeScope`) re-keys it: it mirrors the task onto the
+folder locally and writes the row through
+`PUT /api/workspaces/:id/notes/chat-bindings/by-path`. Adoption fills an **empty** folder
+only — if the section already has a chat, the user joins it rather than overwriting it.
+Without that write the conversation would resolve to nothing on the next sibling click,
+which is exactly the disappearing act section scope exists to fix.
+
+### Moving a chat's active note
+
+The note a chat operates on is stored twice: `payload.context.noteChat.notePath` (read
+once by `NoteChatExecutor` for the first turn) and `metadata.notePath` (read by
+`FollowUpExecutor` for **every later turn**). Only the second decides which file a
+follow-up snapshots and diffs.
+
+`POST /api/processes/:id/note` (`{ notePath, noteTitle? }`) rewrites that metadata —
+this is what makes a chat follow a note rather than silently attributing its edits to
+the note it was created against. It is a dedicated endpoint rather than a field on
+`.../message`, whose contract is "send text". Because it retargets where an agent
+writes, it validates hard: the path is normalized (no traversal, no absolute), re-checked
+against the workspace's notes root, and — when `metadata.noteChatScope` is
+`per-section` — required to stay inside the bound folder. `metadata.noteChatScope` is
+denormalized at enqueue by `process-lifecycle-runner` so the route needs no queue-payload
+read.
+
+`useNotesChat.moveChatNote` calls it and optimistically updates the local note context,
+so the header label, the 📎 indicator, and the banner all follow with no extra plumbing.
+
+Nothing is sent when the note changes — clicking a note in the sidebar is navigation,
+not a turn. The switch is marked pending and folded into the *next* message as one
+`[📝 Now viewing: <path>](…)` line via `NoteChatPanel`'s existing `combinedPrefix`
+mechanism (the third contributor beside paper grounding and note references). The
+*Now viewing* wording, rather than the creation-time *Note:*, makes a transcript with
+several note links read as replacement instead of accumulation.
+
 ### Note binding
 
 When the active chat is bound to a note, a path-reference button
 (`data-testid="notes-chat-path-ref"`) appears before the overflow menu, with the full
 prepended note path in its tooltip and `aria-label`. If the selected note diverges from
-the chat-bound note the button sets `data-switched="true"` and the tooltip says to
-start a new chat to switch. `NoteContextBanner.tsx` uses that same `isSwitched`
-value — computed once in `NoteChatPanel` — to warn in the divergent case only.
+the chat-bound note the button sets `data-switched="true"`.
+
+`isSwitched` is computed once in `NoteChatPanel` and is **only ever true in per-note
+scope** — under section scope every sibling legitimately shares the chat, so flagging
+each sibling click would defeat the feature; the chat is moved to follow the selection
+instead. `NoteContextBanner.tsx` reads that same value and, when switched, offers
+`Continue here` (keep the task, move it) and `Use section scope` (the same, plus flip
+the toggle) rather than only naming the problem.
 
 The displayed note reference is **paired with the active chat task** in `useNotesChat`.
 `createChat` seeds the pair from the returned task ID while the process is still

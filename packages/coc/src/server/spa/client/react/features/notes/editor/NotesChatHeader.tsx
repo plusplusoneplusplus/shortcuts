@@ -20,6 +20,11 @@ export interface NotesChatHeaderProps {
     contextLabel: string;
     scope: ChatScope;
     onScopeChange: (scope: ChatScope) => void;
+    /**
+     * Whether the selected note sits in a folder. False disables the Section
+     * segment — a note at the notes root has no section to scope a chat to.
+     */
+    sectionAvailable?: boolean;
     windowMode: NotesChatWindowMode;
     onClose: () => void;
     /** Minimizes the Lens. Only rendered when windowMode is 'lens'. */
@@ -91,6 +96,7 @@ export function NotesChatHeader({
     contextLabel,
     scope,
     onScopeChange,
+    sectionAvailable = false,
     windowMode,
     onClose,
     onMinimize,
@@ -136,7 +142,11 @@ export function NotesChatHeader({
                     {contextLabel}
                 </span>
             </div>
-            <NotesChatScopeToggle scope={scope} onScopeChange={onScopeChange} />
+            <NotesChatScopeToggle
+                scope={scope}
+                onScopeChange={onScopeChange}
+                sectionAvailable={sectionAvailable}
+            />
             <div className="flex shrink-0 justify-self-end items-center gap-0.5">
                 {windowMode === 'lens' && onPin && (
                     <button
@@ -213,19 +223,32 @@ export function NotesChatHeader({
 export interface NotesChatScopeToggleProps {
     scope: ChatScope;
     onScopeChange: (scope: ChatScope) => void;
+    /** False disables the Section segment — the selected note has no parent folder. */
+    sectionAvailable?: boolean;
 }
 
-export function NotesChatScopeToggle({ scope, onScopeChange }: NotesChatScopeToggleProps) {
+/**
+ * `This note | Section | Workspace` — Section sits in the middle so the control
+ * reads as widening scope.
+ *
+ * The Section label stays static rather than naming the folder: the pill is
+ * `text-[10px]` and a folder like `MultiModal` would blow the layout. The folder
+ * name is already carried by the adjacent context label.
+ */
+export function NotesChatScopeToggle({ scope, onScopeChange, sectionAvailable = false }: NotesChatScopeToggleProps) {
+    const segmentClass = (active: boolean, disabled = false): string =>
+        'rounded-full px-1.5 py-px text-[10px] transition-colors '
+        + (active
+            ? 'bg-[#0078d4] text-white font-medium'
+            : disabled
+                ? 'cursor-not-allowed text-[#b0b0b0] dark:text-[#5a5a5a]'
+                : 'text-[#848484] hover:text-[#333] dark:hover:text-white hover:bg-white/70 dark:hover:bg-[#333]');
+
     return (
         <div className="inline-flex items-center gap-px rounded-full bg-[#f0f0f0] p-px dark:bg-[#2a2a2a]" data-testid="chat-scope-toggle">
             <button
                 type="button"
-                className={
-                    'rounded-full px-1.5 py-px text-[10px] transition-colors ' +
-                    (scope === 'per-note'
-                        ? 'bg-[#0078d4] text-white font-medium'
-                        : 'text-[#848484] hover:text-[#333] dark:hover:text-white hover:bg-white/70 dark:hover:bg-[#333]')
-                }
+                className={segmentClass(scope === 'per-note')}
                 onClick={() => onScopeChange('per-note')}
                 aria-pressed={scope === 'per-note'}
                 data-testid="chat-scope-per-note"
@@ -235,12 +258,18 @@ export function NotesChatScopeToggle({ scope, onScopeChange }: NotesChatScopeTog
             </button>
             <button
                 type="button"
-                className={
-                    'rounded-full px-1.5 py-px text-[10px] transition-colors ' +
-                    (scope === 'per-workspace'
-                        ? 'bg-[#0078d4] text-white font-medium'
-                        : 'text-[#848484] hover:text-[#333] dark:hover:text-white hover:bg-white/70 dark:hover:bg-[#333]')
-                }
+                className={segmentClass(scope === 'per-section', !sectionAvailable)}
+                onClick={() => onScopeChange('per-section')}
+                disabled={!sectionAvailable}
+                aria-pressed={scope === 'per-section'}
+                data-testid="chat-scope-per-section"
+                title={sectionAvailable ? 'One chat for every note in this folder' : "This note isn't in a folder"}
+            >
+                Section
+            </button>
+            <button
+                type="button"
+                className={segmentClass(scope === 'per-workspace')}
                 onClick={() => onScopeChange('per-workspace')}
                 aria-pressed={scope === 'per-workspace'}
                 data-testid="chat-scope-per-workspace"

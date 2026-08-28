@@ -24,7 +24,7 @@
  * server binding path (note-chat-binding-scope.test.ts) respectively.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import React from 'react';
 import type { NoteTextReference } from '../../../../../../src/server/spa/client/react/features/notes/editor/useNoteReferences';
 import { formatNoteReferences } from '../../../../../../src/server/spa/client/react/features/notes/editor/useNoteReferences';
@@ -39,6 +39,8 @@ const hoisted = vi.hoisted(() => ({
     chatNoteContext: null as { notePath: string; noteTitle?: string } | null,
     createChat: vi.fn(async (..._args: unknown[]) => null as string | null),
     resetChat: vi.fn(),
+    syncChatNoteContext: vi.fn(),
+    moveChatNote: vi.fn(async (..._args: unknown[]) => true),
     // captured props
     composerProps: null as any,
     chatDetailProps: null as any,
@@ -50,14 +52,18 @@ const hoisted = vi.hoisted(() => ({
 
 // Mock the Notes hook with a REAL stateful mini-hook so createChat success flips
 // taskId → the adapter transitions to ChatDetail exactly like production.
-vi.mock('../../../../../../src/server/spa/client/react/features/notes/hooks/useNotesChat', async () => {
+vi.mock('../../../../../../src/server/spa/client/react/features/notes/hooks/useNotesChat', async (importActual) => {
     const ReactMod = await import('react');
+    // Keep the real pure helpers (noteSectionOf, formatNoteSwitchLink, …) — the
+    // panel imports them from this module and they carry no I/O.
+    const actual = await importActual<typeof import('../../../../../../src/server/spa/client/react/features/notes/hooks/useNotesChat')>();
     return {
+        ...actual,
         notesChatDraftKey: (ws: string, scope: string, notePath: string | null) =>
             `notes-chat:${ws}:${scope}:${notePath ?? ''}`,
         useNotesChat: (opts: any) => {
             const [taskId, setTaskId] = ReactMod.useState<string | null>(hoisted.initialTaskId);
-            const [scope, setScope] = ReactMod.useState<'per-note' | 'per-workspace'>(
+            const [scope, setScope] = ReactMod.useState<'per-note' | 'per-section' | 'per-workspace'>(
                 opts?.defaultScope ?? 'per-note',
             );
             const createChat = ReactMod.useCallback(async (...args: unknown[]) => {
@@ -70,7 +76,16 @@ vi.mock('../../../../../../src/server/spa/client/react/features/notes/hooks/useN
                 hoisted.resetChat();
                 setTaskId(null);
             }, []);
-            return { taskId, chatNoteContext: hoisted.chatNoteContext, createChat, resetChat, scope, setScope };
+            return {
+                taskId,
+                chatNoteContext: hoisted.chatNoteContext,
+                syncChatNoteContext: hoisted.syncChatNoteContext,
+                createChat,
+                resetChat,
+                moveChatNote: hoisted.moveChatNote,
+                scope,
+                setScope,
+            };
         },
     };
 });
@@ -151,6 +166,8 @@ beforeEach(() => {
     hoisted.chatDetailProps = null;
     hoisted.workspaces = [{ id: 'ws-1', rootPath: '/home/user/repo' }];
     hoisted.callOrder = [];
+    hoisted.moveChatNote = vi.fn(async () => true);
+    hoisted.syncChatNoteContext = vi.fn();
 });
 
 describe('NoteChatPanel — rendered behavior', () => {
@@ -374,6 +391,131 @@ describe('NoteChatPanel — rendered behavior', () => {
             expect(hoisted.composerProps.interceptSubmit('/newer')).toBe(false);
             expect(hoisted.composerProps.interceptSubmit('/clearall')).toBe(false);
             expect(hoisted.resetChat).not.toHaveBeenCalled();
+        });
+    });
+
+    // ── Section scope ────────────────────────────────────────────────────────
+
+    describe('section scope', () => {
+        it('does not flag a sibling in the bound folder as a switched note', async () => {
+            // A banner on every sibling click would defeat the whole feature.
+            hoisted.initialTaskId = 'task-1';
+            hoisted.chatNoteContext = { notePath: 'MultiModal/a.md', noteTitle: 'a' };
+            renderPanel({
+                notePath: 'MultiModal/b.md',
+                noteTitle: 'b',
+                defaultScope: 'per-section',
+            });
+            await waitFor(() => expect(screen.getByTestId('chat-detail-stub')).toBeTruthy());
+            expect(screen.queryByTestId('note-context-banner')).toBeNull();
+        });
+
+        it('does flag it under per-note scope, where the divergence is real', () => {
+            hoisted.initialTaskId = 'task-1';
+            hoisted.chatNoteContext = { notePath: 'MultiModal/a.md', noteTitle: 'a' };
+            renderPanel({ notePath: 'MultiModal/b.md', noteTitle: 'b' });
+            expect(screen.getByTestId('note-context-banner')).toBeTruthy();
+        });
+
+        it('moves the chat onto the selected sibling instead of banner-ing it', async () => {
+            hoisted.initialTaskId = 'task-1';
+            hoisted.chatNoteContext = { notePath: 'MultiModal/a.md', noteTitle: 'a' };
+            renderPanel({
+                notePath: 'MultiModal/b.md',
+                noteTitle: 'b',
+                defaultScope: 'per-section',
+            });
+            await waitFor(() => expect(hoisted.moveChatNote).toHaveBeenCalledWith('MultiModal/b.md', 'b'));
+        });
+
+        it('does not move the chat outside the bound folder', async () => {
+            hoisted.initialTaskId = 'task-1';
+            hoisted.chatNoteContext = { notePath: 'MultiModal/a.md', noteTitle: 'a' };
+            renderPanel({
+                notePath: 'Other/elsewhere.md',
+                noteTitle: 'elsewhere',
+                defaultScope: 'per-section',
+            });
+            await waitFor(() => expect(screen.getByTestId('chat-detail-stub')).toBeTruthy());
+            expect(hoisted.moveChatNote).not.toHaveBeenCalled();
+        });
+
+        it('labels the header with the folder', () => {
+            renderPanel({ notePath: 'MultiModal/a.md', noteTitle: 'a', defaultScope: 'per-section' });
+            expect(screen.getByTestId('notes-chat-header-context')).toHaveTextContent('MultiModal');
+        });
+
+        it('enables the Section segment only when the note has a folder', () => {
+            const { unmount } = renderPanel({ notePath: 'MultiModal/a.md' });
+            expect(screen.getByTestId('chat-scope-per-section')).not.toBeDisabled();
+            unmount();
+
+            renderPanel({ notePath: 'inbox.md' });
+            expect(screen.getByTestId('chat-scope-per-section')).toBeDisabled();
+        });
+    });
+
+    // ── Switched-note banner actions ─────────────────────────────────────────
+
+    describe('switched-note banner actions', () => {
+        function renderSwitched(notePath = 'MultiModal/b.md') {
+            hoisted.initialTaskId = 'task-1';
+            hoisted.chatNoteContext = { notePath: 'MultiModal/a.md', noteTitle: 'a' };
+            return renderPanel({ notePath, noteTitle: 'b' });
+        }
+
+        it('Continue here moves the chat onto the selected note', async () => {
+            renderSwitched();
+            fireEvent.click(screen.getByTestId('note-context-continue-here'));
+            await waitFor(() => expect(hoisted.moveChatNote).toHaveBeenCalledWith('MultiModal/b.md', 'b'));
+        });
+
+        it('Continue here folds a Now viewing line into the next message', async () => {
+            renderSwitched();
+            fireEvent.click(screen.getByTestId('note-context-continue-here'));
+            await waitFor(() => {
+                expect(hoisted.chatDetailProps.pendingPrefix).toContain('📝 Now viewing: MultiModal/b.md');
+            });
+            // Nothing is sent on the switch itself — clicking a note is
+            // navigation, not a turn.
+            expect(hoisted.createChat).not.toHaveBeenCalled();
+        });
+
+        it('shows a divider naming the note the next message will carry', async () => {
+            renderSwitched();
+            fireEvent.click(screen.getByTestId('note-context-continue-here'));
+            await waitFor(() => expect(screen.getByTestId('note-switch-divider')).toHaveTextContent('Now viewing'));
+        });
+
+        it('clears the pending line once the message is sent', async () => {
+            renderSwitched();
+            fireEvent.click(screen.getByTestId('note-context-continue-here'));
+            await waitFor(() => expect(hoisted.chatDetailProps.pendingPrefix).toBeTruthy());
+
+            act(() => { hoisted.chatDetailProps.onClearPendingPrefix(); });
+            await waitFor(() => expect(hoisted.chatDetailProps.pendingPrefix).toBeUndefined());
+            expect(screen.queryByTestId('note-switch-divider')).toBeNull();
+        });
+
+        it('Use section scope moves the chat and flips the toggle', async () => {
+            renderSwitched();
+            fireEvent.click(screen.getByTestId('note-context-use-section-scope'));
+            await waitFor(() => expect(hoisted.moveChatNote).toHaveBeenCalledWith('MultiModal/b.md', 'b'));
+            await waitFor(() => {
+                expect(screen.getByTestId('chat-scope-per-section').getAttribute('aria-pressed')).toBe('true');
+            });
+        });
+
+        it('omits Use section scope for a note with no folder', () => {
+            renderSwitched('inbox.md');
+            expect(screen.getByTestId('note-context-continue-here')).toBeTruthy();
+            expect(screen.queryByTestId('note-context-use-section-scope')).toBeNull();
+        });
+
+        it('keeps New chat available alongside the new actions', () => {
+            renderSwitched();
+            expect(hoisted.resetChat).not.toHaveBeenCalled();
+            expect(screen.getByTestId('notes-chat-header')).toBeTruthy();
         });
     });
 });
