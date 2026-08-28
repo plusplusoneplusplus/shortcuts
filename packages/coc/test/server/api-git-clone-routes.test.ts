@@ -1,16 +1,24 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+/**
+ * Tests for POST /api/git/clone against real repositories.
+ *
+ * The clone runs in the native addon now, so there is no `child_process.execFile`
+ * left to mock and asserting "which child was spawned" would be asserting an
+ * implementation that no longer exists. Every case below clones a real local
+ * repository into a real temp directory instead — a clone from a filesystem
+ * path needs no network, so it exercises the whole route end to end.
+ */
+
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import * as http from 'http';
+import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
+import { execGitAsync } from '@plusplusoneplusplus/forge';
 import { createRouter } from '../../src/server/shared/router';
 import { registerApiGitRoutes } from '../../src/server/routes/api-git-routes';
+import { deriveDefaultCloneDirectoryName } from '../../src/server/routes/api-git-clone-routes';
 import type { Route } from '../../src/server/types';
 import { createMockProcessStore } from '../helpers/mock-process-store';
-
-const mockExecFile = vi.fn();
-
-vi.mock('child_process', () => ({
-    execFile: (...args: unknown[]) => mockExecFile(...args),
-}));
 
 function request(
     url: string,
@@ -50,6 +58,9 @@ function request(
 describe('Git clone API routes', () => {
     let server: http.Server;
     let port: number;
+    let tmpDir: string;
+    let sourceRepo: string;
+    let parentDir: string;
 
     beforeAll(async () => {
         const routes: Route[] = [];
@@ -68,107 +79,113 @@ describe('Git clone API routes', () => {
         await new Promise<void>((resolve) => server.close(() => resolve()));
     });
 
-    beforeEach(() => {
-        mockExecFile.mockReset();
+    beforeEach(async () => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clone-route-'));
+        // A source repository named without a `.git` suffix, so the directory
+        // name the route derives from the URL is the directory git itself picks.
+        sourceRepo = path.join(tmpDir, 'origin-repo');
+        parentDir = path.join(tmpDir, 'parent');
+        fs.mkdirSync(sourceRepo, { recursive: true });
+        fs.mkdirSync(parentDir, { recursive: true });
+        await execGitAsync(['init', '-q', '-b', 'main', '.'], sourceRepo);
+        fs.writeFileSync(path.join(sourceRepo, 'README.md'), '# origin\n', 'utf-8');
+        await execGitAsync(['add', '-A'], sourceRepo);
+        await execGitAsync(
+            ['-c', 'user.email=t@example.com', '-c', 'user.name=Test', 'commit', '-m', 'initial'],
+            sourceRepo,
+        );
+    });
+
+    afterEach(() => {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
     const base = () => `http://127.0.0.1:${port}`;
 
     it('clones a repository into the parent directory and returns the cloned path', async () => {
-        mockExecFile.mockImplementation((_cmd, _args, _options, callback) => {
-            callback(null, '', "Cloning into 'repo'...\n");
-        });
-
-        const parentDir = path.join(path.sep, 'tmp', 'repos');
-        const resolvedParent = path.resolve(parentDir);
         const res = await request(`${base()}/api/git/clone`, {
             method: 'POST',
-            body: { url: 'https://example.com/org/repo.git', parentDir },
+            body: { url: sourceRepo, parentDir },
         });
 
         expect(res.status).toBe(200);
-        expect(res.json()).toEqual({ clonedPath: path.join(resolvedParent, 'repo') });
-        expect(mockExecFile).toHaveBeenCalledWith(
-            'git',
-            ['clone', 'https://example.com/org/repo.git'],
-            expect.objectContaining({ cwd: resolvedParent }),
-            expect.any(Function),
-        );
+        expect(res.json()).toEqual({ clonedPath: path.join(parentDir, 'origin-repo') });
+        // The path the route reports is where git actually put the clone.
+        expect(fs.readFileSync(path.join(parentDir, 'origin-repo', 'README.md'), 'utf-8')).toBe('# origin\n');
+        expect(fs.existsSync(path.join(parentDir, 'origin-repo', '.git'))).toBe(true);
     });
 
-    it('accepts scp-style SSH URLs when deriving the default clone directory', async () => {
-        mockExecFile.mockImplementation((_cmd, _args, _options, callback) => callback(null, '', ''));
-
-        const parentDir = path.join(path.sep, 'tmp', 'repos');
-        const resolvedParent = path.resolve(parentDir);
-        const res = await request(`${base()}/api/git/clone`, {
-            method: 'POST',
-            body: { url: 'git@example.com:team/service.git', parentDir },
-        });
-
-        expect(res.status).toBe(200);
-        expect(res.json()).toEqual({ clonedPath: path.join(resolvedParent, 'service') });
+    it('derives the default clone directory from every URL form the dialog accepts', () => {
+        expect(deriveDefaultCloneDirectoryName('https://example.com/org/repo.git')).toBe('repo');
+        expect(deriveDefaultCloneDirectoryName('git@example.com:team/service.git')).toBe('service');
+        expect(deriveDefaultCloneDirectoryName('ssh://git@example.com/team/service')).toBe('service');
+        expect(deriveDefaultCloneDirectoryName('https://example.com/org/repo/')).toBe('repo');
+        expect(deriveDefaultCloneDirectoryName('https://example.com/org/repo.git?ref=main')).toBe('repo');
     });
 
     it('uses a custom dirName when provided, passing it to git and returning the custom cloned path', async () => {
-        mockExecFile.mockImplementation((_cmd, _args, _options, callback) => callback(null, '', ''));
-
-        const parentDir = path.join(path.sep, 'tmp', 'repos');
-        const resolvedParent = path.resolve(parentDir);
         const res = await request(`${base()}/api/git/clone`, {
             method: 'POST',
-            body: { url: 'https://example.com/org/repo.git', parentDir, dirName: 'repo-2' },
+            body: { url: sourceRepo, parentDir, dirName: 'repo-2' },
         });
 
         expect(res.status).toBe(200);
-        expect(res.json()).toEqual({ clonedPath: path.join(resolvedParent, 'repo-2') });
-        expect(mockExecFile).toHaveBeenCalledWith(
-            'git',
-            ['clone', 'https://example.com/org/repo.git', 'repo-2'],
-            expect.objectContaining({ cwd: resolvedParent }),
-            expect.any(Function),
-        );
+        expect(res.json()).toEqual({ clonedPath: path.join(parentDir, 'repo-2') });
+        expect(fs.existsSync(path.join(parentDir, 'repo-2', 'README.md'))).toBe(true);
+        // The URL-derived name was not used.
+        expect(fs.existsSync(path.join(parentDir, 'origin-repo'))).toBe(false);
     });
 
     it('falls back to the URL-derived name when dirName is blank', async () => {
-        mockExecFile.mockImplementation((_cmd, _args, _options, callback) => callback(null, '', ''));
-
-        const parentDir = path.join(path.sep, 'tmp', 'repos');
-        const resolvedParent = path.resolve(parentDir);
         const res = await request(`${base()}/api/git/clone`, {
             method: 'POST',
-            body: { url: 'https://example.com/org/myrepo.git', parentDir, dirName: '   ' },
+            body: { url: sourceRepo, parentDir, dirName: '   ' },
         });
 
         expect(res.status).toBe(200);
-        expect(res.json()).toEqual({ clonedPath: path.join(resolvedParent, 'myrepo') });
-        // Blank dirName → no extra git arg.
-        expect(mockExecFile).toHaveBeenCalledWith(
-            'git',
-            ['clone', 'https://example.com/org/myrepo.git'],
-            expect.objectContaining({ cwd: resolvedParent }),
-            expect.any(Function),
-        );
+        expect(res.json()).toEqual({ clonedPath: path.join(parentDir, 'origin-repo') });
+        expect(fs.existsSync(path.join(parentDir, 'origin-repo', 'README.md'))).toBe(true);
+    });
+
+    it('resolves a relative parentDir against the server process directory', async () => {
+        const relative = path.relative(process.cwd(), parentDir);
+        const res = await request(`${base()}/api/git/clone`, {
+            method: 'POST',
+            body: { url: sourceRepo, parentDir: relative },
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.json()).toEqual({ clonedPath: path.join(parentDir, 'origin-repo') });
     });
 
     it('surfaces git clone failures in the response body', async () => {
-        mockExecFile.mockImplementation((_cmd, _args, _options, callback) => {
-            const error = new Error('Command failed: git clone');
-            callback(error, 'stdout detail\n', 'fatal: destination path already exists\n');
-        });
-
+        const missing = path.join(tmpDir, 'not-a-repo');
         const res = await request(`${base()}/api/git/clone`, {
             method: 'POST',
-            body: { url: 'https://example.com/org/repo.git', parentDir: path.join(path.sep, 'tmp') },
+            body: { url: missing, parentDir },
         });
 
         expect(res.status).toBe(500);
-        expect(res.json()).toEqual({
-            error: 'fatal: destination path already exists\nstdout detail',
-        });
+        // The native runner's wording, which the clone dialog shows verbatim.
+        expect(res.json().error).toContain(`git clone ${missing} failed:`);
+        expect(res.json().error).toContain('does not exist');
     });
 
-    it('validates required fields before spawning git', async () => {
+    it('reports a destination that already exists rather than overwriting it', async () => {
+        fs.mkdirSync(path.join(parentDir, 'origin-repo'), { recursive: true });
+        fs.writeFileSync(path.join(parentDir, 'origin-repo', 'keep.txt'), 'mine', 'utf-8');
+
+        const res = await request(`${base()}/api/git/clone`, {
+            method: 'POST',
+            body: { url: sourceRepo, parentDir },
+        });
+
+        expect(res.status).toBe(500);
+        expect(res.json().error).toMatch(/already exists/);
+        expect(fs.readFileSync(path.join(parentDir, 'origin-repo', 'keep.txt'), 'utf-8')).toBe('mine');
+    });
+
+    it('validates required fields before running git', async () => {
         const res = await request(`${base()}/api/git/clone`, {
             method: 'POST',
             body: { url: '   ' },
@@ -179,6 +196,5 @@ describe('Git clone API routes', () => {
             error: 'Missing required fields: url, parentDir',
             code: 'MISSING_FIELDS',
         });
-        expect(mockExecFile).not.toHaveBeenCalled();
     });
 });

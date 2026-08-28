@@ -14,7 +14,6 @@
 import * as http from 'http';
 import * as url from 'url';
 import * as path from 'path';
-import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { ProcessStore, ProcessFilter, AIProcessStatus, AIProcessType, TurnSource } from '@plusplusoneplusplus/forge';
@@ -322,19 +321,6 @@ export function registerApiRoutes(
 // ============================================================================
 // Utility helpers (exported for use by other modules)
 // ============================================================================
-
-/** Run a git command asynchronously in the given directory (shell form, non-blocking). */
-export function execGitShellAsync(args: string, cwd: string): Promise<string> {
-    const cmd = process.platform === 'win32'
-        ? `git ${args.replace(/\^/g, '^^')}`
-        : `git ${args}`;
-    return new Promise((resolve, reject) => {
-        childProcess.exec(cmd, { cwd, encoding: 'utf-8', timeout: 5000, maxBuffer: GIT_MAX_BUFFER }, (err, stdout) => {
-            if (err) { reject(err); return; }
-            resolve((stdout as string).trim());
-        });
-    });
-}
 
 /** Run a git command asynchronously using an args array (WSL-aware via forge execGitAsync, non-blocking). */
 export async function execGitArgsAsync(args: string[], cwd: string): Promise<string> {

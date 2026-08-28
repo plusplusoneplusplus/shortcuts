@@ -1,4 +1,5 @@
-import { execFileAsync } from '@plusplusoneplusplus/forge';
+import { getRemoteUrl } from '@plusplusoneplusplus/forge';
+import { NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 
 export interface WorkItemSyncGithubPreference {
     owner?: string;
@@ -80,14 +81,28 @@ export function parseGitHubRemoteUrl(remoteUrl: string): { owner: string; repo: 
     };
 }
 
+/**
+ * The repository's `origin` URL, or `undefined` when there is not one.
+ *
+ * Reading a remote is a configuration lookup, so this starts no child process
+ * at all: `getRemoteUrl` opens the repository with `gix` and reads
+ * `remote.origin.url` out of it. A repository with no origin, an unreadable
+ * one, and a path that is not a repository all answer `undefined`, exactly as
+ * the old `git remote get-url origin` did.
+ *
+ * A broken native addon is the one failure that does not answer `undefined`.
+ * It is a broken install rather than a workspace with no remote, and silence
+ * here costs a work item its GitHub binding and a native session its
+ * repository filter — neither of which says anything about why.
+ */
 export async function readGitOriginRemote(rootPath: string): Promise<string | undefined> {
     try {
-        const { stdout } = await execFileAsync('git', ['remote', 'get-url', 'origin'], {
-            cwd: rootPath,
-        });
-        const remote = stdout.trim();
-        return remote.length > 0 ? remote : undefined;
-    } catch {
+        const remote = (await getRemoteUrl(rootPath))?.trim();
+        return remote ? remote : undefined;
+    } catch (err: unknown) {
+        if (err instanceof NativeAddonLoadError) {
+            throw err;
+        }
         return undefined;
     }
 }

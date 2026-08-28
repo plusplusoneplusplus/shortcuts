@@ -31,8 +31,6 @@
  */
 
 import * as url from 'url';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 import type { Route } from '../types';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import { sendJson, send404, send400, send500, readJsonBody } from '../router';
@@ -58,7 +56,8 @@ import { authorMatchesPrTeamRosterEntry, filterPullRequestsByPrTeamRoster, getPr
 import { ProviderFactory } from '../providers/provider-factory';
 import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig } from '../providers/providers-config';
-import { computeSummary, parseFullDiff } from '@plusplusoneplusplus/forge';
+import { computeSummary, execGitAsync, parseFullDiff } from '@plusplusoneplusplus/forge';
+import { NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 import type { CreateTaskInput, IPullRequestsService, ISDKService, ProcessStore, ProviderPullRequest, ProviderPullRequestCheck, ProviderPullRequestStatus } from '@plusplusoneplusplus/forge';
 import { readReviewHistoryCache, fetchAndCacheReviewHistory, readSuggestionsCache, rankAndCacheSuggestions, toPrMetadata } from './pr-suggestions';
 import {
@@ -983,7 +982,20 @@ interface FullContextDiffResult {
     unavailableReason?: FullContextUnavailableReason;
 }
 
-const execFileAsync = promisify(execFile);
+/**
+ * A missing or capability-stale addon is never one of the outcomes below.
+ *
+ * Every git caller in this file answers a failure with silence — `false` from
+ * `hasGitCommit`/`isGitRepo`, a `console.warn` from the fetch loop, an
+ * `unavailableReason` code from the diff. None of those words reach the user,
+ * so a broken binary would show up as "this PR's commits aren't here" forever
+ * rather than as the rebuild instruction it is.
+ */
+function rethrowIfAddonUnavailable(err: unknown): void {
+    if (err instanceof NativeAddonLoadError) {
+        throw err;
+    }
+}
 
 function isMissingCommitError(err: unknown): boolean {
     const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
@@ -995,20 +1007,28 @@ function isMissingCommitError(err: unknown): boolean {
         || message.includes('not a valid object name');
 }
 
+/**
+ * Run a git command against the repo clone at `localPath`.
+ *
+ * Runs in the native addon on a libuv worker rather than as a child process
+ * spawned from Node. `git fetch` is a network operation and still shells out to
+ * the git CLI — from Rust — so the user's credential helper and SSH agent reach
+ * a private remote exactly as before.
+ *
+ * Rejects with `git <args> failed: <stderr>`, which is what
+ * {@link isMissingCommitError} reads: git puts `fatal: bad object <sha>` on
+ * stderr, so the substrings it matches survive the move.
+ */
 async function runGit(localPath: string, args: string[], timeout = 10_000): Promise<string> {
-    const { stdout } = await execFileAsync(
-        'git',
-        args,
-        { cwd: localPath, encoding: 'utf-8', timeout },
-    );
-    return stdout;
+    return execGitAsync(args, localPath, { timeout });
 }
 
 async function hasGitCommit(localPath: string, sha: string): Promise<boolean> {
     try {
         await runGit(localPath, ['cat-file', '-e', `${sha}^{commit}`]);
         return true;
-    } catch {
+    } catch (err) {
+        rethrowIfAddonUnavailable(err);
         return false;
     }
 }
@@ -1017,7 +1037,8 @@ async function isGitRepo(localPath: string): Promise<boolean> {
     try {
         await runGit(localPath, ['rev-parse', '--git-dir']);
         return true;
-    } catch {
+    } catch (err) {
+        rethrowIfAddonUnavailable(err);
         return false;
     }
 }
@@ -1114,6 +1135,7 @@ async function fetchMissingPrCommits(
         try {
             await runGit(localPath, ['fetch', '--no-tags', '--quiet', remote, candidate], 30_000);
         } catch (err) {
+            rethrowIfAddonUnavailable(err);
             console.warn(`[pr-full-context] failed to fetch ${candidate}: ${err instanceof Error ? err.message : String(err)}`);
         }
 
@@ -1130,8 +1152,12 @@ async function fetchMissingPrCommits(
  * with the PR's base and head SHAs against the local repo checkout. When the
  * SHAs are missing locally, fetch PR refs/commits into the requested repo
  * without checking out branches or modifying the working tree.
+ *
+ * Exported only so a test can reach the whole git chain behind it —
+ * `hasGitCommit`, `isGitRepo` and the fetch loop are all private and all funnel
+ * through here.
  */
-async function getFullContextFileDiff(
+export async function getFullContextFileDiff(
     localPath: string,
     remote: string,
     prId: string,
@@ -1148,6 +1174,7 @@ async function getFullContextFileDiff(
         const stdout = await runGit(localPath, ['diff', '-U99999', baseSha, headSha, '--', filePath]);
         return { diff: stdout || null, unavailableReason: stdout ? undefined : 'git-diff-failed' };
     } catch (err) {
+        rethrowIfAddonUnavailable(err);
         if (!isMissingCommitError(err)) {
             console.warn(`[pr-full-context] git diff failed before fetch: ${err instanceof Error ? err.message : String(err)}`);
             return { diff: null, unavailableReason: 'git-diff-failed' };
@@ -1163,6 +1190,7 @@ async function getFullContextFileDiff(
         const stdout = await runGit(localPath, ['diff', '-U99999', baseSha, headSha, '--', filePath]);
         return { diff: stdout || null, unavailableReason: stdout ? undefined : 'git-diff-failed' };
     } catch (err) {
+        rethrowIfAddonUnavailable(err);
         console.warn(`[pr-full-context] git diff failed after fetch: ${err instanceof Error ? err.message : String(err)}`);
         return { diff: null, unavailableReason: 'git-diff-failed' };
     }
