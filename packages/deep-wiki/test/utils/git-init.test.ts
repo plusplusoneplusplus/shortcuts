@@ -35,18 +35,18 @@ afterEach(() => {
 // ============================================================================
 
 describe('initGitRepo', () => {
-    it('should initialize a git repository in an empty directory', () => {
-        const result = initGitRepo(tempDir);
+    it('should initialize a git repository in an empty directory', async () => {
+        const result = await initGitRepo(tempDir);
         expect(result).toBe(true);
         expect(fs.existsSync(path.join(tempDir, '.git'))).toBe(true);
     });
 
-    it('should skip initialization if .git already exists', () => {
+    it('should skip initialization if .git already exists', async () => {
         // Pre-create .git directory
         fs.mkdirSync(path.join(tempDir, '.git'), { recursive: true });
 
         const infoMessages: string[] = [];
-        const result = initGitRepo(tempDir, {
+        const result = await initGitRepo(tempDir, {
             info: (msg) => infoMessages.push(msg),
         });
 
@@ -54,11 +54,11 @@ describe('initGitRepo', () => {
         expect(infoMessages.some(m => m.includes('already exists'))).toBe(true);
     });
 
-    it('should return false and warn when directory does not exist', () => {
+    it('should return false and warn when directory does not exist', async () => {
         const nonExistent = path.join(tempDir, 'does-not-exist');
         const warnings: string[] = [];
 
-        const result = initGitRepo(nonExistent, {
+        const result = await initGitRepo(nonExistent, {
             warn: (msg) => warnings.push(msg),
         });
 
@@ -66,21 +66,21 @@ describe('initGitRepo', () => {
         expect(warnings.length).toBeGreaterThan(0);
     });
 
-    it('should log info message on successful init', () => {
+    it('should log info message on successful init', async () => {
         const infoMessages: string[] = [];
-        initGitRepo(tempDir, {
+        await initGitRepo(tempDir, {
             info: (msg) => infoMessages.push(msg),
         });
 
         expect(infoMessages.some(m => m.includes('Initialized Git repository'))).toBe(true);
     });
 
-    it('should work with relative paths', () => {
+    it('should work with relative paths', async () => {
         const subDir = path.join(tempDir, 'sub', 'dir');
         fs.mkdirSync(subDir, { recursive: true });
 
         // Use the absolute path since relative is from cwd
-        const result = initGitRepo(subDir);
+        const result = await initGitRepo(subDir);
         expect(result).toBe(true);
         expect(fs.existsSync(path.join(subDir, '.git'))).toBe(true);
     });
@@ -164,40 +164,40 @@ describe('writeGitignore', () => {
 // ============================================================================
 
 describe('initWikiGitRepo', () => {
-    it('should initialize git repo and create .gitignore', () => {
-        initWikiGitRepo(tempDir);
+    it('should initialize git repo and create .gitignore', async () => {
+        await initWikiGitRepo(tempDir);
 
         expect(fs.existsSync(path.join(tempDir, '.git'))).toBe(true);
         expect(fs.existsSync(path.join(tempDir, '.gitignore'))).toBe(true);
     });
 
-    it('should not fail when called twice', () => {
-        initWikiGitRepo(tempDir);
-        initWikiGitRepo(tempDir);
+    it('should not fail when called twice', async () => {
+        await initWikiGitRepo(tempDir);
+        await initWikiGitRepo(tempDir);
 
         expect(fs.existsSync(path.join(tempDir, '.git'))).toBe(true);
         expect(fs.existsSync(path.join(tempDir, '.gitignore'))).toBe(true);
     });
 
-    it('should preserve existing .gitignore when called on existing repo', () => {
+    it('should preserve existing .gitignore when called on existing repo', async () => {
         // First call — sets up repo + gitignore
-        initWikiGitRepo(tempDir);
+        await initWikiGitRepo(tempDir);
 
         // Modify the gitignore
         const gitignorePath = path.join(tempDir, '.gitignore');
         fs.writeFileSync(gitignorePath, 'custom rules', 'utf-8');
 
         // Second call — should not overwrite
-        initWikiGitRepo(tempDir);
+        await initWikiGitRepo(tempDir);
 
         expect(fs.readFileSync(gitignorePath, 'utf-8')).toBe('custom rules');
     });
 
-    it('should use provided log callbacks', () => {
+    it('should use provided log callbacks', async () => {
         const infoMessages: string[] = [];
         const warnMessages: string[] = [];
 
-        initWikiGitRepo(tempDir, {
+        await initWikiGitRepo(tempDir, {
             info: (msg) => infoMessages.push(msg),
             warn: (msg) => warnMessages.push(msg),
         });
@@ -206,12 +206,12 @@ describe('initWikiGitRepo', () => {
         expect(warnMessages.length).toBe(0);
     });
 
-    it('should handle missing directory gracefully', () => {
+    it('should handle missing directory gracefully', async () => {
         const nonExistent = path.join(tempDir, 'missing');
         const warnMessages: string[] = [];
 
         // Should not throw
-        initWikiGitRepo(nonExistent, {
+        await initWikiGitRepo(nonExistent, {
             info: () => {},
             warn: (msg) => warnMessages.push(msg),
         });

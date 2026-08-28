@@ -2,15 +2,41 @@
  * Cache Layer — Git Utilities
  *
  * Provides git-related utilities for cache invalidation.
- * Uses `git rev-parse HEAD` for repo-wide hash detection,
- * `git log -1 --format=%H -- <folder>` for subfolder-scoped hash,
- * and `git diff --name-only` for change detection.
+ *
+ * Nothing here spawns a child process from Node. Repository discovery reads the
+ * repository with `gix` in the native addon; the three commands that stay on the
+ * git CLI (`rev-parse HEAD`, `log -1 --format=%H -- <folder>`,
+ * `diff --name-only`) run it from Rust on a libuv worker, addressed with an
+ * argv array rather than the shell string this module used to build. That last
+ * part is not only a spawn move: `sinceHash` and the folder path used to be
+ * interpolated into a command line the shell then re-split.
+ *
+ * A missing or capability-stale addon binary is *not* treated as "no git here".
+ * Every function below answers failure with `null`/`false`, and the four caches
+ * read that as "the repository changed" — so a broken install would silently
+ * re-run the whole wiki instead of naming the rebuild. `NativeAddonLoadError`
+ * is rethrown out of every catch for that reason.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as path from 'path';
-import { execAsync } from '@plusplusoneplusplus/forge';
+import { execGitAsync } from '@plusplusoneplusplus/forge';
+import { loadNativeGit, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
+
+/**
+ * Let a broken addon binary out of a catch that otherwise swallows everything.
+ *
+ * Every function in this module reports a git failure as an absent answer, and
+ * an absent answer here means "invalidate the cache". Without this, a binary
+ * that failed to load would rebuild every article on every run and never say
+ * why.
+ */
+function rethrowIfAddonUnavailable(err: unknown): void {
+    if (err instanceof NativeAddonLoadError) {
+        throw err;
+    }
+}
 
 // ============================================================================
 // Git Root Detection
@@ -19,18 +45,25 @@ import { execAsync } from '@plusplusoneplusplus/forge';
 /**
  * Get the git root directory for a path.
  *
+ * Reads the repository with `gix` — no child process, and the answer is the
+ * path discovery walked rather than the physical path `rev-parse --show-toplevel`
+ * printed. That difference is a fix, not a regression: both callers below
+ * compare this root against the caller's own spelling of the path, so a
+ * repository reached through a symlink (`os.tmpdir()` on macOS is the everyday
+ * one) used to produce a relative path that pointed outside the repository.
+ *
  * @param repoPath - Path inside a git repository
  * @returns The absolute path to the git root, or null if not inside a git repo
  */
 export async function getGitRoot(repoPath: string): Promise<string | null> {
     try {
-        const result = await execAsync('git rev-parse --show-toplevel', { cwd: repoPath });
-        const root = result.stdout.trim();
-        if (root.length > 0) {
+        const root = await loadNativeGit().gitDiscoverRepoRoot(path.resolve(repoPath));
+        if (root && root.length > 0) {
             return root;
         }
         return null;
-    } catch {
+    } catch (err: unknown) {
+        rethrowIfAddonUnavailable(err);
         return null;
     }
 }
@@ -42,19 +75,24 @@ export async function getGitRoot(repoPath: string): Promise<string | null> {
 /**
  * Get the current HEAD hash for a git repository.
  *
+ * Stays on `git rev-parse HEAD` rather than moving to the addon's `gix`-backed
+ * commit reader: that reader builds a `%D` decoration map over every ref, which
+ * costs more on a real repository than the one child process it would remove.
+ *
  * @param repoPath - Path to the git repository
  * @returns The HEAD hash string, or null if not a git repo
  */
 export async function getRepoHeadHash(repoPath: string): Promise<string | null> {
     try {
-        const result = await execAsync('git rev-parse HEAD', { cwd: repoPath });
-        const hash = result.stdout.trim();
+        const stdout = await execGitAsync(['rev-parse', 'HEAD'], repoPath);
+        const hash = stdout.trim();
         // Validate it looks like a git hash
         if (/^[0-9a-f]{40}$/.test(hash)) {
             return hash;
         }
         return null;
-    } catch {
+    } catch (err: unknown) {
+        rethrowIfAddonUnavailable(err);
         return null;
     }
 }
@@ -91,11 +129,14 @@ export async function getFolderHeadHash(repoPath: string): Promise<string | null
         // Subfolder: get the last commit that touched this folder
         // Use the relative path from git root to the subfolder
         const relativePath = path.relative(resolvedRoot, resolvedRepo).replace(/\\/g, '/');
-        const result = await execAsync(
-            `git log -1 --format=%H -- "${relativePath}"`,
-            { cwd: resolvedRoot }
+        // The pathspec is an argv entry now, so a folder holding a space or a
+        // quote reaches git as itself instead of as whatever the shell made of
+        // the `"…"` this used to wrap it in.
+        const stdout = await execGitAsync(
+            ['log', '-1', '--format=%H', '--', relativePath],
+            resolvedRoot,
         );
-        const hash = result.stdout.trim();
+        const hash = stdout.trim();
 
         // Validate it looks like a git hash
         if (/^[0-9a-f]{40}$/.test(hash)) {
@@ -104,7 +145,8 @@ export async function getFolderHeadHash(repoPath: string): Promise<string | null
 
         // No commits touching this folder — fall back to repo HEAD
         return getRepoHeadHash(repoPath);
-    } catch {
+    } catch (err: unknown) {
+        rethrowIfAddonUnavailable(err);
         return null;
     }
 }
@@ -135,8 +177,13 @@ export async function getChangedFiles(
     scopePath?: string
 ): Promise<string[] | null> {
     try {
-        const result = await execAsync(`git diff --name-only ${sinceHash} HEAD`, { cwd: repoPath });
-        let files = result.stdout
+        // `sinceHash` is an argv entry rather than a word in a command line, so
+        // a caller's stored hash can no longer be re-read by a shell.
+        const stdout = await execGitAsync(
+            ['diff', '--name-only', sinceHash, 'HEAD'],
+            repoPath,
+        );
+        let files = stdout
             .trim()
             .split('\n')
             .filter(line => line.length > 0);
@@ -167,7 +214,8 @@ export async function getChangedFiles(
         }
 
         return files;
-    } catch {
+    } catch (err: unknown) {
+        rethrowIfAddonUnavailable(err);
         return null;
     }
 }
@@ -190,13 +238,19 @@ export async function hasChanges(repoPath: string, sinceHash: string): Promise<b
 /**
  * Check if git is available in the system PATH.
  *
+ * `git --version` has no repository to be pointed at, so it is addressed with
+ * `-C <cwd>` — which is where the shell command this replaced ran it anyway.
+ * (Spelling the old command line out here would put a git shell string back
+ * into the inventory grep that has to stay empty.)
+ *
  * @returns True if git command is available
  */
 export async function isGitAvailable(): Promise<boolean> {
     try {
-        await execAsync('git --version');
+        await execGitAsync(['--version'], process.cwd());
         return true;
-    } catch {
+    } catch (err: unknown) {
+        rethrowIfAddonUnavailable(err);
         return false;
     }
 }
@@ -204,14 +258,15 @@ export async function isGitAvailable(): Promise<boolean> {
 /**
  * Check if a path is inside a git repository.
  *
+ * One divergence from the `git rev-parse --is-inside-work-tree` this replaces:
+ * inside a repository's own `.git` directory git answered `false` and discovery
+ * answers `true`. Nothing asks that question — the callers pass a repository or
+ * a source subfolder — and the alternative is teaching this module where a git
+ * directory lives.
+ *
  * @param dirPath - Path to check
  * @returns True if inside a git repo
  */
 export async function isGitRepo(dirPath: string): Promise<boolean> {
-    try {
-        const result = await execAsync('git rev-parse --is-inside-work-tree', { cwd: dirPath });
-        return result.stdout.trim() === 'true';
-    } catch {
-        return false;
-    }
+    return (await getGitRoot(dirPath)) !== null;
 }

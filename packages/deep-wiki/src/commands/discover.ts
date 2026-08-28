@@ -246,7 +246,7 @@ export async function executeDiscover(
             printSuccess(`Component graph written to ${bold(outputFile)}`);
 
             // Initialize wiki output directory as a Git repository
-            initWikiGitRepo(outputDir, {
+            await initWikiGitRepo(outputDir, {
                 info: (msg) => { if (options.verbose) { printInfo(msg); } },
                 warn: (msg) => printWarning(msg),
             });

@@ -56,6 +56,16 @@ describe('Bundle Configuration', () => {
             expect(externalBlock).toContain('@plusplusoneplusplus/forge');
         });
 
+        // The addon resolves its own `.node` binary relative to its own
+        // directory, so a bundled copy of the loader would look for it under
+        // deep-wiki's dist/ and fail at load rather than at build.
+        it('should mark @plusplusoneplusplus/coc-native as external', () => {
+            const externalMatch = configContent.match(/EXTERNAL_DEPS\s*=\s*\[([\s\S]*?)\]/);
+            expect(externalMatch).toBeTruthy();
+            const externalBlock = externalMatch![1];
+            expect(externalBlock).toContain('@plusplusoneplusplus/coc-native');
+        });
+
         it('should target node18', () => {
             expect(configContent).toMatch(/target.*node18/);
         });
@@ -161,6 +171,11 @@ describe('Bundle Configuration', () => {
             expect(deps['@plusplusoneplusplus/forge']).toBeTruthy();
         });
 
+        it('should have @plusplusoneplusplus/coc-native as runtime dependency', () => {
+            const deps = pkg.dependencies as Record<string, string>;
+            expect(deps['@plusplusoneplusplus/coc-native']).toBeTruthy();
+        });
+
         it('should NOT have @plusplusoneplusplus/forge as devDependency', () => {
             const devDeps = pkg.devDependencies as Record<string, string>;
             expect(devDeps['@plusplusoneplusplus/forge']).toBeUndefined();
@@ -220,6 +235,12 @@ describe('Bundle Configuration', () => {
 
         it('should NOT contain inlined forge source code', () => {
             expect(bundleContent).not.toMatch(/var CopilotSDKService\s*=/);
+        });
+
+        it('should externalize @plusplusoneplusplus/coc-native (require at runtime)', () => {
+            expect(bundleContent).toMatch(
+                /require\(["']@plusplusoneplusplus\/coc-native["']\)/
+            );
         });
 
         it('should externalize commander (require at runtime)', () => {
