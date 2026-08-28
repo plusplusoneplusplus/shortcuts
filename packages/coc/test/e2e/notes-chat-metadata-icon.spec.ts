@@ -72,7 +72,10 @@ test('Notes Chat header exposes the conversation metadata popover', async ({ pag
 
         await info.click();
         await expect(page.getByText('Conversation metadata')).toBeVisible();
-        await expect(page.getByText(`queue_${TASK_ID}`)).toBeVisible();
+        // `exact` matters: the process id also shows up inside the prompt text
+        // and as a substring of the process directory path, so a loose match
+        // trips Playwright's strict mode.
+        await expect(page.getByText(`queue_${TASK_ID}`, { exact: true })).toBeVisible();
 
         await page.screenshot({ path: testInfo.outputPath('notes-chat-metadata-icon.png') });
     } finally {
