@@ -13,7 +13,7 @@ import { createAddDiffCommentTool } from '../../../src/server/llm-tools/add-diff
 // ============================================================================
 
 vi.mock('../../../src/server/llm-tools/diff-line-mapper', () => ({
-    getFileDiff: vi.fn().mockReturnValue(`diff --git a/src/index.ts b/src/index.ts
+    getFileDiff: vi.fn().mockResolvedValue(`diff --git a/src/index.ts b/src/index.ts
 --- a/src/index.ts
 +++ b/src/index.ts
 @@ -1,3 +1,4 @@

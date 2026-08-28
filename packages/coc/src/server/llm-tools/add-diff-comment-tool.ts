@@ -115,7 +115,7 @@ export function createAddDiffCommentTool(deps: AddDiffCommentDeps) {
                 const category = args.category ?? 'general';
 
                 // 1. Get the diff and parse it
-                const diffOutput = getFileDiff(
+                const diffOutput = await getFileDiff(
                     deps.workingDirectory,
                     deps.parentHash,
                     deps.commitHash,

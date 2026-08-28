@@ -13,7 +13,8 @@
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { execFileSync } from 'child_process';
+import { execGitAsync } from '@plusplusoneplusplus/forge/git';
+import { NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 import type {
     AgentMode,
     ProcessStore,
@@ -66,7 +67,7 @@ export class CommitChatExecutor extends ChatBaseExecutor {
         const wsId = payload.workspaceId;
 
         // Resolve parent hash
-        const parentHash = resolveParentHash(commitHash, workingDirectory);
+        const parentHash = await resolveParentHash(commitHash, workingDirectory);
 
         // Build auto-folder context (same pattern as ChatExecutor)
         let autoFolderContext = undefined;
@@ -149,20 +150,35 @@ const ADD_DIFF_COMMENT_SUFFIX =
 
 /**
  * Resolve the parent commit hash for a given commit.
- * Falls back to an empty-tree hash for initial commits.
+ *
+ * An initial commit, an unreadable repository or a missing commit all answer
+ * with the empty string, which is how the caller spells "no parent". Runs in
+ * the native addon rather than blocking the event loop.
+ *
+ * Exported so its behaviour can be pinned against a real repository; the
+ * executor's own suite mocks `fs` module-wide and cannot build one.
  */
-function resolveParentHash(commitHash: string, workingDirectory: string | undefined): string {
+export async function resolveParentHash(
+    commitHash: string,
+    workingDirectory: string | undefined,
+): Promise<string> {
     if (!workingDirectory || !commitHash) return '';
     try {
-        const parents = execFileSync(
-            'git',
-            ['log', '--pretty=%P', '-n1', commitHash],
-            { cwd: workingDirectory, encoding: 'utf-8', timeout: 5000 },
+        const parents = (
+            await execGitAsync(['log', '--pretty=%P', '-n1', commitHash], workingDirectory, {
+                timeout: 5000,
+            })
         ).trim();
         // Use first parent (handles merge commits)
         const firstParent = parents.split(/\s+/)[0];
         return firstParent || '';
-    } catch {
+    } catch (err: unknown) {
+        // Every other failure here means "no parent", but a stale or missing
+        // addon means "no answer" — swallowing it would hand the diff-comment
+        // tool an empty parent and render the whole commit as added lines.
+        if (err instanceof NativeAddonLoadError) {
+            throw err;
+        }
         return '';
     }
 }
