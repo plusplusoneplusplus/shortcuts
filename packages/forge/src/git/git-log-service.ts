@@ -1,16 +1,21 @@
 /**
  * GitLogService: commit history, diffs, and file content queries.
  *
- * Reading history — `getCommits` and `getCommit` — runs in the native addon on
- * a libuv worker, backed by `gix`. That path spawns nothing at all, where the
- * TypeScript it replaced spawned three children for a single page: `git log`,
- * `git rev-parse --abbrev-ref @{upstream}`, and a second `git log` for the
- * unpushed set. Everything else here still shells out through `execAsync` and
- * moves in a later slice.
+ * Every method runs in the native addon, so nothing in this file starts a child
+ * process. The reads that only touch objects and refs — history, a commit's
+ * parent, a file's content at a commit, whether a ref names a commit, the
+ * branch names — are `gix`-backed and spawn nothing at all; the diffs and the
+ * `diff-tree` runs still shell out, from Rust, because their rename detection
+ * and line counts follow git's own diff drivers.
  *
  * Unlike the rest of forge's git code this service never had a WSL branch — it
  * called `execAsync` directly rather than going through `execGitAsync` — so
  * there is no routing split to preserve, and every repository takes one path.
+ *
+ * `loadNativeGit()` sits outside every try/catch here. Every method in this
+ * file answers failure with silence — an empty list, an empty string, an
+ * `undefined` — and a missing or stale binary must not look like a repository
+ * with no history in it.
  *
  * Extracted from `src/shortcuts/git/git-log-service.ts`.
  */
@@ -19,19 +24,20 @@ import * as path from 'path';
 import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
 import type { NativeGitLogCommit } from '@plusplusoneplusplus/coc-native';
 import { getLogger, LogCategory } from '../logger';
-import { execAsync } from '../utils/exec-utils';
 import { toForwardSlashes } from '../utils/path-utils';
 import { GitCommit, GitCommitFile, GitChangeStatus, CommitLoadOptions, CommitLoadResult } from './types';
 
 /**
- * Timeout (ms) applied to every git command spawned by this service.
+ * Timeout (ms) applied to every git command this service runs.
  *
- * Now that git I/O runs asynchronously, many git processes can
- * be spawned concurrently (e.g. across parallel test workers). Under that
- * contention the wall-clock time of an individual command can exceed a tight
- * per-call timeout even when the command itself is fast, which would surface as
- * spurious ETIMEDOUT failures. A single generous timeout keeps behaviour
- * consistent and robust under load.
+ * Many git commands can be in flight at once (e.g. across parallel test
+ * workers). Under that contention the wall-clock time of an individual command
+ * can exceed a tight per-call timeout even when the command itself is fast,
+ * which would surface as spurious timeout failures. A single generous timeout
+ * keeps behaviour consistent and robust under load.
+ *
+ * The 50 MiB output cap the diffs used to ask for is the addon's own default,
+ * so it is no longer spelled out per call.
  */
 const GIT_COMMAND_TIMEOUT_MS = 30000;
 
@@ -68,7 +74,6 @@ interface BranchCacheEntry {
 export class GitLogService {
     private branchCache: Map<string, BranchCacheEntry> = new Map();
     private static readonly BRANCH_CACHE_TTL = 180_000; // 3 minutes
-    private static readonly EMPTY_TREE_HASH = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
 
     /**
      * Get commits from a repository.
@@ -113,43 +118,31 @@ export class GitLogService {
 
     /**
      * Get files changed in a specific commit.
+     *
+     * One crossing where there were three children: the parent comes from
+     * `gix`, and the `--name-status` and `--numstat` runs are joined in Rust
+     * rather than crossing the boundary as text.
      */
     async getCommitFiles(repoRoot: string, commitHash: string): Promise<GitCommitFile[]> {
+        const native = loadNativeGit();
         try {
-            const parentHash = await this.getParentHash(repoRoot, commitHash);
-
-            const command = `git diff-tree --no-commit-id --name-status -r -M -C ${commitHash}`;
-
-            const { stdout: output } = await execAsync(command, {
-                cwd: repoRoot,
+            const { parentHash, files } = await native.gitCommitFiles(repoRoot, commitHash, {
                 timeout: GIT_COMMAND_TIMEOUT_MS,
             });
-
-            if (!output.trim()) {
-                return [];
-            }
-
-            const files: GitCommitFile[] = [];
-            const lines = output.trim().split('\n');
-
-            for (const line of lines) {
-                const file = this.parseFileLine(line, commitHash, parentHash, repoRoot);
-                if (file) {
-                    files.push(file);
-                }
-            }
-
-            // Fetch per-file line stats via --numstat and merge into results
-            const numstatMap = await this.getNumstatMap(repoRoot, commitHash);
-            for (const file of files) {
-                const stats = numstatMap.get(file.path);
-                if (stats) {
-                    file.additions = stats.additions;
-                    file.deletions = stats.deletions;
-                }
-            }
-
-            return files;
+            // The three repository-level fields are the caller's own values, so
+            // they are attached here rather than rebuilt in Rust. `additions`
+            // and `deletions` stay *absent* when numstat had nothing to say —
+            // a binary file — because the UI renders a blank column there.
+            return files.map(file => ({
+                path: file.path,
+                ...(file.originalPath !== undefined ? { originalPath: file.originalPath } : {}),
+                status: file.status as GitChangeStatus,
+                commitHash,
+                parentHash,
+                repositoryRoot: repoRoot,
+                ...(file.additions !== undefined ? { additions: file.additions } : {}),
+                ...(file.deletions !== undefined ? { deletions: file.deletions } : {}),
+            }));
         } catch (error) {
             getLogger().error(LogCategory.GIT, `Failed to get commit files for ${commitHash} from ${repoRoot}`, error instanceof Error ? error : undefined);
             return [];
@@ -160,17 +153,11 @@ export class GitLogService {
      * Get the diff for a specific commit.
      */
     async getCommitDiff(repoRoot: string, commitHash: string): Promise<string> {
+        const native = loadNativeGit();
         try {
-            const parentHash = await this.getParentHash(repoRoot, commitHash);
-
-            const command = `git diff ${parentHash} ${commitHash}`;
-            const { stdout: output } = await execAsync(command, {
-                cwd: repoRoot,
-                maxBuffer: 50 * 1024 * 1024,
+            return await native.gitCommitDiff(repoRoot, commitHash, {
                 timeout: GIT_COMMAND_TIMEOUT_MS,
             });
-
-            return output;
         } catch (error) {
             getLogger().error(LogCategory.GIT, `Failed to get diff for commit ${commitHash}`, error instanceof Error ? error : undefined);
             return '';
@@ -181,16 +168,12 @@ export class GitLogService {
      * Get the diff for pending changes (staged + unstaged).
      */
     async getPendingChangesDiff(repoRoot: string): Promise<string> {
+        const native = loadNativeGit();
         try {
-            const { stdout: unstaged } = await execAsync('git diff', {
-                cwd: repoRoot,
-                maxBuffer: 50 * 1024 * 1024,
+            const unstaged = await native.execGit(['diff'], repoRoot, {
                 timeout: GIT_COMMAND_TIMEOUT_MS,
             });
-
-            const { stdout: staged } = await execAsync('git diff --cached', {
-                cwd: repoRoot,
-                maxBuffer: 50 * 1024 * 1024,
+            const staged = await native.execGit(['diff', '--cached'], repoRoot, {
                 timeout: GIT_COMMAND_TIMEOUT_MS,
             });
 
@@ -216,15 +199,11 @@ export class GitLogService {
      * Get the diff for staged changes only.
      */
     async getStagedChangesDiff(repoRoot: string): Promise<string> {
+        const native = loadNativeGit();
         try {
-            const command = 'git diff --cached';
-            const { stdout: output } = await execAsync(command, {
-                cwd: repoRoot,
-                maxBuffer: 50 * 1024 * 1024,
+            return await native.execGit(['diff', '--cached'], repoRoot, {
                 timeout: GIT_COMMAND_TIMEOUT_MS,
             });
-
-            return output;
         } catch (error) {
             getLogger().error(LogCategory.GIT, 'Failed to get staged changes diff', error instanceof Error ? error : undefined);
             return '';
@@ -235,13 +214,11 @@ export class GitLogService {
      * Check if there are any pending changes.
      */
     async hasPendingChanges(repoRoot: string): Promise<boolean> {
+        const native = loadNativeGit();
         try {
-            const command = 'git status --porcelain';
-            const { stdout: output } = await execAsync(command, {
-                cwd: repoRoot,
+            const output = await native.execGit(['status', '--porcelain'], repoRoot, {
                 timeout: GIT_COMMAND_TIMEOUT_MS,
             });
-
             return output.trim().length > 0;
         } catch (error) {
             getLogger().error(LogCategory.GIT, 'Failed to check for pending changes', error instanceof Error ? error : undefined);
@@ -251,12 +228,15 @@ export class GitLogService {
 
     /**
      * Check if there are any staged changes.
+     *
+     * `--quiet` answers through the exit code: zero means nothing is staged,
+     * and the non-zero exit that means "something is" reaches here as a
+     * rejection.
      */
     async hasStagedChanges(repoRoot: string): Promise<boolean> {
+        const native = loadNativeGit();
         try {
-            const command = 'git diff --cached --quiet';
-            await execAsync(command, {
-                cwd: repoRoot,
+            await native.execGit(['diff', '--cached', '--quiet'], repoRoot, {
                 timeout: GIT_COMMAND_TIMEOUT_MS,
             });
             return false;
@@ -269,13 +249,11 @@ export class GitLogService {
      * Check if there are more commits available.
      */
     async hasMoreCommits(repoRoot: string, currentCount: number): Promise<boolean> {
+        const native = loadNativeGit();
         try {
-            const command = 'git rev-list --count HEAD';
-            const { stdout: output } = await execAsync(command, {
-                cwd: repoRoot,
+            const output = await native.execGit(['rev-list', '--count', 'HEAD'], repoRoot, {
                 timeout: GIT_COMMAND_TIMEOUT_MS,
             });
-
             const totalCount = parseInt(output.trim(), 10);
             return totalCount > currentCount;
         } catch (error) {
@@ -286,19 +264,20 @@ export class GitLogService {
 
     /**
      * Get file content at a specific commit.
+     *
+     * The blob is read out of the object database rather than off `git show`'s
+     * stdout, so the content keeps its trailing newline — every command that
+     * crosses the native boundary loses one, and a file's bytes cannot.
      */
     async getFileContentAtCommit(repoRoot: string, commitHash: string, filePath: string): Promise<string | undefined> {
+        const native = loadNativeGit();
         try {
-            const normalizedPath = toForwardSlashes(filePath);
-
-            const command = `git show "${commitHash}:${normalizedPath}"`;
-            const { stdout: output } = await execAsync(command, {
-                cwd: repoRoot,
-                maxBuffer: 50 * 1024 * 1024,
-                timeout: GIT_COMMAND_TIMEOUT_MS,
-            });
-
-            return output;
+            const content = await native.gitFileContentAtCommit(
+                repoRoot,
+                commitHash,
+                toForwardSlashes(filePath),
+            );
+            return content ?? undefined;
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             getLogger().debug(
@@ -313,13 +292,13 @@ export class GitLogService {
      * Check if a file exists at a specific commit.
      */
     async fileExistsAtCommit(repoRoot: string, commitHash: string, filePath: string): Promise<boolean> {
+        const native = loadNativeGit();
         try {
-            const normalizedPath = toForwardSlashes(filePath);
-            await execAsync(`git cat-file -e "${commitHash}:${normalizedPath}"`, {
-                cwd: repoRoot,
-                timeout: GIT_COMMAND_TIMEOUT_MS,
-            });
-            return true;
+            return await native.gitFileExistsAtCommit(
+                repoRoot,
+                commitHash,
+                toForwardSlashes(filePath),
+            );
         } catch {
             return false;
         }
@@ -327,26 +306,15 @@ export class GitLogService {
 
     /**
      * Validate a git ref and return the resolved commit hash.
+     *
+     * `rev-parse --verify` and `cat-file -t` in one crossing. Neither peeled,
+     * so an annotated tag still resolves to a tag object and answers
+     * `undefined`; a lightweight tag validates.
      */
     async validateRef(repoRoot: string, ref: string): Promise<string | undefined> {
+        const native = loadNativeGit();
         try {
-            const command = `git rev-parse --verify "${ref}"`;
-            const { stdout: output } = await execAsync(command, {
-                cwd: repoRoot,
-                timeout: GIT_COMMAND_TIMEOUT_MS,
-            });
-            const hash = output.trim();
-
-            const typeCommand = `git cat-file -t "${hash}"`;
-            const { stdout: typeOutput } = await execAsync(typeCommand, {
-                cwd: repoRoot,
-                timeout: GIT_COMMAND_TIMEOUT_MS,
-            });
-
-            if (typeOutput.trim() === 'commit') {
-                return hash;
-            }
-            return undefined;
+            return (await native.gitValidateRef(repoRoot, ref)) ?? undefined;
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             getLogger().debug(
@@ -359,6 +327,9 @@ export class GitLogService {
 
     /**
      * Get branch names (cached, local branches only).
+     *
+     * The `HEAD` filter and the ten-name cap stay here: they are what this one
+     * list chose to show, not what the repository holds.
      */
     async getBranches(repoRoot: string, forceRefresh = false): Promise<string[]> {
         if (!forceRefresh) {
@@ -368,14 +339,11 @@ export class GitLogService {
             }
         }
 
+        // After the cache lookup, so a warm read never depends on the binary.
+        const native = loadNativeGit();
         try {
-            const { stdout: output } = await execAsync('git branch --format="%(refname:short)"', {
-                cwd: repoRoot,
-                timeout: GIT_COMMAND_TIMEOUT_MS,
-            });
-            const branches = output.trim().split('\n')
-                .filter(b => b && !b.includes('HEAD'))
-                .slice(0, 10);
+            const names = await native.gitLocalBranchNames(repoRoot);
+            const branches = names.filter(name => name && !name.includes('HEAD')).slice(0, 10);
 
             this.branchCache.set(repoRoot, {
                 branches,
@@ -425,74 +393,6 @@ export class GitLogService {
     // Private helpers
     // -----------------------------------------------------------------------
 
-    private async getParentHash(repoRoot: string, commitHash: string): Promise<string> {
-        try {
-            const command = `git rev-parse ${commitHash}~1`;
-            const { stdout: output } = await execAsync(command, {
-                cwd: repoRoot,
-                timeout: GIT_COMMAND_TIMEOUT_MS,
-            });
-            return output.trim();
-        } catch {
-            return GitLogService.EMPTY_TREE_HASH;
-        }
-    }
-
-    /**
-     * Get per-file additions/deletions from --numstat for a commit.
-     */
-    private async getNumstatMap(repoRoot: string, commitHash: string): Promise<Map<string, { additions: number; deletions: number }>> {
-        const map = new Map<string, { additions: number; deletions: number }>();
-        try {
-            const command = `git diff-tree --no-commit-id --numstat -r -M -C ${commitHash}`;
-            const { stdout: output } = await execAsync(command, {
-                cwd: repoRoot,
-                timeout: GIT_COMMAND_TIMEOUT_MS,
-            });
-
-            if (!output.trim()) {
-                return map;
-            }
-
-            for (const line of output.trim().split('\n')) {
-                if (!line.trim()) { continue; }
-                // Format: "additions\tdeletions\tpath" or for renames "additions\tdeletions\toldpath => newpath"
-                const parts = line.split('\t');
-                if (parts.length < 3) { continue; }
-
-                const addStr = parts[0];
-                const delStr = parts[1];
-
-                // Binary files show '-' for additions/deletions
-                if (addStr === '-' || delStr === '-') { continue; }
-
-                const additions = parseInt(addStr, 10);
-                const deletions = parseInt(delStr, 10);
-                if (isNaN(additions) || isNaN(deletions)) { continue; }
-
-                // For renames/copies, the path column may be "old => new" or "{prefix/old => new}/suffix"
-                // The last tab-separated field is the path; for renames with -M/-C, it shows the new path
-                let filePath = parts.slice(2).join('\t');
-                // Handle rename format: "{old => new}" or "old => new"
-                const renameMatch = filePath.match(/^(.*)\{.* => (.*)\}(.*)$/) || filePath.match(/^.* => (.*)$/);
-                if (renameMatch) {
-                    if (renameMatch.length === 4) {
-                        // "{prefix/old => new}/suffix" format
-                        filePath = renameMatch[1] + renameMatch[2] + renameMatch[3];
-                    } else {
-                        // "old => new" format
-                        filePath = renameMatch[1];
-                    }
-                }
-
-                map.set(filePath, { additions, deletions });
-            }
-        } catch {
-            // Non-critical: stats are optional decoration
-        }
-        return map;
-    }
-
     /**
      * Attach the two fields Rust does not build.
      *
@@ -502,58 +402,5 @@ export class GitLogService {
      */
     private toGitCommit(commit: NativeGitLogCommit, repoRoot: string): GitCommit {
         return { ...commit, repositoryRoot: repoRoot, repositoryName: path.basename(repoRoot) };
-    }
-
-    private parseFileLine(
-        line: string,
-        commitHash: string,
-        parentHash: string,
-        repoRoot: string,
-    ): GitCommitFile | null {
-        if (!line.trim()) {
-            return null;
-        }
-
-        const parts = line.split('\t');
-        if (parts.length < 2) {
-            return null;
-        }
-
-        const statusCode = parts[0];
-        const status = this.parseStatusCode(statusCode);
-
-        if (statusCode.startsWith('R') || statusCode.startsWith('C')) {
-            if (parts.length >= 3) {
-                return {
-                    path: parts[2],
-                    originalPath: parts[1],
-                    status,
-                    commitHash,
-                    parentHash,
-                    repositoryRoot: repoRoot,
-                };
-            }
-        }
-
-        return {
-            path: parts[1],
-            status,
-            commitHash,
-            parentHash,
-            repositoryRoot: repoRoot,
-        };
-    }
-
-    private parseStatusCode(code: string): GitChangeStatus {
-        const firstChar = code.charAt(0).toUpperCase();
-        switch (firstChar) {
-            case 'M': return 'modified';
-            case 'A': return 'added';
-            case 'D': return 'deleted';
-            case 'R': return 'renamed';
-            case 'C': return 'copied';
-            case 'U': return 'conflict';
-            default: return 'modified';
-        }
     }
 }

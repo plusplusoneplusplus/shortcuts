@@ -15,8 +15,12 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use coc_native_core::git::branch::{
-    branch_status, list_branches, parse_porcelain_v2_branch_status, repository_status, BranchEntry,
-    BranchPage, BranchQuery, BranchStatus, RepositoryStatus,
+    branch_status, list_branches, local_branch_names, parse_porcelain_v2_branch_status,
+    repository_status, BranchEntry, BranchPage, BranchQuery, BranchStatus, RepositoryStatus,
+};
+use coc_native_core::git::commit::{
+    commit_diff, commit_files, file_content_at_commit, file_exists_at_commit, validate_ref,
+    CommitFile, CommitFiles,
 };
 use coc_native_core::git::config::{global_config_add, global_config_get_all};
 use coc_native_core::git::log::{get_commit, get_commits, Commit, CommitPage};
@@ -343,6 +347,223 @@ impl Task for GitLogCommitTask {
 #[napi(ts_return_type = "Promise<GitLogCommit | null>")]
 pub fn git_log_commit(repo_root: String, rev: String) -> AsyncTask<GitLogCommitTask> {
     AsyncTask::new(GitLogCommitTask { repo_root: PathBuf::from(repo_root), rev })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Commit detail
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// One file a commit touched.
+///
+/// `commitHash`, `parentHash` and `repositoryRoot` are absent for the reason
+/// they are absent on a status entry and a range file: they are the caller's
+/// own values, and the caller attaches them.
+#[napi(object)]
+pub struct GitCommitFile {
+    pub path: String,
+    /// Source path of a rename or copy; absent otherwise.
+    pub original_path: Option<String>,
+    /// A `GitChangeStatus` string union member.
+    pub status: String,
+    /// Absent rather than zero when `--numstat` had nothing to say — a binary
+    /// file, above all. The UI renders a blank column there rather than a
+    /// misleading `0`.
+    pub additions: Option<u32>,
+    pub deletions: Option<u32>,
+}
+
+impl From<CommitFile> for GitCommitFile {
+    fn from(file: CommitFile) -> Self {
+        Self {
+            path: file.path,
+            original_path: file.original_path,
+            status: file.status.as_str().to_string(),
+            additions: file.additions,
+            deletions: file.deletions,
+        }
+    }
+}
+
+/// A commit's file list, and the parent the list was computed against.
+#[napi(object)]
+pub struct GitCommitFiles {
+    /// The commit's first parent, or git's empty tree for a root commit.
+    pub parent_hash: String,
+    pub files: Vec<GitCommitFile>,
+}
+
+pub struct GitCommitFilesTask {
+    repo_root: PathBuf,
+    commit: String,
+    options: GitCommandOptions,
+}
+
+impl Task for GitCommitFilesTask {
+    type Output = CommitFiles;
+    type JsValue = GitCommitFiles;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        commit_files(&self.repo_root, &self.commit, &self.options).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(GitCommitFiles {
+            parent_hash: output.parent_hash,
+            files: output.files.into_iter().map(GitCommitFile::from).collect(),
+        })
+    }
+}
+
+/// Read the files a commit touched, with their line counts and its parent.
+///
+/// Three children become one crossing: the parent comes from `gix`, and the
+/// two `diff-tree` runs are joined in Rust rather than crossing as text. A root
+/// commit has no file list at all — `diff-tree` compares against parents — but
+/// still reports the empty tree as its parent.
+#[napi(ts_return_type = "Promise<GitCommitFiles>")]
+pub fn git_commit_files(
+    repo_root: String,
+    commit: String,
+    options: Option<GitExecOptions>,
+) -> AsyncTask<GitCommitFilesTask> {
+    AsyncTask::new(GitCommitFilesTask {
+        repo_root: PathBuf::from(repo_root),
+        commit,
+        options: resolve_options(options),
+    })
+}
+
+pub struct GitCommitDiffTask {
+    repo_root: PathBuf,
+    commit: String,
+    options: GitCommandOptions,
+}
+
+impl Task for GitCommitDiffTask {
+    type Output = String;
+    type JsValue = String;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        commit_diff(&self.repo_root, &self.commit, &self.options).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+/// Read a commit's diff against its parent.
+///
+/// The parent resolution is `gix`, so the two children this used to cost are
+/// down to the one `git diff` that still does the real work.
+#[napi(ts_return_type = "Promise<string>")]
+pub fn git_commit_diff(
+    repo_root: String,
+    commit: String,
+    options: Option<GitExecOptions>,
+) -> AsyncTask<GitCommitDiffTask> {
+    AsyncTask::new(GitCommitDiffTask {
+        repo_root: PathBuf::from(repo_root),
+        commit,
+        options: resolve_options(options),
+    })
+}
+
+pub struct GitFileContentAtCommitTask {
+    repo_root: PathBuf,
+    rev: String,
+    path: String,
+}
+
+impl Task for GitFileContentAtCommitTask {
+    type Output = Option<String>;
+    type JsValue = Option<String>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        file_content_at_commit(&self.repo_root, &self.rev, &self.path).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+/// Read a file's content as it stood at a commit.
+///
+/// The blob comes out of the object database rather than off `git show`'s
+/// stdout, which is what keeps the trailing newline: every command that crosses
+/// this boundary loses one, and a file's bytes cannot afford to.
+///
+/// Resolves with `null` for a missing path, a revision that names nothing, and
+/// a path that names a directory. Only a path that is not a repository rejects.
+#[napi(ts_return_type = "Promise<string | null>")]
+pub fn git_file_content_at_commit(
+    repo_root: String,
+    rev: String,
+    path: String,
+) -> AsyncTask<GitFileContentAtCommitTask> {
+    AsyncTask::new(GitFileContentAtCommitTask { repo_root: PathBuf::from(repo_root), rev, path })
+}
+
+pub struct GitFileExistsAtCommitTask {
+    repo_root: PathBuf,
+    rev: String,
+    path: String,
+}
+
+impl Task for GitFileExistsAtCommitTask {
+    type Output = bool;
+    type JsValue = bool;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        file_exists_at_commit(&self.repo_root, &self.rev, &self.path).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+/// Whether `<rev>:<path>` names anything at a commit.
+///
+/// True for a directory as well as a file, because the `git cat-file -e` this
+/// replaces asks whether the object exists and a tree is an object.
+#[napi(ts_return_type = "Promise<boolean>")]
+pub fn git_file_exists_at_commit(
+    repo_root: String,
+    rev: String,
+    path: String,
+) -> AsyncTask<GitFileExistsAtCommitTask> {
+    AsyncTask::new(GitFileExistsAtCommitTask { repo_root: PathBuf::from(repo_root), rev, path })
+}
+
+pub struct GitValidateRefTask {
+    repo_root: PathBuf,
+    rev: String,
+}
+
+impl Task for GitValidateRefTask {
+    type Output = Option<String>;
+    type JsValue = Option<String>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        validate_ref(&self.repo_root, &self.rev).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+/// Resolve a ref and report its hash when it names a commit.
+///
+/// `rev-parse --verify` followed by `cat-file -t` in one crossing and no
+/// children. Resolves with `null` for a ref that names nothing *and* for one
+/// that names a non-commit — an annotated tag among them, because neither
+/// command peeled and neither does this.
+#[napi(ts_return_type = "Promise<string | null>")]
+pub fn git_validate_ref(repo_root: String, rev: String) -> AsyncTask<GitValidateRefTask> {
+    AsyncTask::new(GitValidateRefTask { repo_root: PathBuf::from(repo_root), rev })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -946,6 +1167,34 @@ pub fn git_list_branches(
             search: options.search,
         },
     })
+}
+
+pub struct GitLocalBranchNamesTask {
+    repo_root: PathBuf,
+}
+
+impl Task for GitLocalBranchNamesTask {
+    type Output = Vec<String>;
+    type JsValue = Vec<String>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        local_branch_names(&self.repo_root).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+/// Read every local branch's short name, in git's `refname` order.
+///
+/// `git branch --format="%(refname:short)"` without the per-branch commit
+/// lookup {@link git_list_branches} pays for its subject and date columns. The
+/// caller's own filtering and its ten-name cap stay in TypeScript: they are
+/// what one list chose to show, not what the repository holds.
+#[napi(ts_return_type = "Promise<string[]>")]
+pub fn git_local_branch_names(repo_root: String) -> AsyncTask<GitLocalBranchNamesTask> {
+    AsyncTask::new(GitLocalBranchNamesTask { repo_root: PathBuf::from(repo_root) })
 }
 
 pub struct GitRemoteUrlTask {

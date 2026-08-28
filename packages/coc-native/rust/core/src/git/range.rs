@@ -276,23 +276,6 @@ pub fn count_commits_ahead(
 // Changed files
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Map a `--name-status` code letter to a status.
-///
-/// Only the first character is read, so the similarity score on `R100` or
-/// `C075` is ignored, and an unrecognised letter becomes `modified` rather than
-/// dropping the file.
-fn status_from_code(code: &str) -> ChangeStatus {
-    match code.chars().next().map(|c| c.to_ascii_uppercase()) {
-        Some('M') => ChangeStatus::Modified,
-        Some('A') => ChangeStatus::Added,
-        Some('D') => ChangeStatus::Deleted,
-        Some('R') => ChangeStatus::Renamed,
-        Some('C') => ChangeStatus::Copied,
-        Some('U') => ChangeStatus::Conflict,
-        _ => ChangeStatus::Modified,
-    }
-}
-
 /// Pull the destination path out of a `--numstat` rename entry.
 ///
 /// A literal port of the TypeScript's
@@ -363,7 +346,7 @@ pub fn parse_changed_files(numstat: &str, name_status: &str) -> Vec<RangeFile> {
             continue;
         }
         let code = parts[0];
-        let status = status_from_code(code);
+        let status = ChangeStatus::from_code(code);
         if code.starts_with('R') || code.starts_with('C') {
             if parts.len() >= 3 {
                 statuses.insert(parts[2], (status, Some(parts[1])));

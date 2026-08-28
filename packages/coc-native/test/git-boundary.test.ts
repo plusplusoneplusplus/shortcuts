@@ -947,3 +947,183 @@ describe('repository discovery marshalling', () => {
         expect(answers).toEqual(Array(8).fill(repo));
     });
 });
+
+// Commit detail needs a second commit and a rename to be worth asserting, and
+// mutating the shared repository would leak into every suite above.
+describe('commit-detail marshalling', () => {
+    let detail: string;
+    let root: string;
+    let head: string;
+
+    function detailGit(...args: string[]): string {
+        return execFileSync('git', ['-C', detail, ...args], { encoding: 'utf-8' });
+    }
+
+    beforeAll(() => {
+        detail = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-git-detail-')));
+        detailGit('init', '--initial-branch=main');
+        detailGit('config', 'user.email', 'ralph@example.com');
+        detailGit('config', 'user.name', 'Ralph');
+        detailGit('config', 'commit.gpgsign', 'false');
+
+        fs.mkdirSync(path.join(detail, 'src'));
+        fs.writeFileSync(path.join(detail, 'src', 'old.ts'), 'export const value = 1;\n');
+        fs.writeFileSync(path.join(detail, 'keep.md'), 'body\n\n\n');
+        fs.writeFileSync(path.join(detail, 'logo.bin'), Buffer.from([0, 1, 2, 3, 0xff]));
+        detailGit('add', '.');
+        detailGit('commit', '-m', 'first');
+        root = detailGit('rev-parse', 'HEAD').trim();
+
+        fs.renameSync(path.join(detail, 'src', 'old.ts'), path.join(detail, 'src', 'new.ts'));
+        fs.writeFileSync(path.join(detail, 'added.txt'), 'new file\n');
+        fs.writeFileSync(path.join(detail, 'logo.bin'), Buffer.from([0, 1, 2, 3, 0x00, 0xfe]));
+        detailGit('add', '-A');
+        detailGit('commit', '-m', 'second');
+        head = detailGit('rev-parse', 'HEAD').trim();
+    });
+
+    afterAll(() => {
+        if (detail) fs.rmSync(detail, { recursive: true, force: true });
+    });
+
+    describe('gitCommitFiles', () => {
+        it('reports the parent and the touched files in one crossing', async () => {
+            const result = await gitAddon.gitCommitFiles(detail, head);
+            expect(result.parentHash).toBe(root);
+            expect(result.files.map(file => file.path).sort()).toEqual([
+                'added.txt',
+                'logo.bin',
+                'src/new.ts',
+            ]);
+        });
+
+        it('marshals a rename with both ends and its line counts', async () => {
+            const result = await gitAddon.gitCommitFiles(detail, head);
+            const renamed = result.files.find(file => file.path === 'src/new.ts');
+            expect(renamed).toMatchObject({ status: 'renamed', originalPath: 'src/old.ts' });
+        });
+
+        // An absent `Option` inside an object arrives as a missing property, not
+        // as `null` — which is what keeps a binary file's column blank rather
+        // than showing a misleading zero.
+        it('omits the counts for a binary file rather than sending null', async () => {
+            const result = await gitAddon.gitCommitFiles(detail, head);
+            const binary = result.files.find(file => file.path === 'logo.bin');
+            expect(binary).toBeDefined();
+            expect('additions' in (binary as object)).toBe(false);
+            expect('deletions' in (binary as object)).toBe(false);
+        });
+
+        // `diff-tree` compares against parents, so a root commit prints nothing
+        // — the empty-tree parent is reported all the same.
+        it('reports the empty tree and no files for a root commit', async () => {
+            const result = await gitAddon.gitCommitFiles(detail, root);
+            expect(result.parentHash).toBe('4b825dc642cb6eb9a060e54bf8d69288fbee4904');
+            expect(result.files).toEqual([]);
+        });
+
+        it('rejects with the `git <args> failed:` shape outside a repository', async () => {
+            const outside = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-nogit-')));
+            try {
+                await expect(gitAddon.gitCommitFiles(outside, 'HEAD')).rejects.toThrow(
+                    /^git diff-tree .* failed: /,
+                );
+            } finally {
+                fs.rmSync(outside, { recursive: true, force: true });
+            }
+        });
+    });
+
+    describe('gitCommitDiff', () => {
+        it('matches the diff the two commands produced', async () => {
+            const native = await gitAddon.gitCommitDiff(detail, head);
+            const legacy = detailGit('diff', root, head).replace(/\r?\n$/, '');
+            expect(native).toBe(legacy);
+        });
+
+        it('rejects for a revision that names nothing', async () => {
+            await expect(gitAddon.gitCommitDiff(detail, 'no-such-ref')).rejects.toThrow(
+                /^git diff .* failed: /,
+            );
+        });
+    });
+
+    describe('gitFileContentAtCommit', () => {
+        // The reason this export exists rather than an `execGit` of `git show`:
+        // a command loses one trailing newline crossing the boundary, and a
+        // file's bytes cannot.
+        it('keeps every trailing newline the blob holds', async () => {
+            await expect(gitAddon.gitFileContentAtCommit(detail, head, 'keep.md')).resolves.toBe(
+                'body\n\n\n',
+            );
+        });
+
+        it('reads a nested path', async () => {
+            await expect(
+                gitAddon.gitFileContentAtCommit(detail, head, 'src/new.ts'),
+            ).resolves.toBe('export const value = 1;\n');
+        });
+
+        it('resolves with null for a missing path and a bad revision', async () => {
+            await expect(gitAddon.gitFileContentAtCommit(detail, head, 'nope.txt')).resolves.toBeNull();
+            await expect(gitAddon.gitFileContentAtCommit(detail, 'no-such-ref', 'keep.md')).resolves.toBeNull();
+        });
+
+        it('resolves with null for a directory', async () => {
+            await expect(gitAddon.gitFileContentAtCommit(detail, head, 'src')).resolves.toBeNull();
+        });
+    });
+
+    describe('gitFileExistsAtCommit', () => {
+        it('answers true for a file and false for a missing one', async () => {
+            await expect(gitAddon.gitFileExistsAtCommit(detail, head, 'keep.md')).resolves.toBe(true);
+            await expect(gitAddon.gitFileExistsAtCommit(detail, head, 'nope.txt')).resolves.toBe(false);
+        });
+
+        it('answers true for a directory, as `cat-file -e` does', async () => {
+            await expect(gitAddon.gitFileExistsAtCommit(detail, head, 'src')).resolves.toBe(true);
+        });
+    });
+
+    describe('gitValidateRef', () => {
+        it('resolves HEAD, a branch and a hash to the same commit', async () => {
+            for (const ref of ['HEAD', 'main', head]) {
+                await expect(gitAddon.gitValidateRef(detail, ref)).resolves.toBe(head);
+            }
+        });
+
+        it('resolves with null for a ref that names nothing', async () => {
+            await expect(gitAddon.gitValidateRef(detail, 'nope-not-a-ref')).resolves.toBeNull();
+        });
+
+        it('resolves with null for an annotated tag, which is not a commit', async () => {
+            detailGit('tag', '-a', 'boundary-annotated', '-m', 'annotated');
+            await expect(gitAddon.gitValidateRef(detail, 'boundary-annotated')).resolves.toBeNull();
+        });
+    });
+
+    describe('gitLocalBranchNames', () => {
+        it('lists local branches in refname order', async () => {
+            detailGit('branch', 'zeta');
+            detailGit('branch', 'alpha');
+            await expect(gitAddon.gitLocalBranchNames(detail)).resolves.toEqual([
+                'alpha',
+                'main',
+                'zeta',
+            ]);
+        });
+
+        it('does not block the event loop', async () => {
+            let ticks = 0;
+            const timer = setInterval(() => { ticks += 1; }, 1);
+            try {
+                await Promise.all(
+                    Array.from({ length: 40 }, () => gitAddon.gitLocalBranchNames(detail)),
+                );
+            } finally {
+                clearInterval(timer);
+            }
+            expect(ticks).toBeGreaterThan(0);
+        });
+    });
+});

@@ -52,6 +52,19 @@ export type NativeGitLogPage = Bindings.GitLogPage;
 export type NativeGitLogOptions = Bindings.GitLogOptions;
 
 /**
+ * One file a commit touched, as Rust reports it.
+ *
+ * `commitHash`, `parentHash` and `repositoryRoot` are absent for the reason
+ * they are absent on a status entry — they are the caller's own values — and
+ * `additions`/`deletions` are absent rather than zero when `--numstat` had
+ * nothing to say about the file.
+ */
+export type NativeGitCommitFile = Bindings.GitCommitFile;
+
+/** A commit's file list, and the parent the list was computed against. */
+export type NativeGitCommitFiles = Bindings.GitCommitFiles;
+
+/**
  * The repository's default branch, and whether it came from a remote ref.
  *
  * `fromRemote` is not decoration: `GitRangeService` memoises the three
@@ -106,6 +119,11 @@ export interface NativeGitAddon {
     parseGitStatusPorcelain: typeof Bindings.parseGitStatusPorcelain;
     gitLogCommits: typeof Bindings.gitLogCommits;
     gitLogCommit: typeof Bindings.gitLogCommit;
+    gitCommitFiles: typeof Bindings.gitCommitFiles;
+    gitCommitDiff: typeof Bindings.gitCommitDiff;
+    gitFileContentAtCommit: typeof Bindings.gitFileContentAtCommit;
+    gitFileExistsAtCommit: typeof Bindings.gitFileExistsAtCommit;
+    gitValidateRef: typeof Bindings.gitValidateRef;
     gitRangeDefaultBranch: typeof Bindings.gitRangeDefaultBranch;
     gitRangeUpstreamBranch: typeof Bindings.gitRangeUpstreamBranch;
     gitRangeResolveBaseRef: typeof Bindings.gitRangeResolveBaseRef;
@@ -119,6 +137,7 @@ export interface NativeGitAddon {
     parseGitBranchStatus: typeof Bindings.parseGitBranchStatus;
     gitBranchStatus: typeof Bindings.gitBranchStatus;
     gitListBranches: typeof Bindings.gitListBranches;
+    gitLocalBranchNames: typeof Bindings.gitLocalBranchNames;
     gitRemoteUrl: typeof Bindings.gitRemoteUrl;
     gitDetectRemoteUrl: typeof Bindings.gitDetectRemoteUrl;
     gitGlobalConfigGetAll: typeof Bindings.gitGlobalConfigGetAll;
@@ -139,6 +158,11 @@ const GIT_EXPORTS = [
     'parseGitStatusPorcelain',
     'gitLogCommits',
     'gitLogCommit',
+    'gitCommitFiles',
+    'gitCommitDiff',
+    'gitFileContentAtCommit',
+    'gitFileExistsAtCommit',
+    'gitValidateRef',
     'gitRangeDefaultBranch',
     'gitRangeUpstreamBranch',
     'gitRangeResolveBaseRef',
@@ -152,6 +176,7 @@ const GIT_EXPORTS = [
     'parseGitBranchStatus',
     'gitBranchStatus',
     'gitListBranches',
+    'gitLocalBranchNames',
     'gitRemoteUrl',
     'gitDetectRemoteUrl',
     'gitGlobalConfigGetAll',

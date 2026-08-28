@@ -417,3 +417,35 @@ pub fn list_branches(
     let has_more = offset as u32 + (page.len() as u32) < total_count;
     Ok(BranchPage { branches: page, total_count, has_more })
 }
+
+/// Every local branch's short name, in git's `refname` order.
+///
+/// `git branch --format="%(refname:short)"` with nothing else attached. It is
+/// separate from [`list_branches`] on purpose: that one describes each tip,
+/// which costs a commit lookup and a date format per branch, and the caller
+/// here shows a bare list of names.
+///
+/// The `HEAD` filter and the ten-name cap stay in the caller — they are what
+/// that one list chose to show, not what the repository contains.
+pub fn local_branch_names(repo_root: &Path) -> Result<Vec<String>, GitError> {
+    let args = ["branch", "--format=%(refname:short)"];
+    let repo = open(repo_root, &args)?;
+    let platform = repo.references().map_err(|error| repo_error(&args, error))?;
+    let iter = platform.local_branches().map_err(|error| repo_error(&args, error))?;
+
+    let mut names: Vec<(String, String)> = Vec::new();
+    for reference in iter.flatten() {
+        let full_name = reference.name().as_bstr().to_string();
+        let name = shorten_ref(&full_name);
+        if name.is_empty() {
+            continue;
+        }
+        names.push((full_name, name));
+    }
+
+    // Sorted here rather than trusted from the ref iterator, so a loose and a
+    // packed ref land in the same place — the same reason `collect_branches`
+    // does it.
+    names.sort_by(|(left, _), (right, _)| left.cmp(right));
+    Ok(names.into_iter().map(|(_, name)| name).collect())
+}

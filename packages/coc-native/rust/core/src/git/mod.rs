@@ -18,6 +18,7 @@
 //! module; Rust only ever runs git on the native host.
 
 pub mod branch;
+pub mod commit;
 pub mod config;
 pub mod log;
 pub mod range;

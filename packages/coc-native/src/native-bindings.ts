@@ -218,6 +218,76 @@ export declare function gitLogCommits(repoRoot: string, options: GitLogOptions):
  */
 export declare function gitLogCommit(repoRoot: string, rev: string): Promise<GitLogCommit | null>
 /**
+ * One file a commit touched.
+ *
+ * `commitHash`, `parentHash` and `repositoryRoot` are absent for the reason
+ * they are absent on a status entry and a range file: they are the caller's
+ * own values, and the caller attaches them.
+ */
+export interface GitCommitFile {
+  path: string
+  /** Source path of a rename or copy; absent otherwise. */
+  originalPath?: string
+  /** A `GitChangeStatus` string union member. */
+  status: string
+  /**
+   * Absent rather than zero when `--numstat` had nothing to say — a binary
+   * file, above all. The UI renders a blank column there rather than a
+   * misleading `0`.
+   */
+  additions?: number
+  deletions?: number
+}
+/** A commit's file list, and the parent the list was computed against. */
+export interface GitCommitFiles {
+  /** The commit's first parent, or git's empty tree for a root commit. */
+  parentHash: string
+  files: Array<GitCommitFile>
+}
+/**
+ * Read the files a commit touched, with their line counts and its parent.
+ *
+ * Three children become one crossing: the parent comes from `gix`, and the
+ * two `diff-tree` runs are joined in Rust rather than crossing as text. A root
+ * commit has no file list at all — `diff-tree` compares against parents — but
+ * still reports the empty tree as its parent.
+ */
+export declare function gitCommitFiles(repoRoot: string, commit: string, options?: GitExecOptions | undefined | null): Promise<GitCommitFiles>
+/**
+ * Read a commit's diff against its parent.
+ *
+ * The parent resolution is `gix`, so the two children this used to cost are
+ * down to the one `git diff` that still does the real work.
+ */
+export declare function gitCommitDiff(repoRoot: string, commit: string, options?: GitExecOptions | undefined | null): Promise<string>
+/**
+ * Read a file's content as it stood at a commit.
+ *
+ * The blob comes out of the object database rather than off `git show`'s
+ * stdout, which is what keeps the trailing newline: every command that crosses
+ * this boundary loses one, and a file's bytes cannot afford to.
+ *
+ * Resolves with `null` for a missing path, a revision that names nothing, and
+ * a path that names a directory. Only a path that is not a repository rejects.
+ */
+export declare function gitFileContentAtCommit(repoRoot: string, rev: string, path: string): Promise<string | null>
+/**
+ * Whether `<rev>:<path>` names anything at a commit.
+ *
+ * True for a directory as well as a file, because the `git cat-file -e` this
+ * replaces asks whether the object exists and a tree is an object.
+ */
+export declare function gitFileExistsAtCommit(repoRoot: string, rev: string, path: string): Promise<boolean>
+/**
+ * Resolve a ref and report its hash when it names a commit.
+ *
+ * `rev-parse --verify` followed by `cat-file -t` in one crossing and no
+ * children. Resolves with `null` for a ref that names nothing *and* for one
+ * that names a non-commit — an annotated tag among them, because neither
+ * command peeled and neither does this.
+ */
+export declare function gitValidateRef(repoRoot: string, rev: string): Promise<string | null>
+/**
  * The repository's default branch, and whether it came from a remote ref.
  *
  * `fromRemote` is what lets the caller keep memoising exactly the answers it
@@ -415,6 +485,15 @@ export declare function gitBranchStatus(repoRoot: string): Promise<GitBranchStat
  * Windows half had to be spelled with `findstr` instead.
  */
 export declare function gitListBranches(repoRoot: string, options: GitBranchListOptions): Promise<GitBranchPage>
+/**
+ * Read every local branch's short name, in git's `refname` order.
+ *
+ * `git branch --format="%(refname:short)"` without the per-branch commit
+ * lookup {@link git_list_branches} pays for its subject and date columns. The
+ * caller's own filtering and its ten-name cap stay in TypeScript: they are
+ * what one list chose to show, not what the repository holds.
+ */
+export declare function gitLocalBranchNames(repoRoot: string): Promise<string[]>
 /**
  * Read `git remote get-url <remote>` from configuration, with no child
  * process at all.

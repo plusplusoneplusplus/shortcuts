@@ -49,6 +49,26 @@ impl ChangeStatus {
         }
     }
 
+    /// Map a `--name-status` code letter, ignoring the similarity score on an
+    /// `R100` or a `C075`.
+    ///
+    /// An unrecognised letter becomes `Modified` rather than dropping the file:
+    /// a row missing from a diff is worse than a row with a dull status. That
+    /// is the opposite of [`Self::from_column`], which drops, and the
+    /// difference is deliberate — porcelain columns include letters that mean
+    /// "not a change at all".
+    pub fn from_code(code: &str) -> Self {
+        match code.chars().next().map(|letter| letter.to_ascii_uppercase()) {
+            Some('M') => Self::Modified,
+            Some('A') => Self::Added,
+            Some('D') => Self::Deleted,
+            Some('R') => Self::Renamed,
+            Some('C') => Self::Copied,
+            Some('U') => Self::Conflict,
+            _ => Self::Modified,
+        }
+    }
+
     /// Map one porcelain status column. Unknown letters yield `None`, which
     /// drops the change rather than inventing a status for it.
     fn from_column(column: u8) -> Option<Self> {

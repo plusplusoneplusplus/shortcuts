@@ -11,7 +11,8 @@ use std::path::Path;
 use std::process::Command;
 
 use coc_native_core::git::branch::{
-    branch_status, list_branches, parse_porcelain_v2_branch_status, repository_status, BranchQuery,
+    branch_status, list_branches, local_branch_names, parse_porcelain_v2_branch_status,
+    repository_status, BranchQuery,
 };
 use tempfile::TempDir;
 
@@ -572,4 +573,47 @@ fn a_detached_head_leaves_every_branch_uncurrent() {
     git(repo.path(), &["checkout", "--detach", "HEAD"]);
     let page = list_branches(repo.path(), &all(false), NOW).expect("branches should list");
     assert!(page.branches.iter().all(|branch| !branch.is_current));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bare branch names
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn bare_names_match_git_branch_format_refname_short() {
+    let repo = repo_with_history();
+    for name in ["zeta", "alpha", "feature/deep"] {
+        git(repo.path(), &["branch", name]);
+    }
+
+    let legacy: Vec<String> = git_stdout(repo.path(), &["branch", "--format=%(refname:short)"])
+        .lines()
+        .map(str::to_string)
+        .collect();
+    assert_eq!(local_branch_names(repo.path()).expect("names should list"), legacy);
+}
+
+#[test]
+fn bare_names_exclude_remote_branches() {
+    let (local, _remote) = repo_with_upstream();
+    let names = local_branch_names(local.path()).expect("names should list");
+    assert!(
+        names.iter().all(|name| !name.contains('/') || !name.starts_with("origin/")),
+        "{names:?}"
+    );
+    assert!(names.contains(&"main".to_string()), "{names:?}");
+}
+
+#[test]
+fn bare_names_are_empty_for_an_unborn_branch() {
+    let dir = TempDir::new().expect("temp dir");
+    init(dir.path());
+    assert!(local_branch_names(dir.path()).expect("names should list").is_empty());
+}
+
+#[test]
+fn bare_names_fail_outside_a_repository() {
+    let dir = TempDir::new().expect("temp dir");
+    let error = local_branch_names(dir.path()).expect_err("a plain directory is not a repo");
+    assert!(error.to_string().starts_with("git branch"), "unexpected: {error}");
 }

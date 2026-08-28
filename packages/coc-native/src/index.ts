@@ -48,6 +48,8 @@ export type {
     NativeGitBranchListOptions,
     NativeGitBranchPage,
     NativeGitBranchStatus,
+    NativeGitCommitFile,
+    NativeGitCommitFiles,
     NativeGitExecOptions,
     NativeGitLogCommit,
     NativeGitLogOptions,
