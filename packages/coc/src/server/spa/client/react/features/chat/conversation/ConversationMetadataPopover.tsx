@@ -589,9 +589,16 @@ export interface ConversationMetadataPopoverProps {
      * popover. Absent for CoC chats, which keep their existing rows unchanged.
      */
     extraRows?: MetaRow[];
+    /**
+     * Overrides the trigger button's classes. Defaults to the 26px inline
+     * trigger used beside a chat title; compact headers pass a smaller box.
+     */
+    triggerClassName?: string;
 }
 
-export function ConversationMetadataPopover({ process, turnsCount, resumeSessionId, resumeLaunching, onLaunchInteractiveResume, onCopyResumeCommand, onFork, forking, onStartFreshSameContext, startingFreshSameContext, extraRows }: ConversationMetadataPopoverProps) {
+const DEFAULT_TRIGGER_CLASS = 'inline-flex items-center justify-center w-[26px] h-[26px] rounded text-[12px] font-semibold italic text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0';
+
+export function ConversationMetadataPopover({ process, turnsCount, resumeSessionId, resumeLaunching, onLaunchInteractiveResume, onCopyResumeCommand, onFork, forking, onStartFreshSameContext, startingFreshSameContext, extraRows, triggerClassName }: ConversationMetadataPopoverProps) {
     const [open, setOpen] = useState(false);
     const [systemPromptOpen, setSystemPromptOpen] = useState(false);
     const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
@@ -811,7 +818,7 @@ export function ConversationMetadataPopover({ process, turnsCount, resumeSession
                 type="button"
                 aria-label={open ? 'Hide conversation metadata' : 'Show conversation metadata'}
                 title="Conversation metadata"
-                className="inline-flex items-center justify-center w-[26px] h-[26px] rounded text-[12px] font-semibold italic text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d] transition-colors flex-shrink-0"
+                className={triggerClassName ?? DEFAULT_TRIGGER_CLASS}
                 onClick={handleToggle}
             >
                 i

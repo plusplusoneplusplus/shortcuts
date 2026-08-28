@@ -742,6 +742,18 @@ all have their own `references/*.md`.
   as `kind: 'note'` with the source workspace id, including remote workspaces;
   canvas-backed plan labels remain non-interactive because they have no file
   path.
+- **Mode-invariant tool block:** the `tools` array sent to a provider must not
+  vary with chat mode. `ask_user` is registered for `ask` and `autopilot` alike,
+  gated only on `chat.askUser.enabled`, and constructed in one place —
+  `ChatBaseExecutor.buildAskUserWiring()` — for initial and follow-up turns.
+  Tools are serialized before `system` and `messages`, so a per-mode difference
+  invalidates the whole conversation's prefix cache when the mode pill is
+  toggled on a follow-up (follow-ups resume the stored SDK session). Gate
+  runtime behavior instead: `AskUserToolDeps.isInteractive` is evaluated at call
+  time, and `FollowUpExecutor` sets it from `turnSource === undefined` so a
+  cron/wakeup/trigger tick resolves questions as `reason: 'unavailable'` rather
+  than blocking. `test/server/executors/mode-invariant-tool-block.test.ts` is
+  the fence; the Ralph grill terminal round is the one documented exception.
 - **Copilot long-context tier** is automatic at the provider boundary: chat
   and follow-up executors derive `contextTier` only via
   `getCopilotContextTierForModel` (tiered billing metadata —

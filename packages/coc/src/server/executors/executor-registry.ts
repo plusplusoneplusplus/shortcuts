@@ -206,10 +206,11 @@ export class ExecutorRegistry {
 
     /**
      * Look up the pending ask-user handles for a process across all executors
-     * that support the ask_user tool (ask and follow-up modes).
+     * that support the ask_user tool (ask, autopilot, and follow-up turns).
      */
     getAskUserHandles(processId: string): ReturnType<typeof this.chatExecutor.getAskUserHandles> {
         return this.chatExecutor.getAskUserHandles(processId)
-            ?? this.followUpExecutor.getAskUserHandles(processId);
+            ?? this.followUpExecutor.getAskUserHandles(processId)
+            ?? this.autopilotExecutor.getAskUserHandles(processId);
     }
 }

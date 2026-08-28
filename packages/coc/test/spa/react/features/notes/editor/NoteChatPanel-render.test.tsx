@@ -394,6 +394,48 @@ describe('NoteChatPanel — rendered behavior', () => {
         });
     });
 
+    describe('header conversation metadata', () => {
+        const META = {
+            metadataProcess: { id: 'proc-1', status: 'completed', metadata: { model: 'gpt-4' } },
+            turnsCount: 2,
+            isPending: false,
+            resumeSessionId: null,
+            resumeLaunching: false,
+            onLaunchInteractiveResume: vi.fn(),
+            onCopyResumeCommand: vi.fn(),
+        };
+        const infoButton = () => screen.queryByRole('button', { name: /conversation metadata/i });
+
+        it('renders the "i" once ChatDetail publishes a bundle', () => {
+            hoisted.initialTaskId = 'task-1';
+            renderPanel();
+            expect(infoButton()).toBeNull();
+
+            act(() => { hoisted.chatDetailProps.onHeaderMetadataChange(META); });
+            expect(infoButton()).toBeTruthy();
+        });
+
+        it('clears the metadata when the chat is reset', () => {
+            hoisted.initialTaskId = 'task-1';
+            renderPanel();
+            act(() => { hoisted.chatDetailProps.onHeaderMetadataChange(META); });
+            expect(infoButton()).toBeTruthy();
+
+            // "New chat" drops taskId, so the empty state must not keep the
+            // previous conversation's "i".
+            fireEvent.click(screen.getByTestId('chat-header-overflow-btn'));
+            fireEvent.click(screen.getByTestId('overflow-item-new-chat'));
+            expect(hoisted.resetChat).toHaveBeenCalled();
+            expect(screen.queryByTestId('chat-detail-stub')).toBeNull();
+            expect(infoButton()).toBeNull();
+        });
+
+        it('shows no "i" in the empty state', () => {
+            renderPanel();
+            expect(infoButton()).toBeNull();
+        });
+    });
+
     // ── Section scope ────────────────────────────────────────────────────────
 
     describe('section scope', () => {

@@ -397,21 +397,15 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 sendToConversationRuntime: this.runtime.getSendToConversationRuntime?.(),
                 scheduleWakeup: cronDeps.scheduleWakeup,
                 cronTools: cronDeps.cronTools,
-                askUser: {
-                    enabled: currentMode === 'ask' && this.askUser.enabled,
-                    deps: {
-                        emitQuestions: async (questionPayloads) => {
-                            await this.store.updateProcess(processId, { pendingAskUser: questionPayloads });
-                            for (const questionPayload of questionPayloads) {
-                                this.store.emitProcessEvent(processId, {
-                                    type: 'ask-user',
-                                    askUser: questionPayload,
-                                });
-                            }
-                        },
-                        computeTurnIndex: () => process.conversationTurns?.length ?? 0,
-                    },
-                },
+                // Registered regardless of `currentMode` so toggling the mode
+                // pill mid-chat leaves the tool block byte-identical and the
+                // resumed session keeps its prefix cache. A machine-triggered
+                // turn (cron / wakeup / trigger) has nobody to answer, so it
+                // short-circuits at call time instead of at registration time.
+                askUser: this.buildAskUserWiring(processId, {
+                    computeTurnIndex: () => process.conversationTurns?.length ?? 0,
+                    isInteractive: () => turnSource === undefined,
+                }),
             });
             const filteredTools = chatCtx.tools;
             this.setAskUserHandles(processId, {

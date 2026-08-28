@@ -172,4 +172,83 @@ describe('createAskUserTool', () => {
         const { tool } = createAskUserTool(deps);
         await expect(tool.handler({ questions: [] })).rejects.toThrow(/at least one question/);
     });
+
+    // ========================================================================
+    // Non-interactive turns (cron / wakeup / trigger ticks)
+    // ========================================================================
+
+    describe('non-interactive turns', () => {
+        it('resolves immediately as unavailable without emitting or pending', async () => {
+            const { tool, hasPending } = createAskUserTool({ ...deps, isInteractive: () => false });
+
+            const responses = await tool.handler({ questions: [{ question: 'Proceed?', type: 'confirm' }] });
+
+            expect(responses).toHaveLength(1);
+            expect(responses[0]).toMatchObject({ answer: null, skipped: true, reason: 'unavailable' });
+            expect(responses[0].questionId).toEqual(expect.any(String));
+            expect(responses[0].guidance).toBeTruthy();
+            expect(emitQuestions).not.toHaveBeenCalled();
+            expect(hasPending()).toBe(false);
+        });
+
+        it('returns one response per question with order preserved', async () => {
+            const { tool } = createAskUserTool({ ...deps, isInteractive: () => false });
+
+            const responses = await tool.handler({
+                questions: [
+                    { question: 'Q1', type: 'text' },
+                    { question: 'Q2', type: 'text' },
+                    { question: 'Q3', type: 'yes-no' },
+                ],
+            });
+
+            expect(responses).toHaveLength(3);
+            expect(new Set(responses.map(r => r.questionId)).size).toBe(3);
+            expect(responses.every(r => r.reason === 'unavailable')).toBe(true);
+        });
+
+        it('reports the question count through onUnavailable', async () => {
+            const onUnavailable = vi.fn();
+            const { tool } = createAskUserTool({ ...deps, isInteractive: () => false, onUnavailable });
+
+            await tool.handler({ questions: [{ question: 'Q1', type: 'text' }, { question: 'Q2', type: 'text' }] });
+
+            expect(onUnavailable).toHaveBeenCalledWith(2);
+        });
+
+        it('still blocks when isInteractive returns true', async () => {
+            const { tool, answerQuestion } = createAskUserTool({ ...deps, isInteractive: () => true });
+
+            const promise = tool.handler({ questions: [{ question: 'Pick', type: 'text' }] });
+            const payload = (emitQuestions.mock.calls[0][0] as AskUserSSEPayload[])[0];
+            answerQuestion(payload.questionId, 'yes');
+
+            await expect(promise).resolves.toEqual([
+                { questionId: payload.questionId, answer: 'yes', skipped: false },
+            ]);
+        });
+
+        it('blocks as before when isInteractive is omitted (existing call sites)', async () => {
+            const { tool, hasPending, answerQuestion } = createAskUserTool(deps);
+
+            const promise = tool.handler({ questions: [{ question: 'Pick', type: 'text' }] });
+            expect(emitQuestions).toHaveBeenCalledTimes(1);
+            expect(hasPending()).toBe(true);
+
+            const payload = (emitQuestions.mock.calls[0][0] as AskUserSSEPayload[])[0];
+            answerQuestion(payload.questionId, 'ok');
+            await expect(promise).resolves.toEqual([
+                { questionId: payload.questionId, answer: 'ok', skipped: false },
+            ]);
+        });
+
+        it('keeps the tool description mode-neutral', () => {
+            const { tool } = createAskUserTool(deps);
+            // The description is part of the serialized tool block. It must not
+            // mention a chat mode, or the block stops being mode-invariant in
+            // spirit even while it stays byte-identical.
+            expect(tool.description).not.toMatch(/autopilot/i);
+            expect(tool.description).toContain('never in unattended or automated runs');
+        });
+    });
 });

@@ -2499,15 +2499,18 @@ function inferClaudeMcpServerNamesFromOptions(options: SendMessageOptions): stri
  * needs, so if the model ever calls it the SDK auto-fails the call before the
  * user can answer. We disable it explicitly so the model is steered to `ask_user`.
  */
-const NATIVE_ASK_USER_BUILT_IN_TOOL = 'AskUserQuestion';
+export const NATIVE_ASK_USER_BUILT_IN_TOOL = 'AskUserQuestion';
 
 /**
  * Built-in tool names to block on the Claude Code session. We block the native
- * `AskUserQuestion` whenever CoC's own `ask_user` replacement is present (the
- * interactive Ask/Ralph contexts), since CoC can service `ask_user` but not the
- * native built-in.
+ * `AskUserQuestion` whenever CoC's own `ask_user` replacement is present, since
+ * CoC can service `ask_user` but not the native built-in.
+ *
+ * This derives purely from the tool array, so CoC registering `ask_user` in
+ * every chat mode is what keeps the emitted `disallowedTools` constant across a
+ * mid-chat mode switch. Exported for unit tests.
  */
-function resolveClaudeDisallowedTools(options: SendMessageOptions): string[] {
+export function resolveClaudeDisallowedTools(options: SendMessageOptions): string[] {
     const disallowed: string[] = [];
     if (options.tools?.some(tool => tool.name === 'ask_user')) {
         disallowed.push(NATIVE_ASK_USER_BUILT_IN_TOOL);

@@ -4,7 +4,8 @@
  * Verifies ask_user behavior at the executor level:
  * - ChatExecutor (ask mode) injects the custom ask_user tool
  * - Legacy plan payloads use ChatExecutor Ask semantics and inject the custom ask_user tool
- * - AutopilotExecutor does NOT inject ask_user
+ * - AutopilotExecutor injects ask_user too (mode-invariant tool block)
+ * - An autopilot question round-trips through the executor's ask-user handles
  * - The custom ask_user tool carries overridesBuiltInTool: true
  * - No executor enables both custom ask_user and native onUserInputRequest
  * - assertNoAskUserConflict catches dual-path misconfiguration
@@ -130,8 +131,23 @@ describe('ask_user tool injection in chat-mode executors', () => {
         expect(askTool!.overridesBuiltInTool).toBe(true);
     });
 
-    it('AutopilotExecutor does NOT include ask_user tool', async () => {
-        const executor = new AutopilotExecutor(store, makeOptions(store));
+    it('AutopilotExecutor includes ask_user tool when enabled (mode-invariant tool block)', async () => {
+        const executor = new AutopilotExecutor(store, makeOptions(store, {
+            askUser: { enabled: true },
+        } as any));
+        await executor.execute(makeChatTask('autopilot'), 'Hello');
+
+        // Registration is gated on the global config, never on chat mode, so
+        // toggling the mode pill mid-chat leaves the tool block untouched.
+        const askTool = capturedOptions?.tools?.find(t => t.name === 'ask_user');
+        expect(askTool).toBeDefined();
+        expect(askTool!.overridesBuiltInTool).toBe(true);
+    });
+
+    it('AutopilotExecutor does not include ask_user when disabled', async () => {
+        const executor = new AutopilotExecutor(store, makeOptions(store, {
+            askUser: { enabled: false },
+        } as any));
         await executor.execute(makeChatTask('autopilot'), 'Hello');
 
         const askTool = capturedOptions?.tools?.find(t => t.name === 'ask_user');
@@ -226,6 +242,52 @@ describe('ask_user tool injection in chat-mode executors', () => {
                 type: 'select',
             }),
         });
+    });
+
+    it('round-trips an autopilot ask_user question through the executor handles', async () => {
+        const processId = 'queue_task-auto-ask-user';
+        store.processes.set(processId, {
+            id: processId,
+            type: 'chat',
+            status: 'running',
+            startTime: new Date(),
+            promptPreview: 'Hello',
+            fullPrompt: 'Hello',
+        });
+
+        const executor = new AutopilotExecutor(store, makeOptions(store, {
+            askUser: { enabled: true },
+        } as any));
+
+        sdkMocks.mockSendMessage.mockImplementation(async (opts: SendMessageOptions) => {
+            const askTool = opts.tools?.find(t => t.name === 'ask_user');
+            expect(askTool).toBeDefined();
+
+            const responsePromise = askTool!.handler({
+                questions: [{ question: 'Proceed?', type: 'confirm' }],
+            } as any);
+
+            // Without setAskUserHandles on the autopilot initial turn, this
+            // lookup returns undefined, POST /ask-user-response 404s, and the
+            // question hangs.
+            await vi.waitFor(() => {
+                expect(executor.getAskUserHandles(processId)?.hasPending()).toBe(true);
+            });
+
+            const questionId = store.processes.get(processId)!.pendingAskUser![0].questionId;
+            expect(executor.getAskUserHandles(processId)?.answerQuestion(questionId, 'yes')).toBe(true);
+            await expect(responsePromise).resolves.toMatchObject([{
+                questionId,
+                answer: 'yes',
+                skipped: false,
+            }]);
+
+            return { success: true, response: 'ok', sessionId: 'sess-auto', toolCalls: [] };
+        });
+
+        await executor.execute(makeChatTask('autopilot', 'task-auto-ask-user'), 'Hello');
+
+        expect(store.processes.get(processId)?.pendingAskUser).toBeUndefined();
     });
 });
 

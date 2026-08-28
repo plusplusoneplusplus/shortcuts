@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ReferencesDropdown, ReferenceList, deduplicateReferenceFiles } from '../../ui/ReferencesDropdown';
 import { BottomSheet } from '../../ui/BottomSheet';
-import { ConversationMetadataPopover, type MetaRow } from './conversation/ConversationMetadataPopover';
+import { type MetaRow } from './conversation/ConversationMetadataPopover';
+import { ChatMetadataButton } from './conversation/ChatMetadataButton';
 import { ContextWindowIndicator } from '../../ui/ContextWindowIndicator';
 import { copyToClipboard, copyHtmlToClipboard, formatConversationAsText, formatConversationAsHtml, formatDuration } from '../../utils/format';
 import { ChatStatusPill } from './ChatStatusPill';
@@ -515,21 +516,20 @@ export function ChatHeader({
                 </span>
                 {/* Conversation metadata ("i") — inline beside the title so it's
                     always visible instead of buried in the overflow menu. */}
-                {!isPending && metadataProcess && (
-                    <ConversationMetadataPopover
-                        process={metadataProcess}
-                        turnsCount={turns.length}
-                        extraRows={metadataExtraRows}
-                        resumeSessionId={isMobile ? undefined : resumeSessionId}
-                        resumeLaunching={resumeLaunching}
-                        onLaunchInteractiveResume={isMobile ? undefined : onLaunchInteractiveResume}
-                        onCopyResumeCommand={isMobile ? undefined : onCopyResumeCommand}
-                        onFork={onFork}
-                        forking={forking}
-                        onStartFreshSameContext={onStartFreshSameContext}
-                        startingFreshSameContext={startingFreshSameContext}
-                    />
-                )}
+                <ChatMetadataButton
+                    metadataProcess={metadataProcess}
+                    turnsCount={turns.length}
+                    isPending={isPending}
+                    resumeSessionId={resumeSessionId}
+                    resumeLaunching={resumeLaunching}
+                    onLaunchInteractiveResume={onLaunchInteractiveResume}
+                    onCopyResumeCommand={onCopyResumeCommand}
+                    onFork={onFork}
+                    forking={forking}
+                    onStartFreshSameContext={onStartFreshSameContext}
+                    startingFreshSameContext={startingFreshSameContext}
+                    extraRows={metadataExtraRows}
+                />
                 {task && (
                     <ChatStatusPill
                         data-testid="badge"

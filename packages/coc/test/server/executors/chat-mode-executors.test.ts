@@ -630,6 +630,63 @@ describe('ChatExecutor ask_user enabled', () => {
 });
 
 // ============================================================================
+// AutopilotExecutor registers ask_user too (mode-invariant tool block)
+// ============================================================================
+
+describe('AutopilotExecutor ask_user enabled', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'ok', sessionId: 's1' });
+    });
+
+    it('includes ask_user tool when askUser option is enabled', async () => {
+        const executor = new AutopilotExecutor(store, makeOptions(store, {
+            askUser: { enabled: true },
+        } as any));
+        const task = makeChatTask('autopilot', 'task-auto-ask');
+
+        await executor.execute(task, 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect((call.tools ?? []).map((t: any) => t.name)).toContain('ask_user');
+    });
+
+    it('omits ask_user when the global askUser config is disabled', async () => {
+        const executor = new AutopilotExecutor(store, makeOptions(store, {
+            askUser: { enabled: false },
+        } as any));
+        const task = makeChatTask('autopilot', 'task-auto-noask');
+
+        await executor.execute(task, 'Hello');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect((call.tools ?? []).map((t: any) => t.name)).not.toContain('ask_user');
+    });
+
+    it('registers ask-user handles so the answer route can resolve the question', async () => {
+        const executor = new AutopilotExecutor(store, makeOptions(store, {
+            askUser: { enabled: true },
+        } as any));
+        const task = makeChatTask('autopilot', 'task-auto-handles');
+        let handlesDuringTurn: unknown;
+        sdkMocks.mockSendMessage.mockImplementation(async () => {
+            handlesDuringTurn = executor.getAskUserHandles(`queue_${task.id}`);
+            return { success: true, response: 'ok', sessionId: 's1' };
+        });
+
+        await executor.execute(task, 'Hello');
+
+        // Without setAskUserHandles the POST /ask-user-response route 404s and
+        // the question hangs — the exact failure this registration prevents.
+        expect(handlesDuringTurn).toBeDefined();
+    });
+});
+
+// ============================================================================
 // System prompt persistence (chat-base-executor)
 // ============================================================================
 

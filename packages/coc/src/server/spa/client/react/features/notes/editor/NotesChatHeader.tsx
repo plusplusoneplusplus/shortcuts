@@ -10,6 +10,7 @@
 
 import { useMemo } from 'react';
 import { ChatHeaderOverflowMenu, type OverflowMenuItem } from '../../chat/ChatHeaderOverflowMenu';
+import { ChatMetadataButton, type ChatHeaderMetadata } from '../../chat/conversation/ChatMetadataButton';
 import type { ChatScope } from '../hooks/useNotesChat';
 
 /** Where the Notes Chat surface is currently presented. Drives which window actions are available. */
@@ -49,6 +50,12 @@ export interface NotesChatHeaderProps {
      * "attached to a different note" warning.
      */
     isSwitched?: boolean;
+    /**
+     * Conversation metadata published by the hidden ChatDetail header. When
+     * present the shared "i" button is rendered in the right control cluster;
+     * the button itself decides whether there is anything to show.
+     */
+    chatMetadata?: ChatHeaderMetadata | null;
 }
 
 function MinimizeIcon() {
@@ -106,6 +113,7 @@ export function NotesChatHeader({
     chatNotePath,
     chatNoteTitle,
     isSwitched = false,
+    chatMetadata,
 }: NotesChatHeaderProps) {
     const overflowItems: OverflowMenuItem[] = useMemo(() => {
         if (!onNewChat) return [];
@@ -148,6 +156,14 @@ export function NotesChatHeader({
                 sectionAvailable={sectionAvailable}
             />
             <div className="flex shrink-0 justify-self-end items-center gap-0.5">
+                {/* Conversation metadata ("i") — first in the cluster so the
+                    window controls keep their rightmost positions. */}
+                {chatMetadata && (
+                    <ChatMetadataButton
+                        {...chatMetadata}
+                        triggerClassName="inline-flex h-6 w-6 items-center justify-center rounded text-[12px] font-semibold italic text-[#848484] hover:bg-black/[0.06] hover:text-[#1e1e1e] dark:hover:bg-white/[0.08] dark:hover:text-[#cccccc]"
+                    />
+                )}
                 {windowMode === 'lens' && onPin && (
                     <button
                         type="button"
