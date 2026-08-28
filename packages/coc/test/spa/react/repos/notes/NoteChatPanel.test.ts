@@ -47,7 +47,7 @@ describe('NoteChatPanel', () => {
         });
 
         it('destructures taskId, task-bound context sync, chat actions, and scope state', () => {
-            expect(source).toContain('{ taskId, chatNoteContext, syncChatNoteContext, createChat, resetChat, scope, setScope }');
+            expect(source).toContain('{ taskId, chatNoteContext, syncChatNoteContext, createChat, resetChat, moveChatNote, scope, setScope }');
         });
     });
 
@@ -122,7 +122,9 @@ describe('NoteChatPanel', () => {
     describe('selected-text references', () => {
         it('passes references (folded with any paper grounding) as the composer pending prefix', () => {
             expect(source).toContain("const referencePrefix = references && references.length > 0 ? formatNoteReferences(references) : '';");
-            expect(source).toContain('const combinedPrefix = `${paperGrounding ?? \'\'}${referencePrefix}`;');
+            // The pending note switch leads, so the newest note link is the one
+            // "this" resolves against.
+            expect(source).toContain('const combinedPrefix = `${switchPrefix}${paperGrounding ?? \'\'}${referencePrefix}`;');
             expect(source).toContain('pendingPrefix={pendingPrefix}');
         });
 

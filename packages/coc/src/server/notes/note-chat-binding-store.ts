@@ -106,6 +106,11 @@ export class NoteChatBindingStore {
                 updatePathStmt.run(dest, workspaceId, note_path);
                 moved++;
             }
+            // A section-scoped chat is keyed on the folder path itself, which the
+            // `oldFolder/%` sweep above cannot match. Move it too, or renaming the
+            // folder would strand the section chat.
+            deleteByPathStmt.run(workspaceId, newF);
+            moved += updatePathStmt.run(newF, workspaceId, oldF).changes;
             return moved;
         });
     }
@@ -159,15 +164,16 @@ export class NoteChatBindingStore {
      * Move every binding row under a folder rename. Both arguments are folder
      * paths without trailing slashes (forward-slash separators). Rows where
      * `note_path` starts with `oldFolder + '/'` are rewritten so the prefix
-     * becomes `newFolder + '/'`. Returns the number of rows updated.
+     * becomes `newFolder + '/'`, and the section row keyed on the folder itself
+     * moves with them. Returns the number of rows updated.
      */
     renamePrefix(workspaceId: string, oldFolder: string, newFolder: string): number {
         return this.stmtRenamePrefix(workspaceId, oldFolder, newFolder);
     }
 
     /**
-     * Delete every binding row whose `note_path` starts with `folder + '/'`.
-     * Used for folder deletes (the folder itself never has a binding).
+     * Delete every binding row whose `note_path` starts with `folder + '/'`,
+     * plus the section row keyed on the folder itself. Used for folder deletes.
      * Returns the number of rows removed.
      */
     deletePrefix(workspaceId: string, folder: string): number {
@@ -176,7 +182,10 @@ export class NoteChatBindingStore {
             workspaceId,
             escapeLikePattern(trimmed + '/') + '%',
         );
-        return info.changes;
+        // Section-scoped chats are keyed on the folder path itself, so the
+        // `folder/%` sweep above never sees them.
+        const sectionInfo = this.stmtUnbind.run(workspaceId, trimmed);
+        return info.changes + sectionInfo.changes;
     }
 }
 

@@ -244,11 +244,35 @@ export type NoteChatMode = 'ask' | 'autopilot';
 
 /**
  * Declared Notes chat scope. Carried on `context.noteChat.scope` so the server's
- * enqueue-time note-binding step is explicit: `per-workspace` submissions may
- * attach the selected note path as first-message context without creating a
- * per-note binding, while `per-note` binds the chat to that note.
+ * enqueue-time note-binding step is explicit:
+ *
+ * - `per-workspace` — the selected note path travels as first-message context
+ *   only; no binding row is written.
+ * - `per-section` — the chat is bound to the note's nearest parent folder, so
+ *   every note under that folder resolves to the same chat. A note with no
+ *   parent folder has no section, so it falls back to a `per-note` binding.
+ * - `per-note` (or omitted, the legacy default) — the chat is bound to that note.
  */
-export type NoteChatScope = 'per-note' | 'per-workspace';
+export type NoteChatScope = 'per-note' | 'per-section' | 'per-workspace';
+
+/**
+ * Request body for `POST /api/processes/:id/note` — retarget the note an
+ * existing Notes chat operates on. The server rewrites `metadata.notePath` /
+ * `metadata.noteTitle`, which is what follow-up turns read when they snapshot
+ * the note for the inline diff, so the diff lands on the note the user is
+ * actually looking at.
+ */
+export interface SetProcessNoteRequest {
+  /** Notes-root-relative path, forward slashes, no `..` traversal. */
+  notePath: string;
+  /** Display title; defaults server-side to the file name when omitted. */
+  noteTitle?: string;
+}
+
+export interface SetProcessNoteResponse {
+  notePath: string;
+  noteTitle: string;
+}
 
 export interface NoteChatAttachmentPayload {
   name: string;
@@ -269,9 +293,10 @@ export interface CreateNoteChatRequest {
   /**
    * Declared Notes chat scope, forwarded to `context.noteChat.scope`. When
    * `per-workspace`, the server must not create a per-note binding even though a
-   * {@link notePath} is present for prompt context. Omitted → legacy per-note
-   * binding. Only travels with the note context, so it is a no-op without
-   * {@link notePath}.
+   * {@link notePath} is present for prompt context; when `per-section`, it binds
+   * the note's nearest parent folder instead of the note. Omitted → legacy
+   * per-note binding. Only travels with the note context, so it is a no-op
+   * without {@link notePath}.
    */
   scope?: NoteChatScope;
   /**

@@ -30,6 +30,8 @@ import type {
   ReorderNotesResponse,
   RestoreNoteVersionResponse,
   SaveNoteCheckpointResponse,
+  SetProcessNoteRequest,
+  SetProcessNoteResponse,
   SaveNoteContentResponse,
   UploadNoteImageResponse,
 } from '../contracts';
@@ -292,6 +294,18 @@ export class NotesClient {
     });
   }
 
+  /**
+   * Retarget an existing Notes chat at a different note. Rewrites the process's
+   * `notePath` / `noteTitle` metadata so the chat's *next* turn reads and diffs
+   * the note it moved to, rather than the note it was created against.
+   */
+  setChatNote(processId: string, request: SetProcessNoteRequest): Promise<SetProcessNoteResponse> {
+    return this.transport.request<SetProcessNoteResponse>(
+      `/processes/${encodePathSegment(processId)}/note`,
+      { method: 'POST', body: { ...request } },
+    );
+  }
+
   listNoteEdits(processId: string): Promise<NoteEditSnapshot[]> {
     return this.transport.request<NoteEditSnapshot[]>(processNoteEditsPath(processId));
   }
@@ -324,6 +338,18 @@ export class NotesClient {
     return this.transport.request<NoteChatBindingResponse>(
       workspaceNotesPath(workspaceId, '/chat-bindings/by-path'),
       { query: { path: notePath } },
+    );
+  }
+
+  /**
+   * Bind an existing chat task to a path. Used when widening a per-note chat to
+   * section scope: there is no new enqueue to create the folder-keyed row, so
+   * without this write the conversation would disappear on the next sibling click.
+   */
+  setChatBindingByPath(workspaceId: string, notePath: string, taskId: string): Promise<NoteChatBindingResponse> {
+    return this.transport.request<NoteChatBindingResponse>(
+      workspaceNotesPath(workspaceId, '/chat-bindings/by-path'),
+      { method: 'PUT', query: { path: notePath }, body: { taskId } },
     );
   }
 

@@ -56,8 +56,8 @@ describe('useNotesChat', () => {
         cloneClient.notes.deleteChatBindingByPath.mockResolvedValue(undefined);
     });
 
-    it('exports ChatScope type', () => {
-        expect(source).toContain("export type ChatScope = 'per-note' | 'per-workspace'");
+    it('exports ChatScope type with the section segment', () => {
+        expect(source).toContain("export type ChatScope = 'per-note' | 'per-section' | 'per-workspace'");
     });
 
     it('exports UseNotesChatOptions interface', () => {
@@ -87,7 +87,9 @@ describe('useNotesChat', () => {
         });
 
         it('returns scope and setScope', () => {
-            expect(source).toContain('return { taskId, chatNoteContext, syncChatNoteContext, createChat, resetChat, scope, setScope }');
+            // setScope is exposed as `changeScope`, which carries the active chat
+            // across a widening to section scope before flipping the state.
+            expect(source).toContain('return { taskId, chatNoteContext, syncChatNoteContext, createChat, resetChat, moveChatNote, scope, setScope: changeScope }');
         });
 
         it('persists scope to workspace-scoped localStorage key', () => {
@@ -300,8 +302,11 @@ describe('useNotesChat', () => {
             expect(source).toContain('setPerWorkspaceTaskId(newTaskId)');
         });
 
-        it('updates per-note map when scope is per-note', () => {
-            expect(source).toContain('setPerNoteMap(prev => ({ ...prev, [notePath]: newTaskId }))');
+        it('mirrors the binding under the same key the server bound', () => {
+            // Section scope binds the folder, per-note binds the note; the local
+            // mirror must use the same key or the two disagree until reload.
+            expect(source).toContain("const bindKey = scope === 'per-section'");
+            expect(source).toContain('setPerNoteMap(prev => ({ ...prev, [bindKey]: newTaskId }))');
         });
 
         it('returns null on failure', () => {
@@ -443,12 +448,12 @@ describe('useNotesChat', () => {
             expect(source).toContain('setPerWorkspaceTaskId(null)');
         });
 
-        it('removes per-note entry when scope is per-note', () => {
-            expect(source).toContain("delete next[notePath]");
+        it('removes the entry under the key the chat resolved from', () => {
+            expect(source).toContain('delete next[bindKey]');
         });
 
-        it('calls deleteChatBindingByPath on the server when resetting a per-note chat', () => {
-            expect(source).toContain('deleteChatBindingByPath(workspaceId, notePath)');
+        it('calls deleteChatBindingByPath on the server with that same key', () => {
+            expect(source).toContain('deleteChatBindingByPath(workspaceId, bindKey)');
         });
 
         it('clears chat note context in both cases', () => {

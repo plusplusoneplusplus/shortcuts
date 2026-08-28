@@ -58,7 +58,8 @@ describe('NoteChatPanel — scope wiring', () => {
         });
 
         it('derives noNoteSelected from scope and notePath', () => {
-            expect(source).toContain("scope === 'per-note' && !notePath");
+            // Section scope also needs a note — it is what names the folder.
+            expect(source).toContain("scope !== 'per-workspace' && !notePath");
         });
     });
 
@@ -79,7 +80,11 @@ describe('NoteChatPanel — scope wiring', () => {
         });
 
         it('picks the note or workspace label based on the active scope', () => {
-            expect(source).toContain("const headerContextLabel = scope === 'per-note' ? noteContextLabel : workspaceLabel");
+            expect(source).toContain("const headerContextLabel = scope === 'per-note'");
+            expect(source).toContain('? noteContextLabel');
+            expect(source).toContain(": scope === 'per-section'");
+            expect(source).toContain('(sectionLabel ?? noteContextLabel)');
+            expect(source).toContain(': workspaceLabel;');
         });
 
         it('passes headerContextLabel to NotesChatHeader as contextLabel', () => {

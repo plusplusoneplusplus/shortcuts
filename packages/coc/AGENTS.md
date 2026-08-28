@@ -121,6 +121,26 @@ all have their own `references/*.md`.
   removal evicts that workspace, and server close disposes every watcher and
   rejects new service work. Keep `resolveNotesRoot` authorization ahead of
   every service search.
+- **Notes chat scope** is `per-note | per-section | per-workspace`. Bindings live
+  in `note_chat_bindings`, keyed on a path: a note path for `per-note`, the
+  note's **nearest parent folder** for `per-section` (a root note has no section
+  and falls back to a per-note row), and nothing for `per-workspace`.
+  `resolveNoteChatBinding` (`routes/queue-enqueue.ts`) picks the key at enqueue
+  and `useNotesChat` resolves it back as
+  `perNoteMap[folder] ?? perNoteMap[notePath]`; `noteSectionPath` (server) and
+  `noteSectionOf` (client) must stay in agreement. Because a section row is keyed
+  on the folder itself, `NoteChatBindingStore.renamePrefix`/`deletePrefix` carry
+  that row along with the note rows beneath it.
+- **A Notes chat's active note moves via `POST /api/processes/:id/note`**, which
+  rewrites `metadata.notePath`/`noteTitle`. That field — not the enqueue
+  payload — is what `FollowUpExecutor` snapshots for the inline diff on every
+  turn after the first, so this write is what keeps a moved chat from
+  attributing its edits to the note it was created against. It is a dedicated
+  route rather than a field on `.../message`, and it validates hard (normalized
+  path, inside the notes root, and inside the bound folder when
+  `metadata.noteChatScope` is `per-section`) because it retargets where an agent
+  writes. Note switches are never sent on their own: they ride the next message
+  as one `[📝 Now viewing: <path>](…)` line.
 - **Notes sidecars** (comments, paper annotations) get their path and their
   access check from `notes/notes-sidecar-resolver.ts` — never from an ad-hoc
   check in a handler. It allows a note under the workspace data dir,

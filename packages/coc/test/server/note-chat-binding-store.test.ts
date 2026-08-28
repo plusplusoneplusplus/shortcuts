@@ -136,6 +136,58 @@ describe('NoteChatBindingStore', () => {
         });
     });
 
+    describe('section bindings (folder-keyed rows)', () => {
+        // A per-section chat is stored as one row keyed on the folder path
+        // itself, so the folder maintenance paths must carry it along with the
+        // note rows under it — otherwise renaming or deleting a folder strands
+        // the section chat while its notes move on without it.
+        it('renamePrefix moves the section row along with its notes', () => {
+            store.bind('ws1', 'MultiModal', 'task-section');
+            store.bind('ws1', 'MultiModal/a.md', 'task-a');
+            const moved = store.renamePrefix('ws1', 'MultiModal', 'Multimodal Research');
+            expect(moved).toBe(2);
+            expect(store.get('ws1', 'Multimodal Research')!.taskId).toBe('task-section');
+            expect(store.get('ws1', 'Multimodal Research/a.md')!.taskId).toBe('task-a');
+            expect(store.get('ws1', 'MultiModal')).toBeUndefined();
+        });
+
+        it('renamePrefix moves a section row that has no note rows under it', () => {
+            store.bind('ws1', 'MultiModal', 'task-section');
+            expect(store.renamePrefix('ws1', 'MultiModal', 'Renamed')).toBe(1);
+            expect(store.get('ws1', 'Renamed')!.taskId).toBe('task-section');
+        });
+
+        it('renamePrefix replaces a colliding section row at the destination', () => {
+            store.bind('ws1', 'MultiModal', 'task-src');
+            store.bind('ws1', 'Existing', 'task-dest');
+            store.renamePrefix('ws1', 'MultiModal', 'Existing');
+            expect(store.get('ws1', 'Existing')!.taskId).toBe('task-src');
+        });
+
+        it('renamePrefix leaves a sibling folder whose name shares the prefix alone', () => {
+            store.bind('ws1', 'MultiModal', 'task-section');
+            store.bind('ws1', 'MultiModalExtras', 'task-sibling');
+            store.renamePrefix('ws1', 'MultiModal', 'Renamed');
+            expect(store.get('ws1', 'MultiModalExtras')!.taskId).toBe('task-sibling');
+        });
+
+        it('deletePrefix removes the section row along with its notes', () => {
+            store.bind('ws1', 'MultiModal', 'task-section');
+            store.bind('ws1', 'MultiModal/a.md', 'task-a');
+            store.bind('ws1', 'MultiModalExtras', 'task-sibling');
+            const removed = store.deletePrefix('ws1', 'MultiModal');
+            expect(removed).toBe(2);
+            expect(Object.keys(store.list('ws1'))).toEqual(['MultiModalExtras']);
+        });
+
+        it('unbindByTask clears every row sharing the task, section row included', () => {
+            store.bind('ws1', 'MultiModal', 'task-shared');
+            store.bind('ws1', 'MultiModal/a.md', 'task-shared');
+            expect(store.unbindByTask('ws1', 'task-shared')).toBe(2);
+            expect(store.list('ws1')).toEqual({});
+        });
+    });
+
     describe('deletePrefix', () => {
         it('removes all children under the folder', () => {
             store.bind('ws1', 'gone/a.md', 'task-a');

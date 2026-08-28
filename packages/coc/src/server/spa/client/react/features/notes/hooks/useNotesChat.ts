@@ -3,14 +3,36 @@ import type { AIProcess, ChatProvider, ChatStyle, EffortTierKey, ReasoningEffort
 import { useCocClient } from '../../../repos/cloneRouting';
 import type { AttachmentPayload } from '../../../types/attachments';
 import { isCommitChatLensEnabled } from '../../../utils/config';
+import { isQueueProcessId, toQueueProcessId } from '../../../utils/queue-process-id';
 
 const INHERITED_LENS_CHAT_MODE = {
     inherited: true,
     source: 'features.commitChatLens',
 } as const;
 
-/** Whether the chat is scoped to the current note or the whole workspace. */
-export type ChatScope = 'per-note' | 'per-workspace';
+/**
+ * Whether the chat is scoped to the current note, its folder, or the whole
+ * workspace. `per-section` sits between the other two: every note under one
+ * folder resolves to a single chat, so switching between siblings keeps the
+ * conversation you were just having.
+ */
+export type ChatScope = 'per-note' | 'per-section' | 'per-workspace';
+
+/**
+ * Nearest-parent folder of a note path — the key a `per-section` chat binds to.
+ * Null for a note at the notes root, which has no section.
+ *
+ * Nearest parent, not top-level: `MultiModal/sub/note.md` is a note of section
+ * `MultiModal/sub`. Mirrors `noteSectionPath` in the server's
+ * note-chat-bindings handler; the two must agree or a chat binds to one key and
+ * resolves from another.
+ */
+export function noteSectionOf(notePath: string | null | undefined): string | null {
+    if (!notePath) return null;
+    const normalized = normalizeNotePathForDraftKey(notePath);
+    const idx = normalized.lastIndexOf('/');
+    return idx > 0 ? normalized.slice(0, idx) : null;
+}
 
 export interface UseNotesChatOptions {
     workspaceId: string;
@@ -62,9 +84,20 @@ export interface UseNotesChatReturn {
     createChat: (prompt: string, model?: string | null, mode?: 'ask' | 'autopilot', skills?: string[], attachments?: AttachmentPayload[], aiSelection?: NotesChatAiSelection) => Promise<string | null>;
     /** Discard the current scope's chat and start fresh. Old chat stays in history. */
     resetChat: () => void;
+    /**
+     * Retarget the active chat at the given note: rewrites the process's
+     * `notePath`/`noteTitle` metadata so the chat's next turn reads and diffs
+     * that note. Resolves false when there is no active chat or the server
+     * rejects the move.
+     */
+    moveChatNote: (notePath: string, noteTitle?: string) => Promise<boolean>;
     /** Current active scope. */
     scope: ChatScope;
-    /** Switch between per-note and per-workspace scope. */
+    /**
+     * Switch between per-note, per-section, and per-workspace scope. Widening a
+     * per-note chat to section scope carries that chat onto the folder, so the
+     * conversation survives the switch (see `changeScope`).
+     */
     setScope: (scope: ChatScope) => void;
 }
 
@@ -103,6 +136,8 @@ function normalizeNotePathForDraftKey(notePath: string | null): string {
  * (AC-05). Draft identity never crosses workspaces, notes, or scopes:
  *
  * - `per-workspace` → one draft per workspace, independent of any selected note.
+ * - `per-section` → one draft per (workspace, nearest parent folder), falling
+ *   back to the per-note key for a note that has no folder.
  * - `per-note` → one draft per (workspace, normalized note path).
  *
  * Both segments are URI-encoded so no workspace ID or note path can inject the
@@ -119,6 +154,15 @@ export function notesChatDraftKey(
     const ws = encodeURIComponent(workspaceId);
     if (scope === 'per-workspace') {
         return `notes-chat:${ws}:ws`;
+    }
+    if (scope === 'per-section') {
+        // One draft per folder, so a half-typed message survives clicking a
+        // sibling — the whole point of section scope. A note with no folder has
+        // no section, so it keeps its own note-keyed draft.
+        const section = noteSectionOf(notePath);
+        if (section) {
+            return `notes-chat:${ws}:section:${encodeURIComponent(section)}`;
+        }
     }
     const note = encodeURIComponent(normalizeNotePathForDraftKey(notePath));
     return `notes-chat:${ws}:note:${note}`;
@@ -145,12 +189,32 @@ export function formatNoteAttachmentPrompt(prompt: string, workspaceId: string, 
 }
 
 /**
- * Dual-scope chat hook for the Notes view.
+ * One-line marker prepended to the next message after the chat moves to another
+ * note. Deliberately worded *Now viewing* rather than the creation-time *Note:*
+ * so a transcript holding several note links reads as replacement, not
+ * accumulation — the newest line is the note the chat is on.
  *
- * Supports two chat scopes:
+ * Like the creation-time link this carries no document content; the agent opens
+ * the file itself, so a switch costs one line.
+ */
+export function formatNoteSwitchLink(workspaceId: string, notePath: string): string {
+    const encodedWorkspaceId = encodeMarkdownLinkPathSegment(workspaceId);
+    const encodedNotePath = notePath.split('/').map(encodeMarkdownLinkPathSegment).join('/');
+    return `[📝 Now viewing: ${escapeMarkdownLinkText(notePath)}](#repos/${encodedWorkspaceId}/notes/${encodedNotePath})`;
+}
+
+/**
+ * Scoped chat hook for the Notes view.
+ *
+ * Supports three chat scopes:
  * - `per-workspace`: one chat for the entire workspace (stored in `coc-notes-chat-<wsId>` localStorage)
- * - `per-note`: one chat per note path (persisted server-side in the `note_chat_bindings` SQLite
- *   table; the server auto-binds when a chat task is enqueued with `context.noteChat.notePath`)
+ * - `per-section`: one chat for every note under a folder, keyed on the note's
+ *   nearest parent folder — so switching between siblings keeps the conversation
+ * - `per-note`: one chat per note path
+ *
+ * The latter two are persisted server-side in the `note_chat_bindings` SQLite table;
+ * the server auto-binds when a chat task is enqueued with `context.noteChat.notePath`,
+ * picking the note or its folder from `context.noteChat.scope`.
  *
  * The active scope is persisted to `coc-notes-chat-scope-<wsId>` localStorage.
  */
@@ -161,10 +225,12 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
 
     // ── Scope state ──────────────────────────────────────────────────────────
 
-    const [scope, setScope] = useState<ChatScope>(() => {
+    const [scope, setScopeState] = useState<ChatScope>(() => {
         try {
             const stored = localStorage.getItem(scopeKey(workspaceId));
-            if (stored === 'per-note' || stored === 'per-workspace') return stored as ChatScope;
+            if (stored === 'per-note' || stored === 'per-section' || stored === 'per-workspace') {
+                return stored as ChatScope;
+            }
         } catch { /* ignore */ }
         return defaultScope;
     });
@@ -200,9 +266,14 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
 
     // ── Derived task ID ──────────────────────────────────────────────────────
 
+    // `per-section` reads the folder key, or — for a root note, which has no
+    // folder — the note key, matching what the server binds in each case.
+    const sectionPath = noteSectionOf(notePath);
     const taskId = scope === 'per-workspace'
         ? perWorkspaceTaskId
-        : (notePath ? perNoteMap[notePath] ?? null : null);
+        : scope === 'per-section'
+            ? (sectionPath ? perNoteMap[sectionPath] ?? null : (notePath ? perNoteMap[notePath] ?? null : null))
+            : (notePath ? perNoteMap[notePath] ?? null : null);
 
     // ── Chat note context ────────────────────────────────────────────────────
 
@@ -292,8 +363,14 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
             if (scope === 'per-workspace') {
                 setPerWorkspaceTaskId(newTaskId);
             } else if (notePath) {
-                // Server auto-binds on enqueue; mirror locally so the UI updates without waiting.
-                setPerNoteMap(prev => ({ ...prev, [notePath]: newTaskId }));
+                // Server auto-binds on enqueue; mirror locally so the UI updates
+                // without waiting. Mirror the SAME key the server bound — the
+                // folder under section scope — or the local map and the server
+                // would disagree until the next reload.
+                const bindKey = scope === 'per-section'
+                    ? (noteSectionOf(notePath) ?? notePath)
+                    : notePath;
+                setPerNoteMap(prev => ({ ...prev, [bindKey]: newTaskId }));
             }
 
             // Seed the returned task's context while its process is still queued.
@@ -315,13 +392,18 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
         if (scope === 'per-workspace') {
             setPerWorkspaceTaskId(null);
         } else if (notePath) {
+            // Drop the same key the chat resolved from, so a section reset clears
+            // the folder binding rather than a note binding that isn't there.
+            const bindKey = scope === 'per-section'
+                ? (noteSectionOf(notePath) ?? notePath)
+                : notePath;
             setPerNoteMap(prev => {
                 const next = { ...prev };
-                delete next[notePath];
+                delete next[bindKey];
                 return next;
             });
             // Best-effort server cleanup; failures are tolerated.
-            void cloneClient.notes.deleteChatBindingByPath(workspaceId, notePath).catch(() => undefined);
+            void cloneClient.notes.deleteChatBindingByPath(workspaceId, bindKey).catch(() => undefined);
         }
         if (taskId) {
             setNoteContextsByTaskId(prev => {
@@ -332,5 +414,70 @@ export function useNotesChat(opts: UseNotesChatOptions): UseNotesChatReturn {
         }
     }, [scope, notePath, taskId, workspaceId, cloneClient]);
 
-    return { taskId, chatNoteContext, syncChatNoteContext, createChat, resetChat, scope, setScope };
+    // ── changeScope ──────────────────────────────────────────────────────────
+
+    /**
+     * Switch scope, carrying the active chat across when it widens.
+     *
+     * Flipping per-note → per-section changes which key the chat resolves from
+     * (note → folder). Nothing else writes that folder row — bindings are
+     * normally a side effect of enqueue, and widening an existing chat has no
+     * new enqueue — so without this the conversation would resolve to nothing
+     * the moment the user clicked a sibling, which is precisely the disappearing
+     * act section scope exists to fix.
+     *
+     * Adoption only fills an EMPTY folder: if the section already has a chat,
+     * the user joins it rather than overwriting it.
+     */
+    const changeScope = useCallback((next: ChatScope) => {
+        if (next === 'per-section' && notePath && taskId) {
+            const section = noteSectionOf(notePath);
+            if (section && !perNoteMap[section]) {
+                setPerNoteMap(prev => (prev[section] ? prev : { ...prev, [section]: taskId }));
+                // Best-effort server write; the local mirror already moved, so a
+                // failure costs the binding on next reload, not this session.
+                void cloneClient.notes
+                    .setChatBindingByPath(workspaceId, section, taskId)
+                    .catch(() => undefined);
+            }
+        }
+        setScopeState(next);
+    }, [notePath, taskId, perNoteMap, workspaceId, cloneClient]);
+
+    // ── moveChatNote ─────────────────────────────────────────────────────────
+
+    /**
+     * Move the active chat onto another note. The server write to
+     * `metadata.notePath` is the part that matters: follow-up turns snapshot the
+     * note named there, so without it a "moved" chat would keep diffing the note
+     * it was created against and silently credit edits to the wrong file.
+     *
+     * The local note-context map is updated optimistically so the header, the 📎
+     * indicator, and the switched-note banner all follow immediately.
+     */
+    const moveChatNote = useCallback(async (nextNotePath: string, nextNoteTitle?: string): Promise<boolean> => {
+        const activeTaskId = activeTaskIdRef.current;
+        if (!activeTaskId || !nextNotePath) return false;
+        const title = nextNoteTitle
+            ?? nextNotePath.split('/').pop()?.replace(/\.md$/, '')
+            ?? nextNotePath;
+        // The binding map holds queue task IDs; the process endpoint is keyed on
+        // the process ID, exactly as ChatDetail resolves it.
+        const processId = isQueueProcessId(activeTaskId) ? activeTaskId : toQueueProcessId(activeTaskId);
+        try {
+            await cloneClient.notes.setChatNote(processId, {
+                notePath: nextNotePath,
+                noteTitle: title,
+            });
+        } catch {
+            return false;
+        }
+        setNoteContextsByTaskId(prev => ({
+            ...prev,
+            [activeTaskId]: { notePath: nextNotePath, noteTitle: title },
+        }));
+        return true;
+    }, [cloneClient]);
+
+    return { taskId, chatNoteContext, syncChatNoteContext, createChat, resetChat, moveChatNote, scope, setScope: changeScope };
 }

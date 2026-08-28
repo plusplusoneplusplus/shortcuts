@@ -275,10 +275,12 @@ export interface ChatContext {
         /**
          * Declared Notes chat scope. `per-workspace` means the note path travels
          * only as first-message context for a workspace-level chat and must NOT
-         * create a per-note binding; `per-note` (or omitted, the legacy default)
-         * binds the chat to this note. Consumed by `maybeBindNoteChat` at enqueue.
+         * create a per-note binding; `per-section` binds the note's nearest parent
+         * folder so every note under it shares one chat; `per-note` (or omitted,
+         * the legacy default) binds the chat to this note. Consumed by
+         * `maybeBindNoteChat` at enqueue.
          */
-        scope?: 'per-note' | 'per-workspace';
+        scope?: 'per-note' | 'per-section' | 'per-workspace';
     };
     /** Note-create preset (AI-generated title + placement for a new note). */
     noteCreate?: {

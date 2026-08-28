@@ -41,6 +41,8 @@ import type { ApiRouteContext } from './api-shared';
 import { createRoute, asString } from './route-utils';
 import { buildMetadataProcess } from '../processes/process-metadata-read-model';
 import type { AskUserAnswerInput, AskUserAnswerValue } from '../llm-tools/ask-user-tool';
+import { normalizeRelativeNotePath, noteSectionPath } from '../notes/note-chat-bindings-handler';
+import { getRepoDataPath } from '../paths';
 
 /** Valid AIProcessStatus values for validation. */
 const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 'completed', 'failed', 'cancelled']);
@@ -1005,6 +1007,88 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             return { warming: true, provider };
         },
     }));
+
+    // POST /api/processes/:id/note — Retarget a Notes chat at a different note
+    //
+    // The note a Notes chat operates on lives in two places: the enqueue payload
+    // (`context.noteChat.notePath`, read once by NoteChatExecutor for the first
+    // turn) and `metadata.notePath` (read by FollowUpExecutor for every later
+    // turn). Only the second one decides which file turns 2..N snapshot and diff,
+    // so moving a chat to a sibling note is exactly this write — without it a
+    // chat that "moved" would keep attributing its edits to the original note.
+    //
+    // Deliberately its own endpoint rather than a field on `.../message`: that
+    // route's contract is "send text", and threading a retarget through it would
+    // make the move implicit. This endpoint can redirect where an agent writes,
+    // so the path is validated hard before it lands.
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/processes\/([^/]+)\/note$/,
+        handler: async (req, res, match) => {
+            const id = decodeURIComponent(match![1]);
+            const wsId = parseQueryParams(req.url || '/').workspaceId;
+            const proc = await resolveProcess(store, id, wsId);
+            if (!proc) {
+                return handleAPIError(res, notFound('Process'));
+            }
+
+            const body = await parseBodyOrReject(req, res);
+            if (body === null) return;
+
+            if (typeof body.notePath !== 'string' || body.notePath.length === 0) {
+                return handleAPIError(res, missingFields(['notePath']));
+            }
+
+            // Rejects absolute paths, `..` traversal, and backslash spellings.
+            const notePath = normalizeRelativeNotePath(body.notePath);
+            if (!notePath) {
+                return handleAPIError(res, badRequest('notePath must be a relative path inside the notes root'));
+            }
+
+            const workspaceId = (proc.metadata?.workspaceId as string | undefined) ?? wsId;
+            if (!workspaceId) {
+                return handleAPIError(res, badRequest('Process has no workspace; cannot resolve a notes root'));
+            }
+
+            // Defense in depth: normalization already rules out traversal, but
+            // re-resolving against the real notes root catches anything platform
+            // path handling would otherwise let through.
+            const effectiveDataDir = dataDir ?? path.join(os.homedir(), '.coc');
+            const notesRoot = path.resolve(getRepoDataPath(effectiveDataDir, workspaceId, 'notes'));
+            const resolved = path.resolve(notesRoot, notePath);
+            if (resolved !== notesRoot && !resolved.startsWith(notesRoot + path.sep)) {
+                return handleAPIError(res, badRequest('notePath escapes the notes root'));
+            }
+
+            // A section-scoped chat may only roam inside the folder it is bound
+            // to. The bound folder is the section of wherever the chat currently
+            // points, which never leaves the section precisely because of this check.
+            if (proc.metadata?.noteChatScope === 'per-section') {
+                const current = normalizeRelativeNotePath(proc.metadata?.notePath);
+                const boundSection = current ? noteSectionPath(current) : null;
+                if (boundSection && noteSectionPath(notePath) !== boundSection) {
+                    return handleAPIError(res, badRequest(
+                        `notePath is outside this chat's section (${boundSection})`,
+                    ));
+                }
+            }
+
+            const noteTitle = typeof body.noteTitle === 'string' && body.noteTitle.length > 0
+                ? body.noteTitle
+                : (notePath.split('/').pop() ?? notePath).replace(/\.md$/, '');
+
+            await store.updateProcess(proc.id, {
+                metadata: {
+                    type: proc.metadata?.type ?? 'chat',
+                    ...(proc.metadata ?? {}),
+                    notePath,
+                    noteTitle,
+                },
+            });
+
+            return sendJSON(res, 200, { notePath, noteTitle });
+        },
+    });
 
     // POST /api/processes/:id/message — Send a follow-up message
     routes.push({

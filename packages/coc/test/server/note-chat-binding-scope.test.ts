@@ -48,6 +48,69 @@ describe('resolveNoteChatBinding — declared Notes scope (AC-04)', () => {
         expect(binding).toBeNull();
     });
 
+    describe('per-section scope', () => {
+        it('binds the note\'s nearest parent folder, not the note', () => {
+            const binding = resolveNoteChatBinding(
+                chatInput({ noteChat: { notePath: 'MultiModal/first-five-days.plan.md', scope: 'per-section' } }),
+            );
+            expect(binding).toEqual({ workspaceId: 'ws-a', notePath: 'MultiModal' });
+        });
+
+        it('resolves two notes in one folder to the same binding key', () => {
+            const a = resolveNoteChatBinding(
+                chatInput({ noteChat: { notePath: 'MultiModal/a.md', scope: 'per-section' } }),
+            );
+            const b = resolveNoteChatBinding(
+                chatInput({ noteChat: { notePath: 'MultiModal/b.md', scope: 'per-section' } }),
+            );
+            expect(a).toEqual(b);
+        });
+
+        it('keeps two notes in one folder apart under per-note scope', () => {
+            const a = resolveNoteChatBinding(
+                chatInput({ noteChat: { notePath: 'MultiModal/a.md', scope: 'per-note' } }),
+            );
+            const b = resolveNoteChatBinding(
+                chatInput({ noteChat: { notePath: 'MultiModal/b.md', scope: 'per-note' } }),
+            );
+            expect(a).not.toEqual(b);
+        });
+
+        it('uses the nearest parent, so a nested note is its own section', () => {
+            // `MultiModal/sub/note.md` belongs to `MultiModal/sub`; a chat bound
+            // to `MultiModal` deliberately does not pick it up.
+            const binding = resolveNoteChatBinding(
+                chatInput({ noteChat: { notePath: 'MultiModal/sub/note.md', scope: 'per-section' } }),
+            );
+            expect(binding).toEqual({ workspaceId: 'ws-a', notePath: 'MultiModal/sub' });
+        });
+
+        it('falls back to a per-note binding for a note at the notes root', () => {
+            // A root note has no section. Binding the note keeps the chat
+            // resolvable, and matches the client's folder-then-note lookup.
+            const binding = resolveNoteChatBinding(
+                chatInput({ noteChat: { notePath: 'inbox.md', scope: 'per-section' } }),
+            );
+            expect(binding).toEqual({ workspaceId: 'ws-a', notePath: 'inbox.md' });
+        });
+
+        it('normalizes before deriving the section', () => {
+            const binding = resolveNoteChatBinding(
+                chatInput({ noteChat: { notePath: 'MultiModal\\\\notes\\\\a.md', scope: 'per-section' } }),
+            );
+            expect(binding).toEqual({ workspaceId: 'ws-a', notePath: 'MultiModal/notes' });
+        });
+
+        it('still rejects traversal and absolute paths', () => {
+            expect(resolveNoteChatBinding(
+                chatInput({ noteChat: { notePath: '../secret/a.md', scope: 'per-section' } }),
+            )).toBeNull();
+            expect(resolveNoteChatBinding(
+                chatInput({ noteChat: { notePath: '/etc/passwd', scope: 'per-section' } }),
+            )).toBeNull();
+        });
+    });
+
     it('normalizes the note path (separators, duplicate slashes) before binding', () => {
         const binding = resolveNoteChatBinding(
             chatInput({ noteChat: { notePath: 'Features\\\\Memory.md', scope: 'per-note' } }),

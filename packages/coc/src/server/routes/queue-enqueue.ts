@@ -33,7 +33,7 @@ import {
     type SummarizeConversation,
 } from './queue-shared';
 import { NoteChatBindingStore } from '../notes/note-chat-binding-store';
-import { normalizeRelativeNotePath } from '../notes/note-chat-bindings-handler';
+import { normalizeRelativeNotePath, noteSectionPath } from '../notes/note-chat-bindings-handler';
 import { isInheritedLensChatMode, type ChatProvider } from '../tasks/task-types';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 
@@ -676,16 +676,21 @@ function isChatProvider(value: unknown): value is ChatProvider {
 }
 
 /**
- * Decide whether a just-enqueued task should create a per-note chat binding, and
- * with what (workspaceId + normalized notePath). Returns null when no per-note
- * binding should be created.
+ * Decide whether a just-enqueued task should create a note-chat binding, and with
+ * what key (workspaceId + the normalized path the row is keyed on). Returns null
+ * when no binding should be created.
  *
- * A per-note binding is created only for a `type:'chat'` task whose
- * `context.noteChat` carries a note path AND is not declared Workspace scope.
- * A `per-workspace` submission may include the currently-selected note path
- * purely as first-message context; it must NOT create or replace that note's
- * per-note binding (AC-04). An omitted scope keeps the legacy per-note default
- * so existing callers are unaffected.
+ * A binding is created only for a `type:'chat'` task whose `context.noteChat`
+ * carries a note path AND is not declared Workspace scope:
+ *
+ * - `per-workspace` — the note path is first-message context only; it must NOT
+ *   create or replace that note's per-note binding (AC-04). Never binds.
+ * - `per-section` — binds the note's nearest parent folder, so every note under
+ *   that folder resolves to the same chat. A note at the notes root has no
+ *   parent folder and falls back to a per-note binding — which is exactly where
+ *   the client's section resolution looks in that case too, so the two agree.
+ * - `per-note`, or an omitted scope (the legacy default, so existing callers are
+ *   unaffected) — binds that single note.
  *
  * @internal exported for tests
  */
@@ -704,6 +709,9 @@ export function resolveNoteChatBinding(
     if (!workspaceId) return null;
     const notePath = normalizeRelativeNotePath(noteChat?.notePath);
     if (!notePath) return null;
+    if (noteChat?.scope === 'per-section') {
+        return { workspaceId, notePath: noteSectionPath(notePath) ?? notePath };
+    }
     return { workspaceId, notePath };
 }
 
