@@ -43,7 +43,6 @@ export {
 
 export {
     ExecGitOptions,
-    execGit,
     execGitAsync,
 } from './exec';
 

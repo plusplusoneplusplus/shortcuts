@@ -1,4 +1,3 @@
-import { execFileSync } from 'child_process';
 import { loadNativeGit, type NativeGitAddon } from '@plusplusoneplusplus/coc-native';
 import { getDefaultWslDistro } from '../utils/workspace-execution';
 import { isLinuxAbsolutePath, parseWslUncPath, toForwardSlashes, trimTrailingPathSeparators } from '../utils/path-utils';
@@ -51,34 +50,6 @@ export function resolveGitSafeDirectory(repoRoot: string): string | undefined {
 }
 
 /**
- * Split `git config --get-all` output into the entries already approved.
- *
- * Only the sync path still needs this: the async path reads the list through
- * the native addon, which splits and trims in Rust. It goes when `execGit` does.
- */
-function parseSafeDirectoryList(output: string): Set<string> {
-    return new Set(
-        output
-            .split(/\r?\n/)
-            .map(line => line.trim())
-            .filter(Boolean),
-    );
-}
-
-function isSafeDirectoryConfiguredSync(safeDirectory: string): boolean {
-    try {
-        const output = execFileSync('git', ['config', '--global', '--get-all', SAFE_DIRECTORY_KEY], {
-            encoding: 'utf-8',
-            windowsHide: true,
-            stdio: ['ignore', 'pipe', 'ignore'],
-        });
-        return parseSafeDirectoryList(output).has(safeDirectory);
-    } catch {
-        return false;
-    }
-}
-
-/**
  * Whether the entry is already in the user's global `safe.directory` list.
  *
  * Every failure reads as "not configured", because git exits non-zero both for
@@ -100,23 +71,6 @@ async function isSafeDirectoryConfiguredAsync(
 export function clearGitSafeDirectoryCache(): void {
     ensuredSafeDirectories.clear();
     inFlightSafeDirectoryEnsures.clear();
-}
-
-export function ensureGitSafeDirectorySync(repoRoot: string): void {
-    const safeDirectory = resolveGitSafeDirectory(repoRoot);
-    if (!safeDirectory || ensuredSafeDirectories.has(safeDirectory)) {
-        return;
-    }
-
-    if (!isSafeDirectoryConfiguredSync(safeDirectory)) {
-        execFileSync('git', ['config', '--global', '--add', SAFE_DIRECTORY_KEY, safeDirectory], {
-            encoding: 'utf-8',
-            windowsHide: true,
-            stdio: ['ignore', 'pipe', 'pipe'],
-        });
-    }
-
-    ensuredSafeDirectories.add(safeDirectory);
 }
 
 export async function ensureGitSafeDirectoryAsync(repoRoot: string): Promise<void> {

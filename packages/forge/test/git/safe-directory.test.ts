@@ -1,31 +1,25 @@
 /**
- * Resolving the `safe.directory` entry, and the sync ensure that still spawns.
+ * Resolving the `safe.directory` entry — the win32-only path arithmetic that
+ * stays in TypeScript because Rust is decided never to learn about WSL.
  *
- * The async ensure moved to the native addon, so its tests moved too — to
- * `safe-directory-native.test.ts`, where they drive a real `git config` against
- * a temp global config file instead of asserting which child process Node was
- * asked to start. What is left here is the win32-only path arithmetic and the
- * sync ensure, which keeps its `execFileSync` until AC-08 deletes `execGit`.
+ * The ensure itself runs its two `git config --global` calls in the native
+ * addon, so its tests live in `safe-directory-native.test.ts`, where they drive
+ * a real `git config` against a temp global config file instead of asserting
+ * which child process Node was asked to start. Since AC-08 deleted the sync
+ * ensure, this module spawns nothing at all.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { execFileSync } from 'child_process';
 import {
     clearGitSafeDirectoryCache,
-    ensureGitSafeDirectorySync,
     resolveGitSafeDirectory,
 } from '../../src/git/safe-directory';
 import { getDefaultWslDistro } from '../../src/utils/workspace-execution';
-
-vi.mock('child_process', () => ({
-    execFileSync: vi.fn(),
-}));
 
 vi.mock('../../src/utils/workspace-execution', () => ({
     getDefaultWslDistro: vi.fn(),
 }));
 
-const mockedExecFileSync = vi.mocked(execFileSync);
 const mockedGetDefaultWslDistro = vi.mocked(getDefaultWslDistro);
 
 describe('safe-directory', () => {
@@ -70,35 +64,6 @@ describe('safe-directory', () => {
         Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
         try {
             expect(resolveGitSafeDirectory('\\\\wsl$\\Ubuntu\\home\\me\\repo')).toBeUndefined();
-        } finally {
-            Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
-        }
-    });
-
-    it('adds a missing safe.directory entry once in sync mode', () => {
-        const originalPlatform = process.platform;
-        Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
-        mockedExecFileSync
-            .mockReturnValueOnce('')
-            .mockReturnValueOnce('');
-        try {
-            const repoRoot = '\\\\wsl$\\Ubuntu-24.04\\home\\georgeqiao\\repo';
-            ensureGitSafeDirectorySync(repoRoot);
-            ensureGitSafeDirectorySync(repoRoot);
-
-            expect(mockedExecFileSync).toHaveBeenCalledTimes(2);
-            expect(mockedExecFileSync).toHaveBeenNthCalledWith(
-                1,
-                'git',
-                ['config', '--global', '--get-all', 'safe.directory'],
-                expect.objectContaining({ encoding: 'utf-8', windowsHide: true }),
-            );
-            expect(mockedExecFileSync).toHaveBeenNthCalledWith(
-                2,
-                'git',
-                ['config', '--global', '--add', 'safe.directory', '%(prefix)///wsl$/Ubuntu-24.04/home/georgeqiao/repo'],
-                expect.objectContaining({ encoding: 'utf-8', windowsHide: true }),
-            );
         } finally {
             Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
         }

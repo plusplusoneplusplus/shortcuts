@@ -1,16 +1,15 @@
 /**
  * Running `git -C <repoRoot> <args>` for the rest of forge.
  *
- * The async helper dispatches on where the repository lives: WSL repos keep
- * their `wsl.exe` shell-out here in TypeScript, everything else runs in the
- * native addon on a libuv worker. The sync helper still spawns a child process
- * and is on its way out.
+ * There is one helper and it is async. It dispatches on where the repository
+ * lives: WSL repos keep their `wsl.exe` shell-out here in TypeScript,
+ * everything else runs in the native addon on a libuv worker. Nothing in forge
+ * spawns git from the event-loop thread any more.
  */
 
-import { execFileSync } from 'child_process';
 import { loadNativeGit, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 import { execFileAsync } from '../utils/exec-utils';
-import { ensureGitSafeDirectoryAsync, ensureGitSafeDirectorySync } from './safe-directory';
+import { ensureGitSafeDirectoryAsync } from './safe-directory';
 import {
     buildWslCommandArgs,
     getWslExecutablePath,
@@ -19,7 +18,7 @@ import {
 } from '../utils/workspace-execution';
 
 /**
- * Options for `execGit`.
+ * Options for `execGitAsync`.
  */
 export interface ExecGitOptions {
     /** Maximum buffer size for stdout/stderr in bytes (default: 10 MB). */
@@ -118,46 +117,4 @@ export async function execGitAsync(
         timeout: toUint32(timeout, DEFAULT_TIMEOUT),
         cwd: options?.cwd,
     });
-}
-
-/**
- * Execute a git command synchronously.
- *
- * @param args     Git sub-command and arguments (e.g. `['log', '--oneline']`).
- * @param repoRoot Absolute path to the repository root (passed via `git -C`).
- * @param options  Optional overrides for buffer size, timeout, and cwd.
- * @returns        Trimmed stdout output.
- */
-export function execGit(args: string[], repoRoot: string, options?: ExecGitOptions): string {
-    try {
-        ensureGitSafeDirectorySync(repoRoot);
-        const executionContext = resolveWorkspaceExecutionContext(repoRoot);
-        if (executionContext.kind === 'wsl') {
-            const execRepoRoot = translatePathForExecution(repoRoot, executionContext);
-            const output = execFileSync(
-                getWslExecutablePath(),
-                buildWslCommandArgs(executionContext, ['git', '-C', execRepoRoot, ...args]),
-                {
-                    maxBuffer: options?.maxBuffer ?? DEFAULT_MAX_BUFFER,
-                    timeout: options?.timeout ?? DEFAULT_TIMEOUT,
-                    encoding: 'utf-8',
-                    cwd: options?.cwd,
-                    windowsHide: true,
-                },
-            );
-            return output.replace(/\r?\n$/, '');
-        }
-
-        const output = execFileSync('git', ['-C', repoRoot, ...args], {
-            maxBuffer: options?.maxBuffer ?? DEFAULT_MAX_BUFFER,
-            timeout: options?.timeout ?? DEFAULT_TIMEOUT,
-            encoding: 'utf-8',
-            cwd: options?.cwd,
-            windowsHide: true,
-        }) as string;
-        // Strip trailing newline(s)
-        return output.replace(/\r?\n$/, '');
-    } catch (err: unknown) {
-        throw createGitExecError(args, err);
-    }
 }

@@ -12,26 +12,27 @@
  * branch switch. Uncommitted changes in the source checkout are excluded and a
  * warning is surfaced.
  *
- * All Git invocations go through `execGit` (argument arrays, no shell). Removal
- * uses plain `git worktree remove` (never `--force`), so a dirty worktree keeps
- * its checkout and its record intact.
+ * All Git invocations go through `execGitAsync` (argument arrays, no shell), so
+ * git runs on a native worker rather than blocking the event loop. Removal uses
+ * plain `git worktree remove` (never `--force`), so a dirty worktree keeps its
+ * checkout and its record intact.
  */
 
 import * as fs from 'fs';
 import * as crypto from 'crypto';
-import { execGit } from '@plusplusoneplusplus/forge';
+import { execGitAsync } from '@plusplusoneplusplus/forge';
 import type { WorktreeMetadata } from '@plusplusoneplusplus/coc-client';
 import { WorktreeMetadataStore } from './worktree-metadata-store';
 
 export type { WorktreeMetadata };
 
-/** Runs a Git command against a repo root and returns trimmed stdout. */
-export type GitRunner = (args: string[], repoRoot: string) => string;
+/** Runs a Git command against a repo root and resolves with trimmed stdout. */
+export type GitRunner = (args: string[], repoRoot: string) => Promise<string>;
 
 export interface GitWorktreeServiceOptions {
     /** CoC data root (e.g. `~/.coc`). */
     dataDir: string;
-    /** Injectable Git runner (defaults to forge `execGit`); for testing. */
+    /** Injectable Git runner (defaults to forge `execGitAsync`); for testing. */
     git?: GitRunner;
     /** Injectable clock (ISO string); for deterministic tests. */
     now?: () => string;
@@ -103,7 +104,7 @@ export class GitWorktreeService {
 
     constructor(private readonly options: GitWorktreeServiceOptions) {
         this.store = new WorktreeMetadataStore({ dataDir: options.dataDir });
-        this.git = options.git ?? ((args, repoRoot) => execGit(args, repoRoot));
+        this.git = options.git ?? ((args, repoRoot) => execGitAsync(args, repoRoot));
         this.now = options.now ?? (() => new Date().toISOString());
     }
 
@@ -122,14 +123,14 @@ export class GitWorktreeService {
     async createWorktree(input: CreateWorktreeInput): Promise<CreateWorktreeResult> {
         const { workspaceId, sourceRepoRoot, runId } = input;
 
-        this.assertGitRepo(sourceRepoRoot);
+        await this.assertGitRepo(sourceRepoRoot);
 
         // Resolve the base commit up front — an invalid ref must fail before we
         // create the worktree branch or directory.
-        const baseSha = this.resolveBaseSha(sourceRepoRoot, input.baseRef);
+        const baseSha = await this.resolveBaseSha(sourceRepoRoot, input.baseRef);
 
         // Detect (but do not touch) uncommitted source changes — warn only.
-        const sourceDirty = this.isSourceDirty(sourceRepoRoot);
+        const sourceDirty = await this.isSourceDirty(sourceRepoRoot);
         const sourceDirtyWarning = sourceDirty
             ? 'The source checkout has uncommitted changes; they are not included in the worktree.'
             : undefined;
@@ -143,7 +144,7 @@ export class GitWorktreeService {
         // Create the worktree + branch from committed objects only. `git worktree
         // add` leaves the source checkout's HEAD and dirty state untouched, and
         // does no network I/O.
-        this.git(['worktree', 'add', '-b', branch, worktreePath, baseSha], sourceRepoRoot);
+        await this.git(['worktree', 'add', '-b', branch, worktreePath, baseSha], sourceRepoRoot);
 
         const metadata: WorktreeMetadata = {
             id: runId,
@@ -185,7 +186,7 @@ export class GitWorktreeService {
 
         // No --force: git refuses (and errors) on a dirty worktree, which is the
         // intended non-destructive behavior.
-        this.git(['worktree', 'remove', record.path], sourceRepoRoot);
+        await this.git(['worktree', 'remove', record.path], sourceRepoRoot);
 
         const updated = await this.store.markCleaned(workspaceId, id, this.now());
         return { metadata: updated ?? { ...record, status: 'cleaned', cleanedAt: this.now() }, alreadyCleaned: false };
@@ -201,10 +202,10 @@ export class GitWorktreeService {
         return this.store.get(workspaceId, id);
     }
 
-    private assertGitRepo(sourceRepoRoot: string): void {
+    private async assertGitRepo(sourceRepoRoot: string): Promise<void> {
         let inside: string;
         try {
-            inside = this.git(['rev-parse', '--is-inside-work-tree'], sourceRepoRoot).trim();
+            inside = (await this.git(['rev-parse', '--is-inside-work-tree'], sourceRepoRoot)).trim();
         } catch {
             throw new Error(`Not a Git repository: ${sourceRepoRoot}`);
         }
@@ -213,10 +214,10 @@ export class GitWorktreeService {
         }
     }
 
-    private resolveBaseSha(sourceRepoRoot: string, baseRef?: string): string {
+    private async resolveBaseSha(sourceRepoRoot: string, baseRef?: string): Promise<string> {
         const ref = baseRef && baseRef.trim().length > 0 ? baseRef.trim() : 'HEAD';
         try {
-            const sha = this.git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], sourceRepoRoot).trim();
+            const sha = (await this.git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], sourceRepoRoot)).trim();
             if (!sha) {
                 throw new Error('empty');
             }
@@ -226,8 +227,8 @@ export class GitWorktreeService {
         }
     }
 
-    private isSourceDirty(sourceRepoRoot: string): boolean {
-        const out = this.git(['status', '--porcelain'], sourceRepoRoot);
+    private async isSourceDirty(sourceRepoRoot: string): Promise<boolean> {
+        const out = await this.git(['status', '--porcelain'], sourceRepoRoot);
         return out.trim().length > 0;
     }
 }

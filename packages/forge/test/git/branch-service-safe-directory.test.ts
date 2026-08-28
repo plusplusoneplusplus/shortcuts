@@ -15,7 +15,6 @@ vi.mock('../../src/utils/exec-utils', () => ({
 }));
 
 vi.mock('../../src/git/safe-directory', () => ({
-    ensureGitSafeDirectorySync: vi.fn(),
     ensureGitSafeDirectoryAsync: vi.fn(),
 }));
 
