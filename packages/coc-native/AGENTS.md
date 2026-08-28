@@ -178,10 +178,44 @@ Everything `BranchService` writes — create, delete, rename, checkout, merge, r
 - **The long timeout is 600 s and is part of the contract.** merge, rebase, `am`, `format-patch`, push, pull and fetch carry it; everything else takes the 30 s default. A rebase of a long branch over a slow link is a slow command, not a hung one.
 - **`format-patch` output is normalised to one trailing newline.** The runner strips exactly one line ending, and `format-patch` ends with a blank line; `exportCommitPatch` re-adds one so every payload ends in exactly one `\n`, which is also the separator `exportCommitPatches` joins entries with.
 
+### Benchmarking against the TypeScript it replaced
+
+`npm run bench:git -w packages/coc-native` is the evidence for the whole move. Each case pairs a `legacy` implementation — the child processes the deleted TypeScript forked, the same argv in the same order, through the same Node API (`exec` behind a shell where the service used `execAsync`, `execFileSync` where it blocked) and parsed the way the service parsed it — against the shipped addon export. The legacy halves are reimplementations, because the originals were deleted, so `test/bench-git.test.ts` runs **both sides against a real repository and compares their answers** case by case. That suite is the load-bearing part: a baseline that quietly does less work reads as a speed-up, and four seeded perturbations (drop the untracked rows, ask for one commit fewer, skip the `--name-status` child, return a wrong root) were each confirmed to fail it.
+
+- `npm run bench:git -w packages/coc-native` — a generated 250-commit fixture and the repository the script lives in.
+- `-- --check` exits non-zero when a *gated* case is more than `--tolerance` (5% by default) slower than legacy. The tolerance is the width of the measurement, not slack in the bar: back-to-back runs of the same implementation differ by a few percent on a loaded box.
+- `-- --only <ids>`, `--repo <path>`, `--iterations <n>`, `--json`, `--no-small`/`--no-large`, `--help`.
+- An **ungated** case is measured and printed but excluded from the verdict, and the test suite requires every one of them to carry a `note` saying why — otherwise a regression could be silenced by flipping one boolean.
+
+Recorded on a 2-core arm64 box, 25 iterations, medians. "spawns" is how many git children the legacy path forked, and it is the number that predicts the result.
+
+| operation | spawns | small fixture (14 refs, 250 commits) | this repo (569 refs, 8143 commits) |
+|-----------|--------|--------------------------------------|------------------------------------|
+| working-tree status | 1 | 2.46 → 1.62 ms (1.52x) | 15.28 → 14.26 ms (1.07x) |
+| repository status | 1 | 3.57 → 2.72 ms (1.31x) | 16.06 → 15.18 ms (1.06x) |
+| branch status | 5 | 14.20 → 1.36 ms (**10.45x**) | 17.81 → 1.09 ms (**16.30x**) |
+| branch list, 100 rows | 2 | 5.58 → 0.30 ms (**18.32x**) | 12.67 → 3.27 ms (3.88x) |
+| commit log, 1 | 3 | 9.59 → 1.62 ms (5.92x) | 13.09 → 3.10 ms (4.22x) |
+| commit log, 50 | 3 | 10.75 → 3.07 ms (3.50x) | 15.03 → 6.64 ms (2.27x) |
+| commit log, 200 (the route's clamp) | 3 | 19.97 → 6.93 ms (2.88x) | 18.43 → 17.09 ms (1.08x) |
+| commit log, 500 — *ungated* | 3 | 14.92 → 8.50 ms (1.76x) | 24.54 → 37.53 ms (**0.65x**) |
+| commit detail, file list | 3 | 9.00 → 2.87 ms (3.14x) | 14.45 → 7.19 ms (2.01x) |
+| commit range, refs only | 4 | 11.08 → 2.74 ms (4.04x) | 14.61 → 2.48 ms (5.88x) |
+| commit range, whole detect | 7 | 23.19 → 7.43 ms (3.12x) | 106.04 → 55.52 ms (1.91x) |
+| primary remote URL | 2 | 2.15 → 0.14 ms (**15.18x**) | 3.34 → 0.47 ms (7.15x) |
+| repository discovery | 1 | 2.22 → 0.13 ms (**16.95x**) | 3.19 → 0.46 ms (6.91x) |
+
+**Read it by the spawn count, not by the operation.** Removing several children is worth multiples and the effect grows with the repository — branch status forked five and is 16x here. Removing *none* — moving the one fork from Node to Rust, which is all `git status` can do, since deciding whether the tree is dirty means the index refresh git already does — is worth 6–11%, and that is the honest floor of this move rather than a disappointment. Replacing a spawn with `gix` is worth the most on the small repository, where the spawn was the whole bill; on this one a fixed per-ref cost partly eats it back.
+
+**The one place native loses is a 500-commit page, and it is ungated on purpose.** `gix` pays ~0.07 ms per commit to abbreviate `%h` where `git log` pays it in C, so the per-commit cost eventually overtakes the two spawns saved. The crossover is between 200 and 500 on this repository — and `api-git-commit-routes.ts` clamps `limit` to 200, so no route can ask for the losing side. The row is measured and printed anyway, because a benchmark that only runs the cases it wins is not evidence.
+
+**The clock is not the whole claim.** Four legacy paths blocked the event loop, and the script counts 1 ms timer ticks during 20 sequential calls to show it. On this repo: repository discovery let **0** ticks through in 63 ms and now lets 12 through in 12 ms; the branch list **0** in 255 ms against 62 in 67 ms; the whole range detection 43 in 2123 ms against **1034** in 1143 ms. A server that spends 2 seconds forking children from Node has stopped; the same wall clock on a libuv worker has not.
+
 ## Build / test
 
 - `npm run build -w packages/coc-native` — tsc only. Must run before `coc` compiles, which resolves workspace deps from built `dist`.
 - `npm run build:native -w packages/coc-native` — compiles the addon and regenerates `src/native-bindings.ts`. Needs a Rust toolchain; nothing else in the repo does.
+- `npm run bench:git -w packages/coc-native` — the git benchmark above. Needs a built binary and a built `dist`, not a Rust toolchain; takes ~23 s at the default 20 iterations (the table above is 25). Add `-- --check` to have it fail on a regression.
 - `cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core` — the whole logic layer. The `git_exec`, `git_status`, `git_log`, `git_commit`, `git_range`, `git_branch`, `git_remote` and `git_config` suites drive a real `git`, so it has to be on PATH; `git_log`, `git_commit`, parts of `git_range` and parts of `git_branch` additionally compare their output against the real CLI.
 - `npm run test:run -w packages/coc-native` — loader and capability-resolution tests (no binary needed), plus the N-API boundary suites (marshalling, async build/refresh/search contracts, snapshot consistency, error propagation, concurrency, lifetime) and parity. The binary-backed suites **fail** when nothing is built — there is no skip path — so a botched native build cannot pass for a green run.
 - `cargo fmt`/`cargo clippy` run in the `coc-native` CI job. `rust/rustfmt.toml` widens `use_small_heuristics` to match the density of the surrounding TypeScript.
