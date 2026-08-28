@@ -13,10 +13,15 @@
  *
  * Both are required named fields so a command can never silently fall back to
  * the wrong one.
+ *
+ * It also owns the default command runner the execution commands use for their
+ * git and `gh` invocations. Its git half runs in the native addon; only `gh`
+ * still starts a child process here.
  */
 
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { execGitAsync } from '@plusplusoneplusplus/forge';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { badRequest, notFound } from '../errors';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
@@ -27,8 +32,16 @@ import { clearWorkItemResponseCacheForWorkspace } from './work-item-response-cac
 
 const execFileAsync = promisify(execFile);
 
+/** Bytes of output kept, for both the git and the `gh` path. */
+const COMMAND_MAX_BUFFER = 1024 * 1024 * 10;
+
 export interface WorkItemCommandResult {
     stdout: string;
+    /**
+     * Empty for a `git` command run by {@link defaultWorkItemCommandRunner} —
+     * the native runner keeps stderr only for a failure, where it becomes the
+     * message. `gh` still reports both streams.
+     */
     stderr: string;
 }
 
@@ -40,16 +53,42 @@ export interface WorkItemCommandRunner {
     (command: string, args: string[], options: WorkItemCommandOptions): Promise<WorkItemCommandResult>;
 }
 
-/** Default runner used when a caller does not inject one (tests inject). */
+/**
+ * Default runner used when a caller does not inject one (tests inject).
+ *
+ * `git` runs in the native addon through forge's `execGitAsync`, so the nine
+ * git commands behind a PR submission no longer cost nine children spawned
+ * from the event-loop thread. Anything else — `gh` — keeps Node's `execFile`.
+ *
+ * Two details of the git path are load-bearing:
+ *
+ * - `timeout: 0`. This runner never had a timeout and `execGitAsync` defaults
+ *   to 30 s, so taking the default would kill the `fetch` and the `push` of a
+ *   real repository mid-transfer.
+ * - `stderr` comes back empty; see {@link WorkItemCommandResult}. Nothing here
+ *   reads a git command's stderr on success, and a failure carries it in the
+ *   `git <args> failed: <stderr>` rejection instead.
+ *
+ * A `NativeAddonLoadError` is deliberately not caught. The submission's first
+ * command is a `git status --porcelain` with no guard around it, so a broken
+ * binary fails the whole request wearing the words that name the rebuild.
+ */
 export async function defaultWorkItemCommandRunner(
     command: string,
     args: string[],
     options: WorkItemCommandOptions,
 ): Promise<WorkItemCommandResult> {
+    if (command === 'git') {
+        const stdout = await execGitAsync(args, options.cwd, {
+            maxBuffer: COMMAND_MAX_BUFFER,
+            timeout: 0,
+        });
+        return { stdout, stderr: '' };
+    }
     const { stdout, stderr } = await execFileAsync(command, args, {
         cwd: options.cwd,
         encoding: 'utf8',
-        maxBuffer: 1024 * 1024 * 10,
+        maxBuffer: COMMAND_MAX_BUFFER,
     });
     return { stdout: stdout ?? '', stderr: stderr ?? '' };
 }
@@ -64,7 +103,7 @@ export interface WorkItemExecutionCommandContext {
     getWorkflowEnabled?: () => boolean;
     /** Whether the opt-in Git worktree execution feature flag is on. */
     getGitWorktreeExecutionEnabled?: () => boolean;
-    /** Injected git/gh runner. Defaults to {@link defaultWorkItemCommandRunner}. */
+    /** Injected git/`gh` runner. Defaults to {@link defaultWorkItemCommandRunner}. */
     runCommand?: WorkItemCommandRunner;
     /** CoC data directory (e.g. ~/.coc). */
     dataDir?: string;
