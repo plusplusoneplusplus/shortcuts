@@ -160,6 +160,42 @@ pub fn relative_date(time: i64, now: i64) -> String {
 // %D — ref decoration
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// The object a ref decorates, resolved without decoding the objects that do
+/// not need decoding.
+///
+/// Equivalent to `reference.peel_to_id()` for every input, and the single
+/// biggest cost in this module before it existed. `peel_to_id` reads the object
+/// behind every ref so it can peel a tag; but peeling *stops* at the first
+/// non-tag, so for a ref pointing straight at a commit — which is what every
+/// branch and every remote-tracking ref is — the id it hands back is the one
+/// already sitting in the ref file. [`gix::Repository::find_header`] is the
+/// cheap `cat-file -t`: it answers the object's kind without decoding it, so
+/// only the refs that really are tags pay for a peel.
+///
+/// The kind is checked rather than the namespace, because git's own decoration
+/// peels any ref whose object is a tag, wherever it lives. `git update-ref`
+/// refuses to point a `refs/heads/` ref at one, but it allows it under
+/// `refs/remotes/`, and git decorates the commit beneath such a ref. Trusting
+/// `refs/tags/` instead measured 0.35 ms faster and would have made that ref
+/// decorate the tag object, which no commit in the walk is.
+///
+/// `None` means the ref decorates nothing, which is the missing-object case a
+/// full peel reports by failing.
+fn decorated_id(
+    repo: &gix::Repository,
+    reference: &mut gix::Reference<'_>,
+) -> Option<gix::ObjectId> {
+    if let Some(id) = reference.target().try_id().map(ToOwned::to_owned) {
+        match repo.find_header(id) {
+            Ok(header) if header.kind() != gix::object::Kind::Tag => return Some(id),
+            // A tag has to be peeled, and a header that cannot be read is a
+            // broken ref — let the full peel decide, as it always did.
+            _ => {}
+        }
+    }
+    reference.peel_to_id().ok().map(|id| id.detach())
+}
+
 /// The decoration names for every commit that carries one.
 ///
 /// Built once per page rather than per commit: the ref database is read in a
@@ -173,6 +209,9 @@ pub fn relative_date(time: i64, now: i64) -> String {
 /// `origin/HEAD`, and a remote branch before the local branch of the same name.
 /// `HEAD` is added last of all and therefore prints first, as `HEAD -> <branch>`
 /// when it is symbolic and its branch is on the same commit.
+///
+/// This is where a commit-log read spends most of its time — see
+/// [`decorated_id`] for why, and for what it does about it.
 fn decorations(repo: &gix::Repository) -> HashMap<gix::ObjectId, Vec<String>> {
     let mut by_commit: HashMap<gix::ObjectId, Vec<(String, String)>> = HashMap::new();
 
@@ -198,8 +237,8 @@ fn decorations(repo: &gix::Repository) -> HashMap<gix::ObjectId, Vec<String>> {
             continue;
         };
 
-        let Ok(id) = reference.peel_to_id() else { continue };
-        by_commit.entry(id.detach()).or_default().push((full_name, display));
+        let Some(id) = decorated_id(repo, &mut reference) else { continue };
+        by_commit.entry(id).or_default().push((full_name, display));
     }
 
     // The symbolic branch HEAD is on, if any, so it can be rewritten in place.
@@ -283,10 +322,10 @@ fn describe(
 /// Describe a page's commits in walk order.
 ///
 /// Deliberately sequential. Describing a commit is independent work, so this
-/// looks like an obvious `rayon` fan-out — but the expensive part is `%h`, and
-/// the object-database lookup behind it serialises internally, so a parallel
-/// version measured within noise of this one. See `AGENTS.md` on what actually
-/// costs time here.
+/// looks like an obvious `rayon` fan-out — but the per-commit cost here is
+/// `%h`, whose object-database lookup serialises internally, so a parallel
+/// version measured within noise of this one. It is also not where a page's
+/// time goes: the fixed cost of [`decorations`] dwarfs it. See `AGENTS.md`.
 fn describe_all(
     repo: &gix::Repository,
     ids: &[gix::ObjectId],
@@ -379,10 +418,10 @@ pub fn get_commits(
     // Reserve for the page, but never trust `max_count` as an allocation size:
     // callers pass "everything" as a huge number, and reserving for four
     // billion commits aborts the process before the walk reads one.
-    // Walk first and describe afterwards. The walk is inherently sequential, but
-    // describing a commit is not, and it is where the time goes: `%h` has to ask
-    // the object database for the shortest unambiguous prefix of every hash,
-    // which costs more than decoding the commit itself.
+    // Walk first and describe afterwards. The walk is inherently sequential,
+    // and describing is what scales with the page: `%h` asks the object
+    // database for the shortest unambiguous prefix of every hash, which costs
+    // more than decoding the commit itself.
     let mut ids = Vec::with_capacity(max_count.min(1024));
     let mut skipped = 0usize;
     let mut has_more = false;

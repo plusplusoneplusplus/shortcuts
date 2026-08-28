@@ -336,6 +336,69 @@ fn a_detached_head_is_decorated_as_plain_head() {
     assert!(native_rows(path, 1, 0)[0].refs.contains(&"HEAD".to_string()));
 }
 
+/// Annotated tags are the shape the decoration fast path has to get right: a
+/// ref pointing at a tag *object* still decorates the commit under it, and
+/// resolving the ref without peeling would file it under an id no commit in the
+/// walk ever has. Nested tags peel more than once.
+#[test]
+fn decoration_matches_the_real_git_log_for_annotated_and_nested_tags() {
+    let dir = interesting_repo();
+    let path = dir.path();
+    git(path, &["tag", "-a", "v1.1.0", "-m", "an annotated tag"]);
+    git(path, &["tag", "-a", "v1.1.0-alias", "-m", "a tag of a tag", "v1.1.0"]);
+
+    let native = native_rows(path, 10, 0);
+    let expected = git_rows(path, 10, 0);
+
+    // Guard the guard: both tags must land on a commit git actually prints, or
+    // this compares two lists that agree about nothing.
+    assert!(expected[0].refs.contains(&"tag: v1.1.0".to_string()), "got {:?}", expected[0].refs);
+    assert!(expected[0].refs.contains(&"tag: v1.1.0-alias".to_string()));
+
+    for (native, expected) in native.iter().zip(expected.iter()) {
+        assert_eq!(native.refs, expected.refs, "decoration drifted for {}", expected.subject);
+    }
+}
+
+/// The peel is decided by the object's kind, not by the ref's namespace.
+///
+/// `git update-ref` refuses to point a `refs/heads/` ref at a tag object, but
+/// it allows it under `refs/remotes/` — so a decoration that only peeled
+/// `refs/tags/` would drop this name off the commit git puts it on.
+#[test]
+fn decoration_peels_a_tag_object_reached_through_a_remote_ref() {
+    let dir = interesting_repo();
+    let path = dir.path();
+    git(path, &["tag", "-a", "shipped", "-m", "an annotated tag"]);
+    let tag_object = git_stdout(path, &["rev-parse", "shipped"]).trim().to_string();
+    // Assert the premise rather than assume it: this only tests a peel if the
+    // ref really does point at a tag object.
+    assert_eq!(git_stdout(path, &["cat-file", "-t", &tag_object]).trim(), "tag");
+    git(path, &["update-ref", "refs/remotes/origin/shipped", &tag_object]);
+
+    let head = &native_rows(path, 1, 0)[0];
+    assert!(
+        head.refs.iter().any(|name| name.ends_with("origin/shipped")),
+        "the remote ref should decorate the commit under the tag, got {:?}",
+        head.refs
+    );
+}
+
+/// A ref whose object is not in the database decorates nothing, and does not
+/// fail the page — which is what `git log` does with one.
+#[test]
+fn a_ref_pointing_at_a_missing_object_is_ignored() {
+    let dir = interesting_repo();
+    let path = dir.path();
+    let before = native_rows(path, 10, 0);
+
+    let missing = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
+    std::fs::write(path.join(".git/refs/heads/broken"), format!("{missing}\n")).expect("write ref");
+
+    assert_eq!(native_rows(path, 10, 0), before);
+    assert_eq!(native_rows(path, 10, 0), git_rows(path, 10, 0));
+}
+
 #[test]
 fn a_subject_keeps_only_the_first_paragraph() {
     let dir = interesting_repo();
