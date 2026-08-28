@@ -13,6 +13,7 @@ const FAKE_COMMIT: GitCommit = {
     hash: FAKE_HASH,
     shortHash: 'aaaaaaa',
     subject: 'feat: add alpha and beta',
+    body: '',
     authorName: 'Test Author',
     authorEmail: 'test@example.com',
     date: '2025-01-01T00:00:00Z',

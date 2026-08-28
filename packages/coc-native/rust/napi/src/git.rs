@@ -222,6 +222,8 @@ pub struct GitLogCommit {
     pub hash: String,
     pub short_hash: String,
     pub subject: String,
+    /// The message after the title (`%b`), trimmed; empty when there is none.
+    pub body: String,
     pub author_name: String,
     pub author_email: String,
     /// ISO 8601 strict, in the author's own timezone offset (`%aI`).
@@ -243,6 +245,7 @@ impl From<Commit> for GitLogCommit {
             hash: commit.hash,
             short_hash: commit.short_hash,
             subject: commit.subject,
+            body: commit.body,
             author_name: commit.author_name,
             author_email: commit.author_email,
             date: commit.date,

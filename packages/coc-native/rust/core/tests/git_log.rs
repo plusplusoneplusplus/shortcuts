@@ -518,6 +518,7 @@ fn a_single_commit_matches_the_same_row_from_a_page() {
     assert_eq!(single.hash, expected.hash);
     assert_eq!(single.short_hash, expected.short_hash);
     assert_eq!(single.subject, expected.subject);
+    assert_eq!(single.body, expected.body);
     assert_eq!(single.date, expected.date);
     assert_eq!(single.relative_date, expected.relative_date);
     assert_eq!(single.parent_hashes, expected.parent_hashes);
@@ -546,4 +547,110 @@ fn a_single_commit_accepts_any_revision_spec_git_would() {
 fn an_unknown_revision_reads_as_missing_rather_than_failing() {
     let dir = interesting_repo();
     assert!(get_commit(dir.path(), "no-such-ref", now()).expect("native log").is_none());
+}
+
+// ── body ────────────────────────────────────────────────────────────────────
+
+/// A repository whose messages cover every shape `%b` renders differently.
+///
+/// The commits route renders the body as `%b` put through JavaScript's
+/// `.trim()`, so that pair — not `%b` alone — is what these tests compare
+/// against. The indented case is the one where the trim is visible: it eats the
+/// leading spaces, and it always has.
+fn body_repo() -> TempDir {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path();
+    init(path);
+
+    commit(path, "none.txt", "no body at all", 50);
+    commit(path, "two.txt", "subject line\n\nfirst body line\nsecond body line", 40);
+    commit(path, "multi.txt", "multi line\ntitle continues\n\nbody after a multi-line title", 30);
+    commit(path, "blanks.txt", "trailing blanks\n\nbody with trailing blanks\n\n\n", 20);
+    commit(path, "indent.txt", "indented body\n\n    four leading spaces", 10);
+
+    dir
+}
+
+/// `%b` for one commit, trimmed exactly as the commits route trimmed it.
+fn git_body(repo: &Path, hash: &str) -> String {
+    git_stdout(repo, &["log", "-1", "--format=%b", hash]).trim().to_string()
+}
+
+/// The page's commit whose subject starts with `prefix`.
+fn row_by_subject<'a>(
+    commits: &'a [coc_native_core::git::log::Commit],
+    prefix: &str,
+) -> &'a coc_native_core::git::log::Commit {
+    commits
+        .iter()
+        .find(|commit| commit.subject.starts_with(prefix))
+        .unwrap_or_else(|| panic!("no commit whose subject starts with {prefix:?}"))
+}
+
+#[test]
+fn a_body_matches_the_real_git_percent_b_for_every_message_shape() {
+    let dir = body_repo();
+    let page = get_commits(dir.path(), 10, 0, None, now()).expect("native log");
+    assert_eq!(page.commits.len(), 5);
+    for commit in &page.commits {
+        assert_eq!(
+            commit.body,
+            git_body(dir.path(), &commit.hash),
+            "body drifted for {}",
+            commit.subject
+        );
+    }
+}
+
+#[test]
+fn a_commit_without_a_body_reads_as_an_empty_string() {
+    let dir = body_repo();
+    let page = get_commits(dir.path(), 10, 0, None, now()).expect("native log");
+    // Not `None` and not the subject repeated: the route's
+    // `lines.slice(7).join('\n').trim()` produced `''` here, and the UI renders
+    // the body only when it is truthy.
+    assert_eq!(row_by_subject(&page.commits, "no body at all").body, "");
+}
+
+#[test]
+fn a_body_keeps_its_internal_newlines_and_drops_the_trailing_ones() {
+    let dir = body_repo();
+    let page = get_commits(dir.path(), 10, 0, None, now()).expect("native log");
+    assert_eq!(
+        row_by_subject(&page.commits, "subject line").body,
+        "first body line\nsecond body line"
+    );
+    assert_eq!(row_by_subject(&page.commits, "trailing blanks").body, "body with trailing blanks");
+}
+
+#[test]
+fn a_multi_line_title_ends_at_the_blank_line_and_the_rest_is_body() {
+    let dir = body_repo();
+    let page = get_commits(dir.path(), 10, 0, None, now()).expect("native log");
+    let row = row_by_subject(&page.commits, "multi line");
+    // `%s` folds the two title lines into one; `%b` starts after the blank line
+    // rather than after the first newline.
+    assert_eq!(row.subject, "multi line title continues");
+    assert_eq!(row.body, "body after a multi-line title");
+}
+
+#[test]
+fn a_trim_eats_a_bodys_leading_indentation_the_way_it_always_did() {
+    let dir = body_repo();
+    let page = get_commits(dir.path(), 10, 0, None, now()).expect("native log");
+    // git's `%b` prints "    four leading spaces"; the route's `.trim()` throws
+    // the indentation away before the UI ever sees it. Ported as-is, and pinned
+    // here so a future "fix" is a deliberate change rather than a drift.
+    assert_eq!(row_by_subject(&page.commits, "indented body").body, "four leading spaces");
+}
+
+#[test]
+fn a_single_commit_reports_the_same_body_as_its_page_row() {
+    let dir = body_repo();
+    let page = get_commits(dir.path(), 10, 0, None, now()).expect("native log");
+    for expected in &page.commits {
+        let single =
+            get_commit(dir.path(), &expected.hash, now()).expect("native log").expect("found");
+        assert_eq!(single.body, expected.body, "body drifted for {}", expected.subject);
+    }
 }

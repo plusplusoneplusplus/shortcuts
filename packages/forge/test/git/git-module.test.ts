@@ -62,6 +62,7 @@ describe('Git types', () => {
             hash: 'abc123def456',
             shortHash: 'abc123d',
             subject: 'fix: resolve issue',
+            body: 'Closes #1',
             authorName: 'Alice',
             authorEmail: 'alice@example.com',
             date: '2025-01-15T10:00:00Z',
@@ -253,7 +254,7 @@ describe('Barrel re-export (git/index)', () => {
             repositoryName: 'r',
         };
         const _commit: GitCommit = {
-            hash: 'h', shortHash: 's', subject: 'sub',
+            hash: 'h', shortHash: 's', subject: 'sub', body: 'b',
             authorName: 'a', authorEmail: 'e',
             date: 'd', relativeDate: 'rd',
             parentHashes: 'p', refs: [],

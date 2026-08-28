@@ -171,6 +171,8 @@ export interface GitLogCommit {
   hash: string
   shortHash: string
   subject: string
+  /** The message after the title (`%b`), trimmed; empty when there is none. */
+  body: string
   authorName: string
   authorEmail: string
   /** ISO 8601 strict, in the author's own timezone offset (`%aI`). */

@@ -61,6 +61,8 @@ export interface GitCommit {
     shortHash: string;
     /** Commit subject (first line of message) */
     subject: string;
+    /** Commit message after the subject (`%b`), trimmed; `''` when there is none */
+    body: string;
     /** Author name */
     authorName: string;
     /** Author email */

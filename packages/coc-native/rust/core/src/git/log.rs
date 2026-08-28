@@ -31,6 +31,8 @@ pub struct Commit {
     pub hash: String,
     pub short_hash: String,
     pub subject: String,
+    /// `%b` — the message after the title, trimmed. Empty when there is none.
+    pub body: String,
     pub author_name: String,
     pub author_email: String,
     /// `%aI` — ISO 8601 strict, in the author's own timezone offset.
@@ -250,11 +252,18 @@ fn describe(
 
     // `%s` is the summary: the first paragraph, with newlines folded to spaces.
     let subject = message.summary().to_string();
+    // `%b` is everything after the blank line that ends the title. `gix` has
+    // already dropped the separating newlines; the trim is the `.trim()` the
+    // commits route applies to `%b` before rendering it, kept so the two agree
+    // byte for byte. A message with no body reads as an empty string, which is
+    // what that route's `lines.slice(7).join('\n').trim()` yields for one.
+    let body = message.body.map(|body| body.to_string().trim().to_string()).unwrap_or_default();
 
     Ok(Commit {
         hash: id.to_string(),
         short_hash: id.attach(repo).shorten_or_id().to_string(),
         subject,
+        body,
         author_name: author.name.to_string(),
         author_email: author.email.to_string(),
         date: time
