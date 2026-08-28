@@ -47,6 +47,39 @@ fn defaults_match_the_typescript_helper() {
     assert_eq!(DEFAULT_TIMEOUT_MS, 30_000);
     assert_eq!(DEFAULT_MAX_BUFFER_BYTES, 50 * 1024 * 1024);
     assert!(options.cwd.is_none());
+    // Empty, so every command keeps the "non-zero is a failure" rule until a
+    // caller says otherwise.
+    assert!(options.success_exit_codes.is_empty());
+}
+
+#[test]
+fn a_non_zero_exit_is_a_failure_unless_the_caller_named_it() {
+    // `git diff --no-index` reports "the files differ" as exit 1, which is its
+    // answer rather than an error — the one command in the capability that
+    // needs this, and the reason the field exists.
+    let repo = repo_with_commit();
+    std::fs::write(repo.path().join("a.txt"), "one\n").expect("write");
+    std::fs::write(repo.path().join("b.txt"), "two\n").expect("write");
+    let command =
+        args(&["diff", "--no-ext-diff", "--no-index", "--no-prefix", "--", "a.txt", "b.txt"]);
+
+    let rejected = run_git(repo.path(), &command, &GitCommandOptions::default())
+        .expect_err("exit 1 is a failure by default");
+    assert_eq!(rejected.kind, GitErrorKind::Exit(Some(1)));
+
+    let options = GitCommandOptions { success_exit_codes: vec![1], ..GitCommandOptions::default() };
+    let accepted = run_git(repo.path(), &command, &options).expect("a named code is accepted");
+    assert!(accepted.starts_with("diff --git "), "stdout comes back in full: {accepted}");
+    assert!(accepted.contains("-one"), "{accepted}");
+}
+
+#[test]
+fn naming_one_success_code_does_not_accept_the_others() {
+    let repo = repo_with_commit();
+    let options = GitCommandOptions { success_exit_codes: vec![1], ..GitCommandOptions::default() };
+    let error = run_git(repo.path(), &args(&["cat-file", "-p", "does-not-exist"]), &options)
+        .expect_err("a missing object is still a failure");
+    assert_eq!(error.kind, GitErrorKind::Exit(Some(128)));
 }
 
 #[test]

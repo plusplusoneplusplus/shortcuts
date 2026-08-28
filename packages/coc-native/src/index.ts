@@ -54,6 +54,7 @@ export type {
     NativeGitLogCommit,
     NativeGitLogOptions,
     NativeGitLogPage,
+    NativeGitNoIndexDiffInput,
     NativeGitRangeBaseRef,
     NativeGitRangeDefaultBranch,
     NativeGitRangeDiffStats,

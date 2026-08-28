@@ -28,8 +28,9 @@
  * esbuild pass, so a `#!` on a CRLF checkout lands inside the module wrapper.
  */
 
-import { exec, execFile, execFileSync, execSync } from 'node:child_process';
+import { exec, execFile, execFileSync, execSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -45,6 +46,21 @@ const GIT_TIMEOUT_MS = 30_000;
 
 /** Output cap `GitLogService.getCommits` passed, and the runner's default. */
 const GIT_MAX_BUFFER = 50 * 1024 * 1024;
+
+/** Timeout `CodexFileChangeDiffTracker` passes on every diff. */
+const CODEX_DIFF_TIMEOUT_MS = 5_000;
+
+/**
+ * One file's before and after — a 200-line source file with three lines
+ * changed, which is the shape a Codex `file_change` event actually produces.
+ *
+ * Synthetic and repository-independent on purpose: this is the one operation in
+ * the table whose cost does not scale with the repository, so the two columns
+ * agreeing is the result rather than a fixture problem.
+ */
+const DIFF_BEFORE = Array.from({ length: 200 }, (_unused, i) => `line ${i}: the quick brown fox jumps over the lazy dog`).join('\n') + '\n';
+const DIFF_AFTER = DIFF_BEFORE.split('\n').map((line, i) => (i === 20 || i === 90 || i === 160 ? `${line} — edited` : line)).join('\n');
+const DIFF_LABELS = { beforeLabel: 'a/src/sample.ts', afterLabel: 'b/src/sample.ts' };
 
 /**
  * The shell the deleted services ran a command string through.
@@ -100,6 +116,75 @@ function legacyBlockingShell(command, repoRoot) {
         shell: LEGACY_SHELL,
         stdio: ['pipe', 'pipe', 'pipe'],
     });
+}
+
+/**
+ * `runGitDiffNoIndex`, verbatim from `codex-sdk-service.ts` at 8f1ac3ad0.
+ *
+ * A `spawn` rather than an `execFile`, and its own exit-code rule: `--no-index`
+ * exits 1 to say the files differ, which is the answer rather than a failure.
+ * That rule is why the argv-shaped inventory grep found this one and the
+ * shell-string one did not.
+ */
+function legacyDiffSpawn(args, timeout) {
+    return new Promise((resolve, reject) => {
+        const child = spawn('git', ['diff', ...args], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+        let stdout = '';
+        let stderr = '';
+        const timer = setTimeout(() => { child.kill(); reject(new Error('git diff timed out')); }, timeout);
+        child.stdout.setEncoding('utf8');
+        child.stderr.setEncoding('utf8');
+        child.stdout.on('data', chunk => { stdout += chunk; });
+        child.stderr.on('data', chunk => { stderr += chunk; });
+        child.on('error', err => { clearTimeout(timer); reject(err); });
+        child.on('close', code => {
+            clearTimeout(timer);
+            if (code === 0 || code === 1) { resolve(stdout); return; }
+            reject(new Error(stderr.trim() || `git diff exited with code ${code}`));
+        });
+    });
+}
+
+/** `rewriteNoIndexDiffHeaders`, verbatim from `codex-sdk-service.ts` at 8f1ac3ad0. */
+export function legacyRewriteNoIndexHeaders(diff, labels) {
+    let rewroteDiffHeader = false;
+    let rewroteBeforeHeader = false;
+    let rewroteAfterHeader = false;
+    return diff.split(/\r?\n/).map(line => {
+        if (!rewroteDiffHeader && line.startsWith('diff --git ')) {
+            rewroteDiffHeader = true;
+            return `diff --git ${labels.beforeLabel} ${labels.afterLabel}`;
+        }
+        if (!rewroteBeforeHeader && line.startsWith('--- ')) {
+            rewroteBeforeHeader = true;
+            return `--- ${labels.beforeLabel}`;
+        }
+        if (!rewroteAfterHeader && line.startsWith('+++ ')) {
+            rewroteAfterHeader = true;
+            return `+++ ${labels.afterLabel}`;
+        }
+        return line;
+    }).join('\n');
+}
+
+/**
+ * `CodexFileChangeDiffTracker.diffSnapshots`, verbatim at 8f1ac3ad0.
+ *
+ * The whole dance is the baseline, not just the spawn: this is the case where
+ * the four `fs` round trips around the child are most of what moved.
+ */
+export async function legacyNoIndexDiff(before, after, labels, timeout = CODEX_DIFF_TIMEOUT_MS) {
+    const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'codex-file-diff-'));
+    try {
+        const beforePath = path.join(tempDir, 'before');
+        const afterPath = path.join(tempDir, 'after');
+        await fsp.writeFile(beforePath, before, 'utf8');
+        await fsp.writeFile(afterPath, after, 'utf8');
+        const raw = await legacyDiffSpawn(['--no-ext-diff', '--no-index', '--no-prefix', '--', beforePath, afterPath], timeout);
+        return legacyRewriteNoIndexHeaders(raw, labels);
+    } finally {
+        await fsp.rm(tempDir, { recursive: true, force: true });
+    }
 }
 
 /**
@@ -459,6 +544,18 @@ export const CASES = [
             return (await legacyArgv(['remote', 'get-url', remotes[0]], repo.root)).trim();
         },
         native: (repo, git) => git.gitDetectRemoteUrl(repo.root),
+    },
+    {
+        id: 'no-index-diff',
+        title: 'unified diff of two contents (no repository)',
+        children: 1,
+        gated: true,
+        // diffSnapshots at 8f1ac3ad0: mkdtemp, two writes, the spawn, the rm.
+        legacy: () => legacyNoIndexDiff(DIFF_BEFORE, DIFF_AFTER, DIFF_LABELS),
+        native: (repo, git) => git.gitDiffNoIndex(
+            { before: DIFF_BEFORE, after: DIFF_AFTER, ...DIFF_LABELS },
+            { timeout: CODEX_DIFF_TIMEOUT_MS },
+        ),
     },
     {
         id: 'repo-root',

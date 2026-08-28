@@ -15,6 +15,7 @@ ignore = "0.4"
 # which was never published, so it cannot be resolved at all.
 gix = { version = "=0.87.0", default-features = false, features = ["revision", "sha1", "max-performance-safe"] }
 rayon = "1"
-
-[dev-dependencies]
+# Already in the tree via gix-tempfile; promoted from a dev-dependency because
+# `git diff --no-index` needs two real files to compare, and mkdtemp's 0700
+# directory plus RAII cleanup is what the TypeScript's mkdtemp + finally did.
 tempfile = "3"

@@ -23,6 +23,7 @@ use coc_native_core::git::commit::{
     validate_ref, CommitFile, CommitFiles,
 };
 use coc_native_core::git::config::{global_config_add, global_config_get_all};
+use coc_native_core::git::diff::diff_no_index;
 use coc_native_core::git::log::{get_commit, get_commits, Commit, CommitPage};
 use coc_native_core::git::range::{
     changed_files, count_commits_ahead, default_remote_branch, diff_stats, merge_base,
@@ -112,6 +113,9 @@ fn resolve_options(options: Option<GitExecOptions>) -> GitCommandOptions {
                 .map_or(defaults.max_buffer_bytes, |bytes| bytes as usize),
             cwd: options.cwd.map(PathBuf::from),
             env: options.env.map(|env| env.into_iter().collect()).unwrap_or_default(),
+            // Not a JavaScript option: which exit codes mean success belongs to
+            // the command, so the one command that needs it sets it itself.
+            success_exit_codes: Vec::new(),
         },
         None => defaults,
     }
@@ -1406,4 +1410,80 @@ impl Task for GitDiscoverRepoRootTask {
 #[napi(ts_return_type = "Promise<string | null>")]
 pub fn git_discover_repo_root(path: String) -> AsyncTask<GitDiscoverRepoRootTask> {
     AsyncTask::new(GitDiscoverRepoRootTask { path: PathBuf::from(path) })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Diffing two contents with no repository
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The two contents to compare, and what the rendered headers should call them.
+///
+/// An object rather than four positional strings, because the two contents and
+/// the two labels are the same type and swapping a pair silently inverts the
+/// diff.
+#[napi(object)]
+pub struct GitNoIndexDiffInput {
+    /// The content on the left of the diff.
+    pub before: String,
+    /// The content on the right of the diff.
+    pub after: String,
+    /// What the `diff --git` and `---` headers should name — `a/<path>` for a
+    /// file that existed, `/dev/null` for one that did not. Built by the
+    /// caller, like every other path this capability handles.
+    pub before_label: String,
+    /// What the `diff --git` and `+++` headers should name.
+    pub after_label: String,
+}
+
+pub struct GitDiffNoIndexTask {
+    before: String,
+    after: String,
+    before_label: String,
+    after_label: String,
+    options: GitCommandOptions,
+}
+
+impl Task for GitDiffNoIndexTask {
+    type Output = String;
+    type JsValue = String;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        diff_no_index(
+            &self.before,
+            &self.after,
+            &self.before_label,
+            &self.after_label,
+            &self.options,
+        )
+        .map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+/// Render a unified diff of two contents that are already in memory.
+///
+/// No repository is involved: the contents are written to a private temp
+/// directory, compared with `git diff --no-index`, and the directory is removed
+/// before this resolves — one crossing where the TypeScript spent an
+/// `fs.mkdtemp`, two writes, a `spawn` and an `fs.rm`.
+///
+/// Resolves with an empty string when the two contents are identical. Exit code
+/// 1 means "they differ", which is the answer rather than a failure, so only a
+/// genuine error rejects — with the usual `git <args> failed: <stderr>` text.
+#[napi(ts_return_type = "Promise<string>")]
+pub fn git_diff_no_index(
+    input: GitNoIndexDiffInput,
+    options: Option<GitExecOptions>,
+) -> AsyncTask<GitDiffNoIndexTask> {
+    let options = resolve_options(options);
+    AsyncTask::new(GitDiffNoIndexTask {
+        before: input.before,
+        after: input.after,
+        before_label: input.before_label,
+        after_label: input.after_label,
+        options,
+    })
 }

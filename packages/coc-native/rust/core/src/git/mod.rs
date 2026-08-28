@@ -20,6 +20,7 @@
 pub mod branch;
 pub mod commit;
 pub mod config;
+pub mod diff;
 pub mod log;
 pub mod range;
 pub mod remote;
@@ -59,6 +60,15 @@ pub struct GitCommandOptions {
     /// a human runs git. Callers set `GIT_TERMINAL_PROMPT`, `GIT_EDITOR` and
     /// `GIT_SEQUENCE_EDITOR` here.
     pub env: Vec<(String, String)>,
+    /// Exit codes to accept as success in addition to zero. Empty by default,
+    /// so every command keeps the "non-zero is a failure" rule it has always
+    /// had.
+    ///
+    /// Deliberately not exposed to JavaScript: which codes mean success is a
+    /// property of the command, not of the call site. `git diff --no-index`
+    /// exits 1 to say "the files differ", which is its ordinary answer rather
+    /// than an error, so `diff::diff_no_index` sets this itself.
+    pub success_exit_codes: Vec<i32>,
 }
 
 impl Default for GitCommandOptions {
@@ -68,6 +78,7 @@ impl Default for GitCommandOptions {
             max_buffer_bytes: DEFAULT_MAX_BUFFER_BYTES,
             cwd: None,
             env: Vec::new(),
+            success_exit_codes: Vec::new(),
         }
     }
 }
@@ -82,7 +93,8 @@ pub enum GitErrorKind {
     Timeout,
     /// Output passed `max_buffer_bytes`.
     MaxBuffer,
-    /// The child never started — no `git` on PATH, or a `cwd` that is gone.
+    /// The child never started — no `git` on PATH, a `cwd` that is gone, or
+    /// the temp files a `--no-index` diff needs could not be written.
     Spawn,
     /// No child was involved: a `gix`-backed read path could not open the
     /// repository or decode an object.
@@ -261,7 +273,9 @@ pub fn run_git_global(args: &[String], options: &GitCommandOptions) -> Result<St
 /// `args` is carried separately from the command because it is what the error
 /// text shows — the caller asked for `config --global --get-all safe.directory`
 /// and should read that back, not the `-C <path>` prefix that addressed the
-/// repository.
+/// repository. `git::diff` leans on the same split for a different reason: it
+/// passes two temp-file paths as `OsStr` so a non-UTF-8 `TMPDIR` still names
+/// the right files, and only the error text renders them lossily.
 fn run_command(
     mut command: Command,
     args: &[String],
@@ -306,7 +320,10 @@ fn run_command(
         return Err(GitError::new(GitErrorKind::MaxBuffer, args, stderr_text));
     }
     match status {
-        Ok(status) if status.success() => {
+        Ok(status)
+            if status.success()
+                || status.code().is_some_and(|code| options.success_exit_codes.contains(&code)) =>
+        {
             let text = String::from_utf8_lossy(&stdout.bytes).into_owned();
             Ok(strip_one_trailing_newline(&text).to_string())
         }

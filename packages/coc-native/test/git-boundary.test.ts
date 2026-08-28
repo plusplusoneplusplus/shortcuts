@@ -1164,3 +1164,89 @@ describe('commit-detail marshalling', () => {
         });
     });
 });
+
+describe('gitDiffNoIndex', () => {
+    // The one command whose ordinary answer is a non-zero exit. Everything the
+    // TypeScript did around it — mkdtemp, two writes, the spawn, the rm and the
+    // header rewrite — happens inside this one call.
+    const labels = { beforeLabel: 'a/src/main.rs', afterLabel: 'b/src/main.rs' };
+
+    it('renders a unified diff wearing the labels the caller chose', async () => {
+        const diff = await gitAddon.gitDiffNoIndex({
+            before: 'one\ntwo\nthree\n',
+            after: 'one\nTWO\nthree\n',
+            ...labels,
+        });
+        expect(diff.split('\n')[0]).toBe('diff --git a/src/main.rs b/src/main.rs');
+        expect(diff).toContain('--- a/src/main.rs');
+        expect(diff).toContain('+++ b/src/main.rs');
+        expect(diff).toContain('\n-two\n+TWO\n');
+        // The temp files it compared are gone from the text and from disk.
+        expect(diff).not.toContain(os.tmpdir());
+    });
+
+    it('resolves with an empty string when the two contents agree', async () => {
+        await expect(
+            gitAddon.gitDiffNoIndex({ before: 'same\n', after: 'same\n', ...labels }),
+        ).resolves.toBe('');
+    });
+
+    it('labels a file that did not exist as /dev/null', async () => {
+        const diff = await gitAddon.gitDiffNoIndex({
+            before: '',
+            after: 'created\n',
+            beforeLabel: '/dev/null',
+            afterLabel: 'b/new.txt',
+        });
+        expect(diff.split('\n')[0]).toBe('diff --git /dev/null b/new.txt');
+        expect(diff).toContain('--- /dev/null');
+        expect(diff).toContain('+created');
+    });
+
+    it('carries non-ASCII content across the boundary intact', async () => {
+        const diff = await gitAddon.gitDiffNoIndex({
+            before: 'café\n',
+            after: 'caffè ☕\n',
+            ...labels,
+        });
+        expect(diff).toContain('-café');
+        expect(diff).toContain('+caffè ☕');
+    });
+
+    it('rejects with the shared error text when the output cap is hit', async () => {
+        await expect(
+            gitAddon.gitDiffNoIndex({ before: 'one\n', after: 'two\n', ...labels }, {
+                maxBuffer: 8,
+            }),
+        ).rejects.toThrow(/^git diff --no-ext-diff --no-index --no-prefix -- .* failed:/);
+    });
+
+    it('does not block the event loop', async () => {
+        let ticks = 0;
+        const timer = setInterval(() => { ticks += 1; }, 1);
+        try {
+            await Promise.all(
+                Array.from({ length: 20 }, (_unused, index) =>
+                    gitAddon.gitDiffNoIndex({
+                        before: 'one\ntwo\n',
+                        after: `one\n${index}\n`,
+                        ...labels,
+                    }),
+                ),
+            );
+        } finally {
+            clearInterval(timer);
+        }
+        expect(ticks).toBeGreaterThan(0);
+    });
+
+    it('leaves no temp directory behind', async () => {
+        const before = fs.readdirSync(os.tmpdir()).filter(entry => entry.startsWith('codex-file-diff-'));
+        await gitAddon.gitDiffNoIndex({ before: 'one\n', after: 'two\n', ...labels });
+        await gitAddon
+            .gitDiffNoIndex({ before: 'one\n', after: 'two\n', ...labels }, { maxBuffer: 8 })
+            .catch(() => undefined);
+        const after = fs.readdirSync(os.tmpdir()).filter(entry => entry.startsWith('codex-file-diff-'));
+        expect(after).toEqual(before);
+    });
+});

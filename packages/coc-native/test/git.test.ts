@@ -76,7 +76,8 @@ const COMPLETE_ADDON =
     'gitDetectRemoteUrl: async () => null, ' +
     'gitGlobalConfigGetAll: async () => [], ' +
     'gitGlobalConfigAdd: async () => undefined, ' +
-    'gitDiscoverRepoRoot: async () => null };';
+    'gitDiscoverRepoRoot: async () => null, ' +
+    "gitDiffNoIndex: async () => '' };";
 
 /** Point the loader at a JavaScript stand-in for the addon. */
 function useAddon(source: string): string {
@@ -130,6 +131,14 @@ it('exposes the capability when the addon provides it', async () => {
     expect(await api.gitLocalBranchNames('/repo')).toEqual([]);
     expect(await api.gitRemoteUrl('/repo', 'origin')).toBeNull();
     expect(await api.gitDetectRemoteUrl('/repo')).toBeNull();
+    expect(
+        await api.gitDiffNoIndex({
+            before: 'a',
+            after: 'b',
+            beforeLabel: 'a/x.txt',
+            afterLabel: 'b/x.txt',
+        }),
+    ).toBe('');
     expect(nativeGitStatus().loaded).toBe(true);
 });
 
@@ -358,6 +367,44 @@ describe('when the capability is missing', () => {
                 'gitCommitFiles: async () => ({ parentHash: \'\', files: [] }), ' +
                 "gitCommitDiff: async () => '', " +
                 'gitFileContentAtCommit: async () => null, ' +
+                'gitFileExistsAtCommit: async () => false, ' +
+                'gitValidateRef: async () => null, ' +
+                'gitRangeDefaultBranch: async () => null, ' +
+                'gitRangeUpstreamBranch: async () => null, ' +
+                "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
+                'gitRangeMergeBase: async () => null, ' +
+                'gitRangeCountAhead: async () => 0, ' +
+                'gitRangeChangedFiles: async () => [], ' +
+                'parseGitRangeChangedFiles: async () => [], ' +
+                'gitRangeDiffStats: async () => ({ additions: 0, deletions: 0 }), ' +
+                'parseGitDiffShortstat: async () => ({ additions: 0, deletions: 0 }), ' +
+                `gitRepositoryStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
+                `parseGitBranchStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
+                'gitBranchStatus: async () => null, ' +
+                'gitListBranches: async () => ({ branches: [], totalCount: 0, hasMore: false }), ' +
+                'gitLocalBranchNames: async () => [], ' +
+                'gitRemoteUrl: async () => null, ' +
+                'gitDetectRemoteUrl: async () => null, ' +
+                'gitGlobalConfigGetAll: async () => [], ' +
+                'gitGlobalConfigAdd: async () => undefined, ' +
+                'gitDiscoverRepoRoot: async () => null };',
+        );
+        expect(() => loadNativeGit()).toThrow('does not export the git capability');
+        expect(nativeGitStatus().loaded).toBe(false);
+    });
+
+    // And the slice after that: everything a repository read needs, but not the
+    // repository-free diff of two contents the Codex tracker asks for.
+    it('rejects a binary built before the no-index diff export', () => {
+        useAddon(
+            "module.exports = { execGit: async () => 'main', gitStatusEntries: async () => [], " +
+                'parseGitStatusPorcelain: async () => [], ' +
+                'gitLogCommits: async () => ({ commits: [], hasMore: false }), ' +
+                'gitLogCommit: async () => null, ' +
+                'gitCommitFiles: async () => ({ parentHash: \'\', files: [] }), ' +
+                "gitCommitDiff: async () => '', " +
+                'gitFileContentAtCommit: async () => null, ' +
+                'gitFileBytesAtCommit: async () => null, ' +
                 'gitFileExistsAtCommit: async () => false, ' +
                 'gitValidateRef: async () => null, ' +
                 'gitRangeDefaultBranch: async () => null, ' +

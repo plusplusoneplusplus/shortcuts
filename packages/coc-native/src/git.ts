@@ -112,6 +112,15 @@ export type NativeGitBranchPage = Bindings.GitBranchPage;
 /** Which slice of the branch list to read — namespace, page and name filter. */
 export type NativeGitBranchListOptions = Bindings.GitBranchListOptions;
 
+/**
+ * Two contents to diff, and the labels their headers should carry.
+ *
+ * The labels are the caller's own strings — `a/<path>`, `b/<path>` or
+ * `/dev/null` — for the reason no path in this capability is built in Rust:
+ * what a diff header should say about a file is the caller's decision.
+ */
+export type NativeGitNoIndexDiffInput = Bindings.GitNoIndexDiffInput;
+
 /** The exact addon slice required to run git. */
 export interface NativeGitAddon {
     execGit: typeof Bindings.execGit;
@@ -144,6 +153,7 @@ export interface NativeGitAddon {
     gitGlobalConfigGetAll: typeof Bindings.gitGlobalConfigGetAll;
     gitGlobalConfigAdd: typeof Bindings.gitGlobalConfigAdd;
     gitDiscoverRepoRoot: typeof Bindings.gitDiscoverRepoRoot;
+    gitDiffNoIndex: typeof Bindings.gitDiffNoIndex;
 }
 
 /**
@@ -184,6 +194,7 @@ const GIT_EXPORTS = [
     'gitGlobalConfigGetAll',
     'gitGlobalConfigAdd',
     'gitDiscoverRepoRoot',
+    'gitDiffNoIndex',
 ] as const;
 
 /** Whether the loaded module actually exposes the git capability. */

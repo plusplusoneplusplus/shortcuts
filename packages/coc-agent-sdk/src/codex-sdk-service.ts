@@ -411,28 +411,26 @@ class CodexFileChangeDiffTracker {
 
     private async diffSnapshots(relPath: string, before: CodexFileSnapshot, after: CodexFileSnapshot): Promise<string> {
         if (before.exists === after.exists && before.content === after.content) return '';
+        const git = this.git;
+        if (!git) return '';
 
-        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-file-diff-'));
-        try {
-            const beforePath = path.join(tempDir, 'before');
-            const afterPath = path.join(tempDir, 'after');
-            await fs.writeFile(beforePath, before.content, 'utf8');
-            await fs.writeFile(afterPath, after.content, 'utf8');
-            const rawDiff = await runGitDiffNoIndex([
-                '--no-ext-diff',
-                '--no-index',
-                '--no-prefix',
-                '--',
-                beforePath,
-                afterPath,
-            ]);
-            return rewriteNoIndexDiffHeaders(rawDiff, {
+        // One crossing for the whole dance. The temp directory, the two writes,
+        // `git diff --no-index`, the cleanup and the header rewrite all happen
+        // on a libuv worker; what used to be four `fs` round trips plus a Node
+        // `spawn` per changed file is now a single call.
+        //
+        // The labels stay here because they are this file's decision: a path
+        // that was absent on one side is `/dev/null`, which is what the reader
+        // of a unified diff expects and not something Rust should invent.
+        return git.gitDiffNoIndex(
+            {
+                before: before.content,
+                after: after.content,
                 beforeLabel: before.exists ? `a/${relPath}` : '/dev/null',
                 afterLabel: after.exists ? `b/${relPath}` : '/dev/null',
-            });
-        } finally {
-            await fs.rm(tempDir, { recursive: true, force: true });
-        }
+            },
+            { timeout: CODEX_DIFF_TIMEOUT_MS },
+        );
     }
 
     private normalizeRelativePath(input: unknown): string | undefined {
@@ -472,60 +470,6 @@ class CodexFileChangeDiffTracker {
     private normalizePathForCompare(value: string): string {
         return process.platform === 'win32' ? value.toLowerCase() : value;
     }
-}
-
-function rewriteNoIndexDiffHeaders(diff: string, labels: { beforeLabel: string; afterLabel: string }): string {
-    let rewroteDiffHeader = false;
-    let rewroteBeforeHeader = false;
-    let rewroteAfterHeader = false;
-    return diff.split(/\r?\n/).map(line => {
-        if (!rewroteDiffHeader && line.startsWith('diff --git ')) {
-            rewroteDiffHeader = true;
-            return `diff --git ${labels.beforeLabel} ${labels.afterLabel}`;
-        }
-        if (!rewroteBeforeHeader && line.startsWith('--- ')) {
-            rewroteBeforeHeader = true;
-            return `--- ${labels.beforeLabel}`;
-        }
-        if (!rewroteAfterHeader && line.startsWith('+++ ')) {
-            rewroteAfterHeader = true;
-            return `+++ ${labels.afterLabel}`;
-        }
-        return line;
-    }).join('\n');
-}
-
-function runGitDiffNoIndex(args: string[]): Promise<string> {
-    const finalArgs = ['diff', ...args];
-    return new Promise((resolve, reject) => {
-        const child = spawn('git', finalArgs, {
-            stdio: ['ignore', 'pipe', 'pipe'],
-            windowsHide: true,
-        });
-        let stdout = '';
-        let stderr = '';
-        const timer = setTimeout(() => {
-            child.kill();
-            reject(new Error('git diff timed out'));
-        }, CODEX_DIFF_TIMEOUT_MS);
-
-        child.stdout.setEncoding('utf8');
-        child.stderr.setEncoding('utf8');
-        child.stdout.on('data', chunk => { stdout += chunk; });
-        child.stderr.on('data', chunk => { stderr += chunk; });
-        child.on('error', err => {
-            clearTimeout(timer);
-            reject(err);
-        });
-        child.on('close', code => {
-            clearTimeout(timer);
-            if (code === 0 || code === 1) {
-                resolve(stdout);
-                return;
-            }
-            reject(new Error(stderr.trim() || `git diff exited with code ${code}`));
-        });
-    });
 }
 
 interface CodexClient {

@@ -563,6 +563,40 @@ export declare function gitGlobalConfigAdd(key: string, value: string, options?:
  * relative path means.
  */
 export declare function gitDiscoverRepoRoot(path: string): Promise<string | null>
+/**
+ * The two contents to compare, and what the rendered headers should call them.
+ *
+ * An object rather than four positional strings, because the two contents and
+ * the two labels are the same type and swapping a pair silently inverts the
+ * diff.
+ */
+export interface GitNoIndexDiffInput {
+  /** The content on the left of the diff. */
+  before: string
+  /** The content on the right of the diff. */
+  after: string
+  /**
+   * What the `diff --git` and `---` headers should name — `a/<path>` for a
+   * file that existed, `/dev/null` for one that did not. Built by the
+   * caller, like every other path this capability handles.
+   */
+  beforeLabel: string
+  /** What the `diff --git` and `+++` headers should name. */
+  afterLabel: string
+}
+/**
+ * Render a unified diff of two contents that are already in memory.
+ *
+ * No repository is involved: the contents are written to a private temp
+ * directory, compared with `git diff --no-index`, and the directory is removed
+ * before this resolves — one crossing where the TypeScript spent an
+ * `fs.mkdtemp`, two writes, a `spawn` and an `fs.rm`.
+ *
+ * Resolves with an empty string when the two contents are identical. Exit code
+ * 1 means "they differ", which is the answer rather than a failure, so only a
+ * genuine error rejects — with the usual `git <args> failed: <stderr>` text.
+ */
+export declare function gitDiffNoIndex(input: GitNoIndexDiffInput, options?: GitExecOptions | undefined | null): Promise<string>
 /** Filesystem policy for one resolved Notes root. */
 export interface NotesIndexBuildOptions {
   /**

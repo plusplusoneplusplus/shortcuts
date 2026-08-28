@@ -27,10 +27,12 @@ import {
     formatEventLoop,
     formatTable,
     legacyBranchPage,
+    legacyNoIndexDiff,
     legacyParseCommitFiles,
     legacyParseCommitLine,
     legacyParsePorcelain,
     legacyParseRangeFiles,
+    legacyRewriteNoIndexHeaders,
     parseArgs,
     speedup,
     summarize,
@@ -324,6 +326,52 @@ describe('against a real repository', () => {
         expect(native.files.map(key).sort()).toEqual(legacy.files.map(key).sort());
         expect(native.files.some((f: { status: string }) => f.status === 'renamed')).toBe(true);
         expect(native.stats.additions).toBeGreaterThan(0);
+    });
+
+    it('no-index-diff: the same rendering, minus the newline the boundary strips', async () => {
+        const testCase = caseById('no-index-diff');
+        const legacy = await testCase.legacy(repo);
+        const native = await testCase.native(repo, git);
+
+        // Everything that crosses the boundary loses exactly one trailing line
+        // ending; the one production caller `.trimEnd()`s it away. Naming the
+        // divergence here rather than trimming both sides keeps the comparison
+        // able to see any other difference.
+        expect(native).toBe(legacy.replace(/\r?\n$/, ''));
+        expect(native.split('\n')[0]).toBe('diff --git a/src/sample.ts b/src/sample.ts');
+        expect(native).toContain('--- a/src/sample.ts');
+        expect(native).toContain('+++ b/src/sample.ts');
+        expect(native.match(/^\+.*— edited$/gm)).toHaveLength(3);
+        expect(native).not.toContain(os.tmpdir());
+    });
+
+    it('no-index-diff: identical contents measure nothing on either side', async () => {
+        // Both sides have to do the work; a baseline that short-circuits on
+        // equality would be measuring a different operation.
+        const labels = { beforeLabel: 'a/x.ts', afterLabel: 'b/x.ts' };
+        expect(await legacyNoIndexDiff('same\n', 'same\n', labels)).toBe('');
+        expect(await git.gitDiffNoIndex({ before: 'same\n', after: 'same\n', ...labels })).toBe('');
+    });
+
+    it('no-index-diff: neither side leaves a temp directory behind', async () => {
+        // The legacy half is measured over 25 iterations; a baseline that
+        // skipped its `finally` would do less work than the code it stands for
+        // and would fill the temp directory doing it.
+        const tempDirs = () => fs.readdirSync(os.tmpdir()).filter(e => e.startsWith('codex-file-diff-'));
+        const before = tempDirs();
+        await caseById('no-index-diff').legacy(repo);
+        await caseById('no-index-diff').native(repo, git);
+        expect(tempDirs()).toEqual(before);
+    });
+
+    it('legacyRewriteNoIndexHeaders rewrites only the first of each header', async () => {
+        // The removed line `-- signature` reaches the hunk body as
+        // `--- signature`. Both implementations have to leave it alone.
+        const labels = { beforeLabel: 'a/sig.txt', afterLabel: 'b/sig.txt' };
+        const legacy = await legacyNoIndexDiff('keep\n-- signature\n', 'keep\n', labels);
+        const native = await git.gitDiffNoIndex({ before: 'keep\n-- signature\n', after: 'keep\n', ...labels });
+        expect(native).toBe(legacy.replace(/\r?\n$/, ''));
+        expect(native.endsWith('--- signature')).toBe(true);
     });
 
     it('remote-url and repo-root: the same answers', async () => {
