@@ -1,51 +1,92 @@
 /**
  * WorkingTreeService — working-tree operations for the git module.
  *
- * The change list comes from the native addon: git runs on a libuv worker and
- * the porcelain parse happens in Rust, so nothing here spawns a child process
- * to read status. Stage, unstage, discard and delete-untracked still shell out
- * from Node; they move in a later slice.
+ * Every git command here runs in the native addon: git runs on a libuv worker
+ * and the porcelain parse happens in Rust, so nothing in this file spawns a
+ * child process. The one exception is a repository inside a WSL distro, which
+ * still reaches git through `wsl.exe` from Node — the addon runs git on the
+ * host and never learns that WSL exists.
+ *
+ * Deleting an untracked file is `fs`, not git, and stays where it is.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
 import type { NativeGitAddon, NativeGitStatusEntry } from '@plusplusoneplusplus/coc-native';
-import { execFileAsync } from '../utils/exec-utils';
 import { getLogger } from '../logger';
+import { runGitViaWsl, translateWslArgs } from './exec';
 import { GitChange, GitChangeStatus, GitChangeStage, GitOperationResult } from './types';
-import {
-    buildWslCommandArgs,
-    getWslExecutablePath,
-    resolveWorkspaceExecutionContext,
-    translatePathForExecution,
-} from '../utils/workspace-execution';
+import { resolveWorkspaceExecutionContext } from '../utils/workspace-execution';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Internal helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface GitExecOptions {
-    cwd: string;
+/** Milliseconds a working-tree command gets when the caller does not pick one. */
+const DEFAULT_TIMEOUT_MS = 30_000;
+
+/** Per-call overrides for one working-tree git command. */
+interface RunGitOptions {
+    /** Milliseconds before the command is killed. Defaults to 30 000. */
     timeout?: number;
 }
 
-async function execGitAsync(args: string[], options: GitExecOptions): Promise<string> {
-    const executionContext = resolveWorkspaceExecutionContext(options.cwd);
-    if (executionContext.kind === 'wsl') {
-        const { stdout } = await execFileAsync(
-            getWslExecutablePath(),
-            buildWslCommandArgs(executionContext, ['git', ...args]),
-            { timeout: options.timeout ?? 30_000 },
-        );
-        return stdout;
+/**
+ * Coerce a timeout to the unsigned 32-bit integer the native boundary takes.
+ *
+ * N-API rejects the conversion for a float or a value past 2^32, where Node
+ * merely behaved oddly; clamping keeps a sloppy caller working rather than
+ * turning it into a new failure mode.
+ */
+function toUint32(value: number): number {
+    if (!Number.isFinite(value) || value < 0) {
+        return DEFAULT_TIMEOUT_MS;
     }
+    return Math.min(Math.floor(value), 0xffffffff);
+}
 
-    const { stdout } = await execFileAsync('git', args, {
-        cwd: options.cwd,
-        timeout: options.timeout ?? 30_000,
-    });
-    return stdout;
+/**
+ * The native git capability, and whether this repository has to take the WSL
+ * path to reach git.
+ *
+ * The addon is loaded on both paths: even a WSL repository parses its porcelain
+ * in Rust. Callers that would otherwise swallow a `NativeAddonLoadError` into
+ * "no changes" or "no diff" call this before their try/catch, so a stale binary
+ * still names the rebuild.
+ */
+function native(repoRoot: string): { addon: NativeGitAddon; wsl: boolean } {
+    return {
+        addon: loadNativeGit(),
+        wsl: resolveWorkspaceExecutionContext(repoRoot).kind === 'wsl',
+    };
+}
+
+/**
+ * Run one git command against this repository.
+ *
+ * Native host → the addon's runner, on a libuv worker. WSL → `wsl.exe` from
+ * Node, with path-shaped arguments translated into the distro's namespace,
+ * because the file paths this service is handed are the absolute host paths
+ * `getAllChanges` built. Both paths reject with `git <args> failed: <stderr>`.
+ */
+async function runGit(repoRoot: string, args: string[], options: RunGitOptions = {}): Promise<string> {
+    const { addon, wsl } = native(repoRoot);
+    const timeout = options.timeout ?? DEFAULT_TIMEOUT_MS;
+    if (wsl) {
+        const executionContext = resolveWorkspaceExecutionContext(repoRoot);
+        // Unreachable: `native()` just reported `wsl: true`. It exists to keep
+        // the narrowing honest rather than cast it away.
+        if (executionContext.kind !== 'wsl') {
+            throw new Error(`${repoRoot} is not a WSL repository`);
+        }
+        return runGitViaWsl(
+            executionContext,
+            translateWslArgs(['-C', repoRoot, ...args], executionContext),
+            { timeout, errorArgs: args },
+        );
+    }
+    return addon.execGit(args, repoRoot, { timeout: toUint32(timeout) });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -76,19 +117,14 @@ const STATUS_TIMEOUT_MS = 15_000;
  * the same parser, so the two paths cannot drift.
  */
 async function readStatusEntries(
-    native: NativeGitAddon,
+    addon: NativeGitAddon,
     repoRoot: string,
 ): Promise<NativeGitStatusEntry[]> {
-    const executionContext = resolveWorkspaceExecutionContext(repoRoot);
-    if (executionContext.kind === 'wsl') {
-        const execRepoRoot = translatePathForExecution(repoRoot, executionContext);
-        const stdout = await execGitAsync(['-C', execRepoRoot, ...STATUS_ARGS], {
-            cwd: repoRoot,
-            timeout: STATUS_TIMEOUT_MS,
-        });
-        return native.parseGitStatusPorcelain(stdout);
+    if (resolveWorkspaceExecutionContext(repoRoot).kind === 'wsl') {
+        const stdout = await runGit(repoRoot, STATUS_ARGS, { timeout: STATUS_TIMEOUT_MS });
+        return addon.parseGitStatusPorcelain(stdout);
     }
-    return native.gitStatusEntries(repoRoot, { timeout: STATUS_TIMEOUT_MS });
+    return addon.gitStatusEntries(repoRoot, { timeout: STATUS_TIMEOUT_MS });
 }
 
 /**
@@ -130,9 +166,9 @@ export class WorkingTreeService {
         // changes to show", but a missing or capability-stale binary is a
         // NativeAddonLoadError naming the rebuild, and swallowing it would
         // render an empty Git tab for a repository full of changes.
-        const native = loadNativeGit();
+        const addon = loadNativeGit();
         try {
-            const entries = await readStatusEntries(native, repoRoot);
+            const entries = await readStatusEntries(addon, repoRoot);
             return entries.map(entry => toGitChange(entry, repoRoot, repositoryName));
         } catch (error) {
             getLogger().error('Git', 'getAllChanges failed', error instanceof Error ? error : undefined);
@@ -145,11 +181,7 @@ export class WorkingTreeService {
      */
     async stageFile(repoRoot: string, filePath: string): Promise<GitOperationResult> {
         try {
-            const executionContext = resolveWorkspaceExecutionContext(repoRoot);
-            await execGitAsync(
-                ['-C', translatePathForExecution(repoRoot, executionContext), 'add', '--', translatePathForExecution(filePath, executionContext)],
-                { cwd: repoRoot },
-            );
+            await runGit(repoRoot, ['add', '--', filePath]);
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -165,19 +197,12 @@ export class WorkingTreeService {
     async stageFiles(repoRoot: string, filePaths: string[]): Promise<{ success: boolean; staged: number; errors: string[] }> {
         if (filePaths.length === 0) return { success: true, staged: 0, errors: [] };
         const errors: string[] = [];
-        const executionContext = resolveWorkspaceExecutionContext(repoRoot);
         try {
-            await execGitAsync(
-                ['-C', translatePathForExecution(repoRoot, executionContext), 'add', '--', ...filePaths.map(f => translatePathForExecution(f, executionContext))],
-                { cwd: repoRoot },
-            );
+            await runGit(repoRoot, ['add', '--', ...filePaths]);
         } catch {
             for (const filePath of filePaths) {
                 try {
-                    await execGitAsync(
-                        ['-C', translatePathForExecution(repoRoot, executionContext), 'add', '--', translatePathForExecution(filePath, executionContext)],
-                        { cwd: repoRoot },
-                    );
+                    await runGit(repoRoot, ['add', '--', filePath]);
                 } catch (e) {
                     errors.push(`${filePath}: ${e instanceof Error ? e.message : 'Unknown error'}`);
                 }
@@ -191,20 +216,13 @@ export class WorkingTreeService {
      * Falls back to `git rm --cached` for repos with no commits yet.
      */
     async unstageFile(repoRoot: string, filePath: string): Promise<GitOperationResult> {
-        const executionContext = resolveWorkspaceExecutionContext(repoRoot);
         try {
-            await execGitAsync(
-                ['-C', translatePathForExecution(repoRoot, executionContext), 'reset', 'HEAD', '--', translatePathForExecution(filePath, executionContext)],
-                { cwd: repoRoot },
-            );
+            await runGit(repoRoot, ['reset', 'HEAD', '--', filePath]);
             return { success: true };
-        } catch (firstError) {
+        } catch {
             // No commits yet — fall back to `git rm --cached`
             try {
-                await execGitAsync(
-                    ['-C', translatePathForExecution(repoRoot, executionContext), 'rm', '--cached', '--', translatePathForExecution(filePath, executionContext)],
-                    { cwd: repoRoot },
-                );
+                await runGit(repoRoot, ['rm', '--cached', '--', filePath]);
                 return { success: true };
             } catch (fallbackError) {
                 const errorMessage = fallbackError instanceof Error ? fallbackError.message : 'Unknown error';
@@ -221,25 +239,15 @@ export class WorkingTreeService {
     async unstageFiles(repoRoot: string, filePaths: string[]): Promise<{ success: boolean; unstaged: number; errors: string[] }> {
         if (filePaths.length === 0) return { success: true, unstaged: 0, errors: [] };
         const errors: string[] = [];
-        const executionContext = resolveWorkspaceExecutionContext(repoRoot);
         try {
-            await execGitAsync(
-                ['-C', translatePathForExecution(repoRoot, executionContext), 'reset', 'HEAD', '--', ...filePaths.map(f => translatePathForExecution(f, executionContext))],
-                { cwd: repoRoot },
-            );
+            await runGit(repoRoot, ['reset', 'HEAD', '--', ...filePaths]);
         } catch {
             for (const filePath of filePaths) {
                 try {
-                    await execGitAsync(
-                        ['-C', translatePathForExecution(repoRoot, executionContext), 'reset', 'HEAD', '--', translatePathForExecution(filePath, executionContext)],
-                        { cwd: repoRoot },
-                    );
+                    await runGit(repoRoot, ['reset', 'HEAD', '--', filePath]);
                 } catch {
                     try {
-                        await execGitAsync(
-                            ['-C', translatePathForExecution(repoRoot, executionContext), 'rm', '--cached', '--', translatePathForExecution(filePath, executionContext)],
-                            { cwd: repoRoot },
-                        );
+                        await runGit(repoRoot, ['rm', '--cached', '--', filePath]);
                     } catch (e) {
                         errors.push(`${filePath}: ${e instanceof Error ? e.message : 'Unknown error'}`);
                     }
@@ -255,11 +263,7 @@ export class WorkingTreeService {
      */
     async discardChanges(repoRoot: string, filePath: string): Promise<GitOperationResult> {
         try {
-            const executionContext = resolveWorkspaceExecutionContext(repoRoot);
-            await execGitAsync(
-                ['-C', translatePathForExecution(repoRoot, executionContext), 'checkout', '--', translatePathForExecution(filePath, executionContext)],
-                { cwd: repoRoot },
-            );
+            await runGit(repoRoot, ['checkout', '--', filePath]);
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -276,19 +280,12 @@ export class WorkingTreeService {
     private async discardPaths(repoRoot: string, filePaths: string[]): Promise<{ discarded: number; errors: string[] }> {
         if (filePaths.length === 0) return { discarded: 0, errors: [] };
         const errors: string[] = [];
-        const executionContext = resolveWorkspaceExecutionContext(repoRoot);
         try {
-            await execGitAsync(
-                ['-C', translatePathForExecution(repoRoot, executionContext), 'checkout', '--', ...filePaths.map(f => translatePathForExecution(f, executionContext))],
-                { cwd: repoRoot },
-            );
+            await runGit(repoRoot, ['checkout', '--', ...filePaths]);
         } catch {
             for (const filePath of filePaths) {
                 try {
-                    await execGitAsync(
-                        ['-C', translatePathForExecution(repoRoot, executionContext), 'checkout', '--', translatePathForExecution(filePath, executionContext)],
-                        { cwd: repoRoot },
-                    );
+                    await runGit(repoRoot, ['checkout', '--', filePath]);
                 } catch (e) {
                     errors.push(`${filePath}: ${e instanceof Error ? e.message : 'Unknown error'}`);
                 }
@@ -352,17 +349,17 @@ export class WorkingTreeService {
      * Returns empty string on error or when there is no diff.
      */
     async getFileDiff(repoRoot: string, filePath: string, staged: boolean): Promise<string> {
+        // Deliberately outside the try: an empty string here means "no diff",
+        // and a missing or capability-stale binary is a NativeAddonLoadError
+        // naming the rebuild — rendering it as an empty diff would hide it.
+        loadNativeGit();
         try {
-            const executionContext = resolveWorkspaceExecutionContext(repoRoot);
-            const args = ['-C', translatePathForExecution(repoRoot, executionContext), 'diff', '-U99999'];
+            const args = ['diff', '-U99999'];
             if (staged) {
                 args.push('--staged');
             }
-            args.push('--', translatePathForExecution(filePath, executionContext));
-            return await execGitAsync(
-                args,
-                { cwd: repoRoot }
-            );
+            args.push('--', filePath);
+            return await runGit(repoRoot, args);
         } catch (error) {
             getLogger().error('Git', `getFileDiff failed: ${filePath}`, error instanceof Error ? error : undefined);
             return '';

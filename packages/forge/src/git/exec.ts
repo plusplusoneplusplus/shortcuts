@@ -16,6 +16,7 @@ import {
     resolveWorkspaceExecutionContext,
     translatePathForExecution,
 } from '../utils/workspace-execution';
+import type { WslExecutionContext } from '../utils/workspace-execution';
 
 /**
  * Options for `execGitAsync`.
@@ -42,6 +43,84 @@ const DEFAULT_TIMEOUT = 30_000;               // 30 s
 export function createGitExecError(args: string[], err: unknown): Error {
     const stderr = (err as { stderr?: string | Buffer })?.stderr?.toString().trim() ?? '';
     return new Error(`git ${args.join(' ')} failed: ${stderr}`);
+}
+
+/**
+ * Per-call overrides for {@link runGitViaWsl}.
+ *
+ * Every field is optional and every default is Node's, not this module's: the
+ * three callers spell out different subsets today, and the point of sharing the
+ * runner is that none of their command lines change.
+ */
+export interface WslGitOptions {
+    /** Milliseconds before the command is killed. Defaults to 30 000. */
+    timeout?: number;
+    /** Bytes of stdout kept. Omitted means Node's own default. */
+    maxBuffer?: number;
+    /** Working directory for `wsl.exe` itself; the distro's own is `--cd`. */
+    cwd?: string;
+    /** Environment overrides layered on the one this process already has. */
+    env?: Record<string, string>;
+    /**
+     * The arguments to name in a failure message, when they are not the ones
+     * being run. Callers that address the repository with `-C` report the
+     * sub-command the caller asked for instead, which is what the UI shows.
+     */
+    errorArgs?: string[];
+}
+
+/**
+ * Run `git <args>` inside a WSL distro.
+ *
+ * The one git runner in forge that still starts a child process from Node, and
+ * the only part of the move that stays in TypeScript: the native addon runs git
+ * on the host and never learns that WSL exists. `--cd` puts git in the
+ * repository, so a caller only passes `-C` when it always has.
+ *
+ * Returns stdout with one trailing line ending removed and rejects with
+ * `git <args> failed: <stderr>`, so it is indistinguishable from the native
+ * runner to everything above it.
+ */
+export async function runGitViaWsl(
+    executionContext: WslExecutionContext,
+    args: string[],
+    options: WslGitOptions = {},
+): Promise<string> {
+    try {
+        const { stdout } = await execFileAsync(
+            getWslExecutablePath(),
+            buildWslCommandArgs(executionContext, ['git', ...args]),
+            {
+                timeout: options.timeout ?? DEFAULT_TIMEOUT,
+                maxBuffer: options.maxBuffer,
+                cwd: options.cwd,
+                windowsHide: true,
+                ...(options.env ? { env: { ...process.env, ...options.env } } : {}),
+            },
+        );
+        return stdout.replace(/\r?\n$/, '');
+    } catch (err: unknown) {
+        throw createGitExecError(options.errorArgs ?? args, err);
+    }
+}
+
+/**
+ * Translate the path-shaped arguments of a git command into a distro's
+ * namespace, leaving everything else alone.
+ *
+ * A file path Node built is a Windows path that git inside the distro cannot
+ * open. Sub-commands, flags and refs are not paths, and
+ * `translatePathForExecution` throws for them rather than returning them
+ * unchanged — so the throw is what identifies them.
+ */
+export function translateWslArgs(args: string[], executionContext: WslExecutionContext): string[] {
+    return args.map(value => {
+        try {
+            return translatePathForExecution(value, executionContext);
+        } catch {
+            return value;
+        }
+    });
 }
 
 /**
@@ -96,16 +175,14 @@ export async function execGitAsync(
     const executionContext = resolveWorkspaceExecutionContext(repoRoot);
     if (executionContext.kind === 'wsl') {
         const execRepoRoot = translatePathForExecution(repoRoot, executionContext);
-        try {
-            const { stdout } = await execFileAsync(
-                getWslExecutablePath(),
-                buildWslCommandArgs(executionContext, ['git', '-C', execRepoRoot, ...args]),
-                { maxBuffer, timeout, cwd: options?.cwd, windowsHide: true },
-            );
-            return stdout.replace(/\r?\n$/, '');
-        } catch (err: unknown) {
-            throw createGitExecError(args, err);
-        }
+        // Only the repository path is translated here. The rest of `args` is
+        // passed through untouched, because this helper's callers have always
+        // addressed files by whatever string they were handed.
+        return runGitViaWsl(
+            executionContext,
+            ['-C', execRepoRoot, ...args],
+            { maxBuffer, timeout, cwd: options?.cwd, errorArgs: args },
+        );
     }
 
     // Deliberately outside the try: a missing or capability-stale binary is a

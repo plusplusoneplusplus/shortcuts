@@ -31,13 +31,12 @@ import type {
 } from '@plusplusoneplusplus/coc-native';
 import { execFileAsync } from '../utils/exec-utils';
 import { getLogger } from '../logger';
-import { createGitExecError } from './exec';
+import { createGitExecError, runGitViaWsl, translateWslArgs } from './exec';
 import { ensureGitSafeDirectoryAsync } from './safe-directory';
 import {
     buildWslCommandArgs,
     getWslExecutablePath,
     resolveWorkspaceExecutionContext,
-    translatePathForExecution,
 } from '../utils/workspace-execution';
 import type { WslExecutionContext } from '../utils/workspace-execution';
 import {
@@ -157,46 +156,17 @@ export class BranchService {
         const timeout = options.timeout ?? DEFAULT_TIMEOUT_MS;
         const env = { GIT_TERMINAL_PROMPT: '0', ...options.env };
         if (wsl) {
-            return this.runGitViaWsl(repoRoot, args, timeout, env);
+            // The temporary patch and commit-message files this service writes
+            // are created by Node at a Windows path that git inside the distro
+            // cannot open, so path-shaped arguments are translated first.
+            const executionContext = this.wslContext(repoRoot);
+            return runGitViaWsl(
+                executionContext,
+                translateWslArgs(args, executionContext),
+                { timeout, env, errorArgs: args },
+            );
         }
         return addon.execGit(args, repoRoot, { timeout: toUint32(timeout), env });
-    }
-
-    /**
-     * The WSL twin of {@link runGit}.
-     *
-     * Path-shaped arguments are translated into the distro's namespace: the
-     * temporary patch and commit-message files this service writes are created
-     * by Node at a Windows path that git inside the distro cannot open.
-     */
-    private async runGitViaWsl(
-        repoRoot: string,
-        args: string[],
-        timeout: number,
-        env: Record<string, string>,
-    ): Promise<string> {
-        const executionContext = this.wslContext(repoRoot);
-        const translate = (value: string): string => {
-            try {
-                return translatePathForExecution(value, executionContext);
-            } catch {
-                return value;
-            }
-        };
-        try {
-            const { stdout } = await execFileAsync(
-                getWslExecutablePath(),
-                buildWslCommandArgs(executionContext, ['git', ...args.map(translate)]),
-                {
-                    timeout,
-                    windowsHide: true,
-                    env: { ...process.env, ...env },
-                },
-            );
-            return stdout.replace(/\r?\n$/, '');
-        } catch (error) {
-            throw createGitExecError(args, error);
-        }
     }
 
     /**
