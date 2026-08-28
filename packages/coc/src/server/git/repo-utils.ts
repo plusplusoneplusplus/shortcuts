@@ -10,6 +10,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { execFileSync } from 'child_process';
+import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
 import type { TaskPayload } from '../tasks/task-types';
 import {
     getWslExecutablePath,
@@ -29,7 +30,7 @@ import {
  * @param payload - The task payload to extract from
  * @returns Normalized repo path (absolute, lowercase on Windows), or null
  */
-export function extractRepoId(payload: TaskPayload): string | null {
+export async function extractRepoId(payload: TaskPayload): Promise<string | null> {
     const candidates: string[] = [];
 
     // 1. workingDirectory (most common)
@@ -67,7 +68,7 @@ export function extractRepoId(payload: TaskPayload): string | null {
             continue;
         }
 
-        const gitRoot = findGitRoot(candidate);
+        const gitRoot = await findGitRoot(candidate);
         if (gitRoot) {
             const executionContext = resolveWorkspaceExecutionContext(candidate);
             if (executionContext.kind === 'wsl' && gitRoot.startsWith('/')) {
@@ -83,61 +84,57 @@ export function extractRepoId(payload: TaskPayload): string | null {
 /**
  * Find the git repository root for a given path.
  *
- * Executes `git rev-parse --show-toplevel` to locate the repo root.
- * Works for both files and directories within a git repository.
+ * Answers what `git rev-parse --show-toplevel` answers, but without a child
+ * process: the native addon discovers the repository with `gix` on a worker
+ * thread. This used to be an `execFileSync`, so every lookup blocked the event
+ * loop for the length of a spawn.
+ *
+ * Repos inside a WSL distro keep their `wsl.exe` shell-out here in TypeScript —
+ * Rust only ever runs git on the native host. That branch stays synchronous
+ * because it is the dispatch path the goal exempts, and it is unreachable off
+ * Windows.
  *
  * @param pathLike - File or directory path (absolute or relative)
  * @returns Absolute path to git root, or null if not in a git repo
  */
-export function findGitRoot(pathLike: string): string | null {
-    try {
-        const executionContext = resolveWorkspaceExecutionContext(pathLike);
+export async function findGitRoot(pathLike: string): Promise<string | null> {
+    const executionContext = resolveWorkspaceExecutionContext(pathLike);
 
-        if (executionContext.kind === 'wsl') {
-            const args: string[] = [];
-            if (executionContext.distro) {
-                args.push('-d', executionContext.distro);
-            }
-            args.push(
-                '--',
-                'sh',
-                '-lc',
-                'target="$1"; if [ -d "$target" ]; then candidate="$target"; else candidate="$(dirname "$target")"; fi; [ -d "$candidate" ] || exit 1; git -C "$candidate" rev-parse --show-toplevel',
-                'sh',
-                executionContext.linuxWorkingDirectory,
-            );
-            const result = execFileSync(
-                getWslExecutablePath(),
-                args,
-                { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
-            );
-            const gitRoot = result.trim();
-            return gitRoot.length > 0 ? gitRoot : null;
-        }
-
-        const absolutePath = path.resolve(pathLike);
-        let stats: fs.Stats;
+    if (executionContext.kind !== 'wsl') {
+        // Outside the try: a stale binary must not be swallowed into "not a
+        // repository", which is what every other failure here means. Reporting
+        // no root would silently unpartition every task in the queue.
+        const addon = loadNativeGit();
         try {
-            stats = fs.statSync(absolutePath);
+            // `path.resolve` stays in Node so the process's own working
+            // directory keeps deciding what a relative path means.
+            const gitRoot = await addon.gitDiscoverRepoRoot(path.resolve(pathLike));
+            return gitRoot && path.isAbsolute(gitRoot) ? gitRoot : null;
         } catch {
             return null;
         }
+    }
 
-        const cwd = stats.isDirectory() ? absolutePath : path.dirname(absolutePath);
-
-        const result = execFileSync('git', ['rev-parse', '--show-toplevel'], {
-            cwd,
-            encoding: 'utf8',
-            stdio: ['ignore', 'pipe', 'ignore'],
-        });
-
-        const gitRoot = result.trim();
-
-        if (gitRoot.length > 0 && path.isAbsolute(gitRoot)) {
-            return gitRoot;
+    try {
+        const args: string[] = [];
+        if (executionContext.distro) {
+            args.push('-d', executionContext.distro);
         }
-
-        return null;
+        args.push(
+            '--',
+            'sh',
+            '-lc',
+            'target="$1"; if [ -d "$target" ]; then candidate="$target"; else candidate="$(dirname "$target")"; fi; [ -d "$candidate" ] || exit 1; git -C "$candidate" rev-parse --show-toplevel',
+            'sh',
+            executionContext.linuxWorkingDirectory,
+        );
+        const result = execFileSync(
+            getWslExecutablePath(),
+            args,
+            { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+        );
+        const gitRoot = result.trim();
+        return gitRoot.length > 0 ? gitRoot : null;
     } catch {
         return null;
     }

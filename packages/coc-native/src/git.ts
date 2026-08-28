@@ -123,6 +123,7 @@ export interface NativeGitAddon {
     gitDetectRemoteUrl: typeof Bindings.gitDetectRemoteUrl;
     gitGlobalConfigGetAll: typeof Bindings.gitGlobalConfigGetAll;
     gitGlobalConfigAdd: typeof Bindings.gitGlobalConfigAdd;
+    gitDiscoverRepoRoot: typeof Bindings.gitDiscoverRepoRoot;
 }
 
 /**
@@ -155,6 +156,7 @@ const GIT_EXPORTS = [
     'gitDetectRemoteUrl',
     'gitGlobalConfigGetAll',
     'gitGlobalConfigAdd',
+    'gitDiscoverRepoRoot',
 ] as const;
 
 /** Whether the loaded module actually exposes the git capability. */

@@ -17,11 +17,11 @@ describe('repo-utils (WSL)', () => {
         vi.restoreAllMocks();
     });
 
-    it.runIf(process.platform === 'win32')('routes git root discovery through wsl.exe for WSL paths', () => {
+    it.runIf(process.platform === 'win32')('routes git root discovery through wsl.exe for WSL paths', async () => {
         const spy = vi.spyOn(childProcess, 'execFileSync').mockReturnValue('/home/tester/repo\n' as never);
         const repoPath = String.raw`\\wsl$\Ubuntu\home\tester\repo`;
 
-        const gitRoot = findGitRoot(repoPath);
+        const gitRoot = await findGitRoot(repoPath);
 
         expect(gitRoot).toBe('/home/tester/repo');
         expect(spy).toHaveBeenCalledWith(

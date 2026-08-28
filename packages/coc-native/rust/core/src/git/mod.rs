@@ -22,6 +22,7 @@ pub mod config;
 pub mod log;
 pub mod range;
 pub mod remote;
+pub mod repo;
 pub mod status;
 
 use std::io::Read;

@@ -893,3 +893,57 @@ describe('global configuration marshalling', () => {
         expect(answers).toEqual(Array(8).fill(['/repo']));
     });
 });
+
+describe('repository discovery marshalling', () => {
+    it('resolves with the work-tree root as a string', async () => {
+        await expect(gitAddon.gitDiscoverRepoRoot(repo)).resolves.toBe(repo);
+    });
+
+    it('walks up from a nested directory', async () => {
+        const nested = path.join(repo, 'nested', 'deeper');
+        fs.mkdirSync(nested, { recursive: true });
+        await expect(gitAddon.gitDiscoverRepoRoot(nested)).resolves.toBe(repo);
+    });
+
+    it('answers for the directory holding a file', async () => {
+        await expect(gitAddon.gitDiscoverRepoRoot(path.join(repo, 'README.md'))).resolves.toBe(repo);
+    });
+
+    // A top-level `Option<String>` marshals as an explicit `null`, unlike an
+    // absent `Option` inside an object, which arrives as a missing property.
+    it('resolves with null rather than undefined outside a repository', async () => {
+        const outside = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-nogit-')));
+        try {
+            const found = await gitAddon.gitDiscoverRepoRoot(outside);
+            expect(found).toBeNull();
+        } finally {
+            fs.rmSync(outside, { recursive: true, force: true });
+        }
+    });
+
+    // Discovery walks upward, so without the existence check this would answer
+    // with the repository above the path that is not there.
+    it('resolves with null for a missing path inside a repository', async () => {
+        await expect(gitAddon.gitDiscoverRepoRoot(path.join(repo, 'no', 'such', 'place'))).resolves.toBeNull();
+    });
+
+    it('does not block the event loop', async () => {
+        let ticks = 0;
+        const timer = setInterval(() => { ticks += 1; }, 1);
+        try {
+            await Promise.all(
+                Array.from({ length: 40 }, () => gitAddon.gitDiscoverRepoRoot(repo)),
+            );
+        } finally {
+            clearInterval(timer);
+        }
+        expect(ticks).toBeGreaterThan(0);
+    });
+
+    it('serves concurrent lookups of the same path', async () => {
+        const answers = await Promise.all(
+            Array.from({ length: 8 }, () => gitAddon.gitDiscoverRepoRoot(repo)),
+        );
+        expect(answers).toEqual(Array(8).fill(repo));
+    });
+});

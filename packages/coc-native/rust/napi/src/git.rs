@@ -26,6 +26,7 @@ use coc_native_core::git::range::{
     BaseRefResolution, DefaultBranch, DiffStats, RangeFile,
 };
 use coc_native_core::git::remote::{detect_remote_url, remote_url};
+use coc_native_core::git::repo::discover_workdir;
 use coc_native_core::git::status::{
     parse_porcelain, status_entries, StatusEntry, STATUS_TIMEOUT_MS,
 };
@@ -1081,4 +1082,39 @@ pub fn git_global_config_add(
 ) -> AsyncTask<GitGlobalConfigAddTask> {
     let options = resolve_options(options);
     AsyncTask::new(GitGlobalConfigAddTask { key, value, options })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Repository discovery
+// ─────────────────────────────────────────────────────────────────────────────
+
+pub struct GitDiscoverRepoRootTask {
+    path: PathBuf,
+}
+
+impl Task for GitDiscoverRepoRootTask {
+    type Output = Option<String>;
+    type JsValue = Option<String>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        discover_workdir(&self.path).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+}
+
+/// The working-tree root containing `path` — `git rev-parse --show-toplevel`
+/// without the child process.
+///
+/// Resolves with `null` for every case the caller reads as "not a repository":
+/// a path that does not exist, a path outside any repository, and a bare
+/// repository, where `--show-toplevel` fails because there is no work tree.
+/// `path` is expected absolute; the caller resolves relative paths with Node's
+/// `path.resolve` so the process's own working directory keeps deciding what a
+/// relative path means.
+#[napi(ts_return_type = "Promise<string | null>")]
+pub fn git_discover_repo_root(path: String) -> AsyncTask<GitDiscoverRepoRootTask> {
+    AsyncTask::new(GitDiscoverRepoRootTask { path: PathBuf::from(path) })
 }

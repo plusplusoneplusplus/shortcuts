@@ -458,6 +458,18 @@ export declare function gitGlobalConfigGetAll(key: string, options?: GitExecOpti
  * has approved, and replacing it would revoke the rest.
  */
 export declare function gitGlobalConfigAdd(key: string, value: string, options?: GitExecOptions | undefined | null): Promise<void>
+/**
+ * The working-tree root containing `path` — `git rev-parse --show-toplevel`
+ * without the child process.
+ *
+ * Resolves with `null` for every case the caller reads as "not a repository":
+ * a path that does not exist, a path outside any repository, and a bare
+ * repository, where `--show-toplevel` fails because there is no work tree.
+ * `path` is expected absolute; the caller resolves relative paths with Node's
+ * `path.resolve` so the process's own working directory keeps deciding what a
+ * relative path means.
+ */
+export declare function gitDiscoverRepoRoot(path: string): Promise<string | null>
 /** Filesystem policy for one resolved Notes root. */
 export interface NotesIndexBuildOptions {
   /**
