@@ -52,6 +52,19 @@ describe('ConversationMetadataPopover', () => {
         expect(screen.getByRole('button', { name: /conversation metadata/i })).toBeDefined();
     });
 
+    it('uses the default 26px trigger classes when no override is given', () => {
+        renderPopover();
+        const btn = screen.getByRole('button', { name: /conversation metadata/i });
+        expect(btn.className).toContain('w-[26px]');
+        expect(btn.className).toContain('h-[26px]');
+    });
+
+    it('applies a triggerClassName override', () => {
+        render(<ConversationMetadataPopover process={BASE_PROCESS} triggerClassName="h-6 w-6 custom-trigger" />);
+        const btn = screen.getByRole('button', { name: /conversation metadata/i });
+        expect(btn.className).toBe('h-6 w-6 custom-trigger');
+    });
+
     it('renders the trigger button with "i" text', () => {
         renderPopover();
         const btn = screen.getByRole('button', { name: /conversation metadata/i });

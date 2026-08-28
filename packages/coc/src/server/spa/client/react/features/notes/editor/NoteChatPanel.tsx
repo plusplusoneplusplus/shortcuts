@@ -7,6 +7,7 @@ import { InitialChatComposer } from '../../chat/NewChatArea';
 import type { InitialChatComposerSubmission } from '../../chat/NewChatArea';
 import { NoteContextBanner } from './NoteContextBanner';
 import { NotesChatHeader, type NotesChatWindowMode } from './NotesChatHeader';
+import type { ChatHeaderMetadata } from '../../chat/conversation/ChatMetadataButton';
 import { NoteReferenceChips } from './NoteReferenceChips';
 import { formatNoteReferences } from './useNoteReferences';
 import type { NoteTextReference } from './useNoteReferences';
@@ -105,6 +106,16 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
     useEffect(() => {
         onHasChatChange?.(!!taskId);
     }, [taskId, onHasChatChange]);
+
+    // ── Conversation metadata for the header "i" ─────────────────────────────
+    // ChatDetail owns the chat state and publishes this bundle upward; the
+    // compact header only renders it. Cleared whenever the chat goes away
+    // (New chat, /new, /clear, scope switch) so the empty state can never show
+    // the previous conversation's metadata.
+    const [chatMeta, setChatMeta] = useState<ChatHeaderMetadata | null>(null);
+    useEffect(() => {
+        if (!taskId) setChatMeta(null);
+    }, [taskId]);
 
     // ── Moving the chat's active note ────────────────────────────────────────
     // Nothing is sent when the note changes: clicking a note in the sidebar is
@@ -261,6 +272,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                 chatNotePath={chatNotePath}
                 chatNoteTitle={chatNoteTitle}
                 isSwitched={isNoteSwitched}
+                chatMetadata={chatMeta}
             />
 
             {/* Empty state / no-note state — no chat yet */}
@@ -359,6 +371,7 @@ export function NoteChatPanel({ workspaceId, notePath, noteTitle, onClose, onBef
                         pendingPrefix={pendingPrefix}
                         onClearPendingPrefix={clearPendingPrefix}
                         onProcessLoaded={syncChatNoteContext}
+                        onHeaderMetadataChange={setChatMeta}
                     />
                 </ChatPreferencesProvider>
             )}

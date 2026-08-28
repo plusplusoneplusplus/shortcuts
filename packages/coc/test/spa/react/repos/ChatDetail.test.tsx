@@ -2382,6 +2382,85 @@ describe('ChatDetail', () => {
     });
 });
 
+// ── Header metadata publishing (hideHeader hosts) ───────────────────────────
+//
+// Hosts that hide the built-in header (Notes Chat) render the shared "i" button
+// themselves, so ChatDetail publishes the bundle the header would have used.
+// The null emits are what stop one conversation's metadata leaking into the next.
+describe('ChatDetail — onHeaderMetadataChange', () => {
+    it('publishes the merged process and turn count when the header is hidden', async () => {
+        const onHeaderMetadataChange = vi.fn();
+        setupStandardFetch(makeTask(), makeProcess({ sdkSessionId: 'sdk-sess-1' }));
+
+        render(
+            <Wrap>
+                <ChatDetail taskId="task-1" hideHeader onHeaderMetadataChange={onHeaderMetadataChange} />
+            </Wrap>,
+        );
+
+        await waitFor(() => {
+            const meta = onHeaderMetadataChange.mock.calls.at(-1)?.[0];
+            expect(meta?.metadataProcess?.sdkSessionId).toBe('sdk-sess-1');
+            // Merged from the queue task, which the process record alone lacks.
+            expect(meta?.metadataProcess?.metadata?.queueTaskId).toBe('task-1');
+            expect(meta?.turnsCount).toBe(2);
+            expect(meta?.isPending).toBe(false);
+            // Completed chat with an SDK session id — forking is offered.
+            expect(typeof meta?.onFork).toBe('function');
+        });
+    });
+
+    it('stays silent while the built-in header is visible', async () => {
+        const onHeaderMetadataChange = vi.fn();
+        setupStandardFetch();
+
+        render(
+            <Wrap>
+                <ChatDetail taskId="task-1" onHeaderMetadataChange={onHeaderMetadataChange} />
+            </Wrap>,
+        );
+
+        await waitFor(() => expect(screen.getByText('Hi there')).toBeTruthy());
+        expect(onHeaderMetadataChange).not.toHaveBeenCalled();
+    });
+
+    it('emits null on unmount so the host clears a dead conversation', async () => {
+        const onHeaderMetadataChange = vi.fn();
+        setupStandardFetch();
+
+        const view = render(
+            <Wrap>
+                <ChatDetail taskId="task-1" hideHeader onHeaderMetadataChange={onHeaderMetadataChange} />
+            </Wrap>,
+        );
+        await waitFor(() => expect(onHeaderMetadataChange).toHaveBeenCalled());
+
+        view.unmount();
+        expect(onHeaderMetadataChange.mock.calls.at(-1)?.[0]).toBeNull();
+    });
+
+    it('emits null when taskId changes', async () => {
+        const onHeaderMetadataChange = vi.fn();
+        setupStandardFetch();
+
+        const view = render(
+            <Wrap>
+                <ChatDetail taskId="task-1" hideHeader onHeaderMetadataChange={onHeaderMetadataChange} />
+            </Wrap>,
+        );
+        await waitFor(() => expect(onHeaderMetadataChange).toHaveBeenCalled());
+        onHeaderMetadataChange.mockClear();
+
+        view.rerender(
+            <Wrap>
+                <ChatDetail taskId="task-2" hideHeader onHeaderMetadataChange={onHeaderMetadataChange} />
+            </Wrap>,
+        );
+
+        expect(onHeaderMetadataChange).toHaveBeenCalledWith(null);
+    });
+});
+
 // ── Per-conversation follow-up effort tier (AC-02 read-back, AC-03 persist) ──
 //
 // The follow-up after-tier is remembered per conversation in

@@ -18,6 +18,7 @@ import { getCocClientForWorkspace, lookupCloneBaseUrl } from '../../repos/cloneR
 import { isRemoteWorkspace } from '../../repos/remoteWorkspaceAggregation';
 import { getConversationTurns } from './conversation/chatConversationUtils';
 import { getSessionIdFromProcess } from './conversation/ConversationMetadataPopover';
+import type { ChatHeaderMetadata } from './conversation/ChatMetadataButton';
 import { useQueue } from '../../contexts/QueueContext';
 import { useApp } from '../../contexts/AppContext';
 import { useReposOptional } from '../../contexts/ReposContext';
@@ -172,6 +173,14 @@ export interface ChatDetailProps {
      */
     hideHeader?: boolean;
     /**
+     * Publishes the conversation metadata the built-in header would have
+     * rendered, so hosts that pass `hideHeader` can render the shared "i"
+     * button in their own header without re-deriving or re-fetching anything.
+     * Only fires while `hideHeader` is true; emits null on unmount and on
+     * taskId change so a stale bundle can't outlive its chat.
+     */
+    onHeaderMetadataChange?: (meta: ChatHeaderMetadata | null) => void;
+    /**
      * When true, suppresses the plan/Ralph launch banners in the conversation —
      * both RalphStartPanel launch paths (grilling→start and goal.md direct) and
      * the ImplementPlanCard "Implement this plan" handoff. Use in embedded chat
@@ -181,7 +190,7 @@ export interface ChatDetailProps {
     hidePlanBanners?: boolean;
 }
 
-export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sourceBaseUrl, isPopOut = false, openNotePath, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onProcessLoaded, onOpenForEachRun, onOpenMapReduceRun, onStartFreshSameContext, startingFreshSameContext = false, searchHighlightQuery, hideHeader = false, hidePlanBanners = false }: ChatDetailProps) {
+export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sourceBaseUrl, isPopOut = false, openNotePath, variant = 'inline', standalone = false, title, hideModeSelector = false, allowedModes, readOnly = false, disableScratchpad = false, pendingPrefix, onClearPendingPrefix, onProcessLoaded, onOpenForEachRun, onOpenMapReduceRun, onStartFreshSameContext, startingFreshSameContext = false, searchHighlightQuery, hideHeader = false, onHeaderMetadataChange, hidePlanBanners = false }: ChatDetailProps) {
     // Per-clone REST client (AC-07): a remote clone's chat reads/writes go to its
     // own server; a local clone keeps the default origin client. All process/
     // queue/notes/canvas/skill calls below are scoped to this chat's workspace.
@@ -2396,12 +2405,39 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         </>
     );
 
+    // One bundle feeding both the built-in header and `onHeaderMetadataChange`,
+    // so the visible header and the published metadata can never diverge.
+    const headerMetadata: ChatHeaderMetadata = useMemo(() => ({
+        metadataProcess,
+        turnsCount: turns.length,
+        isPending,
+        resumeSessionId,
+        resumeLaunching,
+        onLaunchInteractiveResume: () => { void launchInteractiveResume(); },
+        onCopyResumeCommand: () => { void copyResumeCommand(); },
+        onFork: metadataProcess?.sdkSessionId && task?.status === 'completed' ? handleFork : undefined,
+        forking,
+        onStartFreshSameContext,
+        startingFreshSameContext,
+        // Deps deliberately omit launchInteractiveResume / copyResumeCommand:
+        // both are plain functions re-created every render, so including them
+        // would rebuild the bundle — and re-emit it — on every poll.
+    }), [metadataProcess, turns.length, isPending, resumeSessionId, resumeLaunching, task?.status, handleFork, forking, onStartFreshSameContext, startingFreshSameContext]);
+
+    const onHeaderMetadataChangeRef = useRef(onHeaderMetadataChange);
+    onHeaderMetadataChangeRef.current = onHeaderMetadataChange;
+    useEffect(() => {
+        if (!hideHeader) return;
+        onHeaderMetadataChangeRef.current?.(headerMetadata);
+        return () => { onHeaderMetadataChangeRef.current?.(null); };
+    }, [hideHeader, headerMetadata, taskId]);
+
     return (
         <div className="flex-1 flex flex-col min-h-0" data-testid="activity-chat-detail" {...(workspaceId ? { 'data-ws-id': workspaceId } : {})}>
             {!hideHeader && (
                 <ChatHeader
                     task={task}
-                    metadataProcess={metadataProcess}
+                    metadataProcess={headerMetadata.metadataProcess}
                     planPath={effectivePlanPath}
                     createdFiles={displayFiles}
                     pinnedFile={pinnedFile}
@@ -2410,9 +2446,9 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     isPopOut={isPopOut}
                     loading={loading}
                     turns={turns}
-                    resumeLaunching={resumeLaunching}
-                    resumeSessionId={resumeSessionId}
-                    isPending={isPending}
+                    resumeLaunching={headerMetadata.resumeLaunching}
+                    resumeSessionId={headerMetadata.resumeSessionId}
+                    isPending={headerMetadata.isPending}
                     sessionTokenLimit={sessionTokenLimit}
                     sessionCurrentTokens={sessionCurrentTokens}
                     sessionSystemTokens={sessionSystemTokens}
@@ -2422,8 +2458,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     copied={copied}
                     setCopied={setCopied}
                     taskId={taskId}
-                    onLaunchInteractiveResume={() => { void launchInteractiveResume(); }}
-                    onCopyResumeCommand={() => { void copyResumeCommand(); }}
+                    onLaunchInteractiveResume={headerMetadata.onLaunchInteractiveResume}
+                    onCopyResumeCommand={headerMetadata.onCopyResumeCommand}
                     onPopOut={handlePopOut}
                     onFloat={handleFloat}
                     title={(task?.customTitle as string | undefined) || title || task?.title || task?.displayName}
@@ -2435,14 +2471,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     onOpenScratchpad={handleOpenScratchpad}
                     onToggleExplorer={canOpenExplorer ? handleToggleExplorer : undefined}
                     explorerOpen={explorerOpen}
-                    onFork={metadataProcess?.sdkSessionId && task?.status === 'completed' ? handleFork : undefined}
-                    forking={forking}
+                    onFork={headerMetadata.onFork}
+                    forking={headerMetadata.forking}
                     cronCount={cronsHook.manageableCount}
                     hasActiveCrons={cronsHook.hasActiveCrons}
                     onToggleCronPanel={() => setCronPanelOpen(v => !v)}
                     onRenameTitle={processId ? () => setRenameOpen(true) : undefined}
-                    onStartFreshSameContext={onStartFreshSameContext}
-                    startingFreshSameContext={startingFreshSameContext}
+                    onStartFreshSameContext={headerMetadata.onStartFreshSameContext}
+                    startingFreshSameContext={headerMetadata.startingFreshSameContext}
                     viewToggle={hasSubAgents && !loading && !isPending && variant !== 'floating'
                         ? (
                             <AgentTreeMenu

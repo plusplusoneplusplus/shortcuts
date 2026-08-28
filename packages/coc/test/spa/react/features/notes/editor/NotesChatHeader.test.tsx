@@ -191,6 +191,64 @@ describe('NotesChatHeader', () => {
         });
     });
 
+    describe('conversation metadata ("i")', () => {
+        const META = {
+            metadataProcess: { id: 'proc-1', status: 'completed', metadata: { model: 'gpt-4' } },
+            turnsCount: 2,
+            isPending: false,
+            resumeSessionId: null,
+            resumeLaunching: false,
+            onLaunchInteractiveResume: vi.fn(),
+            onCopyResumeCommand: vi.fn(),
+        };
+
+        it('renders no metadata button without a bundle', () => {
+            renderHeader();
+            expect(screen.queryByRole('button', { name: /conversation metadata/i })).toBeNull();
+        });
+
+        it('renders the metadata button when a bundle is supplied', () => {
+            renderHeader({ chatMetadata: META });
+            expect(screen.getByRole('button', { name: /conversation metadata/i })).toBeTruthy();
+        });
+
+        it('renders nothing for a pending chat — the shared button owns that gate', () => {
+            renderHeader({ chatMetadata: { ...META, isPending: true } });
+            expect(screen.queryByRole('button', { name: /conversation metadata/i })).toBeNull();
+        });
+
+        it('sits first in the right cluster so ✕ stays rightmost', () => {
+            renderHeader({
+                chatMetadata: META,
+                windowMode: 'lens',
+                onPin: vi.fn(),
+                onMinimize: vi.fn(),
+                chatNotePath: 'Travel/Baja.md',
+                onNewChat: vi.fn(),
+            });
+            const info = screen.getByRole('button', { name: /conversation metadata/i });
+            const cluster = screen.getByTestId('note-chat-close-btn').parentElement!;
+            expect(info.parentElement).toBe(cluster);
+            expect(cluster.firstElementChild).toBe(info);
+            expect(cluster.lastElementChild).toBe(screen.getByTestId('note-chat-close-btn'));
+            for (const after of [
+                screen.getByTestId('notes-chat-pin-btn'),
+                screen.getByTestId('notes-chat-minimize-btn'),
+                screen.getByTestId('notes-chat-path-ref'),
+            ]) {
+                expect(info.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+            }
+        });
+
+        it('renders as a 24px control so the header stays 32px tall', () => {
+            renderHeader({ chatMetadata: META });
+            const info = screen.getByRole('button', { name: /conversation metadata/i });
+            expect(info.className).toContain('h-6');
+            expect(info.className).toContain('w-6');
+            expect(screen.getByTestId('notes-chat-header').className).toContain('h-8');
+        });
+    });
+
     describe('window action routing', () => {
         it('lens mode shows minimize and pin, hides unpin', () => {
             renderHeader({ windowMode: 'lens', onMinimize: vi.fn(), onPin: vi.fn(), onUnpin: vi.fn() });
