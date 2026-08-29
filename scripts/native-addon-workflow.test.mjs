@@ -38,3 +38,33 @@ test("the cross-platform coc suite uses its matching addon", () => {
     const job = jobBlock(ci, "coc-test");
     assert.match(job, /name: coc-native-\$\{\{ matrix\.os \}\}/);
 });
+
+// coc-agent-sdk and forge compile against @plusplusoneplusplus/coc-native, and
+// its dist/ is generated, not committed — so a job that runs `tsc` over either
+// before building the addon package fails with TS2307 rather than a test
+// failure. Ordering, not just presence, is what the build depends on.
+const BUILDS_THE_SDK = ["forge-test", "coc-test", "deep-wiki-test", "e2e"];
+
+test("every job that builds coc-agent-sdk builds the addon package first", () => {
+    for (const name of BUILDS_THE_SDK) {
+        const job = jobBlock(ci, name);
+        const native = job.indexOf("- name: Build coc-native package");
+        const sdk = job.indexOf("- name: Build coc-agent-sdk package");
+        assert.notEqual(native, -1, `${name} must build the coc-native package`);
+        assert.notEqual(sdk, -1, `${name} must build the coc-agent-sdk package`);
+        assert.ok(native < sdk, `${name} must build coc-native before coc-agent-sdk`);
+    }
+});
+
+// The forge and deep-wiki suites read git through the addon, and it has no
+// JavaScript lane — without the binary every git test throws
+// NativeAddonLoadError instead of running.
+const READS_GIT_NATIVELY = ["forge-test", "deep-wiki-test"];
+
+test("the suites that read git natively download the addon", () => {
+    for (const name of READS_GIT_NATIVELY) {
+        const job = jobBlock(ci, name);
+        assert.match(job, /^    needs: \[coc-native\]$/m, `${name} must wait for the coc-native build`);
+        assert.match(job, /name: coc-native-\$\{\{ matrix\.os \}\}/, `${name} must download its platform addon`);
+    }
+});

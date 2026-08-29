@@ -80,6 +80,7 @@ jobs:
 
   forge-test:
     runs-on: ${{ matrix.os }}
+    needs: [coc-native]
 
     strategy:
       fail-fast: false
@@ -112,6 +113,10 @@ jobs:
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
+      - name: Build coc-native package
+        run: npm run build
+        working-directory: packages/coc-native
+
       - name: Build coc-agent-sdk package
         run: npm run build
         working-directory: packages/coc-agent-sdk
@@ -119,6 +124,12 @@ jobs:
       - name: Build forge package
         run: npm run build
         working-directory: packages/forge
+
+      - name: Download the addon
+        uses: actions/download-artifact@v4
+        with:
+          name: coc-native-${{ matrix.os }}
+          path: packages/coc-native
 
       - name: Run forge tests
         if: matrix.os != 'ubuntu-latest'
@@ -252,6 +263,10 @@ jobs:
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
+      - name: Build coc-native package
+        run: npm run build
+        working-directory: packages/coc-native
+
       - name: Build coc-agent-sdk package
         run: npm run build
         working-directory: packages/coc-agent-sdk
@@ -271,10 +286,6 @@ jobs:
       - name: Build coc-connector package
         run: npm run build
         working-directory: packages/coc-connector
-
-      - name: Build coc-native package
-        run: npm run build
-        working-directory: packages/coc-native
 
       - name: Build coc SPA client bundle
         run: npm run build:client
@@ -369,6 +380,7 @@ jobs:
 
   deep-wiki-test:
     runs-on: ${{ matrix.os }}
+    needs: [coc-native]
 
     strategy:
       fail-fast: false
@@ -401,6 +413,10 @@ jobs:
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
+      - name: Build coc-native package
+        run: npm run build
+        working-directory: packages/coc-native
+
       - name: Build coc-agent-sdk package
         run: npm run build
         working-directory: packages/coc-agent-sdk
@@ -408,6 +424,12 @@ jobs:
       - name: Build forge package
         run: npm run build
         working-directory: packages/forge
+
+      - name: Download the addon
+        uses: actions/download-artifact@v4
+        with:
+          name: coc-native-${{ matrix.os }}
+          path: packages/coc-native
 
       - name: Run deep-wiki tests
         if: matrix.os != 'ubuntu-latest'
@@ -471,6 +493,10 @@ jobs:
       - name: Install dependencies
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
+
+      - name: Build coc-native package
+        run: npm run build
+        working-directory: packages/coc-native
 
       - name: Build coc-agent-sdk package
         run: npm run build

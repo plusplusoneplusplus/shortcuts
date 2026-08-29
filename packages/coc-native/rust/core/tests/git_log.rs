@@ -133,6 +133,20 @@ fn split_refs(text: &str) -> Vec<String> {
     text.split(',').map(str::trim).filter(|part| !part.is_empty()).map(str::to_string).collect()
 }
 
+/// Both spellings of a zero UTC offset, written the one way.
+///
+/// `%aI` is ISO 8601 strict on both sides, but the two disagree on how to spell
+/// an offset of zero: `gix` always writes `+00:00`, while newer git (2.55 does,
+/// 2.43 does not) collapses it to `Z`. Both are the same instant and every
+/// consumer parses them identically, so the differential suite compares the
+/// instant rather than the spelling instead of pinning a git version.
+fn canonical_utc(date: &str) -> String {
+    match date.strip_suffix('Z') {
+        Some(rest) => format!("{rest}+00:00"),
+        None => date.to_string(),
+    }
+}
+
 /// Ask the real git for a page, parsed exactly as the TypeScript parsed it.
 fn git_rows(repo: &Path, max_count: usize, skip: usize) -> Vec<Row> {
     let output = git_stdout(
@@ -160,7 +174,7 @@ fn git_rows(repo: &Path, max_count: usize, skip: usize) -> Vec<Row> {
                 subject: parts[2].to_string(),
                 author_name: parts[3].to_string(),
                 author_email: parts[4].to_string(),
-                date: parts[5].to_string(),
+                date: canonical_utc(parts[5]),
                 relative_date: parts[6].to_string(),
                 parent_hashes: parts[7].to_string(),
                 refs: split_refs(parts.get(8).copied().unwrap_or("")),
@@ -187,6 +201,16 @@ fn native_rows(repo: &Path, max_count: usize, skip: usize) -> Vec<Row> {
             refs: commit.refs,
         })
         .collect()
+}
+
+/// Guards the normalisation itself: on a git old enough to print `+00:00`
+/// every differential assertion would pass even if this dropped the `Z` case.
+#[test]
+fn a_utc_offset_reads_the_same_in_either_spelling() {
+    assert_eq!(canonical_utc("2026-08-19T15:01:39Z"), "2026-08-19T15:01:39+00:00");
+    assert_eq!(canonical_utc("2026-08-19T15:01:39+00:00"), "2026-08-19T15:01:39+00:00");
+    // A real offset is left exactly as git wrote it.
+    assert_eq!(canonical_utc("2026-08-19T20:31:39+05:30"), "2026-08-19T20:31:39+05:30");
 }
 
 // ── relative_date ───────────────────────────────────────────────────────────
