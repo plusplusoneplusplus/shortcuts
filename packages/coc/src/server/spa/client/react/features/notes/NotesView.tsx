@@ -21,6 +21,7 @@ import { useHoverPeek } from '../chat/hooks/useHoverPeek';
 import { usePublishWorkspaceLeftColWidth } from '../../hooks/ui/useWorkspaceLeftColWidth';
 import { useApp } from '../../contexts/AppContext';
 import { buildNoteHash } from '../../layout/Router';
+import { scrollToHeadingByText } from './editor/noteTocUtils';
 import { useNoteReferences } from './editor/useNoteReferences';
 import { formatPaperChatGrounding } from './editor/extensions/paperChatGrounding';
 import { useNotesRoots } from './hooks/useNotesRoots';
@@ -491,25 +492,7 @@ export function NotesView({ workspaceId, sourceSelectionId, initialNotePath, def
         handleSelectPage(path);
         if (heading) {
             // Scroll to heading after navigation. Use a small delay to allow content to load.
-            setTimeout(() => {
-                const slug = heading.toLowerCase().replace(/\s+/g, '-');
-                const el = document.getElementById(slug)
-                    ?? document.querySelector(`[data-toc-id="${slug}"]`)
-                    ?? document.querySelector(`.ProseMirror h1, .ProseMirror h2, .ProseMirror h3`);
-                // Find heading by text content match as a fallback
-                if (!el) {
-                    const headings = document.querySelectorAll('.ProseMirror h1, .ProseMirror h2, .ProseMirror h3');
-                    for (const h of headings) {
-                        const headingSlug = (h.textContent ?? '').trim().toLowerCase().replace(/\s+/g, '-');
-                        if (headingSlug === slug) {
-                            h.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            return;
-                        }
-                    }
-                } else {
-                    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-            }, 500);
+            setTimeout(() => scrollToHeadingByText(heading), 500);
         }
     }, [handleSelectPage]);
 

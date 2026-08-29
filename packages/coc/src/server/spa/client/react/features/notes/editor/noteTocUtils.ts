@@ -124,3 +124,65 @@ export function findActiveTocIndex(
     }
     return active;
 }
+
+// ── Heading anchors ─────────────────────────────────────────────────────────
+
+/**
+ * Turn heading text into a GitHub-style anchor slug: lowercase, punctuation
+ * dropped in place, every remaining space turned into a hyphen.
+ *
+ * Dropping punctuation *in place* (rather than collapsing what is left) is what
+ * makes `Fun & Games` slug to `fun--games`, the same doubled dash GitHub emits.
+ * Unicode dashes are the one exception: ` — ` between two words reads as a
+ * single separator, so it normalizes to one hyphen instead of three.
+ *
+ * Used on both sides of every anchor comparison — the fragment an author wrote
+ * by hand and the live heading text — so the two agree on punctuated headings.
+ */
+export function slugifyHeading(text: string): string {
+    return text
+        .toLowerCase()
+        // en/em/figure dashes and the minus sign all read as a plain hyphen.
+        .replace(/[\u2010-\u2015\u2212]/g, '-')
+        .replace(/[^\p{L}\p{N}\s\-_]/gu, '')
+        .trim()
+        // A spaced-out dash is one separator, not three.
+        .replace(/\s+-+\s+/g, '-')
+        .replace(/\s/g, '-');
+}
+
+const HEADING_SELECTOR = '.ProseMirror h1, .ProseMirror h2, .ProseMirror h3';
+
+/**
+ * Scroll the rendered note to the heading matching `heading`, used by the
+ * cross-note `[[note:path#heading]]` jump once the target note has loaded.
+ *
+ * Headings carry no `id`, so the id/`data-toc-id` lookups are only there for a
+ * host that does emit them; the text match is what actually resolves, and it
+ * compares slugs so a heading full of punctuation still lands. Falls back to
+ * the first heading (i.e. the top of the note) when nothing matches.
+ *
+ * Returns whether an actual match was found.
+ */
+export function scrollToHeadingByText(heading: string, doc: Document = document): boolean {
+    const slug = slugifyHeading(heading);
+    const scroll = (el: Element) => el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    const byId = doc.getElementById(slug) ?? doc.querySelector(`[data-toc-id="${slug}"]`);
+    if (byId) {
+        scroll(byId);
+        return true;
+    }
+
+    const headings = doc.querySelectorAll(HEADING_SELECTOR);
+    for (const el of headings) {
+        if (slugifyHeading((el.textContent ?? '').trim()) === slug) {
+            scroll(el);
+            return true;
+        }
+    }
+
+    const first = headings[0];
+    if (first) scroll(first);
+    return false;
+}
