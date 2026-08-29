@@ -555,3 +555,184 @@ describe('NoteEditor AI-edit pill placement', () => {
     });
 });
 
+
+// ── Discard: revert the AI edit instead of keeping it ───────────────────────
+
+describe('NoteEditor AI-edit discard', () => {
+    beforeEach(() => {
+        mockLoadContent.mockReset();
+        mockIOSaveContent.mockReset();
+        mockSetContent.mockClear();
+        mockSetAiEdits.mockClear();
+        mockClearAiEdits.mockClear();
+        mockGetHTML.mockReturnValue('<p>content</p>');
+        mockEditor.isDestroyed = false;
+        mockEditor.state.doc = makeDocWithText('');
+        currentDocText = '';
+    });
+
+    afterEach(() => {
+        cleanup();
+    });
+
+    /** Deliver one external (AI) edit and wait for the pill. */
+    async function deliverAiEdit(content: string) {
+        mockLoadContent.mockResolvedValueOnce({ content, path: 'test.md' });
+        await act(async () => {
+            fireNotesChanged('ws1', ['test.md']);
+        });
+        await tickAsync();
+        return await screen.findByTestId('ai-edit-navigator');
+    }
+
+    async function clickDiscard() {
+        const btn = screen.getByTestId('ai-edit-navigator-discard');
+        await act(async () => {
+            btn.click();
+        });
+        await tickAsync();
+    }
+
+    /** The markdown behind the most recent setContent call. */
+    function lastSetContentMarkdown(): string {
+        const calls = mockSetContent.mock.calls;
+        return String(calls[calls.length - 1][0]).replace(/<\/?[^>]+>/g, '');
+    }
+
+    it('does not render the pill (nor Discard) while there are no AI edits', async () => {
+        await renderEditor('test.md');
+
+        expect(screen.queryByTestId('ai-edit-navigator')).toBeNull();
+        expect(screen.queryByTestId('ai-edit-navigator-discard')).toBeNull();
+    });
+
+    it('offers Discard alongside Keep once an AI edit lands', async () => {
+        await renderEditor('test.md');
+        await deliverAiEdit('updated content');
+
+        const discardBtn = screen.getByTestId('ai-edit-navigator-discard');
+        expect(discardBtn.textContent).toContain('Discard');
+        expect(screen.getByTestId('ai-edit-navigator-dismiss').textContent).toContain('Keep');
+    });
+
+    it('restores the pre-edit text into the editor', async () => {
+        await renderEditor('test.md');
+        await deliverAiEdit('updated content');
+
+        expect(lastSetContentMarkdown()).toBe('updated content');
+
+        await clickDiscard();
+
+        expect(lastSetContentMarkdown()).toBe('initial content');
+    });
+
+    it('persists the restored text through the normal save path', async () => {
+        await renderEditor('test.md');
+        await deliverAiEdit('updated content');
+
+        expect(mockIOSaveContent).not.toHaveBeenCalled();
+
+        await clickDiscard();
+
+        await waitFor(() => expect(mockIOSaveContent).toHaveBeenCalled());
+        const savedArgs = mockIOSaveContent.mock.calls[0];
+        expect(savedArgs[0]).toBe('ws1');
+        expect(savedArgs[1]).toBe('test.md');
+        expect(savedArgs[2]).toBe('initial content');
+    });
+
+    it('clears the decorations and the count', async () => {
+        await renderEditor('test.md');
+        await deliverAiEdit('updated content');
+
+        await clickDiscard();
+
+        expect(mockClearAiEdits).toHaveBeenCalled();
+        await waitFor(() => {
+            expect(screen.queryByTestId('ai-edit-navigator')).toBeNull();
+        });
+    });
+
+    it('reverts to the earliest snapshot when several AI edits accumulate', async () => {
+        await renderEditor('test.md');
+        await deliverAiEdit('updated content');
+        await deliverAiEdit('modified content');
+
+        // Two edit events, one batch — Discard undoes everything the pill reports.
+        await clickDiscard();
+
+        expect(lastSetContentMarkdown()).toBe('initial content');
+        await waitFor(() => expect(mockIOSaveContent).toHaveBeenCalled());
+        expect(mockIOSaveContent.mock.calls[0][2]).toBe('initial content');
+    });
+
+    it('drops the snapshot on note switch so Discard reverts the new note', async () => {
+        mockLoadContent.mockResolvedValueOnce({ content: 'initial content', path: 'test.md' });
+        let rerender!: (ui: React.ReactElement) => void;
+        await act(async () => {
+            ({ rerender } = render(
+                <NoteEditor workspaceId="ws1" notePath="test.md" io={mockIo} />,
+            ));
+        });
+        await waitFor(() => expect(mockSetContent).toHaveBeenCalled());
+        await deliverAiEdit('updated content');
+
+        // Switch notes — the old note's snapshot must not survive.
+        mockLoadContent.mockResolvedValueOnce({ content: 'second note', path: 'other.md' });
+        await act(async () => {
+            rerender(<NoteEditor workspaceId="ws1" notePath="other.md" io={mockIo} />);
+        });
+        await tickAsync();
+        expect(screen.queryByTestId('ai-edit-navigator')).toBeNull();
+
+        // A fresh AI edit on the new note reverts to the *new* note's content.
+        mockLoadContent.mockResolvedValueOnce({ content: 'second notes', path: 'other.md' });
+        await act(async () => {
+            fireNotesChanged('ws1', ['other.md']);
+        });
+        await tickAsync();
+        await screen.findByTestId('ai-edit-navigator');
+
+        await clickDiscard();
+
+        expect(lastSetContentMarkdown()).toBe('second note');
+    });
+
+    it('Keep still dismisses without touching the document or saving', async () => {
+        await renderEditor('test.md');
+        await deliverAiEdit('updated content');
+
+        const setContentCalls = mockSetContent.mock.calls.length;
+        await act(async () => {
+            screen.getByTestId('ai-edit-navigator-dismiss').click();
+        });
+        await tickAsync();
+
+        expect(mockSetContent).toHaveBeenCalledTimes(setContentCalls);
+        expect(mockIOSaveContent).not.toHaveBeenCalled();
+        expect(screen.queryByTestId('ai-edit-navigator')).toBeNull();
+    });
+
+    it('uses the server-stored pre-edit content for the note-edit-show path', async () => {
+        await renderEditor('test.md');
+
+        await act(async () => {
+            window.dispatchEvent(new CustomEvent('note-edit-show', {
+                detail: {
+                    editId: 'e1',
+                    wsId: 'ws1',
+                    notePath: 'test.md',
+                    preEditContent: 'initial content',
+                    postEditContent: 'initial rewritten',
+                },
+            }));
+        });
+        await screen.findByTestId('ai-edit-navigator');
+
+        await clickDiscard();
+
+        expect(lastSetContentMarkdown()).toBe('initial content');
+        await waitFor(() => expect(mockIOSaveContent).toHaveBeenCalled());
+        expect(mockIOSaveContent.mock.calls[0][2]).toBe('initial content');
+    });
+});
