@@ -262,7 +262,11 @@ fn binary_content_keeps_gits_own_sentence() {
         diff_no_index("a\0b\n", "a\0c\n", BEFORE_LABEL, AFTER_LABEL, &options()).expect("diff");
     assert!(rendered.starts_with(&format!("diff --git {BEFORE_LABEL} {AFTER_LABEL}\n")));
     assert!(rendered.contains("Binary files "), "{rendered}");
-    assert!(rendered.contains("before and "), "the temp names leak: {rendered}");
+    // Both temp names, checked one at a time: git quotes a path that contains
+    // backslashes, so on Windows the sentence reads `"...\before" and
+    // "...\after"` and there is no unquoted `before and ` to find.
+    assert!(rendered.contains("before"), "the before temp name leaks: {rendered}");
+    assert!(rendered.contains("after"), "the after temp name leaks: {rendered}");
 }
 
 #[test]

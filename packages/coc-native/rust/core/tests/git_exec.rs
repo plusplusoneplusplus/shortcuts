@@ -328,7 +328,13 @@ fn a_sequence_editor_drives_a_non_interactive_rebase() {
     let script = repo.path().join("seq-editor.sh");
     std::fs::write(
         &script,
-        format!("#!/bin/sh\nsed -i \"s/^pick {short}/drop {short}/\" \"$1\"\n"),
+        // Not `sed -i`: GNU takes the suffix as an optional attached argument
+        // and BSD takes it as the next word, so the one spelling that edits in
+        // place on Linux eats the file name on macOS. Rewriting through a temp
+        // file is the same edit in plain POSIX.
+        format!(
+            "#!/bin/sh\nsed \"s/^pick {short}/drop {short}/\" \"$1\" > \"$1.tmp\" && mv \"$1.tmp\" \"$1\"\n"
+        ),
     )
     .expect("write script");
     #[cfg(unix)]

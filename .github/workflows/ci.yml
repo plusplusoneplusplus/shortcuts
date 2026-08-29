@@ -195,7 +195,7 @@ jobs:
           cargo clippy --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native -- -D warnings
 
       - name: Run Rust unit tests
-        run: cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core
+        run: cargo test --no-fail-fast --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core
 
       - name: Install dependencies
         run: npm ci
