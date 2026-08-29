@@ -20,7 +20,7 @@
 
 import { BranchService, GitOpsStore, WorkingTreeService } from '@plusplusoneplusplus/forge';
 import { readRepoPreferences } from '../preferences/repository';
-import { AutoPullManager, type AutoPullWorkspace } from './auto-pull-manager';
+import { AutoPullManager, type AutoPullTimerApi, type AutoPullWorkspace } from './auto-pull-manager';
 import { runAutoPullTick } from './auto-pull-tick';
 import { GitOperationRunner, type GitChangeBroadcaster } from './git-operation-runner';
 
@@ -31,11 +31,16 @@ export interface CreateAutoPullManagerOptions {
     processStore: { getWorkspaces(): Promise<readonly AutoPullWorkspace[]> };
     /** Late-bound websocket server so `git-changed` reaches open dashboards. */
     getWsServer?: () => GitChangeBroadcaster | undefined;
+    /**
+     * Timer surface, defaulting to `setTimeout`/`clearTimeout`. Injected by the
+     * integration test so it can fire a real tick without waiting out a minute.
+     */
+    timerApi?: AutoPullTimerApi;
 }
 
 /** Build a fully wired `AutoPullManager`. Arms nothing until `startAll()`. */
 export function createAutoPullManager(options: CreateAutoPullManagerOptions): AutoPullManager {
-    const { dataDir, processStore, getWsServer } = options;
+    const { dataDir, processStore, getWsServer, timerApi } = options;
     const gitOpsStore = new GitOpsStore({ dataDir });
     const runner = new GitOperationRunner({ gitOpsStore, getWsServer });
     const branchService = new BranchService();
@@ -43,6 +48,7 @@ export function createAutoPullManager(options: CreateAutoPullManagerOptions): Au
 
     return new AutoPullManager({
         dataDir,
+        ...(timerApi ? { timerApi } : {}),
         listWorkspaces: () => processStore.getWorkspaces(),
         readAutoPullPreference: workspaceId => readRepoPreferences(dataDir, workspaceId).autoPull,
         runTick: (workspace) => runAutoPullTick({
