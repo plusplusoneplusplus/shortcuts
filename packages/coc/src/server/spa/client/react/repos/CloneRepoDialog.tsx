@@ -8,11 +8,20 @@ import {
     getRepositoryApiErrorMessage,
     registerWorkspace,
 } from './repositoryService';
+import { describeServerFailure, useServerSelection } from './useServerSelection';
+import { LOCAL_REPO_GROUP_SERVER_ID } from './repoGroupService';
 
 interface CloneRepoDialogProps {
     open: boolean;
     onClose: () => void;
     onSuccess: () => void;
+    /**
+     * Server to pre-select when the dialog is launched from a remote context
+     * (the remote picker's "Clone repository"). Omitted = Local.
+     */
+    serverId?: string;
+    /** That server's base URL, so it is targetable before the list loads. */
+    baseUrl?: string;
 }
 
 interface BrowserEntry {
@@ -81,8 +90,9 @@ export function suggestNonConflictingName(
     return `${baseName}-${counter}`;
 }
 
-export function CloneRepoDialog({ open, onClose, onSuccess }: CloneRepoDialogProps) {
+export function CloneRepoDialog({ open, onClose, onSuccess, serverId, baseUrl }: CloneRepoDialogProps) {
     const { dispatch } = useApp();
+    const server = useServerSelection(open, serverId, baseUrl);
     const { navigateToWorkspace } = useWorkspaceNavigation();
     const [url, setUrl] = useState('');
     const [parentDir, setParentDir] = useState('');
@@ -101,11 +111,14 @@ export function CloneRepoDialog({ open, onClose, onSuccess }: CloneRepoDialogPro
     const [browseRoots, setBrowseRoots] = useState<Array<{ label: string; path: string }>>([]);
     const [browserError, setBrowserError] = useState<string | null>(null);
 
-    const navigateTo = useCallback(async (dir: string) => {
+    const navigateTo = useCallback(async (dir: string, targetServerId?: string) => {
+        // The server is passed explicitly when it just changed, since this
+        // callback still closes over the previous selection at that moment.
+        const target = server.resolveServer(targetServerId ?? server.serverId);
         setBrowserLoading(true);
         setBrowserError(null);
         try {
-            const data = await browseWorkspaceFolders(dir) as BrowserResponse;
+            const data = await browseWorkspaceFolders(dir, target.baseUrl) as BrowserResponse;
             setBrowserPath(data.path);
             setParentDir(data.path);
             setBrowserParent(data.parent || null);
@@ -116,11 +129,30 @@ export function CloneRepoDialog({ open, onClose, onSuccess }: CloneRepoDialogPro
             setBrowserEntries([]);
             setBrowserParent(null);
             setBrowseRoots([]);
-            setBrowserError(getRepositoryApiErrorMessage(browseError, 'Unable to browse this path'));
+            setBrowserError(describeServerFailure(
+                getRepositoryApiErrorMessage(browseError, 'Unable to browse this path'),
+                target,
+            ));
         } finally {
             setBrowserLoading(false);
         }
-    }, []);
+    }, [server]);
+
+    // A path only means something on the server it came from, so switching
+    // servers drops every path-scoped bit of state and re-roots at the new
+    // box's home directory.
+    const changeServer = useCallback((nextServerId: string) => {
+        server.selectServer(nextServerId);
+        setParentDir('');
+        setError(null);
+        setBrowserPath('');
+        setBrowserEntries([]);
+        setBrowserParent(null);
+        setBrowserDrives([]);
+        setBrowseRoots([]);
+        setBrowserError(null);
+        void navigateTo('~', nextServerId);
+    }, [server, navigateTo]);
 
     useEffect(() => {
         if (!open) {
@@ -139,8 +171,14 @@ export function CloneRepoDialog({ open, onClose, onSuccess }: CloneRepoDialogPro
         setBrowserDrives([]);
         setBrowseRoots([]);
         setBrowserError(null);
-        void navigateTo('~');
-    }, [navigateTo, open]);
+        // The target is passed explicitly: `useServerSelection` re-pins to the
+        // launching context on the same flush, so the id captured by this
+        // closure can still be the previous open's pick.
+        void navigateTo('~', serverId || LOCAL_REPO_GROUP_SERVER_ID);
+        // `navigateTo` is deliberately not a dependency: it closes over the
+        // server selection, whose object identity changes every render, so
+        // including it would re-run this reset in a loop.
+    }, [open, serverId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Stable ref so the browserEntries effect can read the latest value without
     // re-running every time browserEntries changes.
@@ -206,27 +244,40 @@ export function CloneRepoDialog({ open, onClose, onSuccess }: CloneRepoDialogPro
         setCloning(true);
         setError(null);
         try {
+            const target = server.selected;
             const { clonedPath } = await cloneRepository({
                 url: trimmedUrl,
                 parentDir: trimmedParentDir,
                 dirName: trimmedFolderName || undefined,
-            });
+            }, target.baseUrl);
             // Id is server-authoritative (machine-scoped); the server computes
             // the canonical workspace id from the cloned path.
             const workspace = await registerWorkspace({
                 name: getPathLeaf(clonedPath) || 'repo',
                 rootPath: clonedPath,
-            });
-            dispatch({ type: 'WORKSPACE_REGISTERED', workspace });
-            navigateToWorkspace(workspace.id);
+            }, target.baseUrl);
+            // Local and remote targets diverge here. A local id is immediately
+            // routable, so we seed the store and jump straight into the repo.
+            // A remote id only becomes routable once `aggregateRemoteWorkspaces`
+            // has re-populated the clone registry, and dispatching it here would
+            // insert a row with no `remote` marker — a remote workspace
+            // masquerading as a local one. So for remotes we just report success
+            // and let the caller's refresh surface it through normal aggregation.
+            if (!target.baseUrl) {
+                dispatch({ type: 'WORKSPACE_REGISTERED', workspace });
+                navigateToWorkspace(workspace.id);
+            }
             onSuccess();
             onClose();
         } catch (cloneError) {
-            setError(getRepositoryApiErrorMessage(cloneError, 'Failed to clone repository', 'Network error'));
+            setError(describeServerFailure(
+                getRepositoryApiErrorMessage(cloneError, 'Failed to clone repository', 'Network error'),
+                server.selected,
+            ));
         } finally {
             setCloning(false);
         }
-    }, [dispatch, folderName, navigateToWorkspace, onClose, onSuccess, parentDir, url]);
+    }, [dispatch, folderName, navigateToWorkspace, onClose, onSuccess, parentDir, server, url]);
 
     return (
         <Dialog
@@ -251,6 +302,23 @@ export function CloneRepoDialog({ open, onClose, onSuccess }: CloneRepoDialogPro
             }
         >
             <div className="flex flex-col gap-3">
+                {/* Server — which CoC box runs the clone and registers the result */}
+                <label className="text-xs font-medium text-[#616161] dark:text-[#999]" htmlFor="clone-repo-server-select">
+                    Server
+                </label>
+                <select
+                    id="clone-repo-server-select"
+                    data-testid="clone-repo-server-select"
+                    className="px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4] disabled:opacity-60"
+                    value={server.serverId}
+                    onChange={event => changeServer(event.target.value)}
+                    disabled={cloning}
+                >
+                    {server.choices.map(option => (
+                        <option key={option.id} value={option.id}>{option.label}</option>
+                    ))}
+                </select>
+
                 <label className="text-xs font-medium text-[#616161] dark:text-[#999]" htmlFor="clone-repo-url">
                     Git URL
                 </label>

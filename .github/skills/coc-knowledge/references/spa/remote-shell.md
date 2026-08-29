@@ -122,6 +122,22 @@ that same registry.
 - `listRepoGroupServerOptions()` builds `repo-group-server-select` from `/api/servers`:
   `Local` plus every `online` remote with an `effectiveUrl`; an unreachable registry
   degrades to Local-only.
+- `repos/useServerSelection.ts` reuses the same option list for the **Server** dropdown in
+  `AddRepoDialog` / `AddFolderDialog` / `CloneRepoDialog` (`add-repo-server-select`,
+  `clone-repo-server-select`). The selected option's `baseUrl` routes browse, clone, and
+  register; switching server clears every path-scoped field and re-roots the browser at
+  the new box's `~`. `describeServerFailure` appends the server label to remote errors.
+  `CloneRepoDialog` runs `POST /api/git/clone` on the selected server, then registers the
+  cloned path there; only a **local** clone dispatches `WORKSPACE_REGISTERED` and
+  navigates — a remote id is routable only after `aggregateRemoteWorkspaces` re-runs.
+- `repos/useServerSelection.ts` reuses the same option list for the **Server** dropdown in
+  `AddRepoDialog` / `AddFolderDialog` / `CloneRepoDialog` (`add-repo-server-select`,
+  `clone-repo-server-select`). The selected option's `baseUrl` routes browse, clone, and
+  register; switching server clears every path-scoped field and re-roots the browser at
+  the new box's `~`. `describeServerFailure` appends the server label to remote errors.
+  `CloneRepoDialog` runs `POST /api/git/clone` on the selected server, then registers the
+  cloned path there; only a **local** clone dispatches `WORKSPACE_REGISTERED` and
+  navigates — a remote id is routable only after `aggregateRemoteWorkspaces` re-runs.
 - Switching server clears checked members — their ids mean nothing in the new registry —
   and the dropdown is **disabled while editing**, because a group's server is fixed at
   creation. `RepoGroupDialog` takes `groupBaseUrl` so load and save route to the owner.
