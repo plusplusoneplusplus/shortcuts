@@ -28,6 +28,7 @@ import { useApp } from '../contexts/AppContext';
 import { useReposOptional } from '../contexts/ReposContext';
 import { resolveRepoGroupName } from './repoGroupName';
 import { getRepoGroup, type RepoGroupMember } from './repoGroupService';
+import { RepoGroupMemberList } from './RepoGroupMemberList';
 import { WorkspaceRightDock, useWorkspaceDock, type DockTarget } from '../features/repo-detail/WorkspaceRightDock';
 import { VirtualWorkspaceInlineHeader } from '../features/remote-shell/VirtualWorkspaceInlineHeader';
 import type { VirtualWorkspaceHeaderConfig } from '../features/remote-shell/virtualWorkspaceHeader';
@@ -84,30 +85,34 @@ export function repoGroupDockTargets(workspaceId: string, members: readonly Repo
 }
 
 /**
- * Fetch the group's members and shape them as dock targets. Returns `undefined`
- * while the request is in flight or when it fails, which the dock reads as "no
- * picker" — better than flashing an empty one, and it degrades to a scope-only
- * dock rather than an error state.
+ * Fetch the group's members. Returns `undefined` while the request is in flight
+ * or when it fails — the dock reads that as "no picker" (better than flashing an
+ * empty one, and it degrades to a scope-only dock rather than an error state)
+ * and the member strip reads it as "still loading".
+ *
+ * `enabled` is the union of the two consumers: the dock and an OPEN member
+ * strip. A group whose strip is collapsed on a shell without the dock therefore
+ * makes no request at all.
  */
-function useRepoGroupDockTargets(workspaceId: string, baseUrl: string | undefined, enabled: boolean): DockTarget[] | undefined {
-    const [targets, setTargets] = useState<DockTarget[] | undefined>(undefined);
+function useRepoGroupMembers(workspaceId: string, baseUrl: string | undefined, enabled: boolean): RepoGroupMember[] | undefined {
+    const [members, setMembers] = useState<RepoGroupMember[] | undefined>(undefined);
     useEffect(() => {
         if (!enabled) {
-            setTargets(undefined);
+            setMembers(undefined);
             return;
         }
         let cancelled = false;
-        setTargets(undefined);
+        setMembers(undefined);
         getRepoGroup(workspaceId, baseUrl)
             .then(group => {
-                if (!cancelled) setTargets(repoGroupDockTargets(workspaceId, group.members ?? []));
+                if (!cancelled) setMembers(group.members ?? []);
             })
             .catch(() => {
-                if (!cancelled) setTargets(undefined);
+                if (!cancelled) setMembers(undefined);
             });
         return () => { cancelled = true; };
     }, [workspaceId, baseUrl, enabled]);
-    return targets;
+    return members;
 }
 
 export interface RepoGroupViewProps {
@@ -145,7 +150,14 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
         const url = (match as { baseUrl?: unknown } | undefined)?.baseUrl;
         return typeof url === 'string' && url.length > 0 ? url : undefined;
     }, [remoteGroups, workspaceId]);
-    const dockTargets = useRepoGroupDockTargets(workspaceId, groupBaseUrl, dockAvailable);
+    // Member repos + their descriptions: one read shared with the dock picker,
+    // made only once either surface actually needs it.
+    const [membersOpen, setMembersOpen] = useState(false);
+    const members = useRepoGroupMembers(workspaceId, groupBaseUrl, dockAvailable || membersOpen);
+    const dockTargets = useMemo(
+        () => (dockAvailable && members ? repoGroupDockTargets(workspaceId, members) : undefined),
+        [dockAvailable, members, workspaceId]
+    );
     const dock = useWorkspaceDock(workspaceId, dockTargets);
 
     // Landing tab when the current sub-tab is not one of the group's tabs (e.g.
@@ -158,6 +170,30 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
     return (
         <div className="flex flex-col h-full" data-testid="repo-group-view" data-workspace={workspaceId}>
             {!headerInTopBar && <VirtualWorkspaceInlineHeader config={headerConfig} />}
+
+            {/* Member repos — collapsed by default so the chat keeps the height,
+                but one click from the landing page since a description edit is a
+                rare, deliberate action. */}
+            <div className="shrink-0 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                <button
+                    type="button"
+                    data-testid="repo-group-members-toggle"
+                    aria-expanded={membersOpen}
+                    onClick={() => setMembersOpen(open => !open)}
+                    className="w-full flex items-center gap-1.5 px-3 py-1 text-xs text-[#616161] dark:text-[#999] hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2a]"
+                >
+                    <span>{membersOpen ? '▾' : '▸'}</span>
+                    <span className="font-medium">Member repos</span>
+                    {members && <span className="text-[#848484]">({members.length})</span>}
+                </button>
+                {membersOpen && (
+                    <div className="max-h-52 overflow-y-auto" data-testid="repo-group-members-panel">
+                        {members
+                            ? <RepoGroupMemberList workspaceId={workspaceId} baseUrl={groupBaseUrl} members={members} />
+                            : <div className="text-xs text-[#848484] px-3 py-2">Loading…</div>}
+                    </div>
+                )}
+            </div>
 
             {/* Tab content + the right dock as the outermost-right, full-height
                 column — mirrors RepoDetail's workspace content row. */}
