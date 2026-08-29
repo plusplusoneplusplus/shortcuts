@@ -71,6 +71,7 @@ import { registerTurnActionRoutes } from '../processes/turn-actions-handler';
 import { registerProcessHistoryRoutes } from '../processes/process-history-handler';
 import type { AutoPullManager } from '../git/auto-pull-manager';
 import { createAutoPullManager } from '../git/auto-pull-service';
+import { registerGitAutoPullRoutes } from './api-git-auto-pull-routes';
 import type { NotesGitTimerManager } from '../notes/git/notes-git-timer-manager';
 import { registerWorkspaceHistoryRoutes } from './api-workspace-history-routes';
 import { registerTerminalRoutes } from '../terminal/terminal-routes';
@@ -278,6 +279,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // timer the moment its `autoPull` preference changes; the caller owns
     // `startAll()` and `dispose()`.
     const autoPullManager = createAutoPullManager({ dataDir, processStore: store, getWsServer });
+    registerGitAutoPullRoutes({ routes, store, autoPullManager });
     const concreteDefaultProvider = (): ChatProvider => {
         const defaultProvider = opts.runtimeConfigService?.config.defaultProvider
             ?? opts.resolvedConfig?.defaultProvider;
