@@ -17,7 +17,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { FileProcessStore } from '@plusplusoneplusplus/forge';
-import { createRepoGroup } from '../../src/server/workspaces/repo-group-workspace';
+import { createRepoGroup, updateRepoGroup } from '../../src/server/workspaces/repo-group-workspace';
 import {
     REPO_GROUP_CONTEXT_TAG,
     resolveRepoGroupChatContext,
@@ -66,12 +66,83 @@ describe('repo-group-chat-context', () => {
         );
     });
 
-    it('lists name and absolute path only — no origin/branch/description', async () => {
+    it('lists name and absolute path only — no origin/branch metadata', async () => {
         const ws = await createRepoGroup(tmpDir, store, { name: 'G', members: ['ws-v2-aaa'] });
         const ctx = await resolveRepoGroupChatContext(store, tmpDir, ws.id);
         const body = ctx!.promptBlock;
-        expect(body).not.toMatch(/origin|branch|description/i);
+        expect(body).not.toMatch(/origin|branch/i);
         expect(body).toContain(`- Repo A: ${repoA}`);
+    });
+
+    it('appends the membership description to the member line', async () => {
+        const ws = await createRepoGroup(tmpDir, store, {
+            name: 'My Team',
+            members: ['ws-v2-aaa', 'ws-v2-bbb'],
+            descriptions: { 'ws-v2-aaa': 'the API server', 'ws-v2-bbb': 'the web client' },
+        });
+
+        const ctx = await resolveRepoGroupChatContext(store, tmpDir, ws.id);
+
+        expect(ctx!.promptBlock).toBe(
+            `<${REPO_GROUP_CONTEXT_TAG}>\n` +
+            'Repo group "My Team" members:\n' +
+            `- Repo A: ${repoA} — the API server\n` +
+            `- Repo B: ${repoB} — the web client\n` +
+            `</${REPO_GROUP_CONTEXT_TAG}>`,
+        );
+    });
+
+    it('keeps the bare form for a member with no description', async () => {
+        const ws = await createRepoGroup(tmpDir, store, {
+            name: 'Mixed',
+            members: ['ws-v2-aaa', 'ws-v2-bbb'],
+            descriptions: { 'ws-v2-bbb': 'the web client' },
+        });
+
+        const ctx = await resolveRepoGroupChatContext(store, tmpDir, ws.id);
+
+        expect(ctx!.promptBlock).toContain(`- Repo A: ${repoA}\n`);
+        expect(ctx!.promptBlock).not.toContain(`- Repo A: ${repoA} —`);
+        expect(ctx!.promptBlock).toContain(`- Repo B: ${repoB} — the web client`);
+    });
+
+    it('produces a byte-identical block to the no-descriptions form when every description is blank', async () => {
+        const plain = await createRepoGroup(tmpDir, store, { name: 'Same', members: ['ws-v2-aaa', 'ws-v2-bbb'] });
+        const blank = await createRepoGroup(tmpDir, store, {
+            name: 'Same',
+            members: ['ws-v2-aaa', 'ws-v2-bbb'],
+            descriptions: { 'ws-v2-aaa': '', 'ws-v2-bbb': '   ' },
+        });
+
+        const plainCtx = await resolveRepoGroupChatContext(store, tmpDir, plain.id);
+        const blankCtx = await resolveRepoGroupChatContext(store, tmpDir, blank.id);
+
+        expect(blankCtx!.promptBlock).toBe(plainCtx!.promptBlock);
+        expect(plainCtx!.promptBlock).toBe(
+            `<${REPO_GROUP_CONTEXT_TAG}>\n` +
+            'Repo group "Same" members:\n' +
+            `- Repo A: ${repoA}\n` +
+            `- Repo B: ${repoB}\n` +
+            `</${REPO_GROUP_CONTEXT_TAG}>`,
+        );
+    });
+
+    it('a description change drifts the block so it is re-injected', async () => {
+        const ws = await createRepoGroup(tmpDir, store, { name: 'G', members: ['ws-v2-aaa'] });
+        const before = await resolveRepoGroupChatContext(store, tmpDir, ws.id);
+
+        await updateRepoGroup(tmpDir, store, ws.id, { descriptions: { 'ws-v2-aaa': 'the API server' } });
+        const after = await resolveRepoGroupChatContext(store, tmpDir, ws.id);
+
+        expect(after!.promptBlock).not.toBe(before!.promptBlock);
+        expect(
+            shouldInjectRepoGroupContext({
+                context: after,
+                turns: [{ role: 'user', content: 'hi', timestamp: new Date(), repoGroupContext: before!.promptBlock }] as unknown as ConversationTurn[],
+                compaction: undefined,
+                canResumeSession: true,
+            }),
+        ).toBe(true);
     });
 
     it('skips a member whose workspace was removed', async () => {
