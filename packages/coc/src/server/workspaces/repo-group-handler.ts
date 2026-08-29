@@ -5,6 +5,8 @@
  * validate membership against the workspace registry (only registered,
  * non-virtual repo workspaces may be members); reads resolve members
  * against the live registry so stale entries surface in the edit dialog.
+ * Per-member descriptions ride along on create/update as an optional map and
+ * come back on every resolved member.
  * Deleting a group only deregisters the workspace — its data directory
  * stays on disk.
  */
@@ -49,6 +51,20 @@ function isStringArray(value: unknown): value is string[] {
     return Array.isArray(value) && value.every((v) => typeof v === 'string');
 }
 
+/**
+ * Descriptions must arrive as a plain object of workspace ID -> string. Length
+ * and membership of each key are checked further in, by the store, so those
+ * failures share the one `RepoGroupValidationError -> 400` path.
+ */
+function isStringMap(value: unknown): value is Record<string, string> {
+    return (
+        typeof value === 'object' &&
+        value !== null &&
+        !Array.isArray(value) &&
+        Object.values(value as Record<string, unknown>).every((v) => typeof v === 'string')
+    );
+}
+
 export function registerRepoGroupRoutes(
     routes: Route[],
     store: ProcessStore,
@@ -80,8 +96,15 @@ export function registerRepoGroupRoutes(
             if (!isStringArray(body.members)) {
                 return handleAPIError(res, badRequest('members must be an array of workspace IDs'));
             }
+            if (body.descriptions !== undefined && !isStringMap(body.descriptions)) {
+                return handleAPIError(res, badRequest('descriptions must be an object of workspace ID to string'));
+            }
             try {
-                const ws = await createRepoGroup(dataDir, store, { name: body.name, members: body.members });
+                const ws = await createRepoGroup(dataDir, store, {
+                    name: body.name,
+                    members: body.members,
+                    descriptions: body.descriptions,
+                });
                 await deps.onGroupRegistered?.(ws);
                 broadcast(ws.id, 'added');
                 const members = await resolveRepoGroupMembers(dataDir, store, ws.id);
@@ -114,7 +137,7 @@ export function registerRepoGroupRoutes(
     });
 
     // ------------------------------------------------------------------
-    // PATCH /api/repo-groups/:id — Rename and/or replace membership
+    // PATCH /api/repo-groups/:id — Rename, replace membership, patch descriptions
     // ------------------------------------------------------------------
     routes.push({
         method: 'PATCH',
@@ -128,11 +151,15 @@ export function registerRepoGroupRoutes(
             if (body.members !== undefined && !isStringArray(body.members)) {
                 return handleAPIError(res, badRequest('members must be an array of workspace IDs'));
             }
+            if (body.descriptions !== undefined && !isStringMap(body.descriptions)) {
+                return handleAPIError(res, badRequest('descriptions must be an object of workspace ID to string'));
+            }
             try {
                 const id = decodeURIComponent(match![1]);
                 const updated = await updateRepoGroup(dataDir, store, id, {
                     name: body.name,
                     members: body.members,
+                    descriptions: body.descriptions,
                 });
                 if (!updated) {
                     return handleAPIError(res, notFound('Repo group'));
