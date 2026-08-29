@@ -33,8 +33,12 @@ export function applyRepoPreferencesLiveEffects(options: ApplyRepoPreferencesLiv
         }
     }
 
-    const shouldNotifyRepoPreferences = options.kind === 'replace'
-        || options.patch?.workItems !== undefined;
+    // Notify on any patch, not just the sections that happened to need it first.
+    // Every listener re-reads the preference it cares about and no-ops when it is
+    // unchanged, so an extra notification is cheap — whereas a missing one leaves
+    // a live timer stale until the next restart. A `PATCH` touching only
+    // `autoPull` used to fall through here and never re-arm its pull timer.
+    const shouldNotifyRepoPreferences = options.kind === 'replace' || options.patch !== undefined;
     if (shouldNotifyRepoPreferences && options.onRepoPreferencesChanged) {
         Promise.resolve(options.onRepoPreferencesChanged(options.workspaceId, options.preferences)).catch(error => {
             logPreferenceEffectError(

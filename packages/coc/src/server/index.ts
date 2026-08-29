@@ -116,6 +116,7 @@ interface CloseHandlerDeps {
     triggerInfraDispose?: () => void;
     mcpOauthDispose?: () => void;
     syncEngines?: Map<string, SyncEngine>;
+    autoPullManager?: { dispose(): void };
     workItemGitHubPullPoller?: { dispose(): void };
     workItemAzureBoardsPullPoller?: { dispose(): void };
     activeWorkspaceBackgroundRefresher?: { dispose(): void };
@@ -151,6 +152,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.triggerInfraDispose?.();
         deps.mcpOauthDispose?.();
         deps.syncEngines?.forEach(e => e.stop());
+        deps.autoPullManager?.dispose();
         deps.workItemGitHubPullPoller?.dispose();
         deps.workItemAzureBoardsPullPoller?.dispose();
         deps.activeWorkspaceBackgroundRefresher?.dispose();
@@ -727,7 +729,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     let localBaseUrl = formatLocalBaseUrl(host, port);
     const routes: Route[] = [];
-    const { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler } = registerAllRoutes(routes, {
+    const { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler } = registerAllRoutes(routes, {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
         dataDir, configPath: options.configPath,
@@ -764,6 +766,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     });
     // Restore auto-commit timers for all workspaces that had it enabled
     notesGitTimerManager.startAll(store, dataDir).catch(() => { /* best-effort */ });
+    // Arm server-side git auto-pull for every repo whose preference enables it.
+    // Anchored on each repo's persisted last run, so a restart mid-interval does
+    // not reset the countdown.
+    autoPullManager.startAll().catch(() => { /* best-effort */ });
 
     // Container link persistence helpers
     const containerLinkConfigPath = path.join(dataDir, 'container-link.json');
@@ -962,7 +968,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             staleDetector, outputPruner, heapMonitor, taskWatcher, pipelineWatcher, templateWatcher, notesWatcher,
             notesSearchService,
             notesSearchPreferencesDispose,
-            wikiManager, scheduleManager, scheduleInfraDispose, notesGitTimerManager, bridge, queuePersistence, wsServer,
+            wikiManager, scheduleManager, scheduleInfraDispose, notesGitTimerManager, autoPullManager, bridge, queuePersistence, wsServer,
             terminalWsServer: terminalInfra?.terminalWsServer,
             terminalSessionManager: terminalInfra?.terminalSessionManager,
             remoteServerConnector,

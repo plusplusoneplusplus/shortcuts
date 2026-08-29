@@ -2943,6 +2943,50 @@ describe('registerPreferencesRoutes — sync engine wiring', () => {
         expect(mockEngine.start).toHaveBeenCalledWith('git@github.com:u/notes.git', 15);
     });
 
+    // Regression: `applyRepoPreferencesLiveEffects` used to notify only for
+    // `replace` patches or ones carrying `workItems`, so a PATCH touching just
+    // `autoPull` silently left the repo's server-side pull timer stale until the
+    // next restart.
+    it('PATCH with only autoPull triggers the live repo-preferences callback', async () => {
+        const onRepoPreferencesChanged = vi.fn();
+        const routes: Route[] = [];
+        registerPreferencesRoutes(routes, tmpDir, undefined, onRepoPreferencesChanged);
+
+        const found = findRoute(routes, 'PATCH', '/api/workspaces/my_work/preferences')!;
+        const res = fakeRes();
+        await found.route.handler(
+            fakeReq('PATCH', { autoPull: { enabled: true, intervalMinutes: 15 } }),
+            res,
+            found.match,
+        );
+
+        expect(res.statusCode).toBe(200);
+        expect(readRepoPreferences(tmpDir, 'my_work').autoPull).toEqual({ enabled: true, intervalMinutes: 15 });
+        expect(onRepoPreferencesChanged).toHaveBeenCalledWith('my_work', expect.objectContaining({
+            autoPull: { enabled: true, intervalMinutes: 15 },
+        }));
+    });
+
+    it('PATCH turning autoPull off triggers the live repo-preferences callback', async () => {
+        writeRepoPreferences(tmpDir, 'my_work', { autoPull: { enabled: true, intervalMinutes: 15 } });
+        const onRepoPreferencesChanged = vi.fn();
+        const routes: Route[] = [];
+        registerPreferencesRoutes(routes, tmpDir, undefined, onRepoPreferencesChanged);
+
+        const found = findRoute(routes, 'PATCH', '/api/workspaces/my_work/preferences')!;
+        const res = fakeRes();
+        await found.route.handler(
+            fakeReq('PATCH', { autoPull: { enabled: false, intervalMinutes: 15 } }),
+            res,
+            found.match,
+        );
+
+        expect(res.statusCode).toBe(200);
+        expect(onRepoPreferencesChanged).toHaveBeenCalledWith('my_work', expect.objectContaining({
+            autoPull: { enabled: false, intervalMinutes: 15 },
+        }));
+    });
+
     it('PATCH workItems GitHub polling prefs deep-merges owner/repo and triggers live callback', async () => {
         writeRepoPreferences(tmpDir, 'my_work', {
             workItems: {
