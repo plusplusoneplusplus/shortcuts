@@ -28,6 +28,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/repoGroupService', () => 
     listRepoGroupServerOptions: (...args: unknown[]) => mockListServers(...args),
     LOCAL_REPO_GROUP_SERVER_ID: 'local',
     LOCAL_REPO_GROUP_SERVER: { id: 'local', label: 'Local' },
+    REPO_GROUP_DESCRIPTION_MAX_LENGTH: 280,
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/repositoryService', () => ({
     getRepositoryApiErrorMessage: (err: unknown, fallback: string) =>
@@ -91,7 +92,7 @@ describe('RepoGroupDialog create (repo-group AC-01)', () => {
         fireEvent.click(screen.getByTestId('repo-group-member-check-f'));
         fireEvent.click(screen.getByTestId('repo-group-save-btn'));
 
-        await waitFor(() => expect(mockCreateRepoGroup).toHaveBeenCalledWith({ name: 'Platform', members: ['a', 'f'] }, undefined));
+        await waitFor(() => expect(mockCreateRepoGroup).toHaveBeenCalledWith({ name: 'Platform', members: ['a', 'f'], descriptions: { a: '', f: '' } }, undefined));
         await waitFor(() => expect(onSaved).toHaveBeenCalled());
         expect(mockUpdateRepoGroup).not.toHaveBeenCalled();
     });
@@ -105,7 +106,9 @@ describe('RepoGroupDialog create (repo-group AC-01)', () => {
         expect(screen.getByTestId('repo-group-member-check-f')).toBeTruthy();
         expect(screen.queryByTestId('repo-group-member-check-r')).toBeNull();
         expect(screen.getAllByTestId(/^repo-group-member-check-/)).toHaveLength(2);
-        // Membership is checkbox-only: the sole non-checkbox input is the name.
+        // Membership is checkbox-only: with nothing checked, the sole non-checkbox
+        // input is the name — there is no free-form path entry. (Checking a repo
+        // adds its description field, which is text but not a membership control.)
         const inputs = Array.from(document.querySelectorAll('input'));
         expect(inputs.filter(i => i.type !== 'checkbox')).toHaveLength(1);
         expect(inputs.filter(i => i.type !== 'checkbox')[0].getAttribute('data-testid')).toBe('repo-group-name-input');
@@ -174,7 +177,7 @@ describe('RepoGroupDialog edit (repo-group AC-01/AC-03)', () => {
         fireEvent.click(screen.getByTestId('repo-group-member-check-gone'));
         fireEvent.click(screen.getByTestId('repo-group-save-btn'));
 
-        await waitFor(() => expect(mockUpdateRepoGroup).toHaveBeenCalledWith('group-platform', { name: 'Platform', members: ['a', 'f'] }, undefined));
+        await waitFor(() => expect(mockUpdateRepoGroup).toHaveBeenCalledWith('group-platform', { name: 'Platform', members: ['a', 'f'], descriptions: { a: '', f: '' } }, undefined));
         await waitFor(() => expect(onSaved).toHaveBeenCalled());
         expect(mockCreateRepoGroup).not.toHaveBeenCalled();
     });
@@ -224,7 +227,7 @@ describe('RepoGroupDialog server scope (remote-server repo groups AC-01/AC-04)',
         fireEvent.click(screen.getByTestId('repo-group-save-btn'));
 
         await waitFor(() => expect(mockCreateRepoGroup)
-            .toHaveBeenCalledWith({ name: 'Remote platform', members: ['r1'] }, REMOTE_URL));
+            .toHaveBeenCalledWith({ name: 'Remote platform', members: ['r1'], descriptions: { r1: '' } }, REMOTE_URL));
         await waitFor(() => expect(onSaved).toHaveBeenCalled());
     });
 
@@ -242,7 +245,7 @@ describe('RepoGroupDialog server scope (remote-server repo groups AC-01/AC-04)',
 
         // The local pick is gone — the group can only ever hold one server's ids.
         await waitFor(() => expect(mockCreateRepoGroup)
-            .toHaveBeenCalledWith({ name: 'Mixed', members: [] }, REMOTE_URL));
+            .toHaveBeenCalledWith({ name: 'Mixed', members: [], descriptions: {} }, REMOTE_URL));
     });
 
     it('pins an existing remote group to its server and routes load + save there', async () => {
@@ -266,7 +269,7 @@ describe('RepoGroupDialog server scope (remote-server repo groups AC-01/AC-04)',
 
         fireEvent.click(screen.getByTestId('repo-group-save-btn'));
         await waitFor(() => expect(mockUpdateRepoGroup)
-            .toHaveBeenCalledWith('group-remote', { name: 'Remote platform', members: ['r1'] }, REMOTE_URL));
+            .toHaveBeenCalledWith('group-remote', { name: 'Remote platform', members: ['r1'], descriptions: { r1: '' } }, REMOTE_URL));
     });
 
     it('explains when the chosen server has no repo-group support (404)', async () => {
@@ -290,5 +293,82 @@ describe('RepoGroupDialog server scope (remote-server repo groups AC-01/AC-04)',
 
         const select = screen.getByTestId('repo-group-server-select') as HTMLSelectElement;
         await waitFor(() => expect(Array.from(select.options).map(o => o.value)).toEqual(['local']));
+    });
+});
+
+describe('RepoGroupDialog member descriptions (repo-group AC-03)', () => {
+    it('reveals a placeholder description field for a checked member and sends the trimmed text', async () => {
+        renderDialog();
+
+        // Unchecked members have no field — a description only makes sense for a member.
+        expect(screen.queryByTestId('repo-group-member-description-a')).toBeNull();
+        fireEvent.click(screen.getByTestId('repo-group-member-check-a'));
+
+        const field = screen.getByTestId('repo-group-member-description-a') as HTMLInputElement;
+        expect(field.value).toBe('');
+        expect(field.placeholder).toBe('Add description');
+        expect(field.maxLength).toBe(280);
+
+        fireEvent.change(screen.getByTestId('repo-group-name-input'), { target: { value: 'Platform' } });
+        fireEvent.change(field, { target: { value: '  the CLI  ' } });
+        fireEvent.click(screen.getByTestId('repo-group-save-btn'));
+
+        await waitFor(() => expect(mockCreateRepoGroup)
+            .toHaveBeenCalledWith({ name: 'Platform', members: ['a'], descriptions: { a: 'the CLI' } }, undefined));
+    });
+
+    it('typing a description does not toggle the row checkbox', () => {
+        renderDialog();
+
+        fireEvent.click(screen.getByTestId('repo-group-member-check-a'));
+        const field = screen.getByTestId('repo-group-member-description-a');
+        fireEvent.change(field, { target: { value: 'the CLI' } });
+        fireEvent.click(field);
+
+        expect((screen.getByTestId('repo-group-member-check-a') as HTMLInputElement).checked).toBe(true);
+        expect(screen.getByTestId('repo-group-member-description-a')).toBeTruthy();
+    });
+
+    it('drops a description when its member is unchecked', async () => {
+        renderDialog();
+
+        fireEvent.change(screen.getByTestId('repo-group-name-input'), { target: { value: 'Platform' } });
+        fireEvent.click(screen.getByTestId('repo-group-member-check-a'));
+        fireEvent.change(screen.getByTestId('repo-group-member-description-a'), { target: { value: 'the CLI' } });
+        fireEvent.click(screen.getByTestId('repo-group-member-check-a'));
+
+        expect(screen.queryByTestId('repo-group-member-description-a')).toBeNull();
+        fireEvent.click(screen.getByTestId('repo-group-save-btn'));
+
+        await waitFor(() => expect(mockCreateRepoGroup)
+            .toHaveBeenCalledWith({ name: 'Platform', members: [], descriptions: {} }, undefined));
+    });
+
+    it('prefills loaded descriptions and PATCHes the edited ones, clearing an emptied field', async () => {
+        mockGetRepoGroup.mockResolvedValue({
+            id: 'group-platform',
+            name: 'Platform',
+            members: [
+                { workspaceId: 'a', stale: false, name: 'shortcuts', rootPath: '/r/a', description: 'the CLI' },
+                { workspaceId: 'f', stale: false, name: 'forge', rootPath: '/r/f' },
+            ],
+        });
+        renderDialog({ groupId: 'group-platform' });
+
+        await waitFor(() => expect((screen.getByTestId('repo-group-member-description-a') as HTMLInputElement).value)
+            .toBe('the CLI'));
+        // A member with no stored description shows the empty placeholder state.
+        expect((screen.getByTestId('repo-group-member-description-f') as HTMLInputElement).value).toBe('');
+
+        fireEvent.change(screen.getByTestId('repo-group-member-description-a'), { target: { value: '' } });
+        fireEvent.change(screen.getByTestId('repo-group-member-description-f'), { target: { value: 'the build tool' } });
+        fireEvent.click(screen.getByTestId('repo-group-save-btn'));
+
+        // An emptied field sends '' so the server clears that member's old text.
+        await waitFor(() => expect(mockUpdateRepoGroup).toHaveBeenCalledWith(
+            'group-platform',
+            { name: 'Platform', members: ['a', 'f'], descriptions: { a: '', f: 'the build tool' } },
+            undefined,
+        ));
     });
 });
