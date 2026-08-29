@@ -17,6 +17,7 @@ import {
     formatCount,
     formatDuration,
     formatStartTime,
+    formatStartTimeDetailed,
     statusIndicator,
     isImageDataUrl,
     MAX_RESULT_LENGTH,
@@ -161,6 +162,20 @@ describe('small pure helpers', () => {
         expect(formatStartTime('2026-01-01T00:00:00Z')).toMatch(/^\d\d\/\d\d \d{1,2}:\d\d (AM|PM)$/);
     });
 
+    it('formatStartTimeDetailed renders MM/DD hh:mm:ss AM/PM or empty on bad input', () => {
+        expect(formatStartTimeDetailed('')).toBe('');
+        expect(formatStartTimeDetailed(undefined)).toBe('');
+        expect(formatStartTimeDetailed('not-a-date')).toBe('');
+        expect(formatStartTimeDetailed('2026-01-01T00:00:00Z')).toMatch(/^\d\d\/\d\d \d{1,2}:\d\d:\d\d (AM|PM)$/);
+    });
+
+    it('formatStartTimeDetailed adds seconds to the formatStartTime label', () => {
+        // Local-time formatting, so derive the expectation from a local Date.
+        const d = new Date(2026, 0, 2, 15, 4, 5);
+        expect(formatStartTimeDetailed(d.toISOString())).toBe('01/02 3:04:05 PM');
+        expect(formatStartTime(d.toISOString())).toBe('01/02 3:04 PM');
+    });
+
     it('statusIndicator maps status to an emoji', () => {
         expect(statusIndicator('running')).toBe('🔄');
         expect(statusIndicator('completed')).toBe('✅');
@@ -265,6 +280,29 @@ describe('buildToolCallRenderModel', () => {
         const model = buildToolCallRenderModel({ toolName: 'random', args: {}, error: 'boom' }, 'whisper-row');
         expect(model.summary).toBe('');
         expect(model.rowSummary).toBe('error');
+    });
+
+    it('exposes both start-time labels, and empty strings when startTime is absent', () => {
+        const d = new Date(2026, 0, 2, 15, 4, 5);
+        const model = buildToolCallRenderModel({
+            toolName: 'bash', args: { command: 'ls' },
+            startTime: d.toISOString(),
+            endTime: new Date(d.getTime() + 1500).toISOString(),
+        }, 'card');
+        expect(model.startTimeLabel).toBe('01/02 3:04 PM');
+        expect(model.startTimeDetailLabel).toBe('01/02 3:04:05 PM');
+        expect(model.duration).toBe('1.5s');
+
+        const noTime = buildToolCallRenderModel({ toolName: 'bash', args: { command: 'ls' } }, 'card');
+        expect(noTime.startTimeLabel).toBe('');
+        expect(noTime.startTimeDetailLabel).toBe('');
+    });
+
+    it('survives a synthesized tool call whose startTime equals endTime', () => {
+        const iso = new Date(2026, 0, 2, 15, 4, 5).toISOString();
+        const model = buildToolCallRenderModel({ toolName: 'bash', args: { command: 'ls' }, startTime: iso, endTime: iso }, 'card');
+        expect(model.startTimeDetailLabel).toBe('01/02 3:04:05 PM');
+        expect(model.duration).toBe('0ms');
     });
 
     it('reports hasDetails when any of args/result/error is present', () => {

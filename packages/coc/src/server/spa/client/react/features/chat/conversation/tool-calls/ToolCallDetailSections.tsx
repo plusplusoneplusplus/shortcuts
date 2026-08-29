@@ -2,7 +2,8 @@
  * ToolCallDetailSections — the expandable detail body shared by both the
  * whisper-row and default-card ToolCallView variants. Given a computed
  * ToolCallRenderModel it renders shell/sql sections, edit/create/view/patch
- * previews, generic args, task_complete markdown, result, and error — the same
+ * previews, generic args, task_complete markdown, result, error, and a trailing
+ * timing line (start time + duration) — the same
  * facts in the same order for every variant. Only the error color differs, so
  * variants pass an `errorClassName`.
  */
@@ -303,6 +304,8 @@ export function ToolCallDetailSections({ model, errorClassName, onImageClick }: 
         resultText,
         taskCompleteSummary,
         error,
+        startTimeDetailLabel,
+        duration,
     } = model;
 
     const taskCompleteHtml = useMemo(() => {
@@ -412,6 +415,12 @@ export function ToolCallDetailSections({ model, errorClassName, onImageClick }: 
                     <pre className={cn('overflow-x-auto text-[11px] whitespace-pre-wrap break-words', errorClassName)}>
                         <code>{error}</code>
                     </pre>
+                </div>
+            )}
+            {startTimeDetailLabel && (
+                <div className="text-[10px] text-[#848484]" data-testid="tool-call-timing">
+                    Started {startTimeDetailLabel}
+                    {duration && ` · ${duration}`}
                 </div>
             )}
         </>

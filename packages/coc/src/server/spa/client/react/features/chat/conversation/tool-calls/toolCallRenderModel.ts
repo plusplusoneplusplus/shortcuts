@@ -213,6 +213,25 @@ export function formatStartTime(startTime?: string): string {
     return `${MM}/${dd} ${hh}:${mm} ${ampm}`;
 }
 
+/**
+ * Same clock as {@link formatStartTime} but with seconds — the expanded detail
+ * body has room for them, and tool calls that fire in the same minute are only
+ * distinguishable at second granularity.
+ */
+export function formatStartTimeDetailed(startTime?: string): string {
+    if (!startTime) return '';
+    const d = new Date(startTime);
+    if (isNaN(d.getTime())) return '';
+    const MM = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    let hh = d.getHours();
+    const ampm = hh >= 12 ? 'PM' : 'AM';
+    hh = hh % 12 || 12;
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${MM}/${dd} ${hh}:${mm}:${ss} ${ampm}`;
+}
+
 export function formatDuration(startTime?: string, endTime?: string): string {
     if (!startTime) return '';
     const start = new Date(startTime).getTime();
@@ -274,6 +293,8 @@ export interface ToolCallRenderModel {
     summaryFullPath: string;
     duration: string;
     startTimeLabel: string;
+    /** Start time with seconds, for the expanded detail body. '' when unknown. */
+    startTimeDetailLabel: string;
     /** True when there is any expandable detail (args, result, or error). */
     hasDetails: boolean;
     resultText: string;
@@ -420,6 +441,7 @@ export function buildToolCallRenderModel(
         summaryFullPath,
         duration: formatDuration(normalized.startTime, normalized.endTime),
         startTimeLabel: formatStartTime(normalized.startTime),
+        startTimeDetailLabel: formatStartTimeDetailed(normalized.startTime),
         hasDetails,
         resultText,
         isResultTruncated,

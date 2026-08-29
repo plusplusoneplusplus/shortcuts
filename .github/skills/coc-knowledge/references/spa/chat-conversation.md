@@ -223,7 +223,10 @@ the synthetic assistant turn the same way.
 `buildToolCallRenderModel` (`toolCallRenderModel.ts`) is a pure kernel deriving normalized
 identity, summary, truncation, preview eligibility, and the whisper-row metric. Whisper-row
 and card variants share one `ToolCallDetailSections` body; inside `WhisperCollapsedGroup` a
-call is one flat row.
+call is one flat row. The shared body ends with a muted timing line, `Started <start> ·
+<duration>`, using `startTimeDetailLabel` (`formatStartTimeDetailed`, seconds precision);
+the collapsed card header keeps the minute-precision `startTimeLabel`. Omitted when the
+tool call has no parseable start time.
 
 ### Semantic shell classification
 
