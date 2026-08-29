@@ -23,7 +23,7 @@ Single `processes.db` at `~/.coc/processes.db`. Schema version 22.
 | `queue_tasks` | Queue task persistence |
 | `schedule_runs` | Schedule execution history |
 | `commit_chat_bindings` | commitHash → taskId |
-| `pull_request_chat_bindings` | prId → taskId (one chat per PR per canonical origin; the `workspace_id` column stores the origin key) |
+| `pull_request_chat_bindings` | prId → bare taskId (one chat per PR per canonical origin; the `workspace_id` column stores the origin key). Two writers: the dashboard on live detection, and `bind-detected-pull-requests.ts` when a task finishes |
 | `work_item_chat_bindings` | workItemId → taskId (one chat per Work Item per canonical origin; `workspace_id` stores the origin key) |
 | `task_groups` | Parent/child task-group registry: one row per hierarchical run/session or chat folder (type, title, normalized status, hidden flag, origin process, `parent_group_id`, extra JSON) |
 | `task_group_members` | Child links per group: role (`generation`/`item`/`reduce`/`iteration`/`final-check`/`analyzer`/`critic`), task/process IDs, `itemKey`, `memberIndex` |

@@ -45,6 +45,15 @@
       "git": [
         "dist/git/index.d.ts"
       ],
+      "git/normalize-url": [
+        "dist/git/normalize-url.d.ts"
+      ],
+      "git/repo-identity": [
+        "dist/git/repo-identity.d.ts"
+      ],
+      "git/pull-request-detection": [
+        "dist/git/pull-request-detection.d.ts"
+      ],
       "memory": [
         "dist/memory/index.d.ts"
       ],
@@ -61,6 +70,7 @@
     "./git": "./dist/git/index.js",
     "./git/normalize-url": "./dist/git/normalize-url.js",
     "./git/repo-identity": "./dist/git/repo-identity.js",
+    "./git/pull-request-detection": "./dist/git/pull-request-detection.js",
     "./ai": "./dist/ai/index.js",
     "./map-reduce": "./dist/map-reduce/index.js",
     "./pipeline": "./dist/pipeline/index.js",

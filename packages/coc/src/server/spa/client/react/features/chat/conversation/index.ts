@@ -54,10 +54,10 @@ export { getConversationTurns } from './chatConversationUtils';
 
 // Utilities
 export { detectCommitsInToolGroup } from './commitDetection';
-export { detectPullRequestsInToolGroup } from './pullRequestDetection';
-export type { DetectedPullRequest } from './pullRequestDetection';
+export { detectPullRequestsInToolGroup, collectToolCallsFromTurns } from '@plusplusoneplusplus/forge/git/pull-request-detection';
+export type { DetectedPullRequest } from '@plusplusoneplusplus/forge/git/pull-request-detection';
 export {
-    collectToolCallsFromTurns, gatherDetectedPrsFromTurns, originIdForDetectedPr,
+    gatherDetectedPrsFromTurns, originIdForDetectedPr,
     unionAssociations, detectedPrsNeedingBinding,
 } from './prChatAssociation';
 export type { PrAssociation, PrChatBindingLike, UnionAssociationsInput } from './prChatAssociation';

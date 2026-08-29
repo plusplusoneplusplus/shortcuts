@@ -57,6 +57,7 @@ import {
 import { cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
 import { buildLiveConversationCostEstimate } from '../processes/process-metadata-read-model';
 import { finalizeOrphanedProcess } from '../processes/finalize-orphaned-turn';
+import { bindDetectedPullRequestsForProcess } from '../processes/bind-detected-pull-requests';
 import {
     isChatFollowUp,
     isChatPayload,
@@ -1083,6 +1084,17 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             this.cleanupSession(processId);
             this.store.unregisterFlushHandler?.(processId);
             await this.persistOutput(processId, buffer, (task.payload as any)?.workspaceId);
+
+            // Backstop for the PR-chat binding: the dashboard only records a
+            // chat's PR while someone has that chat open, so a background task
+            // that opens a PR and is never opened would stay unbound. Runs on
+            // every exit path — a chat that opened a PR and then crashed still
+            // opened a PR. Self-swallowing; never fails the task.
+            await bindDetectedPullRequestsForProcess(
+                this.store,
+                processId,
+                (task.payload as any)?.workspaceId as string | undefined,
+            );
         }
     }
 }
