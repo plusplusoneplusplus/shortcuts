@@ -16,7 +16,7 @@ refresh, and the two layouts. Everything else lives here.
 | `useRepoGitData.ts` | Commits (pagination + search), branch range + base mode, repo state, client-side caches, `lastRefreshedAt`, `refreshAll`, initial load. |
 | `useRepoGitSelection.ts` | Right-panel routing, URL hash + AppContext sync, deep-link hydration, direct SHA lookup. |
 | `useGitOperationActions.ts` | Fetch/pull/push/push-to/rebase/reset/amend/reword/drop/cherry-pick/reorder/conflict, plus all four async-job pollers. |
-| `useGitAutoPullController.ts` | The per-repo auto-pull setting, countdown, tick behavior, and job polling. |
+| `useGitAutoPullController.ts` | The per-repo auto-pull setting (written via the preferences PATCH) and a read of the server-owned schedule. Owns no timer and never pulls. |
 | `useGitSkillActions.ts` | Skills list + MRU map, skill runs, Ask AI launches, queue-backed squash and conflict resolution. |
 | `RepoGitListPane.tsx`, `RepoGitDetailPane.tsx`, `RepoGitOverlays.tsx` | Presentation only; everything arrives as props. |
 
@@ -26,12 +26,14 @@ refresh, and the two layouts. Everything else lives here.
   its client through `useCocClient(workspaceId)`. Git, queue and preferences
   traffic must target the selected clone's server — never the page-origin
   singleton, and never a client captured from a different workspace.
-- **One pull poller.** `useGitOperationActions` creates the pull poller and
-  hands it to `useGitAutoPullController`. Manual and automatic pulls therefore
-  cannot poll concurrently. Do not create a second poller for auto-pull.
-- **Auto-pull reports through the toast, never the banner.** A background pull
-  that skipped (dirty tree) or failed (non-fast-forward) is informational.
-  `actionError` is reserved for actions the user asked for.
+- **Auto-pull runs on the server.** The timer, the dirty pre-check, the pull and
+  the persisted run state all live in `src/server/git/auto-pull-*.ts`, so a repo
+  pulls whether or not a tab is open and the schedule survives a reload. The
+  client is a reader over `GET /api/workspaces/:id/git/auto-pull`. Do not add a
+  browser timer that initiates a pull — that is exactly what was removed.
+- **Auto-pull outcomes are informational, never the banner.** A background pull
+  that skipped (dirty tree) or failed (non-fast-forward) is reported in the
+  auto-pull dropdown. `actionError` is reserved for actions the user asked for.
 - **Data does not own selection.** `refreshAll` reads and writes the right panel
   only through the injected `selection` bridge, and decides *what* to select via
   the pure `reconcileSelectionAfterRefresh`. `changed: false` means "leave the

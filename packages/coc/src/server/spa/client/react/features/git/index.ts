@@ -2,6 +2,7 @@ export { RepoGitTab } from './RepoGitTab';
 export { GitPanelHeader } from './GitPanelHeader';
 export { GitAutoPullControl, AUTO_PULL_PRESETS, AUTO_PULL_MAX_INTERVAL_MINUTES } from './GitAutoPullControl';
 export type { AutoPullSetting } from './GitAutoPullControl';
+export { formatTimeUntil, describeLastRun, describeLastRunDetail } from './autoPullStatusView';
 export { buildFixupGroups, parseFixupSubject, FIXUP_GROUP_COLORS_LIGHT, FIXUP_GROUP_COLORS_DARK } from './fixup-utils';
 export type { FixupGroupMap, FixupEntry, FixupGroupTarget, ParsedFixup, FixupType } from './fixup-utils';
 export { groupHistoryByPlanFile } from './history-grouping';

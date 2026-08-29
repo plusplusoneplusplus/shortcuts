@@ -175,7 +175,7 @@ export function useGitOperationActions({
 
     const pull = useCallback(async () => {
         if (pulling) return;
-        onManualPull(); // a manual pull restarts the auto-pull countdown
+        onManualPull(); // a manual pull changes the repo's last-pull picture
         setPulling(true);
         setActionError(null);
         try {

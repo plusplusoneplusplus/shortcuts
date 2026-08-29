@@ -12,7 +12,14 @@ import { GitAutoPullControl, type AutoPullSetting } from '../../../../src/server
 
 function renderControl(overrides: Partial<Parameters<typeof GitAutoPullControl>[0]> = {}) {
     const onChange = overrides.onChange ?? vi.fn();
-    const utils = render(<GitAutoPullControl value={overrides.value} onChange={onChange} compact={overrides.compact} />);
+    const utils = render(
+        <GitAutoPullControl
+            value={overrides.value}
+            onChange={onChange}
+            status={overrides.status}
+            compact={overrides.compact}
+        />,
+    );
     return { ...utils, onChange };
 }
 
@@ -209,5 +216,75 @@ describe('compact variant', () => {
         renderControl({ value, compact: true });
         const toggle = screen.getByTestId('git-autopull-toggle');
         expect(toggle.className).toContain('h-[18px]');
+    });
+});
+
+// ── Server-owned status (AC-05) ─────────────────────────────────────────────
+
+describe('server-owned status', () => {
+    /** Far enough out that the label is stable regardless of when the test runs. */
+    function statusIn(minutes: number, extra: Record<string, unknown> = {}) {
+        return {
+            enabled: true,
+            intervalMinutes: 30,
+            nextRunAt: new Date(Date.now() + minutes * 60_000).toISOString(),
+            ...extra,
+        } as any;
+    }
+
+    it('renders nothing extra when the server has no status yet', () => {
+        renderControl({ value: { enabled: true, intervalMinutes: 30 } });
+        expect(screen.queryByTestId('git-autopull-next-run')).toBeNull();
+        open();
+        expect(screen.queryByTestId('git-autopull-status')).toBeNull();
+    });
+
+    it('shows the server countdown in the pill', () => {
+        renderControl({ value: { enabled: true, intervalMinutes: 30 }, status: statusIn(10) });
+        expect(screen.getByTestId('git-autopull-next-run').textContent).toBe('in 10m');
+    });
+
+    it('omits the countdown while auto-pull is off', () => {
+        renderControl({ value: { enabled: false, intervalMinutes: 30 }, status: statusIn(10) });
+        expect(screen.queryByTestId('git-autopull-next-run')).toBeNull();
+    });
+
+    it('shows the next run and the last outcome in the dropdown', () => {
+        renderControl({
+            value: { enabled: true, intervalMinutes: 30 },
+            status: statusIn(10, {
+                lastRunAt: new Date(Date.now() - 60_000).toISOString(),
+                outcome: 'skipped-dirty',
+                message: 'uncommitted changes in the working tree',
+            }),
+        });
+        open();
+        expect(screen.getByTestId('git-autopull-status-next').textContent).toBe('Next run in 10m');
+        expect(screen.getByTestId('git-autopull-status-last').textContent)
+            .toContain('skipped — uncommitted changes');
+    });
+
+    it('puts the server message in the last-run title', () => {
+        renderControl({
+            value: { enabled: true, intervalMinutes: 30 },
+            status: statusIn(10, {
+                lastRunAt: new Date(Date.now() - 60_000).toISOString(),
+                outcome: 'skipped-dirty',
+                message: 'uncommitted changes in the working tree',
+            }),
+        });
+        open();
+        expect(screen.getByTestId('git-autopull-status-last').getAttribute('title'))
+            .toContain('uncommitted changes in the working tree');
+    });
+
+    it('shows a last run even when nothing is scheduled', () => {
+        renderControl({
+            value: { enabled: false, intervalMinutes: 30 },
+            status: { enabled: false, lastRunAt: new Date(Date.now() - 60_000).toISOString(), outcome: 'success' } as any,
+        });
+        open();
+        expect(screen.queryByTestId('git-autopull-status-next')).toBeNull();
+        expect(screen.getByTestId('git-autopull-status-last').textContent).toContain('pulled');
     });
 });

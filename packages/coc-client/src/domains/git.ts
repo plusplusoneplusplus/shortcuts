@@ -29,6 +29,7 @@ import type {
   GitRangeBaseMode,
   GitRepoState,
   GitWorkingTreeChangesResponse,
+  GitAutoPullStatusResponse,
   ListWorktreesResponse,
   CleanupWorktreeResponse,
 } from '../contracts';
@@ -429,6 +430,15 @@ export class GitClient {
 
   getWorkingTreeChanges(workspaceId: string): Promise<GitWorkingTreeChangesResponse> {
     return this.transport.request<GitWorkingTreeChangesResponse>(workspaceGitPath(workspaceId, '/changes'));
+  }
+
+  /**
+   * Read a repo's server-side auto-pull schedule and last run. Read-only: the
+   * interval is still written through the per-repo preferences endpoint, and
+   * the timer itself lives on the server.
+   */
+  getAutoPullStatus(workspaceId: string): Promise<GitAutoPullStatusResponse> {
+    return this.transport.request<GitAutoPullStatusResponse>(workspaceGitPath(workspaceId, '/auto-pull'));
   }
 
   /**

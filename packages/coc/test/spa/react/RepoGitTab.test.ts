@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import { readRepoGitTabSource } from '../helpers/repo-git-tab-source';
+import { readRepoGitTabSource, readRepoGitTabModuleSource } from '../helpers/repo-git-tab-source';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -493,46 +493,32 @@ describe('RepoGitTab', () => {
         });
     });
 
-    describe('auto-pull timer (AC-3 / AC-4)', () => {
-        it('imports the timer hook and the pure tick logic', () => {
-            expect(source).toContain("import { useAutoPullTimer } from '../hooks/useAutoPullTimer'");
-            expect(source).toContain("import { runAutoPullTick, buildAutoPullPollerCallbacks } from '../autoPullTick'");
+    describe('auto-pull is server-owned (AC-05 / AC-06)', () => {
+        it('runs no client timer and no client-side tick logic', () => {
+            expect(source).not.toContain('useAutoPullTimer');
+            expect(source).not.toContain('runAutoPullTick');
+            expect(source).not.toContain('buildAutoPullPollerCallbacks');
         });
 
-        it('tracks a reset signal to restart the countdown', () => {
-            expect(source).toContain('const [resetSignal, setResetSignal] = useState(0)');
-            expect(source).toContain('const resetCountdown = useCallback(() => setResetSignal(n => n + 1)');
+        it('reads the server-owned schedule instead of computing one', () => {
+            expect(source).toContain('cloneClient.git.getAutoPullStatus(workspaceId)');
+            expect(source).toContain('const refreshStatus = useCallback');
         });
 
-        it('defines a non-blocking auto-pull toast helper', () => {
-            expect(source).toContain('const showAutoPullToast = useCallback');
+        it('keeps the status fresh on a slow read-only poll', () => {
+            expect(source).toContain('setInterval(refreshStatus, AUTO_PULL_STATUS_POLL_MS)');
         });
 
-        it('polls auto-pull jobs via buildAutoPullPollerCallbacks (toast on failure, not the action banner)', () => {
-            expect(source).toContain('const startAutoPullPolling = useCallback');
-            expect(source).toContain('pullPoller.start(jobId, buildAutoPullPollerCallbacks({');
-            expect(source).toContain('onFailure: (message) => { showAutoPullToast(message); refreshAll(); }');
+        it('re-reads the status after persisting an interval change', () => {
+            expect(source).toContain('setTimeout(refreshStatus, STATUS_REFRESH_AFTER_WRITE_MS)');
         });
 
-        it('runs each tick through runAutoPullTick with a single-flight guard and dirty pre-check', () => {
-            const block = source.match(/const handleAutoPull = useCallback[\s\S]*?\}, \[[^\]]*\]\)/);
-            expect(block).toBeTruthy();
-            expect(block![0]).toContain('void runAutoPullTick({');
-            expect(block![0]).toContain('isPullInFlight: () => pulling || pullPoller.isPolling()');
-            expect(block![0]).toContain('getWorkingTreeChanges: () => cloneClient.git.getWorkingTreeChanges(workspaceId)');
-            expect(block![0]).toContain('pull: () => cloneClient.git.pull(workspaceId, { rebase: true, currentBranchOnly: true })');
-            expect(block![0]).toContain('onJobStarted: startAutoPullPolling');
+        it('never issues a pull from the auto-pull controller', () => {
+            const controller = readRepoGitTabModuleSource('useGitAutoPullController.ts');
+            expect(controller).not.toContain('cloneClient.git.pull(');
         });
 
-        it('arms the timer from the persisted per-repo setting', () => {
-            expect(source).toContain('useAutoPullTimer({');
-            expect(source).toContain('enabled: !!autoPull?.enabled');
-            expect(source).toContain('intervalMinutes: autoPull?.intervalMinutes');
-            expect(source).toContain('onTick: handleAutoPull');
-            expect(source).toContain('resetSignal,');
-        });
-
-        it('resets the countdown on a manual pull', () => {
+        it('notifies the auto-pull controller on a manual pull', () => {
             const pullBlock = source.match(/const pull = useCallback[\s\S]*?(?=const push)/);
             expect(pullBlock).toBeTruthy();
             expect(pullBlock![0]).toContain('onManualPull()');
@@ -2152,8 +2138,10 @@ describe('RepoGitTab', () => {
             expect(source).toContain('const reorderPoller = useGitOperationPoller(workspaceId)');
         });
 
-        it('no longer manages raw intervals inline', () => {
-            expect(source).not.toContain('setInterval');
+        it('no longer manages raw git-operation intervals inline', () => {
+            // Scoped to the operation-actions module: the auto-pull controller legitimately
+            // polls the server's read-only status endpoint on its own interval.
+            expect(readRepoGitTabModuleSource('useGitOperationActions.ts')).not.toContain('setInterval');
             expect(source).not.toContain('pullPollRef');
             expect(source).not.toContain('pullJobRef');
         });

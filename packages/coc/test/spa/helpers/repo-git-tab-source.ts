@@ -49,6 +49,11 @@ export function readRepoGitTabShellSource(): string {
     return fs.readFileSync(repoGitTabModulePath(REPO_GIT_TAB_SHELL), 'utf-8');
 }
 
+/** Source of one module in the family — for `not.toContain` scoped to a single file. */
+export function readRepoGitTabModuleSource(fileName: string): string {
+    return fs.readFileSync(repoGitTabModulePath(fileName), 'utf-8');
+}
+
 /** Concatenated source of every module in the RepoGitTab family. */
 export function readRepoGitTabSource(): string {
     return [REPO_GIT_TAB_SHELL, ...REPO_GIT_TAB_MODULES]

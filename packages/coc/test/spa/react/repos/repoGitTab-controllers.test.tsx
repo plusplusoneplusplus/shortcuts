@@ -28,6 +28,7 @@ function makeClient(workspaceId: string) {
             getOperation: vi.fn().mockResolvedValue({ status: 'running' }),
             getLatestOperation: vi.fn().mockResolvedValue(null),
             getWorkingTreeChanges: vi.fn().mockResolvedValue({ changes: [] }),
+            getAutoPullStatus: vi.fn().mockResolvedValue({ enabled: false }),
             fetch: vi.fn().mockResolvedValue({ success: true }),
             pull: vi.fn().mockResolvedValue({ success: true }),
             push: vi.fn().mockResolvedValue({ success: true }),
@@ -574,23 +575,8 @@ describe('useGitOperationActions', () => {
 });
 
 describe('useGitAutoPullController', () => {
-    function setup(overrides: Partial<Parameters<typeof useGitAutoPullController>[0]> = {}) {
-        const refreshAll = overrides.refreshAll ?? vi.fn();
-        const showToast = overrides.showToast ?? vi.fn();
-        const setPulling = overrides.setPulling ?? vi.fn();
-        const hook = renderHook(() => {
-            const { start, stop, isPolling, activeJobId } = useGitOperationPoller(WS);
-            const pullPoller = useMemo(
-                () => ({ start, stop, isPolling, activeJobId }),
-                [start, stop, isPolling, activeJobId],
-            );
-            const options = useMemo(() => ({
-                workspaceId: WS, pulling: false, setPulling, refreshAll, showToast,
-                ...overrides, pullPoller,
-            }), [pullPoller]);
-            return useGitAutoPullController(options as any);
-        });
-        return { ...hook, refreshAll, showToast, setPulling };
+    function setup(overrides: { workspaceId?: string } = {}) {
+        return renderHook(() => useGitAutoPullController({ workspaceId: overrides.workspaceId ?? WS }));
     }
 
     it('reads the persisted per-repo setting from the selected clone', async () => {
@@ -624,67 +610,42 @@ describe('useGitAutoPullController', () => {
         expect(result.current.autoPull).toEqual({ enabled: false });
     });
 
-    it('exposes a countdown reset for manual pulls', () => {
+    it('reads the server-owned schedule and last run (AC-05)', async () => {
+        clientFor(WS).git.getAutoPullStatus.mockResolvedValue({
+            enabled: true, intervalMinutes: 30,
+            nextRunAt: '2026-01-01T00:30:00.000Z',
+            lastRunAt: '2026-01-01T00:00:00.000Z',
+            outcome: 'skipped-dirty',
+            message: 'uncommitted changes',
+        });
         const { result } = setup();
-        expect(() => act(() => result.current.resetCountdown())).not.toThrow();
+        await waitFor(() => expect(result.current.autoPullStatus?.outcome).toBe('skipped-dirty'));
+        expect(clientFor(WS).git.getAutoPullStatus).toHaveBeenCalledWith(WS);
+        expect(result.current.autoPullStatus?.nextRunAt).toBe('2026-01-01T00:30:00.000Z');
     });
 
-    it('reports an auto-pull skip through the toast, not the action banner', async () => {
+    it('swallows a status read failure and leaves the status undefined', async () => {
+        clientFor(WS).git.getAutoPullStatus.mockRejectedValue(new Error('offline'));
+        const { result } = setup();
+        await act(async () => { await Promise.resolve(); });
+        expect(result.current.autoPullStatus).toBeUndefined();
+    });
+
+    it('re-reads the status on demand', async () => {
+        const { result } = setup();
+        await waitFor(() => expect(clientFor(WS).git.getAutoPullStatus).toHaveBeenCalledTimes(1));
+        act(() => result.current.refreshStatus());
+        expect(clientFor(WS).git.getAutoPullStatus).toHaveBeenCalledTimes(2);
+    });
+
+    it('never initiates a pull, however long the interval runs (AC-06)', async () => {
         vi.useFakeTimers();
         try {
-            // A dirty working tree makes the tick skip instead of pulling.
-            clientFor(WS).git.getWorkingTreeChanges.mockResolvedValue({
-                changes: [{ path: 'a.ts', stage: 'unstaged' }],
-            });
             clientFor(WS).preferences.getRepo.mockResolvedValue({
                 autoPull: { enabled: true, intervalMinutes: 1 },
-            });
-            const showToast = vi.fn();
-            const { result } = setup({ showToast });
-            await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-            expect(result.current.autoPull?.enabled).toBe(true);
-
-            await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
-            expect(showToast).toHaveBeenCalled();
-            // Advisory toasts linger longer than success toasts.
-            expect(showToast.mock.calls[0][1]).toBe(5000);
-            expect(clientFor(WS).git.pull).not.toHaveBeenCalled();
-        } finally { vi.useRealTimers(); }
-    });
-
-    it('reports an auto-pull job failure through the toast and still refreshes', async () => {
-        vi.useFakeTimers();
-        try {
-            clientFor(WS).git.pull.mockResolvedValue({ jobId: 'auto-1' });
-            clientFor(WS).git.getOperation.mockResolvedValue({
-                id: 'auto-1', status: 'failed', error: 'non-fast-forward',
-            });
-            clientFor(WS).preferences.getRepo.mockResolvedValue({
-                autoPull: { enabled: true, intervalMinutes: 1 },
-            });
-            const showToast = vi.fn();
-            const refreshAll = vi.fn();
-            const { result } = setup({ showToast, refreshAll });
-            await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-            expect(result.current.autoPull?.enabled).toBe(true);
-
-            await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
-            expect(clientFor(WS).git.pull).toHaveBeenCalled();
-
-            await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
-            expect(showToast).toHaveBeenCalled();
-            expect(refreshAll).toHaveBeenCalled();
-        } finally { vi.useRealTimers(); }
-    });
-
-    it('never arms a timer while auto-pull is disabled', async () => {
-        vi.useFakeTimers();
-        try {
-            clientFor(WS).preferences.getRepo.mockResolvedValue({
-                autoPull: { enabled: false, intervalMinutes: 1 },
             });
             setup();
-            await act(async () => { await vi.advanceTimersByTimeAsync(5 * 60_000); });
+            await act(async () => { await vi.advanceTimersByTimeAsync(10 * 60_000); });
             expect(clientFor(WS).git.pull).not.toHaveBeenCalled();
         } finally { vi.useRealTimers(); }
     });
