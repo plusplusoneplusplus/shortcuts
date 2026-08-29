@@ -52,6 +52,7 @@ import { SidenoteRefExtension } from './extensions/sidenoteRefExtension';
 import { FilePathNodeExtension } from './filePathNodeExtension';
 import { useLinkHandlers } from '../../../hooks/useLinkHandlers';
 import { openLink } from '../../../utils/link-handler';
+import { jumpToHeadingAnchor } from './noteTocUtils';
 // Every rule in this stylesheet is scoped to `.note-editor .ProseMirror`, so it
 // belongs to the editor, not to the note page that happens to host it. Imported
 // here (rather than only from NoteEditor) so a mount outside Notes — the
@@ -103,6 +104,12 @@ export interface RichEditorCoreProps {
      * → those two actions are inert (New tab still works standalone).
      */
     resolvePaperSource?: (info: PaperLinkInfo) => Promise<PdfPopupTarget>;
+    /**
+     * The scrolling element wrapping this editor, used to pin a heading to the
+     * top after a same-note `#anchor` click. Optional: a bare mount (the
+     * markdown review dialog) passes nothing and the caret move alone stands in.
+     */
+    scrollContainerRef?: { current: HTMLElement | null };
 }
 
 export function getLinkOpenTitle(platform = globalThis.navigator?.platform ?? '') {
@@ -130,6 +137,7 @@ export function RichEditorCore({
     noteRoot,
     onChatAboutPaper,
     resolvePaperSource,
+    scrollContainerRef,
 }: RichEditorCoreProps) {
     // Live persistence context for the PdfBlock's Quick Ask layer. The editor is
     // captured once by `useEditor`, but the note path/root change on navigation —
@@ -157,6 +165,12 @@ export function RichEditorCore({
 
     const onEditorReadyRef = useRef(onEditorReady);
     onEditorReadyRef.current = onEditorReady;
+    // `useEditor` captures its config once, so the click handler cannot close
+    // over `editor` (undefined at that point) or over the container prop; both
+    // are read through refs at click time instead.
+    const editorInstanceRef = useRef<Editor | null>(null);
+    const scrollContainerPropRef = useRef(scrollContainerRef);
+    scrollContainerPropRef.current = scrollContainerRef;
 
     const handlePasteRef = useRef(handlePaste);
     handlePasteRef.current = handlePaste;
@@ -343,15 +357,32 @@ export function RichEditorCore({
         editorProps: {
             handleClick: (view, pos, event) => {
                 if (!(event.ctrlKey || event.metaKey)) return false;
+                // A bare `#fragment` href is a same-note heading anchor. It is
+                // resolved here against the live headings rather than handed to
+                // `openLink`, which would `window.open('#…')` a stray window at
+                // the SPA root. Swallowed either way: a stale anchor is a
+                // silent no-op, never a navigation.
+                const jumpIfAnchor = (href: string | null | undefined): boolean => {
+                    if (!href?.startsWith('#')) return false;
+                    const ed = editorInstanceRef.current;
+                    if (ed) {
+                        jumpToHeadingAnchor(ed, scrollContainerPropRef.current?.current ?? null, href);
+                    }
+                    return true;
+                };
                 const { state } = view;
                 const $pos = state.doc.resolve(pos);
                 const linkMark = $pos.marks().find((m: any) => m.type.name === 'link');
                 if (linkMark?.attrs.href) {
+                    if (jumpIfAnchor(linkMark.attrs.href)) return true;
                     openLink(linkMark.attrs.href, linkHandlerConfigRef.current);
                     return true;
                 }
-                // Fallback: check if the DOM target is an <a> element
+                // Fallback: check if the DOM target is an <a> element. Read the
+                // raw attribute for the anchor test — `.href` is resolved
+                // against the page URL, so a fragment arrives absolute.
                 const anchor = (event.target as HTMLElement).closest?.('a');
+                if (anchor && jumpIfAnchor(anchor.getAttribute('href'))) return true;
                 if (anchor?.href) {
                     openLink(anchor.href, linkHandlerConfigRef.current);
                     return true;
@@ -421,6 +452,7 @@ export function RichEditorCore({
 
     // Notify parent when editor becomes available
     useEffect(() => {
+        editorInstanceRef.current = editor ?? null;
         if (editor) onEditorReadyRef.current?.(editor);
     }, [editor]);
 

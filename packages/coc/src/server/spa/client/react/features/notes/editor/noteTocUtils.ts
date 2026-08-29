@@ -186,3 +186,39 @@ export function scrollToHeadingByText(heading: string, doc: Document = document)
     if (first) scroll(first);
     return false;
 }
+
+/**
+ * Resolve a bare-fragment link (`#answer-1-roofline`) against the editor's live
+ * headings and jump to the first match.
+ *
+ * There are no `id` attributes on headings, so nothing in the DOM can resolve
+ * the fragment; instead both sides are slugified at click time and compared.
+ * Duplicate heading text resolves to the first in document order.
+ *
+ * Returns whether a heading was found. A miss is deliberately silent — the
+ * caller still swallows the click so it can never reach `window.open`.
+ */
+export function jumpToHeadingAnchor(
+    editor: Editor,
+    container: HTMLElement | null,
+    href: string,
+): boolean {
+    if (!href.startsWith('#')) return false;
+    const raw = href.slice(1);
+    if (!raw) return false;
+    // A hand-written link may percent-encode its fragment; compare the decoded
+    // form. Malformed escapes (`%`) throw, in which case the raw text is what
+    // the author meant anyway.
+    let fragment = raw;
+    try {
+        fragment = decodeURIComponent(raw);
+    } catch {
+        /* keep raw */
+    }
+    const slug = slugifyHeading(fragment);
+    if (!slug) return false;
+    const match = extractHeadings(editor).find((entry) => slugifyHeading(entry.text) === slug);
+    if (!match) return false;
+    jumpToHeading(editor, container, match);
+    return true;
+}

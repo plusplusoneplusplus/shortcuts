@@ -16,16 +16,60 @@ let capturedTableConfig: any = null;
 let capturedLowlightOptions: any = null;
 const mockLowlightRegistry = vi.hoisted(() => ({ __lowlight: true }));
 
+/**
+ * Headings the mocked editor's doc yields, and the elements its view resolves
+ * them to. Empty for every test except the `#anchor` ones, so the rest of the
+ * suite sees the same doc-less editor it always did.
+ */
+const mockHeadings: { level: 1 | 2 | 3; text: string; pos: number; top: number }[] = [];
+const mockChainRun = vi.fn(() => true);
+const mockChainCalls: { setTextSelection: number[] } = { setTextSelection: [] };
+
+/**
+ * Chainable command stub that answers to any command name — the editor is used
+ * both for `chain().focus().toggleBold().run()` and for the anchor jump's
+ * `chain().setTextSelection(pos).focus(...).run()`.
+ */
+function makeMockChain(): any {
+    const chain: any = new Proxy({}, {
+        get(_t, prop: string) {
+            if (prop === 'run') return mockChainRun;
+            return (...args: unknown[]) => {
+                if (prop === 'setTextSelection') mockChainCalls.setTextSelection.push(args[0] as number);
+                return chain;
+            };
+        },
+    });
+    return chain;
+}
+
 const mockEditor = {
     commands: { setContent: mockSetContent, clearContent: mockClearContent },
     getHTML: mockGetHTML,
     isActive: vi.fn(() => false),
-    state: { selection: { empty: true } },
-    chain: () => ({
-        focus: () => ({
-            toggleBold: () => ({ run: vi.fn() }),
-        }),
-    }),
+    state: {
+        selection: { empty: true },
+        doc: {
+            descendants: (cb: (node: any, pos: number) => void) => {
+                for (const h of mockHeadings) {
+                    cb({ type: { name: 'heading' }, attrs: { level: h.level }, textContent: h.text }, h.pos);
+                }
+            },
+        },
+    },
+    view: {
+        nodeDOM: (pos: number) => {
+            const h = mockHeadings.find(x => x.pos === pos);
+            if (!h) return null;
+            return {
+                nodeType: 1,
+                tagName: `H${h.level}`,
+                parentElement: null,
+                getBoundingClientRect: () => ({ top: h.top }),
+            };
+        },
+    },
+    chain: () => makeMockChain(),
 };
 
 vi.mock('@tiptap/react', () => ({
@@ -166,6 +210,9 @@ describe('RichEditorCore', () => {
         capturedStarterKitConfig = null;
         capturedTableConfig = null;
         capturedLowlightOptions = null;
+        mockHeadings.length = 0;
+        mockChainRun.mockClear();
+        mockChainCalls.setTextSelection.length = 0;
     });
 
     afterEach(() => {
@@ -503,6 +550,147 @@ describe('RichEditorCore', () => {
         expect(result).toBe(true);
         expect(openSpy).toHaveBeenCalledWith('https://fallback.com/test', '_blank', 'noopener');
         openSpy.mockRestore();
+    });
+
+    // ── Same-note `#heading` anchors ────────────────────────────────────
+
+    /**
+     * Regression cover: a bare `#fragment` href used to fall through to
+     * `openLink`, whose default handler ran `window.open('#…', '_blank')` and
+     * opened a stray window at the SPA root instead of scrolling.
+     */
+    describe('handleClick on a `#heading` anchor', () => {
+        const HEADINGS = [
+            { level: 1 as const, text: 'Intro', pos: 0, top: 120 },
+            { level: 2 as const, text: 'Answer 1: Roofline — Matmul & MoE TopK', pos: 40, top: 700 },
+        ];
+
+        function makeContainerRef() {
+            return {
+                current: {
+                    scrollTop: 0,
+                    getBoundingClientRect: () => ({ top: 100 }),
+                } as unknown as HTMLElement,
+            };
+        }
+
+        function viewWithHref(href: string | null) {
+            return {
+                state: {
+                    doc: {
+                        resolve: () => ({
+                            marks: () => (href === null ? [] : [{ type: { name: 'link' }, attrs: { href } }]),
+                        }),
+                    },
+                },
+            };
+        }
+
+        it('jumps to the matching heading instead of opening a window', () => {
+            const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+            mockHeadings.push(...HEADINGS);
+            const containerRef = makeContainerRef();
+            render(<RichEditorCore scrollContainerRef={containerRef} />);
+
+            const result = capturedEditorProps.handleClick(
+                viewWithHref('#answer-1-roofline-matmul--moe-topk'),
+                0,
+                { ctrlKey: true, metaKey: false, target: document.createElement('span') },
+            );
+
+            expect(result).toBe(true);
+            expect(openSpy).not.toHaveBeenCalled();
+            expect(mockChainCalls.setTextSelection).toEqual([41]);
+            expect(containerRef.current!.scrollTop).toBe(600 - 12);
+            openSpy.mockRestore();
+        });
+
+        it('does nothing at all when the anchor is stale', () => {
+            const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+            mockHeadings.push(...HEADINGS);
+            const containerRef = makeContainerRef();
+            render(<RichEditorCore scrollContainerRef={containerRef} />);
+
+            const result = capturedEditorProps.handleClick(
+                viewWithHref('#renamed-heading'),
+                0,
+                { ctrlKey: true, metaKey: false, target: document.createElement('span') },
+            );
+
+            // Still handled, so it can never reach `openLink`.
+            expect(result).toBe(true);
+            expect(openSpy).not.toHaveBeenCalled();
+            expect(mockChainCalls.setTextSelection).toEqual([]);
+            expect(containerRef.current!.scrollTop).toBe(0);
+            openSpy.mockRestore();
+        });
+
+        it('reads the raw href attribute on the DOM-anchor fallback, not the resolved URL', () => {
+            const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+            mockHeadings.push(...HEADINGS);
+            const containerRef = makeContainerRef();
+            render(<RichEditorCore scrollContainerRef={containerRef} />);
+
+            // `anchor.href` resolves to an absolute `http://localhost/#intro`;
+            // only `getAttribute('href')` still reads as a bare fragment.
+            const anchor = document.createElement('a');
+            anchor.setAttribute('href', '#intro');
+            const result = capturedEditorProps.handleClick(
+                viewWithHref(null),
+                0,
+                { ctrlKey: true, metaKey: false, target: anchor },
+            );
+
+            expect(result).toBe(true);
+            expect(openSpy).not.toHaveBeenCalled();
+            expect(mockChainCalls.setTextSelection).toEqual([1]);
+            openSpy.mockRestore();
+        });
+
+        it('leaves a non-fragment href to openLink', () => {
+            const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+            mockHeadings.push(...HEADINGS);
+            render(<RichEditorCore scrollContainerRef={makeContainerRef()} />);
+
+            const result = capturedEditorProps.handleClick(
+                viewWithHref('https://example.com/page#intro'),
+                0,
+                { ctrlKey: true, metaKey: false, target: document.createElement('span') },
+            );
+
+            expect(result).toBe(true);
+            expect(openSpy).toHaveBeenCalledWith('https://example.com/page#intro', '_blank', 'noopener');
+            expect(mockChainCalls.setTextSelection).toEqual([]);
+            openSpy.mockRestore();
+        });
+
+        it('jumps without a scroll container (a bare mount passes none)', () => {
+            mockHeadings.push(...HEADINGS);
+            render(<RichEditorCore />);
+
+            const result = capturedEditorProps.handleClick(
+                viewWithHref('#intro'),
+                0,
+                { ctrlKey: true, metaKey: false, target: document.createElement('span') },
+            );
+
+            expect(result).toBe(true);
+            expect(mockChainCalls.setTextSelection).toEqual([1]);
+        });
+
+        it('places the caret only on a plain click — the gesture stays Ctrl/Cmd+click', () => {
+            mockHeadings.push(...HEADINGS);
+            render(<RichEditorCore scrollContainerRef={makeContainerRef()} />);
+
+            const result = capturedEditorProps.handleClick(
+                viewWithHref('#intro'),
+                0,
+                { ctrlKey: false, metaKey: false, target: document.createElement('span') },
+            );
+
+            expect(result).toBe(false);
+            expect(mockChainCalls.setTextSelection).toEqual([]);
+        });
     });
 
     // ── Ctrl-hover cursor affordance ────────────────────────────────────

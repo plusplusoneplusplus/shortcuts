@@ -35,7 +35,7 @@ import type { PaperLinkInfo } from './extensions/paperLink';
 import type { PdfPopupTarget } from './extensions/PdfPopupDialog';
 import { AIEditNavigator } from './AIEditNavigator';
 import type { TocEntry } from './noteTocUtils';
-import { extractHeadings, findActiveTocIndex, jumpToHeading } from './noteTocUtils';
+import { extractHeadings, findActiveTocIndex, jumpToHeading, jumpToHeadingAnchor } from './noteTocUtils';
 import './noteEditor.css';
 
 import { NoteConflictBanner } from './NoteConflictBanner';
@@ -1459,6 +1459,7 @@ export function NoteEditor({
                                 noteRoot={root}
                                 onChatAboutPaper={onChatAboutPaper}
                                 resolvePaperSource={resolvePaperSource}
+                                scrollContainerRef={editorScrollContainerRef}
                             />
                             <input
                                 ref={pdfInputRef}
@@ -1550,7 +1551,14 @@ export function NoteEditor({
                         label: 'Open link',
                         icon: '🔗',
                         onClick: () => {
-                            openLink(linkHref, linkHandlerConfig);
+                            // A bare `#fragment` is a same-note heading anchor,
+                            // resolved against the live headings — handing it to
+                            // `openLink` would open a stray window at the SPA
+                            // root, the same bug the Ctrl+click path fixes.
+                            if (!(editor && jumpToHeadingAnchor(editor, editorScrollContainerRef.current, linkHref))
+                                && !linkHref.startsWith('#')) {
+                                openLink(linkHref, linkHandlerConfig);
+                            }
                             setContextMenu(null);
                         },
                     });
