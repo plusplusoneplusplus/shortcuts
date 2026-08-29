@@ -592,6 +592,8 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity
             <CloneRepoDialog
                 open={cloneOpen}
                 onClose={() => setCloneOpen(false)}
+                serverId={addTargetServer?.serverId}
+                baseUrl={addTargetServer?.baseUrl}
                 onSuccess={() => { setCloneOpen(false); fetchRepos(); }}
             />
             <RepoGroupDialog

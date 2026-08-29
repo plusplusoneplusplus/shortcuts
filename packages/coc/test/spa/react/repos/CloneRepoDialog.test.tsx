@@ -23,6 +23,14 @@ vi.mock('../../../../src/server/spa/client/react/repos/repositoryService', () =>
     ...repositoryServiceMocks,
 }));
 
+// The Server dropdown fetches its options on open.
+const listServerOptions = vi.hoisted(() => vi.fn());
+vi.mock('../../../../src/server/spa/client/react/repos/repoGroupService', () => ({
+    LOCAL_REPO_GROUP_SERVER_ID: 'local',
+    LOCAL_REPO_GROUP_SERVER: { id: 'local', label: 'Local' },
+    listRepoGroupServerOptions: listServerOptions,
+}));
+
 function Wrap({ children }: { children: ReactNode }) {
     // CloneRepoDialog navigates via useWorkspaceNavigation, which reads queue
     // context (selected-task-per-repo), so the dialog needs QueueProvider too.
@@ -65,6 +73,7 @@ describe('CloneRepoDialog', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         location.hash = '';
+        listServerOptions.mockResolvedValue([{ id: 'local', label: 'Local' }]);
         repositoryServiceMocks.browseWorkspaceFolders.mockResolvedValue({
             path: '/projects',
             parent: '/projects-parent',
@@ -97,13 +106,13 @@ describe('CloneRepoDialog', () => {
             url: 'git@github.com:org/repo.git',
             parentDir: '/projects',
             dirName: 'repo',
-        }));
+        }, undefined));
         // Id is server-authoritative now — the client sends only name + path,
         // and navigates using the id returned by the server (mocked 'ws-cloned').
         expect(repositoryServiceMocks.registerWorkspace).toHaveBeenCalledWith({
             name: 'repo',
             rootPath: '/projects/repo',
-        });
+        }, undefined);
         // Per-workspace route persistence lands on an explicit sub-tab; with no
         // remembered route for a freshly cloned workspace the default is chats.
         expect(location.hash).toBe('#repos/ws-cloned/chats');
@@ -133,7 +142,7 @@ describe('CloneRepoDialog', () => {
         const entry = await screen.findByTestId('clone-folder-browser-entry');
         fireEvent.click(entry);
 
-        await waitFor(() => expect(repositoryServiceMocks.browseWorkspaceFolders).toHaveBeenCalledWith('/projects/team'));
+        await waitFor(() => expect(repositoryServiceMocks.browseWorkspaceFolders).toHaveBeenCalledWith('/projects/team', undefined));
         expect(screen.getByTestId('clone-parent-dir')).toHaveValue('/projects/team');
     });
 
@@ -313,7 +322,7 @@ describe('CloneRepoDialog', () => {
             url: 'https://github.com/org/repo.git',
             parentDir: '/projects',
             dirName: 'my-custom-name',
-        }));
+        }, undefined));
     });
 
     it('clears the conflict note when the user manually edits the folder name', async () => {

@@ -99,9 +99,17 @@ export interface CloneRepositoryResponse {
     clonedPath: string;
 }
 
-export async function cloneRepository(request: CloneRepositoryRequest): Promise<CloneRepositoryResponse> {
+/**
+ * Clone a repository. Like {@link browseWorkspaceFolders}, `parentDir` is
+ * interpreted by the target server, so a remote `baseUrl` runs `git clone` on
+ * the REMOTE box's filesystem with that box's git credentials.
+ */
+export async function cloneRepository(
+    request: CloneRepositoryRequest,
+    baseUrl?: string,
+): Promise<CloneRepositoryResponse> {
     try {
-        return await getSpaCocClient().request<CloneRepositoryResponse>('/git/clone', {
+        return await getCocClientFor(baseUrl).request<CloneRepositoryResponse>('/git/clone', {
             method: 'POST',
             body: request,
         });
