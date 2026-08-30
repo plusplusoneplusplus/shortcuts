@@ -97,3 +97,18 @@ test('every linux build entry names a container', () => {
             `a linux release entry builds without the bookworm container:\n${entry}`);
     }
 });
+
+// A container job runs git as root against a checkout the runner user owns, so
+// git rejects the repository for dubious ownership. `git diff` does not report
+// that as an error — it falls back to `--no-index`, prints its usage and exits
+// non-zero, which the bindings check reads as a stale generated file. Any job
+// that both runs in a container and runs git against the workspace has to mark
+// it safe first.
+test('a containerised job trusts the workspace before running git on it', () => {
+    const job = jobBlock(ci, 'coc-native');
+    assert.match(job, /container: \$\{\{ matrix\.container \}\}/);
+    const trust = job.indexOf('safe.directory');
+    const usesGit = job.indexOf('git diff --exit-code');
+    assert.notEqual(trust, -1, 'coc-native must mark the workspace safe.directory');
+    assert.ok(trust < usesGit, 'the workspace must be trusted before git reads it');
+});

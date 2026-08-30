@@ -181,6 +181,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      # Inside the container git runs as root against a checkout the runner
+      # user owns, and refuses the repository for dubious ownership — which is
+      # not an error the later `git diff` reports as one. It falls back to
+      # `--no-index`, wants two paths, prints its usage and exits non-zero, and
+      # the bindings check reads that as a stale generated file.
+      - name: Trust the workspace
+        shell: bash
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
