@@ -36,16 +36,27 @@ export const gitAddon: NativeGitAddon = loadNativeGit();
 export const notesAddon: NativeNotesIndexAddon = loadNativeNotesIndex();
 
 /**
- * Remove a temp directory, waiting out the handles Windows still holds.
+ * Remove a temp directory, best effort.
  *
- * These suites hand real repositories to git and to the addon, and on Windows a
- * just-exited child's handle can outlive the call that spawned it — the delete
- * then fails with EPERM and takes a whole suite's `afterAll` with it. `rm -rf`
- * on the other two platforms does not need this, and retrying costs them
- * nothing.
+ * These suites hand real repositories to git and to the addon, and on Windows
+ * the handles that keeps open — a just-exited child's, or a pack file gix
+ * mapped — can outlive the call that opened them. The delete then fails with
+ * EPERM, and because this runs from `afterAll` it fails the whole suite: 293
+ * passing tests reported as red because a temp directory would not go away.
+ *
+ * So retry, then give up quietly. Every caller is tearing down a directory
+ * under the OS temp root, where the one cost of leaving it behind is the disk
+ * the OS reclaims on its own. Nothing here asserts on the delete, and the one
+ * delete this suite does depend on — `index.lock`, which every later git
+ * command in the repository trips over — deliberately does not come through
+ * here.
  */
 export function removeDir(dir: string): void {
-    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+    try {
+        fs.rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+    } catch {
+        // Reclaimed with the temp root; never worth a red suite.
+    }
 }
 
 /** Deterministic PRNG, so a parity failure reproduces from the seed alone. */
