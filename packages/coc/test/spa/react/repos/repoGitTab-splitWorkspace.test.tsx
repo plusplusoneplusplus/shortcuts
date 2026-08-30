@@ -24,6 +24,7 @@ const client = {
         getLatestOperation: vi.fn().mockResolvedValue(null),
         getOperation: vi.fn().mockResolvedValue(null),
         getWorkingTreeChanges: vi.fn().mockResolvedValue({ changes: [] }),
+        getAutoPullStatus: vi.fn().mockResolvedValue({ enabled: false }),
         getCommit: vi.fn(),
     },
     preferences: { getRepo: vi.fn().mockResolvedValue({}), patchRepo: vi.fn().mockResolvedValue({}) },

@@ -11,7 +11,7 @@
  *   - `useRepoGitData`          commits, branch range, repo state, caches, refresh
  *   - `useRepoGitSelection`     right-panel routing, URL/AppContext sync, deep links
  *   - `useGitOperationActions`  fetch/pull/push/rewrite/conflict actions + pollers
- *   - `useGitAutoPullController` the per-repo auto-pull timer
+ *   - `useGitAutoPullController` the per-repo auto-pull setting + server status
  *   - `useGitSkillActions`      skill runs, Ask AI launches, queue-backed rewrites
  *   - `buildGitContextMenuItems` the right-click menu, as a pure model
  * and the three presentational panes (`RepoGitListPane`, `RepoGitDetailPane`,
@@ -154,8 +154,10 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
     );
     const repoRoot = sourceWorkspace?.rootPath as string | undefined;
 
-    const autoPullRef = useRef<{ resetCountdown: () => void }>({ resetCountdown: () => {} });
-    const onManualPull = useCallback(() => autoPullRef.current.resetCountdown(), []);
+    // A manual pull changes what the repo's last-run row should say, so re-read
+    // the server-owned auto-pull status; the schedule itself is the server's.
+    const autoPullRef = useRef<{ refreshStatus: () => void }>({ refreshStatus: () => {} });
+    const onManualPull = useCallback(() => autoPullRef.current.refreshStatus(), []);
 
     const actions = useGitOperationActions({
         workspaceId,
@@ -169,14 +171,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
         onManualPull,
     });
 
-    const autoPull = useGitAutoPullController({
-        workspaceId,
-        pullPoller: actions.pullPoller,
-        pulling: actions.pulling,
-        setPulling: actions.setPulling,
-        refreshAll: data.refreshAll,
-        showToast,
-    });
+    const autoPull = useGitAutoPullController({ workspaceId });
     autoPullRef.current = autoPull;
 
     const skillActions = useGitSkillActions({
@@ -564,6 +559,7 @@ export function RepoGitTab({ workspaceId, layout, detailContainer, detailActive,
             rebasing={actions.rebasing}
             autoPull={autoPull.autoPull}
             onAutoPullChange={autoPull.setAutoPull}
+            autoPullStatus={autoPull.autoPullStatus}
             lastRefreshedAt={data.lastRefreshedAt}
             compact={headerHoisted}
         />

@@ -6,6 +6,11 @@
  * through `onChange`. Purely presentational: the parent (RepoGitTab) owns the
  * persisted `autoPull` preference and wires `onChange` to `patchRepo`.
  *
+ * Auto-pull itself runs on the server, so the "next run" and "last run" rows are
+ * read-only reflections of `GET /api/workspaces/:id/git/auto-pull` — the control
+ * never counts down on its own schedule, which is why the countdown survives a
+ * page reload.
+ *
  * "Off" keeps the last chosen interval in `intervalMinutes` (so re-enabling
  * restores it) while flipping `enabled` to false. The server schema requires a
  * positive-integer interval even while disabled, so a valid minutes value is
@@ -13,6 +18,8 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import type { GitAutoPullStatusResponse } from '@plusplusoneplusplus/coc-client';
+import { formatTimeUntil, describeLastRun, describeLastRunDetail } from './autoPullStatusView';
 
 export interface AutoPullSetting {
     enabled: boolean;
@@ -24,9 +31,14 @@ interface GitAutoPullControlProps {
     value?: AutoPullSetting;
     /** Called with the full setting whenever the user picks a preset or applies a valid custom value. */
     onChange: (next: AutoPullSetting) => void;
+    /** Server-owned schedule + last run. Read-only; absent until the first read. */
+    status?: GitAutoPullStatusResponse;
     /** Slim variant to match the compact GitPanelHeader row. */
     compact?: boolean;
 }
+
+/** How often the "in 4m" label is recomputed. Display only — it starts no pull. */
+const COUNTDOWN_REFRESH_MS = 30_000;
 
 /** Minutes cap mirrors the server AutoPullSchema (AUTO_PULL_MAX_INTERVAL_MINUTES). */
 export const AUTO_PULL_MAX_INTERVAL_MINUTES = 1440;
@@ -46,7 +58,7 @@ function formatInterval(intervalMinutes: number): string {
     return `${intervalMinutes}m`;
 }
 
-export function GitAutoPullControl({ value, onChange, compact }: GitAutoPullControlProps) {
+export function GitAutoPullControl({ value, onChange, status, compact }: GitAutoPullControlProps) {
     const enabled = !!value?.enabled;
     const intervalMinutes = value?.intervalMinutes;
     const isPreset = enabled && intervalMinutes != null && (AUTO_PULL_PRESETS as readonly number[]).includes(intervalMinutes);
@@ -83,10 +95,27 @@ export function GitAutoPullControl({ value, onChange, compact }: GitAutoPullCont
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [open]);
 
+    // Re-render periodically so the relative "next run" label stays honest. This
+    // only refreshes text; the schedule itself lives on the server.
+    const [nowMs, setNowMs] = useState(() => Date.now());
+    useEffect(() => {
+        if (!status?.nextRunAt) return;
+        const handle = setInterval(() => setNowMs(Date.now()), COUNTDOWN_REFRESH_MS);
+        return () => clearInterval(handle);
+    }, [status?.nextRunAt]);
+
+    const nextRunLabel = formatTimeUntil(status?.nextRunAt, nowMs);
+    const lastRunLabel = describeLastRun(status);
+    const lastRunDetail = describeLastRunDetail(status);
+
     const label = enabled && intervalMinutes != null ? formatInterval(intervalMinutes) : 'Off';
-    const title = enabled && intervalMinutes != null
-        ? `Auto-pull every ${formatInterval(intervalMinutes)}`
-        : 'Auto-pull off';
+    const title = [
+        enabled && intervalMinutes != null
+            ? `Auto-pull every ${formatInterval(intervalMinutes)}`
+            : 'Auto-pull off',
+        nextRunLabel && `next run ${nextRunLabel}`,
+        lastRunDetail && `last run: ${lastRunDetail}`,
+    ].filter(Boolean).join(' · ');
 
     function selectOff() {
         // Preserve the last valid interval so re-enabling restores it; fall back to a default.
@@ -131,6 +160,14 @@ export function GitAutoPullControl({ value, onChange, compact }: GitAutoPullCont
                     <path d="M8 3.75a.75.75 0 01.75.75v3.19l1.97 1.14a.75.75 0 11-.75 1.3L7.6 8.9A.75.75 0 017.25 8.25V4.5A.75.75 0 018 3.75z" />
                 </svg>
                 <span data-testid="git-autopull-current" className="tabular-nums">{label}</span>
+                {enabled && nextRunLabel && (
+                    <span
+                        data-testid="git-autopull-next-run"
+                        className="tabular-nums text-[#999] dark:text-[#777]"
+                    >
+                        {nextRunLabel}
+                    </span>
+                )}
                 <span aria-hidden="true">▾</span>
             </button>
 
@@ -200,6 +237,23 @@ export function GitAutoPullControl({ value, onChange, compact }: GitAutoPullCont
                             </div>
                         )}
                     </div>
+
+                    {/* Read-only view of the server's schedule and last result. */}
+                    {(nextRunLabel || lastRunLabel) && (
+                        <div
+                            className="mt-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-3 pb-1 pt-1 text-[10px] text-[#999] dark:text-[#777]"
+                            data-testid="git-autopull-status"
+                        >
+                            {nextRunLabel && (
+                                <div data-testid="git-autopull-status-next">Next run {nextRunLabel}</div>
+                            )}
+                            {lastRunLabel && (
+                                <div data-testid="git-autopull-status-last" title={lastRunDetail}>
+                                    Last run: {lastRunLabel}
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             )}
         </div>

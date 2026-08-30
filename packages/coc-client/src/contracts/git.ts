@@ -266,6 +266,34 @@ export interface GitWorkingTreeChangesResponse {
   untrackedTruncated?: boolean;
 }
 
+/**
+ * Terminal outcome of one server-side auto-pull tick. Mirrors the server's
+ * `AutoPullOutcome`; `skipped-*` values mean no pull was attempted.
+ */
+export type GitAutoPullOutcome =
+  | 'success'
+  | 'failed'
+  | 'skipped-dirty'
+  | 'skipped-precheck-error'
+  | 'skipped-in-flight';
+
+/**
+ * A repo's server-side auto-pull schedule and last run, as served by
+ * `GET /api/workspaces/:id/git/auto-pull`. The server owns the timer, so the
+ * client renders this rather than running a countdown of its own.
+ */
+export interface GitAutoPullStatusResponse {
+  enabled: boolean;
+  intervalMinutes?: number;
+  /** ISO instant of the next scheduled tick; absent when no timer is armed. */
+  nextRunAt?: string;
+  /** ISO instant of the last terminal tick; absent when the repo never ran. */
+  lastRunAt?: string;
+  outcome?: GitAutoPullOutcome;
+  /** Human-readable detail for skips and failures. */
+  message?: string;
+}
+
 export interface GitDiscardAllResponse {
   success: boolean;
   /** Number of files successfully discarded/deleted. */

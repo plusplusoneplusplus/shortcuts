@@ -69,6 +69,9 @@ import { registerPinArchiveRoutes } from '../processes/pin-archive-handler';
 import { registerChatFolderRoutes } from '../processes/chat-folder-handler';
 import { registerTurnActionRoutes } from '../processes/turn-actions-handler';
 import { registerProcessHistoryRoutes } from '../processes/process-history-handler';
+import type { AutoPullManager } from '../git/auto-pull-manager';
+import { createAutoPullManager } from '../git/auto-pull-service';
+import { registerGitAutoPullRoutes } from './api-git-auto-pull-routes';
 import type { NotesGitTimerManager } from '../notes/git/notes-git-timer-manager';
 import { registerWorkspaceHistoryRoutes } from './api-workspace-history-routes';
 import { registerTerminalRoutes } from '../terminal/terminal-routes';
@@ -259,7 +262,7 @@ export interface RegisterRoutesOptions {
     notesSearchService: NotesSearchService;
 }
 
-export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; agentProvidersQuotaCache?: AgentProvidersQuotaCache; quotaPauseWatcher?: QuotaPauseWatcher; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler } {
+export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; autoPullManager: AutoPullManager; agentProvidersQuotaCache?: AgentProvidersQuotaCache; quotaPauseWatcher?: QuotaPauseWatcher; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler } {
     const {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
@@ -271,6 +274,12 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     let workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller | undefined;
     let agentProvidersQuotaCache: AgentProvidersQuotaCache | undefined;
     let quotaPauseWatcher: QuotaPauseWatcher | undefined;
+    // Server-side per-repo git auto-pull. Constructed here (rather than in the
+    // composition root) so the preferences routes below can re-arm a repo's
+    // timer the moment its `autoPull` preference changes; the caller owns
+    // `startAll()` and `dispose()`.
+    const autoPullManager = createAutoPullManager({ dataDir, processStore: store, getWsServer });
+    registerGitAutoPullRoutes({ routes, store, autoPullManager });
     const concreteDefaultProvider = (): ChatProvider => {
         const defaultProvider = opts.runtimeConfigService?.config.defaultProvider
             ?? opts.resolvedConfig?.defaultProvider;
@@ -602,6 +611,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             await Promise.all([
                 workItemGitHubPullPoller?.configureWorkspace(workspaceId),
                 workItemAzureBoardsPullPoller?.configureWorkspace(workspaceId),
+                autoPullManager.configureWorkspace(workspaceId),
             ]);
         },
     );
@@ -1429,5 +1439,5 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
     );
 
-    return { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler };
+    return { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler };
 }
