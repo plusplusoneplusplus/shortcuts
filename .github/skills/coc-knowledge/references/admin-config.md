@@ -65,6 +65,8 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 | `commitChatLensDormantMode` | `'ghost'` | Enum `'ghost'` \| `'pill'` — how the lens recedes on pointer-out |
 | `remoteShell` | on | Remote-first dashboard shell (desktop-only) |
 | `scopeSwitcher` | on | Needs `remoteShell`; one segmented scope switcher replacing the My Work / My Life toggles and workspace chip |
+| `pinnedScopes` | off | Needs `scopeSwitcher`; pinned repo / repo-group segments in the scope switcher, persisted as the global `pinnedScopes` preference |
+| `pinnedScopes` | off | Needs `scopeSwitcher`; pinned repo / repo-group segments in the scope switcher, persisted as the global `pinnedScopes` preference |
 | `splitWorkspacePanel` | on | Split Workspace view (chat list over git, one shared detail pane) replacing the Activity and Git tabs |
 | `chatFolders` | off | User-created chat folders in the chat list (tree section, drag/context-menu filing); gates UI only — the `/chat-folders` routes and the schema-29 migration ship regardless |
 | `singleRowShell` | off | Needs `remoteShell`; moves shell controls plus `+ New` into the global header |

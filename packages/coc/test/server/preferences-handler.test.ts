@@ -1347,6 +1347,38 @@ describe('validateGlobalPreferences', () => {
         expect(result.repoTabOrder).toBeUndefined();
     });
 
+    // -- pinnedScopes field --
+
+    it('accepts prefixed pinnedScopes entries for both key spaces', () => {
+        const result = validateGlobalPreferences({ pinnedScopes: ['repo:github.com/a/b', 'group:group-ai'] });
+        expect(result).toEqual({ pinnedScopes: ['repo:github.com/a/b', 'group:group-ai'] });
+    });
+
+    it('accepts a repo pin whose key is itself a `workspace:<id>` group key', () => {
+        const result = validateGlobalPreferences({ pinnedScopes: ['repo:workspace:ws-1'] });
+        expect(result.pinnedScopes).toEqual(['repo:workspace:ws-1']);
+    });
+
+    it('drops pinnedScopes entries without a known kind prefix', () => {
+        // A bare string cannot say whether it is a git-remote key or a repo-group
+        // workspace id, and the two spaces would collide — so it is discarded.
+        const result = validateGlobalPreferences({ pinnedScopes: ['group-ai', 'other:x', 'repo:', 42, null, 'repo:ok'] });
+        expect(result.pinnedScopes).toEqual(['repo:ok']);
+    });
+
+    it('dedupes and caps pinnedScopes at 8', () => {
+        const result = validateGlobalPreferences({
+            pinnedScopes: ['repo:a', 'repo:a', ...Array.from({ length: 12 }, (_, i) => `repo:r${i}`)],
+        });
+        expect(result.pinnedScopes).toHaveLength(8);
+        expect(result.pinnedScopes![0]).toBe('repo:a');
+    });
+
+    it('rejects a non-array pinnedScopes and omits an all-invalid one', () => {
+        expect(validateGlobalPreferences({ pinnedScopes: 'repo:a' })).toEqual({});
+        expect(validateGlobalPreferences({ pinnedScopes: ['nope', 7] }).pinnedScopes).toBeUndefined();
+    });
+
     // -- hasSeenWelcome field --
 
     it('accepts hasSeenWelcome boolean true', () => {

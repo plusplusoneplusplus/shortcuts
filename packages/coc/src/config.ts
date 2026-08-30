@@ -292,6 +292,8 @@ export interface CLIConfig {
         remoteShell?: boolean;
         /** Sliding scope switcher (My Work · My Life · active workspace) in the remote-first header. Disabled by default. */
         scopeSwitcher?: boolean;
+        /** Pinned repos / repo groups as their own segments inside the scope slide switcher. Disabled by default. */
+        pinnedScopes?: boolean;
         /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Enabled by default. */
         splitWorkspacePanel?: boolean;
         /** Schedule management inside the chat-list "Scheduled" slide (definitions list + right-pane create/edit), retiring the Schedules tab. Enabled by default. */
@@ -637,6 +639,8 @@ export interface ResolvedCLIConfig {
         remoteShell: boolean;
         /** Sliding scope switcher (My Work · My Life · active workspace) in the remote-first header. Enabled by default. */
         scopeSwitcher: boolean;
+        /** Pinned repos / repo groups as their own segments inside the scope slide switcher. Disabled by default. */
+        pinnedScopes: boolean;
         /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Enabled by default. */
         splitWorkspacePanel: boolean;
         /** Schedule management inside the chat-list "Scheduled" slide (definitions list + right-pane create/edit), retiring the Schedules tab. Enabled by default. */
@@ -909,6 +913,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         arxivPaperIngest: false,
         remoteShell: true,
         scopeSwitcher: true,
+        pinnedScopes: false,
         splitWorkspacePanel: true,
         schedulesInScheduledSlide: true,
         chatFolders: false,

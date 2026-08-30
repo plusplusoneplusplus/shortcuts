@@ -803,6 +803,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.pinnedScopes', default: false, runtime: 'live', runtimeFlag: 'pinnedScopesEnabled',
+        ui: {
+            group: 'dashboard', order: 66.5, label: 'Pinned scope segments', badge: 'experimental',
+            hint: 'Pin repos and repo groups from the workspace picker so they get their own persistent segments in the scope slide switcher, between My Work / My Life and the workspace chip. Requires the scope slide switcher. Disabled by default.',
+            testId: 'toggle-pinned-scopes-enabled',
+        },
+    }),
+    bool({
         key: 'features.splitWorkspacePanel', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'splitWorkspacePanelEnabled',
         ui: {
             group: 'dashboard', order: 67, label: 'Split Workspace panel',

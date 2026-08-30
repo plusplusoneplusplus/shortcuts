@@ -99,6 +99,8 @@ interface DashboardConfig {
     arxivPaperIngestEnabled?: boolean;
     /** Whether the sliding scope switcher (My Work · My Life · active workspace) is enabled (feature flag). */
     scopeSwitcherEnabled?: boolean;
+    /** Whether pinned repos / repo groups get their own segments in the scope slide switcher. Default false. */
+    pinnedScopesEnabled?: boolean;
     /** Whether the split "Workspace" left panel (chat top / git bottom + shared detail pane) is enabled. */
     splitWorkspacePanelEnabled?: boolean;
     /** Whether schedule management lives in the chat-list "Scheduled" slide (definitions list + right-pane create/edit) instead of the Schedules tab. */
@@ -438,6 +440,11 @@ export function isArxivPaperIngestEnabled(): boolean {
 /** Returns true when the sliding scope switcher (My Work · My Life · active workspace) is enabled. */
 export function isScopeSwitcherEnabled(): boolean {
     return getConfig().scopeSwitcherEnabled === true;
+}
+
+/** Returns true when pinned repos / repo groups render as their own scope-switcher segments. */
+export function isPinnedScopesEnabled(): boolean {
+    return getConfig().pinnedScopesEnabled === true;
 }
 
 /** Returns true when the split "Workspace" left panel (chat top / git bottom + shared detail pane) is enabled. */

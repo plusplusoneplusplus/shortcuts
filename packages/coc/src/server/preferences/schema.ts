@@ -415,6 +415,23 @@ export const GlobalPreferencesSchema = z.object({
         })
         .optional()
         .catch(undefined),
+    /**
+     * Scopes pinned as their own segments in the scope slide switcher, in user
+     * order. Each entry is a discriminated, prefixed key — `repo:<groupKey>` for
+     * a git-remote cluster, `group:<workspaceId>` for a repo-group virtual
+     * workspace — because those two key spaces would otherwise collide (both are
+     * called "repo group" in the UI). The prefix is validated here so a
+     * hand-edited or legacy bare string is dropped instead of resolving against
+     * the wrong space.
+     */
+    pinnedScopes: z.array(z.unknown())
+        .transform(arr => {
+            const filtered = arr.filter((k): k is string =>
+                typeof k === 'string' && /^(?:repo|group):.+/.test(k));
+            return filtered.length > 0 ? [...new Set(filtered)].slice(0, 8) : undefined;
+        })
+        .optional()
+        .catch(undefined),
     /** Whether the user has dismissed the welcome modal. */
     hasSeenWelcome: z.boolean().optional().catch(undefined),
     /** Tracks progress through the onboarding checklist steps. */
