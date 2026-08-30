@@ -337,16 +337,18 @@ fn a_sequence_editor_drives_a_non_interactive_rebase() {
         ),
     )
     .expect("write script");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
-            .expect("chmod script");
-    }
+
+    // Git runs the editor through a shell, which is what makes a bare Windows
+    // path unusable here: `C:\Users\…` reaches `sh -c` with its separators
+    // read as escapes and arrives as `C:Users…`. Forward slashes survive that,
+    // and naming the interpreter rather than relying on the shebang means the
+    // script does not need an executable bit either — one spelling for all
+    // three platforms.
+    let editor = format!("sh '{}'", script.to_str().expect("utf-8 path").replace('\\', "/"));
 
     let options = GitCommandOptions {
         timeout_ms: 600_000,
-        env: env(&[("GIT_SEQUENCE_EDITOR", script.to_str().expect("utf-8 path"))]),
+        env: env(&[("GIT_SEQUENCE_EDITOR", editor.as_str())]),
         ..GitCommandOptions::default()
     };
     run_git(repo.path(), &args(&["rebase", "-i", "HEAD~2"]), &options)
