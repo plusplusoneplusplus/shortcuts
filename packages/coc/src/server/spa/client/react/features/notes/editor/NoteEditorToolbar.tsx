@@ -5,6 +5,7 @@ import { Sep } from './toolbar/ToolbarDropdown';
 import { FormattingToolbar } from './toolbar/FormattingToolbar';
 import { FindReplacePanel } from './toolbar/FindReplacePanel';
 import { useFindReplaceToolbarController } from './toolbar/useFindReplaceToolbarController';
+import { useEditorTransactionTick } from './toolbar/useEditorTransactionTick';
 import { TableToolbarControls } from './toolbar/TableToolbarControls';
 import { ToolbarHostActions, hasHostActions } from './toolbar/ToolbarHostActions';
 
@@ -63,9 +64,15 @@ export interface NoteEditorToolbarProps {
  * Composition only: the formatting group, the find/replace row, the contextual
  * table strip and the host-owned right-end actions each own their own state, so
  * this component just decides which rows exist and in what order.
+ *
+ * The one thing it owns for everybody is reactivity: the children all read
+ * editor state while rendering, and nothing above them re-renders on a
+ * selection-only transaction, so the tick is subscribed once here.
  */
 export function NoteEditorToolbar(props: NoteEditorToolbarProps) {
     const { editor, hidden, modeToggle, onInsertPdf } = props;
+    // Before the `!editor` early return, so hook order stays stable.
+    useEditorTransactionTick(editor);
     const find = useFindReplaceToolbarController(editor, hidden);
 
     if (!editor) return null;

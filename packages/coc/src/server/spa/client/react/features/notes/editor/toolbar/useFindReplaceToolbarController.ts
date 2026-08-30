@@ -21,26 +21,14 @@ export const EMPTY_FIND_STATE: FindAndReplaceState = {
 };
 
 /**
- * Read the find-and-replace extension state off the editor, re-reading on every
- * transaction. The toolbar is not the component that calls `useEditor`, so it
- * does not re-render on transactions by itself — without this subscription the
- * match counter would freeze at whatever it showed on mount.
+ * Read the find-and-replace extension state off the editor. Re-reading on every
+ * transaction is what keeps the match counter live; that re-render comes from
+ * `useEditorTransactionTick`, subscribed once by `NoteEditorToolbar` for the
+ * whole toolbar.
  *
- * Tolerates an editor without the extension (or a test double without an event
- * emitter) by falling back to empty state.
+ * Tolerates an editor without the extension by falling back to empty state.
  */
 export function useFindAndReplaceState(editor: Editor): FindAndReplaceState {
-    const [, bump] = useState(0);
-
-    useEffect(() => {
-        if (typeof editor.on !== 'function') return;
-        const onTransaction = () => bump((n) => n + 1);
-        editor.on('transaction', onTransaction);
-        return () => {
-            editor.off('transaction', onTransaction);
-        };
-    }, [editor]);
-
     const state = (editor.storage as { findAndReplace?: FindAndReplaceState } | undefined)
         ?.findAndReplace;
     return state ?? EMPTY_FIND_STATE;
