@@ -17,6 +17,7 @@ import {
     extractHeadings,
     findActiveTocIndex,
     jumpToHeading,
+    jumpToHeadingAnchor,
     resolveHeadingElement,
     TOC_SCROLL_OFFSET_PX,
 } from '../../../../../../src/server/spa/client/react/features/notes/editor/noteTocUtils';
@@ -253,5 +254,76 @@ describe('findActiveTocIndex', () => {
             { index: 4, level: 2, text: 'Unrendered', pos: 999 },
         ];
         expect(findActiveTocIndex(entries, editor, makeContainer(910, 0))).toBe(3);
+    });
+});
+
+
+// ── Same-note `#heading` anchors ─────────────────────────────────────────────
+
+/**
+ * Regression cover for the bug where Ctrl/Cmd+clicking a bare `#fragment` link
+ * fell through to `openLink`, which called `window.open('#…', '_blank')` and
+ * opened a stray window at the SPA root instead of scrolling. Headings carry no
+ * `id`, so the fragment is matched against slugified live heading text instead.
+ */
+describe('jumpToHeadingAnchor', () => {
+    const PUNCTUATED: HeadingSpec[] = [
+        { level: 1, text: 'Intro', pos: 0, top: 120 },
+        { level: 2, text: 'Answer 1: Roofline — Matmul & MoE TopK', pos: 40, top: 700 },
+        { level: 2, text: 'Wrap Up', pos: 90, top: 900 },
+    ];
+
+    it('scrolls to the heading whose slug matches the fragment', () => {
+        const editor = makeEditor(PUNCTUATED);
+        const container = makeContainer(100, 0);
+
+        expect(jumpToHeadingAnchor(editor, container, '#answer-1-roofline-matmul--moe-topk')).toBe(true);
+
+        expect(container.scrollTop).toBe(600 - TOC_SCROLL_OFFSET_PX);
+        expect(editor._chain.setTextSelection).toHaveBeenCalledWith(41);
+    });
+
+    it('decodes a percent-encoded fragment before comparing', () => {
+        const editor = makeEditor(PUNCTUATED);
+        expect(jumpToHeadingAnchor(editor, makeContainer(100, 0), '#wrap%20up')).toBe(true);
+        expect(editor._chain.setTextSelection).toHaveBeenCalledWith(91);
+    });
+
+    it('falls back to the raw fragment when the escape is malformed', () => {
+        const editor = makeEditor(PUNCTUATED);
+        expect(jumpToHeadingAnchor(editor, makeContainer(100, 0), '#intro%')).toBe(true);
+        expect(editor._chain.setTextSelection).toHaveBeenCalledWith(1);
+    });
+
+    it('does nothing at all on a stale anchor', () => {
+        const editor = makeEditor(PUNCTUATED);
+        const container = makeContainer(100, 0);
+
+        expect(jumpToHeadingAnchor(editor, container, '#renamed-heading')).toBe(false);
+
+        expect(container.scrollTop).toBe(0);
+        expect(editor.chain).not.toHaveBeenCalled();
+    });
+
+    it('ignores an href that is not a bare fragment, and an empty one', () => {
+        const editor = makeEditor(PUNCTUATED);
+        expect(jumpToHeadingAnchor(editor, makeContainer(100, 0), 'https://example.com/#intro')).toBe(false);
+        expect(jumpToHeadingAnchor(editor, makeContainer(100, 0), '#')).toBe(false);
+        expect(editor.chain).not.toHaveBeenCalled();
+    });
+
+    it('resolves duplicate heading text to the first in document order', () => {
+        const editor = makeEditor([
+            { level: 2, text: 'Notes', pos: 10, top: 200 },
+            { level: 2, text: 'Notes', pos: 50, top: 800 },
+        ]);
+        expect(jumpToHeadingAnchor(editor, makeContainer(100, 0), '#notes')).toBe(true);
+        expect(editor._chain.setTextSelection).toHaveBeenCalledWith(11);
+    });
+
+    it('still moves the caret when there is no scroll container', () => {
+        const editor = makeEditor(PUNCTUATED);
+        expect(jumpToHeadingAnchor(editor, null, '#intro')).toBe(true);
+        expect(editor._chain.setTextSelection).toHaveBeenCalledWith(1);
     });
 });

@@ -26,7 +26,16 @@ export interface RepoGroupMember {
     name?: string;
     /** Registry absolute root path; absent when the workspace was removed. */
     rootPath?: string;
+    /**
+     * Free-form note about this repo's role in THIS group; absent when unset.
+     * Scoped to the membership, so the same repo can read differently in another
+     * group. The server appends it to the member listing it injects into chats.
+     */
+    description?: string;
 }
+
+/** Max length of a member description, mirrored from the server. */
+export const REPO_GROUP_DESCRIPTION_MAX_LENGTH = 280;
 
 export interface RepoGroupDetails {
     id: string;
@@ -78,7 +87,7 @@ export async function listRepoGroupServerOptions(): Promise<RepoGroupServerOptio
     ];
 }
 
-export function createRepoGroup(request: { name: string; members: string[] }, baseUrl?: string): Promise<{ workspace: WorkspaceInfo; members: RepoGroupMember[] }> {
+export function createRepoGroup(request: { name: string; members: string[]; descriptions?: Record<string, string> }, baseUrl?: string): Promise<{ workspace: WorkspaceInfo; members: RepoGroupMember[] }> {
     return getCocClientFor(baseUrl).request('/repo-groups', { method: 'POST', body: request });
 }
 
@@ -86,7 +95,12 @@ export function getRepoGroup(groupId: string, baseUrl?: string): Promise<RepoGro
     return getCocClientFor(baseUrl).request(`/repo-groups/${encodeURIComponent(groupId)}`);
 }
 
-export function updateRepoGroup(groupId: string, updates: { name?: string; members?: string[] }, baseUrl?: string): Promise<RepoGroupDetails> {
+/**
+ * `descriptions` is a PARTIAL patch server-side: only the supplied workspace ids
+ * change, an empty string clears one, and members left out keep their text — so
+ * a single edited row can be sent on its own.
+ */
+export function updateRepoGroup(groupId: string, updates: { name?: string; members?: string[]; descriptions?: Record<string, string> }, baseUrl?: string): Promise<RepoGroupDetails> {
     return getCocClientFor(baseUrl).request(`/repo-groups/${encodeURIComponent(groupId)}`, { method: 'PATCH', body: updates });
 }
 

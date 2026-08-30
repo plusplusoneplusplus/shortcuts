@@ -4,9 +4,10 @@
  * When a chat targets a repo-group workspace, the dispatch path grants each
  * live member's root path via `SendMessageOptions.additionalDirectories` so
  * autopilot can read/edit member repos without permission friction, and tells
- * the model which repos are in the group by appending a member listing (name +
- * absolute local path only) to the outgoing prompt. Stale members (workspace
- * removed or path missing on disk) are silently skipped.
+ * the model which repos are in the group by appending a member listing to the
+ * outgoing prompt: each member's name, absolute local path, and — when the
+ * membership carries one — its description. Stale members (workspace removed or
+ * path missing on disk) are silently skipped.
  *
  * The two halves have different cadences:
  *
@@ -38,7 +39,7 @@ import { isRepoGroupWorkspaceId, readRepoGroup, resolveRepoGroupMembers } from '
 export const REPO_GROUP_CONTEXT_TAG = 'repo_group_context';
 
 export interface RepoGroupChatContext {
-    /** Tagged prompt section listing each live member's name and absolute path. */
+    /** Tagged prompt section listing each live member's name, absolute path, and description. */
     promptBlock: string;
     /** Live member root paths, in membership order. */
     additionalDirectories: string[];
@@ -61,7 +62,13 @@ export async function resolveRepoGroupChatContext(
     const live = (await resolveRepoGroupMembers(effectiveDataDir, store, workspaceId))
         .filter(m => !m.stale && typeof m.name === 'string' && typeof m.rootPath === 'string');
     if (live.length === 0) return undefined;
-    const listing = live.map(m => `- ${m.name}: ${m.rootPath}`).join('\n');
+    const listing = live
+        .map(m => {
+            const line = `- ${m.name}: ${m.rootPath}`;
+            const description = typeof m.description === 'string' ? m.description.trim() : '';
+            return description ? `${line} — ${description}` : line;
+        })
+        .join('\n');
     return {
         promptBlock: tagBlock(REPO_GROUP_CONTEXT_TAG, `Repo group "${group.name}" members:\n${listing}`),
         additionalDirectories: live.map(m => m.rootPath as string),

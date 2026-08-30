@@ -35,7 +35,7 @@ import type { PaperLinkInfo } from './extensions/paperLink';
 import type { PdfPopupTarget } from './extensions/PdfPopupDialog';
 import { AIEditNavigator } from './AIEditNavigator';
 import type { TocEntry } from './noteTocUtils';
-import { extractHeadings, findActiveTocIndex, jumpToHeading } from './noteTocUtils';
+import { extractHeadings, findActiveTocIndex, jumpToHeading, jumpToHeadingAnchor } from './noteTocUtils';
 import './noteEditor.css';
 
 import { NoteConflictBanner } from './NoteConflictBanner';
@@ -265,6 +265,13 @@ export function NoteEditor({
     const [aiEditCount, setAiEditCount] = useState(0);
     const [aiEditsVisible, setAiEditsVisible] = useState(true);
     const aiEditRegionsRef = useRef<Array<{ id: string; from: number; to: number }>>([]);
+    // Markdown of the note as it was immediately before the *first* AI edit in the
+    // current batch. Discard restores this. In-memory and ephemeral by design: it
+    // dies with the decorations on reload, note switch, Keep, or Discard. The
+    // separate boolean mirrors it into render state so the pill can hide Discard
+    // when there is nothing to restore (a ref alone would not re-render).
+    const aiEditPreContentRef = useRef<string | null>(null);
+    const [aiEditCanDiscard, setAiEditCanDiscard] = useState(false);
 
     // TOC state
     const [tocOpen, setTocOpen] = useState(false);
@@ -312,6 +319,8 @@ export function NoteEditor({
             setSourceDirty(false);
             contentLoadedRef.current = false;
             aiEditRegionsRef.current = [];
+            aiEditPreContentRef.current = null;
+            setAiEditCanDiscard(false);
             setAiEditCount(0);
             setAiEditsVisible(false);
             setTocEntries([]);
@@ -916,9 +925,51 @@ export function NoteEditor({
             ed.commands.clearAiEdits?.();
         }
         aiEditRegionsRef.current = [];
+        aiEditPreContentRef.current = null;
+        setAiEditCanDiscard(false);
         setAiEditCount(0);
         setAiEditsVisible(false);
     }, []);
+
+    // ── AI edit navigator: discard the edits and restore the pre-edit text ──
+    //
+    // The AI already wrote the file, so a client-only revert would be silently
+    // undone by the next reload — this replaces the document *and* saves, using
+    // the editor's normal save path rather than the chat-side undo endpoint (the
+    // watcher path has no processId/editId to undo against).
+
+    const handleAiEditDiscard = useCallback(() => {
+        const preContent = aiEditPreContentRef.current;
+        // No snapshot means nothing to restore; clearing without restoring would
+        // silently accept the AI edit, which is the opposite of what was asked.
+        if (preContent === null) return;
+
+        const ed = editorRef.current;
+        if (ed && !ed.isDestroyed) {
+            const { html, frontMatter } = markdownToRichEditorHtml({
+                markdown: preContent,
+                io: ioRef.current,
+                workspaceId: workspaceIdRef.current,
+                root: rootRef.current,
+            });
+            setFrontMatterResult(frontMatter);
+            ed.commands.clearAiEdits?.();
+            ed.commands.setContent(html, { emitUpdate: false });
+            // Consistent with the AI-apply path: the restore is not an undoable
+            // user edit, so it does not belong in the editor's history stack.
+            resetEditorHistory(ed);
+        }
+
+        setRawMarkdown(preContent);
+        queueSave(preContent);
+        void flushSave();
+
+        aiEditRegionsRef.current = [];
+        aiEditPreContentRef.current = null;
+        setAiEditCanDiscard(false);
+        setAiEditCount(0);
+        setAiEditsVisible(false);
+    }, [flushSave, queueSave, setRawMarkdown]);
 
     // ── AI edit navigator: jump to next region ──────────────────────────
 
@@ -1085,6 +1136,11 @@ export function NoteEditor({
 
                 // Capture previous doc text before updating content
                 const previousDocText = ed.state.doc.textContent;
+                // ...and the previous markdown, which is what Discard restores.
+                // Held locally until we know decorations actually apply: the diff
+                // can still bail out below (identical text, >50% rewrite, no
+                // mappable regions), and a snapshot with no pill would go stale.
+                const previousMarkdown = rawMarkdownRef.current;
 
                 const { html, frontMatter } = markdownToRichEditorHtml({
                     markdown: content,
@@ -1116,7 +1172,13 @@ export function NoteEditor({
                 const regions = findChangedRegionsInDoc(chunks, ed.state.doc);
                 if (regions.length === 0) return;
 
-                // Apply decorations and update count
+                // Apply decorations and update count. Regions accumulate across
+                // events, so keep the *earliest* snapshot since the last clear —
+                // Discard must revert everything the pill is currently reporting.
+                if (aiEditPreContentRef.current === null) {
+                    aiEditPreContentRef.current = previousMarkdown;
+                    setAiEditCanDiscard(true);
+                }
                 aiEditRegionsRef.current = [...aiEditRegionsRef.current, ...regions];
                 ed.commands.setAiEdits(aiEditRegionsRef.current as any);
                 setAiEditCount(prev => prev + regions.length);
@@ -1142,7 +1204,12 @@ export function NoteEditor({
             if (chunks.every(c => c.type === 'equal')) return;
             const regions = findChangedRegionsInDoc(chunks, ed.state.doc);
             if (regions.length === 0) return;
+            // This path *replaces* the regions with one turn's edit, so the
+            // snapshot is replaced too — with that turn's server-stored pre-edit
+            // content rather than an accumulated local one.
             aiEditRegionsRef.current = regions;
+            aiEditPreContentRef.current = detail.preEditContent;
+            setAiEditCanDiscard(true);
             ed.commands.setAiEdits(regions as any);
             setAiEditCount(regions.length);
             setAiEditsVisible(true);
@@ -1152,6 +1219,8 @@ export function NoteEditor({
             if (!detail || detail.wsId !== workspaceIdRef.current) return;
             const ed = editorRef.current;
             if (ed && !ed.isDestroyed) ed.commands.clearAiEdits?.();
+            aiEditPreContentRef.current = null;
+            setAiEditCanDiscard(false);
             setAiEditCount(0);
             setAiEditsVisible(false);
         };
@@ -1459,6 +1528,7 @@ export function NoteEditor({
                                 noteRoot={root}
                                 onChatAboutPaper={onChatAboutPaper}
                                 resolvePaperSource={resolvePaperSource}
+                                scrollContainerRef={editorScrollContainerRef}
                             />
                             <input
                                 ref={pdfInputRef}
@@ -1518,6 +1588,7 @@ export function NoteEditor({
                             editCount={aiEditCount}
                             onNext={handleAiEditNext}
                             onDismiss={handleAiEditDismiss}
+                            onDiscard={aiEditCanDiscard ? handleAiEditDiscard : undefined}
                             narrow={chatLensOpen}
                             placement={chatLensOpen ? 'top-right' : 'bottom-right'}
                         />
@@ -1550,7 +1621,14 @@ export function NoteEditor({
                         label: 'Open link',
                         icon: '🔗',
                         onClick: () => {
-                            openLink(linkHref, linkHandlerConfig);
+                            // A bare `#fragment` is a same-note heading anchor,
+                            // resolved against the live headings — handing it to
+                            // `openLink` would open a stray window at the SPA
+                            // root, the same bug the Ctrl+click path fixes.
+                            if (!(editor && jumpToHeadingAnchor(editor, editorScrollContainerRef.current, linkHref))
+                                && !linkHref.startsWith('#')) {
+                                openLink(linkHref, linkHandlerConfig);
+                            }
                             setContextMenu(null);
                         },
                     });

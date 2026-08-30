@@ -19,12 +19,25 @@ export const REPO_GROUP_ID_PREFIX = 'group-';
 /** Membership file name inside the group workspace root. */
 export const REPO_GROUP_FILE_NAME = 'group.json';
 
+/** Longest per-member description accepted on write. */
+export const REPO_GROUP_DESCRIPTION_MAX_LENGTH = 280;
+
 /** Shape of the persisted `group.json` membership file. */
 export interface RepoGroupFile {
     /** Human-readable group name (also the workspace name). */
     name: string;
     /** Member workspace IDs — resolved against the registry at read time. */
     members: string[];
+    /**
+     * Optional free-form note per member, keyed by member workspace ID.
+     *
+     * A side map rather than richer `members` entries so files written before
+     * this existed keep loading unchanged, and so a group with no descriptions
+     * still serializes byte-identically to what earlier versions wrote — the
+     * key is omitted entirely when empty. Descriptions are scoped to the
+     * membership, so the same repo can read differently in two groups.
+     */
+    descriptions?: Record<string, string>;
 }
 
 /** A group member resolved against the live workspace registry. */
@@ -38,6 +51,8 @@ export interface RepoGroupMember {
     name?: string;
     /** Registry absolute root path; absent when the workspace was removed. */
     rootPath?: string;
+    /** This group's note about the member; absent when unset. */
+    description?: string;
 }
 
 /** Raised when create/update input fails shape or registry validation. */
@@ -97,6 +112,50 @@ async function normalizeMembers(store: ProcessStore, members: string[]): Promise
     return normalized;
 }
 
+/**
+ * Validate a caller-supplied description map and drop anything that would be
+ * dead weight in the file: empty values, and entries for workspace IDs that are
+ * not members. Unknown keys are a caller mistake, so they are rejected rather
+ * than silently ignored; entries that merely went stale (a member removed by
+ * this same write) are pruned by {@link pruneDescriptions} instead.
+ */
+function normalizeDescriptions(
+    descriptions: Record<string, string>,
+    members: readonly string[],
+): Record<string, string> {
+    const memberSet = new Set(members);
+    const normalized: Record<string, string> = {};
+    for (const [workspaceId, value] of Object.entries(descriptions)) {
+        if (typeof value !== 'string') {
+            throw new RepoGroupValidationError(`Description for "${workspaceId}" must be a string`);
+        }
+        if (value.length > REPO_GROUP_DESCRIPTION_MAX_LENGTH) {
+            throw new RepoGroupValidationError(
+                `Description for "${workspaceId}" exceeds ${REPO_GROUP_DESCRIPTION_MAX_LENGTH} characters`,
+            );
+        }
+        if (!memberSet.has(workspaceId)) {
+            throw new RepoGroupValidationError(`Description key "${workspaceId}" is not a member of this repo group`);
+        }
+        const trimmed = value.trim();
+        if (trimmed) normalized[workspaceId] = trimmed;
+    }
+    return normalized;
+}
+
+/** Keep only the descriptions whose member is still in the group. */
+function pruneDescriptions(
+    descriptions: Record<string, string> | undefined,
+    members: readonly string[],
+): Record<string, string> {
+    const kept: Record<string, string> = {};
+    for (const workspaceId of members) {
+        const value = descriptions?.[workspaceId];
+        if (value) kept[workspaceId] = value;
+    }
+    return kept;
+}
+
 function normalizeName(name: string): string {
     const trimmed = name.trim();
     if (!trimmed) {
@@ -108,7 +167,23 @@ function normalizeName(name: string): string {
 function writeGroupFile(dataDir: string, groupId: string, file: RepoGroupFile): void {
     const root = groupRootPath(dataDir, groupId);
     fs.mkdirSync(root, { recursive: true });
-    fs.writeFileSync(groupFilePath(dataDir, groupId), JSON.stringify(file, null, 2) + '\n', 'utf-8');
+    const descriptions = pruneDescriptions(file.descriptions, file.members);
+    // Omitted when empty so a group without descriptions writes exactly the
+    // bytes earlier versions wrote.
+    const payload: RepoGroupFile = Object.keys(descriptions).length > 0
+        ? { name: file.name, members: file.members, descriptions }
+        : { name: file.name, members: file.members };
+    fs.writeFileSync(groupFilePath(dataDir, groupId), JSON.stringify(payload, null, 2) + '\n', 'utf-8');
+}
+
+/** Read-side tolerance: anything that is not a plain map of strings is empty. */
+function parseDescriptions(value: unknown): Record<string, string> | undefined {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+    const parsed: Record<string, string> = {};
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+        if (typeof entry === 'string' && entry) parsed[key] = entry;
+    }
+    return Object.keys(parsed).length > 0 ? parsed : undefined;
 }
 
 /**
@@ -127,10 +202,9 @@ export function readRepoGroup(dataDir: string, groupId: string): RepoGroupFile |
     try {
         const parsed = JSON.parse(raw) as Partial<RepoGroupFile>;
         if (typeof parsed?.name !== 'string' || !Array.isArray(parsed.members)) return undefined;
-        return {
-            name: parsed.name,
-            members: parsed.members.filter((m): m is string => typeof m === 'string'),
-        };
+        const members = parsed.members.filter((m): m is string => typeof m === 'string');
+        const descriptions = parseDescriptions((parsed as { descriptions?: unknown }).descriptions);
+        return descriptions ? { name: parsed.name, members, descriptions } : { name: parsed.name, members };
     } catch {
         return undefined;
     }
@@ -158,12 +232,13 @@ async function mintGroupId(dataDir: string, store: ProcessStore, name: string): 
 export async function createRepoGroup(
     dataDir: string,
     store: ProcessStore,
-    input: { name: string; members: string[] },
+    input: { name: string; members: string[]; descriptions?: Record<string, string> },
 ): Promise<WorkspaceInfo> {
     const name = normalizeName(input.name);
     const members = await normalizeMembers(store, input.members);
+    const descriptions = input.descriptions ? normalizeDescriptions(input.descriptions, members) : undefined;
     const groupId = await mintGroupId(dataDir, store, name);
-    writeGroupFile(dataDir, groupId, { name, members });
+    writeGroupFile(dataDir, groupId, { name, members, descriptions });
     const ws: WorkspaceInfo = {
         id: groupId,
         name,
@@ -184,13 +259,23 @@ export async function updateRepoGroup(
     dataDir: string,
     store: ProcessStore,
     groupId: string,
-    updates: { name?: string; members?: string[] },
+    updates: { name?: string; members?: string[]; descriptions?: Record<string, string> },
 ): Promise<RepoGroupFile | undefined> {
     const current = readRepoGroup(dataDir, groupId);
     if (!current) return undefined;
+    const members = updates.members !== undefined ? await normalizeMembers(store, updates.members) : current.members;
+    // A supplied map is a partial patch: it replaces only the keys it names,
+    // and an empty string clears that member's description.
+    let descriptions = pruneDescriptions(current.descriptions, members);
+    if (updates.descriptions !== undefined) {
+        const patch = normalizeDescriptions(updates.descriptions, members);
+        for (const key of Object.keys(updates.descriptions)) delete descriptions[key];
+        descriptions = { ...descriptions, ...patch };
+    }
     const next: RepoGroupFile = {
         name: updates.name !== undefined ? normalizeName(updates.name) : current.name,
-        members: updates.members !== undefined ? await normalizeMembers(store, updates.members) : current.members,
+        members,
+        descriptions: Object.keys(descriptions).length > 0 ? descriptions : undefined,
     };
     writeGroupFile(dataDir, groupId, next);
     if (next.name !== current.name) {
@@ -214,14 +299,16 @@ export async function resolveRepoGroupMembers(
     if (!file) return [];
     const registered = new Map((await store.getWorkspaces()).map(w => [w.id, w]));
     return file.members.map((workspaceId): RepoGroupMember => {
+        const description = file.descriptions?.[workspaceId];
+        const withDescription = description ? { description } : {};
         const ws = registered.get(workspaceId);
         if (!ws) {
-            return { workspaceId, stale: true, staleReason: 'workspace-removed' };
+            return { workspaceId, stale: true, staleReason: 'workspace-removed', ...withDescription };
         }
         if (!fs.existsSync(ws.rootPath)) {
-            return { workspaceId, stale: true, staleReason: 'path-missing', name: ws.name, rootPath: ws.rootPath };
+            return { workspaceId, stale: true, staleReason: 'path-missing', name: ws.name, rootPath: ws.rootPath, ...withDescription };
         }
-        return { workspaceId, stale: false, name: ws.name, rootPath: ws.rootPath };
+        return { workspaceId, stale: false, name: ws.name, rootPath: ws.rootPath, ...withDescription };
     });
 }
 

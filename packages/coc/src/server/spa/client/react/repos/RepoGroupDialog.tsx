@@ -16,12 +16,18 @@
  * workspace no longer registered) are badged so the user can drop them. Keeping
  * a removed workspace checked is rejected by the server on save and the
  * validation message surfaces inline.
+ *
+ * Each checked member also carries an optional free-form description saying what
+ * that repo is for inside this group. It is edited here as pending state and
+ * sent with the rest of the form on Save — unlike the group page's list, which
+ * PATCHes a single member as soon as its field is committed.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { isRemoteRepo, type RepoData } from './repoGrouping';
+import { REPO_GROUP_DESCRIPTION_PLACEHOLDER } from './RepoGroupMemberList';
 import {
     createRepoGroup,
     getRepoGroup,
@@ -29,6 +35,7 @@ import {
     updateRepoGroup,
     LOCAL_REPO_GROUP_SERVER,
     LOCAL_REPO_GROUP_SERVER_ID,
+    REPO_GROUP_DESCRIPTION_MAX_LENGTH,
     type RepoGroupMember,
     type RepoGroupServerOption,
 } from './repoGroupService';
@@ -80,6 +87,10 @@ function isMissingRouteError(error: unknown): boolean {
 export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, onSaved }: RepoGroupDialogProps) {
     const [name, setName] = useState('');
     const [checked, setChecked] = useState<Set<string>>(new Set());
+    // Pending descriptions keyed by workspace id. Only the checked members' entries
+    // are sent on save, so leftovers from a member the user unchecked are ignored
+    // rather than resurrected.
+    const [descriptions, setDescriptions] = useState<Record<string, string>>({});
     const [staleMembers, setStaleMembers] = useState<RepoGroupMember[]>([]);
     const [servers, setServers] = useState<RepoGroupServerOption[]>([LOCAL_REPO_GROUP_SERVER]);
     const [serverId, setServerId] = useState<string>(LOCAL_REPO_GROUP_SERVER_ID);
@@ -116,6 +127,7 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
         if (!open) return;
         setName('');
         setChecked(new Set());
+        setDescriptions({});
         setStaleMembers([]);
         setError(null);
         setSaving(false);
@@ -128,6 +140,11 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
                 if (cancelled) return;
                 setName(group.name);
                 setChecked(new Set(group.members.map(m => m.workspaceId)));
+                setDescriptions(Object.fromEntries(
+                    group.members
+                        .filter(m => typeof m.description === 'string' && m.description.length > 0)
+                        .map(m => [m.workspaceId, m.description as string]),
+                ));
                 setStaleMembers(group.members.filter(m => m.stale));
             })
             .catch((err: unknown) => {
@@ -186,18 +203,31 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
     const changeServer = useCallback((nextServerId: string) => {
         setServerId(nextServerId);
         setChecked(new Set());
+        setDescriptions({});
         setError(null);
     }, []);
 
     const handleSave = useCallback(async () => {
         const members = options.filter(o => checked.has(o.workspaceId)).map(o => o.workspaceId);
+        // Every member gets a key so clearing a field sends '' and the server drops
+        // the old text; unchecked members are absent, and the server prunes theirs.
+        const memberDescriptions = Object.fromEntries(
+            members.map(id => [id, (descriptions[id] ?? '').trim()]),
+        );
         setSaving(true);
         setError(null);
         try {
             if (groupId) {
-                await updateRepoGroup(groupId, { name: name.trim(), members }, selectedBaseUrl);
+                await updateRepoGroup(
+                    groupId,
+                    { name: name.trim(), members, descriptions: memberDescriptions },
+                    selectedBaseUrl,
+                );
             } else {
-                await createRepoGroup({ name: name.trim(), members }, selectedBaseUrl);
+                await createRepoGroup(
+                    { name: name.trim(), members, descriptions: memberDescriptions },
+                    selectedBaseUrl,
+                );
             }
             onSaved();
         } catch (err: unknown) {
@@ -206,7 +236,7 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
                 : getRepositoryApiErrorMessage(err, 'Failed to save repo group'));
             setSaving(false);
         }
-    }, [groupId, name, options, checked, selectedBaseUrl, onSaved]);
+    }, [groupId, name, options, checked, descriptions, selectedBaseUrl, onSaved]);
 
     // Editing a group on a server that is no longer in the list (offline since) —
     // still show which server it belongs to rather than a blank select.
@@ -277,32 +307,58 @@ export function RepoGroupDialog({ open, groupId, groupBaseUrl, repos, onClose, o
                         data-testid="repo-group-member-list"
                     >
                         {options.map(option => (
-                            <label
+                            // A div, not a label wrapper: the description input has to
+                            // sit inside the row without every keystroke's click
+                            // toggling the checkbox.
+                            <div
                                 key={option.workspaceId}
-                                className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2a] text-xs"
+                                className="flex flex-col gap-0.5 px-3 py-1.5 hover:bg-[#f5f5f5] dark:hover:bg-[#2a2a2a] text-xs"
                             >
-                                <input
-                                    type="checkbox"
-                                    checked={checked.has(option.workspaceId)}
-                                    onChange={() => toggleMember(option.workspaceId)}
-                                    data-testid={`repo-group-member-check-${option.workspaceId}`}
-                                />
-                                <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc]">{option.name}</span>
-                                {option.staleReason && (
-                                    <span
-                                        data-testid="repo-group-stale-badge"
-                                        title={option.staleReason === 'workspace-removed'
-                                            ? 'This workspace is no longer registered in CoC'
-                                            : 'The repo folder no longer exists on disk'}
-                                        className="px-1 rounded text-[10px] font-semibold bg-[#fff1e5] text-[#bc4c00] dark:bg-[#bc4c00]/20 dark:text-[#f0883e]"
-                                    >
-                                        {staleBadgeLabel(option.staleReason)}
-                                    </span>
+                                <label
+                                    className="flex items-center gap-2 cursor-pointer"
+                                    htmlFor={`repo-group-member-check-${option.workspaceId}`}
+                                >
+                                    <input
+                                        type="checkbox"
+                                        id={`repo-group-member-check-${option.workspaceId}`}
+                                        checked={checked.has(option.workspaceId)}
+                                        onChange={() => toggleMember(option.workspaceId)}
+                                        data-testid={`repo-group-member-check-${option.workspaceId}`}
+                                    />
+                                    <span className="font-medium text-[#1e1e1e] dark:text-[#cccccc]">{option.name}</span>
+                                    {option.staleReason && (
+                                        <span
+                                            data-testid="repo-group-stale-badge"
+                                            title={option.staleReason === 'workspace-removed'
+                                                ? 'This workspace is no longer registered in CoC'
+                                                : 'The repo folder no longer exists on disk'}
+                                            className="px-1 rounded text-[10px] font-semibold bg-[#fff1e5] text-[#bc4c00] dark:bg-[#bc4c00]/20 dark:text-[#f0883e]"
+                                        >
+                                            {staleBadgeLabel(option.staleReason)}
+                                        </span>
+                                    )}
+                                    {option.rootPath && (
+                                        <span className="text-[#848484] truncate">{option.rootPath}</span>
+                                    )}
+                                </label>
+                                {/* Only a member can carry a description, so the field
+                                    appears once the repo is checked. */}
+                                {checked.has(option.workspaceId) && (
+                                    <input
+                                        type="text"
+                                        value={descriptions[option.workspaceId] ?? ''}
+                                        maxLength={REPO_GROUP_DESCRIPTION_MAX_LENGTH}
+                                        placeholder={REPO_GROUP_DESCRIPTION_PLACEHOLDER}
+                                        aria-label={`Description for ${option.name}`}
+                                        data-testid={`repo-group-member-description-${option.workspaceId}`}
+                                        onChange={e => {
+                                            const value = e.target.value;
+                                            setDescriptions(prev => ({ ...prev, [option.workspaceId]: value }));
+                                        }}
+                                        className="ml-5 px-1.5 py-0.5 rounded border border-transparent bg-transparent text-[#1e1e1e] dark:text-[#cccccc] placeholder:text-[#a0a0a0] dark:placeholder:text-[#6a6a6a] outline-none hover:border-[#e0e0e0] dark:hover:border-[#3c3c3c] focus:border-[#0078d4] focus:bg-white dark:focus:bg-[#1e1e1e]"
+                                    />
                                 )}
-                                {option.rootPath && (
-                                    <span className="text-[#848484] truncate">{option.rootPath}</span>
-                                )}
-                            </label>
+                            </div>
                         ))}
                     </div>
                 )}

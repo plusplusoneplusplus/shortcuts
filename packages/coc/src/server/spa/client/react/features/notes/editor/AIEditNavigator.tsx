@@ -1,8 +1,8 @@
 /**
  * AIEditNavigator — floating pill showing pending AI edit count with navigation.
  *
- * Renders a compact "✦ N AI edits ↓ | Keep" pill that auto-hides when editCount is 0.
- * In narrow (chat-open) mode, shows icon-only "✦ N ↓ | Keep".
+ * Renders a compact "✦ N AI edits ↓ | Discard Keep" pill that auto-hides when
+ * editCount is 0. In narrow (chat-open) mode, shows icon-only "✦ N ↓ | Discard Keep".
  *
  * The pill floats over the editor, so it anchors away from whatever else owns the
  * corner: the default bottom-right sits above the save indicator, while 'top-right'
@@ -11,6 +11,13 @@
  * The dismiss action is labeled "Keep" rather than a bare ✕ so the hit target
  * matches the rest of the pill (~28px tall) and conveys that the user is
  * accepting the AI edits as-is.
+ *
+ * "Discard" is the opposite of "Keep": it reverts the note to its pre-edit
+ * content. It is rendered only when the caller supplies `onDiscard` — the
+ * pre-edit snapshot is in-memory, so it can legitimately be missing (e.g. after
+ * a page reload) and the button must then be absent rather than a no-op. Keep
+ * stays the rightmost/primary affordance; Discard is muted, not red, because it
+ * is reversible-in-spirit and not a destructive file operation.
  */
 
 import type React from 'react';
@@ -22,13 +29,18 @@ export interface AIEditNavigatorProps {
     onNext: () => void;
     /** Dismiss all decorations and reset the count. */
     onDismiss: () => void;
+    /**
+     * Revert the note to its pre-edit content, then clear the decorations.
+     * Omit to hide the Discard button (no pre-edit snapshot available).
+     */
+    onDiscard?: () => void;
     /** When true, use compact icon-only layout. */
     narrow?: boolean;
     /** Which corner of the containing editor column to anchor to. Defaults to 'bottom-right'. */
     placement?: 'bottom-right' | 'top-right';
 }
 
-export function AIEditNavigator({ editCount, onNext, onDismiss, narrow = false, placement = 'bottom-right' }: AIEditNavigatorProps): React.ReactElement | null {
+export function AIEditNavigator({ editCount, onNext, onDismiss, onDiscard, narrow = false, placement = 'bottom-right' }: AIEditNavigatorProps): React.ReactElement | null {
     if (editCount === 0) return null;
 
     const anchor = placement === 'top-right' ? 'top-2 right-3' : 'bottom-8 right-3';
@@ -69,6 +81,18 @@ export function AIEditNavigator({ editCount, onNext, onDismiss, narrow = false, 
             >
                 |
             </span>
+
+            {onDiscard && (
+                <button
+                    onClick={onDiscard}
+                    className="text-[#666] hover:text-[#222] dark:text-[#aaa] dark:hover:text-white leading-none px-1.5 py-0.5 rounded text-xs font-medium"
+                    title="Discard the AI edits and restore the previous text"
+                    aria-label="Discard AI edits and restore the previous text"
+                    data-testid="ai-edit-navigator-discard"
+                >
+                    Discard
+                </button>
+            )}
 
             <button
                 onClick={onDismiss}
