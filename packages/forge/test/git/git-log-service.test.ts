@@ -10,6 +10,12 @@ import { GitLogService } from '../../src/git/git-log-service';
 
 const REPO_ROOT = execSync('git rev-parse --show-toplevel', { encoding: 'utf-8' }).trim();
 const HEAD_HASH = execSync('git rev-parse HEAD', { encoding: 'utf-8', cwd: REPO_ROOT }).trim();
+// `--short` lengthens the abbreviation until it names exactly one object, which
+// a fixed seven-character slice cannot do. CI checks out the pull request's
+// merge commit, and one of those shared its first seven characters with another
+// object in the repo: the lookup then matched nothing and the test failed on a
+// hash that happened to collide rather than on anything the commit changed.
+const SHORT_HASH = execSync('git rev-parse --short HEAD', { encoding: 'utf-8', cwd: REPO_ROOT }).trim();
 const TOTAL_COMMITS = parseInt(execSync('git rev-list --count HEAD', { encoding: 'utf-8', cwd: REPO_ROOT }).trim(), 10);
 
 describe('GitLogService', () => {
@@ -123,8 +129,11 @@ describe('GitLogService', () => {
         });
 
         it('should return a commit by short hash', async () => {
-            const shortHash = HEAD_HASH.substring(0, 7);
-            const commit = await service.getCommit(REPO_ROOT, shortHash);
+            // Still an abbreviation, so this keeps exercising the short-hash
+            // path rather than quietly degrading into the full-hash test.
+            expect(SHORT_HASH.length).toBeLessThan(HEAD_HASH.length);
+            expect(HEAD_HASH.startsWith(SHORT_HASH)).toBe(true);
+            const commit = await service.getCommit(REPO_ROOT, SHORT_HASH);
             expect(commit).toBeDefined();
             expect(commit!.hash).toBe(HEAD_HASH);
         });
