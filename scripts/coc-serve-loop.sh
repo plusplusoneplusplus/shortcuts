@@ -91,6 +91,16 @@ build_coc() {
         popd > /dev/null
         return 1
     fi
+    # The Rust addon is not part of `coc:link` (coc-native's `build` is plain
+    # tsc on purpose). Without this the loop would restart onto a stale — or on
+    # a fresh clone, absent — `.node`, and the server dies on first native use.
+    # Exits 0 quietly when the addon is already newer than rust/.
+    echo -e "\033[36m=== Ensuring native addon is up to date ===\033[0m"
+    if ! npm run ensure:native; then
+        echo -e "\033[31mNative addon build failed with exit code $?.\033[0m"
+        popd > /dev/null
+        return 1
+    fi
     echo -e "\033[36m=== Building coc packages ===\033[0m"
     if npm run coc:link; then
         # Re-run npm install after coc:link because npm link inside workspace packages
