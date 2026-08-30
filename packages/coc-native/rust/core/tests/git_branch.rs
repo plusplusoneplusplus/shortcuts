@@ -59,6 +59,19 @@ fn commit(repo: &Path, name: &str, contents: &str, message: &str) -> String {
     git_stdout(repo, &["rev-parse", "HEAD"])
 }
 
+/// Rewrite HEAD's author and committer dates, so a test can pin how old the
+/// tip looks to both git and to us.
+fn backdate_head(repo: &Path, date: &str) {
+    let status = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["commit", "--amend", "--no-edit", "--date", date])
+        .env("GIT_COMMITTER_DATE", date)
+        .status()
+        .expect("git should be on PATH for these tests");
+    assert!(status.success(), "git commit --amend --date {date} failed");
+}
+
 /// A repository on `main` with three commits and no remotes.
 fn repo_with_history() -> TempDir {
     let dir = TempDir::new().expect("temp dir");
@@ -377,6 +390,13 @@ fn subjects_match_what_git_branch_format_prints() {
 #[test]
 fn relative_dates_match_git_branch_format() {
     let repo = repo_with_history();
+    // A commit made *now* sits on a knife edge: our formatter reads the clock
+    // before `list_branches` runs and git reads it again a few milliseconds
+    // later, so one says "0 seconds ago" and the other "1 second ago" whenever
+    // a second boundary falls in between. Backdating the tip to a fixed date
+    // puts both readings deep inside the same year-scale bucket, where no
+    // plausible skew between the two clock reads can change the spelling.
+    backdate_head(repo.path(), "2000-01-01T00:00:00+00:00");
     git(repo.path(), &["branch", "side"]);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

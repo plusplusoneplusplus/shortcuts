@@ -206,24 +206,23 @@ describe('gitStatusEntries marshalling', () => {
     });
 
     it('honours a per-call timeout override', async () => {
-        // A one-millisecond deadline is only unmeetable if the status is slow
-        // enough to notice it. Against the two-file repo this raced: the clock
-        // starts once the child is spawned and its readers are up, by which
-        // point a warm macOS runner had already finished, so the call resolved
-        // with the correct empty list and the assertion failed. Two thousand
-        // untracked paths put the work three orders of magnitude clear of the
-        // deadline on every platform.
-        const crowded = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-git-crowded-'));
+        // A short deadline is only unmeetable if the status is slow enough to
+        // notice it, and no amount of work in the repository guarantees that:
+        // piling in two thousand untracked paths still lost the race on a warm
+        // arm64 runner, which finished inside the millisecond and resolved with
+        // the correct list. So make git block instead of making it busy — an
+        // `core.fsmonitor` hook that sleeps is queried before status can report
+        // anything, so the deadline always lands first, on every runner.
+        const stalled = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-git-stalled-'));
         try {
-            execFileSync('git', ['-C', crowded, 'init', '--initial-branch=main']);
-            for (let index = 0; index < 2000; index++) {
-                fs.writeFileSync(path.join(crowded, `file-${index}.txt`), 'x\n');
-            }
-            await expect(gitAddon.gitStatusEntries(crowded, { timeout: 1 })).rejects.toThrow(
+            execFileSync('git', ['-C', stalled, 'init', '--initial-branch=main']);
+            execFileSync('git', ['-C', stalled, 'config', 'core.fsmonitor', 'sleep 30']);
+            fs.writeFileSync(path.join(stalled, 'file.txt'), 'x\n');
+            await expect(gitAddon.gitStatusEntries(stalled, { timeout: 250 })).rejects.toThrow(
                 /^git status --porcelain --untracked-files=all failed: /,
             );
         } finally {
-            removeDir(crowded);
+            removeDir(stalled);
         }
     });
 });
