@@ -99,8 +99,11 @@ describe('getGitRoot (gix discovery)', () => {
         expect(discovered).not.toBeNull();
         // git prints the physical path and discovery reports the path it walked;
         // they differ wherever a symlink is involved, so canonicalise both.
-        expect(fs.realpathSync(discovered!)).toBe(
-            fs.realpathSync(git(['rev-parse', '--show-toplevel'], repo)),
+        // `realpathSync.native` rather than `realpathSync`: only the native one
+        // expands a Windows 8.3 short name, and the two sides disagree about
+        // whether TMPDIR is `RUNNER~1` or `runneradmin`.
+        expect(fs.realpathSync.native(discovered!)).toBe(
+            fs.realpathSync.native(git(['rev-parse', '--show-toplevel'], repo)),
         );
     });
 

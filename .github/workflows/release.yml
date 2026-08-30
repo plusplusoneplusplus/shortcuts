@@ -79,14 +79,25 @@ jobs:
   build-native:
     needs: dependency-security
     runs-on: ${{ matrix.runner }}
+    # The linux binary is built inside the image we ship, not on the runner. The
+    # addon spawns processes now, and that pulls Rust std's `pidfd_spawnp` and
+    # `pidfd_getpid` in. They are weak symbols, but they still record a
+    # GLIBC_2.39 dependency for the whole file, and the runner's glibc is newer
+    # than bookworm's — the server refused to start with "version `GLIBC_2.39'
+    # not found". Building against the older glibc keeps one binary loadable on
+    # the image and on every distro from 2.36 on, which is what the published
+    # prebuilt needs too.
+    container: ${{ matrix.container }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - runner: ubuntu-latest
             triple: linux-x64-gnu
+            container: node:24-bookworm
           - runner: ubuntu-24.04-arm
             triple: linux-arm64-gnu
+            container: node:24-bookworm
           # The macOS app ships as an arm64-only .dmg, so an Intel Mac
           # prebuilt would have no consumer.
           - runner: macos-latest

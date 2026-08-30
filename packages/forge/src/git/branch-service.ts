@@ -84,6 +84,41 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 const LONG_OPERATION_TIMEOUT_MS = 600_000;
 
 /**
+ * Write a script for git to run as `GIT_EDITOR` or `GIT_SEQUENCE_EDITOR`, and
+ * return the command line that reaches it on every platform.
+ *
+ * Git hands an editor to a shell — its own bundled `sh` on Windows — and that
+ * is what rules out passing a bare path there: `C:\Users\...\seq-editor.cmd`
+ * arrives with its separators read as escapes, as `C:UsersRUNNER~1...`, and
+ * the rebase dies on `command not found`. Forward slashes survive the shell,
+ * and naming the interpreter rather than relying on a shebang or on the file
+ * being marked executable means one spelling works for all three platforms —
+ * so the body below is plain POSIX, not a `.cmd` on Windows and a shell script
+ * everywhere else.
+ */
+function writeGitEditorScript(dir: string, name: string, body: string): string {
+    const scriptPath = path.join(dir, name);
+    fs.writeFileSync(scriptPath, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+    return `sh '${scriptPath.replace(/\\/g, '/')}'`;
+}
+
+/**
+ * Rewrite one `pick <hash>` line in a rebase todo list.
+ *
+ * Not `sed -i`: GNU sed takes the backup suffix as an optional attached
+ * argument and BSD sed takes it as the next word, so the one spelling that
+ * edits in place on Linux eats the file name on macOS — `invalid command code`,
+ * and the rebase never runs. Rewriting through a temp file is the same edit in
+ * a spelling both accept.
+ */
+function todoRewriteScript(shortHash: string, verb: string): string {
+    return (
+        `sed "s/^pick ${shortHash}/${verb} ${shortHash}/" "$1" > "$1.todo.tmp" && ` +
+        `mv "$1.todo.tmp" "$1"`
+    );
+}
+
+/**
  * Rebuild the exported shape from what crossed the N-API boundary.
  *
  * napi omits an absent `Option<String>` inside an object rather than sending
@@ -1421,36 +1456,17 @@ export class BranchService {
             fs.writeFileSync(msgPath, title.trim(), 'utf-8');
 
             // Sequence editor: replace `pick <hash>` with `reword <hash>` in the todo
-            let seqEditor: string;
-            let msgEditor: string;
-            if (process.platform === 'win32') {
-                const seqScriptPath = path.join(tmpDir, 'seq-editor.cmd');
-                const shortHash = fullHash.slice(0, 7);
-                fs.writeFileSync(seqScriptPath,
-                    `@echo off\r\n` +
-                    `powershell -NoProfile -Command "(Get-Content '%1') -replace '^pick ${shortHash}', 'reword ${shortHash}' | Set-Content '%1'"\r\n`,
-                    'utf-8');
-                seqEditor = seqScriptPath;
-
-                const msgScriptPath = path.join(tmpDir, 'msg-editor.cmd');
-                fs.writeFileSync(msgScriptPath,
-                    `@copy /Y "${msgPath}" %1 >nul\r\n`,
-                    'utf-8');
-                msgEditor = msgScriptPath;
-            } else {
-                const seqScriptPath = path.join(tmpDir, 'seq-editor.sh');
-                const shortHash = fullHash.slice(0, 7);
-                fs.writeFileSync(seqScriptPath,
-                    `#!/bin/sh\nsed -i "s/^pick ${shortHash}/reword ${shortHash}/" "$1"\n`,
-                    { mode: 0o755 });
-                seqEditor = seqScriptPath;
-
-                const msgScriptPath = path.join(tmpDir, 'msg-editor.sh');
-                fs.writeFileSync(msgScriptPath,
-                    `#!/bin/sh\ncp "${msgPath}" "$1"\n`,
-                    { mode: 0o755 });
-                msgEditor = msgScriptPath;
-            }
+            const shortHash = fullHash.slice(0, 7);
+            const seqEditor = writeGitEditorScript(
+                tmpDir,
+                'seq-editor.sh',
+                todoRewriteScript(shortHash, 'reword'),
+            );
+            const msgEditor = writeGitEditorScript(
+                tmpDir,
+                'msg-editor.sh',
+                `cp "${msgPath.replace(/\\/g, '/')}" "$1"`,
+            );
 
             await this.runGit(repoRoot, ['rebase', '-i', parentHash], {
                 timeout: LONG_OPERATION_TIMEOUT_MS,
@@ -1486,23 +1502,12 @@ export class BranchService {
 
             tmpDir = fs.mkdtempSync(path.join(repoRoot, '.git', 'tmp-drop-'));
 
-            let seqEditor: string;
-            if (process.platform === 'win32') {
-                const seqScriptPath = path.join(tmpDir, 'seq-editor.cmd');
-                const shortHash = fullHash.slice(0, 7);
-                fs.writeFileSync(seqScriptPath,
-                    `@echo off\r\n` +
-                    `powershell -NoProfile -Command "(Get-Content '%1') -replace '^pick ${shortHash}', 'drop ${shortHash}' | Set-Content '%1'"\r\n`,
-                    'utf-8');
-                seqEditor = seqScriptPath;
-            } else {
-                const seqScriptPath = path.join(tmpDir, 'seq-editor.sh');
-                const shortHash = fullHash.slice(0, 7);
-                fs.writeFileSync(seqScriptPath,
-                    `#!/bin/sh\nsed -i "s/^pick ${shortHash}/drop ${shortHash}/" "$1"\n`,
-                    { mode: 0o755 });
-                seqEditor = seqScriptPath;
-            }
+            const shortHash = fullHash.slice(0, 7);
+            const seqEditor = writeGitEditorScript(
+                tmpDir,
+                'seq-editor.sh',
+                todoRewriteScript(shortHash, 'drop'),
+            );
 
             await this.runGit(repoRoot, ['rebase', '-i', parentHash], {
                 timeout: LONG_OPERATION_TIMEOUT_MS,

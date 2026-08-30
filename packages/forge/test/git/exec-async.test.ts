@@ -68,7 +68,16 @@ beforeAll(() => {
 
 afterAll(() => {
     for (const dir of [repo, repoWithSpaces]) {
-        if (dir) fs.rmSync(dir, { recursive: true, force: true });
+        if (!dir) continue;
+        // Best effort: on Windows a just-exited git child's handle can outlive
+        // the call that spawned it, and the delete then fails with EPERM —
+        // from afterAll, which fails the whole suite over a temp directory the
+        // OS reclaims on its own.
+        try {
+            fs.rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+        } catch {
+            // Reclaimed with the temp root; never worth a red suite.
+        }
     }
 });
 

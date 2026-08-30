@@ -169,7 +169,12 @@ describe('the git commands this service runs', () => {
         const repo = makeRepo();
         // Git rejects a space in a ref name, so the shell metacharacters carry
         // this one; the stash-message case below covers spaces and quotes.
-        const awkward = 'feature/$(touch-pwned)&|;';
+        // A loose ref is a file, and `|` is legal in a ref name but not in a
+        // Windows file name — there it fails in the filesystem, well before
+        // anything this test is about. The rest still cover a command
+        // substitution, a background operator and a separator.
+        const awkward =
+            process.platform === 'win32' ? 'feature/$(touch-pwned)&;' : 'feature/$(touch-pwned)&|;';
 
         expect(await service.createBranch(repo, awkward, false)).toEqual({ success: true });
         expect(branchNames(repo)).toContain(awkward);

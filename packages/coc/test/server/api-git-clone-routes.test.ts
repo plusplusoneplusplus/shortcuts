@@ -97,7 +97,14 @@ describe('Git clone API routes', () => {
     });
 
     afterEach(() => {
-        fs.rmSync(tmpDir, { recursive: true, force: true });
+        // Best effort: on Windows a just-exited git child's handle can outlive
+        // the call that spawned it, and the delete then fails with EPERM over a
+        // temp directory the OS reclaims on its own.
+        try {
+            fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+        } catch {
+            // Reclaimed with the temp root; never worth a red suite.
+        }
     });
 
     const base = () => `http://127.0.0.1:${port}`;
@@ -168,7 +175,11 @@ describe('Git clone API routes', () => {
         expect(res.status).toBe(500);
         // The native runner's wording, which the clone dialog shows verbatim.
         expect(res.json().error).toContain(`git clone ${missing} failed:`);
-        expect(res.json().error).toContain('does not exist');
+        // git's own wording for the same missing source, which is not the same
+        // sentence everywhere: `does not exist` on Linux and macOS, `does not
+        // appear to be a git repository` on Windows. What this pins is that
+        // git's reason reaches the body, not which of the two it is.
+        expect(res.json().error).toMatch(/does not exist|does not appear to be a git repository/);
     });
 
     it('reports a destination that already exists rather than overwriting it', async () => {

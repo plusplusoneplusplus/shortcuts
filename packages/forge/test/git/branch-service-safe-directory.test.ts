@@ -92,7 +92,10 @@ describe('BranchService safe-directory integration', () => {
         expect(mockedEnsureGitSafeDirectoryAsync).toHaveBeenCalledWith('\\\\wsl$\\Ubuntu-24.04\\home\\georgeqiao\\repo');
         expect(mockedExecFileAsync).toHaveBeenCalledWith(
             expect.stringContaining('wsl.exe'),
-            ['-d', 'Ubuntu-24.04', '--cd', '/home/georgeqiao/repo', '--', 'sh', '-lc', 'git status --porcelain'],
+            // An argv, not `sh -lc '<string>'`: the migration took the shell out
+            // of every git call, so the distro gets the arguments as written and
+            // nothing in them needs quoting.
+            ['-d', 'Ubuntu-24.04', '--cd', '/home/georgeqiao/repo', '--', 'git', 'status', '--porcelain'],
             expect.objectContaining({ windowsHide: true }),
         );
         expect(mockedExecAsync).not.toHaveBeenCalled();

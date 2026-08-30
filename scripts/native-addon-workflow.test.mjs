@@ -68,3 +68,32 @@ test("the suites that read git natively download the addon", () => {
         assert.match(job, /name: coc-native-\$\{\{ matrix\.os \}\}/, `${name} must download its platform addon`);
     }
 });
+
+// The addon spawns processes, so Rust std records a GLIBC_2.39 dependency on it
+// when it is built against the runner's glibc — and the server image is older
+// than that, which is a "version `GLIBC_2.39' not found" at startup rather than
+// a test failure. The linux binary has to be built against the image's own
+// glibc, in both workflows, or the one we ship cannot load it.
+test('the linux addon is built against the glibc the image ships', () => {
+    const release = readFileSync(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8');
+    for (const [name, workflow, job] of [
+        ['ci.yml', ci, 'coc-native'],
+        ['release.yml', release, 'build-native'],
+    ]) {
+        const block = jobBlock(workflow, job);
+        assert.match(block, /^    container: \$\{\{ matrix\.container \}\}$/m,
+            `${name}: ${job} must honour a per-entry container`);
+        const linux = block.split('\n').filter(line => /container: node:\d+-bookworm/.test(line));
+        assert.ok(linux.length > 0, `${name}: the linux entry must build in a bookworm container`);
+    }
+});
+
+test('every linux build entry names a container', () => {
+    const release = readFileSync(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8');
+    // One `- runner: ubuntu-*` per linux triple, each followed by a container.
+    const entries = jobBlock(release, 'build-native').split(/\n(?=          - )/).slice(1);
+    for (const entry of entries.filter(e => /runner: ubuntu/.test(e))) {
+        assert.match(entry, /container: node:\d+-bookworm/,
+            `a linux release entry builds without the bookworm container:\n${entry}`);
+    }
+});
