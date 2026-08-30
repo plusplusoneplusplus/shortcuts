@@ -206,24 +206,47 @@ describe('gitStatusEntries marshalling', () => {
     });
 
     it('honours a per-call timeout override', async () => {
-        // A one-millisecond deadline is only unmeetable if the status is slow
-        // enough to notice it. Against the two-file repo this raced: the clock
-        // starts once the child is spawned and its readers are up, by which
-        // point a warm macOS runner had already finished, so the call resolved
-        // with the correct empty list and the assertion failed. Two thousand
-        // untracked paths put the work three orders of magnitude clear of the
-        // deadline on every platform.
-        const crowded = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-git-crowded-'));
+        // A short deadline is only unmeetable if the status is slow enough to
+        // notice it, and no amount of work in the repository guarantees that:
+        // two thousand untracked paths still lost the race on a warm arm64
+        // runner, which finished inside a millisecond and resolved with the
+        // correct list. So make git block rather than making it busy. The
+        // `core.fsmonitor` hook is the one command `git status` runs before it
+        // can report anything, and a hook that sleeps for half a minute puts
+        // the deadline first on every runner.
+        //
+        // It has to be spelled as a hook *script* living outside `.git`. Git
+        // will not run a hook stored inside the git directory, and the inline
+        // `core.fsmonitor = sleep 30` shorthand — which older git happily
+        // shell-executes — is ignored by the git 2.55 on the macOS runner.
+        const stalled = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-git-stalled-'));
+        const hookDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-git-hook-'));
+        // Git builds the hook invocation as a shell command line, where a
+        // Windows backslash reads as an escape. Forward slashes are understood
+        // on every platform git runs on.
+        const hook = path.join(hookDir, 'stall.sh').replace(/\\/g, '/');
         try {
-            execFileSync('git', ['-C', crowded, 'init', '--initial-branch=main']);
-            for (let index = 0; index < 2000; index++) {
-                fs.writeFileSync(path.join(crowded, `file-${index}.txt`), 'x\n');
-            }
-            await expect(gitAddon.gitStatusEntries(crowded, { timeout: 1 })).rejects.toThrow(
+            fs.writeFileSync(hook, '#!/bin/sh\nsleep 30\n', { mode: 0o755 });
+            execFileSync('git', ['-C', stalled, 'init', '--initial-branch=main']);
+            // A tracked file first: the hook is queried while the index is
+            // refreshed, and an index with nothing in it has nothing to refresh.
+            fs.writeFileSync(path.join(stalled, 'tracked.txt'), 'x\n');
+            execFileSync('git', ['-C', stalled, 'add', '-A']);
+            execFileSync('git', [
+                '-C', stalled,
+                '-c', 'user.email=ralph@example.com',
+                '-c', 'user.name=Ralph',
+                '-c', 'commit.gpgsign=false',
+                'commit', '-m', 'tracked',
+            ]);
+            execFileSync('git', ['-C', stalled, 'config', 'core.fsmonitor', hook]);
+            fs.writeFileSync(path.join(stalled, 'file.txt'), 'x\n');
+            await expect(gitAddon.gitStatusEntries(stalled, { timeout: 250 })).rejects.toThrow(
                 /^git status --porcelain --untracked-files=all failed: /,
             );
         } finally {
-            removeDir(crowded);
+            removeDir(stalled);
+            removeDir(hookDir);
         }
     });
 });
