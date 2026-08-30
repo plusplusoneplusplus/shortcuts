@@ -6,6 +6,7 @@
  * - GET /api/repo-groups/:id — membership file + registry-resolved members
  * - PATCH /api/repo-groups/:id — rename and/or replace membership
  * - DELETE /api/repo-groups/:id — deregister without wiping data on disk
+ * - per-member descriptions carried on POST/GET/PATCH
  *
  * Uses direct handler registration without full server startup.
  */
@@ -280,6 +281,128 @@ describe('Repo Group Handler', () => {
     // DELETE /api/repo-groups/:id
     // ------------------------------------------------------------------
 
+    // ------------------------------------------------------------------
+    // Per-member descriptions (POST / GET / PATCH)
+    // ------------------------------------------------------------------
+
+    describe('member descriptions', () => {
+        function readFile(groupId: string) {
+            return JSON.parse(fs.readFileSync(
+                path.join(dataDir, 'repos', groupId, 'group.json'), 'utf-8'));
+        }
+
+        it('persists descriptions supplied at create time and returns them per member', async () => {
+            const res = await postJSON(`${baseUrl}/api/repo-groups`, {
+                name: 'Platform',
+                members: [repoA.id, repoB.id],
+                descriptions: { [repoA.id]: 'the API server' },
+            });
+            expect(res.status).toBe(201);
+            expect(JSON.parse(res.body).members).toEqual([
+                { workspaceId: repoA.id, stale: false, name: 'Repo A', rootPath: repoA.rootPath, description: 'the API server' },
+                { workspaceId: repoB.id, stale: false, name: 'Repo B', rootPath: repoB.rootPath },
+            ]);
+            expect(readFile('group-platform').descriptions).toEqual({ [repoA.id]: 'the API server' });
+
+            const get = await request(`${baseUrl}/api/repo-groups/group-platform`);
+            expect(JSON.parse(get.body).members[0].description).toBe('the API server');
+        });
+
+        it('omits description from members that have none', async () => {
+            const { workspace } = await createGroup();
+            const body = JSON.parse((await request(`${baseUrl}/api/repo-groups/${workspace.id}`)).body);
+            expect(body.members.every((m: any) => m.description === undefined)).toBe(true);
+        });
+
+        it('PATCH replaces only the supplied keys and leaves the rest intact', async () => {
+            const { workspace } = await createGroup();
+            await patchJSON(`${baseUrl}/api/repo-groups/${workspace.id}`, {
+                descriptions: { [repoA.id]: 'API', [repoB.id]: 'UI' },
+            });
+
+            const res = await patchJSON(`${baseUrl}/api/repo-groups/${workspace.id}`, {
+                descriptions: { [repoA.id]: 'API server' },
+            });
+            expect(res.status).toBe(200);
+            expect(readFile(workspace.id).descriptions).toEqual({
+                [repoA.id]: 'API server',
+                [repoB.id]: 'UI',
+            });
+            const members = JSON.parse(res.body).members;
+            expect(members.map((m: any) => m.description)).toEqual(['API server', 'UI']);
+        });
+
+        it('PATCH with an empty string clears one description without touching others', async () => {
+            const { workspace } = await createGroup();
+            await patchJSON(`${baseUrl}/api/repo-groups/${workspace.id}`, {
+                descriptions: { [repoA.id]: 'API', [repoB.id]: 'UI' },
+            });
+            const res = await patchJSON(`${baseUrl}/api/repo-groups/${workspace.id}`, {
+                descriptions: { [repoA.id]: '' },
+            });
+            expect(res.status).toBe(200);
+            expect(readFile(workspace.id).descriptions).toEqual({ [repoB.id]: 'UI' });
+        });
+
+        it('drops the description of a member removed by the same PATCH', async () => {
+            const { workspace } = await createGroup();
+            await patchJSON(`${baseUrl}/api/repo-groups/${workspace.id}`, {
+                descriptions: { [repoA.id]: 'API', [repoB.id]: 'UI' },
+            });
+            await patchJSON(`${baseUrl}/api/repo-groups/${workspace.id}`, { members: [repoB.id] });
+            expect(readFile(workspace.id).descriptions).toEqual({ [repoB.id]: 'UI' });
+        });
+
+        it('rejects a non-object descriptions payload with 400', async () => {
+            const { workspace } = await createGroup();
+            for (const bad of [[], 'nope', 42]) {
+                const res = await patchJSON(`${baseUrl}/api/repo-groups/${workspace.id}`, { descriptions: bad });
+                expect(res.status).toBe(400);
+                expect(JSON.parse(res.body).error).toContain('object of workspace ID to string');
+            }
+        });
+
+        it('rejects a non-string description value with 400', async () => {
+            const { workspace } = await createGroup();
+            const res = await patchJSON(`${baseUrl}/api/repo-groups/${workspace.id}`, {
+                descriptions: { [repoA.id]: 42 },
+            });
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).error).toContain('object of workspace ID to string');
+        });
+
+        it('rejects a description longer than 280 characters with 400 and leaves the file untouched', async () => {
+            const { workspace } = await createGroup();
+            const res = await patchJSON(`${baseUrl}/api/repo-groups/${workspace.id}`, {
+                descriptions: { [repoA.id]: 'x'.repeat(281) },
+            });
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).error).toContain('280');
+            expect(readFile(workspace.id).descriptions).toBeUndefined();
+
+            const ok = await patchJSON(`${baseUrl}/api/repo-groups/${workspace.id}`, {
+                descriptions: { [repoA.id]: 'x'.repeat(280) },
+            });
+            expect(ok.status).toBe(200);
+        });
+
+        it('rejects a description keyed by a non-member workspace with 400', async () => {
+            const { workspace } = await createGroup('Solo', [repoA.id]);
+            const res = await patchJSON(`${baseUrl}/api/repo-groups/${workspace.id}`, {
+                descriptions: { [repoB.id]: 'not a member' },
+            });
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).error).toContain('not a member of this repo group');
+        });
+
+        it('rejects a create-time description for a non-member with 400', async () => {
+            const res = await postJSON(`${baseUrl}/api/repo-groups`, {
+                name: 'Solo', members: [repoA.id], descriptions: { [repoB.id]: 'nope' },
+            });
+            expect(res.status).toBe(400);
+            expect((await store.getWorkspaces()).every(w => !w.id.startsWith('group-'))).toBe(true);
+        });
+    });
     describe('DELETE /api/repo-groups/:id', () => {
         it('deregisters the workspace but leaves the group directory on disk', async () => {
             const { workspace } = await createGroup();
