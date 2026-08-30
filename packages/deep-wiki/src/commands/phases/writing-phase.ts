@@ -346,7 +346,7 @@ export async function runPhase4Writing(
             printSuccess(`Wrote ${writtenPaths.length} files to ${bold(outputDir)}`);
 
             // Initialize wiki output directory as a Git repository
-            initWikiGitRepo(outputDir, {
+            await initWikiGitRepo(outputDir, {
                 info: (msg) => { if (options.verbose) { printInfo(msg); } },
                 warn: (msg) => printWarning(msg),
             });

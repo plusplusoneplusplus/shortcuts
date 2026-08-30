@@ -1,0 +1,456 @@
+/**
+ * Capability-layer tests: git is one capability of the addon, so it has to fail
+ * on its own terms when the addon is missing *or* when a loaded binary predates
+ * the capability — without the loader knowing it exists.
+ *
+ * Both are hard failures with no opt-out, and the status accessor has to
+ * describe every one of these states without throwing, because `/api/health`
+ * reports it.
+ */
+
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
+import { loadNativeGit, nativeGitStatus } from '../src/git';
+import { NativeAddonLoadError, resetNativeAddonCache } from '../src/loader';
+
+const ENV_KEYS = ['COC_NATIVE', 'COC_NATIVE_PATH'] as const;
+let saved: Record<string, string | undefined>;
+let dir: string;
+
+beforeEach(() => {
+    saved = Object.fromEntries(ENV_KEYS.map(key => [key, process.env[key]]));
+    for (const key of ENV_KEYS) delete process.env[key];
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-git-capability-'));
+    resetNativeAddonCache();
+});
+
+afterEach(() => {
+    for (const key of ENV_KEYS) {
+        if (saved[key] === undefined) delete process.env[key];
+        else process.env[key] = saved[key];
+    }
+    fs.rmSync(dir, { recursive: true, force: true });
+    resetNativeAddonCache();
+});
+
+/** The repository status both branch-status stand-ins resolve with. */
+const REPOSITORY_STATUS = {
+    branch: 'main',
+    isDetached: false,
+    dirty: false,
+    ahead: 0,
+    behind: 0,
+    unborn: false,
+};
+
+/** A stand-in exporting the whole git capability. */
+const COMPLETE_ADDON =
+    "module.exports = { execGit: async () => 'main', gitStatusEntries: async () => [], " +
+    'parseGitStatusPorcelain: async () => [], ' +
+    'gitLogCommits: async () => ({ commits: [], hasMore: false }), ' +
+    'gitLogCommit: async () => null, ' +
+    'gitCommitFiles: async () => ({ parentHash: \'\', files: [] }), ' +
+    "gitCommitDiff: async () => '', " +
+    'gitFileContentAtCommit: async () => null, ' +
+    'gitFileBytesAtCommit: async () => null, ' +
+    'gitFileExistsAtCommit: async () => false, ' +
+    'gitValidateRef: async () => null, ' +
+    'gitRangeDefaultBranch: async () => null, ' +
+    'gitRangeUpstreamBranch: async () => null, ' +
+    "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
+    'gitRangeMergeBase: async () => null, ' +
+    'gitRangeCountAhead: async () => 0, ' +
+    'gitRangeChangedFiles: async () => [], ' +
+    'parseGitRangeChangedFiles: async () => [], ' +
+    'gitRangeDiffStats: async () => ({ additions: 0, deletions: 0 }), ' +
+    'parseGitDiffShortstat: async () => ({ additions: 0, deletions: 0 }), ' +
+    `gitRepositoryStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
+    `parseGitBranchStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
+    'gitBranchStatus: async () => null, ' +
+    'gitListBranches: async () => ({ branches: [], totalCount: 0, hasMore: false }), ' +
+    'gitLocalBranchNames: async () => [], ' +
+    'gitRemoteUrl: async () => null, ' +
+    'gitDetectRemoteUrl: async () => null, ' +
+    'gitGlobalConfigGetAll: async () => [], ' +
+    'gitGlobalConfigAdd: async () => undefined, ' +
+    'gitDiscoverRepoRoot: async () => null, ' +
+    "gitDiffNoIndex: async () => '' };";
+
+/** Point the loader at a JavaScript stand-in for the addon. */
+function useAddon(source: string): string {
+    const file = path.join(dir, 'stub.js');
+    fs.writeFileSync(file, source);
+    process.env.COC_NATIVE_PATH = file;
+    return file;
+}
+
+it('exposes the capability when the addon provides it', async () => {
+    useAddon(COMPLETE_ADDON);
+    const api = loadNativeGit();
+    expect(await api.execGit(['branch', '--show-current'], '/repo')).toBe('main');
+    expect(await api.gitStatusEntries('/repo')).toEqual([]);
+    expect(await api.parseGitStatusPorcelain('')).toEqual([]);
+    expect(await api.gitLogCommits('/repo', { maxCount: 1, skip: 0 })).toEqual({
+        commits: [],
+        hasMore: false,
+    });
+    expect(await api.gitLogCommit('/repo', 'HEAD')).toBeNull();
+    expect(await api.gitCommitFiles('/repo', 'HEAD')).toEqual({ parentHash: '', files: [] });
+    expect(await api.gitCommitDiff('/repo', 'HEAD')).toBe('');
+    expect(await api.gitFileContentAtCommit('/repo', 'HEAD', 'a.txt')).toBeNull();
+    expect(await api.gitFileBytesAtCommit('/repo', 'HEAD', 'a.txt')).toBeNull();
+    expect(await api.gitFileExistsAtCommit('/repo', 'HEAD', 'a.txt')).toBe(false);
+    expect(await api.gitValidateRef('/repo', 'HEAD')).toBeNull();
+    expect(await api.gitRangeDefaultBranch('/repo')).toBeNull();
+    expect(await api.gitRangeUpstreamBranch('/repo')).toBeNull();
+    expect(await api.gitRangeResolveBaseRef('/repo', 'upstream')).toEqual({
+        baseRef: null,
+        baseMode: 'default-branch',
+        baseModeFallback: false,
+    });
+    expect(await api.gitRangeMergeBase('/repo', 'HEAD', 'origin/main')).toBeNull();
+    expect(await api.gitRangeCountAhead('/repo', 'origin/main', 'HEAD')).toBe(0);
+    expect(await api.gitRangeChangedFiles('/repo', 'origin/main', 'HEAD')).toEqual([]);
+    expect(await api.parseGitRangeChangedFiles('', '')).toEqual([]);
+    expect(await api.gitRangeDiffStats('/repo', 'origin/main', 'HEAD')).toEqual({
+        additions: 0,
+        deletions: 0,
+    });
+    expect(await api.parseGitDiffShortstat('')).toEqual({ additions: 0, deletions: 0 });
+    expect(await api.gitRepositoryStatus('/repo')).toEqual(REPOSITORY_STATUS);
+    expect(await api.parseGitBranchStatus('')).toEqual(REPOSITORY_STATUS);
+    expect(await api.gitBranchStatus('/repo')).toBeNull();
+    expect(await api.gitListBranches('/repo', { remote: false, limit: 1, offset: 0 })).toEqual({
+        branches: [],
+        totalCount: 0,
+        hasMore: false,
+    });
+    expect(await api.gitLocalBranchNames('/repo')).toEqual([]);
+    expect(await api.gitRemoteUrl('/repo', 'origin')).toBeNull();
+    expect(await api.gitDetectRemoteUrl('/repo')).toBeNull();
+    expect(
+        await api.gitDiffNoIndex({
+            before: 'a',
+            after: 'b',
+            beforeLabel: 'a/x.txt',
+            afterLabel: 'b/x.txt',
+        }),
+    ).toBe('');
+    expect(nativeGitStatus().loaded).toBe(true);
+});
+
+// A binary can carry one capability and not the other, so the accessors have to
+// disagree rather than both keying off "the addon loaded".
+it('is independent of the file-index capability', () => {
+    const file = useAddon('module.exports = { buildFileIndex: () => 1 };');
+    expect(() => loadNativeGit()).toThrow(NativeAddonLoadError);
+    expect(nativeGitStatus()).toEqual({
+        loaded: false,
+        binaryPath: file,
+        reason: `${file} does not export the git capability`,
+    });
+});
+
+describe('when the capability is missing', () => {
+    it('throws even though the binary itself loaded', () => {
+        const file = useAddon('module.exports = { someOtherCapability: () => 1 };');
+        expect(() => loadNativeGit()).toThrow(NativeAddonLoadError);
+        expect(() => loadNativeGit()).toThrow('does not export the git capability');
+        // The status accessor still describes it, rather than throwing too.
+        expect(nativeGitStatus()).toEqual({
+            loaded: false,
+            binaryPath: file,
+            reason: `${file} does not export the git capability`,
+        });
+    });
+
+    it('names the binary and the fix', () => {
+        const file = useAddon('module.exports = { someOtherCapability: () => 1 };');
+        let message = '';
+        try {
+            loadNativeGit();
+        } catch (err) {
+            message = (err as Error).message;
+        }
+        expect(message).toContain(file);
+        expect(message).toContain('npm run build:native -w packages/coc-native');
+        expect(message).not.toContain('COC_NATIVE=0');
+    });
+
+    it('is not fooled by a non-callable export of the right name', () => {
+        useAddon("module.exports = { execGit: 'nope' };");
+        expect(() => loadNativeGit()).toThrow(NativeAddonLoadError);
+        expect(nativeGitStatus().loaded).toBe(false);
+    });
+
+    // A binary from before a later slice carries some of the capability and not
+    // the rest. Half a capability has to fail at load with a rebuild
+    // instruction, not at the first call with `undefined is not a function`.
+    it('rejects a binary carrying only part of the capability', () => {
+        const file = useAddon("module.exports = { execGit: async () => 'main' };");
+        expect(() => loadNativeGit()).toThrow('does not export the git capability');
+        expect(nativeGitStatus()).toEqual({
+            loaded: false,
+            binaryPath: file,
+            reason: `${file} does not export the git capability`,
+        });
+    });
+
+    // The concrete shape of the previous slice's binary: it can run commands and
+    // read status, but knows nothing about reading history.
+    it('rejects a binary built before the commit-history exports', () => {
+        useAddon(
+            "module.exports = { execGit: async () => 'main', gitStatusEntries: async () => [], " +
+                'parseGitStatusPorcelain: async () => [] };',
+        );
+        expect(() => loadNativeGit()).toThrow('does not export the git capability');
+        expect(nativeGitStatus().loaded).toBe(false);
+    });
+
+    // And the slice after that: history reading present, commit ranges absent.
+    it('rejects a binary built before the commit-range exports', () => {
+        useAddon(
+            "module.exports = { execGit: async () => 'main', gitStatusEntries: async () => [], " +
+                'parseGitStatusPorcelain: async () => [], ' +
+                'gitLogCommits: async () => ({ commits: [], hasMore: false }), ' +
+                'gitLogCommit: async () => null };',
+        );
+        expect(() => loadNativeGit()).toThrow('does not export the git capability');
+        expect(nativeGitStatus().loaded).toBe(false);
+    });
+
+    // And the slice after that: ranges present, branches absent.
+    it('rejects a binary built before the branch exports', () => {
+        useAddon(
+            "module.exports = { execGit: async () => 'main', gitStatusEntries: async () => [], " +
+                'parseGitStatusPorcelain: async () => [], ' +
+                'gitLogCommits: async () => ({ commits: [], hasMore: false }), ' +
+                'gitLogCommit: async () => null, ' +
+                'gitRangeDefaultBranch: async () => null, ' +
+                'gitRangeUpstreamBranch: async () => null, ' +
+                "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
+                'gitRangeMergeBase: async () => null, ' +
+                'gitRangeCountAhead: async () => 0, ' +
+                'gitRangeChangedFiles: async () => [], ' +
+                'parseGitRangeChangedFiles: async () => [], ' +
+                'gitRangeDiffStats: async () => ({ additions: 0, deletions: 0 }), ' +
+                'parseGitDiffShortstat: async () => ({ additions: 0, deletions: 0 }) };',
+        );
+        expect(() => loadNativeGit()).toThrow('does not export the git capability');
+        expect(nativeGitStatus().loaded).toBe(false);
+    });
+
+    // And the slice after that: branches present, remotes absent.
+    it('rejects a binary built before the remote exports', () => {
+        useAddon(
+            "module.exports = { execGit: async () => 'main', gitStatusEntries: async () => [], " +
+                'parseGitStatusPorcelain: async () => [], ' +
+                'gitLogCommits: async () => ({ commits: [], hasMore: false }), ' +
+                'gitLogCommit: async () => null, ' +
+                'gitRangeDefaultBranch: async () => null, ' +
+                'gitRangeUpstreamBranch: async () => null, ' +
+                "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
+                'gitRangeMergeBase: async () => null, ' +
+                'gitRangeCountAhead: async () => 0, ' +
+                'gitRangeChangedFiles: async () => [], ' +
+                'parseGitRangeChangedFiles: async () => [], ' +
+                'gitRangeDiffStats: async () => ({ additions: 0, deletions: 0 }), ' +
+                'parseGitDiffShortstat: async () => ({ additions: 0, deletions: 0 }), ' +
+                `gitRepositoryStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
+                `parseGitBranchStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
+                'gitBranchStatus: async () => null, ' +
+                'gitListBranches: async () => ({ branches: [], totalCount: 0, hasMore: false }) };',
+        );
+        expect(() => loadNativeGit()).toThrow('does not export the git capability');
+        expect(nativeGitStatus().loaded).toBe(false);
+    });
+
+    // And the slice after that: remotes present, global configuration absent.
+    it('rejects a binary built before the global-config exports', () => {
+        useAddon(
+            "module.exports = { execGit: async () => 'main', gitStatusEntries: async () => [], " +
+                'parseGitStatusPorcelain: async () => [], ' +
+                'gitLogCommits: async () => ({ commits: [], hasMore: false }), ' +
+                'gitLogCommit: async () => null, ' +
+                'gitRangeDefaultBranch: async () => null, ' +
+                'gitRangeUpstreamBranch: async () => null, ' +
+                "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
+                'gitRangeMergeBase: async () => null, ' +
+                'gitRangeCountAhead: async () => 0, ' +
+                'gitRangeChangedFiles: async () => [], ' +
+                'parseGitRangeChangedFiles: async () => [], ' +
+                'gitRangeDiffStats: async () => ({ additions: 0, deletions: 0 }), ' +
+                'parseGitDiffShortstat: async () => ({ additions: 0, deletions: 0 }), ' +
+                `gitRepositoryStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
+                `parseGitBranchStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
+                'gitBranchStatus: async () => null, ' +
+                'gitListBranches: async () => ({ branches: [], totalCount: 0, hasMore: false }), ' +
+                'gitRemoteUrl: async () => null, ' +
+                'gitDetectRemoteUrl: async () => null };',
+        );
+        expect(() => loadNativeGit()).toThrow('does not export the git capability');
+        expect(nativeGitStatus().loaded).toBe(false);
+    });
+
+    // And the slice after that: global configuration present, repository
+    // discovery absent.
+    it('rejects a binary built before the repository-discovery export', () => {
+        useAddon(
+            "module.exports = { execGit: async () => 'main', gitStatusEntries: async () => [], " +
+                'parseGitStatusPorcelain: async () => [], ' +
+                'gitLogCommits: async () => ({ commits: [], hasMore: false }), ' +
+                'gitLogCommit: async () => null, ' +
+                'gitRangeDefaultBranch: async () => null, ' +
+                'gitRangeUpstreamBranch: async () => null, ' +
+                "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
+                'gitRangeMergeBase: async () => null, ' +
+                'gitRangeCountAhead: async () => 0, ' +
+                'gitRangeChangedFiles: async () => [], ' +
+                'parseGitRangeChangedFiles: async () => [], ' +
+                'gitRangeDiffStats: async () => ({ additions: 0, deletions: 0 }), ' +
+                'parseGitDiffShortstat: async () => ({ additions: 0, deletions: 0 }), ' +
+                `gitRepositoryStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
+                `parseGitBranchStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
+                'gitBranchStatus: async () => null, ' +
+                'gitListBranches: async () => ({ branches: [], totalCount: 0, hasMore: false }), ' +
+                'gitRemoteUrl: async () => null, ' +
+                'gitDetectRemoteUrl: async () => null, ' +
+                'gitGlobalConfigGetAll: async () => [], ' +
+                'gitGlobalConfigAdd: async () => undefined };',
+        );
+        expect(() => loadNativeGit()).toThrow('does not export the git capability');
+        expect(nativeGitStatus().loaded).toBe(false);
+    });
+
+    // And the slice after that: repository discovery present, commit detail
+    // and the bare branch-name list absent.
+    it('rejects a binary built before the commit-detail exports', () => {
+        useAddon(
+            "module.exports = { execGit: async () => 'main', gitStatusEntries: async () => [], " +
+                'parseGitStatusPorcelain: async () => [], ' +
+                'gitLogCommits: async () => ({ commits: [], hasMore: false }), ' +
+                'gitLogCommit: async () => null, ' +
+                'gitRangeDefaultBranch: async () => null, ' +
+                'gitRangeUpstreamBranch: async () => null, ' +
+                "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
+                'gitRangeMergeBase: async () => null, ' +
+                'gitRangeCountAhead: async () => 0, ' +
+                'gitRangeChangedFiles: async () => [], ' +
+                'parseGitRangeChangedFiles: async () => [], ' +
+                'gitRangeDiffStats: async () => ({ additions: 0, deletions: 0 }), ' +
+                'parseGitDiffShortstat: async () => ({ additions: 0, deletions: 0 }), ' +
+                `gitRepositoryStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
+                `parseGitBranchStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
+                'gitBranchStatus: async () => null, ' +
+                'gitListBranches: async () => ({ branches: [], totalCount: 0, hasMore: false }), ' +
+                'gitRemoteUrl: async () => null, ' +
+                'gitDetectRemoteUrl: async () => null, ' +
+                'gitGlobalConfigGetAll: async () => [], ' +
+                'gitGlobalConfigAdd: async () => undefined, ' +
+                'gitDiscoverRepoRoot: async () => null };',
+        );
+        expect(() => loadNativeGit()).toThrow('does not export the git capability');
+        expect(nativeGitStatus().loaded).toBe(false);
+    });
+
+    // And the slice after that: commit detail present, the byte-exact blob read
+    // the notes sync mirror needs absent.
+    it('rejects a binary built before the blob-bytes export', () => {
+        useAddon(
+            "module.exports = { execGit: async () => 'main', gitStatusEntries: async () => [], " +
+                'parseGitStatusPorcelain: async () => [], ' +
+                'gitLogCommits: async () => ({ commits: [], hasMore: false }), ' +
+                'gitLogCommit: async () => null, ' +
+                'gitCommitFiles: async () => ({ parentHash: \'\', files: [] }), ' +
+                "gitCommitDiff: async () => '', " +
+                'gitFileContentAtCommit: async () => null, ' +
+                'gitFileExistsAtCommit: async () => false, ' +
+                'gitValidateRef: async () => null, ' +
+                'gitRangeDefaultBranch: async () => null, ' +
+                'gitRangeUpstreamBranch: async () => null, ' +
+                "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
+                'gitRangeMergeBase: async () => null, ' +
+                'gitRangeCountAhead: async () => 0, ' +
+                'gitRangeChangedFiles: async () => [], ' +
+                'parseGitRangeChangedFiles: async () => [], ' +
+                'gitRangeDiffStats: async () => ({ additions: 0, deletions: 0 }), ' +
+                'parseGitDiffShortstat: async () => ({ additions: 0, deletions: 0 }), ' +
+                `gitRepositoryStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
+                `parseGitBranchStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
+                'gitBranchStatus: async () => null, ' +
+                'gitListBranches: async () => ({ branches: [], totalCount: 0, hasMore: false }), ' +
+                'gitLocalBranchNames: async () => [], ' +
+                'gitRemoteUrl: async () => null, ' +
+                'gitDetectRemoteUrl: async () => null, ' +
+                'gitGlobalConfigGetAll: async () => [], ' +
+                'gitGlobalConfigAdd: async () => undefined, ' +
+                'gitDiscoverRepoRoot: async () => null };',
+        );
+        expect(() => loadNativeGit()).toThrow('does not export the git capability');
+        expect(nativeGitStatus().loaded).toBe(false);
+    });
+
+    // And the slice after that: everything a repository read needs, but not the
+    // repository-free diff of two contents the Codex tracker asks for.
+    it('rejects a binary built before the no-index diff export', () => {
+        useAddon(
+            "module.exports = { execGit: async () => 'main', gitStatusEntries: async () => [], " +
+                'parseGitStatusPorcelain: async () => [], ' +
+                'gitLogCommits: async () => ({ commits: [], hasMore: false }), ' +
+                'gitLogCommit: async () => null, ' +
+                'gitCommitFiles: async () => ({ parentHash: \'\', files: [] }), ' +
+                "gitCommitDiff: async () => '', " +
+                'gitFileContentAtCommit: async () => null, ' +
+                'gitFileBytesAtCommit: async () => null, ' +
+                'gitFileExistsAtCommit: async () => false, ' +
+                'gitValidateRef: async () => null, ' +
+                'gitRangeDefaultBranch: async () => null, ' +
+                'gitRangeUpstreamBranch: async () => null, ' +
+                "gitRangeResolveBaseRef: async () => ({ baseRef: null, baseMode: 'default-branch', baseModeFallback: false }), " +
+                'gitRangeMergeBase: async () => null, ' +
+                'gitRangeCountAhead: async () => 0, ' +
+                'gitRangeChangedFiles: async () => [], ' +
+                'parseGitRangeChangedFiles: async () => [], ' +
+                'gitRangeDiffStats: async () => ({ additions: 0, deletions: 0 }), ' +
+                'parseGitDiffShortstat: async () => ({ additions: 0, deletions: 0 }), ' +
+                `gitRepositoryStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
+                `parseGitBranchStatus: async () => (${JSON.stringify(REPOSITORY_STATUS)}), ` +
+                'gitBranchStatus: async () => null, ' +
+                'gitListBranches: async () => ({ branches: [], totalCount: 0, hasMore: false }), ' +
+                'gitLocalBranchNames: async () => [], ' +
+                'gitRemoteUrl: async () => null, ' +
+                'gitDetectRemoteUrl: async () => null, ' +
+                'gitGlobalConfigGetAll: async () => [], ' +
+                'gitGlobalConfigAdd: async () => undefined, ' +
+                'gitDiscoverRepoRoot: async () => null };',
+        );
+        expect(() => loadNativeGit()).toThrow('does not export the git capability');
+        expect(nativeGitStatus().loaded).toBe(false);
+    });
+});
+
+describe('when no binary loaded', () => {
+    it('propagates the loader failure rather than degrading', () => {
+        process.env.COC_NATIVE_PATH = path.join(dir, 'absent.node');
+        expect(() => loadNativeGit()).toThrow(NativeAddonLoadError);
+    });
+
+    it('still reports a status, so /api/health keeps working', () => {
+        process.env.COC_NATIVE_PATH = path.join(dir, 'absent.node');
+        const status = nativeGitStatus();
+        expect(status.loaded).toBe(false);
+        expect(typeof status.reason).toBe('string');
+    });
+});
+
+// There is no TypeScript fallback for git, so an opt-out would silently restore
+// the child-process path this capability exists to remove.
+it('never returns null — COC_NATIVE=0 is not an opt-out', () => {
+    process.env.COC_NATIVE = '0';
+    const file = useAddon(COMPLETE_ADDON);
+    expect(loadNativeGit()).not.toBeNull();
+    expect(nativeGitStatus()).toEqual({ loaded: true, binaryPath: file });
+});

@@ -1,24 +1,44 @@
 /**
- * Pure Node.js BranchService.
+ * BranchService: branch listing, switching, creating, deleting, merging,
+ * push/pull/fetch, stash, and status queries.
  *
- * Provides branch listing, switching, creating, deleting, merging,
- * push/pull/fetch, stash, and status queries using git CLI.
+ * The read half runs in the native addon. Which branch is checked out, what it
+ * tracks, how far it has drifted, and what the branch list holds are all `gix`
+ * reads now — one opened repository in place of the four to six children the
+ * Git tab used to spawn per render, and no `git branch | grep | tail | head`
+ * shell pipeline that had to be spelled twice, once with `findstr`.
+ *
+ * The write half shells out, and always will: create, delete, merge, rebase,
+ * push, pull and fetch go through the `git` CLI so credential helpers, SSH
+ * agents and 2FA keep working. What changed is who spawns it — the addon does,
+ * from Rust, on a worker thread, taking an argv array rather than a command
+ * string assembled with hand-rolled shell quoting.
+ *
+ * Repositories inside a WSL distro never reach the addon. They keep the
+ * `wsl.exe` path in TypeScript, and hand their output to Rust's parser rather
+ * than to a second one.
  *
  * Extracted from `src/shortcuts/git/branch-service.ts`.
  */
 
-import { execFileSync, execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { execAsync, execFileAsync } from '../utils/exec-utils';
+import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
+import type {
+    NativeGitAddon,
+    NativeGitBranchEntry,
+    NativeGitRepositoryStatus,
+} from '@plusplusoneplusplus/coc-native';
+import { execFileAsync } from '../utils/exec-utils';
 import { getLogger } from '../logger';
-import { ensureGitSafeDirectoryAsync, ensureGitSafeDirectorySync } from './safe-directory';
+import { createGitExecError, runGitViaWsl, translateWslArgs } from './exec';
+import { ensureGitSafeDirectoryAsync } from './safe-directory';
 import {
     buildWslCommandArgs,
     getWslExecutablePath,
     resolveWorkspaceExecutionContext,
-    translatePathForExecution,
 } from '../utils/workspace-execution';
+import type { WslExecutionContext } from '../utils/workspace-execution';
 import {
     BranchStatus,
     GitRepositoryStatus,
@@ -37,61 +57,106 @@ import {
 } from './types';
 
 /**
- * Parse `git status --porcelain=v2 --branch` output without inspecting file names.
- * Git emits branch metadata in `# branch.*` headers and one non-header record for
- * every staged, unstaged, conflicted, or untracked path.
+ * Clamp a caller's paging argument to what the native boundary accepts.
+ *
+ * "Everything" is spelled as a very large number by more than one caller, and
+ * a `u32` that overflows rejects at the boundary rather than returning a page.
  */
-export function parsePorcelainV2BranchStatus(output: string): GitRepositoryStatus {
-    let branch = 'HEAD';
-    let trackingBranch: string | undefined;
-    let ahead = 0;
-    let behind = 0;
-    let unborn = false;
-    let dirty = false;
-
-    for (const rawLine of output.split(/\r?\n/)) {
-        if (!rawLine) continue;
-        if (!rawLine.startsWith('# ')) {
-            dirty = true;
-            continue;
-        }
-
-        const line = rawLine.slice(2);
-        if (line.startsWith('branch.oid ')) {
-            unborn = line.slice('branch.oid '.length).trim() === '(initial)';
-        } else if (line.startsWith('branch.head ')) {
-            const head = line.slice('branch.head '.length).trim();
-            branch = head === '(detached)' ? 'HEAD' : head || 'HEAD';
-        } else if (line.startsWith('branch.upstream ')) {
-            trackingBranch = line.slice('branch.upstream '.length).trim() || undefined;
-        } else if (line.startsWith('branch.ab ')) {
-            const match = /^\+(\d+)\s+-(\d+)$/.exec(line.slice('branch.ab '.length).trim());
-            if (match) {
-                ahead = Number.parseInt(match[1], 10);
-                behind = Number.parseInt(match[2], 10);
-            }
-        }
+function toUint32(value: number): number {
+    if (!Number.isFinite(value) || value < 0) {
+        return 0;
     }
+    return Math.min(Math.floor(value), 0xffffffff);
+}
 
+/** Every branch, for the callers that do not paginate. */
+const NO_LIMIT = 0xffffffff;
+
+/** Timeout for one git command when the caller does not pick one. */
+const DEFAULT_TIMEOUT_MS = 30_000;
+
+/**
+ * Timeout for the operations that can legitimately run for minutes: merge,
+ * rebase, `am`, and everything that touches the network. Carried over from the
+ * TypeScript implementation unchanged — a rebase of a long branch over a slow
+ * link is a slow command, not a hung one.
+ */
+const LONG_OPERATION_TIMEOUT_MS = 600_000;
+
+/**
+ * Write a script for git to run as `GIT_EDITOR` or `GIT_SEQUENCE_EDITOR`, and
+ * return the command line that reaches it on every platform.
+ *
+ * Git hands an editor to a shell — its own bundled `sh` on Windows — and that
+ * is what rules out passing a bare path there: `C:\Users\...\seq-editor.cmd`
+ * arrives with its separators read as escapes, as `C:UsersRUNNER~1...`, and
+ * the rebase dies on `command not found`. Forward slashes survive the shell,
+ * and naming the interpreter rather than relying on a shebang or on the file
+ * being marked executable means one spelling works for all three platforms —
+ * so the body below is plain POSIX, not a `.cmd` on Windows and a shell script
+ * everywhere else.
+ */
+function writeGitEditorScript(dir: string, name: string, body: string): string {
+    const scriptPath = path.join(dir, name);
+    fs.writeFileSync(scriptPath, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+    return `sh '${scriptPath.replace(/\\/g, '/')}'`;
+}
+
+/**
+ * Rewrite one `pick <hash>` line in a rebase todo list.
+ *
+ * Not `sed -i`: GNU sed takes the backup suffix as an optional attached
+ * argument and BSD sed takes it as the next word, so the one spelling that
+ * edits in place on Linux eats the file name on macOS — `invalid command code`,
+ * and the rebase never runs. Rewriting through a temp file is the same edit in
+ * a spelling both accept.
+ */
+function todoRewriteScript(shortHash: string, verb: string): string {
+    return (
+        `sed "s/^pick ${shortHash}/${verb} ${shortHash}/" "$1" > "$1.todo.tmp" && ` +
+        `mv "$1.todo.tmp" "$1"`
+    );
+}
+
+/**
+ * Rebuild the exported shape from what crossed the N-API boundary.
+ *
+ * napi omits an absent `Option<String>` inside an object rather than sending
+ * `null`, so the guard here is about keeping `trackingBranch` absent rather
+ * than present-and-undefined — which is what the TypeScript parser produced.
+ */
+function toGitRepositoryStatus(status: NativeGitRepositoryStatus): GitRepositoryStatus {
     return {
-        branch,
-        isDetached: branch === 'HEAD',
-        dirty,
-        ahead,
-        behind,
-        ...(trackingBranch ? { trackingBranch } : {}),
-        unborn,
+        branch: status.branch,
+        isDetached: status.isDetached,
+        dirty: status.dirty,
+        ahead: status.ahead,
+        behind: status.behind,
+        ...(status.trackingBranch ? { trackingBranch: status.trackingBranch } : {}),
+        unborn: status.unborn,
     };
 }
 
 /**
- * Options for git command execution (internal).
+ * Parse `git status --porcelain=v2 --branch` output without inspecting file names.
+ *
+ * The parser itself is Rust's — this is the entry point for text that some
+ * other process produced, which is what the WSL path hands it. Async because
+ * native git is async-only; the parse runs on a worker thread, since a large
+ * repository's status output runs to megabytes.
  */
-interface GitExecOptions {
-    cwd: string;
+export async function parsePorcelainV2BranchStatus(output: string): Promise<GitRepositoryStatus> {
+    return toGitRepositoryStatus(await loadNativeGit().parseGitBranchStatus(output));
+}
+
+/**
+ * Per-call overrides for one git command (internal).
+ */
+interface RunGitOptions {
+    /** Milliseconds before the command is killed. Defaults to 30 000. */
     timeout?: number;
-    encoding?: BufferEncoding;
-    env?: NodeJS.ProcessEnv;
+    /** Environment overrides layered on top of the inherited environment. */
+    env?: Record<string, string>;
 }
 
 /**
@@ -101,123 +166,103 @@ interface GitExecOptions {
 export class BranchService {
 
     /**
-     * Execute a git command synchronously.
-     * Used by branch management operations (create, switch, delete, etc.).
+     * Run one git command against this repository.
+     *
+     * Native host → the addon's runner, which spawns git from Rust on a libuv
+     * worker. WSL → `wsl.exe` from Node, the way it always has. Both paths take
+     * an argv array rather than a command string, both layer the same
+     * environment onto the one this process already has, and both reject with
+     * `git <args> failed: <stderr>`, so a caller cannot tell which one served
+     * it.
+     *
+     * `GIT_TERMINAL_PROMPT=0` is set for every command, exactly as the
+     * TypeScript implementation set it: a push whose credentials are missing
+     * has to fail rather than block a request thread on a prompt nobody can
+     * answer. Everything else — `PATH`, `HOME`, `SSH_AUTH_SOCK`, the
+     * credential helper's own configuration — is inherited, which is what
+     * keeps push, pull and fetch working against a remote that asks for 2FA.
      */
-    private execGitSync(command: string, options: GitExecOptions): string {
-        ensureGitSafeDirectorySync(options.cwd);
-        const executionContext = resolveWorkspaceExecutionContext(options.cwd);
-        if (executionContext.kind === 'wsl') {
-            return execFileSync(getWslExecutablePath(), buildWslCommandArgs(executionContext, ['sh', '-lc', command]), {
-                encoding: options.encoding || 'utf-8',
-                timeout: options.timeout || 10000,
-                windowsHide: true,
-                stdio: ['pipe', 'pipe', 'pipe'],
-            });
+    private async runGit(repoRoot: string, args: string[], options: RunGitOptions = {}): Promise<string> {
+        // Deliberately outside every caller's try/catch, the way the read half
+        // does it: a stale binary is a NativeAddonLoadError naming the rebuild,
+        // and reporting it as a failed git operation would hide that.
+        const { addon, wsl } = this.native(repoRoot);
+        await ensureGitSafeDirectoryAsync(repoRoot);
+        const timeout = options.timeout ?? DEFAULT_TIMEOUT_MS;
+        const env = { GIT_TERMINAL_PROMPT: '0', ...options.env };
+        if (wsl) {
+            // The temporary patch and commit-message files this service writes
+            // are created by Node at a Windows path that git inside the distro
+            // cannot open, so path-shaped arguments are translated first.
+            const executionContext = this.wslContext(repoRoot);
+            return runGitViaWsl(
+                executionContext,
+                translateWslArgs(args, executionContext),
+                { timeout, env, errorArgs: args },
+            );
         }
-        return execSync(command, {
-            cwd: options.cwd,
-            encoding: options.encoding || 'utf-8',
-            timeout: options.timeout || 10000,
-            shell: process.platform === 'win32' ? 'cmd.exe' : '/bin/sh',
-            stdio: ['pipe', 'pipe', 'pipe']
-        });
+        return addon.execGit(args, repoRoot, { timeout: toUint32(timeout), env });
     }
 
     /**
-     * Execute a git command asynchronously via execAsync.
+     * Run a shell pipeline inside the distro.
+     *
+     * The one command left that is not an argv array: the branch-listing
+     * pipeline the WSL path still spells as `git branch | grep | tail | head`.
+     * Native repositories answer that question in Rust and run no shell at all.
      */
-    private async execGit(command: string, options: GitExecOptions): Promise<string> {
-        await ensureGitSafeDirectoryAsync(options.cwd);
-        const executionContext = resolveWorkspaceExecutionContext(options.cwd);
-        if (executionContext.kind === 'wsl') {
+    private async runShellViaWsl(repoRoot: string, command: string, timeout: number): Promise<string> {
+        const executionContext = this.wslContext(repoRoot);
+        try {
             const { stdout } = await execFileAsync(
                 getWslExecutablePath(),
                 buildWslCommandArgs(executionContext, ['sh', '-lc', command]),
                 {
-                    timeout: options.timeout || 30000,
+                    timeout,
                     windowsHide: true,
-                    env: {
-                        ...process.env,
-                        GIT_TERMINAL_PROMPT: '0',
-                        ...options.env,
-                    },
+                    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
                 },
             );
-            return stdout;
+            return stdout.replace(/\r?\n$/, '');
+        } catch (error) {
+            throw createGitExecError([command], error);
         }
-
-        const { stdout } = await execAsync(command, {
-            cwd: options.cwd,
-            timeout: options.timeout || 30000,
-            shell: process.platform === 'win32' ? 'cmd.exe' : '/bin/sh',
-            env: {
-                ...process.env,
-                GIT_TERMINAL_PROMPT: '0',
-                ...options.env,
-            },
-        });
-        return stdout;
     }
 
     /**
-     * Execute git with an explicit argv array (no shell interpolation).
-     * Safe for paths with spaces, backslashes, or shell metacharacters on all platforms.
-     * For WSL contexts, path arguments are translated from Windows UNC paths to Linux paths.
+     * The native git capability, and whether this repository has to take the
+     * WSL path to reach git.
+     *
+     * Called outside the try/catch of every method below, the way
+     * `GitRangeService` does it: a stale binary is a `NativeAddonLoadError`
+     * naming the rebuild, and catching it as "no branches" would hide it behind
+     * an empty Git tab. The addon is loaded on the WSL path too — the commands
+     * run through `wsl.exe`, but the parsers are still Rust's.
      */
-    private async execGitFileAsync(args: string[], options: GitExecOptions): Promise<string> {
-        await ensureGitSafeDirectoryAsync(options.cwd);
-        const executionContext = resolveWorkspaceExecutionContext(options.cwd);
-
-        if (executionContext.kind === 'wsl') {
-            const translatedArgs = args.map(arg => {
-                try {
-                    return translatePathForExecution(arg, executionContext);
-                } catch {
-                    return arg;
-                }
-            });
-            const { stdout } = await execFileAsync(
-                getWslExecutablePath(),
-                buildWslCommandArgs(executionContext, ['git', ...translatedArgs]),
-                {
-                    timeout: options.timeout || 30000,
-                    windowsHide: true,
-                    env: {
-                        ...process.env,
-                        GIT_TERMINAL_PROMPT: '0',
-                        ...options.env,
-                    },
-                },
-            );
-            return stdout;
-        }
-
-        const { stdout } = await execFileAsync(
-            'git',
-            args,
-            {
-                cwd: options.cwd,
-                timeout: options.timeout || 30000,
-                env: {
-                    ...process.env,
-                    GIT_TERMINAL_PROMPT: '0',
-                    ...options.env,
-                },
-            },
-        );
-        return stdout;
+    private native(repoRoot: string): { addon: NativeGitAddon; wsl: boolean } {
+        return {
+            addon: loadNativeGit(),
+            wsl: resolveWorkspaceExecutionContext(repoRoot).kind === 'wsl',
+        };
     }
 
-    private quoteShellArg(value: string): string {
-        if (process.platform === 'win32') {
-            return `"${value.replace(/"/g, '\\"')}"`;
+    /**
+     * Re-resolve a repository's execution context, narrowed to the WSL one.
+     *
+     * Only the two `*ViaWsl` runners call this, and only after {@link native}
+     * has already reported `wsl: true`, so the throw is unreachable — it exists
+     * to keep the narrowing honest rather than cast it away.
+     */
+    private wslContext(repoRoot: string): WslExecutionContext {
+        const executionContext = resolveWorkspaceExecutionContext(repoRoot);
+        if (executionContext.kind !== 'wsl') {
+            throw new Error(`${repoRoot} is not a WSL repository`);
         }
-        return `'${value.replace(/'/g, `'\\''`)}'`;
+        return executionContext;
     }
 
-    private getResolvedGitDir(repoRoot: string): string {
-        const gitDir = this.execGitSync('git rev-parse --git-dir', { cwd: repoRoot }).trim();
+    private async getResolvedGitDir(repoRoot: string): Promise<string> {
+        const gitDir = (await this.runGit(repoRoot, ['rev-parse', '--git-dir'])).trim();
         return path.isAbsolute(gitDir) ? gitDir : path.join(repoRoot, gitDir);
     }
 
@@ -226,12 +271,18 @@ export class BranchService {
      * Returns null when the path is not a Git repository or Git cannot read it.
      */
     async getRepositoryStatus(repoRoot: string): Promise<GitRepositoryStatus | null> {
+        const { addon, wsl } = this.native(repoRoot);
         try {
-            const output = await this.execGitFileAsync(
+            await ensureGitSafeDirectoryAsync(repoRoot);
+            if (!wsl) {
+                return toGitRepositoryStatus(await addon.gitRepositoryStatus(repoRoot));
+            }
+            const output = await this.runGit(
+                repoRoot,
                 ['status', '--porcelain=v2', '--branch', '--untracked-files=all'],
-                { cwd: repoRoot, timeout: 15_000 },
+                { timeout: 15_000 },
             );
-            return parsePorcelainV2BranchStatus(output);
+            return toGitRepositoryStatus(await addon.parseGitBranchStatus(output));
         } catch {
             return null;
         }
@@ -243,6 +294,40 @@ export class BranchService {
      * @param hasUncommittedChanges Whether there are uncommitted changes
      */
     async getBranchStatus(repoRoot: string, hasUncommittedChanges: boolean): Promise<BranchStatus | null> {
+        const { addon, wsl } = this.native(repoRoot);
+        if (wsl) {
+            return this.branchStatusViaCli(repoRoot, hasUncommittedChanges);
+        }
+
+        try {
+            await ensureGitSafeDirectoryAsync(repoRoot);
+            const status = await addon.gitBranchStatus(repoRoot);
+            if (!status) {
+                return null;
+            }
+            return {
+                name: status.name,
+                isDetached: status.isDetached,
+                ...(status.detachedHash ? { detachedHash: status.detachedHash } : {}),
+                ahead: status.ahead,
+                behind: status.behind,
+                ...(status.trackingBranch ? { trackingBranch: status.trackingBranch } : {}),
+                hasUncommittedChanges,
+            };
+        } catch (error) {
+            getLogger().error('Git', 'Failed to get branch status', error instanceof Error ? error : undefined);
+            return null;
+        }
+    }
+
+    /**
+     * Ask the four HEAD-and-upstream questions through `wsl.exe`.
+     *
+     * The WSL twin of the addon's `gitBranchStatus`, kept as the body it always
+     * was — four child processes, in the same order, degrading to the same
+     * values. Rust's tests pin the semantics both paths follow.
+     */
+    private async branchStatusViaCli(repoRoot: string, hasUncommittedChanges: boolean): Promise<BranchStatus | null> {
         try {
             const headHash = await this.getHeadHash(repoRoot);
             if (!headHash) {
@@ -288,7 +373,7 @@ export class BranchService {
      */
     private async isDetachedHead(repoRoot: string): Promise<boolean> {
         try {
-            const output = await this.execGit('git symbolic-ref -q HEAD', { cwd: repoRoot });
+            const output = await this.runGit(repoRoot, ['symbolic-ref', '-q', 'HEAD']);
             return !output.trim();
         } catch {
             return true;
@@ -300,7 +385,7 @@ export class BranchService {
      */
     private async getHeadHash(repoRoot: string): Promise<string> {
         try {
-            return (await this.execGit('git rev-parse HEAD', { cwd: repoRoot })).trim();
+            return (await this.runGit(repoRoot, ['rev-parse', 'HEAD'])).trim();
         } catch {
             return '';
         }
@@ -311,7 +396,7 @@ export class BranchService {
      */
     private async getCurrentBranchName(repoRoot: string): Promise<string | null> {
         try {
-            const output = await this.execGit('git rev-parse --abbrev-ref HEAD', { cwd: repoRoot });
+            const output = await this.runGit(repoRoot, ['rev-parse', '--abbrev-ref', 'HEAD']);
             const name = output.trim();
             return name === 'HEAD' ? null : name;
         } catch {
@@ -329,9 +414,9 @@ export class BranchService {
     }> {
         let branchName = '';
         try {
-            branchName = (await this.execGitFileAsync(
+            branchName = (await this.runGit(
+                repoRoot,
                 ['symbolic-ref', '--quiet', '--short', 'HEAD'],
-                { cwd: repoRoot },
             )).trim();
         } catch {
             throw new Error('Cannot fetch or pull while HEAD is detached');
@@ -343,10 +428,7 @@ export class BranchService {
 
         const configValues = async (key: string): Promise<string[]> => {
             try {
-                const output = await this.execGitFileAsync(
-                    ['config', '--get-all', key],
-                    { cwd: repoRoot },
-                );
+                const output = await this.runGit(repoRoot, ['config', '--get-all', key]);
                 return output.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
             } catch {
                 return [];
@@ -366,7 +448,7 @@ export class BranchService {
             throw new Error(`Current branch "${branchName}" upstream must be one exact branch ref`);
         }
         try {
-            await this.execGitFileAsync(['check-ref-format', remoteRef], { cwd: repoRoot });
+            await this.runGit(repoRoot, ['check-ref-format', remoteRef]);
         } catch {
             throw new Error(`Current branch "${branchName}" upstream must be one exact branch ref`);
         }
@@ -383,11 +465,13 @@ export class BranchService {
         behind: number;
     }> {
         try {
-            const upstreamCmd = `git rev-parse --abbrev-ref "${branchName}@{upstream}"`;
             let trackingBranch: string | undefined;
 
             try {
-                trackingBranch = (await this.execGit(upstreamCmd, { cwd: repoRoot })).trim();
+                trackingBranch = (await this.runGit(
+                    repoRoot,
+                    ['rev-parse', '--abbrev-ref', `${branchName}@{upstream}`],
+                )).trim();
             } catch {
                 return { ahead: 0, behind: 0 };
             }
@@ -396,8 +480,10 @@ export class BranchService {
             // `--left-right --count "<upstream>...<branch>"` prints "<behind>\t<ahead>":
             // the left side counts commits the upstream has that we lack (behind), the
             // right side counts commits we have that the upstream lacks (ahead).
-            const revListCmd = `git rev-list --left-right --count "${trackingBranch}...${branchName}"`;
-            const output = (await this.execGit(revListCmd, { cwd: repoRoot })).trim();
+            const output = (await this.runGit(
+                repoRoot,
+                ['rev-list', '--left-right', '--count', `${trackingBranch}...${branchName}`],
+            )).trim();
             const [behindStr = '', aheadStr = ''] = output.split(/\s+/);
 
             const ahead = parseInt(aheadStr, 10) || 0;
@@ -411,302 +497,194 @@ export class BranchService {
     }
 
     /**
+     * Rebuild the exported shape from what crossed the N-API boundary.
+     *
+     * `remoteName` is guarded rather than assigned for the same reason
+     * `trackingBranch` is: napi omits an absent `Option<String>` inside an
+     * object, and a local branch has never carried the property at all.
+     */
+    private toGitBranch(branch: NativeGitBranchEntry): GitBranch {
+        return {
+            name: branch.name,
+            isCurrent: branch.isCurrent,
+            isRemote: branch.isRemote,
+            ...(branch.remoteName ? { remoteName: branch.remoteName } : {}),
+            lastCommitSubject: branch.lastCommitSubject,
+            lastCommitDate: branch.lastCommitDate,
+        };
+    }
+
+    /**
+     * Read a page of one branch namespace.
+     *
+     * The single entry point every public listing method goes through, native
+     * or WSL. A `limit` of zero answers a count-only question: the total comes
+     * back with no rows, which is how {@link getLocalBranchCount} and its
+     * remote twin ask theirs without also paying to describe every branch.
+     */
+    private async listBranches(
+        repoRoot: string,
+        remote: boolean,
+        options: BranchListOptions,
+    ): Promise<PaginatedBranchResult> {
+        const limit = toUint32(options.limit ?? 100);
+        const offset = toUint32(options.offset ?? 0);
+        const searchPattern = options.searchPattern || undefined;
+        const { addon, wsl } = this.native(repoRoot);
+
+        try {
+            await ensureGitSafeDirectoryAsync(repoRoot);
+            if (wsl) {
+                return await this.listBranchesViaCli(repoRoot, remote, limit, offset, searchPattern);
+            }
+            const page = await addon.gitListBranches(repoRoot, {
+                remote,
+                limit,
+                offset,
+                search: searchPattern,
+            });
+            return {
+                branches: page.branches.map(branch => this.toGitBranch(branch)),
+                totalCount: page.totalCount,
+                hasMore: page.hasMore,
+            };
+        } catch (error) {
+            getLogger().error('Git', 'Failed to list branches', error instanceof Error ? error : undefined);
+            return { branches: [], totalCount: 0, hasMore: false };
+        }
+    }
+
+    /**
+     * Read a page of one branch namespace through `wsl.exe`.
+     *
+     * The WSL twin of the addon's `gitListBranches`, and the `git branch |
+     * grep | tail | head` pipeline this service always ran on a POSIX shell.
+     * The `findstr` half of that pipeline is gone with the native path: a
+     * Windows repository that is not in a distro no longer runs a shell at all.
+     */
+    private async listBranchesViaCli(
+        repoRoot: string,
+        remote: boolean,
+        limit: number,
+        offset: number,
+        searchPattern?: string,
+    ): Promise<PaginatedBranchResult> {
+        const escapedPattern = searchPattern?.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const nameFilter = escapedPattern ? ` | grep -i "${escapedPattern}"` : '';
+
+        const countArgs = remote ? ['branch', '-r', '--list'] : ['branch', '--list'];
+        const countOutput = await this.runGit(repoRoot, countArgs);
+        const totalCount = countOutput
+            .trim()
+            .split('\n')
+            .filter(line => line.trim() && !(remote && line.includes('HEAD')))
+            .filter(line => {
+                if (!searchPattern) return true;
+                const name = remote ? line.trim() : line.substring(2).trim();
+                return name.toLowerCase().includes(searchPattern.toLowerCase());
+            }).length;
+
+        if (totalCount === 0) {
+            return { branches: [], totalCount: 0, hasMore: false };
+        }
+
+        const format = remote
+            ? '%(refname:short)|%(subject)|%(committerdate:relative)'
+            : '%(if)%(HEAD)%(then)*%(else) %(end)|%(refname:short)|%(subject)|%(committerdate:relative)';
+        let command = `git branch ${remote ? '-r ' : ''}--format="${format}"`;
+        if (remote) {
+            command += ' | grep -v "HEAD"';
+        }
+        command += nameFilter;
+        if (offset > 0) {
+            command += ` | tail -n +${offset + 1}`;
+        }
+        command += ` | head -n ${limit}`;
+
+        const output = await this.runShellViaWsl(repoRoot, command, DEFAULT_TIMEOUT_MS);
+        if (!output.trim()) {
+            return { branches: [], totalCount, hasMore: offset + limit < totalCount };
+        }
+
+        const branches = output.trim().split('\n').map(line => {
+            const parts = line.split('|');
+            const name = (remote ? parts[0] : parts[1]) || '';
+            const slashIndex = name.indexOf('/');
+            return {
+                name,
+                isCurrent: remote ? false : parts[0] === '*',
+                isRemote: remote,
+                ...(remote && slashIndex > 0 ? { remoteName: name.substring(0, slashIndex) } : {}),
+                lastCommitSubject: (remote ? parts[1] : parts[2]) || '',
+                lastCommitDate: (remote ? parts[2] : parts[3]) || '',
+            };
+        }).filter(branch => branch.name);
+
+        return { branches, totalCount, hasMore: offset + branches.length < totalCount };
+    }
+
+    /**
      * Get all local branches.
      */
-    getLocalBranches(repoRoot: string): GitBranch[] {
-        try {
-            const format = '%(if)%(HEAD)%(then)*%(else) %(end)|%(refname:short)|%(subject)|%(committerdate:relative)';
-            const output = this.execGitSync(`git branch --format="${format}"`, { cwd: repoRoot });
-
-            if (!output.trim()) {
-                return [];
-            }
-
-            return output.trim().split('\n').map(line => {
-                const parts = line.split('|');
-                const isCurrent = parts[0] === '*';
-                return {
-                    name: parts[1] || '',
-                    isCurrent,
-                    isRemote: false,
-                    lastCommitSubject: parts[2] || '',
-                    lastCommitDate: parts[3] || ''
-                };
-            }).filter(b => b.name);
-        } catch (error) {
-            getLogger().error('Git', 'Failed to get local branches', error instanceof Error ? error : undefined);
-            return [];
-        }
+    async getLocalBranches(repoRoot: string): Promise<GitBranch[]> {
+        return (await this.listBranches(repoRoot, false, { limit: NO_LIMIT })).branches;
     }
 
     /**
      * Get remote branches.
      */
-    getRemoteBranches(repoRoot: string): GitBranch[] {
-        try {
-            const format = '%(refname:short)|%(subject)|%(committerdate:relative)';
-            const output = this.execGitSync(`git branch -r --format="${format}"`, { cwd: repoRoot });
-
-            if (!output.trim()) {
-                return [];
-            }
-
-            return output.trim().split('\n')
-                .filter(line => !line.includes('HEAD'))
-                .map(line => {
-                    const parts = line.split('|');
-                    const fullName = parts[0] || '';
-                    const slashIndex = fullName.indexOf('/');
-                    const remoteName = slashIndex > 0 ? fullName.substring(0, slashIndex) : undefined;
-
-                    return {
-                        name: fullName,
-                        isCurrent: false,
-                        isRemote: true,
-                        remoteName,
-                        lastCommitSubject: parts[1] || '',
-                        lastCommitDate: parts[2] || ''
-                    };
-                }).filter(b => b.name);
-        } catch (error) {
-            getLogger().error('Git', 'Failed to get remote branches', error instanceof Error ? error : undefined);
-            return [];
-        }
+    async getRemoteBranches(repoRoot: string): Promise<GitBranch[]> {
+        return (await this.listBranches(repoRoot, true, { limit: NO_LIMIT })).branches;
     }
 
     /**
      * Get all branches (local and remote).
      */
-    getAllBranches(repoRoot: string): { local: GitBranch[]; remote: GitBranch[] } {
-        return {
-            local: this.getLocalBranches(repoRoot),
-            remote: this.getRemoteBranches(repoRoot)
-        };
+    async getAllBranches(repoRoot: string): Promise<{ local: GitBranch[]; remote: GitBranch[] }> {
+        const [local, remote] = await Promise.all([
+            this.getLocalBranches(repoRoot),
+            this.getRemoteBranches(repoRoot),
+        ]);
+        return { local, remote };
     }
 
     /**
      * Get local branch count (fast operation).
      */
-    getLocalBranchCount(repoRoot: string, searchPattern?: string): number {
-        try {
-            const command = 'git branch --list';
-            const output = this.execGitSync(command, { cwd: repoRoot });
-            if (!output.trim()) {
-                return 0;
-            }
-            let lines = output.trim().split('\n').filter(line => line.trim());
-
-            if (searchPattern) {
-                const lowerPattern = searchPattern.toLowerCase();
-                lines = lines.filter(line => {
-                    const branchName = line.substring(2).trim();
-                    return branchName.toLowerCase().includes(lowerPattern);
-                });
-            }
-
-            return lines.length;
-        } catch (error) {
-            getLogger().error('Git', 'Failed to get local branch count', error instanceof Error ? error : undefined);
-            return 0;
-        }
+    async getLocalBranchCount(repoRoot: string, searchPattern?: string): Promise<number> {
+        return (await this.listBranches(repoRoot, false, { limit: 0, searchPattern })).totalCount;
     }
 
     /**
      * Get remote branch count (fast operation).
      */
-    getRemoteBranchCount(repoRoot: string, searchPattern?: string): number {
-        try {
-            const command = 'git branch -r --list';
-            const output = this.execGitSync(command, { cwd: repoRoot });
-            if (!output.trim()) {
-                return 0;
-            }
-            let lines = output.trim().split('\n').filter(line => line.trim() && !line.includes('HEAD'));
-
-            if (searchPattern) {
-                const lowerPattern = searchPattern.toLowerCase();
-                lines = lines.filter(line => {
-                    const branchName = line.trim();
-                    return branchName.toLowerCase().includes(lowerPattern);
-                });
-            }
-
-            return lines.length;
-        } catch (error) {
-            getLogger().error('Git', 'Failed to get remote branch count', error instanceof Error ? error : undefined);
-            return 0;
-        }
+    async getRemoteBranchCount(repoRoot: string, searchPattern?: string): Promise<number> {
+        return (await this.listBranches(repoRoot, true, { limit: 0, searchPattern })).totalCount;
     }
 
     /**
      * Get local branches with pagination and search support.
      */
-    getLocalBranchesPaginated(repoRoot: string, options: BranchListOptions = {}): PaginatedBranchResult {
-        const { limit = 100, offset = 0, searchPattern } = options;
-        const useWindowsPipeline = process.platform === 'win32' && resolveWorkspaceExecutionContext(repoRoot).kind !== 'wsl';
-
-        try {
-            const totalCount = this.getLocalBranchCount(repoRoot, searchPattern);
-
-            if (totalCount === 0) {
-                return { branches: [], totalCount: 0, hasMore: false };
-            }
-
-            const format = '%(if)%(HEAD)%(then)*%(else) %(end)|%(refname:short)|%(subject)|%(committerdate:relative)';
-            let command = `git branch --format="${format}"`;
-
-            if (searchPattern) {
-                const escapedPattern = searchPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                if (useWindowsPipeline) {
-                    command += ` | findstr /i "${escapedPattern}"`;
-                } else {
-                    command += ` | grep -i "${escapedPattern}"`;
-                }
-            }
-
-            if (!useWindowsPipeline) {
-                if (offset > 0) {
-                    command += ` | tail -n +${offset + 1}`;
-                }
-                command += ` | head -n ${limit}`;
-            }
-
-            const output = this.execGitSync(command, { cwd: repoRoot, timeout: 30000 });
-
-            if (!output.trim()) {
-                return { branches: [], totalCount, hasMore: offset + limit < totalCount };
-            }
-
-            let lines = output.trim().split('\n');
-
-            if (useWindowsPipeline) {
-                if (searchPattern) {
-                    const lowerPattern = searchPattern.toLowerCase();
-                    lines = lines.filter(line => {
-                        const parts = line.split('|');
-                        const branchName = parts[1] || '';
-                        return branchName.toLowerCase().includes(lowerPattern);
-                    });
-                }
-                lines = lines.slice(offset, offset + limit);
-            }
-
-            const branches = lines.map(line => {
-                const parts = line.split('|');
-                const isCurrent = parts[0] === '*';
-                return {
-                    name: parts[1] || '',
-                    isCurrent,
-                    isRemote: false,
-                    lastCommitSubject: parts[2] || '',
-                    lastCommitDate: parts[3] || ''
-                };
-            }).filter(b => b.name);
-
-            return {
-                branches,
-                totalCount,
-                hasMore: offset + branches.length < totalCount
-            };
-        } catch (error) {
-            getLogger().error('Git', 'Failed to get paginated local branches', error instanceof Error ? error : undefined);
-            return { branches: [], totalCount: 0, hasMore: false };
-        }
+    async getLocalBranchesPaginated(repoRoot: string, options: BranchListOptions = {}): Promise<PaginatedBranchResult> {
+        return this.listBranches(repoRoot, false, options);
     }
 
     /**
      * Get remote branches with pagination and search support.
      */
-    getRemoteBranchesPaginated(repoRoot: string, options: BranchListOptions = {}): PaginatedBranchResult {
-        const { limit = 100, offset = 0, searchPattern } = options;
-        const useWindowsPipeline = process.platform === 'win32' && resolveWorkspaceExecutionContext(repoRoot).kind !== 'wsl';
-
-        try {
-            const totalCount = this.getRemoteBranchCount(repoRoot, searchPattern);
-
-            if (totalCount === 0) {
-                return { branches: [], totalCount: 0, hasMore: false };
-            }
-
-            const format = '%(refname:short)|%(subject)|%(committerdate:relative)';
-            let command = `git branch -r --format="${format}"`;
-
-            if (useWindowsPipeline) {
-                command += ' | findstr /v "HEAD"';
-                if (searchPattern) {
-                    const escapedPattern = searchPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                    command += ` | findstr /i "${escapedPattern}"`;
-                }
-            } else {
-                command += ' | grep -v "HEAD"';
-                if (searchPattern) {
-                    const escapedPattern = searchPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                    command += ` | grep -i "${escapedPattern}"`;
-                }
-                if (offset > 0) {
-                    command += ` | tail -n +${offset + 1}`;
-                }
-                command += ` | head -n ${limit}`;
-            }
-
-            const output = this.execGitSync(command, { cwd: repoRoot, timeout: 30000 });
-
-            if (!output.trim()) {
-                return { branches: [], totalCount, hasMore: offset + limit < totalCount };
-            }
-
-            let lines = output.trim().split('\n').filter(line => !line.includes('HEAD'));
-
-            if (useWindowsPipeline) {
-                if (searchPattern) {
-                    const lowerPattern = searchPattern.toLowerCase();
-                    lines = lines.filter(line => {
-                        const parts = line.split('|');
-                        const branchName = parts[0] || '';
-                        return branchName.toLowerCase().includes(lowerPattern);
-                    });
-                }
-                lines = lines.slice(offset, offset + limit);
-            }
-
-            const branches = lines.map(line => {
-                const parts = line.split('|');
-                const fullName = parts[0] || '';
-                const slashIndex = fullName.indexOf('/');
-                const remoteName = slashIndex > 0 ? fullName.substring(0, slashIndex) : undefined;
-
-                return {
-                    name: fullName,
-                    isCurrent: false,
-                    isRemote: true,
-                    remoteName,
-                    lastCommitSubject: parts[1] || '',
-                    lastCommitDate: parts[2] || ''
-                };
-            }).filter(b => b.name);
-
-            return {
-                branches,
-                totalCount,
-                hasMore: offset + branches.length < totalCount
-            };
-        } catch (error) {
-            getLogger().error('Git', 'Failed to get paginated remote branches', error instanceof Error ? error : undefined);
-            return { branches: [], totalCount: 0, hasMore: false };
-        }
+    async getRemoteBranchesPaginated(repoRoot: string, options: BranchListOptions = {}): Promise<PaginatedBranchResult> {
+        return this.listBranches(repoRoot, true, options);
     }
 
     /**
      * Search branches by name (combines local and remote).
      */
-    searchBranches(repoRoot: string, searchPattern: string, limit: number = 50): { local: GitBranch[]; remote: GitBranch[] } {
-        const localResult = this.getLocalBranchesPaginated(repoRoot, { searchPattern, limit });
-        const remoteResult = this.getRemoteBranchesPaginated(repoRoot, { searchPattern, limit });
-
-        return {
-            local: localResult.branches,
-            remote: remoteResult.branches
-        };
+    async searchBranches(repoRoot: string, searchPattern: string, limit: number = 50): Promise<{ local: GitBranch[]; remote: GitBranch[] }> {
+        const [local, remote] = await Promise.all([
+            this.getLocalBranchesPaginated(repoRoot, { searchPattern, limit }),
+            this.getRemoteBranchesPaginated(repoRoot, { searchPattern, limit }),
+        ]);
+        return { local: local.branches, remote: remote.branches };
     }
 
     /**
@@ -718,18 +696,16 @@ export class BranchService {
         options?: { create?: boolean; force?: boolean }
     ): Promise<GitOperationResult> {
         try {
-            let command = 'git checkout';
-
+            const args = ['checkout'];
             if (options?.create) {
-                command += ' -b';
+                args.push('-b');
             }
             if (options?.force) {
-                command += ' -f';
+                args.push('-f');
             }
+            args.push(branchName);
 
-            command += ` "${branchName}"`;
-
-            await this.execGit(command, { cwd: repoRoot });
+            await this.runGit(repoRoot, args);
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -748,9 +724,9 @@ export class BranchService {
     ): Promise<GitOperationResult> {
         try {
             if (checkout) {
-                await this.execGit(`git checkout -b "${branchName}"`, { cwd: repoRoot });
+                await this.runGit(repoRoot, ['checkout', '-b', branchName]);
             } else {
-                await this.execGit(`git branch "${branchName}"`, { cwd: repoRoot });
+                await this.runGit(repoRoot, ['branch', branchName]);
             }
             return { success: true };
         } catch (error) {
@@ -770,7 +746,7 @@ export class BranchService {
     ): Promise<GitOperationResult> {
         try {
             const flag = force ? '-D' : '-d';
-            await this.execGit(`git branch ${flag} "${branchName}"`, { cwd: repoRoot });
+            await this.runGit(repoRoot, ['branch', flag, branchName]);
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -788,7 +764,7 @@ export class BranchService {
         newName: string
     ): Promise<GitOperationResult> {
         try {
-            await this.execGit(`git branch -m "${oldName}" "${newName}"`, { cwd: repoRoot });
+            await this.runGit(repoRoot, ['branch', '-m', oldName, newName]);
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -802,7 +778,7 @@ export class BranchService {
      */
     async mergeBranch(repoRoot: string, branchName: string): Promise<GitOperationResult> {
         try {
-            await this.execGit(`git merge "${branchName}"`, { cwd: repoRoot, timeout: 600000 });
+            await this.runGit(repoRoot, ['merge', branchName], { timeout: LONG_OPERATION_TIMEOUT_MS });
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -816,14 +792,14 @@ export class BranchService {
      */
     async push(repoRoot: string, setUpstream: boolean = false): Promise<GitOperationResult> {
         try {
-            let cmd = 'git push';
+            let args = ['push'];
             if (setUpstream) {
                 const branchName = await this.getCurrentBranchName(repoRoot);
                 if (branchName) {
-                    cmd = `git push -u origin "${branchName}"`;
+                    args = ['push', '-u', 'origin', branchName];
                 }
             }
-            await this.execGit(cmd, { cwd: repoRoot, timeout: 600000 });
+            await this.runGit(repoRoot, args, { timeout: LONG_OPERATION_TIMEOUT_MS });
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -842,8 +818,8 @@ export class BranchService {
             if (!branchName) {
                 return { success: false, error: 'Cannot determine current branch (detached HEAD?)' };
             }
-            const cmd = `git push origin "${commitHash}":refs/heads/"${branchName}"`;
-            await this.execGit(cmd, { cwd: repoRoot, timeout: 600000 });
+            const refspec = `${commitHash}:refs/heads/${branchName}`;
+            await this.runGit(repoRoot, ['push', 'origin', refspec], { timeout: LONG_OPERATION_TIMEOUT_MS });
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -857,8 +833,8 @@ export class BranchService {
      */
     async pull(repoRoot: string, rebase: boolean = false): Promise<GitOperationResult> {
         try {
-            const cmd = rebase ? 'git pull --rebase' : 'git pull';
-            await this.execGit(cmd, { cwd: repoRoot, timeout: 600000 });
+            const args = rebase ? ['pull', '--rebase'] : ['pull'];
+            await this.runGit(repoRoot, args, { timeout: LONG_OPERATION_TIMEOUT_MS });
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -878,7 +854,7 @@ export class BranchService {
                 args.push('--rebase');
             }
             args.push('--no-tags', '--', remote, remoteRef);
-            await this.execGitFileAsync(args, { cwd: repoRoot, timeout: 600000 });
+            await this.runGit(repoRoot, args, { timeout: LONG_OPERATION_TIMEOUT_MS });
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -895,9 +871,8 @@ export class BranchService {
     async rebaseAutosquash(repoRoot: string): Promise<GitOperationResult> {
         try {
             const seqEditor = process.platform === 'win32' ? 'true' : ':';
-            await this.execGit('git rebase -i --autosquash @{upstream}', {
-                cwd: repoRoot,
-                timeout: 600000,
+            await this.runGit(repoRoot, ['rebase', '-i', '--autosquash', '@{upstream}'], {
+                timeout: LONG_OPERATION_TIMEOUT_MS,
                 env: { GIT_SEQUENCE_EDITOR: seqEditor },
             });
             return { success: true };
@@ -913,8 +888,8 @@ export class BranchService {
      */
     async fetch(repoRoot: string, remote?: string): Promise<GitOperationResult> {
         try {
-            const cmd = remote ? `git fetch "${remote}"` : 'git fetch --all';
-            await this.execGit(cmd, { cwd: repoRoot, timeout: 600000 });
+            const args = remote ? ['fetch', remote] : ['fetch', '--all'];
+            await this.runGit(repoRoot, args, { timeout: LONG_OPERATION_TIMEOUT_MS });
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -929,9 +904,10 @@ export class BranchService {
     async fetchCurrentBranch(repoRoot: string): Promise<GitOperationResult> {
         try {
             const { remote, remoteRef } = await this.getCurrentBranchUpstream(repoRoot);
-            await this.execGitFileAsync(
+            await this.runGit(
+                repoRoot,
                 ['fetch', '--no-tags', '--', remote, remoteRef],
-                { cwd: repoRoot, timeout: 600000 },
+                { timeout: LONG_OPERATION_TIMEOUT_MS },
             );
             return { success: true };
         } catch (error) {
@@ -946,10 +922,8 @@ export class BranchService {
      */
     async stashChanges(repoRoot: string, message?: string): Promise<GitOperationResult> {
         try {
-            const cmd = message
-                ? `git stash push -m "${message.replace(/"/g, '\\"')}"`
-                : 'git stash push';
-            await this.execGit(cmd, { cwd: repoRoot });
+            const args = message ? ['stash', 'push', '-m', message] : ['stash', 'push'];
+            await this.runGit(repoRoot, args);
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -997,14 +971,14 @@ export class BranchService {
 
         try {
             if (shouldSwitch) {
-                await this.execGit(`git checkout ${this.quoteShellArg(targetBranch!)}`, { cwd: repoRoot });
+                await this.runGit(repoRoot, ['checkout', targetBranch!]);
             }
             if (shouldRollbackToStartingHead) {
-                targetStartingHead = (await this.execGit('git rev-parse HEAD', { cwd: repoRoot })).trim();
+                targetStartingHead = (await this.runGit(repoRoot, ['rev-parse', 'HEAD'])).trim();
             }
 
             for (const commitHash of hashes) {
-                await this.execGit(`git cherry-pick ${this.quoteShellArg(commitHash)}`, { cwd: repoRoot });
+                await this.runGit(repoRoot, ['cherry-pick', commitHash]);
                 appliedHashes.push(commitHash);
             }
 
@@ -1023,7 +997,7 @@ export class BranchService {
             await this.abortCherryPickAndRestoreBranch(repoRoot);
             if (targetStartingHead) {
                 try {
-                    await this.execGit(`git reset --hard ${this.quoteShellArg(targetStartingHead)}`, { cwd: repoRoot });
+                    await this.runGit(repoRoot, ['reset', '--hard', targetStartingHead]);
                 } catch (resetError) {
                     getLogger().error('Git', `Failed to reset cherry-pick target branch to ${targetStartingHead}`, resetError instanceof Error ? resetError : undefined);
                 }
@@ -1058,7 +1032,7 @@ export class BranchService {
 
     private async cherryPickOntoCurrentHead(repoRoot: string, hash: string): Promise<GitCherryPickResult> {
         try {
-            await this.execGit(`git cherry-pick ${hash}`, { cwd: repoRoot });
+            await this.runGit(repoRoot, ['cherry-pick', hash]);
             return { success: true, conflicts: false, message: 'Cherry-pick applied successfully' };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -1076,7 +1050,7 @@ export class BranchService {
 
     private async abortCherryPickAndRestoreBranch(repoRoot: string): Promise<void> {
         try {
-            await this.execGit('git cherry-pick --abort', { cwd: repoRoot });
+            await this.runGit(repoRoot, ['cherry-pick', '--abort']);
         } catch {
             // No cherry-pick may be in progress for non-conflict failures.
         }
@@ -1087,7 +1061,7 @@ export class BranchService {
         const currentBranch = await this.getCurrentBranchName(repoRoot);
         if (currentBranch === originalBranch) return;
         try {
-            await this.execGit(`git checkout ${this.quoteShellArg(originalBranch)}`, { cwd: repoRoot });
+            await this.runGit(repoRoot, ['checkout', originalBranch]);
         } catch (error) {
             getLogger().error('Git', `Failed to switch back to branch ${originalBranch}`, error instanceof Error ? error : undefined);
         }
@@ -1102,18 +1076,35 @@ export class BranchService {
         if (!/^[a-fA-F0-9]{4,40}$/.test(trimmedHash)) {
             throw new Error('Invalid commit hash');
         }
-        const commitish = this.quoteShellArg(`${trimmedHash}^{commit}`);
-        const commitHash = (await this.execGit(`git rev-parse --verify ${commitish}`, { cwd: repoRoot })).trim();
-        const metadata = await this.execGit(`git show -s --format=%H%x00%s%x00%an%x00%ae%x00%aI ${commitHash}`, { cwd: repoRoot });
+        const commitHash = (await this.runGit(
+            repoRoot,
+            ['rev-parse', '--verify', `${trimmedHash}^{commit}`],
+        )).trim();
+        const metadata = await this.runGit(
+            repoRoot,
+            ['show', '-s', '--format=%H%x00%s%x00%an%x00%ae%x00%aI', commitHash],
+        );
         const [fullHash, subject, authorName, authorEmail, authorDate] = metadata.replace(/\n$/, '').split('\0');
         if (!fullHash || !subject || !authorName || !authorEmail || !authorDate) {
             throw new Error('Failed to read commit metadata');
         }
-        const patch = await this.execGit(`git format-patch -1 --stdout --no-stat ${commitHash}`, {
-            cwd: repoRoot,
-            timeout: 600000,
-        });
-        return { commitHash: fullHash, subject, authorName, authorEmail, authorDate, patch };
+        // One trailing newline, always: the runner strips the blank line
+        // `format-patch` ends with, and `git am` wants each mailbox entry to end
+        // in exactly one. {@link exportCommitPatches} then separates entries
+        // with the blank line that produces.
+        const patch = await this.runGit(
+            repoRoot,
+            ['format-patch', '-1', '--stdout', '--no-stat', commitHash],
+            { timeout: LONG_OPERATION_TIMEOUT_MS },
+        );
+        return {
+            commitHash: fullHash,
+            subject,
+            authorName,
+            authorEmail,
+            authorDate,
+            patch: patch.endsWith('\n') ? patch : `${patch}\n`,
+        };
     }
 
     /**
@@ -1166,9 +1157,9 @@ export class BranchService {
     }
 
     /** Best-effort `git rev-parse HEAD`, undefined on an unborn/unreadable HEAD. */
-    private revParseHeadSafe(repoRoot: string): string | undefined {
+    private async revParseHeadSafe(repoRoot: string): Promise<string | undefined> {
         try {
-            return this.execGitSync('git rev-parse HEAD', { cwd: repoRoot }).trim();
+            return (await this.runGit(repoRoot, ['rev-parse', 'HEAD'])).trim();
         } catch {
             return undefined;
         }
@@ -1178,10 +1169,10 @@ export class BranchService {
      * Count commits applied since `baseHead`. With no base (unborn branch) the
      * whole HEAD history is the applied set. Best-effort — undefined on failure.
      */
-    private countAppliedCommits(repoRoot: string, baseHead: string | undefined): number | undefined {
+    private async countAppliedCommits(repoRoot: string, baseHead: string | undefined): Promise<number | undefined> {
         try {
             const range = baseHead ? `${baseHead}..HEAD` : 'HEAD';
-            const output = this.execGitSync(`git rev-list --count ${range}`, { cwd: repoRoot }).trim();
+            const output = (await this.runGit(repoRoot, ['rev-list', '--count', range])).trim();
             const parsed = Number.parseInt(output, 10);
             return Number.isFinite(parsed) ? parsed : undefined;
         } catch {
@@ -1198,7 +1189,7 @@ export class BranchService {
             return { success: false, conflicts: false, message: 'Patch body must not be empty' };
         }
 
-        const repoState = this.getRepoState(repoRoot);
+        const repoState = await this.getRepoState(repoRoot);
         if (repoState.operation !== 'none') {
             return {
                 success: false,
@@ -1223,23 +1214,22 @@ export class BranchService {
                     };
                 }
                 const stashMessage = options.stashMessage ?? 'CoC patch-transfer cherry-pick';
-                await this.execGit(`git stash push -u -m ${this.quoteShellArg(stashMessage)}`, { cwd: repoRoot });
+                await this.runGit(repoRoot, ['stash', 'push', '-u', '-m', stashMessage]);
                 stashed = true;
             }
 
-            const gitDir = this.getResolvedGitDir(repoRoot);
+            const gitDir = await this.getResolvedGitDir(repoRoot);
             tmpDir = fs.mkdtempSync(path.join(gitDir, 'tmp-patch-apply-'));
             const patchPath = path.join(tmpDir, 'commit.patch');
             fs.writeFileSync(patchPath, patchBody.endsWith('\n') ? patchBody : `${patchBody}\n`, 'utf-8');
 
-            preApplyHead = this.revParseHeadSafe(repoRoot);
-            await this.execGit(`git am --3way ${this.quoteShellArg(patchPath)}`, {
-                cwd: repoRoot,
-                timeout: 600000,
+            preApplyHead = await this.revParseHeadSafe(repoRoot);
+            await this.runGit(repoRoot, ['am', '--3way', patchPath], {
+                timeout: LONG_OPERATION_TIMEOUT_MS,
                 env: { GIT_EDITOR: 'true' },
             });
-            const headHash = this.execGitSync('git rev-parse HEAD', { cwd: repoRoot }).trim();
-            const appliedCount = this.countAppliedCommits(repoRoot, preApplyHead);
+            const headHash = (await this.runGit(repoRoot, ['rev-parse', 'HEAD'])).trim();
+            const appliedCount = await this.countAppliedCommits(repoRoot, preApplyHead);
             return {
                 success: true,
                 conflicts: false,
@@ -1250,12 +1240,12 @@ export class BranchService {
             };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            const gitState = this.getRepoState(repoRoot);
+            const gitState = await this.getRepoState(repoRoot);
             const isConflict = gitState.gitOperation === 'am'
                 || /CONFLICT|conflict|Patch failed|patch does not apply|git am --continue|Resolve all conflicts/i.test(errorMessage);
             if (isConflict) {
                 // HEAD has advanced by however many patches landed before the failing one.
-                const appliedCount = this.countAppliedCommits(repoRoot, preApplyHead);
+                const appliedCount = await this.countAppliedCommits(repoRoot, preApplyHead);
                 return {
                     success: false,
                     conflicts: true,
@@ -1285,7 +1275,7 @@ export class BranchService {
      */
     async popStash(repoRoot: string): Promise<GitOperationResult> {
         try {
-            await this.execGit('git stash pop', { cwd: repoRoot });
+            await this.runGit(repoRoot, ['stash', 'pop']);
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -1308,8 +1298,8 @@ export class BranchService {
         const msgPath = path.join(tmpDir, 'COMMIT_MSG');
         try {
             fs.writeFileSync(msgPath, message, 'utf-8');
-            await this.execGitFileAsync(['commit', '--amend', '--only', '-F', msgPath], { cwd: repoRoot });
-            const hash = this.execGitSync('git rev-parse HEAD', { cwd: repoRoot }).trim();
+            await this.runGit(repoRoot, ['commit', '--amend', '--only', '-F', msgPath]);
+            const hash = (await this.runGit(repoRoot, ['rev-parse', 'HEAD'])).trim();
             return { success: true, hash };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -1324,8 +1314,12 @@ export class BranchService {
      * Check if there are uncommitted changes (staged or unstaged).
      */
     async hasUncommittedChanges(repoRoot: string): Promise<boolean> {
+        // Outside the try, like the read half: this method answers any failure
+        // with `false`, and "nothing to commit" is a plausible enough answer
+        // that a stale binary would disappear behind it.
+        this.native(repoRoot);
         try {
-            const output = await this.execGit('git status --porcelain', { cwd: repoRoot });
+            const output = await this.runGit(repoRoot, ['status', '--porcelain']);
             return output.trim().length > 0;
         } catch {
             return false;
@@ -1336,9 +1330,13 @@ export class BranchService {
      * Detect the current repository state (merge/rebase/cherry-pick in progress).
      * Checks git sentinel files to determine the active operation.
      */
-    getRepoState(repoRoot: string): RepoState {
+    async getRepoState(repoRoot: string): Promise<RepoState> {
+        // Outside the try for the same reason: "no operation in progress" is
+        // what this returns for a directory that is not a repository, and a
+        // stale binary must not arrive looking like a clean repository.
+        this.native(repoRoot);
         try {
-            const resolvedGitDir = this.getResolvedGitDir(repoRoot);
+            const resolvedGitDir = await this.getResolvedGitDir(repoRoot);
 
             let operation: RepoState['operation'] = 'none';
             let gitOperation: RepoState['gitOperation'];
@@ -1361,7 +1359,7 @@ export class BranchService {
             let conflictFiles: string[] = [];
             if (operation !== 'none') {
                 try {
-                    const output = this.execGitSync('git diff --name-only --diff-filter=U', { cwd: repoRoot });
+                    const output = await this.runGit(repoRoot, ['diff', '--name-only', '--diff-filter=U']);
                     conflictFiles = output.trim().split('\n').filter(Boolean);
                 } catch {
                     // Ignore — no conflicts
@@ -1379,9 +1377,8 @@ export class BranchService {
      */
     async rebaseContinue(repoRoot: string): Promise<GitOperationResult> {
         try {
-            await this.execGit('git rebase --continue', {
-                cwd: repoRoot,
-                timeout: 600000,
+            await this.runGit(repoRoot, ['rebase', '--continue'], {
+                timeout: LONG_OPERATION_TIMEOUT_MS,
                 env: { GIT_EDITOR: 'true' },
             });
             return { success: true };
@@ -1397,7 +1394,7 @@ export class BranchService {
      */
     async rebaseAbort(repoRoot: string): Promise<GitOperationResult> {
         try {
-            await this.execGit('git rebase --abort', { cwd: repoRoot });
+            await this.runGit(repoRoot, ['rebase', '--abort']);
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -1411,9 +1408,8 @@ export class BranchService {
      */
     async mergeContinue(repoRoot: string): Promise<GitOperationResult> {
         try {
-            await this.execGit('git merge --continue', {
-                cwd: repoRoot,
-                timeout: 600000,
+            await this.runGit(repoRoot, ['merge', '--continue'], {
+                timeout: LONG_OPERATION_TIMEOUT_MS,
                 env: { GIT_EDITOR: 'true' },
             });
             return { success: true };
@@ -1429,7 +1425,7 @@ export class BranchService {
      */
     async mergeAbort(repoRoot: string): Promise<GitOperationResult> {
         try {
-            await this.execGit('git merge --abort', { cwd: repoRoot });
+            await this.runGit(repoRoot, ['merge', '--abort']);
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -1452,48 +1448,28 @@ export class BranchService {
         }
         let tmpDir: string | undefined;
         try {
-            const fullHash = this.execGitSync(`git rev-parse ${hash}`, { cwd: repoRoot }).trim();
-            const parentHash = this.execGitSync(`git rev-parse ${fullHash}~1`, { cwd: repoRoot }).trim();
+            const fullHash = (await this.runGit(repoRoot, ['rev-parse', hash])).trim();
+            const parentHash = (await this.runGit(repoRoot, ['rev-parse', `${fullHash}~1`])).trim();
 
             tmpDir = fs.mkdtempSync(path.join(repoRoot, '.git', 'tmp-reword-'));
             const msgPath = path.join(tmpDir, 'message');
             fs.writeFileSync(msgPath, title.trim(), 'utf-8');
 
             // Sequence editor: replace `pick <hash>` with `reword <hash>` in the todo
-            let seqEditor: string;
-            let msgEditor: string;
-            if (process.platform === 'win32') {
-                const seqScriptPath = path.join(tmpDir, 'seq-editor.cmd');
-                const shortHash = fullHash.slice(0, 7);
-                fs.writeFileSync(seqScriptPath,
-                    `@echo off\r\n` +
-                    `powershell -NoProfile -Command "(Get-Content '%1') -replace '^pick ${shortHash}', 'reword ${shortHash}' | Set-Content '%1'"\r\n`,
-                    'utf-8');
-                seqEditor = seqScriptPath;
+            const shortHash = fullHash.slice(0, 7);
+            const seqEditor = writeGitEditorScript(
+                tmpDir,
+                'seq-editor.sh',
+                todoRewriteScript(shortHash, 'reword'),
+            );
+            const msgEditor = writeGitEditorScript(
+                tmpDir,
+                'msg-editor.sh',
+                `cp "${msgPath.replace(/\\/g, '/')}" "$1"`,
+            );
 
-                const msgScriptPath = path.join(tmpDir, 'msg-editor.cmd');
-                fs.writeFileSync(msgScriptPath,
-                    `@copy /Y "${msgPath}" %1 >nul\r\n`,
-                    'utf-8');
-                msgEditor = msgScriptPath;
-            } else {
-                const seqScriptPath = path.join(tmpDir, 'seq-editor.sh');
-                const shortHash = fullHash.slice(0, 7);
-                fs.writeFileSync(seqScriptPath,
-                    `#!/bin/sh\nsed -i "s/^pick ${shortHash}/reword ${shortHash}/" "$1"\n`,
-                    { mode: 0o755 });
-                seqEditor = seqScriptPath;
-
-                const msgScriptPath = path.join(tmpDir, 'msg-editor.sh');
-                fs.writeFileSync(msgScriptPath,
-                    `#!/bin/sh\ncp "${msgPath}" "$1"\n`,
-                    { mode: 0o755 });
-                msgEditor = msgScriptPath;
-            }
-
-            await this.execGit(`git rebase -i ${parentHash}`, {
-                cwd: repoRoot,
-                timeout: 600000,
+            await this.runGit(repoRoot, ['rebase', '-i', parentHash], {
+                timeout: LONG_OPERATION_TIMEOUT_MS,
                 env: { GIT_SEQUENCE_EDITOR: seqEditor, GIT_EDITOR: msgEditor },
             });
 
@@ -1521,38 +1497,26 @@ export class BranchService {
         }
         let tmpDir: string | undefined;
         try {
-            const fullHash = this.execGitSync(`git rev-parse ${hash}`, { cwd: repoRoot }).trim();
-            const parentHash = this.execGitSync(`git rev-parse ${fullHash}~1`, { cwd: repoRoot }).trim();
+            const fullHash = (await this.runGit(repoRoot, ['rev-parse', hash])).trim();
+            const parentHash = (await this.runGit(repoRoot, ['rev-parse', `${fullHash}~1`])).trim();
 
             tmpDir = fs.mkdtempSync(path.join(repoRoot, '.git', 'tmp-drop-'));
 
-            let seqEditor: string;
-            if (process.platform === 'win32') {
-                const seqScriptPath = path.join(tmpDir, 'seq-editor.cmd');
-                const shortHash = fullHash.slice(0, 7);
-                fs.writeFileSync(seqScriptPath,
-                    `@echo off\r\n` +
-                    `powershell -NoProfile -Command "(Get-Content '%1') -replace '^pick ${shortHash}', 'drop ${shortHash}' | Set-Content '%1'"\r\n`,
-                    'utf-8');
-                seqEditor = seqScriptPath;
-            } else {
-                const seqScriptPath = path.join(tmpDir, 'seq-editor.sh');
-                const shortHash = fullHash.slice(0, 7);
-                fs.writeFileSync(seqScriptPath,
-                    `#!/bin/sh\nsed -i "s/^pick ${shortHash}/drop ${shortHash}/" "$1"\n`,
-                    { mode: 0o755 });
-                seqEditor = seqScriptPath;
-            }
+            const shortHash = fullHash.slice(0, 7);
+            const seqEditor = writeGitEditorScript(
+                tmpDir,
+                'seq-editor.sh',
+                todoRewriteScript(shortHash, 'drop'),
+            );
 
-            await this.execGit(`git rebase -i ${parentHash}`, {
-                cwd: repoRoot,
-                timeout: 600000,
+            await this.runGit(repoRoot, ['rebase', '-i', parentHash], {
+                timeout: LONG_OPERATION_TIMEOUT_MS,
                 env: { GIT_SEQUENCE_EDITOR: seqEditor },
             });
 
             return { success: true };
         } catch (error) {
-            try { this.execGitSync('git rebase --abort', { cwd: repoRoot }); } catch { /* best effort */ }
+            try { await this.runGit(repoRoot, ['rebase', '--abort']); } catch { /* best effort */ }
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             getLogger().error('Git', 'Failed to drop commit', error instanceof Error ? error : undefined);
             return { success: false, error: errorMessage };

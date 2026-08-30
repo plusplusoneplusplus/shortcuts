@@ -43,14 +43,13 @@ export {
 
 export {
     ExecGitOptions,
-    execGit,
     execGitAsync,
 } from './exec';
 
 export { GitLogService } from './git-log-service';
 export { GitRangeService } from './git-range-service';
 export { BranchService, parsePorcelainV2BranchStatus } from './branch-service';
-export { WorkingTreeService, parsePorcelain } from './working-tree-service';
+export { WorkingTreeService } from './working-tree-service';
 export { normalizeRemoteUrl } from './normalize-url';
 export {
     resolveRepoIdentity,

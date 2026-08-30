@@ -28,12 +28,15 @@ import {
 
 const FIXED_NOW = '2026-07-08T12:00:00.000Z';
 
-/** Hermetic git runner: real git, no safe.directory global writes. */
-const gitRunner: GitRunner = (args, repoRoot) =>
-    execFileSync('git', ['-C', repoRoot, ...args], { encoding: 'utf-8' }).replace(/\r?\n$/, '');
-
+/**
+ * Hermetic git for the fixtures: real git, no safe.directory global writes.
+ *
+ * Stays synchronous even though the service's `GitRunner` is async now — the
+ * setup helpers below read its return value directly, and an injected runner
+ * only has to *resolve* with the same string.
+ */
 function git(repoRoot: string, ...args: string[]): string {
-    return gitRunner(args, repoRoot);
+    return execFileSync('git', ['-C', repoRoot, ...args], { encoding: 'utf-8' }).replace(/\r?\n$/, '');
 }
 
 /**
@@ -84,9 +87,9 @@ describe('GitWorktreeService', () => {
         commitFile(sourceRepo, 'README.md', 'hello\n', 'init');
 
         gitCalls = [];
-        spyRunner = (args, repoRoot) => {
+        spyRunner = async (args, repoRoot) => {
             gitCalls.push(args);
-            return gitRunner(args, repoRoot);
+            return git(repoRoot, ...args);
         };
         service = new GitWorktreeService({ dataDir, git: spyRunner, now: () => FIXED_NOW });
     });
@@ -318,6 +321,48 @@ describe('GitWorktreeService', () => {
 
         it('throws for an unknown worktree id', async () => {
             await expect(service.removeWorktree('ws-a', 'nope', sourceRepo)).rejects.toThrow(/not found/i);
+        });
+    });
+
+    describe('default git runner', () => {
+        // Every other test injects a runner, so nothing else exercises the one
+        // the server actually ships. Since AC-08 that default is forge's async
+        // `execGitAsync` — a sync runner would resolve to a Promise object and
+        // `baseSha` would come back as "[object Promise]" rather than a SHA.
+        // Hermetic without an injected runner: `resolveGitSafeDirectory` only
+        // answers for WSL paths on win32, so a plain temp dir never touches the
+        // user's global git config.
+        it('creates and removes a worktree through forge execGitAsync', async () => {
+            const defaultService = new GitWorktreeService({ dataDir, now: () => FIXED_NOW });
+            const headSha = git(sourceRepo, 'rev-parse', '--verify', 'HEAD^{commit}');
+
+            const { metadata } = await defaultService.createWorktree({
+                workspaceId: 'ws-default',
+                sourceRepoRoot: sourceRepo,
+                runId: 'run-default',
+            });
+
+            expect(metadata.baseSha).toBe(headSha);
+            expect(fs.existsSync(metadata.path)).toBe(true);
+            expect(listedWorktreePaths(sourceRepo)).toContain(normalizePath(metadata.path));
+
+            const removed = await defaultService.removeWorktree('ws-default', 'run-default', sourceRepo);
+            expect(removed.alreadyCleaned).toBe(false);
+            expect(fs.existsSync(metadata.path)).toBe(false);
+        });
+
+        it('reports a non-Git folder rather than resolving a Promise as a SHA', async () => {
+            const defaultService = new GitWorktreeService({ dataDir, now: () => FIXED_NOW });
+            const notARepo = fs.mkdtempSync(path.join(os.tmpdir(), 'wt-svc-plain-'));
+            try {
+                await expect(defaultService.createWorktree({
+                    workspaceId: 'ws-default',
+                    sourceRepoRoot: notARepo,
+                    runId: 'run-default',
+                })).rejects.toThrow(/Not a Git repository/);
+            } finally {
+                fs.rmSync(notARepo, { recursive: true, force: true });
+            }
         });
     });
 });

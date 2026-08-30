@@ -6,14 +6,35 @@
  */
 
 import * as path from 'path';
+import { NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 import { BranchService } from '@plusplusoneplusplus/forge';
 import { execGitArgsAsync, readGitFileAtCommit } from '../core/api-handler';
-import { handleAPIError, notFound, badRequest } from '../errors';
+import { handleAPIError, notFound, badRequest, internalError } from '../errors';
+import type { APIError } from '../errors';
 import { gitCache } from '../git/git-cache';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
 import { truncateDiffIfNeeded } from './api-shared';
 import { createRoute, asString, asInt, asBool } from './route-utils';
+
+/**
+ * Re-dress a `NativeAddonLoadError` so its words reach the caller.
+ *
+ * The two commit-log routes answer a git failure with silence — an empty list
+ * and a 404 — which is the right answer for a directory that is not a
+ * repository and the wrong one for a binary that is missing or too old, where
+ * the commits are right there and nobody can read them. The Git tab would show
+ * an empty history for a repository with a thousand commits in it.
+ *
+ * `handleAPIError` only carries the message of an `APIError`; anything else
+ * becomes a bare "Internal server error" and the sentence naming the rebuild
+ * lands in the server log alone. So the load failure comes back as a 500 that
+ * says what to do, the way the clone route already does. Every other failure
+ * returns `undefined` and the caller keeps handling it as it did.
+ */
+function asLoadFailure(err: unknown): APIError | undefined {
+    return err instanceof NativeAddonLoadError ? internalError(err.message) : undefined;
+}
 
 export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
     const { routes, store } = ctx;
@@ -59,7 +80,11 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
                 if (isHashLookup) {
                     try {
                         raw = await execGitArgsAsync(['log', `--format=${format}`, '-z', `${search}^!`], ws.rootPath);
-                    } catch {
+                    } catch (err) {
+                        // "That hash names nothing" is the answer here; a broken
+                        // addon is not, and this catch would otherwise eat it
+                        // before the outer one could speak.
+                        if (err instanceof NativeAddonLoadError) { throw err; }
                         raw = '';
                     }
                 } else {
@@ -104,7 +129,9 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
                 const result = { commits, unpushedCount };
                 gitCache.set(cacheKey, result);
                 return result;
-            } catch {
+            } catch (err) {
+                const loadFailure = asLoadFailure(err);
+                if (loadFailure) { throw loadFailure; }
                 return { commits: [], unpushedCount: 0 };
             }
         },
@@ -145,7 +172,9 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
                 };
                 gitCache.set(cacheKey, result);
                 return result;
-            } catch {
+            } catch (err) {
+                const loadFailure = asLoadFailure(err);
+                if (loadFailure) { throw loadFailure; }
                 return void handleAPIError(res, notFound('Commit'));
             }
         },

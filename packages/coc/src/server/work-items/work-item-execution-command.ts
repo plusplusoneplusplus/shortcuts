@@ -10,7 +10,7 @@
  * command only takes a typed input. Failures throw {@link APIError}.
  */
 
-import { execGit } from '@plusplusoneplusplus/forge';
+import { execGitAsync } from '@plusplusoneplusplus/forge';
 import { badRequest } from '../errors';
 import { RALPH_DEFAULT_MAX_ITERATIONS, readRepoPreferences } from '../preferences-handler';
 import { GitWorktreeService } from '../worktree/worktree-service';
@@ -63,7 +63,7 @@ export async function executeWorkItemCommand(
         const workspace = workspaces.find(w => w.id === input.commandRepoId);
         if (workspace?.rootPath) {
             sourceRepoRoot = workspace.rootPath;
-            headBefore = execGit(['rev-parse', 'HEAD'], workspace.rootPath);
+            headBefore = await execGitAsync(['rev-parse', 'HEAD'], workspace.rootPath);
         }
     } catch { /* non-fatal — commit tracking will be skipped */ }
 

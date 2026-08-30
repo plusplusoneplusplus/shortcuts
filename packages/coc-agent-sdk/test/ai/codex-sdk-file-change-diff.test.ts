@@ -160,6 +160,110 @@ describe('CodexSDKService file_change diff enrichment', () => {
         expect(diff).not.toContain('-base');
     });
 
+    it('keeps the dirty-start baseline for a path git would quote', async () => {
+        // `git status --porcelain` without `-z` renders this name as its quoted
+        // C-string, `"caf\303\251.txt"`, which names no file on disk — so a
+        // baseline read through the addon's parsed `gitStatusEntries` would be
+        // lost and the diff would fall back to HEAD.
+        const quoted = 'caf\u00e9.txt';
+        fs.writeFileSync(path.join(repoDir, quoted), 'base\n', 'utf8');
+        git(repoDir, ['add', '--', quoted]);
+        git(repoDir, ['commit', '-m', 'add quoted']);
+        fs.writeFileSync(path.join(repoDir, quoted), 'user dirty\n', 'utf8');
+
+        const result = await sendWithFileChange({
+            cwd: repoDir,
+            changes: [{ path: quoted, kind: 'update' }],
+            changeBeforeEvent: () => {
+                fs.writeFileSync(path.join(repoDir, quoted), 'codex dirty\n', 'utf8');
+            },
+        });
+
+        const toolCall = result.toolCalls?.find(call => call.name === 'apply_patch');
+        const diff = (toolCall?.args as { diff?: string }).diff ?? '';
+        expect(diff).toContain('-user dirty');
+        expect(diff).toContain('+codex dirty');
+        expect(diff).not.toContain('-base');
+    });
+
+    it.skipIf(process.platform === 'win32')(
+        'resolves absolute paths spelled through a symlinked working directory',
+        async () => {
+            // The repository root has two spellings: the one the working
+            // directory reaches it by, and the one symlinks resolve to. Codex
+            // can report either, so both have to be aliases.
+            fs.writeFileSync(path.join(repoDir, 'second.txt'), 'second base\n', 'utf8');
+            git(repoDir, ['add', 'second.txt']);
+            git(repoDir, ['commit', '-m', 'add second']);
+
+            const linkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-file-change-link-'));
+            const link = path.join(linkDir, 'repo');
+            fs.symlinkSync(repoDir, link, 'dir');
+            try {
+                const result = await sendWithFileChange({
+                    cwd: link,
+                    changes: [
+                        // One file per spelling, so a spelling that failed to
+                        // resolve loses its own diff rather than deduplicating
+                        // against the other's.
+                        { path: path.join(link, 'file.txt'), kind: 'update' },
+                        { path: path.join(fs.realpathSync(repoDir), 'second.txt'), kind: 'update' },
+                    ],
+                    changeBeforeEvent: () => {
+                        fs.writeFileSync(path.join(repoDir, 'file.txt'), 'codex linked\n', 'utf8');
+                        fs.writeFileSync(path.join(repoDir, 'second.txt'), 'second linked\n', 'utf8');
+                    },
+                });
+
+                const toolCall = result.toolCalls?.find(call => call.name === 'apply_patch');
+                const diff = (toolCall?.args as { diff?: string }).diff ?? '';
+                expect(diff).toContain('--- a/file.txt');
+                expect(diff).toContain('+codex linked');
+                expect(diff).toContain('--- a/second.txt');
+                expect(diff).toContain('+second linked');
+            } finally {
+                fs.rmSync(linkDir, { recursive: true, force: true });
+            }
+        },
+    );
+
+    it('diffs a file that does not exist at HEAD against /dev/null', async () => {
+        const result = await sendWithFileChange({
+            cwd: repoDir,
+            changes: [{ path: 'fresh.txt', kind: 'add' }],
+            changeBeforeEvent: () => {
+                fs.writeFileSync(path.join(repoDir, 'fresh.txt'), 'brand new\n', 'utf8');
+            },
+        });
+
+        const toolCall = result.toolCalls?.find(call => call.name === 'apply_patch');
+        const diff = (toolCall?.args as { diff?: string }).diff ?? '';
+        expect(diff).toContain('--- /dev/null');
+        expect(diff).toContain('+++ b/fresh.txt');
+        expect(diff).toContain('+brand new');
+    });
+
+    it('keeps the file list without diff when the working directory is not a repository', async () => {
+        const plainDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-file-change-plain-'));
+        try {
+            fs.writeFileSync(path.join(plainDir, 'file.txt'), 'before\n', 'utf8');
+            const result = await sendWithFileChange({
+                cwd: plainDir,
+                changes: [{ path: 'file.txt', kind: 'update' }],
+                changeBeforeEvent: () => {
+                    fs.writeFileSync(path.join(plainDir, 'file.txt'), 'after\n', 'utf8');
+                },
+            });
+
+            const toolCall = result.toolCalls?.find(call => call.name === 'apply_patch');
+            expect(toolCall?.args).toEqual({
+                changes: [{ path: 'file.txt', kind: 'update' }],
+            });
+        } finally {
+            fs.rmSync(plainDir, { recursive: true, force: true });
+        }
+    });
+
     it('keeps the file list without diff when no working directory is available', async () => {
         const result = await sendWithFileChange({
             changes: [{ path: 'file.txt', kind: 'update' }],
@@ -170,4 +274,125 @@ describe('CodexSDKService file_change diff enrichment', () => {
             changes: [{ path: 'file.txt', kind: 'update' }],
         });
     });
+
+    it('diffs a file deleted during the turn against /dev/null', async () => {
+        const result = await sendWithFileChange({
+            cwd: repoDir,
+            changes: [{ path: 'file.txt', kind: 'delete' }],
+            changeBeforeEvent: () => {
+                fs.rmSync(path.join(repoDir, 'file.txt'));
+            },
+        });
+
+        const toolCall = result.toolCalls?.find(call => call.name === 'apply_patch');
+        const diff = (toolCall?.args as { diff?: string }).diff ?? '';
+        expect(diff).toContain('--- a/file.txt');
+        expect(diff).toContain('+++ /dev/null');
+        expect(diff).toContain('-base');
+    });
+
+    it('names the changed file rather than the temp files it was compared through', async () => {
+        // `git diff --no-index` compares two files under the system temp
+        // directory and names them in all three headers. A reader must never
+        // see those, so every header is rewritten before the diff is attached.
+        const result = await sendWithFileChange({
+            cwd: repoDir,
+            changes: [{ path: 'file.txt', kind: 'update' }],
+            changeBeforeEvent: () => {
+                fs.writeFileSync(path.join(repoDir, 'file.txt'), 'codex\n', 'utf8');
+            },
+        });
+
+        const toolCall = result.toolCalls?.find(call => call.name === 'apply_patch');
+        const diff = (toolCall?.args as { diff?: string }).diff ?? '';
+        expect(diff.split('\n')[0]).toBe('diff --git a/file.txt b/file.txt');
+        expect(diff).not.toContain(os.tmpdir());
+        expect(diff).not.toContain('codex-file-diff-');
+    });
+
+    it('leaves no temp directory behind', async () => {
+        // The TypeScript this replaced removed its `mkdtemp` directory in a
+        // `finally`; the addon's is an RAII guard, dropped on every path out.
+        const before = tempDiffDirs();
+        await sendWithFileChange({
+            cwd: repoDir,
+            changes: [{ path: 'file.txt', kind: 'update' }],
+            changeBeforeEvent: () => {
+                fs.writeFileSync(path.join(repoDir, 'file.txt'), 'codex\n', 'utf8');
+            },
+        });
+        expect(tempDiffDirs()).toEqual(before);
+    });
+
+    it('keeps the marker for content with no trailing newline', async () => {
+        // The one place a missing final newline is information rather than
+        // formatting, and the one thing the boundary's own newline strip could
+        // plausibly have eaten.
+        fs.writeFileSync(path.join(repoDir, 'nonl.txt'), 'one\ntwo', 'utf8');
+        git(repoDir, ['add', 'nonl.txt']);
+        git(repoDir, ['commit', '-m', 'add nonl']);
+
+        const result = await sendWithFileChange({
+            cwd: repoDir,
+            changes: [{ path: 'nonl.txt', kind: 'update' }],
+            changeBeforeEvent: () => {
+                fs.writeFileSync(path.join(repoDir, 'nonl.txt'), 'one\nTWO', 'utf8');
+            },
+        });
+
+        const toolCall = result.toolCalls?.find(call => call.name === 'apply_patch');
+        const diff = (toolCall?.args as { diff?: string }).diff ?? '';
+        expect(diff).toContain('-two\n\\ No newline at end of file');
+        expect(diff).toContain('+TWO\n\\ No newline at end of file');
+    });
+
+    it('does not mistake a removed line for a file header', async () => {
+        // A removed line beginning `-- ` reaches the hunk body as
+        // `--- signature`, at column zero. Only the first `--- ` is a header.
+        fs.writeFileSync(path.join(repoDir, 'sig.txt'), 'keep\n-- signature\n', 'utf8');
+        git(repoDir, ['add', 'sig.txt']);
+        git(repoDir, ['commit', '-m', 'add sig']);
+
+        const result = await sendWithFileChange({
+            cwd: repoDir,
+            changes: [{ path: 'sig.txt', kind: 'update' }],
+            changeBeforeEvent: () => {
+                fs.writeFileSync(path.join(repoDir, 'sig.txt'), 'keep\n', 'utf8');
+            },
+        });
+
+        const toolCall = result.toolCalls?.find(call => call.name === 'apply_patch');
+        const diff = (toolCall?.args as { diff?: string }).diff ?? '';
+        expect(diff).toContain('--- a/sig.txt');
+        expect(diff.trimEnd().endsWith('--- signature')).toBe(true);
+    });
+
+    it('renders one diff per changed file', async () => {
+        fs.writeFileSync(path.join(repoDir, 'other.txt'), 'other base\n', 'utf8');
+        git(repoDir, ['add', 'other.txt']);
+        git(repoDir, ['commit', '-m', 'add other']);
+
+        const result = await sendWithFileChange({
+            cwd: repoDir,
+            changes: [
+                { path: 'file.txt', kind: 'update' },
+                { path: 'other.txt', kind: 'update' },
+            ],
+            changeBeforeEvent: () => {
+                fs.writeFileSync(path.join(repoDir, 'file.txt'), 'codex one\n', 'utf8');
+                fs.writeFileSync(path.join(repoDir, 'other.txt'), 'codex two\n', 'utf8');
+            },
+        });
+
+        const toolCall = result.toolCalls?.find(call => call.name === 'apply_patch');
+        const diff = (toolCall?.args as { diff?: string }).diff ?? '';
+        expect(diff.match(/^diff --git /gm)).toHaveLength(2);
+        expect(diff).toContain('+codex one');
+        expect(diff).toContain('+codex two');
+    });
 });
+
+/** Temp directories `git diff --no-index` creates, by name. */
+function tempDiffDirs(): string[] {
+    return fs.readdirSync(os.tmpdir()).filter(entry => entry.startsWith('codex-file-diff-'));
+}

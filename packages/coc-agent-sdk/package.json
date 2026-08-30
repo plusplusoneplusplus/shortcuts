@@ -44,6 +44,7 @@
     }
   },
   "dependencies": {
+    "@plusplusoneplusplus/coc-native": "^0.1.0",
     "pino": "^9.x"
   },
   "devDependencies": {

@@ -24,6 +24,7 @@ import {
     loadNativeNotesIndex,
     nativeContentSearchStatus,
     nativeFileIndexStatus,
+    nativeGitStatus,
     nativeNotesIndexStatus,
 } from '@plusplusoneplusplus/coc-native';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
@@ -869,6 +870,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         const nativeFileIndex = nativeFileIndexStatus();
         const nativeNotesIndex = nativeNotesIndexStatus();
         const nativeContentSearch = nativeContentSearchStatus();
+        const nativeGit = nativeGitStatus();
         process.stderr.write(
             nativeFileIndex.loaded
                 ? `native file index: loaded (${nativeFileIndex.binaryPath})\n`
@@ -883,6 +885,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             nativeContentSearch.loaded
                 ? `native content search: loaded (${nativeContentSearch.binaryPath})\n`
                 : `native content search: unavailable (${nativeContentSearch.reason})\n`,
+        );
+        process.stderr.write(
+            nativeGit.loaded
+                ? `native git: loaded (${nativeGit.binaryPath})\n`
+                : `native git: unavailable (${nativeGit.reason})\n`,
         );
     }
     try {

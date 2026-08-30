@@ -80,6 +80,7 @@ jobs:
 
   forge-test:
     runs-on: ${{ matrix.os }}
+    needs: [coc-native]
 
     strategy:
       fail-fast: false
@@ -112,6 +113,10 @@ jobs:
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
+      - name: Build coc-native package
+        run: npm run build
+        working-directory: packages/coc-native
+
       - name: Build coc-agent-sdk package
         run: npm run build
         working-directory: packages/coc-agent-sdk
@@ -119,6 +124,12 @@ jobs:
       - name: Build forge package
         run: npm run build
         working-directory: packages/forge
+
+      - name: Download the addon
+        uses: actions/download-artifact@v4
+        with:
+          name: coc-native-${{ matrix.os }}
+          path: packages/coc-native
 
       - name: Run forge tests
         if: matrix.os != 'ubuntu-latest'
@@ -147,15 +158,37 @@ jobs:
   # binary for. The binary each job builds is what its own tests run against.
   coc-native:
     runs-on: ${{ matrix.os }}
+    # The linux binary is built inside the image we ship, not on the runner. The
+    # addon spawns processes now, and that pulls Rust std's `pidfd_spawnp` and
+    # `pidfd_getpid` in. They are weak symbols, but they still record a
+    # GLIBC_2.39 dependency for the whole file, and the runner's glibc is newer
+    # than bookworm's — the server refused to start with "version `GLIBC_2.39'
+    # not found". Building against the older glibc keeps one binary loadable on
+    # the image and on every distro from 2.36 on, which is what the published
+    # prebuilt needs too.
+    container: ${{ matrix.container }}
 
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            container: node:24-bookworm
+          - os: macos-latest
+          - os: windows-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+
+      # Inside the container git runs as root against a checkout the runner
+      # user owns, and refuses the repository for dubious ownership — which is
+      # not an error the later `git diff` reports as one. It falls back to
+      # `--no-index`, wants two paths, prints its usage and exits non-zero, and
+      # the bindings check reads that as a stale generated file.
+      - name: Trust the workspace
+        shell: bash
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
@@ -184,7 +217,7 @@ jobs:
           cargo clippy --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native -- -D warnings
 
       - name: Run Rust unit tests
-        run: cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core
+        run: cargo test --no-fail-fast --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core
 
       - name: Install dependencies
         run: npm ci
@@ -252,6 +285,10 @@ jobs:
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
+      - name: Build coc-native package
+        run: npm run build
+        working-directory: packages/coc-native
+
       - name: Build coc-agent-sdk package
         run: npm run build
         working-directory: packages/coc-agent-sdk
@@ -271,10 +308,6 @@ jobs:
       - name: Build coc-connector package
         run: npm run build
         working-directory: packages/coc-connector
-
-      - name: Build coc-native package
-        run: npm run build
-        working-directory: packages/coc-native
 
       - name: Build coc SPA client bundle
         run: npm run build:client
@@ -369,6 +402,7 @@ jobs:
 
   deep-wiki-test:
     runs-on: ${{ matrix.os }}
+    needs: [coc-native]
 
     strategy:
       fail-fast: false
@@ -401,6 +435,10 @@ jobs:
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
+      - name: Build coc-native package
+        run: npm run build
+        working-directory: packages/coc-native
+
       - name: Build coc-agent-sdk package
         run: npm run build
         working-directory: packages/coc-agent-sdk
@@ -408,6 +446,12 @@ jobs:
       - name: Build forge package
         run: npm run build
         working-directory: packages/forge
+
+      - name: Download the addon
+        uses: actions/download-artifact@v4
+        with:
+          name: coc-native-${{ matrix.os }}
+          path: packages/coc-native
 
       - name: Run deep-wiki tests
         if: matrix.os != 'ubuntu-latest'
@@ -471,6 +515,10 @@ jobs:
       - name: Install dependencies
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
+
+      - name: Build coc-native package
+        run: npm run build
+        working-directory: packages/coc-native
 
       - name: Build coc-agent-sdk package
         run: npm run build

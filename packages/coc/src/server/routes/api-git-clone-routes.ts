@@ -5,33 +5,13 @@
  */
 
 import * as path from 'path';
-import { execFile } from 'child_process';
+import { execGitAsync } from '@plusplusoneplusplus/forge';
 import { handleAPIError, missingFields } from '../errors';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import { sendJSON } from '../core/api-handler';
 import type { ApiRouteContext } from './api-shared';
 import { GIT_MAX_BUFFER } from './api-shared';
 import { createRoute } from './route-utils';
-
-interface ExecFileError extends Error {
-    stdout?: string | Buffer;
-    stderr?: string | Buffer;
-}
-
-function outputToString(output: string | Buffer | undefined): string {
-    if (Buffer.isBuffer(output)) {
-        return output.toString('utf8');
-    }
-    return output ?? '';
-}
-
-function buildCloneErrorMessage(error: ExecFileError, stdout: string | Buffer, stderr: string | Buffer): string {
-    const output = [outputToString(stderr), outputToString(stdout)]
-        .map(part => part.trim())
-        .filter(Boolean)
-        .join('\n');
-    return output || error.message;
-}
 
 export function deriveDefaultCloneDirectoryName(gitUrl: string): string {
     const trimmed = gitUrl.trim().replace(/[?#].*$/, '').replace(/[\/\\]+$/, '');
@@ -40,24 +20,26 @@ export function deriveDefaultCloneDirectoryName(gitUrl: string): string {
     return lastPart.endsWith('.git') ? lastPart.slice(0, -4) : lastPart;
 }
 
-export function cloneRepository(gitArgs: string[], parentDir: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-        execFile(
-            'git',
-            gitArgs,
-            { cwd: parentDir, maxBuffer: GIT_MAX_BUFFER },
-            (error, stdout, stderr) => {
-                if (error) {
-                    const execError = error as ExecFileError;
-                    execError.stdout = execError.stdout ?? stdout;
-                    execError.stderr = execError.stderr ?? stderr;
-                    reject(execError);
-                    return;
-                }
-                resolve();
-            },
-        );
-    });
+/**
+ * Run `git clone` with `parentDir` as the working directory.
+ *
+ * A clone is a network operation, so it keeps shelling out to the git CLI —
+ * that is what lets credential helpers, SSH agents and 2FA behave exactly as
+ * they do when a human runs git. The child is started from Rust rather than
+ * from Node now, which is the whole of the change: `execGitAsync` runs
+ * `git -C <parentDir> clone …`, and `-C` places git in the parent directory
+ * the same way the old `cwd` did.
+ *
+ * `timeout: 0` is deliberate and preserves today's behaviour: every other git
+ * call in the server is capped, but a clone is bounded by how big the
+ * repository is and how fast the network is, and no wall-clock number is right
+ * for both a 2 MB repo and a 2 GB one.
+ *
+ * Rejects with `git clone <url> failed: <stderr>`, which the caller shows to
+ * the user verbatim.
+ */
+export async function cloneRepository(gitArgs: string[], parentDir: string): Promise<void> {
+    await execGitAsync(gitArgs, parentDir, { maxBuffer: GIT_MAX_BUFFER, timeout: 0 });
 }
 
 export function registerGitCloneRoutes(ctx: ApiRouteContext): void {
@@ -101,9 +83,11 @@ export function registerGitCloneRoutes(ctx: ApiRouteContext): void {
             try {
                 await cloneRepository(gitArgs, parentDir);
             } catch (error) {
-                const execError = error as ExecFileError;
+                // The message already reads `git clone <url> failed: <stderr>`,
+                // and a broken addon says so by name — both are what the clone
+                // dialog puts in front of the user.
                 sendJSON(res, 500, {
-                    error: buildCloneErrorMessage(execError, execError.stdout ?? '', execError.stderr ?? ''),
+                    error: error instanceof Error ? error.message : String(error),
                 });
                 return;
             }

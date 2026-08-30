@@ -41,6 +41,28 @@ export type {
     NativeContentSearchResult,
 } from './content-search';
 
+export { loadNativeGit, nativeGitStatus } from './git';
+export type {
+    NativeGitAddon,
+    NativeGitBranchEntry,
+    NativeGitBranchListOptions,
+    NativeGitBranchPage,
+    NativeGitBranchStatus,
+    NativeGitCommitFile,
+    NativeGitCommitFiles,
+    NativeGitExecOptions,
+    NativeGitLogCommit,
+    NativeGitLogOptions,
+    NativeGitLogPage,
+    NativeGitNoIndexDiffInput,
+    NativeGitRangeBaseRef,
+    NativeGitRangeDefaultBranch,
+    NativeGitRangeDiffStats,
+    NativeGitRangeFile,
+    NativeGitRepositoryStatus,
+    NativeGitStatusEntry,
+} from './git';
+
 export { loadNativeNotesIndex, nativeNotesIndexStatus } from './notes-index';
 export type {
     NativeNotesIndex,

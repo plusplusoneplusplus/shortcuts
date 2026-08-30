@@ -5,10 +5,13 @@
  * session is created, so later automation (PR submit) can compute the exact
  * `baselineSha..HEAD` commit range the session produced. Strictly best-effort:
  * any failure (no directory known, not a git repo, git missing) resolves to
- * `undefined` and the session record simply omits the field.
+ * `undefined` and the session record simply omits the field. The one exception
+ * is a missing or stale native addon, which is a broken install rather than a
+ * repository that has nothing to say.
  */
 
-import { execFile } from 'child_process';
+import { execGitAsync } from '@plusplusoneplusplus/forge/git';
+import { NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 
 const FULL_SHA_RE = /^[0-9a-f]{40}$/i;
@@ -42,18 +45,15 @@ export async function captureRalphBaselineSha(
     return gitHeadSha(cwd);
 }
 
-/** `git rev-parse HEAD` in `cwd`; `undefined` on any failure. */
-export function gitHeadSha(cwd: string): Promise<string | undefined> {
-    return new Promise((resolve) => {
-        execFile(
-            'git',
-            ['-C', cwd, 'rev-parse', 'HEAD'],
-            { timeout: 10_000, windowsHide: true },
-            (err, stdout) => {
-                if (err) return resolve(undefined);
-                const sha = stdout.trim();
-                resolve(FULL_SHA_RE.test(sha) ? sha : undefined);
-            },
-        );
-    });
+/** `git rev-parse HEAD` in `cwd`; `undefined` on any failure but a broken addon. */
+export async function gitHeadSha(cwd: string): Promise<string | undefined> {
+    try {
+        const sha = (await execGitAsync(['rev-parse', 'HEAD'], cwd, { timeout: 10_000 })).trim();
+        return FULL_SHA_RE.test(sha) ? sha : undefined;
+    } catch (err: unknown) {
+        if (err instanceof NativeAddonLoadError) {
+            throw err;
+        }
+        return undefined;
+    }
 }

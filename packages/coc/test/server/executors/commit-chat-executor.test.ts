@@ -52,13 +52,12 @@ vi.mock('../../../src/server/processes/output-file-manager', () => ({
     },
 }));
 
-// Mock child_process for parent hash resolution
-vi.mock('child_process', () => {
-    const mockFn = vi.fn().mockReturnValue('parent123\n');
-    return {
-        execFileSync: mockFn,
-        __mockExecFileSync: mockFn,
-    };
+// Stub the one git command the executor runs. `importOriginal` + spread rather
+// than a bare object: forge's git entry point is imported for real elsewhere in
+// this graph, and a stub module would leave those imports undefined.
+vi.mock('@plusplusoneplusplus/forge/git', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge/git')>();
+    return { ...actual, execGitAsync: vi.fn() };
 });
 
 // Mock DiffCommentsManager
@@ -88,8 +87,8 @@ vi.mock('../../../src/server/llm-tools/add-diff-comment-tool', () => ({
 
 const sdkMocks = createMockSDKService();
 
-// Re-import the mocked execFileSync for assertions
-let mockExecFileSync: ReturnType<typeof vi.fn>;
+// Re-import the mocked runner for assertions
+let mockExecGitAsync: ReturnType<typeof vi.fn>;
 
 function makeOptions(
     store: ReturnType<typeof createMockProcessStore>,
@@ -139,9 +138,9 @@ describe('CommitChatExecutor', () => {
         vi.clearAllMocks();
         sdkMocks.resetAll();
         // Get reference to the mocked function
-        const cp = await import('child_process');
-        mockExecFileSync = cp.execFileSync as unknown as ReturnType<typeof vi.fn>;
-        mockExecFileSync.mockReturnValue('parent123\n');
+        const gitModule = await import('@plusplusoneplusplus/forge/git');
+        mockExecGitAsync = gitModule.execGitAsync as unknown as ReturnType<typeof vi.fn>;
+        mockExecGitAsync.mockResolvedValue('parent123');
     });
 
     describe('execute()', () => {
@@ -211,23 +210,21 @@ describe('CommitChatExecutor', () => {
     });
 
     describe('parent hash resolution', () => {
-        it('resolves parent hash via git log', async () => {
+        it('hands the resolved parent to the diff-comment tool', async () => {
             const store = createMockProcessStore();
             const executor = new CommitChatExecutor(store, makeOptions(store), undefined, '/data');
             const task = makeCommitChatTask();
 
             await executor.execute(task, 'Review');
 
-            // execFileSync should be called for parent hash resolution
-            expect(mockExecFileSync).toHaveBeenCalledWith(
-                'git',
-                expect.arrayContaining(['log', '--pretty=%P', '-n1', 'abc123']),
-                expect.objectContaining({ cwd: '/repo' }),
+            const { createAddDiffCommentTool } = await import('../../../src/server/llm-tools/add-diff-comment-tool');
+            expect(createAddDiffCommentTool).toHaveBeenCalledWith(
+                expect.objectContaining({ parentHash: 'parent123' }),
             );
         });
 
         it('handles merge commits by using first parent', async () => {
-            mockExecFileSync.mockReturnValue('parent1 parent2\n');
+            mockExecGitAsync.mockResolvedValue('parent1 parent2');
             const store = createMockProcessStore();
             const executor = new CommitChatExecutor(store, makeOptions(store), undefined, '/data');
             const task = makeCommitChatTask();
@@ -242,7 +239,7 @@ describe('CommitChatExecutor', () => {
         });
 
         it('handles initial commit gracefully (no parent)', async () => {
-            mockExecFileSync.mockReturnValue('\n');
+            mockExecGitAsync.mockResolvedValue('');
             const store = createMockProcessStore();
             const executor = new CommitChatExecutor(store, makeOptions(store), undefined, '/data');
             const task = makeCommitChatTask();
@@ -252,7 +249,7 @@ describe('CommitChatExecutor', () => {
         });
 
         it('handles git command failure gracefully', async () => {
-            mockExecFileSync.mockImplementation(() => { throw new Error('git not found'); });
+            mockExecGitAsync.mockRejectedValue(new Error('git log --pretty=%P -n1 abc123 failed: '));
             const store = createMockProcessStore();
             const executor = new CommitChatExecutor(store, makeOptions(store), undefined, '/data');
             const task = makeCommitChatTask();

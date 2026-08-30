@@ -1,8 +1,13 @@
 /**
- * Tests for the git module: types, constants, and exec helper.
+ * Tests for the git module: types, constants, and the barrel's export surface.
+ *
+ * The sync `execGit` this file used to exercise was deleted in AC-08 — every
+ * git command in forge is async and runs in the native addon or, for WSL, in
+ * `exec.ts`'s `wsl.exe` branch. Its behaviour tests went with it; what is left
+ * here guards the export surface so the sync helper cannot come back.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
     GitChangeStatus,
     GitChangeStage,
@@ -18,44 +23,9 @@ import {
     STATUS_SHORT,
     STAGE_PREFIX,
     STAGE_LABEL,
-    ExecGitOptions,
-    execGit,
+    execGitAsync,
 } from '../../src/git';
-
-vi.mock('child_process', () => ({
-    execSync: vi.fn(),
-    execFileSync: vi.fn(),
-    execFile: vi.fn(),
-}));
-
-vi.mock('../../src/git/safe-directory', () => ({
-    ensureGitSafeDirectorySync: vi.fn(),
-    ensureGitSafeDirectoryAsync: vi.fn(),
-}));
-
-vi.mock('../../src/utils/workspace-execution', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('../../src/utils/workspace-execution')>();
-    return {
-        ...actual,
-        getWslExecutablePath: vi.fn().mockReturnValue('C:\\Windows\\System32\\wsl.exe'),
-        resolveWorkspaceExecutionContext: vi.fn((workingDirectory?: string) => {
-            if (workingDirectory?.startsWith('\\\\wsl$')) {
-                return actual.resolveWorkspaceExecutionContext(workingDirectory);
-            }
-            return { kind: 'windows', workingDirectory };
-        }),
-    };
-});
-
-import { execFileSync, execSync } from 'child_process';
-import { ensureGitSafeDirectorySync } from '../../src/git/safe-directory';
-const mockExecSync = vi.mocked(execSync);
-const mockExecFileSync = vi.mocked(execFileSync);
-const mockEnsureGitSafeDirectorySync = vi.mocked(ensureGitSafeDirectorySync);
-const nativeRepoRoot = process.platform === 'win32' ? String.raw`C:\repo` : '/repo';
-const nativeNestedRepoRoot = process.platform === 'win32' ? String.raw`C:\my\repo` : '/my/repo';
-const badRepoRoot = process.platform === 'win32' ? String.raw`C:\bad-repo` : '/bad-repo';
-const otherDir = process.platform === 'win32' ? String.raw`C:\other\dir` : '/other/dir';
+import * as gitModule from '../../src/git';
 
 // ---------------------------------------------------------------------------
 // Type smoke tests
@@ -92,6 +62,7 @@ describe('Git types', () => {
             hash: 'abc123def456',
             shortHash: 'abc123d',
             subject: 'fix: resolve issue',
+            body: 'Closes #1',
             authorName: 'Alice',
             authorEmail: 'alice@example.com',
             date: '2025-01-15T10:00:00Z',
@@ -243,117 +214,18 @@ describe('Git constants', () => {
 });
 
 // ---------------------------------------------------------------------------
-// execGit
+// Sync execGit removal (AC-08)
 // ---------------------------------------------------------------------------
 
-describe('execGit', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-        mockExecSync.mockReset();
-        mockExecFileSync.mockReset();
+describe('sync execGit removal', () => {
+    it('does not export a sync execGit from the git barrel', () => {
+        // AC-08 DoD 4: native git is async-only. A sync export would mean some
+        // caller is spawning git on the event-loop thread again.
+        expect('execGit' in gitModule).toBe(false);
     });
 
-    it('should return trimmed output on success', () => {
-        mockExecFileSync.mockReturnValue('hello world\n');
-        const result = execGit(['status', '--short'], nativeRepoRoot);
-        expect(result).toBe('hello world');
-    });
-
-    it('should strip Windows-style trailing newline', () => {
-        mockExecFileSync.mockReturnValue('output\r\n');
-        const result = execGit(['log'], nativeRepoRoot);
-        expect(result).toBe('output');
-    });
-
-    it('should build the correct command with -C flag', () => {
-        mockExecFileSync.mockReturnValue('');
-        execGit(['log', '--oneline', '-5'], nativeNestedRepoRoot);
-        expect(mockExecFileSync).toHaveBeenCalledWith(
-            'git',
-            ['-C', nativeNestedRepoRoot, 'log', '--oneline', '-5'],
-            expect.objectContaining({ encoding: 'utf-8' }),
-        );
-    });
-
-    it('should pass default maxBuffer, timeout, and encoding', () => {
-        mockExecFileSync.mockReturnValue('');
-        execGit(['status'], nativeRepoRoot);
-        expect(mockExecFileSync).toHaveBeenCalledWith(
-            'git',
-            expect.any(Array),
-            expect.objectContaining({
-                maxBuffer: 50 * 1024 * 1024,
-                timeout: 30_000,
-                encoding: 'utf-8',
-            }),
-        );
-    });
-
-    it('should allow overriding maxBuffer and timeout', () => {
-        mockExecFileSync.mockReturnValue('');
-        const opts: ExecGitOptions = { maxBuffer: 1024, timeout: 5000 };
-        execGit(['diff'], nativeRepoRoot, opts);
-        expect(mockExecFileSync).toHaveBeenCalledWith(
-            'git',
-            expect.any(Array),
-            expect.objectContaining({
-                maxBuffer: 1024,
-                timeout: 5000,
-            }),
-        );
-    });
-
-    it('should pass cwd when provided', () => {
-        mockExecFileSync.mockReturnValue('');
-        execGit(['status'], nativeRepoRoot, { cwd: otherDir });
-        expect(mockExecFileSync).toHaveBeenCalledWith(
-            'git',
-            expect.any(Array),
-            expect.objectContaining({ cwd: otherDir }),
-        );
-    });
-
-    it('should throw a descriptive error when git command fails', () => {
-        const error = new Error('Command failed') as Error & { stderr: string };
-        error.stderr = 'fatal: not a git repository';
-        mockExecFileSync.mockImplementation(() => { throw error; });
-        expect(() => execGit(['log'], badRepoRoot)).toThrow(
-            'git log failed: fatal: not a git repository',
-        );
-    });
-
-    it('should pass caret through unchanged (no shell escaping needed with execFileSync)', () => {
-        mockExecFileSync.mockReturnValue('');
-        execGit(['log', 'abc123^!'], nativeRepoRoot);
-        expect(mockExecFileSync).toHaveBeenCalledWith(
-            'git',
-            ['-C', nativeRepoRoot, 'log', 'abc123^!'],
-            expect.objectContaining({ encoding: 'utf-8' }),
-        );
-    });
-
-    it('should handle errors without stderr gracefully', () => {
-        mockExecFileSync.mockImplementation(() => { throw new Error('fail'); });
-        expect(() => execGit(['status'], nativeRepoRoot)).toThrow('git status failed:');
-    });
-
-    it.runIf(process.platform === 'win32')('routes WSL repos through wsl.exe', () => {
-        const repoRoot = String.raw`\\wsl$\Ubuntu\home\tester\repo`;
-        mockExecFileSync.mockReturnValue('main\n');
-
-        const result = execGit(['rev-parse', '--abbrev-ref', 'HEAD'], repoRoot);
-
-        expect(result).toBe('main');
-        expect(mockEnsureGitSafeDirectorySync).toHaveBeenCalledWith(repoRoot);
-        expect(mockExecFileSync).toHaveBeenCalledWith(
-            expect.stringContaining('wsl.exe'),
-            ['-d', 'Ubuntu', '--cd', '/home/tester/repo', '--', 'git', '-C', '/home/tester/repo', 'rev-parse', '--abbrev-ref', 'HEAD'],
-            expect.objectContaining({
-                encoding: 'utf-8',
-                windowsHide: true,
-            }),
-        );
-        expect(mockExecSync).not.toHaveBeenCalled();
+    it('exports execGitAsync as the only git runner', () => {
+        expect(typeof execGitAsync).toBe('function');
     });
 });
 
@@ -369,7 +241,7 @@ describe('Barrel re-export (git/index)', () => {
         expect(STAGE_LABEL).toBeDefined();
 
         // Function
-        expect(typeof execGit).toBe('function');
+        expect(typeof execGitAsync).toBe('function');
     });
 
     it('should re-export types that compile correctly', () => {
@@ -382,7 +254,7 @@ describe('Barrel re-export (git/index)', () => {
             repositoryName: 'r',
         };
         const _commit: GitCommit = {
-            hash: 'h', shortHash: 's', subject: 'sub',
+            hash: 'h', shortHash: 's', subject: 'sub', body: 'b',
             authorName: 'a', authorEmail: 'e',
             date: 'd', relativeDate: 'rd',
             parentHashes: 'p', refs: [],

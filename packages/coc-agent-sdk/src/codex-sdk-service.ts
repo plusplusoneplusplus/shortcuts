@@ -33,6 +33,7 @@ import { resolveWarmClientTtlMs } from './warm-client-config';
 import { getSDKLogger } from './logger';
 import { dynamicImportModule } from './sdk-esm-loader';
 import { execFileAsync } from './internal/exec-utils';
+import { loadNativeGit, type NativeGitAddon } from '@plusplusoneplusplus/coc-native';
 import { CocToolRuntime } from './llm-tools/coc-tool-runtime';
 import { cocToolBridgeServer } from './llm-tools/bridge-server';
 import { buildCocLlmToolsMcpConfig, COC_LLM_TOOLS_MCP_SERVER_NAME } from './llm-tools/mcp-config';
@@ -256,6 +257,12 @@ class CodexFileChangeDiffTracker {
     private initialized = false;
     private enabled = false;
     private root = '';
+    /**
+     * The git capability, loaded once the working directory turns out to be a
+     * repository. `undefined` until then, and still `undefined` when the addon
+     * would not load — the same state a missing `git` on PATH used to produce.
+     */
+    private git: NativeGitAddon | undefined;
     private readonly rootAliases: string[] = [];
     private readonly dirtyStartSnapshots = new Map<string, CodexFileSnapshot>();
     private readonly lastSnapshots = new Map<string, CodexFileSnapshot>();
@@ -311,32 +318,28 @@ class CodexFileChangeDiffTracker {
         if (!this.cwd) return;
 
         try {
-            const { stdout } = await execFileAsync('git', ['rev-parse', '--show-toplevel'], {
-                cwd: this.cwd,
-                timeout: CODEX_DIFF_TIMEOUT_MS,
-            });
-            this.root = stdout.trim();
-            if (!this.root) return;
+            const git = loadNativeGit();
+            // `gix` discovers the root by walking up from the working directory
+            // without resolving symlinks, so this is the repository as the
+            // working directory spells it — exactly what
+            // `path.resolve(cwd, rev-parse --show-cdup)` used to produce.
+            const discovered = await git.gitDiscoverRepoRoot(path.resolve(this.cwd));
+            if (!discovered) return;
+            this.git = git;
+            // `rev-parse --show-toplevel` answered with symlinks resolved, and
+            // that spelling is what `this.root` has always held. Both spellings
+            // become aliases either way; only which one is canonical changed.
+            this.root = await fs.realpath(discovered).catch(() => discovered);
             this.addRootAlias(this.root);
-            await this.addCwdRootAlias();
+            // Matches absolute file-change paths that use a symlink spelling.
+            this.addRootAlias(discovered);
             this.enabled = true;
             await this.snapshotDirtyPaths();
         } catch {
+            // A repository that cannot be read — and an addon that will not
+            // load — both leave the diff off. Codex file-change diffs are
+            // display metadata, so the tool event stays successful without one.
             this.enabled = false;
-        }
-    }
-
-    private async addCwdRootAlias(): Promise<void> {
-        if (!this.cwd) return;
-        try {
-            const { stdout } = await execFileAsync('git', ['rev-parse', '--show-cdup'], {
-                cwd: this.cwd,
-                timeout: CODEX_DIFF_TIMEOUT_MS,
-            });
-            this.addRootAlias(path.resolve(this.cwd, stdout.trim() || '.'));
-        } catch {
-            // The canonical git root is enough for normal operation. This alias only
-            // helps match absolute file-change paths that use a symlink spelling.
         }
     }
 
@@ -349,8 +352,13 @@ class CodexFileChangeDiffTracker {
     }
 
     private async snapshotDirtyPaths(): Promise<void> {
-        const { stdout } = await execFileAsync('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all'], {
-            cwd: this.root,
+        const git = this.git;
+        if (!git) return;
+        // The NUL-separated form, not the addon's parsed `gitStatusEntries`:
+        // `--porcelain` without `-z` renders a non-ASCII path as its quoted
+        // C-string (`"caf\303\251.txt"`), which no longer names a file on
+        // disk, so those paths would silently lose their dirty-start baseline.
+        const stdout = await git.execGit(['status', '--porcelain=v1', '-z', '--untracked-files=all'], this.root, {
             timeout: CODEX_DIFF_TIMEOUT_MS,
         });
         const entries = stdout.split('\0').filter(Boolean);
@@ -375,13 +383,15 @@ class CodexFileChangeDiffTracker {
     }
 
     private async readHeadSnapshot(relPath: string): Promise<CodexFileSnapshot> {
+        const git = this.git;
+        if (!git) return { exists: false, content: '' };
         try {
-            const { stdout } = await execFileAsync('git', ['show', `HEAD:${relPath}`], {
-                cwd: this.root,
-                timeout: CODEX_DIFF_TIMEOUT_MS,
-                maxBuffer: 10 * 1024 * 1024,
-            });
-            return { exists: true, content: stdout };
+            // Straight out of the object database — no child process, and the
+            // blob's bytes verbatim, trailing newline included, which is what
+            // `git show HEAD:<path>` printed. A path that names nothing at
+            // HEAD comes back as `null` instead of a non-zero exit.
+            const content = await git.gitFileContentAtCommit(this.root, 'HEAD', relPath);
+            return content === null ? { exists: false, content: '' } : { exists: true, content };
         } catch {
             return { exists: false, content: '' };
         }
@@ -401,28 +411,26 @@ class CodexFileChangeDiffTracker {
 
     private async diffSnapshots(relPath: string, before: CodexFileSnapshot, after: CodexFileSnapshot): Promise<string> {
         if (before.exists === after.exists && before.content === after.content) return '';
+        const git = this.git;
+        if (!git) return '';
 
-        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-file-diff-'));
-        try {
-            const beforePath = path.join(tempDir, 'before');
-            const afterPath = path.join(tempDir, 'after');
-            await fs.writeFile(beforePath, before.content, 'utf8');
-            await fs.writeFile(afterPath, after.content, 'utf8');
-            const rawDiff = await runGitDiffNoIndex([
-                '--no-ext-diff',
-                '--no-index',
-                '--no-prefix',
-                '--',
-                beforePath,
-                afterPath,
-            ]);
-            return rewriteNoIndexDiffHeaders(rawDiff, {
+        // One crossing for the whole dance. The temp directory, the two writes,
+        // `git diff --no-index`, the cleanup and the header rewrite all happen
+        // on a libuv worker; what used to be four `fs` round trips plus a Node
+        // `spawn` per changed file is now a single call.
+        //
+        // The labels stay here because they are this file's decision: a path
+        // that was absent on one side is `/dev/null`, which is what the reader
+        // of a unified diff expects and not something Rust should invent.
+        return git.gitDiffNoIndex(
+            {
+                before: before.content,
+                after: after.content,
                 beforeLabel: before.exists ? `a/${relPath}` : '/dev/null',
                 afterLabel: after.exists ? `b/${relPath}` : '/dev/null',
-            });
-        } finally {
-            await fs.rm(tempDir, { recursive: true, force: true });
-        }
+            },
+            { timeout: CODEX_DIFF_TIMEOUT_MS },
+        );
     }
 
     private normalizeRelativePath(input: unknown): string | undefined {
@@ -462,60 +470,6 @@ class CodexFileChangeDiffTracker {
     private normalizePathForCompare(value: string): string {
         return process.platform === 'win32' ? value.toLowerCase() : value;
     }
-}
-
-function rewriteNoIndexDiffHeaders(diff: string, labels: { beforeLabel: string; afterLabel: string }): string {
-    let rewroteDiffHeader = false;
-    let rewroteBeforeHeader = false;
-    let rewroteAfterHeader = false;
-    return diff.split(/\r?\n/).map(line => {
-        if (!rewroteDiffHeader && line.startsWith('diff --git ')) {
-            rewroteDiffHeader = true;
-            return `diff --git ${labels.beforeLabel} ${labels.afterLabel}`;
-        }
-        if (!rewroteBeforeHeader && line.startsWith('--- ')) {
-            rewroteBeforeHeader = true;
-            return `--- ${labels.beforeLabel}`;
-        }
-        if (!rewroteAfterHeader && line.startsWith('+++ ')) {
-            rewroteAfterHeader = true;
-            return `+++ ${labels.afterLabel}`;
-        }
-        return line;
-    }).join('\n');
-}
-
-function runGitDiffNoIndex(args: string[]): Promise<string> {
-    const finalArgs = ['diff', ...args];
-    return new Promise((resolve, reject) => {
-        const child = spawn('git', finalArgs, {
-            stdio: ['ignore', 'pipe', 'pipe'],
-            windowsHide: true,
-        });
-        let stdout = '';
-        let stderr = '';
-        const timer = setTimeout(() => {
-            child.kill();
-            reject(new Error('git diff timed out'));
-        }, CODEX_DIFF_TIMEOUT_MS);
-
-        child.stdout.setEncoding('utf8');
-        child.stderr.setEncoding('utf8');
-        child.stdout.on('data', chunk => { stdout += chunk; });
-        child.stderr.on('data', chunk => { stderr += chunk; });
-        child.on('error', err => {
-            clearTimeout(timer);
-            reject(err);
-        });
-        child.on('close', code => {
-            clearTimeout(timer);
-            if (code === 0 || code === 1) {
-                resolve(stdout);
-                return;
-            }
-            reject(new Error(stderr.trim() || `git diff exited with code ${code}`));
-        });
-    });
 }
 
 interface CodexClient {

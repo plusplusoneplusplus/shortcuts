@@ -93,7 +93,7 @@ import { handleWorkItemTaskComplete, autoVersionPlanFromResolvedComments, saveGo
 import type { EnqueueFunction } from '../work-items/work-item-executor';
 import { upsertWorkItemTaskFile, toTaskFileStatus } from '../work-items/work-item-task-file';
 import { clearWorkItemResponseCacheForWorkspace } from '../work-items/work-item-response-cache';
-import { execGit } from '@plusplusoneplusplus/forge';
+import { execGitAsync } from '@plusplusoneplusplus/forge';
 import { TERMINAL_WORK_ITEM_STATUSES, WORK_ITEM_STATUSES, type WorkItemChangeCommit } from '../work-items/types';
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
 import type { ResolvedCLIConfig } from '../../config';
@@ -158,12 +158,12 @@ import { ActiveWorkspaceBackgroundRefresher } from '../dashboard/active-workspac
 import type { NotesSearchService } from '../notes/notes-search-service';
 
 /** Collect git commits made between headBefore and current HEAD. Non-fatal — returns [] on error. */
-function collectWorkItemCommits(
+async function collectWorkItemCommits(
     repoRoot: string,
     headBefore: string,
-): WorkItemChangeCommit[] {
+): Promise<WorkItemChangeCommit[]> {
     try {
-        const output = execGit(
+        const output = await execGitAsync(
             ['log', `${headBefore}..HEAD`, '--pretty=format:%H\x1f%s\x1f%an\x1f%aI'],
             repoRoot,
         );
@@ -1347,7 +1347,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                     const workspaces = await store.getWorkspaces().catch(() => []);
                     const workspace = workspaces.find(w => w.id === (executionWorkspaceId ?? updatedItem.repoId));
                     if (workspace?.rootPath) {
-                        const commits = collectWorkItemCommits(workspace.rootPath, justClosed.headBefore);
+                        const commits = await collectWorkItemCommits(workspace.rootPath, justClosed.headBefore);
                         if (commits.length > 0) {
                             await workItemStore.updateChange(workItemId, justClosed.id, { commits }, workItemStorageRepoId).catch(() => {});
                             commitsAttached = true;

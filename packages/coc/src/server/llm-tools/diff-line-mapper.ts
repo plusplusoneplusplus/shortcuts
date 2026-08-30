@@ -8,11 +8,14 @@
  * to every visual line: hunk headers, context lines, added lines, and
  * removed lines each consume one index.
  *
- * Pure Node.js; uses only built-in modules.
+ * The parser and the mapper are pure TypeScript. The one git command this
+ * module runs goes through `execGitAsync`, so it executes on a libuv worker in
+ * the native addon rather than blocking the event loop.
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
-import { execFileSync } from 'child_process';
+import { execGitAsync } from '@plusplusoneplusplus/forge/git';
+import { NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 import { GIT_MAX_BUFFER } from '../routes/api-shared';
 
 // ============================================================================
@@ -51,31 +54,47 @@ export interface ParsedDiffLine {
 // Diff Output Retrieval
 // ============================================================================
 
+const DIFF_TIMEOUT_MS = 10_000;
+
 /**
  * Retrieve the unified diff for a single file between two refs.
  * For initial commits (no parent), uses `git show`.
+ *
+ * The returned text has lost its final line ending, because every command that
+ * crosses the native boundary does. That is invisible here: a diff is a
+ * rendering rather than a file's bytes, and {@link parseUnifiedDiff} already
+ * skips the empty string a trailing newline leaves behind.
  */
-export function getFileDiff(
+export async function getFileDiff(
     workingDirectory: string,
     parentHash: string,
     commitHash: string,
     filePath: string,
-): string {
+): Promise<string> {
+    const options = { timeout: DIFF_TIMEOUT_MS, maxBuffer: GIT_MAX_BUFFER };
     try {
-        return execFileSync(
-            'git',
+        return await execGitAsync(
             ['diff', `${parentHash}..${commitHash}`, '--', filePath],
-            { cwd: workingDirectory, encoding: 'utf-8', timeout: 10000, maxBuffer: GIT_MAX_BUFFER },
+            workingDirectory,
+            options,
         );
-    } catch {
+    } catch (err: unknown) {
+        // A stale or missing addon is not an edge case this fallback can cover,
+        // and reporting it as "no diff for this file" would hide the rebuild.
+        if (err instanceof NativeAddonLoadError) {
+            throw err;
+        }
         // Fallback for initial commits or other edge cases
         try {
-            return execFileSync(
-                'git',
+            return await execGitAsync(
                 ['show', '--format=', commitHash, '--', filePath],
-                { cwd: workingDirectory, encoding: 'utf-8', timeout: 10000, maxBuffer: GIT_MAX_BUFFER },
+                workingDirectory,
+                options,
             );
-        } catch {
+        } catch (fallbackErr: unknown) {
+            if (fallbackErr instanceof NativeAddonLoadError) {
+                throw fallbackErr;
+            }
             throw new Error(`Failed to retrieve diff for ${filePath}`);
         }
     }

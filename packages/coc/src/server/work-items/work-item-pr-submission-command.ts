@@ -8,7 +8,9 @@
  *
  * All git and `gh` invocations go through the injected
  * {@link WorkItemCommandRunner} so the command sequence and its failure
- * behavior are testable without a real checkout.
+ * behavior are testable without a real checkout. The default runner runs the
+ * nine git commands in the native addon and only `gh pr create` as a child
+ * process, so nothing here reads a git command's stderr on success.
  */
 
 import { badRequest, notFound } from '../errors';

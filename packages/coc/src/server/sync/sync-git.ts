@@ -6,21 +6,37 @@
  * highest-risk external dependency in one place: failure modes like unrelated
  * histories, corrupt mirrors, unreachable remotes, and unborn HEAD can be
  * exercised against this class without driving the whole sync transaction.
+ *
+ * The commands run in the native addon rather than as Node child processes. The
+ * mirror is a directory this server owns under its own data dir, so it is
+ * always on the host filesystem and never reaches the WSL routing `execGitAsync`
+ * does for workspace repositories.
  */
 
-import { execFile } from 'child_process';
-import { promisify } from 'util';
+import { execGitAsync } from '@plusplusoneplusplus/forge/git';
+import { loadNativeGit, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 import type { SyncLogger } from './sync-types';
 
-const execFileAsync = promisify(execFile);
+/** Bytes of output kept for a command whose answer is text. */
+const TEXT_MAX_BUFFER = 10 * 1024 * 1024;
 
 /**
- * The full text of a failed git command: its message plus stdout and stderr.
+ * Milliseconds any one command gets. Four times the shared default, because
+ * `clone`, `fetch`, `pull` and `push` here talk to a remote the user chose.
+ */
+const COMMAND_TIMEOUT_MS = 120_000;
+
+/**
+ * The text of a failed git command.
  *
- * A merge conflict is reported by git on stdout ("CONFLICT …", "Automatic merge
- * failed …"), and Node's `execFile` error keeps stdout on `.stdout` rather than
- * folding it into `.message` (which carries only stderr). A catch that inspects
- * just the message therefore can't tell a conflict from any other pull failure.
+ * The runner renders a failure as `git <args> failed: <stderr>` on `.message`,
+ * so the message is where the text is — but a `catch` receives `unknown`, and a
+ * rejection that is not an `Error` at all must not crash the classification.
+ * Stdout and stderr are still read when they are there, so a Node `execFile`
+ * rejection (which keeps its output on those properties) reads the same way.
+ * What is *not* here any more is a conflict: git announces one on stdout, the
+ * runner keeps only stderr, and {@link SyncGitRepository.pull} reads the index
+ * instead.
  */
 export function gitErrorText(err: unknown): string {
     const e = err as { message?: unknown; stdout?: unknown; stderr?: unknown };
@@ -30,8 +46,24 @@ export function gitErrorText(err: unknown): string {
 }
 
 /**
+ * Rethrow a broken-install failure instead of reading it as git's answer.
+ *
+ * Every `catch` in this file turns a failed command into a routine sync
+ * outcome — "the remote is unreachable", "there is nothing to pull", "this
+ * mirror is unusable". A missing or stale native binary fails the same way and
+ * means none of those things, and the consequences are not cosmetic:
+ * {@link SyncGitRepository.isUsable} answering `false` deletes the mirror and
+ * re-clones it.
+ */
+function rethrowIfAddonUnavailable(err: unknown): void {
+    if (err instanceof NativeAddonLoadError) {
+        throw err;
+    }
+}
+
+/**
  * A workspace's sync mirror, exposing the exact Git operations the sync engine
- * needs. All commands run with `this.dir` as the working directory.
+ * needs. Every command addresses `this.dir` as its repository.
  */
 export class SyncGitRepository {
     constructor(
@@ -39,32 +71,21 @@ export class SyncGitRepository {
         private readonly logger: SyncLogger,
     ) {}
 
-    /** Run git and return trimmed utf8 stdout. */
-    private async run(args: string[]): Promise<string> {
-        const { stdout } = await execFileAsync('git', args, {
-            cwd: this.dir,
-            encoding: 'utf8',
-            maxBuffer: 10 * 1024 * 1024,
-            timeout: 120_000,
-        });
-        return stdout.trim();
-    }
-
     /**
-     * Run git and hand back raw stdout.
+     * Run git in the mirror and return its stdout with one trailing line ending
+     * removed.
      *
-     * The text helper decodes as utf8 and trims, which would corrupt an image and
-     * strip a note's trailing newline. Reading blobs out of git objects has to be
-     * byte-exact, so those calls come through here instead.
+     * One line ending, where this used to `trim()`. Nothing here reads a value
+     * that a trim would have changed — every command answers with a single
+     * line, a NUL-separated listing, or nothing at all — and `git status
+     * --porcelain` is better off for it, since a trim ate the leading space of
+     * its first line.
      */
-    private async runBuffer(args: string[]): Promise<Buffer> {
-        const { stdout } = await execFileAsync('git', args, {
-            cwd: this.dir,
-            encoding: 'buffer',
-            maxBuffer: 64 * 1024 * 1024,
-            timeout: 120_000,
+    private async run(args: string[]): Promise<string> {
+        return execGitAsync(args, this.dir, {
+            maxBuffer: TEXT_MAX_BUFFER,
+            timeout: COMMAND_TIMEOUT_MS,
         });
-        return stdout;
     }
 
     /**
@@ -87,7 +108,8 @@ export class SyncGitRepository {
             await this.run(['rev-parse', '--is-inside-work-tree']);
             await this.run(['for-each-ref']);
             return true;
-        } catch {
+        } catch (err: unknown) {
+            rethrowIfAddonUnavailable(err);
             return false;
         }
     }
@@ -103,7 +125,8 @@ export class SyncGitRepository {
                 await this.run(['remote', 'set-url', 'origin', gitRemote]);
                 this.logger.info('Updated sync repo remote URL');
             }
-        } catch {
+        } catch (err: unknown) {
+            rethrowIfAddonUnavailable(err);
             await this.run(['remote', 'add', 'origin', gitRemote]);
         }
     }
@@ -132,7 +155,8 @@ export class SyncGitRepository {
         try {
             const line = await this.run(['ls-remote', 'origin', 'HEAD']);
             return !!line.split(/\s+/)[0]?.trim();
-        } catch {
+        } catch (err: unknown) {
+            rethrowIfAddonUnavailable(err);
             return false;
         }
     }
@@ -146,7 +170,8 @@ export class SyncGitRepository {
         let remoteLine: string;
         try {
             remoteLine = await this.run(['ls-remote', 'origin', 'HEAD']);
-        } catch {
+        } catch (err: unknown) {
+            rethrowIfAddonUnavailable(err);
             return false; // unreachable — nothing to pull this tick
         }
         const remoteHead = remoteLine.split(/\s+/)[0]?.trim();
@@ -155,7 +180,8 @@ export class SyncGitRepository {
         let localHead: string;
         try {
             localHead = await this.run(['rev-parse', 'HEAD']);
-        } catch {
+        } catch (err: unknown) {
+            rethrowIfAddonUnavailable(err);
             return true; // no local commits yet but remote has some → pull
         }
         return remoteHead !== localHead;
@@ -178,7 +204,8 @@ export class SyncGitRepository {
         try {
             await this.run(['diff', '--cached', '--quiet']);
             return false; // nothing staged
-        } catch {
+        } catch (err: unknown) {
+            rethrowIfAddonUnavailable(err);
             return true; // changes staged
         }
     }
@@ -200,27 +227,46 @@ export class SyncGitRepository {
             // Check if remote has any commits first
             try {
                 await this.run(['ls-remote', '--heads', 'origin']);
-            } catch {
+            } catch (err: unknown) {
+                rethrowIfAddonUnavailable(err);
                 return false; // Can't reach remote or empty
             }
 
             await this.run(['pull', '--no-rebase', 'origin', 'HEAD']);
             return false;
         } catch (err: unknown) {
-            // git writes merge-conflict notices to stdout, which Node keeps on the
-            // exec error's `.stdout` rather than folding into `.message` — so read
-            // the full output, or every steady-state conflict reads as a hard error
-            // and never reaches the resolver.
-            const message = gitErrorText(err);
-            if (message.includes('CONFLICT') || message.includes('Automatic merge failed')) {
+            rethrowIfAddonUnavailable(err);
+            // A conflicted merge is read off the index, not off git's words.
+            // git announces one ("CONFLICT …", "Automatic merge failed …") on
+            // *stdout*, which no runner keeps once the command has failed — and
+            // those are English strings a localised git would not print anyway.
+            // Unmerged index entries are the state the announcement describes,
+            // and every conflicting merge leaves them.
+            if (await this.hasUnmergedPaths()) {
                 this.logger.warn('Merge conflicts detected');
                 return true;
             }
             // If pull fails for non-conflict reasons (e.g. no upstream), that's OK
+            const message = gitErrorText(err);
             if (message.includes('couldn\'t find remote ref') || message.includes('no tracking information')) {
                 return false;
             }
             throw err;
+        }
+    }
+
+    /**
+     * Whether the index holds unmerged entries — the state a conflicted merge
+     * leaves behind. Answers false when git cannot be asked at all, so a broken
+     * repository surfaces as the pull failure it already is rather than as a
+     * conflict nobody can resolve.
+     */
+    private async hasUnmergedPaths(): Promise<boolean> {
+        try {
+            return (await this.run(['ls-files', '--unmerged'])).length > 0;
+        } catch (err: unknown) {
+            rethrowIfAddonUnavailable(err);
+            return false;
         }
     }
 
@@ -260,15 +306,30 @@ export class SyncGitRepository {
      * Read a commit's full tree into memory, keyed the same way as a disk scan.
      * Names in `ignore` (e.g. a stray `.lock` a remote was pushed with) are never
      * note content, so they never enter the returned map.
+     *
+     * The blobs are read out of the object database rather than off `git show`'s
+     * stdout. Stdout is text that loses one trailing line ending crossing the
+     * runner, which a note cannot afford, and it is decoded as UTF-8, which an
+     * attached image cannot survive. It is also what this method used to cost:
+     * one child process per note, where the object read is a lookup.
      */
     async readTree(ref: string, ignore: ReadonlySet<string>): Promise<Map<string, Buffer>> {
         // -z keeps unusual filenames intact; git would otherwise quote them.
         const listing = await this.run(['ls-tree', '-r', '--name-only', '-z', ref]);
+        const addon = loadNativeGit(); // once for the tree, not once per note
         const tree = new Map<string, Buffer>();
         for (const filePath of listing.split('\0')) {
             if (!filePath) continue;
             if (filePath.split('/').some(seg => ignore.has(seg))) continue;
-            tree.set(filePath, await this.runBuffer(['show', `${ref}:${filePath}`]));
+            const bytes = await addon.gitFileBytesAtCommit(this.dir, ref, filePath);
+            if (bytes === null) {
+                // `ls-tree -r --name-only` listed this path a moment ago, so the
+                // only way here is an entry that is not a blob — a gitlink.
+                // Failing loudly beats returning nothing: the caller is
+                // reconcile, and a note it cannot see reads as a deletion.
+                throw new Error(`git show ${ref}:${filePath} failed: not a file`);
+            }
+            tree.set(filePath, bytes);
         }
         return tree;
     }
@@ -282,7 +343,8 @@ export class SyncGitRepository {
         try {
             const out = await this.run(['ls-remote', '--symref', 'origin', 'HEAD']);
             return out.match(/^ref:\s+refs\/heads\/(\S+)\s+HEAD$/m)?.[1] ?? null;
-        } catch {
+        } catch (err: unknown) {
+            rethrowIfAddonUnavailable(err);
             return null; // fall back to the branch we're already on
         }
     }

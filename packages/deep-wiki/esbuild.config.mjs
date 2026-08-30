@@ -8,9 +8,17 @@
 
 import * as esbuild from 'esbuild';
 
-/** Packages that are on npm and should NOT be bundled */
+/**
+ * Packages that are on npm and should NOT be bundled.
+ *
+ * `@plusplusoneplusplus/coc-native` is here for a stronger reason than the
+ * rest: it is an N-API addon that resolves its `.node` binary relative to its
+ * own directory, so inlining its loader into this bundle would send it looking
+ * for the binary in deep-wiki's `dist/`.
+ */
 const EXTERNAL_DEPS = [
     '@github/copilot-sdk',
+    '@plusplusoneplusplus/coc-native',
     '@plusplusoneplusplus/forge',
     'azure-devops-node-api',
     'commander',

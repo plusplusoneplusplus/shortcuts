@@ -6,14 +6,25 @@
  *
  * - Skips if already a git repo (`.git/` exists)
  * - Skips `.gitignore` creation if file already exists
- * - Gracefully handles missing `git` binary (logs warning, does not fail)
+ * - Gracefully handles a git binary it cannot run (logs warning, does not fail)
+ *
+ * `git init` runs in the native addon, on a libuv worker. It was the last
+ * synchronous git spawn in the repository, and it blocked the event loop of a
+ * CLI that had just finished writing a wiki. `initGitRepo` and
+ * `initWikiGitRepo` are async for it; `writeGitignore` is `fs` and is not.
+ *
+ * A `NativeAddonLoadError` is deliberately *not* rethrown here. Every failure
+ * in this module already reaches the user as a warning carrying the message,
+ * and the addon's message is the sentence that names the rebuild — so the
+ * broken install is reported rather than swallowed, which is the reason the
+ * rest of the move rethrows.
  *
  * Cross-platform compatible (Linux/Mac/Windows).
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { execSync } from 'child_process';
+import { execGitAsync } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
 // Constants
@@ -50,14 +61,14 @@ node_modules/
  * @param dir - Absolute or relative path to the wiki output directory
  * @param log - Optional logging callbacks (defaults to stderr)
  */
-export function initWikiGitRepo(
+export async function initWikiGitRepo(
     dir: string,
     log?: { info?: (msg: string) => void; warn?: (msg: string) => void }
-): void {
+): Promise<void> {
     const info = log?.info ?? ((msg: string) => process.stderr.write(`${msg}\n`));
     const warn = log?.warn ?? ((msg: string) => process.stderr.write(`⚠ ${msg}\n`));
 
-    initGitRepo(dir, { info, warn });
+    await initGitRepo(dir, { info, warn });
     writeGitignore(dir, { info, warn });
 }
 
@@ -68,10 +79,10 @@ export function initWikiGitRepo(
  * @param log - Logging callbacks
  * @returns `true` if the repo was initialized (or already existed), `false` on error
  */
-export function initGitRepo(
+export async function initGitRepo(
     dir: string,
     log?: { info?: (msg: string) => void; warn?: (msg: string) => void }
-): boolean {
+): Promise<boolean> {
     const resolved = path.resolve(dir);
     const gitDir = path.join(resolved, '.git');
 
@@ -82,11 +93,10 @@ export function initGitRepo(
     }
 
     try {
-        execSync('git init', {
-            cwd: resolved,
-            stdio: 'pipe',
-            timeout: 10_000,
-        });
+        // `-C <resolved> init` is what `cwd: resolved` was: git changes into the
+        // directory and initializes it. A directory that does not exist fails
+        // the `-C` instead of the spawn, and still fails.
+        await execGitAsync(['init'], resolved, { timeout: 10_000 });
         log?.info?.(`Initialized Git repository in ${resolved}`);
         return true;
     } catch (error: unknown) {

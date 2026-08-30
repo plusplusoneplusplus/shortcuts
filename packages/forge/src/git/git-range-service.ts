@@ -1,19 +1,28 @@
 /**
- * Pure Node.js GitRangeService.
+ * GitRangeService — the commit range between a feature branch and its base.
  *
- * Provides commit range calculations:
- * - Detecting the default remote branch (origin/main or origin/master)
- * - Counting commits ahead of the base branch
- * - Getting changed files in a commit range
- * - Calculating diff statistics
+ * Ref work runs in the native addon: finding the default branch, reading the
+ * upstream, the merge base and the ahead count are `gix` reads now, so the
+ * seven child processes `detectCommitRange` used to spawn for one answer are
+ * down to the three `diff` runs Rust still shells out for. The diff parsers
+ * live in Rust too, so the WSL path — which has to run git through `wsl.exe`
+ * from here — hands its text to the same parser rather than to a second one.
  *
- * Extracted from `src/shortcuts/git/git-range-service.ts`.
+ * Every method that used to be synchronous is now async. The bodies changed;
+ * what they return did not, down to the `localeCompare` ordering of the file
+ * list, which stays in Node because it is not a byte comparison.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
+import type {
+    NativeGitAddon,
+    NativeGitRangeDefaultBranch,
+    NativeGitRangeFile,
+} from '@plusplusoneplusplus/coc-native';
 import { getLogger, LogCategory } from '../logger';
-import { execGit } from './exec';
+import { resolveWorkspaceExecutionContext } from '../utils/workspace-execution';
 import { execGitAsync } from './exec';
 import { GitChangeStatus, GitCommitRange, GitCommitRangeFile, GitRangeBaseMode, GitRangeConfig } from './types';
 
@@ -56,11 +65,20 @@ export class GitRangeService {
     }
 
     /**
-     * Execute a git command via the shared exec helper,
-     * preserving the original behaviour of returning partial stdout on failure.
+     * The native git capability, and whether this repository has to take the
+     * WSL path to reach git.
+     *
+     * Deliberately called outside the try/catch in every method below: a
+     * missing or capability-stale binary is a `NativeAddonLoadError` naming the
+     * rebuild, and catching it as "no default branch" would hide it behind an
+     * empty range view. The addon is loaded on the WSL path too — the commands
+     * run through `wsl.exe`, but the parsers are still Rust's.
      */
-    private execGitCommand(args: string[], repoRoot: string): string {
-        return execGit(args, repoRoot);
+    private native(repoRoot: string): { addon: NativeGitAddon; wsl: boolean } {
+        return {
+            addon: loadNativeGit(),
+            wsl: resolveWorkspaceExecutionContext(repoRoot).kind === 'wsl',
+        };
     }
 
     /**
@@ -78,10 +96,48 @@ export class GitRangeService {
     }
 
     /**
+     * Ask the five default-branch questions through `wsl.exe`.
+     *
+     * The WSL twin of the addon's `gitRangeDefaultBranch`, in the same order
+     * and reporting the same `fromRemote` flag, so both paths feed the cache
+     * below identically. Rust's tests pin the order the two share.
+     */
+    private async defaultBranchViaCli(repoRoot: string): Promise<NativeGitRangeDefaultBranch | null> {
+        for (const candidate of ['origin/main', 'origin/master']) {
+            try {
+                await execGitAsync(['rev-parse', '--verify', candidate], repoRoot);
+                return { name: candidate, fromRemote: true };
+            } catch {
+                // This remote branch does not exist.
+            }
+        }
+
+        try {
+            const remoteHead = await execGitAsync(['symbolic-ref', 'refs/remotes/origin/HEAD'], repoRoot);
+            if (remoteHead) {
+                return { name: remoteHead.replace('refs/remotes/', ''), fromRemote: true };
+            }
+        } catch {
+            // No remote HEAD.
+        }
+
+        for (const candidate of ['main', 'master']) {
+            try {
+                await execGitAsync(['rev-parse', '--verify', candidate], repoRoot);
+                return { name: candidate, fromRemote: false };
+            } catch {
+                // This local branch does not exist.
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Detect the default remote branch (origin/main or origin/master).
      * @returns Default remote branch name or null if not found
      */
-    getDefaultRemoteBranch(repoRoot: string): string | null {
+    async getDefaultRemoteBranch(repoRoot: string): Promise<string | null> {
         if (!fs.existsSync(repoRoot)) {
             return null;
         }
@@ -91,53 +147,22 @@ export class GitRangeService {
             return cached.branch;
         }
 
+        const { addon, wsl } = this.native(repoRoot);
         try {
-            // Try origin/main first
-            try {
-                this.execGitCommand(['rev-parse', '--verify', 'origin/main'], repoRoot);
-                this.defaultBranchCache.set(repoRoot, { branch: 'origin/main', timestamp: Date.now() });
-                return 'origin/main';
-            } catch {
-                // origin/main doesn't exist
+            const found = wsl
+                ? await this.defaultBranchViaCli(repoRoot)
+                : await addon.gitRangeDefaultBranch(repoRoot);
+            if (!found) {
+                return null;
             }
-
-            // Try origin/master
-            try {
-                this.execGitCommand(['rev-parse', '--verify', 'origin/master'], repoRoot);
-                this.defaultBranchCache.set(repoRoot, { branch: 'origin/master', timestamp: Date.now() });
-                return 'origin/master';
-            } catch {
-                // origin/master doesn't exist
+            // Only the remote-derived answers are memoised, which is the split
+            // this cache has always had — a local `main` fallback means the
+            // remote refs are not there yet, and caching it would keep the
+            // range view pointing at the wrong base for a minute after a fetch.
+            if (found.fromRemote) {
+                this.defaultBranchCache.set(repoRoot, { branch: found.name, timestamp: Date.now() });
             }
-
-            // Try to get the default branch from remote HEAD
-            try {
-                const remoteHead = this.execGitCommand(['symbolic-ref', 'refs/remotes/origin/HEAD'], repoRoot);
-                if (remoteHead) {
-                    const branch = remoteHead.replace('refs/remotes/', '');
-                    this.defaultBranchCache.set(repoRoot, { branch, timestamp: Date.now() });
-                    return branch;
-                }
-            } catch {
-                // No remote HEAD
-            }
-
-            // Fall back to local main/master
-            try {
-                this.execGitCommand(['rev-parse', '--verify', 'main'], repoRoot);
-                return 'main';
-            } catch {
-                // main doesn't exist
-            }
-
-            try {
-                this.execGitCommand(['rev-parse', '--verify', 'master'], repoRoot);
-                return 'master';
-            } catch {
-                // master doesn't exist
-            }
-
-            return null;
+            return found.name;
         } catch (error) {
             getLogger().error(LogCategory.GIT, 'Failed to detect default branch', error instanceof Error ? error : undefined);
             return null;
@@ -148,16 +173,20 @@ export class GitRangeService {
      * Resolve the current branch's upstream (tracking) ref, e.g. `origin/my-feature`.
      *
      * Deliberately uncached: the upstream changes whenever the branch changes, and
-     * this is a single cheap `rev-parse`.
+     * this is a single cheap ref read.
      *
      * @returns The upstream ref, or null when the branch has no upstream.
      */
-    getUpstreamBranch(repoRoot: string): string | null {
+    async getUpstreamBranch(repoRoot: string): Promise<string | null> {
         if (!fs.existsSync(repoRoot)) {
             return null;
         }
+        const { addon, wsl } = this.native(repoRoot);
         try {
-            const upstream = this.execGitCommand(
+            if (!wsl) {
+                return await addon.gitRangeUpstreamBranch(repoRoot);
+            }
+            const upstream = await execGitAsync(
                 ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'],
                 repoRoot
             );
@@ -171,9 +200,13 @@ export class GitRangeService {
     /**
      * Get the merge base between two refs.
      */
-    getMergeBase(repoRoot: string, ref1: string, ref2: string): string | null {
+    async getMergeBase(repoRoot: string, ref1: string, ref2: string): Promise<string | null> {
+        const { addon, wsl } = this.native(repoRoot);
         try {
-            return this.execGitCommand(['merge-base', ref1, ref2], repoRoot);
+            if (!wsl) {
+                return await addon.gitRangeMergeBase(repoRoot, ref1, ref2);
+            }
+            return (await execGitAsync(['merge-base', ref1, ref2], repoRoot)) || null;
         } catch (error) {
             getLogger().error(LogCategory.GIT, `Failed to get merge base for ${ref1}..${ref2}`, error instanceof Error ? error : undefined);
             return null;
@@ -183,9 +216,13 @@ export class GitRangeService {
     /**
      * Count commits ahead of the base ref.
      */
-    countCommitsAhead(repoRoot: string, baseRef: string, headRef: string): number {
+    async countCommitsAhead(repoRoot: string, baseRef: string, headRef: string): Promise<number> {
+        const { addon, wsl } = this.native(repoRoot);
         try {
-            const count = this.execGitCommand(['rev-list', '--count', `${baseRef}..${headRef}`], repoRoot);
+            if (!wsl) {
+                return await addon.gitRangeCountAhead(repoRoot, baseRef, headRef);
+            }
+            const count = await execGitAsync(['rev-list', '--count', `${baseRef}..${headRef}`], repoRoot);
             return parseInt(count, 10) || 0;
         } catch (error) {
             getLogger().error(LogCategory.GIT, `Failed to count commits ahead for ${baseRef}..${headRef}`, error instanceof Error ? error : undefined);
@@ -194,77 +231,47 @@ export class GitRangeService {
     }
 
     /**
+     * Run the two `diff` commands through `wsl.exe` and parse them in Rust.
+     *
+     * The WSL twin of the addon's `gitRangeChangedFiles`: the commands run
+     * here, but the parser is still the single one in the codebase, so the two
+     * paths cannot drift.
+     */
+    private async changedFilesViaCli(
+        addon: NativeGitAddon,
+        repoRoot: string,
+        baseRef: string,
+        headRef: string
+    ): Promise<NativeGitRangeFile[]> {
+        const range = `${baseRef}...${headRef}`;
+        const numstat = await execGitAsync(['diff', '--numstat', range], repoRoot);
+        const nameStatus = await execGitAsync(['diff', '--name-status', '-M', '-C', range], repoRoot);
+        return addon.parseGitRangeChangedFiles(numstat, nameStatus);
+    }
+
+    /**
      * Get files changed in a commit range.
      */
-    getChangedFiles(repoRoot: string, baseRef: string, headRef: string): GitCommitRangeFile[] {
+    async getChangedFiles(repoRoot: string, baseRef: string, headRef: string): Promise<GitCommitRangeFile[]> {
+        const { addon, wsl } = this.native(repoRoot);
         try {
-            const numstatOutput = this.execGitCommand(
-                ['diff', '--numstat', `${baseRef}...${headRef}`],
-                repoRoot
-            );
-            const nameStatusOutput = this.execGitCommand(
-                ['diff', '--name-status', '-M', '-C', `${baseRef}...${headRef}`],
-                repoRoot
-            );
+            const files = wsl
+                ? await this.changedFilesViaCli(addon, repoRoot, baseRef, headRef)
+                : await addon.gitRangeChangedFiles(repoRoot, baseRef, headRef);
 
-            if (!nameStatusOutput) {
-                return [];
-            }
-
-            // Parse name-status output to get status and paths
-            const statusMap = new Map<string, { status: GitChangeStatus; oldPath?: string }>();
-            const nameStatusLines = nameStatusOutput.split('\n').filter(line => line.trim());
-
-            for (const line of nameStatusLines) {
-                const parts = line.split('\t');
-                if (parts.length < 2) continue;
-
-                const statusCode = parts[0];
-                const status = this.parseStatusCode(statusCode);
-
-                if (statusCode.startsWith('R') || statusCode.startsWith('C')) {
-                    if (parts.length >= 3) {
-                        statusMap.set(parts[2], { status, oldPath: parts[1] });
-                    }
-                } else {
-                    statusMap.set(parts[1], { status });
-                }
-            }
-
-            // Parse numstat output to get additions/deletions
-            const files: GitCommitRangeFile[] = [];
-            const numstatLines = numstatOutput.split('\n').filter(line => line.trim());
-
-            for (const line of numstatLines) {
-                const parts = line.split('\t');
-                if (parts.length < 3) continue;
-
-                const additions = parts[0] === '-' ? 0 : parseInt(parts[0], 10) || 0;
-                const deletions = parts[1] === '-' ? 0 : parseInt(parts[1], 10) || 0;
-
-                // Handle renames (format: old => new or {old => new})
-                let filePath = parts[2];
-                if (filePath.includes(' => ')) {
-                    const match = filePath.match(/(?:{[^}]*? => ([^}]+)}|.* => (.+))/);
-                    if (match) {
-                        filePath = match[1] || match[2];
-                    }
-                }
-
-                const statusInfo = statusMap.get(filePath) || { status: 'modified' as GitChangeStatus };
-
-                files.push({
-                    path: filePath,
-                    status: statusInfo.status,
-                    additions,
-                    deletions,
-                    oldPath: statusInfo.oldPath,
-                    repositoryRoot: repoRoot
-                });
-            }
-
-            files.sort((a, b) => a.path.localeCompare(b.path));
-            return files;
+            return files
+                .map(file => ({
+                    path: file.path,
+                    status: file.status as GitChangeStatus,
+                    additions: file.additions,
+                    deletions: file.deletions,
+                    oldPath: file.oldPath,
+                    repositoryRoot: repoRoot,
+                }))
+                // Sorting stays here: `localeCompare` puts `docs/x.md` before
+                // `README.md`, where the byte order Rust would sort by does the
+                // opposite. This is the order the range view already shows.
+                .sort((a, b) => a.path.localeCompare(b.path));
         } catch (error) {
             getLogger().error(LogCategory.GIT, `Failed to get changed files for ${baseRef}...${headRef}`, error instanceof Error ? error : undefined);
             return [];
@@ -274,43 +281,19 @@ export class GitRangeService {
     /**
      * Get diff statistics for a commit range.
      */
-    getDiffStats(repoRoot: string, baseRef: string, headRef: string): { additions: number; deletions: number } {
+    async getDiffStats(repoRoot: string, baseRef: string, headRef: string): Promise<{ additions: number; deletions: number }> {
+        const { addon, wsl } = this.native(repoRoot);
         try {
-            const output = this.execGitCommand(
-                ['diff', '--shortstat', `${baseRef}...${headRef}`],
-                repoRoot
-            );
-
-            if (!output) {
-                return { additions: 0, deletions: 0 };
+            if (!wsl) {
+                const stats = await addon.gitRangeDiffStats(repoRoot, baseRef, headRef);
+                return { additions: stats.additions, deletions: stats.deletions };
             }
-
-            const insertionsMatch = output.match(/(\d+) insertion/);
-            const deletionsMatch = output.match(/(\d+) deletion/);
-
-            return {
-                additions: insertionsMatch ? parseInt(insertionsMatch[1], 10) : 0,
-                deletions: deletionsMatch ? parseInt(deletionsMatch[1], 10) : 0
-            };
+            const output = await execGitAsync(['diff', '--shortstat', `${baseRef}...${headRef}`], repoRoot);
+            const stats = await addon.parseGitDiffShortstat(output);
+            return { additions: stats.additions, deletions: stats.deletions };
         } catch (error) {
             getLogger().error(LogCategory.GIT, `Failed to get diff stats for ${baseRef}...${headRef}`, error instanceof Error ? error : undefined);
             return { additions: 0, deletions: 0 };
-        }
-    }
-
-    /**
-     * Parse git status code to GitChangeStatus.
-     */
-    private parseStatusCode(code: string): GitChangeStatus {
-        const firstChar = code.charAt(0).toUpperCase();
-        switch (firstChar) {
-            case 'M': return 'modified';
-            case 'A': return 'added';
-            case 'D': return 'deleted';
-            case 'R': return 'renamed';
-            case 'C': return 'copied';
-            case 'U': return 'conflict';
-            default: return 'modified';
         }
     }
 
@@ -320,22 +303,44 @@ export class GitRangeService {
      * `upstream` silently degrades to the default branch when the current branch
      * has no upstream — the caller learns about it from `baseModeFallback`.
      */
-    resolveBaseRef(
+    async resolveBaseRef(
         repoRoot: string,
         baseMode: GitRangeBaseMode = 'default-branch'
-    ): { baseRef: string | null; baseMode: GitRangeBaseMode; baseModeFallback?: true } {
+    ): Promise<{ baseRef: string | null; baseMode: GitRangeBaseMode; baseModeFallback?: true }> {
+        const { addon, wsl } = this.native(repoRoot);
+        if (!wsl) {
+            try {
+                const resolved = await addon.gitRangeResolveBaseRef(repoRoot, baseMode);
+                return {
+                    baseRef: resolved.baseRef ?? null,
+                    baseMode: resolved.baseMode as GitRangeBaseMode,
+                    ...(resolved.baseModeFallback && { baseModeFallback: true as const }),
+                };
+            } catch (error) {
+                getLogger().error(LogCategory.GIT, 'Failed to resolve base ref', error instanceof Error ? error : undefined);
+                // Nothing resolved, but the mode still has to be reported the
+                // way it would have been: an `upstream` request that produced
+                // no upstream is a fallback, whether it failed or was absent.
+                return baseMode === 'upstream'
+                    ? { baseRef: null, baseMode: 'default-branch', baseModeFallback: true }
+                    : { baseRef: null, baseMode: 'default-branch' };
+            }
+        }
+
+        // WSL: the same two questions, asked through `wsl.exe`. Both callees
+        // already swallow their own failures, so this cannot throw.
         if (baseMode === 'upstream') {
-            const upstream = this.getUpstreamBranch(repoRoot);
+            const upstream = await this.getUpstreamBranch(repoRoot);
             if (upstream) {
                 return { baseRef: upstream, baseMode: 'upstream' };
             }
             return {
-                baseRef: this.getDefaultRemoteBranch(repoRoot),
+                baseRef: await this.getDefaultRemoteBranch(repoRoot),
                 baseMode: 'default-branch',
                 baseModeFallback: true,
             };
         }
-        return { baseRef: this.getDefaultRemoteBranch(repoRoot), baseMode: 'default-branch' };
+        return { baseRef: await this.getDefaultRemoteBranch(repoRoot), baseMode: 'default-branch' };
     }
 
     /**
@@ -351,21 +356,26 @@ export class GitRangeService {
         if (!fs.existsSync(repoRoot)) {
             return null;
         }
+        // Load before the try. Everything below turns a git failure into a null
+        // range, which is the right answer for a repository with no base branch
+        // and the wrong one for a missing addon — that has to arrive with its
+        // rebuild instruction rather than as "no range here".
+        this.native(repoRoot);
         try {
             const currentBranch = await this.getCurrentBranch(repoRoot);
 
-            const resolved = this.resolveBaseRef(repoRoot, options?.baseMode);
+            const resolved = await this.resolveBaseRef(repoRoot, options?.baseMode);
             const baseRef = resolved.baseRef;
             if (!baseRef) {
                 return null;
             }
 
-            const mergeBase = this.getMergeBase(repoRoot, 'HEAD', baseRef);
+            const mergeBase = await this.getMergeBase(repoRoot, 'HEAD', baseRef);
             if (!mergeBase) {
                 return null;
             }
 
-            const commitCount = this.countCommitsAhead(repoRoot, baseRef, 'HEAD');
+            const commitCount = await this.countCommitsAhead(repoRoot, baseRef, 'HEAD');
 
             // If no commits ahead, don't show the range — except in upstream mode,
             // where "nothing unpushed" is a valid, informative result and hiding
@@ -374,13 +384,13 @@ export class GitRangeService {
                 return null;
             }
 
-            let files = this.getChangedFiles(repoRoot, baseRef, 'HEAD');
+            let files = await this.getChangedFiles(repoRoot, baseRef, 'HEAD');
 
             if (files.length > this.config.maxFiles) {
                 files = files.slice(0, this.config.maxFiles);
             }
 
-            const { additions, deletions } = this.getDiffStats(repoRoot, baseRef, 'HEAD');
+            const { additions, deletions } = await this.getDiffStats(repoRoot, baseRef, 'HEAD');
 
             const repoName = path.basename(repoRoot);
 
@@ -407,10 +417,10 @@ export class GitRangeService {
     /**
      * Get the diff content for a specific file in a commit range.
      */
-    getFileDiff(repoRoot: string, baseRef: string, headRef: string, filePath: string): string {
+    async getFileDiff(repoRoot: string, baseRef: string, headRef: string, filePath: string): Promise<string> {
         try {
             const gitPath = filePath.replace(/\\/g, '/');
-            return this.execGitCommand(
+            return await execGitAsync(
                 ['diff', '-U99999', `${baseRef}...${headRef}`, '--', gitPath],
                 repoRoot
             );
@@ -423,10 +433,10 @@ export class GitRangeService {
     /**
      * Get file content at a specific ref.
      */
-    getFileAtRef(repoRoot: string, ref: string, filePath: string): string {
+    async getFileAtRef(repoRoot: string, ref: string, filePath: string): Promise<string> {
         try {
             const gitPath = filePath.replace(/\\/g, '/');
-            return this.execGitCommand(['show', `${ref}:${gitPath}`], repoRoot);
+            return await execGitAsync(['show', `${ref}:${gitPath}`], repoRoot);
         } catch {
             return '';
         }
@@ -435,9 +445,9 @@ export class GitRangeService {
     /**
      * Get the full diff for a commit range.
      */
-    getRangeDiff(repoRoot: string, baseRef: string, headRef: string): string {
+    async getRangeDiff(repoRoot: string, baseRef: string, headRef: string): Promise<string> {
         try {
-            return this.execGitCommand(['diff', `${baseRef}...${headRef}`], repoRoot);
+            return await execGitAsync(['diff', `${baseRef}...${headRef}`], repoRoot);
         } catch (error) {
             getLogger().error(LogCategory.GIT, `Failed to get range diff for ${baseRef}...${headRef}`, error instanceof Error ? error : undefined);
             return '';

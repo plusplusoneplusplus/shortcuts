@@ -30,6 +30,7 @@
     "@octokit/rest": "^22.0.1",
     "@plusplusoneplusplus/coc-agent-sdk": "*",
     "@plusplusoneplusplus/coc-memory": "^0.1.0",
+    "@plusplusoneplusplus/coc-native": "^0.1.0",
     "@plusplusoneplusplus/coc-workflow": "^0.1.0",
     "@plusplusoneplusplus/forge": "^1.2.0",
     "azure-devops-node-api": "^14.1.0",
