@@ -16,6 +16,7 @@ The `*Status()` accessors never throw, because `/api/health` reports them and ha
 - `src/native-bindings.ts` — **generated, do not edit.** The `#[napi]` type surface as TypeScript, produced by `npm run build:native`.
 - `src/<capability>.ts` — one module per capability (`file-index.ts`, `content-search.ts`, `notes-index.ts`): aliases of the generated types, a type guard over the loaded module, `loadNative<X>()` and `nativeXStatus()`.
 - `scripts/build-native.mjs` — `npm run build:native`. Drives `@napi-rs/cli` to compile the addon *and* emit the type surface, then rewrites the header. The CLI is used for the build only; the loader still resolves binaries from disk rather than through napi-rs's per-platform npm packages.
+- `scripts/ensure-native.mjs` — `npm run ensure:native`. A stale check in front of `build-native.mjs`: rebuilds only when the `.node` is missing or older than a file under `rust/`, and otherwise exits 0 having run nothing. The serve loops (`scripts/coc-serve-loop.sh` / `.ps1`) call it before `coc:link`, because nothing else in the local build path compiles the addon. When it cannot build — no cargo, or a failing compile — it keeps a daemon up on the existing binary and only fails the caller when there is no binary at all. It runs `build-native.mjs`, which rewrites the committed `src/native-bindings.ts`, so a serve loop can leave that file modified when the `#[napi]` surface has changed.
 
 Adding a capability means a `rust/core/src/<name>/` module, a `rust/napi/src/<name>.rs` registered in `rust/napi/src/lib.rs`, and a `src/<name>.ts` re-exported from `src/index.ts`. The loader does not change.
 
@@ -249,7 +250,8 @@ Recorded on a 2-core arm64 box, 25 iterations, medians. "spawns" is how many git
 ## Build / test
 
 - `npm run build -w packages/coc-native` — tsc only. Must run before `coc` compiles, which resolves workspace deps from built `dist`.
-- `npm run build:native -w packages/coc-native` — compiles the addon and regenerates `src/native-bindings.ts`. Needs a Rust toolchain; nothing else in the repo does.
+- `npm run build:native -w packages/coc-native` — compiles the addon and regenerates `src/native-bindings.ts`. Needs a Rust toolchain; only this and `ensure:native` do.
+- `npm run ensure:native` (root) / `-w packages/coc-native` — the same build, but only when the addon is behind `rust/`. Free on a fresh tree, so it is safe on every serve-loop restart. Deliberately **not** wired into `build`, which must stay plain `tsc`.
 - `npm run bench:git -w packages/coc-native` — the git benchmark above. Needs a built binary and a built `dist`, not a Rust toolchain; takes ~23 s at the default 20 iterations (the table above is 25). Add `-- --check` to have it fail on a regression.
 - `cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core` — the whole logic layer. The `git_exec`, `git_status`, `git_log`, `git_commit`, `git_range`, `git_branch`, `git_remote`, `git_config` and `git_diff` suites drive a real `git`, so it has to be on PATH; `git_log`, `git_commit`, `git_diff`, parts of `git_range` and parts of `git_branch` additionally compare their output against the real CLI.
 - `npm run test:run -w packages/coc-native` — loader and capability-resolution tests (no binary needed), plus the N-API boundary suites (marshalling, async build/refresh/search contracts, snapshot consistency, error propagation, concurrency, lifetime) and parity. The binary-backed suites **fail** when nothing is built — there is no skip path — so a botched native build cannot pass for a green run.

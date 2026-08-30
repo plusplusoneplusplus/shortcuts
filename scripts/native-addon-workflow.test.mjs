@@ -112,3 +112,35 @@ test('a containerised job trusts the workspace before running git on it', () => 
     assert.notEqual(trust, -1, 'coc-native must mark the workspace safe.directory');
     assert.ok(trust < usesGit, 'the workspace must be trusted before git reads it');
 });
+
+// ── The serve loop's addon freshness check ────────────────────────────────────
+
+// Nothing in the local build path compiles the Rust addon: `coc:link` never
+// mentions it, and coc-native's `build` is plain tsc. Without ensure:native the
+// daemon restarts onto whatever `.node` happens to be on disk — stale, or on a
+// fresh clone absent, which the loader treats as fatal.
+test('both serve loops refresh the addon before building the packages', () => {
+    for (const loop of ['coc-serve-loop.sh', 'coc-serve-loop.ps1']) {
+        const script = readFileSync(new URL(`./${loop}`, import.meta.url), 'utf8');
+        const ensure = script.indexOf('npm run ensure:native');
+        const link = script.indexOf('npm run coc:link');
+        assert.notEqual(ensure, -1, `${loop} must run npm run ensure:native`);
+        assert.notEqual(link, -1, `${loop} must run npm run coc:link`);
+        assert.ok(ensure < link, `${loop} must refresh the addon before coc:link`);
+    }
+});
+
+test('the root package exposes the ensure:native passthrough the loops call', () => {
+    const root = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    assert.equal(root.scripts['ensure:native'], 'npm run ensure:native -w packages/coc-native');
+});
+
+// The invariant `build-native.mjs` documents in its header: the TypeScript
+// build compiles the committed `native-bindings.ts` and must never need cargo.
+// Hooking the addon into `build` would put a Rust toolchain on the critical
+// path of every `npm run build:packages`.
+test('the coc-native TypeScript build stays free of the Rust toolchain', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../packages/coc-native/package.json', import.meta.url), 'utf8'));
+    assert.equal(pkg.scripts.build, 'tsc');
+    assert.equal(pkg.scripts['ensure:native'], 'node scripts/ensure-native.mjs');
+});

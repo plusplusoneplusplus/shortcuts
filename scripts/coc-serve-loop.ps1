@@ -300,6 +300,16 @@ function Build-Coc {
             Write-Log "npm install failed with exit code $LASTEXITCODE" -Color Red
             return $false
         }
+        # The Rust addon is not part of `coc:link` (coc-native's `build` is plain
+        # tsc on purpose). Without this the loop would restart onto a stale — or on
+        # a fresh clone, absent — `.node`, and the server dies on first native use.
+        # Exits 0 quietly when the addon is already newer than rust/.
+        Write-Log '=== Ensuring native addon is up to date ===' -Color Cyan
+        npm run ensure:native 2>&1 | ForEach-Object { Write-Host $_ }
+        if ($LASTEXITCODE -ne 0) {
+            Write-Log "Native addon build failed with exit code $LASTEXITCODE" -Color Red
+            return $false
+        }
         Write-Log '=== Building coc packages ===' -Color Cyan
         npm run coc:link 2>&1 | ForEach-Object { Write-Host $_ }
         if ($LASTEXITCODE -ne 0) {
