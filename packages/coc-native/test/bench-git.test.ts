@@ -290,7 +290,17 @@ describe('against a real repository', () => {
         const posix = legacyBranchPage(repo, 5, false);
         const windows = legacyBranchPage(repo, 5, true);
         expect(posix.branches).toHaveLength(5);
-        expect(windows.branches).toEqual(posix.branches);
+        // `lastCommitDate` is git's `%(committerdate:relative)`, re-evaluated on
+        // each shell-out, so the two calls straddling a second boundary read
+        // "0 seconds ago" and "1 second ago" off the same commit. Compare the
+        // stable fields and assert the date is populated separately.
+        type Branch = { name: string; isCurrent: boolean; isRemote: boolean; lastCommitSubject: string; lastCommitDate: string };
+        const stable = ({ name, isCurrent, isRemote, lastCommitSubject }: Branch) =>
+            ({ name, isCurrent, isRemote, lastCommitSubject });
+        expect(windows.branches.map(stable)).toEqual(posix.branches.map(stable));
+        for (const branch of [...posix.branches, ...windows.branches] as Branch[]) {
+            expect(branch.lastCommitDate).not.toBe('');
+        }
         expect(windows.totalCount).toBe(posix.totalCount);
         expect(windows.hasMore).toBe(true);
         expect(legacyBranchPage(repo, 500, true).hasMore).toBe(false);
