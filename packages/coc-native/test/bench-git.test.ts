@@ -18,6 +18,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { removeDir } from './helpers';
+
 // @ts-expect-error — a .mjs benchmark script with no type declarations.
 import {
     benchRepo,
@@ -190,7 +192,7 @@ describe('against a real repository', () => {
     });
 
     afterAll(() => {
-        fs.rmSync(dir, { recursive: true, force: true });
+        removeDir(dir);
     });
 
     const run = (root: string, args: string[]) =>
@@ -378,8 +380,11 @@ describe('against a real repository', () => {
         expect(await caseById('remote-url').native(repo, git)).toBe(await caseById('remote-url').legacy(repo));
         // git prints the physical path and reports it with forward slashes;
         // gix reports the path discovery walked. Resolve both before comparing.
-        expect(path.resolve(fs.realpathSync(await caseById('repo-root').native(repo, git))))
-            .toBe(path.resolve(fs.realpathSync(await caseById('repo-root').legacy(repo))));
+        // `realpathSync.native` rather than `realpathSync`: only the native one
+        // expands a Windows 8.3 short name, and the two sides disagree about
+        // whether TMPDIR is `RUNNER~1` or `runneradmin`.
+        expect(path.resolve(fs.realpathSync.native(await caseById('repo-root').native(repo, git))))
+            .toBe(path.resolve(fs.realpathSync.native(await caseById('repo-root').legacy(repo))));
     });
 
     // ── the runner ───────────────────────────────────────────────────────────

@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { loadNativeContentSearch, nativeContentSearchStatus } from '../src/content-search';
 import { NativeAddonLoadError, resetNativeAddonCache } from '../src/loader';
+import { removeDir } from './helpers';
 
 const ENV_KEYS = ['COC_NATIVE', 'COC_NATIVE_PATH'] as const;
 let saved: Record<string, string | undefined>;
@@ -31,7 +32,7 @@ afterEach(() => {
         if (saved[key] === undefined) delete process.env[key];
         else process.env[key] = saved[key];
     }
-    fs.rmSync(dir, { recursive: true, force: true });
+    removeDir(dir);
     resetNativeAddonCache();
 });
 

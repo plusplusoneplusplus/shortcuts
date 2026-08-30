@@ -7,6 +7,8 @@
  * that turns these suites into skips.
  */
 
+import * as fs from 'fs';
+
 import { loadNativeContentSearch } from '../src/content-search';
 import type { NativeContentSearchAddon } from '../src/content-search';
 import { loadNativeFileIndex } from '../src/file-index';
@@ -32,6 +34,19 @@ export const gitAddon: NativeGitAddon = loadNativeGit();
 
 /** The required Notes-index slice of the same compiled addon. */
 export const notesAddon: NativeNotesIndexAddon = loadNativeNotesIndex();
+
+/**
+ * Remove a temp directory, waiting out the handles Windows still holds.
+ *
+ * These suites hand real repositories to git and to the addon, and on Windows a
+ * just-exited child's handle can outlive the call that spawned it — the delete
+ * then fails with EPERM and takes a whole suite's `afterAll` with it. `rm -rf`
+ * on the other two platforms does not need this, and retrying costs them
+ * nothing.
+ */
+export function removeDir(dir: string): void {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+}
 
 /** Deterministic PRNG, so a parity failure reproduces from the seed alone. */
 export function makeRandom(seed: number): () => number {

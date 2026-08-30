@@ -10,7 +10,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { gitAddon } from './helpers';
+import { gitAddon, removeDir } from './helpers';
 
 let repo: string;
 
@@ -31,7 +31,7 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-    if (repo) fs.rmSync(repo, { recursive: true, force: true });
+    if (repo) removeDir(repo);
 });
 
 describe('execGit marshalling', () => {
@@ -82,7 +82,7 @@ describe('execGit error propagation', () => {
         try {
             await expect(gitAddon.execGit(['status'], empty)).rejects.toThrow(/^git status failed: /);
         } finally {
-            fs.rmSync(empty, { recursive: true, force: true });
+            removeDir(empty);
         }
     });
 
@@ -201,14 +201,30 @@ describe('gitStatusEntries marshalling', () => {
                 /^git status --porcelain --untracked-files=all failed: /,
             );
         } finally {
-            fs.rmSync(empty, { recursive: true, force: true });
+            removeDir(empty);
         }
     });
 
     it('honours a per-call timeout override', async () => {
-        await expect(gitAddon.gitStatusEntries(repo, { timeout: 1 })).rejects.toThrow(
-            /^git status --porcelain --untracked-files=all failed: /,
-        );
+        // A one-millisecond deadline is only unmeetable if the status is slow
+        // enough to notice it. Against the two-file repo this raced: the clock
+        // starts once the child is spawned and its readers are up, by which
+        // point a warm macOS runner had already finished, so the call resolved
+        // with the correct empty list and the assertion failed. Two thousand
+        // untracked paths put the work three orders of magnitude clear of the
+        // deadline on every platform.
+        const crowded = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-git-crowded-'));
+        try {
+            execFileSync('git', ['-C', crowded, 'init', '--initial-branch=main']);
+            for (let index = 0; index < 2000; index++) {
+                fs.writeFileSync(path.join(crowded, `file-${index}.txt`), 'x\n');
+            }
+            await expect(gitAddon.gitStatusEntries(crowded, { timeout: 1 })).rejects.toThrow(
+                /^git status --porcelain --untracked-files=all failed: /,
+            );
+        } finally {
+            removeDir(crowded);
+        }
     });
 });
 
@@ -299,7 +315,7 @@ describe('gitLogCommits marshalling', () => {
                 gitAddon.gitLogCommits(empty, { maxCount: 1, skip: 0 }),
             ).rejects.toThrow(/^git log failed: /);
         } finally {
-            fs.rmSync(empty, { recursive: true, force: true });
+            removeDir(empty);
         }
     });
 
@@ -374,7 +390,7 @@ describe('commit-range marshalling', () => {
     });
 
     afterAll(() => {
-        if (range) fs.rmSync(range, { recursive: true, force: true });
+        if (range) removeDir(range);
     });
 
     it('marshals the default branch and where it was found', async () => {
@@ -390,7 +406,7 @@ describe('commit-range marshalling', () => {
             execFileSync('git', ['-C', bare, 'init', '--initial-branch=trunk']);
             await expect(gitAddon.gitRangeDefaultBranch(bare)).resolves.toBeNull();
         } finally {
-            fs.rmSync(bare, { recursive: true, force: true });
+            removeDir(bare);
         }
     });
 
@@ -429,7 +445,7 @@ describe('commit-range marshalling', () => {
             expect(resolved.baseRef).toBeUndefined();
             expect(resolved.baseMode).toBe('default-branch');
         } finally {
-            fs.rmSync(bare, { recursive: true, force: true });
+            removeDir(bare);
         }
     });
 
@@ -498,7 +514,7 @@ describe('commit-range marshalling', () => {
                 /^git diff --numstat origin\/main\.\.\.HEAD failed: /,
             );
         } finally {
-            fs.rmSync(empty, { recursive: true, force: true });
+            removeDir(empty);
         }
     });
 
@@ -546,7 +562,7 @@ describe('branch marshalling', () => {
 
     afterAll(() => {
         for (const dir of [origin, work]) {
-            if (dir) fs.rmSync(dir, { recursive: true, force: true });
+            if (dir) removeDir(dir);
         }
     });
 
@@ -580,7 +596,7 @@ describe('branch marshalling', () => {
                     /^git status --porcelain=v2 --branch --untracked-files=all failed: /,
                 );
             } finally {
-                fs.rmSync(empty, { recursive: true, force: true });
+                removeDir(empty);
             }
         });
     });
@@ -648,7 +664,7 @@ describe('branch marshalling', () => {
                 });
                 await expect(gitAddon.gitBranchStatus(fresh)).resolves.toBeNull();
             } finally {
-                fs.rmSync(fresh, { recursive: true, force: true });
+                removeDir(fresh);
             }
         });
 
@@ -733,7 +749,7 @@ describe('branch marshalling', () => {
                     gitAddon.gitListBranches(empty, { remote: false, limit: 10, offset: 0 }),
                 ).rejects.toThrow(/^git branch failed: /);
             } finally {
-                fs.rmSync(empty, { recursive: true, force: true });
+                removeDir(empty);
             }
         });
     });
@@ -759,7 +775,7 @@ describe('reading remotes', () => {
     });
 
     afterAll(() => {
-        if (remotes) fs.rmSync(remotes, { recursive: true, force: true });
+        if (remotes) removeDir(remotes);
     });
 
     afterEach(() => {
@@ -809,7 +825,7 @@ describe('reading remotes', () => {
                 /^git remote get-url origin failed: /,
             );
         } finally {
-            fs.rmSync(empty, { recursive: true, force: true });
+            removeDir(empty);
         }
     });
 
@@ -836,7 +852,7 @@ describe('global configuration marshalling', () => {
     });
 
     afterEach(() => {
-        fs.rmSync(configDir, { recursive: true, force: true });
+        removeDir(configDir);
     });
 
     it('marshals a multi-valued key across the boundary as a string array', async () => {
@@ -917,7 +933,7 @@ describe('repository discovery marshalling', () => {
             const found = await gitAddon.gitDiscoverRepoRoot(outside);
             expect(found).toBeNull();
         } finally {
-            fs.rmSync(outside, { recursive: true, force: true });
+            removeDir(outside);
         }
     });
 
@@ -983,7 +999,7 @@ describe('commit-detail marshalling', () => {
     });
 
     afterAll(() => {
-        if (detail) fs.rmSync(detail, { recursive: true, force: true });
+        if (detail) removeDir(detail);
     });
 
     describe('gitCommitFiles', () => {
@@ -1029,7 +1045,7 @@ describe('commit-detail marshalling', () => {
                     /^git diff-tree .* failed: /,
                 );
             } finally {
-                fs.rmSync(outside, { recursive: true, force: true });
+                removeDir(outside);
             }
         });
     });
