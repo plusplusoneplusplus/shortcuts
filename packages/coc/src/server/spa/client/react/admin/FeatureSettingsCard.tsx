@@ -12,6 +12,7 @@ import {
     FEATURE_CARD_GROUPS,
     getFeatureCardSettings,
 } from '../../../../../config/admin-setting-definitions';
+import type { AdminSettingDefinition } from '../../../../../config/admin-setting-definitions';
 import type { FeatureValues } from './useAdminFeatureSettings';
 
 const FEATURE_BADGES: Record<string, { className: string; label: string }> = {
@@ -19,6 +20,21 @@ const FEATURE_BADGES: Record<string, { className: string; label: string }> = {
     experimental: { className: 'ar-badge ar-badge-accent', label: 'Experimental' },
     preview: { className: 'ar-badge ar-badge-accent', label: 'Preview' },
 };
+
+/**
+ * Badge to render next to a feature's label, or undefined for none.
+ *
+ * A feature that ships enabled is no longer experimental in practice, so the
+ * "Experimental" pill is suppressed once its default flips to `true`. Other
+ * badges are unaffected: 'restart' describes how the setting applies rather
+ * than how mature it is, and 'preview' is set deliberately per feature.
+ */
+export function resolveFeatureBadge(def: AdminSettingDefinition) {
+    const badge = def.ui?.badge;
+    if (!badge) return undefined;
+    if (badge === 'experimental' && def.default === true) return undefined;
+    return FEATURE_BADGES[badge];
+}
 
 export interface FeatureSettingsCardProps {
     featureValues: FeatureValues;
@@ -106,7 +122,7 @@ export function FeatureSettingsCard({
                         <div className="ar-feature-group-head">{group.heading}</div>
                         {defs.map(def => {
                             const ui = def.ui!;
-                            const badge = ui.badge ? FEATURE_BADGES[ui.badge] : undefined;
+                            const badge = resolveFeatureBadge(def);
                             const name = badge
                                 ? <>{ui.label} <span className={badge.className}>{badge.label}</span></>
                                 : ui.label;
