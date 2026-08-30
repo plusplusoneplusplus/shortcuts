@@ -412,12 +412,17 @@ fn drops_remote_head_from_the_list() {
     let (_origin, clone) = repo_with_upstream();
     let work = clone.path().join("work");
     // Worth pinning, because it is why the TypeScript's `HEAD` filter missed
-    // this ref: `%(refname:short)` shortens `refs/remotes/origin/HEAD` to
-    // `origin`, so the branch list carried a phantom row called `origin` that
-    // the branch *count* — which read `git branch -r --list`, where the line
-    // does say `HEAD` — always excluded.
+    // this ref: `%(refname:short)` does not leave `refs/remotes/origin/HEAD`
+    // under a name ending in `HEAD` — git 2.43 and later shorten it all the way
+    // to `origin`, older git stops at `origin/HEAD` — so the branch list
+    // carried a phantom row that the branch *count*, which read
+    // `git branch -r --list` where the line does say `HEAD`, always excluded.
+    // Both spellings make the point; which one shows up is the git version.
     let raw = git_stdout(&work, &["branch", "-r", "--format=%(refname:short)"]);
-    assert!(raw.lines().any(|line| line == "origin"), "git shortens origin/HEAD to origin");
+    assert!(
+        raw.lines().any(|line| line == "origin" || line == "origin/HEAD"),
+        "git lists the remote HEAD under a name of its own: {raw}",
+    );
 
     // Rust shortens by stripping `refs/remotes/`, so the ref keeps the name the
     // filter is looking for and the page now agrees with the total.
