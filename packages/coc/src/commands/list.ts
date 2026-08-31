@@ -221,7 +221,6 @@ function formatTableOutput(packages: PipelinePackageInfo[]): string {
 
     const lines: string[] = [];
 
-    // Header
     const header = [
         padRight(bold('NAME'), nameWidth),
         padRight(bold('DESCRIPTION'), descWidth),

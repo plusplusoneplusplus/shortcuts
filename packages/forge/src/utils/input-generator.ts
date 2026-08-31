@@ -70,7 +70,6 @@ export type GenerateState =
 export function buildGeneratePrompt(config: GenerateInputConfig): string {
     const { prompt, schema } = config;
     
-    // Build the field list
     const fieldsList = schema.join(', ');
     
     // Build example object
@@ -105,7 +104,6 @@ export function parseGenerateResponse(
     response: string,
     schema: string[]
 ): PromptItem[] {
-    // Try to extract JSON from the response
     const jsonStr = extractJSON(response);
     
     if (!jsonStr) {
@@ -125,7 +123,6 @@ export function parseGenerateResponse(
         );
     }
     
-    // Validate it's an array
     if (!Array.isArray(parsed)) {
         throw new InputGenerationError(
             `AI response is not an array. Got: ${typeof parsed}`
@@ -175,10 +172,8 @@ export async function generateInputItems(
     config: GenerateInputConfig,
     aiInvoker: AIInvoker
 ): Promise<GenerateInputResult> {
-    // Build the prompt
     const prompt = buildGeneratePrompt(config);
     
-    // Invoke AI with optional model from config
     const aiResult = await aiInvoker(prompt, config.model ? { model: config.model } : undefined);
     
     if (!aiResult.success) {
@@ -196,7 +191,6 @@ export async function generateInputItems(
         };
     }
     
-    // Parse the response
     try {
         const items = parseGenerateResponse(aiResult.response, config.schema);
         return {
@@ -277,7 +271,6 @@ export function validateGenerateConfig(
     } else if (config.schema.length === 0) {
         errors.push('Generate config "schema" must have at least one field');
     } else {
-        // Validate each schema field
         for (let i = 0; i < config.schema.length; i++) {
             const field = config.schema[i];
             if (typeof field !== 'string') {

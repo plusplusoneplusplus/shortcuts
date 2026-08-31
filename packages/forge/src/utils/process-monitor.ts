@@ -169,7 +169,6 @@ export class ProcessMonitor implements Disposable {
         // Store the session for monitoring
         this.monitoredSessions.set(sessionId, { pid, onTerminated });
 
-        // Start the polling interval if not already running
         if (!this.checkInterval && this.monitoredSessions.size > 0) {
             this.startPolling();
         }
@@ -183,7 +182,6 @@ export class ProcessMonitor implements Disposable {
     stopMonitoring(sessionId: string): void {
         this.monitoredSessions.delete(sessionId);
 
-        // Stop polling if no more sessions to monitor
         if (this.monitoredSessions.size === 0 && this.checkInterval) {
             this.stopPolling();
         }
@@ -248,12 +246,10 @@ export class ProcessMonitor implements Disposable {
             }
         }
 
-        // Remove terminated sessions from monitoring
         for (const sessionId of terminatedSessions) {
             this.monitoredSessions.delete(sessionId);
         }
 
-        // Stop polling if no more sessions to monitor
         if (this.monitoredSessions.size === 0 && this.checkInterval) {
             this.stopPolling();
         }

@@ -83,7 +83,6 @@ export async function autoUpdateBundledSkills(
             continue;
         }
 
-        // Parse bundled version from SKILL.md
         const bundledSkillMd = path.join(bundledPath, skill.relativePath, 'SKILL.md');
         const bundledVersion = parseSkillVersionFromFile(bundledSkillMd);
         if (!bundledVersion) {
@@ -97,7 +96,6 @@ export async function autoUpdateBundledSkills(
         const installedVersion = parseSkillVersionFromFile(installedSkillMd);
         const effectiveInstalledVersion = installedVersion ?? '0.0.0';
 
-        // Compare versions
         const cmp = compareVersions(bundledVersion, effectiveInstalledVersion);
         if (cmp === undefined) {
             result.skipped.push({

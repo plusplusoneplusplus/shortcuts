@@ -333,7 +333,6 @@ export class FileProcessStore implements ProcessStore {
             };
             await this.writeProcessFile(workspaceId, id, newEntry);
 
-            // Update workspace index entry
             const index = await this.readIndex(workspaceId);
             const idx = index.findIndex(e => e.id === id);
             if (idx !== -1) {

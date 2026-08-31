@@ -69,7 +69,6 @@ export class QueueExecutor extends EventEmitter {
         // Listen to queue events
         this.setupQueueListeners();
 
-        // Auto-start if configured
         if (this.options.autoStart) {
             this.start();
         }
@@ -91,7 +90,6 @@ export class QueueExecutor extends EventEmitter {
         this.stopRequested = false;
         this.emit('started');
 
-        // Start the processing loop
         this.processingPromise = this.processLoop();
     }
 
@@ -152,7 +150,6 @@ export class QueueExecutor extends EventEmitter {
             return { outcome: 'completed' };
         }
 
-        // Set up progress polling
         const pollInterval = setInterval(() => {
             const current = this.queueManager.getTaskCounts();
             this.emit('drain-progress', { queued: current.queued, running: current.running });
@@ -301,7 +298,6 @@ export class QueueExecutor extends EventEmitter {
         }
 
         while (this.running && !this.stopRequested) {
-            // Check if queue is paused
             if (this.queueManager.isPaused()) {
                 await this.delay(100);
                 continue;
@@ -424,7 +420,6 @@ export class QueueExecutor extends EventEmitter {
 
         const startTime = Date.now();
 
-        // Create timeout promise
         const timeoutPromise = new Promise<TaskExecutionResult>((_, reject) => {
             setTimeout(() => {
                 reject(new Error(`Task timed out after ${timeoutMs}ms`));
@@ -460,18 +455,15 @@ export class QueueExecutor extends EventEmitter {
         const maxRetries = config.retryAttempts ?? DEFAULT_TASK_CONFIG.retryAttempts!;
 
         if (config.retryOnFailure && retryCount < maxRetries) {
-            // Retry the task
             const retryDelay = config.retryDelayMs ?? DEFAULT_TASK_CONFIG.retryDelayMs!;
             await this.delay(retryDelay);
 
             this.queueManager.markRetry(task.id, true);
             this.emit('taskRetry', task, retryCount + 1);
         } else {
-            // Mark as failed
             this.queueManager.markFailed(task.id, error);
             this.emit('taskFailed', task, error);
 
-            // Auto-pause the repo queue when pauseOnFailure is set
             if (config.pauseOnFailure && task.repoId) {
                 this.queueManager.pauseRepo(task.repoId, {
                     taskId: task.id,

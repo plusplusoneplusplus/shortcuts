@@ -82,7 +82,6 @@ export class DeterministicReducer<T extends Deduplicatable> extends BaseReducer<
     ): Promise<ReduceResult<DeterministicReduceOutput<T>>> {
         const startTime = Date.now();
 
-        // Collect all items from successful results
         const allItems: T[] = [];
         for (const result of results) {
             if (result.success && result.output) {
@@ -92,7 +91,6 @@ export class DeterministicReducer<T extends Deduplicatable> extends BaseReducer<
 
         const originalCount = allItems.length;
 
-        // Deduplicate items
         const dedupedItems = this.deduplicateItems(allItems);
 
         // Sort if sorter provided
@@ -132,7 +130,6 @@ export class DeterministicReducer<T extends Deduplicatable> extends BaseReducer<
             const key = this.options.getKey(item);
 
             if (seen.has(key)) {
-                // Merge with existing item
                 const existing = seen.get(key)!;
                 const merged = this.options.merge(existing, item);
                 seen.set(key, merged);

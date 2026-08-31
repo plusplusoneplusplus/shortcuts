@@ -144,7 +144,6 @@ export class TaskManager {
             this.settings.showArchived ? this.getArchiveFolder() : undefined
         );
 
-        // Load related items for all folders if discovery is enabled
         if (this.settings.discovery.enabled && this.settings.discovery.showRelatedInTree) {
             await this.loadRelatedItemsForFolders(folderMap);
         }

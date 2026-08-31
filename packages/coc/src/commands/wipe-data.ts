@@ -160,7 +160,6 @@ export async function executeWipeData(options: WipeDataCommandOptions): Promise<
             }
         }
 
-        // Execute wipe
         const result = await wiper.wipeData({
             includeWikis: options.includeWikis ?? false,
         });

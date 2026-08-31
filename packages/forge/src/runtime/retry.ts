@@ -181,7 +181,6 @@ export async function withRetry<T>(
         }
     }
 
-    // All attempts exhausted
     const name = operationName ?? 'Operation';
     throw new RetryExhaustedError(
         `${name} failed after ${attempts} attempts`,

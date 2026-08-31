@@ -43,7 +43,6 @@ export function parseTaskStatus(filePath: string): TaskStatus | undefined {
             return undefined;
         }
 
-        // Parse YAML frontmatter
         const frontmatter = yaml.load(frontmatterContent) as Record<string, unknown>;
         if (!frontmatter || typeof frontmatter !== 'object') {
             return undefined;
@@ -86,7 +85,6 @@ export async function updateTaskStatus(filePath: string, status: TaskStatus): Pr
                 }
             }
 
-            // Update status
             frontmatter.status = status;
 
             // Rebuild the file
@@ -120,7 +118,6 @@ export function parseFileName(fileName: string): { baseName: string; docType?: s
     const parts = withoutMd.split('.');
 
     if (parts.length >= 2) {
-        // Check if the last part looks like a doc type (common types)
         const lastPart = parts[parts.length - 1].toLowerCase();
 
         if (COMMON_DOC_TYPES.includes(lastPart) || /^v\d+$/.test(lastPart)) {

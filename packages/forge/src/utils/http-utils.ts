@@ -132,7 +132,6 @@ export async function httpGetJson<T = unknown>(url: string, options?: {
         return JSON.parse(response.body);
     }
 
-    // Try to parse error message from JSON response
     try {
         const errorBody = JSON.parse(response.body);
         if (errorBody.message) {

@@ -32,7 +32,6 @@ export function detectSource(input: string, workspaceRoot?: string): { success: 
         return { success: false, error: SourceDetectionErrors.AMBIGUOUS };
     }
 
-    // Check for ClawHub URL patterns
     if (isClawHubUrl(trimmed)) {
         const parsed = parseClawHubUrl(trimmed);
         if (!parsed) {
@@ -47,7 +46,6 @@ export function detectSource(input: string, workspaceRoot?: string): { success: 
         };
     }
 
-    // Check for GitHub URL patterns
     if (isGitHubUrl(trimmed)) {
         const parsed = parseGitHubUrl(trimmed);
         if (!parsed) {
@@ -62,7 +60,6 @@ export function detectSource(input: string, workspaceRoot?: string): { success: 
         };
     }
 
-    // Check for local path patterns
     if (isLocalPath(trimmed)) {
         const resolved = resolveLocalPath(trimmed, workspaceRoot);
         if (!safeExists(resolved)) {
@@ -197,7 +194,6 @@ function resolveLocalPath(input: string, workspaceRoot?: string): string {
         resolved = path.resolve(base, resolved);
     }
 
-    // Normalize the path
     return path.normalize(resolved);
 }
 

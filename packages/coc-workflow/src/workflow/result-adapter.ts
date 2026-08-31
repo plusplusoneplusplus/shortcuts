@@ -110,7 +110,6 @@ export function flattenWorkflowResult(
         }
     }
 
-    // Leaf output
     const leafOutput: Record<string, unknown>[] = [];
     for (const [, nr] of result.leaves) {
         for (const item of nr.items) {
@@ -118,7 +117,6 @@ export function flattenWorkflowResult(
         }
     }
 
-    // Build formatted output from leaf items
     let formattedOutput: string | undefined;
     if (leafOutput.length > 0) {
         formattedOutput = JSON.stringify(leafOutput, null, 2);

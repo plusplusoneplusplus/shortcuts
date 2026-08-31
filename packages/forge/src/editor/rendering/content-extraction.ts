@@ -185,7 +185,6 @@ export function extractBlockText(node: MockNode): string {
         return node.textContent || '';
     }
 
-    // Check for table
     if (node.classList?.contains('md-table-container') ||
         node.classList?.contains('md-table')) {
         return extractTableText(node);
@@ -225,7 +224,6 @@ export function hasMeaningfulContentAfterBr(node: MockNode): boolean {
         }
         if (!foundNode) continue;
 
-        // Check if this sibling has content
         if (sibling.nodeType === NODE_TYPES.TEXT_NODE) {
             const text = sibling.textContent?.trim();
             if (text && text.length > 0) return true;
@@ -257,7 +255,6 @@ export function processNode(
         return;
     }
 
-    // Skip elements that should be ignored
     if (shouldSkipElement(node, context.skipClasses)) {
         return;
     }
@@ -283,7 +280,6 @@ export function processNode(
             addNewLine(context);
         }
 
-        // Process children with insideLineContent = true
         const previousInsideLineContent = context.insideLineContent;
         context.insideLineContent = true;
 
@@ -400,10 +396,8 @@ export function applyInsertion(
     const lineIndex = Math.max(0, Math.min(insertLine - 1, lines.length - 1));
     const line = lines[lineIndex] || '';
 
-    // Validate column
     const col = Math.max(0, Math.min(insertColumn, line.length));
 
-    // Split the insert text into lines
     const insertLines = insertText.split('\n');
 
     if (insertLines.length === 1) {
@@ -414,13 +408,10 @@ export function applyInsertion(
         const before = line.slice(0, col);
         const after = line.slice(col);
 
-        // First inserted line gets appended to before
         const firstLine = before + insertLines[0];
 
-        // Last inserted line gets prepended to after
         const lastLine = insertLines[insertLines.length - 1] + after;
 
-        // Middle lines are added as-is
         const middleLines = insertLines.slice(1, -1);
 
         // Replace the original line with all new lines

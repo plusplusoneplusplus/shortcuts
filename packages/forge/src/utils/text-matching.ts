@@ -214,7 +214,6 @@ export function scoreMatch(
     anchor: BaseMatchAnchor,
     config: AnchorMatchConfig = DEFAULT_ANCHOR_MATCH_CONFIG
 ): number {
-    // Extract context around the match
     const contextBeforeStart = Math.max(0, matchOffset - config.contextCharsBefore);
     const actualContextBefore = content.substring(contextBeforeStart, matchOffset);
 
@@ -222,7 +221,6 @@ export function scoreMatch(
     const contextAfterEnd = Math.min(content.length, matchEnd + config.contextCharsAfter);
     const actualContextAfter = content.substring(matchEnd, contextAfterEnd);
 
-    // Calculate similarity scores
     const beforeSimilarity = calculateSimilarity(
         normalizeText(anchor.contextBefore),
         normalizeText(actualContextBefore)
@@ -327,11 +325,9 @@ export function extractContext(
     endOffset: number,
     config: AnchorMatchConfig = DEFAULT_ANCHOR_MATCH_CONFIG
 ): { contextBefore: string; contextAfter: string } {
-    // Extract context before
     const contextBeforeStart = Math.max(0, startOffset - config.contextCharsBefore);
     const contextBefore = content.substring(contextBeforeStart, startOffset);
 
-    // Extract context after
     const contextAfterEnd = Math.min(content.length, endOffset + config.contextCharsAfter);
     const contextAfter = content.substring(endOffset, contextAfterEnd);
 

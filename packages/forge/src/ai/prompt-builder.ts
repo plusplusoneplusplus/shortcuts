@@ -44,7 +44,6 @@ const PROMPT_VARIABLE_NAMES = ['selection', 'file', 'heading', 'context', 'headi
  * @returns The prompt with variables substituted
  */
 export function substitutePromptVariables(template: string, context: PromptContext): string {
-    // Build variables object from context
     const variables: Record<string, string> = {
         selection: context.selectedText,
         file: context.filePath,

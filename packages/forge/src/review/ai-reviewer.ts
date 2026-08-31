@@ -180,7 +180,6 @@ export function parseReviewFindings(
         rawFindings = parsed;
     } else if (typeof parsed === 'object' && parsed !== null) {
         const obj = parsed as Record<string, unknown>;
-        // Look for common keys: findings, comments, issues, results
         for (const key of ['findings', 'comments', 'issues', 'results', 'violations']) {
             if (Array.isArray(obj[key])) {
                 rawFindings = obj[key] as RawAIFinding[];

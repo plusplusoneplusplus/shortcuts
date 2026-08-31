@@ -319,7 +319,6 @@ export async function resolveSkillWithDetails(
     workspaceRoot: string,
     customSkillsPath?: string
 ): Promise<SkillResolutionResult> {
-    // Validate skill name
     if (!skillName || typeof skillName !== 'string') {
         throw new SkillResolverError('Skill name must be a non-empty string', skillName || '');
     }
@@ -395,7 +394,6 @@ export function resolveSkillWithDetailsSync(
     workspaceRoot: string,
     customSkillsPath?: string
 ): SkillResolutionResult {
-    // Validate skill name
     if (!skillName || typeof skillName !== 'string') {
         throw new SkillResolverError('Skill name must be a non-empty string', skillName || '');
     }
@@ -479,7 +477,6 @@ export function validateSkill(
     try {
         const promptPath = getSkillPromptPath(skillName, workspaceRoot, customSkillsPath);
         
-        // Validate skill name
         if (!skillName || typeof skillName !== 'string') {
             return { valid: false, error: 'Skill name must be a non-empty string' };
         }

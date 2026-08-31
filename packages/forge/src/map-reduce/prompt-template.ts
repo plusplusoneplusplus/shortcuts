@@ -74,7 +74,6 @@ export function renderTemplate(
 ): string {
     const { variables, includeSystemPrompt = false } = options;
 
-    // Validate required variables
     for (const required of template.requiredVariables) {
         if (!(required in variables) || variables[required] === undefined || variables[required] === null) {
             throw new MissingVariableError(required);
@@ -90,7 +89,6 @@ export function renderTemplate(
             preserveSpecialVariables: false // Don't treat any as special in this context
         });
 
-        // Prepend system prompt if requested
         if (includeSystemPrompt && template.systemPrompt) {
             rendered = `${template.systemPrompt}\n\n${rendered}`;
         }
@@ -115,7 +113,6 @@ export function createTemplate(config: {
     systemPrompt?: string;
     responseParser?: (response: string) => unknown;
 }): PromptTemplate {
-    // Auto-detect required variables from template if not provided
     const requiredVariables = config.requiredVariables ?? extractVariables(config.template);
 
     return {
@@ -150,10 +147,8 @@ export function validateTemplate(template: PromptTemplate): {
     const requiredSet = new Set(template.requiredVariables);
     const templateSet = new Set(templateVariables);
 
-    // Find required variables not in template
     const missingInTemplate = template.requiredVariables.filter(v => !templateSet.has(v));
 
-    // Find template variables not declared as required
     const undeclaredVariables = templateVariables.filter(v => !requiredSet.has(v));
 
     return {
@@ -178,7 +173,6 @@ export function composeTemplates(
         new Set(templates.flatMap(t => t.requiredVariables))
     );
 
-    // Use first template's system prompt if available
     const systemPrompt = templates.find(t => t.systemPrompt)?.systemPrompt;
 
     return {

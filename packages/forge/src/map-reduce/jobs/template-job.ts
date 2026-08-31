@@ -287,7 +287,6 @@ export function createJsonTemplateJob<TOutput>(
         const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/);
         const jsonStr = jsonMatch ? jsonMatch[1].trim() : response;
 
-        // Find JSON object or array
         const objectMatch = jsonStr.match(/\{[\s\S]*\}/);
         const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
         const toParse = objectMatch?.[0] || arrayMatch?.[0] || jsonStr;

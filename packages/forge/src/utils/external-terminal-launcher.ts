@@ -258,11 +258,9 @@ export class ExternalTerminalLauncher {
             };
         }
 
-        // Build the CLI command (with optional session resume)
         const result = buildCliCommand(tool, { prompt: initialPrompt, model, resumeSessionId });
         const command = result.command;
 
-        // Get the terminal configuration
         const platformKey = this.getPlatformKey();
         const config = TERMINAL_CONFIGS[platformKey]?.[terminalType];
 

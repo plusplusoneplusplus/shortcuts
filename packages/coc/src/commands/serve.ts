@@ -82,7 +82,6 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
 
         const processCount = await server.store.getProcessCount();
 
-        // Print startup banner
         printBanner({
             url: server.url,
             dataDir,
@@ -92,7 +91,6 @@ export async function executeServe(options: ServeCommandOptions): Promise<number
         // Structured log for tooling/file consumers
         coc.info({ url: server.url, dataDir, port }, 'Server started');
 
-        // Open browser unless disabled
         if (options.open !== false) {
             openBrowser(server.url);
         }

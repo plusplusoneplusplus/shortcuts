@@ -130,7 +130,6 @@ export class HybridReducer<T extends Deduplicatable, TPolished> extends BaseRedu
                 };
             }
 
-            // AI failed, use fallback
             getAIServiceLogger().warn({ error: aiResult.error }, 'AI polishing failed, using deterministic result');
             return this.createFallbackResult(deterministicOutput, deterministicResult.stats, startTime);
 

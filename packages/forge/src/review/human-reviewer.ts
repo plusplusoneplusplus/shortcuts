@@ -176,7 +176,6 @@ export class HumanReviewer implements IDiffReviewer {
         }
 
         if (session.status === 'cancelled') {
-            // Return an empty result for cancelled sessions
             return buildReviewResult(source, [], new Date().toISOString(), 'Review cancelled.');
         }
 

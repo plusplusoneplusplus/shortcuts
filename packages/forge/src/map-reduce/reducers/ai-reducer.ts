@@ -67,7 +67,6 @@ export class AIReducer<TMapOutput, TReduceOutput> extends BaseReducer<TMapOutput
         const startTime = Date.now();
         const outputs = this.extractSuccessfulOutputs(results);
 
-        // If no outputs, use fallback
         if (outputs.length === 0) {
             const fallbackResult = await this.options.fallbackReducer.reduce(results, context);
             return {
@@ -79,17 +78,14 @@ export class AIReducer<TMapOutput, TReduceOutput> extends BaseReducer<TMapOutput
             };
         }
 
-        // Build the reduce prompt
         const prompt = this.options.buildPrompt(outputs, context);
 
         try {
-            // Invoke AI
             const aiResult = await this.options.aiInvoker(prompt, {
                 model: this.options.model
             });
 
             if (aiResult.success && aiResult.response) {
-                // Parse the response
                 const output = this.options.parseResponse(aiResult.response, outputs);
                 const reduceTimeMs = Date.now() - startTime;
 
@@ -105,12 +101,10 @@ export class AIReducer<TMapOutput, TReduceOutput> extends BaseReducer<TMapOutput
                 };
             }
 
-            // AI failed, use fallback
             getAIServiceLogger().warn({ error: aiResult.error }, 'AI reduce failed, falling back to deterministic');
             return this.fallbackWithStats(results, context, startTime);
 
         } catch (error) {
-            // On any error, use fallback
             getAIServiceLogger().warn({ err: error instanceof Error ? error : undefined }, 'AI reduce error, falling back to deterministic');
             return this.fallbackWithStats(results, context, startTime);
         }
@@ -178,7 +172,6 @@ export interface TextSynthesisOptions {
 export function createTextSynthesisReducer(
     options: TextSynthesisOptions
 ): AIReducer<string, TextSynthesisOutput> {
-    // Create a simple fallback reducer
     const fallbackReducer = new class extends BaseReducer<string, TextSynthesisOutput> {
         async reduce(
             results: MapResult<string>[],

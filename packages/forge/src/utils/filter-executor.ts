@@ -123,7 +123,6 @@ export async function executeRuleFilter(
             excluded.push(item);
         }
 
-        // Report progress
         if (options.onProgress && (i % 100 === 0 || i === items.length - 1)) {
             options.onProgress({
                 phase: 'rule',
@@ -174,7 +173,6 @@ export async function executeAIFilter(
             batch.map(item => evaluateAIRule(item, config, options.aiInvoker!, timeoutMs))
         );
 
-        // Categorize results
         for (let j = 0; j < batch.length; j++) {
             if (results[j]) {
                 included.push(batch[j]);
@@ -183,7 +181,6 @@ export async function executeAIFilter(
             }
         }
 
-        // Report progress
         if (options.onProgress) {
             options.onProgress({
                 phase: 'ai',
@@ -344,10 +341,8 @@ async function evaluateAIRule(
     timeoutMs: number
 ): Promise<boolean> {
     try {
-        // Render prompt with item data
         const prompt = substituteTemplate(config.prompt, item);
         
-        // Call AI
         const result = await aiInvoker(prompt, {
             model: config.model,
             timeoutMs
@@ -359,7 +354,6 @@ async function evaluateAIRule(
             return false;
         }
 
-        // Parse response
         let response: any;
         if (config.output && config.output.length > 0) {
             // Structured output expected

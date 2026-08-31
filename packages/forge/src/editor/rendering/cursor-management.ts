@@ -214,19 +214,16 @@ export function getCursorPositionFromSelection(
     startOffset: number,
     editorElement: MockNode
 ): CursorPosition | null {
-    // Find the line element containing the cursor
     const lineElement = findLineElement(startContainer, editorElement);
     if (!lineElement) {
         return null;
     }
 
-    // Get the line number
     const lineNumber = getLineNumber(lineElement);
     if (lineNumber === null) {
         return null;
     }
 
-    // Calculate the column offset
     const column = calculateColumnOffset(lineElement, startContainer, startOffset);
 
     return { line: lineNumber, column };

@@ -78,7 +78,6 @@ export class FileSplitter implements Splitter<FileInput, FileWorkItemData> {
             ? files.filter(filter)
             : files;
 
-        // Generate work items
         const workItems: WorkItem<FileWorkItemData>[] = [];
 
         if (batchSize === 1) {
@@ -102,7 +101,6 @@ export class FileSplitter implements Splitter<FileInput, FileWorkItemData> {
                 });
             }
         } else {
-            // Batch files
             for (let i = 0; i < filteredFiles.length; i += batchSize) {
                 const batch = filteredFiles.slice(i, i + batchSize);
                 // For batched files, create a work item for each file in batch

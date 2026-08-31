@@ -355,7 +355,6 @@ export async function buildTaskFolderHierarchy(
         }
     }
 
-    // Scan context documents for each folder
     for (const [relPath, folder] of folderMap) {
         const contextDocs = await scanContextDocumentsInFolder(folder.folderPath, relPath, folder.isArchived);
         if (contextDocs.length > 0) {

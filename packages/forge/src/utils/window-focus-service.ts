@@ -67,7 +67,6 @@ export class WindowFocusService {
             };
         }
 
-        // Check if session has a PID
         if (!session.pid) {
             return {
                 success: false,
@@ -75,7 +74,6 @@ export class WindowFocusService {
             };
         }
 
-        // Check if session is active
         if (session.status !== 'active' && session.status !== 'starting') {
             return {
                 success: false,
@@ -83,7 +81,6 @@ export class WindowFocusService {
             };
         }
 
-        // Focus using the appropriate method for the terminal type
         return this.focusWindowByPid(session.pid, session.terminalType);
     }
 

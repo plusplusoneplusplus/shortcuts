@@ -577,7 +577,6 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
         }
 
         if (!aiResult.success || !aiResult.response) {
-            // Update process as failed
             if (context.processTracker && reduceProcessId) {
                 context.processTracker.updateProcess(
                     reduceProcessId,
@@ -591,7 +590,6 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
 
         // Text mode - return raw AI response without JSON parsing
         if (isTextMode) {
-            // Update process as completed
             if (context.processTracker && reduceProcessId) {
                 context.processTracker.updateProcess(
                     reduceProcessId,
@@ -625,7 +623,6 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
         try {
             aiOutput = parseAIResponse(aiResult.response, this.aiReduceOutput!);
         } catch (parseError) {
-            // Update process as failed
             if (context.processTracker && reduceProcessId) {
                 context.processTracker.updateProcess(
                     reduceProcessId,
@@ -637,10 +634,8 @@ class PromptMapReducer extends BaseReducer<PromptMapResult, PromptMapOutput> {
             throw new Error(`Failed to parse AI reduce response: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
         }
 
-        // Format output as JSON string
         const formattedOutput = JSON.stringify(aiOutput, null, 2);
 
-        // Update process as completed
         if (context.processTracker && reduceProcessId) {
             context.processTracker.updateProcess(
                 reduceProcessId,

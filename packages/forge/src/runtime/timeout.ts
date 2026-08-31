@@ -68,7 +68,6 @@ export async function withTimeout<T>(
         let completed = false;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
-        // Set up timeout
         timeoutId = setTimeout(() => {
             if (!completed) {
                 completed = true;

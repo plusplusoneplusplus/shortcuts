@@ -364,7 +364,6 @@ function compilePipelineToWorkflow(parsed: Record<string, unknown>): WorkflowCon
         nodes,
     };
 
-    // Settings
     const settings: WorkflowSettings = {};
     if (pipeline.workingDirectory) {
         settings.workingDirectory = pipeline.workingDirectory;

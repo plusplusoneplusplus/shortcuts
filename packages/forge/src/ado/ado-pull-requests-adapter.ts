@@ -45,7 +45,6 @@ function resolveWebUrl(pr: GitPullRequest): string {
     if (pr._links?.web?.href) {
         return pr._links.web.href;
     }
-    // Construct from repository.webUrl + pullRequestId
     if (pr.repository?.webUrl && pr.pullRequestId != null) {
         return `${pr.repository.webUrl}/pullrequest/${pr.pullRequestId}`;
     }

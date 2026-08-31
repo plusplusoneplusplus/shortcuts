@@ -30,7 +30,6 @@ export function checkProgramExists(
     // Create cache key that includes platform to handle cross-platform testing
     const cacheKey = `${programName}:${platform ?? process.platform}`;
 
-    // Return cached result if available
     const cached = programExistsCache.get(cacheKey);
     if (cached !== undefined) {
         return cached;
@@ -70,7 +69,6 @@ export function checkProgramExists(
         aiLog.debug({ programName }, 'Program not found');
     }
 
-    // Cache the result
     programExistsCache.set(cacheKey, result);
     return result;
 }

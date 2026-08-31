@@ -268,7 +268,6 @@ function handleResults(
     elapsed: number,
     cancelled: boolean,
 ): number {
-    // Print summary to stderr
     const summary = formatSummary(result);
     process.stderr.write(summary + '\n');
     process.stderr.write(`\n  ${green(bold('Done'))} in ${formatDuration(elapsed)}\n`);
@@ -301,7 +300,6 @@ function handleResults(
             process.stdout.write(formatted + '\n');
         }
     } else {
-        // Write formatted results to stdout
         process.stdout.write(formatted + '\n');
     }
 

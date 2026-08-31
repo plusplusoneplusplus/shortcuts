@@ -312,14 +312,12 @@ export async function gatherFeatureContext(
         context.hasContent = true;
     }
 
-    // Read plan.md if exists
     const planPath = path.join(folderPath, 'plan.md');
     if (fs.existsSync(planPath)) {
         context.planContent = await fs.promises.readFile(planPath, 'utf-8');
         context.hasContent = true;
     }
 
-    // Read spec.md if exists
     const specPath = path.join(folderPath, 'spec.md');
     if (fs.existsSync(specPath)) {
         context.specContent = await fs.promises.readFile(specPath, 'utf-8');

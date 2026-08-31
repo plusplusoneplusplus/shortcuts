@@ -165,7 +165,6 @@ export function safeWriteFile(
     const { encoding = 'utf8', createDirs = true } = options;
 
     try {
-        // Ensure parent directory exists if requested
         if (createDirs) {
             const dirResult = ensureDirectoryExists(path.dirname(filePath));
             if (!dirResult.success) {

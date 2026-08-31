@@ -35,7 +35,6 @@ export async function loadRelatedItems(folderPath: string): Promise<RelatedItems
             return undefined;
         }
         
-        // Ensure items array exists
         if (!Array.isArray(parsed.items)) {
             parsed.items = [];
         }

@@ -89,7 +89,6 @@ function tryExtractStructure(
                     continue;
                 }
             }
-            // Return candidate if balanced (and passes additional validation if provided)
             if (hasBalanced(candidate, config) && (!additionalValidation || additionalValidation(candidate))) {
                 return candidate;
             }
