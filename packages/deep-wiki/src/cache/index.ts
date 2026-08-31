@@ -84,7 +84,6 @@ export async function getComponentsNeedingReanalysis(
     outputDir: string,
     repoPath: string
 ): Promise<string[] | null> {
-    // Get cached analyses metadata
     const metadata = getAnalysesCacheMetadata(outputDir);
     if (!metadata || !metadata.gitHash) {
         // No cache — full rebuild

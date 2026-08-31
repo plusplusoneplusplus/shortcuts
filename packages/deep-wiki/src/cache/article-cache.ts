@@ -306,7 +306,6 @@ export async function saveAllArticles(
         saveArticle(article.componentId!, article, outputDir, currentHash);
     }
 
-    // Write metadata
     writeCacheFile<AnalysisCacheMetadata>(getArticlesMetadataPath(outputDir), {
         gitHash: currentHash,
         timestamp: Date.now(),
@@ -341,7 +340,6 @@ export function saveReduceArticles(
         return;
     }
 
-    // Write individual reduce article files
     for (const article of reduceArticles) {
         writeCacheFile<CachedArticle>(getReduceArticleCachePath(outputDir, article.type, article.domainId), {
             article,
@@ -350,7 +348,6 @@ export function saveReduceArticles(
         });
     }
 
-    // Write reduce metadata
     writeCacheFile<AnalysisCacheMetadata>(getReduceMetadataPath(outputDir), {
         gitHash,
         timestamp: Date.now(),

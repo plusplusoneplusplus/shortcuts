@@ -63,10 +63,8 @@ export async function executeGenerate(
 ): Promise<number> {
     const startTime = Date.now();
 
-    // Resolve to absolute path
     const absoluteRepoPath = path.resolve(repoPath);
 
-    // Validate the repo path exists
     if (!fs.existsSync(absoluteRepoPath)) {
         printError(`Repository path does not exist: ${absoluteRepoPath}`);
         return EXIT_CODES.CONFIG_ERROR;
@@ -95,7 +93,6 @@ export async function executeGenerate(
         return EXIT_CODES.CONFIG_ERROR;
     }
 
-    // Print header
     printHeader('Deep Wiki \u2014 Full Generation');
     printKeyValue('Repository', absoluteRepoPath);
     printKeyValue('Output', path.resolve(options.output));
@@ -136,7 +133,6 @@ export async function executeGenerate(
 
     process.stderr.write('\n');
 
-    // Check AI availability
     const availability = await checkAIAvailability();
     if (!availability.available) {
         printError(`Copilot SDK is not available: ${availability.reason || 'Unknown reason'}`);
@@ -160,7 +156,6 @@ export async function executeGenerate(
     process.on('SIGINT', sigintHandler);
 
     try {
-        // Token usage tracker
         const usageTracker = new UsageTracker();
 
         // ================================================================

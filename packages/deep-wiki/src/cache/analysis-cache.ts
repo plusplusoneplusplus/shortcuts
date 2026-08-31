@@ -164,7 +164,6 @@ export async function saveAllAnalyses(
     const validIds = new Set(analyses.map(a => a.componentId));
     pruneStaleAnalyses(outputDir, validIds);
 
-    // Write metadata
     writeCacheFile<AnalysisCacheMetadata>(getAnalysesMetadataPath(outputDir), {
         gitHash: currentHash,
         timestamp: Date.now(),

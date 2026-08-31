@@ -196,12 +196,10 @@ export async function runIterativeDiscovery(
             };
         });
 
-        // Count successful probes
         const successfulProbes = allProbeResults.filter(r => r && r.foundComponents.length > 0).length;
         const totalComponentsFound = allProbeResults.reduce((sum, r) => sum + (r?.foundComponents?.length || 0), 0);
         printInfo(`  Probes completed: ${successfulProbes}/${currentThemes.length} successful, ${totalComponentsFound} components found`);
 
-        // Merge results
         printInfo('  Merging probe results...');
         const mergeResult = await mergeProbeResults(
             options.repoPath,
@@ -241,7 +239,6 @@ export async function runIterativeDiscovery(
             break;
         }
 
-        // Check coverage threshold
         if (mergeResult.coverage >= coverageThreshold && mergeResult.newThemes.length === 0) {
             printInfo(`  Coverage threshold reached (${(mergeResult.coverage * 100).toFixed(0)}% >= ${(coverageThreshold * 100).toFixed(0)}%)`);
             break;

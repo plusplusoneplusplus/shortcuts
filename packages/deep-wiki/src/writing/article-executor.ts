@@ -283,13 +283,11 @@ async function runFlatArticleExecutor(
         return { articles: [], failedComponentIds: [], duration: 0 };
     }
 
-    // Convert analyses to PromptItems
     const items: PromptItem[] = analyses.map(a => analysisToPromptItem(a, graph));
 
     // Build the article prompt template (text mode — no output fields)
     const promptTemplate = buildComponentArticlePromptTemplate(depth);
 
-    // Run map phase
     const mapResults = await runPromptMap(items, promptTemplate, aiInvoker, {
         concurrency,
         model,
@@ -299,7 +297,6 @@ async function runFlatArticleExecutor(
         isCancelled,
     });
 
-    // Collect component articles from map results
     const articles: GeneratedArticle[] = [];
     const failedComponentIds: string[] = [];
 

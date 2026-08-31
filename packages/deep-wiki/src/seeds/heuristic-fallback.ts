@@ -97,7 +97,6 @@ export function generateHeuristicSeeds(repoPath: string): ThemeSeed[] {
                 continue;
             }
 
-            // Normalize directory name to theme ID
             const themeId = normalizeComponentId(dirName);
 
             // Skip if normalization resulted in empty or invalid ID

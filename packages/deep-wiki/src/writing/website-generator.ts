@@ -55,10 +55,8 @@ const EMBEDDED_DATA_FILENAME = 'embedded-data.js';
 export function generateWebsite(wikiDir: string, options?: WebsiteOptions): string[] {
     const resolvedDir = path.resolve(wikiDir);
 
-    // Read component graph
     const componentGraph = readComponentGraph(resolvedDir);
 
-    // Read all markdown files
     const markdownData = readMarkdownFiles(resolvedDir, componentGraph);
 
     // Determine effective options
@@ -66,7 +64,6 @@ export function generateWebsite(wikiDir: string, options?: WebsiteOptions): stri
     const title = options?.title || componentGraph.project.name;
     const enableSearch = !options?.noSearch;
 
-    // Generate embedded data JS
     const embeddedDataContent = generateEmbeddedData(componentGraph, markdownData);
     const embeddedDataPath = path.join(resolvedDir, EMBEDDED_DATA_FILENAME);
     fs.writeFileSync(embeddedDataPath, embeddedDataContent, 'utf-8');

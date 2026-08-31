@@ -205,7 +205,6 @@ async function runSubArticlesParallel(
         await acquire();
         try {
             const articleAnalysis = analysisMap.get(plan.slug) ?? makeEmptyArticleAnalysis(plan.slug);
-            // Filter out the current article from siblings
             const siblings = siblingTitles.filter(s => s.slug !== plan.slug);
 
             const article = await generateSubArticle(

@@ -70,7 +70,6 @@ export async function runPhase4Writing(
     process.stderr.write('\n');
     printHeader('Phase 4: Article Generation');
 
-    // Resolve per-phase settings for writing
     const writingModel = resolvePhaseModel(options, 'writing');
     const writingTimeout = resolvePhaseTimeout(options, 'writing');
     const writingConcurrency = resolvePhaseConcurrency(options, 'writing');

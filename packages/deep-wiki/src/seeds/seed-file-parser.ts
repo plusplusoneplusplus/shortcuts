@@ -28,7 +28,6 @@ import { getErrorMessage } from '../utils/error-utils';
 export function parseSeedFile(filePath: string): ThemeSeed[] {
     const absolutePath = path.resolve(filePath);
 
-    // Check file exists
     if (!fs.existsSync(absolutePath)) {
         throw new Error(`Seed file does not exist: ${absolutePath}`);
     }
@@ -38,7 +37,6 @@ export function parseSeedFile(filePath: string): ThemeSeed[] {
         throw new Error(`Seed file path is not a file: ${absolutePath}`);
     }
 
-    // Read file content
     const content = fs.readFileSync(absolutePath, 'utf-8').trim();
     if (!content) {
         throw new Error(`Seed file is empty: ${absolutePath}`);
@@ -150,7 +148,6 @@ function parseCsvSeedFile(content: string, filePath: string): ThemeSeed[] {
         throw new Error(`CSV seed file ${filePath} is empty`);
     }
 
-    // Parse header
     const headerLine = lines[0];
     const headers = parseCsvLine(headerLine);
 

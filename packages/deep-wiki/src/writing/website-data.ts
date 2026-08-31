@@ -54,7 +54,6 @@ export function readMarkdownFiles(
 ): Record<string, string> {
     const data: Record<string, string> = {};
 
-    // Read top-level markdown files
     const topLevelFiles = ['index.md', 'architecture.md', 'getting-started.md'];
     for (const file of topLevelFiles) {
         const filePath = path.join(wikiDir, file);
@@ -93,7 +92,6 @@ export function readMarkdownFiles(
                 const themeId = entry;
                 const themeDir = entryPath;
 
-                // Read index.md
                 const indexPath = path.join(themeDir, 'index.md');
                 if (fs.existsSync(indexPath)) {
                     data[`__theme_${themeId}_index`] = fs.readFileSync(indexPath, 'utf-8');

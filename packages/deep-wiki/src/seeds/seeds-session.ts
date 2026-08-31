@@ -98,7 +98,6 @@ export async function runSeedsSession(
 ): Promise<ThemeSeed[]> {
     const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
 
-    // Check SDK availability
     printInfo('Checking Copilot SDK availability...');
     const availability = await service.isAvailable();
     if (!availability) {
@@ -108,7 +107,6 @@ export async function runSeedsSession(
         );
     }
 
-    // Build the prompt
     printInfo(`Building seeds prompt ${gray(`(max themes: ${options.maxThemes})`)}`);
     const prompt = buildSeedsPrompt(repoPath, options.maxThemes);
 

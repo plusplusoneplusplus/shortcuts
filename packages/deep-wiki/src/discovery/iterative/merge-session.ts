@@ -56,14 +56,12 @@ export async function mergeProbeResults(
 ): Promise<MergeResult> {
     const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
 
-    // Check SDK availability
     const availability = await service.isAvailable();
     if (!availability) {
         printWarning('SDK unavailable — using local merge fallback');
         return buildLocalMergeResult(probeResults, existingGraph, 'SDK unavailable');
     }
 
-    // Build the prompt
     const prompt = buildMergePrompt(repoPath, probeResults, existingGraph);
 
     // Configure the SDK session
@@ -82,7 +80,6 @@ export async function mergeProbeResults(
     }
 
     try {
-        // Send the message
         const validProbes = probeResults.filter(r => r && r.foundComponents.length > 0).length;
         printInfo(`  Sending merge prompt ${gray(`(${validProbes} valid probes, ${existingGraph ? existingGraph.components.length + ' existing components' : 'no prior graph'})`)}`);
         const result = await service.sendMessage(sendOptions);
@@ -92,7 +89,6 @@ export async function mergeProbeResults(
             return buildLocalMergeResult(probeResults, existingGraph, 'Merge session failed');
         }
 
-        // Parse the response
         const mergeResult = parseMergeResponse(result.response);
 
         // Guard: if AI merge returned fewer components than probes found, use local merge
@@ -135,7 +131,6 @@ function buildLocalMergeResult(
         }
     }
 
-    // Merge probe results into components
     for (const probe of probeResults) {
         if (!probe || !probe.foundComponents) { continue; }
 

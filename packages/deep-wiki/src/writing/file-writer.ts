@@ -77,10 +77,8 @@ export function writeWikiOutput(output: WikiOutput, outputDir: string): string[]
         // Ensure parent directory exists (for safety with deeply nested paths)
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
 
-        // Normalize line endings to LF
         const content = normalizeLineEndings(article.content);
 
-        // Write file
         fs.writeFileSync(filePath, content, 'utf-8');
         writtenPaths.push(filePath);
     }

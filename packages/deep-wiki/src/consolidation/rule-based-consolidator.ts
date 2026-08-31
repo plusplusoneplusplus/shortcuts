@@ -148,7 +148,6 @@ function mergeComponentGroup(group: DirectoryGroup): ComponentInfo {
         .map(w => w.charAt(0).toUpperCase() + w.slice(1))
         .join(' ');
 
-    // Union of all key files
     const keyFiles = deduplicateStrings(
         comps.flatMap(m => m.keyFiles)
     );
@@ -167,13 +166,10 @@ function mergeComponentGroup(group: DirectoryGroup): ComponentInfo {
     );
     const dependents = allDependents.filter(d => !selfIds.has(d));
 
-    // Pick highest complexity
     const complexity = resolveMaxComplexity(comps);
 
-    // Pick most common category
     const category = pickMostCommonCategory(comps);
 
-    // Combine purposes
     const purpose = combinePurposes(comps);
 
     // Track provenance

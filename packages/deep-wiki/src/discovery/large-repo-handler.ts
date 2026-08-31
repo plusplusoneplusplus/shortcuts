@@ -140,7 +140,6 @@ export async function discoverLargeRepo(options: DiscoveryOptions): Promise<Comp
     if (!scanResult) {
         scanResult = await performStructuralScan(options);
 
-        // Save to cache
         if (cacheEnabled && gitHash) {
             try {
                 saveStructuralScan(scanResult, options.outputDir!, gitHash);
@@ -165,7 +164,6 @@ export async function discoverLargeRepo(options: DiscoveryOptions): Promise<Comp
         const domain = scanResult.domains[i];
         const domainSlug = normalizeComponentId(domain.path);
 
-        // Check domain cache
         let cachedDomain: ComponentGraph | null = null;
         if (cacheEnabled && gitHash) {
             cachedDomain = getCachedDomainSubGraph(domainSlug, options.outputDir!, gitHash);
@@ -183,7 +181,6 @@ export async function discoverLargeRepo(options: DiscoveryOptions): Promise<Comp
             printInfo(`    Found ${subGraph.components.length} components`);
             subGraphs.push(subGraph);
 
-            // Save domain sub-graph to cache
             if (cacheEnabled && gitHash) {
                 try {
                     saveDomainSubGraph(domainSlug, subGraph, options.outputDir!, gitHash);
@@ -201,7 +198,6 @@ export async function discoverLargeRepo(options: DiscoveryOptions): Promise<Comp
         throw new Error('All domain discoveries failed. Cannot produce a component graph.');
     }
 
-    // Merge sub-graphs
     printInfo(`Merging ${subGraphs.length} domain sub-graphs...`);
     const merged = mergeSubGraphs(subGraphs, scanResult);
     printInfo(`Merged result: ${merged.components.length} components, ${merged.categories.length} categories`);
@@ -324,7 +320,6 @@ export function mergeSubGraphs(
 
         for (const comp of graph.components) {
             if (!componentMap.has(comp.id)) {
-                // Tag component with its domain
                 const taggedComp = domainSlug ? { ...comp, domain: domainSlug } : comp;
                 componentMap.set(comp.id, taggedComp);
 
@@ -358,7 +353,6 @@ export function mergeSubGraphs(
         comp.dependents = comp.dependents.filter(dep => componentIds.has(dep));
     }
 
-    // Combine architecture notes
     const architectureNotes = subGraphs
         .map(g => g.architectureNotes)
         .filter(Boolean)

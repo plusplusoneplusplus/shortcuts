@@ -114,7 +114,6 @@ export async function executeInit(options: InitCommandOptions): Promise<number> 
         printInfo(`Writing config template to ${outputPath}`);
     }
 
-    // Check if file already exists
     if (fs.existsSync(outputPath) && !options.force) {
         printError(`File already exists: ${outputPath}`);
         printInfo('Use --force to overwrite the existing file.');

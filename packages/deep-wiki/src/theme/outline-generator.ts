@@ -148,7 +148,6 @@ export function parseOutlineResponse(
         });
     }
 
-    // Build involvedComponents from probe results
     const involvedComponents = buildInvolvedModules(probeResult);
 
     return {

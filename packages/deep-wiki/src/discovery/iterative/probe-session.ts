@@ -67,7 +67,6 @@ export async function runThemeProbe(
         };
     }
 
-    // Build the prompt
     const prompt = buildProbePrompt(repoPath, theme, options.focus);
 
     // Configure the SDK session
@@ -86,7 +85,6 @@ export async function runThemeProbe(
     }
 
     try {
-        // Send the message
         printInfo(`    Probing theme: ${theme.theme} ${gray(`(timeout: ${(options.timeout || DEFAULT_PROBE_TIMEOUT_MS) / 1000}s)`)}`);
         const result = await service.sendMessage(sendOptions);
 
@@ -102,7 +100,6 @@ export async function runThemeProbe(
             };
         }
 
-        // Parse the response
         const parsed = parseProbeResponse(result.response, theme.theme);
         printInfo(`    Probe "${theme.theme}" found ${parsed.foundComponents.length} components ${gray(`(confidence: ${parsed.confidence})`)}`);
         return parsed;

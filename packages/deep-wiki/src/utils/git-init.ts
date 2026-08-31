@@ -86,7 +86,6 @@ export async function initGitRepo(
     const resolved = path.resolve(dir);
     const gitDir = path.join(resolved, '.git');
 
-    // Already a git repo
     if (fs.existsSync(gitDir)) {
         log?.info?.(`Git repository already exists at ${resolved}`);
         return true;
@@ -120,7 +119,6 @@ export function writeGitignore(
     const resolved = path.resolve(dir);
     const gitignorePath = path.join(resolved, '.gitignore');
 
-    // Already has a .gitignore
     if (fs.existsSync(gitignorePath)) {
         log?.info?.(`.gitignore already exists at ${resolved}`);
         return true;

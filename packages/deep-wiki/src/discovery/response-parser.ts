@@ -120,16 +120,12 @@ function validateAndNormalizeGraph(raw: Record<string, unknown>): ComponentGraph
         }
     }
 
-    // Parse project info
     const project = parseProjectInfo(raw.project);
 
-    // Parse components
     const components = parseComponents(raw.components, warnings);
 
-    // Parse categories
     const categories = parseCategories(raw.categories, warnings);
 
-    // Parse architecture notes
     const architectureNotes = typeof raw.architectureNotes === 'string'
         ? raw.architectureNotes
         : '';
@@ -138,7 +134,6 @@ function validateAndNormalizeGraph(raw: Record<string, unknown>): ComponentGraph
     const categoryNames = new Set(categories.map(c => c.name));
     for (const comp of components) {
         if (comp.category && !categoryNames.has(comp.category)) {
-            // Auto-add missing category
             categories.push({ name: comp.category, description: `Auto-generated category for ${comp.category}` });
             categoryNames.add(comp.category);
             warnings.push(`Auto-added missing category '${comp.category}'`);
@@ -236,7 +231,6 @@ function parseComponents(raw: unknown, warnings: string[]): ComponentInfo[] {
 
         const obj = item as Record<string, unknown>;
 
-        // Check required fields
         let hasRequired = true;
         for (const field of COMPONENT_INFO_REQUIRED_FIELDS) {
             if (!(field in obj) || typeof obj[field] !== 'string') {
@@ -247,7 +241,6 @@ function parseComponents(raw: unknown, warnings: string[]): ComponentInfo[] {
         }
         if (!hasRequired) { continue; }
 
-        // Normalize component ID
         let id = String(obj.id);
         if (!isValidComponentId(id)) {
             const normalized = normalizeComponentId(id);

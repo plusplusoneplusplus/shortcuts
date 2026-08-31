@@ -169,7 +169,6 @@ export async function runAnalysisExecutor(
 
             logger.debug(LogCategory.MAP_REDUCE, `Retrying ${remainingFailed.length} failed component(s) (attempt ${attempt + 1}/${retryAttempts})`);
 
-            // Get the components that failed
             const retryComponents = components.filter(m => remainingFailed.includes(m.id));
 
             const retryResult = await executeAnalysisRound({
@@ -221,10 +220,8 @@ async function executeAnalysisRound(
     options: AnalysisRoundOptions
 ): Promise<{ analyses: ComponentAnalysis[]; failedComponentIds: string[] }> {
     const { components, graph, aiInvoker, promptTemplate, outputFields, concurrency, model, onProgress, isCancelled, onItemComplete } = options;
-    // Convert components to PromptItems
     const items: PromptItem[] = components.map(c => componentToPromptItem(c, graph));
 
-    // Run map phase with concurrency limiter
     const limiter = new ConcurrencyLimiter(concurrency);
     const mapResults: AnalysisMapResult[] = new Array(items.length);
     let completed = 0;

@@ -71,7 +71,6 @@ export async function clusterWithAI(
         return graph;
     }
 
-    // Build the clustering prompt
     const prompt = buildClusteringPrompt(components, graph.project.name, targetCount);
 
     // Call AI
@@ -82,7 +81,6 @@ export async function clusterWithAI(
         return graph;
     }
 
-    // Parse the cluster assignments
     const clusters = parseClusterResponse(result.response, components);
 
     if (clusters.length === 0) {
@@ -250,7 +248,6 @@ export function applyClusterMerge(
             idMapping.set(comp.id, comp.id);
             mergedComponents.push(comp);
         } else {
-            // Merge members into cluster component
             const merged = mergeClusterMembers(cluster, members);
             for (const comp of members) {
                 idMapping.set(comp.id, cluster.id);
@@ -275,7 +272,6 @@ export function applyClusterMerge(
         ),
     }));
 
-    // Re-derive categories
     const categories = deriveFreshCategories(fixedComponents);
 
     return {

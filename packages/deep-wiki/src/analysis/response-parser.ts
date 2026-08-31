@@ -300,7 +300,6 @@ export function parseAnalysisResponse(response: string, expectedComponentId: str
         suggestedDiagram: normalizeMermaidDiagram(raw.suggestedDiagram),
     };
 
-    // Parse dependencies object
     if (raw.dependencies && typeof raw.dependencies === 'object') {
         const deps = raw.dependencies as Record<string, unknown>;
         analysis.dependencies.internal = ensureArray(deps.internal)

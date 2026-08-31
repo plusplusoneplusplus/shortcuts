@@ -84,7 +84,6 @@ export async function runPhase2Consolidation(
     spinner.start('Consolidating components...');
 
     try {
-        // Resolve per-phase settings for consolidation
         const consolidationModel = resolvePhaseModel(options, 'consolidation');
         const consolidationTimeout = resolvePhaseTimeout(options, 'consolidation');
         const consolidationSkipAI = options.phases?.consolidation?.skipAI;
@@ -114,7 +113,6 @@ export async function runPhase2Consolidation(
             `Consolidation complete: ${result.originalCount} → ${result.afterRuleBasedCount} (rule-based) → ${result.finalCount} components`
         );
 
-        // Save consolidation result to cache
         await saveConsolidation(repoPath, result.graph, outputDir, inputComponentCount);
 
         // Update component-graph.json with the consolidated graph.

@@ -85,7 +85,6 @@ export async function executeTheme(
 ): Promise<number> {
     const startTime = Date.now();
 
-    // Resolve to absolute path
     const absoluteRepoPath = path.resolve(repoPath);
 
     // ====================================================================
@@ -155,7 +154,6 @@ export async function executeTheme(
     }
 
     // ====================================================================
-    // Print header
     // ====================================================================
     printHeader('Deep Wiki — Theme Generation');
     process.stderr.write(`${'─'.repeat(35)}\n`);
@@ -167,7 +165,6 @@ export async function executeTheme(
     process.stderr.write('\n');
 
     // ====================================================================
-    // Check AI availability
     // ====================================================================
     const availability = await checkAIAvailability();
     if (!availability.available) {
