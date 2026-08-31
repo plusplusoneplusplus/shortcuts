@@ -3,7 +3,7 @@
  * Includes inline filesystem browser.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Dialog, Button } from '../ui';
 import { normalizeRemoteUrl } from './repoGrouping';
 import type { RepoData } from './repoGrouping';
@@ -103,6 +103,17 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess, serverI
     const [selectedAgentId, setSelectedAgentId] = useState('');
     const [path, setPath] = useState('');
     const [name, setName] = useState('');
+    // Mirrors `name` synchronously so the browser can decide whether to re-derive
+    // it without waiting for a render, and remembers the last value the browser
+    // filled in: browsing keeps the name in step with the directory on screen,
+    // but stops the moment the user types a name of their own.
+    const nameRef = useRef('');
+    const autoFilledNameRef = useRef<string | null>(null);
+    const writeName = useCallback((value: string, fromBrowser: boolean) => {
+        nameRef.current = value;
+        autoFilledNameRef.current = fromBrowser ? value : null;
+        setName(value);
+    }, []);
     const [color, setColor] = useState(AUTO_VALUE);
     const [validation, setValidation] = useState<{ msg: string; ok: boolean } | null>(null);
     const [submitting, setSubmitting] = useState(false);
@@ -128,11 +139,11 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess, serverI
     useEffect(() => {
         if (open && isEdit && editRepo) {
             setPath(editRepo.workspace.rootPath || '');
-            setName(editRepo.workspace.name || '');
+            writeName(editRepo.workspace.name || '', false);
             setColor(editRepo.workspace.color || '#0078d4');
         } else if (open) {
             setPath('');
-            setName('');
+            writeName('', false);
             setColor(AUTO_VALUE);
         }
         setValidation(null);
@@ -140,7 +151,23 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess, serverI
         setBrowserDrives([]);
         setBrowseRoots([]);
         setBrowserError(null);
-    }, [open, isEdit, editRepo]);
+    }, [open, isEdit, editRepo, writeName]);
+
+    // Browsing is selecting: the Path field tracks whatever directory the tree is
+    // showing, so the dialog's own "Add Repo" button stays the only confirm.
+    const applyBrowseResult = useCallback((data: BrowserResponse) => {
+        setBrowserPath(data.path);
+        setBrowserParent(data.parent || null);
+        setBrowserEntries(data.entries || []);
+        setBrowserDrives(Array.isArray(data.drives) ? data.drives : []);
+        setBrowseRoots(Array.isArray(data.browseRoots) ? data.browseRoots : []);
+        if (data.path) {
+            setPath(data.path);
+            if (!nameRef.current.trim() || nameRef.current === autoFilledNameRef.current) {
+                writeName(getPathLeaf(data.path), true);
+            }
+        }
+    }, [writeName]);
 
     const navigateTo = useCallback(async (dir: string, targetServerId?: string) => {
         // The server is passed explicitly when it just changed, since this
@@ -156,11 +183,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess, serverI
         try {
             if (isLocalTarget && isContainerMode() && selectedAgentId) setCurrentAgentId(selectedAgentId);
             const data = await browseWorkspaceFolders(dir, target.baseUrl) as BrowserResponse;
-            setBrowserPath(data.path);
-            setBrowserParent(data.parent || null);
-            setBrowserEntries(data.entries || []);
-            setBrowserDrives(Array.isArray(data.drives) ? data.drives : []);
-            setBrowseRoots(Array.isArray(data.browseRoots) ? data.browseRoots : []);
+            applyBrowseResult(data);
         } catch (err) {
             setBrowserEntries([]);
             setBrowserParent(null);
@@ -182,11 +205,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess, serverI
                         if (event.data?.type === 'browse-result') {
                             window.removeEventListener('message', onMessage);
                             const data = event.data.data as BrowserResponse;
-                            setBrowserPath(data.path);
-                            setBrowserParent(data.parent || null);
-                            setBrowserEntries(data.entries || []);
-                            setBrowserDrives(Array.isArray(data.drives) ? data.drives : []);
-                            setBrowseRoots(Array.isArray(data.browseRoots) ? data.browseRoots : []);
+                            applyBrowseResult(data);
                             setBrowserError(null);
                             setBrowserLoading(false);
                         } else if (event.data?.type === 'browse-error') {
@@ -218,7 +237,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess, serverI
             setCurrentAgentId(prevAgentId);
         }
         setBrowserLoading(false);
-    }, [selectedAgentId, availableAgents, server]);
+    }, [selectedAgentId, availableAgents, server, applyBrowseResult]);
 
     // A path only means something on the server it came from, so switching
     // servers drops it and re-roots the browser at the new box's home.
@@ -242,16 +261,6 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess, serverI
         navigateTo(path.trim() || '~');
     }, [path, navigateTo]);
 
-    const selectBrowserDir = useCallback(() => {
-        if (browserPath) {
-            setPath(browserPath);
-            if (!name.trim()) {
-                setName(getPathLeaf(browserPath));
-            }
-        }
-        setShowBrowser(false);
-    }, [browserPath, name]);
-
     const handleSubmit = async () => {
         const trimmedPath = path.trim();
         if (!isEdit && !trimmedPath) {
@@ -261,6 +270,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess, serverI
 
         setSubmitting(true);
         setValidation(null);
+        setShowBrowser(false);
 
         // Resolve 'auto' to a concrete hex color before submitting
         const existingColors = repos.map(r => r.workspace.color).filter(Boolean) as string[];
@@ -466,8 +476,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess, serverI
                             </>
                         )}
                         <div className="flex justify-end gap-1 mt-1 pt-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">
-                            <Button variant="secondary" size="sm" onClick={() => setShowBrowser(false)}>Cancel</Button>
-                            <Button variant="primary" size="sm" id="path-browser-select" data-testid="path-browser-select" onClick={selectBrowserDir}>Select</Button>
+                            <Button variant="secondary" size="sm" id="path-browser-close" data-testid="path-browser-close" onClick={() => setShowBrowser(false)}>Close</Button>
                         </div>
                     </div>
                 )}
@@ -479,7 +488,7 @@ export function AddRepoDialog({ open, onClose, editId, repos, onSuccess, serverI
                     data-testid="repo-alias"
                     className="px-2 py-1 text-sm rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]"
                     value={name}
-                    onChange={e => setName(e.target.value)}
+                    onChange={e => writeName(e.target.value, false)}
                     placeholder="Alias / display name"
                 />
 
