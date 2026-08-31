@@ -582,7 +582,15 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
         },
     });
 
-    // PUT /api/workspaces/:id/mcp-config — Save workspace-enabled MCP server list (+ optional enabledMcpTools)
+    // PUT /api/workspaces/:id/mcp-config — Patch the workspace MCP policy.
+    //
+    // The two policy fields have separate persistence owners (the workspace
+    // record vs. the per-repo preference file), so each is patched
+    // INDEPENDENTLY by property presence: an omitted field is left untouched,
+    // an explicit `null` clears it. A tools-only caller therefore never has to
+    // send a server-list snapshot — sending a stale one is exactly how a newer
+    // server toggle used to get silently reverted. At least one field is
+    // required. The response carries the canonical resulting policy.
     routes.push({
         method: 'PUT',
         pattern: /^\/api\/workspaces\/([^/]+)\/mcp-config$/,
@@ -592,22 +600,29 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             const id = ws.id;
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
-            if (!Object.prototype.hasOwnProperty.call(body, 'enabledMcpServers')) {
+            const hasServers = Object.prototype.hasOwnProperty.call(body, 'enabledMcpServers');
+            const hasTools = Object.prototype.hasOwnProperty.call(body, 'enabledMcpTools');
+            if (!hasServers && !hasTools) {
                 return handleAPIError(res, missingFields(['enabledMcpServers']));
             }
-            if (body.enabledMcpServers !== null && !Array.isArray(body.enabledMcpServers)) {
-                return handleAPIError(res, badRequest('`enabledMcpServers` must be an array of strings or null'));
-            }
-            if (Array.isArray(body.enabledMcpServers) && body.enabledMcpServers.some((e: any) => typeof e !== 'string')) {
-                return handleAPIError(res, badRequest('`enabledMcpServers` items must be strings'));
-            }
-            const updated = await store.updateWorkspace(id, { enabledMcpServers: body.enabledMcpServers });
-            if (!updated) {
-                return handleAPIError(res, notFound('Workspace'));
+
+            let workspace = ws;
+            if (hasServers) {
+                if (body.enabledMcpServers !== null && !Array.isArray(body.enabledMcpServers)) {
+                    return handleAPIError(res, badRequest('`enabledMcpServers` must be an array of strings or null'));
+                }
+                if (Array.isArray(body.enabledMcpServers) && body.enabledMcpServers.some((e: any) => typeof e !== 'string')) {
+                    return handleAPIError(res, badRequest('`enabledMcpServers` items must be strings'));
+                }
+                const updated = await store.updateWorkspace(id, { enabledMcpServers: body.enabledMcpServers });
+                if (!updated) {
+                    return handleAPIError(res, notFound('Workspace'));
+                }
+                workspace = updated;
             }
 
-            // Optional enabledMcpTools — stored in per-repo preferences
-            if (Object.prototype.hasOwnProperty.call(body, 'enabledMcpTools')) {
+            // enabledMcpTools — stored in per-repo preferences
+            if (hasTools) {
                 if (!ctx.dataDir) {
                     return handleAPIError(res, badRequest('dataDir is required to save enabledMcpTools'));
                 }
@@ -621,7 +636,14 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
                 writeRepoPreferences(ctx.dataDir, id, merged);
             }
 
-            sendJSON(res, 200, { workspace: updated });
+            const enabledMcpTools = ctx.dataDir
+                ? (readRepoPreferences(ctx.dataDir, id).enabledMcpTools ?? null)
+                : null;
+            sendJSON(res, 200, {
+                workspace,
+                enabledMcpServers: workspace.enabledMcpServers ?? null,
+                enabledMcpTools,
+            });
         },
     });
 

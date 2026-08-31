@@ -9,9 +9,9 @@ import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClien
 import { useGlobalToast } from '../../contexts/ToastContext';
 import { useApp } from '../../contexts/AppContext';
 import { McpServersPanel } from '../skills/McpServersPanel';
-import type { McpServerEntry, McpServerSources } from '../skills/McpServersPanel';
 import { AgentSkillsPanel } from '../skills/AgentSkillsPanel';
 import { useWorkspaceSkillsController } from '../skills/useWorkspaceSkillsController';
+import { useWorkspaceMcpConfigController } from '../skills/useWorkspaceMcpConfigController';
 import { CustomInstructionsPanel } from '../skills/CustomInstructionsPanel';
 import type { InstructionMode } from '../skills/CustomInstructionsPanel';
 import type { SettingsSection } from '../../types/dashboard';
@@ -39,66 +39,15 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
         notify: addToast,
     });
 
-    // ── MCP state ────────────────────────────────────────────────────────────
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [saving, setSaving] = useState(false);
-    const [availableServers, setAvailableServers] = useState<McpServerEntry[]>([]);
-    const [mcpSources, setMcpSources] = useState<McpServerSources | undefined>(undefined);
-    const [enabledMcpServers, setEnabledMcpServers] = useState<string[] | null>(null);
-    const [enabledMcpTools, setEnabledMcpTools] = useState<Record<string, string[]> | null>(null);
-
-    useEffect(() => {
-        setLoading(true);
-        setError(null);
-        setMcpSources(undefined);
-        getSpaCocClient().workspaces.getMcpConfig(workspaceId)
-            .then((data) => {
-                setAvailableServers(data.availableServers ?? []);
-                setMcpSources(data.sources);
-                setEnabledMcpServers(data.enabledMcpServers ?? null);
-                setEnabledMcpTools(data.enabledMcpTools ?? null);
-            })
-            .catch((e: unknown) => setError(getSpaCocClientErrorMessage(e, 'Failed to load MCP config')))
-            .finally(() => setLoading(false));
-    }, [workspaceId]);
-
-    const handleRefreshMcp = useCallback(() => {
-        setLoading(true);
-        setError(null);
-        getSpaCocClient().workspaces.getMcpConfig(workspaceId, { forceReload: true })
-            .then((data) => {
-                setAvailableServers(data.availableServers ?? []);
-                setMcpSources(data.sources);
-                setEnabledMcpServers(data.enabledMcpServers ?? null);
-                setEnabledMcpTools(data.enabledMcpTools ?? null);
-            })
-            .catch((e: unknown) => setError(getSpaCocClientErrorMessage(e, 'Failed to load MCP config')))
-            .finally(() => setLoading(false));
-    }, [workspaceId]);
-
-    const isEnabled = (name: string) =>
-        enabledMcpServers === null || enabledMcpServers.includes(name);
-
-    const handleToggle = async (serverName: string, checked: boolean) => {
-        const allNames = availableServers.map((s) => s.name);
-        const currentList = enabledMcpServers ?? allNames;
-        const nextList = checked
-            ? [...new Set([...currentList, serverName])]
-            : currentList.filter((n) => n !== serverName);
-        const nextValue = nextList.length === allNames.length ? null : nextList;
-        const prevValue = enabledMcpServers;
-        setEnabledMcpServers(nextValue); // optimistic update
-        setSaving(true);
-        try {
-            await getSpaCocClient().workspaces.updateMcpConfig(workspaceId, { enabledMcpServers: nextValue });
-        } catch (e: any) {
-            setError(e.message ?? 'Failed to save');
-            setEnabledMcpServers(prevValue); // revert on error
-        } finally {
-            setSaving(false);
-        }
-    };
+    // ── MCP policy ───────────────────────────────────────────────────────────
+    // One owner for loading, optimistic state, and serialized field-specific
+    // writes, shared with the repo Settings surface.
+    const mcp = useWorkspaceMcpConfigController({
+        workspaceId,
+        resolveClient: resolveSpaClient,
+    });
+    const refreshMcp = mcp.refresh;
+    const handleRefreshMcp = useCallback(() => { refreshMcp(true); }, [refreshMcp]);
 
     // ── Instructions state ───────────────────────────────────────────────────
     const [instrContents, setInstrContents] = useState<Record<InstructionMode, string | null>>({
@@ -176,7 +125,7 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
     }, [dispatch, workspaceId]);
 
     // Count badges for sidebar
-    const enabledMcpCount = availableServers.filter(s => isEnabled(s.name)).length;
+    const enabledMcpCount = mcp.availableServers.filter(s => mcp.isEnabled(s.name)).length;
     const installedSkillsCount = skillsController.skills.length;
     const hasInstructions = Object.values(instrContents).some(v => v !== null && v !== '');
 
@@ -190,7 +139,7 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
                 {NAV_ITEMS.map(item => {
                     const isActive = activeSection === item.id;
                     let badge: React.ReactNode = null;
-                    if (item.id === 'mcp' && !loading) {
+                    if (item.id === 'mcp' && !mcp.loading) {
                         badge = (
                             <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-[#e0e0e0] dark:bg-[#3c3c3c] text-[#616161] dark:text-[#999]">
                                 {enabledMcpCount}
@@ -231,15 +180,15 @@ export function RepoCopilotTab({ workspaceId }: RepoCopilotTabProps) {
                 {activeSection === 'mcp' && (
                     <McpServersPanel
                         workspaceId={workspaceId}
-                        loading={loading}
-                        error={error}
-                        saving={saving}
-                        availableServers={availableServers}
-                        sources={mcpSources}
-                        enabledMcpServers={enabledMcpServers}
-                        enabledMcpTools={enabledMcpTools}
-                        isEnabled={isEnabled}
-                        onToggle={handleToggle}
+                        loading={mcp.loading}
+                        error={mcp.error}
+                        saving={mcp.saving}
+                        availableServers={mcp.availableServers}
+                        sources={mcp.sources}
+                        enabledMcpTools={mcp.enabledMcpTools}
+                        onSaveEnabledMcpTools={mcp.saveEnabledMcpTools}
+                        isEnabled={mcp.isEnabled}
+                        onToggle={mcp.toggleServer}
                         onRefresh={handleRefreshMcp}
                         onMutate={handleRefreshMcp}
                     />

@@ -242,28 +242,43 @@ describe('useMcpServerInspectorController — mutations', () => {
 });
 
 describe('useMcpServerInspectorController — allow-list', () => {
-    it('persists a tool toggle-off through updateMcpConfig, preserving enabledMcpServers', async () => {
+    // The inspector no longer persists the allow-list. It applies the next map
+    // locally for an immediate render and hands it to the policy owner's
+    // tool-only command, which is what keeps a tool save from carrying — and
+    // reverting — a stale `enabledMcpServers` snapshot.
+    it('hands a tool toggle-off to the policy owner without writing itself', async () => {
         discoverMcpTools.mockResolvedValue({ servers: { github: okResult } });
-        const { result } = renderHook(() => useMcpServerInspectorController('ws-1', { enabledMcpServers: ['github'] }));
+        const onSaveTools = vi.fn();
+        const { result } = renderHook(() => useMcpServerInspectorController('ws-1', { onSaveTools }));
         await waitFor(() => expect(result.current.discovery.github?.status).toBe('ok'));
 
-        await act(async () => { result.current.toggleTool('github', 'a', false); await new Promise(r => setTimeout(r, 0)); });
-        expect(updateMcpConfig).toHaveBeenCalledWith('ws-1', {
-            enabledMcpServers: ['github'],
-            enabledMcpTools: { github: ['b'] },
-        });
+        await act(async () => { result.current.toggleTool('github', 'a', false); });
+
+        expect(onSaveTools).toHaveBeenCalledWith({ github: ['b'] });
+        expect(result.current.toolsAllowList).toEqual({ github: ['b'] }); // optimistic
+        expect(updateMcpConfig).not.toHaveBeenCalled();
     });
 
-    it('reverts the optimistic allow-list when the save fails', async () => {
+    it('adopts the owner’s rollback when a save fails', async () => {
         discoverMcpTools.mockResolvedValue({ servers: { github: okResult } });
-        updateMcpConfig.mockImplementationOnce(async () => { throw new Error('boom'); });
-        // Omit enabledMcpTools (a stable `undefined`) so the allow-list sync effect
-        // is not re-triggered by a fresh object identity on every render.
-        const { result } = renderHook(() => useMcpServerInspectorController('ws-1', {}));
+        const { result, rerender } = renderHook(
+            ({ tools }) => useMcpServerInspectorController('ws-1', { enabledMcpTools: tools }),
+            { initialProps: { tools: undefined as Record<string, string[]> | undefined } },
+        );
         await waitFor(() => expect(result.current.discovery.github?.status).toBe('ok'));
 
         act(() => { result.current.toggleTool('github', 'a', false); });
-        await waitFor(() => expect(result.current.toolsAllowList).toEqual({ github: ['b'] })); // optimistic
-        await waitFor(() => expect(result.current.toolsAllowList).toEqual({})); // reverted after failure
+        expect(result.current.toolsAllowList).toEqual({ github: ['b'] }); // optimistic
+
+        // The owner's write failed and rolled its canonical state back.
+        rerender({ tools: {} });
+        expect(result.current.toolsAllowList).toEqual({});
+    });
+
+    it('mirrors the owner’s saving flag', async () => {
+        discoverMcpTools.mockResolvedValue({ servers: {} });
+        const { result } = renderHook(() => useMcpServerInspectorController('ws-1', { toolsSaving: true }));
+        await waitFor(() => expect(result.current.discoveryState).toBe('loaded'));
+        expect(result.current.toolsSaving).toBe(true);
     });
 });

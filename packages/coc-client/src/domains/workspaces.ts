@@ -30,6 +30,7 @@ import type {
   TerminalSessionsResponse,
   UpdateWorkspaceInstructionRequest,
   UpdateWorkspaceMcpConfigRequest,
+  UpdateWorkspaceMcpConfigResponse,
   ProcessHistoryResponse,
   WorkspaceHistoryQuery,
   WorkspaceInfo,
@@ -148,14 +149,26 @@ export class WorkspacesClient {
     });
   }
 
-  updateMcpConfig(workspaceId: string, request: UpdateWorkspaceMcpConfigRequest): Promise<{ workspace: WorkspaceInfo }> {
-    const body: Record<string, unknown> = {
-      enabledMcpServers: request.enabledMcpServers === null ? null : [...request.enabledMcpServers],
-    };
+  /**
+   * Patch the workspace MCP policy. Only the fields PRESENT on `request` are
+   * sent, so a tool-only mutation never carries a (possibly stale) server-list
+   * snapshot. An explicit `null` is forwarded as `null` (clear the field).
+   */
+  updateMcpConfig(
+    workspaceId: string,
+    request: UpdateWorkspaceMcpConfigRequest,
+  ): Promise<UpdateWorkspaceMcpConfigResponse> {
+    const body: Record<string, unknown> = {};
+    if (Object.prototype.hasOwnProperty.call(request, 'enabledMcpServers')) {
+      body.enabledMcpServers = request.enabledMcpServers == null ? null : [...request.enabledMcpServers];
+    }
     if (Object.prototype.hasOwnProperty.call(request, 'enabledMcpTools')) {
       body.enabledMcpTools = request.enabledMcpTools ?? null;
     }
-    return this.transport.request<{ workspace: WorkspaceInfo }>(`/workspaces/${encodePathSegment(workspaceId)}/mcp-config`, {
+    if (Object.keys(body).length === 0) {
+      throw new Error('updateMcpConfig requires at least one of `enabledMcpServers` or `enabledMcpTools`');
+    }
+    return this.transport.request<UpdateWorkspaceMcpConfigResponse>(`/workspaces/${encodePathSegment(workspaceId)}/mcp-config`, {
       method: 'PUT',
       body,
     });

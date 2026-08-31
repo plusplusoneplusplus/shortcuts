@@ -16,7 +16,12 @@ Full detail for one server, available only here: `description`, `envKeys` (key n
 
 ### `PUT /api/workspaces/:id/mcp-config`
 
-Stores the name-based allow-list `enabledMcpServers` (array of server names, or `null` to enable all) and optionally `enabledMcpTools` (`Record<string, string[]>`, server name → enabled tool names). When `enabledMcpTools` is set for a server, only those tools are used at runtime. Both live in per-repo preferences JSON at `~/.coc/repos/<workspaceId>/preferences.json`.
+A **partial patch** of the workspace MCP policy. The two fields have separate persistence owners, so each is applied by property PRESENCE: an omitted field is left untouched, an explicit `null` clears it. At least one must be present (`MISSING_FIELDS` otherwise). A tools-only caller therefore never sends a server-list snapshot — sending a stale one is how an older write could revert a newer server toggle.
+
+- `enabledMcpServers` — array of server names, or `null` to enable all. Stored on the workspace record.
+- `enabledMcpTools` — `Record<string, string[]>`, server name → enabled tool names, or `null` to clear. When set for a server, only those tools are used at runtime. Stored in per-repo preferences JSON at `~/.coc/repos/<workspaceId>/preferences.json`.
+
+Responds with `{ workspace, enabledMcpServers, enabledMcpTools }` — the canonical policy after the patch, including the field the request did not touch.
 
 ### `PUT /api/workspaces/:id/mcp-config/:server`
 

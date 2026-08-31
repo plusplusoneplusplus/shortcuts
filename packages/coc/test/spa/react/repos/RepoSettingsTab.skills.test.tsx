@@ -23,6 +23,12 @@ const mockClient = vi.hoisted(() => ({
         patchRepo: vi.fn(),
         getTaskSettings: vi.fn(),
     },
+    // MCP policy goes through the typed workspaces domain, routed to the client
+    // that owns the workspace.
+    workspaces: {
+        getMcpConfig: vi.fn(),
+        updateMcpConfig: vi.fn(),
+    },
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
@@ -157,6 +163,8 @@ describe('RepoSettingsTab skill expansion', () => {
         mockClient.preferences.getRepo.mockResolvedValue({});
         mockClient.preferences.patchRepo.mockResolvedValue({});
         mockClient.preferences.getTaskSettings.mockResolvedValue({});
+        mockClient.workspaces.getMcpConfig.mockResolvedValue({ availableServers: [], enabledMcpServers: null });
+        mockClient.workspaces.updateMcpConfig.mockResolvedValue({});
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ({ base: null, ask: null, plan: null, autopilot: null }),
@@ -233,6 +241,8 @@ describe('RepoSettingsTab redesigned sidebar', () => {
         mockClient.preferences.getRepo.mockResolvedValue({});
         mockClient.preferences.patchRepo.mockResolvedValue({});
         mockClient.preferences.getTaskSettings.mockResolvedValue({});
+        mockClient.workspaces.getMcpConfig.mockResolvedValue({ availableServers: [], enabledMcpServers: null });
+        mockClient.workspaces.updateMcpConfig.mockResolvedValue({});
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ({ base: null, ask: null, plan: null, autopilot: null }),
