@@ -444,12 +444,10 @@ describe('AddFolderDialog', () => {
         it('select all / deselect all toggles all checkboxes', async () => {
             await goToChecklist();
 
-            // Deselect all
             act(() => { fireEvent.click(screen.getByText('Deselect all')); });
             expect((screen.getByTestId('repo-check-frontend') as HTMLInputElement).checked).toBe(false);
             expect((screen.getByTestId('repo-check-backend') as HTMLInputElement).checked).toBe(false);
 
-            // Select all
             act(() => { fireEvent.click(screen.getByText('Select all')); });
             expect((screen.getByTestId('repo-check-frontend') as HTMLInputElement).checked).toBe(true);
             expect((screen.getByTestId('repo-check-backend') as HTMLInputElement).checked).toBe(true);

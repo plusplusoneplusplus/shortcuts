@@ -346,7 +346,6 @@ describe('BranchChanges — tree mode renamed files', () => {
         await expandFiles();
         await waitFor(() => {
             const fileRow = screen.getByTestId('branch-file-row-src/new-name.ts');
-            // The file name span should have a title with old → new path
             const nameSpan = fileRow.querySelector('[title="src/old-name.ts → src/new-name.ts"]');
             expect(nameSpan).toBeTruthy();
         });

@@ -1530,7 +1530,6 @@ describe('ChatDetail', () => {
             const refreshIdx = finishBlock.indexOf('refreshConversation(processId)');
             expect(setTaskIdx).toBeGreaterThan(-1);
             expect(refreshIdx).toBeGreaterThan(-1);
-            // setTask should appear before refreshConversation in the code
             expect(setTaskIdx).toBeLessThan(refreshIdx);
         });
 

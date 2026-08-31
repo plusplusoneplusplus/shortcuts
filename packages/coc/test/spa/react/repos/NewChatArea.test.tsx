@@ -762,7 +762,6 @@ describe('NewChatArea', () => {
             expect(screen.queryByTestId('new-chat-send-btn')).toBeNull();
         });
 
-        // Resolve the enqueue
         await act(async () => {
             resolvePost!({ task: { id: 'done' } });
         });

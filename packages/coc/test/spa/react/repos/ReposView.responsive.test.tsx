@@ -214,7 +214,6 @@ describe('ReposView — responsive layout', () => {
             expect(screen.queryByTestId('repos-sidebar')).toBeNull();
             expect(screen.queryByTestId('mini-sidebar')).toBeNull();
 
-            // Empty state shows
             const emptyState = await screen.findByTestId('repo-detail-empty');
             expect(emptyState).toBeDefined();
         });

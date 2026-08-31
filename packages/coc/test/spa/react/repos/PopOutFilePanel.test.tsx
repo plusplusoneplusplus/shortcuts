@@ -91,7 +91,6 @@ describe('PopOutFilePanel', () => {
         // Initially expanded
         expect(screen.getByTestId('popout-file-panel')).toBeTruthy();
 
-        // Click collapse
         fireEvent.click(screen.getByTestId('popout-file-panel-collapse-btn'));
 
         // Should now be collapsed
@@ -166,7 +165,6 @@ describe('PopOutFilePanel', () => {
                 onFileSelect={() => {}}
             />
         );
-        // Collapse
         fireEvent.click(screen.getByTestId('popout-file-panel-collapse-btn'));
         expect(screen.getByTestId('popout-file-panel-file-count-collapsed').textContent).toBe('3 files');
     });

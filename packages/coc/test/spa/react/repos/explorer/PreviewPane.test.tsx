@@ -311,10 +311,8 @@ describe('PreviewPane', () => {
             textarea.dispatchEvent(new Event('change', { bubbles: true }));
         });
 
-        // Mock save response
         mockExplorerApi.writeBlob.mockResolvedValueOnce({ success: true });
 
-        // Click save
         await act(async () => {
             screen.getByTestId('save-btn').click();
         });
