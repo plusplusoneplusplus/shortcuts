@@ -255,10 +255,8 @@ describe('AdminPanel — Pull Requests feature toggles', () => {
             expect(checkbox.checked).toBe(false);
         });
 
-        // Enable suggestions
         fireEvent.click(screen.getByTestId('toggle-pull-requests-suggestions-enabled'));
 
-        // Save
         const saveButtons = screen.getAllByText('Save');
         const featuresSave = saveButtons.find(btn => btn.closest('[data-testid="settings-features"]'));
         expect(featuresSave).toBeTruthy();

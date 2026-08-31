@@ -212,14 +212,12 @@ describe('AdminPanel — Scratchpad toggle', () => {
             expect(checkbox.checked).toBe(true);
         });
 
-        // Uncheck scratchpad
         const checkbox = screen.getByTestId('toggle-scratchpad-enabled') as HTMLInputElement;
         fireEvent.click(checkbox);
         expect(checkbox.checked).toBe(false);
 
         // Find and click the Features save button
         const saveButtons = screen.getAllByText('Save');
-        // The features card save button — find the one in the features settings card
         const featuresSave = saveButtons.find(btn => {
             const card = btn.closest('[data-testid="settings-features"]');
             return card !== null;
@@ -286,11 +284,9 @@ describe('AdminPanel — Scratchpad toggle', () => {
             expect(screen.getByTestId('select-scratchpad-layout')).toBeTruthy();
         });
 
-        // Change layout to vertical
         const select = screen.getByTestId('select-scratchpad-layout') as HTMLSelectElement;
         fireEvent.change(select, { target: { value: 'vertical' } });
 
-        // Save
         const saveButtons = screen.getAllByText('Save');
         const featuresSave = saveButtons.find(btn => btn.closest('[data-testid="settings-features"]'));
         expect(featuresSave).toBeTruthy();

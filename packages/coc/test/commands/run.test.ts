@@ -431,7 +431,6 @@ map:
 reduce:
   type: json
 `);
-            // No workspaceRoot in options
             const exitCode = await executeRun(yamlPath, {
                 ...defaultOptions,
                 workspaceRoot: undefined,

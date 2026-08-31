@@ -167,7 +167,6 @@ describe('NotesView — navigation history', () => {
         act(() => { capturedOnSelectPage?.('Page2'); });
         expect(capturedCanGoBack).toBe(true);
 
-        // Go back
         act(() => { capturedOnGoBack?.(); });
 
         const editor = screen.getByTestId('note-editor');

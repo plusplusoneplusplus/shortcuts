@@ -747,7 +747,6 @@ describe('ScheduleManager', () => {
                 status: 'active',
             });
 
-            // Should not throw
             expect(() => manager.dispose()).not.toThrow();
         });
     });
