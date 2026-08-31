@@ -208,7 +208,6 @@ export class SqliteFactStore implements IMemoryFactStore {
         const statuses = query.statuses ?? ['active'];
         const limit = query.limit ?? 10;
 
-        // Build scope clause
         const scopeParams: unknown[] = [];
         let scopeClause = '';
         if (query.scope === 'workspace' && query.workspaceId) {

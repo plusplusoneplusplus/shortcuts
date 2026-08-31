@@ -57,7 +57,6 @@ export class WorkspaceAggregationService {
                             agentOffline: true,
                         }));
                     }
-                    // Fall back to disconnected agent metadata from AgentManager
                     const inboundId = this.inboundId(agent);
                     const disconnected = inboundId ? this.agentManager.getDisconnectedAgent(inboundId) : undefined;
                     if (disconnected?.workspaces?.length) {

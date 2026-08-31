@@ -267,7 +267,6 @@ export class AgentManager extends EventEmitter {
             pending.reject(new Error('Manager closed'));
         }
         this.pendingRequests.clear();
-        // Close outbound connections
         for (const [id] of this.outboundConnections) {
             this.disconnectOutbound(id);
         }

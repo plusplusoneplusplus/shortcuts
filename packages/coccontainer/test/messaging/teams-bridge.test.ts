@@ -827,7 +827,6 @@ describe('TeamsBridge', () => {
             // Should still send but without mentions
             if (sendCalls.length > 0) {
                 const lastCall = sendCalls[sendCalls.length - 1];
-                // No mentions arg or mentions is undefined
                 expect(lastCall[2]?.mentions).toBeUndefined();
                 // Message should not contain <at> tags
                 expect(lastCall[1]).not.toContain('<at');
@@ -1069,7 +1068,6 @@ describe('TeamsBridge', () => {
             const bridge = createBridge();
             await bridge.start();
 
-            // Bot is disconnected
             lastBot().getStatus.mockReturnValue('disconnected');
 
             const mockFetch = mockProcessFetch([
@@ -1086,7 +1084,6 @@ describe('TeamsBridge', () => {
             await new Promise(resolve => setTimeout(resolve, 50));
             expect(lastBot().send).not.toHaveBeenCalled();
 
-            // Bot reconnects
             lastBot().getStatus.mockReturnValue('connected');
 
             emitProcessUpdate(wsRelay, 'agent-a', 'Agent-A', {
@@ -1167,7 +1164,6 @@ describe('TeamsBridge', () => {
                         }),
                     });
                 }
-                // Follow-up call
                 if (opts?.method === 'POST' && url.includes('/follow-up')) {
                     return Promise.resolve({ ok: true, json: async () => ({ id: 'proc-target' }) });
                 }
@@ -1226,7 +1222,6 @@ describe('TeamsBridge', () => {
                     });
                 }
                 if (opts?.method === 'POST' && url.includes('/api/processes/proc-strip/message')) {
-                    // Follow-up message
                     if (opts.body) followUpBody.push(opts.body);
                     return Promise.resolve({ ok: true, json: async () => ({}) });
                 }

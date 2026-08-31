@@ -164,7 +164,6 @@ describe('E2E: Full Agent → Repo → Process flow', () => {
                     let buffer = '';
                     res.on('data', (chunk: Buffer) => {
                         buffer += chunk.toString();
-                        // Check for data lines
                         const lines = buffer.split('\n');
                         for (const line of lines) {
                             if (line.startsWith('data: ')) {

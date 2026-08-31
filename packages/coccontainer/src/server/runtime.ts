@@ -81,7 +81,6 @@ export class ContainerRuntime {
         this.healthMonitor.start();
 
         for (const agent of this.agentStore.list()) {
-            // Start tunnel bridges for agents with tunnelId
             if (agent.tunnelId) {
                 await this.tunnelBridge.start(agent.id, agent.tunnelId, agent.address).catch(() => {});
             }

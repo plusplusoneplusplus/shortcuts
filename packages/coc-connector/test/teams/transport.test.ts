@@ -167,7 +167,6 @@ describe('GraphTransport', () => {
             const msgId = await t.send('chat-1', 'Hello DM!');
             expect(msgId).toBe('msg-chat-1');
 
-            // Verify it called /chats/chat-1/messages
             const sendCall = mockFetch.mock.calls[mockFetch.mock.calls.length - 1];
             expect(sendCall[0]).toContain('/chats/chat-1/messages');
         });

@@ -97,7 +97,6 @@ describe('CoCContainer Server Integration', () => {
     let closeContainer: () => void;
 
     beforeAll(async () => {
-        // Create mock agents
         mockAgent1 = await createMockAgent(
             [{ id: 'ws-1', rootPath: '/repo/alpha', name: 'Alpha' }],
             [{ id: 'proc-1', title: 'Test Process', status: 'completed', turns: [] }]
@@ -107,10 +106,8 @@ describe('CoCContainer Server Integration', () => {
             []
         );
 
-        // Create temp data dir
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coccontainer-integ-'));
 
-        // Start container server
         const { createContainerServer } = await import('../../src/server');
         containerPort = 15000 + Math.floor(Math.random() * 5000);
         const server = await createContainerServer({

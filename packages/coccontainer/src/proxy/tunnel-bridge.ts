@@ -100,7 +100,6 @@ export class TunnelBridge {
 
     /** Start a local bridge for a tunnel agent. Returns the local URL. */
     async start(agentId: string, tunnelId: string, remoteUrl: string): Promise<string> {
-        // If already bridged, return existing
         const existing = this.bridges.get(agentId);
         if (existing) {
             return existing.localUrl;

@@ -100,7 +100,6 @@ describe('WebClientBridge', () => {
 
         ws.emit('close');
 
-        // Listener removed
         expect(relay.listenerCount('message')).toBe(0);
     });
 

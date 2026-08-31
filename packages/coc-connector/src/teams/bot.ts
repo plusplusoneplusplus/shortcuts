@@ -267,7 +267,6 @@ export class TeamsBot implements MessagingConnector {
                 this._lastActivityTime = Date.now();
             }
         } catch (err: any) {
-            // On 401, attempt token refresh
             if (err.message?.includes('401') && !this._refreshingToken) {
                 await this.refreshToken();
             } else {
@@ -291,7 +290,6 @@ export class TeamsBot implements MessagingConnector {
 
         const lastMsg = messages[messages.length - 1];
 
-        // Debug: log all polled messages
         if (this.debug) {
             console.log(`[teams-bot] Poll returned ${messages.length} message(s):`);
             for (const m of messages) {
@@ -313,7 +311,6 @@ export class TeamsBot implements MessagingConnector {
         // Update watermark
         this._lastPolledId = lastMsg.messageId;
 
-        // Skip messages sent by this bot
         if (this._sentMessageIds.has(lastMsg.messageId)) {
             if (this.debug) console.log(`[teams-bot] Skipping own sent message: ${lastMsg.messageId}`);
             this._sentMessageIds.delete(lastMsg.messageId);

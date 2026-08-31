@@ -126,7 +126,6 @@ export class TeamsAuthController {
                 mode: this.teamsConfig?.mode ?? 'graph',
             });
             console.log('[container] Teams OAuth code exchange succeeded');
-            // Auto-start or reconnect the bridge
             if (this.runtime.teamsBridge) {
                 await this.runtime.teamsBridge.reconnect();
             } else {
@@ -191,7 +190,6 @@ export class TeamsAuthController {
                     }
                 }
             }
-            // Stop bridge
             if (this.runtime.teamsBridge) {
                 await this.runtime.teamsBridge.stop();
                 this.runtime.teamsBridge = undefined;

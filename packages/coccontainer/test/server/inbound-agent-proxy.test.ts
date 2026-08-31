@@ -56,7 +56,6 @@ describe('Inbound Agent Proxy (agent-scoped)', () => {
     beforeAll(async () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coccontainer-inbound-proxy-'));
 
-        // Start container server
         const { createContainerServer } = await import('../../src/server');
         containerPort = 16000 + Math.floor(Math.random() * 4000);
         const server = await createContainerServer({
@@ -76,7 +75,6 @@ describe('Inbound Agent Proxy (agent-scoped)', () => {
             agentWs.on('error', reject);
         });
 
-        // Register the agent
         const registerMsg = createMessage('register', {
             name: 'TestInboundAgent',
             agentId: registeredAgentId,
@@ -277,7 +275,6 @@ describe('Inbound Agent Proxy (agent-scoped)', () => {
 
         await responsePromise;
 
-        // The path sent to agent should be /api/workspaces/ws-inbound-1/history with query
         expect(receivedPath).toBe('/api/workspaces/ws-inbound-1/history?limit=50&offset=10');
     });
 });

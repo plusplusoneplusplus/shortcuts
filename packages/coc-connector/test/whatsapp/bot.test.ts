@@ -115,7 +115,6 @@ describe('WhatsAppBot', () => {
         // Wait for onConnected to fire and register message handler
         await new Promise(r => setTimeout(r, 10));
 
-        // Simulate messages.upsert
         const handler = mockSocket.handlers.get('messages.upsert');
         expect(handler).toBeDefined();
 
@@ -318,7 +317,6 @@ describe('WhatsAppBot', () => {
         await bot.start();
         await new Promise(r => setTimeout(r, 10));
 
-        // connecting → connected
         expect(statuses).toContain('connecting');
         expect(statuses).toContain('connected');
         expect(bot.getStatus()).toBe('connected');

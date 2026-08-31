@@ -70,7 +70,6 @@ export class GraphTransport implements TeamsTransport {
             new Date(a.createdDateTime).getTime() - new Date(b.createdDateTime).getTime(),
         );
 
-        // Filter to only messages after `since`
         const filtered = since
             ? sorted.filter(m => new Date(m.createdDateTime).getTime() > new Date(since).getTime())
             : sorted;

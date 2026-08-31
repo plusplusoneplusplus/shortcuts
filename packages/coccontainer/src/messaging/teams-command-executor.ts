@@ -242,7 +242,6 @@ export class TeamsCommandExecutor {
         const agentId = state.selectedAgentId;
 
         if (!agentId) {
-            // List all topics from messaging store if no agent selected
             return 'No agent selected. Use `/select repo <name>` to target a specific agent, then `/list topics`.';
         }
 
@@ -271,7 +270,6 @@ export class TeamsCommandExecutor {
             return '❌ No repo selected. Use `/select repo <name>` first.';
         }
 
-        // Clear topic selection and force next message to create a new chat
         this.updateUserState(userKey, { selectedTopicId: null, lastActiveTopicId: null, forceNewTopic: true });
         return '✅ Ready for a new topic. Send your next message to start a new chat.';
     }
