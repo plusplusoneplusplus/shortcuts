@@ -179,7 +179,6 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
         const isShift = e.shiftKey;
 
         if (isCtrl && onMultiSelect) {
-            // Toggle this commit in the current multi-selection
             const result = computeToggleSelection(commits, resolveSelectedSet(selectedHashes, selectedHash), commit);
             onMultiSelect(result.selected);
             setAnchorHash(commit.hash);
@@ -187,7 +186,6 @@ export function CommitList({ title, commits, selectedHash, selectedHashes, onMul
         }
 
         if (isShift && onMultiSelect && anchorHash) {
-            // Extend selection range from anchor to this commit
             onMultiSelect(computeRangeSelection(commits, anchorHash, commit));
             return;
         }

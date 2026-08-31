@@ -483,7 +483,6 @@ export default function StorageSection() {
     const handleSSEEvent = (data: any) => {
         if (data.type === 'done') {
             if (data.success) {
-                // Mark all phases complete
                 setMigrationPhases(prev => prev.map(p => ({ ...p, state: 'complete' })));
                 setResult({
                     success: true,
@@ -598,7 +597,6 @@ export default function StorageSection() {
     // Render
     // -----------------------------------------------------------------------
 
-    // Status display
     if (phase === 'status') {
         return (
             <div>

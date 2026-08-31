@@ -1326,7 +1326,6 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
         const toolCall = assistantRender!.toolById.get(toolId);
         if (!toolCall) return null;
 
-        // Handle report_intent tool calls
         if (toolCall.toolName === 'report_intent') {
             if (!showReportIntent) return null;
             const intentText = typeof toolCall.args === 'object' && toolCall.args?.intent

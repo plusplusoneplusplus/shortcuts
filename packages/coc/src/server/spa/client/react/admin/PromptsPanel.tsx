@@ -64,7 +64,6 @@ export function PromptsPanel({ onError }: PromptsPanelProps) {
         ));
     }, []);
 
-    // Group prompts by their group field
     const grouped = new Map<string, BuiltInPrompt[]>();
     for (const p of prompts) {
         const list = grouped.get(p.group) ?? [];
@@ -72,7 +71,6 @@ export function PromptsPanel({ onError }: PromptsPanelProps) {
         grouped.set(p.group, list);
     }
 
-    // Sort groups by predefined order
     const sortedGroups = [...grouped.entries()].sort(
         (a, b) => GROUP_ORDER.indexOf(a[0]) - GROUP_ORDER.indexOf(b[0])
     );

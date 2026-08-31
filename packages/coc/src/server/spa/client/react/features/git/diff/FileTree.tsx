@@ -91,7 +91,6 @@ export function buildFileTree(files: FileChange[]): TreeNode[] {
             children = dir.children;
         }
 
-        // Push leaf file node
         children.push({
             type: 'file',
             name: segments[segments.length - 1],

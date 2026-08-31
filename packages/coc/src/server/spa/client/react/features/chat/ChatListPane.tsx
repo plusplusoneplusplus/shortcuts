@@ -2056,7 +2056,6 @@ export function ChatListPane({
         return { pinned, unpinned, archived };
     }, [activeTab, filteredRunning, filteredHistory, pinnedChatIds, archivedChatIds, groupedTaskIds]);
 
-    // Group unpinned history by plan file (when grouping is enabled)
     const groupedUnpinned = useMemo(
         () => historyGrouping ? groupHistoryByPlanFile(visibleFilteredUnpinned, unseenProcessIds) : null,
         [visibleFilteredUnpinned, unseenProcessIds, historyGrouping],

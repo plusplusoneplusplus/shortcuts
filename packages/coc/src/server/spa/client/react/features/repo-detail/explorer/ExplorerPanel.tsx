@@ -681,7 +681,6 @@ export function ExplorerPanel({ workspaceId }: ExplorerPanelProps) {
         [selectedPath, rootEntries, childrenMap],
     );
 
-    // Breadcrumb segments derived from selectedPath
     const breadcrumbSegments = useMemo(() => {
         if (!selectedPath) return [];
         return selectedPath.split('/').filter(Boolean);

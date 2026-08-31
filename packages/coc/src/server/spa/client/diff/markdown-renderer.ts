@@ -67,7 +67,6 @@ export function renderMarkdownToHtml(content: string, options?: RenderOptions): 
 
     let text = content;
 
-    // Optionally strip YAML frontmatter
     if (options?.stripFrontmatter) {
         text = text.replace(/^---\n[\s\S]*?\n---\n*/, '');
     }
@@ -81,7 +80,6 @@ export function renderMarkdownToHtml(content: string, options?: RenderOptions): 
     // (1-based, inclusive start, exclusive end for tables — inclusive end for code/mermaid)
     const blockRanges = buildBlockRanges(codeBlocks, mermaidBlocks, tables);
 
-    // Build the highlight callback for code blocks
     const highlightFn = buildHighlightFn();
 
     // -- Render pre-parsed blocks to HTML -----------------------------------

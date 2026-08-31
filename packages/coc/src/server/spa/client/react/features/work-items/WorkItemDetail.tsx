@@ -633,7 +633,6 @@ export function WorkItemDetail({ workItemId, workspaceId, originId, onBack, onEx
                 )
             );
 
-            // Call request-changes with diff-comments source
             await cloneClient.workItems.requestChangesForOrigin(workItemOriginId, workItemId, { comments: formatted, source: 'diff-comments' }, originOptions);
 
             // Batch-resolve the open diff comments

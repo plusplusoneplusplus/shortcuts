@@ -755,7 +755,6 @@ export function filterWhisperChunks(
         }
     }
 
-    // Collect memory tool invocations
     const memoryActions: Array<{ action: string; target: string; content?: string }> = [];
     for (const tc of allToolCalls) {
         if (tc.toolName === 'memory' && isRecord(tc.args)) {

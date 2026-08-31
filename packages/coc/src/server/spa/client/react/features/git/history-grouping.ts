@@ -114,7 +114,6 @@ export function groupHistoryByPlanFile(
         entries.push(item);
     }
 
-    // Sort all entries by latest timestamp descending
     entries.sort((a, b) => {
         const tsA = a.kind === 'group' ? a.latestTimestamp : getItemTimestamp(a);
         const tsB = b.kind === 'group' ? b.latestTimestamp : getItemTimestamp(b);
