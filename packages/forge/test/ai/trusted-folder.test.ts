@@ -325,7 +325,6 @@ describe('Trusted Folder Management', () => {
             expect(config.copilotTokens).toEqual({ 'https://github.com:user': 'gho_token' });
             expect(config.loggedInUsers).toEqual([{ host: 'https://github.com', login: 'user' }]);
             expect(config.trustedFolders).toEqual(['/home/user/repo']);
-            // New trusted folder added
             expect(config.trusted_folders).toContain(p('/new/project'));
         });
 

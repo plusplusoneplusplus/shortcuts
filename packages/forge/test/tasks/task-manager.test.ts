@@ -239,7 +239,6 @@ describe('getTaskFolderHierarchy', () => {
         });
         mgr.ensureFoldersExist();
         writeTask('.tasks/feat/task.md');
-        // Write a related.yaml
         const relatedPath = path.join(tmpDir, '.tasks', 'feat', 'related.yaml');
         fs.writeFileSync(relatedPath, 'description: test feature\nitems:\n  - name: src/a.ts\n    path: src/a.ts\n    type: file\n    category: source\n    relevance: 90\n    reason: main\n', 'utf-8');
 
@@ -289,7 +288,6 @@ describe('createTaskInFolder', () => {
         const featurePath = await mgr.createFeature('feature');
         const filePath = await mgr.createTaskInFolder(featurePath, 'Scoped Task');
         const tasksRoot = mgr.getTasksFolder();
-        // File should be in feature folder, not in tasks root
         expect(path.dirname(filePath)).toBe(featurePath);
         expect(path.dirname(filePath)).not.toBe(tasksRoot);
     });

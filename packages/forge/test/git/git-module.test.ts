@@ -240,7 +240,6 @@ describe('Barrel re-export (git/index)', () => {
         expect(STAGE_PREFIX).toBeDefined();
         expect(STAGE_LABEL).toBeDefined();
 
-        // Function
         expect(typeof execGitAsync).toBe('function');
     });
 

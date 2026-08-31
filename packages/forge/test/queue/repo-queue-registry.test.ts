@@ -624,14 +624,12 @@ describe('RepoQueueRegistry', () => {
             registry.on('repoAdded', addedListener);
             registry.on('repoRemoved', removedListener);
 
-            // Add repo and enqueue work
             const queue = registry.getQueueForRepo('/Users/dev/project');
             queue.enqueue({ type: 'custom', payload: { data: {} }, config: {}, priority: 'normal' });
 
             expect(addedListener).toHaveBeenCalledTimes(1);
             expect(registry.getStats().totals.queued).toBe(1);
 
-            // Remove repo
             registry.removeRepo('/Users/dev/project');
             expect(removedListener).toHaveBeenCalledTimes(1);
             expect(registry.getAllRepos()).toHaveLength(0);

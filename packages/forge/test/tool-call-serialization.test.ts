@@ -207,7 +207,6 @@ describe('ToolCall serialization', () => {
         expect(sTc.permissionResult!.timestamp).toBe('2026-02-15T10:01:02.000Z');
         expect(sTc.permissionResult!.approved).toBe(true);
 
-        // Verify deserialized permission timestamps are Date objects
         const deserialized = deserializeProcess(serialized);
         const dTc = deserialized.conversationTurns![0].toolCalls![0];
         expect(dTc.permissionRequest!.timestamp).toBeInstanceOf(Date);

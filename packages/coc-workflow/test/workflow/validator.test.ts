@@ -121,7 +121,6 @@ describe('validate — Rule 4: load nodes with parents', () => {
                 B: { type: 'load', source: { type: 'inline', items: [] }, from: ['A'] } as NodeConfig,
             },
         };
-        // Should not throw
         expect(() => validate(config)).not.toThrow();
     });
 });

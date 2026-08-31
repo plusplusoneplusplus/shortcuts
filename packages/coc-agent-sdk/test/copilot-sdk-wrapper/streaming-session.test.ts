@@ -71,7 +71,6 @@ describe('StreamingSession — state transitions', () => {
         emit({ type: 'session.idle' });
         await promise;
 
-        // After settling, state is Settled
         expect((ss as any).state).toBe(StreamingState.Settled);
     });
 
@@ -269,7 +268,6 @@ describe('StreamingSession — cancellation', () => {
         const ss = new StreamingSession();
         const promise = ss.run(session, baseOptions({ timeoutMs: 60000 }));
 
-        // Emit some content, then abort
         emit({ type: 'assistant.message', data: { content: 'partial response' } });
         emit({ type: 'abort', data: { reason: 'user cancelled' } });
 

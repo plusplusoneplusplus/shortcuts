@@ -65,7 +65,6 @@ describe('Item process tracking', () => {
                 opts({ aiInvoker: invoker, onItemProcess: e => events.push(e) }),
             );
 
-            // Each item should have running + completed
             const runningEvents = events.filter(e => e.status === 'running');
             const completedEvents = events.filter(e => e.status === 'completed');
             expect(runningEvents).toHaveLength(2);

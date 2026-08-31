@@ -777,7 +777,6 @@ describe('integration — hierarchical file layout', () => {
         expect(fs.existsSync(path.join(outputDir, 'components', 'auth.md'))).toBe(true);
         expect(fs.existsSync(path.join(outputDir, 'components', 'database.md'))).toBe(true);
 
-        // No domains directory should be created
         expect(fs.existsSync(path.join(outputDir, 'domains'))).toBe(false);
     });
 

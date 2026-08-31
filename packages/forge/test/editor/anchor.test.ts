@@ -185,7 +185,6 @@ describe('relocateAnchorPosition', () => {
             const afterCtx = 'And here is sufficiently long context that follows the target.';
             const doc = `${beforeCtx} ${target} ${afterCtx}`;
 
-            // Create anchor
             const startCol = beforeCtx.length + 2; // +2 for the space
             const endCol = startCol + target.length;
             const anchor = createAnchorData(doc, 1, 1, startCol, endCol);

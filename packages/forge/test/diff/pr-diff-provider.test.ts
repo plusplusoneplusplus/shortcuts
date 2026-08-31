@@ -230,7 +230,6 @@ describe('createPullRequestDiffProvider', () => {
     it('listFiles caches results', async () => {
         await provider.listFiles();
         await provider.listFiles();
-        // getDiff should only be called once
         expect(service.getDiff).toHaveBeenCalledTimes(1);
     });
 

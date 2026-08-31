@@ -556,7 +556,6 @@ and note if more info is needed.`;
 
             const outputFields = ['severity', 'category', 'effort_hours', 'needs_more_info'];
 
-            // Build prompt
             const prompt = buildPromptFromTemplate(template, item, outputFields);
 
             // Verify substitution
@@ -594,7 +593,6 @@ Let me know if you need more details.`;
                 needs_more_info: false
             });
 
-            // Verify extra_note is excluded
             expect('extra_note' in result).toBe(false);
         });
 

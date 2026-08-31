@@ -243,7 +243,6 @@ describe('GitHubPullRequestsAdapter', () => {
                 order: 'desc',
                 per_page: 25,
             });
-            // Should NOT call pulls.list
             expect(octokit.pulls.list).not.toHaveBeenCalled();
         });
 

@@ -93,7 +93,6 @@ describe('SqliteProcessStore — Turn Soft Delete', () => {
         let proc = await store.getProcess('p1');
         expect(proc!.conversationTurns!.length).toBe(2);
 
-        // Soft delete first, then hard delete
         store.softDeleteTurn('p1', 0);
         store.hardDeleteTurn('p1', 0);
         proc = await store.getProcess('p1');
@@ -145,7 +144,6 @@ describe('SqliteProcessStore — Turn Pin', () => {
 
         store.pinTurn('p1', 0, '2026-04-01T12:00:00.000Z');
         store.pinTurn('p1', 1, '2026-04-02T12:00:00.000Z');
-        // Pin then soft-delete turn 2
         store.pinTurn('p1', 2, '2026-04-03T12:00:00.000Z');
         store.softDeleteTurn('p1', 2);
 

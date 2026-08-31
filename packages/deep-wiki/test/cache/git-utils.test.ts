@@ -63,7 +63,6 @@ describe('Git Utilities', () => {
         it('should return the git root for the workspace', async () => {
             const root = await getGitRoot(WORKSPACE_ROOT);
             expect(root).not.toBeNull();
-            // The root should be an absolute path
             expect(path.isAbsolute(root!)).toBe(true);
         });
 

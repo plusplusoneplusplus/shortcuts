@@ -146,7 +146,6 @@ describe('runAnalysisExecutor', () => {
         });
 
         expect(result.analyses.length).toBeGreaterThanOrEqual(0);
-        // The invoker should have been called
         expect(mockInvoker).toHaveBeenCalled();
     });
 
@@ -221,7 +220,6 @@ describe('runAnalysisExecutor', () => {
             concurrency: 3,
         });
 
-        // Max concurrent should not exceed 3
         expect(maxConcurrent).toBeLessThanOrEqual(3);
     });
 
@@ -326,7 +324,6 @@ describe('runAnalysisExecutor', () => {
 
         // Should have been called twice (initial + 1 retry round)
         expect(mockInvoker).toHaveBeenCalledTimes(2);
-        // Should record the module as failed
         expect(result.failedComponentIds).toContain('broken');
     });
 

@@ -202,7 +202,6 @@ describe('FileProcessStore — per-workspace layout', () => {
 
         await store.clearProcesses({ workspaceId: 'ws-a' });
 
-        // ws-a dir should be gone
         const wsAExists = await fs.access(path.join(tmpDir, 'repos', 'ws-a', 'processes')).then(() => true, () => false);
         expect(wsAExists).toBe(false);
 

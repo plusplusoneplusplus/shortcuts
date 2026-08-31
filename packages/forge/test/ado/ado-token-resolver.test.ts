@@ -144,7 +144,6 @@ describe('ado-token-resolver', () => {
             const p2 = resolveAdoAccessToken({ runAzCli: runner });
             const p3 = resolveAdoAccessToken({ runAzCli: runner });
 
-            // Resolve the token.
             resolveToken!({ stdout: TOKEN_JSON, stderr: '' });
 
             const [r1, r2, r3] = await Promise.all([p1, p2, p3]);

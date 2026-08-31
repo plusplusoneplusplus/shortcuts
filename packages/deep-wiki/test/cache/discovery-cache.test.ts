@@ -594,7 +594,6 @@ describe('clearDiscoveryCache', () => {
         expect(getCachedSeeds(outputDir, gitHash)).not.toBeNull();
         expect(getCachedProbeResult('auth', outputDir, gitHash)).not.toBeNull();
 
-        // Clear
         const cleared = clearDiscoveryCache(outputDir);
         expect(cleared).toBe(true);
 
@@ -629,7 +628,6 @@ describe('clearDiscoveryCache', () => {
             'utf-8'
         );
 
-        // Clear discovery cache
         clearDiscoveryCache(outputDir);
 
         // Graph cache should still exist

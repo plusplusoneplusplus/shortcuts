@@ -772,7 +772,6 @@ describe('CopilotSDKService - Streaming (sendWithStreaming)', () => {
 
         const { dispatchEvent } = sessions[0];
 
-        // Simulate a session error
         dispatchEvent({ type: 'session.error', data: { message: 'Rate limit exceeded', stack: 'Error: ...' } });
 
         const result = await resultPromise;
@@ -793,7 +792,6 @@ describe('CopilotSDKService - Streaming (sendWithStreaming)', () => {
         const serviceAny = service as any;
         const { session } = sessions[0];
 
-        // Test sendWithStreaming directly with a short timeout
         const streamingPromise = serviceAny.requestRunner.sendWithStreaming(session, 'test', 50);
 
         // Wait for the timeout to fire — don't dispatch any events
@@ -903,7 +901,6 @@ describe('CopilotSDKService - Streaming (sendWithStreaming)', () => {
         const result = await resultPromise;
         expect(result.success).toBe(true);
         expect(result.response).toBe('Streaming response');
-        // session.send should have been called (not sendAndWait)
         expect(sessions[0].session.send).toHaveBeenCalled();
         expect(sessions[0].session.sendAndWait).not.toHaveBeenCalled();
     });
@@ -2913,7 +2910,6 @@ describe('CopilotSDKService - Debug Logging (permission handler wrapping)', () =
             onPermissionRequest: permissionHandler,
         });
 
-        // Wait for createSession to be called and session to be ready
         await vi.waitFor(() => {
             expect(mockClient.createSession).toHaveBeenCalled();
             expect(sessions.length).toBe(1);
@@ -2982,7 +2978,6 @@ describe('CopilotSDKService - Debug Logging (permission handler wrapping)', () =
 
         const sessionOptions = mockClient.createSession.mock.calls[0][0];
 
-        // Call the async wrapper
         const result = await sessionOptions.onPermissionRequest(
             { kind: 'read', toolCallId: 'tc-async' },
             { sessionId: sessions[0].session.sessionId }
@@ -3245,7 +3240,6 @@ describe('CopilotSDKService - Client Invalidation on Stream Error', () => {
         // Ensure handlers are null
         expect(serviceAny.streamErrorGuard.handler).toBeNull();
         expect(serviceAny.streamErrorGuard.rejectionHandler).toBeNull();
-        // Should not throw
         expect(() => serviceAny.streamErrorGuard.remove()).not.toThrow();
         // Still null after no-op
         expect(serviceAny.streamErrorGuard.handler).toBeNull();

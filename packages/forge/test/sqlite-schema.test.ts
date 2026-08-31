@@ -212,7 +212,6 @@ describe('sqlite-schema', () => {
         const before = db.prepare('SELECT COUNT(*) as cnt FROM conversation_turns WHERE process_id = ?').get('p1') as any;
         expect(before.cnt).toBe(1);
 
-        // Delete the process
         db.prepare('DELETE FROM processes WHERE id = ?').run('p1');
 
         // Turn should be cascade-deleted
@@ -352,7 +351,6 @@ describe('sqlite-schema', () => {
             let results = db.prepare("SELECT * FROM conversation_search WHERE conversation_search MATCH 'goodbye'").all();
             expect(results).toHaveLength(1);
 
-            // Delete the turn
             db.prepare('DELETE FROM conversation_turns WHERE process_id = ? AND turn_index = ?').run('p1', 0);
 
             results = db.prepare("SELECT * FROM conversation_search WHERE conversation_search MATCH 'goodbye'").all();
@@ -363,7 +361,6 @@ describe('sqlite-schema', () => {
             initializeDatabase(db);
             insertTurn(db, 'p1', 0, 'original text');
 
-            // Update the content
             db.prepare('UPDATE conversation_turns SET content = ? WHERE process_id = ? AND turn_index = ?')
                 .run('modified text', 'p1', 0);
 
@@ -619,7 +616,6 @@ describe('sqlite-schema', () => {
             const row = db.prepare('SELECT pinned_at FROM processes WHERE id = ?').get('p1') as any;
             expect(row.pinned_at).toBeNull();
 
-            // Can update pinned_at
             db.prepare('UPDATE processes SET pinned_at = ? WHERE id = ?').run('2026-04-01T00:00:00.000Z', 'p1');
             const updated = db.prepare('SELECT pinned_at FROM processes WHERE id = ?').get('p1') as any;
             expect(updated.pinned_at).toBe('2026-04-01T00:00:00.000Z');

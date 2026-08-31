@@ -305,7 +305,6 @@ describe('Editor types', () => {
                 endColumn: 5,
                 selectedText: 'text',
             };
-            // PendingSelection is assignable to CommentSelection
             const cs: CommentSelection = ps;
             expect(cs.startLine).toBe(1);
         });

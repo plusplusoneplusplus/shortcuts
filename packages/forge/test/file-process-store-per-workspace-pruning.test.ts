@@ -278,7 +278,6 @@ describe('FileProcessStore per-workspace pruning', () => {
             }));
         }
 
-        // Verify we are at exactly maxProcesses
         const before = await store.getAllProcesses();
         expect(before).toHaveLength(maxProcesses);
 

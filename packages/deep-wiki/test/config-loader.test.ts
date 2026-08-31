@@ -740,7 +740,6 @@ phases:
     concurrency: 5
     depth: deep
 `);
-        // Load config
         const config = loadConfig(configPath);
 
         // Merge with CLI (no explicit overrides)

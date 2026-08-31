@@ -493,7 +493,6 @@ describe('article cache isolation', () => {
     });
 
     it('should not interfere with analysis cache', async () => {
-        // Save an article
         saveArticle('auth', createTestArticle('auth'), outputDir, 'hash1');
 
         // The analyses dir should not exist (we only saved articles)
@@ -773,7 +772,6 @@ describe('restampArticles', () => {
         const count = restampArticles(['auth-service'], outputDir, newHash);
         expect(count).toBe(1);
 
-        // Verify article is found with new hash
         const scan = scanIndividualArticlesCache(['auth-service'], outputDir, newHash);
         expect(scan.found).toHaveLength(1);
         expect(scan.found[0].componentId).toBe('auth-service');
@@ -798,7 +796,6 @@ describe('restampArticles', () => {
         const count = restampArticles(unchangedIds, outputDir, newHash);
         expect(count).toBe(4);
 
-        // Scan with new hash
         const scan = scanIndividualArticlesCache(componentIds, outputDir, newHash);
 
         // 4 unchanged modules should be found (re-stamped)

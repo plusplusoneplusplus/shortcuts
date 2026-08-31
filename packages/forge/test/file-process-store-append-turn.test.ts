@@ -377,7 +377,6 @@ describe('FileProcessStore.appendConversationTurn', () => {
             const result = await store.getProcess('p-lea2');
             expect(result).toBeDefined();
             expect(result!.lastEventAt).toBeInstanceOf(Date);
-            // lastEventAt should be newer than the original startTime
             expect(result!.lastEventAt!.getTime()).toBeGreaterThan(startTime.getTime());
         });
 

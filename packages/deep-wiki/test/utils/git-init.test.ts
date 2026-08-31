@@ -183,7 +183,6 @@ describe('initWikiGitRepo', () => {
         // First call — sets up repo + gitignore
         await initWikiGitRepo(tempDir);
 
-        // Modify the gitignore
         const gitignorePath = path.join(tempDir, '.gitignore');
         fs.writeFileSync(gitignorePath, 'custom rules', 'utf-8');
 
