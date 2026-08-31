@@ -181,11 +181,9 @@ test.describe('Metadata popover — log link', () => {
             await gotoConversation(page, serverUrl, wsId, taskId);
             await openMetadataPopover(page);
 
-            // Click the log link
             const logLink = page.locator('a[title="View logs for this session"]');
             await logLink.click();
 
-            // URL should contain the session ID hash
             await page.waitForFunction(
                 () => location.hash.includes('logs?sessionId='),
                 null,
@@ -193,7 +191,6 @@ test.describe('Metadata popover — log link', () => {
             );
             expect(page.url()).toContain('#logs?sessionId=nav-session-99');
 
-            // The Logs view should be visible with the session filter chip
             await expect(page.locator('[data-testid="logs-view"]')).toBeVisible({ timeout: 8_000 });
             await expect(page.locator('[data-testid="session-filter-chip"]')).toBeVisible({ timeout: 5_000 });
         } finally {

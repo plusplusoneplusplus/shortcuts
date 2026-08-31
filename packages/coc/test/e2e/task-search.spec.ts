@@ -117,10 +117,8 @@ test.describe('Task Search (017)', () => {
 
             const searchInput = page.locator('[data-testid="task-search-input"]');
 
-            // Press Ctrl+F — should focus the search input
             await page.keyboard.press('Control+f');
 
-            // Search input should be focused
             await expect(searchInput).toBeFocused({ timeout: 5000 });
         } finally {
             safeRmSync(tmpDir);

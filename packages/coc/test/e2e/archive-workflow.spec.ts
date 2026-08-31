@@ -31,15 +31,12 @@ async function setupRepoWithTasks(
     await page.click('[data-tab="repos"]');
     await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
 
-    // Select repo
     await page.locator('[data-testid="repo-tab"]').first().click();
     await expect(page.locator('#repo-detail-content')).toBeVisible();
 
-    // Switch to Tasks sub-tab
     await page.click('.repo-sub-tab[data-subtab="tasks"]');
     await expect(page.locator('.repo-sub-tab[data-subtab="tasks"]')).toHaveClass(/active/);
 
-    // Wait for task tree to render
     await expect(page.locator('[data-testid="task-tree"]')).toBeVisible({ timeout: 10000 });
 
     return { repoDir, taskRoot: getTaskRoot(dataDir, wsId) };

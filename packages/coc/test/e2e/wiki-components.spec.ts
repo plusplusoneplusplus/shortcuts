@@ -231,14 +231,11 @@ test.describe('Component navigation', () => {
             await seedWiki(serverUrl, 'click-wiki', wikiDir, undefined, 'Click Wiki');
             await selectWiki(page, serverUrl, 'click-wiki');
 
-            // Click on auth-service component
             await page.click('.wiki-tree-component[data-id="auth-service"]');
 
-            // Detail panel should be visible
             await expect(page.locator('#wiki-component-detail')).toBeVisible({ timeout: 5_000 });
             await expect(page.locator('#wiki-empty')).toBeHidden();
 
-            // Article content should be rendered
             const content = page.locator('#wiki-article-content');
             await expect(content).toContainText('Auth Service', { timeout: 5_000 });
             await expect(content).toContainText('authentication and token management');

@@ -34,7 +34,6 @@ test.describe('Git advanced — Unpushed commits separator', () => {
 
             await expect(page.getByTestId('commit-list-loading')).toBeHidden({ timeout: 10_000 });
 
-            // Should show unpushed separator
             await expect(page.getByTestId('unpushed-separator')).toBeVisible({ timeout: 5_000 });
             await expect(page.getByTestId('unpushed-separator')).toContainText(/unpushed/i);
         } finally {

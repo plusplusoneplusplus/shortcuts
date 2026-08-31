@@ -241,7 +241,6 @@ test.describe('Schedule Script', () => {
             workspaceId: 'ws-sched-api4',
         });
 
-        // Trigger run
         const runRes = await request(
             `${serverUrl}/api/workspaces/ws-sched-api4/schedules/${schedule.id}/run`,
             { method: 'POST' },

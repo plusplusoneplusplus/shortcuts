@@ -415,7 +415,6 @@ test.describe('Sub-tab Navigation', () => {
         await page.locator('[data-testid="repo-tab"]').first().click();
         await expect(page.locator('#repo-detail-content')).toBeVisible();
 
-        // Navigate to Settings sub-tab and verify settings content panel is visible
         await page.click('button[data-subtab="settings"]');
         await expect(page.locator('button[data-subtab="settings"]')).toHaveClass(/active/);
         await expect(page.locator('[data-testid="settings-content-panel"]')).toBeVisible();
@@ -716,10 +715,8 @@ test.describe('Git Sub-tab (smoke)', () => {
             const repoDir = createMultiCommitRepo(tmpDir);
             await navigateToGitTab(page, serverUrl, 'ws-git-smoke-1', 'git-smoke-repo', repoDir);
 
-            // Wait for commit list to finish loading
             await expect(page.getByTestId('commit-list-loading')).toBeHidden({ timeout: 10_000 });
 
-            // Verify at least one commit row visible
             const rows = page.locator('[data-testid^="commit-row-"]');
             await expect(rows.first()).toBeVisible({ timeout: 10_000 });
         } finally {

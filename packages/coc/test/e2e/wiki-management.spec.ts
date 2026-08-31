@@ -175,7 +175,6 @@ test.describe('Wiki selection & display', () => {
             await expect(page.locator('.wiki-card[data-wiki-id="wiki-sel-1"]')).toBeVisible({ timeout: 10000 });
             await page.click('.wiki-card[data-wiki-id="wiki-sel-1"]');
 
-            // Component tree should populate
             await expect(page.locator('#wiki-component-tree')).not.toBeEmpty({ timeout: 5000 });
             await expect(page.locator('#wiki-component-tree .wiki-tree-empty')).toHaveCount(0);
         } finally {

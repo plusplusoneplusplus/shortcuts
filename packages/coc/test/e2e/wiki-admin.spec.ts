@@ -356,7 +356,6 @@ test.describe('Wiki Admin Panel', () => {
 
                 await page.click('[data-wiki-admin-tab="generate"]');
 
-                // Start phase select and Run buttons
                 await expect(page.locator('#generate-start-phase')).toBeVisible();
                 await expect(page.locator('#phase-run-1')).toBeVisible();
             } finally {
