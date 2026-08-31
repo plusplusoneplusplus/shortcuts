@@ -477,6 +477,73 @@ describe('SourceCanvasPanel', () => {
         expect(queryByTestId('source-canvas-file-group-unresolved')).toBeNull();
     });
 
+    it('attributes never-opened files to their repo by path, keeping /tmp in Other', () => {
+        const vllmFile = {
+            fullPath: '/home/u/projects/vllm/v1/engine/core.py',
+            wsId: 'group-ml',
+            kind: 'code' as const,
+        };
+        const nixlFile = {
+            fullPath: '/home/u/projects/nixl/src/plugins/hf3fs/utils.cpp',
+            wsId: 'group-ml',
+            kind: 'code' as const,
+        };
+        const strayFile = { fullPath: '/tmp/scratch/notes.py', wsId: 'group-ml', kind: 'code' as const };
+        const sourceFiles = [vllmFile, nixlFile, strayFile];
+
+        const { getByTestId, getAllByTestId } = render(
+            <SourceCanvasPanel
+                fileRef={vllmFile}
+                wsId="group-ml"
+                workspaceRootPath="/home/u/.coc/repos/group-ml"
+                sourceFiles={sourceFiles}
+                onNavigate={() => {}}
+                content={successContent('ws-vllm', vllmFile.fullPath)}
+                onClose={() => {}}
+            />,
+        );
+
+        fireEvent.click(getByTestId('source-canvas-file-switcher-trigger'));
+        // nixl was never opened this session, yet it lands under its own repo.
+        expect(getByTestId('source-canvas-file-group-ws-nixl').textContent).toBe('nixl');
+        expect(getByTestId('source-canvas-file-group-ws-vllm').textContent).toBe('vllm');
+        // The out-of-repo path stays in Other, rendered last with the gray dot.
+        const headers = getAllByTestId(/^source-canvas-file-group-/);
+        expect(headers.map((h) => h.textContent)).toEqual(['vllm', 'nixl', 'Other']);
+        const other = getByTestId('source-canvas-file-group-unresolved');
+        expect(other.getAttribute('data-repo-color')).toBe('#848484');
+    });
+
+    it('keeps a row\u2019s path text unchanged when path attribution regroups it', () => {
+        const nixlFile = {
+            fullPath: '/home/u/projects/nixl/src/plugins/hf3fs/utils.cpp',
+            wsId: 'group-ml',
+            kind: 'code' as const,
+        };
+        const vllmFile = {
+            fullPath: '/home/u/projects/vllm/v1/engine/core.py',
+            wsId: 'group-ml',
+            kind: 'code' as const,
+        };
+        const { getByTestId, getAllByRole } = render(
+            <SourceCanvasPanel
+                fileRef={vllmFile}
+                wsId="group-ml"
+                workspaceRootPath="/home/u/.coc/repos/group-ml"
+                sourceFiles={[vllmFile, nixlFile]}
+                onNavigate={() => {}}
+                content={successContent('ws-vllm', vllmFile.fullPath)}
+                onClose={() => {}}
+            />,
+        );
+        fireEvent.click(getByTestId('source-canvas-file-switcher-trigger'));
+        const rows = getAllByRole('option');
+        // vllm was opened, so the server answer shortens it; nixl was only matched
+        // by path, so it reads exactly as it did before attribution existed.
+        expect(rows[0].textContent).toContain('v1/engine/core.py');
+        expect(rows[1].textContent).toContain('/home/u/projects/nixl/src/plugins/hf3fs/utils.cpp');
+    });
+
     // --- selectable switcher text ---
 
     it('marks the switcher trigger and options as selectable text', () => {

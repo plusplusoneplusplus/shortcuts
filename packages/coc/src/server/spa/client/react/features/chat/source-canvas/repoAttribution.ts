@@ -7,12 +7,18 @@
  * contribute the same file name. The header chip and the grouped file switcher
  * both label a file with its owning member repo plus a stable per-repo color.
  *
- * The owning member is only known AFTER the preview endpoint probes the group
- * members (`resolvedWorkspaceId`), so callers fill in a per-file cache lazily as
- * files get opened; files never opened yet fall into the "Other" bucket.
+ * The preview endpoint reports the owning member (`resolvedWorkspaceId`) only for
+ * files that have actually been opened, so callers fill in a per-file cache as
+ * that happens. Files never opened are attributed up front by matching their
+ * path against the member repo roots; only paths outside every root fall into
+ * the "Other" bucket.
  */
 import type { ResolvableWorkspace } from '../../../repos/workspacesWithRemote';
-import { getConversationSourceFileKey, type ConversationSourceFile } from './conversationSourceFiles';
+import {
+    getConversationSourceFileKey,
+    normalizeSourceFilePath,
+    type ConversationSourceFile,
+} from './conversationSourceFiles';
 import { getSourceCanvasDisplayPath } from './resolve';
 
 /**
@@ -95,6 +101,61 @@ export function getActiveRepoAttribution(
     };
 }
 
+interface RepoRootCandidate {
+    wsId: string;
+    /** Normalized root, longest first so a nested repo wins over its parent. */
+    root: string;
+}
+
+/**
+ * Member repos that can own a path: anything with a real root. A group id is
+ * never an owner — it is the container the file was ambiguous in.
+ */
+function getRepoRootCandidates(
+    workspaces: readonly ResolvableWorkspace[],
+): RepoRootCandidate[] {
+    return workspaces
+        .filter((ws) => ws.id && !isRepoGroupWorkspaceId(ws.id) && ws.rootPath?.trim())
+        .map((ws) => ({ wsId: ws.id, root: normalizeSourceFilePath(ws.rootPath as string) }))
+        .filter((candidate) => candidate.root)
+        .sort((a, b) => b.root.length - a.root.length);
+}
+
+/**
+ * Owning member for a path, by root prefix. The match stops at a directory
+ * boundary so `/repos/foo` does not claim `/repos/foobar`. Relative paths (the
+ * common shape of a conversation link) match nothing and stay unattributed.
+ */
+function findRepoOwnerByPath(
+    fullPath: string,
+    candidates: readonly RepoRootCandidate[],
+): string | null {
+    const normalized = normalizeSourceFilePath(fullPath);
+    if (!normalized) { return null; }
+    for (const candidate of candidates) {
+        if (normalized === candidate.root || normalized.startsWith(`${candidate.root}/`)) {
+            return candidate.wsId;
+        }
+    }
+    return null;
+}
+
+/**
+ * Owning member as *reported by the server* for an opened file, or `null` when
+ * the file has not been opened (or the answer was the group itself, which names
+ * no member). This is the authoritative answer, so it also stays the basis for
+ * the row's display path — a path-inferred owner must not change rendered text.
+ */
+export function getExplicitRepoOwner(
+    sourceFile: ConversationSourceFile,
+    repoByFileKey: ReadonlyMap<string, string>,
+): string | null {
+    const owner = repoByFileKey.get(
+        getConversationSourceFileKey(sourceFile.wsId, sourceFile.fullPath),
+    );
+    return !owner || isRepoGroupWorkspaceId(owner) ? null : owner;
+}
+
 export interface SourceFileRepoGroup {
     /** Owning member workspace id, or `null` for the not-yet-resolved bucket. */
     wsId: string | null;
@@ -115,12 +176,13 @@ export function groupSourceFilesByRepo(
 ): SourceFileRepoGroup[] {
     const groups: SourceFileRepoGroup[] = [];
     const byWsId = new Map<string, SourceFileRepoGroup>();
+    const roots = getRepoRootCandidates(workspaces);
     let unresolved: SourceFileRepoGroup | null = null;
 
     for (const sourceFile of sourceFiles) {
-        const key = getConversationSourceFileKey(sourceFile.wsId, sourceFile.fullPath);
-        const owner = repoByFileKey.get(key);
-        if (!owner || isRepoGroupWorkspaceId(owner)) {
+        const owner = getExplicitRepoOwner(sourceFile, repoByFileKey)
+            ?? findRepoOwnerByPath(sourceFile.fullPath, roots);
+        if (!owner) {
             unresolved ??= {
                 wsId: null,
                 label: UNRESOLVED_REPO_LABEL,

@@ -28,6 +28,7 @@ import {
 } from './conversationSourceFiles';
 import {
     getActiveRepoAttribution,
+    getExplicitRepoOwner,
     getSourceFileDisplayPath,
     groupSourceFilesByRepo,
     isRepoGroupWorkspaceId,
@@ -76,6 +77,8 @@ const EMPTY_TREE: SourceCanvasTreeState = {
 
 /** Attribution-off lookup: every entry falls into one unlabeled bucket. */
 const NO_REPO_ATTRIBUTION: ReadonlyMap<string, string> = new Map();
+/** Empty candidate list — a chat with no attribution keeps one flat file list. */
+const NO_REPO_CANDIDATES: readonly ResolvableWorkspace[] = [];
 
 const headerBtnClass =
     'shrink-0 flex items-center justify-center w-7 h-7 rounded text-[#848484] ' +
@@ -130,10 +133,11 @@ function SourceCanvasFileSwitcher({
     const containerRef = useRef<HTMLDivElement>(null);
     const triggerRef = useRef<HTMLButtonElement>(null);
     const activeKey = getConversationSourceFileKey(fileRef.wsId ?? chatWsId ?? '', fileRef.fullPath);
+    const openedRepoByFileKey = showRepoAttribution ? repoByFileKey : NO_REPO_ATTRIBUTION;
     const repoGroups = groupSourceFilesByRepo(
         sourceFiles,
-        showRepoAttribution ? repoByFileKey : NO_REPO_ATTRIBUTION,
-        workspaces,
+        openedRepoByFileKey,
+        showRepoAttribution ? workspaces : NO_REPO_CANDIDATES,
     );
     // A single-repo chat (and a group chat where nothing is resolved yet) has no
     // repo to disambiguate, so it keeps the plain flat list.
@@ -285,9 +289,12 @@ function SourceCanvasFileSwitcher({
                             {group.files.map((sourceFile) => {
                                 const sourceKey = getConversationSourceFileKey(sourceFile.wsId, sourceFile.fullPath);
                                 const selected = sourceKey === activeKey;
+                                // Only a server-reported owner shortens the path: a
+                                // path-inferred owner regroups the row without
+                                // changing the text it already showed.
                                 const sourcePath = getSourceFileDisplayPath(
                                     sourceFile,
-                                    group.wsId,
+                                    getExplicitRepoOwner(sourceFile, openedRepoByFileKey),
                                     workspaces,
                                     workspaceRootPath,
                                 );

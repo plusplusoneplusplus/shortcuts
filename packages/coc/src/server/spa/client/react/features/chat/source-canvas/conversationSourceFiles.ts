@@ -30,7 +30,8 @@ function readLineAttr(element: Element, name: string): number | undefined {
     return Number.isFinite(line) ? line : undefined;
 }
 
-function normalizePath(path: string): string {
+/** Case- and separator-insensitive path form used for identity and root matching. */
+export function normalizeSourceFilePath(path: string): string {
     return toForwardSlashes(path)
         .replace(/\/+/g, '/')
         .replace(/\/+$/, '')
@@ -39,7 +40,7 @@ function normalizePath(path: string): string {
 
 /** Stable identity for conversation candidates: normalized workspace + path. */
 export function getConversationSourceFileKey(wsId: string, fullPath: string): string {
-    return `${wsId.trim().toLowerCase()}::${normalizePath(fullPath)}`;
+    return `${wsId.trim().toLowerCase()}::${normalizeSourceFilePath(fullPath)}`;
 }
 
 function parseCandidate(

@@ -6,8 +6,10 @@
 import { describe, it, expect } from 'vitest';
 import {
     REPO_ACCENT_COLORS,
+    UNRESOLVED_REPO_COLOR,
     UNRESOLVED_REPO_LABEL,
     getActiveRepoAttribution,
+    getExplicitRepoOwner,
     getRepoAccentColor,
     getRepoLabel,
     getSourceFileDisplayPath,
@@ -136,6 +138,110 @@ describe('groupSourceFilesByRepo', () => {
             WORKSPACES,
         );
         expect(groups.map((g) => g.wsId)).toEqual([null]);
+    });
+
+    it('attributes an unopened file by matching its path against a member root', () => {
+        const unopenedAbsolute = file('/home/u/projects/nixl/src/plugins/hf3fs/utils.cpp');
+        const groups = groupSourceFilesByRepo(
+            [vllmFile, unopenedAbsolute],
+            resolved,
+            WORKSPACES,
+        );
+        expect(groups.map((g) => [g.wsId, g.label])).toEqual([
+            ['ws-vllm', 'vllm'],
+            ['ws-nixl', 'nixl'],
+        ]);
+        expect(groups[1].files).toEqual([unopenedAbsolute]);
+    });
+
+    it('stops the root match at a directory boundary', () => {
+        const sibling = file('/home/u/projects/nixl-extras/src/a.cpp');
+        const groups = groupSourceFilesByRepo([sibling], new Map(), WORKSPACES);
+        expect(groups.map((g) => [g.wsId, g.label])).toEqual([[null, UNRESOLVED_REPO_LABEL]]);
+    });
+
+    it('matches ignoring separator style and case', () => {
+        const windowsWorkspaces = [{ id: 'ws-w', name: 'winrepo', rootPath: 'C:\\src\\Vllm' }];
+        const groups = groupSourceFilesByRepo(
+            [file('c:\\SRC\\vllm\\v1\\engine\\core.py')],
+            new Map(),
+            windowsWorkspaces,
+        );
+        expect(groups.map((g) => g.wsId)).toEqual(['ws-w']);
+    });
+
+    it('gives the longest matching root the file, for nested repos', () => {
+        const nestedWorkspaces = [
+            { id: 'ws-outer', name: 'outer', rootPath: '/home/u/projects' },
+            { id: 'ws-vllm', name: 'vllm', rootPath: '/home/u/projects/vllm' },
+        ];
+        const groups = groupSourceFilesByRepo(
+            [file('/home/u/projects/vllm/v1/engine/core.py')],
+            new Map(),
+            nestedWorkspaces,
+        );
+        expect(groups.map((g) => g.wsId)).toEqual(['ws-vllm']);
+    });
+
+    it('prefers the opened-file answer over the path match', () => {
+        const absolute = file('/home/u/projects/vllm/v1/engine/core.py');
+        const groups = groupSourceFilesByRepo(
+            [absolute],
+            new Map([[getConversationSourceFileKey('group-ml', absolute.fullPath), 'ws-nixl']]),
+            WORKSPACES,
+        );
+        expect(groups.map((g) => g.wsId)).toEqual(['ws-nixl']);
+    });
+
+    it('falls through to the path match when the opened answer is the group itself', () => {
+        const absolute = file('/home/u/projects/vllm/v1/engine/core.py');
+        const groups = groupSourceFilesByRepo(
+            [absolute],
+            new Map([[getConversationSourceFileKey('group-ml', absolute.fullPath), 'group-ml']]),
+            WORKSPACES,
+        );
+        expect(groups.map((g) => g.wsId)).toEqual(['ws-vllm']);
+    });
+
+    it('keeps a path outside every member root in the Other bucket, last', () => {
+        const outside = file('/tmp/scratch/notes.py');
+        const groups = groupSourceFilesByRepo(
+            [outside, file('/home/u/projects/vllm/a.py')],
+            new Map(),
+            WORKSPACES,
+        );
+        expect(groups.map((g) => [g.wsId, g.label])).toEqual([
+            ['ws-vllm', 'vllm'],
+            [null, UNRESOLVED_REPO_LABEL],
+        ]);
+        expect(groups[1].color).toBe(UNRESOLVED_REPO_COLOR);
+        expect(groups[1].files).toEqual([outside]);
+    });
+
+    it('never attributes a file to a group workspace', () => {
+        const groups = groupSourceFilesByRepo(
+            [file('/home/u/groups/ml/a.py')],
+            new Map(),
+            [{ id: 'group-ml', name: 'ml', rootPath: '/home/u/groups/ml' }],
+        );
+        expect(groups.map((g) => g.wsId)).toEqual([null]);
+    });
+
+    it('leaves the display path of a newly attributed row unchanged', () => {
+        const absolute = file('/home/u/projects/vllm/v1/engine/core.py');
+        const before = getSourceFileDisplayPath(absolute, null, WORKSPACES, '/chat/root');
+        const groups = groupSourceFilesByRepo([absolute], new Map(), WORKSPACES);
+        expect(groups[0].wsId).toBe('ws-vllm');
+        // The row regroups, but the panel keeps resolving its text against the
+        // server-reported owner (none here), so the text is identical.
+        const after = getSourceFileDisplayPath(
+            absolute,
+            getExplicitRepoOwner(absolute, new Map()),
+            WORKSPACES,
+            '/chat/root',
+        );
+        expect(after).toBe(before);
+        expect(after).toBe('/home/u/projects/vllm/v1/engine/core.py');
     });
 
     it('returns no groups for an empty file list', () => {
