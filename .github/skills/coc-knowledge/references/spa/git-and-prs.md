@@ -184,6 +184,26 @@ own. Timeline and flat `toolCalls` records are de-duplicated by tool-call id wit
 each turn; separate turns remain distinct because providers may restart tool-call ids
 on each assistant turn.
 
+`remoteUrl` is three-valued, and the distinction is load-bearing: `undefined` means the
+chat's remote identity is **not known yet** (the dashboard workspace list is still
+loading), `null` means the workspace is known to have **no** remote. `ChatDetail` derives
+it with `resolveWorkspaceRemoteUrl(appState.workspaces, workspaceId)`, and
+`usePrChatStatusItems` holds `chatOriginId` empty (fetching nothing, rendering nothing)
+while it is `undefined`. Collapsing the two cases resolves the origin to
+`local_<workspaceId>` — an origin no PR data lives under — so the bindings lookup queries
+the wrong scope, `unionAssociations` drops the chat's own detected PRs as foreign, and
+`detectedPrsNeedingBinding` writes nothing.
+
+`remoteUrl` is three-valued, and the distinction is load-bearing: `undefined` means the
+chat's remote identity is **not known yet** (the dashboard workspace list is still
+loading), `null` means the workspace is known to have **no** remote. `ChatDetail` derives
+it with `resolveWorkspaceRemoteUrl(appState.workspaces, workspaceId)`, and
+`usePrChatStatusItems` holds `chatOriginId` empty (fetching nothing, rendering nothing)
+while it is `undefined`. Collapsing the two cases resolves the origin to
+`local_<workspaceId>` — an origin no PR data lives under — so the bindings lookup queries
+the wrong scope, `unionAssociations` drops the chat's own detected PRs as foreign, and
+`detectedPrsNeedingBinding` writes nothing.
+
 ### Chip contents
 
 `ComposerPrChip` (presentational) shows, per PR: the `#number` opening the provider PR
